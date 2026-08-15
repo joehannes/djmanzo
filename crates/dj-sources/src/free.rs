@@ -75,13 +75,19 @@ fn parse_jamendo(body: &serde_json::Value) -> Vec<TrackRef> {
                     .and_then(number)
                     .map(|seconds| seconds as f32),
                 // One of the few APIs that reports a usable tempo.
-                bpm: item.pointer("/musicinfo/bpm").and_then(number).map(|b| b as f32),
+                bpm: item
+                    .pointer("/musicinfo/bpm")
+                    .and_then(number)
+                    .map(|b| b as f32),
                 key: None,
                 genre: item
                     .pointer("/musicinfo/tags/genres/0")
                     .and_then(|v| v.as_str())
                     .map(str::to_owned),
-                artwork_url: item.get("image").and_then(|v| v.as_str()).map(str::to_owned),
+                artwork_url: item
+                    .get("image")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
                 web_url: item
                     .get("shareurl")
                     .and_then(|v| v.as_str())

@@ -132,6 +132,115 @@ export function tileUrl(
     : `wave://localhost/${path}`;
 }
 
+// ---------------------------------------------------------------------------
+// Sources
+// ---------------------------------------------------------------------------
+
+export interface Credential {
+  id: string;
+  label: string;
+  signup_url: string;
+  free_tier: string;
+  is_set: boolean;
+  /** Last four characters of a stored value. Never the value itself. */
+  hint: string;
+}
+
+export type AudioAccess = "direct" | "user_supplied" | "none";
+export type SourceStatus = "ready" | "needs_credentials" | "partner_gated" | "disabled";
+
+export interface Source {
+  id: string;
+  label: string;
+  summary: string;
+  detail: string;
+  can_search: boolean;
+  audio: AudioAccess;
+  /** Why audio is unavailable, when it is. */
+  audio_note: string;
+  partner_gated: boolean;
+  credentials: Credential[];
+  status: SourceStatus;
+  status_detail: string;
+}
+
+export interface SourceTrack {
+  provider: string;
+  id: string;
+  title: string;
+  artist: string;
+  album: string | null;
+  duration_seconds: number | null;
+  bpm: number | null;
+  key: string | null;
+  genre: string | null;
+  artwork_url: string | null;
+  web_url: string | null;
+  playable: boolean;
+}
+
+export interface SearchResults {
+  provider: string;
+  label: string;
+  tracks: SourceTrack[];
+  error: string | null;
+  /** How many results were matched to a file the user already owns. */
+  matched_locally: number;
+}
+
+export interface Library {
+  folders: string[];
+  tracks: number;
+}
+
+export const listSources = () => invoke<Source[]>("list_sources");
+export const setSecret = (id: string, value: string) =>
+  invoke<void>("set_secret", { id, value });
+export const clearSecret = (id: string) => invoke<void>("clear_secret", { id });
+export const secretsPersist = () => invoke<boolean>("secrets_persist");
+
+export const addMusicFolder = (path: string) =>
+  invoke<number>("add_music_folder", { path });
+export const removeMusicFolder = (path: string) =>
+  invoke<void>("remove_music_folder", { path });
+export const musicLibrary = () => invoke<Library>("music_library");
+
+export const searchSources = (text: string, provider?: string, limit?: number) =>
+  invoke<SearchResults[]>("search_sources", { text, provider, limit });
+
+/** Turn a search result into a path a deck can load, fetching it if need be. */
+export const resolveSourceTrack = (track: SourceTrack) =>
+  invoke<string>("resolve_source_track", {
+    track: {
+      provider: track.provider,
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+    },
+  });
+
+// ---------------------------------------------------------------------------
+// Branding
+// ---------------------------------------------------------------------------
+
+export const setBrandLogo = (path: string) => invoke<void>("set_brand_logo", { path });
+export const clearBrandLogo = () => invoke<void>("clear_brand_logo");
+export const hasBrandLogo = () => invoke<boolean>("has_brand_logo");
+
+/**
+ * URL for the user's logo.
+ *
+ * Takes a cache-buster because the logo is replaced in place at the same URL —
+ * without one, a newly-chosen logo would not appear until a restart, which
+ * reads as the change having failed.
+ */
+export function logoUrl(version: number): string {
+  const path = `logo?v=${version}`;
+  return navigator.userAgent.includes("Windows")
+    ? `http://brand.localhost/${path}`
+    : `brand://localhost/${path}`;
+}
+
 /** Read state once, so a freshly-mounted UI can paint without waiting. */
 export const getSnapshot = () => invoke<Snapshot>("get_snapshot");
 

@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: wave: http://asset.localhost http://wave.localhost"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: wave: brand: http://asset.localhost http://wave.localhost http://brand.localhost"
     }
   },
   "bundle": {

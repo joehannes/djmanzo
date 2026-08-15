@@ -18,8 +18,7 @@ const TIMEOUT: Duration = Duration::from_secs(12);
 
 #[async_trait::async_trait]
 pub trait HttpClient: Send + Sync + std::fmt::Debug {
-    async fn get_json(&self, url: &str, headers: &[(String, String)])
-    -> Result<Value, HttpError>;
+    async fn get_json(&self, url: &str, headers: &[(String, String)]) -> Result<Value, HttpError>;
 
     async fn post_form(
         &self,
@@ -97,11 +96,7 @@ async fn read_json(response: reqwest::Response) -> Result<Value, HttpError> {
 
 #[async_trait::async_trait]
 impl HttpClient for ReqwestClient {
-    async fn get_json(
-        &self,
-        url: &str,
-        headers: &[(String, String)],
-    ) -> Result<Value, HttpError> {
+    async fn get_json(&self, url: &str, headers: &[(String, String)]) -> Result<Value, HttpError> {
         let mut request = self.inner.get(url);
         for (name, value) in headers {
             request = request.header(name.as_str(), value.as_str());

@@ -14,9 +14,7 @@
 use crate::http::{HttpClient, ReqwestClient};
 use crate::local::LocalLibrary;
 use crate::partner::PartnerProvider;
-use crate::provider::{
-    ProviderId, ProviderStatus, Query, SourceError, SourceProvider, TrackRef,
-};
+use crate::provider::{ProviderId, ProviderStatus, Query, SourceError, SourceProvider, TrackRef};
 use crate::{free, spotify, youtube};
 use dj_secrets::SecretStore;
 use serde::Serialize;
@@ -224,7 +222,10 @@ impl SourceRegistry {
     }
 
     /// Turn a search result into something loadable.
-    pub async fn resolve(&self, track: &TrackRef) -> Result<crate::provider::Playable, SourceError> {
+    pub async fn resolve(
+        &self,
+        track: &TrackRef,
+    ) -> Result<crate::provider::Playable, SourceError> {
         self.provider(track.provider)
             .ok_or(SourceError::NotPlayable {
                 provider: track.provider.label(),
@@ -271,10 +272,8 @@ mod tests {
 
     #[test]
     fn every_catalogued_source_has_a_state() {
-        let registry = SourceRegistry::with_http(
-            Arc::new(StubClient::new(vec![])),
-            empty_secrets(),
-        );
+        let registry =
+            SourceRegistry::with_http(Arc::new(StubClient::new(vec![])), empty_secrets());
         let states = registry.states();
         assert_eq!(states.len(), ProviderId::all().len());
         // And nothing reports Disabled, because all of them are constructed.
@@ -298,7 +297,11 @@ mod tests {
                 "{id:?} should work out of the box"
             );
         }
-        for id in [ProviderId::Spotify, ProviderId::YouTube, ProviderId::Jamendo] {
+        for id in [
+            ProviderId::Spotify,
+            ProviderId::YouTube,
+            ProviderId::Jamendo,
+        ] {
             assert!(matches!(
                 registry.provider(id).unwrap().status(),
                 ProviderStatus::NeedsCredentials { .. }
@@ -359,7 +362,11 @@ mod tests {
         assert_eq!(results.matched_locally, 1);
         let track = &results.tracks[0];
         assert!(track.playable, "an owned track stayed unplayable");
-        assert_eq!(track.provider, ProviderId::Local, "resolution must go local");
+        assert_eq!(
+            track.provider,
+            ProviderId::Local,
+            "resolution must go local"
+        );
         // The richer metadata survived the swap.
         assert_eq!(track.title, "Propuesta Indecente");
 
@@ -410,7 +417,11 @@ mod tests {
             .await;
         assert!(results.tracks.is_empty());
         assert!(
-            results.error.as_deref().unwrap_or("").contains("connection refused"),
+            results
+                .error
+                .as_deref()
+                .unwrap_or("")
+                .contains("connection refused"),
             "{:?}",
             results.error
         );

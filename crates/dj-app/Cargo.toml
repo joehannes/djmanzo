@@ -27,10 +27,15 @@ dj-engine = { workspace = true }
 dj-control = { workspace = true }
 dj-dsp = { workspace = true }
 dj-render = { workspace = true }
+dj-secrets = { workspace = true }
+dj-sources = { workspace = true }
 
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 rtrb = { workspace = true }
+# Fetching a streamed track to the cache before it reaches a deck. See
+# `sources::resolve_source_track` for why it lands on disk first.
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -1,10 +1,14 @@
 <script lang="ts">
+  import Browse from "./Browse.svelte";
   import Deck from "./Deck.svelte";
+  import Settings from "./Settings.svelte";
   import { watchFrameRate } from "./framerate";
   import {
     dispatch,
     getSnapshot,
+    hasBrandLogo,
     listDevices,
+    logoUrl,
     onSnapshot,
     openDevice,
     sessionLog,
@@ -22,6 +26,11 @@
   let log = $state<string[]>([]);
   let showLog = $state(false);
   let slowFrames = $state<number | null>(null);
+  /** Which side panel is open, if any. Only one at a time: the decks matter more. */
+  let panel = $state<"none" | "browse" | "settings">("none");
+  let logo = $state(false);
+  /** Bumped when the logo changes, to defeat the webview's image cache. */
+  let logoVersion = $state(0);
 
   // The engine only exists once a device is open, so every control that would
   // send an action stays disabled until then.
@@ -45,6 +54,17 @@
   $effect(() => {
     refreshDevices();
   });
+
+  $effect(() => {
+    void hasBrandLogo().then((present) => {
+      logo = present;
+    });
+  });
+
+  async function refreshLogo() {
+    logo = await hasBrandLogo();
+    logoVersion += 1;
+  }
 
   // Watch our own frame rate. On a machine where the webview has no accelerated
   // compositing the waveform drops to ~16 fps with nothing to indicate why --
@@ -95,7 +115,18 @@
 
 <main>
   <header class="topbar">
-    <h1>djmanzo</h1>
+    <!--
+      The DJ's own logo, if they set one. A booth screen carrying someone
+      else's product name all night is a small daily insult, so the
+      application steps out of the way when asked.
+    -->
+    <h1 class:branded={logo}>
+      {#if logo}
+        <img src={logoUrl(logoVersion)} alt="" />
+      {:else}
+        djmanzo
+      {/if}
+    </h1>
 
     <div class="device">
       <select bind:value={selectedDevice} disabled={devices.length === 0}>
@@ -128,6 +159,18 @@
       {:else}
         <span class="idle">no device</span>
       {/if}
+      <button
+        class:active={panel === "browse"}
+        onclick={() => (panel = panel === "browse" ? "none" : "browse")}
+      >
+        Browse
+      </button>
+      <button
+        class:active={panel === "settings"}
+        onclick={() => (panel = panel === "settings" ? "none" : "settings")}
+      >
+        Settings
+      </button>
       <button onclick={toggleLog}>Log</button>
     </div>
   </header>
@@ -144,6 +187,14 @@
     </p>
   {/if}
 
+  <!--
+    Decks and mixer sit in their own scrolling region so that opening the
+    browser compresses them rather than being squeezed to nothing itself. This
+    is the layout every DJ application converges on, for the reason it matters:
+    you search for the next track while the current one is playing, so both
+    have to be on screen at once.
+  -->
+  <div class="stage" class:shared={panel !== "none"}>
   {#if snapshot}
     <div class="decks">
       {#each snapshot.decks.slice(0, 2) as deck (deck.number)}
@@ -229,6 +280,17 @@
   {:else}
     <p class="waiting">Waiting for the engine…</p>
   {/if}
+  </div>
+
+  {#if panel !== "none"}
+    <div class="panel">
+      {#if panel === "browse"}
+        <Browse enabled={ready} deckCount={2} />
+      {:else}
+        <Settings onLogoChange={refreshLogo} />
+      {/if}
+    </div>
+  {/if}
 
   {#if showLog}
     <section class="log">
@@ -268,6 +330,22 @@
     font-size: 1.1rem;
     letter-spacing: 0.02em;
     color: var(--accent);
+    display: flex;
+    align-items: center;
+  }
+
+  /* A logo is given room but never allowed to push the toolbar around. */
+  h1.branded img {
+    height: 28px;
+    max-width: 200px;
+    object-fit: contain;
+    display: block;
+  }
+
+  .status button.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0e0f14;
   }
 
   .device {
@@ -300,6 +378,31 @@
 
   .status .idle {
     color: var(--warn);
+  }
+
+  .stage {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    min-height: 0;
+    /* Takes everything when alone; yields to the panel when one is open, and
+       scrolls rather than clipping if the window is short. */
+    flex: 1;
+    overflow: auto;
+  }
+
+  .stage.shared {
+    flex: 1 1 55%;
+  }
+
+  .panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1 1 45%;
+    /* A floor, so a short window still leaves the panel usable rather than
+       collapsing it to a sliver. */
+    min-height: 220px;
   }
 
   .decks {

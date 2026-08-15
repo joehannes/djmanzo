@@ -52,11 +52,13 @@ impl LocalTrack {
         // Split on the first " - " only: "Artist - Title - Remix" should keep
         // the remix with the title, not lose it.
         match stem.split_once(" - ") {
-            Some((artist, title)) if !artist.trim().is_empty() && !title.trim().is_empty() => Self {
-                path: path.to_path_buf(),
-                title: title.trim().to_owned(),
-                artist: artist.trim().to_owned(),
-            },
+            Some((artist, title)) if !artist.trim().is_empty() && !title.trim().is_empty() => {
+                Self {
+                    path: path.to_path_buf(),
+                    title: title.trim().to_owned(),
+                    artist: artist.trim().to_owned(),
+                }
+            }
             _ => Self {
                 path: path.to_path_buf(),
                 title: stem,
@@ -476,7 +478,11 @@ mod tests {
             playable: false,
         };
         let matched = library.match_track(&remote).expect("should have matched");
-        assert!(matched.path.ends_with("Romeo Santos - Propuesta Indecente.mp3"));
+        assert!(
+            matched
+                .path
+                .ends_with("Romeo Santos - Propuesta Indecente.mp3")
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

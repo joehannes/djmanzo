@@ -74,8 +74,11 @@ impl SpotifyProvider {
 
         // Client credentials go in a Basic header, not the form body -- the
         // secret then never appears in a URL or a logged form.
-        let basic = base64::engine::general_purpose::STANDARD
-            .encode(format!("{}:{}", id.expose(), secret.expose()));
+        let basic = base64::engine::general_purpose::STANDARD.encode(format!(
+            "{}:{}",
+            id.expose(),
+            secret.expose()
+        ));
 
         let body = self
             .http
@@ -188,10 +191,11 @@ impl SourceProvider for SpotifyProvider {
     }
 
     fn status(&self) -> ProviderStatus {
-        let missing: Vec<SecretKind> = [SecretKind::SpotifyClientId, SecretKind::SpotifyClientSecret]
-            .into_iter()
-            .filter(|kind| !self.secrets.has(*kind))
-            .collect();
+        let missing: Vec<SecretKind> =
+            [SecretKind::SpotifyClientId, SecretKind::SpotifyClientSecret]
+                .into_iter()
+                .filter(|kind| !self.secrets.has(*kind))
+                .collect();
         if missing.is_empty() {
             ProviderStatus::Ready
         } else {
@@ -210,10 +214,7 @@ impl SourceProvider for SpotifyProvider {
             .http
             .get_json(
                 &url,
-                &[(
-                    "Authorization".into(),
-                    format!("Bearer {}", token.expose()),
-                )],
+                &[("Authorization".into(), format!("Bearer {}", token.expose()))],
             )
             .await
             .map_err(|e| e.into_source_error(NAME))?;
@@ -238,7 +239,10 @@ mod tests {
             .set(SecretKind::SpotifyClientId, &Secret::new("client-id"))
             .unwrap();
         store
-            .set(SecretKind::SpotifyClientSecret, &Secret::new("client-secret"))
+            .set(
+                SecretKind::SpotifyClientSecret,
+                &Secret::new("client-secret"),
+            )
             .unwrap();
         Arc::new(store)
     }
@@ -354,12 +358,19 @@ mod tests {
         let spotify = SpotifyProvider::new(http.clone(), stocked_secrets());
         spotify.search(&Query::new("romeo & juliet")).await.unwrap();
         let url = http.last_url();
-        assert!(url.contains("romeo%20%26%20juliet"), "unencoded query: {url}");
+        assert!(
+            url.contains("romeo%20%26%20juliet"),
+            "unencoded query: {url}"
+        );
     }
 
     #[tokio::test]
     async fn a_response_in_an_unexpected_shape_yields_nothing_rather_than_panicking() {
-        for body in [json!({}), json!({"tracks": {}}), json!({"tracks": {"items": "no"}})] {
+        for body in [
+            json!({}),
+            json!({"tracks": {}}),
+            json!({"tracks": {"items": "no"}}),
+        ] {
             assert!(parse_search(&body).is_empty());
         }
     }
