@@ -2,11 +2,48 @@
 
 use crate::host::AudioHost;
 use crate::waveform::WaveformStore;
+use dj_assistant::{Budget, LlmProvider, ProviderId};
 use dj_control::{ActionBus, ParameterRegistry};
 use dj_engine::Command;
 use dj_secrets::SecretStore;
 use dj_sources::SourceRegistry;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+
+/// What the assistant is pointed at.
+///
+/// Defaults to a local model, because that is the only option that works before
+/// the user has signed up for anything — and the only one that keeps working
+/// when the venue's wifi does not.
+#[derive(Debug, Clone)]
+struct AssistantChoice {
+    provider: ProviderId,
+    model: String,
+    /// Per-million-token pricing for the chosen model, when the provider
+    /// reported it. `None` means spend cannot be counted, not that it is free.
+    pricing: (Option<f64>, Option<f64>),
+}
+
+impl Default for AssistantChoice {
+    fn default() -> Self {
+        Self {
+            provider: ProviderId::Local,
+            // Ollama's most common small model. Wrong for some setups, and
+            // changeable in one click; better than an empty field.
+            model: "llama3.2".to_owned(),
+            pricing: (None, None),
+        }
+    }
+}
+
+/// Everything needed to ask the assistant one question.
+#[derive(Debug, Clone)]
+pub struct AssistantSelection {
+    pub provider: Arc<dyn LlmProvider>,
+    pub model: String,
+    /// USD per million tokens, when the provider reported it.
+    pub input_price: Option<f64>,
+    pub output_price: Option<f64>,
+}
 
 /// Decks the engine runs. Kept in step with `host::DECK_COUNT`.
 pub const DECK_COUNT: usize = 4;
@@ -31,6 +68,9 @@ pub struct AppState {
     /// restart deserves to have been told at the point of typing them.
     secrets_persist: bool,
     sources: Arc<SourceRegistry>,
+    llm_providers: Vec<Arc<dyn LlmProvider>>,
+    assistant: Mutex<AssistantChoice>,
+    budget: Arc<Budget>,
 }
 
 impl AppState {
@@ -53,6 +93,17 @@ impl AppState {
         }
         let sources = Arc::new(SourceRegistry::new(Arc::clone(&secrets)));
 
+        // One HTTP client for every provider. Falls back to a stub that fails
+        // cleanly rather than refusing to start: the application must still
+        // play files on a machine where TLS initialisation goes wrong.
+        let llm_providers = match dj_assistant::ReqwestJson::new() {
+            Ok(http) => dj_assistant::all_providers(Arc::new(http), Arc::clone(&secrets)),
+            Err(error) => {
+                tracing::warn!(%error, "no HTTP client; the assistant will be unavailable");
+                Vec::new()
+            }
+        };
+
         Self {
             bus,
             registry,
@@ -61,6 +112,76 @@ impl AppState {
             secrets,
             secrets_persist,
             sources,
+            llm_providers,
+            assistant: Mutex::new(AssistantChoice::default()),
+            budget: Arc::new(Budget::default()),
+        }
+    }
+
+    #[must_use]
+    pub fn llm_providers(&self) -> &[Arc<dyn LlmProvider>] {
+        &self.llm_providers
+    }
+
+    #[must_use]
+    pub fn llm_provider(&self, id: ProviderId) -> Option<Arc<dyn LlmProvider>> {
+        self.llm_providers
+            .iter()
+            .find(|p| p.id() == id)
+            .map(Arc::clone)
+    }
+
+    #[must_use]
+    pub fn budget(&self) -> &Arc<Budget> {
+        &self.budget
+    }
+
+    /// Point the assistant at a provider and model.
+    pub fn set_assistant(&self, provider: ProviderId, model: String) {
+        if let Ok(mut choice) = self.assistant.lock() {
+            choice.provider = provider;
+            choice.model = model;
+            // Pricing belongs to the model, so a change invalidates it until
+            // the next model list says otherwise. Unknown beats stale.
+            choice.pricing = (None, None);
+        }
+    }
+
+    /// Record what the chosen model costs, per million tokens.
+    pub fn set_assistant_pricing(&self, input: Option<f64>, output: Option<f64>) {
+        if let Ok(mut choice) = self.assistant.lock() {
+            choice.pricing = (input, output);
+        }
+    }
+
+    /// The provider, model and pricing to use for the next question.
+    ///
+    /// Falls back to whatever provider exists if the chosen one is missing, so
+    /// a stale selection cannot leave the assistant permanently broken.
+    /// Returns `None` only when no provider could be constructed at all.
+    #[must_use]
+    pub fn assistant_selection(&self) -> Option<AssistantSelection> {
+        let choice = self.assistant.lock().map(|c| c.clone()).unwrap_or_default();
+        let provider = self
+            .llm_provider(choice.provider)
+            .or_else(|| self.llm_providers.first().map(Arc::clone))?;
+        Some(AssistantSelection {
+            provider,
+            model: choice.model,
+            input_price: choice.pricing.0,
+            output_price: choice.pricing.1,
+        })
+    }
+
+    #[must_use]
+    pub fn assistant_state(&self) -> crate::assistant::AssistantStateDto {
+        let choice = self.assistant.lock().map(|c| c.clone()).unwrap_or_default();
+        crate::assistant::AssistantStateDto {
+            provider: choice.provider.slug(),
+            model: choice.model,
+            spent_usd: self.budget.spent_usd(),
+            cap_usd: self.budget.cap_usd(),
+            unpriced_calls: self.budget.unpriced_calls(),
         }
     }
 

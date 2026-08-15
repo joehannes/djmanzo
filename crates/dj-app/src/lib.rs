@@ -19,6 +19,7 @@
 //! makes a session replayable. See
 //! `docs/adr/0003-action-bus-and-parameter-registry.md`.
 
+pub mod assistant;
 pub mod brand;
 pub mod commands;
 pub mod host;
@@ -175,6 +176,13 @@ pub fn run() {
             brand::set_brand_logo,
             brand::clear_brand_logo,
             brand::has_brand_logo,
+            assistant::list_llm_providers,
+            assistant::list_llm_models,
+            assistant::assistant_state,
+            assistant::set_assistant_model,
+            assistant::set_spend_cap,
+            assistant::reset_spend,
+            assistant::ask,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start djmanzo");

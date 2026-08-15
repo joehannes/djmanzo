@@ -10,6 +10,7 @@ members = [
     "crates/dj-render",
     "crates/dj-secrets",
     "crates/dj-sources",
+    "crates/dj-assistant",
     "crates/dj-app",
 ]
 
@@ -31,6 +32,7 @@ dj-control = { path = "crates/dj-control" }
 dj-render = { path = "crates/dj-render" }
 dj-secrets = { path = "crates/dj-secrets" }
 dj-sources = { path = "crates/dj-sources" }
+dj-assistant = { path = "crates/dj-assistant" }
 
 cpal = "0.15"
 symphonia = { version = "0.5", features = ["all-codecs", "all-formats"] }

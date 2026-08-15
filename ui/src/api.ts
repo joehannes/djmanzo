@@ -254,3 +254,63 @@ export function formatTime(seconds: number): string {
   const minutes = Math.floor(total / 60);
   return `${minutes}:${String(total % 60).padStart(2, "0")}`;
 }
+
+// ---------------------------------------------------------------------------
+// The assistant
+// ---------------------------------------------------------------------------
+
+export interface LlmProvider {
+  id: string;
+  label: string;
+  summary: string;
+  detail: string;
+  recommended: boolean;
+  status: "ready" | "needs_key" | "not_running";
+  status_detail: string;
+  credential: string | null;
+  credential_label: string | null;
+  signup_url: string | null;
+  free_tier: string | null;
+  is_set: boolean;
+  hint: string;
+}
+
+export interface LlmModel {
+  id: string;
+  name: string;
+  free: boolean;
+  context: number | null;
+  input_price: number | null;
+  output_price: number | null;
+}
+
+export interface AssistantState {
+  provider: string;
+  model: string;
+  spent_usd: number;
+  cap_usd: number;
+  /** Calls the provider never priced — unknown spend, not zero spend. */
+  unpriced_calls: number;
+}
+
+export interface Answer {
+  reply: string;
+  actions: string[];
+  /** Model output that was not valid action text. */
+  rejected: string[];
+  source: "local" | "model";
+  cost_usd: number | null;
+  undelivered: string[];
+}
+
+export const listLlmProviders = () => invoke<LlmProvider[]>("list_llm_providers");
+export const listLlmModels = (provider: string) =>
+  invoke<LlmModel[]>("list_llm_models", { provider });
+export const assistantState = () => invoke<AssistantState>("assistant_state");
+export const setAssistantModel = (provider: string, model: string) =>
+  invoke<AssistantState>("set_assistant_model", { provider, model });
+export const setSpendCap = (usd: number) => invoke<AssistantState>("set_spend_cap", { usd });
+export const resetSpend = () => invoke<AssistantState>("reset_spend");
+
+/** Ask the assistant to do something. It interprets, then dispatches. */
+export const ask = (text: string) => invoke<Answer>("ask", { text });

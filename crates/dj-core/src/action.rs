@@ -168,6 +168,32 @@ fn parse_f32(word: Option<&str>) -> Result<f32, ParseError> {
     }
 }
 
+/// Format a number for the text form.
+///
+/// Every numeric argument arrives through `parse_f32`, so an `f64` field here
+/// is always a widened `f32` — and printing one of those directly gives
+/// `0.03999999910593033` where the user typed `0.04`. That is technically the
+/// value and practically unreadable, and it lands in the session log, in the
+/// interface, and in anything the assistant echoes back.
+///
+/// Six decimal places is more than an `f32` carries, so nothing is lost;
+/// trimming the zeros keeps whole numbers whole.
+fn number(value: f64) -> String {
+    if !value.is_finite() {
+        // Cannot round-trip, and should never reach here: the parser rejects
+        // non-finite input. Emitting `0` keeps the output parseable rather than
+        // producing `NaN`, which would fail to re-parse.
+        return "0".to_owned();
+    }
+    let text = format!("{value:.6}");
+    let trimmed = text.trim_end_matches('0').trim_end_matches('.');
+    if trimmed.is_empty() || trimmed == "-" {
+        "0".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -177,15 +203,25 @@ impl fmt::Display for Action {
                 DeckAction::PlayPause => write!(f, "deck {deck} play_pause"),
                 DeckAction::Cue => write!(f, "deck {deck} cue"),
                 DeckAction::Eject => write!(f, "deck {deck} eject"),
-                DeckAction::Seek(p) => write!(f, "deck {deck} seek {}", p.get()),
-                DeckAction::SetRate(r) => write!(f, "deck {deck} rate {}", r.get()),
-                DeckAction::SetPitch(p) => write!(f, "deck {deck} pitch {p}"),
-                DeckAction::SetVolume(v) => write!(f, "deck {deck} volume {v}"),
-                DeckAction::SetGainDb(g) => write!(f, "deck {deck} gain {g}"),
-                DeckAction::SetEqLow(v) => write!(f, "deck {deck} eq_low {v}"),
-                DeckAction::SetEqMid(v) => write!(f, "deck {deck} eq_mid {v}"),
-                DeckAction::SetEqHigh(v) => write!(f, "deck {deck} eq_high {v}"),
-                DeckAction::SetFilter(v) => write!(f, "deck {deck} filter {v}"),
+                DeckAction::Seek(p) => write!(f, "deck {deck} seek {}", number(p.get())),
+                DeckAction::SetRate(r) => write!(f, "deck {deck} rate {}", number(r.get())),
+                DeckAction::SetPitch(p) => write!(f, "deck {deck} pitch {}", number(*p)),
+                DeckAction::SetVolume(v) => {
+                    write!(f, "deck {deck} volume {}", number(f64::from(*v)))
+                }
+                DeckAction::SetGainDb(g) => write!(f, "deck {deck} gain {}", number(f64::from(*g))),
+                DeckAction::SetEqLow(v) => {
+                    write!(f, "deck {deck} eq_low {}", number(f64::from(*v)))
+                }
+                DeckAction::SetEqMid(v) => {
+                    write!(f, "deck {deck} eq_mid {}", number(f64::from(*v)))
+                }
+                DeckAction::SetEqHigh(v) => {
+                    write!(f, "deck {deck} eq_high {}", number(f64::from(*v)))
+                }
+                DeckAction::SetFilter(v) => {
+                    write!(f, "deck {deck} filter {}", number(f64::from(*v)))
+                }
                 DeckAction::SetCue(true) => write!(f, "deck {deck} cue_on"),
                 DeckAction::SetCue(false) => write!(f, "deck {deck} cue_off"),
                 DeckAction::ToggleCue => write!(f, "deck {deck} cue_toggle"),
@@ -193,10 +229,16 @@ impl fmt::Display for Action {
                 DeckAction::SetKeylock(false) => write!(f, "deck {deck} keylock_off"),
                 DeckAction::ToggleKeylock => write!(f, "deck {deck} keylock_toggle"),
             },
-            Action::Mixer(MixerAction::Crossfader(v)) => write!(f, "crossfader {v}"),
-            Action::Mixer(MixerAction::MasterGainDb(v)) => write!(f, "master gain {v}"),
-            Action::Mixer(MixerAction::BoothGainDb(v)) => write!(f, "booth gain {v}"),
-            Action::Mixer(MixerAction::CueMix(v)) => write!(f, "cue mix {v}"),
+            Action::Mixer(MixerAction::Crossfader(v)) => {
+                write!(f, "crossfader {}", number(f64::from(*v)))
+            }
+            Action::Mixer(MixerAction::MasterGainDb(v)) => {
+                write!(f, "master gain {}", number(f64::from(*v)))
+            }
+            Action::Mixer(MixerAction::BoothGainDb(v)) => {
+                write!(f, "booth gain {}", number(f64::from(*v)))
+            }
+            Action::Mixer(MixerAction::CueMix(v)) => write!(f, "cue mix {}", number(f64::from(*v))),
             Action::Mixer(MixerAction::SplitCue(true)) => write!(f, "cue split_on"),
             Action::Mixer(MixerAction::SplitCue(false)) => write!(f, "cue split_off"),
         }
@@ -320,6 +362,46 @@ mod tests {
             Action::parse("deck 1 levitate"),
             Err(ParseError::UnknownVerb(_))
         ));
+    }
+
+    /// Numbers arrive as `f32` and are stored widened, so printing one raw
+    /// gives `0.03999999910593033` where the user typed `0.04`. That string
+    /// lands in the session log, in the interface, and in anything the
+    /// assistant echoes back.
+    #[test]
+    fn numbers_print_the_way_they_were_typed() {
+        let cases = [
+            ("deck 1 pitch 0.04", "deck 1 pitch 0.04"),
+            ("deck 1 pitch -0.08", "deck 1 pitch -0.08"),
+            ("deck 1 volume 0.8", "deck 1 volume 0.8"),
+            ("deck 1 seek 48000", "deck 1 seek 48000"),
+            ("deck 1 rate 1", "deck 1 rate 1"),
+            ("deck 1 eq_low 0", "deck 1 eq_low 0"),
+            ("crossfader -1", "crossfader -1"),
+            ("cue mix 0.35", "cue mix 0.35"),
+            ("master gain -3.5", "master gain -3.5"),
+        ];
+        for (input, expected) in cases {
+            let rendered = Action::parse(input).unwrap().to_string();
+            assert_eq!(rendered, expected, "`{input}` printed as `{rendered}`");
+        }
+    }
+
+    /// Formatting must not cost a round trip: what is printed has to parse back
+    /// to the same value, or the session log would replay differently.
+    #[test]
+    fn formatting_never_breaks_the_round_trip() {
+        for input in [
+            "deck 1 pitch 0.0833",
+            "deck 1 gain -12.25",
+            "deck 1 filter -0.333333",
+            "deck 1 seek 1234567",
+            "cue mix 0.123456",
+        ] {
+            let action = Action::parse(input).unwrap();
+            let reparsed = Action::parse(&action.to_string()).unwrap();
+            assert_eq!(reparsed, action, "`{input}` did not survive formatting");
+        }
     }
 
     /// The text form is an API surface (scripts, OSC, WebSocket), so it has to

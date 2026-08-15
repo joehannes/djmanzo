@@ -1107,6 +1107,7 @@ dependencies = [
 name = "dj-app"
 version = "0.0.2"
 dependencies = [
+ "dj-assistant",
  "dj-audio",
  "dj-control",
  "dj-core",
@@ -1126,6 +1127,21 @@ dependencies = [
  "thiserror 2.0.20",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "dj-assistant"
+version = "0.0.2"
+dependencies = [
+ "async-trait",
+ "dj-core",
+ "dj-secrets",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

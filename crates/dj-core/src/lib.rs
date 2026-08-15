@@ -15,12 +15,14 @@ pub mod deck;
 pub mod music;
 pub mod param;
 pub mod time;
+pub mod vocabulary;
 
 pub use action::{Action, DeckAction, MixerAction};
 pub use deck::{DeckId, MAX_DECKS};
 pub use music::{Beatgrid, Bpm, Confidence, Mode, MusicalKey};
 pub use param::{DeckParam, GlobalParam, ParamId};
 pub use time::{FramePos, Rate, SampleRate};
+pub use vocabulary::{ArgSpec, Target, VerbSpec, vocabulary};
 
 pub mod track;
 pub use track::{TrackId, TrackInfo};

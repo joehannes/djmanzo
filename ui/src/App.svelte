@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Assistant from "./Assistant.svelte";
   import Browse from "./Browse.svelte";
   import Deck from "./Deck.svelte";
   import Settings from "./Settings.svelte";
@@ -27,7 +28,7 @@
   let showLog = $state(false);
   let slowFrames = $state<number | null>(null);
   /** Which side panel is open, if any. Only one at a time: the decks matter more. */
-  let panel = $state<"none" | "browse" | "settings">("none");
+  let panel = $state<"none" | "browse" | "assistant" | "settings">("none");
   let logo = $state(false);
   /** Bumped when the logo changes, to defeat the webview's image cache. */
   let logoVersion = $state(0);
@@ -166,6 +167,12 @@
         Browse
       </button>
       <button
+        class:active={panel === "assistant"}
+        onclick={() => (panel = panel === "assistant" ? "none" : "assistant")}
+      >
+        Assistant
+      </button>
+      <button
         class:active={panel === "settings"}
         onclick={() => (panel = panel === "settings" ? "none" : "settings")}
       >
@@ -286,6 +293,8 @@
     <div class="panel">
       {#if panel === "browse"}
         <Browse enabled={ready} deckCount={2} />
+      {:else if panel === "assistant"}
+        <Assistant enabled={ready} />
       {:else}
         <Settings onLogoChange={refreshLogo} />
       {/if}
