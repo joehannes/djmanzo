@@ -52,6 +52,10 @@ pub enum DeckAction {
     SetCue(bool),
     /// Flip the headphone cue send.
     ToggleCue,
+    /// Keylock: hold the musical key while the pitch fader changes tempo.
+    SetKeylock(bool),
+    /// Flip keylock.
+    ToggleKeylock,
     /// Drop the loaded track.
     Eject,
 }
@@ -147,6 +151,9 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "cue_on" => DeckAction::SetCue(true),
         "cue_off" => DeckAction::SetCue(false),
         "cue_toggle" => DeckAction::ToggleCue,
+        "keylock_on" => DeckAction::SetKeylock(true),
+        "keylock_off" => DeckAction::SetKeylock(false),
+        "keylock_toggle" => DeckAction::ToggleKeylock,
         other => return Err(ParseError::UnknownVerb(other.to_owned())),
     })
 }
@@ -182,6 +189,9 @@ impl fmt::Display for Action {
                 DeckAction::SetCue(true) => write!(f, "deck {deck} cue_on"),
                 DeckAction::SetCue(false) => write!(f, "deck {deck} cue_off"),
                 DeckAction::ToggleCue => write!(f, "deck {deck} cue_toggle"),
+                DeckAction::SetKeylock(true) => write!(f, "deck {deck} keylock_on"),
+                DeckAction::SetKeylock(false) => write!(f, "deck {deck} keylock_off"),
+                DeckAction::ToggleKeylock => write!(f, "deck {deck} keylock_toggle"),
             },
             Action::Mixer(MixerAction::Crossfader(v)) => write!(f, "crossfader {v}"),
             Action::Mixer(MixerAction::MasterGainDb(v)) => write!(f, "master gain {v}"),
@@ -314,6 +324,11 @@ mod tests {
 
     /// The text form is an API surface (scripts, OSC, WebSocket), so it has to
     /// survive a round trip or those clients will silently drift from the enum.
+    ///
+    /// The list is maintained by hand, so **add a case whenever you add a
+    /// variant**. A missing one is silent: the action still works from the
+    /// interface and fails only from a script, a mapping file or the assistant,
+    /// which is the worst place to find out.
     #[test]
     fn text_form_round_trips() {
         let cases = [
@@ -360,6 +375,18 @@ mod tests {
             Action::Deck {
                 deck: deck(2),
                 action: DeckAction::ToggleCue,
+            },
+            Action::Deck {
+                deck: deck(1),
+                action: DeckAction::SetKeylock(true),
+            },
+            Action::Deck {
+                deck: deck(2),
+                action: DeckAction::SetKeylock(false),
+            },
+            Action::Deck {
+                deck: deck(4),
+                action: DeckAction::ToggleKeylock,
             },
             Action::Mixer(MixerAction::CueMix(0.35)),
             Action::Mixer(MixerAction::SplitCue(true)),

@@ -183,18 +183,38 @@
     />
   </label>
 
-  <label class="control">
-    <span>Pitch <em class="mono">{(deck.pitch * 100).toFixed(1)}%</em></span>
-    <input
-      type="range"
-      min="-0.16"
-      max="0.16"
-      step="0.001"
-      value={deck.pitch}
+  <!--
+    Pitch and keylock belong together: keylock only means anything once the
+    fader has moved, and the two are always reached for in the same breath.
+    Double-click the fader to snap back to zero — hitting exactly 0.0% with a
+    mouse is not something anyone can do mid-mix.
+  -->
+  <div class="pitch-row">
+    <label class="control">
+      <span>Pitch <em class="mono">{(deck.pitch * 100).toFixed(1)}%</em></span>
+      <input
+        type="range"
+        min="-0.16"
+        max="0.16"
+        step="0.001"
+        value={deck.pitch}
+        disabled={!enabled}
+        oninput={(e) => send(`deck ${deck.number} pitch ${e.currentTarget.value}`)}
+        ondblclick={() => send(`deck ${deck.number} pitch 0`)}
+      />
+    </label>
+    <button
+      class="keylock"
+      class:on={deck.keylock}
       disabled={!enabled}
-      oninput={(e) => send(`deck ${deck.number} pitch ${e.currentTarget.value}`)}
-    />
-  </label>
+      onclick={() => send(`deck ${deck.number} keylock_toggle`)}
+      title={deck.keylock
+        ? `Keylock on — tempo changes without changing key (adds ${deck.keylock_latency_ms.toFixed(0)} ms, compensated)`
+        : "Keylock off — the pitch fader moves tempo and key together"}
+    >
+      KEY
+    </button>
+  </div>
 
   <div class="meter" aria-label="deck level">
     <div class="meter-fill" style:width="{Math.min(deck.peak, 1) * 100}%"></div>
@@ -331,6 +351,26 @@
   .kill.on {
     background: var(--danger);
     border-color: var(--danger);
+  }
+
+  .pitch-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 0.5rem;
+  }
+
+  .keylock {
+    font-size: 0.7em;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    padding: 0.3rem 0.5rem;
+  }
+
+  .keylock.on {
+    background: var(--accent-2);
+    border-color: var(--accent-2);
+    color: #0e0f14;
   }
 
   .cue {

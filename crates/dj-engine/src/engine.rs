@@ -197,6 +197,8 @@ impl Engine {
                     DeckAction::SetFilter(p) => target.set_filter(p),
                     DeckAction::SetCue(on) => target.set_cue(on),
                     DeckAction::ToggleCue => target.toggle_cue(),
+                    DeckAction::SetKeylock(on) => target.set_keylock(on),
+                    DeckAction::ToggleKeylock => target.toggle_keylock(),
                     DeckAction::Eject => unreachable!("handled above"),
                 }
             }
@@ -272,6 +274,14 @@ impl Engine {
             set(
                 DeckParam::CueEnabled,
                 if deck.is_cued() { 1.0 } else { 0.0 },
+            );
+            set(
+                DeckParam::Keylock,
+                if deck.is_keylocked() { 1.0 } else { 0.0 },
+            );
+            set(
+                DeckParam::KeylockLatencyFrames,
+                deck.keylock_latency_frames() as f32,
             );
         }
     }

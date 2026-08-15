@@ -45,11 +45,15 @@ pub enum DeckParam {
     CueEnabled,
     /// Pre-fader peak, for the cue meter and setting trim.
     PreFaderLevel,
+    /// 1.0 when keylock is holding the musical key.
+    Keylock,
+    /// Frames of latency keylock is adding, before compensation. 0.0 when off.
+    KeylockLatencyFrames,
 }
 
 impl DeckParam {
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 15;
+    pub const COUNT: usize = 17;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -75,6 +79,8 @@ impl DeckParam {
             Filter,
             CueEnabled,
             PreFaderLevel,
+            Keylock,
+            KeylockLatencyFrames,
         ]
     }
 }
@@ -193,6 +199,8 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::Filter => "filter",
         DeckParam::CueEnabled => "cue_enabled",
         DeckParam::PreFaderLevel => "pre_fader_level",
+        DeckParam::Keylock => "keylock",
+        DeckParam::KeylockLatencyFrames => "keylock_latency_frames",
     }
 }
 

@@ -55,6 +55,8 @@ export interface DeckState {
   filter: number;
   cue_enabled: boolean;
   pre_fader_level: number;
+  keylock: boolean;
+  keylock_latency_ms: number;
 }
 
 export interface MasterState {

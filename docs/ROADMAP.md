@@ -36,7 +36,9 @@ The first genuinely usable build.
 - Mixer: channel faders, crossfader with curve, 3-band EQ + kills, filter, gain, VU, limiter.
 - Routing: main, booth, headphone PFL with cue/master blend and split-cue.
 - Audio setup: 4-channel single device **and** dual-device with clock-drift correction.
-- `dj-render`: scrolling waveform tiles in `wgpu`, CSS-transform scrolling in the UI.
+- `dj-render`: scrolling waveform tiles rasterised on the CPU and served as PNG over a
+  custom URI scheme, CSS-transform scrolling in the UI. (`wgpu` was the original plan;
+  measurement said the CPU is fast enough and a GPU context is not free — see ADR-0004.)
 - Light and dark themes.
 
 **Done when:** you can beat-match two tracks by ear and mix them, cueing in headphones, on both

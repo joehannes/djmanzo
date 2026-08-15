@@ -125,10 +125,15 @@ under test, and any xrun in the integration suite fails the build.
   position / rate engine ── scratch, jog, pitch fader, sync, quantize
     │
     ▼
-  scaler
-    ├─ keylock ON  → Signalsmith Stretch (tempo changes, pitch held)
-    └─ keylock OFF → resample (pitch follows speed — the correct behaviour
-                     for scratching and for turntable feel)
+  resample ──────────────── always. One playhead, one step, one arithmetic,
+    │                       whatever keylock is doing
+    ▼
+  keylock (insert)
+    ├─ ON  → transpose by 1/tempo, undoing the pitch the speed introduced.
+    │        Reads ahead by the shifter's group delay so engaging it does not
+    │        move the music in time. See ADR-0007.
+    └─ OFF → straight through (pitch follows speed — the correct behaviour
+             for scratching and for turntable feel)
     │
     ▼
   stem split ──────────── 4 buffers from the stem cache, or 1× passthrough

@@ -52,6 +52,11 @@ pub struct DeckSnapshot {
     pub filter: f32,
     pub cue_enabled: bool,
     pub pre_fader_level: f32,
+    /// Holding the musical key while the pitch fader changes tempo.
+    pub keylock: bool,
+    /// What keylock costs, in milliseconds, before the deck compensates for it.
+    /// Surfaced so the figure is stated rather than guessed at.
+    pub keylock_latency_ms: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -116,6 +121,8 @@ impl Snapshot {
                     filter: get(DeckParam::Filter),
                     cue_enabled: get(DeckParam::CueEnabled) >= 0.5,
                     pre_fader_level: get(DeckParam::PreFaderLevel),
+                    keylock: get(DeckParam::Keylock) >= 0.5,
+                    keylock_latency_ms: to_seconds(get(DeckParam::KeylockLatencyFrames)) * 1000.0,
                 }
             })
             .collect();
