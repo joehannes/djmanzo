@@ -1023,6 +1023,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dj-render"
+version = "0.0.2"
+dependencies = [
+ "dj-core",
+ "dj-dsp",
+ "serde",
+]
+
+[[package]]
 name = "dj-secrets"
 version = "0.0.2"
 dependencies = [
