@@ -19,7 +19,19 @@
 //! [`Secret::hint`] -- the last four characters -- which is enough to tell two
 //! keys apart and useless to anyone who reads it over your shoulder.
 
+use serde::{Serialize, Serializer};
 use std::fmt;
+
+/// Serialised as its stable [`SecretKind::id`], never as a Rust variant name.
+///
+/// The id is what the settings panel sends back when the user fills a field, so
+/// the wire format and the keychain entry name are deliberately the same
+/// string: one thing to keep stable instead of two.
+impl Serialize for SecretKind {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.id())
+    }
+}
 
 /// Which credential a secret belongs to.
 ///
@@ -39,6 +51,18 @@ pub enum SecretKind {
     YouTubeApi,
     KaggleUsername,
     KaggleKey,
+    /// Jamendo. Creative Commons, genuinely mixable, free key.
+    JamendoClientId,
+    /// The licensed DJ streaming services. Each needs a partnership before the
+    /// credentials mean anything -- see `docs/SOURCES.md`.
+    BeatportClientId,
+    BeatportClientSecret,
+    BeatsourceClientId,
+    BeatsourceClientSecret,
+    TidalClientId,
+    TidalClientSecret,
+    SoundCloudClientId,
+    SoundCloudClientSecret,
 }
 
 impl SecretKind {
@@ -59,6 +83,15 @@ impl SecretKind {
             SecretKind::YouTubeApi => "youtube.api_key",
             SecretKind::KaggleUsername => "kaggle.username",
             SecretKind::KaggleKey => "kaggle.key",
+            SecretKind::JamendoClientId => "jamendo.client_id",
+            SecretKind::BeatportClientId => "beatport.client_id",
+            SecretKind::BeatportClientSecret => "beatport.client_secret",
+            SecretKind::BeatsourceClientId => "beatsource.client_id",
+            SecretKind::BeatsourceClientSecret => "beatsource.client_secret",
+            SecretKind::TidalClientId => "tidal.client_id",
+            SecretKind::TidalClientSecret => "tidal.client_secret",
+            SecretKind::SoundCloudClientId => "soundcloud.client_id",
+            SecretKind::SoundCloudClientSecret => "soundcloud.client_secret",
         }
     }
 
@@ -76,6 +109,15 @@ impl SecretKind {
             SecretKind::YouTubeApi => "YouTube Data API key",
             SecretKind::KaggleUsername => "Kaggle username",
             SecretKind::KaggleKey => "Kaggle API key",
+            SecretKind::JamendoClientId => "Jamendo client ID",
+            SecretKind::BeatportClientId => "Beatport client ID",
+            SecretKind::BeatportClientSecret => "Beatport client secret",
+            SecretKind::BeatsourceClientId => "Beatsource client ID",
+            SecretKind::BeatsourceClientSecret => "Beatsource client secret",
+            SecretKind::TidalClientId => "TIDAL client ID",
+            SecretKind::TidalClientSecret => "TIDAL client secret",
+            SecretKind::SoundCloudClientId => "SoundCloud client ID",
+            SecretKind::SoundCloudClientSecret => "SoundCloud client secret",
         }
     }
 
@@ -97,6 +139,19 @@ impl SecretKind {
             SecretKind::YouTubeApi => "https://console.cloud.google.com/apis/credentials",
             SecretKind::KaggleUsername | SecretKind::KaggleKey => {
                 "https://www.kaggle.com/settings/account"
+            }
+            SecretKind::JamendoClientId => "https://devportal.jamendo.com/",
+            SecretKind::BeatportClientId | SecretKind::BeatportClientSecret => {
+                "https://api.beatport.com/v4/docs/"
+            }
+            SecretKind::BeatsourceClientId | SecretKind::BeatsourceClientSecret => {
+                "https://www.beatsource.com/link"
+            }
+            SecretKind::TidalClientId | SecretKind::TidalClientSecret => {
+                "https://developer.tidal.com/"
+            }
+            SecretKind::SoundCloudClientId | SecretKind::SoundCloudClientSecret => {
+                "https://developers.soundcloud.com/"
             }
         }
     }
@@ -126,13 +181,45 @@ impl SecretKind {
                 "Free GPU notebook hours, shared and finite. Enough to generate \
                  a track during a set, not to generate one on demand."
             }
+            SecretKind::JamendoClientId => {
+                "Free. Creative Commons catalogue, downloadable, and one of the \
+                 few online sources you may genuinely mix without asking anyone."
+            }
+            SecretKind::BeatportClientId | SecretKind::BeatportClientSecret => {
+                "Needs a Beatport Streaming partnership, not just an account. \
+                 Electronic-focused."
+            }
+            SecretKind::BeatsourceClientId | SecretKind::BeatsourceClientSecret => {
+                "Needs a Beatsource Streaming partnership. The open-format one \
+                 -- hip-hop, Latin, dancehall, reggaeton -- so the relevant one \
+                 for a Dominican set."
+            }
+            SecretKind::TidalClientId | SecretKind::TidalClientSecret => {
+                "Developer access is open; DJ-mixing rights are a separate \
+                 commercial agreement."
+            }
+            SecretKind::SoundCloudClientId | SecretKind::SoundCloudClientSecret => {
+                "API registration has been closed to new applications for years. \
+                 Go+ for DJs is a partner programme."
+            }
         }
     }
 
+    /// Every credential the application knows about.
+    ///
+    /// A slice rather than a fixed-size array: the length changed three times
+    /// while sources were being added, and each change was a compile error in
+    /// an unrelated place for no benefit.
+    /// Look one up by its stable id, for values arriving from the interface.
     #[must_use]
-    pub const fn all() -> [SecretKind; 10] {
+    pub fn from_id(id: &str) -> Option<SecretKind> {
+        Self::all().iter().copied().find(|kind| kind.id() == id)
+    }
+
+    #[must_use]
+    pub const fn all() -> &'static [SecretKind] {
         use SecretKind::*;
-        [
+        &[
             OpenRouter,
             Anthropic,
             OpenAi,
@@ -143,6 +230,15 @@ impl SecretKind {
             YouTubeApi,
             KaggleUsername,
             KaggleKey,
+            JamendoClientId,
+            BeatportClientId,
+            BeatportClientSecret,
+            BeatsourceClientId,
+            BeatsourceClientSecret,
+            TidalClientId,
+            TidalClientSecret,
+            SoundCloudClientId,
+            SoundCloudClientSecret,
         ]
     }
 }
