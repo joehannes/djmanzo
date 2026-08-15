@@ -1,0 +1,58 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/dj-core",
+    "crates/dj-dsp",
+    "crates/dj-audio",
+    "crates/dj-decode",
+    "crates/dj-engine",
+    "crates/dj-control",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/joehannes/djmanzo"
+authors = ["djmanzo contributors"]
+
+[workspace.dependencies]
+dj-core = { path = "crates/dj-core" }
+dj-dsp = { path = "crates/dj-dsp" }
+dj-audio = { path = "crates/dj-audio" }
+dj-decode = { path = "crates/dj-decode" }
+dj-engine = { path = "crates/dj-engine" }
+dj-control = { path = "crates/dj-control" }
+
+cpal = "0.15"
+symphonia = { version = "0.5", features = ["all-codecs", "all-formats"] }
+rtrb = "0.3"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+# The realtime path must not allocate or panic. These lints do not prove that on
+# their own -- see crates/dj-engine/tests/rt_safety.rs for the actual check --
+# but they catch the obvious cases at compile time.
+todo = "warn"
+unimplemented = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+# Audio work is unusable in a debug build: decoding and DSP are far too slow.
+# Optimise dependencies even in dev profile so the app is testable while debugging.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
