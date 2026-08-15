@@ -1,6 +1,6 @@
 # Roadmap
 
-Nine milestones. The ordering rule is simple: **every milestone ends with something you can
+Nine core milestones, plus a six-milestone assistant track. The ordering rule is simple: **every milestone ends with something you can
 actually use.** M0 plays a file. M2 is a playable two-deck mixer. Nothing is a six-month
 foundation with no output.
 
@@ -166,6 +166,42 @@ external system can drive it over the network without a private API.
 
 ---
 
+## The assistant track
+
+The AI layer runs as its own track, because most of it depends on the library
+and analyser rather than on the mixer. See [ASSISTANT.md](ASSISTANT.md) for the
+feature design and [ADR-0005](adr/0005-assistant-speaks-only-actions.md) for the
+constraint that shapes all of it: **the assistant can only emit action text onto
+the existing bus.** It is a client, not a component.
+
+| # | Milestone | Depends on | Definition of done |
+|---|---|---|---|
+| **A1** | Assistant foundation | M0 | Secrets in the OS keychain. Provider abstraction over OpenRouter, Anthropic, OpenAI, Google, Groq and local models, with live model lists tagged free/paid. A chat panel that turns plain language into actions and executes them. Per-session spend cap. |
+| **A2** | Voice | A1 | Mic capture on its own stream. Wake phrase via openWakeWord, configurable. Local speech-to-text via whisper.cpp, Spanish and English. Push-to-talk shortcut for loud rooms. A local intent matcher that handles common commands with no network call. |
+| **A3** | Music intelligence | A1, **M2**, **M3** | The Dominican/Caribbean domain pack — genres, tempo ranges, and which transitions actually work. Session planner taking absolute and relative instruction. Templates. Live steering that adjusts the remaining plan without discarding it. Suggestions that state their reasoning. |
+| **A4** | Sources | A1, M3 | `SourceProvider` abstraction per [ADR-0006](adr/0006-music-sources-and-licensing.md). Local pool search. Spotify for discovery and planning only — never audio. YouTube search, with optional acquisition off by default. A provider slot ready for a licensed streaming partner. |
+| **A5** | Generated music | A1 | Kaggle credentials and notebook deployment. HeartMuLa job lifecycle. Spoken song requests. Results land in a Generated container, analysed like any other track. |
+| **A6** | Sharing | A5 | Export and hand off to WhatsApp with a prefilled message. djmanzo prepares the share; the user presses send. |
+
+### Karaoke
+
+Two milestones, designed in [KARAOKE.md](KARAOKE.md).
+
+| # | Milestone | Depends on | Definition of done |
+|---|---|---|---|
+| **K1** | Karaoke, no models needed | M1, M3 | Band-limited centre cancellation -- cancels the vocal band only, so centred kick and bass survive. Lyrics from tags, sidecar `.lrc`, and [LRCLIB](https://lrclib.net/) (free, MIT, no API key). Karaoke screen on a second monitor with timed wipe-highlight display, next-line preview, count-in and artwork from Cover Art Archive. |
+| **K2** | Karaoke, full quality | K1, M6, A2 | Stem-based vocal removal, plus vocal *reduction* for a guide vocal. Transcription over the isolated vocal stem -- far more accurate than over a mix. **Forced alignment** turning unsynced lyrics into synced ones. Beat- and microphone-reactive visuals that degrade gracefully. Voice control and a singer queue. |
+
+**K1 delivers a usable karaoke night on its own**: centre cancellation plus
+LRCLIB covers a great deal of real repertoire with no model, no GPU and no
+cache.
+
+**A1 and A2 are buildable now.** A3 is deliberately gated behind M2 and M3: a
+planner needs beatgrids, keys, energy and play history to reason about, and
+building it earlier would produce a planner with nothing to reason about.
+
+---
+
 ## Working agreements
 
 These hold from M0, not from "once it settles down":
@@ -178,3 +214,8 @@ These hold from M0, not from "once it settles down":
 - **Every third-party dependency carries a recorded licence** and a note on why it is
   compatible. See [ADR-0002](adr/0002-clean-room-permissive-licensing.md).
 - **Nothing is copied from VirtualDJ or from GPL projects.** Ideas, not source; our own art.
+- **The assistant never gets a privileged path.** It emits action text like every
+  other input source, so its work is auditable, reversible and replayable.
+- **Licensing constraints are stated, not worked around.** Where a service
+  forbids what we would like to do, the UI says so plainly rather than failing
+  mysteriously.

@@ -102,7 +102,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Feature | Milestone |
 |---|---|
 | Folder tree + song list, VirtualDJ layout | M3 |
-| **SideView**: Sidelist · Sampler · Automix · Karaoke · Clone panels | M3 (Karaoke M8) |
+| **SideView**: Sidelist · Sampler · Automix · Karaoke · Clone panels | M3 (Karaoke K1) |
 | Search across the whole library, instant | M3 |
 | Playlists / crates / smart folders | M3 |
 | Columns: BPM, key, energy, rating, play count, last played, comment | M3 |
@@ -141,7 +141,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Broadcast to Icecast/Shoutcast | M5 |
 | Per-deck and stem-bus outputs for external processing | M6 |
 | Video mixing / VJ output | M8 |
-| Karaoke | M8 |
+| Karaoke | K1 / K2 — see [KARAOKE.md](KARAOKE.md) |
 
 ### Interface
 
@@ -217,6 +217,20 @@ PipeWire and JACK are supported properly, not as PulseAudio with extra steps. Xu
 tested target in CI, and waveform performance under WebKitGTK is a benchmarked requirement from
 M1 rather than a late discovery. Linux DJs are currently served by exactly one application; we
 intend to be the second one that actually works.
+
+### A DJ you can talk to
+
+Voice control with a wake phrase and a push-to-talk fallback, understanding
+Spanish and English and the mix of the two people actually speak. Session
+planning in the terms a DJ thinks in -- "half an hour of warm-up bachata, then
+build through merengue into dembow" -- with live steering that adjusts the
+remaining plan instead of discarding it. A domain pack for Dominican and
+Caribbean repertoire that knows what a bachata-to-merengue transition really
+costs. Songs generated on request for the people in the room. Full design in
+[ASSISTANT.md](ASSISTANT.md).
+
+The assistant holds no privileged access: it emits the same action text a
+controller does, so everything it does is visible, reversible and replayable.
 
 ### An open extension surface
 

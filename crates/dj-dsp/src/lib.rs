@@ -6,12 +6,14 @@
 
 pub mod biquad;
 pub mod eq;
+pub mod karaoke;
 pub mod meter;
 pub mod mixer;
 pub mod smooth;
 
 pub use biquad::Biquad;
 pub use eq::{SweepFilter, ThreeBandEq};
+pub use karaoke::CentreCancel;
 pub use meter::PeakMeter;
 pub use mixer::{CrossfaderCurve, crossfader_gains};
 pub use smooth::SmoothedValue;
