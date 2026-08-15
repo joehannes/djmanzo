@@ -75,6 +75,19 @@ pub struct MasterSnapshot {
     pub booth_gain_db: f32,
     /// False on a two-channel device, where there is nowhere to send a cue.
     pub cue_available: bool,
+    /// False when the master limiter has been bypassed.
+    pub limiter_enabled: bool,
+    /// Gain reduction the limiter is applying, in positive decibels.
+    ///
+    /// The master meter reads post-limiter and so can never show over 0 dB.
+    /// This is the number that says how hard the mix is being driven, which is
+    /// the thing the meter alone cannot tell you.
+    pub limiter_reduction_db: f32,
+    /// Delay the output chain adds after the decks, in milliseconds.
+    ///
+    /// Stated rather than left to be discovered. Constant whether the limiter
+    /// is engaged or bypassed.
+    pub output_latency_ms: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -144,6 +157,12 @@ impl Snapshot {
                 cue_split: registry.get(ParamId::Global(GlobalParam::CueSplit)) >= 0.5,
                 booth_gain_db: registry.get(ParamId::Global(GlobalParam::BoothGainDb)),
                 cue_available: registry.get(ParamId::Global(GlobalParam::CueAvailable)) >= 0.5,
+                limiter_enabled: registry.get(ParamId::Global(GlobalParam::LimiterEnabled)) >= 0.5,
+                limiter_reduction_db: registry
+                    .get(ParamId::Global(GlobalParam::LimiterReductionDb)),
+                output_latency_ms: to_seconds(
+                    registry.get(ParamId::Global(GlobalParam::OutputLatencyFrames)),
+                ) * 1000.0,
             },
         }
     }

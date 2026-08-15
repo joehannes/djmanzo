@@ -113,6 +113,10 @@
   // Read outside the template so event handlers, which run later, do not have
   // to prove `snapshot` is still non-null.
   const cueSplit = $derived(snapshot?.master.cue_split ?? false);
+  const reduction = $derived(snapshot?.master.limiter_reduction_db ?? 0);
+  // Default true: the limiter is on unless the engine says otherwise, so a
+  // snapshot that has not arrived yet does not render as "bypassed".
+  const limiterOn = $derived(snapshot?.master.limiter_enabled ?? true);
 </script>
 
 <main>
@@ -279,6 +283,7 @@
         {/if}
       </div>
 
+      <div class="output-strip">
       <div class="master-meters">
         <div class="meter">
           <div class="meter-fill" style:width="{Math.min(snapshot.master.peak_left, 1) * 100}%"></div>
@@ -290,6 +295,47 @@
           ></div>
         </div>
       </div>
+
+      <!--
+        The master meters read post-limiter, so they physically cannot show
+        over 0 dB. Without a reduction meter beside them there would be no way
+        to tell a mix sitting neatly at the ceiling from one being crushed into
+        it by 9 dB, because both look identical up there.
+      -->
+      <div class="limiter" class:bypassed={!snapshot.master.limiter_enabled}>
+        <button
+          class="limiter-toggle"
+          class:active={snapshot.master.limiter_enabled}
+          disabled={!ready}
+          onclick={() => send(`limiter ${limiterOn ? "off" : "on"}`)}
+          title="Bypass only if something downstream is already limiting. Latency is unchanged either way."
+        >
+          Limiter
+        </button>
+        {#if snapshot.master.limiter_enabled}
+          <div class="reduction" title="Gain reduction">
+            <!-- Drawn right-to-left: reduction pulls *down* from the ceiling. -->
+            <div
+              class="reduction-fill"
+              style:width="{Math.min(snapshot.master.limiter_reduction_db / 12, 1) * 100}%"
+            ></div>
+          </div>
+          <em class="mono reduction-value" class:working={reduction >= 0.1}>
+            {reduction < 0.1 ? "—" : `-${reduction.toFixed(1)} dB`}
+          </em>
+        {:else}
+          <em class="mono bypass-note">bypassed</em>
+        {/if}
+      </div>
+      </div>
+
+      {#if snapshot.master.output_latency_ms > 0}
+        <p class="latency-note">
+          Output delayed {snapshot.master.output_latency_ms.toFixed(1)} ms by
+          the limiter's look-ahead. The headphone cue is delayed to match, so
+          beatmatching stays true.
+        </p>
+      {/if}
     </section>
   {:else}
     <p class="waiting">Waiting for the engine…</p>
@@ -476,11 +522,78 @@
     color: var(--text-dim);
   }
 
+  .output-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 140px;
+  }
+
   .master-meters {
     display: flex;
     flex-direction: column;
     gap: 3px;
-    width: 140px;
+  }
+
+  .limiter {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75em;
+  }
+
+  .limiter-toggle {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.95em;
+  }
+
+  .reduction {
+    flex: 1;
+    height: 6px;
+    background: var(--panel-raised);
+    border-radius: 3px;
+    overflow: hidden;
+    /*
+      Reduction pulls the signal *down* from the ceiling, so the bar grows
+      from the right — the same direction the gain is moving. A left-to-right
+      bar would read as "more is better", which is exactly backwards here.
+    */
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .reduction-fill {
+    height: 100%;
+    background: var(--warn);
+    transition: width 80ms linear;
+  }
+
+  .reduction-value {
+    font-style: normal;
+    color: var(--text-dim);
+    min-width: 4.2em;
+    text-align: right;
+  }
+
+  .reduction-value.working {
+    color: var(--warn);
+  }
+
+  .bypass-note {
+    font-style: normal;
+    color: var(--warn);
+  }
+
+  .limiter.bypassed .limiter-toggle {
+    border-color: var(--warn);
+  }
+
+  .latency-note {
+    grid-column: 1 / -1;
+    margin: 0;
+    font-size: 0.72em;
+    line-height: 1.4;
+    color: var(--text-dim);
   }
 
   .meter {

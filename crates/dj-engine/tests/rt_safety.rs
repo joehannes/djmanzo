@@ -322,6 +322,66 @@ fn split_cue_never_allocates() {
     assert_eq!(allocations, 0, "split cue allocated {allocations} times");
 }
 
+/// The master limiter is in the path of every single frame that leaves the
+/// application, on both the master and the headphone bus.
+///
+/// Its interesting case is the periodic rescan of the look-ahead window, which
+/// is the one branch in `process_frame` that does more than constant work. It
+/// only fires when the peak leaves the window, so it has to be *driven* to fire
+/// — a steady tone never triggers it. Material that keeps rising and falling
+/// past the ceiling does, hundreds of times a second.
+#[test]
+fn the_master_limiter_never_allocates() {
+    let mut rig = rig_with_channels(4, 256, 4);
+    for n in 1..=4u8 {
+        rig.load_and_play(n, 2_000_000);
+        rig.act(Action::Deck {
+            deck: deck(n),
+            action: DeckAction::SetCue(n % 2 == 0),
+        });
+        // Well over full scale once summed, so the limiter is working rather
+        // than sitting at unity for the whole test.
+        rig.act(Action::Deck {
+            deck: deck(n),
+            action: DeckAction::SetGainDb(12.0),
+        });
+    }
+    rig.act(Action::Mixer(MixerAction::CueMix(0.4)));
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(5_000);
+    });
+    assert_eq!(
+        allocations, 0,
+        "the limiter allocated {allocations} times across 5,000 blocks"
+    );
+}
+
+/// Toggling the limiter is a control a DJ can reach for mid-set, so the switch
+/// itself has to be free of allocation too — not just the steady state.
+#[test]
+fn toggling_the_limiter_never_allocates() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 1_000_000);
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::SetGainDb(18.0),
+    });
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..200 {
+            rig.act(Action::Mixer(MixerAction::SetLimiter(round % 2 == 0)));
+            rig.renderer.render_discarding(4);
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "toggling the limiter allocated {allocations} times"
+    );
+}
+
 /// Keylock puts a C++ phase vocoder in the audio path, and this is the test
 /// that says whether that was allowed.
 ///

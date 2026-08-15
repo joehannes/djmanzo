@@ -111,10 +111,18 @@ pub enum GlobalParam {
     BoothGainDb,
     /// 1.0 when the open device has channels for a headphone cue.
     CueAvailable,
+    /// 1.0 when the master limiter is engaged.
+    LimiterEnabled,
+    /// Gain reduction the limiter is applying, in positive decibels. Zero means
+    /// it is doing nothing, which is where it should sit most of the night.
+    LimiterReductionDb,
+    /// Frames of latency the output chain adds after the decks. The interface
+    /// needs it to explain the delay rather than let someone discover it.
+    OutputLatencyFrames,
 }
 
 impl GlobalParam {
-    pub const COUNT: usize = 11;
+    pub const COUNT: usize = 14;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -136,6 +144,9 @@ impl GlobalParam {
             CueSplit,
             BoothGainDb,
             CueAvailable,
+            LimiterEnabled,
+            LimiterReductionDb,
+            OutputLatencyFrames,
         ]
     }
 }
@@ -221,6 +232,9 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::CueSplit => "cue_split",
         GlobalParam::BoothGainDb => "booth_gain_db",
         GlobalParam::CueAvailable => "cue_available",
+        GlobalParam::LimiterEnabled => "limiter_enabled",
+        GlobalParam::LimiterReductionDb => "limiter_reduction_db",
+        GlobalParam::OutputLatencyFrames => "output_latency_frames",
     }
 }
 

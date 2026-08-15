@@ -73,6 +73,17 @@ export interface MasterState {
   cue_split: boolean;
   booth_gain_db: number;
   cue_available: boolean;
+  /** False when the master limiter has been bypassed. */
+  limiter_enabled: boolean;
+  /**
+   * Gain reduction the limiter is applying, in positive decibels.
+   *
+   * The master meter reads post-limiter and so can never show over 0 dB. This
+   * is the number that says how hard the mix is being driven.
+   */
+  limiter_reduction_db: number;
+  /** Delay the output chain adds after the decks, in milliseconds. */
+  output_latency_ms: number;
 }
 
 export interface Snapshot {

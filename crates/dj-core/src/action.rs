@@ -73,6 +73,12 @@ pub enum MixerAction {
     /// Split cue: cue in one ear, master in the other.
     SplitCue(bool),
     BoothGainDb(f32),
+    /// Engage or bypass the master limiter.
+    ///
+    /// On by default. Bypassing is for the DJ feeding an external processor
+    /// that is already doing the job — two limiters in series is worse than
+    /// one, and the second one has no way to know that.
+    SetLimiter(bool),
 }
 
 impl Action {
@@ -119,6 +125,11 @@ impl Action {
                 "gain" => Ok(Action::Mixer(MixerAction::BoothGainDb(parse_f32(
                     words.next(),
                 )?))),
+                other => Err(ParseError::UnknownVerb(other.to_owned())),
+            },
+            "limiter" => match words.next().ok_or(ParseError::MissingVerb)? {
+                "on" => Ok(Action::Mixer(MixerAction::SetLimiter(true))),
+                "off" => Ok(Action::Mixer(MixerAction::SetLimiter(false))),
                 other => Err(ParseError::UnknownVerb(other.to_owned())),
             },
             "cue" => match words.next().ok_or(ParseError::MissingVerb)? {
@@ -245,6 +256,8 @@ impl fmt::Display for Action {
             Action::Mixer(MixerAction::CueMix(v)) => write!(f, "cue mix {}", number(f64::from(*v))),
             Action::Mixer(MixerAction::SplitCue(true)) => write!(f, "cue split_on"),
             Action::Mixer(MixerAction::SplitCue(false)) => write!(f, "cue split_off"),
+            Action::Mixer(MixerAction::SetLimiter(true)) => write!(f, "limiter on"),
+            Action::Mixer(MixerAction::SetLimiter(false)) => write!(f, "limiter off"),
         }
     }
 }

@@ -9,7 +9,7 @@ use dj_core::param::{DeckParam, GlobalParam};
 use dj_core::{
     Action, DeckAction, DeckId, MAX_DECKS, MixerAction, ParamId, SampleRate, db_to_linear,
 };
-use dj_dsp::{CrossfaderCurve, PeakMeter, SmoothedValue, crossfader_gains};
+use dj_dsp::{CrossfaderCurve, Limiter, PeakMeter, SmoothedValue, crossfader_gains};
 use std::sync::Arc;
 
 /// Decks assigned to the left side of the crossfader.
@@ -46,6 +46,18 @@ pub struct Engine {
     cue_split: bool,
     booth_gain: SmoothedValue,
     booth_gain_db: f32,
+
+    /// The last thing before the PA.
+    limiter: Limiter,
+    /// The last thing before the DJ's ears.
+    ///
+    /// A second instance rather than a shared one, because the two buses carry
+    /// different audio. Having it here at all is what keeps the headphones and
+    /// the master time-aligned: both paths pick up exactly the same look-ahead
+    /// delay, so beatmatching against the master stays honest. Hearing damage
+    /// is the other reason — a pre-fader cue sum of four decks can go a long
+    /// way over full scale, and it is going straight into someone's ears.
+    cue_limiter: Limiter,
 
     /// Sources we could not hand back because the retirement queue was full.
     /// Held rather than dropped -- dropping here is exactly what the queue
@@ -87,6 +99,8 @@ impl Engine {
             cue_split: false,
             booth_gain: SmoothedValue::new(1.0, sr),
             booth_gain_db: 0.0,
+            limiter: Limiter::new(sr),
+            cue_limiter: Limiter::new(sr),
             // Capacity for a pathological burst of loads; never grown at runtime.
             stranded: Vec::with_capacity(MAX_DECKS * 2),
         };
@@ -108,6 +122,16 @@ impl Engine {
         self.registry.set(
             ParamId::Global(GlobalParam::MasterGainDb),
             self.master_gain_db,
+        );
+        self.registry.set_bool(
+            ParamId::Global(GlobalParam::LimiterEnabled),
+            !self.limiter.is_bypassed(),
+        );
+        // Constant whether the limiter is engaged or bypassed -- see
+        // `Limiter::set_bypass` for why that matters.
+        self.registry.set(
+            ParamId::Global(GlobalParam::OutputLatencyFrames),
+            self.limiter.latency_frames() as f32,
         );
     }
 
@@ -218,6 +242,15 @@ impl Engine {
                 self.cue_split = on;
                 self.registry
                     .set_bool(ParamId::Global(GlobalParam::CueSplit), on);
+            }
+            Action::Mixer(MixerAction::SetLimiter(on)) => {
+                // The cue limiter is not switched with it. Bypass exists for
+                // the DJ feeding an external processor, and that processor is
+                // downstream of the master only -- the headphones are still
+                // wired straight to a pair of drivers next to someone's ears.
+                self.limiter.set_bypass(!on);
+                self.registry
+                    .set_bool(ParamId::Global(GlobalParam::LimiterEnabled), on);
             }
             Action::Mixer(MixerAction::BoothGainDb(db)) => {
                 self.booth_gain_db = db.clamp(-24.0, 24.0);
@@ -338,11 +371,28 @@ impl AudioCallback for Engine {
             let mix = self.cue_mix.next_value();
 
             // Master first: everything downstream is derived from it.
-            frame[main_l] = (frame[main_l] * master).clamp(-1.0, 1.0);
+            //
+            // Deliberately *not* clamped before the limiter. A clamp is hard
+            // digital clipping, and clipping the signal on the way into a
+            // limiter throws away the very peaks it exists to catch -- the
+            // damage would already be done and merely quieter.
+            let raw_l = frame[main_l] * master;
+            let raw_r = if layout.is_mono() {
+                raw_l
+            } else {
+                frame[main_r] * master
+            };
+
+            // The clamp that remains is a backstop for a limiter that has been
+            // bypassed, and for anything non-finite that got this far. It
+            // should never engage while the limiter is engaged.
+            let (master_l, master_r) = self.limiter.process_frame(raw_l, raw_r);
+            let (master_l, master_r) = (master_l.clamp(-1.0, 1.0), master_r.clamp(-1.0, 1.0));
+
+            frame[main_l] = master_l;
             if !layout.is_mono() {
-                frame[main_r] = (frame[main_r] * master).clamp(-1.0, 1.0);
+                frame[main_r] = master_r;
             }
-            let (master_l, master_r) = (frame[main_l], frame[main_r]);
 
             // Booth is the master at its own level, so the monitors can be
             // turned down without touching what the room hears.
@@ -352,8 +402,16 @@ impl AudioCallback for Engine {
             }
 
             // Headphones: blend the pre-fader cue sum against the master.
+            //
+            // The cue goes through its own limiter first, and the alignment is
+            // the point: `master_l`/`master_r` have already been delayed by the
+            // master limiter's look-ahead, so an undelayed cue would sit 5 ms
+            // early against them. Beatmatching is the act of comparing these
+            // two signals, so a 5 ms offset between them is not a detail --
+            // it is a grid the DJ would carefully match, and the room would
+            // hear 5 ms out. Matching delays on both paths cancels exactly.
             if let Some((cue_l, cue_r)) = layout.cue {
-                let (raw_l, raw_r) = (frame[cue_l], frame[cue_r]);
+                let (raw_l, raw_r) = self.cue_limiter.process_frame(frame[cue_l], frame[cue_r]);
                 let (out_l, out_r) = if self.cue_split {
                     // Split cue: cue mono in the left ear, master mono in the
                     // right. Standard for beatmatching -- you hear both sources
@@ -384,6 +442,15 @@ impl AudioCallback for Engine {
             .set(ParamId::Global(GlobalParam::MasterPeakLeft), left);
         self.registry
             .set(ParamId::Global(GlobalParam::MasterPeakRight), right);
+
+        // The master meter reads post-limiter, so it can never show over 0 dB
+        // and cannot tell you how hard you are driving it. That is what the
+        // reduction figure is for: the two together say "this is what goes out"
+        // and "this is what it cost".
+        self.registry.set(
+            ParamId::Global(GlobalParam::LimiterReductionDb),
+            self.limiter.reduction_db(),
+        );
 
         self.publish_deck_state();
 
@@ -656,13 +723,27 @@ mod tests {
                 action: DeckAction::Eject,
             }))
             .unwrap();
-        let out = render(&mut engine, 256);
+        render(&mut engine, 256);
 
         assert!(h.retired.pop().is_ok(), "eject must retire the source");
-        assert!(out.iter().all(|&s| s == 0.0));
         assert_eq!(
             h.registry.get(ParamId::Deck(deck(1), DeckParam::Loaded)),
             0.0
+        );
+
+        // The deck stops contributing at once, but the master limiter's
+        // look-ahead still holds a few milliseconds of already-rendered audio.
+        // That tail is correct -- it is the same delay everything downstream
+        // pays -- so the silence is asserted past it rather than within it.
+        let latency = h
+            .registry
+            .get(ParamId::Global(GlobalParam::OutputLatencyFrames)) as usize;
+        let out = render(&mut engine, latency + 256);
+        let tail = &out[latency * 2..];
+        assert!(
+            tail.iter().all(|&s| s == 0.0),
+            "master still sounding {} frames after eject",
+            latency
         );
     }
 
@@ -1006,5 +1087,246 @@ mod cue_routing_tests {
             rig.peak(&out, layout(2).main) > 0.4,
             "master must still work when cue is unavailable"
         );
+    }
+}
+
+/// The master limiter, as the engine actually wires it.
+///
+/// `dj-dsp` proves the limiter limits. These prove it is in the signal path,
+/// in the right place, and that putting it there did not break the timing
+/// relationship the headphone cue depends on.
+#[cfg(test)]
+mod limiter_tests {
+    use super::*;
+    use dj_decode::{AudioBuffer, TrackSource};
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+
+    fn deck(n: u8) -> DeckId {
+        DeckId::from_human(n).unwrap()
+    }
+
+    /// A constant level, for driving the bus into the limiter.
+    fn tone(frames: usize, amplitude: f32) -> Arc<dyn TrackSource> {
+        Arc::new(AudioBuffer::from_interleaved(
+            vec![amplitude; frames * 2],
+            SR,
+        ))
+    }
+
+    /// Silence, then a hard step. The step edge is a landmark whose arrival
+    /// time can be compared between two buses.
+    fn step(silence: usize, then: usize, amplitude: f32) -> Arc<dyn TrackSource> {
+        let mut samples = vec![0.0f32; silence * 2];
+        samples.extend(std::iter::repeat_n(amplitude, then * 2));
+        Arc::new(AudioBuffer::from_interleaved(samples, SR))
+    }
+
+    struct Rig {
+        engine: Engine,
+        commands: rtrb::Producer<Command>,
+        registry: Arc<ParameterRegistry>,
+        channels: usize,
+    }
+
+    fn rig(decks: usize, channels: usize) -> Rig {
+        let (command_tx, command_rx) = rtrb::RingBuffer::new(256);
+        let (retired_tx, _retired_rx) = rtrb::RingBuffer::new(64);
+        let registry = Arc::new(ParameterRegistry::new());
+        Rig {
+            engine: Engine::new(decks, SR, command_rx, retired_tx, Arc::clone(&registry)),
+            commands: command_tx,
+            registry,
+            channels,
+        }
+    }
+
+    impl Rig {
+        fn act(&mut self, action: Action) {
+            self.commands.push(Command::Action(action)).unwrap();
+        }
+
+        fn play(&mut self, n: u8, source: Arc<dyn TrackSource>) {
+            self.commands
+                .push(Command::Load {
+                    deck: deck(n),
+                    source,
+                })
+                .unwrap();
+            self.act(Action::Deck {
+                deck: deck(n),
+                action: DeckAction::Play,
+            });
+        }
+
+        fn render(&mut self, frames: usize) -> Vec<f32> {
+            let mut out = vec![0.0; frames * self.channels];
+            self.engine.render(
+                &mut out,
+                &RenderContext {
+                    frames,
+                    channels: self.channels,
+                    sample_rate: SR,
+                },
+            );
+            out
+        }
+
+        fn global(&self, param: GlobalParam) -> f32 {
+            self.registry.get(ParamId::Global(param))
+        }
+
+        fn peak(&self, out: &[f32], pair: (usize, usize)) -> f32 {
+            out.chunks_exact(self.channels).fold(0.0f32, |acc, frame| {
+                acc.max(frame[pair.0].abs()).max(frame[pair.1].abs())
+            })
+        }
+
+        /// Frame index where a channel first rises above `threshold`.
+        fn first_crossing(&self, out: &[f32], channel: usize, threshold: f32) -> Option<usize> {
+            out.chunks_exact(self.channels)
+                .position(|frame| frame[channel].abs() > threshold)
+        }
+    }
+
+    /// **The reason the limiter exists.** Four decks up, every fader open: the
+    /// bus is far over full scale and the PA must not be asked to reproduce it.
+    #[test]
+    fn the_master_holds_the_ceiling_with_every_deck_open() {
+        let mut rig = rig(MAX_DECKS, 2);
+        for n in 1..=MAX_DECKS as u8 {
+            rig.play(n, tone(400_000, 1.0));
+        }
+        // Warm through the fader ramps, then measure.
+        rig.render(48_000);
+        let out = rig.render(48_000);
+
+        let peak = rig.peak(&out, (0, 1));
+        assert!(
+            peak <= 1.0,
+            "the master clipped at {peak} with every deck open"
+        );
+        // Below full scale, not merely at it -- the ceiling leaves headroom for
+        // inter-sample peaks the converter will reconstruct.
+        assert!(peak < 0.99, "no headroom left below full scale: {peak}");
+        assert!(
+            rig.global(GlobalParam::LimiterReductionDb) > 3.0,
+            "four decks at full should show real reduction, showed {}",
+            rig.global(GlobalParam::LimiterReductionDb)
+        );
+    }
+
+    /// **The property that made the cue limiter necessary.**
+    ///
+    /// The master picks up the limiter's look-ahead delay. If the headphone bus
+    /// did not pick up the same delay, the two would sit 5 ms apart — and
+    /// beatmatching is nothing but the act of comparing those two signals. A DJ
+    /// would line up the grid they could hear, and the room would hear it 5 ms
+    /// out. A failure here reads as roughly `latency_frames` of skew, not one
+    /// or two.
+    #[test]
+    fn the_headphone_cue_stays_aligned_with_the_master() {
+        let mut rig = rig(2, 4);
+        rig.play(1, step(24_000, 24_000, 0.6));
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetCue(true),
+        });
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetVolume(1.0),
+        });
+        // Pure cue in the headphones, so the two buses are independent paths
+        // carrying the same deck rather than one derived from the other.
+        rig.act(Action::Mixer(MixerAction::CueMix(0.0)));
+        rig.act(Action::Mixer(MixerAction::Crossfader(0.0)));
+
+        let layout = BusLayout::for_channels(4);
+        let out = rig.render(40_000);
+
+        let master_edge = rig
+            .first_crossing(&out, layout.main.0, 0.05)
+            .expect("the master never carried the step");
+        let cue_edge = rig
+            .first_crossing(&out, layout.cue.unwrap().0, 0.05)
+            .expect("the headphones never carried the step");
+
+        let skew = master_edge.abs_diff(cue_edge);
+        let latency = rig.global(GlobalParam::OutputLatencyFrames) as usize;
+        assert!(
+            skew < 16,
+            "master and cue are {skew} frames apart (limiter latency is {latency}); \
+             a missing delay on one bus looks exactly like this"
+        );
+    }
+
+    /// The delay is real and has to be reported, or everything downstream that
+    /// needs to line up with the master — a recording, a video output, a second
+    /// device — would be guessing.
+    #[test]
+    fn the_output_latency_is_published() {
+        let rig = rig(2, 2);
+        let latency = rig.global(GlobalParam::OutputLatencyFrames);
+        assert!(latency > 0.0, "no output latency reported");
+        // 5 ms at the default rate.
+        assert_eq!(latency, (SR.as_f64() as f32 * 0.005).floor());
+    }
+
+    /// Bypass has to actually bypass, and has to be visible in the parameter
+    /// table so the interface can show the limiter is off rather than just
+    /// quiet.
+    #[test]
+    fn the_limiter_can_be_bypassed_and_says_so() {
+        let mut rig = rig(2, 2);
+        assert_eq!(
+            rig.global(GlobalParam::LimiterEnabled),
+            1.0,
+            "off by default"
+        );
+
+        rig.play(1, tone(400_000, 1.0));
+        rig.play(2, tone(400_000, 1.0));
+        rig.render(48_000);
+        assert!(rig.global(GlobalParam::LimiterReductionDb) > 0.0);
+
+        rig.act(Action::Mixer(MixerAction::SetLimiter(false)));
+        rig.render(48_000);
+
+        assert_eq!(rig.global(GlobalParam::LimiterEnabled), 0.0);
+        assert_eq!(
+            rig.global(GlobalParam::LimiterReductionDb),
+            0.0,
+            "a bypassed limiter must not report reduction"
+        );
+    }
+
+    /// Bypassing must not change the reported latency, because it does not
+    /// change the actual latency — the delay line keeps running. See
+    /// `Limiter::set_bypass`.
+    #[test]
+    fn bypassing_does_not_move_the_output_latency() {
+        let mut rig = rig(2, 2);
+        let engaged = rig.global(GlobalParam::OutputLatencyFrames);
+        rig.act(Action::Mixer(MixerAction::SetLimiter(false)));
+        rig.render(512);
+        assert_eq!(rig.global(GlobalParam::OutputLatencyFrames), engaged);
+    }
+
+    /// A quiet mix must come out of the limiter untouched. If the limiter
+    /// coloured normal programme material it would be a fault, not a safety net.
+    #[test]
+    fn an_ordinary_mix_is_not_touched() {
+        let mut rig = rig(2, 2);
+        rig.play(1, tone(400_000, 0.25));
+        rig.render(48_000);
+        let out = rig.render(4_800);
+
+        assert_eq!(
+            rig.global(GlobalParam::LimiterReductionDb),
+            0.0,
+            "reduced a mix that was nowhere near the ceiling"
+        );
+        let peak = rig.peak(&out, (0, 1));
+        assert!(peak > 0.1, "the deck should still be audible, got {peak}");
     }
 }
