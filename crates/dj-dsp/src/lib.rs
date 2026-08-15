@@ -4,10 +4,14 @@
 //! locking, no I/O, no panics. Types are constructed with their buffers already
 //! sized, and `process` only does arithmetic.
 
+pub mod biquad;
+pub mod eq;
 pub mod meter;
 pub mod mixer;
 pub mod smooth;
 
+pub use biquad::Biquad;
+pub use eq::{SweepFilter, ThreeBandEq};
 pub use meter::PeakMeter;
 pub use mixer::{CrossfaderCurve, crossfader_gains};
 pub use smooth::SmoothedValue;

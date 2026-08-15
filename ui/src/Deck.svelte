@@ -92,6 +92,58 @@
     </button>
   </div>
 
+  <!--
+    Isolator EQ: each knob runs from a true kill at 0 to +12 dB. Double-click
+    resets to unity, because reaching for exactly 1.00 with a mouse mid-mix is
+    not a thing anyone can do.
+  -->
+  <div class="eq">
+    {#each [{ id: "eq_high", label: "HI", value: deck.eq_high }, { id: "eq_mid", label: "MID", value: deck.eq_mid }, { id: "eq_low", label: "LOW", value: deck.eq_low }] as band (band.id)}
+      <label class="band" class:killed={band.value < 0.001}>
+        <span>{band.label}</span>
+        <input
+          type="range"
+          min="0"
+          max="4"
+          step="0.01"
+          value={band.value}
+          disabled={!enabled}
+          oninput={(e) => send(`deck ${deck.number} ${band.id} ${e.currentTarget.value}`)}
+          ondblclick={() => send(`deck ${deck.number} ${band.id} 1`)}
+        />
+        <button
+          class="kill"
+          class:on={band.value < 0.001}
+          disabled={!enabled}
+          onclick={() => send(`deck ${deck.number} ${band.id} ${band.value < 0.001 ? 1 : 0}`)}
+          title="Kill {band.label}"
+          aria-label="Kill {band.label}"
+        ></button>
+      </label>
+    {/each}
+  </div>
+
+  <label class="control">
+    <span>
+      Filter
+      <em class="mono">
+        {#if Math.abs(deck.filter) <= 0.02}off{:else if deck.filter < 0}LP {Math.round(
+            -deck.filter * 100,
+          )}%{:else}HP {Math.round(deck.filter * 100)}%{/if}
+      </em>
+    </span>
+    <input
+      type="range"
+      min="-1"
+      max="1"
+      step="0.01"
+      value={deck.filter}
+      disabled={!enabled}
+      oninput={(e) => send(`deck ${deck.number} filter ${e.currentTarget.value}`)}
+      ondblclick={() => send(`deck ${deck.number} filter 0`)}
+    />
+  </label>
+
   <label class="control">
     <span>Volume <em class="mono">{deck.volume.toFixed(2)}</em></span>
     <input
@@ -220,6 +272,39 @@
   .control em {
     font-style: normal;
     color: var(--text);
+  }
+
+  .eq {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .band {
+    display: grid;
+    grid-template-columns: 2.2rem 1fr auto;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75em;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+
+  .band.killed span {
+    color: var(--danger);
+  }
+
+  .kill {
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border-radius: 3px;
+    background: var(--panel-raised);
+  }
+
+  .kill.on {
+    background: var(--danger);
+    border-color: var(--danger);
   }
 
   .meter {

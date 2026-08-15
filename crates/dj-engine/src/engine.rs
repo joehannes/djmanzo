@@ -175,6 +175,10 @@ impl Engine {
                     DeckAction::SetPitch(pitch) => target.set_pitch(pitch),
                     DeckAction::SetVolume(volume) => target.set_volume(volume),
                     DeckAction::SetGainDb(db) => target.set_gain_db(db),
+                    DeckAction::SetEqLow(g) => target.set_eq_low(g),
+                    DeckAction::SetEqMid(g) => target.set_eq_mid(g),
+                    DeckAction::SetEqHigh(g) => target.set_eq_high(g),
+                    DeckAction::SetFilter(p) => target.set_filter(p),
                     DeckAction::Eject => unreachable!("handled above"),
                 }
             }
@@ -224,6 +228,10 @@ impl Engine {
             set(DeckParam::GainDb, deck.gain_db());
             set(DeckParam::Loaded, if deck.is_loaded() { 1.0 } else { 0.0 });
             set(DeckParam::LengthFrames, deck.len_frames() as f32);
+            set(DeckParam::EqLow, deck.eq_low());
+            set(DeckParam::EqMid, deck.eq_mid());
+            set(DeckParam::EqHigh, deck.eq_high());
+            set(DeckParam::Filter, deck.filter_position());
         }
     }
 

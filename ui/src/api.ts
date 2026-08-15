@@ -49,6 +49,10 @@ export interface DeckState {
   volume: number;
   gain_db: number;
   peak: number;
+  eq_low: number;
+  eq_mid: number;
+  eq_high: number;
+  filter: number;
 }
 
 export interface MasterState {
