@@ -7,6 +7,7 @@ members = [
     "crates/dj-decode",
     "crates/dj-engine",
     "crates/dj-control",
+    "crates/dj-render",
     "crates/dj-secrets",
     "crates/dj-app",
 ]
@@ -26,6 +27,7 @@ dj-audio = { path = "crates/dj-audio" }
 dj-decode = { path = "crates/dj-decode" }
 dj-engine = { path = "crates/dj-engine" }
 dj-control = { path = "crates/dj-control" }
+dj-render = { path = "crates/dj-render" }
 dj-secrets = { path = "crates/dj-secrets" }
 
 cpal = "0.15"

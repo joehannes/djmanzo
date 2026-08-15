@@ -1,6 +1,6 @@
 # ADR-0004 — Waveforms rendered in Rust, scrolled by the compositor
 
-- **Status**: accepted
+- **Status**: accepted, amended 2026-08-15 (see *Amendment*)
 - **Date**: 2026-08-14
 
 ## Context
@@ -92,3 +92,52 @@ host-agnostic is a standing constraint on every change to it.
 at **M1**, with 60 fps on four decks as the acceptance criterion. If it fails there, we take
 the escape hatch immediately — while the UI is small — rather than discovering the problem at
 M7 when it would be a rewrite.
+
+
+---
+
+## Amendment, 2026-08-15 — the rasteriser is CPU, not `wgpu`
+
+The decision above said tiles would be rasterised offscreen with `wgpu`.
+`dj-render` rasterises them on the CPU instead. Recording the change rather than
+quietly diverging from the document.
+
+**The architectural requirement is unchanged and still met.** What this ADR
+exists to protect is *the webview never draws the waveform*, so that WebKitGTK's
+silent software-rasteriser fallback cannot become a performance cliff. Tiles are
+still produced in Rust, still handed over as finished pixels, still scrolled by
+CSS transform alone. `dj-render` still knows nothing about its host, so the
+escape hatch — swap the shell for a native window — remains exactly as available.
+
+**What changed is the reasoning about cost.** A tile turned out to be a
+column-fill: per pixel column, look up one bucket in a multi-resolution summary
+and paint a vertical run. It is memory-bandwidth-bound, and tiles are cached per
+track per zoom level, so the work happens once and never again while scrolling.
+
+Measured on this machine, five minutes of stereo at 48 kHz
+(`crates/dj-render/tests/throughput.rs`):
+
+| Operation | Time |
+|---|---|
+| Summarise the whole track | 79 ms |
+| 32 tiles — a 4K-wide lane on four decks, uncached | 15.8 ms (0.49 ms/tile) |
+| One newly-exposed tile while scrolling | 0.46 ms |
+| Full-track overview, 2000 px wide | 6.35 ms |
+
+An entire screen of waveform for four decks, regenerated from scratch, fits
+inside a single 60 fps frame — and that is the pathological case, since scrolling
+only ever costs the newly-exposed edge at 0.46 ms.
+
+Against those numbers, a GPU path would buy nothing and cost a device and queue
+to manage, shaders to compile, async surface handling, adapter-selection failure
+modes on headless Linux, and roughly a hundred crates of dependency.
+
+**This is reversible.** `render_tile` takes a summary and returns pixels. A
+`wgpu` implementation drops in behind the same signature the moment profiling
+says it is needed — and the throughput test above is what would tell us.
+
+**Unchanged: the Xubuntu benchmark still gates the UI strategy.** These numbers
+say tile *generation* is cheap. They say nothing about whether WebKitGTK can
+composite a CSS-transformed strip at 60 fps on four decks, which is a different
+question and still the one that decides whether the webview survives as the
+shell. That benchmark remains outstanding.
