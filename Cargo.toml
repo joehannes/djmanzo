@@ -7,6 +7,7 @@ members = [
     "crates/dj-decode",
     "crates/dj-engine",
     "crates/dj-control",
+    "crates/dj-secrets",
     "crates/dj-app",
 ]
 
@@ -25,6 +26,7 @@ dj-audio = { path = "crates/dj-audio" }
 dj-decode = { path = "crates/dj-decode" }
 dj-engine = { path = "crates/dj-engine" }
 dj-control = { path = "crates/dj-control" }
+dj-secrets = { path = "crates/dj-secrets" }
 
 cpal = "0.15"
 symphonia = { version = "0.5", features = ["all-codecs", "all-formats"] }
