@@ -88,7 +88,7 @@ pub fn run() {
                     .body(Vec::new())
                     .unwrap_or_default();
             };
-            match waveforms.tile_png(key, &dj_render::Palette::default()) {
+            match waveforms.tile_png(key) {
                 Some(png) => http::Response::builder()
                     .status(200)
                     .header("Content-Type", "image/png")

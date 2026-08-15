@@ -82,18 +82,86 @@ pub struct Palette {
 
 impl Default for Palette {
     fn default() -> Self {
+        Self::dark()
+    }
+}
+
+/// Which way round the interface is.
+///
+/// The waveform is rasterised here rather than in the webview
+/// ([ADR-0004](../../../docs/adr/0004-waveform-rendering.md)), so a theme that
+/// only changed CSS would leave a dark waveform sitting on a light page. The
+/// choice has to reach the rasteriser, which means it has to travel in the tile
+/// URL, which means it is part of the cache key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Theme {
+    Dark,
+    Light,
+}
+
+impl Theme {
+    /// The single word that appears in a `wave://` URL.
+    #[must_use]
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Theme::Dark => "dark",
+            Theme::Light => "light",
+        }
+    }
+
+    /// Parse the URL segment. Strict: an unknown word is not a theme.
+    #[must_use]
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        match slug {
+            "dark" => Some(Theme::Dark),
+            "light" => Some(Theme::Light),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn palette(self) -> Palette {
+        match self {
+            Theme::Dark => Palette::dark(),
+            Theme::Light => Palette::light(),
+        }
+    }
+}
+
+impl Palette {
+    /// The booth palette. Bright bands on a dark ground.
+    #[must_use]
+    pub const fn dark() -> Self {
         Self {
             // Transparent, so tiles composite over whatever the skin puts behind.
             background: [0, 0, 0, 0],
             low: [129, 140, 248, 255],
             mid: [94, 234, 212, 255],
             high: [251, 191, 36, 255],
+            // A white veil reads as "denser" against dark bands.
             rms_tint: [255, 255, 255, 60],
         }
     }
-}
 
-impl Palette {
+    /// The daylight palette.
+    ///
+    /// Not the dark colours on a light ground — those are chosen for contrast
+    /// against near-black and turn into pale washes on white, which is exactly
+    /// where a waveform stops being readable. These are the same three hues
+    /// several steps darker, so the low/mid/high distinction survives the
+    /// inversion. The RMS veil flips to black for the same reason: a white
+    /// tint inside a light-coloured band is invisible.
+    #[must_use]
+    pub const fn light() -> Self {
+        Self {
+            background: [0, 0, 0, 0],
+            low: [67, 56, 202, 255],
+            mid: [15, 118, 110, 255],
+            high: [180, 83, 9, 255],
+            rms_tint: [0, 0, 0, 52],
+        }
+    }
     /// Blend the band colours by their energies.
     #[must_use]
     fn colour_for(&self, bucket: &Bucket) -> [u8; 4] {
@@ -278,6 +346,88 @@ mod tests {
             start_frame: 0.0,
             frames_per_pixel,
         }
+    }
+
+    /// A light theme that rendered identical pixels would be a silent no-op —
+    /// the setting would appear to work and change nothing on screen.
+    #[test]
+    fn the_two_themes_actually_render_differently() {
+        let summary = WaveformSummary::analyse(&sine(48_000, 440.0, 0.8), SR);
+        let spec = spec(128, 64, 200.0);
+        let dark = render_tile(&summary, &spec, &Theme::Dark.palette());
+        let light = render_tile(&summary, &spec, &Theme::Light.palette());
+        assert_ne!(dark.pixels, light.pixels);
+    }
+
+    /// The light bands have to be *dark enough to see on white*. Reusing the
+    /// booth colours is the obvious mistake: they are chosen for contrast
+    /// against near-black and become pale washes on a light ground, which is
+    /// exactly where a waveform stops being readable.
+    #[test]
+    fn the_light_palette_is_dark_enough_to_read_on_white() {
+        let light = Palette::light();
+        for (name, colour) in [("low", light.low), ("mid", light.mid), ("high", light.high)] {
+            // Rec. 709 luma, the standard perceptual weighting.
+            let luma = 0.2126 * f32::from(colour[0])
+                + 0.7152 * f32::from(colour[1])
+                + 0.0722 * f32::from(colour[2]);
+            assert!(
+                luma < 140.0,
+                "the light theme's {name} band has luma {luma}, too pale against white"
+            );
+        }
+    }
+
+    /// And the dark bands have to be bright enough on near-black, which is the
+    /// same test pointing the other way.
+    #[test]
+    fn the_dark_palette_is_bright_enough_to_read_on_black() {
+        let dark = Palette::dark();
+        for (name, colour) in [("low", dark.low), ("mid", dark.mid), ("high", dark.high)] {
+            let luma = 0.2126 * f32::from(colour[0])
+                + 0.7152 * f32::from(colour[1])
+                + 0.0722 * f32::from(colour[2]);
+            assert!(
+                luma > 100.0,
+                "the dark theme's {name} band has luma {luma}, too dim against black"
+            );
+        }
+    }
+
+    /// The RMS veil is drawn *inside* the peaks, so it has to contrast with the
+    /// band colours rather than with the page. A white tint on a light band is
+    /// invisible, which would quietly remove the loudness cue.
+    #[test]
+    fn the_rms_veil_contrasts_with_its_own_bands() {
+        assert!(
+            Palette::dark().rms_tint[0] > 200,
+            "the dark veil should lighten"
+        );
+        assert!(
+            Palette::light().rms_tint[0] < 60,
+            "the light veil should darken"
+        );
+    }
+
+    /// The theme travels in a URL, so the round trip has to be exact -- a slug
+    /// that did not parse back would silently fall through to the default and
+    /// serve the wrong tiles.
+    #[test]
+    fn every_theme_survives_the_url_round_trip() {
+        for theme in [Theme::Dark, Theme::Light] {
+            assert_eq!(Theme::from_slug(theme.slug()), Some(theme));
+        }
+        assert_eq!(Theme::from_slug("sepia"), None);
+        assert_eq!(Theme::from_slug(""), None);
+        assert_eq!(Theme::from_slug("DARK"), None, "parsing is case-sensitive");
+    }
+
+    /// Both palettes composite over the skin rather than painting their own
+    /// ground, which is what lets a tile sit on any background.
+    #[test]
+    fn neither_palette_paints_its_own_background() {
+        assert_eq!(Palette::dark().background[3], 0);
+        assert_eq!(Palette::light().background[3], 0);
     }
 
     #[test]

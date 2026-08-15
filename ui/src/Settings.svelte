@@ -24,6 +24,7 @@
     type Library,
     type Source,
   } from "./api";
+  import { theme, type ThemePreference } from "./theme.svelte";
 
   let { onLogoChange }: { onLogoChange: () => void } = $props();
 
@@ -134,7 +135,36 @@
     <p class="error">{error}</p>
   {/if}
 
-  <!-- Branding first: it is the one setting that changes what the DJ sees all night. -->
+  <!--
+    Appearance and branding first: these are the two settings that change what
+    the DJ looks at all night.
+  -->
+  <div class="block">
+    <h3>Appearance</h3>
+    <p class="hint">
+      Dark by default, because a white screen at eye level in a dark room costs
+      you the night vision you need to find anything on the actual mixer. The
+      waveform is recoloured too — it is drawn outside the browser, so it does
+      not follow a stylesheet on its own.
+    </p>
+    <div class="row theme-choice">
+      {#each [{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }, { id: "system", label: "Follow system" }] as option (option.id)}
+        <button
+          class:active={theme.preference === option.id}
+          onclick={() => theme.set(option.id as ThemePreference)}
+        >
+          {option.label}
+        </button>
+      {/each}
+    </div>
+    {#if theme.preference === "system"}
+      <p class="hint">
+        Currently {theme.resolved}. Follows the operating system, including if
+        it changes mid-set.
+      </p>
+    {/if}
+  </div>
+
   <div class="block">
     <h3>Your logo</h3>
     <p class="hint">
@@ -288,6 +318,10 @@
     gap: 0.4rem;
     align-items: center;
     margin-bottom: 0.4rem;
+  }
+
+  .theme-choice {
+    flex-wrap: wrap;
   }
 
   .row input {

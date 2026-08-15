@@ -14,6 +14,7 @@
    */
   import { onMount } from "svelte";
   import { tileUrl, waveformInfo, type DeckState } from "./api";
+  import { theme } from "./theme.svelte";
 
   let {
     deck,
@@ -80,7 +81,14 @@
       return {
         key: index,
         startFrame,
-        url: tileUrl(deck.number, TILE_WIDTH, height, startFrame, framesPerPixel),
+        url: tileUrl(
+          deck.number,
+          TILE_WIDTH,
+          height,
+          startFrame,
+          framesPerPixel,
+          theme.resolved,
+        ),
       };
     }).filter((t) => t.startFrame + tileSpanFrames > 0 && t.startFrame < totalFrames);
   });

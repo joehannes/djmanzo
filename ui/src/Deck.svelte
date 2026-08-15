@@ -415,7 +415,7 @@
   .keylock.on {
     background: var(--accent-2);
     border-color: var(--accent-2);
-    color: #0e0f14;
+    color: var(--on-accent);
   }
 
   .cue {
@@ -430,13 +430,13 @@
   .cue.on {
     background: var(--accent);
     border-color: var(--accent);
-    color: #0e0f14;
+    color: var(--on-accent);
   }
 
   .pfl-meter {
     flex: 1;
     height: 4px;
-    background: #0e0f1466;
+    background: var(--scrim);
     border-radius: 2px;
     overflow: hidden;
   }

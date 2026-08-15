@@ -10,7 +10,7 @@
 //! thread, which is the pattern that collapses under WebKitGTK.
 
 use dj_core::DeckId;
-use dj_render::{Palette, TileSpec, WaveformSummary, encode_png, render_tile};
+use dj_render::{Theme, TileSpec, WaveformSummary, encode_png, render_tile};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -40,6 +40,13 @@ pub struct TileKey {
     pub start_frame: i64,
     /// Frames per pixel, scaled by 1000 so fractional zoom still keys exactly.
     pub zoom_milli: u64,
+    /// Which palette the tile was drawn with.
+    ///
+    /// Part of the key, not a render-time argument, because tiles are cached
+    /// hard (`immutable`, a year). Without it, switching to the light theme
+    /// would keep serving the dark tiles already in the cache and the waveform
+    /// would simply not change.
+    pub theme: Theme,
 }
 
 /// Bound on the tile cache.
@@ -97,7 +104,11 @@ impl WaveformStore {
     }
 
     /// Render and encode a tile, or return a cached copy.
-    pub fn tile_png(&self, key: TileKey, palette: &Palette) -> Option<Arc<Vec<u8>>> {
+    ///
+    /// The palette comes from the key's theme rather than from a caller
+    /// argument, so it is impossible to render with one palette and cache under
+    /// another.
+    pub fn tile_png(&self, key: TileKey) -> Option<Arc<Vec<u8>>> {
         if let Ok(cache) = self.cache.lock()
             && let Some(hit) = cache.get(&key)
         {
@@ -111,7 +122,7 @@ impl WaveformStore {
             start_frame: key.start_frame as f64,
             frames_per_pixel: key.zoom_milli as f64 / 1000.0,
         };
-        let tile = render_tile(&summary, &spec, palette);
+        let tile = render_tile(&summary, &spec, &key.theme.palette());
         let png = Arc::new(encode_png(&tile).ok()?);
 
         if let Ok(mut cache) = self.cache.lock() {
@@ -134,11 +145,13 @@ impl WaveformStore {
 
 /// Parse a `wave://` request path into a tile key.
 ///
-/// Shape: `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}`
+/// Shape: `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}/{theme}`
 ///
 /// Deliberately strict. A malformed URL returns `None` and the handler answers
 /// 400 rather than guessing, because a silently wrong tile is far harder to
-/// diagnose than a missing one.
+/// diagnose than a missing one. The theme is required for that reason:
+/// defaulting an unrecognised word to dark would make a typo in the interface
+/// look like a theme that simply does not apply to the waveform.
 #[must_use]
 pub fn parse_tile_path(path: &str) -> Option<TileKey> {
     let mut parts = path.trim_start_matches('/').split('/');
@@ -152,6 +165,7 @@ pub fn parse_tile_path(path: &str) -> Option<TileKey> {
         height: parts.next()?.parse().ok()?,
         start_frame: parts.next()?.parse().ok()?,
         zoom_milli: parts.next()?.parse().ok()?,
+        theme: Theme::from_slug(parts.next()?)?,
     };
 
     // Nothing may follow, and the numbers must be drawable.
@@ -198,29 +212,30 @@ mod tests {
             height: 128,
             start_frame: 0,
             zoom_milli: 128_000,
+            theme: Theme::Dark,
         }
     }
 
     #[test]
     fn a_tile_is_served_for_a_loaded_deck() {
         let (store, _) = store_with_track();
-        let png = store.tile_png(key(1), &Palette::default()).unwrap();
+        let png = store.tile_png(key(1)).unwrap();
         assert_eq!(&png[..4], &[0x89, b'P', b'N', b'G']);
     }
 
     #[test]
     fn an_unloaded_deck_serves_nothing() {
         let (store, _) = store_with_track();
-        assert!(store.tile_png(key(2), &Palette::default()).is_none());
+        assert!(store.tile_png(key(2)).is_none());
     }
 
     #[test]
     fn tiles_are_cached() {
         let (store, _) = store_with_track();
         assert_eq!(store.cached_tiles(), 0);
-        let first = store.tile_png(key(1), &Palette::default()).unwrap();
+        let first = store.tile_png(key(1)).unwrap();
         assert_eq!(store.cached_tiles(), 1);
-        let second = store.tile_png(key(1), &Palette::default()).unwrap();
+        let second = store.tile_png(key(1)).unwrap();
         // Same allocation, not merely equal bytes.
         assert!(Arc::ptr_eq(&first, &second));
     }
@@ -230,7 +245,7 @@ mod tests {
     #[test]
     fn loading_a_new_track_invalidates_its_tiles() {
         let (store, deck) = store_with_track();
-        let _ = store.tile_png(key(1), &Palette::default()).unwrap();
+        let _ = store.tile_png(key(1)).unwrap();
         assert_eq!(store.cached_tiles(), 1);
 
         store.set_summary(
@@ -249,8 +264,8 @@ mod tests {
                 WaveformSummary::analyse(&samples(48_000), SampleRate::DEFAULT),
             );
         }
-        let _ = store.tile_png(key(1), &Palette::default());
-        let _ = store.tile_png(key(2), &Palette::default());
+        let _ = store.tile_png(key(1));
+        let _ = store.tile_png(key(2));
         assert_eq!(store.cached_tiles(), 2);
 
         store.clear(DeckId::from_human(1).unwrap());
@@ -261,11 +276,10 @@ mod tests {
     #[test]
     fn the_cache_is_bounded() {
         let (store, _) = store_with_track();
-        let palette = Palette::default();
         for i in 0..(MAX_CACHED_TILES + 20) {
             let mut k = key(1);
             k.start_frame = i as i64 * 100;
-            let _ = store.tile_png(k, &palette);
+            let _ = store.tile_png(k);
         }
         assert!(
             store.cached_tiles() <= MAX_CACHED_TILES,
@@ -276,12 +290,45 @@ mod tests {
 
     #[test]
     fn a_well_formed_path_parses() {
-        let key = parse_tile_path("/tile/2/512/128/48000/256000").unwrap();
+        let key = parse_tile_path("/tile/2/512/128/48000/256000/dark").unwrap();
         assert_eq!(key.deck, 2);
         assert_eq!(key.width, 512);
         assert_eq!(key.height, 128);
         assert_eq!(key.start_frame, 48_000);
         assert_eq!(key.zoom_milli, 256_000);
+        assert_eq!(key.theme, Theme::Dark);
+    }
+
+    #[test]
+    fn the_theme_comes_from_the_path() {
+        assert_eq!(
+            parse_tile_path("/tile/1/512/128/0/256000/light")
+                .unwrap()
+                .theme,
+            Theme::Light
+        );
+    }
+
+    /// **The reason the theme is in the key.** Tiles are cached with a one-year
+    /// immutable header. If the two themes shared a key, switching would keep
+    /// serving whichever palette happened to be rendered first and the waveform
+    /// would simply not change.
+    #[test]
+    fn the_two_themes_do_not_share_a_cache_entry() {
+        let (store, _) = store_with_track();
+
+        let mut light = key(1);
+        light.theme = Theme::Light;
+
+        let dark_png = store.tile_png(key(1)).unwrap();
+        let light_png = store.tile_png(light).unwrap();
+
+        assert_eq!(store.cached_tiles(), 2, "the themes collided in the cache");
+        assert_ne!(
+            dark_png.as_ref(),
+            light_png.as_ref(),
+            "both themes encoded to the same image"
+        );
     }
 
     #[test]
@@ -289,7 +336,7 @@ mod tests {
         // The strip extends before the track start while scrolled to the very
         // beginning, so those tiles are legitimately requested.
         assert_eq!(
-            parse_tile_path("/tile/1/512/128/-2048/256000")
+            parse_tile_path("/tile/1/512/128/-2048/256000/dark")
                 .unwrap()
                 .start_frame,
             -2_048
@@ -301,13 +348,15 @@ mod tests {
         for bad in [
             "",
             "/",
-            "/nope/1/512/128/0/1000",
-            "/tile/1/512/128/0",            // too few
-            "/tile/1/512/128/0/1000/extra", // too many
-            "/tile/x/512/128/0/1000",       // non-numeric deck
-            "/tile/1/0/128/0/1000",         // zero width
-            "/tile/1/512/0/0/1000",         // zero height
-            "/tile/1/512/128/0/0",          // zero zoom
+            "/nope/1/512/128/0/1000/dark",
+            "/tile/1/512/128/0/1000",            // no theme
+            "/tile/1/512/128/0/1000/dark/extra", // too many
+            "/tile/x/512/128/0/1000/dark",       // non-numeric deck
+            "/tile/1/0/128/0/1000/dark",         // zero width
+            "/tile/1/512/0/0/1000/dark",         // zero height
+            "/tile/1/512/128/0/0/dark",          // zero zoom
+            "/tile/1/512/128/0/1000/sepia",      // not a theme
+            "/tile/1/512/128/0/1000/Dark",       // themes are lower-case
         ] {
             assert!(
                 parse_tile_path(bad).is_none(),
@@ -320,8 +369,8 @@ mod tests {
     /// single request.
     #[test]
     fn absurd_tile_sizes_are_refused() {
-        assert!(parse_tile_path("/tile/1/999999/128/0/1000").is_none());
-        assert!(parse_tile_path("/tile/1/512/999999/0/1000").is_none());
+        assert!(parse_tile_path("/tile/1/999999/128/0/1000/dark").is_none());
+        assert!(parse_tile_path("/tile/1/512/999999/0/1000/dark").is_none());
     }
 
     #[test]

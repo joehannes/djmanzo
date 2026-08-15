@@ -114,9 +114,11 @@
   // to prove `snapshot` is still non-null.
   const cueSplit = $derived(snapshot?.master.cue_split ?? false);
   const reduction = $derived(snapshot?.master.limiter_reduction_db ?? 0);
-  // Default true: the limiter is on unless the engine says otherwise, so a
-  // snapshot that has not arrived yet does not render as "bypassed".
-  const limiterOn = $derived(snapshot?.master.limiter_enabled ?? true);
+  // Before a device is open there is no engine, so the parameter table still
+  // holds its zeroed defaults. Reading that as "bypassed" would announce a
+  // safety feature was off when in fact nothing is running at all — so the
+  // idle case is its own state rather than being folded into the off one.
+  const limiterOn = $derived(!ready || (snapshot?.master.limiter_enabled ?? true));
 </script>
 
 <main>
@@ -302,17 +304,26 @@
         to tell a mix sitting neatly at the ceiling from one being crushed into
         it by 9 dB, because both look identical up there.
       -->
-      <div class="limiter" class:bypassed={!snapshot.master.limiter_enabled}>
+      <div class="limiter" class:bypassed={ready && !snapshot.master.limiter_enabled}>
+        <!--
+          Only "active" once there is an engine to be active *about*. A filled
+          button that is also disabled fades to 40% along with its label, and on
+          the light theme white-on-faded-teal is unreadable — so with no device
+          this stays a plain disabled button and the text beside it carries the
+          meaning.
+        -->
         <button
           class="limiter-toggle"
-          class:active={snapshot.master.limiter_enabled}
+          class:active={ready && limiterOn}
           disabled={!ready}
           onclick={() => send(`limiter ${limiterOn ? "off" : "on"}`)}
           title="Bypass only if something downstream is already limiting. Latency is unchanged either way."
         >
           Limiter
         </button>
-        {#if snapshot.master.limiter_enabled}
+        {#if !ready}
+          <em class="mono limiter-idle">on at connect</em>
+        {:else if snapshot.master.limiter_enabled}
           <div class="reduction" title="Gain reduction">
             <!-- Drawn right-to-left: reduction pulls *down* from the ceiling. -->
             <div
@@ -409,7 +420,7 @@
   .status button.active {
     background: var(--accent);
     border-color: var(--accent);
-    color: #0e0f14;
+    color: var(--on-accent);
   }
 
   .device {
@@ -582,6 +593,11 @@
   .bypass-note {
     font-style: normal;
     color: var(--warn);
+  }
+
+  .limiter-idle {
+    font-style: normal;
+    color: var(--text-dim);
   }
 
   .limiter.bypassed .limiter-toggle {

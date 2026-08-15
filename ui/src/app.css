@@ -1,25 +1,81 @@
 /*
- * M0 styling: dark by default, because that is what every DJ application is and
+ * Styling. Dark by default, because that is what every DJ application is and
  * what a dark booth needs. The real skin system (CSS themes + JSON layouts)
  * arrives in M3; this is deliberately plain so it is cheap to throw away.
+ *
+ * # How theming works here
+ *
+ * Every colour in the application is a token defined below. Nothing anywhere
+ * else may write a literal colour — a hardcoded hex is invisible in dark mode
+ * and then turns up as unreadable text the first time someone switches, which
+ * is the failure mode this rule exists to prevent.
+ *
+ * `:root` carries the dark palette, so a page with no `data-theme` attribute
+ * at all is dark. `:root[data-theme="light"]` redefines the same names, which
+ * is the whole of the light theme as far as the DOM is concerned.
+ *
+ * The waveform is *not* part of that, because it is rasterised in Rust and
+ * arrives as a PNG (ADR-0004). Its palette travels in the tile URL. See
+ * `ui/src/theme.svelte.ts`.
  */
 
 :root {
   --bg: #0e0f14;
   --panel: #16181f;
   --panel-raised: #1d2029;
+  --panel-hover: #262a36;
   --border: #2a2e3a;
+  --border-strong: #394050;
   --text: #e6e8ee;
   --text-dim: #9098ab;
   --accent: #818cf8;
   --accent-2: #5eead4;
   --warn: #fbbf24;
   --danger: #f87171;
+  /* Text drawn *on* an accent fill. Follows the accent, not the page: on both
+     themes the accents are mid-tone, so this stays dark either way. */
+  --on-accent: #0e0f14;
+  /* A scrim over content, e.g. the label sitting on top of a waveform. */
+  --scrim: #0e0f1466;
 
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
     "Helvetica Neue", sans-serif;
   font-size: 14px;
+}
+
+/*
+ * The light theme.
+ *
+ * Not an inversion. The greys are warmed slightly and the panels go *lighter*
+ * than the page rather than darker, because on a light ground a raised surface
+ * reads as raised by being closer to white — the same depth cue as dark mode,
+ * pointing the other way. The accents move a few steps darker so they still
+ * carry against white; the dark-mode accents wash out completely up there.
+ */
+:root[data-theme="light"] {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --panel-raised: #eceef2;
+  --panel-hover: #dfe3ea;
+  --border: #d3d8e0;
+  --border-strong: #b3bbc8;
+  --text: #14161c;
+  --text-dim: #5b6472;
+  --accent: #4f46e5;
+  /* Teal *700*, not 600. The lighter step measures 3.7:1 against the white it
+     carries, which is under the 4.5:1 threshold; this one is 5.4:1. The accent
+     is a button fill with a label on it, so its contrast is a legibility
+     question rather than a taste one. */
+  --accent-2: #0f766e;
+  --warn: #b45309;
+  --danger: #dc2626;
+  /* Both accents are dark enough on light that white is the readable overlay:
+     6.6:1 and 5.4:1 respectively. */
+  --on-accent: #ffffff;
+  --scrim: #ffffffaa;
+
+  color-scheme: light;
 }
 
 * {
@@ -48,8 +104,8 @@ button {
 }
 
 button:hover:not(:disabled) {
-  background: #262a36;
-  border-color: #39405030;
+  background: var(--panel-hover);
+  border-color: var(--border-strong);
 }
 
 button:disabled {
@@ -60,14 +116,14 @@ button:disabled {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0e0f14;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
 button.active {
   background: var(--accent-2);
   border-color: var(--accent-2);
-  color: #0e0f14;
+  color: var(--on-accent);
   font-weight: 600;
 }
 

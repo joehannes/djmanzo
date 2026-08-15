@@ -181,7 +181,7 @@
     padding: 0.1rem 0.35rem;
     border-radius: 3px;
     background: var(--accent-2);
-    color: #0e0f14;
+    color: var(--on-accent);
   }
 
   .description,

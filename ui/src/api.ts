@@ -8,6 +8,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { ResolvedTheme } from "./theme.svelte";
 
 export interface Device {
   id: string;
@@ -126,6 +127,10 @@ export const waveformInfo = (deck: number) =>
  * IPC, so the browser decodes it off the main thread and every subsequent frame
  * is a compositor translation. Zoom is carried as milli-units so fractional
  * values still key the cache exactly.
+ *
+ * The theme is in the path rather than a header because tiles are cached by
+ * URL, hard and for a year. Two themes sharing a URL would mean switching kept
+ * serving whichever palette was rendered first.
  */
 export function tileUrl(
   deck: number,
@@ -133,10 +138,11 @@ export function tileUrl(
   height: number,
   startFrame: number,
   framesPerPixel: number,
+  theme: ResolvedTheme,
 ): string {
   const zoomMilli = Math.round(framesPerPixel * 1000);
   const start = Math.round(startFrame);
-  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}`;
+  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}/${theme}`;
   // Tauri rewrites custom schemes differently per platform: Linux/WebKitGTK
   // keeps `scheme://`, while Windows needs the `http://scheme.localhost` form.
   // macOS accepts the former.
