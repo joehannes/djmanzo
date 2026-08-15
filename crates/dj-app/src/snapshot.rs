@@ -46,6 +46,10 @@ pub struct DeckSnapshot {
     pub volume: f32,
     pub gain_db: f32,
     pub peak: f32,
+    pub eq_low: f32,
+    pub eq_mid: f32,
+    pub eq_high: f32,
+    pub filter: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -99,6 +103,10 @@ impl Snapshot {
                     volume: get(DeckParam::Volume),
                     gain_db: get(DeckParam::GainDb),
                     peak: get(DeckParam::PeakLevel),
+                    eq_low: get(DeckParam::EqLow),
+                    eq_mid: get(DeckParam::EqMid),
+                    eq_high: get(DeckParam::EqHigh),
+                    filter: get(DeckParam::Filter),
                 }
             })
             .collect();

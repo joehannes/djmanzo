@@ -77,6 +77,9 @@ fn seed_defaults(registry: &ParameterRegistry) {
         registry.set(ParamId::Deck(id, DeckParam::Volume), 1.0);
         registry.set(ParamId::Deck(id, DeckParam::Rate), 1.0);
         registry.set(ParamId::Deck(id, DeckParam::GainDb), 0.0);
+        registry.set(ParamId::Deck(id, DeckParam::EqLow), 1.0);
+        registry.set(ParamId::Deck(id, DeckParam::EqMid), 1.0);
+        registry.set(ParamId::Deck(id, DeckParam::EqHigh), 1.0);
     }
 }
 

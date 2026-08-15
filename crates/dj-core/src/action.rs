@@ -40,6 +40,14 @@ pub enum DeckAction {
     SetVolume(f32),
     /// Trim/gain in decibels.
     SetGainDb(f32),
+    /// Low band of the isolator EQ, as a linear gain. 0.0 kills the band.
+    SetEqLow(f32),
+    /// Mid band of the isolator EQ.
+    SetEqMid(f32),
+    /// High band of the isolator EQ.
+    SetEqHigh(f32),
+    /// Filter sweep: -1.0 fully low-passed, 0.0 off, +1.0 fully high-passed.
+    SetFilter(f32),
     /// Drop the loaded track.
     Eject,
 }
@@ -109,6 +117,10 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "pitch" => DeckAction::SetPitch(f64::from(parse_f32(argument)?)),
         "volume" => DeckAction::SetVolume(parse_f32(argument)?.clamp(0.0, 1.0)),
         "gain" => DeckAction::SetGainDb(parse_f32(argument)?),
+        "eq_low" => DeckAction::SetEqLow(parse_f32(argument)?.clamp(0.0, 4.0)),
+        "eq_mid" => DeckAction::SetEqMid(parse_f32(argument)?.clamp(0.0, 4.0)),
+        "eq_high" => DeckAction::SetEqHigh(parse_f32(argument)?.clamp(0.0, 4.0)),
+        "filter" => DeckAction::SetFilter(parse_f32(argument)?.clamp(-1.0, 1.0)),
         other => return Err(ParseError::UnknownVerb(other.to_owned())),
     })
 }
@@ -137,6 +149,10 @@ impl fmt::Display for Action {
                 DeckAction::SetPitch(p) => write!(f, "deck {deck} pitch {p}"),
                 DeckAction::SetVolume(v) => write!(f, "deck {deck} volume {v}"),
                 DeckAction::SetGainDb(g) => write!(f, "deck {deck} gain {g}"),
+                DeckAction::SetEqLow(v) => write!(f, "deck {deck} eq_low {v}"),
+                DeckAction::SetEqMid(v) => write!(f, "deck {deck} eq_mid {v}"),
+                DeckAction::SetEqHigh(v) => write!(f, "deck {deck} eq_high {v}"),
+                DeckAction::SetFilter(v) => write!(f, "deck {deck} filter {v}"),
             },
             Action::Mixer(MixerAction::Crossfader(v)) => write!(f, "crossfader {v}"),
             Action::Mixer(MixerAction::MasterGainDb(v)) => write!(f, "master gain {v}"),
@@ -287,6 +303,22 @@ mod tests {
             Action::Deck {
                 deck: deck(1),
                 action: DeckAction::SetRate(Rate::new(1.5)),
+            },
+            Action::Deck {
+                deck: deck(2),
+                action: DeckAction::SetEqLow(0.0),
+            },
+            Action::Deck {
+                deck: deck(3),
+                action: DeckAction::SetEqMid(1.5),
+            },
+            Action::Deck {
+                deck: deck(1),
+                action: DeckAction::SetEqHigh(0.25),
+            },
+            Action::Deck {
+                deck: deck(4),
+                action: DeckAction::SetFilter(-0.75),
             },
             Action::Mixer(MixerAction::Crossfader(-0.25)),
             Action::Mixer(MixerAction::MasterGainDb(-3.0)),

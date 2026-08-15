@@ -2,7 +2,7 @@
 
 use dj_core::{FramePos, Rate, SampleRate, db_to_linear};
 use dj_decode::{AudioBuffer, TrackSource};
-use dj_dsp::SmoothedValue;
+use dj_dsp::{SmoothedValue, SweepFilter, ThreeBandEq};
 use std::sync::Arc;
 
 /// One player: a source, a playhead, and the gain staging around it.
@@ -29,6 +29,14 @@ pub struct Deck {
     crossfader_gain: SmoothedValue,
     /// Rate of the device we are feeding, for sample-rate conversion.
     device_rate: SampleRate,
+    /// Isolator EQ, one per channel. Filters carry state, so left and right
+    /// cannot share an instance.
+    eq: [ThreeBandEq; 2],
+    filter: [SweepFilter; 2],
+    eq_low: f32,
+    eq_mid: f32,
+    eq_high: f32,
+    filter_position: f32,
 }
 
 impl Deck {
@@ -47,7 +55,69 @@ impl Deck {
             gain_db: 0.0,
             crossfader_gain: SmoothedValue::new(1.0, sr),
             device_rate,
+            eq: [ThreeBandEq::new(sr), ThreeBandEq::new(sr)],
+            filter: [SweepFilter::new(sr), SweepFilter::new(sr)],
+            eq_low: 1.0,
+            eq_mid: 1.0,
+            eq_high: 1.0,
+            filter_position: 0.0,
         }
+    }
+
+    pub fn set_eq_low(&mut self, gain: f32) {
+        if gain.is_finite() {
+            self.eq_low = gain.clamp(0.0, 4.0);
+            for eq in &mut self.eq {
+                eq.set_low(self.eq_low);
+            }
+        }
+    }
+
+    pub fn set_eq_mid(&mut self, gain: f32) {
+        if gain.is_finite() {
+            self.eq_mid = gain.clamp(0.0, 4.0);
+            for eq in &mut self.eq {
+                eq.set_mid(self.eq_mid);
+            }
+        }
+    }
+
+    pub fn set_eq_high(&mut self, gain: f32) {
+        if gain.is_finite() {
+            self.eq_high = gain.clamp(0.0, 4.0);
+            for eq in &mut self.eq {
+                eq.set_high(self.eq_high);
+            }
+        }
+    }
+
+    pub fn set_filter(&mut self, position: f32) {
+        if position.is_finite() {
+            self.filter_position = position.clamp(-1.0, 1.0);
+            for filter in &mut self.filter {
+                filter.set_position(self.filter_position);
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn eq_low(&self) -> f32 {
+        self.eq_low
+    }
+
+    #[must_use]
+    pub fn eq_mid(&self) -> f32 {
+        self.eq_mid
+    }
+
+    #[must_use]
+    pub fn eq_high(&self) -> f32 {
+        self.eq_high
+    }
+
+    #[must_use]
+    pub fn filter_position(&self) -> f32 {
+        self.filter_position
     }
 
     /// Install a new source, returning the old one for the caller to retire.
@@ -59,6 +129,14 @@ impl Deck {
         self.position = FramePos::ZERO;
         self.cue_point = FramePos::ZERO;
         self.playing = false;
+        // Filter memory belongs to the old track. Carrying it into a new one
+        // would leak a fragment of the previous audio into the first samples.
+        for eq in &mut self.eq {
+            eq.reset();
+        }
+        for filter in &mut self.filter {
+            filter.reset();
+        }
         previous
     }
 
@@ -210,6 +288,13 @@ impl Deck {
             }
 
             let [left, right] = self.source.frame_at(position);
+
+            // Tone shaping happens before the fader, as on a real mixer: the
+            // channel fader must attenuate the EQ'd signal, not the other way
+            // round, or riding the fader would change the tone.
+            let left = self.filter[0].process(self.eq[0].process(left));
+            let right = self.filter[1].process(self.eq[1].process(right));
+
             let left = left * gain;
             let right = right * gain;
 
@@ -467,11 +552,91 @@ mod tests {
     #[test]
     fn peak_reflects_the_loudest_sample_rendered() {
         let mut deck = Deck::new(SR);
-        let samples = vec![0.5f32; 200];
+        // Long enough for the EQ's crossover filters to settle on the step: the
+        // 300 Hz band alone is 160 samples per cycle, so a short window would
+        // measure the transient rather than the steady state.
+        let samples = vec![0.5f32; 40_000];
         let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(samples, SR)));
         deck.play();
-        let mut out = vec![0.0; 64];
+
+        let mut out = vec![0.0; 8_000];
+        let _ = deck.process(&mut out, 2);
+        let mut out = vec![0.0; 8_000];
         let peak = deck.process(&mut out, 2);
-        assert!((peak - 0.5).abs() < 0.01, "expected ~0.5, got {peak}");
+
+        assert!(
+            (peak - 0.5).abs() < 0.02,
+            "expected ~0.5 through a flat EQ, got {peak}"
+        );
+    }
+
+    #[test]
+    fn killing_the_eq_low_band_removes_a_bass_tone() {
+        use std::f32::consts::PI;
+
+        let frames = 48_000;
+        let samples: Vec<f32> = (0..frames)
+            .flat_map(|n| {
+                let v = (2.0 * PI * 60.0 * n as f32 / 48_000.0).sin() * 0.5;
+                [v, v]
+            })
+            .collect();
+
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(samples, SR)));
+        deck.set_eq_low(0.0);
+        deck.play();
+
+        // Let the gain ramp and filters settle before measuring.
+        let mut out = vec![0.0; 20_000];
+        let _ = deck.process(&mut out, 2);
+        let mut out = vec![0.0; 20_000];
+        let peak = deck.process(&mut out, 2);
+
+        assert!(
+            peak < 0.02,
+            "killing the low band should remove a 60 Hz tone, peak was {peak}"
+        );
+    }
+
+    #[test]
+    fn a_flat_eq_and_centred_filter_leave_the_signal_alone() {
+        let mut deck = Deck::new(SR);
+        let samples = vec![0.4f32; 40_000];
+        let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(samples, SR)));
+        deck.play();
+
+        let mut out = vec![0.0; 16_000];
+        let _ = deck.process(&mut out, 2);
+        let mut out = vec![0.0; 8_000];
+        let peak = deck.process(&mut out, 2);
+
+        assert!(
+            (peak - 0.4).abs() < 0.02,
+            "default tone controls should be transparent, got {peak}"
+        );
+    }
+
+    #[test]
+    fn loading_clears_filter_memory() {
+        // Filter state from a previous track must not bleed into the next one.
+        let mut deck = Deck::new(SR);
+        let loud = vec![1.0f32; 20_000];
+        let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(loud, SR)));
+        deck.play();
+        let mut out = vec![0.0; 8_000];
+        let _ = deck.process(&mut out, 2);
+
+        // Swap in silence; the first samples must be silent, not a filter tail.
+        let silence = vec![0.0f32; 20_000];
+        let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(silence, SR)));
+        deck.play();
+        let mut out = vec![0.0; 512];
+        let peak = deck.process(&mut out, 2);
+
+        assert!(
+            peak < 1e-6,
+            "previous track bled through the filters: {peak}"
+        );
     }
 }
