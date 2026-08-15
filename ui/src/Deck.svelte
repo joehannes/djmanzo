@@ -248,6 +248,9 @@
   .deck {
     background: var(--panel);
     border: 1px solid var(--border);
+    /* Border colour only: a deck that resized or moved when it started playing
+       would shift everything around it, mid-set. */
+    transition: border-color var(--motion-enter) var(--ease);
     border-radius: 10px;
     padding: 0.9rem;
     display: flex;

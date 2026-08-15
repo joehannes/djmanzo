@@ -90,3 +90,95 @@ input[type="range"] {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------------------------------------------------------------------------
+ * Motion
+ *
+ * Every rule here uses **transform and opacity only**. Those are the two
+ * properties a compositor can animate without a layout or a paint, which is the
+ * same constraint the waveform lives under (ADR-0004) and for the same reason:
+ * on a machine where the webview has fallen back to software compositing,
+ * animating anything else would cost a full-page repaint per frame.
+ *
+ * The other rule is that motion has to *say something*. A control that changes
+ * state should be visibly the thing that changed, and nothing should move
+ * because moving looks nice. Level meters are deliberately excluded — a meter
+ * that eases is a meter that lies.
+ * ------------------------------------------------------------------------ */
+
+:root {
+  /* One duration for state changes, one for things entering. Short: this is an
+     instrument, and a control that takes 300ms to acknowledge a press feels
+     broken rather than smooth. */
+  --motion-fast: 90ms;
+  --motion-enter: 160ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+button {
+  transition:
+    background var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    transform var(--motion-fast) var(--ease);
+}
+
+/* A press should feel like a press. */
+button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+}
+
+/* A control that just became active is the thing that changed, so it is the
+   thing that moves. */
+button.active,
+button.on {
+  transform: translateZ(0);
+}
+
+/* Panels arrive rather than appearing. Transform only, so opening the browser
+   mid-set costs the compositor a slide and nothing else. */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.panel {
+  animation: panel-in var(--motion-enter) var(--ease);
+}
+
+/* Something the user needs to notice, rather than something decorative. */
+@keyframes attention {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.error,
+.warning {
+  animation: attention 900ms var(--ease) 2;
+}
+
+/* Somebody in a booth may well have this on, and an instrument is exactly the
+   kind of interface where unnecessary movement is worst. Honour it fully. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  button:active:not(:disabled) {
+    transform: none;
+  }
+}
