@@ -314,3 +314,31 @@ export const resetSpend = () => invoke<AssistantState>("reset_spend");
 
 /** Ask the assistant to do something. It interprets, then dispatches. */
 export const ask = (text: string) => invoke<Answer>("ask", { text });
+
+// ---------------------------------------------------------------------------
+// Presets
+// ---------------------------------------------------------------------------
+
+export interface PresetItem {
+  id: string;
+  name: string;
+  description: string;
+  category: "phase" | "prep" | "move" | "eq" | "mixer";
+  per_deck: boolean;
+  /** Exactly what it will run. Shown so nothing is hidden. */
+  actions: string[];
+}
+
+export interface PresetPack {
+  id: string;
+  name: string;
+  description: string;
+  user: boolean;
+  presets: PresetItem[];
+}
+
+export const listPresets = () => invoke<PresetPack[]>("list_presets");
+/** Apply a preset. Returns the actions that were dispatched. */
+export const applyPreset = (id: string, deck?: number) =>
+  invoke<string[]>("apply_preset", { id, deck });
+export const presetFolder = () => invoke<string>("preset_folder");

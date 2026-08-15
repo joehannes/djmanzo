@@ -5,6 +5,7 @@ use crate::waveform::WaveformStore;
 use dj_assistant::{Budget, LlmProvider, ProviderId};
 use dj_control::{ActionBus, ParameterRegistry};
 use dj_engine::Command;
+use dj_presets::PresetLibrary;
 use dj_secrets::SecretStore;
 use dj_sources::SourceRegistry;
 use std::sync::{Arc, Mutex};
@@ -71,6 +72,7 @@ pub struct AppState {
     llm_providers: Vec<Arc<dyn LlmProvider>>,
     assistant: Mutex<AssistantChoice>,
     budget: Arc<Budget>,
+    presets: PresetLibrary,
 }
 
 impl AppState {
@@ -115,7 +117,18 @@ impl AppState {
             llm_providers,
             assistant: Mutex::new(AssistantChoice::default()),
             budget: Arc::new(Budget::default()),
+            presets: PresetLibrary::builtin(),
         }
+    }
+
+    #[must_use]
+    pub fn presets(&self) -> &PresetLibrary {
+        &self.presets
+    }
+
+    /// Add the user's own packs, once Tauri can tell us where they live.
+    pub fn load_user_presets(&mut self, dir: &std::path::Path) -> usize {
+        self.presets.load_dir(dir)
     }
 
     #[must_use]

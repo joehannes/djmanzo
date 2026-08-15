@@ -23,6 +23,7 @@ pub mod assistant;
 pub mod brand;
 pub mod commands;
 pub mod host;
+pub mod presets;
 pub mod snapshot;
 pub mod sources;
 pub mod state;
@@ -183,6 +184,9 @@ pub fn run() {
             assistant::set_spend_cap,
             assistant::reset_spend,
             assistant::ask,
+            presets::list_presets,
+            presets::apply_preset,
+            presets::preset_folder,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start djmanzo");

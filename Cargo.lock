@@ -1114,6 +1114,7 @@ dependencies = [
  "dj-decode",
  "dj-dsp",
  "dj-engine",
+ "dj-presets",
  "dj-render",
  "dj-secrets",
  "dj-sources",
@@ -1200,6 +1201,17 @@ dependencies = [
  "dj-decode",
  "dj-dsp",
  "rtrb",
+]
+
+[[package]]
+name = "dj-presets"
+version = "0.0.2"
+dependencies = [
+ "dj-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]

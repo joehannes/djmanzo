@@ -30,6 +30,7 @@ dj-render = { workspace = true }
 dj-secrets = { workspace = true }
 dj-sources = { workspace = true }
 dj-assistant = { workspace = true }
+dj-presets = { workspace = true }
 
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
