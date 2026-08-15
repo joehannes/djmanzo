@@ -1,6 +1,7 @@
 //! Application state, shared with every Tauri command.
 
 use crate::host::AudioHost;
+use crate::waveform::WaveformStore;
 use dj_control::{ActionBus, ParameterRegistry};
 use dj_engine::Command;
 use std::sync::Arc;
@@ -19,6 +20,7 @@ pub struct AppState {
     bus: Arc<ActionBus<Command>>,
     registry: Arc<ParameterRegistry>,
     host: AudioHost,
+    waveforms: Arc<WaveformStore>,
 }
 
 impl AppState {
@@ -38,7 +40,13 @@ impl AppState {
             bus,
             registry,
             host,
+            waveforms: Arc::new(WaveformStore::new()),
         }
+    }
+
+    #[must_use]
+    pub fn waveforms(&self) -> &Arc<WaveformStore> {
+        &self.waveforms
     }
 
     #[must_use]

@@ -12,6 +12,8 @@ authors.workspace = true
 dj-core = { workspace = true }
 dj-dsp = { workspace = true }
 serde = { workspace = true }
+png = "0.18"
+thiserror = { workspace = true }
 
 [lints]
 workspace = true

@@ -1,5 +1,6 @@
 <script lang="ts">
   import Deck from "./Deck.svelte";
+  import { watchFrameRate } from "./framerate";
   import {
     dispatch,
     getSnapshot,
@@ -20,6 +21,7 @@
   let snapshot = $state<Snapshot | null>(null);
   let log = $state<string[]>([]);
   let showLog = $state(false);
+  let slowFrames = $state<number | null>(null);
 
   // The engine only exists once a device is open, so every control that would
   // send an action stays disabled until then.
@@ -43,6 +45,13 @@
   $effect(() => {
     refreshDevices();
   });
+
+  // Watch our own frame rate. On a machine where the webview has no accelerated
+  // compositing the waveform drops to ~16 fps with nothing to indicate why --
+  // see the benchmark in ADR-0004. Better to say so than to look broken.
+  $effect(() => watchFrameRate((health) => {
+    slowFrames = health.degraded ? health.fps : null;
+  }));
 
   async function refreshDevices() {
     try {
@@ -125,6 +134,14 @@
 
   {#if error}
     <p class="error">{error}</p>
+  {/if}
+
+  {#if slowFrames !== null}
+    <p class="warning">
+      Interface running at {slowFrames.toFixed(0)} fps. This usually means the
+      webview has no hardware acceleration — the audio engine is unaffected, but
+      the waveform will not scroll smoothly.
+    </p>
   {/if}
 
   {#if snapshot}
@@ -398,5 +415,15 @@
 
   .waiting {
     color: var(--text-dim);
+  }
+
+  .warning {
+    margin: 0;
+    padding: 0.6rem 0.9rem;
+    background: color-mix(in srgb, var(--warn) 12%, var(--panel));
+    border: 1px solid var(--warn);
+    border-radius: 8px;
+    color: var(--warn);
+    font-size: 0.85em;
   }
 </style>

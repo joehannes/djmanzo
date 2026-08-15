@@ -202,6 +202,32 @@ building it earlier would produce a planner with nothing to reason about.
 
 ---
 
+---
+
+## P — The polish pass
+
+Runs **after the feature milestones**, as a deliberate second pass over
+everything already built rather than as work interleaved into each milestone.
+Requested explicitly, and worth its own phase: shipping features and making them
+feel like one coherent instrument are different jobs, and doing the second one
+concurrently tends to mean doing it badly.
+
+Strictly in this order, because polishing something unusable just makes it
+prettily unusable.
+
+| # | Pass | What it covers |
+|---|---|---|
+| **P1** | Does it work? | Every feature exercised end to end on real hardware. Bugs fixed, edge cases safeguarded, failure modes made survivable rather than silent. Every "needs the user to verify" item from earlier milestones actually verified. |
+| **P2** | Is it usable? | Every feature reachable and worth reaching. Missing affordances added, dead ends removed, defaults reconsidered against real use. |
+| **P3** | Does it flow? | The whole daily workflow as one motion: load → cue → beatmatch → mix → next, with each step handing off cleanly to the one after it. Keyboard and controller paths as complete as the mouse path. The interface should stop being a set of panels and start being an instrument. |
+| **P4** | Is it beautiful? | Only once P1–P3 land. Colour, form, spacing, hierarchy, motion, feedback. Animation that communicates state rather than decorating it. Consistency between light and dark, and legibility in a dark booth at arm's length. |
+
+**P4 is last on purpose.** Visual polish applied before the workflow is settled
+gets thrown away when the workflow changes, and it disguises usability problems
+by making them look intentional.
+
+---
+
 ## Working agreements
 
 These hold from M0, not from "once it settles down":

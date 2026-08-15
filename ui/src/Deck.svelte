@@ -1,5 +1,6 @@
 <script lang="ts">
   import { dispatch, formatTime, loadTrack, type DeckState } from "./api";
+  import Waveform from "./Waveform.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
 
   let {
@@ -65,10 +66,11 @@
   </header>
 
   <!--
-    M0 shows a progress bar, not a waveform. The waveform is M1, and it is
-    rendered in Rust and scrolled by the compositor rather than drawn here —
-    see docs/adr/0004-waveform-rendering-strategy.md.
+    Tiles come from the Rust renderer and are scrolled by a CSS transform;
+    nothing here draws. See docs/adr/0004-waveform-rendering-strategy.md.
   -->
+  <Waveform {deck} height={96} />
+
   <div class="progress" role="progressbar" aria-valuenow={progress * 100}>
     <div class="fill" style:width="{Math.min(progress, 1) * 100}%"></div>
   </div>

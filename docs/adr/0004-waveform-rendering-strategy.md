@@ -141,3 +141,80 @@ say tile *generation* is cheap. They say nothing about whether WebKitGTK can
 composite a CSS-transformed strip at 60 fps on four decks, which is a different
 question and still the one that decides whether the webview survives as the
 shell. That benchmark remains outstanding.
+
+---
+
+## Benchmark, 2026-08-15 — measured, and inconclusive on purpose
+
+The gate this ADR set was: **60 fps on four decks, on real Xubuntu hardware.**
+That benchmark now exists (`ui/src/bench.ts`, triggered by `DJMANZO_BENCH`) and
+has been run. The result does not settle the gate, and it is worth being exact
+about why rather than reporting a number that sounds decisive.
+
+### What was measured
+
+Headless Xvfb, 1920x1080, **no GPU**, WebKitGTK, four waveform lanes, tiles
+served over the `wave://` protocol and scrolled by `translate3d` on a
+`will-change: transform` layer. `WEBKIT_DISABLE_COMPOSITING_MODE` deliberately
+left unset, so the browser chose its own path.
+
+| Scenario | fps | p50 | p95 |
+|---|---|---|---|
+| Idle, nothing loaded | 61.9 | 16 ms | 17 ms |
+| 4 decks loaded, **paused** | 61.6 | 16 ms | 17 ms |
+| **1 deck scrolling** | 20.4 | 49 ms | 55 ms |
+| **2 decks scrolling** | 15.1 | 66 ms | 75 ms |
+| **4 decks scrolling** | 17.1 | 58 ms | 69 ms |
+
+### What this rules out
+
+**It is not our JavaScript, our DOM, or tile generation.** With four tracks
+loaded and 28 tile images mounted, a *static* transform holds a solid 61.6 fps.
+Nothing about the tile count, the image decode, or the Svelte render is
+expensive.
+
+**It is not fill rate either**, which was the obvious hypothesis and is wrong.
+If the compositor were blitting waveform pixels on the CPU, four moving lanes
+would cost roughly four times one. They do not: 49 ms for one lane, 58 ms for
+four. The marginal cost of a lane is almost nothing.
+
+### What it points to
+
+A large **fixed** per-frame cost that appears the moment anything animates and
+barely grows with animated area. That is the signature of **the whole page being
+repainted per frame** — the cost tracks page area, not layer area — which means
+WebKitGTK is not promoting the strip to a composited layer at all.
+
+Which is entirely expected here: Xvfb has no GPU, so accelerated compositing is
+unavailable, so there are no layers, so a transform change invalidates the
+document. This environment is a floor, not a representative machine.
+
+### Why the gate stays open
+
+This measurement **cannot** decide it. A real Xubuntu laptop — even with modest
+integrated graphics — has accelerated compositing available, and on that path a
+transform on a promoted layer is close to free. The number above says nothing
+about that machine.
+
+What it does say is worth keeping:
+
+1. The architecture is sound where it can be tested. Static content with 28 tiles
+   mounted costs nothing.
+2. The failure mode this ADR was written to fear is **real and reproducible**:
+   when WebKitGTK has no accelerated compositing, the design degrades to ~16 fps,
+   and it does so silently.
+3. There is currently **no graceful degradation**. If a user's machine falls back
+   to software compositing — the exact silent fallback described above — they get
+   16 fps with no indication why.
+
+### Actions
+
+- **The gate remains open.** It needs a run on real Xubuntu hardware with a GPU.
+  `DJMANZO_BENCH=/path/to/track.wav` on a normal desktop session produces the
+  same table.
+- **Add a runtime frame-time probe** so the application can notice it is on the
+  bad path and say so, rather than merely feeling broken. This is the part that
+  is actionable regardless of what the hardware run shows, because the silent
+  fallback is the real hazard.
+- The native `wgpu` escape hatch stays exactly as available: `dj-render` remains
+  host-agnostic, and nothing in it would change.
