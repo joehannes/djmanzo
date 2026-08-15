@@ -50,6 +50,8 @@ pub struct DeckSnapshot {
     pub eq_mid: f32,
     pub eq_high: f32,
     pub filter: f32,
+    pub cue_enabled: bool,
+    pub pre_fader_level: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -61,6 +63,11 @@ pub struct MasterSnapshot {
     pub sample_rate: f32,
     pub xruns: f32,
     pub cpu_load: f32,
+    pub cue_mix: f32,
+    pub cue_split: bool,
+    pub booth_gain_db: f32,
+    /// False on a two-channel device, where there is nowhere to send a cue.
+    pub cue_available: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -107,6 +114,8 @@ impl Snapshot {
                     eq_mid: get(DeckParam::EqMid),
                     eq_high: get(DeckParam::EqHigh),
                     filter: get(DeckParam::Filter),
+                    cue_enabled: get(DeckParam::CueEnabled) >= 0.5,
+                    pre_fader_level: get(DeckParam::PreFaderLevel),
                 }
             })
             .collect();
@@ -121,6 +130,10 @@ impl Snapshot {
                 sample_rate,
                 xruns: registry.get(ParamId::Global(GlobalParam::Xruns)),
                 cpu_load: registry.get(ParamId::Global(GlobalParam::CpuLoad)),
+                cue_mix: registry.get(ParamId::Global(GlobalParam::CueMix)),
+                cue_split: registry.get(ParamId::Global(GlobalParam::CueSplit)) >= 0.5,
+                booth_gain_db: registry.get(ParamId::Global(GlobalParam::BoothGainDb)),
+                cue_available: registry.get(ParamId::Global(GlobalParam::CueAvailable)) >= 0.5,
             },
         }
     }

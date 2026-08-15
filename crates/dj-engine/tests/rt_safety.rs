@@ -115,6 +115,10 @@ struct Rig {
 }
 
 fn rig(decks: usize, buffer_frames: u32) -> Rig {
+    rig_with_channels(decks, buffer_frames, 2)
+}
+
+fn rig_with_channels(decks: usize, buffer_frames: u32, channels: u16) -> Rig {
     let (command_tx, command_rx) = rtrb::RingBuffer::new(1024);
     let (retired_tx, retired_rx) = rtrb::RingBuffer::new(64);
     let registry = Arc::new(ParameterRegistry::new());
@@ -123,7 +127,7 @@ fn rig(decks: usize, buffer_frames: u32) -> Rig {
     let config = StreamConfig {
         buffer_frames,
         sample_rate: SR,
-        channels: 2,
+        channels,
         device: None,
     };
 
@@ -273,6 +277,63 @@ fn running_past_the_end_never_allocates() {
         allocations, 0,
         "end-of-track path allocated {allocations} times"
     );
+}
+
+/// The cue path takes a different branch through the render loop -- an extra
+/// bus, a blend, and a split-cue case. It must be allocation-free too, and a
+/// stereo-only rig never exercises it.
+#[test]
+fn the_headphone_cue_path_never_allocates() {
+    let mut rig = rig_with_channels(4, 256, 4);
+    for n in 1..=4u8 {
+        rig.load_and_play(n, 2_000_000);
+        rig.act(Action::Deck {
+            deck: deck(n),
+            action: DeckAction::SetCue(n % 2 == 0),
+        });
+    }
+    rig.act(Action::Mixer(MixerAction::CueMix(0.4)));
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(5_000);
+    });
+    assert_eq!(
+        allocations, 0,
+        "the cue path allocated {allocations} times across 5,000 blocks"
+    );
+}
+
+/// Split cue is a separate branch again.
+#[test]
+fn split_cue_never_allocates() {
+    let mut rig = rig_with_channels(2, 256, 4);
+    rig.load_and_play(1, 1_000_000);
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::SetCue(true),
+    });
+    rig.act(Action::Mixer(MixerAction::SplitCue(true)));
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(5_000);
+    });
+    assert_eq!(allocations, 0, "split cue allocated {allocations} times");
+}
+
+/// Six channels adds the booth bus on top of master and cue.
+#[test]
+fn the_booth_bus_never_allocates() {
+    let mut rig = rig_with_channels(2, 256, 6);
+    rig.load_and_play(1, 1_000_000);
+    rig.act(Action::Mixer(MixerAction::BoothGainDb(-6.0)));
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(5_000);
+    });
+    assert_eq!(allocations, 0, "booth bus allocated {allocations} times");
 }
 
 /// Buffer size is a user setting, and an unusual one must not change the

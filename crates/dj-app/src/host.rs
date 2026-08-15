@@ -218,22 +218,30 @@ fn open_device(
         }
     }
 
-    let sample_rate = backend
-        .output_devices()
-        .ok()
-        .and_then(|devices| {
-            devices
-                .into_iter()
-                .find(|d| device.as_ref().is_none_or(|wanted| &d.id == wanted))
-                .map(|d| d.default_sample_rate)
-        })
+    let chosen = backend.output_devices().ok().and_then(|devices| {
+        devices
+            .into_iter()
+            .find(|d| device.as_ref().is_none_or(|wanted| &d.id == wanted))
+    });
+    let sample_rate = chosen
+        .as_ref()
+        .map(|d| d.default_sample_rate)
         .unwrap_or(SampleRate::DEFAULT);
+
+    // Open four channels when the device has them, so master and headphone cue
+    // can share one interface -- the layout every controller with a built-in
+    // card provides. Opening only two would make cueing impossible on hardware
+    // that supports it perfectly well.
+    let channels = match chosen.as_ref().map(|d| d.max_output_channels) {
+        Some(available) if available >= 4 => 4,
+        _ => 2,
+    };
 
     let config = StreamConfig {
         device,
         sample_rate,
         buffer_frames,
-        channels: 2,
+        channels,
     };
 
     // A fresh graph gets fresh queues; the bus is re-aimed at the new one.
@@ -287,7 +295,28 @@ mod tests {
         let (host, _bus, _reg) = host();
         let active = host.open(None, 128).unwrap();
         assert_eq!(active.buffer_frames, 128);
-        assert_eq!(active.channels, 2);
+        // The null backend advertises four channels, so the host should take
+        // them: that is what makes the headphone cue reachable.
+        assert_eq!(active.channels, 4);
+    }
+
+    /// A four-channel open is what puts master and cue on one interface. If the
+    /// host quietly opened two, cueing would be impossible on hardware that
+    /// supports it, and nothing would say why.
+    #[test]
+    fn a_four_channel_device_gets_a_cue_bus() {
+        let (host, _bus, reg) = host();
+        let active = host.open(None, 128).unwrap();
+        assert!(active.channels >= 4);
+
+        // Let a few callbacks run so the engine publishes availability.
+        std::thread::sleep(Duration::from_millis(80));
+        assert!(
+            reg.get_bool(dj_core::ParamId::Global(
+                dj_core::param::GlobalParam::CueAvailable
+            )),
+            "a four-channel device should report the cue as available"
+        );
     }
 
     #[test]

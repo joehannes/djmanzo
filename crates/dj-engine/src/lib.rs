@@ -16,10 +16,12 @@
 //! The dependency surface is kept deliberately small -- `dj-core`, `dj-dsp`,
 //! `dj-decode`, `dj-control`, `rtrb` -- so this crate stays auditable.
 
+pub mod bus;
 pub mod command;
 pub mod deck;
 pub mod engine;
 
+pub use bus::BusLayout;
 pub use command::{Command, Retired};
-pub use deck::Deck;
+pub use deck::{Deck, DeckLevels};
 pub use engine::Engine;

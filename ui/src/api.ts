@@ -53,6 +53,8 @@ export interface DeckState {
   eq_mid: number;
   eq_high: number;
   filter: number;
+  cue_enabled: boolean;
+  pre_fader_level: number;
 }
 
 export interface MasterState {
@@ -63,6 +65,10 @@ export interface MasterState {
   sample_rate: number;
   xruns: number;
   cpu_load: number;
+  cue_mix: number;
+  cue_split: boolean;
+  booth_gain_db: number;
+  cue_available: boolean;
 }
 
 export interface Snapshot {
