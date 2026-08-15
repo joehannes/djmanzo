@@ -41,11 +41,15 @@ pub enum DeckParam {
     EqHigh,
     /// Filter sweep position, -1.0..=1.0.
     Filter,
+    /// 1.0 when this deck is sent to the headphones.
+    CueEnabled,
+    /// Pre-fader peak, for the cue meter and setting trim.
+    PreFaderLevel,
 }
 
 impl DeckParam {
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 13;
+    pub const COUNT: usize = 15;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -69,6 +73,8 @@ impl DeckParam {
             EqMid,
             EqHigh,
             Filter,
+            CueEnabled,
+            PreFaderLevel,
         ]
     }
 }
@@ -89,10 +95,17 @@ pub enum GlobalParam {
     Xruns,
     /// Fraction of the callback budget the engine used on its last pass.
     CpuLoad,
+    /// Headphone blend: 0.0 all cue, 1.0 all master.
+    CueMix,
+    /// 1.0 when split cue is on.
+    CueSplit,
+    BoothGainDb,
+    /// 1.0 when the open device has channels for a headphone cue.
+    CueAvailable,
 }
 
 impl GlobalParam {
-    pub const COUNT: usize = 7;
+    pub const COUNT: usize = 11;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -110,6 +123,10 @@ impl GlobalParam {
             SampleRate,
             Xruns,
             CpuLoad,
+            CueMix,
+            CueSplit,
+            BoothGainDb,
+            CueAvailable,
         ]
     }
 }
@@ -174,6 +191,8 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::EqMid => "eq_mid",
         DeckParam::EqHigh => "eq_high",
         DeckParam::Filter => "filter",
+        DeckParam::CueEnabled => "cue_enabled",
+        DeckParam::PreFaderLevel => "pre_fader_level",
     }
 }
 
@@ -186,6 +205,10 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::SampleRate => "sample_rate",
         GlobalParam::Xruns => "xruns",
         GlobalParam::CpuLoad => "cpu_load",
+        GlobalParam::CueMix => "cue_mix",
+        GlobalParam::CueSplit => "cue_split",
+        GlobalParam::BoothGainDb => "booth_gain_db",
+        GlobalParam::CueAvailable => "cue_available",
     }
 }
 

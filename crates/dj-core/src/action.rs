@@ -48,6 +48,10 @@ pub enum DeckAction {
     SetEqHigh(f32),
     /// Filter sweep: -1.0 fully low-passed, 0.0 off, +1.0 fully high-passed.
     SetFilter(f32),
+    /// Pre-fader listen: send this deck to the headphones.
+    SetCue(bool),
+    /// Flip the headphone cue send.
+    ToggleCue,
     /// Drop the loaded track.
     Eject,
 }
@@ -58,6 +62,11 @@ pub enum MixerAction {
     /// -1.0 is hard left, 0.0 centre, +1.0 hard right.
     Crossfader(f32),
     MasterGainDb(f32),
+    /// Headphone blend: 0.0 is all cue, 1.0 is all master.
+    CueMix(f32),
+    /// Split cue: cue in one ear, master in the other.
+    SplitCue(bool),
+    BoothGainDb(f32),
 }
 
 impl Action {
@@ -100,6 +109,20 @@ impl Action {
                 )?))),
                 other => Err(ParseError::UnknownVerb(other.to_owned())),
             },
+            "booth" => match words.next().ok_or(ParseError::MissingVerb)? {
+                "gain" => Ok(Action::Mixer(MixerAction::BoothGainDb(parse_f32(
+                    words.next(),
+                )?))),
+                other => Err(ParseError::UnknownVerb(other.to_owned())),
+            },
+            "cue" => match words.next().ok_or(ParseError::MissingVerb)? {
+                "mix" => Ok(Action::Mixer(MixerAction::CueMix(
+                    parse_f32(words.next())?.clamp(0.0, 1.0),
+                ))),
+                "split_on" => Ok(Action::Mixer(MixerAction::SplitCue(true))),
+                "split_off" => Ok(Action::Mixer(MixerAction::SplitCue(false))),
+                other => Err(ParseError::UnknownVerb(other.to_owned())),
+            },
             other => Err(ParseError::UnknownTarget(other.to_owned())),
         }
     }
@@ -121,6 +144,9 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "eq_mid" => DeckAction::SetEqMid(parse_f32(argument)?.clamp(0.0, 4.0)),
         "eq_high" => DeckAction::SetEqHigh(parse_f32(argument)?.clamp(0.0, 4.0)),
         "filter" => DeckAction::SetFilter(parse_f32(argument)?.clamp(-1.0, 1.0)),
+        "cue_on" => DeckAction::SetCue(true),
+        "cue_off" => DeckAction::SetCue(false),
+        "cue_toggle" => DeckAction::ToggleCue,
         other => return Err(ParseError::UnknownVerb(other.to_owned())),
     })
 }
@@ -153,9 +179,16 @@ impl fmt::Display for Action {
                 DeckAction::SetEqMid(v) => write!(f, "deck {deck} eq_mid {v}"),
                 DeckAction::SetEqHigh(v) => write!(f, "deck {deck} eq_high {v}"),
                 DeckAction::SetFilter(v) => write!(f, "deck {deck} filter {v}"),
+                DeckAction::SetCue(true) => write!(f, "deck {deck} cue_on"),
+                DeckAction::SetCue(false) => write!(f, "deck {deck} cue_off"),
+                DeckAction::ToggleCue => write!(f, "deck {deck} cue_toggle"),
             },
             Action::Mixer(MixerAction::Crossfader(v)) => write!(f, "crossfader {v}"),
             Action::Mixer(MixerAction::MasterGainDb(v)) => write!(f, "master gain {v}"),
+            Action::Mixer(MixerAction::BoothGainDb(v)) => write!(f, "booth gain {v}"),
+            Action::Mixer(MixerAction::CueMix(v)) => write!(f, "cue mix {v}"),
+            Action::Mixer(MixerAction::SplitCue(true)) => write!(f, "cue split_on"),
+            Action::Mixer(MixerAction::SplitCue(false)) => write!(f, "cue split_off"),
         }
     }
 }
@@ -320,6 +353,17 @@ mod tests {
                 deck: deck(4),
                 action: DeckAction::SetFilter(-0.75),
             },
+            Action::Deck {
+                deck: deck(1),
+                action: DeckAction::SetCue(true),
+            },
+            Action::Deck {
+                deck: deck(2),
+                action: DeckAction::ToggleCue,
+            },
+            Action::Mixer(MixerAction::CueMix(0.35)),
+            Action::Mixer(MixerAction::SplitCue(true)),
+            Action::Mixer(MixerAction::BoothGainDb(-6.0)),
             Action::Mixer(MixerAction::Crossfader(-0.25)),
             Action::Mixer(MixerAction::MasterGainDb(-3.0)),
         ];

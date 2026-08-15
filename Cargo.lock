@@ -946,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "dj-app"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "dj-audio",
  "dj-control",
@@ -967,7 +967,7 @@ dependencies = [
 
 [[package]]
 name = "dj-audio"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "cpal",
  "dj-core",
@@ -977,7 +977,7 @@ dependencies = [
 
 [[package]]
 name = "dj-control"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "dj-core",
  "rtrb",
@@ -987,7 +987,7 @@ dependencies = [
 
 [[package]]
 name = "dj-core"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -995,7 +995,7 @@ dependencies = [
 
 [[package]]
 name = "dj-decode"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "dj-core",
  "symphonia",
@@ -1005,14 +1005,14 @@ dependencies = [
 
 [[package]]
 name = "dj-dsp"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "dj-core",
 ]
 
 [[package]]
 name = "dj-engine"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "dj-audio",
  "dj-control",
@@ -1024,7 +1024,7 @@ dependencies = [
 
 [[package]]
 name = "dj-secrets"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "keyring",
  "serde",

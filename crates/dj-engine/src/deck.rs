@@ -1,5 +1,6 @@
 //! A single deck.
 
+use crate::bus::BusLayout;
 use dj_core::{FramePos, Rate, SampleRate, db_to_linear};
 use dj_decode::{AudioBuffer, TrackSource};
 use dj_dsp::{SmoothedValue, SweepFilter, ThreeBandEq};
@@ -21,10 +22,15 @@ pub struct Deck {
     playing: bool,
     /// Where `cue` returns to.
     cue_point: FramePos,
-    /// Channel fader times trim, smoothed so moves do not click.
-    channel_gain: SmoothedValue,
+    /// Trim, smoothed. Applied before the cue send, so PFL hears the trimmed
+    /// signal -- which is the point of having a trim knob at all.
+    trim_gain: SmoothedValue,
+    /// Channel fader, smoothed. Applied after the cue send.
+    fader_gain: SmoothedValue,
     volume: f32,
     gain_db: f32,
+    /// Pre-fader listen: send this deck to the headphones.
+    cue_enabled: bool,
     /// Crossfader contribution, smoothed for the same reason.
     crossfader_gain: SmoothedValue,
     /// Rate of the device we are feeding, for sample-rate conversion.
@@ -50,9 +56,11 @@ impl Deck {
             pitch: 0.0,
             playing: false,
             cue_point: FramePos::ZERO,
-            channel_gain: SmoothedValue::new(1.0, sr),
+            trim_gain: SmoothedValue::new(1.0, sr),
+            fader_gain: SmoothedValue::new(1.0, sr),
             volume: 1.0,
             gain_db: 0.0,
+            cue_enabled: false,
             crossfader_gain: SmoothedValue::new(1.0, sr),
             device_rate,
             eq: [ThreeBandEq::new(sr), ThreeBandEq::new(sr)],
@@ -192,20 +200,29 @@ impl Deck {
     pub fn set_volume(&mut self, volume: f32) {
         if volume.is_finite() {
             self.volume = volume.clamp(0.0, 1.0);
-            self.update_channel_gain();
+            self.fader_gain.set_target(self.volume);
         }
     }
 
     pub fn set_gain_db(&mut self, db: f32) {
         if db.is_finite() {
             self.gain_db = db.clamp(-24.0, 24.0);
-            self.update_channel_gain();
+            self.trim_gain.set_target(db_to_linear(self.gain_db));
         }
     }
 
-    fn update_channel_gain(&mut self) {
-        self.channel_gain
-            .set_target(self.volume * db_to_linear(self.gain_db));
+    /// Send this deck to the headphones.
+    pub fn set_cue(&mut self, enabled: bool) {
+        self.cue_enabled = enabled;
+    }
+
+    pub fn toggle_cue(&mut self) {
+        self.cue_enabled = !self.cue_enabled;
+    }
+
+    #[must_use]
+    pub fn is_cued(&self) -> bool {
+        self.cue_enabled
     }
 
     pub fn set_crossfader_gain(&mut self, gain: f32) {
@@ -263,25 +280,40 @@ impl Deck {
         self.rate.get() * (1.0 + self.pitch) * ratio
     }
 
-    /// Render into `out`, adding rather than overwriting, and return the peak
-    /// level this deck contributed.
+    /// Render into the interleaved output buffer, adding rather than
+    /// overwriting.
+    ///
+    /// Writes to two buses at different points in the gain chain:
+    ///
+    /// ```text
+    ///   source → EQ → filter → trim ─┬─→ × fader × crossfader → MAIN
+    ///                                └─→ (unmodified)          → CUE
+    /// ```
+    ///
+    /// The cue send is taken **before** the channel fader and crossfader, which
+    /// is what "pre-fader listen" means and the entire reason PFL is useful: you
+    /// cue up the next track with its fader all the way down, hearing it in
+    /// headphones while the audience hears nothing.
     ///
     /// Realtime-safe: no allocation, no locking, no I/O.
-    pub fn process(&mut self, out: &mut [f32], channels: usize) -> f32 {
+    pub fn process(&mut self, out: &mut [f32], layout: &BusLayout) -> DeckLevels {
         if !self.playing || self.source.is_empty() {
-            // Still advance the smoothers so a fader moved while paused has
-            // settled by the time playback resumes.
-            self.channel_gain.set_target(self.channel_gain.target());
-            return 0.0;
+            return DeckLevels::default();
         }
 
         let step = self.step_per_output_frame();
         let len = self.len_frames() as f64;
-        let mut peak = 0.0f32;
+        let mut levels = DeckLevels::default();
         let mut position = self.position.get();
+        let channels = layout.channels.max(1);
+        let cue_send = if self.cue_enabled { layout.cue } else { None };
 
         for frame in out.chunks_exact_mut(channels) {
-            let gain = self.channel_gain.next_value() * self.crossfader_gain.next_value();
+            // Advance the smoothers every frame regardless of whether audio is
+            // produced, so a fader moved during a silent stretch has settled by
+            // the time sound returns.
+            let trim = self.trim_gain.next_value();
+            let fader = self.fader_gain.next_value() * self.crossfader_gain.next_value();
 
             if position < 0.0 || position >= len {
                 continue;
@@ -292,21 +324,27 @@ impl Deck {
             // Tone shaping happens before the fader, as on a real mixer: the
             // channel fader must attenuate the EQ'd signal, not the other way
             // round, or riding the fader would change the tone.
-            let left = self.filter[0].process(self.eq[0].process(left));
-            let right = self.filter[1].process(self.eq[1].process(right));
+            let pre_left = self.filter[0].process(self.eq[0].process(left)) * trim;
+            let pre_right = self.filter[1].process(self.eq[1].process(right)) * trim;
 
-            let left = left * gain;
-            let right = right * gain;
+            let main_left = pre_left * fader;
+            let main_right = pre_right * fader;
 
-            frame[0] += left;
-            if channels > 1 {
-                frame[1] += right;
+            if layout.is_mono() {
+                frame[layout.main.0] += (main_left + main_right) * 0.5;
+            } else {
+                frame[layout.main.0] += main_left;
+                frame[layout.main.1] += main_right;
             }
 
-            let magnitude = left.abs().max(right.abs());
-            if magnitude > peak {
-                peak = magnitude;
+            if let Some((cue_l, cue_r)) = cue_send {
+                frame[cue_l] += pre_left;
+                frame[cue_r] += pre_right;
             }
+
+            levels.pre_fader = levels.pre_fader.max(pre_left.abs()).max(pre_right.abs());
+            levels.post_fader = levels.post_fader.max(main_left.abs()).max(main_right.abs());
+
             position += step;
         }
 
@@ -322,8 +360,19 @@ impl Deck {
             self.position = FramePos::new(position);
         }
 
-        peak
+        levels
     }
+}
+
+/// Peak levels a deck produced in one block.
+///
+/// Both are reported because they answer different questions: pre-fader is what
+/// the trim knob should be set by (and what the cue meter shows), post-fader is
+/// what actually reaches the master.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct DeckLevels {
+    pub pre_fader: f32,
+    pub post_fader: f32,
 }
 
 #[cfg(test)]
@@ -331,6 +380,11 @@ mod tests {
     use super::*;
 
     const SR: SampleRate = SampleRate::DEFAULT;
+
+    /// Plain stereo: master on 0/1, no cue. What most of these tests want.
+    fn stereo() -> BusLayout {
+        BusLayout::for_channels(2)
+    }
 
     /// A ramp source: frame `n` has value `n`, so tests can read the position
     /// straight out of the rendered audio.
@@ -351,7 +405,7 @@ mod tests {
         assert!(!deck.is_loaded());
         assert!(!deck.is_playing());
         let mut out = vec![0.0; 16];
-        assert_eq!(deck.process(&mut out, 2), 0.0);
+        assert_eq!(deck.process(&mut out, &stereo()), DeckLevels::default());
         assert!(out.iter().all(|&s| s == 0.0));
     }
 
@@ -396,7 +450,7 @@ mod tests {
         let mut deck = deck_with(1000);
         deck.play();
         let mut out = vec![0.0; 32]; // 16 frames
-        deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         assert!((deck.position().get() - 16.0).abs() < 1e-9);
     }
 
@@ -406,7 +460,7 @@ mod tests {
         deck.set_pitch(0.08);
         deck.play();
         let mut out = vec![0.0; 200]; // 100 frames
-        deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         assert!(
             (deck.position().get() - 108.0).abs() < 1e-6,
             "+8% pitch should advance 108 frames, got {}",
@@ -429,7 +483,7 @@ mod tests {
         deck.play();
 
         let mut out = vec![0.0; 960]; // 480 output frames
-        deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         let expected = 480.0 * (44_100.0 / 48_000.0);
         assert!(
             (deck.position().get() - expected).abs() < 1e-6,
@@ -443,7 +497,7 @@ mod tests {
         let mut deck = deck_with(1000);
         deck.seek(FramePos::new(100.0));
         let mut out = vec![0.0; 32];
-        deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         assert!(out.iter().all(|&s| s == 0.0));
         assert_eq!(deck.position().get(), 100.0);
     }
@@ -453,7 +507,7 @@ mod tests {
         let mut deck = deck_with(10);
         deck.play();
         let mut out = vec![0.0; 64]; // 32 frames, more than the track has
-        deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         assert!(!deck.is_playing(), "deck should stop at the end");
         assert_eq!(deck.position().get(), 10.0);
     }
@@ -464,7 +518,7 @@ mod tests {
         let mut deck = deck_with(4);
         deck.play();
         let mut out = vec![0.0; 200];
-        deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         assert!(out.iter().all(|s| s.is_finite()));
     }
 
@@ -475,7 +529,7 @@ mod tests {
         deck.set_rate(Rate::new(-1.0));
         deck.play();
         let mut out = vec![0.0; 200]; // 100 frames of reverse
-        deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         assert!(!deck.is_playing());
         assert_eq!(deck.position().get(), 0.0);
     }
@@ -507,9 +561,9 @@ mod tests {
         deck.play();
         // Long enough for the gain ramp to complete.
         let mut out = vec![0.0; 8192];
-        deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         let mut out = vec![0.0; 8192];
-        deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         let tail = &out[out.len() - 100..];
         assert!(
             tail.iter().all(|&s| s.abs() < 1e-4),
@@ -544,7 +598,7 @@ mod tests {
         let mut deck = deck_with(1000);
         deck.play();
         let mut out = vec![1.0; 32];
-        deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         // Frame 0 of the ramp is 0.0, so the pre-existing 1.0 must survive.
         assert!(out[0] >= 1.0, "deck overwrote existing mix content");
     }
@@ -560,9 +614,9 @@ mod tests {
         deck.play();
 
         let mut out = vec![0.0; 8_000];
-        let _ = deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         let mut out = vec![0.0; 8_000];
-        let peak = deck.process(&mut out, 2);
+        let peak = deck.process(&mut out, &stereo()).post_fader;
 
         assert!(
             (peak - 0.5).abs() < 0.02,
@@ -589,9 +643,9 @@ mod tests {
 
         // Let the gain ramp and filters settle before measuring.
         let mut out = vec![0.0; 20_000];
-        let _ = deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         let mut out = vec![0.0; 20_000];
-        let peak = deck.process(&mut out, 2);
+        let peak = deck.process(&mut out, &stereo()).post_fader;
 
         assert!(
             peak < 0.02,
@@ -607,9 +661,9 @@ mod tests {
         deck.play();
 
         let mut out = vec![0.0; 16_000];
-        let _ = deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
         let mut out = vec![0.0; 8_000];
-        let peak = deck.process(&mut out, 2);
+        let peak = deck.process(&mut out, &stereo()).post_fader;
 
         assert!(
             (peak - 0.4).abs() < 0.02,
@@ -625,18 +679,186 @@ mod tests {
         let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(loud, SR)));
         deck.play();
         let mut out = vec![0.0; 8_000];
-        let _ = deck.process(&mut out, 2);
+        let _ = deck.process(&mut out, &stereo());
 
         // Swap in silence; the first samples must be silent, not a filter tail.
         let silence = vec![0.0f32; 20_000];
         let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(silence, SR)));
         deck.play();
         let mut out = vec![0.0; 512];
-        let peak = deck.process(&mut out, 2);
+        let peak = deck.process(&mut out, &stereo()).post_fader;
 
         assert!(
             peak < 1e-6,
             "previous track bled through the filters: {peak}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod cue_tests {
+    use super::*;
+    use crate::bus::BusLayout;
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+
+    fn tone(frames: usize, amplitude: f32) -> Arc<dyn TrackSource> {
+        Arc::new(AudioBuffer::from_interleaved(
+            vec![amplitude; frames * 2],
+            SR,
+        ))
+    }
+
+    fn deck_playing() -> Deck {
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(tone(200_000, 0.5));
+        deck.play();
+        deck
+    }
+
+    /// Render and report peak on the master and cue buses separately.
+    fn render(deck: &mut Deck, layout: &BusLayout, frames: usize) -> (f32, f32) {
+        let mut out = vec![0.0; frames * layout.channels];
+        let _ = deck.process(&mut out, layout);
+
+        let mut main = 0.0f32;
+        let mut cue = 0.0f32;
+        for frame in out.chunks_exact(layout.channels) {
+            main = main.max(frame[layout.main.0].abs());
+            if let Some((l, r)) = layout.cue {
+                cue = cue.max(frame[l].abs()).max(frame[r].abs());
+            }
+        }
+        (main, cue)
+    }
+
+    #[test]
+    fn a_deck_is_not_cued_by_default() {
+        assert!(!Deck::new(SR).is_cued());
+    }
+
+    #[test]
+    fn cue_send_is_silent_until_enabled() {
+        let mut deck = deck_playing();
+        let layout = BusLayout::for_channels(4);
+        let (main, cue) = render(&mut deck, &layout, 8_000);
+        assert!(main > 0.1, "master should have audio");
+        assert_eq!(cue, 0.0, "cue must be silent when PFL is off");
+    }
+
+    /// The entire point of pre-fader listen: with the channel fader down, the
+    /// audience hears nothing and the DJ still hears the track.
+    #[test]
+    fn pre_fader_listen_survives_a_closed_fader() {
+        let mut deck = deck_playing();
+        deck.set_cue(true);
+        deck.set_volume(0.0);
+        let layout = BusLayout::for_channels(4);
+
+        // Let the fader ramp reach zero.
+        render(&mut deck, &layout, 16_000);
+        let (main, cue) = render(&mut deck, &layout, 8_000);
+
+        assert!(
+            main < 0.01,
+            "fader down means the room hears nothing, got {main}"
+        );
+        assert!(cue > 0.4, "PFL must still feed the headphones, got {cue}");
+    }
+
+    /// Likewise the crossfader: cueing the deck you are about to bring in is
+    /// the normal case, and it is always crossfaded away.
+    #[test]
+    fn pre_fader_listen_survives_the_crossfader() {
+        let mut deck = deck_playing();
+        deck.set_cue(true);
+        deck.set_crossfader_gain(0.0);
+        let layout = BusLayout::for_channels(4);
+
+        render(&mut deck, &layout, 16_000);
+        let (main, cue) = render(&mut deck, &layout, 8_000);
+
+        assert!(main < 0.01, "crossfaded away, got {main}");
+        assert!(cue > 0.4, "PFL should ignore the crossfader, got {cue}");
+    }
+
+    /// Trim is before the cue send, so the headphone level tracks it. That is
+    /// what makes trim usable for gain-staging a track before it goes out.
+    #[test]
+    fn trim_affects_the_cue_send() {
+        let mut deck = deck_playing();
+        deck.set_cue(true);
+        deck.set_gain_db(-12.0);
+        let layout = BusLayout::for_channels(4);
+
+        render(&mut deck, &layout, 16_000);
+        let (_, cue) = render(&mut deck, &layout, 8_000);
+
+        // -12 dB is about a quarter amplitude: 0.5 * 0.25 = 0.125.
+        assert!(cue < 0.2 && cue > 0.05, "cue should follow trim, got {cue}");
+    }
+
+    #[test]
+    fn cue_is_dropped_on_a_device_with_no_spare_channels() {
+        let mut deck = deck_playing();
+        deck.set_cue(true);
+        let layout = BusLayout::for_channels(2);
+        // Must not panic or write out of bounds on a stereo device.
+        let (main, _) = render(&mut deck, &layout, 4_000);
+        assert!(main > 0.1);
+    }
+
+    #[test]
+    fn toggling_cue_flips_it() {
+        let mut deck = Deck::new(SR);
+        deck.toggle_cue();
+        assert!(deck.is_cued());
+        deck.toggle_cue();
+        assert!(!deck.is_cued());
+    }
+
+    #[test]
+    fn levels_report_both_sides_of_the_fader() {
+        let mut deck = deck_playing();
+        deck.set_volume(0.5);
+        let layout = BusLayout::for_channels(4);
+
+        let mut out = vec![0.0; 16_000 * 4];
+        let _ = deck.process(&mut out, &layout);
+        let mut out = vec![0.0; 8_000 * 4];
+        let levels = deck.process(&mut out, &layout);
+
+        assert!(
+            levels.pre_fader > levels.post_fader,
+            "a half-open fader should make post-fader lower: pre {} post {}",
+            levels.pre_fader,
+            levels.post_fader
+        );
+        assert!((levels.pre_fader - 0.5).abs() < 0.05);
+        assert!((levels.post_fader - 0.25).abs() < 0.05);
+    }
+
+    #[test]
+    fn mono_output_sums_both_channels() {
+        let mut deck = Deck::new(SR);
+        // Distinct L and R so summing is observable. Long enough for the EQ's
+        // crossovers to settle on the step -- a short window measures their
+        // transient overshoot rather than the steady state.
+        let samples: Vec<f32> = (0..80_000).flat_map(|_| [0.4f32, 0.2]).collect();
+        let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(samples, SR)));
+        deck.play();
+
+        let layout = BusLayout::for_channels(1);
+        let mut settle = vec![0.0; 16_000];
+        let _ = deck.process(&mut settle, &layout);
+
+        let mut out = vec![0.0; 8_000];
+        let _ = deck.process(&mut out, &layout);
+
+        let peak = out.iter().fold(0.0f32, |a, s| a.max(s.abs()));
+        assert!(
+            (peak - 0.3).abs() < 0.02,
+            "mono should be the average of 0.4 and 0.2, got {peak}"
         );
     }
 }

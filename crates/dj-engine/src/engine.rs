@@ -1,5 +1,6 @@
 //! The engine: everything that happens inside the audio callback.
 
+use crate::bus::BusLayout;
 use crate::command::{Command, Retired};
 use crate::deck::Deck;
 use dj_audio::{AudioCallback, RenderContext};
@@ -38,6 +39,14 @@ pub struct Engine {
     peak_right: PeakMeter,
     sample_rate: SampleRate,
 
+    /// Headphone blend: 0.0 all cue, 1.0 all master.
+    cue_mix: SmoothedValue,
+    cue_mix_target: f32,
+    /// Cue in one ear, master in the other.
+    cue_split: bool,
+    booth_gain: SmoothedValue,
+    booth_gain_db: f32,
+
     /// Sources we could not hand back because the retirement queue was full.
     /// Held rather than dropped -- dropping here is exactly what the queue
     /// exists to prevent. Drained on the next callback that has room.
@@ -71,6 +80,13 @@ impl Engine {
             peak_left: PeakMeter::new(sr),
             peak_right: PeakMeter::new(sr),
             sample_rate,
+            // Default to hearing only the cue: a DJ reaching for headphones is
+            // almost always checking the incoming track, not the master.
+            cue_mix: SmoothedValue::new(0.0, sr),
+            cue_mix_target: 0.0,
+            cue_split: false,
+            booth_gain: SmoothedValue::new(1.0, sr),
+            booth_gain_db: 0.0,
             // Capacity for a pathological burst of loads; never grown at runtime.
             stranded: Vec::with_capacity(MAX_DECKS * 2),
         };
@@ -179,6 +195,8 @@ impl Engine {
                     DeckAction::SetEqMid(g) => target.set_eq_mid(g),
                     DeckAction::SetEqHigh(g) => target.set_eq_high(g),
                     DeckAction::SetFilter(p) => target.set_filter(p),
+                    DeckAction::SetCue(on) => target.set_cue(on),
+                    DeckAction::ToggleCue => target.toggle_cue(),
                     DeckAction::Eject => unreachable!("handled above"),
                 }
             }
@@ -186,6 +204,25 @@ impl Engine {
                 self.crossfader = position.clamp(-1.0, 1.0);
                 self.registry
                     .set(ParamId::Global(GlobalParam::Crossfader), self.crossfader);
+            }
+            Action::Mixer(MixerAction::CueMix(mix)) => {
+                self.cue_mix_target = mix.clamp(0.0, 1.0);
+                self.cue_mix.set_target(self.cue_mix_target);
+                self.registry
+                    .set(ParamId::Global(GlobalParam::CueMix), self.cue_mix_target);
+            }
+            Action::Mixer(MixerAction::SplitCue(on)) => {
+                self.cue_split = on;
+                self.registry
+                    .set_bool(ParamId::Global(GlobalParam::CueSplit), on);
+            }
+            Action::Mixer(MixerAction::BoothGainDb(db)) => {
+                self.booth_gain_db = db.clamp(-24.0, 24.0);
+                self.booth_gain.set_target(db_to_linear(self.booth_gain_db));
+                self.registry.set(
+                    ParamId::Global(GlobalParam::BoothGainDb),
+                    self.booth_gain_db,
+                );
             }
             Action::Mixer(MixerAction::MasterGainDb(db)) => {
                 self.master_gain_db = db.clamp(-24.0, 24.0);
@@ -232,6 +269,10 @@ impl Engine {
             set(DeckParam::EqMid, deck.eq_mid());
             set(DeckParam::EqHigh, deck.eq_high());
             set(DeckParam::Filter, deck.filter_position());
+            set(
+                DeckParam::CueEnabled,
+                if deck.is_cued() { 1.0 } else { 0.0 },
+            );
         }
     }
 
@@ -259,36 +300,71 @@ impl AudioCallback for Engine {
         self.drain_commands();
         self.apply_crossfader();
 
-        let channels = ctx.channels.max(1);
+        let layout = BusLayout::for_channels(ctx.channels);
+        let channels = layout.channels;
+        self.registry
+            .set_bool(ParamId::Global(GlobalParam::CueAvailable), layout.has_cue());
 
-        // Decks add into the shared buffer, so no per-deck scratch is needed.
+        // Decks add into the shared buffer -- master post-fader, cue pre-fader
+        // -- so no per-deck scratch is needed.
         for index in 0..self.decks.len() {
-            let peak = self.decks[index].process(out, channels);
+            let levels = self.decks[index].process(out, &layout);
             if let Some(id) = DeckId::new(index as u8) {
                 self.registry
-                    .set(ParamId::Deck(id, DeckParam::PeakLevel), peak);
+                    .set(ParamId::Deck(id, DeckParam::PeakLevel), levels.post_fader);
+                self.registry.set(
+                    ParamId::Deck(id, DeckParam::PreFaderLevel),
+                    levels.pre_fader,
+                );
             }
         }
 
+        let (main_l, main_r) = layout.main;
         for frame in out.chunks_exact_mut(channels) {
-            let gain = self.master_gain.next_value();
-            for sample in frame.iter_mut() {
-                *sample *= gain;
-                // Hard clip at full scale. A real limiter arrives in M1; until
-                // then this guarantees nothing leaves the engine above 0 dBFS,
-                // which protects both speakers and ears.
-                *sample = sample.clamp(-1.0, 1.0);
+            let master = self.master_gain.next_value();
+            let booth = self.booth_gain.next_value();
+            let mix = self.cue_mix.next_value();
+
+            // Master first: everything downstream is derived from it.
+            frame[main_l] = (frame[main_l] * master).clamp(-1.0, 1.0);
+            if !layout.is_mono() {
+                frame[main_r] = (frame[main_r] * master).clamp(-1.0, 1.0);
+            }
+            let (master_l, master_r) = (frame[main_l], frame[main_r]);
+
+            // Booth is the master at its own level, so the monitors can be
+            // turned down without touching what the room hears.
+            if let Some((booth_l, booth_r)) = layout.booth {
+                frame[booth_l] = (master_l * booth).clamp(-1.0, 1.0);
+                frame[booth_r] = (master_r * booth).clamp(-1.0, 1.0);
+            }
+
+            // Headphones: blend the pre-fader cue sum against the master.
+            if let Some((cue_l, cue_r)) = layout.cue {
+                let (raw_l, raw_r) = (frame[cue_l], frame[cue_r]);
+                let (out_l, out_r) = if self.cue_split {
+                    // Split cue: cue mono in the left ear, master mono in the
+                    // right. Standard for beatmatching -- you hear both sources
+                    // separately instead of superimposed.
+                    ((raw_l + raw_r) * 0.5, (master_l + master_r) * 0.5)
+                } else {
+                    (
+                        raw_l * (1.0 - mix) + master_l * mix,
+                        raw_r * (1.0 - mix) + master_r * mix,
+                    )
+                };
+                frame[cue_l] = out_l.clamp(-1.0, 1.0);
+                frame[cue_r] = out_r.clamp(-1.0, 1.0);
             }
         }
 
-        // Meter the master by walking the interleaved buffer per channel.
+        // Meter the master bus specifically, not channel 0/1 of whatever the
+        // device gave us -- with a booth in the middle those differ.
         let mut left_peak = 0.0f32;
         let mut right_peak = 0.0f32;
         for frame in out.chunks_exact(channels) {
-            left_peak = left_peak.max(frame[0].abs());
-            if channels > 1 {
-                right_peak = right_peak.max(frame[1].abs());
-            }
+            left_peak = left_peak.max(frame[main_l].abs());
+            right_peak = right_peak.max(frame[main_r].abs());
         }
         let left = self.peak_left.process(&[left_peak]);
         let right = self.peak_right.process(&[right_peak]);
@@ -626,6 +702,297 @@ mod tests {
         assert!(
             drained >= 2,
             "stranded sources should eventually be handed back"
+        );
+    }
+}
+
+#[cfg(test)]
+mod cue_routing_tests {
+    use super::*;
+    use dj_decode::{AudioBuffer, TrackSource};
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+
+    fn deck(n: u8) -> DeckId {
+        DeckId::from_human(n).unwrap()
+    }
+
+    fn tone(frames: usize, amplitude: f32) -> Arc<dyn TrackSource> {
+        Arc::new(AudioBuffer::from_interleaved(
+            vec![amplitude; frames * 2],
+            SR,
+        ))
+    }
+
+    struct Rig {
+        engine: Engine,
+        commands: rtrb::Producer<Command>,
+        channels: usize,
+    }
+
+    fn rig(channels: usize) -> Rig {
+        let (command_tx, command_rx) = rtrb::RingBuffer::new(256);
+        let (retired_tx, _retired_rx) = rtrb::RingBuffer::new(64);
+        let registry = Arc::new(ParameterRegistry::new());
+        Rig {
+            engine: Engine::new(2, SR, command_rx, retired_tx, registry),
+            commands: command_tx,
+            channels,
+        }
+    }
+
+    impl Rig {
+        fn act(&mut self, action: Action) {
+            self.commands.push(Command::Action(action)).unwrap();
+        }
+
+        fn load_and_play(&mut self, n: u8, amplitude: f32) {
+            self.commands
+                .push(Command::Load {
+                    deck: deck(n),
+                    source: tone(400_000, amplitude),
+                })
+                .unwrap();
+            self.act(Action::Deck {
+                deck: deck(n),
+                action: DeckAction::Play,
+            });
+        }
+
+        /// Render, discarding blocks first so every ramp has settled.
+        fn settle_then_render(&mut self, frames: usize) -> Vec<f32> {
+            for _ in 0..40 {
+                let mut warm = vec![0.0; 2_048 * self.channels];
+                self.engine.render(&mut warm, &self.ctx(2_048));
+            }
+            let mut out = vec![0.0; frames * self.channels];
+            self.engine.render(&mut out, &self.ctx(frames));
+            out
+        }
+
+        fn ctx(&self, frames: usize) -> RenderContext {
+            RenderContext {
+                frames,
+                channels: self.channels,
+                sample_rate: SR,
+            }
+        }
+
+        /// Peak on a given channel pair.
+        fn peak(&self, out: &[f32], pair: (usize, usize)) -> f32 {
+            out.chunks_exact(self.channels).fold(0.0f32, |acc, frame| {
+                acc.max(frame[pair.0].abs()).max(frame[pair.1].abs())
+            })
+        }
+    }
+
+    fn layout(channels: usize) -> BusLayout {
+        BusLayout::for_channels(channels)
+    }
+
+    /// Cue at 0.0 is the whole point: the DJ hears only what is being previewed.
+    #[test]
+    fn cue_mix_at_zero_is_pure_cue() {
+        let mut rig = rig(4);
+        rig.load_and_play(1, 0.5);
+        // Deck 1 cued, but crossfaded away so it contributes nothing to master.
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetCue(true),
+        });
+        rig.act(Action::Mixer(MixerAction::Crossfader(1.0)));
+        rig.act(Action::Mixer(MixerAction::CueMix(0.0)));
+
+        let out = rig.settle_then_render(4_096);
+        let l = layout(4);
+        assert!(
+            rig.peak(&out, l.main) < 0.02,
+            "master should be silent, got {}",
+            rig.peak(&out, l.main)
+        );
+        assert!(
+            rig.peak(&out, l.cue.unwrap()) > 0.4,
+            "headphones should carry the cued deck, got {}",
+            rig.peak(&out, l.cue.unwrap())
+        );
+    }
+
+    /// At 1.0 the headphones follow the master, which is how a DJ checks what
+    /// the room is actually hearing.
+    #[test]
+    fn cue_mix_at_one_follows_the_master() {
+        let mut rig = rig(4);
+        rig.load_and_play(1, 0.5);
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetCue(true),
+        });
+        rig.act(Action::Mixer(MixerAction::Crossfader(1.0)));
+        rig.act(Action::Mixer(MixerAction::CueMix(1.0)));
+
+        let out = rig.settle_then_render(4_096);
+        let l = layout(4);
+        // Master is silent (crossfaded away), so full-master blend is silent too.
+        assert!(
+            rig.peak(&out, l.cue.unwrap()) < 0.02,
+            "full master blend should mirror a silent master, got {}",
+            rig.peak(&out, l.cue.unwrap())
+        );
+    }
+
+    #[test]
+    fn cue_mix_is_monotonic_between_the_extremes() {
+        let mut levels = Vec::new();
+        for mix in [0.0f32, 0.25, 0.5, 0.75, 1.0] {
+            let mut rig = rig(4);
+            rig.load_and_play(1, 0.5);
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::SetCue(true),
+            });
+            rig.act(Action::Mixer(MixerAction::Crossfader(1.0)));
+            rig.act(Action::Mixer(MixerAction::CueMix(mix)));
+            let out = rig.settle_then_render(4_096);
+            levels.push(rig.peak(&out, layout(4).cue.unwrap()));
+        }
+        for pair in levels.windows(2) {
+            assert!(
+                pair[1] <= pair[0] + 0.01,
+                "cue level should fall as the blend moves toward master: {levels:?}"
+            );
+        }
+    }
+
+    /// Split cue: cue in one ear, master in the other, so the two sources are
+    /// heard separately rather than superimposed.
+    #[test]
+    fn split_cue_separates_the_ears() {
+        let mut rig = rig(4);
+        // Deck 1 cued and crossfaded away; deck 2 on the master.
+        rig.load_and_play(1, 0.5);
+        rig.load_and_play(2, 0.5);
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetCue(true),
+        });
+        rig.act(Action::Mixer(MixerAction::Crossfader(1.0)));
+        rig.act(Action::Mixer(MixerAction::SplitCue(true)));
+
+        let out = rig.settle_then_render(4_096);
+        let (cue_l, cue_r) = layout(4).cue.unwrap();
+
+        let left = out
+            .chunks_exact(4)
+            .fold(0.0f32, |a, f| a.max(f[cue_l].abs()));
+        let right = out
+            .chunks_exact(4)
+            .fold(0.0f32, |a, f| a.max(f[cue_r].abs()));
+
+        assert!(left > 0.4, "left ear should carry the cue, got {left}");
+        assert!(
+            right > 0.4,
+            "right ear should carry the master, got {right}"
+        );
+    }
+
+    #[test]
+    fn booth_follows_the_master_at_its_own_level() {
+        let mut rig = rig(6);
+        rig.load_and_play(1, 0.5);
+        rig.act(Action::Mixer(MixerAction::Crossfader(-1.0)));
+        rig.act(Action::Mixer(MixerAction::BoothGainDb(-12.0)));
+
+        let out = rig.settle_then_render(4_096);
+        let l = layout(6);
+        let master = rig.peak(&out, l.main);
+        let booth = rig.peak(&out, l.booth.unwrap());
+
+        assert!(master > 0.4, "master should be playing, got {master}");
+        // -12 dB is about a quarter amplitude.
+        assert!(
+            (booth - master * 0.25).abs() < 0.05,
+            "booth should be 12 dB below master: master {master}, booth {booth}"
+        );
+    }
+
+    /// The failure that would embarrass you in front of a room: the cue bus
+    /// leaking into the master, so the audience hears the track being previewed.
+    #[test]
+    fn the_cue_bus_never_reaches_the_master() {
+        let mut rig = rig(4);
+        rig.load_and_play(1, 0.9);
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetCue(true),
+        });
+        // Fader fully down and crossfaded away: nothing may reach the room.
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetVolume(0.0),
+        });
+        rig.act(Action::Mixer(MixerAction::Crossfader(1.0)));
+
+        let out = rig.settle_then_render(4_096);
+        let l = layout(4);
+        assert!(
+            rig.peak(&out, l.main) < 0.01,
+            "cue leaked into the master: {}",
+            rig.peak(&out, l.main)
+        );
+        assert!(
+            rig.peak(&out, l.cue.unwrap()) > 0.5,
+            "the cue itself should be loud, got {}",
+            rig.peak(&out, l.cue.unwrap())
+        );
+    }
+
+    /// A stereo device cannot carry a cue, and the UI needs to know so it can
+    /// explain why the cue controls are dead rather than just disabling them.
+    #[test]
+    fn cue_availability_is_published() {
+        let (command_tx, command_rx) = rtrb::RingBuffer::new(16);
+        let (retired_tx, _retired_rx) = rtrb::RingBuffer::new(16);
+        let registry = Arc::new(ParameterRegistry::new());
+        let mut engine = Engine::new(2, SR, command_rx, retired_tx, Arc::clone(&registry));
+        drop(command_tx);
+
+        let mut out = vec![0.0; 256 * 2];
+        engine.render(
+            &mut out,
+            &RenderContext {
+                frames: 256,
+                channels: 2,
+                sample_rate: SR,
+            },
+        );
+        assert!(!registry.get_bool(ParamId::Global(GlobalParam::CueAvailable)));
+
+        let mut out = vec![0.0; 256 * 4];
+        engine.render(
+            &mut out,
+            &RenderContext {
+                frames: 256,
+                channels: 4,
+                sample_rate: SR,
+            },
+        );
+        assert!(registry.get_bool(ParamId::Global(GlobalParam::CueAvailable)));
+    }
+
+    #[test]
+    fn a_stereo_device_still_plays_with_decks_cued() {
+        let mut rig = rig(2);
+        rig.load_and_play(1, 0.5);
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetCue(true),
+        });
+        rig.act(Action::Mixer(MixerAction::Crossfader(-1.0)));
+
+        let out = rig.settle_then_render(4_096);
+        assert!(
+            rig.peak(&out, layout(2).main) > 0.4,
+            "master must still work when cue is unavailable"
         );
     }
 }

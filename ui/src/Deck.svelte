@@ -2,7 +2,11 @@
   import { dispatch, formatTime, loadTrack, type DeckState } from "./api";
   import { open } from "@tauri-apps/plugin-dialog";
 
-  let { deck, enabled }: { deck: DeckState; enabled: boolean } = $props();
+  let {
+    deck,
+    enabled,
+    cueAvailable = false,
+  }: { deck: DeckState; enabled: boolean; cueAvailable?: boolean } = $props();
 
   let title = $state<string>("");
   let artist = $state<string>("");
@@ -91,6 +95,26 @@
       Eject
     </button>
   </div>
+
+  <!--
+    Pre-fader listen. Deliberately explains itself when unavailable rather than
+    just sitting greyed out: a 2-channel laptop output has nowhere to send a
+    cue, and "why is this dead" is a bad thing to wonder mid-set.
+  -->
+  <button
+    class="cue"
+    class:on={deck.cue_enabled}
+    disabled={!enabled || !cueAvailable}
+    onclick={() => send(`deck ${deck.number} cue_toggle`)}
+    title={cueAvailable
+      ? "Pre-fader listen — hear this deck in the headphones"
+      : "Needs a 4-channel output device"}
+  >
+    <span>CUE</span>
+    <span class="pfl-meter" aria-hidden="true">
+      <span class="pfl-fill" style:width="{Math.min(deck.pre_fader_level, 1) * 100}%"></span>
+    </span>
+  </button>
 
   <!--
     Isolator EQ: each knob runs from a true kill at 0 to +12 dB. Double-click
@@ -305,6 +329,35 @@
   .kill.on {
     background: var(--danger);
     border-color: var(--danger);
+  }
+
+  .cue {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75em;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+
+  .cue.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0e0f14;
+  }
+
+  .pfl-meter {
+    flex: 1;
+    height: 4px;
+    background: #0e0f1466;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .pfl-fill {
+    display: block;
+    height: 100%;
+    background: var(--accent-2);
   }
 
   .meter {

@@ -79,6 +79,9 @@
   }
 
   const load = $derived(snapshot?.master.cpu_load ?? 0);
+  // Read outside the template so event handlers, which run later, do not have
+  // to prove `snapshot` is still non-null.
+  const cueSplit = $derived(snapshot?.master.cue_split ?? false);
 </script>
 
 <main>
@@ -127,7 +130,7 @@
   {#if snapshot}
     <div class="decks">
       {#each snapshot.decks.slice(0, 2) as deck (deck.number)}
-        <Deck {deck} enabled={ready} />
+        <Deck {deck} enabled={ready} cueAvailable={snapshot.master.cue_available} />
       {/each}
     </div>
 
@@ -158,6 +161,41 @@
           oninput={(e) => send(`master gain ${e.currentTarget.value}`)}
         />
       </label>
+
+      <div class="cue-section" class:unavailable={!snapshot.master.cue_available}>
+        {#if snapshot.master.cue_available}
+          <label class="control">
+            <span>Headphones <em class="mono">{snapshot.master.cue_split ? "split" : "blend"}</em></span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={snapshot.master.cue_mix}
+              disabled={!ready || snapshot.master.cue_split}
+              oninput={(e) => send(`cue mix ${e.currentTarget.value}`)}
+            />
+            <div class="ends"><span>cue</span><span>master</span></div>
+          </label>
+          <button
+            class:active={snapshot.master.cue_split}
+            disabled={!ready}
+            onclick={() => send(`cue ${cueSplit ? "split_off" : "split_on"}`)}
+            title="Cue in one ear, master in the other"
+          >
+            Split
+          </button>
+        {:else}
+          <p class="no-cue">
+            {#if ready}
+              No headphone cue — this device has only two output channels.
+              Cueing needs a four-channel interface.
+            {:else}
+              Connect a device to see whether it can carry a headphone cue.
+            {/if}
+          </p>
+        {/if}
+      </div>
 
       <div class="master-meters">
         <div class="meter">
@@ -255,7 +293,7 @@
 
   .mixer {
     display: grid;
-    grid-template-columns: 2fr 1fr auto;
+    grid-template-columns: 2fr 1fr 1.2fr auto;
     gap: 1.2rem;
     align-items: center;
     background: var(--panel);
@@ -281,6 +319,23 @@
     display: flex;
     justify-content: space-between;
     font-size: 0.8em;
+  }
+
+  .cue-section {
+    display: flex;
+    align-items: end;
+    gap: 0.5rem;
+  }
+
+  .cue-section.unavailable {
+    align-items: center;
+  }
+
+  .no-cue {
+    margin: 0;
+    font-size: 0.75em;
+    line-height: 1.4;
+    color: var(--text-dim);
   }
 
   .master-meters {
