@@ -33,11 +33,19 @@ pub enum DeckParam {
     LengthFrames,
     /// Post-fader peak level, 0.0..=1.0, for the VU meter.
     PeakLevel,
+    /// Isolator EQ low band, linear gain.
+    EqLow,
+    /// Isolator EQ mid band, linear gain.
+    EqMid,
+    /// Isolator EQ high band, linear gain.
+    EqHigh,
+    /// Filter sweep position, -1.0..=1.0.
+    Filter,
 }
 
 impl DeckParam {
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 9;
+    pub const COUNT: usize = 13;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -57,6 +65,10 @@ impl DeckParam {
             Loaded,
             LengthFrames,
             PeakLevel,
+            EqLow,
+            EqMid,
+            EqHigh,
+            Filter,
         ]
     }
 }
@@ -158,6 +170,10 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::Loaded => "loaded",
         DeckParam::LengthFrames => "length_frames",
         DeckParam::PeakLevel => "peak_level",
+        DeckParam::EqLow => "eq_low",
+        DeckParam::EqMid => "eq_mid",
+        DeckParam::EqHigh => "eq_high",
+        DeckParam::Filter => "filter",
     }
 }
 
