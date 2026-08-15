@@ -19,11 +19,17 @@ use std::time::Duration;
 /// UI refresh rate. Matches a 60 Hz display; the engine runs far faster.
 pub const SNAPSHOT_HZ: u64 = 60;
 
-/// Ticks of no change after which a snapshot is emitted regardless.
+/// How long the pump may stay silent before emitting anyway.
 ///
-/// One second. Purely so a late subscriber is not left staring at an empty
-/// interface until something happens to change.
-const HEARTBEAT_TICKS: u32 = SNAPSHOT_HZ as u32;
+/// Purely so a late subscriber is not left staring at an empty interface until
+/// something happens to change.
+///
+/// Measured against the clock rather than counted in ticks: `thread::sleep`
+/// guarantees only a *minimum*, and it overshoots by several milliseconds per
+/// call on macOS. Counting 60 ticks of a nominal 16.7 ms sleep gives an interval
+/// anywhere from 1.0 s to well past 1.3 s depending on the platform's timer
+/// granularity and load.
+pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DeckSnapshot {
@@ -124,6 +130,19 @@ impl SnapshotPump {
     pub fn start(
         registry: Arc<ParameterRegistry>,
         deck_count: usize,
+        emit: impl FnMut(Snapshot) + Send + 'static,
+    ) -> Self {
+        Self::with_heartbeat(registry, deck_count, HEARTBEAT_INTERVAL, emit)
+    }
+
+    /// Start sampling with an explicit heartbeat interval.
+    ///
+    /// Exists so tests can exercise the heartbeat in milliseconds rather than
+    /// sleeping for the production interval.
+    pub fn with_heartbeat(
+        registry: Arc<ParameterRegistry>,
+        deck_count: usize,
+        heartbeat: Duration,
         mut emit: impl FnMut(Snapshot) + Send + 'static,
     ) -> Self {
         let alive = Arc::new(AtomicBool::new(true));
@@ -134,22 +153,20 @@ impl SnapshotPump {
                 .spawn(move || {
                     let period = Duration::from_micros(1_000_000 / SNAPSHOT_HZ);
                     let mut previous: Option<Snapshot> = None;
-                    let mut quiet_ticks = 0u32;
+                    let mut last_emit = std::time::Instant::now();
                     while alive.load(Ordering::Relaxed) {
                         let snapshot = Snapshot::capture(&registry, deck_count);
                         let changed = previous.as_ref() != Some(&snapshot);
 
                         // Skip identical frames -- an idle application should not
                         // wake the webview 60 times a second for no reason. But
-                        // emit anyway once a second, because a listener that
+                        // emit anyway on the heartbeat, because a listener that
                         // subscribes during a quiet period would otherwise never
                         // receive anything and sit on a blank interface forever.
-                        if changed || quiet_ticks >= HEARTBEAT_TICKS {
+                        if changed || last_emit.elapsed() >= heartbeat {
                             emit(snapshot.clone());
                             previous = Some(snapshot);
-                            quiet_ticks = 0;
-                        } else {
-                            quiet_ticks += 1;
+                            last_emit = std::time::Instant::now();
                         }
                         std::thread::sleep(period);
                     }
@@ -240,20 +257,27 @@ mod tests {
         let registry = Arc::new(ParameterRegistry::new());
         let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
+        // Heartbeat pushed far out so this measures deduplication alone, with
+        // no dependence on timing.
         let pump = {
             let count = Arc::clone(&count);
-            SnapshotPump::start(Arc::clone(&registry), 2, move |_| {
-                count.fetch_add(1, Ordering::Relaxed);
-            })
+            SnapshotPump::with_heartbeat(
+                Arc::clone(&registry),
+                2,
+                Duration::from_secs(60),
+                move |_| {
+                    count.fetch_add(1, Ordering::Relaxed);
+                },
+            )
         };
 
         std::thread::sleep(Duration::from_millis(200));
         drop(pump);
 
         let emitted = count.load(Ordering::Relaxed);
-        assert!(
-            emitted <= 2,
-            "idle pump emitted {emitted} snapshots; should be ~1"
+        assert_eq!(
+            emitted, 1,
+            "idle pump emitted {emitted} snapshots; should be exactly the initial one"
         );
     }
 
@@ -265,15 +289,22 @@ mod tests {
         let registry = Arc::new(ParameterRegistry::new());
         let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
+        // A short heartbeat keeps the test fast; the mechanism is identical.
         let pump = {
             let count = Arc::clone(&count);
-            SnapshotPump::start(Arc::clone(&registry), 2, move |_| {
-                count.fetch_add(1, Ordering::Relaxed);
-            })
+            SnapshotPump::with_heartbeat(
+                Arc::clone(&registry),
+                2,
+                Duration::from_millis(100),
+                move |_| {
+                    count.fetch_add(1, Ordering::Relaxed);
+                },
+            )
         };
 
-        // Longer than the heartbeat period, with nothing changing at all.
-        std::thread::sleep(Duration::from_millis(1_300));
+        // Several heartbeat intervals, with nothing changing at all. Generous
+        // margin because sleep only guarantees a minimum.
+        std::thread::sleep(Duration::from_millis(600));
         drop(pump);
 
         assert!(
