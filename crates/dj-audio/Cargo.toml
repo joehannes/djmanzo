@@ -1,0 +1,18 @@
+[package]
+name = "dj-audio"
+description = "Audio device abstraction. cpal for real hardware, a null backend for CI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+dj-core = { workspace = true }
+cpal = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

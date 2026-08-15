@@ -1,0 +1,20 @@
+[package]
+name = "dj-engine"
+description = "The realtime mixing engine. The only crate bound by audio-thread rules."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+dj-core = { workspace = true }
+dj-dsp = { workspace = true }
+dj-decode = { workspace = true }
+dj-audio = { workspace = true }
+dj-control = { workspace = true }
+rtrb = { workspace = true }
+
+[lints]
+workspace = true

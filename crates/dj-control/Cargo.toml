@@ -1,0 +1,18 @@
+[package]
+name = "dj-control"
+description = "Action bus, parameter registry and session log -- the nervous system."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+dj-core = { workspace = true }
+rtrb = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

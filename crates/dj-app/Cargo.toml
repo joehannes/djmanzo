@@ -1,0 +1,40 @@
+[package]
+name = "dj-app"
+description = "The djmanzo desktop application: Tauri host wiring engine, devices and UI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "dj_app"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "djmanzo"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+dj-core = { workspace = true }
+dj-audio = { workspace = true }
+dj-decode = { workspace = true }
+dj-engine = { workspace = true }
+dj-control = { workspace = true }
+dj-dsp = { workspace = true }
+
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+rtrb = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true
