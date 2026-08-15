@@ -19,9 +19,11 @@
 //! makes a session replayable. See
 //! `docs/adr/0003-action-bus-and-parameter-registry.md`.
 
+pub mod brand;
 pub mod commands;
 pub mod host;
 pub mod snapshot;
+pub mod sources;
 pub mod state;
 pub mod waveform;
 
@@ -101,6 +103,31 @@ pub fn run() {
                     .unwrap_or_default(),
             }
         })
+        // The user's own logo, served the same way tiles are -- as an image the
+        // webview loads, not bytes pushed through IPC.
+        .register_uri_scheme_protocol(brand::SCHEME, move |ctx, _request| {
+            let logo = ctx
+                .app_handle()
+                .path()
+                .app_config_dir()
+                .ok()
+                .and_then(|dir| brand::read_logo(&dir));
+            match logo {
+                Some((bytes, mime)) => http::Response::builder()
+                    .status(200)
+                    .header("Content-Type", mime)
+                    // Unlike tiles, a logo is replaced in place at the same URL.
+                    // Caching it would mean the old one staying on screen until
+                    // a restart, which reads as the change having failed.
+                    .header("Cache-Control", "no-store")
+                    .body(bytes)
+                    .unwrap_or_default(),
+                None => http::Response::builder()
+                    .status(404)
+                    .body(Vec::new())
+                    .unwrap_or_default(),
+            }
+        })
         .manage(state)
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -136,6 +163,18 @@ pub fn run() {
             commands::waveform_info,
             commands::report_bench,
             commands::session_log,
+            sources::list_sources,
+            sources::set_secret,
+            sources::clear_secret,
+            sources::secrets_persist,
+            sources::add_music_folder,
+            sources::remove_music_folder,
+            sources::music_library,
+            sources::search_sources,
+            sources::resolve_source_track,
+            brand::set_brand_logo,
+            brand::clear_brand_logo,
+            brand::has_brand_logo,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start djmanzo");

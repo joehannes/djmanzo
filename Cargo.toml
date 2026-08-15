@@ -9,6 +9,7 @@ members = [
     "crates/dj-control",
     "crates/dj-render",
     "crates/dj-secrets",
+    "crates/dj-sources",
     "crates/dj-app",
 ]
 
@@ -29,6 +30,7 @@ dj-engine = { path = "crates/dj-engine" }
 dj-control = { path = "crates/dj-control" }
 dj-render = { path = "crates/dj-render" }
 dj-secrets = { path = "crates/dj-secrets" }
+dj-sources = { path = "crates/dj-sources" }
 
 cpal = "0.15"
 symphonia = { version = "0.5", features = ["all-codecs", "all-formats"] }
@@ -43,6 +45,17 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Music sources. `rustls-tls` rather than the system OpenSSL: one fewer thing
+# that differs between a developer's Mac and a Xubuntu laptop at a gig.
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+async-trait = "0.1"
+urlencoding = "2"
+base64 = "0.22"
+tokio = { version = "1", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "warn"

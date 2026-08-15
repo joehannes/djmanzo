@@ -4,6 +4,8 @@ use crate::host::AudioHost;
 use crate::waveform::WaveformStore;
 use dj_control::{ActionBus, ParameterRegistry};
 use dj_engine::Command;
+use dj_secrets::SecretStore;
+use dj_sources::SourceRegistry;
 use std::sync::Arc;
 
 /// Decks the engine runs. Kept in step with `host::DECK_COUNT`.
@@ -21,6 +23,14 @@ pub struct AppState {
     registry: Arc<ParameterRegistry>,
     host: AudioHost,
     waveforms: Arc<WaveformStore>,
+    /// API keys, in the OS keychain. Values go in and never come back out --
+    /// see `dj_secrets`.
+    secrets: Arc<dyn SecretStore>,
+    /// False when no keychain was available and secrets are in memory only.
+    /// Surfaced rather than hidden: a user whose keys silently vanish on
+    /// restart deserves to have been told at the point of typing them.
+    secrets_persist: bool,
+    sources: Arc<SourceRegistry>,
 }
 
 impl AppState {
@@ -36,12 +46,37 @@ impl AppState {
         seed_defaults(&registry);
         let host = AudioHost::start(Arc::clone(&bus), Arc::clone(&registry), use_null_backend);
 
+        let (store, secrets_persist) = dj_secrets::open_store();
+        let secrets: Arc<dyn SecretStore> = Arc::from(store);
+        if !secrets_persist {
+            tracing::warn!("no keychain available; API keys will not survive a restart");
+        }
+        let sources = Arc::new(SourceRegistry::new(Arc::clone(&secrets)));
+
         Self {
             bus,
             registry,
             host,
             waveforms: Arc::new(WaveformStore::new()),
+            secrets,
+            secrets_persist,
+            sources,
         }
+    }
+
+    #[must_use]
+    pub fn secrets(&self) -> &Arc<dyn SecretStore> {
+        &self.secrets
+    }
+
+    #[must_use]
+    pub fn secrets_persist(&self) -> bool {
+        self.secrets_persist
+    }
+
+    #[must_use]
+    pub fn sources(&self) -> &Arc<SourceRegistry> {
+        &self.sources
     }
 
     #[must_use]
