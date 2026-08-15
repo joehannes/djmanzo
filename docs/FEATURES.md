@@ -30,6 +30,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Slip mode | M5 |
 | Reverse / censor | M5 |
 | Elapsed / remaining time, end-of-track warning | M1 |
+| **Key shift** — transpose in semitones for harmonic mixing, independent of tempo | M2 |
+| **Sandbox** — audition a mix in headphones while the master keeps playing | M5 |
 
 ### Mixer
 
@@ -44,6 +46,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Booth output with independent level | M1 |
 | Master limiter | M1 |
 | Microphone / aux input with ducking | M5 |
+| Microphone effects (reverb, echo, pitch) | M5 |
 | Crossfader assign per channel (A / B / thru) | M1 |
 
 ### Waveforms and displays
@@ -113,7 +116,9 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Play history and session export | M3 |
 | Harmonic (Camelot) key display and compatible-key filtering | M3 |
 | Automix with configurable transition style | M5 |
-| Streaming catalogue integration | *not planned — see below* |
+| Search across online sources (Spotify, YouTube, Jamendo, Internet Archive) | **shipped** |
+| Match an online result to a file you already own | **shipped** |
+| Licensed streaming catalogue (Beatsource/Beatport/TIDAL/SoundCloud) | slots shipped; **needs a partnership** — see [SOURCES.md](SOURCES.md) |
 
 ### Hardware
 
@@ -155,10 +160,13 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 
 ### Deliberately not planned
 
-- **Streaming catalogue integration** (Beatport/Beatsource/Tidal/SoundCloud). These require
-  commercial licensing agreements and DRM handling per provider. Out of scope until there is a
-  reason to pursue the agreements; the library architecture does not preclude it later.
 - **DRM'd content** of any kind.
+- **Mixing Spotify or YouTube Music audio.** Not a scope decision — Spotify's policy forbids
+  mixing their catalogue, and YouTube Music exposes no API that permits it at any tier. Both are
+  integrated for search and planning instead. [SOURCES.md](SOURCES.md) has the detail.
+- **Cloud library sync between machines.** VirtualDJ has it; it needs hosted infrastructure and
+  an account system, which is a different kind of project. The session record is local and
+  portable, so nothing precludes it later.
 
 ---
 

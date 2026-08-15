@@ -168,6 +168,157 @@ external system can drive it over the network without a private API.
 
 ---
 
+## M9 — Context, memory and the audience
+
+The milestone about everything around the mix: knowing about what is playing,
+remembering what worked, and closing the loop with the room.
+
+Grouped together because they share one substrate — a **session record**. A
+session is already a timestamped action log (see
+[ADR-0003](adr/0003-action-bus-and-parameter-registry.md)); M9 hangs context on
+it. Notes, photos, reactions and outcomes all attach to the same timeline, which
+is what makes the reflective statistics possible at all.
+
+### Knowing about what is playing
+
+- **Live info feed.** While a track plays, pull what is known about it —
+  release, label, personnel, the story — so a request from a party-goer can be
+  answered rather than nodded at. Sources: **MusicBrainz** (CC0 data, open API),
+  **Discogs** (credits and pressings), **Wikidata/Wikipedia**, **Cover Art
+  Archive**. All open, all citable. Commercial editorial feeds mostly are not
+  licensable for this, and are not planned.
+- **Genre detection**, from tags where present and from audio where not, feeding
+  the same panel and the suggester below.
+- **Dictionary and acronym lookup** for the selected or playing track: what
+  *dembow*, *perico ripiao*, *guira*, *mambo* mean in this repertoire, and the
+  label and remix shorthand that turns up in filenames.
+
+### Reading the room
+
+- **Session phases with preset packs** — warm up, fiesta, peak, slow-down, chill
+  out, close. A phase is a named set of constraints (tempo band, energy, genre
+  weighting, transition style) rather than a playlist, so it steers rather than
+  dictates.
+- **Similar-music proposer**, configurable, considering the event, the previous
+  and next tracks, the session so far, and the current phase. Suggestions state
+  their reasoning, per [ADR-0005](adr/0005-assistant-speaks-only-actions.md).
+
+### Remembering
+
+- **Note-taking sidekick** — notes attached to a moment in the session, not to a
+  file. "This transition landed", "the floor emptied here", "the birthday girl
+  wanted this".
+- **Webcam capture** — periodic stills or clips attached to the same timeline,
+  so a set can be reviewed against what the room was actually doing.
+- **Reflective statistics.** The data stays local and stays the DJ's. What it
+  can answer: which transitions you reach for and which actually work, how your
+  energy curve compares across nights, which tracks you always play and which
+  you always skip, how long your phases really last versus how long you plan
+  them, which requests you got and which you played.
+- **An assistant that learns you** — built on the same record, so its
+  suggestions come from your sets rather than from a generic model of DJing.
+
+### Closing the loop with the room
+
+- **Social posting** to Instagram and Facebook, on command or automatically, and
+  **auto-stitched short video** for TikTok.
+- **Live audience reactions** — requests and reactions from people actually in
+  the room, surfaced as bubbles that open a sidebar, so a request can be
+  answered on the mic and played.
+
+> **Feasibility, stated up front.** Instagram and Facebook posting requires a
+> Business or Creator account plus Meta app review before it works for anyone
+> but the developer. TikTok's Content Posting API requires an audit before posts
+> can be public rather than private-only. And **reading live comment streams is
+> restricted or forbidden on most platforms** — which is why the primary channel
+> for requests is planned as a djmanzo-hosted page behind a QR code on the
+> booth, with social as a secondary feed. That inverts the dependency: the
+> interactive feature works on its own, and social makes it wider.
+
+**Done when:** a DJ can finish a set, look at what happened, and learn something
+they did not already know — and a party-goer can ask for a song and hear it.
+
+---
+
+## Presets, everywhere
+
+Not a milestone — a **capability that lands early and is then used by every
+milestone after it**, because the alternative is six subsystems each inventing
+their own idea of a saved configuration.
+
+A preset is a named, layered set of actions and parameter values. Since every
+intent in djmanzo is already an `Action` on one bus
+([ADR-0003](adr/0003-action-bus-and-parameter-registry.md)), a preset is just an
+ordered list of them plus the parameters they should settle at — which means it
+is data, it is diffable, it is shareable as a file, and applying one is
+indistinguishable from a very fast pair of hands.
+
+**Layering** is what makes it useful rather than rigid: a pack sets a baseline,
+a preset within it overrides part of that, and anything the DJ touches
+afterwards wins. Nothing a preset does is unrecoverable, and nothing it sets is
+hidden.
+
+What gets packs:
+
+| Area | Examples |
+|---|---|
+| **Session phases** | warm up · fiesta · peak · slow-down · chill out · close (see M9) |
+| **Mix defaults** | transition length, EQ swap style, crossfader curve, gain target |
+| **FX chains** | per-genre chains and beat-synced timings, per pad page |
+| **Controller mappings** | per device, as data files (M4) |
+| **Layouts and skins** | Starter · Essentials · Pro · Performance (M3) |
+| **Audio setup** | per interface, per venue: device, buffer, bus layout |
+| **Genre packs** | bachata · merengue · típico · dembow · reggaetón tempo bands, grid hints, transition rules |
+| **Social and presentation** | post templates, overlays, artwork treatments, hashtag sets |
+| **Assistant behaviour** | how forward it is, what it may do unasked, spend caps |
+
+**Three levels of automation**, and the distinction matters:
+
+1. **Configured** — the DJ picks a pack. Deterministic, no network, no model.
+2. **Contextual** — djmanzo proposes a pack from what it can observe: time of
+   night, tempo drift, phase, what is loaded. Still rule-based and explainable.
+3. **Learned** — the assistant proposes from the DJ's own session record (M9).
+   Suggestions state their reasoning, and are proposals rather than actions,
+   per [ADR-0005](adr/0005-assistant-speaks-only-actions.md).
+
+The order is deliberate. Level 1 works with no assistant at all, which means the
+feature is useful before any of the intelligence exists — and it stays useful on
+the night the network is down.
+
+---
+
+## Visuals and motion
+
+Requested as its own thread: richer visual representation of the controls and of
+the audio, WebGL-driven visualisation, and motion throughout the interface.
+
+Sequenced behind one thing, honestly: **[ADR-0004](adr/0004-waveform-rendering-strategy.md)
+was written specifically about the hazard WebGL under WebKitGTK presents** —
+contexts that create successfully and are then backed by a software rasteriser,
+with no reliable way to detect it. The waveform benchmark that would settle it
+is still open (it needs real Xubuntu hardware). Building an interface that
+depends on WebGL before that answer is known risks building it twice.
+
+So the order is:
+
+1. **Motion that costs nothing** — transforms and opacity only, which the
+   compositor handles without a paint. State changes that currently snap get
+   transitions that *communicate* rather than decorate: a fader settling, a cue
+   arming, a deck taking over the master, a track ending.
+2. **Richer control rendering** — spectral waveform colouring, meter ballistics
+   with real integration times, jog and platter rendering, phrase shading. All
+   of it in the Rust tile renderer, which already sidesteps the webview.
+3. **WebGL audio visualisation** — the beat- and audio-reactive layer, and the
+   karaoke visuals from [K2](KARAOKE.md). **Every one of these must degrade to
+   something static rather than breaking the interface**, and the frame-rate
+   monitor already in the shell is what will notice when it needs to.
+
+The rule that survives all three: *the words must render even if every visual
+effect fails* — stated for karaoke in [KARAOKE.md](KARAOKE.md), and it
+generalises. Nothing decorative may be load-bearing.
+
+---
+
 ## The assistant track
 
 The AI layer runs as its own track, because most of it depends on the library
