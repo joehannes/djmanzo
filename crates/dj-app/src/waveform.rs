@@ -1,0 +1,333 @@
+//! Serving waveform tiles to the interface.
+//!
+//! Tiles reach the webview through a custom URI scheme rather than through IPC.
+//! An `<img src="wave://...">` is decoded by the browser off the main thread and
+//! then moved by a CSS transform, which is compositor work -- exactly what
+//! [ADR-0004](../../../docs/adr/0004-waveform-rendering-strategy.md) requires.
+//!
+//! Sending pixels over IPC instead would mean base64 on the way out and
+//! `putImageData` on the way in: per-frame JavaScript drawing on the main
+//! thread, which is the pattern that collapses under WebKitGTK.
+
+use dj_core::DeckId;
+use dj_render::{Palette, TileSpec, WaveformSummary, encode_png, render_tile};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+/// The URI scheme tiles are served on.
+pub const SCHEME: &str = "wave";
+
+/// Summaries for loaded tracks, plus a cache of encoded tiles.
+///
+/// Shared between the load path (which fills it) and the protocol handler
+/// (which reads it). Locking is fine here: neither is the audio thread.
+#[derive(Debug, Default)]
+pub struct WaveformStore {
+    summaries: Mutex<HashMap<u8, Arc<WaveformSummary>>>,
+    /// Encoded PNGs, keyed by the request that produced them. Tiles are
+    /// deterministic, so a hit is always byte-identical to a re-render.
+    cache: Mutex<HashMap<TileKey, Arc<Vec<u8>>>>,
+}
+
+/// Identifies a tile exactly. Integer-keyed so it can be hashed -- floats
+/// cannot, and a tile request is always at integer pixel and zoom steps anyway.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TileKey {
+    pub deck: u8,
+    pub width: u32,
+    pub height: u32,
+    /// Frame of the tile's left edge, rounded. Tiles start on exact boundaries.
+    pub start_frame: i64,
+    /// Frames per pixel, scaled by 1000 so fractional zoom still keys exactly.
+    pub zoom_milli: u64,
+}
+
+/// Bound on the tile cache.
+///
+/// A 512x128 tile encodes to roughly 10-20 kB, so 512 tiles is a few megabytes
+/// -- enough for several decks' worth of visible waveform at a few zoom levels,
+/// and cheap enough not to think about.
+const MAX_CACHED_TILES: usize = 512;
+
+impl WaveformStore {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Store the summary for a deck, replacing whatever was there.
+    pub fn set_summary(&self, deck: DeckId, summary: WaveformSummary) {
+        if let Ok(mut summaries) = self.summaries.lock() {
+            summaries.insert(deck.human_number(), Arc::new(summary));
+        }
+        // Tiles for the previous track on this deck are now wrong.
+        self.invalidate(deck);
+    }
+
+    pub fn clear(&self, deck: DeckId) {
+        if let Ok(mut summaries) = self.summaries.lock() {
+            summaries.remove(&deck.human_number());
+        }
+        self.invalidate(deck);
+    }
+
+    fn invalidate(&self, deck: DeckId) {
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.retain(|key, _| key.deck != deck.human_number());
+        }
+    }
+
+    #[must_use]
+    pub fn summary(&self, deck: u8) -> Option<Arc<WaveformSummary>> {
+        self.summaries.lock().ok()?.get(&deck).cloned()
+    }
+
+    #[must_use]
+    pub fn has_summary(&self, deck: u8) -> bool {
+        self.summaries
+            .lock()
+            .map(|s| s.contains_key(&deck))
+            .unwrap_or(false)
+    }
+
+    /// Total frames in a deck's track, so the UI can size its strip.
+    #[must_use]
+    pub fn total_frames(&self, deck: u8) -> Option<usize> {
+        Some(self.summary(deck)?.total_frames())
+    }
+
+    /// Render and encode a tile, or return a cached copy.
+    pub fn tile_png(&self, key: TileKey, palette: &Palette) -> Option<Arc<Vec<u8>>> {
+        if let Ok(cache) = self.cache.lock()
+            && let Some(hit) = cache.get(&key)
+        {
+            return Some(Arc::clone(hit));
+        }
+
+        let summary = self.summary(key.deck)?;
+        let spec = TileSpec {
+            width: key.width,
+            height: key.height,
+            start_frame: key.start_frame as f64,
+            frames_per_pixel: key.zoom_milli as f64 / 1000.0,
+        };
+        let tile = render_tile(&summary, &spec, palette);
+        let png = Arc::new(encode_png(&tile).ok()?);
+
+        if let Ok(mut cache) = self.cache.lock() {
+            // Crude eviction: clear when full rather than tracking recency. Tiles
+            // regenerate in half a millisecond, so a rebuild after a zoom change
+            // is cheaper than the bookkeeping an LRU would cost.
+            if cache.len() >= MAX_CACHED_TILES {
+                cache.clear();
+            }
+            cache.insert(key, Arc::clone(&png));
+        }
+        Some(png)
+    }
+
+    #[must_use]
+    pub fn cached_tiles(&self) -> usize {
+        self.cache.lock().map(|c| c.len()).unwrap_or(0)
+    }
+}
+
+/// Parse a `wave://` request path into a tile key.
+///
+/// Shape: `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}`
+///
+/// Deliberately strict. A malformed URL returns `None` and the handler answers
+/// 400 rather than guessing, because a silently wrong tile is far harder to
+/// diagnose than a missing one.
+#[must_use]
+pub fn parse_tile_path(path: &str) -> Option<TileKey> {
+    let mut parts = path.trim_start_matches('/').split('/');
+    if parts.next()? != "tile" {
+        return None;
+    }
+
+    let key = TileKey {
+        deck: parts.next()?.parse().ok()?,
+        width: parts.next()?.parse().ok()?,
+        height: parts.next()?.parse().ok()?,
+        start_frame: parts.next()?.parse().ok()?,
+        zoom_milli: parts.next()?.parse().ok()?,
+    };
+
+    // Nothing may follow, and the numbers must be drawable.
+    if parts.next().is_some() || key.width == 0 || key.height == 0 || key.zoom_milli == 0 {
+        return None;
+    }
+    // A tile larger than any plausible screen is either a bug or an attempt to
+    // make the app allocate hundreds of megabytes on demand.
+    if key.width > 4_096 || key.height > 1_024 {
+        return None;
+    }
+    Some(key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dj_core::SampleRate;
+    use std::f32::consts::PI;
+
+    fn samples(frames: usize) -> Vec<f32> {
+        (0..frames)
+            .flat_map(|n| {
+                let v = (2.0 * PI * 440.0 * n as f32 / 48_000.0).sin() * 0.8;
+                [v, v]
+            })
+            .collect()
+    }
+
+    fn store_with_track() -> (WaveformStore, DeckId) {
+        let store = WaveformStore::new();
+        let deck = DeckId::from_human(1).unwrap();
+        store.set_summary(
+            deck,
+            WaveformSummary::analyse(&samples(96_000), SampleRate::DEFAULT),
+        );
+        (store, deck)
+    }
+
+    fn key(deck: u8) -> TileKey {
+        TileKey {
+            deck,
+            width: 256,
+            height: 128,
+            start_frame: 0,
+            zoom_milli: 128_000,
+        }
+    }
+
+    #[test]
+    fn a_tile_is_served_for_a_loaded_deck() {
+        let (store, _) = store_with_track();
+        let png = store.tile_png(key(1), &Palette::default()).unwrap();
+        assert_eq!(&png[..4], &[0x89, b'P', b'N', b'G']);
+    }
+
+    #[test]
+    fn an_unloaded_deck_serves_nothing() {
+        let (store, _) = store_with_track();
+        assert!(store.tile_png(key(2), &Palette::default()).is_none());
+    }
+
+    #[test]
+    fn tiles_are_cached() {
+        let (store, _) = store_with_track();
+        assert_eq!(store.cached_tiles(), 0);
+        let first = store.tile_png(key(1), &Palette::default()).unwrap();
+        assert_eq!(store.cached_tiles(), 1);
+        let second = store.tile_png(key(1), &Palette::default()).unwrap();
+        // Same allocation, not merely equal bytes.
+        assert!(Arc::ptr_eq(&first, &second));
+    }
+
+    /// Loading a new track must drop the old track's tiles, or the waveform
+    /// would show the previous song.
+    #[test]
+    fn loading_a_new_track_invalidates_its_tiles() {
+        let (store, deck) = store_with_track();
+        let _ = store.tile_png(key(1), &Palette::default()).unwrap();
+        assert_eq!(store.cached_tiles(), 1);
+
+        store.set_summary(
+            deck,
+            WaveformSummary::analyse(&samples(48_000), SampleRate::DEFAULT),
+        );
+        assert_eq!(store.cached_tiles(), 0, "stale tiles survived a load");
+    }
+
+    #[test]
+    fn invalidation_is_per_deck() {
+        let store = WaveformStore::new();
+        for n in [1u8, 2] {
+            store.set_summary(
+                DeckId::from_human(n).unwrap(),
+                WaveformSummary::analyse(&samples(48_000), SampleRate::DEFAULT),
+            );
+        }
+        let _ = store.tile_png(key(1), &Palette::default());
+        let _ = store.tile_png(key(2), &Palette::default());
+        assert_eq!(store.cached_tiles(), 2);
+
+        store.clear(DeckId::from_human(1).unwrap());
+        assert_eq!(store.cached_tiles(), 1, "clearing deck 1 touched deck 2");
+        assert!(store.has_summary(2));
+    }
+
+    #[test]
+    fn the_cache_is_bounded() {
+        let (store, _) = store_with_track();
+        let palette = Palette::default();
+        for i in 0..(MAX_CACHED_TILES + 20) {
+            let mut k = key(1);
+            k.start_frame = i as i64 * 100;
+            let _ = store.tile_png(k, &palette);
+        }
+        assert!(
+            store.cached_tiles() <= MAX_CACHED_TILES,
+            "cache grew to {}",
+            store.cached_tiles()
+        );
+    }
+
+    #[test]
+    fn a_well_formed_path_parses() {
+        let key = parse_tile_path("/tile/2/512/128/48000/256000").unwrap();
+        assert_eq!(key.deck, 2);
+        assert_eq!(key.width, 512);
+        assert_eq!(key.height, 128);
+        assert_eq!(key.start_frame, 48_000);
+        assert_eq!(key.zoom_milli, 256_000);
+    }
+
+    #[test]
+    fn negative_start_frames_parse() {
+        // The strip extends before the track start while scrolled to the very
+        // beginning, so those tiles are legitimately requested.
+        assert_eq!(
+            parse_tile_path("/tile/1/512/128/-2048/256000")
+                .unwrap()
+                .start_frame,
+            -2_048
+        );
+    }
+
+    #[test]
+    fn malformed_paths_are_rejected_rather_than_guessed() {
+        for bad in [
+            "",
+            "/",
+            "/nope/1/512/128/0/1000",
+            "/tile/1/512/128/0",            // too few
+            "/tile/1/512/128/0/1000/extra", // too many
+            "/tile/x/512/128/0/1000",       // non-numeric deck
+            "/tile/1/0/128/0/1000",         // zero width
+            "/tile/1/512/0/0/1000",         // zero height
+            "/tile/1/512/128/0/0",          // zero zoom
+        ] {
+            assert!(
+                parse_tile_path(bad).is_none(),
+                "should have rejected {bad:?}"
+            );
+        }
+    }
+
+    /// An unbounded size in a URL is an invitation to allocate gigabytes from a
+    /// single request.
+    #[test]
+    fn absurd_tile_sizes_are_refused() {
+        assert!(parse_tile_path("/tile/1/999999/128/0/1000").is_none());
+        assert!(parse_tile_path("/tile/1/512/999999/0/1000").is_none());
+    }
+
+    #[test]
+    fn total_frames_is_reported_for_sizing_the_strip() {
+        let (store, _) = store_with_track();
+        assert_eq!(store.total_frames(1), Some(96_000));
+        assert_eq!(store.total_frames(2), None);
+    }
+}

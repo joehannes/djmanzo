@@ -10,6 +10,7 @@ authors.workspace = true
 
 [dependencies]
 dj-core = { workspace = true }
+signalsmith-stretch = { workspace = true }
 
 [lints]
 workspace = true

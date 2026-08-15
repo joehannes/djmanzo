@@ -55,6 +55,8 @@ export interface DeckState {
   filter: number;
   cue_enabled: boolean;
   pre_fader_level: number;
+  keylock: boolean;
+  keylock_latency_ms: number;
 }
 
 export interface MasterState {
@@ -94,6 +96,41 @@ export const loadTrack = (deck: number, path: string) =>
 export const dispatch = (action: string) => invoke<void>("dispatch", { action });
 
 export const sessionLog = () => invoke<string[]>("session_log");
+
+export interface WaveformInfo {
+  deck: number;
+  ready: boolean;
+  total_frames: number;
+}
+
+export const waveformInfo = (deck: number) =>
+  invoke<WaveformInfo>("waveform_info", { deck });
+
+/**
+ * URL for one waveform tile.
+ *
+ * Served by the Rust renderer over a custom protocol rather than pushed through
+ * IPC, so the browser decodes it off the main thread and every subsequent frame
+ * is a compositor translation. Zoom is carried as milli-units so fractional
+ * values still key the cache exactly.
+ */
+export function tileUrl(
+  deck: number,
+  width: number,
+  height: number,
+  startFrame: number,
+  framesPerPixel: number,
+): string {
+  const zoomMilli = Math.round(framesPerPixel * 1000);
+  const start = Math.round(startFrame);
+  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}`;
+  // Tauri rewrites custom schemes differently per platform: Linux/WebKitGTK
+  // keeps `scheme://`, while Windows needs the `http://scheme.localhost` form.
+  // macOS accepts the former.
+  return navigator.userAgent.includes("Windows")
+    ? `http://wave.localhost/${path}`
+    : `wave://localhost/${path}`;
+}
 
 /** Read state once, so a freshly-mounted UI can paint without waiting. */
 export const getSnapshot = () => invoke<Snapshot>("get_snapshot");

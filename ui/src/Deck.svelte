@@ -1,5 +1,6 @@
 <script lang="ts">
   import { dispatch, formatTime, loadTrack, type DeckState } from "./api";
+  import Waveform from "./Waveform.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
 
   let {
@@ -65,10 +66,11 @@
   </header>
 
   <!--
-    M0 shows a progress bar, not a waveform. The waveform is M1, and it is
-    rendered in Rust and scrolled by the compositor rather than drawn here —
-    see docs/adr/0004-waveform-rendering-strategy.md.
+    Tiles come from the Rust renderer and are scrolled by a CSS transform;
+    nothing here draws. See docs/adr/0004-waveform-rendering-strategy.md.
   -->
+  <Waveform {deck} height={96} />
+
   <div class="progress" role="progressbar" aria-valuenow={progress * 100}>
     <div class="fill" style:width="{Math.min(progress, 1) * 100}%"></div>
   </div>
@@ -181,18 +183,38 @@
     />
   </label>
 
-  <label class="control">
-    <span>Pitch <em class="mono">{(deck.pitch * 100).toFixed(1)}%</em></span>
-    <input
-      type="range"
-      min="-0.16"
-      max="0.16"
-      step="0.001"
-      value={deck.pitch}
+  <!--
+    Pitch and keylock belong together: keylock only means anything once the
+    fader has moved, and the two are always reached for in the same breath.
+    Double-click the fader to snap back to zero — hitting exactly 0.0% with a
+    mouse is not something anyone can do mid-mix.
+  -->
+  <div class="pitch-row">
+    <label class="control">
+      <span>Pitch <em class="mono">{(deck.pitch * 100).toFixed(1)}%</em></span>
+      <input
+        type="range"
+        min="-0.16"
+        max="0.16"
+        step="0.001"
+        value={deck.pitch}
+        disabled={!enabled}
+        oninput={(e) => send(`deck ${deck.number} pitch ${e.currentTarget.value}`)}
+        ondblclick={() => send(`deck ${deck.number} pitch 0`)}
+      />
+    </label>
+    <button
+      class="keylock"
+      class:on={deck.keylock}
       disabled={!enabled}
-      oninput={(e) => send(`deck ${deck.number} pitch ${e.currentTarget.value}`)}
-    />
-  </label>
+      onclick={() => send(`deck ${deck.number} keylock_toggle`)}
+      title={deck.keylock
+        ? `Keylock on — tempo changes without changing key (adds ${deck.keylock_latency_ms.toFixed(0)} ms, compensated)`
+        : "Keylock off — the pitch fader moves tempo and key together"}
+    >
+      KEY
+    </button>
+  </div>
 
   <div class="meter" aria-label="deck level">
     <div class="meter-fill" style:width="{Math.min(deck.peak, 1) * 100}%"></div>
@@ -329,6 +351,26 @@
   .kill.on {
     background: var(--danger);
     border-color: var(--danger);
+  }
+
+  .pitch-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 0.5rem;
+  }
+
+  .keylock {
+    font-size: 0.7em;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    padding: 0.3rem 0.5rem;
+  }
+
+  .keylock.on {
+    background: var(--accent-2);
+    border-color: var(--accent-2);
+    color: #0e0f14;
   }
 
   .cue {

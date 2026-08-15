@@ -36,7 +36,9 @@ The first genuinely usable build.
 - Mixer: channel faders, crossfader with curve, 3-band EQ + kills, filter, gain, VU, limiter.
 - Routing: main, booth, headphone PFL with cue/master blend and split-cue.
 - Audio setup: 4-channel single device **and** dual-device with clock-drift correction.
-- `dj-render`: scrolling waveform tiles in `wgpu`, CSS-transform scrolling in the UI.
+- `dj-render`: scrolling waveform tiles rasterised on the CPU and served as PNG over a
+  custom URI scheme, CSS-transform scrolling in the UI. (`wgpu` was the original plan;
+  measurement said the CPU is fast enough and a GPU context is not free — see ADR-0004.)
 - Light and dark themes.
 
 **Done when:** you can beat-match two tracks by ear and mix them, cueing in headphones, on both
@@ -199,6 +201,32 @@ cache.
 **A1 and A2 are buildable now.** A3 is deliberately gated behind M2 and M3: a
 planner needs beatgrids, keys, energy and play history to reason about, and
 building it earlier would produce a planner with nothing to reason about.
+
+---
+
+---
+
+## P — The polish pass
+
+Runs **after the feature milestones**, as a deliberate second pass over
+everything already built rather than as work interleaved into each milestone.
+Requested explicitly, and worth its own phase: shipping features and making them
+feel like one coherent instrument are different jobs, and doing the second one
+concurrently tends to mean doing it badly.
+
+Strictly in this order, because polishing something unusable just makes it
+prettily unusable.
+
+| # | Pass | What it covers |
+|---|---|---|
+| **P1** | Does it work? | Every feature exercised end to end on real hardware. Bugs fixed, edge cases safeguarded, failure modes made survivable rather than silent. Every "needs the user to verify" item from earlier milestones actually verified. |
+| **P2** | Is it usable? | Every feature reachable and worth reaching. Missing affordances added, dead ends removed, defaults reconsidered against real use. |
+| **P3** | Does it flow? | The whole daily workflow as one motion: load → cue → beatmatch → mix → next, with each step handing off cleanly to the one after it. Keyboard and controller paths as complete as the mouse path. The interface should stop being a set of panels and start being an instrument. |
+| **P4** | Is it beautiful? | Only once P1–P3 land. Colour, form, spacing, hierarchy, motion, feedback. Animation that communicates state rather than decorating it. Consistency between light and dark, and legibility in a dark booth at arm's length. |
+
+**P4 is last on purpose.** Visual polish applied before the workflow is settled
+gets thrown away when the workflow changes, and it disguises usability problems
+by making them look intentional.
 
 ---
 

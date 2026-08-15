@@ -1,0 +1,184 @@
+<script lang="ts">
+  /**
+   * A scrolling waveform lane.
+   *
+   * The rule this component exists to honour (ADR-0004): **the webview never
+   * draws the waveform.** Tiles arrive as PNGs from the Rust renderer via the
+   * `wave://` protocol, sit in `<img>` elements laid end to end, and the whole
+   * strip is moved by a single CSS transform. That is compositor work — no
+   * canvas, no WebGL, no per-frame JavaScript drawing.
+   *
+   * Position is interpolated between engine snapshots. Snapshots arrive at
+   * 60 Hz, but a frame that lands between two of them must still move, or the
+   * waveform visibly stutters against audio that is perfectly smooth.
+   */
+  import { onMount } from "svelte";
+  import { tileUrl, waveformInfo, type DeckState } from "./api";
+
+  let {
+    deck,
+    height = 96,
+    framesPerPixel = 256,
+  }: { deck: DeckState; height?: number; framesPerPixel?: number } = $props();
+
+  /** Tile width in pixels. Wide enough that a lane needs few of them. */
+  const TILE_WIDTH = 512;
+  /** Tiles kept beyond each edge, so scrolling never waits on a fetch. */
+  const OVERSCAN = 2;
+
+  let lane = $state<HTMLDivElement | null>(null);
+  let strip = $state<HTMLDivElement | null>(null);
+  let laneWidth = $state(1200);
+  let ready = $state(false);
+  let totalFrames = $state(0);
+
+  // Interpolation state. Updated from snapshots, read every animation frame.
+  let anchorFrame = 0;
+  let anchorTime = 0;
+  let framesPerSecond = 0;
+
+  $effect(() => {
+    // Touch length_frames so this re-runs whenever the deck's track changes.
+    deck.length_frames;
+    void waveformInfo(deck.number).then((info) => {
+      ready = info.ready;
+      totalFrames = info.total_frames;
+    });
+  });
+
+  $effect(() => {
+    // Snapshot arrived: re-anchor the interpolation.
+    anchorFrame = deck.position_frames;
+    anchorTime = performance.now();
+    framesPerSecond = deck.playing ? deck.rate * (deck.length_seconds > 0 ? 48000 : 0) : 0;
+  });
+
+  const tileSpanFrames = $derived(TILE_WIDTH * framesPerPixel);
+
+  /**
+   * Index of the leftmost tile to keep mounted.
+   *
+   * Quantised to the tile grid on purpose. Position changes 60 times a second,
+   * but the *set of tiles* only changes when the playhead crosses a tile
+   * boundary — every few seconds. Deriving the list straight from position
+   * would recompute it on every snapshot and churn the DOM at frame rate, which
+   * is exactly the per-frame JavaScript work this design exists to avoid.
+   */
+  const firstTile = $derived(
+    Math.floor((deck.position_frames - (laneWidth * framesPerPixel) / 2) / tileSpanFrames) -
+      OVERSCAN,
+  );
+
+  /** Which tiles cover the visible span. Changes only on a boundary crossing. */
+  const visibleTiles = $derived.by(() => {
+    if (!ready || totalFrames === 0) return [];
+
+    const count = Math.ceil(laneWidth / TILE_WIDTH) + OVERSCAN * 2 + 1;
+    return Array.from({ length: count }, (_, i) => {
+      const index = firstTile + i;
+      const startFrame = index * tileSpanFrames;
+      return {
+        key: index,
+        startFrame,
+        url: tileUrl(deck.number, TILE_WIDTH, height, startFrame, framesPerPixel),
+      };
+    }).filter((t) => t.startFrame + tileSpanFrames > 0 && t.startFrame < totalFrames);
+  });
+
+  onMount(() => {
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) laneWidth = entry.contentRect.width;
+    });
+    if (lane) observer.observe(lane);
+
+    let frame = 0;
+    const tick = () => {
+      if (strip) {
+        // Interpolate forward from the last snapshot. Without this the strip
+        // only moves when a snapshot lands, which reads as judder even though
+        // the audio is perfectly smooth.
+        const elapsed = (performance.now() - anchorTime) / 1000;
+        const frameNow = anchorFrame + framesPerSecond * elapsed;
+        const offset = laneWidth / 2 - frameNow / framesPerPixel;
+        // translate3d, not left/top: this is the property compositors handle
+        // without a layout or paint pass.
+        strip.style.transform = `translate3d(${offset}px, 0, 0)`;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  });
+</script>
+
+<div class="lane" bind:this={lane} style:height="{height}px">
+  {#if ready}
+    <div class="strip" bind:this={strip}>
+      {#each visibleTiles as tile (tile.key)}
+        <img
+          class="tile"
+          src={tile.url}
+          alt=""
+          decoding="async"
+          loading="eager"
+          width={TILE_WIDTH}
+          {height}
+          style:left="{tile.startFrame / framesPerPixel}px"
+        />
+      {/each}
+    </div>
+  {:else if deck.loaded}
+    <p class="pending">analysing…</p>
+  {/if}
+  <div class="playhead" aria-hidden="true"></div>
+</div>
+
+<style>
+  .lane {
+    position: relative;
+    overflow: hidden;
+    background: var(--panel-raised);
+    border-radius: 6px;
+    /* Promote to its own layer so the strip's transform never forces the rest
+       of the interface to repaint. */
+    contain: strict;
+  }
+
+  .strip {
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+  }
+
+  .tile {
+    position: absolute;
+    top: 0;
+    /* Never let a tile be resampled: the renderer already produced exactly the
+       right pixels, and scaling would blur them and cost a paint. */
+    image-rendering: pixelated;
+  }
+
+  .playhead {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--text);
+    opacity: 0.85;
+  }
+
+  .pending {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    font-size: 0.75em;
+    color: var(--text-dim);
+  }
+</style>

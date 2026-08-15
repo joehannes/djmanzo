@@ -3,8 +3,15 @@
 use crate::bus::BusLayout;
 use dj_core::{FramePos, Rate, SampleRate, db_to_linear};
 use dj_decode::{AudioBuffer, TrackSource};
-use dj_dsp::{SmoothedValue, SweepFilter, ThreeBandEq};
+use dj_dsp::{CHANNELS, Keylock, SmoothedValue, SweepFilter, ThreeBandEq};
 use std::sync::Arc;
+
+/// Frames of source read per pass through the pitch shifter.
+///
+/// Fixed rather than derived from the callback size, so the scratch buffer is
+/// allocated once and cannot be outgrown by a driver that varies its block
+/// length between callbacks.
+const SCRATCH_FRAMES: usize = 256;
 
 /// One player: a source, a playhead, and the gain staging around it.
 ///
@@ -43,6 +50,15 @@ pub struct Deck {
     eq_mid: f32,
     eq_high: f32,
     filter_position: f32,
+    /// Pitch shifter used when keylock is on. Always built, so engaging keylock
+    /// mid-set never allocates.
+    keylock: Keylock,
+    keylock_on: bool,
+    /// Set when the playhead moved discontinuously, so the shifter's history is
+    /// refilled before the next block instead of fading in from silence.
+    needs_prime: bool,
+    /// Staging buffer for the keylocked path. Never resized.
+    scratch: Vec<f32>,
 }
 
 impl Deck {
@@ -69,6 +85,44 @@ impl Deck {
             eq_mid: 1.0,
             eq_high: 1.0,
             filter_position: 0.0,
+            keylock: Keylock::new(sr),
+            // Off by default: at unity pitch there is nothing to correct, and a
+            // shifter in the path costs CPU and latency for no audible gain.
+            keylock_on: false,
+            needs_prime: true,
+            scratch: vec![0.0; SCRATCH_FRAMES * CHANNELS],
+        }
+    }
+
+    /// Pitch-independent tempo: change the speed, keep the key.
+    pub fn set_keylock(&mut self, enabled: bool) {
+        if enabled != self.keylock_on {
+            self.keylock_on = enabled;
+            // Engaging mid-track means the shifter has no history. Refill it
+            // before the next block rather than fading in from silence.
+            self.needs_prime = true;
+        }
+    }
+
+    pub fn toggle_keylock(&mut self) {
+        self.set_keylock(!self.keylock_on);
+    }
+
+    #[must_use]
+    pub fn is_keylocked(&self) -> bool {
+        self.keylock_on
+    }
+
+    /// Extra latency keylock adds before compensation, in frames.
+    ///
+    /// Zero when keylock is off. Reported so the interface can be honest about
+    /// what the feature costs.
+    #[must_use]
+    pub fn keylock_latency_frames(&self) -> usize {
+        if self.keylock_on {
+            self.keylock.latency_frames()
+        } else {
+            0
         }
     }
 
@@ -145,6 +199,7 @@ impl Deck {
         for filter in &mut self.filter {
             filter.reset();
         }
+        self.needs_prime = true;
         previous
     }
 
@@ -176,14 +231,21 @@ impl Deck {
     pub fn cue(&mut self) {
         self.playing = false;
         self.position = self.cue_point;
+        self.needs_prime = true;
     }
 
     pub fn set_cue_point(&mut self, position: FramePos) {
         self.cue_point = position.clamped(self.len_frames() as f64);
     }
 
+    /// Jump the playhead.
+    ///
+    /// Marks the pitch shifter for re-priming: a jump makes its history belong
+    /// to a different part of the track. Jog-wheel scrubbing goes through
+    /// [`Self::set_rate`] instead, which is continuous and needs no re-prime.
     pub fn seek(&mut self, position: FramePos) {
         self.position = position.clamped(self.len_frames() as f64);
+        self.needs_prime = true;
     }
 
     pub fn set_rate(&mut self, rate: Rate) {
@@ -300,7 +362,15 @@ impl Deck {
         if !self.playing || self.source.is_empty() {
             return DeckLevels::default();
         }
+        if self.keylock_on {
+            self.process_keylocked(out, layout)
+        } else {
+            self.process_direct(out, layout)
+        }
+    }
 
+    /// The plain path: read, shape, mix. What runs whenever keylock is off.
+    fn process_direct(&mut self, out: &mut [f32], layout: &BusLayout) -> DeckLevels {
         let step = self.step_per_output_frame();
         let len = self.len_frames() as f64;
         let mut levels = DeckLevels::default();
@@ -320,36 +390,159 @@ impl Deck {
             }
 
             let [left, right] = self.source.frame_at(position);
-
-            // Tone shaping happens before the fader, as on a real mixer: the
-            // channel fader must attenuate the EQ'd signal, not the other way
-            // round, or riding the fader would change the tone.
-            let pre_left = self.filter[0].process(self.eq[0].process(left)) * trim;
-            let pre_right = self.filter[1].process(self.eq[1].process(right)) * trim;
-
-            let main_left = pre_left * fader;
-            let main_right = pre_right * fader;
-
-            if layout.is_mono() {
-                frame[layout.main.0] += (main_left + main_right) * 0.5;
-            } else {
-                frame[layout.main.0] += main_left;
-                frame[layout.main.1] += main_right;
-            }
-
-            if let Some((cue_l, cue_r)) = cue_send {
-                frame[cue_l] += pre_left;
-                frame[cue_r] += pre_right;
-            }
-
-            levels.pre_fader = levels.pre_fader.max(pre_left.abs()).max(pre_right.abs());
-            levels.post_fader = levels.post_fader.max(main_left.abs()).max(main_right.abs());
+            let pre = self.shape(left, right, trim);
+            Self::write_frame(frame, layout, cue_send, pre, fader, &mut levels);
 
             position += step;
         }
 
-        // Running off either end stops the transport rather than leaving a
-        // silent deck reporting itself as playing.
+        self.finish(position, len);
+        levels
+    }
+
+    /// The keylocked path: read ahead, transpose, shape, mix.
+    ///
+    /// Structurally different from [`Self::process_direct`] because the pitch
+    /// shifter works on blocks, not on one frame at a time. Audio is read into
+    /// a scratch buffer in chunks, transposed, and only then run through the
+    /// same gain chain -- so everything downstream of the source is identical
+    /// and only the reading changes.
+    ///
+    /// Two details carry the whole design:
+    ///
+    /// - The read cursor runs [`Keylock::latency_frames`] *ahead* of the
+    ///   playhead, so the shifter's group delay cancels and engaging keylock
+    ///   does not shove a beatmatched track out of time.
+    /// - `position` still advances by exactly `step` per output frame, so the
+    ///   playhead, the waveform and the beat grid are unaffected by keylock.
+    fn process_keylocked(&mut self, out: &mut [f32], layout: &BusLayout) -> DeckLevels {
+        let step = self.step_per_output_frame();
+        let len = self.len_frames() as f64;
+        let channels = layout.channels.max(1);
+        let cue_send = if self.cue_enabled { layout.cue } else { None };
+        let mut levels = DeckLevels::default();
+
+        // Musical speed only. Sample-rate conversion is also part of `step` but
+        // changes no pitch, so undoing it would put the track *out* of key.
+        self.keylock.set_tempo(self.rate.get() * (1.0 + self.pitch));
+        if self.needs_prime {
+            self.prime_keylock(step, len);
+            self.needs_prime = false;
+        }
+
+        let read_ahead = self.keylock.latency_frames() as f64 * step;
+        let mut position = self.position.get();
+        let frames_total = out.len() / channels;
+        let mut done = 0;
+
+        while done < frames_total {
+            let n = (frames_total - done).min(SCRATCH_FRAMES);
+
+            // Read ahead of the playhead. Out of range is silence rather than a
+            // skip: the shifter still has the previous audio in flight, and
+            // feeding it nothing is how that tail gets flushed out in time.
+            for f in 0..n {
+                let p = position + f as f64 * step + read_ahead;
+                let [left, right] = if p >= 0.0 && p < len {
+                    self.source.frame_at(p)
+                } else {
+                    [0.0, 0.0]
+                };
+                self.scratch[f * CHANNELS] = left;
+                self.scratch[f * CHANNELS + 1] = right;
+            }
+
+            self.keylock.process(&mut self.scratch[..n * CHANNELS]);
+
+            let block = &mut out[done * channels..(done + n) * channels];
+            for (f, frame) in block.chunks_exact_mut(channels).enumerate() {
+                let trim = self.trim_gain.next_value();
+                let fader = self.fader_gain.next_value() * self.crossfader_gain.next_value();
+                let left = self.scratch[f * CHANNELS];
+                let right = self.scratch[f * CHANNELS + 1];
+                let pre = self.shape(left, right, trim);
+                Self::write_frame(frame, layout, cue_send, pre, fader, &mut levels);
+            }
+
+            position += n as f64 * step;
+            done += n;
+        }
+
+        self.finish(position, len);
+        levels
+    }
+
+    /// Fill the shifter's history so playback resumes without a fade-in.
+    ///
+    /// Reads the frames immediately before the point the read cursor starts
+    /// from -- which is ahead of the playhead by the shifter's latency, the
+    /// same offset [`Self::process_keylocked`] uses.
+    fn prime_keylock(&mut self, step: f64, len: f64) {
+        let preroll = self.keylock.preroll_frames() as f64;
+        let start = self.position.get() + (self.keylock.latency_frames() as f64 - preroll) * step;
+        // Borrowed as a field, not through `&self`, so the shifter can be
+        // borrowed mutably at the same time.
+        let source = &*self.source;
+        self.keylock.prime_with(|frame| {
+            let p = start + frame as f64 * step;
+            if p >= 0.0 && p < len {
+                source.frame_at(p)
+            } else {
+                [0.0, 0.0]
+            }
+        });
+    }
+
+    /// Tone shaping, applied before the fader.
+    ///
+    /// On a real mixer the channel fader attenuates the EQ'd signal, not the
+    /// other way round; reversed, riding the fader would change the tone.
+    #[inline]
+    fn shape(&mut self, left: f32, right: f32, trim: f32) -> (f32, f32) {
+        (
+            self.filter[0].process(self.eq[0].process(left)) * trim,
+            self.filter[1].process(self.eq[1].process(right)) * trim,
+        )
+    }
+
+    /// Add one shaped frame to the buses.
+    ///
+    /// An associated function rather than a method so it borrows nothing from
+    /// the deck, and both process paths can call it while holding other fields.
+    #[inline]
+    fn write_frame(
+        frame: &mut [f32],
+        layout: &BusLayout,
+        cue_send: Option<(usize, usize)>,
+        pre: (f32, f32),
+        fader: f32,
+        levels: &mut DeckLevels,
+    ) {
+        let (pre_left, pre_right) = pre;
+        let main_left = pre_left * fader;
+        let main_right = pre_right * fader;
+
+        if layout.is_mono() {
+            frame[layout.main.0] += (main_left + main_right) * 0.5;
+        } else {
+            frame[layout.main.0] += main_left;
+            frame[layout.main.1] += main_right;
+        }
+
+        if let Some((cue_l, cue_r)) = cue_send {
+            frame[cue_l] += pre_left;
+            frame[cue_r] += pre_right;
+        }
+
+        levels.pre_fader = levels.pre_fader.max(pre_left.abs()).max(pre_right.abs());
+        levels.post_fader = levels.post_fader.max(main_left.abs()).max(main_right.abs());
+    }
+
+    /// Store the new playhead, stopping the transport at either end.
+    ///
+    /// Running off the end stops rather than leaving a silent deck reporting
+    /// itself as playing.
+    fn finish(&mut self, position: f64, len: f64) {
         if position >= len {
             self.position = FramePos::new(len);
             self.playing = false;
@@ -359,8 +552,6 @@ impl Deck {
         } else {
             self.position = FramePos::new(position);
         }
-
-        levels
     }
 }
 
@@ -859,6 +1050,283 @@ mod cue_tests {
         assert!(
             (peak - 0.3).abs() < 0.02,
             "mono should be the average of 0.4 and 0.2, got {peak}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod keylock_tests {
+    use super::*;
+    use crate::bus::BusLayout;
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+
+    fn stereo() -> BusLayout {
+        BusLayout::for_channels(2)
+    }
+
+    fn ramp(frames: usize) -> Arc<dyn TrackSource> {
+        let samples: Vec<f32> = (0..frames).flat_map(|n| [n as f32, n as f32]).collect();
+        Arc::new(AudioBuffer::from_interleaved(samples, SR))
+    }
+
+    /// A burst of tone surrounded by silence.
+    ///
+    /// The *envelope* is what these tests measure. A phase vocoder does not
+    /// reproduce a waveform sample for sample -- it reconstructs the spectrum
+    /// with its own phases -- so comparing samples would fail for reasons that
+    /// have nothing to do with timing. The envelope survives intact, and
+    /// timing is the thing under test.
+    fn burst(frames: usize, from: usize, to: usize) -> Arc<dyn TrackSource> {
+        let samples: Vec<f32> = (0..frames)
+            .flat_map(|n| {
+                let v = if n >= from && n < to {
+                    (std::f32::consts::TAU * 440.0 * n as f32 / 48_000.0).sin() * 0.8
+                } else {
+                    0.0
+                };
+                [v, v]
+            })
+            .collect();
+        Arc::new(AudioBuffer::from_interleaved(samples, SR))
+    }
+
+    /// Frames per envelope window. 256 at 48 kHz is about 5 ms -- fine enough
+    /// to catch a misalignment that would matter musically.
+    const ENV_WINDOW: usize = 256;
+
+    fn envelope(out: &[f32]) -> Vec<f32> {
+        out.chunks(ENV_WINDOW * CHANNELS)
+            .map(|w| (w.iter().map(|s| s * s).sum::<f32>() / w.len() as f32).sqrt())
+            .collect()
+    }
+
+    /// Lag, in envelope windows, at which `b` best matches `a`.
+    fn best_lag(a: &[f32], b: &[f32], max: isize) -> isize {
+        let mut best = (f32::NEG_INFINITY, 0isize);
+        for lag in -max..=max {
+            let mut sum = 0.0;
+            for (i, &sample) in a.iter().enumerate() {
+                let j = i as isize + lag;
+                if j >= 0 && (j as usize) < b.len() {
+                    sum += sample * b[j as usize];
+                }
+            }
+            if sum > best.0 {
+                best = (sum, lag);
+            }
+        }
+        best.1
+    }
+
+    fn render_burst(keylock: bool, pitch: f64, frames: usize) -> Vec<f32> {
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(burst(frames, 20_000, 40_000));
+        deck.set_keylock(keylock);
+        deck.set_pitch(pitch);
+        deck.play();
+        let mut out = vec![0.0; frames * CHANNELS];
+        let _ = deck.process(&mut out, &stereo());
+        out
+    }
+
+    /// **The test keylock exists to pass.**
+    ///
+    /// A pitch shifter has group delay. If keylock simply inserted it, a track
+    /// that was beatmatched would slide out of time the moment keylock was
+    /// pressed -- at 128 BPM the shifter's round trip is most of a semiquaver.
+    /// The deck compensates by reading ahead; this proves the compensation is
+    /// the right size and in the right direction.
+    #[test]
+    fn engaging_keylock_does_not_move_the_music_in_time() {
+        let frames = 96_000;
+        let plain = envelope(&render_burst(false, 0.0, frames));
+        let locked = envelope(&render_burst(true, 0.0, frames));
+
+        let lag = best_lag(&plain, &locked, 40);
+        assert!(
+            lag.abs() <= 2,
+            "keylock shifted the audio by {} frames ({} ms) -- latency \
+             compensation is wrong",
+            lag * ENV_WINDOW as isize,
+            lag as f32 * ENV_WINDOW as f32 / 48.0
+        );
+    }
+
+    /// Same, with the pitch fader off centre -- the state keylock is actually
+    /// used in. The read-ahead scales with `step`, so this catches an error
+    /// that unity playback would hide.
+    #[test]
+    fn keylock_stays_aligned_with_the_pitch_fader_moved() {
+        let frames = 96_000;
+        let plain = envelope(&render_burst(false, 0.08, frames));
+        let locked = envelope(&render_burst(true, 0.08, frames));
+
+        let lag = best_lag(&plain, &locked, 40);
+        assert!(
+            lag.abs() <= 2,
+            "keylock at +8% shifted the audio by {} frames ({} ms)",
+            lag * ENV_WINDOW as isize,
+            lag as f32 * ENV_WINDOW as f32 / 48.0
+        );
+    }
+
+    /// Keylock must not touch the transport. The playhead, and therefore the
+    /// waveform, the beat grid and every seek, has to read the same either way.
+    #[test]
+    fn keylock_does_not_change_the_playhead() {
+        let mut plain = Deck::new(SR);
+        let _ = plain.load(ramp(96_000));
+        plain.set_pitch(0.08);
+        plain.play();
+
+        let mut locked = Deck::new(SR);
+        let _ = locked.load(ramp(96_000));
+        locked.set_keylock(true);
+        locked.set_pitch(0.08);
+        locked.play();
+
+        let mut out = vec![0.0; 8_192];
+        let _ = plain.process(&mut out, &stereo());
+        out.fill(0.0);
+        let _ = locked.process(&mut out, &stereo());
+
+        // Not bit-equal, and should not be asserted as such: the direct path
+        // adds `step` once per frame while the keylocked path adds it once per
+        // chunk, so the same sum is accumulated in a different order. The
+        // difference is a few ULPs -- femtoseconds of audio -- and demanding
+        // exactness here would be testing the shape of the loop, not the
+        // behaviour that matters.
+        let drift = (plain.position().get() - locked.position().get()).abs();
+        assert!(drift < 1e-6, "keylock moved the playhead by {drift} frames");
+    }
+
+    #[test]
+    fn keylock_is_off_until_asked_for() {
+        assert!(!Deck::new(SR).is_keylocked());
+        assert_eq!(Deck::new(SR).keylock_latency_frames(), 0);
+    }
+
+    #[test]
+    fn keylock_toggles_and_reports_its_latency() {
+        let mut deck = Deck::new(SR);
+        deck.toggle_keylock();
+        assert!(deck.is_keylocked());
+        assert!(
+            deck.keylock_latency_frames() > 0,
+            "an engaged shifter has group delay; reporting zero would be a lie"
+        );
+        deck.toggle_keylock();
+        assert!(!deck.is_keylocked());
+        assert_eq!(deck.keylock_latency_frames(), 0);
+    }
+
+    /// The point of the feature: run fast, stay in key.
+    #[test]
+    fn keylock_holds_the_key_while_the_tempo_changes() {
+        // Count upward zero crossings to get the pitch. A steady tone in gives
+        // a steady tone out, so crossings land where the maths says.
+        fn frequency(out: &[f32]) -> f32 {
+            let left: Vec<f32> = out.iter().step_by(CHANNELS).copied().collect();
+            let (mut crossings, mut first, mut last) = (0usize, None, 0usize);
+            for i in 1..left.len() {
+                if left[i - 1] <= 0.0 && left[i] > 0.0 {
+                    if first.is_none() {
+                        first = Some(i);
+                    } else {
+                        last = i;
+                    }
+                    crossings += 1;
+                }
+            }
+            match first {
+                Some(f) if crossings > 2 => (crossings - 1) as f32 * 48_000.0 / (last - f) as f32,
+                _ => 0.0,
+            }
+        }
+
+        let tone: Vec<f32> = (0..240_000)
+            .flat_map(|n| {
+                let v = (std::f32::consts::TAU * 440.0 * n as f32 / 48_000.0).sin() * 0.8;
+                [v, v]
+            })
+            .collect();
+
+        let mut plain = Deck::new(SR);
+        let _ = plain.load(Arc::new(AudioBuffer::from_interleaved(tone.clone(), SR)));
+        plain.set_pitch(0.25);
+        plain.play();
+        let mut out = vec![0.0; 160_000];
+        let _ = plain.process(&mut out, &stereo());
+        let sped_up = frequency(&out);
+        assert!(
+            (sped_up - 550.0).abs() < 15.0,
+            "without keylock, +25% should take 440 Hz to 550 Hz; got {sped_up}"
+        );
+
+        let mut locked = Deck::new(SR);
+        let _ = locked.load(Arc::new(AudioBuffer::from_interleaved(tone, SR)));
+        locked.set_keylock(true);
+        locked.set_pitch(0.25);
+        locked.play();
+        let mut out = vec![0.0; 160_000];
+        let _ = locked.process(&mut out, &stereo());
+        // Skip the priming region, where the shifter is still filling.
+        let measured = frequency(&out[20_000..]);
+        assert!(
+            (measured - 440.0).abs() < 15.0,
+            "with keylock, +25% should stay at 440 Hz; got {measured}"
+        );
+    }
+
+    /// Keylock sits before the fader, like everything else in the strip, so
+    /// pre-fader listen still hears it.
+    #[test]
+    fn a_keylocked_deck_still_feeds_the_cue_send() {
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(burst(96_000, 0, 96_000));
+        deck.set_keylock(true);
+        deck.set_cue(true);
+        deck.set_volume(0.0);
+        deck.play();
+
+        let layout = BusLayout::for_channels(4);
+        // Let the fader smoother reach zero and the shifter fill before
+        // measuring. Both ramp; a window that includes the ramp measures the
+        // ramp rather than the routing.
+        let mut settle = vec![0.0; 32_768];
+        let _ = deck.process(&mut settle, &layout);
+
+        let mut out = vec![0.0; 32_768];
+        let _ = deck.process(&mut out, &layout);
+
+        let master = out.chunks_exact(4).fold(0.0f32, |a, f| a.max(f[0].abs()));
+        let cue = out.chunks_exact(4).fold(0.0f32, |a, f| a.max(f[2].abs()));
+        assert!(master < 1e-6, "a closed fader still reached the master");
+        assert!(cue > 0.05, "keylocked audio never reached the cue bus");
+    }
+
+    /// A block bigger than the internal scratch must still come out whole.
+    /// Drivers really do hand over 1024 and 2048 frames at a time.
+    #[test]
+    fn keylock_handles_a_block_larger_than_its_scratch() {
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(burst(96_000, 0, 96_000));
+        deck.set_keylock(true);
+        deck.play();
+
+        let frames = SCRATCH_FRAMES * 5 + 37; // deliberately not a multiple
+        let mut out = vec![0.0; frames * CHANNELS];
+        let _ = deck.process(&mut out, &stereo());
+
+        assert_eq!(
+            deck.position().get().round() as usize,
+            frames,
+            "the playhead did not advance by exactly one block"
+        );
+        assert!(
+            out.iter().any(|s| s.abs() > 0.01),
+            "a large block produced no audio"
         );
     }
 }

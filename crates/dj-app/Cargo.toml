@@ -26,6 +26,7 @@ dj-decode = { workspace = true }
 dj-engine = { workspace = true }
 dj-control = { workspace = true }
 dj-dsp = { workspace = true }
+dj-render = { workspace = true }
 
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"

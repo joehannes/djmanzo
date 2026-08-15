@@ -322,6 +322,72 @@ fn split_cue_never_allocates() {
     assert_eq!(allocations, 0, "split cue allocated {allocations} times");
 }
 
+/// Keylock puts a C++ phase vocoder in the audio path, and this is the test
+/// that says whether that was allowed.
+///
+/// The upstream library sizes its internals in `configure` and is written for
+/// realtime use, but "written for realtime use" is a claim, not a proof, and it
+/// is not our code. A `std::vector` that grows one element past its reserve
+/// would be invisible in review and audible on stage. So it is measured.
+#[test]
+fn keylock_never_allocates() {
+    let mut rig = rig(2, 256);
+    for n in 1..=2u8 {
+        rig.load_and_play(n, 2_000_000);
+        rig.act(Action::Deck {
+            deck: deck(n),
+            action: DeckAction::SetKeylock(true),
+        });
+        // Off centre, so the shifter is doing real work rather than passing
+        // unity through.
+        rig.act(Action::Deck {
+            deck: deck(n),
+            action: DeckAction::SetPitch(0.08),
+        });
+    }
+    rig.warm_up(64);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(5_000);
+    });
+    assert_eq!(
+        allocations, 0,
+        "keylock allocated {allocations} times across 5,000 blocks"
+    );
+}
+
+/// Engaging keylock mid-set refills the shifter's history, which is a much
+/// larger burst of work than a steady block -- and still must not allocate.
+#[test]
+fn engaging_keylock_and_seeking_never_allocate() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..20 {
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::SetKeylock(round % 2 == 0),
+            });
+            // A seek re-primes too; both paths are exercised here.
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::Seek(dj_core::FramePos::new(round as f64 * 10_000.0)),
+            });
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::Play,
+            });
+            rig.renderer.render_discarding(50);
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "toggling keylock allocated {allocations} times"
+    );
+}
+
 /// Six channels adds the booth bus on top of master and cue.
 #[test]
 fn the_booth_bus_never_allocates() {

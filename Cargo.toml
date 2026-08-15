@@ -32,6 +32,11 @@ dj-secrets = { path = "crates/dj-secrets" }
 
 cpal = "0.15"
 symphonia = { version = "0.5", features = ["all-codecs", "all-formats"] }
+# Keylock. MIT, which is why it is here and Rubber Band is not -- see
+# docs/adr/0002-clean-room-permissive-licensing.md. Builds the upstream C++
+# through `cc` and generates bindings with `bindgen`, so a C++ compiler and
+# libclang are build requirements; see README.md.
+signalsmith-stretch = "0.1"
 rtrb = "0.3"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }

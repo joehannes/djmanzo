@@ -124,6 +124,15 @@ pub async fn load_track(
         id: decoded.id.to_hex(),
     };
 
+    // Summarise for the waveform on the same worker that decoded. Doing it here
+    // rather than lazily means the strip is drawable the moment the track
+    // appears, instead of popping in a second later.
+    let summary = dj_render::WaveformSummary::analyse(
+        decoded.buffer.as_interleaved(),
+        decoded.buffer.sample_rate(),
+    );
+    state.waveforms().set_summary(deck_id, summary);
+
     let source: Arc<dyn dj_decode::TrackSource> = Arc::new(decoded.buffer);
     state
         .bus()
@@ -160,6 +169,38 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
 #[tauri::command]
 pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
     crate::Snapshot::capture(&state.registry(), state.deck_count())
+}
+
+/// What the interface needs to size a deck's waveform strip.
+#[derive(Debug, Clone, Serialize)]
+pub struct WaveformInfo {
+    pub deck: u8,
+    pub ready: bool,
+    pub total_frames: u64,
+}
+
+#[tauri::command]
+pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
+    WaveformInfo {
+        deck,
+        ready: state.waveforms().has_summary(deck),
+        total_frames: state.waveforms().total_frames(deck).unwrap_or(0) as u64,
+    }
+}
+
+/// Report a frame-timing measurement from the webview.
+///
+/// The webview is the only place that can measure its own compositing, so the
+/// numbers come back out this way to be logged where they can be read.
+#[tauri::command]
+pub fn report_bench(label: String, fps: f64, p50_ms: f64, p95_ms: f64, worst_ms: f64) {
+    tracing::info!(
+        target: "bench",
+        "{label}: {fps:.1} fps | p50 {p50_ms:.2} ms | p95 {p95_ms:.2} ms | worst {worst_ms:.2} ms"
+    );
+    println!(
+        "BENCH {label}: {fps:.1} fps | p50 {p50_ms:.2} ms | p95 {p95_ms:.2} ms | worst {worst_ms:.2} ms"
+    );
 }
 
 /// The session so far, as replayable text.

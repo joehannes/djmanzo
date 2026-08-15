@@ -3,8 +3,34 @@
 A VirtualDJ-class DJ application for **macOS** and **Linux/Xubuntu** — built to match
 VirtualDJ's feature set, appearance, workflow and handling, and then go past it.
 
-> **Status: design phase.** The architecture and feature plan are written; no application code
-> exists yet. [M0](docs/ROADMAP.md#m0--foundations-and-walking-skeleton) is the first build.
+> **Status: early build.** [M0](docs/ROADMAP.md#m0--foundations-and-walking-skeleton) is done —
+> two decks, mixer, headphone cue, isolator EQ, filter, keylock, and a Rust-rendered scrolling
+> waveform, on a realtime engine proven allocation-free by test. It plays music; it is not yet
+> something to take to a gig. [M1](docs/ROADMAP.md) is in progress.
+
+---
+
+## Building
+
+```sh
+npm --prefix ui ci && npm --prefix ui run build   # tauri-build needs the bundle first
+cargo test --workspace --all-targets
+cargo run --bin djmanzo
+```
+
+**Prerequisites.** A Rust toolchain (1.90+), Node 22, and — because keylock builds
+[Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) from C++ and
+generates its bindings with `bindgen` — a C++ compiler and **libclang**.
+
+- **macOS**: the Xcode command-line tools supply both. `xcode-select --install`.
+- **Debian/Ubuntu/Xubuntu**:
+  ```sh
+  sudo apt install build-essential libclang-dev libasound2-dev \
+      libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev \
+      libssl-dev libxdo-dev libayatana-appindicator3-dev
+  ```
+
+If `cargo build` fails with *"Unable to find libclang"*, that package is what is missing.
 
 ---
 
