@@ -49,11 +49,13 @@ pub enum DeckParam {
     Keylock,
     /// Frames of latency keylock is adding, before compensation. 0.0 when off.
     KeylockLatencyFrames,
+    /// Deliberate transposition in semitones. 0.0 when not shifted.
+    KeyShift,
 }
 
 impl DeckParam {
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 17;
+    pub const COUNT: usize = 18;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -81,6 +83,7 @@ impl DeckParam {
             PreFaderLevel,
             Keylock,
             KeylockLatencyFrames,
+            KeyShift,
         ]
     }
 }
@@ -201,6 +204,7 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::PreFaderLevel => "pre_fader_level",
         DeckParam::Keylock => "keylock",
         DeckParam::KeylockLatencyFrames => "keylock_latency_frames",
+        DeckParam::KeyShift => "key_shift",
     }
 }
 

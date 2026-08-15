@@ -199,6 +199,7 @@ impl Engine {
                     DeckAction::ToggleCue => target.toggle_cue(),
                     DeckAction::SetKeylock(on) => target.set_keylock(on),
                     DeckAction::ToggleKeylock => target.toggle_keylock(),
+                    DeckAction::SetKeyShift(n) => target.set_key_shift(n),
                     DeckAction::Eject => unreachable!("handled above"),
                 }
             }
@@ -283,6 +284,7 @@ impl Engine {
                 DeckParam::KeylockLatencyFrames,
                 deck.keylock_latency_frames() as f32,
             );
+            set(DeckParam::KeyShift, deck.key_shift() as f32);
         }
     }
 

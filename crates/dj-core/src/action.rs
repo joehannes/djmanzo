@@ -56,6 +56,8 @@ pub enum DeckAction {
     SetKeylock(bool),
     /// Flip keylock.
     ToggleKeylock,
+    /// Transpose in semitones for harmonic mixing, independent of tempo.
+    SetKeyShift(i32),
     /// Drop the loaded track.
     Eject,
 }
@@ -154,6 +156,7 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "keylock_on" => DeckAction::SetKeylock(true),
         "keylock_off" => DeckAction::SetKeylock(false),
         "keylock_toggle" => DeckAction::ToggleKeylock,
+        "key" => DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32),
         other => return Err(ParseError::UnknownVerb(other.to_owned())),
     })
 }
@@ -228,6 +231,7 @@ impl fmt::Display for Action {
                 DeckAction::SetKeylock(true) => write!(f, "deck {deck} keylock_on"),
                 DeckAction::SetKeylock(false) => write!(f, "deck {deck} keylock_off"),
                 DeckAction::ToggleKeylock => write!(f, "deck {deck} keylock_toggle"),
+                DeckAction::SetKeyShift(n) => write!(f, "deck {deck} key {n}"),
             },
             Action::Mixer(MixerAction::Crossfader(v)) => {
                 write!(f, "crossfader {}", number(f64::from(*v)))
@@ -469,6 +473,14 @@ mod tests {
             Action::Deck {
                 deck: deck(4),
                 action: DeckAction::ToggleKeylock,
+            },
+            Action::Deck {
+                deck: deck(1),
+                action: DeckAction::SetKeyShift(2),
+            },
+            Action::Deck {
+                deck: deck(2),
+                action: DeckAction::SetKeyShift(-5),
             },
             Action::Mixer(MixerAction::CueMix(0.35)),
             Action::Mixer(MixerAction::SplitCue(true)),

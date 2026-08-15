@@ -74,6 +74,13 @@ const INTERVAL_SECONDS: f32 = 0.01;
 const MIN_TEMPO: f64 = 0.25;
 const MAX_TEMPO: f64 = 4.0;
 
+/// How far the key can be shifted, in semitones.
+///
+/// An octave either way. Beyond that the result stops being the same track in
+/// a different key and starts being an effect, and harmonic mixing -- which is
+/// what this is for -- never needs more than a few semitones.
+pub const MAX_KEY_SHIFT: i32 = 12;
+
 /// A pitch shifter sized for one deck.
 pub struct Keylock {
     stretch: Stretch,
@@ -85,6 +92,8 @@ pub struct Keylock {
     /// Total group delay, input to output.
     latency_frames: usize,
     tempo: f64,
+    /// Deliberate transposition, in semitones, on top of the tempo correction.
+    key_shift: i32,
 }
 
 // The upstream binding is a raw pointer with no `Debug`, and the workspace
@@ -125,6 +134,7 @@ impl Keylock {
             latency_frames,
             stretch,
             tempo: 1.0,
+            key_shift: 0,
         }
     }
 
@@ -164,9 +174,39 @@ impl Keylock {
         };
         if tempo != self.tempo {
             self.tempo = tempo;
-            self.stretch
-                .set_transpose_factor((1.0 / tempo) as f32, None);
+            self.apply_transposition();
         }
+    }
+
+    /// Shift the key deliberately, in semitones, for harmonic mixing.
+    ///
+    /// Distinct from keylock and composed with it: keylock cancels the pitch
+    /// change the *speed* introduced, and this adds one the DJ asked for. Two
+    /// tracks a semitone apart can be brought into the same key without either
+    /// of them changing tempo.
+    pub fn set_key_shift(&mut self, semitones: i32) {
+        let semitones = semitones.clamp(-MAX_KEY_SHIFT, MAX_KEY_SHIFT);
+        if semitones != self.key_shift {
+            self.key_shift = semitones;
+            self.apply_transposition();
+        }
+    }
+
+    #[must_use]
+    pub fn key_shift(&self) -> i32 {
+        self.key_shift
+    }
+
+    /// Combine the tempo correction and the deliberate shift into one factor.
+    ///
+    /// They multiply rather than add: transposition is a frequency ratio, so
+    /// undoing a 1.08x speed and then going up two semitones is
+    /// `(1/1.08) * 2^(2/12)`, not a sum of anything.
+    fn apply_transposition(&mut self) {
+        let from_tempo = 1.0 / self.tempo;
+        let from_key = 2.0_f64.powf(f64::from(self.key_shift) / 12.0);
+        self.stretch
+            .set_transpose_factor((from_tempo * from_key) as f32, None);
     }
 
     /// Clear the shifter and fill its history from `read`.
@@ -185,8 +225,11 @@ impl Keylock {
         self.stretch.reset();
         // `set_transpose_factor` survives `reset`, but re-stating it costs
         // nothing and means priming can never resurrect a stale ratio.
-        self.stretch
-            .set_transpose_factor((1.0 / self.tempo) as f32, None);
+        //
+        // It must go through `apply_transposition` rather than setting the
+        // tempo factor directly: doing the latter silently discards any key
+        // shift on every re-prime, which is every load, seek and cue.
+        self.apply_transposition();
         self.stretch.seek(&self.scratch[..frames * CHANNELS], 1.0);
     }
 
@@ -371,5 +414,69 @@ mod tests {
             assert!(keylock.preroll_frames() > 0);
             assert!(keylock.latency_frames() > 0);
         }
+    }
+    /// Harmonic mixing: shift a track up two semitones without touching its
+    /// tempo. 440 Hz up two semitones is 493.9 Hz.
+    #[test]
+    fn a_key_shift_transposes_without_a_tempo_change() {
+        let mut keylock = Keylock::new(SR);
+        keylock.set_tempo(1.0);
+        keylock.set_key_shift(2);
+        keylock.prime_with(|_| [0.0, 0.0]);
+        let mut out = sine(440.0, 240_000);
+        keylock.process(&mut out);
+        let skip = (keylock.latency_frames() + keylock.preroll_frames()) * CHANNELS;
+        let measured = frequency_of(&out[skip..]);
+        assert!(
+            (measured - 493.9).abs() < 12.0,
+            "expected ~493.9 Hz two semitones above 440, got {measured}"
+        );
+    }
+
+    #[test]
+    fn a_downward_shift_works_too() {
+        let mut keylock = Keylock::new(SR);
+        keylock.set_key_shift(-5);
+        keylock.prime_with(|_| [0.0, 0.0]);
+        let mut out = sine(440.0, 240_000);
+        keylock.process(&mut out);
+        let skip = (keylock.latency_frames() + keylock.preroll_frames()) * CHANNELS;
+        // 440 down five semitones is 329.6 Hz.
+        let measured = frequency_of(&out[skip..]);
+        assert!((measured - 329.6).abs() < 10.0, "got {measured}");
+    }
+
+    /// The two compose as a product, not a sum: running 1.5x fast *and* asking
+    /// for +12 should land an octave above the original, not somewhere else.
+    #[test]
+    fn keylock_and_key_shift_compose() {
+        let mut keylock = Keylock::new(SR);
+        keylock.set_tempo(1.5);
+        keylock.set_key_shift(12);
+        keylock.prime_with(|_| [0.0, 0.0]);
+        // At 1.5x the resampler has already taken 440 Hz to 660 Hz.
+        let mut out = sine(660.0, 240_000);
+        keylock.process(&mut out);
+        let skip = (keylock.latency_frames() + keylock.preroll_frames()) * CHANNELS;
+        let measured = frequency_of(&out[skip..]);
+        assert!(
+            (measured - 880.0).abs() < 25.0,
+            "expected ~880 Hz (440 corrected, then an octave up), got {measured}"
+        );
+    }
+
+    #[test]
+    fn a_key_shift_beyond_an_octave_is_clamped() {
+        let mut keylock = Keylock::new(SR);
+        keylock.set_key_shift(99);
+        assert_eq!(keylock.key_shift(), MAX_KEY_SHIFT);
+        keylock.set_key_shift(-99);
+        assert_eq!(keylock.key_shift(), -MAX_KEY_SHIFT);
+    }
+
+    #[test]
+    fn no_shift_leaves_the_pitch_alone() {
+        let out = shifted(1.0, &sine(440.0, 240_000));
+        assert!((frequency_of(&out) - 440.0).abs() < 5.0);
     }
 }

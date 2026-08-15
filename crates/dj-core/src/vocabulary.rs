@@ -96,7 +96,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 26] = [
+static VOCABULARY: [VerbSpec; 27] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -180,6 +180,16 @@ static VOCABULARY: [VerbSpec; 26] = [
         argument: ArgSpec::None,
         help: "flip keylock",
         example: "deck 1 keylock_toggle",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "key",
+        argument: ArgSpec::Number {
+            min: -12.0,
+            max: 12.0,
+        },
+        help: "transpose in semitones for harmonic mixing, without changing tempo",
+        example: "deck 1 key 2",
     },
     // -- channel strip -----------------------------------------------------
     VerbSpec {
@@ -392,6 +402,7 @@ mod tests {
             "keylock_on",
             "keylock_off",
             "keylock_toggle",
+            "key",
             "volume",
             "gain",
             "eq_low",

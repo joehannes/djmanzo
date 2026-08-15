@@ -54,6 +54,9 @@ pub struct Deck {
     /// mid-set never allocates.
     keylock: Keylock,
     keylock_on: bool,
+    /// Deliberate transposition in semitones, for harmonic mixing. Non-zero
+    /// engages the shifter whether or not keylock is on.
+    key_shift: i32,
     /// Set when the playhead moved discontinuously, so the shifter's history is
     /// refilled before the next block instead of fading in from silence.
     needs_prime: bool,
@@ -89,6 +92,7 @@ impl Deck {
             // Off by default: at unity pitch there is nothing to correct, and a
             // shifter in the path costs CPU and latency for no audible gain.
             keylock_on: false,
+            key_shift: 0,
             needs_prime: true,
             scratch: vec![0.0; SCRATCH_FRAMES * CHANNELS],
         }
@@ -108,6 +112,32 @@ impl Deck {
         self.set_keylock(!self.keylock_on);
     }
 
+    /// Transpose deliberately, in semitones, for harmonic mixing.
+    ///
+    /// Independent of keylock and composed with it: keylock cancels the pitch
+    /// change speed introduced, this adds one you asked for. A non-zero shift
+    /// engages the shifter on its own, so two tracks a semitone apart can be
+    /// brought into key without either changing tempo.
+    pub fn set_key_shift(&mut self, semitones: i32) {
+        let semitones = semitones.clamp(
+            -dj_dsp::keylock::MAX_KEY_SHIFT,
+            dj_dsp::keylock::MAX_KEY_SHIFT,
+        );
+        if semitones != self.key_shift {
+            // Going from silent to engaged means the shifter has no history.
+            if (self.key_shift == 0) != (semitones == 0) {
+                self.needs_prime = true;
+            }
+            self.key_shift = semitones;
+            self.keylock.set_key_shift(semitones);
+        }
+    }
+
+    #[must_use]
+    pub fn key_shift(&self) -> i32 {
+        self.key_shift
+    }
+
     #[must_use]
     pub fn is_keylocked(&self) -> bool {
         self.keylock_on
@@ -119,7 +149,7 @@ impl Deck {
     /// what the feature costs.
     #[must_use]
     pub fn keylock_latency_frames(&self) -> usize {
-        if self.keylock_on {
+        if self.keylock_on || self.key_shift != 0 {
             self.keylock.latency_frames()
         } else {
             0
@@ -362,7 +392,9 @@ impl Deck {
         if !self.playing || self.source.is_empty() {
             return DeckLevels::default();
         }
-        if self.keylock_on {
+        // The shifter runs whenever it has something to do: correcting the
+        // pitch that speed introduced, transposing on purpose, or both.
+        if self.keylock_on || self.key_shift != 0 {
             self.process_keylocked(out, layout)
         } else {
             self.process_direct(out, layout)

@@ -57,6 +57,8 @@ pub struct DeckSnapshot {
     /// What keylock costs, in milliseconds, before the deck compensates for it.
     /// Surfaced so the figure is stated rather than guessed at.
     pub keylock_latency_ms: f32,
+    /// Deliberate transposition in semitones, for harmonic mixing.
+    pub key_shift: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -123,6 +125,7 @@ impl Snapshot {
                     pre_fader_level: get(DeckParam::PreFaderLevel),
                     keylock: get(DeckParam::Keylock) >= 0.5,
                     keylock_latency_ms: to_seconds(get(DeckParam::KeylockLatencyFrames)) * 1000.0,
+                    key_shift: get(DeckParam::KeyShift).round() as i32,
                 }
             })
             .collect();

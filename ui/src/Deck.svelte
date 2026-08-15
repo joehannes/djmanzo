@@ -203,6 +203,25 @@
         ondblclick={() => send(`deck ${deck.number} pitch 0`)}
       />
     </label>
+    <!--
+      Harmonic mixing: shift the key in semitones without touching tempo.
+      Separate from keylock, and engages the shifter on its own.
+    -->
+    <div class="keyshift">
+      <button
+        disabled={!enabled}
+        onclick={() => send(`deck ${deck.number} key ${deck.key_shift - 1}`)}
+        title="Down a semitone"
+      >−</button>
+      <span class="mono" class:shifted={deck.key_shift !== 0}>
+        {deck.key_shift > 0 ? `+${deck.key_shift}` : deck.key_shift}
+      </span>
+      <button
+        disabled={!enabled}
+        onclick={() => send(`deck ${deck.number} key ${deck.key_shift + 1}`)}
+        title="Up a semitone"
+      >+</button>
+    </div>
     <button
       class="keylock"
       class:on={deck.keylock}
@@ -353,9 +372,32 @@
     border-color: var(--danger);
   }
 
+  .keyshift {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    font-size: 0.72em;
+  }
+
+  .keyshift button {
+    padding: 0.25rem 0.4rem;
+    font-size: 0.9em;
+  }
+
+  .keyshift span {
+    min-width: 1.6rem;
+    text-align: center;
+    color: var(--text-dim);
+  }
+
+  .keyshift span.shifted {
+    color: var(--accent-2);
+    font-weight: 600;
+  }
+
   .pitch-row {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
     align-items: end;
     gap: 0.5rem;
   }

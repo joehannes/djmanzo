@@ -57,6 +57,8 @@ export interface DeckState {
   pre_fader_level: number;
   keylock: boolean;
   keylock_latency_ms: number;
+  /** Deliberate transposition in semitones, for harmonic mixing. */
+  key_shift: number;
 }
 
 export interface MasterState {
