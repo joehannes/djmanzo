@@ -75,6 +75,9 @@ impl Engine {
             stranded: Vec::with_capacity(MAX_DECKS * 2),
         };
         engine.publish_static_state();
+        // Publish deck defaults immediately, so the interface shows real values
+        // between opening a device and the first callback firing.
+        engine.publish_deck_state();
         engine
     }
 

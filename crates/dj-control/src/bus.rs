@@ -72,6 +72,18 @@ where
         producer.push(command).map_err(|_| BusFull)
     }
 
+    /// Point the bus at a new engine queue.
+    ///
+    /// Reopening an audio device tears down and rebuilds the whole realtime
+    /// graph, including the ring buffer. The bus outlives that, so it needs to
+    /// be re-aimed rather than recreated -- otherwise every producer holding a
+    /// reference would be left writing into a queue nobody drains.
+    pub fn reconnect(&self, producer: rtrb::Producer<C>) {
+        if let Ok(mut guard) = self.producer.lock() {
+            *guard = producer;
+        }
+    }
+
     /// Everything dispatched so far, in order.
     #[must_use]
     pub fn log(&self) -> Vec<TimedAction> {

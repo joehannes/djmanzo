@@ -7,6 +7,7 @@ members = [
     "crates/dj-decode",
     "crates/dj-engine",
     "crates/dj-control",
+    "crates/dj-app",
 ]
 
 [workspace.package]
