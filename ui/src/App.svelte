@@ -42,7 +42,14 @@
 
   // The engine only exists once a device is open, so every control that would
   // send an action stays disabled until then.
-  const ready = $derived(active !== null);
+  //
+  // Derived from the *engine's* sample rate rather than from this component's
+  // record of having pressed Connect. The two are not the same: a device opened
+  // by anything else — the benchmark harness, a restored setting, the assistant
+  // — leaves `active` null while the engine is quite happily playing, and every
+  // control on screen sits disabled next to a moving playhead. The engine
+  // publishes a rate only once a device is open, so it is the honest source.
+  const ready = $derived((snapshot?.master.sample_rate ?? 0) > 0);
 
   $effect(() => {
     const unlisten = onSnapshot((next) => {
@@ -126,6 +133,7 @@
   // idle case is its own state rather than being folded into the off one.
   const limiterOn = $derived(!ready || (snapshot?.master.limiter_enabled ?? true));
   const split = $derived(snapshot?.master.split_output ?? null);
+  const quantizeOn = $derived(snapshot?.master.quantize ?? false);
 </script>
 
 <main>
@@ -347,6 +355,22 @@
         {/if}
       </div>
 
+      <!--
+        Quantize is global rather than per-deck because it is a way of working,
+        not a property of a track: a DJ who wants quantised jumps wants them on
+        whichever deck they happen to be touching.
+      -->
+      <div class="quantize">
+        <button
+          class:active={snapshot.master.quantize}
+          disabled={!ready}
+          onclick={() => send(`quantize ${quantizeOn ? "off" : "on"}`)}
+          title="Snap beat jumps to the grid"
+        >
+          Quantize
+        </button>
+      </div>
+
       <div class="output-strip">
       <div class="master-meters">
         <div class="meter">
@@ -555,7 +579,7 @@
 
   .mixer {
     display: grid;
-    grid-template-columns: 2fr 1fr 1.2fr auto;
+    grid-template-columns: 2fr 1fr 1.2fr auto auto;
     gap: 1.2rem;
     align-items: center;
     background: var(--panel);
@@ -598,6 +622,16 @@
     font-size: 0.75em;
     line-height: 1.4;
     color: var(--text-dim);
+  }
+
+  .quantize {
+    display: flex;
+    align-items: center;
+  }
+
+  .quantize button {
+    font-size: 0.85em;
+    padding: 0.3rem 0.6rem;
   }
 
   .output-strip {

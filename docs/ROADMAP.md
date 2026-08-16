@@ -81,9 +81,15 @@ the two cannot disagree, with every fourth beat emphasised, individual beats dro
 before the lines merge into a wash, and a low-confidence grid drawn faintly rather than
 hidden (you can only correct a grid you can see).
 
-Not yet: grid editing (shift/scale/tap), sync,
-quantize, beat jump, hot cues, loops, the overview waveform, 4 decks in the interface, and the
-labelled regression set. `CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
+Sync, quantize and beat jump are in. Sync picks its leader automatically — the deck already
+playing is the one the room hears and the one that must not move — matches tempo (offering half
+and double, so a 70 BPM track meets a 140 one at 70 rather than being stretched to double
+speed), aligns phase once, and then *holds* the tempo as the leader's pitch fader moves.
+A grid below the confidence threshold refuses to sync in either direction, and the button is
+disabled rather than silently failing. Quantize snaps beat jumps to the grid.
+
+Not yet: grid editing (shift/scale/tap), hot cues, loops, the overview waveform, 4 decks in the
+interface, and the labelled regression set. `CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
 calibrated against synthetic click tracks (0.95) and white noise (0.014); real music sits
 between those and the constant should be re-derived once there are hand-verified grids.
 

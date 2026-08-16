@@ -104,6 +104,18 @@ export interface DeckState {
    * which is the normal state for the first second after a load.
    */
   analysis: TrackAnalysis | null;
+  /** True when this deck's tempo is locked to another's. */
+  synced: boolean;
+  /**
+   * Tempo actually being played, pitch fader included. Null when the track has
+   * no grid — which is not the same as 0 BPM, and is shown differently.
+   */
+  effective_bpm: number | null;
+  /**
+   * True when the grid is solid enough for sync to accept it. Used to disable
+   * the button rather than let it fail silently.
+   */
+  can_sync: boolean;
 }
 
 /**
@@ -159,6 +171,8 @@ export interface MasterState {
   output_latency_ms: number;
   /** Present only when the headphone cue is on a second sound card. */
   split_output: SplitOutput | null;
+  /** True when beat jumps snap to the grid. */
+  quantize: boolean;
 }
 
 export interface Snapshot {

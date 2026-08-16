@@ -213,6 +213,15 @@ pub async fn load_track(
             }),
         );
 
+        // And to the engine, which needs it for sync, quantize and beat jump.
+        // Two destinations for one finding rather than one shared home,
+        // because the engine's copy has to cross a lock-free queue into the
+        // audio thread and the renderer's cannot.
+        let _ = bus.send_command(dj_engine::Command::SetGrid {
+            deck: deck_id,
+            grid: analysis.tempo.as_ref().map(|tempo| tempo.grid),
+        });
+
         // Auto-gain goes through the action bus rather than straight to the
         // engine, so it lands in the session log like any other trim change and
         // the DJ can see -- and undo -- what was done on their behalf.

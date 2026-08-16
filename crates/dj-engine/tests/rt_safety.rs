@@ -481,6 +481,51 @@ fn the_split_callbacks_never_allocate() {
     );
 }
 
+/// Sync runs inside the callback and reads one deck while writing another,
+/// which is exactly the shape that tempts a `Vec` of candidates or a collected
+/// iterator. Pressed repeatedly, as a DJ riding sync between two decks does.
+#[test]
+fn sync_and_beat_jump_never_allocate() {
+    use dj_core::{Beatgrid, Bpm, Confidence, FramePos};
+
+    let mut rig = rig(4, 256);
+    for n in 1..=2u8 {
+        rig.load_and_play(n, 2_000_000);
+        rig.send(Command::SetGrid {
+            deck: deck(n),
+            grid: Some(Beatgrid::new(
+                FramePos::new(0.0),
+                Bpm::new(if n == 1 { 128.0 } else { 120.0 }).unwrap(),
+                Confidence::new(0.9),
+            )),
+        });
+    }
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..2_000 {
+            rig.act(Action::Deck {
+                deck: deck(2),
+                action: if round % 2 == 0 {
+                    DeckAction::Sync
+                } else {
+                    DeckAction::SyncOff
+                },
+            });
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::BeatJump(if round % 4 == 0 { 4 } else { -4 }),
+            });
+            rig.act(Action::Mixer(MixerAction::SetQuantize(round % 3 == 0)));
+            rig.renderer.render_block();
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "sync and beat jump allocated {allocations} times"
+    );
+}
+
 /// Keylock puts a C++ phase vocoder in the audio path, and this is the test
 /// that says whether that was allowed.
 ///

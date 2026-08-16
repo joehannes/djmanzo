@@ -106,9 +106,15 @@
               ? `Beat grid confidence ${((analysis.bpm_confidence ?? 0) * 100).toFixed(0)}%`
               : `Weak beat grid — ${((analysis.bpm_confidence ?? 0) * 100).toFixed(0)}% confidence. Sync stays disabled rather than guessing.`}
           >
-            {(octaveSwapped && analysis.bpm_alternative != null
-              ? analysis.bpm_alternative
-              : analysis.bpm
+            <!--
+              The tempo being *played*, not the tempo the file was recorded at.
+              With the pitch fader moved or sync engaged those differ, and the
+              one that matters when you are matching two tracks is this one.
+            -->
+            {(deck.effective_bpm ??
+              (octaveSwapped && analysis.bpm_alternative != null
+                ? analysis.bpm_alternative
+                : analysis.bpm)
             ).toFixed(1)}<em>BPM</em>
           </span>
           <!--
@@ -167,6 +173,28 @@
     </span>
   </div>
 
+  <!--
+    Beat jump. Only shown when there is a grid to jump along: without one the
+    buttons would be present and inert, which reads as broken rather than as
+    "this track has no beats yet".
+  -->
+  {#if analysis?.bpm != null}
+    <div class="beatjump">
+      <span class="label">Jump</span>
+      {#each [-4, -1, 1, 4] as beats (beats)}
+        <button
+          onclick={() => send(`deck ${deck.number} beatjump ${beats}`)}
+          disabled={!enabled || !deck.loaded}
+          title="{beats > 0 ? 'Forward' : 'Back'} {Math.abs(beats)} beat{Math.abs(beats) === 1
+            ? ''
+            : 's'}"
+        >
+          {beats > 0 ? `+${beats}` : beats}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
   <div class="transport">
     <button onclick={() => send(`deck ${deck.number} cue`)} disabled={!enabled || !deck.loaded}>
       Cue
@@ -177,6 +205,16 @@
       disabled={!enabled || !deck.loaded}
     >
       {deck.playing ? "Pause" : "Play"}
+    </button>
+    <button
+      class:active={deck.synced}
+      onclick={() => send(`deck ${deck.number} ${deck.synced ? "sync_off" : "sync"}`)}
+      disabled={!enabled || !deck.can_sync}
+      title={deck.can_sync
+        ? "Match tempo and phase to the other playing deck"
+        : "No beat grid solid enough to sync to. Syncing to a guess is how a mix derails."}
+    >
+      Sync
     </button>
     <button onclick={() => send(`deck ${deck.number} eject`)} disabled={!enabled || !deck.loaded}>
       Eject
@@ -355,6 +393,24 @@
     min-width: 0;
   }
 
+  .beatjump {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8em;
+  }
+
+  .beatjump .label {
+    color: var(--text-dim);
+    margin-right: 0.2rem;
+  }
+
+  .beatjump button {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.95em;
+    font-variant-numeric: tabular-nums;
+  }
+
   .analysis {
     display: flex;
     align-items: baseline;
@@ -456,9 +512,15 @@
     color: var(--warn);
   }
 
+  /*
+    Four columns, not three. Sync is a transport control -- it belongs beside
+    play and cue, where a DJ's hand already is -- and adding it to a
+    three-column grid dropped Eject onto a row of its own, which reads as two
+    unrelated groups of buttons rather than one transport.
+  */
   .transport {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 0.4rem;
   }
 

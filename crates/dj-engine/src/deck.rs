@@ -1,10 +1,19 @@
 //! A single deck.
 
 use crate::bus::BusLayout;
-use dj_core::{FramePos, Rate, SampleRate, db_to_linear};
+use dj_core::{Beatgrid, FramePos, Rate, SampleRate, db_to_linear};
 use dj_decode::{AudioBuffer, TrackSource};
 use dj_dsp::{CHANNELS, Keylock, SmoothedValue, SweepFilter, ThreeBandEq};
 use std::sync::Arc;
+
+/// Widest tempo change sync may ask for, as a fraction.
+///
+/// A third either way covers every real pairing once half and double time are
+/// considered — a 90 BPM track meets a 128 one at 128 against 90, which is 42%,
+/// but at *double* 90 it is 128 against 180, which is under 30%. Anything still
+/// outside this after that is a wrong grid rather than a hard mix, and the
+/// right answer is to refuse rather than to play a record at half speed.
+const MAX_SYNC_STRETCH: f64 = 0.34;
 
 /// Frames of source read per pass through the pitch shifter.
 ///
@@ -62,6 +71,15 @@ pub struct Deck {
     needs_prime: bool,
     /// Staging buffer for the keylocked path. Never resized.
     scratch: Vec<f32>,
+    /// The beat grid, when the analyser found one worth having.
+    ///
+    /// Sent in from the host thread rather than computed here: analysis is FFT
+    /// work over a whole track and has no business anywhere near the audio
+    /// callback. A `Beatgrid` is four numbers and `Copy`, so it crosses the
+    /// queue without allocating.
+    grid: Option<Beatgrid>,
+    /// True when this deck's tempo is being held to another's.
+    synced: bool,
 }
 
 impl Deck {
@@ -95,6 +113,8 @@ impl Deck {
             key_shift: 0,
             needs_prime: true,
             scratch: vec![0.0; SCRATCH_FRAMES * CHANNELS],
+            grid: None,
+            synced: false,
         }
     }
 
@@ -354,6 +374,188 @@ impl Deck {
     #[must_use]
     pub fn gain_db(&self) -> f32 {
         self.gain_db
+    }
+
+    // -- beat grid and sync -------------------------------------------------
+
+    /// Attach the analyser's grid, or clear it.
+    ///
+    /// Clearing also drops sync: a deck with no grid has no tempo to lock, and
+    /// leaving `synced` set would show a lock that is not holding anything.
+    pub fn set_grid(&mut self, grid: Option<Beatgrid>) {
+        self.grid = grid;
+        if grid.is_none() {
+            self.synced = false;
+        }
+    }
+
+    #[must_use]
+    pub fn grid(&self) -> Option<Beatgrid> {
+        self.grid
+    }
+
+    #[must_use]
+    pub fn is_synced(&self) -> bool {
+        self.synced
+    }
+
+    pub fn set_synced(&mut self, synced: bool) {
+        // Only a deck with a grid can be locked to anything.
+        self.synced = synced && self.grid.is_some();
+    }
+
+    /// Tempo the deck is actually playing at, pitch fader included.
+    ///
+    /// `None` when there is no grid. Not zero: "no tempo" and "zero BPM" are
+    /// different statements and the interface shows them differently.
+    #[must_use]
+    pub fn effective_bpm(&self) -> Option<f64> {
+        let grid = self.grid?;
+        let bpm = grid.bpm.get() * self.rate.get() * (1.0 + self.pitch);
+        bpm.is_finite().then_some(bpm).filter(|b| *b > 0.0)
+    }
+
+    /// Frames of *source* audio in one beat.
+    ///
+    /// Source frames, not device frames: the grid's anchor and the playhead are
+    /// both positions in the track, and mixing the two rates here would put the
+    /// grid a few percent off on any track that is not at the device rate.
+    #[must_use]
+    fn beat_frames(&self) -> Option<f64> {
+        let grid = self.grid?;
+        let frames = grid.bpm.beat_frames(self.source.sample_rate());
+        (frames.is_finite() && frames > 0.0).then_some(frames)
+    }
+
+    /// Position of the beat nearest `pos`.
+    #[must_use]
+    pub fn nearest_beat(&self, pos: FramePos) -> Option<FramePos> {
+        let grid = self.grid?;
+        Some(grid.nearest_beat(pos, self.source.sample_rate()))
+    }
+
+    /// Where in the current beat the playhead sits, as a fraction in `[0, 1)`.
+    ///
+    /// This is the number phase sync works on: two decks whose phases match are
+    /// two decks whose beats land together.
+    #[must_use]
+    pub fn beat_phase(&self) -> Option<f64> {
+        let grid = self.grid?;
+        let beat = self.beat_frames()?;
+        let offset = (self.position.get() - grid.anchor.get()) / beat;
+        Some(offset - offset.floor())
+    }
+
+    /// Set the pitch fader so this deck plays at `target_bpm`.
+    ///
+    /// Returns false when it cannot: no grid, or a stretch so large it would be
+    /// an octave error rather than a tempo match.
+    pub fn match_tempo(&mut self, target_bpm: f64) -> bool {
+        let Some(grid) = self.grid else {
+            return false;
+        };
+        let own = grid.bpm.get() * self.rate.get();
+        if !target_bpm.is_finite() || target_bpm <= 0.0 || own <= 0.0 {
+            return false;
+        }
+
+        // Half and double are offered because they are musically the same
+        // tempo. A 70 BPM track against a 140 BPM one should play at 70 with
+        // beats landing every other beat, not stretched to double speed --
+        // which is what a naive ratio would do, and it would sound absurd.
+        let best = [target_bpm, target_bpm * 0.5, target_bpm * 2.0]
+            .into_iter()
+            .map(|candidate| (candidate / own - 1.0, candidate))
+            .filter(|(pitch, _)| pitch.abs() <= MAX_SYNC_STRETCH)
+            .min_by(|a, b| a.0.abs().total_cmp(&b.0.abs()));
+
+        match best {
+            Some((pitch, _)) => {
+                self.set_pitch(pitch);
+                true
+            }
+            // Refused rather than approximated. A sync that needs more than a
+            // third either way is not a tempo match; it is a wrong grid, and
+            // quietly playing the track at that speed would be worse than
+            // doing nothing.
+            None => false,
+        }
+    }
+
+    /// Shift the playhead to the nearest point where this deck's beats land
+    /// with `phase`.
+    ///
+    /// Moves by at most half a beat where it can, in whichever direction is
+    /// shorter, so a deck already nearly in phase barely moves.
+    ///
+    /// # Why there is a fallback
+    ///
+    /// The shorter direction is often backwards, and a track synced shortly
+    /// after loading is only a fraction of a second from its start -- so the
+    /// shorter move runs off the front of the file. That is the *most common*
+    /// moment to press sync, not an edge case. Going the other way is a full
+    /// beat further but lands on exactly the same phase, which is what was
+    /// asked for; refusing instead would leave the decks silently unaligned
+    /// with sync showing as engaged.
+    pub fn align_phase_to(&mut self, phase: f64) -> bool {
+        let (Some(beat), Some(mine)) = (self.beat_frames(), self.beat_phase()) else {
+            return false;
+        };
+        if !phase.is_finite() {
+            return false;
+        }
+
+        let mut delta = phase - mine;
+        // Wrap into (-0.5, 0.5]: going forward 0.9 of a beat is going back 0.1.
+        if delta > 0.5 {
+            delta -= 1.0;
+        } else if delta < -0.5 {
+            delta += 1.0;
+        }
+
+        let len = self.len_frames() as f64;
+        let here = self.position.get();
+        // Shorter first, then the same phase a beat the other way.
+        let other = if delta < 0.0 {
+            delta + 1.0
+        } else {
+            delta - 1.0
+        };
+        for candidate in [delta, other] {
+            let moved = here + candidate * beat;
+            if moved >= 0.0 && moved < len {
+                self.seek(FramePos::new(moved));
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Move the playhead by whole beats.
+    ///
+    /// With `quantize` the landing point is snapped to the grid, so repeated
+    /// jumps from an off-beat position converge onto it rather than carrying
+    /// the same error forward forever. Without it the jump is exactly `beats`
+    /// beats from wherever the playhead happens to be, which is what you want
+    /// when deliberately playing against the grid.
+    pub fn beat_jump(&mut self, beats: i32, quantize: bool) -> bool {
+        let Some(beat) = self.beat_frames() else {
+            return false;
+        };
+        let from = if quantize {
+            match self.nearest_beat(self.position) {
+                Some(snapped) => snapped.get(),
+                None => return false,
+            }
+        } else {
+            self.position.get()
+        };
+
+        let target = from + f64::from(beats) * beat;
+        // Clamped rather than refused: jumping past the end of a track should
+        // land at the end, the way a seek does, not silently do nothing.
+        self.seek(FramePos::new(target));
+        true
     }
 
     #[must_use]

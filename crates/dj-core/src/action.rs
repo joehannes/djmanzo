@@ -58,6 +58,13 @@ pub enum DeckAction {
     ToggleKeylock,
     /// Transpose in semitones for harmonic mixing, independent of tempo.
     SetKeyShift(i32),
+    /// Match this deck's tempo, and align its phase once, to another playing
+    /// deck. Refused when either grid is too weak to trust.
+    Sync,
+    /// Release the tempo lock; the pitch fader is the DJ's again.
+    SyncOff,
+    /// Move the playhead by whole beats. Negative goes back.
+    BeatJump(i32),
     /// Drop the loaded track.
     Eject,
 }
@@ -73,6 +80,12 @@ pub enum MixerAction {
     /// Split cue: cue in one ear, master in the other.
     SplitCue(bool),
     BoothGainDb(f32),
+    /// Snap beat jumps -- and later cues and loops -- to the grid.
+    ///
+    /// Global rather than per-deck because it is a way of *working*, not a
+    /// property of a track: a DJ who wants quantised jumps wants them on
+    /// whichever deck they happen to be touching.
+    SetQuantize(bool),
     /// Engage or bypass the master limiter.
     ///
     /// On by default. Bypassing is for the DJ feeding an external processor
@@ -127,6 +140,11 @@ impl Action {
                 )?))),
                 other => Err(ParseError::UnknownVerb(other.to_owned())),
             },
+            "quantize" => match words.next().ok_or(ParseError::MissingVerb)? {
+                "on" => Ok(Action::Mixer(MixerAction::SetQuantize(true))),
+                "off" => Ok(Action::Mixer(MixerAction::SetQuantize(false))),
+                other => Err(ParseError::UnknownVerb(other.to_owned())),
+            },
             "limiter" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "on" => Ok(Action::Mixer(MixerAction::SetLimiter(true))),
                 "off" => Ok(Action::Mixer(MixerAction::SetLimiter(false))),
@@ -164,12 +182,25 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "cue_on" => DeckAction::SetCue(true),
         "cue_off" => DeckAction::SetCue(false),
         "cue_toggle" => DeckAction::ToggleCue,
+        "sync" => DeckAction::Sync,
+        "sync_off" => DeckAction::SyncOff,
+        "beatjump" => DeckAction::BeatJump(parse_i32(argument)?),
         "keylock_on" => DeckAction::SetKeylock(true),
         "keylock_off" => DeckAction::SetKeylock(false),
         "keylock_toggle" => DeckAction::ToggleKeylock,
         "key" => DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32),
         other => return Err(ParseError::UnknownVerb(other.to_owned())),
     })
+}
+
+/// Whole beats, for beat jump.
+///
+/// Parsed as an integer rather than through `parse_f32`, because half a beat is
+/// not a beat jump -- it is a seek, and there is a verb for that.
+fn parse_i32(word: Option<&str>) -> Result<i32, ParseError> {
+    word.ok_or(ParseError::MissingArgument)?
+        .parse()
+        .map_err(|_| ParseError::BadArgument)
 }
 
 fn parse_f32(word: Option<&str>) -> Result<f32, ParseError> {
@@ -243,6 +274,9 @@ impl fmt::Display for Action {
                 DeckAction::SetKeylock(false) => write!(f, "deck {deck} keylock_off"),
                 DeckAction::ToggleKeylock => write!(f, "deck {deck} keylock_toggle"),
                 DeckAction::SetKeyShift(n) => write!(f, "deck {deck} key {n}"),
+                DeckAction::Sync => write!(f, "deck {deck} sync"),
+                DeckAction::SyncOff => write!(f, "deck {deck} sync_off"),
+                DeckAction::BeatJump(n) => write!(f, "deck {deck} beatjump {n}"),
             },
             Action::Mixer(MixerAction::Crossfader(v)) => {
                 write!(f, "crossfader {}", number(f64::from(*v)))
@@ -256,6 +290,8 @@ impl fmt::Display for Action {
             Action::Mixer(MixerAction::CueMix(v)) => write!(f, "cue mix {}", number(f64::from(*v))),
             Action::Mixer(MixerAction::SplitCue(true)) => write!(f, "cue split_on"),
             Action::Mixer(MixerAction::SplitCue(false)) => write!(f, "cue split_off"),
+            Action::Mixer(MixerAction::SetQuantize(true)) => write!(f, "quantize on"),
+            Action::Mixer(MixerAction::SetQuantize(false)) => write!(f, "quantize off"),
             Action::Mixer(MixerAction::SetLimiter(true)) => write!(f, "limiter on"),
             Action::Mixer(MixerAction::SetLimiter(false)) => write!(f, "limiter off"),
         }

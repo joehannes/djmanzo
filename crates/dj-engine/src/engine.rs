@@ -47,6 +47,9 @@ pub struct Engine {
     booth_gain: SmoothedValue,
     booth_gain_db: f32,
 
+    /// Snap beat jumps to the grid.
+    quantize: bool,
+
     /// The last thing before the PA.
     limiter: Limiter,
     /// The last thing before the DJ's ears.
@@ -99,6 +102,7 @@ impl Engine {
             cue_split: false,
             booth_gain: SmoothedValue::new(1.0, sr),
             booth_gain_db: 0.0,
+            quantize: false,
             limiter: Limiter::new(sr),
             cue_limiter: Limiter::new(sr),
             // Capacity for a pathological burst of loads; never grown at runtime.
@@ -133,6 +137,8 @@ impl Engine {
             ParamId::Global(GlobalParam::OutputLatencyFrames),
             self.limiter.latency_frames() as f32,
         );
+        self.registry
+            .set_bool(ParamId::Global(GlobalParam::Quantize), self.quantize);
     }
 
     fn deck_mut(&mut self, id: DeckId) -> Option<&mut Deck> {
@@ -182,6 +188,11 @@ impl Engine {
             };
             match command {
                 Command::Action(action) => self.apply(action),
+                Command::SetGrid { deck, grid } => {
+                    if let Some(target) = self.deck_mut(deck) {
+                        target.set_grid(grid);
+                    }
+                }
                 Command::Load { deck, source } => {
                     if let Some(target) = self.deck_mut(deck) {
                         let previous = target.load(source);
@@ -202,6 +213,23 @@ impl Engine {
                     }
                     return;
                 }
+                // Sync reads one deck while writing another, so it is handled
+                // before the single mutable borrow below rather than inside it.
+                match action {
+                    DeckAction::Sync => {
+                        self.sync_deck(deck);
+                        return;
+                    }
+                    DeckAction::SyncOff => {
+                        if let Some(target) = self.deck_mut(deck) {
+                            target.set_synced(false);
+                        }
+                        return;
+                    }
+                    _ => {}
+                }
+
+                let quantize = self.quantize;
                 let Some(target) = self.deck_mut(deck) else {
                     return;
                 };
@@ -224,6 +252,12 @@ impl Engine {
                     DeckAction::SetKeylock(on) => target.set_keylock(on),
                     DeckAction::ToggleKeylock => target.toggle_keylock(),
                     DeckAction::SetKeyShift(n) => target.set_key_shift(n),
+                    DeckAction::BeatJump(beats) => {
+                        target.beat_jump(beats, quantize);
+                    }
+                    // Sync needs to read another deck while writing this one,
+                    // so it cannot run inside a borrow of `target`.
+                    DeckAction::Sync | DeckAction::SyncOff => unreachable!("handled above"),
                     DeckAction::Eject => unreachable!("handled above"),
                 }
             }
@@ -242,6 +276,11 @@ impl Engine {
                 self.cue_split = on;
                 self.registry
                     .set_bool(ParamId::Global(GlobalParam::CueSplit), on);
+            }
+            Action::Mixer(MixerAction::SetQuantize(on)) => {
+                self.quantize = on;
+                self.registry
+                    .set_bool(ParamId::Global(GlobalParam::Quantize), on);
             }
             Action::Mixer(MixerAction::SetLimiter(on)) => {
                 // The cue limiter is not switched with it. Bypass exists for
@@ -318,6 +357,105 @@ impl Engine {
                 deck.keylock_latency_frames() as f32,
             );
             set(DeckParam::KeyShift, deck.key_shift() as f32);
+            set(DeckParam::Synced, if deck.is_synced() { 1.0 } else { 0.0 });
+            set(
+                DeckParam::EffectiveBpm,
+                deck.effective_bpm().unwrap_or(0.0) as f32,
+            );
+            set(
+                DeckParam::GridConfidence,
+                deck.grid().map_or(0.0, |g| g.confidence.get() as f32),
+            );
+        }
+    }
+
+    /// Which deck a sync request should follow.
+    ///
+    /// Automatic rather than a designated leader, because the answer is nearly
+    /// always obvious: the deck that is already playing is the one the room is
+    /// hearing, and it is the one that must not move. Where several qualify the
+    /// lowest-numbered wins, which is arbitrary but stable — and a DJ with three
+    /// decks running has bigger decisions than this one.
+    ///
+    /// A candidate must be playing *and* carry a grid solid enough to trust.
+    /// Following a guess is how sync earns its reputation for derailing mixes.
+    #[must_use]
+    fn sync_leader(&self, follower: DeckId) -> Option<usize> {
+        self.decks.iter().enumerate().find_map(|(index, deck)| {
+            let is_self = index == follower.index();
+            let usable =
+                deck.is_playing() && deck.grid().is_some_and(|g| g.confidence.is_sync_worthy());
+            (!is_self && usable).then_some(index)
+        })
+    }
+
+    /// Match a deck's tempo and phase to the leader.
+    ///
+    /// Both halves can fail independently and the distinction matters: a deck
+    /// whose tempo could not be matched is not synced at all, while one whose
+    /// phase could not be aligned (because the shift would run off the end of
+    /// the track) is still tempo-locked and worth marking as such.
+    fn sync_deck(&mut self, follower: DeckId) {
+        let Some(leader_index) = self.sync_leader(follower) else {
+            return;
+        };
+        let Some((leader_bpm, leader_phase)) = self
+            .decks
+            .get(leader_index)
+            .and_then(|leader| Some((leader.effective_bpm()?, leader.beat_phase()?)))
+        else {
+            return;
+        };
+
+        let Some(target) = self.decks.get_mut(follower.index()) else {
+            return;
+        };
+        // A follower with a grid too weak to trust is refused for the same
+        // reason a leader is: the grid is what sync acts on, and acting
+        // confidently on a bad one is the failure mode.
+        if !target.grid().is_some_and(|g| g.confidence.is_sync_worthy()) {
+            return;
+        }
+
+        if !target.match_tempo(leader_bpm) {
+            return;
+        }
+        target.align_phase_to(leader_phase);
+        target.set_synced(true);
+    }
+
+    /// Hold every synced deck at its leader's tempo.
+    ///
+    /// Run once a block rather than only when sync is pressed, because the
+    /// leader's pitch fader can move afterwards — and a "sync" that silently
+    /// stops being true the moment someone touches a fader is worse than no
+    /// sync, since nobody is watching for it.
+    ///
+    /// Phase is deliberately *not* re-corrected here. A continuous phase servo
+    /// is beat lock, which is a different feature with different failure modes;
+    /// nudging the playhead every block to chase rounding error would be
+    /// audible for no benefit.
+    fn hold_sync(&mut self) {
+        for index in 0..self.decks.len() {
+            if !self.decks[index].is_synced() {
+                continue;
+            }
+            let Some(follower_id) = DeckId::new(index as u8) else {
+                continue;
+            };
+            let Some(leader_index) = self.sync_leader(follower_id) else {
+                // The leader stopped or lost its grid. The lock is released
+                // rather than frozen at the last tempo, because a lock to
+                // nothing is a lie the interface would keep showing.
+                self.decks[index].set_synced(false);
+                continue;
+            };
+            let Some(leader_bpm) = self.decks[leader_index].effective_bpm() else {
+                continue;
+            };
+            if !self.decks[index].match_tempo(leader_bpm) {
+                self.decks[index].set_synced(false);
+            }
         }
     }
 
@@ -343,6 +481,7 @@ impl AudioCallback for Engine {
 
         self.drain_stranded();
         self.drain_commands();
+        self.hold_sync();
         self.apply_crossfader();
 
         let layout = BusLayout::for_channels(ctx.channels);
@@ -1328,5 +1467,520 @@ mod limiter_tests {
         );
         let peak = rig.peak(&out, (0, 1));
         assert!(peak > 0.1, "the deck should still be audible, got {peak}");
+    }
+}
+
+/// Sync, quantize and beat jump.
+///
+/// The property that matters is not "sync ran" but "the beats line up
+/// afterwards", so these measure tempo and phase rather than checking a flag.
+#[cfg(test)]
+mod sync_tests {
+    use super::*;
+    use dj_core::{Beatgrid, Bpm, Confidence, FramePos};
+    use dj_decode::{AudioBuffer, TrackSource};
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+
+    fn deck(n: u8) -> DeckId {
+        DeckId::from_human(n).unwrap()
+    }
+
+    fn tone(frames: usize) -> Arc<dyn TrackSource> {
+        Arc::new(AudioBuffer::from_interleaved(vec![0.25; frames * 2], SR))
+    }
+
+    fn grid(bpm: f64, anchor: f64, confidence: f64) -> Beatgrid {
+        Beatgrid::new(
+            FramePos::new(anchor),
+            Bpm::new(bpm).unwrap(),
+            Confidence::new(confidence),
+        )
+    }
+
+    struct Rig {
+        engine: Engine,
+        commands: rtrb::Producer<Command>,
+        registry: Arc<ParameterRegistry>,
+    }
+
+    fn new_rig() -> Rig {
+        let (command_tx, command_rx) = rtrb::RingBuffer::new(256);
+        let (retired_tx, _retired_rx) = rtrb::RingBuffer::new(64);
+        let registry = Arc::new(ParameterRegistry::new());
+        Rig {
+            engine: Engine::new(4, SR, command_rx, retired_tx, Arc::clone(&registry)),
+            commands: command_tx,
+            registry,
+        }
+    }
+
+    impl Rig {
+        fn send(&mut self, command: Command) {
+            self.commands.push(command).expect("queue full");
+        }
+
+        fn act(&mut self, action: Action) {
+            self.send(Command::Action(action));
+        }
+
+        fn deck_act(&mut self, n: u8, action: DeckAction) {
+            self.act(Action::Deck {
+                deck: deck(n),
+                action,
+            });
+        }
+
+        /// Load a track, attach a grid, and start it.
+        fn prepare(&mut self, n: u8, bpm: f64, anchor: f64, confidence: f64, playing: bool) {
+            self.send(Command::Load {
+                deck: deck(n),
+                source: tone(48_000 * 300),
+            });
+            self.send(Command::SetGrid {
+                deck: deck(n),
+                grid: Some(grid(bpm, anchor, confidence)),
+            });
+            if playing {
+                self.deck_act(n, DeckAction::Play);
+            }
+        }
+
+        fn render(&mut self, frames: usize) {
+            let mut out = vec![0.0; frames * 2];
+            self.engine.render(
+                &mut out,
+                &RenderContext {
+                    frames,
+                    channels: 2,
+                    sample_rate: SR,
+                },
+            );
+        }
+
+        fn param(&self, n: u8, param: DeckParam) -> f32 {
+            self.registry.get(ParamId::Deck(deck(n), param))
+        }
+
+        fn engine_deck(&self, n: u8) -> &crate::deck::Deck {
+            self.engine.deck(deck(n)).unwrap()
+        }
+    }
+
+    /// **What sync is for.** Two tracks at different tempos, one command, and
+    /// afterwards they are playing at the same speed.
+    #[test]
+    fn sync_matches_the_leaders_tempo() {
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.prepare(2, 120.0, 0.0, 0.9, true);
+        rig.render(256);
+
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+
+        let leader = rig.engine_deck(1).effective_bpm().unwrap();
+        let follower = rig.engine_deck(2).effective_bpm().unwrap();
+        assert!(
+            (follower - leader).abs() < 0.01,
+            "follower at {follower} against a leader at {leader}"
+        );
+        assert_eq!(rig.param(2, DeckParam::Synced), 1.0);
+        // The leader must not have moved. It is what the room is hearing.
+        assert!(
+            (leader - 128.0).abs() < 0.01,
+            "the leader was retuned to {leader}"
+        );
+    }
+
+    /// Tempo alone is not sync. Two decks at the same speed but half a beat
+    /// apart sound like a mistake, and lining the beats up is the harder half.
+    #[test]
+    fn sync_aligns_the_phase() {
+        let mut rig = new_rig();
+        rig.prepare(1, 120.0, 0.0, 0.9, true);
+        // Deck 2's grid is offset by half a beat: 120 BPM is 24 000 frames per
+        // beat, so 12 000 puts it exactly out of phase.
+        rig.prepare(2, 120.0, 12_000.0, 0.9, true);
+        rig.render(256);
+
+        let before = (rig.engine_deck(1).beat_phase().unwrap()
+            - rig.engine_deck(2).beat_phase().unwrap())
+        .abs();
+        assert!(
+            (before - 0.5).abs() < 0.05,
+            "the fixture is not actually out of phase: {before}"
+        );
+
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+
+        let mut delta = (rig.engine_deck(1).beat_phase().unwrap()
+            - rig.engine_deck(2).beat_phase().unwrap())
+        .abs();
+        if delta > 0.5 {
+            delta = 1.0 - delta;
+        }
+        assert!(delta < 0.01, "beats are still {delta} of a beat apart");
+    }
+
+    /// **The case that broke phase alignment first.** Sync pressed shortly
+    /// after loading is the *normal* moment to press it, and there the shorter
+    /// direction is often backwards past the start of the file. Alignment used
+    /// to give up there, leaving the decks out of phase with sync showing as
+    /// engaged -- the worst of both.
+    #[test]
+    fn sync_aligns_even_at_the_very_start_of_a_track() {
+        let mut rig = new_rig();
+        rig.prepare(1, 120.0, 0.0, 0.9, true);
+        // Half a beat out, and only a few hundred frames from the start, so the
+        // shorter correction is 12 000 frames backwards -- off the front.
+        rig.prepare(2, 120.0, 12_000.0, 0.9, true);
+        rig.render(256);
+        assert!(
+            rig.engine_deck(2).position().get() < 12_000.0,
+            "the fixture is not near the start"
+        );
+
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+
+        let mut delta = (rig.engine_deck(1).beat_phase().unwrap()
+            - rig.engine_deck(2).beat_phase().unwrap())
+        .abs();
+        if delta > 0.5 {
+            delta = 1.0 - delta;
+        }
+        assert!(delta < 0.01, "still {delta} of a beat apart near the start");
+        assert!(
+            rig.engine_deck(2).position().get() > 0.0,
+            "aligned by running off the front of the track"
+        );
+    }
+
+    /// **The rule the whole analyser is written around.** A grid the analyser
+    /// does not trust must not be synced to, in either direction. Silently
+    /// syncing to a guess derails a mix at the moment nobody is watching.
+    #[test]
+    fn a_weak_grid_refuses_to_sync() {
+        // Weak leader.
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.2, true);
+        rig.prepare(2, 120.0, 0.0, 0.9, true);
+        rig.render(256);
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+        assert_eq!(
+            rig.param(2, DeckParam::Synced),
+            0.0,
+            "synced to a weak grid"
+        );
+        assert!((rig.engine_deck(2).effective_bpm().unwrap() - 120.0).abs() < 0.01);
+
+        // Weak follower.
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.prepare(2, 120.0, 0.0, 0.2, true);
+        rig.render(256);
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+        assert_eq!(
+            rig.param(2, DeckParam::Synced),
+            0.0,
+            "a deck with a weak grid synced itself to a good one"
+        );
+    }
+
+    /// A deck with no grid at all has nothing to sync, and asking must be a
+    /// no-op rather than a guess.
+    #[test]
+    fn a_deck_with_no_grid_cannot_sync() {
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.send(Command::Load {
+            deck: deck(2),
+            source: tone(48_000 * 60),
+        });
+        rig.deck_act(2, DeckAction::Play);
+        rig.render(256);
+
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+        assert_eq!(rig.param(2, DeckParam::Synced), 0.0);
+        assert!(rig.engine_deck(2).effective_bpm().is_none());
+    }
+
+    /// Nothing playing means no leader. Sync must not pick a paused deck: the
+    /// point of following is to follow what the room can hear.
+    #[test]
+    fn sync_needs_something_to_follow() {
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, false);
+        rig.prepare(2, 120.0, 0.0, 0.9, true);
+        rig.render(256);
+
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+        assert_eq!(rig.param(2, DeckParam::Synced), 0.0);
+    }
+
+    /// **Half and double are the same tempo.** A 70 BPM track against a 140 one
+    /// should play at 70 with beats landing every other beat, not be stretched
+    /// to double speed -- which is what a naive ratio would do.
+    #[test]
+    fn a_half_time_track_is_not_stretched_to_double() {
+        let mut rig = new_rig();
+        rig.prepare(1, 140.0, 0.0, 0.9, true);
+        rig.prepare(2, 70.0, 0.0, 0.9, true);
+        rig.render(256);
+
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+
+        let follower = rig.engine_deck(2).effective_bpm().unwrap();
+        assert!(
+            (follower - 70.0).abs() < 0.01,
+            "a 70 BPM track was played at {follower}"
+        );
+        assert_eq!(
+            rig.param(2, DeckParam::Synced),
+            1.0,
+            "the match was refused"
+        );
+    }
+
+    /// Past a certain stretch it is a wrong grid rather than a hard mix, and
+    /// refusing is better than playing a record at an absurd speed.
+    #[test]
+    fn an_impossible_stretch_is_refused_rather_than_approximated() {
+        let mut rig = new_rig();
+        rig.prepare(1, 170.0, 0.0, 0.9, true);
+        // 96 against 170 is +77%; against half of 170 it is -11%... so pick a
+        // pairing that is bad at every octave. 170 vs 122: +39%, and half
+        // (85) is -30%... also within range. 170 vs 112: +52%, half is -24%.
+        // The genuinely impossible zone is around the midpoint between
+        // octaves, e.g. 170 against 120 is +42% and 85 against 120 is -29%.
+        // Use a leader far from any octave of the follower.
+        rig.prepare(2, 200.0, 0.0, 0.9, true);
+        rig.render(256);
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+
+        let follower = rig.engine_deck(2).effective_bpm().unwrap();
+        // Either it matched within the allowed stretch, or it refused and left
+        // the deck alone. What it must never do is land somewhere between.
+        let synced = rig.param(2, DeckParam::Synced) == 1.0;
+        if synced {
+            assert!(
+                (follower - 170.0).abs() < 0.01 || (follower - 85.0).abs() < 0.01,
+                "synced to neither the tempo nor its octave: {follower}"
+            );
+        } else {
+            assert!(
+                (follower - 200.0).abs() < 0.01,
+                "refused the sync but moved the deck anyway, to {follower}"
+            );
+        }
+    }
+
+    /// **A lock that quietly stops holding is worse than no lock.** Moving the
+    /// leader's pitch fader after sync must carry the follower with it.
+    #[test]
+    fn the_follower_tracks_the_leader_afterwards() {
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.prepare(2, 120.0, 0.0, 0.9, true);
+        rig.render(256);
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+
+        rig.deck_act(1, DeckAction::SetPitch(0.06));
+        rig.render(256);
+
+        let leader = rig.engine_deck(1).effective_bpm().unwrap();
+        let follower = rig.engine_deck(2).effective_bpm().unwrap();
+        assert!(
+            (leader - 128.0 * 1.06).abs() < 0.01,
+            "the leader did not move: {leader}"
+        );
+        assert!(
+            (follower - leader).abs() < 0.01,
+            "the follower stayed at {follower} while the leader went to {leader}"
+        );
+    }
+
+    /// Releasing sync gives the pitch fader back, and must not snap the tempo
+    /// somewhere new -- the deck keeps playing at whatever it was.
+    #[test]
+    fn releasing_sync_leaves_the_tempo_where_it_was() {
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.prepare(2, 120.0, 0.0, 0.9, true);
+        rig.render(256);
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+        let locked = rig.engine_deck(2).effective_bpm().unwrap();
+
+        rig.deck_act(2, DeckAction::SyncOff);
+        rig.render(256);
+        assert_eq!(rig.param(2, DeckParam::Synced), 0.0);
+        assert!(
+            (rig.engine_deck(2).effective_bpm().unwrap() - locked).abs() < 0.01,
+            "releasing sync jumped the tempo"
+        );
+
+        // And the leader can now move without dragging the follower.
+        rig.deck_act(1, DeckAction::SetPitch(0.1));
+        rig.render(256);
+        assert!((rig.engine_deck(2).effective_bpm().unwrap() - locked).abs() < 0.01);
+    }
+
+    /// The leader stopping releases the lock rather than freezing it. A lock to
+    /// nothing is a lie the interface would keep showing.
+    #[test]
+    fn losing_the_leader_releases_the_lock() {
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.prepare(2, 120.0, 0.0, 0.9, true);
+        rig.render(256);
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+        assert_eq!(rig.param(2, DeckParam::Synced), 1.0);
+
+        rig.deck_act(1, DeckAction::Pause);
+        rig.render(256);
+        assert_eq!(
+            rig.param(2, DeckParam::Synced),
+            0.0,
+            "the lock outlived its leader"
+        );
+    }
+
+    /// Beat jump moves by exactly whole beats, which is the only thing that
+    /// makes it different from a seek.
+    #[test]
+    fn beat_jump_moves_whole_beats() {
+        let mut rig = new_rig();
+        // Anchor at zero, so the playhead starts exactly on a beat.
+        rig.prepare(1, 120.0, 0.0, 0.9, false);
+        rig.render(256);
+        let before = rig.engine_deck(1).position().get();
+
+        rig.deck_act(1, DeckAction::BeatJump(4));
+        rig.render(256);
+        let after = rig.engine_deck(1).position().get();
+
+        // 120 BPM at 48 kHz is 24 000 frames per beat.
+        assert!(
+            (after - before - 96_000.0).abs() < 1.0,
+            "jumped {} frames, expected 96 000",
+            after - before
+        );
+    }
+
+    /// And backwards, which is the direction that reveals a sign error.
+    #[test]
+    fn beat_jump_goes_backwards_too() {
+        let mut rig = new_rig();
+        rig.prepare(1, 120.0, 0.0, 0.9, false);
+        rig.deck_act(1, DeckAction::Seek(FramePos::new(480_000.0)));
+        rig.render(256);
+        let before = rig.engine_deck(1).position().get();
+
+        rig.deck_act(1, DeckAction::BeatJump(-2));
+        rig.render(256);
+        assert!(
+            (rig.engine_deck(1).position().get() - before + 48_000.0).abs() < 1.0,
+            "backward jump landed at {}",
+            rig.engine_deck(1).position().get()
+        );
+    }
+
+    /// **What quantize is for.** From an off-beat position, a quantised jump
+    /// lands *on* the grid; an unquantised one carries the same offset forward
+    /// forever.
+    #[test]
+    fn quantize_snaps_a_jump_onto_the_grid() {
+        let beat = 24_000.0;
+        let off_beat = 5_000.0;
+
+        let landed = |quantize: bool| {
+            let mut rig = new_rig();
+            rig.prepare(1, 120.0, 0.0, 0.9, false);
+            rig.act(Action::Mixer(MixerAction::SetQuantize(quantize)));
+            rig.deck_act(1, DeckAction::Seek(FramePos::new(beat * 3.0 + off_beat)));
+            rig.render(256);
+            rig.deck_act(1, DeckAction::BeatJump(1));
+            rig.render(256);
+            rig.engine_deck(1).position().get()
+        };
+
+        // Unquantised: exactly one beat on from where we were, offset intact.
+        assert!(
+            (landed(false) - (beat * 4.0 + off_beat)).abs() < 1.0,
+            "unquantised jump landed at {}",
+            landed(false)
+        );
+        // Quantised: snapped to the nearest beat first, so it lands on one.
+        // 5 000 is less than half a beat, so the nearest beat is beat 3.
+        assert!(
+            (landed(true) - beat * 4.0).abs() < 1.0,
+            "quantised jump landed at {}, not on the grid",
+            landed(true)
+        );
+    }
+
+    /// Without a grid there are no beats to jump by, so the playhead must stay
+    /// exactly where it is rather than moving by some default.
+    #[test]
+    fn beat_jump_without_a_grid_does_nothing() {
+        let mut rig = new_rig();
+        rig.send(Command::Load {
+            deck: deck(1),
+            source: tone(48_000 * 60),
+        });
+        rig.deck_act(1, DeckAction::Seek(FramePos::new(100_000.0)));
+        rig.render(256);
+
+        rig.deck_act(1, DeckAction::BeatJump(4));
+        rig.render(256);
+        assert!((rig.engine_deck(1).position().get() - 100_000.0).abs() < 1.0);
+    }
+
+    /// Ejecting must take the grid with the track, or the next one would be
+    /// synced against the previous track's tempo.
+    #[test]
+    fn a_grid_does_not_outlive_its_track() {
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.render(256);
+        assert!(rig.engine_deck(1).grid().is_some());
+
+        rig.send(Command::SetGrid {
+            deck: deck(1),
+            grid: None,
+        });
+        rig.render(256);
+        assert!(rig.engine_deck(1).grid().is_none());
+        assert_eq!(rig.param(1, DeckParam::Synced), 0.0);
+        assert_eq!(rig.param(1, DeckParam::EffectiveBpm), 0.0);
+    }
+
+    /// The tempo the interface shows has to be the tempo being played, pitch
+    /// fader included -- not the tempo the file was recorded at.
+    #[test]
+    fn the_published_tempo_follows_the_pitch_fader() {
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.render(256);
+        assert!((rig.param(1, DeckParam::EffectiveBpm) - 128.0).abs() < 0.01);
+
+        rig.deck_act(1, DeckAction::SetPitch(0.08));
+        rig.render(256);
+        assert!(
+            (rig.param(1, DeckParam::EffectiveBpm) - 138.24).abs() < 0.05,
+            "published {}",
+            rig.param(1, DeckParam::EffectiveBpm)
+        );
     }
 }

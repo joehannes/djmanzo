@@ -1,6 +1,6 @@
 //! What crosses into the audio thread.
 
-use dj_core::{Action, DeckId};
+use dj_core::{Action, Beatgrid, DeckId};
 use dj_decode::TrackSource;
 use std::sync::Arc;
 
@@ -16,6 +16,20 @@ pub enum Command {
     Load {
         deck: DeckId,
         source: Arc<dyn TrackSource>,
+    },
+    /// Attach the analyser's beat grid to a deck, or clear it.
+    ///
+    /// A command rather than an [`Action`] because it is not something a DJ
+    /// *does* — nobody presses "set grid". It is the analyser reporting a
+    /// finding, and putting it in the action vocabulary would mean offering it
+    /// to controllers, scripts and the assistant, none of which have any
+    /// business inventing a beat grid.
+    ///
+    /// [`Beatgrid`] is four numbers and `Copy`, so this crosses the queue
+    /// without an allocation and needs no retirement.
+    SetGrid {
+        deck: DeckId,
+        grid: Option<Beatgrid>,
     },
 }
 
@@ -53,6 +67,27 @@ mod tests {
             action: DeckAction::Play,
         };
         assert!(matches!(Command::from(action), Command::Action(_)));
+    }
+
+    /// A grid crossing into the audio thread must not carry an allocation with
+    /// it, or attaching one would be a `malloc` in the callback's path.
+    #[test]
+    fn a_grid_command_owns_nothing() {
+        use dj_core::{Bpm, Confidence, FramePos};
+        let command = Command::SetGrid {
+            deck: DeckId::from_human(1).unwrap(),
+            grid: Some(Beatgrid::new(
+                FramePos::new(0.0),
+                Bpm::new(128.0).unwrap(),
+                Confidence::new(0.9),
+            )),
+        };
+        // `Copy` is the property that matters; if `Beatgrid` ever grew a `Vec`
+        // this would stop compiling, which is the point.
+        fn assert_copy<T: Copy>(_: &T) {}
+        if let Command::SetGrid { grid: Some(g), .. } = &command {
+            assert_copy(g);
+        }
     }
 
     #[test]

@@ -96,7 +96,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 29] = [
+static VOCABULARY: [VerbSpec; 34] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -190,6 +190,30 @@ static VOCABULARY: [VerbSpec; 29] = [
         },
         help: "transpose in semitones for harmonic mixing, without changing tempo",
         example: "deck 1 key 2",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "sync",
+        argument: ArgSpec::None,
+        help: "match tempo and phase to the other playing deck; refused if either grid is weak",
+        example: "deck 2 sync",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "sync_off",
+        argument: ArgSpec::None,
+        help: "release the tempo lock and give the pitch fader back",
+        example: "deck 2 sync_off",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "beatjump",
+        argument: ArgSpec::Number {
+            min: -64.0,
+            max: 64.0,
+        },
+        help: "move the playhead by whole beats; negative goes back",
+        example: "deck 1 beatjump 4",
     },
     // -- channel strip -----------------------------------------------------
     VerbSpec {
@@ -315,6 +339,20 @@ static VOCABULARY: [VerbSpec; 29] = [
     },
     VerbSpec {
         target: Target::Mixer,
+        verb: "quantize on",
+        argument: ArgSpec::None,
+        help: "snap beat jumps to the grid",
+        example: "quantize on",
+    },
+    VerbSpec {
+        target: Target::Mixer,
+        verb: "quantize off",
+        argument: ArgSpec::None,
+        help: "let beat jumps move by an exact beat from wherever you are",
+        example: "quantize off",
+    },
+    VerbSpec {
+        target: Target::Mixer,
         verb: "limiter on",
         argument: ArgSpec::None,
         help: "engage the master limiter (on by default)",
@@ -434,6 +472,11 @@ mod tests {
             "cue split_off",
             "limiter on",
             "limiter off",
+            "sync",
+            "sync_off",
+            "beatjump",
+            "quantize on",
+            "quantize off",
         ];
         for name in expected {
             assert!(

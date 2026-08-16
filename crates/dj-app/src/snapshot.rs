@@ -67,6 +67,14 @@ pub struct DeckSnapshot {
     /// What the analyser made of this track. `None` while it is still running,
     /// which is the normal state for the first second after a load.
     pub analysis: Option<TrackAnalysisSnapshot>,
+    /// True when this deck's tempo is locked to another's.
+    pub synced: bool,
+    /// Tempo actually being played, pitch fader included. `None` when the track
+    /// has no grid — which is different from 0 BPM and shown differently.
+    pub effective_bpm: Option<f32>,
+    /// True when the grid is solid enough for sync to accept it. The interface
+    /// uses this to disable the button rather than let it fail silently.
+    pub can_sync: bool,
 }
 
 /// Tempo, key and loudness, as the interface needs them.
@@ -151,6 +159,8 @@ pub struct MasterSnapshot {
     pub output_latency_ms: f32,
     /// Present only when the headphone cue is on a second sound card.
     pub split_output: Option<SplitOutputSnapshot>,
+    /// True when beat jumps snap to the grid.
+    pub quantize: bool,
 }
 
 /// How the two-card bridge is doing.
@@ -265,6 +275,13 @@ impl Snapshot {
                     keylock: get(DeckParam::Keylock) >= 0.5,
                     keylock_latency_ms: to_seconds(get(DeckParam::KeylockLatencyFrames)) * 1000.0,
                     key_shift: get(DeckParam::KeyShift).round() as i32,
+                    synced: get(DeckParam::Synced) >= 0.5,
+                    effective_bpm: {
+                        let bpm = get(DeckParam::EffectiveBpm);
+                        (bpm > 0.0).then_some(bpm)
+                    },
+                    can_sync: get(DeckParam::GridConfidence)
+                        >= dj_core::Confidence::SYNC_THRESHOLD as f32,
                     analysis: analysis
                         .and_then(|store| store.for_deck(id.human_number()))
                         .map(|found| TrackAnalysisSnapshot::from_analysis(&found)),
@@ -292,6 +309,7 @@ impl Snapshot {
                 output_latency_ms: to_seconds(
                     registry.get(ParamId::Global(GlobalParam::OutputLatencyFrames)),
                 ) * 1000.0,
+                quantize: registry.get(ParamId::Global(GlobalParam::Quantize)) >= 0.5,
                 split_output: bridge.map(|stats| SplitOutputSnapshot {
                     drift_ppm: stats.drift_ppm() as f32,
                     queue_ms: to_seconds(stats.queued_frames() as f32) * 1000.0,
