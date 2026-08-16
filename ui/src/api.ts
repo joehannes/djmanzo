@@ -25,6 +25,38 @@ export interface ActiveDevice {
   buffer_frames: number;
   channels: number;
   latency_ms: number;
+  /** The second sound card carrying the headphone cue, when there is one. */
+  cue: CueDevice | null;
+  /**
+   * Why a requested headphone device was not used. Not fatal — the master
+   * still runs, and cueing falls back to the main device if it has the
+   * channels for it.
+   */
+  cue_error: string | null;
+}
+
+export interface CueDevice {
+  name: string;
+  sample_rate: number;
+  buffer_frames: number;
+  latency_ms: number;
+}
+
+/**
+ * How the two-card bridge is doing.
+ *
+ * Two sound cards run on independent crystals, so one genuinely produces more
+ * audio per second than the other consumes. `drift_ppm` is the measured
+ * disagreement: settling near zero means the pair is well matched, and a figure
+ * that keeps climbing means a device is misreporting its rate.
+ */
+export interface SplitOutput {
+  drift_ppm: number;
+  queue_ms: number;
+  target_ms: number;
+  starved_frames: number;
+  dropped_samples: number;
+  healthy: boolean;
 }
 
 export interface LoadedTrack {
@@ -85,6 +117,8 @@ export interface MasterState {
   limiter_reduction_db: number;
   /** Delay the output chain adds after the decks, in milliseconds. */
   output_latency_ms: number;
+  /** Present only when the headphone cue is on a second sound card. */
+  split_output: SplitOutput | null;
 }
 
 export interface Snapshot {
@@ -94,9 +128,21 @@ export interface Snapshot {
 
 export const listDevices = () => invoke<Device[]>("list_devices");
 
-export const openDevice = (deviceId: string | null, bufferFrames: number) =>
+/**
+ * Open the output.
+ *
+ * `cueDeviceId` puts the headphone cue on a *second* sound card. Only worth it
+ * when the main device has no spare channels: two cards means two clocks, and a
+ * drift-correcting resampler between them.
+ */
+export const openDevice = (
+  deviceId: string | null,
+  cueDeviceId: string | null,
+  bufferFrames: number,
+) =>
   invoke<ActiveDevice>("open_device", {
     deviceId,
+    cueDeviceId,
     bufferFrames,
   });
 

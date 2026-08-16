@@ -74,6 +74,7 @@ pub fn run() {
     let registry = state.registry();
     let deck_count = state.deck_count();
     let waveforms = Arc::clone(state.waveforms());
+    let bridge_handle = state.bridge_handle();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -144,12 +145,17 @@ pub fn run() {
                 });
             }
 
-            let pump = SnapshotPump::start(registry, deck_count, move |snapshot| {
-                use tauri::Emitter;
-                if let Err(error) = handle.emit("snapshot", &snapshot) {
-                    tracing::warn!(%error, "failed to emit snapshot");
-                }
-            });
+            let pump = SnapshotPump::start_with_bridge(
+                registry,
+                deck_count,
+                bridge_handle,
+                move |snapshot| {
+                    use tauri::Emitter;
+                    if let Err(error) = handle.emit("snapshot", &snapshot) {
+                        tracing::warn!(%error, "failed to emit snapshot");
+                    }
+                },
+            );
             // Hand the pump to Tauri so it lives as long as the app does.
             app.manage(pump);
             Ok(())

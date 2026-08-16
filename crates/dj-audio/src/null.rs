@@ -34,6 +34,30 @@ impl NullBackend {
             is_default: true,
         }
     }
+
+    /// A second virtual device, so the two-card path is testable.
+    ///
+    /// Not padding. Split output puts the headphone cue on a *different* card
+    /// from the master, and a backend that can only ever offer one device makes
+    /// that path impossible to exercise — which is the one path where the
+    /// interesting failure lives, because the two cards run on independent
+    /// clocks. Two channels, like the cheap USB interface it stands in for.
+    fn cue_device_info() -> DeviceInfo {
+        DeviceInfo {
+            id: DeviceId::new("null-cue"),
+            name: "Null headphone output (no hardware)".to_owned(),
+            max_output_channels: 2,
+            default_sample_rate: SampleRate::DEFAULT,
+            is_default: false,
+        }
+    }
+
+    fn describe(id: Option<&DeviceId>) -> DeviceInfo {
+        match id {
+            Some(wanted) if wanted == &Self::cue_device_info().id => Self::cue_device_info(),
+            _ => Self::device_info(),
+        }
+    }
 }
 
 impl AudioBackend for NullBackend {
@@ -42,7 +66,7 @@ impl AudioBackend for NullBackend {
     }
 
     fn output_devices(&self) -> Result<Vec<DeviceInfo>, AudioError> {
-        Ok(vec![Self::device_info()])
+        Ok(vec![Self::device_info(), Self::cue_device_info()])
     }
 
     fn open_output(
@@ -51,7 +75,7 @@ impl AudioBackend for NullBackend {
         mut callback: Box<dyn AudioCallback>,
     ) -> Result<Box<dyn AudioStream>, AudioError> {
         let active = ActiveConfig {
-            device_name: Self::device_info().name,
+            device_name: Self::describe(config.device.as_ref()).name,
             sample_rate: config.sample_rate,
             buffer_frames: config.buffer_frames,
             channels: config.channels,
@@ -236,11 +260,39 @@ mod tests {
     }
 
     #[test]
-    fn null_backend_reports_a_device() {
+    fn null_backend_reports_a_default_and_a_second_device() {
         let devices = NullBackend::new().output_devices().unwrap();
-        assert_eq!(devices.len(), 1);
+        // Two, so the split-output path has somewhere to split *to*.
+        assert_eq!(devices.len(), 2);
         assert!(devices[0].is_default);
         assert!(devices[0].supports_split_output());
+        assert!(!devices[1].is_default);
+        assert!(
+            !devices[1].supports_split_output(),
+            "the stand-in headphone device should be stereo, like the hardware it represents"
+        );
+    }
+
+    /// Opening the second device must actually open the second device, or a
+    /// test of the split path would be testing one device twice.
+    #[test]
+    fn the_named_device_is_the_one_opened() {
+        let backend = NullBackend::new();
+        let config = StreamConfig {
+            device: Some(DeviceId::new("null-cue")),
+            channels: 2,
+            ..Default::default()
+        };
+        let stream = backend
+            .open_output(
+                &config,
+                Box::new(ConstantCallback {
+                    value: 0.0,
+                    calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                }),
+            )
+            .unwrap();
+        assert!(stream.config().device_name.contains("headphone"));
     }
 
     #[test]

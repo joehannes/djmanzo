@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 dj-core = { workspace = true }
 cpal = { workspace = true }
+rtrb = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

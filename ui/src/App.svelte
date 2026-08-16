@@ -21,6 +21,12 @@
 
   let devices = $state<Device[]>([]);
   let selectedDevice = $state<string | null>(null);
+  /**
+   * A second sound card for the headphone cue. Null means "keep it on the main
+   * device", which is always better when that device has the channels — two
+   * cards means two clocks, and a resampler between them.
+   */
+  let selectedCueDevice = $state<string | null>(null);
   let bufferFrames = $state(256);
   let active = $state<ActiveDevice | null>(null);
   let error = $state<string | null>(null);
@@ -87,7 +93,7 @@
 
   async function connect() {
     try {
-      active = await openDevice(selectedDevice, bufferFrames);
+      active = await openDevice(selectedDevice, selectedCueDevice, bufferFrames);
       error = null;
     } catch (e) {
       error = String(e);
@@ -119,6 +125,7 @@
   // safety feature was off when in fact nothing is running at all — so the
   // idle case is its own state rather than being folded into the off one.
   const limiterOn = $derived(!ready || (snapshot?.master.limiter_enabled ?? true));
+  const split = $derived(snapshot?.master.split_output ?? null);
 </script>
 
 <main>
@@ -151,6 +158,23 @@
         {/each}
       </select>
 
+      <!--
+        Only worth offering when there is somewhere to send it. On a card with
+        four channels the cue already has a home and a second device would add
+        latency and a resampler for nothing.
+      -->
+      {#if devices.length > 1}
+        <select
+          bind:value={selectedCueDevice}
+          title="Send the headphone cue to a second sound card. Only needed when the main device has no spare channels."
+        >
+          <option value={null}>Cue: same device</option>
+          {#each devices.filter((d) => d.id !== selectedDevice) as device (device.id)}
+            <option value={device.id}>Cue: {device.name}</option>
+          {/each}
+        </select>
+      {/if}
+
       <button class="primary" onclick={connect}>
         {active ? "Reconnect" : "Connect"}
       </button>
@@ -163,6 +187,22 @@
         <span class:hot={load > 0.7}>CPU {(load * 100).toFixed(0)}%</span>
         {#if snapshot && snapshot.master.xruns > 0}
           <span class="xruns">{snapshot.master.xruns} xruns</span>
+        {/if}
+        <!--
+          Two cards means two crystals, and this is the measured disagreement
+          between them. Shown because it is otherwise completely invisible: a
+          figure that settles is a healthy pair, and one that keeps climbing is
+          a device misreporting its rate — which you would otherwise only find
+          out when the headphones started clicking mid-set.
+        -->
+        {#if split}
+          <span
+            class="drift"
+            class:xruns={!split.healthy}
+            title="Clock difference between the two sound cards, corrected by resampling. {split.queue_ms.toFixed(1)} ms queued."
+          >
+            {split.drift_ppm >= 0 ? "+" : ""}{split.drift_ppm.toFixed(0)} ppm
+          </span>
         {/if}
       {:else}
         <span class="idle">no device</span>
@@ -197,6 +237,28 @@
 
   {#if error}
     <p class="error">{error}</p>
+  {/if}
+
+  <!--
+    A headphone device that would not open is not fatal — the master still
+    runs — but it is silent unless said out loud, and the DJ would be reaching
+    for a cue that is not there.
+  -->
+  {#if active?.cue_error}
+    <p class="warning">
+      The headphone device would not open ({active.cue_error}). Cueing has
+      stayed on the main device.
+    </p>
+  {/if}
+
+  {#if split && !split.healthy}
+    <p class="warning">
+      The headphone device has lost audio
+      ({split.starved_frames > 0
+        ? `${split.starved_frames.toFixed(0)} frames of silence`
+        : `${split.dropped_samples.toFixed(0)} samples dropped`}). Try a larger
+      buffer, or put the cue back on the main device.
+    </p>
   {/if}
 
   {#if slowFrames !== null}
@@ -345,6 +407,11 @@
           Output delayed {snapshot.master.output_latency_ms.toFixed(1)} ms by
           the limiter's look-ahead. The headphone cue is delayed to match, so
           beatmatching stays true.
+          {#if split}
+            The second sound card adds {split.queue_ms.toFixed(1)} ms more, and
+            its clock is being corrected by {Math.abs(split.drift_ppm).toFixed(0)}
+            ppm.
+          {/if}
         </p>
       {/if}
     </section>
@@ -597,6 +664,10 @@
 
   .limiter-idle {
     font-style: normal;
+    color: var(--text-dim);
+  }
+
+  .drift {
     color: var(--text-dim);
   }
 

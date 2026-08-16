@@ -20,7 +20,7 @@ use std::cell::Cell;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use dj_audio::{OfflineRenderer, StreamConfig};
+use dj_audio::{AudioCallback, OfflineRenderer, RenderContext, StreamConfig, cue_bridge};
 use dj_control::ParameterRegistry;
 use dj_core::param::{DeckParam, GlobalParam};
 use dj_core::{Action, DeckAction, DeckId, MixerAction, ParamId, SampleRate};
@@ -379,6 +379,105 @@ fn toggling_the_limiter_never_allocates() {
     assert_eq!(
         allocations, 0,
         "toggling the limiter allocated {allocations} times"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The dual-device bridge
+//
+// This one runs on *two* audio threads rather than one, and the interesting
+// part is the control loop: it computes a resampling ratio every block, which
+// is exactly the kind of arithmetic that grows a buffer if written carelessly.
+// ---------------------------------------------------------------------------
+
+/// Neither half of the bridge may allocate, and the correction has to be
+/// actively working while it is measured -- a matched pair sits at a ratio of
+/// 1.0 and never exercises the interpolator's shift path properly.
+#[test]
+fn the_dual_device_bridge_never_allocates() {
+    let (mut producer, mut consumer, _stats) = cue_bridge(SampleRate::DEFAULT, 256);
+    let block: Vec<f32> = (0..256 * 2).map(|n| (n % 97) as f32 / 97.0).collect();
+    let mut out = vec![0.0f32; 256 * 2];
+
+    // Prime outside the measured region: the first fill is the one place
+    // start-up work could hide.
+    for _ in 0..8 {
+        producer.push(&block);
+        consumer.pull(&mut out);
+    }
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..5_000 {
+            // Deliberately mismatched: push an extra frame occasionally so the
+            // queue drifts and the loop has something to correct.
+            producer.push(&block);
+            if round % 64 == 0 {
+                producer.push(&block[..2]);
+            }
+            consumer.pull(&mut out);
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "the bridge allocated {allocations} times across 5,000 blocks"
+    );
+}
+
+/// The split callbacks are what the device actually calls, so they are what
+/// has to be allocation-free -- including the scratch buffer the primary uses
+/// to render four channels into a two-channel device.
+#[test]
+fn the_split_callbacks_never_allocate() {
+    // Built directly rather than through `rig`, which wraps the engine in an
+    // `OfflineRenderer`; here the split callback is the wrapper.
+    let (mut commands, command_rx) = rtrb::RingBuffer::new(1024);
+    let (retired_tx, mut retired) = rtrb::RingBuffer::new(64);
+    let registry = Arc::new(ParameterRegistry::new());
+    let engine = Engine::new(2, SR, command_rx, retired_tx, registry);
+
+    commands
+        .push(Command::Load {
+            deck: deck(1),
+            source: tone(1_000_000),
+        })
+        .ok();
+    for action in [DeckAction::Play, DeckAction::SetCue(true)] {
+        commands
+            .push(Command::Action(Action::Deck {
+                deck: deck(1),
+                action,
+            }))
+            .ok();
+    }
+
+    let (producer, consumer, _stats) = cue_bridge(SampleRate::DEFAULT, 256);
+    let mut primary = dj_audio::SplitPrimary::new(Box::new(engine), producer);
+    let mut secondary = dj_audio::SplitSecondary::new(consumer);
+
+    let mut master = vec![0.0f32; 256 * 2];
+    let mut phones = vec![0.0f32; 256 * 2];
+    let ctx = RenderContext {
+        frames: 256,
+        channels: 2,
+        sample_rate: SampleRate::DEFAULT,
+    };
+
+    // Prime first, as above, draining retirements the way the host thread does.
+    for _ in 0..32 {
+        primary.render(&mut master, &ctx);
+        secondary.render(&mut phones, &ctx);
+        while retired.pop().is_ok() {}
+    }
+
+    let (_, allocations) = count_allocations(|| {
+        for _ in 0..2_000 {
+            primary.render(&mut master, &ctx);
+            secondary.render(&mut phones, &ctx);
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "the split callbacks allocated {allocations} times"
     );
 }
 

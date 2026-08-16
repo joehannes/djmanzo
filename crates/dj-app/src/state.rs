@@ -73,6 +73,10 @@ pub struct AppState {
     assistant: Mutex<AssistantChoice>,
     budget: Arc<Budget>,
     presets: PresetLibrary,
+    /// Live figures from the two-device bridge, present only while a split
+    /// output is open. Replaced on every device change, so it never reports
+    /// numbers from a stream that has already been closed.
+    bridge: Arc<Mutex<Option<Arc<dj_audio::BridgeStats>>>>,
 }
 
 impl AppState {
@@ -118,6 +122,7 @@ impl AppState {
             assistant: Mutex::new(AssistantChoice::default()),
             budget: Arc::new(Budget::default()),
             presets: PresetLibrary::builtin(),
+            bridge: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -233,6 +238,29 @@ impl AppState {
         &self.host
     }
 
+    /// Record the bridge for the stream that was just opened, or clear it when
+    /// the new stream is a single-device one.
+    pub fn set_bridge(&self, bridge: Option<Arc<dj_audio::BridgeStats>>) {
+        if let Ok(mut slot) = self.bridge.lock() {
+            *slot = bridge;
+        }
+    }
+
+    #[must_use]
+    pub fn bridge(&self) -> Option<Arc<dj_audio::BridgeStats>> {
+        self.bridge.lock().ok()?.clone()
+    }
+
+    /// A live handle for the snapshot pump.
+    ///
+    /// Shared rather than copied, because the bridge is replaced every time a
+    /// device is opened and a pump holding a stale copy would keep reporting
+    /// drift for a stream that has already been closed.
+    #[must_use]
+    pub fn bridge_handle(&self) -> Arc<Mutex<Option<Arc<dj_audio::BridgeStats>>>> {
+        Arc::clone(&self.bridge)
+    }
+
     #[must_use]
     pub fn deck_count(&self) -> usize {
         DECK_COUNT
@@ -280,6 +308,10 @@ mod tests {
     fn the_host_starts_with_the_null_backend() {
         let state = AppState::new(true);
         let devices = state.host().list_devices().unwrap();
-        assert_eq!(devices.len(), 1, "null backend exposes exactly one device");
+        assert_eq!(
+            devices.len(),
+            2,
+            "null backend exposes a master and a headphone device"
+        );
     }
 }

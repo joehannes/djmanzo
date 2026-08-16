@@ -88,6 +88,29 @@ pub struct MasterSnapshot {
     /// Stated rather than left to be discovered. Constant whether the limiter
     /// is engaged or bypassed.
     pub output_latency_ms: f32,
+    /// Present only when the headphone cue is on a second sound card.
+    pub split_output: Option<SplitOutputSnapshot>,
+}
+
+/// How the two-card bridge is doing.
+///
+/// Worth showing rather than hiding. The drift figure is the measured
+/// disagreement between two crystals: one that settles near zero says the pair
+/// is well matched, and one that keeps climbing says a device is misreporting
+/// its rate — a real fault that is otherwise completely invisible until the
+/// headphones start clicking mid-set.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SplitOutputSnapshot {
+    /// Measured clock disagreement, in parts per million.
+    pub drift_ppm: f32,
+    /// Extra latency the headphone path carries, in milliseconds.
+    pub queue_ms: f32,
+    pub target_ms: f32,
+    /// Non-zero means the headphones went silent for a moment.
+    pub starved_frames: f64,
+    /// Non-zero means the headphone device stopped consuming.
+    pub dropped_samples: f64,
+    pub healthy: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -100,6 +123,16 @@ impl Snapshot {
     /// Read the current state of `deck_count` decks.
     #[must_use]
     pub fn capture(registry: &ParameterRegistry, deck_count: usize) -> Self {
+        Self::capture_with(registry, deck_count, None)
+    }
+
+    /// As [`Self::capture`], plus the two-card bridge when one is running.
+    #[must_use]
+    pub fn capture_with(
+        registry: &ParameterRegistry,
+        deck_count: usize,
+        bridge: Option<&dj_audio::BridgeStats>,
+    ) -> Self {
         let sample_rate = registry.get(ParamId::Global(GlobalParam::SampleRate));
         // Before a device is open the rate is zero; dividing by it would put
         // infinities on screen.
@@ -163,10 +196,24 @@ impl Snapshot {
                 output_latency_ms: to_seconds(
                     registry.get(ParamId::Global(GlobalParam::OutputLatencyFrames)),
                 ) * 1000.0,
+                split_output: bridge.map(|stats| SplitOutputSnapshot {
+                    drift_ppm: stats.drift_ppm() as f32,
+                    queue_ms: to_seconds(stats.queued_frames() as f32) * 1000.0,
+                    target_ms: to_seconds(stats.target_frames() as f32) * 1000.0,
+                    // Through f64 rather than an integer: these cross into
+                    // JavaScript, where every number is a double anyway, and a
+                    // u64 would serialise as something the interface cannot add up.
+                    starved_frames: stats.starved_frames() as f64,
+                    dropped_samples: stats.dropped_samples() as f64,
+                    healthy: stats.is_healthy(),
+                }),
             },
         }
     }
 }
+
+/// Where the pump looks for the current two-card bridge, if there is one.
+pub type BridgeHandle = Arc<std::sync::Mutex<Option<Arc<dj_audio::BridgeStats>>>>;
 
 /// A running snapshot pump. Stops when dropped.
 #[derive(Debug)]
@@ -185,6 +232,20 @@ impl SnapshotPump {
         Self::with_heartbeat(registry, deck_count, HEARTBEAT_INTERVAL, emit)
     }
 
+    /// Start sampling, including the two-card bridge when one is open.
+    ///
+    /// The handle is shared rather than a copy of the current bridge, because
+    /// the bridge is replaced on every device change; a pump holding one
+    /// directly would keep reporting drift from a closed stream.
+    pub fn start_with_bridge(
+        registry: Arc<ParameterRegistry>,
+        deck_count: usize,
+        bridge: BridgeHandle,
+        emit: impl FnMut(Snapshot) + Send + 'static,
+    ) -> Self {
+        Self::run(registry, deck_count, Some(bridge), HEARTBEAT_INTERVAL, emit)
+    }
+
     /// Start sampling with an explicit heartbeat interval.
     ///
     /// Exists so tests can exercise the heartbeat in milliseconds rather than
@@ -192,6 +253,16 @@ impl SnapshotPump {
     pub fn with_heartbeat(
         registry: Arc<ParameterRegistry>,
         deck_count: usize,
+        heartbeat: Duration,
+        emit: impl FnMut(Snapshot) + Send + 'static,
+    ) -> Self {
+        Self::run(registry, deck_count, None, heartbeat, emit)
+    }
+
+    fn run(
+        registry: Arc<ParameterRegistry>,
+        deck_count: usize,
+        bridge: Option<BridgeHandle>,
         heartbeat: Duration,
         mut emit: impl FnMut(Snapshot) + Send + 'static,
     ) -> Self {
@@ -205,7 +276,11 @@ impl SnapshotPump {
                     let mut previous: Option<Snapshot> = None;
                     let mut last_emit = std::time::Instant::now();
                     while alive.load(Ordering::Relaxed) {
-                        let snapshot = Snapshot::capture(&registry, deck_count);
+                        // Re-read through the handle every tick: the bridge is
+                        // replaced whenever a device is opened.
+                        let current = bridge.as_ref().and_then(|slot| slot.lock().ok()?.clone());
+                        let snapshot =
+                            Snapshot::capture_with(&registry, deck_count, current.as_deref());
                         let changed = previous.as_ref() != Some(&snapshot);
 
                         // Skip identical frames -- an idle application should not

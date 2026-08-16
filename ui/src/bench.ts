@@ -60,7 +60,9 @@ export function armBenchmark(): void {
   void listen<string>("bench", async (event) => {
     const path = event.payload;
     try {
-      await openDevice(null, 256);
+      // Single device: the benchmark measures webview compositing, and a
+      // second sound card would only add a resampler to the audio path.
+      await openDevice(null, null, 256);
 
       // Baseline: the interface running with nothing on the decks. Anything
       // measured later has to be read against this, not against 60 fps in the

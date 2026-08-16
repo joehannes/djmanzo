@@ -1163,6 +1163,7 @@ version = "0.0.2"
 dependencies = [
  "cpal",
  "dj-core",
+ "rtrb",
  "thiserror 2.0.20",
  "tracing",
 ]

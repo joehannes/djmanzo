@@ -34,6 +34,20 @@ pub struct ActiveDeviceDto {
     pub buffer_frames: u32,
     pub channels: u16,
     pub latency_ms: f64,
+    /// The second device carrying the headphone cue, when there is one.
+    pub cue: Option<CueDeviceDto>,
+    /// Why a requested headphone device was not used. The master still runs;
+    /// cueing falls back to the main device if it has the channels for it.
+    pub cue_error: Option<String>,
+}
+
+/// The headphone device in a two-card setup.
+#[derive(Debug, Clone, Serialize)]
+pub struct CueDeviceDto {
+    pub name: String,
+    pub sample_rate: u32,
+    pub buffer_frames: u32,
+    pub latency_ms: f64,
 }
 
 /// A track that has just been loaded.
@@ -68,21 +82,33 @@ pub fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceDto>, String
 pub fn open_device(
     state: State<'_, AppState>,
     device_id: Option<String>,
+    cue_device_id: Option<String>,
     buffer_frames: Option<u32>,
 ) -> Result<ActiveDeviceDto, String> {
     let device = device_id.map(dj_audio::DeviceId::new);
+    let cue_device = cue_device_id.map(dj_audio::DeviceId::new);
     let frames = buffer_frames.unwrap_or(dj_audio::StreamConfig::DEFAULT_BUFFER_FRAMES);
-    let active = state
+    let outcome = state
         .host()
-        .open(device, frames)
+        .open(device, cue_device, frames)
         .map_err(|e| e.to_string())?;
 
+    state.set_bridge(outcome.bridge.clone());
+    let master = outcome.master;
+
     Ok(ActiveDeviceDto {
-        latency_ms: active.latency_ms(),
-        name: active.device_name,
-        sample_rate: active.sample_rate.get(),
-        buffer_frames: active.buffer_frames,
-        channels: active.channels,
+        latency_ms: master.latency_ms(),
+        name: master.device_name,
+        sample_rate: master.sample_rate.get(),
+        buffer_frames: master.buffer_frames,
+        channels: master.channels,
+        cue: outcome.cue.map(|cue| CueDeviceDto {
+            latency_ms: cue.latency_ms(),
+            name: cue.device_name,
+            sample_rate: cue.sample_rate.get(),
+            buffer_frames: cue.buffer_frames,
+        }),
+        cue_error: outcome.cue_error,
     })
 }
 
@@ -168,7 +194,8 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
 /// waiting for the engine to do something.
 #[tauri::command]
 pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
-    crate::Snapshot::capture(&state.registry(), state.deck_count())
+    let bridge = state.bridge();
+    crate::Snapshot::capture_with(&state.registry(), state.deck_count(), bridge.as_deref())
 }
 
 /// What the interface needs to size a deck's waveform strip.
@@ -255,7 +282,7 @@ mod tests {
     #[test]
     fn session_log_entries_are_formatted_for_reading() {
         let state = AppState::new(true);
-        state.host().open(None, 128).unwrap();
+        state.host().open(None, None, 128).unwrap();
         state
             .bus()
             .dispatch(Action::parse("deck 1 play").unwrap())

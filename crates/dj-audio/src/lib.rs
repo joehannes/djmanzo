@@ -8,13 +8,16 @@
 //!
 //! The trait exists rather than using `cpal` directly because a DJ application
 //! needs behaviour `cpal` does not model: four-channel split output, two devices
-//! on independent clocks with drift correction, macOS aggregate devices. Those
-//! land behind this same interface in M1 without disturbing the engine.
+//! on independent clocks with drift correction, macOS aggregate devices. The
+//! second of those lives in [`bridge`], behind this same interface and without
+//! the engine knowing about it.
 
+pub mod bridge;
 pub mod cpal_backend;
 pub mod device;
 pub mod null;
 
+pub use bridge::{BridgeStats, CueConsumer, CueProducer, SplitPrimary, SplitSecondary, cue_bridge};
 pub use cpal_backend::CpalBackend;
 pub use device::{ActiveConfig, DeviceId, DeviceInfo, StreamConfig};
 pub use null::{NullBackend, OfflineRenderer};
