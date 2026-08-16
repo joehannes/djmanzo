@@ -32,6 +32,8 @@
   let laneWidth = $state(1200);
   let ready = $state(false);
   let totalFrames = $state(0);
+  /** Which generation of this deck's content the tiles belong to. */
+  let epoch = $state(0);
 
   // Interpolation state. Updated from snapshots, read every animation frame.
   let anchorFrame = 0;
@@ -39,11 +41,15 @@
   let framesPerSecond = 0;
 
   $effect(() => {
-    // Touch length_frames so this re-runs whenever the deck's track changes.
+    // Touch both so this re-runs whenever the deck's content changes: a new
+    // track changes the length, and analysis finishing changes the grid without
+    // touching the length at all.
     deck.length_frames;
+    deck.analysis;
     void waveformInfo(deck.number).then((info) => {
       ready = info.ready;
       totalFrames = info.total_frames;
+      epoch = info.epoch;
     });
   });
 
@@ -88,6 +94,7 @@
           startFrame,
           framesPerPixel,
           theme.resolved,
+          epoch,
         ),
       };
     }).filter((t) => t.startFrame + tileSpanFrames > 0 && t.startFrame < totalFrames);

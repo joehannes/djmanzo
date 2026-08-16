@@ -201,6 +201,14 @@ export interface WaveformInfo {
   deck: number;
   ready: boolean;
   total_frames: number;
+  /**
+   * Generation of this deck's tiles.
+   *
+   * Goes into every tile URL, and it has to: tiles are served immutable for a
+   * year, so without it the webview would redisplay the previous track's
+   * waveform after a load, and a beat-grid edit would appear to do nothing.
+   */
+  epoch: number;
 }
 
 export const waveformInfo = (deck: number) =>
@@ -225,10 +233,11 @@ export function tileUrl(
   startFrame: number,
   framesPerPixel: number,
   theme: ResolvedTheme,
+  epoch: number,
 ): string {
   const zoomMilli = Math.round(framesPerPixel * 1000);
   const start = Math.round(startFrame);
-  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}/${theme}`;
+  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}/${theme}/${epoch}`;
   // Tauri rewrites custom schemes differently per platform: Linux/WebKitGTK
   // keeps `scheme://`, while Windows needs the `http://scheme.localhost` form.
   // macOS accepts the former.

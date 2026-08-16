@@ -10,7 +10,7 @@
 //! thread, which is the pattern that collapses under WebKitGTK.
 
 use dj_core::DeckId;
-use dj_render::{Theme, TileSpec, WaveformSummary, encode_png, render_tile};
+use dj_render::{GridOverlay, Theme, TileSpec, WaveformSummary, encode_png, render_tile_with_grid};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -24,6 +24,17 @@ pub const SCHEME: &str = "wave";
 #[derive(Debug, Default)]
 pub struct WaveformStore {
     summaries: Mutex<HashMap<u8, Arc<WaveformSummary>>>,
+    /// Beat grid per deck, drawn into the tiles themselves.
+    grids: Mutex<HashMap<u8, GridOverlay>>,
+    /// Bumped whenever a deck's tiles stop being valid.
+    ///
+    /// **This is not belt-and-braces.** Tiles are served with a one-year
+    /// `immutable` cache header, so the webview keeps its own copy keyed by
+    /// URL. Clearing the cache here does nothing about that copy: without a
+    /// discriminant in the URL, loading a second track on the same deck at the
+    /// same zoom would redisplay the *first* track's waveform, and editing a
+    /// beat grid would appear to do nothing at all.
+    epochs: Mutex<HashMap<u8, u32>>,
     /// Encoded PNGs, keyed by the request that produced them. Tiles are
     /// deterministic, so a hit is always byte-identical to a re-render.
     cache: Mutex<HashMap<TileKey, Arc<Vec<u8>>>>,
@@ -40,6 +51,9 @@ pub struct TileKey {
     pub start_frame: i64,
     /// Frames per pixel, scaled by 1000 so fractional zoom still keys exactly.
     pub zoom_milli: u64,
+    /// Which generation of this deck's content the tile belongs to. See
+    /// [`WaveformStore::epochs`].
+    pub epoch: u32,
     /// Which palette the tile was drawn with.
     ///
     /// Part of the key, not a render-time argument, because tiles are cached
@@ -75,6 +89,9 @@ impl WaveformStore {
         if let Ok(mut summaries) = self.summaries.lock() {
             summaries.remove(&deck.human_number());
         }
+        if let Ok(mut grids) = self.grids.lock() {
+            grids.remove(&deck.human_number());
+        }
         self.invalidate(deck);
     }
 
@@ -82,6 +99,50 @@ impl WaveformStore {
         if let Ok(mut cache) = self.cache.lock() {
             cache.retain(|key, _| key.deck != deck.human_number());
         }
+        // And move the deck on a generation, so the *webview's* cache misses
+        // too. Wrapping is fine: it would take four billion track loads on one
+        // deck to come back round, and the tile it collided with would have
+        // been evicted long before.
+        if let Ok(mut epochs) = self.epochs.lock() {
+            let epoch = epochs.entry(deck.human_number()).or_insert(0);
+            *epoch = epoch.wrapping_add(1);
+        }
+    }
+
+    /// The current generation of a deck's content, for building tile URLs.
+    #[must_use]
+    pub fn epoch(&self, deck: u8) -> u32 {
+        self.epochs
+            .lock()
+            .map(|e| e.get(&deck).copied().unwrap_or(0))
+            .unwrap_or(0)
+    }
+
+    /// Set or clear the beat grid drawn over a deck's tiles.
+    ///
+    /// Invalidates, because every existing tile for this deck was drawn with
+    /// the old grid.
+    pub fn set_grid(&self, deck: DeckId, overlay: Option<GridOverlay>) {
+        let changed = match self.grids.lock() {
+            Ok(mut grids) => {
+                let previous = match overlay {
+                    Some(o) => grids.insert(deck.human_number(), o),
+                    None => grids.remove(&deck.human_number()),
+                };
+                previous != overlay
+            }
+            Err(_) => false,
+        };
+        // Only on a real change: re-rendering every tile because the analyser
+        // reported the same grid twice would throw away the cache for nothing.
+        if changed {
+            self.invalidate(deck);
+        }
+    }
+
+    #[must_use]
+    pub fn grid(&self, deck: u8) -> Option<GridOverlay> {
+        self.grids.lock().ok()?.get(&deck).copied()
     }
 
     #[must_use]
@@ -122,7 +183,12 @@ impl WaveformStore {
             start_frame: key.start_frame as f64,
             frames_per_pixel: key.zoom_milli as f64 / 1000.0,
         };
-        let tile = render_tile(&summary, &spec, &key.theme.palette());
+        let tile = render_tile_with_grid(
+            &summary,
+            &spec,
+            &key.theme.palette(),
+            self.grid(key.deck).as_ref(),
+        );
         let png = Arc::new(encode_png(&tile).ok()?);
 
         if let Ok(mut cache) = self.cache.lock() {
@@ -145,7 +211,7 @@ impl WaveformStore {
 
 /// Parse a `wave://` request path into a tile key.
 ///
-/// Shape: `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}/{theme}`
+/// Shape: `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}/{theme}/{epoch}`
 ///
 /// Deliberately strict. A malformed URL returns `None` and the handler answers
 /// 400 rather than guessing, because a silently wrong tile is far harder to
@@ -166,6 +232,7 @@ pub fn parse_tile_path(path: &str) -> Option<TileKey> {
         start_frame: parts.next()?.parse().ok()?,
         zoom_milli: parts.next()?.parse().ok()?,
         theme: Theme::from_slug(parts.next()?)?,
+        epoch: parts.next()?.parse().ok()?,
     };
 
     // Nothing may follow, and the numbers must be drawable.
@@ -213,6 +280,7 @@ mod tests {
             start_frame: 0,
             zoom_milli: 128_000,
             theme: Theme::Dark,
+            epoch: 0,
         }
     }
 
@@ -290,7 +358,7 @@ mod tests {
 
     #[test]
     fn a_well_formed_path_parses() {
-        let key = parse_tile_path("/tile/2/512/128/48000/256000/dark").unwrap();
+        let key = parse_tile_path("/tile/2/512/128/48000/256000/dark/0").unwrap();
         assert_eq!(key.deck, 2);
         assert_eq!(key.width, 512);
         assert_eq!(key.height, 128);
@@ -302,7 +370,7 @@ mod tests {
     #[test]
     fn the_theme_comes_from_the_path() {
         assert_eq!(
-            parse_tile_path("/tile/1/512/128/0/256000/light")
+            parse_tile_path("/tile/1/512/128/0/256000/light/0")
                 .unwrap()
                 .theme,
             Theme::Light
@@ -336,7 +404,7 @@ mod tests {
         // The strip extends before the track start while scrolled to the very
         // beginning, so those tiles are legitimately requested.
         assert_eq!(
-            parse_tile_path("/tile/1/512/128/-2048/256000/dark")
+            parse_tile_path("/tile/1/512/128/-2048/256000/dark/0")
                 .unwrap()
                 .start_frame,
             -2_048
@@ -348,15 +416,16 @@ mod tests {
         for bad in [
             "",
             "/",
-            "/nope/1/512/128/0/1000/dark",
-            "/tile/1/512/128/0/1000",            // no theme
-            "/tile/1/512/128/0/1000/dark/extra", // too many
-            "/tile/x/512/128/0/1000/dark",       // non-numeric deck
-            "/tile/1/0/128/0/1000/dark",         // zero width
-            "/tile/1/512/0/0/1000/dark",         // zero height
-            "/tile/1/512/128/0/0/dark",          // zero zoom
-            "/tile/1/512/128/0/1000/sepia",      // not a theme
-            "/tile/1/512/128/0/1000/Dark",       // themes are lower-case
+            "/nope/1/512/128/0/1000/dark/0",
+            "/tile/1/512/128/0/1000/0",            // no theme
+            "/tile/1/512/128/0/1000/dark",         // no epoch
+            "/tile/1/512/128/0/1000/dark/0/extra", // too many
+            "/tile/x/512/128/0/1000/dark/0",       // non-numeric deck
+            "/tile/1/0/128/0/1000/dark/0",         // zero width
+            "/tile/1/512/0/0/1000/dark/0",         // zero height
+            "/tile/1/512/128/0/0/dark/0",          // zero zoom
+            "/tile/1/512/128/0/1000/sepia/0",      // not a theme
+            "/tile/1/512/128/0/1000/Dark/0",       // themes are lower-case
         ] {
             assert!(
                 parse_tile_path(bad).is_none(),
@@ -369,8 +438,8 @@ mod tests {
     /// single request.
     #[test]
     fn absurd_tile_sizes_are_refused() {
-        assert!(parse_tile_path("/tile/1/999999/128/0/1000/dark").is_none());
-        assert!(parse_tile_path("/tile/1/512/999999/0/1000/dark").is_none());
+        assert!(parse_tile_path("/tile/1/999999/128/0/1000/dark/0").is_none());
+        assert!(parse_tile_path("/tile/1/512/999999/0/1000/dark/0").is_none());
     }
 
     #[test]
@@ -378,5 +447,102 @@ mod tests {
         let (store, _) = store_with_track();
         assert_eq!(store.total_frames(1), Some(96_000));
         assert_eq!(store.total_frames(2), None);
+    }
+
+    /// **The reason the epoch exists.** Tiles are served immutable for a year,
+    /// so the webview keeps its own copy keyed by URL. Server-side
+    /// invalidation does nothing about that copy: without a discriminant that
+    /// changes, loading a second track on the same deck at the same zoom
+    /// redisplays the *first* track's waveform.
+    #[test]
+    fn loading_a_new_track_moves_the_deck_to_a_new_epoch() {
+        let (store, deck) = store_with_track();
+        let first = store.epoch(1);
+
+        store.set_summary(
+            deck,
+            WaveformSummary::analyse(&samples(48_000), SampleRate::DEFAULT),
+        );
+        assert_ne!(store.epoch(1), first, "the URL would not have changed");
+    }
+
+    /// Editing the grid changes what every tile looks like, so it has to change
+    /// the URLs too -- otherwise the edit would appear to do nothing.
+    #[test]
+    fn setting_a_grid_moves_the_epoch_and_redraws() {
+        let (store, deck) = store_with_track();
+        let before = store.tile_png(key(1)).unwrap();
+        let epoch = store.epoch(1);
+
+        store.set_grid(
+            deck,
+            Some(GridOverlay {
+                grid: dj_core::Beatgrid::new(
+                    dj_core::FramePos::new(0.0),
+                    dj_core::Bpm::new(128.0).unwrap(),
+                    dj_core::Confidence::new(1.0),
+                ),
+                sample_rate: SampleRate::DEFAULT,
+            }),
+        );
+
+        assert_ne!(store.epoch(1), epoch, "the grid change was not versioned");
+        let after = store.tile_png(key(1)).unwrap();
+        assert_ne!(
+            before.as_ref(),
+            after.as_ref(),
+            "the grid was not drawn into the tile"
+        );
+    }
+
+    /// Re-reporting the same grid must not throw the cache away. The analyser
+    /// can hand back an identical result, and re-rendering every tile for it
+    /// would be work for nothing.
+    #[test]
+    fn setting_the_same_grid_again_is_free() {
+        let (store, deck) = store_with_track();
+        let overlay = GridOverlay {
+            grid: dj_core::Beatgrid::new(
+                dj_core::FramePos::new(0.0),
+                dj_core::Bpm::new(128.0).unwrap(),
+                dj_core::Confidence::new(1.0),
+            ),
+            sample_rate: SampleRate::DEFAULT,
+        };
+
+        store.set_grid(deck, Some(overlay));
+        let _ = store.tile_png(key(1));
+        let epoch = store.epoch(1);
+        assert_eq!(store.cached_tiles(), 1);
+
+        store.set_grid(deck, Some(overlay));
+        assert_eq!(store.epoch(1), epoch, "an identical grid bumped the epoch");
+        assert_eq!(
+            store.cached_tiles(),
+            1,
+            "an identical grid cleared the cache"
+        );
+    }
+
+    /// Ejecting must take the grid with the track, or the next one would be
+    /// drawn under the previous track's beats.
+    #[test]
+    fn clearing_a_deck_drops_its_grid() {
+        let (store, deck) = store_with_track();
+        store.set_grid(
+            deck,
+            Some(GridOverlay {
+                grid: dj_core::Beatgrid::new(
+                    dj_core::FramePos::new(0.0),
+                    dj_core::Bpm::new(128.0).unwrap(),
+                    dj_core::Confidence::new(1.0),
+                ),
+                sample_rate: SampleRate::DEFAULT,
+            }),
+        );
+        assert!(store.grid(1).is_some());
+
+        store.clear(deck);
+        assert!(store.grid(1).is_none(), "a grid outlived its track");
     }
 }

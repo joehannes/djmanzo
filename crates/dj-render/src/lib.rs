@@ -21,7 +21,10 @@ pub mod summary;
 pub mod tile;
 
 pub use summary::{Bucket, WaveformSummary};
-pub use tile::{BYTES_PER_PIXEL, Palette, Theme, Tile, TileSpec, render_tile};
+pub use tile::{
+    BYTES_PER_PIXEL, GridOverlay, Palette, Theme, Tile, TileSpec, render_tile,
+    render_tile_with_grid,
+};
 
 pub mod encode;
 pub use encode::{EncodeError, encode_png};

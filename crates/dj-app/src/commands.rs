@@ -192,6 +192,7 @@ pub async fn load_track(
     // usable immediately; the numbers arrive a moment later.
     let store = Arc::clone(state.analysis());
     let bus = Arc::clone(state.bus());
+    let waveforms = Arc::clone(state.waveforms());
     tauri::async_runtime::spawn_blocking(move || {
         let analysis = crate::analysis::analyse_or_cached(
             &store,
@@ -199,6 +200,17 @@ pub async fn load_track(
             track_id,
             buffer.as_interleaved(),
             sample_rate,
+        );
+
+        // The grid goes to the waveform store, which draws it into the tiles
+        // themselves. Drawing it in the interface instead would be two
+        // coordinate systems agreeing only by luck -- see `dj_render::GridOverlay`.
+        waveforms.set_grid(
+            deck_id,
+            analysis.tempo.as_ref().map(|tempo| dj_render::GridOverlay {
+                grid: tempo.grid,
+                sample_rate,
+            }),
         );
 
         // Auto-gain goes through the action bus rather than straight to the
@@ -267,6 +279,10 @@ pub struct WaveformInfo {
     pub deck: u8,
     pub ready: bool,
     pub total_frames: u64,
+    /// Generation of this deck's tiles. Goes into every tile URL so the
+    /// webview's own cache misses when the content changes -- see
+    /// `WaveformStore::epochs`.
+    pub epoch: u32,
 }
 
 #[tauri::command]
@@ -275,6 +291,7 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         deck,
         ready: state.waveforms().has_summary(deck),
         total_frames: state.waveforms().total_frames(deck).unwrap_or(0) as u64,
+        epoch: state.waveforms().epoch(deck),
     }
 }
 

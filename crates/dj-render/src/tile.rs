@@ -25,6 +25,7 @@
 //! implementation drops in behind the same signature.
 
 use crate::summary::{Bucket, WaveformSummary};
+use dj_core::{Beatgrid, SampleRate};
 use serde::{Deserialize, Serialize};
 
 /// Bytes per pixel. RGBA8, which is what every image path expects.
@@ -78,6 +79,11 @@ pub struct Palette {
     pub high: [u8; 4],
     /// Drawn inside the peaks to show perceived loudness.
     pub rms_tint: [u8; 4],
+    /// Beat lines. Alpha is the *full-confidence* alpha; a grid the analyser is
+    /// unsure of is drawn fainter.
+    pub beat: [u8; 4],
+    /// Every fourth beat, so the eye can count bars without counting beats.
+    pub downbeat: [u8; 4],
 }
 
 impl Default for Palette {
@@ -141,6 +147,8 @@ impl Palette {
             high: [251, 191, 36, 255],
             // A white veil reads as "denser" against dark bands.
             rms_tint: [255, 255, 255, 60],
+            beat: [255, 255, 255, 70],
+            downbeat: [255, 255, 255, 150],
         }
     }
 
@@ -160,6 +168,8 @@ impl Palette {
             mid: [15, 118, 110, 255],
             high: [180, 83, 9, 255],
             rms_tint: [0, 0, 0, 52],
+            beat: [0, 0, 0, 60],
+            downbeat: [0, 0, 0, 130],
         }
     }
     /// Blend the band colours by their energies.
@@ -215,6 +225,107 @@ impl Tile {
     }
 }
 
+/// The beat grid, ready to draw over a tile.
+///
+/// Drawn *here*, in the same pass as the waveform, rather than as an overlay in
+/// the interface. That is not an optimisation — it is the only way the two stay
+/// locked together. A grid drawn in the webview and a waveform drawn in Rust
+/// are two independent coordinate systems that agree only as long as nothing
+/// rounds differently, and a beat marker sitting a pixel off the transient it
+/// marks is worse than no marker at all. In the same pass they cannot disagree.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GridOverlay {
+    pub grid: Beatgrid,
+    pub sample_rate: SampleRate,
+}
+
+/// Closest two grid lines may be before they stop being lines and start being a
+/// wash.
+///
+/// At six pixels a 128 BPM grid stops drawing individual beats somewhere around
+/// 80 frames per pixel — well beyond the zoom anyone beatmatches at, and exactly
+/// where the lines would otherwise merge into a grey band that hides the
+/// waveform underneath.
+const MIN_LINE_SPACING_PX: f64 = 6.0;
+
+/// Beats between emphasised lines.
+const BEATS_PER_EMPHASIS: i64 = 4;
+
+/// How faint a zero-confidence grid is drawn, as a fraction of full alpha.
+///
+/// Not zero. A grid the analyser doubts is still worth seeing — it is usually
+/// close, and being able to see *that* it is wrong is what lets someone fix it.
+/// But it must not look like a fact, so confidence scales the alpha instead of
+/// gating the drawing.
+const UNSURE_ALPHA: f64 = 0.3;
+
+/// Draw beat lines over an already-rendered tile.
+fn draw_grid(pixels: &mut [u8], spec: &TileSpec, overlay: &GridOverlay, palette: &Palette) {
+    let beat_frames = overlay.grid.bpm.beat_frames(overlay.sample_rate);
+    if !beat_frames.is_finite() || beat_frames <= 0.0 {
+        return;
+    }
+    // The anchor needs no check of its own: `FramePos::new` clamps non-finite
+    // input to zero, so a NaN cannot get this far. That matters more than it
+    // looks — a NaN here would not be caught by the bounds test below, because
+    // `NaN < 0.0` and `NaN >= width` are both false, and `NaN as u32` is 0. It
+    // would paint a line down column zero of every tile in the track. The type
+    // is what prevents that; there is a test for it in `dj-core`.
+
+    let beat_px = beat_frames / spec.frames_per_pixel;
+    let emphasis_px = beat_px * BEATS_PER_EMPHASIS as f64;
+
+    // Too dense even for the emphasised lines: draw nothing rather than a band
+    // of grey over the waveform.
+    if emphasis_px < MIN_LINE_SPACING_PX {
+        return;
+    }
+    let draw_every_beat = beat_px >= MIN_LINE_SPACING_PX;
+
+    let confidence = overlay.grid.confidence.get().clamp(0.0, 1.0);
+    let strength = UNSURE_ALPHA + (1.0 - UNSURE_ALPHA) * confidence;
+
+    let anchor = overlay.grid.anchor.get();
+    let span = f64::from(spec.width) * spec.frames_per_pixel;
+    // One beat of slack at each end so a line whose centre is just outside the
+    // tile still contributes its pixel.
+    let first = ((spec.start_frame - anchor) / beat_frames).floor() as i64 - 1;
+    let last = ((spec.start_frame + span - anchor) / beat_frames).ceil() as i64 + 1;
+
+    for index in first..=last {
+        // `rem_euclid`, not `%`: the anchor is a beat somewhere in the middle of
+        // the track, so indices before it are negative, and `%` would emphasise
+        // the wrong ones on that side.
+        let emphasised = index.rem_euclid(BEATS_PER_EMPHASIS) == 0;
+        if !emphasised && !draw_every_beat {
+            continue;
+        }
+
+        let frame = anchor + index as f64 * beat_frames;
+        let x = ((frame - spec.start_frame) / spec.frames_per_pixel).round();
+        if x < 0.0 || x >= f64::from(spec.width) {
+            continue;
+        }
+        let x = x as u32;
+
+        let base = if emphasised {
+            palette.downbeat
+        } else {
+            palette.beat
+        };
+        let colour = [
+            base[0],
+            base[1],
+            base[2],
+            (f64::from(base[3]) * strength).round().clamp(0.0, 255.0) as u8,
+        ];
+
+        for y in 0..spec.height {
+            blend(pixels, spec, x, y, colour);
+        }
+    }
+}
+
 /// Rasterise one tile from a summary.
 ///
 /// Never fails: a degenerate spec yields an empty tile, and reading past the end
@@ -222,6 +333,20 @@ impl Tile {
 /// worse than one that draws nothing.
 #[must_use]
 pub fn render_tile(summary: &WaveformSummary, spec: &TileSpec, palette: &Palette) -> Tile {
+    render_tile_with_grid(summary, spec, palette, None)
+}
+
+/// Rasterise a tile with the beat grid drawn over it.
+///
+/// See [`GridOverlay`] for why the grid is drawn here rather than in the
+/// interface.
+#[must_use]
+pub fn render_tile_with_grid(
+    summary: &WaveformSummary,
+    spec: &TileSpec,
+    palette: &Palette,
+    overlay: Option<&GridOverlay>,
+) -> Tile {
     if spec.is_degenerate() {
         return Tile {
             spec: TileSpec {
@@ -287,6 +412,11 @@ pub fn render_tile(summary: &WaveformSummary, spec: &TileSpec, palette: &Palette
         for y in rms_top..=rms_bottom.max(rms_top) {
             blend(&mut pixels, spec, x, y, palette.rms_tint);
         }
+    }
+
+    // Grid last, so beat lines sit over the waveform rather than under it.
+    if let Some(overlay) = overlay {
+        draw_grid(&mut pixels, spec, overlay, palette);
     }
 
     Tile {
@@ -637,5 +767,261 @@ mod tests {
         };
         let tile = render_tile(&summary, &spec(64, 128, 500.0), &palette);
         assert_eq!(tile.pixel(32, 0), [20, 20, 30, 255]);
+    }
+
+    // -- the beat grid ----------------------------------------------------
+
+    use dj_core::{Bpm, Confidence, FramePos};
+
+    fn overlay(bpm: f64, anchor: f64, confidence: f64) -> GridOverlay {
+        GridOverlay {
+            grid: Beatgrid::new(
+                FramePos::new(anchor),
+                Bpm::new(bpm).unwrap(),
+                Confidence::new(confidence),
+            ),
+            sample_rate: SR,
+        }
+    }
+
+    /// Columns where the grid painted something, at a given row.
+    fn grid_columns(tile: &Tile, without: &Tile) -> Vec<u32> {
+        (0..tile.spec.width)
+            .filter(|&x| (0..tile.spec.height).any(|y| tile.pixel(x, y) != without.pixel(x, y)))
+            .collect()
+    }
+
+    /// **The measurement that says the grid is in the right place.** Lines must
+    /// land exactly one beat apart, because a grid that is merely close is a
+    /// grid that walks off the beat over the length of a track.
+    #[test]
+    fn beat_lines_land_one_beat_apart() {
+        let summary = WaveformSummary::analyse(&sine(48_000 * 4, 440.0, 0.8), SR);
+        // 120 BPM at 48 kHz is 24 000 frames per beat; at 100 frames per pixel
+        // that is a line every 240 pixels.
+        let spec = spec(1_024, 64, 100.0);
+        let plain = render_tile(&summary, &spec, &Palette::default());
+        let gridded = render_tile_with_grid(
+            &summary,
+            &spec,
+            &Palette::default(),
+            Some(&overlay(120.0, 0.0, 1.0)),
+        );
+
+        let columns = grid_columns(&gridded, &plain);
+        assert!(!columns.is_empty(), "no grid was drawn at all");
+        assert_eq!(columns, vec![0, 240, 480, 720, 960], "lines are misplaced");
+    }
+
+    /// The grid has to follow the anchor, not the tile. An anchor half a beat
+    /// along must move every line half a beat along.
+    #[test]
+    fn the_grid_follows_its_anchor() {
+        let summary = WaveformSummary::analyse(&sine(48_000 * 4, 440.0, 0.8), SR);
+        let spec = spec(1_024, 64, 100.0);
+        let plain = render_tile(&summary, &spec, &Palette::default());
+
+        // Half a beat is 12 000 frames, which is 120 pixels.
+        let shifted = render_tile_with_grid(
+            &summary,
+            &spec,
+            &Palette::default(),
+            Some(&overlay(120.0, 12_000.0, 1.0)),
+        );
+        assert_eq!(
+            grid_columns(&shifted, &plain),
+            vec![120, 360, 600, 840],
+            "the grid did not move with its anchor"
+        );
+    }
+
+    /// A tile in the middle of a track must line up with the tile before it.
+    /// This is the join where an off-by-one in the index arithmetic hides, and
+    /// it shows up as a visible stutter every tile boundary.
+    #[test]
+    fn the_grid_is_continuous_across_a_tile_boundary() {
+        let summary = WaveformSummary::analyse(&sine(48_000 * 20, 440.0, 0.8), SR);
+        let palette = Palette::default();
+        let width = 512u32;
+        let fpp = 100.0;
+        let overlay = overlay(120.0, 3_000.0, 1.0);
+
+        // Absolute pixel positions of every line across two adjacent tiles.
+        let mut lines = Vec::new();
+        for tile_index in 0..2u32 {
+            let start = f64::from(tile_index * width) * fpp;
+            let spec = TileSpec {
+                width,
+                height: 64,
+                start_frame: start,
+                frames_per_pixel: fpp,
+            };
+            let plain = render_tile(&summary, &spec, &palette);
+            let gridded = render_tile_with_grid(&summary, &spec, &palette, Some(&overlay));
+            for x in grid_columns(&gridded, &plain) {
+                lines.push(tile_index * width + x);
+            }
+        }
+
+        assert!(
+            lines.len() >= 4,
+            "not enough lines to check spacing: {lines:?}"
+        );
+        for pair in lines.windows(2) {
+            assert_eq!(
+                pair[1] - pair[0],
+                240,
+                "spacing broke at a tile boundary: {lines:?}"
+            );
+        }
+    }
+
+    /// Negative beat indices are the case `%` gets wrong. Before the anchor the
+    /// index is negative, and plain remainder emphasises the wrong lines on
+    /// that side -- so the bar phase would flip halfway through a track.
+    #[test]
+    fn emphasis_is_consistent_on_both_sides_of_the_anchor() {
+        let summary = WaveformSummary::analyse(&sine(48_000 * 20, 440.0, 0.8), SR);
+        let palette = Palette::default();
+        let fpp = 400.0;
+        // Anchor well into the track, so one tile sits before it and one after.
+        let overlay = overlay(120.0, 48_000.0 * 5.0, 1.0);
+
+        let strengths = |start: f64| -> Vec<u8> {
+            let spec = TileSpec {
+                width: 512,
+                height: 64,
+                start_frame: start,
+                frames_per_pixel: fpp,
+            };
+            let plain = render_tile(&summary, &spec, &palette);
+            let gridded = render_tile_with_grid(&summary, &spec, &palette, Some(&overlay));
+            grid_columns(&gridded, &plain)
+                .into_iter()
+                // Row 0 is above the waveform body, so the pixel there is the
+                // grid line alone rather than a blend with the waveform.
+                .map(|x| gridded.pixel(x, 0)[3])
+                .collect()
+        };
+
+        // Every fourth line is emphasised, on both sides.
+        for start in [0.0, 48_000.0 * 8.0] {
+            let alphas = strengths(start);
+            assert!(alphas.len() >= 8, "too few lines at {start}: {alphas:?}");
+            let strong = alphas.iter().filter(|a| **a > 100).count();
+            let weak = alphas.len() - strong;
+            assert!(
+                weak >= strong * 2,
+                "emphasis pattern is wrong at {start}: {alphas:?}"
+            );
+        }
+    }
+
+    /// Zoomed far out, individual beats would merge into a grey band that hides
+    /// the waveform. Beats drop out first, then everything.
+    #[test]
+    fn a_grid_too_dense_to_read_is_not_drawn() {
+        let summary = WaveformSummary::analyse(&sine(48_000 * 60, 440.0, 0.8), SR);
+        let palette = Palette::default();
+        let grid = overlay(120.0, 0.0, 1.0);
+
+        // 24 000 frames per beat. At 6 000 frames per pixel a beat is 4 px --
+        // under the limit -- but a bar is 16 px, so bars still draw.
+        let bars_only = spec(512, 64, 6_000.0);
+        let bar_columns = grid_columns(
+            &render_tile_with_grid(&summary, &bars_only, &palette, Some(&grid)),
+            &render_tile(&summary, &bars_only, &palette),
+        );
+        assert!(!bar_columns.is_empty(), "bars should still be drawn");
+        for pair in bar_columns.windows(2) {
+            assert_eq!(pair[1] - pair[0], 16, "beats were drawn when too dense");
+        }
+
+        // At 60 000 frames per pixel even a bar is under half a pixel.
+        let nothing = spec(512, 64, 60_000.0);
+        assert!(
+            grid_columns(
+                &render_tile_with_grid(&summary, &nothing, &palette, Some(&grid)),
+                &render_tile(&summary, &nothing, &palette),
+            )
+            .is_empty(),
+            "an unreadable grid was drawn anyway"
+        );
+    }
+
+    /// **A grid the analyser doubts must not look like a fact.** It is still
+    /// drawn -- being able to see that it is wrong is what lets someone fix it
+    /// -- but visibly fainter.
+    #[test]
+    fn an_unsure_grid_is_drawn_faintly() {
+        let summary = WaveformSummary::analyse(&sine(48_000 * 4, 440.0, 0.8), SR);
+        let spec = spec(1_024, 64, 100.0);
+        let palette = Palette::default();
+
+        let alpha_at = |confidence: f64| {
+            let tile = render_tile_with_grid(
+                &summary,
+                &spec,
+                &palette,
+                Some(&overlay(120.0, 0.0, confidence)),
+            );
+            tile.pixel(240, 0)[3]
+        };
+
+        let sure = alpha_at(1.0);
+        let unsure = alpha_at(0.1);
+        assert!(unsure > 0, "an unsure grid vanished entirely");
+        assert!(
+            f64::from(unsure) < f64::from(sure) * 0.6,
+            "an unsure grid ({unsure}) was nearly as strong as a sure one ({sure})"
+        );
+    }
+
+    /// No grid means no change. The overlay is optional and must be free when
+    /// absent, not merely cheap.
+    #[test]
+    fn no_grid_leaves_the_tile_untouched() {
+        let summary = WaveformSummary::analyse(&sine(48_000 * 2, 440.0, 0.8), SR);
+        let spec = spec(512, 64, 100.0);
+        let palette = Palette::default();
+        assert_eq!(
+            render_tile(&summary, &spec, &palette).pixels,
+            render_tile_with_grid(&summary, &spec, &palette, None).pixels
+        );
+    }
+
+    /// **The invariant that keeps a NaN out of the rasteriser.**
+    ///
+    /// This started as a test that a NaN anchor draws nothing, and a guard in
+    /// `draw_grid` to make it pass. Both were wrong: `FramePos::new` clamps
+    /// non-finite input to zero, so a NaN anchor is not representable and the
+    /// guard was dead code implying a hazard that does not exist.
+    ///
+    /// The hazard would be real without that clamp — `NaN < 0.0` and
+    /// `NaN >= width` are both false, so the bounds check would pass, and
+    /// `NaN as u32` is 0, so a line would be painted down column zero of every
+    /// tile in the track. So the invariant is worth pinning from this side,
+    /// where the consequence lives.
+    #[test]
+    fn a_non_finite_anchor_cannot_reach_the_rasteriser() {
+        let anchor = FramePos::new(f64::NAN);
+        assert_eq!(anchor.get(), 0.0, "FramePos stopped sanitising its input");
+        assert_eq!(FramePos::new(f64::INFINITY).get(), 0.0);
+
+        // And the grid built from it is an ordinary grid at zero, not a
+        // scattering of lines at column zero of every tile.
+        let summary = WaveformSummary::analyse(&sine(48_000 * 4, 440.0, 0.8), SR);
+        let spec = spec(1_024, 64, 100.0);
+        let palette = Palette::default();
+        let drawn = render_tile_with_grid(
+            &summary,
+            &spec,
+            &palette,
+            Some(&overlay(120.0, f64::NAN, 1.0)),
+        );
+        assert_eq!(
+            grid_columns(&drawn, &render_tile(&summary, &spec, &palette)),
+            vec![0, 240, 480, 720, 960]
+        );
     }
 }

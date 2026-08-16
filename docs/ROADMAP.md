@@ -76,7 +76,12 @@ octave is offered as a one-click alternative, and auto-gain trims each track to 
 loudness through the action bus (so it lands in the session log and can be overridden).
 A weak grid is shown but marked, and `sync_worthy` is false, so nothing can auto-sync to it.
 
-Not yet: the beat grid *overlay* on the waveform, grid editing (shift/scale/tap), sync,
+The beat grid is drawn too — rasterised into the tiles in the same pass as the waveform, so
+the two cannot disagree, with every fourth beat emphasised, individual beats dropping out
+before the lines merge into a wash, and a low-confidence grid drawn faintly rather than
+hidden (you can only correct a grid you can see).
+
+Not yet: grid editing (shift/scale/tap), sync,
 quantize, beat jump, hot cues, loops, the overview waveform, 4 decks in the interface, and the
 labelled regression set. `CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
 calibrated against synthetic click tracks (0.95) and white noise (0.014); real music sits
