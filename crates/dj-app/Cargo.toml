@@ -39,6 +39,7 @@ rtrb = { workspace = true }
 # `sources::resolve_source_track` for why it lands on disk first.
 reqwest = { workspace = true }
 serde = { workspace = true }
+dj-analysis = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

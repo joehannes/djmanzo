@@ -19,6 +19,7 @@
 //! makes a session replayable. See
 //! `docs/adr/0003-action-bus-and-parameter-registry.md`.
 
+pub mod analysis;
 pub mod assistant;
 pub mod brand;
 pub mod commands;
@@ -75,6 +76,8 @@ pub fn run() {
     let deck_count = state.deck_count();
     let waveforms = Arc::clone(state.waveforms());
     let bridge_handle = state.bridge_handle();
+    let analysis = Arc::clone(state.analysis());
+    let deck_tracks = state.deck_tracks();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -145,10 +148,20 @@ pub fn run() {
                 });
             }
 
+            // The analysis cache lives under the app cache directory, which is
+            // only knowable once Tauri has resolved it. Until this runs the
+            // store is memory-only, which is correct rather than a fallback: a
+            // machine with no writable cache directory should still analyse.
+            if let Ok(dir) = app.path().app_cache_dir() {
+                analysis.set_cache_dir(crate::analysis::cache_subdir(&dir));
+            }
+
             let pump = SnapshotPump::start_with_bridge(
                 registry,
                 deck_count,
                 bridge_handle,
+                Arc::clone(&analysis),
+                deck_tracks,
                 move |snapshot| {
                     use tauri::Emitter;
                     if let Err(error) = handle.emit("snapshot", &snapshot) {

@@ -8,6 +8,7 @@ use dj_engine::Command;
 use dj_presets::PresetLibrary;
 use dj_secrets::SecretStore;
 use dj_sources::SourceRegistry;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// What the assistant is pointed at.
@@ -77,6 +78,23 @@ pub struct AppState {
     /// output is open. Replaced on every device change, so it never reports
     /// numbers from a stream that has already been closed.
     bridge: Arc<Mutex<Option<Arc<dj_audio::BridgeStats>>>>,
+    analysis: Arc<crate::analysis::AnalysisStore>,
+    /// Title and artist per deck.
+    ///
+    /// The engine knows nothing about metadata -- it has samples and a
+    /// playhead -- so the name of what is playing has to be remembered here.
+    /// Deliberately *not* held in the deck component: a track can arrive from
+    /// the browser, the assistant, a preset or a controller as easily as from
+    /// the deck's own Load button, and component-local state shows "no track"
+    /// for every one of those.
+    deck_tracks: Arc<Mutex<HashMap<u8, LoadedTrackInfo>>>,
+}
+
+/// What is loaded on a deck, as far as the interface is concerned.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadedTrackInfo {
+    pub title: String,
+    pub artist: Option<String>,
 }
 
 impl AppState {
@@ -123,6 +141,8 @@ impl AppState {
             budget: Arc::new(Budget::default()),
             presets: PresetLibrary::builtin(),
             bridge: Arc::new(Mutex::new(None)),
+            analysis: Arc::new(crate::analysis::AnalysisStore::new()),
+            deck_tracks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -259,6 +279,28 @@ impl AppState {
     #[must_use]
     pub fn bridge_handle(&self) -> Arc<Mutex<Option<Arc<dj_audio::BridgeStats>>>> {
         Arc::clone(&self.bridge)
+    }
+
+    #[must_use]
+    pub fn analysis(&self) -> &Arc<crate::analysis::AnalysisStore> {
+        &self.analysis
+    }
+
+    pub fn set_deck_track(&self, deck: dj_core::DeckId, info: LoadedTrackInfo) {
+        if let Ok(mut map) = self.deck_tracks.lock() {
+            map.insert(deck.human_number(), info);
+        }
+    }
+
+    pub fn clear_deck_track(&self, deck: dj_core::DeckId) {
+        if let Ok(mut map) = self.deck_tracks.lock() {
+            map.remove(&deck.human_number());
+        }
+    }
+
+    #[must_use]
+    pub fn deck_tracks(&self) -> Arc<Mutex<HashMap<u8, LoadedTrackInfo>>> {
+        Arc::clone(&self.deck_tracks)
     }
 
     #[must_use]

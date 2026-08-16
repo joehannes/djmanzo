@@ -35,6 +35,11 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 pub struct DeckSnapshot {
     /// 1-based, as shown in the interface.
     pub number: u8,
+    /// What is loaded, by name. Comes from the snapshot rather than from the
+    /// deck component, so a track loaded from the browser, the assistant or a
+    /// controller shows its name just like one loaded from the deck itself.
+    pub title: Option<String>,
+    pub artist: Option<String>,
     pub playing: bool,
     pub loaded: bool,
     pub position_frames: f32,
@@ -59,6 +64,62 @@ pub struct DeckSnapshot {
     pub keylock_latency_ms: f32,
     /// Deliberate transposition in semitones, for harmonic mixing.
     pub key_shift: i32,
+    /// What the analyser made of this track. `None` while it is still running,
+    /// which is the normal state for the first second after a load.
+    pub analysis: Option<TrackAnalysisSnapshot>,
+}
+
+/// Tempo, key and loudness, as the interface needs them.
+///
+/// Every field is optional for the same reason the analyser's own fields are:
+/// a field recording has no tempo, a drum loop has no key, and showing a
+/// plausible zero instead of "could not tell" is how a DJ ends up syncing to a
+/// grid that was never there.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TrackAnalysisSnapshot {
+    pub bpm: Option<f32>,
+    /// 0..=1. Below `sync_worthy` the grid is a guess and the interface should
+    /// say so rather than offering sync.
+    pub bpm_confidence: Option<f32>,
+    /// The rejected octave — usually half or double. Offered so a wrong guess
+    /// is one click to fix instead of a retapped grid.
+    pub bpm_alternative: Option<f32>,
+    /// Whether the grid is solid enough to sync to.
+    pub sync_worthy: bool,
+    /// Camelot notation, e.g. `8A`.
+    pub key_camelot: Option<String>,
+    /// Standard notation, e.g. `Am`.
+    pub key_standard: Option<String>,
+    pub key_confidence: Option<f32>,
+    /// The runner-up, usually the relative major or minor.
+    pub key_alternative: Option<String>,
+    /// Integrated loudness, LUFS. `None` for a silent or unmeasurable track.
+    pub lufs: Option<f32>,
+    /// Trim that would bring this track to the reference loudness.
+    pub auto_gain_db: f32,
+}
+
+impl TrackAnalysisSnapshot {
+    fn from_analysis(analysis: &dj_analysis::Analysis) -> Self {
+        let tempo = analysis.tempo.as_ref();
+        let key = analysis.key.as_ref();
+        Self {
+            bpm: tempo.map(|t| t.grid.bpm.get() as f32),
+            bpm_confidence: tempo.map(|t| t.grid.confidence.get() as f32),
+            bpm_alternative: tempo.and_then(|t| t.alternative).map(|b| b.get() as f32),
+            sync_worthy: analysis.is_sync_worthy(),
+            key_camelot: key.map(|k| k.key.camelot()),
+            key_standard: key.map(|k| k.key.standard().to_owned()),
+            key_confidence: key.map(|k| k.correlation as f32),
+            key_alternative: key.and_then(|k| k.alternative).map(|a| a.camelot()),
+            lufs: analysis
+                .loudness
+                .get()
+                .is_finite()
+                .then(|| analysis.loudness.get() as f32),
+            auto_gain_db: analysis.auto_gain_db() as f32,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -133,6 +194,30 @@ impl Snapshot {
         deck_count: usize,
         bridge: Option<&dj_audio::BridgeStats>,
     ) -> Self {
+        Self::capture_full(registry, deck_count, bridge, None)
+    }
+
+    /// As [`Self::capture_with`], plus what the analyser has worked out.
+    #[must_use]
+    pub fn capture_full(
+        registry: &ParameterRegistry,
+        deck_count: usize,
+        bridge: Option<&dj_audio::BridgeStats>,
+        analysis: Option<&crate::analysis::AnalysisStore>,
+    ) -> Self {
+        Self::capture_all(registry, deck_count, bridge, analysis, None)
+    }
+
+    /// The full picture, including what each deck is called.
+    #[must_use]
+    pub fn capture_all(
+        registry: &ParameterRegistry,
+        deck_count: usize,
+        bridge: Option<&dj_audio::BridgeStats>,
+        analysis: Option<&crate::analysis::AnalysisStore>,
+        tracks: Option<&DeckTracks>,
+    ) -> Self {
+        let names = tracks.and_then(|t| t.lock().ok());
         let sample_rate = registry.get(ParamId::Global(GlobalParam::SampleRate));
         // Before a device is open the rate is zero; dividing by it would put
         // infinities on screen.
@@ -152,6 +237,14 @@ impl Snapshot {
                 let length = get(DeckParam::LengthFrames);
                 DeckSnapshot {
                     number: id.human_number(),
+                    title: names
+                        .as_ref()
+                        .and_then(|m| m.get(&id.human_number()))
+                        .map(|t| t.title.clone()),
+                    artist: names
+                        .as_ref()
+                        .and_then(|m| m.get(&id.human_number()))
+                        .and_then(|t| t.artist.clone()),
                     playing: get(DeckParam::Playing) >= 0.5,
                     loaded: get(DeckParam::Loaded) >= 0.5,
                     position_frames: position,
@@ -172,6 +265,9 @@ impl Snapshot {
                     keylock: get(DeckParam::Keylock) >= 0.5,
                     keylock_latency_ms: to_seconds(get(DeckParam::KeylockLatencyFrames)) * 1000.0,
                     key_shift: get(DeckParam::KeyShift).round() as i32,
+                    analysis: analysis
+                        .and_then(|store| store.for_deck(id.human_number()))
+                        .map(|found| TrackAnalysisSnapshot::from_analysis(&found)),
                 }
             })
             .collect();
@@ -215,6 +311,10 @@ impl Snapshot {
 /// Where the pump looks for the current two-card bridge, if there is one.
 pub type BridgeHandle = Arc<std::sync::Mutex<Option<Arc<dj_audio::BridgeStats>>>>;
 
+/// Where the pump looks for what is loaded on each deck.
+pub type DeckTracks =
+    std::sync::Mutex<std::collections::HashMap<u8, crate::state::LoadedTrackInfo>>;
+
 /// A running snapshot pump. Stops when dropped.
 #[derive(Debug)]
 pub struct SnapshotPump {
@@ -241,9 +341,19 @@ impl SnapshotPump {
         registry: Arc<ParameterRegistry>,
         deck_count: usize,
         bridge: BridgeHandle,
+        analysis: Arc<crate::analysis::AnalysisStore>,
+        tracks: Arc<DeckTracks>,
         emit: impl FnMut(Snapshot) + Send + 'static,
     ) -> Self {
-        Self::run(registry, deck_count, Some(bridge), HEARTBEAT_INTERVAL, emit)
+        Self::run(
+            registry,
+            deck_count,
+            Some(bridge),
+            Some(analysis),
+            Some(tracks),
+            HEARTBEAT_INTERVAL,
+            emit,
+        )
     }
 
     /// Start sampling with an explicit heartbeat interval.
@@ -256,13 +366,15 @@ impl SnapshotPump {
         heartbeat: Duration,
         emit: impl FnMut(Snapshot) + Send + 'static,
     ) -> Self {
-        Self::run(registry, deck_count, None, heartbeat, emit)
+        Self::run(registry, deck_count, None, None, None, heartbeat, emit)
     }
 
     fn run(
         registry: Arc<ParameterRegistry>,
         deck_count: usize,
         bridge: Option<BridgeHandle>,
+        analysis: Option<Arc<crate::analysis::AnalysisStore>>,
+        tracks: Option<Arc<DeckTracks>>,
         heartbeat: Duration,
         mut emit: impl FnMut(Snapshot) + Send + 'static,
     ) -> Self {
@@ -279,8 +391,13 @@ impl SnapshotPump {
                         // Re-read through the handle every tick: the bridge is
                         // replaced whenever a device is opened.
                         let current = bridge.as_ref().and_then(|slot| slot.lock().ok()?.clone());
-                        let snapshot =
-                            Snapshot::capture_with(&registry, deck_count, current.as_deref());
+                        let snapshot = Snapshot::capture_all(
+                            &registry,
+                            deck_count,
+                            current.as_deref(),
+                            analysis.as_deref(),
+                            tracks.as_deref(),
+                        );
                         let changed = previous.as_ref() != Some(&snapshot);
 
                         // Skip identical frames -- an idle application should not
@@ -457,5 +574,147 @@ mod tests {
             after,
             "pump outlived its handle"
         );
+    }
+
+    /// **The path the deck header depends on.** A result sitting in the store
+    /// has to appear in the snapshot, or the analyser would be running
+    /// perfectly and the interface would show nothing.
+    #[test]
+    fn analysis_reaches_the_snapshot() {
+        use crate::analysis::AnalysisStore;
+        use dj_analysis::{Analysis, KeyAnalysis, Lufs, TempoAnalysis};
+        use dj_core::{Beatgrid, Bpm, Confidence, FramePos, Mode, MusicalKey};
+
+        let registry = ParameterRegistry::new();
+        let store = AnalysisStore::new();
+        let deck = DeckId::from_human(1).unwrap();
+
+        store.record(
+            deck,
+            dj_core::TrackId::from_bytes([1; 32]),
+            Analysis {
+                tempo: Some(TempoAnalysis {
+                    grid: Beatgrid::new(
+                        FramePos::new(0.0),
+                        Bpm::new(124.0).unwrap(),
+                        Confidence::new(0.9),
+                    ),
+                    alternative: Bpm::new(62.0),
+                }),
+                key: Some(KeyAnalysis {
+                    key: MusicalKey::new(8, Mode::Minor).unwrap(),
+                    correlation: 0.71,
+                    alternative: MusicalKey::new(8, Mode::Major),
+                }),
+                loudness: Lufs::new(-11.0),
+            },
+        );
+
+        let snapshot = Snapshot::capture_full(&registry, 2, None, Some(&store));
+        let found = snapshot.decks[0]
+            .analysis
+            .as_ref()
+            .expect("deck 1 should carry its analysis");
+
+        assert_eq!(found.bpm, Some(124.0));
+        assert_eq!(
+            found.bpm_alternative,
+            Some(62.0),
+            "the octave was not offered"
+        );
+        assert!(found.sync_worthy);
+        assert_eq!(found.key_camelot.as_deref(), Some("8A"));
+        assert_eq!(found.key_standard.as_deref(), Some("Am"));
+        assert_eq!(found.key_alternative.as_deref(), Some("8B"));
+        assert_eq!(found.lufs, Some(-11.0));
+        assert!((found.auto_gain_db - -3.0).abs() < 0.01);
+
+        // Deck 2 has nothing loaded, and must say so rather than borrowing
+        // deck 1's numbers.
+        assert!(snapshot.decks[1].analysis.is_none());
+    }
+
+    /// A grid the analyser is unsure of must be flagged, not offered. Syncing
+    /// to a guess derails a mix at the moment the DJ has stopped watching.
+    #[test]
+    fn a_weak_grid_is_not_sync_worthy_in_the_snapshot() {
+        use crate::analysis::AnalysisStore;
+        use dj_analysis::{Analysis, Lufs, TempoAnalysis};
+        use dj_core::{Beatgrid, Bpm, Confidence, FramePos};
+
+        let registry = ParameterRegistry::new();
+        let store = AnalysisStore::new();
+        let deck = DeckId::from_human(1).unwrap();
+        store.record(
+            deck,
+            dj_core::TrackId::from_bytes([2; 32]),
+            Analysis {
+                tempo: Some(TempoAnalysis {
+                    grid: Beatgrid::new(
+                        FramePos::new(0.0),
+                        Bpm::new(97.0).unwrap(),
+                        Confidence::new(0.2),
+                    ),
+                    alternative: None,
+                }),
+                key: None,
+                loudness: Lufs::new(-14.0),
+            },
+        );
+
+        let snapshot = Snapshot::capture_full(&registry, 1, None, Some(&store));
+        let found = snapshot.decks[0].analysis.as_ref().unwrap();
+        assert_eq!(found.bpm, Some(97.0), "a weak grid still has a number");
+        assert!(!found.sync_worthy, "a weak grid was offered for sync");
+        assert!(found.key_camelot.is_none());
+    }
+
+    /// **The bug this field exists to fix.** The deck name used to be component
+    /// state, set only by that deck's own Load button — so a track arriving
+    /// from the browser, the assistant, a preset or a controller played
+    /// perfectly while the header still read "no track". Caught by loading a
+    /// track through the benchmark harness, which does exactly that.
+    #[test]
+    fn the_deck_name_travels_in_the_snapshot() {
+        use crate::state::LoadedTrackInfo;
+        use std::collections::HashMap;
+
+        let registry = ParameterRegistry::new();
+        let tracks: DeckTracks = std::sync::Mutex::new(HashMap::from([(
+            1u8,
+            LoadedTrackInfo {
+                title: "Suavemente".to_owned(),
+                artist: Some("Elvis Crespo".to_owned()),
+            },
+        )]));
+
+        let snapshot = Snapshot::capture_all(&registry, 2, None, None, Some(&tracks));
+        assert_eq!(snapshot.decks[0].title.as_deref(), Some("Suavemente"));
+        assert_eq!(snapshot.decks[0].artist.as_deref(), Some("Elvis Crespo"));
+
+        // An empty deck says nothing rather than borrowing its neighbour's name.
+        assert!(snapshot.decks[1].title.is_none());
+        assert!(snapshot.decks[1].artist.is_none());
+    }
+
+    /// A track with no artist tag is normal and must not become the string
+    /// "None" or an empty artist line pretending to be one.
+    #[test]
+    fn a_track_with_no_artist_reports_none() {
+        use crate::state::LoadedTrackInfo;
+        use std::collections::HashMap;
+
+        let registry = ParameterRegistry::new();
+        let tracks: DeckTracks = std::sync::Mutex::new(HashMap::from([(
+            1u8,
+            LoadedTrackInfo {
+                title: "untitled.wav".to_owned(),
+                artist: None,
+            },
+        )]));
+
+        let snapshot = Snapshot::capture_all(&registry, 1, None, None, Some(&tracks));
+        assert_eq!(snapshot.decks[0].title.as_deref(), Some("untitled.wav"));
+        assert!(snapshot.decks[0].artist.is_none());
     }
 }

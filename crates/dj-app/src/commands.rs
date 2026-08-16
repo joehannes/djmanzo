@@ -159,7 +159,23 @@ pub async fn load_track(
     );
     state.waveforms().set_summary(deck_id, summary);
 
-    let source: Arc<dyn dj_decode::TrackSource> = Arc::new(decoded.buffer);
+    // Drop the previous track's numbers *before* the new audio starts playing,
+    // so the header never shows one track's BPM against another's waveform.
+    state.analysis().clear_deck(deck_id);
+    state.set_deck_track(
+        deck_id,
+        crate::state::LoadedTrackInfo {
+            title: dto.title.clone(),
+            artist: dto.artist.clone(),
+        },
+    );
+
+    let track_id = decoded.id;
+    let sample_rate = decoded.buffer.sample_rate();
+    let buffer = Arc::new(decoded.buffer);
+    // One allocation, two owners: the engine plays it, the analyser reads it.
+    // Cloning the samples instead would double a hundred megabytes for no reason.
+    let source: Arc<dyn dj_decode::TrackSource> = buffer.clone();
     state
         .bus()
         .send_command(dj_engine::Command::Load {
@@ -167,6 +183,33 @@ pub async fn load_track(
             source,
         })
         .map_err(|_| "engine is not accepting commands; is a device open?".to_owned())?;
+
+    // Analysis runs *after* the track is playable, on its own worker.
+    //
+    // The ordering is the whole point: tempo, key and loudness take FFT passes
+    // over the entire file, and making the load wait for them would mean a DJ
+    // reaching for the next track and getting a frozen window. The deck is
+    // usable immediately; the numbers arrive a moment later.
+    let store = Arc::clone(state.analysis());
+    let bus = Arc::clone(state.bus());
+    tauri::async_runtime::spawn_blocking(move || {
+        let analysis = crate::analysis::analyse_or_cached(
+            &store,
+            deck_id,
+            track_id,
+            buffer.as_interleaved(),
+            sample_rate,
+        );
+
+        // Auto-gain goes through the action bus rather than straight to the
+        // engine, so it lands in the session log like any other trim change and
+        // the DJ can see -- and undo -- what was done on their behalf.
+        if let Some(action) = crate::analysis::auto_gain_action(deck_id, &analysis)
+            && let Ok(parsed) = dj_core::Action::parse(&action)
+        {
+            let _ = bus.send_command(dj_engine::Command::Action(parsed));
+        }
+    });
 
     Ok(dto)
 }
@@ -181,6 +224,19 @@ pub async fn load_track(
 #[tauri::command]
 pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String> {
     let parsed = Action::parse(&action).map_err(|e| format!("{action:?}: {e}"))?;
+
+    // Eject is the one action with consequences outside the engine: the deck's
+    // name and its analysis live here, not there, and leaving them behind would
+    // show a track that is no longer loaded.
+    if let Action::Deck {
+        deck,
+        action: dj_core::DeckAction::Eject,
+    } = parsed
+    {
+        state.clear_deck_track(deck);
+        state.analysis().clear_deck(deck);
+    }
+
     state
         .bus()
         .dispatch(parsed)
@@ -195,7 +251,14 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
 #[tauri::command]
 pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
     let bridge = state.bridge();
-    crate::Snapshot::capture_with(&state.registry(), state.deck_count(), bridge.as_deref())
+    let tracks = state.deck_tracks();
+    crate::Snapshot::capture_all(
+        &state.registry(),
+        state.deck_count(),
+        bridge.as_deref(),
+        Some(state.analysis()),
+        Some(&tracks),
+    )
 }
 
 /// What the interface needs to size a deck's waveform strip.

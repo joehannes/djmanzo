@@ -9,14 +9,43 @@
     cueAvailable = false,
   }: { deck: DeckState; enabled: boolean; cueAvailable?: boolean } = $props();
 
-  let title = $state<string>("");
-  let artist = $state<string>("");
   let error = $state<string | null>(null);
   let loading = $state(false);
+
+  // Name and artist come from the snapshot, not from this component.
+  //
+  // They used to be set here, by this deck's own Load button — which meant a
+  // track arriving from the browser, the assistant, a preset or a controller
+  // played perfectly while the header still read "no track". The engine has no
+  // metadata, so the application remembers it per deck and sends it down with
+  // everything else.
+  const title = $derived(deck.title ?? "");
+  const artist = $derived(deck.artist ?? "");
 
   const progress = $derived(
     deck.length_frames > 0 ? deck.position_frames / deck.length_frames : 0,
   );
+
+  const analysis = $derived(deck.analysis);
+
+  /**
+   * Take the analyser's rejected octave.
+   *
+   * Autocorrelation genuinely cannot tell 80 from 160 — a curve periodic at one
+   * is periodic at the other — so the octave is a *guess*, and the analyser
+   * reports the runner-up precisely so a wrong guess costs one click instead of
+   * a retapped grid. This only changes what is displayed; the stored analysis
+   * is untouched until M2's grid editing lands.
+   */
+  let octaveSwapped = $state(false);
+  function swapOctave() {
+    if (analysis?.bpm_alternative != null) octaveSwapped = !octaveSwapped;
+  }
+  // Reset when the deck gets a different track, or the swap would carry over.
+  $effect(() => {
+    void deck.analysis;
+    octaveSwapped = false;
+  });
 
   async function pickTrack() {
     error = null;
@@ -33,9 +62,7 @@
 
     loading = true;
     try {
-      const track = await loadTrack(deck.number, path);
-      title = track.title;
-      artist = track.artist ?? "";
+      await loadTrack(deck.number, path);
     } catch (e) {
       error = String(e);
     } finally {
@@ -60,6 +87,64 @@
       <div class="title" title={title}>{title || "— no track —"}</div>
       <div class="artist">{artist || (deck.loaded ? "" : "load a file to begin")}</div>
     </div>
+
+    <!--
+      Tempo and key, once the analyser has them.
+      
+      Deliberately absent rather than zeroed while analysis runs, and deliberately
+      absent again when the analyser could not tell: a plausible-looking 0.0 BPM
+      or a guessed key is worse than a blank, because a DJ reads these at a
+      glance and will not stop to wonder whether the number is real.
+    -->
+    {#if deck.loaded}
+      <div class="analysis mono">
+        {#if analysis?.bpm != null}
+          <span
+            class="bpm"
+            class:unsure={!analysis.sync_worthy}
+            title={analysis.sync_worthy
+              ? `Beat grid confidence ${((analysis.bpm_confidence ?? 0) * 100).toFixed(0)}%`
+              : `Weak beat grid — ${((analysis.bpm_confidence ?? 0) * 100).toFixed(0)}% confidence. Sync stays disabled rather than guessing.`}
+          >
+            {(octaveSwapped && analysis.bpm_alternative != null
+              ? analysis.bpm_alternative
+              : analysis.bpm
+            ).toFixed(1)}<em>BPM</em>
+          </span>
+          <!--
+            The octave offered as a control rather than by making the number
+            itself clickable: a clickable number is not discoverable, and this
+            way the alternative is visible before you commit to it.
+          -->
+          {#if analysis.bpm_alternative != null}
+            <button
+              class="octave"
+              onclick={swapOctave}
+              title="Autocorrelation cannot tell one octave from its double. Use {(octaveSwapped
+                ? analysis.bpm
+                : analysis.bpm_alternative
+              ).toFixed(1)} instead."
+            >
+              {(octaveSwapped ? analysis.bpm : analysis.bpm_alternative).toFixed(0)}?
+            </button>
+          {/if}
+        {/if}
+        {#if analysis?.key_camelot}
+          <span
+            class="key"
+            class:unsure={(analysis.key_confidence ?? 0) < 0.5}
+            title="{analysis.key_standard}{analysis.key_alternative
+              ? ` — could also be ${analysis.key_alternative}`
+              : ''} ({((analysis.key_confidence ?? 0) * 100).toFixed(0)}% correlation)"
+          >
+            {analysis.key_camelot}
+          </span>
+        {/if}
+        {#if analysis == null}
+          <span class="pending">analysing…</span>
+        {/if}
+      </div>
+    {/if}
     <button onclick={pickTrack} disabled={!enabled || loading}>
       {loading ? "Loading…" : "Load"}
     </button>
@@ -268,6 +353,54 @@
     align-items: center;
     gap: 0.65rem;
     min-width: 0;
+  }
+
+  .analysis {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.85em;
+    white-space: nowrap;
+  }
+
+  .analysis em {
+    font-style: normal;
+    font-size: 0.7em;
+    color: var(--text-dim);
+    margin-left: 0.15em;
+  }
+
+  .bpm {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .octave {
+    padding: 0.05rem 0.3rem;
+    font-size: 0.75em;
+    border-radius: 4px;
+    color: var(--text-dim);
+  }
+
+  /*
+    A number the analyser is not sure of still gets shown — it is usually right,
+    and a blank would be less useful — but it is visibly dimmer, because the one
+    thing worse than no BPM is a wrong one presented with confidence.
+  */
+  .bpm.unsure,
+  .key.unsure {
+    color: var(--warn);
+    font-weight: 400;
+  }
+
+  .key {
+    color: var(--accent-2);
+    font-weight: 600;
+  }
+
+  .pending {
+    color: var(--text-dim);
+    font-size: 0.9em;
   }
 
   .number {

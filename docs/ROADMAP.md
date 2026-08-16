@@ -36,6 +36,9 @@ The first genuinely usable build.
 - Mixer: channel faders, crossfader with curve, 3-band EQ + kills, filter, gain, VU, limiter.
 - Routing: main, booth, headphone PFL with cue/master blend and split-cue.
 - Audio setup: 4-channel single device **and** dual-device with clock-drift correction.
+  The correction is a control loop on the queue depth between the two callbacks, with the
+  resampling ratio clamped and heavily smoothed; verified by simulating a twenty-minute set
+  at ±50 and ±400 ppm. **Not yet verified against two real sound cards.**
 - `dj-render`: scrolling waveform tiles rasterised on the CPU and served as PNG over a
   custom URI scheme, CSS-transform scrolling in the UI. (`wgpu` was the original plan;
   measurement said the CPU is fast enough and a GPU context is not free — see ADR-0004.)
@@ -64,6 +67,20 @@ hatch, not at M7.
 
 **Done when:** load an unknown track, get a correct grid and key without touching anything, and
 sync it. Regression suite green.
+
+### Where M2 actually stands
+
+Done: `dj-analysis` itself, and the wiring — analysis runs on a worker at load, the result is
+cached by content hash on disk, BPM and Camelot key appear in the deck header, the rejected
+octave is offered as a one-click alternative, and auto-gain trims each track to the reference
+loudness through the action bus (so it lands in the session log and can be overridden).
+A weak grid is shown but marked, and `sync_worthy` is false, so nothing can auto-sync to it.
+
+Not yet: the beat grid *overlay* on the waveform, grid editing (shift/scale/tap), sync,
+quantize, beat jump, hot cues, loops, the overview waveform, 4 decks in the interface, and the
+labelled regression set. `CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
+calibrated against synthetic click tracks (0.95) and white noise (0.014); real music sits
+between those and the constant should be re-derived once there are hand-verified grids.
 
 ---
 

@@ -1119,6 +1119,7 @@ dependencies = [
 name = "dj-app"
 version = "0.0.2"
 dependencies = [
+ "dj-analysis",
  "dj-assistant",
  "dj-audio",
  "dj-control",

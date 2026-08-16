@@ -71,6 +71,13 @@ export interface LoadedTrack {
 
 export interface DeckState {
   number: number;
+  /**
+   * What is loaded, by name. From the snapshot rather than the deck component,
+   * so a track loaded from the browser, the assistant or a controller shows its
+   * name just like one loaded from the deck itself.
+   */
+  title: string | null;
+  artist: string | null;
   playing: boolean;
   loaded: boolean;
   position_frames: number;
@@ -92,6 +99,39 @@ export interface DeckState {
   keylock_latency_ms: number;
   /** Deliberate transposition in semitones, for harmonic mixing. */
   key_shift: number;
+  /**
+   * What the analyser made of this track. Null while it is still running,
+   * which is the normal state for the first second after a load.
+   */
+  analysis: TrackAnalysis | null;
+}
+
+/**
+ * Tempo, key and loudness.
+ *
+ * Every field is optional on purpose: a field recording has no tempo, a drum
+ * loop has no key, and showing a plausible zero instead of "could not tell" is
+ * how a DJ ends up syncing to a grid that was never there.
+ */
+export interface TrackAnalysis {
+  bpm: number | null;
+  /** 0..=1. */
+  bpm_confidence: number | null;
+  /** The rejected octave — usually half or double. */
+  bpm_alternative: number | null;
+  /** Whether the grid is solid enough to sync to. */
+  sync_worthy: boolean;
+  /** Camelot notation, e.g. `8A`. */
+  key_camelot: string | null;
+  /** Standard notation, e.g. `Am`. */
+  key_standard: string | null;
+  key_confidence: number | null;
+  /** The runner-up, usually the relative major or minor. */
+  key_alternative: string | null;
+  /** Integrated loudness, LUFS. */
+  lufs: number | null;
+  /** Trim that would bring this track to the reference loudness. */
+  auto_gain_db: number;
 }
 
 export interface MasterState {
