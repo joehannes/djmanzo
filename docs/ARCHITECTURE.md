@@ -287,7 +287,56 @@ Importers, so a user is not asked to abandon their history:
 
 ---
 
-## 9. Crate map
+## 9. Interface
+
+The interface is a Svelte 5 + TypeScript application in a webview, and it is a **client of the
+action bus like any other** ([ADR-0003](adr/0003-action-bus-and-parameter-registry.md)). It
+sends action text in and receives 60 Hz state snapshots back over a Tauri channel; it holds no
+authority over the engine and no private path into it. Every control on screen could equally be
+a MIDI pad, a script line or a sentence to the assistant, because all four end up in the same
+place.
+
+**Nothing on the hot rendering path is drawn in the webview.** Waveform tiles are produced by
+`dj-render` in Rust, served over a `wave://` custom protocol as binary PNG, and scrolled by
+`translate3d` on a fixed strip — the webview moves a layer and does not repaint. This is
+[ADR-0004](adr/0004-waveform-rendering-strategy.md), and it exists because WebKitGTK on Linux
+will silently fall back to software compositing. The shell measures its own frame rate and says
+so when it does: a webview that quietly loses acceleration otherwise just looks broken, and the
+audio engine is unaffected either way.
+
+**State comes from one place.** Track titles, analysis, cue positions and deck state all arrive
+in the snapshot rather than being remembered by whichever component triggered the load — a deck
+loaded by the browser, the assistant, a preset or a controller must look identical to one loaded
+by its own Load button, and the only way to guarantee that is to have no second source.
+
+**Themes** are CSS custom properties on `:root`, light and dark. **Density** is a single
+`--density` multiplier on the root font size, which works because every other measurement in the
+interface is in `em`.
+
+### Layouts and skins
+
+A layout preset and a skin are the same thing — a description of what is on screen and how
+densely — so they are one mechanism rather than two that eventually disagree. The four
+built-ins (Starter, Essentials, Pro, Performance) are ordinary `Layout` values that happen to
+ship; a DJ's own is JSON read from `layouts/` in the config directory by the same code. Every
+field has a default so a file names only what it changes, out-of-range values are clamped rather
+than refused, and a malformed file is skipped with a warning rather than costing a DJ their
+other layouts at the start of a set. The choice is stored by name, so editing your own file
+takes effect.
+
+**A layout is data.** It says what to show and how big; it cannot execute code, reach a file, or
+change what any control does. That is what makes one somebody sent you safe to open.
+
+The shipped form is a flat struct of feature flags, which can show, hide, resize and scale a
+fixed set of components. It cannot move, reorder or restyle them, a DJ's file cannot name a
+widget the binary does not already know, and there is no mechanism waiting for M5's detachable
+panels. [ADR-0008](adr/0008-one-widget-vocabulary.md) is the decided replacement: a widget
+registry and a layout as a tree of addressed instances in named slots — the same move ADR-0003
+made for behaviour, applied to what is on screen. It is not implemented yet.
+
+---
+
+## 10. Crate map
 
 ```
 crates/
@@ -318,7 +367,7 @@ realtime safety, which means keeping its dependency surface tiny.
 
 ---
 
-## 10. Extension points
+## 11. Extension points
 
 Designed in, not retrofitted:
 
@@ -329,13 +378,15 @@ Designed in, not retrofitted:
 - **Network API** — WebSocket + OSC, speaking Actions and Parameters. Enables lighting rigs,
   OBS overlays, stage automation, phone remotes, and anything not yet imagined.
 - **Skins** — CSS themes plus JSON layout definitions, following VirtualDJ's layout-preset
-  concept (Starter / Essentials / Pro / Performance) with our own assets.
+  concept (Starter / Essentials / Pro / Performance) with our own assets. Shipped in M3 as a
+  flat set of feature flags; [ADR-0008](adr/0008-one-widget-vocabulary.md) replaces that with a
+  widget registry so a skin can move and restyle rather than only show and hide.
 - **DVS** — deliberately deferred, but the position/rate engine already takes its rate from an
   abstract source. A timecode decoder becomes one more rate source rather than a redesign.
 
 ---
 
-## 11. Known risks
+## 12. Known risks
 
 | Risk | Mitigation |
 |---|---|

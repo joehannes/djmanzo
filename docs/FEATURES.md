@@ -320,3 +320,6 @@ effect.
 Moving and restyling individual components — as opposed to showing, hiding and resizing them —
 is not in yet. It needs a component-addressing scheme that survives the interface changing
 underneath it, which is a design problem rather than a coding one.
+[ADR-0008](adr/0008-one-widget-vocabulary.md) is that design: a widget registry, and a layout as
+a tree of addressed instances in named slots rather than a struct of feature flags. Decided, not
+yet implemented.

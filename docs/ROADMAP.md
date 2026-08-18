@@ -13,7 +13,7 @@ Feature-to-milestone assignments are in [FEATURES.md](FEATURES.md). Architecture
 
 Prove the stack end to end before building anything on it.
 
-- Cargo workspace with the crate skeleton from [ARCHITECTURE.md §9](ARCHITECTURE.md#9-crate-map).
+- Cargo workspace with the crate skeleton from [ARCHITECTURE.md §10](ARCHITECTURE.md#10-crate-map).
 - Tauri 2 shell, Svelte 5 + TypeScript UI, dev loop working on both platforms.
 - CI: build + test on **macOS arm64 and Ubuntu**, from the first commit.
 - `dj-audio`: device enumeration, open an output stream via `cpal`.
@@ -646,6 +646,35 @@ What gets packs:
 The order is deliberate. Level 1 works with no assistant at all, which means the
 feature is useful before any of the intelligence exists — and it stays useful on
 the night the network is down.
+
+---
+
+## The interface layer
+
+M3 shipped layouts and skins as a flat set of feature flags, which can show, hide, resize and
+scale a fixed set of components. That is where the ceiling is: a skin cannot move, reorder or
+restyle anything, a DJ's layout file cannot name a widget the binary does not already know, and
+M5's detachable panels have no mechanism waiting for them.
+
+[ADR-0008](adr/0008-one-widget-vocabulary.md) decides the replacement — **a widget registry, and
+a layout as a tree of addressed instances placed in named slots.** It is the move
+[ADR-0003](adr/0003-action-bus-and-parameter-registry.md) already made for behaviour, applied to
+what is on screen: one vocabulary, so the interface, controllers, the network API and the
+assistant all address components by the same names, instead of the interface being the one layer
+nothing else can reach.
+
+| Step | What |
+|---|---|
+| **W1** | The registry in `dj-app`: names, slots, prop types with ranges and defaults, validation. Rust, not TypeScript — the network API and the assistant need it without a webview running. |
+| **W2** | The layout tree format, the upconverter from today's flat `Layout`, and the token set a skin may restyle within. Nobody's existing file breaks. |
+| **W3** | `Deck.svelte` and `App.svelte` stop being layouts and become renderers over the tree. This is the expensive step and the reason the ADR came first. |
+| **W4** | What it unlocks: detachable panels and multi-monitor (M5) as a subtree with a window; widget addressing over the network API; assistant-composed layouts as proposals, per [ADR-0005](adr/0005-assistant-speaks-only-actions.md). |
+
+Sequenced before the richer control rendering below, because a component that has no name is a
+component a skin cannot place — and building the visual layer twice is the thing to avoid.
+
+**The standing cost to remember:** widget names leak into every DJ's saved layout file the day
+this ships. They are a compatibility surface and need the same care action names got.
 
 ---
 
