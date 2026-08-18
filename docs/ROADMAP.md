@@ -139,10 +139,28 @@ on a paused deck. And the deck header now reads its confidence live from the eng
 from the cached analysis — otherwise a grid the DJ had just fixed would still be labelled
 "weak" beside an enabled Sync button.
 
-Not yet: saved loops (they need M3's persistence) and the labelled regression set.
-`CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
-calibrated against synthetic click tracks (0.95) and white noise (0.014); real music sits
-between those and the constant should be re-derived once there are hand-verified grids.
+Saved loops landed with M3's persistence.
+
+The **labelled regression set** is half done, and the half that is missing is the half this
+repository cannot supply. The corpus needs licensed music and a human who can hear whether a
+downbeat is on the downbeat; it can be collected, not written. Everything *around* the corpus
+now exists as `dj_analysis::regression`: the label format, the metrics, and the scoring.
+
+The metrics keep two accuracies apart on purpose. **Exact** is the estimate within 2% of the
+truth; **octave-tolerant** also accepts a half, double or triplet relation. Autocorrelation
+genuinely cannot tell 80 from 160 — a curve periodic at one is periodic at the other — so an
+octave error costs the DJ one click on the alternative the analyser already offers, while a
+tempo that is neither means the grid is noise. A single blended score would hide exactly the
+distinction that decides what to fix. Declines are counted separately again, because *an
+analyser that is confidently wrong is worse than one that says it does not know* is this
+crate's founding rule and adding the two together would erase it.
+
+`best_confidence_threshold` is what closes the loop: it sweeps the confidences a run produced
+and returns the cut maximising Youden's J, which is the calibration
+`CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` has been waiting for — currently
+interpolated between a synthetic click track (0.95) and white noise (0.014) with nothing real in
+between. It returns `None` when the corpus is all one class, rather than a number somebody would
+then act on.
 
 ---
 
@@ -379,8 +397,6 @@ into a library export outranks one found in a tag, so an import applies first.
 
 Nothing writes markers back. A DJ's music is theirs, and a library that silently rewrites the
 tags of every track it touches is one bad release away from a disaster.
-
-Not yet: a session export.
 
 M3's own "done when" — *import an existing rekordbox or Serato library with cues and grids
 intact, and find any track in under a second* — is met.

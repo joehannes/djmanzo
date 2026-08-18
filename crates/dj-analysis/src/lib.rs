@@ -32,6 +32,7 @@
 pub mod key;
 pub mod loudness;
 pub mod onset;
+pub mod regression;
 pub mod tempo;
 
 pub use key::KeyAnalysis;
