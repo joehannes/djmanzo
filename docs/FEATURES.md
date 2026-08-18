@@ -62,6 +62,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Cues, grids and loops kept with the track across sessions | M3 |
 | Playlists, crates and folders in one tree | M3 |
 | Play history, recorded when a track is actually played | M3 |
+| Smart folders with a filter language, incl. harmonic matching | M3 |
 | Spectral colouring (bass/mid/high energy) | M2 |
 | Loop region and hot cue overlays | M2 |
 | Phrase / structure markers | M8 |

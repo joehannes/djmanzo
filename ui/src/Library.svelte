@@ -24,6 +24,7 @@
   import Crates, { type Selection } from "./Crates.svelte";
   import {
     addToPlaylist,
+    checkFilter,
     formatTime,
     libraryAddFolder,
     libraryRemoveFolder,
@@ -35,6 +36,8 @@
     playHistory,
     playlistTracks,
     removeFromPlaylist,
+    setPlaylistQuery,
+    smartPlaylistTracks,
     type LibraryStatus,
     type LibraryTrack,
     type PlayRecord,
@@ -92,6 +95,10 @@
       if (selection.kind === "history") {
         history = await playHistory();
         tracks = [];
+      } else if (selection.kind === "smart") {
+        // Evaluated now, not stored: a smart folder is a question about the
+        // collection, so a track added since it was written belongs in it.
+        tracks = await smartPlaylistTracks(selection.id);
       } else if (selection.kind === "playlist") {
         const entries = await playlistTracks(selection.id);
         // Search still filters inside a playlist, client-side: the rows are
@@ -145,6 +152,58 @@
       error = String(e);
     }
   }
+
+  /** The filter being edited, and what is wrong with it. */
+  let filterText = $state("");
+  let filterError = $state<string | null>(null);
+  let filterDirty = $state(false);
+
+  /**
+   * Check as it is typed, save on blur or Enter.
+   *
+   * Checking is a parse, which is microseconds — so the DJ finds out about a
+   * typo while looking at the box, rather than when the folder turns up empty.
+   * Saving is separate because a half-typed filter is not one to store.
+   */
+  async function checkFilterText() {
+    filterDirty = true;
+    if (!filterText.trim()) {
+      filterError = null;
+      return;
+    }
+    try {
+      await checkFilter(filterText);
+      filterError = null;
+    } catch (e) {
+      filterError = String(e);
+    }
+  }
+
+  async function saveFilter() {
+    if (selection.kind !== "smart" || !filterDirty || filterError) return;
+    try {
+      await setPlaylistQuery(selection.id, filterText);
+      selection = { ...selection, query: filterText };
+      filterDirty = false;
+      await Promise.all([refresh(), refreshPlaylists()]);
+    } catch (e) {
+      filterError = String(e);
+    }
+  }
+
+  /**
+   * Follow the sidebar into a smart folder.
+   *
+   * Keyed on the id as well as the text so that switching between two folders
+   * loads the second one's filter rather than keeping the first's.
+   */
+  $effect(() => {
+    if (selection.kind === "smart") {
+      filterText = selection.query;
+      filterError = null;
+      filterDirty = false;
+    }
+  });
 
   /** Local time, since a DJ reads a history against the night they played. */
   function whenPlayed(unixSeconds: number): string {
@@ -294,7 +353,7 @@
     {#if selection.kind !== "history"}
       <input
         type="search"
-        placeholder={selection.kind === "playlist"
+        placeholder={selection.kind === "playlist" || selection.kind === "smart"
           ? `Search ${selection.name}…`
           : "Search your collection…"}
         bind:value={query}
@@ -320,7 +379,10 @@
         What is on screen first, the collection second. The collection count
         above a two-row playlist reads as a bug, however true it is.
       -->
-      {#if selection.kind === "playlist"}
+      {#if selection.kind === "smart"}
+        <strong>{sorted.length.toLocaleString()}</strong> matching
+        · {status.tracks.toLocaleString()} in your collection
+      {:else if selection.kind === "playlist"}
         <strong>{sorted.length.toLocaleString()}</strong> in {selection.name}
         · {status.tracks.toLocaleString()} in your collection
       {:else if selection.kind === "history"}
@@ -377,6 +439,35 @@
           {/each}
         </ul>
       </details>
+    {/if}
+  {/if}
+
+  {#if selection.kind === "smart"}
+    <div class="filter">
+      <input
+        class:invalid={filterError != null}
+        bind:value={filterText}
+        oninput={checkFilterText}
+        onblur={saveFilter}
+        onkeydown={(e) => e.key === "Enter" && saveFilter()}
+        placeholder="bpm > 120 and key compatible 8A"
+        aria-label="Filter for {selection.name}"
+      />
+      {#if filterDirty && !filterError}
+        <button onclick={saveFilter}>Save</button>
+      {/if}
+    </div>
+    {#if filterError}
+      <p class="error">{filterError}</p>
+    {:else}
+      <p class="hint">
+        <code>bpm</code>, <code>key</code>, <code>artist</code>, <code>title</code>,
+        <code>album</code>, <code>genre</code>, <code>label</code>, <code>year</code>,
+        <code>rating</code>, <code>plays</code> — compared with
+        <code>&gt; &lt; = !=</code>, <code>contains</code>, <code>starts</code>,
+        <code>ends</code>, or <code>compatible</code> for harmonic neighbours. Combine
+        with <code>and</code>, <code>or</code>, <code>not</code> and brackets.
+      </p>
     {/if}
   {/if}
 
@@ -541,6 +632,29 @@
   .controls input {
     flex: 1;
     min-width: 0;
+  }
+
+  .filter {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .filter input {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--mono, ui-monospace, monospace);
+    font-size: 0.9em;
+  }
+
+  /* Marked, not blocked: a half-typed filter is normal, and taking the box
+     away mid-sentence would be worse than colouring it. */
+  .filter input.invalid {
+    border-color: var(--danger, #dc2626);
+  }
+
+  .hint code {
+    font-size: 0.95em;
+    opacity: 0.85;
   }
 
   .viewing {

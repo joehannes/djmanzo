@@ -22,7 +22,8 @@
   export type Selection =
     | { kind: "all" }
     | { kind: "history" }
-    | { kind: "playlist"; id: number; name: string };
+    | { kind: "playlist"; id: number; name: string }
+    | { kind: "smart"; id: number; name: string; query: string };
 
   let {
     selection = $bindable(),
@@ -77,22 +78,24 @@
     onchange?.();
   }
 
-  async function add(folder: boolean) {
+  async function add(kind: "list" | "folder" | "smart") {
     // Inside the selected node when it is a folder, top level otherwise.
     // Creating a playlist inside a playlist is refused by Rust, and offering it
     // here only to have it fail would be worse than not offering it.
     const current = selection;
     const parent =
-      current.kind === "playlist" &&
+      (current.kind === "playlist" || current.kind === "smart") &&
       nodes.find((n) => n.id === current.id)?.kind === "folder"
         ? current.id
         : null;
+    const name =
+      kind === "folder" ? "New folder" : kind === "smart" ? "New filter" : "New playlist";
     try {
-      const id = await createPlaylist(folder ? "New folder" : "New playlist", parent, folder);
+      const id = await createPlaylist(name, parent, kind);
       await refresh();
       // Straight into rename: a sidebar full of "New playlist" is what happens
       // when naming is a separate step nobody takes.
-      editing = { id, name: folder ? "New folder" : "New playlist" };
+      editing = { id, name };
     } catch (e) {
       error = String(e);
     }
@@ -114,7 +117,10 @@
   async function remove(node: Playlist) {
     try {
       await deletePlaylist(node.id);
-      if (selection.kind === "playlist" && selection.id === node.id) {
+      if (
+        (selection.kind === "playlist" || selection.kind === "smart") &&
+        selection.id === node.id
+      ) {
         select({ kind: "all" });
       }
       await refresh();
@@ -174,10 +180,12 @@
     {#each tree as { node, depth } (node.id)}
       <div
         class="row"
-        class:active={selection.kind === "playlist" && selection.id === node.id}
+        class:active={(selection.kind === "playlist" || selection.kind === "smart") &&
+          selection.id === node.id}
         style="padding-left: {0.4 + depth * 0.8}rem"
         role="treeitem"
-        aria-selected={selection.kind === "playlist" && selection.id === node.id}
+        aria-selected={(selection.kind === "playlist" || selection.kind === "smart") &&
+          selection.id === node.id}
         tabindex="-1"
         draggable="true"
         ondragstart={() => (dragging = node.id)}
@@ -202,13 +210,29 @@
         {:else}
           <button
             class="entry"
-            onclick={() => select({ kind: "playlist", id: node.id, name: node.name })}
+            onclick={() =>
+              select(
+                node.kind === "smart"
+                  ? {
+                      kind: "smart",
+                      id: node.id,
+                      name: node.name,
+                      query: node.query ?? "",
+                    }
+                  : { kind: "playlist", id: node.id, name: node.name },
+              )}
             ondblclick={() => (editing = { id: node.id, name: node.name })}
-            title={node.kind === "folder" ? "Folder" : `${node.track_count} tracks`}
+            title={node.kind === "folder"
+              ? "Folder"
+              : node.kind === "smart"
+                ? `Smart folder: ${node.query ?? "no filter"}`
+                : `${node.track_count} tracks`}
           >
-            <span class="icon">{node.kind === "folder" ? "▸" : "≡"}</span>
+            <span class="icon"
+              >{node.kind === "folder" ? "▸" : node.kind === "smart" ? "⁂" : "≡"}</span
+            >
             <span class="name">{node.name}</span>
-            {#if node.kind !== "folder"}
+            {#if node.kind === "list"}
               <span class="count">{node.track_count}</span>
             {/if}
           </button>
@@ -226,8 +250,12 @@
   </div>
 
   <div class="actions">
-    <button onclick={() => add(false)} title="New playlist">+ List</button>
-    <button onclick={() => add(true)} title="New folder">+ Folder</button>
+    <button onclick={() => add("list")} title="New playlist">+ List</button>
+    <button onclick={() => add("folder")} title="New folder">+ Folder</button>
+    <button
+      onclick={() => add("smart")}
+      title="New smart folder — a filter that keeps itself up to date"
+    >+ Filter</button>
   </div>
 
   {#if error}

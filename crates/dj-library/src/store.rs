@@ -29,6 +29,10 @@ pub enum LibraryError {
     /// sidebar could reach it.
     #[error("that would put playlist {0} inside itself")]
     WouldOrphan(i64),
+    /// A smart folder's filter could not be understood. Carries the parser's
+    /// own message, which names the word it choked on.
+    #[error("{0}")]
+    BadFilter(String),
 }
 
 type Result<T> = std::result::Result<T, LibraryError>;
@@ -713,6 +717,79 @@ impl Library {
             rows.collect::<rusqlite::Result<Vec<_>>>()?
                 .into_iter()
                 .collect()
+        })
+    }
+
+    /// Evaluate a smart folder's filter.
+    ///
+    /// The filter is parsed and compiled here, on every call, rather than
+    /// stored compiled. Parsing a line of text is microseconds and the query it
+    /// produces is what actually costs; caching the parse would be an
+    /// invalidation problem in exchange for nothing measurable.
+    pub fn smart_tracks(&self, query: &str, limit: usize) -> Result<Vec<LibraryTrack>> {
+        let filter =
+            crate::filter::parse(query).map_err(|e| LibraryError::BadFilter(e.to_string()))?;
+        let compiled = filter.compile();
+
+        self.with(|conn| {
+            let sql = format!(
+                "SELECT {TRACK_COLUMNS} FROM tracks WHERE {} ORDER BY artist COLLATE NOCASE, title COLLATE NOCASE LIMIT ?{}",
+                compiled.sql,
+                compiled.params.len() + 1
+            );
+            let mut stmt = conn.prepare(&sql)?;
+
+            // Bound one at a time, in the order the compiler numbered them.
+            // Nothing the user typed is in `sql` -- see `filter::compile`.
+            let mut bound: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for param in &compiled.params {
+                bound.push(match param {
+                    crate::filter::Param::Number(n) => Box::new(*n),
+                    crate::filter::Param::Text(t) => Box::new(t.clone()),
+                    crate::filter::Param::Integer(i) => Box::new(*i),
+                });
+            }
+            bound.push(Box::new(limit as i64));
+
+            let refs: Vec<&dyn rusqlite::ToSql> = bound.iter().map(std::convert::AsRef::as_ref).collect();
+            let rows = stmt.query_map(refs.as_slice(), read_track)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+                .into_iter()
+                .collect()
+        })
+    }
+
+    /// A smart folder's tracks, by its id.
+    pub fn smart_playlist_tracks(&self, playlist: i64, limit: usize) -> Result<Vec<LibraryTrack>> {
+        let query = self.with(|conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT query FROM playlists WHERE id = ?1 AND kind = 'smart'",
+                    [playlist],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten())
+        })?;
+        match query {
+            Some(query) => self.smart_tracks(&query, limit),
+            None => Err(LibraryError::NoSuchPlaylist(playlist)),
+        }
+    }
+
+    /// Change what a smart folder selects.
+    ///
+    /// Parsed before it is stored, so a filter that cannot be understood is
+    /// reported at the moment it is typed rather than the next time the folder
+    /// is opened.
+    pub fn set_playlist_query(&self, id: i64, query: &str) -> Result<()> {
+        crate::filter::parse(query).map_err(|e| LibraryError::BadFilter(e.to_string()))?;
+        self.with(|conn| {
+            conn.execute(
+                "UPDATE playlists SET query = ?2 WHERE id = ?1",
+                params![id, query],
+            )?;
+            Ok(())
         })
     }
 
@@ -1731,6 +1808,216 @@ mod tests {
         let found = lib.playlists().unwrap();
         assert_eq!(found[0].name, "Friday");
         assert_eq!(lib.playlist_tracks(list).unwrap().len(), 1);
+    }
+
+    // -- smart folders -----------------------------------------------------
+
+    /// Three tracks with enough analysis to filter on.
+    fn analysed_library() -> Library {
+        let lib = library();
+        let specs = [
+            (
+                1u8,
+                "Bachata Rosa",
+                "Juan Luis Guerra",
+                128.0,
+                8u8,
+                Mode::Minor,
+                "latin",
+            ),
+            (
+                2,
+                "Vivir Mi Vida",
+                "Marc Anthony",
+                96.0,
+                11,
+                Mode::Major,
+                "salsa",
+            ),
+            (
+                3,
+                "Gasolina",
+                "Daddy Yankee",
+                140.0,
+                9,
+                Mode::Minor,
+                "reggaeton",
+            ),
+        ];
+        for (byte, title, artist, bpm, hour, mode, genre) in specs {
+            let mut t = track(byte, title, artist);
+            t.tags.genre = Some(genre.to_owned());
+            t.tags.year = Some(2000 + i32::from(byte));
+            lib.upsert_track(&t).unwrap();
+            lib.set_analysis(
+                id(byte),
+                &StoredAnalysis::default()
+                    .with_beatgrid(Beatgrid::new(
+                        FramePos::new(0.0),
+                        Bpm::new(bpm).unwrap(),
+                        Confidence::CERTAIN,
+                    ))
+                    .with_key(MusicalKey::new(hour, mode).unwrap(), 0.9),
+            )
+            .unwrap();
+        }
+        lib
+    }
+
+    fn titles(found: &[LibraryTrack]) -> Vec<String> {
+        found.iter().map(LibraryTrack::display_title).collect()
+    }
+
+    #[test]
+    fn a_smart_folder_selects_by_tempo() {
+        let lib = analysed_library();
+        let found = lib.smart_tracks("bpm > 120", 50).unwrap();
+        assert_eq!(
+            titles(&found),
+            vec!["Gasolina", "Bachata Rosa"],
+            "ordered by artist: Daddy Yankee before Juan Luis Guerra"
+        );
+    }
+
+    #[test]
+    fn a_smart_folder_combines_conditions() {
+        let lib = analysed_library();
+        let found = lib
+            .smart_tracks("bpm > 120 and not genre contains reggaeton", 50)
+            .unwrap();
+        assert_eq!(titles(&found), vec!["Bachata Rosa"]);
+    }
+
+    /// The harmonic case, which is the reason to filter by key.
+    #[test]
+    fn a_smart_folder_finds_harmonic_neighbours() {
+        let lib = analysed_library();
+        // 9A is one step round the wheel from 8A, so both are compatible with
+        // 8A; 11B is not.
+        let found = lib.smart_tracks("key compatible 8A", 50).unwrap();
+        assert_eq!(titles(&found), vec!["Gasolina", "Bachata Rosa"]);
+    }
+
+    #[test]
+    fn an_exact_key_matches_only_that_key() {
+        let lib = analysed_library();
+        assert_eq!(
+            titles(&lib.smart_tracks("key = 11B", 50).unwrap()),
+            vec!["Vivir Mi Vida"]
+        );
+    }
+
+    #[test]
+    fn text_matching_ignores_case() {
+        let lib = analysed_library();
+        assert_eq!(
+            titles(&lib.smart_tracks("artist contains GUERRA", 50).unwrap()),
+            vec!["Bachata Rosa"]
+        );
+    }
+
+    /// An unanalysed track has no BPM, and must not match a tempo condition --
+    /// nor be swept in by negating one.
+    #[test]
+    fn an_unanalysed_track_matches_no_tempo_condition_either_way() {
+        let lib = analysed_library();
+        lib.upsert_track(&track(9, "Unknown", "Nobody")).unwrap();
+
+        assert!(
+            !titles(&lib.smart_tracks("bpm > 120", 50).unwrap()).contains(&"Unknown".to_owned())
+        );
+        assert!(
+            !titles(&lib.smart_tracks("not bpm > 120", 50).unwrap())
+                .contains(&"Unknown".to_owned()),
+            "negating a comparison must not sweep in tracks that have no value at all"
+        );
+    }
+
+    /// The whole point of compiling rather than storing SQL.
+    #[test]
+    fn a_filter_cannot_execute_sql() {
+        let lib = analysed_library();
+        let found = lib
+            .smart_tracks(r#"artist = "x'); DROP TABLE tracks;--""#, 50)
+            .unwrap();
+        assert!(found.is_empty());
+        assert_eq!(
+            lib.track_count().unwrap(),
+            3,
+            "the tracks table must still be there"
+        );
+    }
+
+    #[test]
+    fn a_filter_that_cannot_be_understood_is_reported() {
+        let lib = analysed_library();
+        assert!(matches!(
+            lib.smart_tracks("colour = red", 50),
+            Err(LibraryError::BadFilter(_))
+        ));
+    }
+
+    /// Stored at the moment it is typed, so a broken filter is not discovered
+    /// the next time the folder is opened.
+    #[test]
+    fn a_smart_folders_query_is_checked_before_it_is_saved() {
+        let lib = analysed_library();
+        let smart = lib
+            .create_playlist("Fast", None, PlaylistKind::Smart, Some("bpm > 120"), 0)
+            .unwrap();
+
+        assert!(matches!(
+            lib.set_playlist_query(smart, "colour = red"),
+            Err(LibraryError::BadFilter(_))
+        ));
+        assert_eq!(
+            titles(&lib.smart_playlist_tracks(smart, 50).unwrap()),
+            vec!["Gasolina", "Bachata Rosa"],
+            "the refused edit must not have replaced the working filter"
+        );
+
+        lib.set_playlist_query(smart, "bpm < 100").unwrap();
+        assert_eq!(
+            titles(&lib.smart_playlist_tracks(smart, 50).unwrap()),
+            vec!["Vivir Mi Vida"]
+        );
+    }
+
+    /// A smart folder follows the collection: it is a question, not a list.
+    #[test]
+    fn a_smart_folder_picks_up_tracks_added_later() {
+        let lib = analysed_library();
+        let smart = lib
+            .create_playlist("Fast", None, PlaylistKind::Smart, Some("bpm > 130"), 0)
+            .unwrap();
+        assert_eq!(lib.smart_playlist_tracks(smart, 50).unwrap().len(), 1);
+
+        let mut new = track(7, "Later", "Somebody");
+        new.tags.genre = Some("latin".to_owned());
+        lib.upsert_track(&new).unwrap();
+        lib.set_analysis(
+            id(7),
+            &StoredAnalysis::default().with_beatgrid(Beatgrid::new(
+                FramePos::new(0.0),
+                Bpm::new(150.0).unwrap(),
+                Confidence::CERTAIN,
+            )),
+        )
+        .unwrap();
+
+        assert_eq!(lib.smart_playlist_tracks(smart, 50).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn asking_a_normal_playlist_for_smart_results_says_no() {
+        let lib = analysed_library();
+        let list = lib
+            .create_playlist("Friday", None, PlaylistKind::List, None, 0)
+            .unwrap();
+        assert!(matches!(
+            lib.smart_playlist_tracks(list, 50),
+            Err(LibraryError::NoSuchPlaylist(_))
+        ));
     }
 
     // -- history -----------------------------------------------------------

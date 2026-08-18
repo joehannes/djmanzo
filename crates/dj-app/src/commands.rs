@@ -1453,6 +1453,8 @@ pub struct PlaylistDto {
     /// "list", "folder" or "smart".
     pub kind: String,
     pub track_count: i64,
+    /// The filter, for a smart folder. `None` for the other kinds.
+    pub query: Option<String>,
 }
 
 impl From<dj_library::Playlist> for PlaylistDto {
@@ -1463,6 +1465,7 @@ impl From<dj_library::Playlist> for PlaylistDto {
             parent_id: node.parent_id,
             kind: node.kind.as_sql().to_owned(),
             track_count: node.track_count,
+            query: node.query,
         }
     }
 }
@@ -1488,27 +1491,71 @@ pub fn list_playlists(state: State<'_, AppState>) -> Result<Vec<PlaylistDto>, St
         .collect())
 }
 
+/// `kind` is "list", "folder" or "smart".
 #[tauri::command]
 pub fn create_playlist(
     state: State<'_, AppState>,
     name: String,
     parent: Option<i64>,
-    folder: bool,
+    kind: String,
+    query: Option<String>,
 ) -> Result<i64, String> {
-    let kind = if folder {
-        dj_library::PlaylistKind::Folder
-    } else {
-        dj_library::PlaylistKind::List
+    let kind = dj_library::PlaylistKind::from_sql(&kind)
+        .ok_or_else(|| format!("{kind:?} is not a kind of playlist"))?;
+    // A smart folder with no filter would show the whole collection, which is
+    // what "All tracks" is for. Give it one that says so until it is edited.
+    let query = match (kind, query.as_deref()) {
+        (dj_library::PlaylistKind::Smart, None | Some("")) => Some("bpm > 0"),
+        (dj_library::PlaylistKind::Smart, Some(q)) => Some(q),
+        _ => None,
     };
     library(&state)?
         .create_playlist(
             name.trim(),
             parent,
             kind,
-            None,
+            query,
             crate::library::now_seconds(),
         )
         .map_err(|e| e.to_string())
+}
+
+/// Change what a smart folder selects.
+///
+/// The filter is parsed before it is stored, so a mistake is reported while the
+/// DJ is looking at the box rather than the next time they open the folder.
+#[tauri::command]
+pub fn set_playlist_query(
+    state: State<'_, AppState>,
+    id: i64,
+    query: String,
+) -> Result<(), String> {
+    library(&state)?
+        .set_playlist_query(id, query.trim())
+        .map_err(|e| e.to_string())
+}
+
+/// Check a filter without storing it, so the editor can say what is wrong as
+/// it is typed.
+#[tauri::command]
+pub fn check_filter(query: String) -> Result<(), String> {
+    dj_library::filter::parse(query.trim())
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// The tracks a smart folder currently selects.
+#[tauri::command]
+pub fn smart_playlist_tracks(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<Vec<LibraryTrackDto>, String> {
+    Ok(library(&state)?
+        .smart_playlist_tracks(id, BROWSE_LIMIT)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(LibraryTrackDto::from)
+        .collect())
 }
 
 #[tauri::command]

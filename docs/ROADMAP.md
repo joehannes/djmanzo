@@ -284,8 +284,38 @@ a horizontal line with a delete button, also applied to the two top-level sideba
 *column* flex container, which stretched "All tracks" into a block and squeezed the tree out of
 the panel.
 
-Not yet: smart folders store a query column but nothing evaluates it, and there is no session
-export. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
+Smart folders are in, with a filter language of their own:
+
+```
+bpm > 120 and key compatible 8A
+artist = "Juan Luis Guerra" or (year >= 1990 and rating >= 4)
+not genre contains reggaeton
+```
+
+**A language rather than stored SQL.** A smart folder needs a condition that outlives the
+session, which means storing it — and storing SQL would make the database file an executable
+script, so anything that could write a playlist row could run statements against a DJ's
+collection. The filter parses into a typed tree and *compiles* to a parameterised `WHERE`
+clause; every value the DJ typed leaves as a bound parameter, and there is a test that a filter
+containing `DROP TABLE tracks` matches nothing and drops nothing.
+
+**Absence means two different things, and the language honours both.** An absent *tag* is a
+value: a track with no genre genuinely is not reggaeton, and `not genre contains reggaeton`
+should find it — so the text columns read through `COALESCE`. An absent *analysis* is an
+unknown, and a filter must not assert anything about it: `bpm > 120` cannot be true of a track
+nobody has analysed, and neither can `not bpm > 120`. Wrapping the comparison in SQL's `NOT`
+would invert the null guard along with the comparison and put every unanalysed track into a
+filter for slow ones — a DJ would find a 150 BPM record in their warm-up crate at the worst
+possible moment. Negation is pushed down to the leaves by De Morgan instead, so `not bpm > 120`
+compiles as `bpm <= 120` and still requires a tempo to exist.
+
+`key compatible 8A` is the one worth having: it matches the key, its relative major or minor,
+and one step either way round the Camelot wheel — harmonic mixing as a crate. The filter is
+checked as it is typed, so a typo is reported while the DJ is looking at the box rather than
+when the folder turns up empty, and it is evaluated on every open rather than cached, because a
+smart folder is a question about the collection and a track added since belongs in it.
+
+Not yet: there is no session export. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
 it will come, but a control that works one-handed on a trackpad should not wait for it. The
 importers, SideView and layout presets are still ahead.
 

@@ -474,6 +474,8 @@ export interface Playlist {
   /** "list", "folder" or "smart". */
   kind: string;
   track_count: number;
+  /** The filter, for a smart folder. Null for the other kinds. */
+  query: string | null;
 }
 
 /**
@@ -493,8 +495,24 @@ export interface PlayRecord {
 
 export const listPlaylists = () => invoke<Playlist[]>("list_playlists");
 
-export const createPlaylist = (name: string, parent: number | null, folder: boolean) =>
-  invoke<number>("create_playlist", { name, parent, folder });
+export const createPlaylist = (
+  name: string,
+  parent: number | null,
+  kind: "list" | "folder" | "smart",
+  query?: string,
+) => invoke<number>("create_playlist", { name, parent, kind, query: query ?? null });
+
+export const setPlaylistQuery = (id: number, query: string) =>
+  invoke<void>("set_playlist_query", { id, query });
+
+/**
+ * Parse a filter without storing it, so the editor can say what is wrong while
+ * it is being typed rather than when the folder is next opened.
+ */
+export const checkFilter = (query: string) => invoke<void>("check_filter", { query });
+
+export const smartPlaylistTracks = (id: number) =>
+  invoke<LibraryTrack[]>("smart_playlist_tracks", { id });
 
 export const renamePlaylist = (id: number, name: string) =>
   invoke<void>("rename_playlist", { id, name });
