@@ -254,8 +254,40 @@ have snapped it and the loop the DJ can hear is the snapped one. Four pads under
 click recalls, shift-click saves — because the destructive gesture should be the deliberate
 one. A saved loop belongs to the track, so one saved on deck 1 recalls on deck 2.
 
-Not yet: nothing writes to the playlist or history tables. The importers, SideView and layout
-presets are still ahead.
+Playlists and history are in. Playlists, crates and folders are one table with a `kind`,
+because to a DJ they are the same gesture — a named thing in a sidebar holding either tracks or
+other named things — and the difference between rekordbox's playlists-and-folders and Serato's
+crates-and-subcrates is only which one may contain the other. The sidebar builds the tree from
+a flat list with parent ids: nesting it in Rust would mean rebuilding the structure on every
+change and turning "move this node" into a rewrite.
+
+Positions in a playlist are ordered but not contiguous. A track can appear twice — DJs do that
+on purpose — so removal names a *position* rather than a track, and appending is one insert
+rather than a renumber. Only an explicit reorder pays for rewriting the list. Moving a folder
+inside itself or inside its own child is refused rather than performed: the rows would survive
+and nothing in the sidebar could reach them.
+
+**A play is recorded when the track was played, not when it was loaded.** Thirty seconds, or a
+quarter of the track if it is shorter — a DJ auditions constantly, and a history full of
+four-bar previews is one nobody can read. Measured from the playhead rather than from elapsed
+time, because the playhead is what the room heard: a deck parked at the drop for five minutes
+has not been played, and one started from a cue point has. Pausing does not re-arm the count,
+which was a real bug caught in testing — reporting no track while paused made the watcher
+forget, so every pause and resume would have been another row.
+
+Three interface details worth keeping. The search box is *absent* in the history rather than
+present and inert, because searching a history is a different question and a box that silently
+does nothing is worse than one that is not there. The count above the rows says what is on
+screen first — "2 in Peak · 3 in your collection" — since the collection count above a two-row
+playlist reads as a bug however true it is. And `.entry { flex: 1 }`, written for a row sharing
+a horizontal line with a delete button, also applied to the two top-level sidebar buttons in a
+*column* flex container, which stretched "All tracks" into a block and squeezed the tree out of
+the panel.
+
+Not yet: smart folders store a query column but nothing evaluates it, and there is no session
+export. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
+it will come, but a control that works one-handed on a trackpad should not wait for it. The
+importers, SideView and layout presets are still ahead.
 
 ---
 

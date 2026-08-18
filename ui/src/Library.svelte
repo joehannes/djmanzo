@@ -21,16 +21,24 @@
    */
   import { onMount } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
+  import Crates, { type Selection } from "./Crates.svelte";
   import {
+    addToPlaylist,
     formatTime,
     libraryAddFolder,
     libraryRemoveFolder,
     librarySearch,
     libraryRescan,
     libraryStatus,
+    listPlaylists,
     loadTrack,
+    playHistory,
+    playlistTracks,
+    removeFromPlaylist,
     type LibraryStatus,
     type LibraryTrack,
+    type PlayRecord,
+    type Playlist,
   } from "./api";
 
   let { enabled, deckCount = 2 }: { enabled: boolean; deckCount?: number } = $props();
@@ -42,6 +50,13 @@
   const LTR = "\u200e";
 
   let tracks = $state<LibraryTrack[]>([]);
+  /**
+   * What the sidebar has selected. The rows below follow it: the whole
+   * collection, one playlist, or the history.
+   */
+  let selection = $state<Selection>({ kind: "all" });
+  let history = $state<PlayRecord[]>([]);
+  let playlists = $state<Playlist[]>([]);
   let status = $state<LibraryStatus | null>(null);
   let query = $state("");
   let error = $state<string | null>(null);
@@ -74,11 +89,71 @@
 
   async function refresh() {
     try {
-      tracks = await librarySearch(query);
+      if (selection.kind === "history") {
+        history = await playHistory();
+        tracks = [];
+      } else if (selection.kind === "playlist") {
+        const entries = await playlistTracks(selection.id);
+        // Search still filters inside a playlist, client-side: the rows are
+        // already here, and a DJ narrowing a 200-track set does not want a
+        // round trip per keystroke.
+        const needle = query.trim().toLowerCase();
+        const matching = needle
+          ? entries.filter(
+              (e) =>
+                e.title.toLowerCase().includes(needle) ||
+                e.artist.toLowerCase().includes(needle),
+            )
+          : entries;
+        // The position rides on each row: `PlaylistEntry` is a `LibraryTrack`
+        // plus its position, so removal can name the entry rather than the
+        // track -- which matters when the same track is in the set twice.
+        tracks = matching;
+      } else {
+        tracks = await librarySearch(query);
+      }
       error = null;
     } catch (e) {
       error = String(e);
     }
+  }
+
+  async function refreshPlaylists() {
+    try {
+      playlists = await listPlaylists();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function addTo(playlist: number, track: LibraryTrack) {
+    try {
+      await addToPlaylist(playlist, track.id);
+      await refreshPlaylists();
+      if (selection.kind === "playlist" && selection.id === playlist) await refresh();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function removeAt(position: number) {
+    if (selection.kind !== "playlist") return;
+    try {
+      await removeFromPlaylist(selection.id, position);
+      await Promise.all([refresh(), refreshPlaylists()]);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /** Local time, since a DJ reads a history against the night they played. */
+  function whenPlayed(unixSeconds: number): string {
+    return new Date(unixSeconds * 1000).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }
 
   /**
@@ -197,6 +272,7 @@
   onMount(() => {
     void refresh();
     void refreshStatus();
+    void refreshPlaylists();
     const timer = setInterval(refreshStatus, STATUS_INTERVAL_MS);
     return () => {
       clearInterval(timer);
@@ -205,15 +281,29 @@
   });
 </script>
 
+<div class="with-sidebar">
+<Crates bind:selection onchange={() => void refresh()} />
+
 <div class="library">
   <div class="controls">
-    <input
-      type="search"
-      placeholder="Search your collection…"
-      bind:value={query}
-      oninput={onQuery}
-      aria-label="Search the library"
-    />
+    <!--
+      Absent in the history rather than present and inert. Searching a history
+      is a different question — "when did I last play this" — and a box that
+      silently does nothing is worse than one that is not there.
+    -->
+    {#if selection.kind !== "history"}
+      <input
+        type="search"
+        placeholder={selection.kind === "playlist"
+          ? `Search ${selection.name}…`
+          : "Search your collection…"}
+        bind:value={query}
+        oninput={onQuery}
+        aria-label="Search the library"
+      />
+    {:else}
+      <span class="viewing">Everything played, most recent first.</span>
+    {/if}
     <button onclick={addFolder} disabled={busy}>Add folder…</button>
     <button onclick={rescan} disabled={busy || !status?.folders.length}>
       {busy ? "Scanning…" : "Rescan"}
@@ -226,7 +316,18 @@
       waiting; an empty collection with no explanation is a DJ filing a bug.
     -->
     <p class="status">
-      <strong>{status.tracks.toLocaleString()}</strong> track{status.tracks === 1 ? "" : "s"}
+      <!--
+        What is on screen first, the collection second. The collection count
+        above a two-row playlist reads as a bug, however true it is.
+      -->
+      {#if selection.kind === "playlist"}
+        <strong>{sorted.length.toLocaleString()}</strong> in {selection.name}
+        · {status.tracks.toLocaleString()} in your collection
+      {:else if selection.kind === "history"}
+        <strong>{history.length.toLocaleString()}</strong> play{history.length === 1 ? "" : "s"}
+      {:else}
+        <strong>{status.tracks.toLocaleString()}</strong> track{status.tracks === 1 ? "" : "s"}
+      {/if}
       {#if status.pending > 0}
         · <strong>{status.pending.toLocaleString()}</strong> waiting to be analysed
         {#if status.working}<em>(working…)</em>{/if}
@@ -283,7 +384,36 @@
     <p class="error">{error}</p>
   {/if}
 
-  {#if sorted.length === 0}
+  {#if selection.kind === "history"}
+    {#if history.length === 0}
+      <p class="empty">
+        Nothing played yet. A track counts once it has been playing for thirty
+        seconds — long enough that auditioning the first four bars of everything
+        does not fill this up.
+      </p>
+    {:else}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Played</th>
+              <th>Title</th>
+              <th>Artist</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each history as play, index (play.track_id + ":" + play.played_at + ":" + index)}
+              <tr>
+                <td class="mono">{whenPlayed(play.played_at)}</td>
+                <td class="title">{play.title}</td>
+                <td>{play.artist}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  {:else if sorted.length === 0}
     <p class="empty">
       {#if query.trim()}
         Nothing matches “{query}”.
@@ -327,6 +457,37 @@
               <td class="mono">{track.key ?? ""}</td>
               <td class="mono">{formatTime(track.duration_seconds)}</td>
               <td class="load">
+                <!--
+                  Adding to a playlist is a select rather than a drag. Drag is
+                  the gesture DJs know, and it will come — but a control that
+                  works with one hand on a trackpad in a dark booth should not
+                  wait for it.
+                -->
+                {#if playlists.some((p) => p.kind !== "folder")}
+                  <select
+                    class="add-to"
+                    aria-label="Add {track.title} to a playlist"
+                    onchange={(event) => {
+                      const target = event.currentTarget;
+                      const id = Number(target.value);
+                      target.value = "";
+                      if (id) void addTo(id, track);
+                    }}
+                  >
+                    <option value="">+</option>
+                    {#each playlists.filter((p) => p.kind !== "folder") as list (list.id)}
+                      <option value={list.id}>{list.name}</option>
+                    {/each}
+                  </select>
+                {/if}
+                {#if selection.kind === "playlist" && "position" in track}
+                  <button
+                    class="drop"
+                    onclick={() => removeAt((track as { position: number }).position)}
+                    title="Take this out of {selection.name}"
+                    aria-label="Remove from playlist"
+                  >−</button>
+                {/if}
                 {#each decks as deck (deck)}
                   <button
                     onclick={() => toDeck(track, deck)}
@@ -344,8 +505,26 @@
     </div>
   {/if}
 </div>
+</div>
 
 <style>
+  /*
+    Sidebar and rows side by side, both scrolling inside themselves so the
+    controls above stay reachable however long either gets.
+  */
+  .with-sidebar {
+    display: flex;
+    gap: 0.7rem;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .add-to {
+    font-size: 0.85em;
+    padding: 0.05rem 0.1rem;
+    max-width: 3.5rem;
+  }
+
   .library {
     display: flex;
     flex-direction: column;
@@ -362,6 +541,13 @@
   .controls input {
     flex: 1;
     min-width: 0;
+  }
+
+  .viewing {
+    flex: 1;
+    align-self: center;
+    font-size: 0.85em;
+    color: var(--text-dim);
   }
 
   .status {

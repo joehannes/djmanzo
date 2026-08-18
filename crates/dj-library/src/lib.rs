@@ -23,12 +23,14 @@
 //! is a decoded buffer and a `Beatgrid`, handed over through the command
 //! queue like everything else.
 
+pub mod playlist;
 pub mod record;
 pub mod scan;
 pub mod schema;
 pub mod store;
 pub mod tags;
 
+pub use playlist::{PlayRecord, Playlist, PlaylistKind};
 pub use record::{LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop, Tags};
 pub use scan::{ScanReport, ScannedFile, scan_all, scan_folder};
 pub use store::{Library, LibraryError};

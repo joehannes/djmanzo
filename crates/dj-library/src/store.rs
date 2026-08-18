@@ -1,5 +1,6 @@
 //! Reading and writing the library.
 
+use crate::playlist::{PlayRecord, Playlist, PlaylistKind};
 use crate::record::{LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop, Tags};
 use crate::schema;
 use dj_core::{Mode, SampleRate, TrackId};
@@ -19,6 +20,15 @@ pub enum LibraryError {
     /// hearing about.
     #[error("library row {id} is malformed: {reason}")]
     BadRow { id: String, reason: &'static str },
+    #[error("there is no playlist {0}")]
+    NoSuchPlaylist(i64),
+    #[error("playlist {0} is not a folder, so nothing can go inside it")]
+    NotAFolder(i64),
+    /// Moving a node inside itself, or inside something below it. Refused
+    /// rather than performed: the branch would still exist but nothing in the
+    /// sidebar could reach it.
+    #[error("that would put playlist {0} inside itself")]
+    WouldOrphan(i64),
 }
 
 type Result<T> = std::result::Result<T, LibraryError>;
@@ -470,6 +480,281 @@ impl Library {
         })
     }
 
+    // -- playlists ---------------------------------------------------------
+
+    /// Make a playlist, folder or smart folder.
+    ///
+    /// Returns the new node's id. A parent that is not a folder is refused:
+    /// putting a playlist inside a playlist is not a thing, and allowing it
+    /// would make the sidebar undrawable.
+    pub fn create_playlist(
+        &self,
+        name: &str,
+        parent: Option<i64>,
+        kind: PlaylistKind,
+        query: Option<&str>,
+        now: i64,
+    ) -> Result<i64> {
+        if let Some(parent) = parent {
+            self.require_folder(parent)?;
+        }
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO playlists (name, parent_id, kind, query, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![name, parent, kind.as_sql(), query, now],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+    }
+
+    fn require_folder(&self, id: i64) -> Result<()> {
+        let kind = self.with(|conn| {
+            Ok(conn
+                .query_row("SELECT kind FROM playlists WHERE id = ?1", [id], |row| {
+                    row.get::<_, String>(0)
+                })
+                .optional()?)
+        })?;
+        match kind.as_deref().and_then(PlaylistKind::from_sql) {
+            Some(kind) if kind.is_container() => Ok(()),
+            Some(_) => Err(LibraryError::NotAFolder(id)),
+            None => Err(LibraryError::NoSuchPlaylist(id)),
+        }
+    }
+
+    pub fn rename_playlist(&self, id: i64, name: &str) -> Result<()> {
+        self.with(|conn| {
+            conn.execute(
+                "UPDATE playlists SET name = ?2 WHERE id = ?1",
+                params![id, name],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Delete a node, and everything under it.
+    ///
+    /// The cascade is the schema's, and it is what a DJ means by deleting a
+    /// folder. Tracks are untouched: a playlist holds references, and throwing
+    /// one away must never take the music with it.
+    pub fn delete_playlist(&self, id: i64) -> Result<()> {
+        self.with(|conn| {
+            conn.execute("DELETE FROM playlists WHERE id = ?1", [id])?;
+            Ok(())
+        })
+    }
+
+    /// Move a node under a different parent, or to the top level.
+    ///
+    /// Refuses to put a node inside itself or inside its own descendant, which
+    /// would detach that whole branch from the tree and leave it unreachable in
+    /// the sidebar while still occupying rows.
+    pub fn move_playlist(&self, id: i64, new_parent: Option<i64>) -> Result<()> {
+        if let Some(parent) = new_parent {
+            if parent == id {
+                return Err(LibraryError::WouldOrphan(id));
+            }
+            self.require_folder(parent)?;
+            if self.ancestors(parent)?.contains(&id) {
+                return Err(LibraryError::WouldOrphan(id));
+            }
+        }
+        self.with(|conn| {
+            conn.execute(
+                "UPDATE playlists SET parent_id = ?2 WHERE id = ?1",
+                params![id, new_parent],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Every node above `id`, nearest first.
+    fn ancestors(&self, id: i64) -> Result<Vec<i64>> {
+        let mut seen = Vec::new();
+        let mut current = Some(id);
+        // Bounded by the number of nodes, so a cycle written by something else
+        // cannot hang this.
+        while let Some(node) = current {
+            if seen.contains(&node) {
+                break;
+            }
+            seen.push(node);
+            current = self.with(|conn| {
+                Ok(conn
+                    .query_row(
+                        "SELECT parent_id FROM playlists WHERE id = ?1",
+                        [node],
+                        |row| row.get::<_, Option<i64>>(0),
+                    )
+                    .optional()?
+                    .flatten())
+            })?;
+        }
+        Ok(seen)
+    }
+
+    /// Every node, with its track count.
+    ///
+    /// Flat and in one query. The sidebar builds the tree; doing it here would
+    /// mean one query per level, which on a DJ's crate structure is dozens.
+    pub fn playlists(&self) -> Result<Vec<Playlist>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT p.id, p.name, p.parent_id, p.kind, p.query, p.created_at,
+                        (SELECT count(*) FROM playlist_tracks t WHERE t.playlist_id = p.id)
+                 FROM playlists p
+                 ORDER BY p.name COLLATE NOCASE",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                let kind: String = row.get(3)?;
+                Ok(Playlist {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    parent_id: row.get(2)?,
+                    kind: PlaylistKind::from_sql(&kind).unwrap_or(PlaylistKind::List),
+                    query: row.get(4)?,
+                    created_at: row.get(5)?,
+                    track_count: row.get(6)?,
+                })
+            })?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    /// Append a track to a playlist.
+    ///
+    /// Appends rather than deduplicating: a track appearing twice in a set is
+    /// something DJs do on purpose, and silently refusing the second would look
+    /// like the drag missed.
+    pub fn add_to_playlist(&self, playlist: i64, track: TrackId) -> Result<()> {
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO playlist_tracks (playlist_id, track_id, position)
+                 VALUES (
+                     ?1, ?2,
+                     COALESCE((SELECT max(position) FROM playlist_tracks WHERE playlist_id = ?1), -1) + 1
+                 )",
+                params![playlist, track.to_hex()],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Take one entry out, by its position.
+    ///
+    /// By position rather than by track, because the same track can be in a
+    /// playlist twice and removing "the track" would be ambiguous. Leaves a gap
+    /// in the numbering, which nothing depends on.
+    pub fn remove_from_playlist(&self, playlist: i64, position: i64) -> Result<()> {
+        self.with(|conn| {
+            conn.execute(
+                "DELETE FROM playlist_tracks WHERE playlist_id = ?1 AND position = ?2",
+                params![playlist, position],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Rewrite a playlist's order.
+    ///
+    /// Takes the positions in their new order, renumbering from zero. Whole-list
+    /// because a drag can move an entry anywhere and the arithmetic for "shift
+    /// everything between" is where off-by-ones live; a playlist is hundreds of
+    /// rows at most, inside one transaction.
+    pub fn reorder_playlist(&self, playlist: i64, order: &[i64]) -> Result<()> {
+        let mut conn = self.conn.lock().map_err(|_| LibraryError::Poisoned)?;
+        let tx = conn.transaction()?;
+
+        // Read first: the caller names positions, and after the first update
+        // those positions no longer mean what they did.
+        let entries: Vec<(i64, String)> = {
+            let mut stmt = tx
+                .prepare("SELECT position, track_id FROM playlist_tracks WHERE playlist_id = ?1")?;
+            let rows = stmt.query_map([playlist], |row| Ok((row.get(0)?, row.get(1)?)))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+
+        tx.execute(
+            "DELETE FROM playlist_tracks WHERE playlist_id = ?1",
+            [playlist],
+        )?;
+        for (index, position) in order.iter().enumerate() {
+            // A position the caller named that is not in the list is skipped
+            // rather than failing the reorder: the alternative is losing the
+            // whole ordering because one row moved underneath a drag.
+            if let Some((_, track)) = entries.iter().find(|(p, _)| p == position) {
+                tx.execute(
+                    "INSERT INTO playlist_tracks (playlist_id, track_id, position)
+                     VALUES (?1, ?2, ?3)",
+                    params![playlist, track, index as i64],
+                )?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// A playlist's tracks, in order, with their position.
+    pub fn playlist_tracks(&self, playlist: i64) -> Result<Vec<(i64, LibraryTrack)>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT playlist_tracks.position, {TRACK_COLUMNS_QUALIFIED}
+                 FROM playlist_tracks
+                 JOIN tracks ON tracks.id = playlist_tracks.track_id
+                 WHERE playlist_tracks.playlist_id = ?1
+                 ORDER BY playlist_tracks.position"
+            ))?;
+            let rows = stmt.query_map([playlist], |row| {
+                let position: i64 = row.get(0)?;
+                // The track columns start one to the right of the position.
+                Ok(read_track_from(row, 1)?.map(|track| (position, track)))
+            })?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+                .into_iter()
+                .collect()
+        })
+    }
+
+    // -- history -----------------------------------------------------------
+
+    /// What was played, most recent first.
+    pub fn history(&self, limit: usize) -> Result<Vec<PlayRecord>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT history.track_id, tracks.title, tracks.artist, tracks.path,
+                        history.played_at, history.session_id
+                 FROM history
+                 JOIN tracks ON tracks.id = history.track_id
+                 ORDER BY history.played_at DESC, history.id DESC
+                 LIMIT ?1",
+            )?;
+            let rows = stmt.query_map([limit as i64], |row| {
+                let title: Option<String> = row.get(1)?;
+                let artist: Option<String> = row.get(2)?;
+                let path: String = row.get(3)?;
+                Ok(PlayRecord {
+                    track_id: row.get(0)?,
+                    // The same fallback the browser uses, applied here so a
+                    // history row and a browser row never disagree about what a
+                    // track is called.
+                    title: title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| {
+                        std::path::Path::new(&path).file_stem().map_or_else(
+                            || "Untitled".to_owned(),
+                            |s| s.to_string_lossy().into_owned(),
+                        )
+                    }),
+                    artist: artist
+                        .filter(|a| !a.trim().is_empty())
+                        .unwrap_or_else(|| "Unknown artist".to_owned()),
+                    played_at: row.get(4)?,
+                    session_id: row.get(5)?,
+                })
+            })?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
     // -- search ------------------------------------------------------------
 
     /// Free-text search across the tags.
@@ -645,10 +930,21 @@ const TRACK_COLUMNS_QUALIFIED: &str = "tracks.id, tracks.path, tracks.title, tra
 /// not describe a track. Collapsing them would mean reporting a corrupt hex id
 /// as a database error, which sends whoever is debugging it to the wrong place.
 fn read_track(row: &Row<'_>) -> rusqlite::Result<Result<LibraryTrack>> {
-    let hex: String = row.get(0)?;
-    let path: String = row.get(1)?;
-    let sample_rate: u32 = row.get(12)?;
-    let key_mode: Option<String> = row.get(22)?;
+    read_track_from(row, 0)
+}
+
+/// The same, starting at column `base`.
+///
+/// The playlist join puts `position` in front of the track columns, and a
+/// second copy of this function that differed only by seventeen index literals
+/// would be the kind of duplication that goes wrong the next time a column is
+/// added.
+fn read_track_from(row: &Row<'_>, base: usize) -> rusqlite::Result<Result<LibraryTrack>> {
+    let at = |offset: usize| base + offset;
+    let hex: String = row.get(at(0))?;
+    let path: String = row.get(at(1))?;
+    let sample_rate: u32 = row.get(at(12))?;
+    let key_mode: Option<String> = row.get(at(22))?;
 
     let Some(id) = track_id_from_hex(&hex) else {
         return Ok(Err(LibraryError::BadRow {
@@ -667,36 +963,36 @@ fn read_track(row: &Row<'_>) -> rusqlite::Result<Result<LibraryTrack>> {
         id,
         path: PathBuf::from(path),
         tags: Tags {
-            title: row.get(2)?,
-            artist: row.get(3)?,
-            album: row.get(4)?,
-            album_artist: row.get(5)?,
-            genre: row.get(6)?,
-            label: row.get(7)?,
-            comment: row.get(8)?,
-            year: row.get(9)?,
-            track_number: row.get(10)?,
+            title: row.get(at(2))?,
+            artist: row.get(at(3))?,
+            album: row.get(at(4))?,
+            album_artist: row.get(at(5))?,
+            genre: row.get(at(6))?,
+            label: row.get(at(7))?,
+            comment: row.get(at(8))?,
+            year: row.get(at(9))?,
+            track_number: row.get(at(10))?,
         },
-        duration_frames: row.get::<_, i64>(11)?.max(0) as u64,
+        duration_frames: row.get::<_, i64>(at(11))?.max(0) as u64,
         sample_rate,
-        channels: row.get(13)?,
-        file_size: row.get::<_, Option<i64>>(14)?.map(|s| s.max(0) as u64),
-        file_modified: row.get(15)?,
-        added_at: row.get(16)?,
+        channels: row.get(at(13))?,
+        file_size: row.get::<_, Option<i64>>(at(14))?.map(|s| s.max(0) as u64),
+        file_modified: row.get(at(15))?,
+        added_at: row.get(at(16))?,
         analysis: StoredAnalysis {
-            bpm: row.get(17)?,
-            grid_anchor: row.get(18)?,
-            grid_beats_per_bar: row.get(19)?,
-            grid_confidence: row.get(20)?,
-            key_hour: row.get(21)?,
+            bpm: row.get(at(17))?,
+            grid_anchor: row.get(at(18))?,
+            grid_beats_per_bar: row.get(at(19))?,
+            grid_confidence: row.get(at(20))?,
+            key_hour: row.get(at(21))?,
             key_mode: key_mode.as_deref().and_then(mode_from_sql),
-            key_confidence: row.get(23)?,
-            loudness_lufs: row.get(24)?,
+            key_confidence: row.get(at(23))?,
+            loudness_lufs: row.get(at(24))?,
         },
         stats: PlayStats {
-            play_count: row.get(25)?,
-            last_played: row.get(26)?,
-            rating: row.get(27)?,
+            play_count: row.get(at(25))?,
+            last_played: row.get(at(26))?,
+            rating: row.get(at(27))?,
         },
     }))
 }
@@ -1240,6 +1536,248 @@ mod tests {
                 .unwrap(),
             "a different size means the file changed"
         );
+    }
+
+    // -- playlists ---------------------------------------------------------
+
+    #[test]
+    fn a_playlist_holds_tracks_in_the_order_they_were_added() {
+        let lib = library();
+        for n in 1..=3 {
+            lib.upsert_track(&track(n, &format!("T{n}"), "X")).unwrap();
+        }
+        let list = lib
+            .create_playlist("Friday", None, PlaylistKind::List, None, 0)
+            .unwrap();
+
+        lib.add_to_playlist(list, id(3)).unwrap();
+        lib.add_to_playlist(list, id(1)).unwrap();
+        lib.add_to_playlist(list, id(2)).unwrap();
+
+        let tracks = lib.playlist_tracks(list).unwrap();
+        assert_eq!(
+            tracks.iter().map(|(_, t)| t.id).collect::<Vec<_>>(),
+            vec![id(3), id(1), id(2)],
+            "a playlist is a sequence the DJ chose, not a set"
+        );
+    }
+
+    /// A track twice in one set is something DJs do on purpose.
+    #[test]
+    fn the_same_track_can_appear_twice() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        let list = lib
+            .create_playlist("Friday", None, PlaylistKind::List, None, 0)
+            .unwrap();
+
+        lib.add_to_playlist(list, id(1)).unwrap();
+        lib.add_to_playlist(list, id(1)).unwrap();
+        assert_eq!(lib.playlist_tracks(list).unwrap().len(), 2);
+    }
+
+    /// ...which is why removal names a position, not a track.
+    #[test]
+    fn removing_takes_the_entry_named_not_every_copy() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        lib.upsert_track(&track(2, "U", "X")).unwrap();
+        let list = lib
+            .create_playlist("Friday", None, PlaylistKind::List, None, 0)
+            .unwrap();
+        lib.add_to_playlist(list, id(1)).unwrap();
+        lib.add_to_playlist(list, id(2)).unwrap();
+        lib.add_to_playlist(list, id(1)).unwrap();
+
+        let positions: Vec<i64> = lib
+            .playlist_tracks(list)
+            .unwrap()
+            .iter()
+            .map(|(p, _)| *p)
+            .collect();
+        lib.remove_from_playlist(list, positions[0]).unwrap();
+
+        let left = lib.playlist_tracks(list).unwrap();
+        assert_eq!(
+            left.iter().map(|(_, t)| t.id).collect::<Vec<_>>(),
+            vec![id(2), id(1)],
+            "the other copy must stay"
+        );
+    }
+
+    #[test]
+    fn reordering_rewrites_the_sequence() {
+        let lib = library();
+        for n in 1..=3 {
+            lib.upsert_track(&track(n, &format!("T{n}"), "X")).unwrap();
+        }
+        let list = lib
+            .create_playlist("Friday", None, PlaylistKind::List, None, 0)
+            .unwrap();
+        for n in 1..=3 {
+            lib.add_to_playlist(list, id(n)).unwrap();
+        }
+
+        let positions: Vec<i64> = lib
+            .playlist_tracks(list)
+            .unwrap()
+            .iter()
+            .map(|(p, _)| *p)
+            .collect();
+        // Last to first.
+        let mut order = vec![positions[2]];
+        order.extend_from_slice(&positions[..2]);
+        lib.reorder_playlist(list, &order).unwrap();
+
+        assert_eq!(
+            lib.playlist_tracks(list)
+                .unwrap()
+                .iter()
+                .map(|(_, t)| t.id)
+                .collect::<Vec<_>>(),
+            vec![id(3), id(1), id(2)]
+        );
+    }
+
+    /// Deleting a playlist must never take the music with it.
+    #[test]
+    fn deleting_a_playlist_leaves_the_tracks_alone() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        let list = lib
+            .create_playlist("Friday", None, PlaylistKind::List, None, 0)
+            .unwrap();
+        lib.add_to_playlist(list, id(1)).unwrap();
+
+        lib.delete_playlist(list).unwrap();
+        assert_eq!(lib.track_count().unwrap(), 1);
+        assert!(lib.playlists().unwrap().is_empty());
+    }
+
+    #[test]
+    fn deleting_a_folder_takes_what_is_inside_it() {
+        let lib = library();
+        let folder = lib
+            .create_playlist("Latin", None, PlaylistKind::Folder, None, 0)
+            .unwrap();
+        lib.create_playlist("Bachata", Some(folder), PlaylistKind::List, None, 0)
+            .unwrap();
+        assert_eq!(lib.playlists().unwrap().len(), 2);
+
+        lib.delete_playlist(folder).unwrap();
+        assert!(lib.playlists().unwrap().is_empty());
+    }
+
+    #[test]
+    fn only_a_folder_can_hold_other_nodes() {
+        let lib = library();
+        let list = lib
+            .create_playlist("Friday", None, PlaylistKind::List, None, 0)
+            .unwrap();
+        assert!(matches!(
+            lib.create_playlist("Nested", Some(list), PlaylistKind::List, None, 0),
+            Err(LibraryError::NotAFolder(_))
+        ));
+    }
+
+    #[test]
+    fn a_playlist_reports_how_many_tracks_it_holds() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        let list = lib
+            .create_playlist("Friday", None, PlaylistKind::List, None, 0)
+            .unwrap();
+        lib.add_to_playlist(list, id(1)).unwrap();
+
+        let found = lib.playlists().unwrap();
+        assert_eq!(found[0].track_count, 1);
+    }
+
+    /// The move that would detach a branch: putting a folder inside its own
+    /// child. The rows would survive and nothing in the sidebar could reach
+    /// them.
+    #[test]
+    fn a_folder_cannot_be_moved_inside_itself_or_its_own_child() {
+        let lib = library();
+        let outer = lib
+            .create_playlist("Latin", None, PlaylistKind::Folder, None, 0)
+            .unwrap();
+        let inner = lib
+            .create_playlist("Bachata", Some(outer), PlaylistKind::Folder, None, 0)
+            .unwrap();
+
+        assert!(matches!(
+            lib.move_playlist(outer, Some(outer)),
+            Err(LibraryError::WouldOrphan(_))
+        ));
+        assert!(matches!(
+            lib.move_playlist(outer, Some(inner)),
+            Err(LibraryError::WouldOrphan(_))
+        ));
+        // The legal direction still works.
+        lib.move_playlist(inner, None).unwrap();
+    }
+
+    #[test]
+    fn renaming_a_playlist_keeps_its_contents() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        let list = lib
+            .create_playlist("Fridya", None, PlaylistKind::List, None, 0)
+            .unwrap();
+        lib.add_to_playlist(list, id(1)).unwrap();
+
+        lib.rename_playlist(list, "Friday").unwrap();
+        let found = lib.playlists().unwrap();
+        assert_eq!(found[0].name, "Friday");
+        assert_eq!(lib.playlist_tracks(list).unwrap().len(), 1);
+    }
+
+    // -- history -----------------------------------------------------------
+
+    #[test]
+    fn history_is_most_recent_first() {
+        let lib = library();
+        lib.upsert_track(&track(1, "First", "X")).unwrap();
+        lib.upsert_track(&track(2, "Second", "X")).unwrap();
+
+        lib.record_play(id(1), 100, Some("friday")).unwrap();
+        lib.record_play(id(2), 200, Some("friday")).unwrap();
+
+        let history = lib.history(10).unwrap();
+        assert_eq!(
+            history.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(),
+            vec!["Second", "First"]
+        );
+        assert_eq!(history[0].session_id.as_deref(), Some("friday"));
+    }
+
+    /// A history row and a browser row must not disagree about what a track is
+    /// called.
+    #[test]
+    fn history_falls_back_to_the_filename_the_same_way_the_browser_does() {
+        let lib = library();
+        let mut untagged = track(1, "ignored", "X");
+        untagged.tags.title = None;
+        untagged.tags.artist = None;
+        untagged.path = PathBuf::from("/music/01 - Untitled Demo.flac");
+        lib.upsert_track(&untagged).unwrap();
+        lib.record_play(id(1), 100, None).unwrap();
+
+        let history = lib.history(10).unwrap();
+        assert_eq!(history[0].title, "01 - Untitled Demo");
+        assert_eq!(history[0].artist, "Unknown artist");
+    }
+
+    #[test]
+    fn playing_a_track_twice_records_both() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        lib.record_play(id(1), 100, None).unwrap();
+        lib.record_play(id(1), 200, None).unwrap();
+
+        assert_eq!(lib.history(10).unwrap().len(), 2);
+        assert_eq!(lib.track(id(1)).unwrap().unwrap().stats.play_count, 2);
     }
 
     // -- durability --------------------------------------------------------

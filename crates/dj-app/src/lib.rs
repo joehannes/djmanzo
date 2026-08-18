@@ -87,6 +87,8 @@ pub fn run() {
     // `crate::persist`.
     let watched_tracks = state.deck_tracks();
     let cue_watcher = state.cue_watcher();
+    let play_watcher = state.play_watcher();
+    let session_id = state.session_id();
     let library_writer = state.library_writer();
 
     tauri::Builder::default()
@@ -188,6 +190,13 @@ pub fn run() {
                 move |snapshot| {
                     use tauri::Emitter;
                     save_changed_cues(&snapshot, &watched_tracks, &cue_watcher, &library_writer);
+                    record_plays(
+                        &snapshot,
+                        &watched_tracks,
+                        &play_watcher,
+                        &session_id,
+                        &library_writer,
+                    );
                     if let Err(error) = handle.emit("snapshot", &snapshot) {
                         tracing::warn!(%error, "failed to emit snapshot");
                     }
@@ -213,6 +222,16 @@ pub fn run() {
             commands::library_remove_folder,
             commands::library_rescan,
             commands::library_search,
+            commands::list_playlists,
+            commands::create_playlist,
+            commands::rename_playlist,
+            commands::delete_playlist,
+            commands::move_playlist,
+            commands::playlist_tracks,
+            commands::add_to_playlist,
+            commands::remove_from_playlist,
+            commands::reorder_playlist,
+            commands::play_history,
             sources::list_sources,
             sources::set_secret,
             sources::clear_secret,
@@ -261,5 +280,48 @@ fn save_changed_cues(
             .and_then(|map| map.get(&deck.number))
             .map(|loaded| loaded.id);
         watcher.observe(deck.number, track, &deck.hot_cues, writer);
+    }
+}
+
+/// Record any deck whose track has now been played far enough to count.
+///
+/// Runs beside the cue watcher on the snapshot thread, for the same reason:
+/// the playhead is the audio thread's to report, and this is where the host
+/// reads it. The threshold and the reasoning are in
+/// [`persist::PlayWatcher`].
+fn record_plays(
+    snapshot: &Snapshot,
+    tracks: &snapshot::DeckTracks,
+    watcher: &std::sync::Mutex<persist::PlayWatcher>,
+    session: &str,
+    writer: &persist::LibraryWriter,
+) {
+    let Ok(mut watcher) = watcher.lock() else {
+        return;
+    };
+    let names = tracks.lock().ok();
+    for deck in &snapshot.decks {
+        // The track, whether or not it is playing. Reporting `None` while
+        // paused would make the watcher forget it, and every pause and resume
+        // would be another row.
+        let track = names
+            .as_ref()
+            .and_then(|map| map.get(&deck.number))
+            .map(|loaded| loaded.id)
+            .filter(|_| deck.loaded);
+
+        if let Some(played) = watcher.observe(
+            deck.number,
+            track,
+            deck.playing,
+            f64::from(deck.position_seconds),
+            f64::from(deck.length_seconds),
+        ) {
+            writer.send(persist::Write::Play {
+                track: played,
+                at: library::now_seconds(),
+                session: Some(session.to_owned()),
+            });
+        }
     }
 }

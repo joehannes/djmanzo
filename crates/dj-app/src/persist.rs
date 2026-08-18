@@ -41,6 +41,12 @@ pub enum Write {
         track: TrackId,
         loops: Vec<StoredLoop>,
     },
+    /// A track has been played. Bumps the count and appends to the history.
+    Play {
+        track: TrackId,
+        at: i64,
+        session: Option<String>,
+    },
 }
 
 /// How many pending writes to hold.
@@ -70,6 +76,9 @@ impl LibraryWriter {
                     let result = match &write {
                         Write::Cues { track, cues } => db.set_cues(*track, cues),
                         Write::Loops { track, loops } => db.set_loops(*track, loops),
+                        Write::Play { track, at, session } => {
+                            db.record_play(*track, *at, session.as_deref())
+                        }
                     };
                     if let Err(error) = result {
                         tracing::warn!(%error, "could not save deck state");
@@ -163,6 +172,99 @@ impl CueWatcher {
     }
 }
 
+/// How long a track has to have been playing before it counts as played.
+///
+/// Thirty seconds, or a quarter of the track if it is shorter. A DJ auditions
+/// tracks constantly — loading one, hearing four bars, loading another — and a
+/// history full of those is a history nobody can read. Thirty seconds is past
+/// the point where you are still deciding.
+const PLAY_THRESHOLD_SECONDS: f64 = 30.0;
+
+/// The fraction of a short track that counts instead.
+const PLAY_THRESHOLD_FRACTION: f64 = 0.25;
+
+/// Watches decks for tracks that have actually been played.
+///
+/// # Why position rather than elapsed time
+///
+/// Measuring how long the deck has been in the playing state would count a
+/// track paused at the drop for five minutes, and would not count one played
+/// from a cue point at double speed. The playhead is what the room heard.
+#[derive(Debug, Default)]
+pub struct PlayWatcher {
+    /// Tracks already recorded for the current load, keyed by deck. Cleared
+    /// when a different track arrives, so playing the same record twice in a
+    /// night is two rows -- which is what a history is for.
+    counted: HashMap<u8, TrackId>,
+}
+
+impl PlayWatcher {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Note where a deck is, returning the track if this is the moment it
+    /// counts as played.
+    ///
+    /// Returns rather than writing, so the caller decides what a play means --
+    /// the history row, the play count, and eventually the assistant's memory
+    /// of the night.
+    /// `playing` is separate from `track` on purpose. An empty deck forgets
+    /// what it counted; a *paused* one must not, or every pause and resume
+    /// would be another row in the history.
+    pub fn observe(
+        &mut self,
+        deck: u8,
+        track: Option<TrackId>,
+        playing: bool,
+        position_seconds: f64,
+        duration_seconds: f64,
+    ) -> Option<TrackId> {
+        let Some(track) = track else {
+            self.counted.remove(&deck);
+            return None;
+        };
+
+        if self.counted.get(&deck) == Some(&track) {
+            return None;
+        }
+        // A different track on this deck: whatever was counted no longer
+        // applies, and this one has not been.
+        if self.counted.contains_key(&deck) {
+            self.counted.remove(&deck);
+        }
+
+        // A deck parked past the threshold with the track paused has not been
+        // played to anybody.
+        if !playing || !crossed_threshold(position_seconds, duration_seconds) {
+            return None;
+        }
+        self.counted.insert(deck, track);
+        Some(track)
+    }
+
+    /// Forget a deck, so the next load counts afresh.
+    pub fn forget(&mut self, deck: u8) {
+        self.counted.remove(&deck);
+    }
+}
+
+/// Whether the playhead is far enough in to call it a play.
+fn crossed_threshold(position: f64, duration: f64) -> bool {
+    if !position.is_finite() || position <= 0.0 {
+        return false;
+    }
+    let threshold = if duration.is_finite() && duration > 0.0 {
+        PLAY_THRESHOLD_SECONDS.min(duration * PLAY_THRESHOLD_FRACTION)
+    } else {
+        // No duration yet. Fall back to the flat threshold rather than
+        // counting immediately -- an unknown length is not a short track.
+        PLAY_THRESHOLD_SECONDS
+    };
+    position >= threshold
+}
+
 /// Turn the snapshot's representation into rows.
 ///
 /// The snapshot uses `None` for an empty slot and a frame position otherwise;
@@ -199,6 +301,135 @@ pub fn from_stored(cues: &[StoredCue]) -> [Option<FramePos>; HOT_CUE_SLOTS] {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod play_tests {
+    use super::*;
+
+    fn id(byte: u8) -> TrackId {
+        TrackId::from_bytes([byte; 32])
+    }
+
+    /// The thing this exists to prevent: a history full of four-bar auditions.
+    #[test]
+    fn a_track_auditioned_for_a_few_seconds_is_not_a_play() {
+        let mut watcher = PlayWatcher::new();
+        assert_eq!(watcher.observe(1, Some(id(1)), true, 8.0, 300.0), None);
+        assert_eq!(watcher.observe(1, Some(id(1)), true, 29.9, 300.0), None);
+    }
+
+    #[test]
+    fn a_track_played_past_the_threshold_counts_once() {
+        let mut watcher = PlayWatcher::new();
+        assert_eq!(
+            watcher.observe(1, Some(id(1)), true, 30.0, 300.0),
+            Some(id(1))
+        );
+        assert_eq!(
+            watcher.observe(1, Some(id(1)), true, 60.0, 300.0),
+            None,
+            "one row per play, not one per tick"
+        );
+    }
+
+    /// A one-minute sample or a jingle is fully played well before 30 seconds.
+    #[test]
+    fn a_short_track_counts_at_a_quarter_of_its_length() {
+        let mut watcher = PlayWatcher::new();
+        assert_eq!(
+            watcher.observe(1, Some(id(1)), true, 5.1, 20.0),
+            Some(id(1))
+        );
+    }
+
+    #[test]
+    fn a_track_at_the_very_start_is_never_a_play() {
+        let mut watcher = PlayWatcher::new();
+        assert_eq!(watcher.observe(1, Some(id(1)), true, 0.0, 300.0), None);
+        assert_eq!(watcher.observe(1, Some(id(1)), true, -1.0, 300.0), None);
+    }
+
+    /// An unknown length is not a short track.
+    #[test]
+    fn a_track_with_no_duration_uses_the_flat_threshold() {
+        let mut watcher = PlayWatcher::new();
+        assert_eq!(watcher.observe(1, Some(id(1)), true, 5.0, 0.0), None);
+        assert_eq!(
+            watcher.observe(1, Some(id(1)), true, 31.0, 0.0),
+            Some(id(1))
+        );
+    }
+
+    /// Playing the same record twice in a night is two rows. That is what a
+    /// history is for.
+    #[test]
+    fn reloading_the_same_track_counts_again() {
+        let mut watcher = PlayWatcher::new();
+        assert_eq!(
+            watcher.observe(1, Some(id(1)), true, 40.0, 300.0),
+            Some(id(1))
+        );
+
+        // Ejected, then loaded again.
+        watcher.observe(1, None, false, 0.0, 0.0);
+        assert_eq!(
+            watcher.observe(1, Some(id(1)), true, 40.0, 300.0),
+            Some(id(1))
+        );
+    }
+
+    #[test]
+    fn a_new_track_on_the_same_deck_counts_separately() {
+        let mut watcher = PlayWatcher::new();
+        assert_eq!(
+            watcher.observe(1, Some(id(1)), true, 40.0, 300.0),
+            Some(id(1))
+        );
+        assert_eq!(
+            watcher.observe(1, Some(id(2)), true, 40.0, 300.0),
+            Some(id(2))
+        );
+    }
+
+    /// The bug this test exists for: a paused deck reporting no track would
+    /// forget what it had counted, and every pause and resume would be another
+    /// row in the history.
+    #[test]
+    fn pausing_and_resuming_does_not_record_a_second_play() {
+        let mut watcher = PlayWatcher::new();
+        assert_eq!(
+            watcher.observe(1, Some(id(1)), true, 40.0, 300.0),
+            Some(id(1))
+        );
+        // Paused, still loaded.
+        assert_eq!(watcher.observe(1, Some(id(1)), false, 40.0, 300.0), None);
+        assert_eq!(
+            watcher.observe(1, Some(id(1)), true, 45.0, 300.0),
+            None,
+            "resuming is not a new play"
+        );
+    }
+
+    /// A deck cued past the threshold and left there has not been played.
+    #[test]
+    fn a_paused_deck_past_the_threshold_is_not_a_play() {
+        let mut watcher = PlayWatcher::new();
+        assert_eq!(watcher.observe(1, Some(id(1)), false, 120.0, 300.0), None);
+    }
+
+    #[test]
+    fn decks_are_counted_independently() {
+        let mut watcher = PlayWatcher::new();
+        assert_eq!(
+            watcher.observe(1, Some(id(1)), true, 40.0, 300.0),
+            Some(id(1))
+        );
+        assert_eq!(
+            watcher.observe(2, Some(id(1)), true, 40.0, 300.0),
+            Some(id(1))
+        );
+    }
 }
 
 #[cfg(test)]

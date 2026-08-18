@@ -1441,3 +1441,227 @@ mod persistence_tests {
         assert!(Action::parse("deck 1 loop_recall 9").is_err());
     }
 }
+
+// -- playlists and history -------------------------------------------------
+
+/// A node in the sidebar.
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaylistDto {
+    pub id: i64,
+    pub name: String,
+    pub parent_id: Option<i64>,
+    /// "list", "folder" or "smart".
+    pub kind: String,
+    pub track_count: i64,
+}
+
+impl From<dj_library::Playlist> for PlaylistDto {
+    fn from(node: dj_library::Playlist) -> Self {
+        Self {
+            id: node.id,
+            name: node.name,
+            parent_id: node.parent_id,
+            kind: node.kind.as_sql().to_owned(),
+            track_count: node.track_count,
+        }
+    }
+}
+
+/// A track in a playlist, with the position that identifies it.
+///
+/// The position is carried because the same track can be in a playlist twice,
+/// and "remove this one" has to name which.
+#[derive(Debug, Clone, Serialize)]
+pub struct PlaylistEntryDto {
+    pub position: i64,
+    #[serde(flatten)]
+    pub track: LibraryTrackDto,
+}
+
+#[tauri::command]
+pub fn list_playlists(state: State<'_, AppState>) -> Result<Vec<PlaylistDto>, String> {
+    Ok(library(&state)?
+        .playlists()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(PlaylistDto::from)
+        .collect())
+}
+
+#[tauri::command]
+pub fn create_playlist(
+    state: State<'_, AppState>,
+    name: String,
+    parent: Option<i64>,
+    folder: bool,
+) -> Result<i64, String> {
+    let kind = if folder {
+        dj_library::PlaylistKind::Folder
+    } else {
+        dj_library::PlaylistKind::List
+    };
+    library(&state)?
+        .create_playlist(
+            name.trim(),
+            parent,
+            kind,
+            None,
+            crate::library::now_seconds(),
+        )
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn rename_playlist(state: State<'_, AppState>, id: i64, name: String) -> Result<(), String> {
+    library(&state)?
+        .rename_playlist(id, name.trim())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_playlist(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    library(&state)?
+        .delete_playlist(id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn move_playlist(
+    state: State<'_, AppState>,
+    id: i64,
+    parent: Option<i64>,
+) -> Result<(), String> {
+    library(&state)?
+        .move_playlist(id, parent)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn playlist_tracks(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<Vec<PlaylistEntryDto>, String> {
+    Ok(library(&state)?
+        .playlist_tracks(id)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|(position, track)| PlaylistEntryDto {
+            position,
+            track: LibraryTrackDto::from(track),
+        })
+        .collect())
+}
+
+/// Put a track in a playlist, by its content hash as the browser reports it.
+#[tauri::command]
+pub fn add_to_playlist(
+    state: State<'_, AppState>,
+    playlist: i64,
+    track: String,
+) -> Result<(), String> {
+    let id = parse_track_id(&track)?;
+    library(&state)?
+        .add_to_playlist(playlist, id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn remove_from_playlist(
+    state: State<'_, AppState>,
+    playlist: i64,
+    position: i64,
+) -> Result<(), String> {
+    library(&state)?
+        .remove_from_playlist(playlist, position)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn reorder_playlist(
+    state: State<'_, AppState>,
+    playlist: i64,
+    order: Vec<i64>,
+) -> Result<(), String> {
+    library(&state)?
+        .reorder_playlist(playlist, &order)
+        .map_err(|e| e.to_string())
+}
+
+/// One play, as the history panel shows it.
+#[derive(Debug, Clone, Serialize)]
+pub struct PlayRecordDto {
+    pub track_id: String,
+    pub title: String,
+    pub artist: String,
+    pub played_at: i64,
+    pub session_id: Option<String>,
+}
+
+/// How much history to hand over at once. A long night is a few hundred
+/// tracks; anything past this is scrolling nobody does.
+const HISTORY_LIMIT: usize = 500;
+
+#[tauri::command]
+pub fn play_history(state: State<'_, AppState>) -> Result<Vec<PlayRecordDto>, String> {
+    Ok(library(&state)?
+        .history(HISTORY_LIMIT)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|record| PlayRecordDto {
+            track_id: record.track_id,
+            title: record.title,
+            artist: record.artist,
+            played_at: record.played_at,
+            session_id: record.session_id,
+        })
+        .collect())
+}
+
+/// Turn the hex the interface carries back into a track id.
+///
+/// Validated rather than trusted: the value came out of a DTO and back through
+/// IPC, and a malformed one should be a message rather than a row keyed on
+/// nonsense.
+fn parse_track_id(hex: &str) -> Result<dj_core::TrackId, String> {
+    if hex.len() != 64 {
+        return Err(format!("{hex:?} is not a track id"));
+    }
+    let mut bytes = [0u8; 32];
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        let pair = hex
+            .get(index * 2..index * 2 + 2)
+            .ok_or_else(|| format!("{hex:?} is not a track id"))?;
+        *byte = u8::from_str_radix(pair, 16).map_err(|_| format!("{hex:?} is not a track id"))?;
+    }
+    Ok(dj_core::TrackId::from_bytes(bytes))
+}
+
+#[cfg(test)]
+mod playlist_command_tests {
+    use super::*;
+
+    #[test]
+    fn a_track_id_survives_the_trip_through_the_interface() {
+        let id = dj_core::TrackId::from_bytes([0xab; 32]);
+        assert_eq!(parse_track_id(&id.to_hex()).unwrap(), id);
+    }
+
+    /// The value came back through IPC. A malformed one should be a message,
+    /// not a playlist row keyed on nonsense that never matches a track again.
+    #[test]
+    fn a_malformed_track_id_is_refused() {
+        assert!(parse_track_id("").is_err());
+        assert!(parse_track_id("abc").is_err());
+        assert!(parse_track_id(&"z".repeat(64)).is_err());
+        // Right length, wrong alphabet in the middle.
+        let mut bad = "a".repeat(64);
+        bad.replace_range(30..32, "zz");
+        assert!(parse_track_id(&bad).is_err());
+    }
+
+    #[test]
+    fn uppercase_hex_is_accepted() {
+        let id = dj_core::TrackId::from_bytes([0xab; 32]);
+        assert_eq!(parse_track_id(&id.to_hex().to_uppercase()).unwrap(), id);
+    }
+}

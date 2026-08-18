@@ -1,0 +1,361 @@
+<script lang="ts">
+  /**
+   * The sidebar: everything, playlists, folders, and what has been played.
+   *
+   * # Why a flat list rendered with indentation
+   *
+   * The tree comes from Rust flat, with parent ids, and is nested here. A
+   * recursive component would be tidier to read and would re-mount every node
+   * whenever anything moved; this walks the list once per change and the DOM
+   * stays put, which is what keeps a drag from flickering.
+   */
+  import {
+    createPlaylist,
+    deletePlaylist,
+    listPlaylists,
+    movePlaylist,
+    renamePlaylist,
+    type Playlist,
+  } from "./api";
+
+  /** What the browser is currently showing. */
+  export type Selection =
+    | { kind: "all" }
+    | { kind: "history" }
+    | { kind: "playlist"; id: number; name: string };
+
+  let {
+    selection = $bindable(),
+    onchange,
+  }: { selection: Selection; onchange?: () => void } = $props();
+
+  let nodes = $state<Playlist[]>([]);
+  let error = $state<string | null>(null);
+  /** Which node is being renamed, and to what. */
+  let editing = $state<{ id: number; name: string } | null>(null);
+  /** Node being dragged, for reparenting. */
+  let dragging = $state<number | null>(null);
+
+  export async function refresh() {
+    try {
+      nodes = await listPlaylists();
+      error = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /**
+   * Depth-first, so indentation can be computed once rather than by walking
+   * parents on every render.
+   */
+  const tree = $derived.by(() => {
+    const byParent = new Map<number | null, Playlist[]>();
+    for (const node of nodes) {
+      const siblings = byParent.get(node.parent_id) ?? [];
+      siblings.push(node);
+      byParent.set(node.parent_id, siblings);
+    }
+
+    const out: Array<{ node: Playlist; depth: number }> = [];
+    const walk = (parent: number | null, depth: number) => {
+      // Guard against a cycle the database should not contain: without it a
+      // bad parent chain would hang the interface rather than show a wrong
+      // tree, and a hung interface is much harder to diagnose.
+      if (depth > 12) return;
+      for (const node of byParent.get(parent) ?? []) {
+        out.push({ node, depth });
+        walk(node.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return out;
+  });
+
+  function select(next: Selection) {
+    selection = next;
+    onchange?.();
+  }
+
+  async function add(folder: boolean) {
+    // Inside the selected node when it is a folder, top level otherwise.
+    // Creating a playlist inside a playlist is refused by Rust, and offering it
+    // here only to have it fail would be worse than not offering it.
+    const current = selection;
+    const parent =
+      current.kind === "playlist" &&
+      nodes.find((n) => n.id === current.id)?.kind === "folder"
+        ? current.id
+        : null;
+    try {
+      const id = await createPlaylist(folder ? "New folder" : "New playlist", parent, folder);
+      await refresh();
+      // Straight into rename: a sidebar full of "New playlist" is what happens
+      // when naming is a separate step nobody takes.
+      editing = { id, name: folder ? "New folder" : "New playlist" };
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function commitRename() {
+    if (!editing) return;
+    const { id, name } = editing;
+    editing = null;
+    if (!name.trim()) return;
+    try {
+      await renamePlaylist(id, name);
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function remove(node: Playlist) {
+    try {
+      await deletePlaylist(node.id);
+      if (selection.kind === "playlist" && selection.id === node.id) {
+        select({ kind: "all" });
+      }
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function drop(target: Playlist | null) {
+    if (dragging == null) return;
+    const moved = dragging;
+    dragging = null;
+    try {
+      // Rust refuses a move that would put a node inside itself; the message
+      // it returns is the one shown, rather than a guess made here.
+      await movePlaylist(moved, target?.id ?? null);
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  $effect(() => {
+    void refresh();
+  });
+</script>
+
+<nav class="crates" aria-label="Playlists">
+  <button
+    class="entry"
+    class:active={selection.kind === "all"}
+    onclick={() => select({ kind: "all" })}
+  >
+    All tracks
+  </button>
+  <button
+    class="entry"
+    class:active={selection.kind === "history"}
+    onclick={() => select({ kind: "history" })}
+  >
+    History
+  </button>
+
+  <div class="divider"></div>
+
+  <!--
+    Dropping on the background moves a node to the top level, which is the only
+    way back out of a folder once something is inside one.
+  -->
+  <div
+    class="list"
+    role="tree"
+    tabindex="-1"
+    ondragover={(e) => e.preventDefault()}
+    ondrop={() => drop(null)}
+  >
+    {#each tree as { node, depth } (node.id)}
+      <div
+        class="row"
+        class:active={selection.kind === "playlist" && selection.id === node.id}
+        style="padding-left: {0.4 + depth * 0.8}rem"
+        role="treeitem"
+        aria-selected={selection.kind === "playlist" && selection.id === node.id}
+        tabindex="-1"
+        draggable="true"
+        ondragstart={() => (dragging = node.id)}
+        ondragover={(e) => node.kind === "folder" && e.preventDefault()}
+        ondrop={(e) => {
+          e.stopPropagation();
+          void drop(node);
+        }}
+      >
+        {#if editing?.id === node.id}
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            class="rename"
+            bind:value={editing.name}
+            autofocus
+            onblur={commitRename}
+            onkeydown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") editing = null;
+            }}
+          />
+        {:else}
+          <button
+            class="entry"
+            onclick={() => select({ kind: "playlist", id: node.id, name: node.name })}
+            ondblclick={() => (editing = { id: node.id, name: node.name })}
+            title={node.kind === "folder" ? "Folder" : `${node.track_count} tracks`}
+          >
+            <span class="icon">{node.kind === "folder" ? "▸" : "≡"}</span>
+            <span class="name">{node.name}</span>
+            {#if node.kind !== "folder"}
+              <span class="count">{node.track_count}</span>
+            {/if}
+          </button>
+          <button
+            class="remove"
+            onclick={() => remove(node)}
+            title={node.kind === "folder"
+              ? "Delete this folder and everything in it. The tracks stay in your collection."
+              : "Delete this playlist. The tracks stay in your collection."}
+            aria-label="Delete {node.name}"
+          >×</button>
+        {/if}
+      </div>
+    {/each}
+  </div>
+
+  <div class="actions">
+    <button onclick={() => add(false)} title="New playlist">+ List</button>
+    <button onclick={() => add(true)} title="New folder">+ Folder</button>
+  </div>
+
+  {#if error}
+    <p class="error">{error}</p>
+  {/if}
+</nav>
+
+<style>
+  .crates {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 11rem;
+    max-width: 14rem;
+    min-height: 0;
+    font-size: 0.85em;
+  }
+
+  .list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+  }
+
+  /*
+    `flex: 1` belongs only to an entry inside a `.row`, where it shares a
+    horizontal line with the delete button. The two top-level entries are direct
+    children of a *column* flex container, where the same rule makes them grow
+    vertically — which stretched "All tracks" into a block and squeezed the tree
+    out of the panel.
+  */
+  .entry {
+    flex: none;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    padding: 0.22rem 0.4rem;
+    color: var(--text-dim);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .entry:hover {
+    background: var(--panel-raised);
+    color: var(--text);
+  }
+
+  .entry.active,
+  .row.active .entry {
+    background: var(--accent-2);
+    color: var(--on-accent);
+  }
+
+  .row .entry {
+    flex: 1;
+  }
+
+  .icon {
+    opacity: 0.6;
+    flex: none;
+  }
+
+  .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .count {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.65;
+    font-size: 0.85em;
+  }
+
+  .rename {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    padding: 0.1rem 0.3rem;
+  }
+
+  /* Only on hover: a delete button beside every row is a mis-click waiting. */
+  .remove {
+    visibility: hidden;
+    padding: 0 0.3rem;
+    line-height: 1.2;
+  }
+
+  .row:hover .remove {
+    visibility: visible;
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0.3rem 0;
+  }
+
+  .actions {
+    display: flex;
+    gap: 0.3rem;
+    flex: none;
+  }
+
+  .actions button {
+    flex: 1;
+    font-size: 0.9em;
+    padding: 0.15rem 0.3rem;
+  }
+
+  .error {
+    margin: 0;
+    font-size: 0.85em;
+    color: var(--danger, #dc2626);
+  }
+</style>

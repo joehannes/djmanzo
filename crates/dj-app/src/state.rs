@@ -94,6 +94,13 @@ pub struct AppState {
     /// Last saved cue set per deck. Shared with the snapshot pump, which is
     /// where cue changes are noticed -- see `crate::persist`.
     cue_watcher: Arc<Mutex<crate::persist::CueWatcher>>,
+    /// Which tracks have been played far enough to count. Also on the snapshot
+    /// pump -- see `crate::persist::PlayWatcher`.
+    play_watcher: Arc<Mutex<crate::persist::PlayWatcher>>,
+    /// Groups tonight's plays. One per run of the application, which is close
+    /// enough to one per gig that it is worth having before there is a real
+    /// session concept.
+    session_id: String,
     /// Title and artist per deck.
     ///
     /// The engine knows nothing about metadata -- it has samples and a
@@ -175,6 +182,8 @@ impl AppState {
             analysis: Arc::new(crate::analysis::AnalysisStore::new()),
             library_writer: crate::persist::LibraryWriter::start(Arc::clone(&library)),
             cue_watcher: Arc::new(Mutex::new(crate::persist::CueWatcher::new())),
+            play_watcher: Arc::new(Mutex::new(crate::persist::PlayWatcher::new())),
+            session_id: format!("session-{}", crate::library::now_seconds()),
             library,
             identifier: Mutex::new(None),
             deck_tracks: Arc::new(Mutex::new(HashMap::new())),
@@ -209,6 +218,17 @@ impl AppState {
     }
 
     #[must_use]
+    pub fn play_watcher(&self) -> Arc<Mutex<crate::persist::PlayWatcher>> {
+        Arc::clone(&self.play_watcher)
+    }
+
+    /// Groups this run's plays in the history.
+    #[must_use]
+    pub fn session_id(&self) -> String {
+        self.session_id.clone()
+    }
+
+    #[must_use]
     pub fn cue_watcher(&self) -> Arc<Mutex<crate::persist::CueWatcher>> {
         Arc::clone(&self.cue_watcher)
     }
@@ -217,6 +237,11 @@ impl AppState {
     /// fresh load rather than as the DJ having changed something.
     pub fn cue_watcher_forget(&self, deck: u8) {
         if let Ok(mut watcher) = self.cue_watcher.lock() {
+            watcher.forget(deck);
+        }
+        // A new track on the deck is a new play to count, even if it is the
+        // same record the DJ played an hour ago.
+        if let Ok(mut watcher) = self.play_watcher.lock() {
             watcher.forget(deck);
         }
     }

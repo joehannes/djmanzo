@@ -465,6 +465,59 @@ export const libraryRescan = () => invoke<ScanReport>("library_rescan");
 export const librarySearch = (query: string) =>
   invoke<LibraryTrack[]>("library_search", { query });
 
+// -- playlists and history -------------------------------------------------
+
+export interface Playlist {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  /** "list", "folder" or "smart". */
+  kind: string;
+  track_count: number;
+}
+
+/**
+ * A track in a playlist. Carries the position because the same track can be in
+ * a playlist twice, and removing one has to say which.
+ */
+export type PlaylistEntry = LibraryTrack & { position: number };
+
+export interface PlayRecord {
+  track_id: string;
+  title: string;
+  artist: string;
+  /** Unix seconds. */
+  played_at: number;
+  session_id: string | null;
+}
+
+export const listPlaylists = () => invoke<Playlist[]>("list_playlists");
+
+export const createPlaylist = (name: string, parent: number | null, folder: boolean) =>
+  invoke<number>("create_playlist", { name, parent, folder });
+
+export const renamePlaylist = (id: number, name: string) =>
+  invoke<void>("rename_playlist", { id, name });
+
+export const deletePlaylist = (id: number) => invoke<void>("delete_playlist", { id });
+
+export const movePlaylist = (id: number, parent: number | null) =>
+  invoke<void>("move_playlist", { id, parent });
+
+export const playlistTracks = (id: number) =>
+  invoke<PlaylistEntry[]>("playlist_tracks", { id });
+
+export const addToPlaylist = (playlist: number, track: string) =>
+  invoke<void>("add_to_playlist", { playlist, track });
+
+export const removeFromPlaylist = (playlist: number, position: number) =>
+  invoke<void>("remove_from_playlist", { playlist, position });
+
+export const reorderPlaylist = (playlist: number, order: number[]) =>
+  invoke<void>("reorder_playlist", { playlist, order });
+
+export const playHistory = () => invoke<PlayRecord[]>("play_history");
+
 /** Read state once, so a freshly-mounted UI can paint without waiting. */
 export const getSnapshot = () => invoke<Snapshot>("get_snapshot");
 
