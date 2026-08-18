@@ -13,6 +13,7 @@ members = [
     "crates/dj-assistant",
     "crates/dj-presets",
     "crates/dj-analysis",
+    "crates/dj-library",
     "crates/dj-app",
 ]
 
@@ -37,6 +38,7 @@ dj-sources = { path = "crates/dj-sources" }
 dj-assistant = { path = "crates/dj-assistant" }
 dj-presets = { path = "crates/dj-presets" }
 dj-analysis = { path = "crates/dj-analysis" }
+dj-library = { path = "crates/dj-library" }
 
 cpal = "0.15"
 symphonia = { version = "0.5", features = ["all-codecs", "all-formats"] }
@@ -65,6 +67,20 @@ async-trait = "0.1"
 urlencoding = "2"
 base64 = "0.22"
 tokio = { version = "1", default-features = false }
+
+# The library database. `bundled` compiles SQLite itself rather than linking the
+# system one: a DJ's laptop is not a build machine, and a version skew between
+# a developer's Mac and a Xubuntu install is exactly the kind of thing that
+# surfaces at a gig. It also settles the FTS5 question -- the bundled build has
+# it compiled in, which a system SQLite may not. `blob` is for artwork later.
+# MIT, which ADR-0002 requires.
+rusqlite = { version = "0.37", features = ["bundled", "blob"] }
+# Tag reading. MIT OR Apache-2.0, and it covers every container symphonia
+# decodes -- ID3, Vorbis comments, MP4 atoms, APE.
+lofty = "0.22"
+# Content hashing for track identity. CC0-1.0 OR Apache-2.0.
+blake3 = "1"
+tempfile = "3"
 
 [workspace.lints.rust]
 unsafe_code = "warn"

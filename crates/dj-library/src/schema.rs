@@ -1,0 +1,323 @@
+//! The database schema, as a list of migrations.
+//!
+//! # Why migrations rather than one `CREATE TABLE` script
+//!
+//! A DJ's library is the most valuable thing in the application: thousands of
+//! tracks with hand-placed cues, corrected grids and years of play history. It
+//! outlives every version of the code that touches it. So the schema can only
+//! ever be *added to*, in numbered steps that a new binary applies to an old
+//! file, and the file records how far it has got.
+//!
+//! Each entry in [`MIGRATIONS`] runs exactly once, in order, inside a
+//! transaction. Editing one that has already shipped is not a thing that can be
+//! done -- databases in the field have already run it.
+
+use rusqlite::{Connection, Result};
+
+/// One numbered step. The number is the version the database is at afterwards.
+#[derive(Debug, Clone, Copy)]
+pub struct Migration {
+    pub version: i64,
+    pub sql: &'static str,
+}
+
+/// Where the schema stands now.
+#[must_use]
+pub fn latest_version() -> i64 {
+    MIGRATIONS.last().map_or(0, |m| m.version)
+}
+
+/// Bring a connection up to [`latest_version`].
+///
+/// Idempotent: running it on an already-current database does nothing.
+pub fn migrate(conn: &mut Connection) -> Result<i64> {
+    // `user_version` is a four-byte field in the SQLite header. Using it rather
+    // than a table of our own means the version is readable without knowing
+    // anything about our schema -- including by `sqlite3` on a DJ's laptop at
+    // three in the morning.
+    let mut current: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+
+    for migration in MIGRATIONS {
+        if migration.version <= current {
+            continue;
+        }
+        let tx = conn.transaction()?;
+        tx.execute_batch(migration.sql)?;
+        // `PRAGMA` does not take a bound parameter, and the value is one of our
+        // own constants rather than anything a user can reach.
+        tx.execute_batch(&format!("PRAGMA user_version = {}", migration.version))?;
+        tx.commit()?;
+        current = migration.version;
+        tracing::info!(version = migration.version, "applied library migration");
+    }
+    Ok(current)
+}
+
+/// Every migration, oldest first.
+pub const MIGRATIONS: &[Migration] = &[Migration {
+    version: 1,
+    sql: MIGRATION_1,
+}];
+
+/// The initial schema.
+///
+/// Written in full rather than grown table by table, because the shape of a
+/// library is not in doubt -- it is the same shape rekordbox, Serato and
+/// Traktor all landed on -- and a table that exists before anything writes to
+/// it costs nothing, while a migration on a 50,000-track database at a gig is
+/// a risk taken for no reason.
+const MIGRATION_1: &str = r#"
+-- Foreign keys are off by default in SQLite, per connection, and every
+-- cascade in here depends on them. Set again in `Library::open`; stated here
+-- so reading the schema does not mislead.
+PRAGMA foreign_keys = ON;
+
+-- One row per distinct piece of *audio*, keyed by the hash of the decoded
+-- samples. Two copies of the same track in different folders, or the same
+-- recording in FLAC and in MP3-from-that-FLAC, are one row: the cues you
+-- placed apply to the music, not to the file.
+CREATE TABLE tracks (
+    id                 TEXT PRIMARY KEY NOT NULL,
+    -- Where it was last seen. Not the identity: a track that moves keeps its
+    -- cues, and a missing file is a track to find rather than a track to lose.
+    path               TEXT NOT NULL,
+    title              TEXT,
+    artist             TEXT,
+    album              TEXT,
+    album_artist       TEXT,
+    genre              TEXT,
+    label              TEXT,
+    comment            TEXT,
+    year               INTEGER,
+    track_number       INTEGER,
+    duration_frames    INTEGER NOT NULL,
+    sample_rate        INTEGER NOT NULL,
+    channels           INTEGER NOT NULL,
+    -- Size and mtime of the file as last scanned, so a rescan can skip files
+    -- that cannot have changed without opening and decoding them.
+    file_size          INTEGER,
+    file_modified      INTEGER,
+    added_at           INTEGER NOT NULL,
+
+    -- Analysis. Null means "not analysed", which is different from zero and
+    -- shown differently.
+    bpm                REAL,
+    grid_anchor        REAL,
+    grid_beats_per_bar INTEGER,
+    grid_confidence    REAL,
+    -- Camelot hour 1..12 plus mode, which is the pair the wheel is built from.
+    key_hour           INTEGER,
+    key_mode           TEXT,
+    key_confidence     REAL,
+    loudness_lufs      REAL,
+
+    -- Performance metadata.
+    play_count         INTEGER NOT NULL DEFAULT 0,
+    last_played        INTEGER,
+    rating             INTEGER,
+    colour             TEXT
+);
+
+CREATE INDEX tracks_path      ON tracks(path);
+CREATE INDEX tracks_artist    ON tracks(artist);
+CREATE INDEX tracks_bpm       ON tracks(bpm);
+CREATE INDEX tracks_key       ON tracks(key_hour, key_mode);
+CREATE INDEX tracks_added     ON tracks(added_at);
+
+-- Hot cues, one row per occupied slot. Absent means empty; frame zero is a
+-- perfectly ordinary cue position and cannot double as "unset".
+CREATE TABLE cues (
+    track_id TEXT    NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    slot     INTEGER NOT NULL,
+    frame    REAL    NOT NULL,
+    label    TEXT,
+    colour   TEXT,
+    PRIMARY KEY (track_id, slot)
+);
+
+-- Saved loops, the M2 feature that was waiting for somewhere to put them.
+CREATE TABLE saved_loops (
+    track_id    TEXT    NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    slot        INTEGER NOT NULL,
+    start_frame REAL    NOT NULL,
+    end_frame   REAL    NOT NULL,
+    label       TEXT,
+    PRIMARY KEY (track_id, slot)
+);
+
+-- Files seen on disk but not yet identified.
+--
+-- A track's primary key is the hash of its decoded audio, so a file cannot
+-- become a row in `tracks` until something has decoded it -- and decoding a
+-- 10,000-track collection takes hours. Without this table the only honest
+-- options are to make the first scan take all night before showing anything,
+-- or to key tracks on their path and lose every cue the first time somebody
+-- reorganises a folder.
+--
+-- So a scan does the cheap half immediately: walk, read tags, record what is
+-- there. The collection is browsable in seconds. Identification and analysis
+-- then run in the background, one file at a time, promoting rows out of here
+-- into `tracks` as they finish.
+CREATE TABLE pending_files (
+    path          TEXT PRIMARY KEY NOT NULL,
+    title         TEXT,
+    artist        TEXT,
+    album         TEXT,
+    album_artist  TEXT,
+    genre         TEXT,
+    label         TEXT,
+    comment       TEXT,
+    year          INTEGER,
+    track_number  INTEGER,
+    file_size     INTEGER,
+    file_modified INTEGER,
+    seen_at       INTEGER NOT NULL,
+    -- Set when identification failed, so a broken file is skipped on the next
+    -- pass instead of being retried forever -- and so the browser can say why
+    -- rather than showing a row that never resolves.
+    failed_reason TEXT
+);
+
+CREATE INDEX pending_files_pending ON pending_files(failed_reason);
+
+-- Watched music folders. Rows here are what a rescan walks.
+CREATE TABLE folders (
+    path     TEXT PRIMARY KEY NOT NULL,
+    added_at INTEGER NOT NULL
+);
+
+-- Playlists, crates and smart folders in one tree, because to a DJ they are
+-- the same gesture: a named thing in a sidebar containing tracks or other
+-- named things.
+CREATE TABLE playlists (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT    NOT NULL,
+    parent_id  INTEGER REFERENCES playlists(id) ON DELETE CASCADE,
+    -- 'list' holds tracks, 'folder' holds other playlists, 'smart' holds a
+    -- query evaluated at read time.
+    kind       TEXT    NOT NULL CHECK (kind IN ('list', 'folder', 'smart')),
+    query      TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX playlists_parent ON playlists(parent_id);
+
+-- Order matters in a playlist -- it is a set, not a bag -- so position is part
+-- of the key rather than a hint.
+CREATE TABLE playlist_tracks (
+    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    track_id    TEXT    NOT NULL REFERENCES tracks(id)    ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (playlist_id, position)
+);
+
+CREATE INDEX playlist_tracks_track ON playlist_tracks(track_id);
+
+-- What was played and when. The raw material for the session export and for
+-- the assistant's memory of how a room went.
+CREATE TABLE history (
+    id         INTEGER PRIMARY KEY,
+    track_id   TEXT    NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    played_at  INTEGER NOT NULL,
+    -- Groups a night's plays without needing a sessions table yet.
+    session_id TEXT
+);
+
+CREATE INDEX history_played ON history(played_at);
+CREATE INDEX history_track  ON history(track_id);
+
+-- Instant search. An external-content FTS table over `tracks`, so the text
+-- lives once and the index is rebuilt from it rather than kept in step by
+-- hand -- see the triggers below.
+CREATE VIRTUAL TABLE tracks_fts USING fts5(
+    title, artist, album, genre, label, comment,
+    content = 'tracks',
+    content_rowid = 'rowid',
+    tokenize = 'unicode61 remove_diacritics 2'
+);
+
+-- The three triggers an external-content FTS5 table needs. Without them the
+-- index silently stops matching new rows, which looks exactly like "search is
+-- broken" and is very hard to notice in a test that only ever inserts once.
+CREATE TRIGGER tracks_fts_insert AFTER INSERT ON tracks BEGIN
+    INSERT INTO tracks_fts(rowid, title, artist, album, genre, label, comment)
+    VALUES (new.rowid, new.title, new.artist, new.album, new.genre, new.label, new.comment);
+END;
+
+CREATE TRIGGER tracks_fts_delete AFTER DELETE ON tracks BEGIN
+    INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album, genre, label, comment)
+    VALUES ('delete', old.rowid, old.title, old.artist, old.album, old.genre, old.label, old.comment);
+END;
+
+CREATE TRIGGER tracks_fts_update AFTER UPDATE ON tracks BEGIN
+    INSERT INTO tracks_fts(tracks_fts, rowid, title, artist, album, genre, label, comment)
+    VALUES ('delete', old.rowid, old.title, old.artist, old.album, old.genre, old.label, old.comment);
+    INSERT INTO tracks_fts(rowid, title, artist, album, genre, label, comment)
+    VALUES (new.rowid, new.title, new.artist, new.album, new.genre, new.label, new.comment);
+END;
+"#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn migrated() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn migrating_reaches_the_latest_version() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        assert_eq!(migrate(&mut conn).unwrap(), latest_version());
+    }
+
+    /// The property the whole scheme rests on: an old database opened by a new
+    /// binary is brought forward, and a current one is left alone.
+    #[test]
+    fn migrating_twice_is_a_no_op() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        // A second run must not re-execute a `CREATE TABLE`, which would error.
+        assert_eq!(migrate(&mut conn).unwrap(), latest_version());
+    }
+
+    #[test]
+    fn versions_are_unique_and_ascending() {
+        let mut previous = 0;
+        for migration in MIGRATIONS {
+            assert!(
+                migration.version > previous,
+                "migration {} is out of order; versions are the order they run in",
+                migration.version
+            );
+            previous = migration.version;
+        }
+    }
+
+    #[test]
+    fn every_table_the_library_needs_exists() {
+        let conn = migrated();
+        for table in [
+            "tracks",
+            "cues",
+            "saved_loops",
+            "folders",
+            "playlists",
+            "playlist_tracks",
+            "history",
+            "pending_files",
+            "tracks_fts",
+        ] {
+            let found: i64 = conn
+                .query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE name = ?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(found, 1, "{table} is missing from the schema");
+        }
+    }
+}

@@ -1,6 +1,6 @@
 [package]
-name = "dj-decode"
-description = "Audio file decoding and the buffers the engine plays from."
+name = "dj-library"
+description = "The track database: identity, tags, cues, playlists and history."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,11 +9,15 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-blake3 = { workspace = true }
 dj-core = { workspace = true }
-symphonia = { workspace = true }
+lofty = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

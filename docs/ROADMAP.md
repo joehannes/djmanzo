@@ -160,6 +160,42 @@ between those and the constant should be re-derived once there are hand-verified
 **Done when:** a DJ can import an existing rekordbox or Serato library with cues and grids
 intact, and find any track in their collection in under a second.
 
+### Where M3 actually stands
+
+The `dj-library` crate is in: the schema, migrations, track identity, tag reading, folder
+scanning, and instant search.
+
+**Identity is the audio, not the file.** A track's primary key is the BLAKE3 hash of its
+decoded samples, so moving or renaming a file keeps its cues, its corrected grid and its play
+history; two copies in different folders are one row; and the same recording as FLAC and as an
+MP3 made from that FLAC are two rows, correctly — a cue placed on one is milliseconds out on
+the other. This also retired the FNV-based hash `dj-decode` had been using: four interleaved
+64-bit lanes widened to 32 bytes is fine for a cache key, where a collision costs one wasted
+re-analysis, and not fine for identity, where a collision puts one track's cues under
+another's waveform.
+
+**A scan is two halves, and only the cheap one is synchronous.** Identifying a track costs a
+full decode — seconds per file, hours for a real collection — so a scan walks the folders,
+reads the tags and records what it found, which takes seconds and leaves the collection
+browsable and searchable immediately. Identification then runs in the background, promoting
+rows out of a `pending_files` staging table into `tracks` as it goes. A rescan compares path,
+size and modification time, so it re-reads only what actually changed; a file that fails to
+decode is recorded with a reason rather than retried forever, and a later edit clears the
+failure. A symlink loop is walked once, not indefinitely.
+
+Search is FTS5 over the tags, with every word turned into a prefix match so it narrows as you
+type. Punctuation in the search box is stripped rather than escaped: FTS5 treats `"`, `*`,
+`-` and `:` as syntax, and a DJ typing `AC/DC` means a band, not a query.
+
+The schema also carries the tables the rest of M3 needs — playlists as one tree covering
+lists, folders and smart queries; playlist membership with position in the key, because a
+playlist is a sequence and not a set; play history; and saved loops, which closes the one M2
+item that was waiting for somewhere to put it.
+
+Not yet: nothing writes to the playlist, history or saved-loop tables, the background
+identifier is not built, and none of it is wired into the interface. The importers, SideView,
+sortable columns and layout presets are all still ahead.
+
 ---
 
 ## M4 — Controllers

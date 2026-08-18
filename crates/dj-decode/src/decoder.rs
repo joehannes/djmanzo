@@ -187,30 +187,35 @@ fn append_as_stereo(out: &mut Vec<f32>, samples: &[f32], channels: usize) {
 /// Content hash of the decoded audio.
 ///
 /// Keying on decoded audio rather than file bytes means the same track keeps its
-/// cues and stem cache across a container change, and a re-encode correctly does
-/// not. FNV-1a over the sample bits, widened to 32 bytes -- adequate for cache
-/// keying, and swappable for BLAKE3 when the library lands in M3.
+/// cues, its corrected grid and its play history across a container change or a
+/// move, and a re-encode correctly does not -- a cue placed on the FLAC is a few
+/// milliseconds out on an MP3 made from it, so they are two tracks.
+///
+/// BLAKE3, now that the library keys a DJ's whole collection on this. What was
+/// here before was four interleaved 64-bit FNV-1a lanes widened to 32 bytes:
+/// fine for a cache key, where a collision costs one wasted re-analysis, and
+/// not fine for identity, where a collision puts one track's cues under
+/// another's waveform. FNV is also not a hash anyone designed to resist
+/// collisions -- it was designed to be fast in a hash table.
+///
+/// The samples are hashed as little-endian bit patterns rather than as bytes of
+/// the source file, so the result is the same on every platform, and the length
+/// goes in so that two files differing only by trailing silence differ.
 fn hash_audio(samples: &[f32]) -> TrackId {
-    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-    const PRIME: u64 = 0x0000_0100_0000_01b3;
-
-    let mut lanes = [OFFSET; 4];
-    for (i, &sample) in samples.iter().enumerate() {
-        let lane = &mut lanes[i % 4];
-        for byte in sample.to_bits().to_le_bytes() {
-            *lane ^= u64::from(byte);
-            *lane = lane.wrapping_mul(PRIME);
+    let mut hasher = blake3::Hasher::new();
+    // In chunks rather than sample by sample: `update` on four bytes at a time
+    // spends most of its work on call overhead, and a five-minute track is
+    // 26 million samples.
+    const CHUNK: usize = 8192;
+    let mut buffer = [0u8; CHUNK * 4];
+    for block in samples.chunks(CHUNK) {
+        for (slot, &sample) in buffer.chunks_exact_mut(4).zip(block) {
+            slot.copy_from_slice(&sample.to_bits().to_le_bytes());
         }
+        hasher.update(&buffer[..block.len() * 4]);
     }
-    // Mix the length in so two files differing only by trailing silence differ.
-    lanes[0] ^= samples.len() as u64;
-    lanes[0] = lanes[0].wrapping_mul(PRIME);
-
-    let mut bytes = [0u8; 32];
-    for (i, lane) in lanes.iter().enumerate() {
-        bytes[i * 8..(i + 1) * 8].copy_from_slice(&lane.to_le_bytes());
-    }
-    TrackId::from_bytes(bytes)
+    hasher.update(&(samples.len() as u64).to_le_bytes());
+    TrackId::from_bytes(*hasher.finalize().as_bytes())
 }
 
 type Tags = (Option<String>, Option<String>, Option<String>);
@@ -315,6 +320,40 @@ mod tests {
         let base = vec![0.1, 0.2];
         let padded = vec![0.1, 0.2, 0.0, 0.0];
         assert_ne!(hash_audio(&base), hash_audio(&padded));
+    }
+
+    /// The chunking is an optimisation, and an optimisation that changes the
+    /// answer at a block boundary would silently re-identify every track longer
+    /// than 8192 samples -- which is every track.
+    #[test]
+    fn chunking_does_not_change_the_hash_at_a_block_boundary() {
+        fn naive(samples: &[f32]) -> [u8; 32] {
+            let mut hasher = blake3::Hasher::new();
+            for &sample in samples {
+                hasher.update(&sample.to_bits().to_le_bytes());
+            }
+            hasher.update(&(samples.len() as u64).to_le_bytes());
+            *hasher.finalize().as_bytes()
+        }
+
+        // Either side of a chunk boundary, and well past several.
+        for len in [8191, 8192, 8193, 16_384, 20_000] {
+            let samples: Vec<f32> = (0..len).map(|n| (n as f32 * 0.001).sin()).collect();
+            assert_eq!(
+                *hash_audio(&samples).as_bytes(),
+                naive(&samples),
+                "chunked and unchunked hashing disagree at {len} samples"
+            );
+        }
+    }
+
+    /// A change to one sample deep inside a later block has to be visible.
+    #[test]
+    fn a_single_sample_change_past_the_first_block_changes_the_hash() {
+        let mut samples: Vec<f32> = (0..20_000).map(|n| (n as f32 * 0.001).sin()).collect();
+        let before = hash_audio(&samples);
+        samples[17_000] += 0.001;
+        assert_ne!(hash_audio(&samples), before);
     }
 
     #[test]
