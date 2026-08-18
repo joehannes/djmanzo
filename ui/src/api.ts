@@ -69,6 +69,14 @@ export interface LoadedTrack {
   id: string;
 }
 
+/**
+ * Which side of the crossfader a deck is on.
+ *
+ * `thru` means the crossfader is not in this deck's path at all — it plays at
+ * whatever its channel fader says, wherever the crossfader is parked.
+ */
+export type CrossfaderAssign = "left" | "right" | "thru";
+
 export interface DeckState {
   number: number;
   /**
@@ -99,6 +107,8 @@ export interface DeckState {
   keylock_latency_ms: number;
   /** Deliberate transposition in semitones, for harmonic mixing. */
   key_shift: number;
+  /** Which side of the crossfader cuts this deck, or neither. */
+  crossfader_assign: CrossfaderAssign;
   /**
    * What the analyser made of this track. Null while it is still running,
    * which is the normal state for the first second after a load.
@@ -389,6 +399,21 @@ export const getSnapshot = () => invoke<Snapshot>("get_snapshot");
 
 export const onSnapshot = (handler: (snapshot: Snapshot) => void): Promise<UnlistenFn> =>
   listen<Snapshot>("snapshot", (event) => handler(event.payload));
+
+/**
+ * How fast a deck's playhead advances, in frames of wall-clock second.
+ *
+ * Used to interpolate between snapshots, which arrive at 60 Hz while the
+ * display refreshes faster than that.
+ *
+ * Derived from the track's own numbers rather than an assumed device rate:
+ * `position_frames` counts frames of the *file*, so a 44.1 kHz track advances
+ * 44100 frames per second of playback however the output device is clocked.
+ */
+export function playbackFramesPerSecond(deck: DeckState): number {
+  if (!deck.playing || deck.length_seconds <= 0) return 0;
+  return (deck.length_frames / deck.length_seconds) * deck.rate;
+}
 
 /** Format seconds as `m:ss`, the only time format a DJ reads mid-set. */
 export function formatTime(seconds: number): string {

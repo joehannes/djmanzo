@@ -97,8 +97,33 @@ one callback and folding per block would play straight past it. Cue markers and 
 are DOM inside the scrolling strip rather than rasterised into the tiles: there are at most
 nine of them, they ride the same transform for free, and moving one costs no tile re-render.
 
-Not yet: saved loops (they need M3's persistence), grid editing (shift/scale/tap), the overview
-waveform, 4 decks in the interface, and the labelled regression set. `CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
+Four decks and the overview waveform are in. The engine always ran four; the interface now
+shows two by default and four on a click, wrapping to two rows rather than four columns
+(a quarter-width deck cannot hold eight pads and two jump rows and still be readable at arm's
+length in a dark booth). The overview is the *same* Rust renderer at a different zoom — one
+tile spanning the whole track — so it inherits the beat grid, the spectral colouring and the
+theme for free, with cue markers and the loop band as percentage-positioned DOM over it.
+Its tile width is quantised to 32 px so that dragging the window does not mint several hundred
+of the most expensive tiles in the application.
+
+Two things the overview exposed and fixed. The grid's minimum line spacing went from 6 px to
+14 px: at the overview's zoom a 105 BPM track puts beats 7 px apart, which is arithmetically
+"not overlapping" and visually a picket fence that hides exactly the structure an overview
+exists to show. The floor only bites at the zoomed-out end — the scrolling lane's beats are
+80–100 px apart — so bar lines carry the phrasing there on their own. And the playhead
+interpolation between snapshots was assuming a 48 kHz device rate; it now derives the track's
+own rate from its length in frames and seconds, so a 44.1 kHz track no longer runs 8.8% fast
+between one snapshot and the next.
+
+Per-channel **crossfader assignment** came with the fourth deck, because it had to: a fixed
+"deck 1 left, deck 2 right" mapping leaves decks 3 and 4 permanently outside the one control
+a DJ uses without looking. Each deck now carries an A / — / B switch, defaulting to the
+convention (1 left, 2 right, the rest through), and *through* means full gain rather than the
+curve's midpoint — a deck brought in mid-set should be audible when its channel fader is up,
+not attenuated because the crossfader happens to be parked.
+
+Not yet: saved loops (they need M3's persistence), grid editing (shift/scale/tap), and the
+labelled regression set. `CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
 calibrated against synthetic click tracks (0.95) and white noise (0.014); real music sits
 between those and the constant should be re-derived once there are hand-verified grids.
 

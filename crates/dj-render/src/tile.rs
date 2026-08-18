@@ -242,11 +242,16 @@ pub struct GridOverlay {
 /// Closest two grid lines may be before they stop being lines and start being a
 /// wash.
 ///
-/// At six pixels a 128 BPM grid stops drawing individual beats somewhere around
-/// 80 frames per pixel — well beyond the zoom anyone beatmatches at, and exactly
-/// where the lines would otherwise merge into a grey band that hides the
-/// waveform underneath.
-const MIN_LINE_SPACING_PX: f64 = 6.0;
+/// Fourteen pixels, raised from six after looking at an overview strip: at
+/// seven-pixel spacing the grid reads as a picket fence and hides the structure
+/// underneath, which is the one thing an overview exists to show. Six was
+/// arithmetically "not overlapping" and visually far too dense.
+///
+/// It costs the scrolling lane nothing. At 256 frames per pixel a 128 BPM beat
+/// is 88 pixels — an order of magnitude clear — so the floor only bites at the
+/// zoomed-out end, where individual beats are noise and the emphasised lines
+/// carry the phrase structure on their own.
+const MIN_LINE_SPACING_PX: f64 = 14.0;
 
 /// Beats between emphasised lines.
 const BEATS_PER_EMPHASIS: i64 = 4;

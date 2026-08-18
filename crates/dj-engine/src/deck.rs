@@ -2,7 +2,8 @@
 
 use crate::bus::BusLayout;
 use dj_core::{
-    Beatgrid, FramePos, HOT_CUE_SLOTS, LoopLimits, LoopRegion, Rate, SampleRate, db_to_linear,
+    Beatgrid, CrossfaderAssign, FramePos, HOT_CUE_SLOTS, LoopLimits, LoopRegion, Rate, SampleRate,
+    db_to_linear,
 };
 use dj_decode::{AudioBuffer, TrackSource};
 use dj_dsp::{CHANNELS, Keylock, SmoothedValue, SweepFilter, ThreeBandEq};
@@ -51,6 +52,9 @@ pub struct Deck {
     cue_enabled: bool,
     /// Crossfader contribution, smoothed for the same reason.
     crossfader_gain: SmoothedValue,
+    /// Which side of the crossfader cuts this deck. The gain above is what the
+    /// assignment and the fader position work out to.
+    crossfader_assign: CrossfaderAssign,
     /// Rate of the device we are feeding, for sample-rate conversion.
     device_rate: SampleRate,
     /// Isolator EQ, one per channel. Filters carry state, so left and right
@@ -110,6 +114,7 @@ impl Deck {
             gain_db: 0.0,
             cue_enabled: false,
             crossfader_gain: SmoothedValue::new(1.0, sr),
+            crossfader_assign: CrossfaderAssign::default(),
             device_rate,
             eq: [ThreeBandEq::new(sr), ThreeBandEq::new(sr)],
             filter: [SweepFilter::new(sr), SweepFilter::new(sr)],
@@ -363,6 +368,15 @@ impl Deck {
 
     pub fn set_crossfader_gain(&mut self, gain: f32) {
         self.crossfader_gain.set_target(gain);
+    }
+
+    pub fn set_crossfader_assign(&mut self, assign: CrossfaderAssign) {
+        self.crossfader_assign = assign;
+    }
+
+    #[must_use]
+    pub fn crossfader_assign(&self) -> CrossfaderAssign {
+        self.crossfader_assign
     }
 
     #[must_use]

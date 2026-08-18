@@ -39,6 +39,15 @@
   let logo = $state(false);
   /** Bumped when the logo changes, to defeat the webview's image cache. */
   let logoVersion = $state(0);
+  /**
+   * How many decks are on screen.
+   *
+   * The engine has always run four; the interface showed two. Two is the right
+   * default — it is what most sets are, and four half-width decks on a laptop
+   * screen is worse than two readable ones — but the extra pair is a click
+   * away rather than a rebuild away.
+   */
+  let deckCount = $state(2);
 
   // The engine only exists once a device is open, so every control that would
   // send an action stays disabled until then.
@@ -239,6 +248,12 @@
       >
         Settings
       </button>
+      <button
+        onclick={() => (deckCount = deckCount === 2 ? 4 : 2)}
+        title="Show {deckCount === 2 ? 'four' : 'two'} decks. The engine runs four either way."
+      >
+        {deckCount} decks
+      </button>
       <button onclick={toggleLog}>Log</button>
     </div>
   </header>
@@ -286,8 +301,8 @@
   -->
   <div class="stage" class:shared={panel !== "none"}>
   {#if snapshot}
-    <div class="decks">
-      {#each snapshot.decks.slice(0, 2) as deck (deck.number)}
+    <div class="decks" class:four={deckCount === 4}>
+      {#each snapshot.decks.slice(0, deckCount) as deck (deck.number)}
         <Deck {deck} enabled={ready} cueAvailable={snapshot.master.cue_available} />
       {/each}
     </div>
@@ -575,6 +590,17 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.9rem;
+  }
+
+  /*
+    Four decks wrap to two rows rather than four columns. A quarter-width deck
+    cannot hold eight pads, a jump row and a loop row without them becoming
+    unreadable, and a deck you cannot read at arm's length in a dark booth is
+    not a deck.
+  */
+  .decks.four {
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: min-content;
   }
 
   .mixer {

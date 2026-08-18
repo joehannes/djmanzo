@@ -10,7 +10,7 @@
 
 use dj_control::ParameterRegistry;
 use dj_core::param::{DeckParam, GlobalParam};
-use dj_core::{DeckId, ParamId};
+use dj_core::{CrossfaderAssign, DeckId, ParamId};
 use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -64,6 +64,8 @@ pub struct DeckSnapshot {
     pub keylock_latency_ms: f32,
     /// Deliberate transposition in semitones, for harmonic mixing.
     pub key_shift: i32,
+    /// Which side of the crossfader cuts this deck, or neither.
+    pub crossfader_assign: CrossfaderAssign,
     /// What the analyser made of this track. `None` while it is still running,
     /// which is the normal state for the first second after a load.
     pub analysis: Option<TrackAnalysisSnapshot>,
@@ -290,6 +292,9 @@ impl Snapshot {
                     keylock: get(DeckParam::Keylock) >= 0.5,
                     keylock_latency_ms: to_seconds(get(DeckParam::KeylockLatencyFrames)) * 1000.0,
                     key_shift: get(DeckParam::KeyShift).round() as i32,
+                    crossfader_assign: CrossfaderAssign::from_param(get(
+                        DeckParam::CrossfaderAssign,
+                    )),
                     synced: get(DeckParam::Synced) >= 0.5,
                     effective_bpm: {
                         let bpm = get(DeckParam::EffectiveBpm);

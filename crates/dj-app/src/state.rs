@@ -337,7 +337,7 @@ impl AppState {
 /// the registry, so the registry has to be honest before audio exists.
 fn seed_defaults(registry: &ParameterRegistry) {
     use dj_core::param::DeckParam;
-    use dj_core::{DeckId, ParamId};
+    use dj_core::{CrossfaderAssign, DeckId, ParamId};
 
     for id in DeckId::all() {
         registry.set(ParamId::Deck(id, DeckParam::Volume), 1.0);
@@ -346,6 +346,14 @@ fn seed_defaults(registry: &ParameterRegistry) {
         registry.set(ParamId::Deck(id, DeckParam::EqLow), 1.0);
         registry.set(ParamId::Deck(id, DeckParam::EqMid), 1.0);
         registry.set(ParamId::Deck(id, DeckParam::EqHigh), 1.0);
+        // Zero is a *legitimate* value for this one -- it means "through" --
+        // so an unseeded registry does not read as unset, it reads as a wrong
+        // answer: the switch would show every deck off the crossfader when the
+        // engine will in fact put deck 1 left and deck 2 right.
+        registry.set(
+            ParamId::Deck(id, DeckParam::CrossfaderAssign),
+            CrossfaderAssign::default_for(id.index()).as_param(),
+        );
     }
 }
 
@@ -363,6 +371,21 @@ mod tests {
         // Faders must not read zero before a device is open.
         assert_eq!(snapshot.decks[0].volume, 1.0);
         assert_eq!(snapshot.decks[0].rate, 1.0);
+    }
+
+    /// The one default where zero is a real value rather than an absence, so a
+    /// missing seed shows as a confident wrong answer instead of an empty one.
+    #[test]
+    fn the_crossfader_switch_reads_right_before_a_device_is_open() {
+        use dj_core::CrossfaderAssign;
+
+        let state = AppState::new(true);
+        let snapshot = crate::Snapshot::capture(&state.registry, state.deck_count());
+        assert_eq!(snapshot.decks[0].crossfader_assign, CrossfaderAssign::Left);
+        assert_eq!(snapshot.decks[1].crossfader_assign, CrossfaderAssign::Right);
+        for deck in &snapshot.decks[2..] {
+            assert_eq!(deck.crossfader_assign, CrossfaderAssign::Thru);
+        }
     }
 
     #[test]

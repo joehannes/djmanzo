@@ -9,7 +9,7 @@
 //! script. Text is parsed at the edge into the enum below; nothing downstream
 //! ever sees a string.
 
-use crate::deck::DeckId;
+use crate::deck::{CrossfaderAssign, DeckId};
 use crate::hotcue::HOT_CUE_SLOTS;
 use crate::time::{FramePos, Rate};
 use serde::{Deserialize, Serialize};
@@ -95,6 +95,8 @@ pub enum DeckAction {
     LoopOut,
     /// Slide the whole loop by whole beats, keeping its length.
     LoopMove(i32),
+    /// Put this deck on one side of the crossfader, or take it off entirely.
+    SetCrossfaderAssign(CrossfaderAssign),
     /// Drop the loaded track.
     Eject,
 }
@@ -229,6 +231,13 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "keylock_off" => DeckAction::SetKeylock(false),
         "keylock_toggle" => DeckAction::ToggleKeylock,
         "key" => DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32),
+        // Three verbs rather than one verb with a word argument, matching
+        // `cue_on`/`cue_off` above: a three-position switch is three buttons on
+        // a controller and three buttons in the interface, and one message per
+        // position is what each of them sends.
+        "xfader_left" => DeckAction::SetCrossfaderAssign(CrossfaderAssign::Left),
+        "xfader_right" => DeckAction::SetCrossfaderAssign(CrossfaderAssign::Right),
+        "xfader_thru" => DeckAction::SetCrossfaderAssign(CrossfaderAssign::Thru),
         other => return Err(ParseError::UnknownVerb(other.to_owned())),
     })
 }
@@ -343,6 +352,9 @@ impl fmt::Display for Action {
                 DeckAction::LoopIn => write!(f, "deck {deck} loop_in"),
                 DeckAction::LoopOut => write!(f, "deck {deck} loop_out"),
                 DeckAction::LoopMove(n) => write!(f, "deck {deck} loop_move {n}"),
+                DeckAction::SetCrossfaderAssign(a) => {
+                    write!(f, "deck {deck} xfader_{}", a.slug())
+                }
             },
             Action::Mixer(MixerAction::Crossfader(v)) => {
                 write!(f, "crossfader {}", number(f64::from(*v)))

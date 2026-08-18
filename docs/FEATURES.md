@@ -38,6 +38,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Feature | Milestone |
 |---|---|
 | Channel faders, crossfader with selectable curve | M1 |
+| Per-channel crossfader assignment (A / thru / B) | M2 |
 | 3-band EQ per channel, kill switches | M1 |
 | Per-channel filter (low/high-pass sweep) | M1 |
 | Gain + auto-gain from EBU R128 analysis | M2 |

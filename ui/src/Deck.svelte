@@ -1,5 +1,6 @@
 <script lang="ts">
   import { dispatch, formatTime, loadTrack, type DeckState } from "./api";
+  import Overview from "./Overview.svelte";
   import Waveform from "./Waveform.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
 
@@ -89,6 +90,23 @@
       loading = false;
     }
   }
+
+  /**
+   * The three positions of the assignment switch.
+   *
+   * `THRU` in the middle because that is where it sits on a hardware mixer, and
+   * because the middle position is the one that means "the crossfader does not
+   * touch me" on both.
+   */
+  const assignments = [
+    { value: "left", text: "A", title: "Cut by the left half of the crossfader" },
+    {
+      value: "thru",
+      text: "\u2014",
+      title: "Off the crossfader — this deck plays wherever the crossfader is parked",
+    },
+    { value: "right", text: "B", title: "Cut by the right half of the crossfader" },
+  ] as const;
 
   const send = async (action: string) => {
     try {
@@ -181,6 +199,15 @@
     nothing here draws. See docs/adr/0004-waveform-rendering-strategy.md.
   -->
   <Waveform {deck} height={96} />
+
+  <!--
+    The whole track under the scrolling lane. Two views answering different
+    questions: the lane says what is about to happen, this says where in the
+    track you are and where the breakdown is.
+  -->
+  {#if deck.loaded}
+    <Overview {deck} height={30} />
+  {/if}
 
   <div class="progress" role="progressbar" aria-valuenow={progress * 100}>
     <div class="fill" style:width="{Math.min(progress, 1) * 100}%"></div>
@@ -461,6 +488,27 @@
     >
       KEY
     </button>
+  </div>
+
+  <!--
+    Crossfader assignment. A hardware mixer puts this switch on every channel,
+    and once four decks are on screen it stops being optional: without it the
+    crossfader can only reach decks 1 and 2, so half the mixer is outside the
+    one control a DJ uses without looking.
+  -->
+  <div class="xfader-assign" role="group" aria-label="crossfader assignment">
+    <span class="label">X</span>
+    {#each assignments as option (option.value)}
+      <button
+        class:active={deck.crossfader_assign === option.value}
+        disabled={!enabled}
+        onclick={() => send(`deck ${deck.number} xfader_${option.value}`)}
+        title={option.title}
+        aria-pressed={deck.crossfader_assign === option.value}
+      >
+        {option.text}
+      </button>
+    {/each}
   </div>
 
   <div class="meter" aria-label="deck level">
@@ -775,6 +823,38 @@
     display: block;
     height: 100%;
     background: var(--accent-2);
+  }
+
+  /*
+    A compact three-way switch rather than three full-width buttons: it has to
+    fit a quarter-width deck in the four-deck layout, and it is set once at the
+    start of a mix rather than reached for constantly.
+  */
+  .xfader-assign {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .xfader-assign .label {
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-right: 0.3rem;
+  }
+
+  .xfader-assign button {
+    flex: 1;
+    padding: 0.15rem 0;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    min-width: 0;
+  }
+
+  .xfader-assign button.active {
+    background: var(--accent-2);
+    color: var(--on-accent);
+    border-color: var(--accent-2);
   }
 
   .meter {

@@ -7,17 +7,11 @@ use dj_audio::{AudioCallback, RenderContext};
 use dj_control::ParameterRegistry;
 use dj_core::param::{DeckParam, GlobalParam};
 use dj_core::{
-    Action, DeckAction, DeckId, MAX_DECKS, MixerAction, ParamId, SampleRate, db_to_linear,
+    Action, CrossfaderAssign, DeckAction, DeckId, MAX_DECKS, MixerAction, ParamId, SampleRate,
+    db_to_linear,
 };
 use dj_dsp::{CrossfaderCurve, Limiter, PeakMeter, SmoothedValue, crossfader_gains};
 use std::sync::Arc;
-
-/// Decks assigned to the left side of the crossfader.
-///
-/// Deck 1 left, deck 2 right, everything else straight through -- the
-/// convention every mixer follows. Per-channel assignment is an M1 feature.
-const CROSSFADER_LEFT: usize = 0;
-const CROSSFADER_RIGHT: usize = 1;
 
 /// The realtime engine.
 ///
@@ -84,7 +78,13 @@ impl Engine {
         let sr = sample_rate.as_f64() as f32;
 
         let engine = Self {
-            decks: (0..deck_count).map(|_| Deck::new(sample_rate)).collect(),
+            decks: (0..deck_count)
+                .map(|index| {
+                    let mut deck = Deck::new(sample_rate);
+                    deck.set_crossfader_assign(CrossfaderAssign::default_for(index));
+                    deck
+                })
+                .collect(),
             commands,
             retired,
             registry,
@@ -108,6 +108,11 @@ impl Engine {
             // Capacity for a pathological burst of loads; never grown at runtime.
             stranded: Vec::with_capacity(MAX_DECKS * 2),
         };
+        let mut engine = engine;
+        // Turn the starting assignments into starting gains before any audio
+        // flows: without this a deck assigned left would sit at unity until the
+        // first time somebody touched the crossfader.
+        engine.apply_crossfader();
         engine.publish_static_state();
         // Publish deck defaults immediately, so the interface shows real values
         // between opening a device and the first callback firing.
@@ -226,6 +231,17 @@ impl Engine {
                         }
                         return;
                     }
+                    // Handled here rather than below because changing the
+                    // assignment has to recompute *every* deck's crossfader
+                    // gain, which needs the engine and not just this deck.
+                    DeckAction::SetCrossfaderAssign(assign) => {
+                        let Some(target) = self.deck_mut(deck) else {
+                            return;
+                        };
+                        target.set_crossfader_assign(assign);
+                        self.apply_crossfader();
+                        return;
+                    }
                     _ => {}
                 }
 
@@ -284,6 +300,7 @@ impl Engine {
                     // Sync needs to read another deck while writing this one,
                     // so it cannot run inside a borrow of `target`.
                     DeckAction::Sync | DeckAction::SyncOff => unreachable!("handled above"),
+                    DeckAction::SetCrossfaderAssign(_) => unreachable!("handled above"),
                     DeckAction::Eject => unreachable!("handled above"),
                 }
             }
@@ -339,11 +356,14 @@ impl Engine {
 
     fn apply_crossfader(&mut self) {
         let (left, right) = crossfader_gains(self.crossfader, self.crossfader_curve);
-        for (index, deck) in self.decks.iter_mut().enumerate() {
-            let gain = match index {
-                CROSSFADER_LEFT => left,
-                CROSSFADER_RIGHT => right,
-                _ => 1.0,
+        for deck in &mut self.decks {
+            let gain = match deck.crossfader_assign() {
+                CrossfaderAssign::Left => left,
+                CrossfaderAssign::Right => right,
+                // Full gain, not the curve's mid-point: "through" means the
+                // crossfader is not in this deck's signal path at all, so
+                // parking the fader must not attenuate it.
+                CrossfaderAssign::Thru => 1.0,
             };
             deck.set_crossfader_gain(gain);
         }
@@ -383,6 +403,10 @@ impl Engine {
                 deck.keylock_latency_frames() as f32,
             );
             set(DeckParam::KeyShift, deck.key_shift() as f32);
+            set(
+                DeckParam::CrossfaderAssign,
+                deck.crossfader_assign().as_param(),
+            );
             set(DeckParam::Synced, if deck.is_synced() { 1.0 } else { 0.0 });
             set(
                 DeckParam::EffectiveBpm,
@@ -2548,6 +2572,185 @@ mod loop_tests {
             rig.param(1, DeckParam::HotCue1),
             dj_core::param::UNSET_HOT_CUE,
             "a hot cue outlived its track"
+        );
+    }
+}
+
+/// Crossfader assignment.
+///
+/// The tests that matter here are about *reach*: with four decks on screen, a
+/// crossfader that can only cut decks 1 and 2 leaves half the mixer outside the
+/// one control a DJ uses without looking.
+#[cfg(test)]
+mod crossfader_assign_tests {
+    use super::*;
+    use dj_decode::{AudioBuffer, TrackSource};
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+
+    fn deck(n: u8) -> DeckId {
+        DeckId::from_human(n).unwrap()
+    }
+
+    fn tone(frames: usize, amplitude: f32) -> Arc<dyn TrackSource> {
+        Arc::new(AudioBuffer::from_interleaved(
+            vec![amplitude; frames * 2],
+            SR,
+        ))
+    }
+
+    struct Rig {
+        engine: Engine,
+        commands: rtrb::Producer<Command>,
+        registry: Arc<ParameterRegistry>,
+    }
+
+    fn new_rig() -> Rig {
+        let (command_tx, command_rx) = rtrb::RingBuffer::new(256);
+        let (retired_tx, _retired_rx) = rtrb::RingBuffer::new(64);
+        let registry = Arc::new(ParameterRegistry::new());
+        Rig {
+            engine: Engine::new(4, SR, command_rx, retired_tx, Arc::clone(&registry)),
+            commands: command_tx,
+            registry,
+        }
+    }
+
+    impl Rig {
+        fn send(&mut self, action: Action) {
+            self.commands
+                .push(Command::Action(action))
+                .expect("queue full");
+        }
+
+        fn play(&mut self, n: u8, amplitude: f32) {
+            self.commands
+                .push(Command::Load {
+                    deck: deck(n),
+                    source: tone(200_000, amplitude),
+                })
+                .expect("queue full");
+            self.send(Action::Deck {
+                deck: deck(n),
+                action: DeckAction::Play,
+            });
+        }
+
+        fn render(&mut self, frames: usize) -> Vec<f32> {
+            let mut out = vec![0.0; frames * 2];
+            self.engine.render(
+                &mut out,
+                &RenderContext {
+                    frames,
+                    channels: 2,
+                    sample_rate: SR,
+                },
+            );
+            out
+        }
+
+        /// Settle every gain ramp, then measure what comes out.
+        fn settled_peak(&mut self) -> f32 {
+            for _ in 0..20 {
+                self.render(512);
+            }
+            self.render(512)
+                .iter()
+                .fold(0.0f32, |acc, s| acc.max(s.abs()))
+        }
+
+        fn assign(&mut self, n: u8, assign: CrossfaderAssign) {
+            self.send(Action::Deck {
+                deck: deck(n),
+                action: DeckAction::SetCrossfaderAssign(assign),
+            });
+        }
+    }
+
+    #[test]
+    fn decks_start_on_the_conventional_sides() {
+        let rig = new_rig();
+        let assigns: Vec<_> = rig
+            .engine
+            .decks
+            .iter()
+            .map(Deck::crossfader_assign)
+            .collect();
+        assert_eq!(
+            assigns,
+            vec![
+                CrossfaderAssign::Left,
+                CrossfaderAssign::Right,
+                CrossfaderAssign::Thru,
+                CrossfaderAssign::Thru,
+            ],
+            "deck 1 left, deck 2 right, the rest through -- what every mixer does"
+        );
+    }
+
+    /// The bug this whole feature exists to fix.
+    #[test]
+    fn a_third_deck_can_be_put_on_the_crossfader_and_cut() {
+        let mut rig = new_rig();
+        rig.play(3, 0.5);
+        rig.assign(3, CrossfaderAssign::Right);
+        rig.send(Action::Mixer(MixerAction::Crossfader(-1.0)));
+
+        let peak = rig.settled_peak();
+        assert!(
+            peak < 0.01,
+            "deck 3 assigned right must be silenced by a hard-left crossfader, got {peak}"
+        );
+    }
+
+    /// The other half: a deck taken off the crossfader is not touched by it.
+    #[test]
+    fn a_thru_deck_is_untouched_by_the_crossfader() {
+        let mut rig = new_rig();
+        rig.play(1, 0.5);
+        rig.assign(1, CrossfaderAssign::Thru);
+        // Hard right, which would normally silence deck 1 completely.
+        rig.send(Action::Mixer(MixerAction::Crossfader(1.0)));
+
+        let peak = rig.settled_peak();
+        assert!(
+            (peak - 0.5).abs() < 0.05,
+            "a through deck must play at full level whatever the crossfader does, got {peak}"
+        );
+    }
+
+    /// Order must not matter: assigning after the fader has already moved has to
+    /// pick up the fader's current position, not the one it had at startup.
+    #[test]
+    fn assigning_after_the_fader_moved_still_applies() {
+        let mut rig = new_rig();
+        rig.play(4, 0.5);
+        // Fader first...
+        rig.send(Action::Mixer(MixerAction::Crossfader(1.0)));
+        rig.render(512);
+        // ...assignment second.
+        rig.assign(4, CrossfaderAssign::Left);
+
+        let peak = rig.settled_peak();
+        assert!(
+            peak < 0.01,
+            "deck 4 assigned left with the fader hard right must be silent, got {peak}"
+        );
+    }
+
+    #[test]
+    fn the_assignment_reaches_the_parameter_table() {
+        let mut rig = new_rig();
+        rig.assign(3, CrossfaderAssign::Left);
+        rig.render(64);
+
+        let raw = rig
+            .registry
+            .get(ParamId::Deck(deck(3), DeckParam::CrossfaderAssign));
+        assert_eq!(
+            CrossfaderAssign::from_param(raw),
+            CrossfaderAssign::Left,
+            "the interface reads the assignment from here"
         );
     }
 }

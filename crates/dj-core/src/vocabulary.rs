@@ -96,7 +96,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 44] = [
+static VOCABULARY: [VerbSpec; 47] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -362,6 +362,27 @@ static VOCABULARY: [VerbSpec; 44] = [
         help: "flip the headphone cue send",
         example: "deck 1 cue_toggle",
     },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "xfader_left",
+        argument: ArgSpec::None,
+        help: "put this deck on the left half of the crossfader",
+        example: "deck 1 xfader_left",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "xfader_right",
+        argument: ArgSpec::None,
+        help: "put this deck on the right half of the crossfader",
+        example: "deck 2 xfader_right",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "xfader_thru",
+        argument: ArgSpec::None,
+        help: "take this deck off the crossfader; it plays whatever the crossfader does",
+        example: "deck 3 xfader_thru",
+    },
     // -- mixer -------------------------------------------------------------
     VerbSpec {
         target: Target::Mixer,
@@ -370,7 +391,7 @@ static VOCABULARY: [VerbSpec; 44] = [
             min: -1.0,
             max: 1.0,
         },
-        help: "crossfader; -1 is deck 1, +1 is deck 2",
+        help: "crossfader; -1 is the decks assigned left, +1 the decks assigned right",
         example: "crossfader 0",
     },
     VerbSpec {
@@ -542,6 +563,9 @@ mod tests {
             "cue_off",
             "cue_toggle",
             "crossfader",
+            "xfader_left",
+            "xfader_right",
+            "xfader_thru",
             "master gain",
             "booth gain",
             "cue mix",

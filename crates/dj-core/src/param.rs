@@ -79,6 +79,11 @@ pub enum DeckParam {
     HotCue6,
     HotCue7,
     HotCue8,
+    /// Which side of the crossfader this deck is cut by.
+    ///
+    /// [`CrossfaderAssign::as_param`] defines the encoding: negative left,
+    /// positive right, zero through.
+    CrossfaderAssign,
 }
 
 /// What a hot cue parameter reads when the slot is empty.
@@ -110,7 +115,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 33;
+    pub const COUNT: usize = 34;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -154,6 +159,7 @@ impl DeckParam {
             HotCue6,
             HotCue7,
             HotCue8,
+            CrossfaderAssign,
         ]
     }
 }
@@ -304,6 +310,7 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::HotCue6 => "hot_cue_6",
         DeckParam::HotCue7 => "hot_cue_7",
         DeckParam::HotCue8 => "hot_cue_8",
+        DeckParam::CrossfaderAssign => "crossfader_assign",
     }
 }
 

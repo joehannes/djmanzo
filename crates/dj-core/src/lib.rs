@@ -20,7 +20,7 @@ pub mod time;
 pub mod vocabulary;
 
 pub use action::{Action, DeckAction, MixerAction};
-pub use deck::{DeckId, MAX_DECKS};
+pub use deck::{CrossfaderAssign, DeckId, MAX_DECKS};
 pub use hotcue::{HOT_CUE_SLOTS, LoopLimits, LoopRegion};
 pub use music::{Beatgrid, Bpm, Confidence, Mode, MusicalKey};
 pub use param::{DeckParam, GlobalParam, ParamId};

@@ -13,7 +13,7 @@
    * waveform visibly stutters against audio that is perfectly smooth.
    */
   import { onMount } from "svelte";
-  import { tileUrl, waveformInfo, type DeckState } from "./api";
+  import { playbackFramesPerSecond, tileUrl, waveformInfo, type DeckState } from "./api";
   import { theme } from "./theme.svelte";
 
   let {
@@ -57,7 +57,7 @@
     // Snapshot arrived: re-anchor the interpolation.
     anchorFrame = deck.position_frames;
     anchorTime = performance.now();
-    framesPerSecond = deck.playing ? deck.rate * (deck.length_seconds > 0 ? 48000 : 0) : 0;
+    framesPerSecond = playbackFramesPerSecond(deck);
   });
 
   const tileSpanFrames = $derived(TILE_WIDTH * framesPerPixel);
