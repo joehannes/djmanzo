@@ -24,6 +24,7 @@
 
 pub mod itunes;
 pub mod rekordbox;
+pub mod serato;
 pub mod traktor;
 
 use serde::{Deserialize, Serialize};
@@ -144,6 +145,8 @@ pub enum Format {
     RekordboxXml,
     TraktorNml,
     ItunesXml,
+    /// A `_Serato_` folder rather than a single file.
+    SeratoFolder,
 }
 
 impl Format {
@@ -153,6 +156,7 @@ impl Format {
             Self::RekordboxXml => "rekordbox XML",
             Self::TraktorNml => "Traktor NML",
             Self::ItunesXml => "iTunes XML",
+            Self::SeratoFolder => "Serato",
         }
     }
 }
@@ -184,8 +188,41 @@ pub fn read(contents: &str) -> Result<(Format, Collection), ImportError> {
         Format::RekordboxXml => rekordbox::read(contents)?,
         Format::TraktorNml => traktor::read(contents)?,
         Format::ItunesXml => itunes::read(contents)?,
+        // Not reachable: `sniff` reads text, and Serato is a folder of binary
+        // files chosen by `read_path` instead.
+        Format::SeratoFolder => return Err(ImportError::UnknownFormat),
     };
     Ok((format, collection))
+}
+
+/// Read whatever a DJ pointed at: an export file, or a Serato folder.
+///
+/// Serato is the odd one out — it has no single export file, only a `_Serato_`
+/// directory of binary chunk files. Rather than making the interface ask which
+/// kind of thing the DJ is choosing, this takes a path and works it out: a
+/// directory named `_Serato_`, or one containing it, is a Serato library, and
+/// anything else is read as text and sniffed.
+pub fn read_path(path: &std::path::Path) -> Result<(Format, Collection), ImportError> {
+    if let Some(root) = serato_root(path) {
+        return Ok((Format::SeratoFolder, serato::read_folder(&root)));
+    }
+    let contents = std::fs::read_to_string(path)?;
+    read(&contents)
+}
+
+/// The `_Serato_` folder at or under `path`, if there is one.
+///
+/// A DJ pointing at their music folder, at `_Serato_` itself, or at the drive
+/// should all work: those are the three places somebody would reasonably click.
+fn serato_root(path: &std::path::Path) -> Option<PathBuf> {
+    if !path.is_dir() {
+        return None;
+    }
+    if path.file_name()?.to_str()? == "_Serato_" {
+        return Some(path.to_path_buf());
+    }
+    let nested = path.join("_Serato_");
+    nested.is_dir().then_some(nested)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -196,6 +233,8 @@ pub enum ImportError {
     Xml(#[from] roxmltree::Error),
     #[error("the file is {0}, but the part that holds the tracks is missing")]
     MissingTracks(&'static str),
+    #[error("could not read it: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 /// Turn a file URL or a plain path into a path.

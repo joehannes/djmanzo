@@ -1737,9 +1737,9 @@ pub struct ImportResultDto {
 
 /// Import a library export.
 ///
-/// The format is chosen by what the file contains rather than by its
-/// extension: rekordbox and iTunes both write `.xml`, and a DJ who renamed
-/// theirs should still get their collection.
+/// The format is chosen by what is at the path rather than by its extension:
+/// rekordbox and iTunes both write `.xml`, a DJ who renamed theirs should still
+/// get their collection, and Serato is a folder rather than a file at all.
 ///
 /// Reading and applying both run on a blocking worker. A rekordbox export of a
 /// real collection is megabytes of XML and thousands of rows, which is nothing
@@ -1753,10 +1753,11 @@ pub async fn import_library(
     let now = crate::library::now_seconds();
 
     tauri::async_runtime::spawn_blocking(move || {
-        let contents =
-            std::fs::read_to_string(&path).map_err(|e| format!("could not read {path}: {e}"))?;
-        let (format, collection) =
-            dj_library::import::read(&contents).map_err(|e| e.to_string())?;
+        // A path rather than a file: Serato has no export file, only a
+        // `_Serato_` folder, and the DJ should not have to know which kind of
+        // thing they are choosing.
+        let (format, collection) = dj_library::import::read_path(std::path::Path::new(&path))
+            .map_err(|e| format!("{path}: {e}"))?;
         let report = db.import(&collection, now).map_err(|e| e.to_string())?;
 
         Ok(ImportResultDto {

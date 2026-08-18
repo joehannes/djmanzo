@@ -349,8 +349,29 @@ Cues are the other way round: an import never replaces cues that are already the
 invent a cue, so any cue on a track is one the DJ placed, and an import from the software they
 left behind must not overwrite it.
 
-Not yet: Serato, which is a binary format and needs the clean-room treatment ADR-0002 requires
-(`triseratops` is AGPL). And there is no session export. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
+**Serato is in too**, written from the format's published structure rather than from
+`triseratops`, which is AGPL-3.0-or-later and therefore out of bounds under
+[ADR-0002](adr/0002-clean-room-permissive-licensing.md). The format is a tagged-chunk
+container — four ASCII bytes, a big-endian length, a payload, repeated — with text as UTF-16
+big-endian, and that description is short enough to state in full in the module that
+implements it.
+
+Serato is also the one importer that is a *folder* rather than a file: there is no export, only
+a `_Serato_` directory. Pointing at that folder, at the music folder containing it, or at the
+drive all work, because those are the three places somebody would reasonably click. Nesting is
+spelled in the crate filenames — `Latin%%Warm-up.crate` is "Warm-up" inside "Latin" — so the
+folders are implied rather than stored, and are created once however many crates name them.
+Paths are stored relative to the volume, so `Users/dj/Music/a.flac` regains its leading slash.
+
+A length field is four bytes of input asking for an allocation, so a chunk claiming to be
+larger than any real library file stops the read rather than being obeyed; trailing padding,
+which real files carry, is ignored rather than costing the library.
+
+Serato's hot cues are **not** in its library — it writes them into the audio files themselves,
+as a `GEOB` tag. So they arrive with the file rather than with the import, and reading them
+belongs in the identify path. That is the next piece.
+
+Not yet: Serato's in-file cue tags, and a session export. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
 it will come, but a control that works one-handed on a trackpad should not wait for it. The
 importers, SideView and layout presets are still ahead.
 

@@ -276,15 +276,25 @@
   /** What the last import did, kept until the DJ does something else. */
   let imported = $state<string | null>(null);
 
-  async function importFrom() {
-    const picked = await open({
-      multiple: false,
-      filters: [
-        // Named by what a DJ recognises, not by extension: they know they
-        // exported from rekordbox, and may not know what it wrote.
-        { name: "Library export (rekordbox, Traktor, iTunes)", extensions: ["xml", "nml"] },
-      ],
-    });
+  async function importFrom(folder: boolean) {
+    // Serato has no export file — it keeps a `_Serato_` folder — so importing
+    // from it means choosing a directory. The two buttons say which, rather
+    // than one button that sometimes wants a file and sometimes a folder.
+    const picked = await open(
+      folder
+        ? { directory: true, multiple: false }
+        : {
+            multiple: false,
+            filters: [
+              // Named by what a DJ recognises, not by extension: they know
+              // they exported from rekordbox, and may not know what it wrote.
+              {
+                name: "Library export (rekordbox, Traktor, iTunes)",
+                extensions: ["xml", "nml"],
+              },
+            ],
+          },
+    );
     if (typeof picked !== "string") return;
     busy = true;
     error = null;
@@ -412,10 +422,15 @@
       {busy ? "Scanning…" : "Rescan"}
     </button>
     <button
-      onclick={importFrom}
+      onclick={() => importFrom(false)}
       disabled={busy}
       title="Import a rekordbox, Traktor or iTunes library export, with its cues and grids"
     >Import…</button>
+    <button
+      onclick={() => importFrom(true)}
+      disabled={busy}
+      title="Import from Serato — choose the folder holding _Serato_, or _Serato_ itself"
+    >Serato…</button>
   </div>
 
   {#if imported}

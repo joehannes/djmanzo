@@ -64,6 +64,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Play history, recorded when a track is actually played | M3 |
 | Smart folders with a filter language, incl. harmonic matching | M3 |
 | Import rekordbox XML, Traktor NML and iTunes XML with cues and grids | M3 |
+| Import Serato crates and database (clean-room) | M3 |
 | Spectral colouring (bass/mid/high energy) | M2 |
 | Loop region and hot cue overlays | M2 |
 | Phrase / structure markers | M8 |
