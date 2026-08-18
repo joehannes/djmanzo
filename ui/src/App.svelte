@@ -5,6 +5,7 @@
   import Presets from "./Presets.svelte";
   import Settings from "./Settings.svelte";
   import { watchFrameRate } from "./framerate";
+  import { chooseLayout, chosenLayout, listLayouts, type Layout } from "./api";
   import {
     dispatch,
     getSnapshot,
@@ -36,6 +37,46 @@
   let slowFrames = $state<number | null>(null);
   /** Which side panel is open, if any. Only one at a time: the decks matter more. */
   let panel = $state<"none" | "browse" | "assistant" | "presets" | "settings">("none");
+
+  /**
+   * The layout in force.
+   *
+   * `null` until the list arrives, and the interface draws its own defaults
+   * meanwhile rather than nothing — a DJ opening the application should see
+   * decks, not a blank window waiting on a preference.
+   */
+  let layout = $state<Layout | null>(null);
+  let layouts = $state<Layout[]>([]);
+
+  async function loadLayouts() {
+    try {
+      layouts = await listLayouts();
+      // Restore last night's choice. A DJ who set the interface up the way
+      // they wanted should not have to do it again before every set.
+      const previous = await chosenLayout();
+      if (previous) applyLayout(previous, false);
+    } catch {
+      // Only the DJ's own are missing; the interface has its defaults.
+    }
+  }
+
+  /**
+   * Apply a layout.
+   *
+   * Density goes on the root as a scale factor because every other measurement
+   * in the interface is in `em`, so one number moves all of them together —
+   * which is what "denser" means to a DJ, rather than forty separate sizes.
+   */
+  function applyLayout(next: Layout, remember = true) {
+    layout = next;
+    deckCount = next.decks;
+    document.documentElement.style.setProperty("--density", String(next.density));
+    if (next.browser && panel === "none") panel = "browse";
+    // Not when restoring, or every start-up would rewrite the file it just
+    // read — harmless, but it makes the file's timestamp a lie about when the
+    // DJ last chose anything.
+    if (remember) void chooseLayout(next.name).catch(() => {});
+  }
   let logo = $state(false);
   /** Bumped when the logo changes, to defeat the webview's image cache. */
   let logoVersion = $state(0);
@@ -77,6 +118,10 @@
 
   $effect(() => {
     refreshDevices();
+  });
+
+  $effect(() => {
+    void loadLayouts();
   });
 
   $effect(() => {
@@ -254,6 +299,26 @@
       >
         {deckCount} decks
       </button>
+      <!--
+        The layout picker. A layout is data — it can hide the FX rack, it
+        cannot change what a control does — so choosing one is safe even when
+        somebody else wrote it. See `dj_app::layout`.
+      -->
+      <select
+        class="layout"
+        aria-label="Layout"
+        onchange={(event) => {
+          const chosen = layouts.find((l) => l.name === event.currentTarget.value);
+          if (chosen) applyLayout(chosen);
+        }}
+      >
+        <option value="">Layout…</option>
+        {#each layouts as option (option.name)}
+          <option value={option.name} selected={layout?.name === option.name}>
+            {option.name}
+          </option>
+        {/each}
+      </select>
       <button onclick={toggleLog}>Log</button>
     </div>
   </header>
@@ -303,7 +368,7 @@
   {#if snapshot}
     <div class="decks" class:four={deckCount === 4}>
       {#each snapshot.decks.slice(0, deckCount) as deck (deck.number)}
-        <Deck {deck} enabled={ready} cueAvailable={snapshot.master.cue_available} />
+        <Deck {deck} enabled={ready} cueAvailable={snapshot.master.cue_available} {layout} />
       {/each}
     </div>
 
@@ -462,7 +527,7 @@
   {#if panel !== "none"}
     <div class="panel">
       {#if panel === "browse"}
-        <Browse enabled={ready} deckCount={2} />
+        <Browse enabled={ready} deckCount={deckCount} decks={snapshot?.decks ?? []} />
       {:else if panel === "presets"}
         <Presets enabled={ready} deckCount={2} />
       {:else if panel === "assistant"}
@@ -529,21 +594,40 @@
     color: var(--on-accent);
   }
 
+  /*
+    A basis rather than a bare `flex: 1`, so that when the window is too narrow
+    the toolbar *wraps* instead of crushing this group. With `min-width: 0` and
+    no basis it would shrink towards nothing and everything would appear to
+    fit — which is how the Connect button, the one control that matters before
+    a device is open, ended up squeezed to zero width behind the status row.
+  */
   .device {
     display: flex;
     gap: 0.4rem;
-    flex: 1;
+    flex: 1 1 26rem;
     min-width: 0;
   }
 
+  /* The device names are the long ones, so they are what gives way. */
   .device select:first-child {
-    flex: 1;
+    flex: 1 1 8rem;
     min-width: 0;
+  }
+
+  /* Fixed-width things never shrink below what their text needs. */
+  .device select:not(:first-child) {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .device .primary {
+    flex: 0 0 auto;
   }
 
   .status {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.7rem;
     font-size: 0.85em;
     color: var(--text-dim);

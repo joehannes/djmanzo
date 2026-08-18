@@ -1986,3 +1986,117 @@ mod editing_command_tests {
         assert_eq!(parse_track_ids(&[]).unwrap().len(), 0);
     }
 }
+
+// -- SideView --------------------------------------------------------------
+
+/// The name the Sidelist's playlist is filed under.
+///
+/// A constant rather than a literal at each call site, because it is the key
+/// that finds the list again after a restart and a typo in one of three places
+/// would quietly make a second one.
+const SIDELIST: &str = "sidelist";
+
+/// The Sidelist: what you have pulled aside for later.
+///
+/// A real playlist behind the scenes — see the migration that added system
+/// playlists — so it keeps its order, survives a restart, and loads to a deck
+/// by the same path as any crate.
+#[tauri::command]
+pub fn sidelist(state: State<'_, AppState>) -> Result<Vec<PlaylistEntryDto>, String> {
+    let db = library(&state)?;
+    let id = db
+        .system_playlist(SIDELIST, crate::library::now_seconds())
+        .map_err(|e| e.to_string())?;
+    Ok(db
+        .playlist_tracks(id)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|(position, track)| PlaylistEntryDto {
+            position,
+            track: LibraryTrackDto::from(track),
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn sidelist_add(state: State<'_, AppState>, track: String) -> Result<(), String> {
+    let db = library(&state)?;
+    let id = db
+        .system_playlist(SIDELIST, crate::library::now_seconds())
+        .map_err(|e| e.to_string())?;
+    db.add_to_playlist(id, parse_track_id(&track)?)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sidelist_remove(state: State<'_, AppState>, position: i64) -> Result<(), String> {
+    let db = library(&state)?;
+    let id = db
+        .system_playlist(SIDELIST, crate::library::now_seconds())
+        .map_err(|e| e.to_string())?;
+    db.remove_from_playlist(id, position)
+        .map_err(|e| e.to_string())
+}
+
+/// Empty the Sidelist.
+///
+/// What a DJ does at the end of a night. Removes the entries, not the tracks —
+/// the same rule as deleting a playlist.
+#[tauri::command]
+pub fn sidelist_clear(state: State<'_, AppState>) -> Result<(), String> {
+    let db = library(&state)?;
+    let id = db
+        .system_playlist(SIDELIST, crate::library::now_seconds())
+        .map_err(|e| e.to_string())?;
+    db.clear_playlist(id).map_err(|e| e.to_string())
+}
+
+// -- layouts ---------------------------------------------------------------
+
+/// Every layout available: the four that ship, then the DJ's own.
+///
+/// The DJ's come second so one of theirs named "Pro" sits beside the built-in
+/// rather than replacing it — a layout somebody wrote should never make a
+/// shipped one unreachable.
+#[tauri::command]
+pub fn list_layouts(state: State<'_, AppState>) -> Vec<crate::layout::Layout> {
+    let mut layouts = crate::layout::builtin();
+    if let Some(dir) = state.layout_dir() {
+        layouts.extend(crate::layout::load_dir(&dir));
+    }
+    layouts
+}
+
+/// Where a DJ puts their own layout files.
+///
+/// Returned so the interface can say where, and open it. A path is not a
+/// secret, and telling somebody the folder is the difference between a feature
+/// they can use and one they cannot find.
+#[tauri::command]
+pub fn layout_folder(state: State<'_, AppState>) -> Option<String> {
+    state
+        .layout_dir()
+        .map(|dir| dir.to_string_lossy().into_owned())
+}
+
+/// The layout the DJ last chose, resolved against the layouts that exist now.
+///
+/// Resolved here rather than in the interface because the name may no longer
+/// name anything: a DJ can delete the layout file they were using, and the
+/// honest answer then is "none", not a layout built out of defaults wearing
+/// their name.
+#[tauri::command]
+pub fn chosen_layout(state: State<'_, AppState>) -> Option<crate::layout::Layout> {
+    let name = state.chosen_layout()?;
+    list_layouts(state).into_iter().find(|l| l.name == name)
+}
+
+/// Remember which layout the DJ picked.
+///
+/// The name only. A layout is a file the DJ owns and may edit; storing a copy
+/// would mean their edits stopped taking effect for reasons nothing on screen
+/// could explain.
+#[tauri::command]
+pub fn choose_layout(state: State<'_, AppState>, name: String) {
+    state.set_chosen_layout(&name);
+}

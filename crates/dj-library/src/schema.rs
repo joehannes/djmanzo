@@ -71,6 +71,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 4,
         sql: MIGRATION_4,
     },
+    Migration {
+        version: 5,
+        sql: MIGRATION_5,
+    },
 ];
 
 /// The initial schema.
@@ -370,6 +374,29 @@ CREATE INDEX track_paths_path ON track_paths(path);
 -- Every track already known has been seen at exactly the place it says.
 INSERT OR IGNORE INTO track_paths (track_id, path, seen_at, file_size)
 SELECT id, path, added_at, file_size FROM tracks;
+"#;
+
+/// Playlists the application owns rather than the DJ.
+///
+/// # Why the Sidelist is a playlist at all
+///
+/// It needs to hold tracks in an order, survive a restart, be added to from
+/// the browser and be loaded to a deck. `playlists` already does every one of
+/// those, and a parallel table would be the same code twice with a different
+/// name on it — differing, eventually, in some detail nobody meant.
+///
+/// What it must *not* do is appear in the crate tree beside the folders a DJ
+/// made. So a row can be marked as belonging to the application, and the tree
+/// leaves those out. A nullable column rather than a new `kind`, because
+/// SQLite cannot alter a `CHECK` constraint without rebuilding the table — and
+/// because "which panel owns this" is a different question from "what does it
+/// contain".
+const MIGRATION_5: &str = r#"
+-- Null for a playlist the DJ made. Otherwise names the panel it belongs to:
+-- 'sidelist' today, and whatever the Automix queue turns out to need.
+ALTER TABLE playlists ADD COLUMN system TEXT;
+
+CREATE INDEX playlists_system ON playlists(system);
 "#;
 
 #[cfg(test)]

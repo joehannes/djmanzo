@@ -301,11 +301,22 @@ our own code.
 
 | Preset | Shows |
 |---|---|
-| Starter | 2 decks, big waveforms, minimal controls — for learning |
-| Essentials | 2 decks, pads, basic FX |
-| Pro | 2/4 decks, full mixer, pads, FX rack, full browser |
-| Performance | Maximum control density, minimal browser — for a controller-driven set |
+| Starter | 2 decks, 160 px waveforms, no pads, loops, filter or keylock — for learning |
+| Essentials | 2 decks, 120 px waveforms, cues, loops and the EQ |
+| Pro | 4 decks, everything on screen, browser open |
+| Performance | 4 decks, 72 px waveforms, density 0.85 — for a controller-driven set |
 
-**Skinning** is CSS themes plus JSON layout definitions. A skin can move, resize, hide and
-restyle components; it cannot execute code. Layout presets are just built-in skins, which keeps
-one mechanism instead of two.
+**Skinning** is CSS themes plus JSON layout definitions. Layout presets are just built-in
+skins, which keeps one mechanism instead of two: the four above are ordinary `Layout` values
+that happen to ship, and a DJ's own is JSON read from `layouts/` in the config directory by the
+same code. A layout says which components are on screen, how tall the waveform lane is, and
+one overall density; **it cannot execute code**, reach a file, or change what any control does,
+which is what makes one somebody sent you safe to load. Every field has a default, so a file
+names only what it changes; out-of-range values are clamped rather than refused; a malformed
+file is skipped with a warning rather than costing the DJ their other layouts mid-set. The
+choice is stored by name and restored at start-up, so editing your own layout file takes
+effect.
+
+Moving and restyling individual components — as opposed to showing, hiding and resizing them —
+is not in yet. It needs a component-addressing scheme that survives the interface changing
+underneath it, which is a design problem rather than a coding one.

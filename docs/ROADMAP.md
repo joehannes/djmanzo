@@ -409,9 +409,39 @@ no tempo, and applying one blanked the grid the analyser had already found — t
 overwrite, not a merge, and every grid field in a cues-only payload is null. A payload with
 nothing to say about the grid now says nothing.
 
-What remains of the milestone: SideView, and the layout presets and skin system. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
-it will come, but a control that works one-handed on a trackpad should not wait for it. The
-importers, SideView and layout presets are still ahead.
+**SideView is a real playlist, not a widget with a list in it.** The Sidelist is stored as a
+playlist row flagged `system`, so it survives a restart, reorders through the same code as
+every other list, and cannot be renamed or deleted out from under the panel that shows it.
+System playlists are hidden from the ordinary playlist listing for the same reason: a DJ
+looking at their crates should not find one they did not make. Sampler and Automix are named
+placeholders pointing at M5 and M6 rather than dead tabs — an empty tab that says why is
+information, and one that just sits there is a bug report waiting to be filed.
+
+**A layout preset and a skin are the same thing.** Building presets as special cases in the
+interface and skins as a file format on top would have been two ways of saying one thing,
+eventually disagreeing about some detail nobody meant. So the four presets — Starter,
+Essentials, Pro, Performance — are ordinary layouts that happen to ship, and a DJ's own layout
+is JSON loaded by the same code from `layouts/` beside their presets. Every field has a
+default, so a layout file names only what it changes; absurd values are clamped rather than
+refused, because a layout is a preference and somebody who wrote `density: 40` wants big text,
+not an error; and a malformed file is skipped with a warning rather than costing them the
+other nine at the start of a set. A layout says what is on screen and how densely — it cannot
+execute anything or change what a control does, which is what makes one somebody sent you safe
+to load. The choice is remembered by *name*, not by copying the layout, so a DJ editing their
+own file sees the edit take.
+
+**Three layout bugs were only visible once a layout was applied.** The topbar crushed the
+Connect button to zero width instead of wrapping — `flex: 1` with `min-width: 0` let the device
+group shrink toward nothing, so everything appeared to fit while the one control that matters
+before a device is open had no width left. The browser's track table sized to its own content
+rather than taking the free width, wasting half the panel on a wide window. And the SideView's
+tabs shared width equally regardless of label, clipping the Sidelist's count off its own edge.
+None of the three is visible in the code; all three are obvious in a screenshot.
+
+Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and it will
+come, but a control that works one-handed on a trackpad should not wait for it.
+
+**M3 is complete.**
 
 ---
 

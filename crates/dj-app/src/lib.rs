@@ -25,6 +25,7 @@ pub mod brand;
 pub mod commands;
 pub mod grid;
 pub mod host;
+pub mod layout;
 pub mod library;
 pub mod persist;
 pub mod presets;
@@ -181,6 +182,14 @@ pub fn run() {
                 }
             }
 
+            // A DJ's own layouts sit beside their presets, in the config
+            // directory: they are things the DJ made, not things the system
+            // may delete to reclaim space.
+            if let Ok(dir) = app.path().app_config_dir() {
+                let state: tauri::State<'_, AppState> = handle.state();
+                state.set_config_dir(dir);
+            }
+
             let pump = SnapshotPump::start_with_bridge(
                 registry,
                 deck_count,
@@ -242,6 +251,14 @@ pub fn run() {
             commands::forget_track_path,
             commands::list_sessions,
             commands::export_session,
+            commands::sidelist,
+            commands::sidelist_add,
+            commands::sidelist_remove,
+            commands::sidelist_clear,
+            commands::list_layouts,
+            commands::layout_folder,
+            commands::chosen_layout,
+            commands::choose_layout,
             sources::list_sources,
             sources::set_secret,
             sources::clear_secret,

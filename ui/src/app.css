@@ -41,7 +41,13 @@
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
     "Helvetica Neue", sans-serif;
-  font-size: 14px;
+  /*
+    The one number a layout's density moves. Everything else in the interface
+    is in `em`, so scaling this scales all of it together — which is what
+    "denser" means to a DJ, rather than forty separate sizes to keep in step.
+  */
+  --density: 1;
+  font-size: calc(14px * var(--density));
 }
 
 /*

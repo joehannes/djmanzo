@@ -8,9 +8,20 @@
    * something out and leaving the DJ to guess is the failure mode here.
    */
   import Library from "./Library.svelte";
-  import { loadTrack, resolveSourceTrack, searchSources, type SearchResults, type SourceTrack } from "./api";
+  import {
+    loadTrack,
+    resolveSourceTrack,
+    searchSources,
+    type DeckState,
+    type SearchResults,
+    type SourceTrack,
+  } from "./api";
 
-  let { enabled, deckCount = 2 }: { enabled: boolean; deckCount?: number } = $props();
+  let {
+    enabled,
+    deckCount = 2,
+    decks = [],
+  }: { enabled: boolean; deckCount?: number; decks?: DeckState[] } = $props();
 
   let text = $state("");
   let results = $state<SearchResults[]>([]);
@@ -89,7 +100,7 @@
   </div>
 
 {#if tab === "library"}
-  <Library {enabled} {deckCount} />
+  <Library {enabled} {deckCount} {decks} />
 {:else}
   <div class="search">
     <input

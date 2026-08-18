@@ -23,6 +23,7 @@
   import { SvelteSet } from "svelte/reactivity";
   import { open, save } from "@tauri-apps/plugin-dialog";
   import Crates, { type Selection } from "./Crates.svelte";
+  import SideView from "./SideView.svelte";
   import {
     addToPlaylist,
     checkFilter,
@@ -46,6 +47,7 @@
     removeFromPlaylist,
     setPlaylistQuery,
     smartPlaylistTracks,
+    type DeckState,
     type Duplicate,
     type LibraryStatus,
     type LibraryTrack,
@@ -54,7 +56,21 @@
     type Session,
   } from "./api";
 
-  let { enabled, deckCount = 2 }: { enabled: boolean; deckCount?: number } = $props();
+  let {
+    enabled,
+    deckCount = 2,
+    decks = [],
+  }: { enabled: boolean; deckCount?: number; decks?: DeckState[] } = $props();
+
+  /**
+   * A track the DJ has asked to set aside, handed to SideView.
+   *
+   * Passed down rather than SideView reading the selection, because the two
+   * panels are siblings and the browser is where the gesture happens. SideView
+   * clears it through `onconsumed`, so setting the same track aside twice in a
+   * row still works.
+   */
+  let toSideView = $state<string | null>(null);
 
   /**
    * Left-to-right mark. Prefixed to any path shown in a `.path` box — see the
@@ -465,7 +481,9 @@
     return rows;
   });
 
-  const decks = $derived(Array.from({ length: deckCount }, (_, i) => i + 1));
+  /** Deck *numbers*, for the load buttons — distinct from `decks`, which is
+   * their live state. */
+  const deckNumbers = $derived(Array.from({ length: deckCount }, (_, i) => i + 1));
 
   onMount(() => {
     void refresh();
@@ -830,6 +848,12 @@
                     {/each}
                   </select>
                 {/if}
+                <button
+                  class="aside"
+                  onclick={() => (toSideView = track.id)}
+                  title="Set aside in the Sidelist"
+                  aria-label="Set aside {track.title}"
+                >→</button>
                 {#if selection.kind === "playlist" && "position" in track}
                   <button
                     class="drop"
@@ -838,7 +862,7 @@
                     aria-label="Remove from playlist"
                   >−</button>
                 {/if}
-                {#each decks as deck (deck)}
+                {#each deckNumbers as deck (deck)}
                   <button
                     onclick={() => toDeck(track, deck)}
                     disabled={!enabled || loading === track.path}
@@ -855,6 +879,14 @@
     </div>
   {/if}
 </div>
+
+<SideView
+  {enabled}
+  {deckCount}
+  {decks}
+  pending={toSideView}
+  onconsumed={() => (toSideView = null)}
+/>
 </div>
 
 <style>
@@ -880,7 +912,7 @@
     font-size: 0.85em;
   }
 
-  .batch input[type="text"],
+  /* The genre field, which carries no explicit type. */
   .batch input:not([type]) {
     width: 8rem;
   }
@@ -932,16 +964,29 @@
     vertical-align: -0.1em;
   }
 
+  .aside {
+    padding: 0.05rem 0.35rem;
+    font-size: 0.9em;
+  }
+
   .add-to {
     font-size: 0.85em;
     padding: 0.05rem 0.1rem;
     max-width: 3.5rem;
   }
 
+  /*
+    Takes whatever the crate tree and the side view leave. Without `flex: 1` it
+    sized to its own content, so on a wide window the track table stopped
+    mid-panel and the rest was empty -- the columns a DJ actually reads
+    (title, artist, BPM, key) squeezed while there was room going spare.
+  */
   .library {
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
+    flex: 1;
+    min-width: 0;
     min-height: 0;
     height: 100%;
   }

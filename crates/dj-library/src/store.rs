@@ -629,6 +629,35 @@ impl Library {
         Ok(seen)
     }
 
+    /// The playlist behind a panel the application owns, made if it is not
+    /// there yet.
+    ///
+    /// Idempotent, so the caller can simply ask for it every time rather than
+    /// remembering whether it exists. See the migration that added the column
+    /// for why the Sidelist is a playlist rather than a table of its own.
+    pub fn system_playlist(&self, name: &str, now: i64) -> Result<i64> {
+        if let Some(id) = self.with(|conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT id FROM playlists WHERE system = ?1",
+                    [name],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?)
+        })? {
+            return Ok(id);
+        }
+
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO playlists (name, parent_id, kind, query, created_at, system)
+                 VALUES (?1, NULL, 'list', NULL, ?2, ?1)",
+                params![name, now],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+    }
+
     /// Every node, with its track count.
     ///
     /// Flat and in one query. The sidebar builds the tree; doing it here would
@@ -639,6 +668,7 @@ impl Library {
                 "SELECT p.id, p.name, p.parent_id, p.kind, p.query, p.created_at,
                         (SELECT count(*) FROM playlist_tracks t WHERE t.playlist_id = p.id)
                  FROM playlists p
+                 WHERE p.system IS NULL
                  ORDER BY p.name COLLATE NOCASE",
             )?;
             let rows = stmt.query_map([], |row| {
@@ -728,6 +758,21 @@ impl Library {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Take everything out of a playlist, keeping the playlist.
+    ///
+    /// Explicit rather than reordering to an empty list: that would clear it
+    /// too, but by a side effect of how reordering is implemented, and a
+    /// caller reading `reorder(&[])` has to know that to know what it does.
+    pub fn clear_playlist(&self, playlist: i64) -> Result<()> {
+        self.with(|conn| {
+            conn.execute(
+                "DELETE FROM playlist_tracks WHERE playlist_id = ?1",
+                [playlist],
+            )?;
+            Ok(())
+        })
     }
 
     /// A playlist's tracks, in order, with their position.
@@ -2400,6 +2445,22 @@ mod tests {
     }
 
     #[test]
+    fn clearing_a_playlist_keeps_the_playlist_and_the_tracks() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        let list = lib
+            .create_playlist("Friday", None, PlaylistKind::List, None, 0)
+            .unwrap();
+        lib.add_to_playlist(list, id(1)).unwrap();
+
+        lib.clear_playlist(list).unwrap();
+
+        assert!(lib.playlist_tracks(list).unwrap().is_empty());
+        assert_eq!(lib.playlists().unwrap().len(), 1, "the playlist stays");
+        assert_eq!(lib.track_count().unwrap(), 1, "the music stays");
+    }
+
+    #[test]
     fn reordering_rewrites_the_sequence() {
         let lib = library();
         for n in 1..=3 {
@@ -2735,6 +2796,65 @@ mod tests {
             lib.smart_playlist_tracks(list, 50),
             Err(LibraryError::NoSuchPlaylist(_))
         ));
+    }
+
+    // -- system playlists --------------------------------------------------
+
+    #[test]
+    fn a_system_playlist_is_made_once_and_found_again() {
+        let lib = library();
+        let first = lib.system_playlist("sidelist", 0).unwrap();
+        let second = lib.system_playlist("sidelist", 100).unwrap();
+        assert_eq!(first, second, "asking twice must not make two");
+    }
+
+    /// The point of marking it: the Sidelist is not a crate the DJ made, and
+    /// showing it in the tree beside their folders would be wrong.
+    #[test]
+    fn a_system_playlist_is_not_in_the_crate_tree() {
+        let lib = library();
+        lib.system_playlist("sidelist", 0).unwrap();
+        lib.create_playlist("Friday", None, PlaylistKind::List, None, 0)
+            .unwrap();
+
+        let names: Vec<String> = lib
+            .playlists()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(names, vec!["Friday"]);
+    }
+
+    /// ...but it is a playlist in every other way, which is the whole reason
+    /// it is one.
+    #[test]
+    fn a_system_playlist_holds_tracks_in_order_like_any_other() {
+        let lib = library();
+        for n in 1..=2 {
+            lib.upsert_track(&track(n, &format!("T{n}"), "X")).unwrap();
+        }
+        let side = lib.system_playlist("sidelist", 0).unwrap();
+        lib.add_to_playlist(side, id(2)).unwrap();
+        lib.add_to_playlist(side, id(1)).unwrap();
+
+        assert_eq!(
+            lib.playlist_tracks(side)
+                .unwrap()
+                .iter()
+                .map(|(_, t)| t.id)
+                .collect::<Vec<_>>(),
+            vec![id(2), id(1)]
+        );
+    }
+
+    /// Two panels must not share one list.
+    #[test]
+    fn different_system_names_are_different_lists() {
+        let lib = library();
+        let side = lib.system_playlist("sidelist", 0).unwrap();
+        let automix = lib.system_playlist("automix", 0).unwrap();
+        assert_ne!(side, automix);
     }
 
     // -- editing -----------------------------------------------------------

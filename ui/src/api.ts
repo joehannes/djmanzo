@@ -580,6 +580,61 @@ export interface Session {
 
 export const listSessions = () => invoke<Session[]>("list_sessions");
 
+// -- SideView ---------------------------------------------------------------
+
+/**
+ * The Sidelist: tracks pulled aside for later.
+ *
+ * A real playlist behind the scenes, so it keeps its order and survives a
+ * restart — see the migration that added system playlists.
+ */
+export const sidelist = () => invoke<PlaylistEntry[]>("sidelist");
+
+export const sidelistAdd = (track: string) => invoke<void>("sidelist_add", { track });
+
+export const sidelistRemove = (position: number) =>
+  invoke<void>("sidelist_remove", { position });
+
+export const sidelistClear = () => invoke<void>("sidelist_clear");
+
+// -- layouts ----------------------------------------------------------------
+
+/**
+ * What a layout shows and how densely.
+ *
+ * Data, never behaviour: a layout can hide the FX rack, it cannot change what
+ * a control does. Every behaviour is behind the action vocabulary — see
+ * ADR-0003 — which is what makes it safe to load one somebody sent you.
+ */
+export interface Layout {
+  name: string;
+  description: string;
+  /** 2 or 4. The engine always runs four. */
+  decks: number;
+  waveform_height: number;
+  overview: boolean;
+  pads: boolean;
+  loops: boolean;
+  beat_jump: boolean;
+  eq: boolean;
+  filter: boolean;
+  keylock: boolean;
+  browser: boolean;
+  /** 0.8..=1.4, multiplying the root font size. */
+  density: number;
+}
+
+export const listLayouts = () => invoke<Layout[]>("list_layouts");
+
+/** Where a DJ puts their own layout files, so the panel can say. */
+export const layoutFolder = () => invoke<string | null>("layout_folder");
+
+/** The layout chosen last time, or null when it no longer names one. */
+export const chosenLayout = () => invoke<Layout | null>("chosen_layout");
+
+/** Remember the chosen layout across restarts. */
+export const chooseLayout = (name: string) => invoke<void>("choose_layout", { name });
+
 export const exportSession = (session: string, path: string) =>
   invoke<number>("export_session", { session, path });
 

@@ -63,6 +63,14 @@ pub struct AppState {
     /// Tap-tempo runs in progress. Lives here rather than on the audio thread
     /// because a run is host state -- see `crate::grid`.
     taps: crate::grid::TapTracker,
+    /// Where the DJ's own layout files live. `None` until `setup` resolves it,
+    /// and then only the built-in layouts are available.
+    layout_dir: Mutex<Option<std::path::PathBuf>>,
+    /// The configuration directory itself, which is the layout directory's
+    /// parent. Held rather than derived: walking back up out of a
+    /// subdirectory to find where you started is the sort of implicit
+    /// coupling that breaks silently the first time either path moves.
+    config_dir: Mutex<Option<std::path::PathBuf>>,
     host: AudioHost,
     waveforms: Arc<WaveformStore>,
     /// API keys, in the OS keychain. Values go in and never come back out --
@@ -169,6 +177,8 @@ impl AppState {
             bus,
             registry,
             taps: crate::grid::TapTracker::new(),
+            layout_dir: Mutex::new(None),
+            config_dir: Mutex::new(None),
             host,
             waveforms: Arc::new(WaveformStore::new()),
             secrets,
@@ -243,6 +253,61 @@ impl AppState {
         // same record the DJ played an hour ago.
         if let Ok(mut watcher) = self.play_watcher.lock() {
             watcher.forget(deck);
+        }
+    }
+
+    /// Where the DJ's own layout files live, once Tauri can say.
+    #[must_use]
+    pub fn layout_dir(&self) -> Option<std::path::PathBuf> {
+        self.layout_dir.lock().ok()?.clone()
+    }
+
+    /// Point the application at a configuration directory, making the layout
+    /// folder inside it. Called once, from `setup`, for the same reason the
+    /// library is.
+    pub fn set_config_dir(&self, dir: std::path::PathBuf) {
+        if let Ok(mut slot) = self.config_dir.lock() {
+            *slot = Some(dir.clone());
+        }
+        let layouts = dir.join("layouts");
+        if let Err(error) = std::fs::create_dir_all(&layouts) {
+            tracing::warn!(%error, ?layouts, "no layout directory; only the built-in layouts");
+            return;
+        }
+        if let Ok(mut slot) = self.layout_dir.lock() {
+            *slot = Some(layouts);
+        }
+    }
+
+    /// The file the chosen layout's name is written to.
+    ///
+    /// A name rather than a copy of the layout: a DJ who edits their layout
+    /// file wants the edit to take, and storing the whole thing would mean
+    /// their next start-up quietly used the version from whenever they last
+    /// picked it.
+    fn chosen_layout_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("layout.txt"))
+    }
+
+    /// Which layout the DJ last chose, if any.
+    #[must_use]
+    pub fn chosen_layout(&self) -> Option<String> {
+        let name = std::fs::read_to_string(self.chosen_layout_path()?).ok()?;
+        let name = name.trim().to_owned();
+        (!name.is_empty()).then_some(name)
+    }
+
+    /// Remember the chosen layout across restarts.
+    ///
+    /// Failing to write is logged, not returned: a DJ who picked a layout got
+    /// the layout, and an error dialog about a preference file is noise in the
+    /// middle of the one thing they were doing.
+    pub fn set_chosen_layout(&self, name: &str) {
+        let Some(path) = self.chosen_layout_path() else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, name) {
+            tracing::warn!(%error, ?path, "the chosen layout will not survive a restart");
         }
     }
 
@@ -358,7 +423,6 @@ impl AppState {
     }
 
     #[must_use]
-    /// Tap-tempo history, one run per deck.
     pub fn taps(&self) -> &crate::grid::TapTracker {
         &self.taps
     }
@@ -477,6 +541,51 @@ fn seed_defaults(registry: &ParameterRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -- the chosen layout -------------------------------------------------
+
+    #[test]
+    fn the_chosen_layout_survives_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let first = AppState::new(true);
+        first.set_config_dir(dir.path().to_path_buf());
+        assert_eq!(first.chosen_layout(), None, "nothing chosen yet");
+        first.set_chosen_layout("Performance");
+
+        // A second application, reading the same directory, as a restart would.
+        let second = AppState::new(true);
+        second.set_config_dir(dir.path().to_path_buf());
+        assert_eq!(second.chosen_layout().as_deref(), Some("Performance"));
+    }
+
+    #[test]
+    fn a_layout_directory_is_made_beside_the_configuration() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        assert_eq!(state.layout_dir(), Some(dir.path().join("layouts")));
+        assert!(dir.path().join("layouts").is_dir());
+    }
+
+    /// Before `setup` has run there is nowhere to write, and asking must not
+    /// panic or invent a path — the interface simply draws its own defaults.
+    #[test]
+    fn choosing_a_layout_before_there_is_anywhere_to_put_it_is_harmless() {
+        let state = AppState::new(true);
+        state.set_chosen_layout("Pro");
+        assert_eq!(state.chosen_layout(), None);
+    }
+
+    /// An empty file is "no choice", not a layout named "".
+    #[test]
+    fn an_empty_choice_file_reads_as_no_choice() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("layout.txt"), "  \n ").unwrap();
+        let state = AppState::new(true);
+        state.set_config_dir(dir.path().to_path_buf());
+        assert_eq!(state.chosen_layout(), None);
+    }
 
     #[test]
     fn state_starts_with_sensible_defaults() {

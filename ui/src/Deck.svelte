@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { dispatch, formatTime, loadTrack, type DeckState } from "./api";
+  import { dispatch, formatTime, loadTrack, type DeckState, type Layout } from "./api";
   import Overview from "./Overview.svelte";
   import Waveform from "./Waveform.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -8,7 +8,31 @@
     deck,
     enabled,
     cueAvailable = false,
-  }: { deck: DeckState; enabled: boolean; cueAvailable?: boolean } = $props();
+    layout = null,
+  }: {
+    deck: DeckState;
+    enabled: boolean;
+    cueAvailable?: boolean;
+    /**
+     * The layout in force, or null before one has been chosen.
+     *
+     * Null is not "hide everything" — it is "the application has not been told
+     * otherwise", so every flag falls back to shown. A DJ who never opens the
+     * layout picker gets the full deck, which is the interface that existed
+     * before layouts did.
+     */
+    layout?: Layout | null;
+  } = $props();
+
+  // Read once here rather than at each use, so the fallback lives in one place.
+  const showPads = $derived(layout?.pads ?? true);
+  const showLoops = $derived(layout?.loops ?? true);
+  const showJump = $derived(layout?.beat_jump ?? true);
+  const showEq = $derived(layout?.eq ?? true);
+  const showFilter = $derived(layout?.filter ?? true);
+  const showKeylock = $derived(layout?.keylock ?? true);
+  const showOverview = $derived(layout?.overview ?? true);
+  const waveHeight = $derived(layout?.waveform_height ?? 96);
 
   let error = $state<string | null>(null);
   let loading = $state(false);
@@ -228,14 +252,14 @@
     Tiles come from the Rust renderer and are scrolled by a CSS transform;
     nothing here draws. See docs/adr/0004-waveform-rendering-strategy.md.
   -->
-  <Waveform {deck} height={96} />
+  <Waveform {deck} height={waveHeight} />
 
   <!--
     The whole track under the scrolling lane. Two views answering different
     questions: the lane says what is about to happen, this says where in the
     track you are and where the breakdown is.
   -->
-  {#if deck.loaded}
+  {#if deck.loaded && showOverview}
     <Overview {deck} height={30} />
   {/if}
 
@@ -255,7 +279,7 @@
     grid — a cue is a position, and a position exists whether or not the
     analyser found a tempo.
   -->
-  {#if deck.loaded}
+  {#if deck.loaded && showPads}
     <div class="pads">
       {#each deck.hot_cues as cue, index (index)}
         <button
@@ -283,8 +307,9 @@
     broken rather than as "this track has no beats yet". Manual looping still
     works — see the in/out pair below, which needs no grid at all.
   -->
-  {#if analysis?.bpm != null}
+  {#if analysis?.bpm != null && (showJump || showLoops)}
     <div class="beatjump">
+      {#if showJump}
       <span class="label">Jump</span>
       {#each [-4, -1, 1, 4] as beats (beats)}
         <button
@@ -297,7 +322,9 @@
           {beats > 0 ? `+${beats}` : beats}
         </button>
       {/each}
+      {/if}
 
+      {#if showLoops}
       <span class="label loop-label">Loop</span>
       {#each [1, 2, 4, 8] as beats (beats)}
         <button
@@ -309,10 +336,11 @@
           {beats}
         </button>
       {/each}
+      {/if}
     </div>
   {/if}
 
-  {#if deck.loaded}
+  {#if deck.loaded && showLoops}
     <div class="beatjump loop-row">
       <button
         onclick={() => send(`deck ${deck.number} loop_in`)}
@@ -366,6 +394,7 @@
       rather than a separate row because the destructive gesture should be the
       deliberate one.
     -->
+    {#if showLoops}
     <div class="beatjump loop-row">
       <span class="label">Saved</span>
       {#each [1, 2, 3, 4] as slot (slot)}
@@ -381,6 +410,7 @@
         </button>
       {/each}
     </div>
+    {/if}
   {/if}
 
   <!--
@@ -494,6 +524,7 @@
     resets to unity, because reaching for exactly 1.00 with a mouse mid-mix is
     not a thing anyone can do.
   -->
+  {#if showEq}
   <div class="eq">
     {#each [{ id: "eq_high", label: "HI", value: deck.eq_high }, { id: "eq_mid", label: "MID", value: deck.eq_mid }, { id: "eq_low", label: "LOW", value: deck.eq_low }] as band (band.id)}
       <label class="band" class:killed={band.value < 0.001}>
@@ -519,7 +550,9 @@
       </label>
     {/each}
   </div>
+  {/if}
 
+  {#if showFilter}
   <label class="control">
     <span>
       Filter
@@ -540,6 +573,7 @@
       ondblclick={() => send(`deck ${deck.number} filter 0`)}
     />
   </label>
+  {/if}
 
   <label class="control">
     <span>Volume <em class="mono">{deck.volume.toFixed(2)}</em></span>
@@ -576,8 +610,11 @@
     </label>
     <!--
       Harmonic mixing: shift the key in semitones without touching tempo.
-      Separate from keylock, and engages the shifter on its own.
+      Separate from keylock, and engages the shifter on its own — but hidden
+      with it, because a layout that judges keylock too advanced to show is not
+      one that wants semitone transposition either.
     -->
+    {#if showKeylock}
     <div class="keyshift">
       <button
         disabled={!enabled}
@@ -604,6 +641,7 @@
     >
       KEY
     </button>
+    {/if}
   </div>
 
   <!--
