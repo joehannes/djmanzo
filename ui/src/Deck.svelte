@@ -108,6 +108,15 @@
     { value: "right", text: "B", title: "Cut by the right half of the crossfader" },
   ] as const;
 
+  /**
+   * Whether the grid editing row is showing.
+   *
+   * Component state rather than engine state on purpose: it is a view
+   * preference, not something a controller or the assistant should be able to
+   * change out from under the person looking at it.
+   */
+  let gridOpen = $state(false);
+
   const send = async (action: string) => {
     try {
       await dispatch(action);
@@ -137,12 +146,18 @@
     {#if deck.loaded}
       <div class="analysis mono">
         {#if analysis?.bpm != null}
+          <!--
+            Confidence comes from the deck, not from `analysis`: the analyser's
+            number is what it originally found, and a grid the DJ has since
+            edited by hand is certain. Reading the cached number here would show
+            "weak grid" beside an enabled Sync button.
+          -->
           <span
             class="bpm"
-            class:unsure={!analysis.sync_worthy}
-            title={analysis.sync_worthy
-              ? `Beat grid confidence ${((analysis.bpm_confidence ?? 0) * 100).toFixed(0)}%`
-              : `Weak beat grid — ${((analysis.bpm_confidence ?? 0) * 100).toFixed(0)}% confidence. Sync stays disabled rather than guessing.`}
+            class:unsure={!deck.can_sync}
+            title={deck.can_sync
+              ? `Beat grid confidence ${(deck.grid_confidence * 100).toFixed(0)}%`
+              : `Weak beat grid — ${(deck.grid_confidence * 100).toFixed(0)}% confidence. Sync stays disabled rather than guessing. Tap or nudge the grid to fix it.`}
           >
             <!--
               The tempo being *played*, not the tempo the file was recorded at.
@@ -187,6 +202,21 @@
         {#if analysis == null}
           <span class="pending">analysing…</span>
         {/if}
+        <!--
+          The way in to grid editing, next to the number it corrects. Shown
+          whether or not the analyser found a grid: a track it could not read at
+          all is exactly the one that needs tapping in.
+        -->
+        <button
+          class="grid-toggle"
+          class:active={gridOpen}
+          onclick={() => (gridOpen = !gridOpen)}
+          title={deck.can_sync
+            ? "Edit the beat grid"
+            : "Edit the beat grid — this one is too weak to sync to"}
+        >
+          Grid
+        </button>
       </div>
     {/if}
     <button onclick={pickTrack} disabled={!enabled || loading}>
@@ -323,6 +353,66 @@
         {:else}
           No loop
         {/if}
+      </button>
+    </div>
+  {/if}
+
+  <!--
+    Grid editing. Hidden behind a toggle rather than always on: it is the
+    control a DJ reaches for once per track at most, and never during a mix,
+    while everything above it is touched constantly.
+
+    The order is the order of use. `Here` fixes phase, which is the common
+    failure and the one-button case. The nudges are for the last few
+    milliseconds. `Tap` is for a track with no usable grid at all, and the
+    halve/double pair is for the octave errors autocorrelation cannot resolve.
+  -->
+  {#if deck.loaded && gridOpen}
+    <div class="beatjump grid-row">
+      <span class="label">Grid</span>
+      <button
+        onclick={() => send(`deck ${deck.number} grid_here`)}
+        disabled={!enabled}
+        title="Put a beat on the playhead, leaving the tempo alone. Cue to the downbeat and press once."
+      >
+        Here
+      </button>
+      {#each [-10, -1, 1, 10] as ms (ms)}
+        <button
+          onclick={() => send(`deck ${deck.number} grid_nudge ${ms}`)}
+          disabled={!enabled}
+          title="Slide the whole grid {Math.abs(ms)} ms {ms < 0 ? 'earlier' : 'later'}"
+        >
+          {ms > 0 ? `+${ms}` : ms}
+        </button>
+      {/each}
+      <button
+        onclick={() => send(`deck ${deck.number} grid_tap`)}
+        disabled={!enabled}
+        title="Tap along with the music. Two taps give a tempo; the last sets the phase."
+      >
+        Tap
+      </button>
+      <button
+        onclick={() => send(`deck ${deck.number} grid_scale 0.5`)}
+        disabled={!enabled}
+        title="Halve the grid tempo, keeping the beat you lined up"
+      >
+        ÷2
+      </button>
+      <button
+        onclick={() => send(`deck ${deck.number} grid_scale 2`)}
+        disabled={!enabled}
+        title="Double the grid tempo, keeping the beat you lined up"
+      >
+        ×2
+      </button>
+      <button
+        onclick={() => send(`deck ${deck.number} grid_reset`)}
+        disabled={!enabled}
+        title="Throw the edits away and go back to what the analyser found"
+      >
+        Reset
       </button>
     </div>
   {/if}
@@ -581,6 +671,26 @@
     align-items: center;
     gap: 0.3rem;
     font-size: 0.8em;
+  }
+
+  /*
+    Slightly quieter than the row above it: grid editing is a repair job, not
+    part of playing, and it should not compete with the loop controls for
+    attention while a mix is running.
+  */
+  .grid-row button {
+    font-size: 0.85em;
+  }
+
+  .grid-toggle {
+    padding: 0.05rem 0.35rem;
+    font-size: 0.85em;
+  }
+
+  .grid-toggle.active {
+    background: var(--accent-2);
+    color: var(--on-accent);
+    border-color: var(--accent-2);
   }
 
   .beatjump .label {

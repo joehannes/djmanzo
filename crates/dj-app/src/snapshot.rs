@@ -77,6 +77,13 @@ pub struct DeckSnapshot {
     /// True when the grid is solid enough for sync to accept it. The interface
     /// uses this to disable the button rather than let it fail silently.
     pub can_sync: bool,
+    /// How much the *current* grid is trusted, 0.0..=1.0.
+    ///
+    /// Live, from the engine, rather than the number in the cached analysis:
+    /// a hand-edited grid is certain by construction, and a header still
+    /// showing "38% confidence" next to an enabled Sync button would be the
+    /// interface arguing with itself.
+    pub grid_confidence: f32,
     /// The region repeating right now, if any.
     pub active_loop: Option<LoopSnapshot>,
     /// Hot cue positions in frames, slot 1 first. `None` for an empty slot —
@@ -302,6 +309,7 @@ impl Snapshot {
                     },
                     can_sync: get(DeckParam::GridConfidence)
                         >= dj_core::Confidence::SYNC_THRESHOLD as f32,
+                    grid_confidence: get(DeckParam::GridConfidence),
                     active_loop: (get(DeckParam::LoopActive) >= 0.5).then(|| {
                         let beats = get(DeckParam::LoopBeats);
                         LoopSnapshot {

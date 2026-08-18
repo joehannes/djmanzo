@@ -126,6 +126,12 @@ export interface DeckState {
    * the button rather than let it fail silently.
    */
   can_sync: boolean;
+  /**
+   * How much the *current* grid is trusted, 0..1. Live from the engine, so a
+   * hand-edited grid reads as certain the moment it is edited — unlike the
+   * number in `analysis`, which is what the analyser originally found.
+   */
+  grid_confidence: number;
   /** The region repeating right now, if any. */
   active_loop: LoopRegion | null;
   /**

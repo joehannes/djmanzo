@@ -24,8 +24,15 @@ pub const SCHEME: &str = "wave";
 #[derive(Debug, Default)]
 pub struct WaveformStore {
     summaries: Mutex<HashMap<u8, Arc<WaveformSummary>>>,
-    /// Beat grid per deck, drawn into the tiles themselves.
+    /// Beat grid per deck, drawn into the tiles themselves. The working copy:
+    /// what the analyser found, plus whatever the DJ has since edited.
     grids: Mutex<HashMap<u8, GridOverlay>>,
+    /// What the analyser originally reported, kept so an edit can be undone.
+    ///
+    /// A grid edit you cannot reverse is one nobody tries, and a DJ who taps a
+    /// tempo badly mid-set needs one button to get back to a grid that at least
+    /// mostly worked.
+    analysed_grids: Mutex<HashMap<u8, GridOverlay>>,
     /// Bumped whenever a deck's tiles stop being valid.
     ///
     /// **This is not belt-and-braces.** Tiles are served with a one-year
@@ -92,6 +99,9 @@ impl WaveformStore {
         if let Ok(mut grids) = self.grids.lock() {
             grids.remove(&deck.human_number());
         }
+        if let Ok(mut grids) = self.analysed_grids.lock() {
+            grids.remove(&deck.human_number());
+        }
         self.invalidate(deck);
     }
 
@@ -116,6 +126,24 @@ impl WaveformStore {
             .lock()
             .map(|e| e.get(&deck).copied().unwrap_or(0))
             .unwrap_or(0)
+    }
+
+    /// Record what the analyser found: both the working grid and the copy
+    /// [`Self::analysed_grid`] hands back when an edit is undone.
+    pub fn set_analysed_grid(&self, deck: DeckId, overlay: Option<GridOverlay>) {
+        if let Ok(mut grids) = self.analysed_grids.lock() {
+            match overlay {
+                Some(o) => grids.insert(deck.human_number(), o),
+                None => grids.remove(&deck.human_number()),
+            };
+        }
+        self.set_grid(deck, overlay);
+    }
+
+    /// What the analyser found, before any editing.
+    #[must_use]
+    pub fn analysed_grid(&self, deck: u8) -> Option<GridOverlay> {
+        self.analysed_grids.lock().ok()?.get(&deck).copied()
     }
 
     /// Set or clear the beat grid drawn over a deck's tiles.
@@ -295,6 +323,67 @@ mod tests {
     fn an_unloaded_deck_serves_nothing() {
         let (store, _) = store_with_track();
         assert!(store.tile_png(key(2)).is_none());
+    }
+
+    /// The claim a grid edit rests on: nudging the grid changes the pixels the
+    /// interface is served. The epoch test proves the URL changes; this proves
+    /// the picture behind it does, which is what the DJ actually looks at.
+    #[test]
+    fn editing_the_grid_changes_the_served_tile() {
+        use dj_core::{Beatgrid, Bpm, Confidence, FramePos};
+
+        let (store, deck) = store_with_track();
+        let overlay = |anchor: f64| {
+            Some(GridOverlay {
+                grid: Beatgrid::new(
+                    FramePos::new(anchor),
+                    Bpm::new(128.0).unwrap(),
+                    Confidence::CERTAIN,
+                ),
+                sample_rate: SampleRate::DEFAULT,
+            })
+        };
+
+        store.set_analysed_grid(deck, overlay(0.0));
+        let mut before_key = key(1);
+        before_key.epoch = store.epoch(1);
+        let before = store.tile_png(before_key).unwrap();
+
+        // Half a beat later: every line lands somewhere new.
+        store.set_grid(deck, overlay(11_250.0));
+        let mut after_key = key(1);
+        after_key.epoch = store.epoch(1);
+        let after = store.tile_png(after_key).unwrap();
+
+        assert_ne!(before, after, "the drawn grid must follow the edit");
+    }
+
+    /// Reset has to give back the analyser's grid, and the tile with it.
+    #[test]
+    fn the_analysers_grid_is_kept_for_reset() {
+        use dj_core::{Beatgrid, Bpm, Confidence, FramePos};
+
+        let (store, deck) = store_with_track();
+        let original = GridOverlay {
+            grid: Beatgrid::new(
+                FramePos::new(0.0),
+                Bpm::new(128.0).unwrap(),
+                Confidence::new(0.3),
+            ),
+            sample_rate: SampleRate::DEFAULT,
+        };
+        store.set_analysed_grid(deck, Some(original));
+
+        let mut edited = original;
+        edited.grid.anchor = FramePos::new(5_000.0);
+        store.set_grid(deck, Some(edited));
+        assert_eq!(store.grid(1), Some(edited));
+
+        assert_eq!(
+            store.analysed_grid(1),
+            Some(original),
+            "an edit must not overwrite what there is to reset to"
+        );
     }
 
     #[test]

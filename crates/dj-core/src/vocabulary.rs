@@ -96,7 +96,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 47] = [
+static VOCABULARY: [VerbSpec; 53] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -383,6 +383,58 @@ static VOCABULARY: [VerbSpec; 47] = [
         help: "take this deck off the crossfader; it plays whatever the crossfader does",
         example: "deck 3 xfader_thru",
     },
+    // -- beat grid ---------------------------------------------------------
+    VerbSpec {
+        target: Target::Deck,
+        verb: "grid_here",
+        argument: ArgSpec::None,
+        help: "put a beat on the playhead, leaving the tempo alone",
+        example: "deck 1 grid_here",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "grid_nudge",
+        argument: ArgSpec::Number {
+            min: -500.0,
+            max: 500.0,
+        },
+        help: "slide the whole beat grid by milliseconds; negative is earlier",
+        example: "deck 1 grid_nudge -10",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "grid_scale",
+        argument: ArgSpec::Number {
+            min: 0.25,
+            max: 4.0,
+        },
+        help: "multiply the grid tempo, keeping the anchor; 2 and 0.5 fix an octave error",
+        example: "deck 1 grid_scale 2",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "grid_bpm",
+        argument: ArgSpec::Number {
+            min: 20.0,
+            max: 400.0,
+        },
+        help: "set the grid tempo outright, keeping the anchor",
+        example: "deck 1 grid_bpm 128",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "grid_tap",
+        argument: ArgSpec::None,
+        help: "tap along with the music; two taps give a tempo and the last sets the phase",
+        example: "deck 1 grid_tap",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "grid_reset",
+        argument: ArgSpec::None,
+        help: "throw away grid edits and go back to what the analyser found",
+        example: "deck 1 grid_reset",
+    },
     // -- mixer -------------------------------------------------------------
     VerbSpec {
         target: Target::Mixer,
@@ -566,6 +618,12 @@ mod tests {
             "xfader_left",
             "xfader_right",
             "xfader_thru",
+            "grid_here",
+            "grid_nudge",
+            "grid_scale",
+            "grid_bpm",
+            "grid_tap",
+            "grid_reset",
             "master gain",
             "booth gain",
             "cue mix",

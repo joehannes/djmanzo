@@ -122,8 +122,25 @@ convention (1 left, 2 right, the rest through), and *through* means full gain ra
 curve's midpoint — a deck brought in mid-set should be audible when its channel fader is up,
 not attenuated because the crossfader happens to be parked.
 
-Not yet: saved loops (they need M3's persistence), grid editing (shift/scale/tap), and the
-labelled regression set. `CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
+Grid editing is in. Six verbs — put a beat on the playhead, nudge in milliseconds, scale the
+tempo, set it outright, tap it in, and reset to what the analyser found — reachable from a row
+under each deck and, because they are actions rather than commands, from a controller, a
+script and the assistant too. Every edit marks the grid certain: the DJ looked at the waveform
+and said where the beat is, which outranks a correlation score and is the entire point of
+editing a grid the analyser was unsure of.
+
+Three decisions worth recording. The edits are computed in the host rather than on the audio
+thread, because editing needs the analyser's original to reset to and a run of taps to
+average, and neither belongs in a callback that must not allocate; the result reaches the
+engine as `SetGrid`, which is the same path the analyser's own finding takes, so there is
+still exactly one place a grid is decided. Taps are recorded as *playhead* positions rather
+than wall-clock times, which is what makes them survive a pitch-fader move and stay meaningful
+on a paused deck. And the deck header now reads its confidence live from the engine instead of
+from the cached analysis — otherwise a grid the DJ had just fixed would still be labelled
+"weak" beside an enabled Sync button.
+
+Not yet: saved loops (they need M3's persistence) and the labelled regression set.
+`CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
 calibrated against synthetic click tracks (0.95) and white noise (0.014); real music sits
 between those and the constant should be re-derived once there are hand-verified grids.
 

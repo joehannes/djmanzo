@@ -23,6 +23,7 @@ pub mod analysis;
 pub mod assistant;
 pub mod brand;
 pub mod commands;
+pub mod grid;
 pub mod host;
 pub mod presets;
 pub mod snapshot;

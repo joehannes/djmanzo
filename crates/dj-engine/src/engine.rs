@@ -302,6 +302,22 @@ impl Engine {
                     DeckAction::Sync | DeckAction::SyncOff => unreachable!("handled above"),
                     DeckAction::SetCrossfaderAssign(_) => unreachable!("handled above"),
                     DeckAction::Eject => unreachable!("handled above"),
+                    // Grid edits are computed by the host and arrive here as
+                    // `Command::SetGrid`, because editing needs the analyser's
+                    // original to reset to and a tap history to average, and
+                    // neither belongs on the audio thread. They stay in the
+                    // action vocabulary so a controller, a script and the
+                    // assistant can all express them -- see `dj_app::grid`.
+                    //
+                    // Ignored rather than `unreachable!`: a panic here would be
+                    // on the audio thread, and an action arriving by a path
+                    // nobody has written yet is not worth killing the audio for.
+                    DeckAction::GridAnchorHere
+                    | DeckAction::GridNudge(_)
+                    | DeckAction::GridScale(_)
+                    | DeckAction::GridSetBpm(_)
+                    | DeckAction::GridTap
+                    | DeckAction::GridReset => {}
                 }
             }
             Action::Mixer(MixerAction::Crossfader(position)) => {

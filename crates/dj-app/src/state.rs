@@ -60,6 +60,9 @@ pub const DECK_COUNT: usize = 4;
 pub struct AppState {
     bus: Arc<ActionBus<Command>>,
     registry: Arc<ParameterRegistry>,
+    /// Tap-tempo runs in progress. Lives here rather than on the audio thread
+    /// because a run is host state -- see `crate::grid`.
+    taps: crate::grid::TapTracker,
     host: AudioHost,
     waveforms: Arc<WaveformStore>,
     /// API keys, in the OS keychain. Values go in and never come back out --
@@ -138,6 +141,7 @@ impl AppState {
         Self {
             bus,
             registry,
+            taps: crate::grid::TapTracker::new(),
             host,
             waveforms: Arc::new(WaveformStore::new()),
             secrets,
@@ -256,6 +260,11 @@ impl AppState {
     }
 
     #[must_use]
+    /// Tap-tempo history, one run per deck.
+    pub fn taps(&self) -> &crate::grid::TapTracker {
+        &self.taps
+    }
+
     pub fn registry(&self) -> Arc<ParameterRegistry> {
         Arc::clone(&self.registry)
     }

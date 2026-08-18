@@ -9,7 +9,7 @@
 //! parser gets exercised constantly instead of rotting in a corner.
 
 use crate::state::AppState;
-use dj_core::Action;
+use dj_core::{Action, DeckId};
 use dj_decode::decode_file;
 use serde::Serialize;
 use std::sync::Arc;
@@ -222,7 +222,7 @@ pub async fn load_track(
         // The grid goes to the waveform store, which draws it into the tiles
         // themselves. Drawing it in the interface instead would be two
         // coordinate systems agreeing only by luck -- see `dj_render::GridOverlay`.
-        waveforms.set_grid(
+        waveforms.set_analysed_grid(
             deck_id,
             analysis.tempo.as_ref().map(|tempo| dj_render::GridOverlay {
                 grid: tempo.grid,
@@ -273,11 +273,145 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
     {
         state.clear_deck_track(deck);
         state.analysis().clear_deck(deck);
+        state.taps().clear(deck);
+    }
+
+    // Grid edits are the other kind: they need the analyser's original to undo
+    // to and a tap history to average, neither of which belongs on the audio
+    // thread. Computed here and sent on as `SetGrid`, which is the same path
+    // the analyser's own result takes.
+    if let Action::Deck { deck, action } = parsed
+        && let Some(edit) = grid_edit(action)
+    {
+        apply_grid_edit(&state, deck, edit)?;
+        // Dispatched *after* the edit has succeeded, so it lands in the session
+        // log like every other action -- a grid the DJ moved mid-set is exactly
+        // the kind of thing worth being able to look back at. The engine
+        // ignores the action itself; it has already had the result as
+        // `SetGrid`. A refused edit is not logged, because it did not happen.
+        let _ = state.bus().dispatch(parsed);
+        return Ok(());
     }
 
     state
         .bus()
         .dispatch(parsed)
+        .map_err(|_| "engine is not accepting commands; is a device open?".to_owned())
+}
+
+/// The grid edits, separated from the actions the engine handles itself.
+#[derive(Debug, Clone, Copy)]
+enum GridEdit {
+    AnchorHere,
+    Nudge(f64),
+    Scale(f64),
+    SetBpm(f64),
+    Tap,
+    Reset,
+}
+
+fn grid_edit(action: dj_core::DeckAction) -> Option<GridEdit> {
+    use dj_core::DeckAction as A;
+    Some(match action {
+        A::GridAnchorHere => GridEdit::AnchorHere,
+        A::GridNudge(ms) => GridEdit::Nudge(ms),
+        A::GridScale(x) => GridEdit::Scale(x),
+        A::GridSetBpm(b) => GridEdit::SetBpm(b),
+        A::GridTap => GridEdit::Tap,
+        A::GridReset => GridEdit::Reset,
+        _ => return None,
+    })
+}
+
+fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(), String> {
+    use crate::grid;
+
+    let waveforms = state.waveforms();
+    let registry = state.registry();
+
+    // Reset is the one edit that does not need an existing grid to work from --
+    // and it is also how a deck whose grid was cleared gets the analyser's back.
+    if let GridEdit::Reset = edit {
+        let original = waveforms.analysed_grid(deck.human_number());
+        waveforms.set_grid(deck, original);
+        return publish_grid(state, deck, original.map(|o| o.grid));
+    }
+
+    // The playhead, read live rather than from the last snapshot: a tap is
+    // timed against the music, and a snapshot can be up to 16 ms stale.
+    //
+    // The registry is `f32`, so past about 16.7M frames -- six minutes at
+    // 48 kHz -- consecutive frames stop being distinguishable, and at the end
+    // of a ten-minute track the granularity is two frames. That is 0.04 ms on
+    // an anchor and 0.008% on a tapped tempo: below the width of a drawn line
+    // and far below a human's tapping jitter, so it is stated rather than
+    // engineered around.
+    let position = dj_core::FramePos::new(f64::from(registry.get(dj_core::ParamId::Deck(
+        deck,
+        dj_core::param::DeckParam::Position,
+    ))));
+
+    let existing = waveforms.grid(deck.human_number());
+    // The sample rate of the *track*, which is what the grid is measured in.
+    // Falls back to the device's, which is what an unloaded deck reports.
+    let rate = existing
+        .map(|o| o.sample_rate)
+        .or_else(|| {
+            let hz = registry.get(dj_core::ParamId::Global(
+                dj_core::param::GlobalParam::SampleRate,
+            ));
+            dj_core::SampleRate::new(hz as u32)
+        })
+        .ok_or("no sample rate yet; open a device first")?;
+
+    let edited =
+        match edit {
+            GridEdit::Tap => {
+                let bars = existing.map_or(4, |o| o.grid.beats_per_bar);
+                match state.taps().tap(deck, position, rate, bars) {
+                    grid::Tap::Grid(g) => g,
+                    // A first tap is not a failure -- it is half of the gesture.
+                    grid::Tap::Started => return Ok(()),
+                    grid::Tap::Unusable => {
+                        return Err("those taps are not a playable tempo".to_owned());
+                    }
+                }
+            }
+            _ => {
+                let current = existing
+                    .map(|o| o.grid)
+                    .ok_or("no beat grid on this deck yet; wait for analysis or tap one in")?;
+                match edit {
+                    GridEdit::AnchorHere => grid::anchor_here(current, position),
+                    GridEdit::Nudge(ms) => grid::nudge(current, ms, rate),
+                    GridEdit::Scale(x) => grid::scale(current, x)
+                        .ok_or("that would leave the playable tempo range")?,
+                    GridEdit::SetBpm(b) => grid::set_bpm(current, b)
+                        .ok_or("that tempo is outside the playable range")?,
+                    GridEdit::Tap | GridEdit::Reset => unreachable!("handled above"),
+                }
+            }
+        };
+
+    waveforms.set_grid(
+        deck,
+        Some(dj_render::GridOverlay {
+            grid: edited,
+            sample_rate: rate,
+        }),
+    );
+    publish_grid(state, deck, Some(edited))
+}
+
+/// Send a grid to the engine, which needs it for sync, quantize and beat jump.
+fn publish_grid(
+    state: &AppState,
+    deck: DeckId,
+    grid: Option<dj_core::Beatgrid>,
+) -> Result<(), String> {
+    state
+        .bus()
+        .send_command(dj_engine::Command::SetGrid { deck, grid })
         .map_err(|_| "engine is not accepting commands; is a device open?".to_owned())
 }
 
@@ -398,5 +532,213 @@ mod tests {
         assert_eq!(log.len(), 1);
         let rendered = format!("{:>8.3}  {}", log[0].at.as_secs_f64(), log[0].action);
         assert!(rendered.contains("deck 1 play"), "got {rendered:?}");
+    }
+}
+
+/// The wiring between a grid-edit action and the two places a grid lives.
+///
+/// [`crate::grid`] tests the arithmetic. These test that the edit reaches the
+/// renderer *and* the engine, that it survives a round trip, and that the
+/// failures are reported rather than swallowed -- which is the part that would
+/// silently break.
+#[cfg(test)]
+mod grid_edit_tests {
+    use super::*;
+    use dj_core::{Beatgrid, Bpm, Confidence, FramePos, SampleRate};
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+
+    fn deck() -> DeckId {
+        DeckId::from_human(1).unwrap()
+    }
+
+    /// An app with a device open and a weak grid on deck 1, which is the state
+    /// a DJ is in when they reach for these controls.
+    fn app_with_grid(bpm: f64, anchor: f64) -> AppState {
+        let state = AppState::new(true);
+        state.host().open(None, None, 128).unwrap();
+        state.waveforms().set_analysed_grid(
+            deck(),
+            Some(dj_render::GridOverlay {
+                grid: Beatgrid::new(
+                    FramePos::new(anchor),
+                    Bpm::new(bpm).unwrap(),
+                    Confidence::new(0.2),
+                ),
+                sample_rate: SR,
+            }),
+        );
+        state
+    }
+
+    fn current(state: &AppState) -> Beatgrid {
+        state
+            .waveforms()
+            .grid(deck().human_number())
+            .expect("deck 1 has a grid")
+            .grid
+    }
+
+    /// What `dispatch` does, minus Tauri's `State` wrapper -- which is the one
+    /// thing in that function a unit test cannot build.
+    fn dispatch_for_test(state: &AppState, text: &str) -> Result<(), String> {
+        let parsed = Action::parse(text).map_err(|e| format!("{text:?}: {e}"))?;
+        let Action::Deck { deck, action } = parsed else {
+            panic!("{text} is not a deck action");
+        };
+        let edit = grid_edit(action).expect("not a grid edit");
+        apply_grid_edit(state, deck, edit)?;
+        let _ = state.bus().dispatch(parsed);
+        Ok(())
+    }
+
+    fn edit(state: &AppState, text: &str) -> Result<(), String> {
+        let Action::Deck { deck, action } = Action::parse(text).unwrap() else {
+            panic!("{text} is not a deck action");
+        };
+        let edit = grid_edit(action).expect("{text} must be a grid edit");
+        apply_grid_edit(state, deck, edit)
+    }
+
+    #[test]
+    fn every_grid_verb_the_interface_sends_parses_and_is_recognised_as_an_edit() {
+        for text in [
+            "deck 1 grid_here",
+            "deck 1 grid_nudge -10",
+            "deck 1 grid_nudge 10",
+            "deck 1 grid_scale 0.5",
+            "deck 1 grid_scale 2",
+            "deck 1 grid_bpm 128",
+            "deck 1 grid_tap",
+            "deck 1 grid_reset",
+        ] {
+            let Action::Deck { action, .. } = Action::parse(text).unwrap() else {
+                panic!("{text} is not a deck action");
+            };
+            assert!(
+                grid_edit(action).is_some(),
+                "{text} parses but is not routed as a grid edit, so it would go \
+                 to the engine and be silently ignored"
+            );
+        }
+    }
+
+    /// Ordinary actions must *not* be diverted.
+    #[test]
+    fn actions_that_are_not_grid_edits_go_to_the_engine() {
+        for text in ["deck 1 play", "deck 1 beatjump 4", "deck 1 loop 4"] {
+            let Action::Deck { action, .. } = Action::parse(text).unwrap() else {
+                panic!("{text} is not a deck action");
+            };
+            assert!(grid_edit(action).is_none(), "{text} must reach the engine");
+        }
+    }
+
+    /// Grid edits reach the session log. They are diverted before the engine,
+    /// so it would be easy for them to skip the log with it -- and a grid moved
+    /// mid-set is exactly what a DJ wants to find when reading back the night.
+    #[test]
+    fn a_successful_edit_is_recorded_in_the_session_log() {
+        let state = app_with_grid(128.0, 10_000.0);
+        state.bus().clear_log();
+        dispatch_for_test(&state, "deck 1 grid_nudge 10").unwrap();
+        let log = state.bus().log();
+        assert_eq!(log.len(), 1);
+        assert_eq!(log[0].action.to_string(), "deck 1 grid_nudge 10");
+    }
+
+    /// The other half: an edit that was refused must not appear to have
+    /// happened.
+    #[test]
+    fn a_refused_edit_is_not_recorded() {
+        let state = app_with_grid(128.0, 0.0);
+        state.bus().clear_log();
+        assert!(dispatch_for_test(&state, "deck 1 grid_scale 4").is_err());
+        assert!(state.bus().log().is_empty());
+    }
+
+    #[test]
+    fn nudging_moves_the_renderers_grid() {
+        let state = app_with_grid(128.0, 10_000.0);
+        edit(&state, "deck 1 grid_nudge 10").unwrap();
+        let expected = 10_000.0 + 10.0 / 1000.0 * SR.as_f64();
+        assert!((current(&state).anchor.get() - expected).abs() < 1e-6);
+    }
+
+    /// The point of editing: a grid the analyser doubted becomes one sync will
+    /// accept.
+    #[test]
+    fn an_edit_makes_the_grid_trustworthy() {
+        let state = app_with_grid(128.0, 10_000.0);
+        assert!(!current(&state).confidence.is_sync_worthy());
+        edit(&state, "deck 1 grid_here").unwrap();
+        assert!(current(&state).confidence.is_sync_worthy());
+    }
+
+    #[test]
+    fn reset_goes_back_to_what_the_analyser_found() {
+        let state = app_with_grid(128.0, 10_000.0);
+        edit(&state, "deck 1 grid_scale 2").unwrap();
+        edit(&state, "deck 1 grid_nudge 50").unwrap();
+        assert!((current(&state).bpm.get() - 256.0).abs() < 1e-9);
+
+        edit(&state, "deck 1 grid_reset").unwrap();
+        let back = current(&state);
+        assert!((back.bpm.get() - 128.0).abs() < 1e-9);
+        assert!((back.anchor.get() - 10_000.0).abs() < 1e-9);
+        assert_eq!(
+            back.confidence,
+            Confidence::new(0.2),
+            "reset must restore the analyser's doubt too, not just its numbers"
+        );
+    }
+
+    /// Editing has to move the tile generation on, or the webview keeps showing
+    /// the old grid from its own cache and the edit appears to do nothing.
+    #[test]
+    fn editing_invalidates_the_tiles() {
+        let state = app_with_grid(128.0, 10_000.0);
+        let before = state.waveforms().epoch(deck().human_number());
+        edit(&state, "deck 1 grid_nudge 5").unwrap();
+        assert_ne!(
+            state.waveforms().epoch(deck().human_number()),
+            before,
+            "the webview caches tiles for a year; without a new epoch the edit is invisible"
+        );
+    }
+
+    #[test]
+    fn an_out_of_range_tempo_is_reported_rather_than_clamped() {
+        let state = app_with_grid(128.0, 0.0);
+        assert!(edit(&state, "deck 1 grid_scale 4").is_err());
+        assert!(
+            (current(&state).bpm.get() - 128.0).abs() < 1e-9,
+            "a refused edit must leave the grid alone"
+        );
+    }
+
+    /// A deck the analyser could not read has no grid to modify -- but it can
+    /// still be tapped in, which is the whole reason tap exists.
+    #[test]
+    fn editing_a_deck_with_no_grid_says_so_but_tapping_still_works() {
+        let state = AppState::new(true);
+        state.host().open(None, None, 128).unwrap();
+
+        assert!(edit(&state, "deck 1 grid_nudge 10").is_err());
+        // First tap: accepted, nothing to report yet.
+        edit(&state, "deck 1 grid_tap").unwrap();
+    }
+
+    /// Tapping twice at the same playhead position is not a tempo. The deck is
+    /// paused in this test, so both taps land on frame 0.
+    #[test]
+    fn tapping_a_paused_deck_never_invents_a_tempo() {
+        let state = app_with_grid(128.0, 10_000.0);
+        edit(&state, "deck 1 grid_tap").unwrap();
+        edit(&state, "deck 1 grid_tap").unwrap();
+        assert!(
+            (current(&state).bpm.get() - 128.0).abs() < 1e-9,
+            "two taps at the same position must not change the grid"
+        );
     }
 }

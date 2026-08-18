@@ -97,6 +97,36 @@ pub enum DeckAction {
     LoopMove(i32),
     /// Put this deck on one side of the crossfader, or take it off entirely.
     SetCrossfaderAssign(CrossfaderAssign),
+
+    // -- beat grid editing --------------------------------------------------
+    //
+    // These are edits a *person* makes, which is why they are actions while
+    // `Command::SetGrid` is not: nobody presses "set grid", but everybody who
+    // has played a track the analyser misread has wanted to drag the grid onto
+    // the beat. A controller encoder, a script and the assistant should all be
+    // able to say so, and that is what the vocabulary is for.
+    //
+    // Every one of them marks the result certain. The DJ looked at the
+    // waveform and said where the beat is; that outranks a correlation score,
+    // and it is the whole point of editing a grid the analyser was unsure of.
+    /// Put a beat exactly on the playhead, leaving the tempo alone.
+    ///
+    /// The one-button fix for a grid whose tempo is right and whose phase is
+    /// not, which is the common failure: cue to the downbeat, press it once.
+    GridAnchorHere,
+    /// Slide the whole grid by milliseconds, keeping the tempo. Negative is
+    /// earlier.
+    GridNudge(f64),
+    /// Multiply the tempo, keeping the anchor. `2` and `0.5` fix an octave
+    /// error; values near 1 fine-tune a grid that drifts over a long track.
+    GridScale(f64),
+    /// Set the tempo outright, keeping the anchor.
+    GridSetBpm(f64),
+    /// Tap along with the music. Two taps give a tempo, more refine it, and the
+    /// last tap sets the phase.
+    GridTap,
+    /// Throw the edits away and go back to what the analyser said.
+    GridReset,
     /// Drop the loaded track.
     Eject,
 }
@@ -238,6 +268,12 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "xfader_left" => DeckAction::SetCrossfaderAssign(CrossfaderAssign::Left),
         "xfader_right" => DeckAction::SetCrossfaderAssign(CrossfaderAssign::Right),
         "xfader_thru" => DeckAction::SetCrossfaderAssign(CrossfaderAssign::Thru),
+        "grid_here" => DeckAction::GridAnchorHere,
+        "grid_nudge" => DeckAction::GridNudge(f64::from(parse_f32(argument)?)),
+        "grid_scale" => DeckAction::GridScale(f64::from(parse_f32(argument)?)),
+        "grid_bpm" => DeckAction::GridSetBpm(f64::from(parse_f32(argument)?)),
+        "grid_tap" => DeckAction::GridTap,
+        "grid_reset" => DeckAction::GridReset,
         other => return Err(ParseError::UnknownVerb(other.to_owned())),
     })
 }
@@ -355,6 +391,12 @@ impl fmt::Display for Action {
                 DeckAction::SetCrossfaderAssign(a) => {
                     write!(f, "deck {deck} xfader_{}", a.slug())
                 }
+                DeckAction::GridAnchorHere => write!(f, "deck {deck} grid_here"),
+                DeckAction::GridNudge(ms) => write!(f, "deck {deck} grid_nudge {}", number(*ms)),
+                DeckAction::GridScale(x) => write!(f, "deck {deck} grid_scale {}", number(*x)),
+                DeckAction::GridSetBpm(b) => write!(f, "deck {deck} grid_bpm {}", number(*b)),
+                DeckAction::GridTap => write!(f, "deck {deck} grid_tap"),
+                DeckAction::GridReset => write!(f, "deck {deck} grid_reset"),
             },
             Action::Mixer(MixerAction::Crossfader(v)) => {
                 write!(f, "crossfader {}", number(f64::from(*v)))
