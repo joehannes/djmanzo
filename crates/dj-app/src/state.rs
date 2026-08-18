@@ -82,6 +82,13 @@ pub struct AppState {
     /// numbers from a stream that has already been closed.
     bridge: Arc<Mutex<Option<Arc<dj_audio::BridgeStats>>>>,
     analysis: Arc<crate::analysis::AnalysisStore>,
+    /// The track database. In memory until `setup` can say where it lives --
+    /// see `crate::library::LibraryHandle`.
+    library: Arc<crate::library::LibraryHandle>,
+    /// The worker turning scanned files into tracks. `None` when the library
+    /// could not be opened at all, which is the one case where there is nothing
+    /// for it to do.
+    identifier: Mutex<Option<crate::library::Identifier>>,
     /// Title and artist per deck.
     ///
     /// The engine knows nothing about metadata -- it has samples and a
@@ -114,6 +121,14 @@ impl AppState {
         // device is opened, and the bus is re-aimed at it. This placeholder just
         // means `dispatch` before any device is open fails cleanly instead of
         // panicking.
+        // Built before anything else that might want it. An in-memory library
+        // that cannot even be created is not fatal: every library call reports
+        // the error, and the decks still play.
+        let library = Arc::new(
+            crate::library::LibraryHandle::in_memory()
+                .unwrap_or_else(|error| panic!("could not create an in-memory library: {error}")),
+        );
+
         let (bus, _placeholder) = ActionBus::<Command>::new(64);
         let bus = Arc::new(bus);
         let registry = Arc::new(ParameterRegistry::new());
@@ -153,8 +168,41 @@ impl AppState {
             presets: PresetLibrary::builtin(),
             bridge: Arc::new(Mutex::new(None)),
             analysis: Arc::new(crate::analysis::AnalysisStore::new()),
+            library,
+            identifier: Mutex::new(None),
             deck_tracks: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// The track database.
+    #[must_use]
+    pub fn library(&self) -> Arc<crate::library::LibraryHandle> {
+        Arc::clone(&self.library)
+    }
+
+    /// Open the library at its real home and start identifying what a scan has
+    /// found. Called once, from Tauri's `setup`.
+    pub fn open_library(&self, path: &std::path::Path) {
+        if let Err(error) = self.library.open_at(path) {
+            tracing::warn!(%error, ?path, "library stays in memory; it will not survive a restart");
+        }
+        let worker = crate::library::Identifier::start(
+            Arc::clone(&self.library),
+            crate::library::now_seconds,
+            crate::library::identify_file,
+        );
+        if let Ok(mut slot) = self.identifier.lock() {
+            *slot = Some(worker);
+        }
+    }
+
+    /// How the background identifier is getting on.
+    #[must_use]
+    pub fn identify_progress(&self) -> Option<Arc<crate::library::IdentifyProgress>> {
+        self.identifier
+            .lock()
+            .ok()
+            .and_then(|slot| slot.as_ref().map(crate::library::Identifier::progress))
     }
 
     #[must_use]

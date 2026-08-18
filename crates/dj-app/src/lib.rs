@@ -25,6 +25,7 @@ pub mod brand;
 pub mod commands;
 pub mod grid;
 pub mod host;
+pub mod library;
 pub mod presets;
 pub mod snapshot;
 pub mod sources;
@@ -157,6 +158,19 @@ pub fn run() {
                 analysis.set_cache_dir(crate::analysis::cache_subdir(&dir));
             }
 
+            // The library goes in the *config* directory rather than the cache
+            // one. A cache is something the system may delete to reclaim space;
+            // a DJ's cues, corrected grids and play history are not that.
+            match app.path().app_config_dir() {
+                Ok(dir) => {
+                    let state: tauri::State<'_, AppState> = handle.state();
+                    state.open_library(&dir.join("library.db"));
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "no config directory; the library stays in memory");
+                }
+            }
+
             let pump = SnapshotPump::start_with_bridge(
                 registry,
                 deck_count,
@@ -185,6 +199,11 @@ pub fn run() {
             commands::waveform_info,
             commands::report_bench,
             commands::session_log,
+            commands::library_status,
+            commands::library_add_folder,
+            commands::library_remove_folder,
+            commands::library_rescan,
+            commands::library_search,
             sources::list_sources,
             sources::set_secret,
             sources::clear_secret,

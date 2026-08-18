@@ -12,6 +12,7 @@ use crate::state::AppState;
 use dj_core::{Action, DeckId};
 use dj_decode::decode_file;
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::State;
 
@@ -741,4 +742,201 @@ mod grid_edit_tests {
             "two taps at the same position must not change the grid"
         );
     }
+}
+
+// -- the library -----------------------------------------------------------
+
+/// One track as the browser shows it.
+///
+/// Flat and pre-formatted. The interface should not be doing arithmetic on
+/// frames or looking up Camelot letters — it renders a table, and a table of
+/// four hundred rows re-deriving the same values on every keystroke is how a
+/// browser stops feeling instant.
+#[derive(Debug, Clone, Serialize)]
+pub struct LibraryTrackDto {
+    pub id: String,
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub album: Option<String>,
+    pub genre: Option<String>,
+    pub year: Option<i32>,
+    pub duration_seconds: f64,
+    pub bpm: Option<f64>,
+    /// Camelot notation, which is what a DJ mixes by.
+    pub key: Option<String>,
+    pub loudness_lufs: Option<f64>,
+    /// True once the track has everything sync and harmonic mixing need.
+    pub analysed: bool,
+    pub play_count: i64,
+}
+
+impl From<dj_library::LibraryTrack> for LibraryTrackDto {
+    fn from(track: dj_library::LibraryTrack) -> Self {
+        Self {
+            id: track.id.to_hex(),
+            path: track.path.to_string_lossy().into_owned(),
+            title: track.display_title(),
+            artist: track.display_artist().to_owned(),
+            album: track.tags.album.clone(),
+            genre: track.tags.genre.clone(),
+            year: track.tags.year,
+            duration_seconds: track.duration_seconds(),
+            bpm: track.analysis.bpm,
+            key: track.analysis.key().map(|k| k.camelot()),
+            loudness_lufs: track.analysis.loudness_lufs,
+            analysed: track.analysis.is_complete(),
+            play_count: track.stats.play_count,
+        }
+    }
+}
+
+/// How the collection is doing.
+#[derive(Debug, Clone, Serialize)]
+pub struct LibraryStatusDto {
+    pub tracks: i64,
+    /// Files scanned but not yet identified.
+    pub pending: i64,
+    /// Files that could not be identified, with the reason.
+    pub failed: Vec<FailedFileDto>,
+    pub folders: Vec<String>,
+    /// Identified since the application started.
+    pub identified: usize,
+    /// True while a file is actually being decoded.
+    pub working: bool,
+    /// Where the database lives, or `None` when it is in memory only — which
+    /// means everything here is lost on restart, and the interface says so.
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FailedFileDto {
+    pub path: String,
+    pub reason: String,
+}
+
+fn library(state: &AppState) -> Result<Arc<dj_library::Library>, String> {
+    state.library().get().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn library_status(state: State<'_, AppState>) -> Result<LibraryStatusDto, String> {
+    let db = library(&state)?;
+    let progress = state.identify_progress();
+    Ok(LibraryStatusDto {
+        tracks: db.track_count().map_err(|e| e.to_string())?,
+        pending: db.pending_count().map_err(|e| e.to_string())?,
+        failed: db
+            .failed_pending()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|(path, reason)| FailedFileDto {
+                path: path.to_string_lossy().into_owned(),
+                reason,
+            })
+            .collect(),
+        folders: db
+            .folders()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect(),
+        identified: progress
+            .as_ref()
+            .map_or(0, |p| p.done.load(std::sync::atomic::Ordering::Relaxed)),
+        working: progress
+            .as_ref()
+            .is_some_and(|p| p.working.load(std::sync::atomic::Ordering::Relaxed)),
+        path: state
+            .library()
+            .path()
+            .map(|p| p.to_string_lossy().into_owned()),
+    })
+}
+
+/// Watch a folder and walk it now.
+///
+/// Synchronous, because walking is the cheap half: tags and directory entries,
+/// no decoding. A large collection takes seconds, not the hours identification
+/// takes — see `dj_library::scan`.
+#[tauri::command]
+pub async fn library_add_folder(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<LibraryScanDto, String> {
+    let db = library(&state)?;
+    let now = crate::library::now_seconds();
+    let folder = PathBuf::from(&path);
+
+    db.add_folder(&folder, now).map_err(|e| e.to_string())?;
+    let report =
+        tauri::async_runtime::spawn_blocking(move || dj_library::scan_folder(&db, &folder, now))
+            .await
+            .map_err(|e| format!("scan task failed: {e}"))?
+            .map_err(|e| e.to_string())?;
+
+    Ok(report.into())
+}
+
+#[tauri::command]
+pub fn library_remove_folder(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    library(&state)?
+        .remove_folder(Path::new(&path))
+        .map_err(|e| e.to_string())
+}
+
+/// Re-walk every watched folder.
+#[tauri::command]
+pub async fn library_rescan(state: State<'_, AppState>) -> Result<LibraryScanDto, String> {
+    let db = library(&state)?;
+    let now = crate::library::now_seconds();
+    let report = tauri::async_runtime::spawn_blocking(move || dj_library::scan_all(&db, now))
+        .await
+        .map_err(|e| format!("scan task failed: {e}"))?
+        .map_err(|e| e.to_string())?;
+    Ok(report.into())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LibraryScanDto {
+    pub found: usize,
+    pub added: usize,
+    pub unchanged: usize,
+    pub unreadable_dirs: usize,
+    pub untaggable: usize,
+}
+
+impl From<dj_library::ScanReport> for LibraryScanDto {
+    fn from(report: dj_library::ScanReport) -> Self {
+        Self {
+            found: report.found,
+            added: report.added,
+            unchanged: report.unchanged,
+            unreadable_dirs: report.unreadable_dirs,
+            untaggable: report.untaggable,
+        }
+    }
+}
+
+/// How many rows the browser asks for at once.
+///
+/// A DJ scrolling a 50,000-track collection does not read 50,000 rows, and
+/// serialising them all through IPC on every keystroke is what makes a browser
+/// feel slow. Five hundred is more than a screen holds at any zoom.
+const BROWSE_LIMIT: usize = 500;
+
+/// Search the library, or list it when the query is empty.
+#[tauri::command]
+pub fn library_search(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<Vec<LibraryTrackDto>, String> {
+    let db = library(&state)?;
+    let found = if query.trim().is_empty() {
+        db.all_tracks(BROWSE_LIMIT)
+    } else {
+        db.search(&query, BROWSE_LIMIT)
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(found.into_iter().map(LibraryTrackDto::from).collect())
 }

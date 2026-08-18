@@ -97,10 +97,19 @@ unimplemented = "warn"
 lto = "thin"
 codegen-units = 1
 
-# Audio work is unusable in a debug build: decoding and DSP are far too slow.
-# Optimise dependencies even in dev profile so the app is testable while debugging.
-[profile.dev.package."*"]
-opt-level = 3
-
 [profile.dev]
 opt-level = 1
+# Line tables rather than full debug info. Backtraces still name the file and
+# line -- which is what a failing test is read for -- while the target directory
+# stops carrying several gigabytes of DWARF for the GTK and WebKit bindings,
+# which nobody has ever stepped through. Set `debug = true` here if you need a
+# debugger to inspect variables.
+debug = "line-tables-only"
+
+# Dependencies get none at all. A backtrace through `symphonia` or `tauri` is
+# read for *our* frames; theirs are noise, and they are the bulk of the bytes.
+# Audio work is unusable in a debug build: decoding and DSP are far too slow, so
+# dependencies are optimised even in the dev profile.
+[profile.dev.package."*"]
+opt-level = 3
+debug = false

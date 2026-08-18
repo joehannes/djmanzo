@@ -23,6 +23,7 @@ tauri-build = { version = "2", features = [] }
 dj-core = { workspace = true }
 dj-audio = { workspace = true }
 dj-decode = { workspace = true }
+dj-library = { workspace = true }
 dj-engine = { workspace = true }
 dj-control = { workspace = true }
 dj-dsp = { workspace = true }
@@ -47,3 +48,6 @@ tracing-subscriber = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile = { workspace = true }

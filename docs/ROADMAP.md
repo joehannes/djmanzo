@@ -192,9 +192,40 @@ lists, folders and smart queries; playlist membership with position in the key, 
 playlist is a sequence and not a set; play history; and saved loops, which closes the one M2
 item that was waiting for somewhere to put it.
 
-Not yet: nothing writes to the playlist, history or saved-loop tables, the background
-identifier is not built, and none of it is wired into the interface. The importers, SideView,
-sortable columns and layout presets are all still ahead.
+The library is wired into the application. It opens in the *config* directory rather than the
+cache one — a cache is something the system may delete to reclaim space, and a DJ's cues,
+corrected grids and play history are not that — and a background worker drains the identify
+queue one file at a time, decoding, hashing, analysing and promoting each into `tracks`.
+
+Analysis happens during identification rather than at load. The expensive part is having the
+decoded samples in memory and they already are, so leaving it until a track reaches a deck
+would mean decoding the same file twice — and, worse, a DJ who imported their collection last
+night would still have no BPM or key to sort by this evening. A library you cannot sort by
+tempo is most of the reason to have one.
+
+The browser is a tab alongside the sources search, and is the one that opens first: a
+streaming search is what you do when your own crate does not have it. It is a dense sortable
+table rather than a list of cards, sorted client-side because the rows are already there, with
+search debounced at 120 ms and nulls sorted last in every column — an unanalysed track has no
+BPM, and burying those among the 60s and the 180s would be worse than keeping them together
+where they can be seen.
+
+Three bugs that only showed up against real audio. `upsert_track` deliberately never writes
+the analysis columns, so that a rescan reading tags off disk cannot erase a grid the DJ
+corrected — which meant promotion silently dropped the analysis identification had just done,
+and the collection filled up with tracks that never got a BPM. Promotion now writes analysis
+too, in the same transaction, but only where there is none, so a second copy of the same audio
+turning up in another folder cannot replace a corrected grid with a fresh guess. Silence
+measures as negative infinity, which `serde_json` refuses, so one silent track would have
+broken the whole browser payload; it stores as absent. And the panel polled the track *count*
+without re-reading the rows, so a DJ would have watched the number climb to four thousand over
+an empty table.
+
+Verified end to end against generated click tracks at 90, 120 and 140 BPM: scan, identify,
+analyse, store, serve and display, reading back 90.1, 120.1 and 139.9.
+
+Not yet: nothing writes to the playlist, history or saved-loop tables, and cues and grid edits
+are not yet persisted per track. The importers, SideView and layout presets are still ahead.
 
 ---
 

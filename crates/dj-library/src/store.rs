@@ -86,54 +86,18 @@ impl Library {
     /// tags off disk; it has no business throwing away a grid the DJ corrected
     /// or a play count earned over a year. Use [`Self::set_analysis`] for that.
     pub fn upsert_track(&self, track: &LibraryTrack) -> Result<()> {
-        self.with(|conn| {
-            conn.execute(
-                "INSERT INTO tracks (
-                     id, path, title, artist, album, album_artist, genre, label,
-                     comment, year, track_number, duration_frames, sample_rate,
-                     channels, file_size, file_modified, added_at
-                 ) VALUES (
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                     ?14, ?15, ?16, ?17
-                 )
-                 ON CONFLICT(id) DO UPDATE SET
-                     path = excluded.path,
-                     title = excluded.title,
-                     artist = excluded.artist,
-                     album = excluded.album,
-                     album_artist = excluded.album_artist,
-                     genre = excluded.genre,
-                     label = excluded.label,
-                     comment = excluded.comment,
-                     year = excluded.year,
-                     track_number = excluded.track_number,
-                     duration_frames = excluded.duration_frames,
-                     sample_rate = excluded.sample_rate,
-                     channels = excluded.channels,
-                     file_size = excluded.file_size,
-                     file_modified = excluded.file_modified",
-                params![
-                    track.id.to_hex(),
-                    track.path.to_string_lossy(),
-                    track.tags.title,
-                    track.tags.artist,
-                    track.tags.album,
-                    track.tags.album_artist,
-                    track.tags.genre,
-                    track.tags.label,
-                    track.tags.comment,
-                    track.tags.year,
-                    track.tags.track_number,
-                    track.duration_frames as i64,
-                    track.sample_rate.get(),
-                    track.channels,
-                    track.file_size.map(|s| s as i64),
-                    track.file_modified,
-                    track.added_at,
-                ],
-            )?;
-            Ok(())
-        })
+        self.with(|conn| upsert_track_on(conn, track))
+    }
+
+    /// Analysis for a track that has none.
+    ///
+    /// Conditional, not unconditional: the caller is identification, which is
+    /// the one moment fresh analysis exists and the row is usually new. If the
+    /// track *has* been analysed, that result may be a grid the DJ corrected by
+    /// hand -- and a second copy of the same audio turning up in another folder
+    /// must not quietly replace it with the analyser's guess.
+    pub fn set_analysis_if_absent(&self, id: TrackId, analysis: &StoredAnalysis) -> Result<bool> {
+        self.with(|conn| set_analysis_if_absent_on(conn, id, analysis))
     }
 
     pub fn track(&self, id: TrackId) -> Result<Option<LibraryTrack>> {
@@ -463,11 +427,20 @@ impl Library {
     /// lose the track or leave it queued forever.
     pub fn promote_pending(&self, track: &LibraryTrack) -> Result<()> {
         let path = track.path.to_string_lossy().into_owned();
-        self.upsert_track(track)?;
-        self.with(|conn| {
-            conn.execute("DELETE FROM pending_files WHERE path = ?1", [path])?;
-            Ok(())
-        })
+        let mut conn = self.conn.lock().map_err(|_| LibraryError::Poisoned)?;
+        let tx = conn.transaction()?;
+
+        upsert_track_on(&tx, track)?;
+        // `upsert_track` deliberately never touches the analysis columns, so
+        // that a rescan reading tags off disk cannot erase a grid the DJ
+        // corrected. Identification is the exception: it is the one caller that
+        // has just analysed the audio, and without this the library would fill
+        // up with tracks that never get a BPM.
+        set_analysis_if_absent_on(&tx, track.id, &track.analysis)?;
+        tx.execute("DELETE FROM pending_files WHERE path = ?1", [path])?;
+
+        tx.commit()?;
+        Ok(())
     }
 
     /// Identification failed. Recorded rather than retried, so a corrupt file
@@ -536,6 +509,100 @@ impl Library {
                 .collect()
         })
     }
+}
+
+/// The upsert itself, against whatever connection or transaction is handed in.
+///
+/// Free rather than a method so [`Library::promote_pending`] can run it inside
+/// its own transaction: a promotion writes three things and must not be able to
+/// leave two of them behind.
+///
+/// Analysis and play statistics are absent from the column list on purpose. A
+/// rescan reads tags off disk; it has no business throwing away a grid the DJ
+/// corrected or a play count earned over a year.
+fn upsert_track_on(conn: &Connection, track: &LibraryTrack) -> Result<()> {
+    conn.execute(
+        "INSERT INTO tracks (
+             id, path, title, artist, album, album_artist, genre, label,
+             comment, year, track_number, duration_frames, sample_rate,
+             channels, file_size, file_modified, added_at
+         ) VALUES (
+             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+             ?14, ?15, ?16, ?17
+         )
+         ON CONFLICT(id) DO UPDATE SET
+             path = excluded.path,
+             title = excluded.title,
+             artist = excluded.artist,
+             album = excluded.album,
+             album_artist = excluded.album_artist,
+             genre = excluded.genre,
+             label = excluded.label,
+             comment = excluded.comment,
+             year = excluded.year,
+             track_number = excluded.track_number,
+             duration_frames = excluded.duration_frames,
+             sample_rate = excluded.sample_rate,
+             channels = excluded.channels,
+             file_size = excluded.file_size,
+             file_modified = excluded.file_modified",
+        params![
+            track.id.to_hex(),
+            track.path.to_string_lossy(),
+            track.tags.title,
+            track.tags.artist,
+            track.tags.album,
+            track.tags.album_artist,
+            track.tags.genre,
+            track.tags.label,
+            track.tags.comment,
+            track.tags.year,
+            track.tags.track_number,
+            track.duration_frames as i64,
+            track.sample_rate.get(),
+            track.channels,
+            track.file_size.map(|s| s as i64),
+            track.file_modified,
+            track.added_at,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Write analysis only where there is none. Returns whether it wrote.
+///
+/// "None" means every analysed column is null. A partially analysed row -- a
+/// tempo but no key, say -- counts as analysed and is left alone: the analyser
+/// having found only half the answer is still a result, and one the DJ may have
+/// since corrected.
+fn set_analysis_if_absent_on(
+    conn: &Connection,
+    id: TrackId,
+    analysis: &StoredAnalysis,
+) -> Result<bool> {
+    let written = conn.execute(
+        "UPDATE tracks SET
+             bpm = ?2, grid_anchor = ?3, grid_beats_per_bar = ?4,
+             grid_confidence = ?5, key_hour = ?6, key_mode = ?7,
+             key_confidence = ?8, loudness_lufs = ?9
+         WHERE id = ?1
+           AND bpm IS NULL
+           AND grid_anchor IS NULL
+           AND key_hour IS NULL
+           AND loudness_lufs IS NULL",
+        params![
+            id.to_hex(),
+            analysis.bpm,
+            analysis.grid_anchor,
+            analysis.grid_beats_per_bar,
+            analysis.grid_confidence,
+            analysis.key_hour,
+            analysis.key_mode.map(mode_to_sql),
+            analysis.key_confidence,
+            analysis.loudness_lufs,
+        ],
+    )?;
+    Ok(written > 0)
 }
 
 /// Turn what somebody typed into an FTS5 prefix query.
@@ -999,6 +1066,90 @@ mod tests {
             "oldest first, so an interrupted scan resumes rather than restarts"
         );
         assert_eq!(next[0].tags.title.as_deref(), Some("A"));
+    }
+
+    /// The bug this exists to catch: identification analyses the audio it has
+    /// just decoded, and `upsert_track` deliberately never writes the analysis
+    /// columns. Without a path that does, the library fills up with tracks that
+    /// never get a BPM -- and nothing looks broken while it happens.
+    #[test]
+    fn promoting_stores_the_analysis_identification_produced() {
+        let lib = library();
+        lib.record_pending(&scanned("/music/a.mp3", "A"), 100)
+            .unwrap();
+
+        let grid = Beatgrid::new(
+            FramePos::new(2_000.0),
+            Bpm::new(128.0).unwrap(),
+            Confidence::new(0.8),
+        );
+        let mut t = track(1, "A", "B");
+        t.path = PathBuf::from("/music/a.mp3");
+        t.analysis = StoredAnalysis {
+            loudness_lufs: Some(-8.5),
+            ..StoredAnalysis::default()
+        }
+        .with_beatgrid(grid)
+        .with_key(MusicalKey::new(8, Mode::Minor).unwrap(), 0.7);
+
+        lib.promote_pending(&t).unwrap();
+
+        let stored = lib.track(id(1)).unwrap().unwrap().analysis;
+        assert_eq!(stored.beatgrid(), Some(grid));
+        assert_eq!(stored.key(), Some(MusicalKey::new(8, Mode::Minor).unwrap()));
+        assert_eq!(stored.loudness_lufs, Some(-8.5));
+    }
+
+    /// ...but a second copy of the same audio turning up in another folder must
+    /// not replace a grid the DJ corrected with the analyser's fresh guess.
+    #[test]
+    fn promoting_does_not_overwrite_an_analysis_that_is_already_there() {
+        let lib = library();
+        let mut t = track(1, "A", "B");
+        t.path = PathBuf::from("/music/a.mp3");
+        lib.upsert_track(&t).unwrap();
+
+        let corrected = Beatgrid::new(
+            FramePos::new(9_999.0),
+            Bpm::new(126.0).unwrap(),
+            Confidence::CERTAIN,
+        );
+        lib.set_analysis(id(1), &StoredAnalysis::default().with_beatgrid(corrected))
+            .unwrap();
+
+        // The same audio, found again somewhere else, freshly analysed.
+        let mut second_copy = t.clone();
+        second_copy.path = PathBuf::from("/music/copies/a.mp3");
+        second_copy.analysis = StoredAnalysis::default().with_beatgrid(Beatgrid::new(
+            FramePos::new(0.0),
+            Bpm::new(63.0).unwrap(),
+            Confidence::new(0.3),
+        ));
+        lib.record_pending(&scanned("/music/copies/a.mp3", "A"), 200)
+            .unwrap();
+        lib.promote_pending(&second_copy).unwrap();
+
+        assert_eq!(
+            lib.track(id(1)).unwrap().unwrap().analysis.beatgrid(),
+            Some(corrected),
+            "the DJ's corrected grid must survive another copy being scanned"
+        );
+    }
+
+    #[test]
+    fn set_analysis_if_absent_reports_whether_it_wrote() {
+        let lib = library();
+        lib.upsert_track(&track(1, "A", "B")).unwrap();
+        let fresh = StoredAnalysis {
+            loudness_lufs: Some(-10.0),
+            ..StoredAnalysis::default()
+        };
+
+        assert!(lib.set_analysis_if_absent(id(1), &fresh).unwrap());
+        assert!(
+            !lib.set_analysis_if_absent(id(1), &fresh).unwrap(),
+            "the second call has something to preserve, so it must decline"
+        );
     }
 
     #[test]

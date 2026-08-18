@@ -7,6 +7,7 @@
    * says why it cannot, in the same place the button would have been. Greying
    * something out and leaving the DJ to guess is the failure mode here.
    */
+  import Library from "./Library.svelte";
   import { loadTrack, resolveSourceTrack, searchSources, type SearchResults, type SourceTrack } from "./api";
 
   let { enabled, deckCount = 2 }: { enabled: boolean; deckCount?: number } = $props();
@@ -55,9 +56,41 @@
   };
 
   const total = $derived(results.reduce((sum, r) => sum + r.tracks.length, 0));
+
+  /**
+   * Which half of the browser is showing.
+   *
+   * The collection first, because that is where a DJ starts. A streaming search
+   * is what you do when your own crate does not have it — the exception, not
+   * the default, and putting it first would put a network round trip between a
+   * DJ and music they already own.
+   */
+  let tab = $state<"library" | "sources">("library");
 </script>
 
 <section class="browse">
+  <div class="tabs" role="tablist">
+    <button
+      role="tab"
+      class:active={tab === "library"}
+      aria-selected={tab === "library"}
+      onclick={() => (tab = "library")}
+    >
+      My collection
+    </button>
+    <button
+      role="tab"
+      class:active={tab === "sources"}
+      aria-selected={tab === "sources"}
+      onclick={() => (tab = "sources")}
+    >
+      Sources
+    </button>
+  </div>
+
+{#if tab === "library"}
+  <Library {enabled} {deckCount} />
+{:else}
   <div class="search">
     <input
       type="search"
@@ -136,9 +169,26 @@
       {/if}
     {/each}
   </div>
+{/if}
 </section>
 
 <style>
+  .tabs {
+    display: flex;
+    gap: 0.3rem;
+  }
+
+  .tabs button {
+    font-size: 0.85em;
+    padding: 0.2rem 0.7rem;
+  }
+
+  .tabs button.active {
+    background: var(--accent-2);
+    color: var(--on-accent);
+    border-color: var(--accent-2);
+  }
+
   .browse {
     display: flex;
     flex-direction: column;

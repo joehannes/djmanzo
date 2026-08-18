@@ -400,6 +400,71 @@ export function logoUrl(version: number): string {
     : `brand://localhost/${path}`;
 }
 
+// -- the library -----------------------------------------------------------
+
+/** One track as the browser shows it. Pre-formatted in Rust — see the DTO. */
+export interface LibraryTrack {
+  id: string;
+  path: string;
+  title: string;
+  artist: string;
+  album: string | null;
+  genre: string | null;
+  year: number | null;
+  duration_seconds: number;
+  bpm: number | null;
+  /** Camelot notation, which is what a DJ mixes by. */
+  key: string | null;
+  loudness_lufs: number | null;
+  /** True once the track has everything sync and harmonic mixing need. */
+  analysed: boolean;
+  play_count: number;
+}
+
+export interface FailedFile {
+  path: string;
+  reason: string;
+}
+
+export interface LibraryStatus {
+  tracks: number;
+  /** Files scanned but not yet identified. */
+  pending: number;
+  failed: FailedFile[];
+  folders: string[];
+  /** Identified since the application started. */
+  identified: number;
+  /** True while a file is actually being decoded. */
+  working: boolean;
+  /**
+   * Where the database lives, or null when it is in memory only — in which
+   * case everything in it is lost on restart, and the panel says so.
+   */
+  path: string | null;
+}
+
+export interface ScanReport {
+  found: number;
+  added: number;
+  unchanged: number;
+  unreadable_dirs: number;
+  untaggable: number;
+}
+
+export const libraryStatus = () => invoke<LibraryStatus>("library_status");
+
+export const libraryAddFolder = (path: string) =>
+  invoke<ScanReport>("library_add_folder", { path });
+
+export const libraryRemoveFolder = (path: string) =>
+  invoke<void>("library_remove_folder", { path });
+
+export const libraryRescan = () => invoke<ScanReport>("library_rescan");
+
+/** Search the collection, or list it when the query is empty. */
+export const librarySearch = (query: string) =>
+  invoke<LibraryTrack[]>("library_search", { query });
+
 /** Read state once, so a freshly-mounted UI can paint without waiting. */
 export const getSnapshot = () => invoke<Snapshot>("get_snapshot");
 
