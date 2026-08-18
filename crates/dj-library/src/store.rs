@@ -1,5 +1,6 @@
 //! Reading and writing the library.
 
+use crate::import::ImportReport;
 use crate::playlist::{PlayRecord, Playlist, PlaylistKind};
 use crate::record::{LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop, Tags};
 use crate::schema;
@@ -155,7 +156,7 @@ impl Library {
                 "UPDATE tracks SET
                      bpm = ?2, grid_anchor = ?3, grid_beats_per_bar = ?4,
                      grid_confidence = ?5, key_hour = ?6, key_mode = ?7,
-                     key_confidence = ?8, loudness_lufs = ?9
+                     key_confidence = ?8, loudness_lufs = ?9, grid_source = ?10
                  WHERE id = ?1",
                 params![
                     id.to_hex(),
@@ -167,6 +168,7 @@ impl Library {
                     analysis.key_mode.map(mode_to_sql),
                     analysis.key_confidence,
                     analysis.loudness_lufs,
+                    analysis.grid_source.map(crate::GridSource::as_sql),
                 ],
             )?;
             Ok(())
@@ -451,7 +453,12 @@ impl Library {
         // has just analysed the audio, and without this the library would fill
         // up with tracks that never get a BPM.
         set_analysis_if_absent_on(&tx, track.id, &track.analysis)?;
-        tx.execute("DELETE FROM pending_files WHERE path = ?1", [path])?;
+        // Anything an import staged against this path: its cues, its loops, its
+        // grid, and its place in the playlists. Applied here, in the same
+        // transaction, because a promotion that created the row and lost the
+        // cues would be silent and unrecoverable.
+        Self::apply_staged_import(&tx, track.id, &path)?;
+        tx.execute("DELETE FROM pending_files WHERE path = ?1", [&path])?;
 
         tx.commit()?;
         Ok(())
@@ -793,6 +800,129 @@ impl Library {
         })
     }
 
+    // -- importing ---------------------------------------------------------
+
+    /// Bring an imported collection into the library.
+    ///
+    /// # What happens to a track depends on whether we know it
+    ///
+    /// An import names tracks by path, and our identity is the hash of the
+    /// decoded audio. So:
+    ///
+    /// - a path already in `tracks` is **updated in place** — its tags are
+    ///   refreshed and its cues, loops and grid are applied straight away,
+    ///   because there is a row to hang them on;
+    /// - a path we have never seen is **queued**, with the import's cues and
+    ///   grid attached, for the background identifier to decode and promote.
+    ///
+    /// The playlist *tree* is created immediately either way, because it needs
+    /// no track ids: a DJ who imports 5,000 tracks sees their crates in the
+    /// sidebar at once and watches the contents fill in.
+    ///
+    /// One transaction. An import that half-happened would be worse than one
+    /// that failed, because there is no way to tell which half.
+    pub fn import(&self, collection: &crate::import::Collection, now: i64) -> Result<ImportReport> {
+        let mut conn = self.conn.lock().map_err(|_| LibraryError::Poisoned)?;
+        let tx = conn.transaction()?;
+
+        let mut report = ImportReport {
+            tracks: collection.tracks.len(),
+            skipped: collection
+                .skipped
+                .iter()
+                .map(|s| format!("{}: {}", s.what, s.reason))
+                .collect(),
+            ..ImportReport::default()
+        };
+
+        for track in &collection.tracks {
+            let path = track.path.to_string_lossy();
+            let known: Option<String> = tx
+                .query_row("SELECT id FROM tracks WHERE path = ?1", [&path], |row| {
+                    row.get(0)
+                })
+                .optional()?;
+
+            match known.as_deref().and_then(track_id_from_hex) {
+                Some(id) => {
+                    apply_import_tags(&tx, id, track)?;
+                    apply_payload(&tx, id, &track.payload)?;
+                    report.already_known += 1;
+                }
+                None => {
+                    queue_import(&tx, track, now)?;
+                    report.queued += 1;
+                }
+            }
+        }
+
+        // The tree. Created after the tracks so that a playlist entry naming a
+        // path already in the library can be written straight through.
+        let mut ids: Vec<i64> = Vec::with_capacity(collection.playlists.len());
+        for node in &collection.playlists {
+            let parent = node.parent.and_then(|index| ids.get(index).copied());
+            let kind = if node.is_folder {
+                PlaylistKind::Folder
+            } else {
+                PlaylistKind::List
+            };
+            tx.execute(
+                "INSERT INTO playlists (name, parent_id, kind, query, created_at)
+                 VALUES (?1, ?2, ?3, NULL, ?4)",
+                params![node.name, parent, kind.as_sql(), now],
+            )?;
+            let id = tx.last_insert_rowid();
+            ids.push(id);
+
+            if node.is_folder {
+                report.folders += 1;
+            } else {
+                report.playlists += 1;
+            }
+
+            for (position, path) in node.paths.iter().enumerate() {
+                add_import_entry(&tx, id, path, position as i64)?;
+            }
+        }
+
+        tx.commit()?;
+        Ok(report)
+    }
+
+    /// Apply whatever an import staged for a track, and forget it.
+    ///
+    /// Called at promotion, when the file finally has an id. Separate from
+    /// [`Self::promote_pending`] so the identifier can apply it in the same
+    /// transaction that creates the row.
+    fn apply_staged_import(tx: &rusqlite::Transaction<'_>, id: TrackId, path: &str) -> Result<()> {
+        let payload: Option<String> = tx
+            .query_row(
+                "SELECT import_payload FROM pending_files WHERE path = ?1",
+                [path],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+
+        if let Some(json) = payload
+            && let Ok(payload) = serde_json::from_str::<crate::import::ImportPayload>(&json)
+        {
+            apply_payload(tx, id, &payload)?;
+        }
+
+        // Playlist membership queued by path becomes real membership.
+        tx.execute(
+            "INSERT OR REPLACE INTO playlist_tracks (playlist_id, track_id, position)
+             SELECT playlist_id, ?2, position FROM pending_playlist_entries WHERE path = ?1",
+            params![path, id.to_hex()],
+        )?;
+        tx.execute(
+            "DELETE FROM pending_playlist_entries WHERE path = ?1",
+            [path],
+        )?;
+        Ok(())
+    }
+
     // -- history -----------------------------------------------------------
 
     /// What was played, most recent first.
@@ -931,27 +1061,55 @@ fn upsert_track_on(conn: &Connection, track: &LibraryTrack) -> Result<()> {
     Ok(())
 }
 
-/// Write analysis only where there is none. Returns whether it wrote.
+/// Write analysis where the new result has at least as much authority as what
+/// is already there. Returns whether it wrote.
 ///
-/// "None" means every analysed column is null. A partially analysed row -- a
-/// tempo but no key, say -- counts as analysed and is left alone: the analyser
-/// having found only half the answer is still a result, and one the DJ may have
-/// since corrected.
+/// The authority ordering lives in [`crate::GridSource`]: a hand edit outranks
+/// an import, an import outranks an analysis, and an analysis fills in a blank.
+/// Without it the only rules expressible are "always" and "never", and both are
+/// wrong -- see the migration that added the column.
+///
+/// The key and the loudness ride along with the grid. They come from the same
+/// source in every case, and splitting them would mean a track whose grid was
+/// imported and whose key was analysed, which is harder to explain than it is
+/// worth.
 fn set_analysis_if_absent_on(
     conn: &Connection,
     id: TrackId,
     analysis: &StoredAnalysis,
 ) -> Result<bool> {
+    let existing: Option<Option<String>> = conn
+        .query_row(
+            "SELECT grid_source FROM tracks WHERE id = ?1",
+            [id.to_hex()],
+            |row| row.get(0),
+        )
+        .optional()?;
+    // No row at all: nothing to write to.
+    let Some(existing) = existing else {
+        return Ok(false);
+    };
+    let existing = existing.as_deref().and_then(crate::GridSource::from_sql);
+
+    // An analysis with nothing to say must not clear a grid that is there.
+    let incoming = analysis.grid_source.unwrap_or(crate::GridSource::Analysis);
+    if !incoming.may_replace(existing) {
+        return Ok(false);
+    }
+
     let written = conn.execute(
         "UPDATE tracks SET
              bpm = ?2, grid_anchor = ?3, grid_beats_per_bar = ?4,
-             grid_confidence = ?5, key_hour = ?6, key_mode = ?7,
-             key_confidence = ?8, loudness_lufs = ?9
-         WHERE id = ?1
-           AND bpm IS NULL
-           AND grid_anchor IS NULL
-           AND key_hour IS NULL
-           AND loudness_lufs IS NULL",
+             grid_confidence = ?5,
+             -- COALESCE so a source that knows the grid but not the key -- an
+             -- import from software that records no key, say -- does not blank
+             -- one the analyser had already found.
+             key_hour = COALESCE(?6, key_hour),
+             key_mode = COALESCE(?7, key_mode),
+             key_confidence = COALESCE(?8, key_confidence),
+             loudness_lufs = COALESCE(?9, loudness_lufs),
+             grid_source = ?10
+         WHERE id = ?1",
         params![
             id.to_hex(),
             analysis.bpm,
@@ -962,6 +1120,7 @@ fn set_analysis_if_absent_on(
             analysis.key_mode.map(mode_to_sql),
             analysis.key_confidence,
             analysis.loudness_lufs,
+            analysis.grid_source.map(crate::GridSource::as_sql),
         ],
     )?;
     Ok(written > 0)
@@ -988,7 +1147,7 @@ const TRACK_COLUMNS: &str = "id, path, title, artist, album, album_artist, genre
      year, track_number, duration_frames, sample_rate, channels, file_size, \
      file_modified, added_at, bpm, grid_anchor, grid_beats_per_bar, \
      grid_confidence, key_hour, key_mode, key_confidence, loudness_lufs, \
-     play_count, last_played, rating";
+     play_count, last_played, rating, grid_source";
 
 /// The same list, qualified — needed wherever the query joins another table
 /// that has columns of the same name.
@@ -998,7 +1157,8 @@ const TRACK_COLUMNS_QUALIFIED: &str = "tracks.id, tracks.path, tracks.title, tra
      tracks.channels, tracks.file_size, tracks.file_modified, tracks.added_at, \
      tracks.bpm, tracks.grid_anchor, tracks.grid_beats_per_bar, \
      tracks.grid_confidence, tracks.key_hour, tracks.key_mode, tracks.key_confidence, \
-     tracks.loudness_lufs, tracks.play_count, tracks.last_played, tracks.rating";
+     tracks.loudness_lufs, tracks.play_count, tracks.last_played, tracks.rating, \
+     tracks.grid_source";
 
 /// Read one row.
 ///
@@ -1065,6 +1225,10 @@ fn read_track_from(row: &Row<'_>, base: usize) -> rusqlite::Result<Result<Librar
             key_mode: key_mode.as_deref().and_then(mode_from_sql),
             key_confidence: row.get(at(23))?,
             loudness_lufs: row.get(at(24))?,
+            grid_source: row
+                .get::<_, Option<String>>(at(28))?
+                .as_deref()
+                .and_then(crate::GridSource::from_sql),
         },
         stats: PlayStats {
             play_count: row.get(at(25))?,
@@ -1100,6 +1264,223 @@ fn mode_from_sql(word: &str) -> Option<Mode> {
         "major" => Some(Mode::Major),
         _ => None,
     }
+}
+
+/// Refresh a known track's tags from an import.
+///
+/// Tags only. An import must not overwrite analysis a DJ has since corrected —
+/// the same rule a rescan follows, for the same reason.
+fn apply_import_tags(
+    tx: &rusqlite::Transaction<'_>,
+    id: TrackId,
+    track: &crate::import::ImportedTrack,
+) -> Result<()> {
+    tx.execute(
+        "UPDATE tracks SET
+             title = COALESCE(?2, title),
+             artist = COALESCE(?3, artist),
+             album = COALESCE(?4, album),
+             album_artist = COALESCE(?5, album_artist),
+             genre = COALESCE(?6, genre),
+             label = COALESCE(?7, label),
+             comment = COALESCE(?8, comment),
+             year = COALESCE(?9, year),
+             track_number = COALESCE(?10, track_number),
+             rating = COALESCE(?11, rating)
+         WHERE id = ?1",
+        params![
+            id.to_hex(),
+            track.title,
+            track.artist,
+            track.album,
+            track.album_artist,
+            track.genre,
+            track.label,
+            track.comment,
+            track.year,
+            track.track_number,
+            track.rating,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Write an import's cues, loops and grid onto a track that now has an id.
+///
+/// Cues and loops are written only where the track has none. A DJ who has been
+/// playing a record in djmanzo has cues on it that are theirs; an import from
+/// the software they left behind must not replace them. The grid follows the
+/// same rule via `set_analysis_if_absent_on`.
+fn apply_payload(
+    tx: &rusqlite::Transaction<'_>,
+    id: TrackId,
+    payload: &crate::import::ImportPayload,
+) -> Result<()> {
+    if payload.is_empty() {
+        return Ok(());
+    }
+
+    // The frame positions depend on the track's own sample rate, which is only
+    // known once it has been decoded -- so this reads it back rather than
+    // assuming one. A track with no rate cannot be given cues in frames.
+    let rate: Option<u32> = tx
+        .query_row(
+            "SELECT sample_rate FROM tracks WHERE id = ?1",
+            [id.to_hex()],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(rate) = rate.and_then(SampleRate::new) else {
+        return Ok(());
+    };
+    let frames = |seconds: f64| seconds * rate.as_f64();
+
+    let existing_cues: i64 = tx.query_row(
+        "SELECT count(*) FROM cues WHERE track_id = ?1",
+        [id.to_hex()],
+        |row| row.get(0),
+    )?;
+    if existing_cues == 0 {
+        for cue in &payload.cues {
+            tx.execute(
+                "INSERT OR REPLACE INTO cues (track_id, slot, frame, label, colour)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    id.to_hex(),
+                    cue.slot,
+                    frames(cue.seconds),
+                    cue.label,
+                    cue.colour
+                ],
+            )?;
+        }
+    }
+
+    let existing_loops: i64 = tx.query_row(
+        "SELECT count(*) FROM saved_loops WHERE track_id = ?1",
+        [id.to_hex()],
+        |row| row.get(0),
+    )?;
+    if existing_loops == 0 {
+        for region in &payload.loops {
+            tx.execute(
+                "INSERT OR REPLACE INTO saved_loops (track_id, slot, start_frame, end_frame, label)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    id.to_hex(),
+                    region.slot,
+                    frames(region.start_seconds),
+                    frames(region.end_seconds),
+                    region.label
+                ],
+            )?;
+        }
+    }
+
+    let mut analysis = StoredAnalysis {
+        // The grid a DJ has been playing from in another application outranks
+        // whatever our analyser guessed, and is outranked by a hand edit here.
+        grid_source: payload.bpm.map(|_| crate::GridSource::Import),
+        bpm: payload.bpm,
+        // A grid with a tempo but no anchor is not a grid. An import that gave
+        // only a BPM gets frame zero, which is what every DJ software assumes
+        // when it has nothing better -- and is correctable in one click.
+        grid_anchor: payload
+            .bpm
+            .map(|_| frames(payload.grid_anchor_seconds.unwrap_or(0.0))),
+        grid_beats_per_bar: payload.bpm.map(|_| 4),
+        // An imported grid is one somebody already trusted enough to play from.
+        grid_confidence: payload.bpm.map(|_| 1.0),
+        ..StoredAnalysis::default()
+    };
+    if let (Some(hour), Some(minor)) = (payload.key_hour, payload.key_minor) {
+        analysis.key_hour = Some(hour);
+        analysis.key_mode = Some(if minor { Mode::Minor } else { Mode::Major });
+        analysis.key_confidence = Some(1.0);
+    }
+    set_analysis_if_absent_on(tx, id, &analysis)?;
+    Ok(())
+}
+
+/// Queue a track an import named but the library has never seen.
+fn queue_import(
+    tx: &rusqlite::Transaction<'_>,
+    track: &crate::import::ImportedTrack,
+    now: i64,
+) -> Result<()> {
+    let payload = if track.payload.is_empty() {
+        None
+    } else {
+        serde_json::to_string(&track.payload).ok()
+    };
+    tx.execute(
+        "INSERT INTO pending_files (
+             path, title, artist, album, album_artist, genre, label, comment,
+             year, track_number, seen_at, import_payload
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+         ON CONFLICT(path) DO UPDATE SET
+             title = COALESCE(excluded.title, title),
+             artist = COALESCE(excluded.artist, artist),
+             album = COALESCE(excluded.album, album),
+             album_artist = COALESCE(excluded.album_artist, album_artist),
+             genre = COALESCE(excluded.genre, genre),
+             label = COALESCE(excluded.label, label),
+             comment = COALESCE(excluded.comment, comment),
+             year = COALESCE(excluded.year, year),
+             track_number = COALESCE(excluded.track_number, track_number),
+             import_payload = COALESCE(excluded.import_payload, import_payload),
+             -- A file named by an import is worth another attempt even if a
+             -- previous scan could not read it.
+             failed_reason = NULL",
+        params![
+            track.path.to_string_lossy(),
+            track.title,
+            track.artist,
+            track.album,
+            track.album_artist,
+            track.genre,
+            track.label,
+            track.comment,
+            track.year,
+            track.track_number,
+            now,
+            payload,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Put a path into a playlist, whether or not the track behind it is known yet.
+fn add_import_entry(
+    tx: &rusqlite::Transaction<'_>,
+    playlist: i64,
+    path: &std::path::Path,
+    position: i64,
+) -> Result<()> {
+    let path = path.to_string_lossy();
+    let known: Option<String> = tx
+        .query_row("SELECT id FROM tracks WHERE path = ?1", [&path], |row| {
+            row.get(0)
+        })
+        .optional()?;
+
+    match known {
+        Some(id) => {
+            tx.execute(
+                "INSERT OR REPLACE INTO playlist_tracks (playlist_id, track_id, position)
+                 VALUES (?1, ?2, ?3)",
+                params![playlist, id, position],
+            )?;
+        }
+        None => {
+            tx.execute(
+                "INSERT OR REPLACE INTO pending_playlist_entries (playlist_id, path, position)
+                 VALUES (?1, ?2, ?3)",
+                params![playlist, path, position],
+            )?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1476,7 +1857,7 @@ mod tests {
     /// ...but a second copy of the same audio turning up in another folder must
     /// not replace a grid the DJ corrected with the analyser's fresh guess.
     #[test]
-    fn promoting_does_not_overwrite_an_analysis_that_is_already_there() {
+    fn promoting_does_not_overwrite_a_hand_corrected_grid() {
         let lib = library();
         let mut t = track(1, "A", "B");
         t.path = PathBuf::from("/music/a.mp3");
@@ -1487,8 +1868,13 @@ mod tests {
             Bpm::new(126.0).unwrap(),
             Confidence::CERTAIN,
         );
-        lib.set_analysis(id(1), &StoredAnalysis::default().with_beatgrid(corrected))
-            .unwrap();
+        lib.set_analysis(
+            id(1),
+            &StoredAnalysis::default()
+                .with_beatgrid(corrected)
+                .from_source(crate::GridSource::Manual),
+        )
+        .unwrap();
 
         // The same audio, found again somewhere else, freshly analysed.
         let mut second_copy = t.clone();
@@ -1509,19 +1895,96 @@ mod tests {
         );
     }
 
+    /// The authority ordering, exercised in every direction that matters.
     #[test]
-    fn set_analysis_if_absent_reports_whether_it_wrote() {
+    fn a_grid_may_only_be_replaced_by_one_with_at_least_as_much_authority() {
+        use crate::GridSource;
+
+        let grid = |bpm: f64| {
+            Beatgrid::new(
+                FramePos::new(0.0),
+                Bpm::new(bpm).unwrap(),
+                Confidence::CERTAIN,
+            )
+        };
+        let write = |lib: &Library, bpm: f64, source: GridSource| {
+            lib.set_analysis_if_absent(
+                id(1),
+                &StoredAnalysis::default()
+                    .with_beatgrid(grid(bpm))
+                    .from_source(source),
+            )
+            .unwrap()
+        };
+        let bpm_now = |lib: &Library| lib.track(id(1)).unwrap().unwrap().analysis.bpm;
+
         let lib = library();
         lib.upsert_track(&track(1, "A", "B")).unwrap();
-        let fresh = StoredAnalysis {
-            loudness_lufs: Some(-10.0),
-            ..StoredAnalysis::default()
-        };
 
-        assert!(lib.set_analysis_if_absent(id(1), &fresh).unwrap());
+        // A blank takes anything.
+        assert!(write(&lib, 100.0, GridSource::Analysis));
+        assert_eq!(bpm_now(&lib), Some(100.0));
+
+        // Re-analysing may improve an analysis.
+        assert!(write(&lib, 101.0, GridSource::Analysis));
+        assert_eq!(bpm_now(&lib), Some(101.0));
+
+        // An import outranks an analysis: a grid somebody has been playing from
+        // beats one our analyser guessed.
+        assert!(write(&lib, 128.0, GridSource::Import));
+        assert_eq!(bpm_now(&lib), Some(128.0));
+
+        // ...and an analysis does not then overwrite the import.
+        assert!(!write(&lib, 64.0, GridSource::Analysis));
+        assert_eq!(bpm_now(&lib), Some(128.0));
+
+        // A hand edit outranks everything.
+        assert!(write(&lib, 126.0, GridSource::Manual));
+        assert_eq!(bpm_now(&lib), Some(126.0));
+
+        // ...and nothing outranks it.
+        assert!(!write(&lib, 128.0, GridSource::Import));
+        assert!(!write(&lib, 64.0, GridSource::Analysis));
+        assert_eq!(bpm_now(&lib), Some(126.0));
+    }
+
+    /// A source that knows the grid but not the key must not blank a key the
+    /// analyser had already found.
+    #[test]
+    fn a_grid_without_a_key_does_not_erase_one_that_is_there() {
+        use crate::GridSource;
+
+        let lib = library();
+        lib.upsert_track(&track(1, "A", "B")).unwrap();
+        lib.set_analysis(
+            id(1),
+            &StoredAnalysis::default().with_key(MusicalKey::new(8, Mode::Minor).unwrap(), 0.8),
+        )
+        .unwrap();
+
+        lib.set_analysis_if_absent(
+            id(1),
+            &StoredAnalysis::default()
+                .with_beatgrid(Beatgrid::new(
+                    FramePos::new(0.0),
+                    Bpm::new(128.0).unwrap(),
+                    Confidence::CERTAIN,
+                ))
+                .from_source(GridSource::Import),
+        )
+        .unwrap();
+
+        let found = lib.track(id(1)).unwrap().unwrap().analysis;
+        assert_eq!(found.bpm, Some(128.0));
+        assert_eq!(found.key(), MusicalKey::new(8, Mode::Minor));
+    }
+
+    #[test]
+    fn writing_to_a_track_that_does_not_exist_reports_that_it_did_not() {
+        let lib = library();
         assert!(
-            !lib.set_analysis_if_absent(id(1), &fresh).unwrap(),
-            "the second call has something to preserve, so it must decline"
+            !lib.set_analysis_if_absent(id(9), &StoredAnalysis::default())
+                .unwrap()
         );
     }
 

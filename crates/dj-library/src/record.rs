@@ -54,6 +54,9 @@ pub struct Tags {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct StoredAnalysis {
     pub bpm: Option<f64>,
+    /// Where the grid came from, which decides what may replace it. `None`
+    /// when there is no grid. See [`GridSource`].
+    pub grid_source: Option<GridSource>,
     pub grid_anchor: Option<f64>,
     pub grid_beats_per_bar: Option<u8>,
     pub grid_confidence: Option<f64>,
@@ -76,12 +79,23 @@ impl StoredAnalysis {
     }
 
     /// Flatten a grid into the stored form.
+    ///
+    /// Defaults the source to the analyser, which is where all but two grids
+    /// come from; [`Self::from`] on a source overrides it.
     #[must_use]
     pub fn with_beatgrid(mut self, grid: Beatgrid) -> Self {
         self.bpm = Some(grid.bpm.get());
         self.grid_anchor = Some(grid.anchor.get());
         self.grid_beats_per_bar = Some(grid.beats_per_bar);
         self.grid_confidence = Some(grid.confidence.get());
+        self.grid_source.get_or_insert(GridSource::Analysis);
+        self
+    }
+
+    /// Say where the grid came from.
+    #[must_use]
+    pub fn from_source(mut self, source: GridSource) -> Self {
+        self.grid_source = Some(source);
         self
     }
 
@@ -102,6 +116,56 @@ impl StoredAnalysis {
     #[must_use]
     pub fn is_complete(&self) -> bool {
         self.beatgrid().is_some() && self.key().is_some()
+    }
+}
+
+/// Where a beat grid came from, and therefore what may replace it.
+///
+/// The ordering is the authority ordering: a hand edit outranks an import,
+/// an import outranks an analysis, and an analysis only fills in a blank. That
+/// is derived from `Ord` rather than written out in each comparison, so there
+/// is one place the rule lives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum GridSource {
+    /// Our own analyser. The weakest claim: it is a measurement, and the two
+    /// below are somebody's judgement.
+    Analysis,
+    /// Another application's library, which a DJ has been playing from.
+    Import,
+    /// Edited here, by hand. Nothing may replace this.
+    Manual,
+}
+
+impl GridSource {
+    #[must_use]
+    pub const fn as_sql(self) -> &'static str {
+        match self {
+            Self::Analysis => "analysis",
+            Self::Import => "import",
+            Self::Manual => "manual",
+        }
+    }
+
+    #[must_use]
+    pub fn from_sql(word: &str) -> Option<Self> {
+        match word {
+            "analysis" => Some(Self::Analysis),
+            "import" => Some(Self::Import),
+            "manual" => Some(Self::Manual),
+            _ => None,
+        }
+    }
+
+    /// Whether a grid from `self` may replace one already recorded as `existing`.
+    ///
+    /// An equal source may replace itself: re-analysing is allowed to improve
+    /// an analysis, and re-importing is allowed to correct an import.
+    #[must_use]
+    pub fn may_replace(self, existing: Option<Self>) -> bool {
+        match existing {
+            None => true,
+            Some(existing) => self >= existing,
+        }
     }
 }
 

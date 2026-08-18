@@ -54,10 +54,20 @@ pub fn migrate(conn: &mut Connection) -> Result<i64> {
 }
 
 /// Every migration, oldest first.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    sql: MIGRATION_1,
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        sql: MIGRATION_1,
+    },
+    Migration {
+        version: 2,
+        sql: MIGRATION_2,
+    },
+    Migration {
+        version: 3,
+        sql: MIGRATION_3,
+    },
+];
 
 /// The initial schema.
 ///
@@ -257,6 +267,76 @@ CREATE TRIGGER tracks_fts_update AFTER UPDATE ON tracks BEGIN
 END;
 "#;
 
+/// What an import brings with it.
+///
+/// # Why importing hangs things off the pending queue
+///
+/// An import from rekordbox, Traktor or Serato names tracks by *path*. Our
+/// identity is the hash of the decoded audio, which nothing knows until the
+/// file has been decoded — so an import cannot write a `tracks` row, a `cues`
+/// row or a `playlist_tracks` row at the moment it runs.
+///
+/// It could decode everything first, but a real collection is thousands of
+/// files and hours of CPU, and a DJ who has just clicked "import" should see
+/// their crates immediately rather than tomorrow.
+///
+/// So an import fills `pending_files` — the same queue a folder scan fills —
+/// with the cues, loops and grid it found riding along as a payload, and
+/// records playlist membership by path. The background identifier already
+/// decodes that queue; promotion now also applies whatever the import
+/// attached. The playlist *tree* is created immediately, because it needs no
+/// track ids at all, so the sidebar fills in at once and the tracks appear
+/// underneath as they are identified.
+const MIGRATION_2: &str = r#"
+-- Cues, loops and the grid an import found, as JSON, until the file behind
+-- them has been identified. JSON rather than columns or a side table because
+-- nothing queries it: it is opaque from the moment it is written to the moment
+-- it is applied and deleted.
+ALTER TABLE pending_files ADD COLUMN import_payload TEXT;
+
+-- Which imported playlist a not-yet-identified file belongs to.
+--
+-- Keyed by path, like the rest of the pending machinery. Position is kept so
+-- an imported set arrives in the order the DJ built it rather than the order
+-- their files happen to get decoded.
+CREATE TABLE pending_playlist_entries (
+    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    path        TEXT    NOT NULL,
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (playlist_id, position)
+);
+
+CREATE INDEX pending_playlist_entries_path ON pending_playlist_entries(path);
+"#;
+
+/// Where a beat grid came from.
+///
+/// # Why "is there a grid already" was not enough
+///
+/// Analysis, importing and hand-editing all write a grid, and the rule for
+/// whether one may replace another is not the same in each direction. Without
+/// knowing the source, the only expressible rules are "always overwrite" and
+/// "never overwrite", and both are wrong:
+///
+/// - *Never* means an import brings no grids at all, because the analyser has
+///   already run on everything a scan found — which makes importing from
+///   rekordbox, whose grids a DJ has been playing from for years, pointless.
+/// - *Always* means the next re-analysis throws away a grid the DJ corrected
+///   by hand, which is the one thing that must never happen.
+///
+/// With a source recorded, the rule is the obvious one: a hand edit outranks an
+/// import, an import outranks an analysis, and an analysis fills in a blank.
+const MIGRATION_3: &str = r#"
+-- 'analysis', 'import' or 'manual'. Null means no grid.
+ALTER TABLE tracks ADD COLUMN grid_source TEXT;
+
+-- Everything with a grid already got it from the analyser: importing did not
+-- exist before this migration, and a hand edit could not be told apart from
+-- one. Claiming otherwise would let the first re-analysis overwrite a grid a DJ
+-- had corrected, so the cautious direction is the one that loses least.
+UPDATE tracks SET grid_source = 'analysis' WHERE bpm IS NOT NULL;
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,6 +361,36 @@ mod tests {
         migrate(&mut conn).unwrap();
         // A second run must not re-execute a `CREATE TABLE`, which would error.
         assert_eq!(migrate(&mut conn).unwrap(), latest_version());
+    }
+
+    /// The migration path itself, which only matters once there is more than
+    /// one: a database created at version 1 must reach the latest without
+    /// losing what was in it.
+    #[test]
+    fn an_older_database_is_brought_forward_with_its_rows_intact() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        // Stop after the first migration, as a database written by an older
+        // build would be.
+        let first = MIGRATIONS[0];
+        conn.execute_batch(first.sql).unwrap();
+        conn.execute_batch(&format!("PRAGMA user_version = {}", first.version))
+            .unwrap();
+        conn.execute(
+            "INSERT INTO pending_files (path, seen_at) VALUES ('/music/a.flac', 1)",
+            [],
+        )
+        .unwrap();
+
+        assert_eq!(migrate(&mut conn).unwrap(), latest_version());
+        let rows: i64 = conn
+            .query_row("SELECT count(*) FROM pending_files", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "the row from the older schema must survive");
+        // And the column the newer migration added is there.
+        conn.query_row("SELECT import_payload FROM pending_files", [], |row| {
+            row.get::<_, Option<String>>(0)
+        })
+        .unwrap();
     }
 
     #[test]
@@ -308,6 +418,7 @@ mod tests {
             "playlist_tracks",
             "history",
             "pending_files",
+            "pending_playlist_entries",
             "tracks_fts",
         ] {
             let found: i64 = conn

@@ -26,6 +26,7 @@
     addToPlaylist,
     checkFilter,
     formatTime,
+    importLibrary,
     libraryAddFolder,
     libraryRemoveFolder,
     librarySearch,
@@ -272,6 +273,49 @@
     }
   }
 
+  /** What the last import did, kept until the DJ does something else. */
+  let imported = $state<string | null>(null);
+
+  async function importFrom() {
+    const picked = await open({
+      multiple: false,
+      filters: [
+        // Named by what a DJ recognises, not by extension: they know they
+        // exported from rekordbox, and may not know what it wrote.
+        { name: "Library export (rekordbox, Traktor, iTunes)", extensions: ["xml", "nml"] },
+      ],
+    });
+    if (typeof picked !== "string") return;
+    busy = true;
+    error = null;
+    imported = null;
+    try {
+      const result = await importLibrary(picked);
+      const parts = [`${result.format}: ${result.tracks} tracks`];
+      if (result.already_known > 0) parts.push(`${result.already_known} already here`);
+      if (result.queued > 0) parts.push(`${result.queued} being analysed`);
+      if (result.playlists > 0) {
+        parts.push(`${result.playlists} playlist${result.playlists === 1 ? "" : "s"}`);
+      }
+      if (result.skipped.length > 0) {
+        parts.push(`${result.skipped.length} skipped`);
+      }
+      imported = parts.join(" · ");
+      // The skipped list is the part a DJ needs to act on, so it goes where
+      // errors go rather than into the summary line.
+      if (result.skipped.length > 0) {
+        error = `Could not import: ${result.skipped.slice(0, 5).join("; ")}${
+          result.skipped.length > 5 ? ` and ${result.skipped.length - 5} more` : ""
+        }`;
+      }
+      await Promise.all([refresh(), refreshStatus(), refreshPlaylists()]);
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
   async function rescan() {
     busy = true;
     error = null;
@@ -367,7 +411,16 @@
     <button onclick={rescan} disabled={busy || !status?.folders.length}>
       {busy ? "Scanning…" : "Rescan"}
     </button>
+    <button
+      onclick={importFrom}
+      disabled={busy}
+      title="Import a rekordbox, Traktor or iTunes library export, with its cues and grids"
+    >Import…</button>
   </div>
+
+  {#if imported}
+    <p class="status">Imported — {imported}</p>
+  {/if}
 
   {#if status}
     <!--

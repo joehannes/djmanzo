@@ -485,7 +485,11 @@ fn save_grid(state: &AppState, deck: DeckId, grid: Option<dj_core::Beatgrid>) {
     };
 
     let updated = match grid {
-        Some(grid) => stored.with_beatgrid(grid),
+        // Marked as the DJ's own, which is what stops an import — or a
+        // re-analysis — replacing it later. See `dj_library::GridSource`.
+        Some(grid) => stored
+            .with_beatgrid(grid)
+            .from_source(dj_library::GridSource::Manual),
         // A cleared grid, which only `grid_reset` on an unanalysed track can
         // produce. Blank the four columns rather than leaving a stale tempo.
         None => dj_library::StoredAnalysis {
@@ -493,6 +497,7 @@ fn save_grid(state: &AppState, deck: DeckId, grid: Option<dj_core::Beatgrid>) {
             grid_anchor: None,
             grid_beats_per_bar: None,
             grid_confidence: None,
+            grid_source: None,
             ..stored
         },
     };
@@ -1711,4 +1716,59 @@ mod playlist_command_tests {
         let id = dj_core::TrackId::from_bytes([0xab; 32]);
         assert_eq!(parse_track_id(&id.to_hex().to_uppercase()).unwrap(), id);
     }
+}
+
+// -- importing -------------------------------------------------------------
+
+/// What an import did, for the interface.
+#[derive(Debug, Clone, Serialize)]
+pub struct ImportResultDto {
+    /// "rekordbox XML", "Traktor NML" or "iTunes XML".
+    pub format: String,
+    pub tracks: usize,
+    /// Of those, already in the collection and updated in place.
+    pub already_known: usize,
+    /// Of those, queued for identification.
+    pub queued: usize,
+    pub playlists: usize,
+    pub folders: usize,
+    pub skipped: Vec<String>,
+}
+
+/// Import a library export.
+///
+/// The format is chosen by what the file contains rather than by its
+/// extension: rekordbox and iTunes both write `.xml`, and a DJ who renamed
+/// theirs should still get their collection.
+///
+/// Reading and applying both run on a blocking worker. A rekordbox export of a
+/// real collection is megabytes of XML and thousands of rows, which is nothing
+/// next to decoding but is far too much for the interface thread.
+#[tauri::command]
+pub async fn import_library(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<ImportResultDto, String> {
+    let db = library(&state)?;
+    let now = crate::library::now_seconds();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let contents =
+            std::fs::read_to_string(&path).map_err(|e| format!("could not read {path}: {e}"))?;
+        let (format, collection) =
+            dj_library::import::read(&contents).map_err(|e| e.to_string())?;
+        let report = db.import(&collection, now).map_err(|e| e.to_string())?;
+
+        Ok(ImportResultDto {
+            format: format.label().to_owned(),
+            tracks: report.tracks,
+            already_known: report.already_known,
+            queued: report.queued,
+            playlists: report.playlists,
+            folders: report.folders,
+            skipped: report.skipped,
+        })
+    })
+    .await
+    .map_err(|e| format!("import task failed: {e}"))?
 }

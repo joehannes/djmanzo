@@ -536,6 +536,26 @@ export const reorderPlaylist = (playlist: number, order: number[]) =>
 
 export const playHistory = () => invoke<PlayRecord[]>("play_history");
 
+export interface ImportResult {
+  /** "rekordbox XML", "Traktor NML" or "iTunes XML". */
+  format: string;
+  tracks: number;
+  already_known: number;
+  queued: number;
+  playlists: number;
+  folders: number;
+  skipped: string[];
+}
+
+/**
+ * Import a rekordbox, Traktor or iTunes library export.
+ *
+ * The format is chosen by what the file contains, not by its extension —
+ * rekordbox and iTunes both write `.xml`.
+ */
+export const importLibrary = (path: string) =>
+  invoke<ImportResult>("import_library", { path });
+
 /** Read state once, so a freshly-mounted UI can paint without waiting. */
 export const getSnapshot = () => invoke<Snapshot>("get_snapshot");
 

@@ -128,6 +128,7 @@ Chosen to keep djmanzo MIT-OR-Apache-2.0. See
 | MIDI | `midir` | MIT | Cross-platform realtime MIDI, RtMidi-inspired. |
 | HID | `hidapi` | MIT | Direct HID for high-res jogs and NI-class devices. |
 | Tags | `lofty` | MIT/Apache-2.0 | Reading/writing metadata across formats. |
+| `roxmltree` | MIT OR Apache-2.0 | Read-only XML tree for the library importers. Random access over a document already in memory, which is what rekordbox's id references and plist's key/value pairs need. |
 | Library DB | `rusqlite` | MIT | SQLite; boring and correct for a music library. |
 | Loudness | `ebur128` | MIT | EBU R128 / ReplayGain for auto-gain. |
 | Neural inference | `ort` (ONNX Runtime) | Apache-2.0/MIT | One runtime for stems *and* optional beat tracking. Backends: CoreML (macOS), CUDA/DirectML, CPU. |

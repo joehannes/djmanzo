@@ -81,6 +81,11 @@ lofty = "0.22"
 # Content hashing for track identity. CC0-1.0 OR Apache-2.0.
 blake3 = "1"
 tempfile = "3"
+# Library imports. Read-only XML tree, MIT OR Apache-2.0. Chosen over
+# `quick-xml` because every importer here wants random access to a document
+# already in memory, not a streaming parser -- rekordbox playlists reference
+# tracks by id, and a plist dict is read by walking siblings in pairs.
+roxmltree = "0.20"
 
 [workspace.lints.rust]
 unsafe_code = "warn"

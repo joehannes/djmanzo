@@ -315,7 +315,42 @@ checked as it is typed, so a typo is reported while the DJ is looking at the box
 when the folder turns up empty, and it is evaluated on every open rather than cached, because a
 smart folder is a question about the collection and a track added since belongs in it.
 
-Not yet: there is no session export. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
+Three importers are in — **rekordbox XML, Traktor NML and iTunes XML** — chosen by what the
+file contains rather than by its extension, because rekordbox and iTunes both write `.xml` and
+a DJ who renamed theirs should still get their collection.
+
+**An import is another way of filling the identify queue.** It names tracks by path; our
+identity is the hash of the decoded audio, so an import cannot write a track row, a cue row or
+a playlist row at the moment it runs. Decoding first would mean a DJ waiting hours before
+seeing anything. So an import fills `pending_files` — the same queue a folder scan fills — with
+the cues, loops and grid it found riding along as a payload, and records playlist membership by
+path. The playlist *tree* is created immediately, because it needs no track ids: the sidebar
+fills in at once and the tracks appear underneath as they are identified. A path already in the
+library skips the queue entirely and has everything applied on the spot.
+
+Each format's own peculiarities are handled at its own edge, so nothing downstream has to know
+where a value came from: Traktor stores cue positions in **milliseconds** and splits paths
+across `DIR`/`FILE` with `/:` as the separator; rekordbox counts hot cues from zero and marks a
+loop by giving a cue an `End`; iTunes recognises its own built-in playlists by marker keys
+rather than by name, since the names are localised and a list of English ones would import
+"Musik" as a crate. Keys arrive as `Am`, `A min`, `8A` or a Traktor integer and all reach the
+same place; anything unreadable is absent rather than guessed.
+
+**The end-to-end run found the bug that would have made the feature pointless.** Every imported
+grid was declined, because the analyser had already run on everything the scan found and the
+rule was "never overwrite an existing analysis". The library could not tell a measurement from
+a judgement. Grids now record where they came from — analysis, import, or a hand edit here —
+and the rule is the obvious one: a hand edit outranks an import, an import outranks an
+analysis, and an analysis fills in a blank. Re-analysing may improve an analysis and
+re-importing may correct an import, so equal sources replace themselves. A source that knows
+the grid but not the key no longer blanks a key the analyser had found.
+
+Cues are the other way round: an import never replaces cues that are already there. We never
+invent a cue, so any cue on a track is one the DJ placed, and an import from the software they
+left behind must not overwrite it.
+
+Not yet: Serato, which is a binary format and needs the clean-room treatment ADR-0002 requires
+(`triseratops` is AGPL). And there is no session export. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
 it will come, but a control that works one-handed on a trackpad should not wait for it. The
 importers, SideView and layout presets are still ahead.
 

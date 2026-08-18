@@ -235,6 +235,7 @@ pub fn run() {
             commands::set_playlist_query,
             commands::check_filter,
             commands::smart_playlist_tracks,
+            commands::import_library,
             sources::list_sources,
             sources::set_secret,
             sources::clear_secret,
