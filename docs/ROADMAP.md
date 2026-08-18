@@ -368,10 +368,24 @@ larger than any real library file stops the read rather than being obeyed; trail
 which real files carry, is ignored rather than costing the library.
 
 Serato's hot cues are **not** in its library — it writes them into the audio files themselves,
-as a `GEOB` tag. So they arrive with the file rather than with the import, and reading them
-belongs in the identify path. That is the next piece.
+as a `GEOB` tag — so they are not something a DJ imports at all. They are something a file
+*has*, and they are read at identification, which is the moment a file is first opened and the
+moment it first has an id to hang them on. A DJ who never exported anything, and who simply
+copies their music onto a new machine, still arrives with their cues.
 
-Not yet: Serato's in-file cue tags, and a session export. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
+They go through the same path as an import and answer to the same rules: they fill in a grid
+the analyser guessed at, and they never replace cues set here. A payload written deliberately
+into a library export outranks one found in a tag, so an import applies first.
+
+Nothing writes markers back. A DJ's music is theirs, and a library that silently rewrites the
+tags of every track it touches is one bad release away from a disaster.
+
+Not yet: a session export.
+
+M3's own "done when" — *import an existing rekordbox or Serato library with cues and grids
+intact, and find any track in under a second* — is met. What remains of the milestone is
+interface: SideView, batch tag editing, duplicate detection, and the layout presets and skin
+system. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
 it will come, but a control that works one-handed on a trackpad should not wait for it. The
 importers, SideView and layout presets are still ahead.
 

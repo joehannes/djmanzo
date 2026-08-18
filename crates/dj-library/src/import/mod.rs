@@ -23,6 +23,7 @@
 //!   "analysed and inconclusive", and an import must not collapse them.
 
 pub mod itunes;
+pub mod markers;
 pub mod rekordbox;
 pub mod serato;
 pub mod traktor;

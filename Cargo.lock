@@ -1256,6 +1256,7 @@ dependencies = [
 name = "dj-library"
 version = "0.0.2"
 dependencies = [
+ "base64 0.22.1",
  "dj-core",
  "lofty",
  "roxmltree",

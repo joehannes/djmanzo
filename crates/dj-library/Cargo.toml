@@ -9,6 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+base64 = { workspace = true }
 dj-core = { workspace = true }
 lofty = { workspace = true }
 roxmltree = { workspace = true }

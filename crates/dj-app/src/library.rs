@@ -123,7 +123,7 @@ impl Identifier {
     /// and a decoding problem, and only the first one is interesting here.
     pub fn start<F>(library: Arc<LibraryHandle>, now: fn() -> i64, decode: F) -> Self
     where
-        F: Fn(&ScannedFile) -> Result<LibraryTrack, String> + Send + 'static,
+        F: Fn(&ScannedFile) -> Result<Identified, String> + Send + 'static,
     {
         let stop = Arc::new(AtomicBool::new(false));
         let progress = Arc::new(IdentifyProgress::default());
@@ -165,7 +165,7 @@ fn run<F>(
     now: fn() -> i64,
     decode: F,
 ) where
-    F: Fn(&ScannedFile) -> Result<LibraryTrack, String>,
+    F: Fn(&ScannedFile) -> Result<Identified, String>,
 {
     while !stop.load(Ordering::Relaxed) {
         let Ok(db) = library.get() else {
@@ -195,9 +195,9 @@ fn run<F>(
                 return;
             }
             match decode(&file) {
-                Ok(mut track) => {
+                Ok(Identified { mut track, found }) => {
                     track.added_at = now();
-                    if let Err(error) = db.promote_pending(&track) {
+                    if let Err(error) = db.promote_pending_with(&track, &found) {
                         tracing::warn!(%error, path = ?file.path, "could not store track");
                     } else {
                         progress.done.fetch_add(1, Ordering::Relaxed);
@@ -226,12 +226,32 @@ fn run<F>(
 /// file twice, and — worse — it would mean a DJ who imported their collection
 /// last night still has no BPM or key to sort by this evening. A library you
 /// cannot sort by tempo is most of the reason to have one.
-pub fn identify_file(file: &ScannedFile) -> Result<LibraryTrack, String> {
+/// A file, decoded and read.
+///
+/// Two things rather than one, because they come from different places and
+/// answer to different rules: `track` is what we measured, and `found` is what
+/// somebody else already decided about this record and wrote into it.
+#[derive(Debug, Clone)]
+pub struct Identified {
+    pub track: LibraryTrack,
+    pub found: dj_library::import::ImportPayload,
+}
+
+pub fn identify_file(file: &ScannedFile) -> Result<Identified, String> {
     let decoded = dj_decode::decode_file(&file.path).map_err(|e| e.to_string())?;
     let sample_rate = decoded.buffer.sample_rate();
     let analysis = dj_analysis::analyse(decoded.buffer.as_interleaved(), sample_rate);
 
-    Ok(LibraryTrack {
+    // What the file itself carries. Read before the buffer is dropped so the
+    // cost lands on a file that has just been decoded anyway.
+    let markers = dj_library::import::markers::read_file(&file.path);
+    let found = dj_library::import::ImportPayload {
+        cues: markers.cues,
+        loops: markers.loops,
+        ..dj_library::import::ImportPayload::default()
+    };
+
+    let track = LibraryTrack {
         id: decoded.id,
         path: file.path.clone(),
         // Tags from the scan, not from the decoder. The scan used `lofty`,
@@ -247,7 +267,8 @@ pub fn identify_file(file: &ScannedFile) -> Result<LibraryTrack, String> {
         added_at: 0,
         analysis: stored_analysis(&analysis),
         stats: dj_library::PlayStats::default(),
-    })
+    };
+    Ok(Identified { track, found })
 }
 
 /// Flatten an analysis into the shape the library stores.
@@ -311,7 +332,14 @@ mod tests {
 
     /// A track as a successful decode would produce, with the id derived from
     /// the path so different files get different ids.
-    fn identified(file: &ScannedFile) -> LibraryTrack {
+    fn identified(file: &ScannedFile) -> Identified {
+        Identified {
+            track: library_track(file),
+            found: dj_library::import::ImportPayload::default(),
+        }
+    }
+
+    fn library_track(file: &ScannedFile) -> LibraryTrack {
         let mut bytes = [0u8; 32];
         for (slot, byte) in bytes.iter_mut().zip(file.path.to_string_lossy().bytes()) {
             *slot = byte;

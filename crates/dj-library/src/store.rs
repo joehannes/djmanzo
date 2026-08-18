@@ -442,6 +442,22 @@ impl Library {
     /// One transaction, because a crash between the two halves would either
     /// lose the track or leave it queued forever.
     pub fn promote_pending(&self, track: &LibraryTrack) -> Result<()> {
+        self.promote_pending_with(track, &crate::import::ImportPayload::default())
+    }
+
+    /// The same, plus whatever the *file itself* was carrying.
+    ///
+    /// Serato writes hot cues into the track rather than into its library, so
+    /// they arrive with the file and are found while it is being decoded. They
+    /// are an import in every sense that matters — somebody else's judgement
+    /// about this track — so they go through the same path and answer to the
+    /// same rules: they fill in a grid the analyser guessed at, and they never
+    /// replace cues the DJ set here.
+    pub fn promote_pending_with(
+        &self,
+        track: &LibraryTrack,
+        found: &crate::import::ImportPayload,
+    ) -> Result<()> {
         let path = track.path.to_string_lossy().into_owned();
         let mut conn = self.conn.lock().map_err(|_| LibraryError::Poisoned)?;
         let tx = conn.transaction()?;
@@ -458,6 +474,12 @@ impl Library {
         // transaction, because a promotion that created the row and lost the
         // cues would be silent and unrecoverable.
         Self::apply_staged_import(&tx, track.id, &path)?;
+        // What the file carried, after what an import staged: a payload written
+        // deliberately into a library export is a better claim than one found
+        // in a tag, and `apply_payload` leaves alone anything already there.
+        if !found.is_empty() {
+            apply_payload(&tx, track.id, found)?;
+        }
         tx.execute("DELETE FROM pending_files WHERE path = ?1", [&path])?;
 
         tx.commit()?;
