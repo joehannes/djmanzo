@@ -267,6 +267,7 @@ pub fn identify_file(file: &ScannedFile) -> Result<Identified, String> {
         added_at: 0,
         analysis: stored_analysis(&analysis),
         stats: dj_library::PlayStats::default(),
+        colour: None,
     };
     Ok(Identified { track, found })
 }
@@ -356,6 +357,7 @@ mod tests {
             added_at: 0,
             analysis: dj_library::StoredAnalysis::default(),
             stats: dj_library::PlayStats::default(),
+            colour: None,
         }
     }
 

@@ -20,13 +20,20 @@
    * collection concludes it is broken.
    */
   import { onMount } from "svelte";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { SvelteSet } from "svelte/reactivity";
+  import { open, save } from "@tauri-apps/plugin-dialog";
   import Crates, { type Selection } from "./Crates.svelte";
   import {
     addToPlaylist,
     checkFilter,
+    clearTrackField,
+    editTracks,
+    exportSession,
+    findDuplicates,
+    forgetTrackPath,
     formatTime,
     importLibrary,
+    listSessions,
     libraryAddFolder,
     libraryRemoveFolder,
     librarySearch,
@@ -39,10 +46,12 @@
     removeFromPlaylist,
     setPlaylistQuery,
     smartPlaylistTracks,
+    type Duplicate,
     type LibraryStatus,
     type LibraryTrack,
     type PlayRecord,
     type Playlist,
+    type Session,
   } from "./api";
 
   let { enabled, deckCount = 2 }: { enabled: boolean; deckCount?: number } = $props();
@@ -61,6 +70,23 @@
   let selection = $state<Selection>({ kind: "all" });
   let history = $state<PlayRecord[]>([]);
   let playlists = $state<Playlist[]>([]);
+  let duplicates = $state<Duplicate[]>([]);
+  let sessions = $state<Session[]>([]);
+
+  /**
+   * Which rows are selected, by track id.
+   *
+   * A set rather than a flag on each row: the rows are replaced wholesale on
+   * every search, and a flag would be lost with them — which is exactly when a
+   * DJ has typed to narrow the list *in order to* select something.
+   */
+  let selected = $state<Set<string>>(new SvelteSet());
+  /** The batch edit being composed. */
+  let edit = $state<{ genre: string; colour: string; rating: string }>({
+    genre: "",
+    colour: "",
+    rating: "",
+  });
   let status = $state<LibraryStatus | null>(null);
   let query = $state("");
   let error = $state<string | null>(null);
@@ -95,6 +121,10 @@
     try {
       if (selection.kind === "history") {
         history = await playHistory();
+        sessions = await listSessions();
+        tracks = [];
+      } else if (selection.kind === "duplicates") {
+        duplicates = await findDuplicates();
         tracks = [];
       } else if (selection.kind === "smart") {
         // Evaluated now, not stored: a smart folder is a question about the
@@ -205,6 +235,61 @@
       filterDirty = false;
     }
   });
+
+  function toggleSelected(id: string) {
+    if (selected.has(id)) selected.delete(id);
+    else selected.add(id);
+  }
+
+  async function applyEdit() {
+    if (selected.size === 0) return;
+    const ids = [...selected];
+    try {
+      const rating = edit.rating === "" ? undefined : Number(edit.rating);
+      await editTracks(ids, {
+        genre: edit.genre || undefined,
+        colour: edit.colour || undefined,
+        rating,
+      });
+      edit = { genre: "", colour: "", rating: "" };
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function clearField(field: string) {
+    if (selected.size === 0) return;
+    try {
+      await clearTrackField([...selected], field);
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function forgetCopy(track: string, path: string) {
+    try {
+      await forgetTrackPath(track, path);
+      duplicates = await findDuplicates();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  async function saveSession(session: string) {
+    const picked = await save({
+      defaultPath: `${session}.txt`,
+      filters: [{ name: "Set list", extensions: ["txt"] }],
+    });
+    if (typeof picked !== "string") return;
+    try {
+      const count = await exportSession(session, picked);
+      imported = `Exported ${count} track${count === 1 ? "" : "s"} to ${picked}`;
+    } catch (e) {
+      error = String(e);
+    }
+  }
 
   /** Local time, since a DJ reads a history against the night they played. */
   function whenPlayed(unixSeconds: number): string {
@@ -404,7 +489,7 @@
       is a different question — "when did I last play this" — and a box that
       silently does nothing is worse than one that is not there.
     -->
-    {#if selection.kind !== "history"}
+    {#if selection.kind !== "history" && selection.kind !== "duplicates"}
       <input
         type="search"
         placeholder={selection.kind === "playlist" || selection.kind === "smart"
@@ -414,8 +499,10 @@
         oninput={onQuery}
         aria-label="Search the library"
       />
-    {:else}
+    {:else if selection.kind === "history"}
       <span class="viewing">Everything played, most recent first.</span>
+    {:else}
+      <span class="viewing">Tracks whose audio is in more than one place.</span>
     {/if}
     <button onclick={addFolder} disabled={busy}>Add folder…</button>
     <button onclick={rescan} disabled={busy || !status?.folders.length}>
@@ -455,6 +542,9 @@
         · {status.tracks.toLocaleString()} in your collection
       {:else if selection.kind === "history"}
         <strong>{history.length.toLocaleString()}</strong> play{history.length === 1 ? "" : "s"}
+      {:else if selection.kind === "duplicates"}
+        <strong>{duplicates.length.toLocaleString()}</strong>
+        with more than one copy · {status.tracks.toLocaleString()} in your collection
       {:else}
         <strong>{status.tracks.toLocaleString()}</strong> track{status.tracks === 1 ? "" : "s"}
       {/if}
@@ -539,11 +629,94 @@
     {/if}
   {/if}
 
+  {#if selected.size > 0}
+    <!--
+      Only while something is selected. A row of tag fields sitting above an
+      unselected table is an invitation to a mistake, and a DJ who has not
+      chosen anything has not asked to change anything.
+    -->
+    <div class="batch">
+      <span class="count">{selected.size} selected</span>
+      <input placeholder="Genre" bind:value={edit.genre} aria-label="Genre" />
+      <input
+        type="color"
+        bind:value={edit.colour}
+        aria-label="Colour"
+        title="Colour these tracks"
+      />
+      <select bind:value={edit.rating} aria-label="Rating">
+        <option value="">Rating…</option>
+        {#each [0, 1, 2, 3, 4, 5] as stars (stars)}
+          <option value={String(stars)}>{"★".repeat(stars) || "none"}</option>
+        {/each}
+      </select>
+      <button onclick={applyEdit}>Apply</button>
+      <button onclick={() => clearField("genre")} title="Empty the genre on these tracks">
+        Clear genre
+      </button>
+      <button onclick={() => clearField("colour")}>Clear colour</button>
+      <button onclick={() => selected.clear()}>Deselect</button>
+    </div>
+  {/if}
+
   {#if error}
     <p class="error">{error}</p>
   {/if}
 
-  {#if selection.kind === "history"}
+  {#if selection.kind === "duplicates"}
+    {#if duplicates.length === 0}
+      <p class="empty">
+        No duplicates. Two files count as duplicates when they hold
+        byte-for-byte the same audio — the same recording as a FLAC and as an
+        MP3 made from it does not, and correctly so: a cue placed on one is
+        milliseconds out on the other.
+      </p>
+    {:else}
+      <p class="hint">
+        Removing a copy here only forgets it. Delete the file yourself first —
+        nothing in djmanzo deletes your music.
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Title</th><th>Artist</th><th>Copies</th></tr>
+          </thead>
+          <tbody>
+            {#each duplicates as dup (dup.id)}
+              <tr>
+                <td class="title">{dup.title}</td>
+                <td>{dup.artist}</td>
+                <td>
+                  {#each dup.paths as copy (copy)}
+                    <div class="copy">
+                      <span class="path" title={copy}>{LTR}{copy}</span>
+                      <button
+                        onclick={() => forgetCopy(dup.id, copy)}
+                        title="Forget this copy. The file is not touched."
+                      >Forget</button>
+                    </div>
+                  {/each}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  {:else if selection.kind === "history"}
+    {#if sessions.length > 0}
+      <div class="sessions">
+        {#each sessions as session (session.id)}
+          <button
+            class="session"
+            onclick={() => saveSession(session.id)}
+            title="Export {session.id} as a set list"
+          >
+            {session.id} · {session.tracks} ↓
+          </button>
+        {/each}
+      </div>
+    {/if}
     {#if history.length === 0}
       <p class="empty">
         Nothing played yet. A track counts once it has been playing for thirty
@@ -587,6 +760,7 @@
       <table>
         <thead>
           <tr>
+            <th class="pick"></th>
             {#each [["title", "Title"], ["artist", "Artist"], ["album", "Album"], ["bpm", "BPM"], ["key", "Key"], ["duration_seconds", "Time"]] as [column, heading] (column)}
               <th>
                 <button
@@ -603,8 +777,25 @@
         </thead>
         <tbody>
           {#each sorted as track (track.id)}
-            <tr class:unanalysed={!track.analysed}>
-              <td class="title" title={track.path}>{track.title}</td>
+            <tr class:unanalysed={!track.analysed} class:picked={selected.has(track.id)}>
+              <td class="pick">
+                <input
+                  type="checkbox"
+                  checked={selected.has(track.id)}
+                  onchange={() => toggleSelected(track.id)}
+                  aria-label="Select {track.title}"
+                />
+              </td>
+              <td class="title" title={track.path}>
+                <!--
+                  The colour is a stripe rather than a filled row: a DJ colours
+                  tracks to find them at a glance, and a table of six saturated
+                  rows is harder to read than one with six marks down its edge.
+                -->
+                {#if track.colour}
+                  <span class="swatch" style="background: {track.colour}"></span>
+                {/if}{track.title}</td
+              >
               <td>{track.artist}</td>
               <td>{track.album ?? ""}</td>
               <!--
@@ -676,6 +867,69 @@
     gap: 0.7rem;
     flex: 1;
     min-height: 0;
+  }
+
+  .batch {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    padding: 0.3rem 0.4rem;
+    background: var(--panel-raised);
+    border-radius: 5px;
+    font-size: 0.85em;
+  }
+
+  .batch input[type="text"],
+  .batch input:not([type]) {
+    width: 8rem;
+  }
+
+  .batch .count {
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  .sessions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+
+  .session {
+    font-size: 0.8em;
+    padding: 0.15rem 0.45rem;
+  }
+
+  .copy {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .copy button {
+    padding: 0 0.35rem;
+    font-size: 0.85em;
+  }
+
+  th.pick,
+  td.pick {
+    width: 1.6rem;
+    text-align: center;
+    padding-right: 0;
+  }
+
+  tbody tr.picked td {
+    background: color-mix(in srgb, var(--accent-2) 18%, transparent);
+  }
+
+  .swatch {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.85em;
+    border-radius: 2px;
+    margin-right: 0.35rem;
+    vertical-align: -0.1em;
   }
 
   .add-to {

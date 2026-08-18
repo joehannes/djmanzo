@@ -11,7 +11,7 @@
 use crate::state::AppState;
 use dj_core::{Action, DeckId};
 use dj_decode::decode_file;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::State;
@@ -871,6 +871,10 @@ pub struct LibraryTrackDto {
     /// True once the track has everything sync and harmonic mixing need.
     pub analysed: bool,
     pub play_count: i64,
+    /// 0..=5, when the DJ has rated it.
+    pub rating: Option<u8>,
+    /// `#rrggbb`, when the DJ has coloured it.
+    pub colour: Option<String>,
 }
 
 impl From<dj_library::LibraryTrack> for LibraryTrackDto {
@@ -889,6 +893,8 @@ impl From<dj_library::LibraryTrack> for LibraryTrackDto {
             loudness_lufs: track.analysis.loudness_lufs,
             analysed: track.analysis.is_complete(),
             play_count: track.stats.play_count,
+            rating: track.stats.rating,
+            colour: track.colour.clone(),
         }
     }
 }
@@ -1069,6 +1075,7 @@ fn remember_track(state: &AppState, decoded: &dj_decode::DecodedTrack, rate: dj_
         added_at: crate::library::now_seconds(),
         analysis: dj_library::StoredAnalysis::default(),
         stats: dj_library::PlayStats::default(),
+        colour: None,
     };
     if let Err(error) = db.upsert_track(&track) {
         // Not fatal. The deck still plays; the DJ just will not find this track
@@ -1232,6 +1239,7 @@ mod persistence_tests {
             added_at: 0,
             analysis: dj_library::StoredAnalysis::default(),
             stats: dj_library::PlayStats::default(),
+            colour: None,
         })
         .unwrap();
 
@@ -1772,4 +1780,209 @@ pub async fn import_library(
     })
     .await
     .map_err(|e| format!("import task failed: {e}"))?
+}
+
+// -- editing, duplicates and session export --------------------------------
+
+/// What a batch edit is setting.
+///
+/// One struct rather than ten arguments: they are one intention, they arrive
+/// together from one form, and a signature that long is one where the caller
+/// eventually passes `genre` where `label` goes.
+///
+/// Every field is optional and absent means *leave it alone*. Clearing is
+/// [`clear_track_field`], which says so.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackEditDto {
+    pub genre: Option<String>,
+    pub label: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub comment: Option<String>,
+    pub year: Option<i32>,
+    /// 0..=5.
+    pub rating: Option<u8>,
+    /// `#rrggbb`.
+    pub colour: Option<String>,
+}
+
+/// Set fields across a selection. An absent field is left alone, not cleared.
+#[tauri::command]
+pub fn edit_tracks(
+    state: State<'_, AppState>,
+    tracks: Vec<String>,
+    edit: TrackEditDto,
+) -> Result<usize, String> {
+    let ids = parse_track_ids(&tracks)?;
+    let clean = |value: Option<String>| {
+        value
+            .map(|text| text.trim().to_owned())
+            .filter(|text| !text.is_empty())
+    };
+    let edit = dj_library::TrackEdit {
+        genre: clean(edit.genre),
+        label: clean(edit.label),
+        artist: clean(edit.artist),
+        album: clean(edit.album),
+        comment: clean(edit.comment),
+        year: edit.year,
+        // Refused rather than clamped: a rating outside the scale is a bug
+        // upstream, and silently making it five would hide it.
+        rating: match edit.rating {
+            Some(value) if value > 5 => return Err(format!("{value} is not a rating")),
+            other => other,
+        },
+        colour: clean(edit.colour),
+    };
+    library(&state)?
+        .edit_tracks(&ids, &edit)
+        .map_err(|e| e.to_string())
+}
+
+/// Empty a field across a selection.
+#[tauri::command]
+pub fn clear_track_field(
+    state: State<'_, AppState>,
+    tracks: Vec<String>,
+    field: String,
+) -> Result<usize, String> {
+    let ids = parse_track_ids(&tracks)?;
+    let field = dj_library::EditableField::from_name(&field)
+        .ok_or_else(|| format!("{field:?} is not a field that can be cleared"))?;
+    library(&state)?
+        .clear_field(&ids, field)
+        .map_err(|e| e.to_string())
+}
+
+/// One track whose audio is in more than one place.
+#[derive(Debug, Clone, Serialize)]
+pub struct DuplicateDto {
+    #[serde(flatten)]
+    pub track: LibraryTrackDto,
+    /// Every path holding this audio, newest first.
+    pub paths: Vec<String>,
+}
+
+/// How many duplicate groups to hand over. More than this and the answer is
+/// "your collection needs a tidy", not a longer list.
+const DUPLICATE_LIMIT: usize = 200;
+
+#[tauri::command]
+pub fn find_duplicates(state: State<'_, AppState>) -> Result<Vec<DuplicateDto>, String> {
+    Ok(library(&state)?
+        .duplicates(DUPLICATE_LIMIT)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|(track, paths)| DuplicateDto {
+            track: LibraryTrackDto::from(track),
+            paths: paths
+                .into_iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect(),
+        })
+        .collect())
+}
+
+/// Forget one of a track's paths.
+///
+/// The library's memory of a file, not the file. Nothing here deletes anybody's
+/// music — the DJ removes the copy they do not want, and this stops the library
+/// listing it.
+#[tauri::command]
+pub fn forget_track_path(
+    state: State<'_, AppState>,
+    track: String,
+    path: String,
+) -> Result<(), String> {
+    let id = parse_track_id(&track)?;
+    library(&state)?
+        .forget_path(id, std::path::Path::new(&path))
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionDto {
+    pub id: String,
+    pub tracks: i64,
+    /// Unix seconds of the last play.
+    pub ended_at: i64,
+}
+
+#[tauri::command]
+pub fn list_sessions(state: State<'_, AppState>) -> Result<Vec<SessionDto>, String> {
+    Ok(library(&state)?
+        .sessions(50)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|(id, tracks, ended_at)| SessionDto {
+            id,
+            tracks,
+            ended_at,
+        })
+        .collect())
+}
+
+/// Write a session out as a set list.
+///
+/// Plain text with the time, artist and title — the format a promoter or a
+/// royalty return actually asks for, and one a DJ can read without a tool.
+#[tauri::command]
+pub fn export_session(
+    state: State<'_, AppState>,
+    session: String,
+    path: String,
+) -> Result<usize, String> {
+    let plays = library(&state)?
+        .session(&session)
+        .map_err(|e| e.to_string())?;
+    if plays.is_empty() {
+        return Err(format!("there is nothing recorded for {session}"));
+    }
+
+    let mut out = format!("{session}\n\n");
+    // Times relative to the first track: what somebody reading a set list
+    // wants is how far into the night it was, not the wall clock of a machine
+    // in another time zone.
+    let start = plays.first().map_or(0, |play| play.played_at);
+    for play in &plays {
+        let elapsed = (play.played_at - start).max(0);
+        out.push_str(&format!(
+            "{:02}:{:02}  {} — {}\n",
+            elapsed / 3600,
+            (elapsed % 3600) / 60,
+            play.artist,
+            play.title
+        ));
+    }
+
+    std::fs::write(&path, out).map_err(|e| format!("could not write {path}: {e}"))?;
+    Ok(plays.len())
+}
+
+/// Several ids at once, refusing the whole batch if any is malformed.
+///
+/// The whole batch, because a partial edit is worse than none: a DJ who
+/// selected forty tracks and had thirty-nine change has no way to tell which.
+fn parse_track_ids(hexes: &[String]) -> Result<Vec<dj_core::TrackId>, String> {
+    hexes.iter().map(|hex| parse_track_id(hex)).collect()
+}
+
+#[cfg(test)]
+mod editing_command_tests {
+    use super::*;
+
+    /// A partial edit is worse than none: a DJ who selected forty tracks and
+    /// had thirty-nine change has no way to tell which.
+    #[test]
+    fn one_malformed_id_refuses_the_whole_batch() {
+        let good = dj_core::TrackId::from_bytes([1; 32]).to_hex();
+        assert!(parse_track_ids(&[good.clone(), good.clone()]).is_ok());
+        assert!(parse_track_ids(&[good, "nonsense".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn an_empty_selection_parses_to_an_empty_batch() {
+        assert_eq!(parse_track_ids(&[]).unwrap().len(), 0);
+    }
 }

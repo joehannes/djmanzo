@@ -419,6 +419,10 @@ export interface LibraryTrack {
   /** True once the track has everything sync and harmonic mixing need. */
   analysed: boolean;
   play_count: number;
+  /** 0..=5, when the DJ has rated it. */
+  rating: number | null;
+  /** `#rrggbb`, when the DJ has coloured it. */
+  colour: string | null;
 }
 
 export interface FailedFile {
@@ -535,6 +539,49 @@ export const reorderPlaylist = (playlist: number, order: number[]) =>
   invoke<void>("reorder_playlist", { playlist, order });
 
 export const playHistory = () => invoke<PlayRecord[]>("play_history");
+
+// -- editing, duplicates and sessions ---------------------------------------
+
+/** Every field optional; absent means leave it alone, not clear it. */
+export interface TrackEdit {
+  genre?: string;
+  label?: string;
+  artist?: string;
+  album?: string;
+  comment?: string;
+  year?: number;
+  /** 0..=5. */
+  rating?: number;
+  /** `#rrggbb`. */
+  colour?: string;
+}
+
+export const editTracks = (tracks: string[], edit: TrackEdit) =>
+  invoke<number>("edit_tracks", { tracks, edit });
+
+/** Empty a field across a selection — the verb that says what it does. */
+export const clearTrackField = (tracks: string[], field: string) =>
+  invoke<number>("clear_track_field", { tracks, field });
+
+export type Duplicate = LibraryTrack & { paths: string[] };
+
+export const findDuplicates = () => invoke<Duplicate[]>("find_duplicates");
+
+/** Forget the library's memory of one copy. Never deletes the file. */
+export const forgetTrackPath = (track: string, path: string) =>
+  invoke<void>("forget_track_path", { track, path });
+
+export interface Session {
+  id: string;
+  tracks: number;
+  /** Unix seconds of the last play. */
+  ended_at: number;
+}
+
+export const listSessions = () => invoke<Session[]>("list_sessions");
+
+export const exportSession = (session: string, path: string) =>
+  invoke<number>("export_session", { session, path });
 
 export interface ImportResult {
   /** "rekordbox XML", "Traktor NML" or "iTunes XML". */

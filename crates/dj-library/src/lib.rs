@@ -34,7 +34,8 @@ pub mod tags;
 
 pub use playlist::{PlayRecord, Playlist, PlaylistKind};
 pub use record::{
-    GridSource, LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop, Tags,
+    EditableField, GridSource, LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop,
+    Tags, TrackEdit,
 };
 pub use scan::{ScanReport, ScannedFile, scan_all, scan_folder};
 pub use store::{Library, LibraryError};

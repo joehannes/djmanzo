@@ -2,7 +2,9 @@
 
 use crate::import::ImportReport;
 use crate::playlist::{PlayRecord, Playlist, PlaylistKind};
-use crate::record::{LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop, Tags};
+use crate::record::{
+    EditableField, LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop, Tags, TrackEdit,
+};
 use crate::schema;
 use dj_core::{Mode, SampleRate, TrackId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -945,6 +947,153 @@ impl Library {
         Ok(())
     }
 
+    // -- editing -----------------------------------------------------------
+
+    /// Change tags on a set of tracks at once.
+    ///
+    /// Every field is optional and `None` means *leave it alone*, not *clear
+    /// it*. A DJ setting a genre across forty tracks is not asking to wipe
+    /// their artists — and the alternative, where absent means empty, is the
+    /// kind of interface that eats a collection in one click.
+    ///
+    /// One transaction, so a batch either lands or does not.
+    pub fn edit_tracks(&self, ids: &[TrackId], edit: &TrackEdit) -> Result<usize> {
+        if ids.is_empty() || edit.is_empty() {
+            return Ok(0);
+        }
+        let mut conn = self.conn.lock().map_err(|_| LibraryError::Poisoned)?;
+        let tx = conn.transaction()?;
+        let mut changed = 0;
+
+        for id in ids {
+            changed += tx.execute(
+                "UPDATE tracks SET
+                     genre  = COALESCE(?2, genre),
+                     label  = COALESCE(?3, label),
+                     artist = COALESCE(?4, artist),
+                     album  = COALESCE(?5, album),
+                     comment = COALESCE(?6, comment),
+                     year   = COALESCE(?7, year),
+                     rating = COALESCE(?8, rating),
+                     colour = COALESCE(?9, colour)
+                 WHERE id = ?1",
+                params![
+                    id.to_hex(),
+                    edit.genre,
+                    edit.label,
+                    edit.artist,
+                    edit.album,
+                    edit.comment,
+                    edit.year,
+                    edit.rating,
+                    edit.colour,
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(changed)
+    }
+
+    /// Clear a field across a set of tracks.
+    ///
+    /// Separate from [`Self::edit_tracks`] on purpose: "set this to nothing" is
+    /// a different intention from "leave this alone", and a single method that
+    /// tried to express both would have to invent a sentinel for one of them.
+    pub fn clear_field(&self, ids: &[TrackId], field: EditableField) -> Result<usize> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let mut conn = self.conn.lock().map_err(|_| LibraryError::Poisoned)?;
+        let tx = conn.transaction()?;
+        let mut changed = 0;
+        // The column name comes from an enum, never from the caller's text.
+        let sql = format!("UPDATE tracks SET {} = NULL WHERE id = ?1", field.column());
+        for id in ids {
+            changed += tx.execute(&sql, [id.to_hex()])?;
+        }
+        tx.commit()?;
+        Ok(changed)
+    }
+
+    // -- duplicates --------------------------------------------------------
+
+    /// Every place a track's audio has been seen, newest first.
+    pub fn paths_for(&self, id: TrackId) -> Result<Vec<(PathBuf, i64, Option<u64>)>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT path, seen_at, file_size FROM track_paths
+                 WHERE track_id = ?1 ORDER BY seen_at DESC, path",
+            )?;
+            let rows = stmt.query_map([id.to_hex()], |row| {
+                Ok((
+                    PathBuf::from(row.get::<_, String>(0)?),
+                    row.get(1)?,
+                    row.get::<_, Option<i64>>(2)?.map(|s| s.max(0) as u64),
+                ))
+            })?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    /// Tracks whose audio exists at more than one path.
+    ///
+    /// The same recording in FLAC and in an MP3 made from it is *not* a
+    /// duplicate here, and correctly so: they are different audio, and a cue
+    /// placed on one is milliseconds out on the other. This finds byte-for-byte
+    /// the same music in two places, which is the thing worth deleting.
+    pub fn duplicates(&self, limit: usize) -> Result<Vec<(LibraryTrack, Vec<PathBuf>)>> {
+        let ids: Vec<String> = self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT track_id FROM track_paths
+                 GROUP BY track_id HAVING count(*) > 1
+                 ORDER BY count(*) DESC
+                 LIMIT ?1",
+            )?;
+            let rows = stmt.query_map([limit as i64], |row| row.get(0))?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })?;
+
+        let mut out = Vec::with_capacity(ids.len());
+        for hex in ids {
+            let Some(id) = track_id_from_hex(&hex) else {
+                continue;
+            };
+            if let Some(track) = self.track(id)? {
+                let paths = self.paths_for(id)?.into_iter().map(|(p, _, _)| p).collect();
+                out.push((track, paths));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Forget a path, without touching the track.
+    ///
+    /// What "delete the duplicate" means: the DJ removes the file themselves —
+    /// nothing here deletes anybody's music — and this drops the library's
+    /// memory of it. If it was the path the track is opened from, the track
+    /// moves to another one it has.
+    pub fn forget_path(&self, id: TrackId, path: &Path) -> Result<()> {
+        let mut conn = self.conn.lock().map_err(|_| LibraryError::Poisoned)?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM track_paths WHERE track_id = ?1 AND path = ?2",
+            params![id.to_hex(), path.to_string_lossy()],
+        )?;
+        // If that was the path the track plays from, move it to one that is
+        // left rather than leaving a row pointing at a file nobody has.
+        tx.execute(
+            "UPDATE tracks SET path = COALESCE(
+                 (SELECT path FROM track_paths WHERE track_id = ?1
+                  ORDER BY seen_at DESC, path LIMIT 1),
+                 path
+             )
+             WHERE id = ?1 AND path = ?2",
+            params![id.to_hex(), path.to_string_lossy()],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     // -- history -----------------------------------------------------------
 
     /// What was played, most recent first.
@@ -958,27 +1107,44 @@ impl Library {
                  ORDER BY history.played_at DESC, history.id DESC
                  LIMIT ?1",
             )?;
+            let rows = stmt.query_map([limit as i64], read_play)?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    /// Everything played in one session, oldest first.
+    ///
+    /// Oldest first, unlike [`Self::history`]: a session export is a record of
+    /// how a night went, and a set list runs forwards.
+    pub fn session(&self, session_id: &str) -> Result<Vec<PlayRecord>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT history.track_id, tracks.title, tracks.artist, tracks.path,
+                        history.played_at, history.session_id
+                 FROM history
+                 JOIN tracks ON tracks.id = history.track_id
+                 WHERE history.session_id = ?1
+                 ORDER BY history.played_at, history.id",
+            )?;
+            let rows = stmt.query_map([session_id], read_play)?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    /// The sessions there are, most recent first: id, how many tracks, and
+    /// when the last one played.
+    pub fn sessions(&self, limit: usize) -> Result<Vec<(String, i64, i64)>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT session_id, count(*), max(played_at)
+                 FROM history
+                 WHERE session_id IS NOT NULL
+                 GROUP BY session_id
+                 ORDER BY max(played_at) DESC
+                 LIMIT ?1",
+            )?;
             let rows = stmt.query_map([limit as i64], |row| {
-                let title: Option<String> = row.get(1)?;
-                let artist: Option<String> = row.get(2)?;
-                let path: String = row.get(3)?;
-                Ok(PlayRecord {
-                    track_id: row.get(0)?,
-                    // The same fallback the browser uses, applied here so a
-                    // history row and a browser row never disagree about what a
-                    // track is called.
-                    title: title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| {
-                        std::path::Path::new(&path).file_stem().map_or_else(
-                            || "Untitled".to_owned(),
-                            |s| s.to_string_lossy().into_owned(),
-                        )
-                    }),
-                    artist: artist
-                        .filter(|a| !a.trim().is_empty())
-                        .unwrap_or_else(|| "Unknown artist".to_owned()),
-                    played_at: row.get(4)?,
-                    session_id: row.get(5)?,
-                })
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
             })?;
             Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
         })
@@ -1080,6 +1246,38 @@ fn upsert_track_on(conn: &Connection, track: &LibraryTrack) -> Result<()> {
             track.added_at,
         ],
     )?;
+    // After the row exists, so the foreign key always has something to point
+    // at -- including on the very first sight of a track.
+    remember_path(conn, track)?;
+    Ok(())
+}
+
+/// Note that this track's audio exists at this path.
+///
+/// Called on every upsert, so a second copy found in another folder is
+/// remembered rather than silently replacing the first — see the migration that
+/// added the table. `tracks.path` still moves to the newest, because that is
+/// the one to open; this is only about knowing the others are there.
+///
+/// Runs *after* the track row is written, so the foreign key always has
+/// something to point at — including on the very first sight of a track, which
+/// an earlier version of this got wrong: recording the path first meant a new
+/// track's own path was skipped, and a rescan does not re-read an unchanged
+/// file, so it would never have been recorded at all.
+fn remember_path(conn: &Connection, track: &LibraryTrack) -> Result<()> {
+    conn.execute(
+        "INSERT INTO track_paths (track_id, path, seen_at, file_size)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(track_id, path) DO UPDATE SET
+             seen_at = excluded.seen_at,
+             file_size = excluded.file_size",
+        params![
+            track.id.to_hex(),
+            track.path.to_string_lossy(),
+            track.added_at,
+            track.file_size.map(|s| s as i64),
+        ],
+    )?;
     Ok(())
 }
 
@@ -1148,6 +1346,30 @@ fn set_analysis_if_absent_on(
     Ok(written > 0)
 }
 
+/// Read one row of play history.
+///
+/// The title falls back to the filename exactly as the browser's does, so a
+/// history row and a browser row never disagree about what a track is called.
+fn read_play(row: &Row<'_>) -> rusqlite::Result<PlayRecord> {
+    let title: Option<String> = row.get(1)?;
+    let artist: Option<String> = row.get(2)?;
+    let path: String = row.get(3)?;
+    Ok(PlayRecord {
+        track_id: row.get(0)?,
+        title: title.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| {
+            std::path::Path::new(&path).file_stem().map_or_else(
+                || "Untitled".to_owned(),
+                |s| s.to_string_lossy().into_owned(),
+            )
+        }),
+        artist: artist
+            .filter(|a| !a.trim().is_empty())
+            .unwrap_or_else(|| "Unknown artist".to_owned()),
+        played_at: row.get(4)?,
+        session_id: row.get(5)?,
+    })
+}
+
 /// Turn what somebody typed into an FTS5 prefix query.
 ///
 /// Every non-alphanumeric character is dropped rather than escaped. FTS5's
@@ -1169,7 +1391,7 @@ const TRACK_COLUMNS: &str = "id, path, title, artist, album, album_artist, genre
      year, track_number, duration_frames, sample_rate, channels, file_size, \
      file_modified, added_at, bpm, grid_anchor, grid_beats_per_bar, \
      grid_confidence, key_hour, key_mode, key_confidence, loudness_lufs, \
-     play_count, last_played, rating, grid_source";
+     play_count, last_played, rating, grid_source, colour";
 
 /// The same list, qualified — needed wherever the query joins another table
 /// that has columns of the same name.
@@ -1180,7 +1402,7 @@ const TRACK_COLUMNS_QUALIFIED: &str = "tracks.id, tracks.path, tracks.title, tra
      tracks.bpm, tracks.grid_anchor, tracks.grid_beats_per_bar, \
      tracks.grid_confidence, tracks.key_hour, tracks.key_mode, tracks.key_confidence, \
      tracks.loudness_lufs, tracks.play_count, tracks.last_played, tracks.rating, \
-     tracks.grid_source";
+     tracks.grid_source, tracks.colour";
 
 /// Read one row.
 ///
@@ -1257,6 +1479,7 @@ fn read_track_from(row: &Row<'_>, base: usize) -> rusqlite::Result<Result<Librar
             last_played: row.get(at(26))?,
             rating: row.get(at(27))?,
         },
+        colour: row.get(at(29))?,
     }))
 }
 
@@ -1399,6 +1622,14 @@ fn apply_payload(
         }
     }
 
+    // A payload with cues but no tempo — which is what Serato's in-file
+    // markers usually are — has nothing to say about the grid, and must not
+    // say it anyway. Writing one would blank a tempo the analyser had found:
+    // every field below is `None`, and the write is an overwrite, not a merge.
+    if payload.bpm.is_none() && payload.key_hour.is_none() {
+        return Ok(());
+    }
+
     let mut analysis = StoredAnalysis {
         // The grid a DJ has been playing from in another application outranks
         // whatever our analyser guessed, and is outranked by a hand edit here.
@@ -1532,6 +1763,7 @@ mod tests {
             added_at: 1_700_000_000,
             analysis: StoredAnalysis::default(),
             stats: PlayStats::default(),
+            colour: None,
         }
     }
 
@@ -2505,6 +2737,248 @@ mod tests {
         ));
     }
 
+    // -- editing -----------------------------------------------------------
+
+    #[test]
+    fn a_batch_edit_sets_the_fields_it_names_and_no_others() {
+        let lib = library();
+        for n in 1..=3 {
+            let mut t = track(n, &format!("T{n}"), "X");
+            t.tags.album = Some("Original".to_owned());
+            lib.upsert_track(&t).unwrap();
+        }
+
+        let changed = lib
+            .edit_tracks(
+                &[id(1), id(2)],
+                &TrackEdit {
+                    genre: Some("Bachata".to_owned()),
+                    colour: Some("#ff0000".to_owned()),
+                    rating: Some(5),
+                    ..TrackEdit::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(changed, 2);
+
+        for byte in [1u8, 2] {
+            let found = lib.track(id(byte)).unwrap().unwrap();
+            assert_eq!(found.tags.genre.as_deref(), Some("Bachata"));
+            assert_eq!(found.stats.rating, Some(5));
+            assert_eq!(
+                found.tags.album.as_deref(),
+                Some("Original"),
+                "a field the edit did not name must be left alone"
+            );
+        }
+        assert_eq!(lib.track(id(3)).unwrap().unwrap().tags.genre, None);
+    }
+
+    /// The interface that would eat a collection in one click: `None` meaning
+    /// "clear it" rather than "leave it".
+    #[test]
+    fn an_empty_edit_changes_nothing() {
+        let lib = library();
+        let mut t = track(1, "T", "X");
+        t.tags.genre = Some("Bachata".to_owned());
+        lib.upsert_track(&t).unwrap();
+
+        assert_eq!(lib.edit_tracks(&[id(1)], &TrackEdit::default()).unwrap(), 0);
+        assert_eq!(
+            lib.track(id(1)).unwrap().unwrap().tags.genre.as_deref(),
+            Some("Bachata")
+        );
+    }
+
+    #[test]
+    fn editing_no_tracks_changes_nothing() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        let edit = TrackEdit {
+            genre: Some("Bachata".to_owned()),
+            ..TrackEdit::default()
+        };
+        assert_eq!(lib.edit_tracks(&[], &edit).unwrap(), 0);
+    }
+
+    /// Clearing is its own verb, because "set this to nothing" is a different
+    /// intention from "leave this alone".
+    #[test]
+    fn clearing_a_field_empties_it_across_the_selection() {
+        let lib = library();
+        for n in 1..=2 {
+            let mut t = track(n, &format!("T{n}"), "X");
+            t.tags.genre = Some("Wrong".to_owned());
+            t.tags.label = Some("Keep".to_owned());
+            lib.upsert_track(&t).unwrap();
+        }
+
+        lib.clear_field(&[id(1), id(2)], EditableField::Genre)
+            .unwrap();
+
+        for byte in [1u8, 2] {
+            let found = lib.track(id(byte)).unwrap().unwrap();
+            assert_eq!(found.tags.genre, None);
+            assert_eq!(
+                found.tags.label.as_deref(),
+                Some("Keep"),
+                "clearing one field must not touch another"
+            );
+        }
+    }
+
+    #[test]
+    fn a_field_name_that_is_not_editable_is_refused() {
+        assert_eq!(
+            EditableField::from_name("genre"),
+            Some(EditableField::Genre)
+        );
+        assert_eq!(
+            EditableField::from_name("color"),
+            Some(EditableField::Colour)
+        );
+        assert_eq!(EditableField::from_name("bpm"), None);
+        assert_eq!(EditableField::from_name("id"), None);
+        assert_eq!(EditableField::from_name("path; DROP TABLE tracks"), None);
+    }
+
+    // -- duplicates --------------------------------------------------------
+
+    /// The thing identity throws away and this gets back: which files hold the
+    /// same music.
+    #[test]
+    fn the_same_audio_in_two_folders_is_one_track_and_two_paths() {
+        let lib = library();
+        let mut first = track(1, "Bachata Rosa", "Juan Luis Guerra");
+        first.path = PathBuf::from("/music/a.flac");
+        first.added_at = 100;
+        lib.upsert_track(&first).unwrap();
+
+        let mut second = first.clone();
+        second.path = PathBuf::from("/music/backup/a.flac");
+        second.added_at = 200;
+        lib.upsert_track(&second).unwrap();
+
+        assert_eq!(lib.track_count().unwrap(), 1, "one piece of audio, one row");
+
+        let duplicates = lib.duplicates(10).unwrap();
+        assert_eq!(duplicates.len(), 1);
+        let (found, paths) = &duplicates[0];
+        assert_eq!(found.id, id(1));
+        assert_eq!(paths.len(), 2);
+        assert!(paths.contains(&PathBuf::from("/music/a.flac")));
+        assert!(paths.contains(&PathBuf::from("/music/backup/a.flac")));
+    }
+
+    /// A track's own path is recorded the first time it is seen, not only when
+    /// a second copy turns up. Getting this wrong would mean a duplicate showed
+    /// only one path -- the newer one -- which is the copy you want to keep.
+    #[test]
+    fn a_tracks_first_path_is_recorded_too() {
+        let lib = library();
+        lib.upsert_track(&track(1, "A", "B")).unwrap();
+        assert_eq!(lib.paths_for(id(1)).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_track_seen_once_is_not_a_duplicate() {
+        let lib = library();
+        lib.upsert_track(&track(1, "A", "B")).unwrap();
+        assert!(lib.duplicates(10).unwrap().is_empty());
+    }
+
+    /// Re-scanning the same file must not make it look like two.
+    #[test]
+    fn seeing_the_same_path_again_is_not_a_duplicate() {
+        let lib = library();
+        let t = track(1, "A", "B");
+        lib.upsert_track(&t).unwrap();
+        lib.upsert_track(&t).unwrap();
+        lib.upsert_track(&t).unwrap();
+
+        assert_eq!(lib.paths_for(id(1)).unwrap().len(), 1);
+        assert!(lib.duplicates(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn paths_come_back_newest_first() {
+        let lib = library();
+        let mut first = track(1, "A", "B");
+        first.path = PathBuf::from("/music/old.flac");
+        first.added_at = 100;
+        lib.upsert_track(&first).unwrap();
+
+        let mut second = first.clone();
+        second.path = PathBuf::from("/music/new.flac");
+        second.added_at = 200;
+        lib.upsert_track(&second).unwrap();
+
+        let paths = lib.paths_for(id(1)).unwrap();
+        assert_eq!(paths[0].0, PathBuf::from("/music/new.flac"));
+    }
+
+    #[test]
+    fn forgetting_a_path_leaves_the_track_and_the_other_copy() {
+        let lib = library();
+        let mut first = track(1, "A", "B");
+        first.path = PathBuf::from("/music/keep.flac");
+        first.added_at = 100;
+        lib.upsert_track(&first).unwrap();
+        let mut second = first.clone();
+        second.path = PathBuf::from("/music/spare.flac");
+        second.added_at = 200;
+        lib.upsert_track(&second).unwrap();
+
+        lib.forget_path(id(1), Path::new("/music/spare.flac"))
+            .unwrap();
+
+        assert_eq!(lib.track_count().unwrap(), 1, "the music is not deleted");
+        let paths = lib.paths_for(id(1)).unwrap();
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].0, PathBuf::from("/music/keep.flac"));
+    }
+
+    /// Forgetting the path the track *plays from* must move it to one that is
+    /// left, not leave it pointing at a file nobody has.
+    #[test]
+    fn forgetting_the_playing_path_moves_the_track_to_another() {
+        let lib = library();
+        let mut first = track(1, "A", "B");
+        first.path = PathBuf::from("/music/keep.flac");
+        first.added_at = 100;
+        lib.upsert_track(&first).unwrap();
+        let mut second = first.clone();
+        second.path = PathBuf::from("/music/spare.flac");
+        second.added_at = 200;
+        lib.upsert_track(&second).unwrap();
+
+        // The track currently plays from the newest, `spare`.
+        assert_eq!(
+            lib.track(id(1)).unwrap().unwrap().path,
+            PathBuf::from("/music/spare.flac")
+        );
+
+        lib.forget_path(id(1), Path::new("/music/spare.flac"))
+            .unwrap();
+        assert_eq!(
+            lib.track(id(1)).unwrap().unwrap().path,
+            PathBuf::from("/music/keep.flac"),
+            "the track must not be left pointing at a file that is gone"
+        );
+    }
+
+    #[test]
+    fn deleting_a_track_takes_its_paths_with_it() {
+        let lib = library();
+        lib.upsert_track(&track(1, "A", "B")).unwrap();
+        lib.with(|conn| {
+            conn.execute("DELETE FROM tracks WHERE id = ?1", [id(1).to_hex()])?;
+            Ok(())
+        })
+        .unwrap();
+        assert!(lib.paths_for(id(1)).unwrap().is_empty());
+    }
+
     // -- history -----------------------------------------------------------
 
     #[test]
@@ -2550,6 +3024,52 @@ mod tests {
 
         assert_eq!(lib.history(10).unwrap().len(), 2);
         assert_eq!(lib.track(id(1)).unwrap().unwrap().stats.play_count, 2);
+    }
+
+    // -- sessions ----------------------------------------------------------
+
+    /// A set list runs forwards, unlike the history panel.
+    #[test]
+    fn a_session_reads_oldest_first() {
+        let lib = library();
+        lib.upsert_track(&track(1, "First", "X")).unwrap();
+        lib.upsert_track(&track(2, "Second", "X")).unwrap();
+        lib.record_play(id(1), 100, Some("friday")).unwrap();
+        lib.record_play(id(2), 200, Some("friday")).unwrap();
+
+        let set = lib.session("friday").unwrap();
+        assert_eq!(
+            set.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(),
+            vec!["First", "Second"],
+            "the history panel is newest first; a set list is not"
+        );
+    }
+
+    #[test]
+    fn a_session_holds_only_its_own_plays() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        lib.record_play(id(1), 100, Some("friday")).unwrap();
+        lib.record_play(id(1), 200, Some("saturday")).unwrap();
+
+        assert_eq!(lib.session("friday").unwrap().len(), 1);
+        assert!(lib.session("nothing").unwrap().is_empty());
+    }
+
+    #[test]
+    fn sessions_are_listed_newest_first_with_their_counts() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        lib.record_play(id(1), 100, Some("friday")).unwrap();
+        lib.record_play(id(1), 150, Some("friday")).unwrap();
+        lib.record_play(id(1), 900, Some("saturday")).unwrap();
+        // A play with no session must not invent one.
+        lib.record_play(id(1), 950, None).unwrap();
+
+        let sessions = lib.sessions(10).unwrap();
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0].0, "saturday");
+        assert_eq!(sessions[1], ("friday".to_owned(), 2, 150));
     }
 
     // -- durability --------------------------------------------------------

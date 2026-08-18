@@ -67,6 +67,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 3,
         sql: MIGRATION_3,
     },
+    Migration {
+        version: 4,
+        sql: MIGRATION_4,
+    },
 ];
 
 /// The initial schema.
@@ -337,6 +341,37 @@ ALTER TABLE tracks ADD COLUMN grid_source TEXT;
 UPDATE tracks SET grid_source = 'analysis' WHERE bpm IS NOT NULL;
 "#;
 
+/// Every place a track's audio has been seen.
+///
+/// # The gap this fills
+///
+/// A track is one row per distinct piece of audio, and `tracks.path` is where
+/// it was last seen. That is exactly right for playing — the cues belong to the
+/// music, not to the file — but it means the second copy of a track silently
+/// replaces the first's path, and the DJ can never find out they have two.
+/// Duplicate detection is the one job that needs the thing identity throws
+/// away.
+///
+/// So every path is remembered here, and `tracks.path` stays what it was: the
+/// one to open. A track with more than one row is a duplicate; deleting the
+/// spare file removes its row on the next scan and the track carries on.
+const MIGRATION_4: &str = r#"
+CREATE TABLE track_paths (
+    track_id  TEXT    NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    path      TEXT    NOT NULL,
+    -- Unix seconds, so the browser can say which copy is the old one.
+    seen_at   INTEGER NOT NULL,
+    file_size INTEGER,
+    PRIMARY KEY (track_id, path)
+);
+
+CREATE INDEX track_paths_path ON track_paths(path);
+
+-- Every track already known has been seen at exactly the place it says.
+INSERT OR IGNORE INTO track_paths (track_id, path, seen_at, file_size)
+SELECT id, path, added_at, file_size FROM tracks;
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -419,6 +454,7 @@ mod tests {
             "history",
             "pending_files",
             "pending_playlist_entries",
+            "track_paths",
             "tracks_fts",
         ] {
             let found: i64 = conn

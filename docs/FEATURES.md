@@ -66,6 +66,9 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Import rekordbox XML, Traktor NML and iTunes XML with cues and grids | M3 |
 | Import Serato crates and database (clean-room) | M3 |
 | Read Serato hot cues and loops out of the audio files | M3 |
+| Duplicate detection across copies of the same audio | M3 |
+| Batch tag editing, colour coding and ratings | M3 |
+| Session export as a set list | M3 |
 | Spectral colouring (bass/mid/high energy) | M2 |
 | Loop region and hot cue overlays | M2 |
 | Phrase / structure markers | M8 |

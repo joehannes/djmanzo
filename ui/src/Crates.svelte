@@ -22,6 +22,7 @@
   export type Selection =
     | { kind: "all" }
     | { kind: "history" }
+    | { kind: "duplicates" }
     | { kind: "playlist"; id: number; name: string }
     | { kind: "smart"; id: number; name: string; query: string };
 
@@ -162,6 +163,17 @@
     onclick={() => select({ kind: "history" })}
   >
     History
+  </button>
+  <!--
+    Duplicates is a *view* of the collection rather than a crate, so it belongs
+    up here beside "All tracks" and not in the tree a DJ built.
+  -->
+  <button
+    class="entry"
+    class:active={selection.kind === "duplicates"}
+    onclick={() => select({ kind: "duplicates" })}
+  >
+    Duplicates
   </button>
 
   <div class="divider"></div>

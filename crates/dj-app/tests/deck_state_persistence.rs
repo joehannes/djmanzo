@@ -46,6 +46,7 @@ fn library_track(id: TrackId) -> dj_library::LibraryTrack {
         added_at: 0,
         analysis: dj_library::StoredAnalysis::default(),
         stats: dj_library::PlayStats::default(),
+        colour: None,
     }
 }
 

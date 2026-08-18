@@ -383,9 +383,33 @@ tags of every track it touches is one bad release away from a disaster.
 Not yet: a session export.
 
 M3's own "done when" — *import an existing rekordbox or Serato library with cues and grids
-intact, and find any track in under a second* — is met. What remains of the milestone is
-interface: SideView, batch tag editing, duplicate detection, and the layout presets and skin
-system. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
+intact, and find any track in under a second* — is met.
+
+**Duplicate detection got back what identity throws away.** A track is one row per distinct
+piece of audio and `tracks.path` is where it was last seen — right for playing, since the cues
+belong to the music, but it meant the second copy silently replaced the first's path and a DJ
+could never learn they had two. Every path a track's audio has been seen at is now remembered
+alongside; a track with more than one is a duplicate. Removing one only forgets the library's
+memory of it — nothing here deletes anybody's music — and if it was the path the track played
+from, the track moves to one it still has rather than pointing at a file nobody owns.
+
+Batch editing sets fields across a selection, where absent means *leave it alone*. Clearing is
+its own verb, because "set this to nothing" is a different intention and a single method
+expressing both would have to invent a sentinel for one of them. Colour is a stripe down the
+edge of a row rather than a filled row: a DJ colours tracks to find them at a glance, and six
+saturated rows are harder to read than six marks. The edit bar appears only while something is
+selected — a row of tag fields above an unselected table is an invitation to a mistake.
+
+Sessions export as a plain set list with times relative to the first track, since what somebody
+reading one wants is how far into the night it was, not the wall clock of a machine in another
+time zone.
+
+**A screenshot found the bug worth recording.** Serato's in-file markers are usually cues with
+no tempo, and applying one blanked the grid the analyser had already found — the write is an
+overwrite, not a merge, and every grid field in a cues-only payload is null. A payload with
+nothing to say about the grid now says nothing.
+
+What remains of the milestone: SideView, and the layout presets and skin system. Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and
 it will come, but a control that works one-handed on a trackpad should not wait for it. The
 importers, SideView and layout presets are still ahead.
 

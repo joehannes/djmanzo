@@ -28,6 +28,9 @@ pub struct LibraryTrack {
     pub added_at: i64,
     pub analysis: StoredAnalysis,
     pub stats: PlayStats,
+    /// `#rrggbb`, when the DJ has coloured it. A browser marking rather than
+    /// anything the engine knows about.
+    pub colour: Option<String>,
 }
 
 /// What the file's own metadata says.
@@ -324,6 +327,81 @@ mod tests {
             added_at: 0,
             analysis: analysis(),
             stats: PlayStats::default(),
+            colour: None,
+        }
+    }
+}
+
+/// A batch edit. Every field is optional, and `None` leaves it alone.
+///
+/// Not `Option<Option<T>>` for "clear it": that type is correct and nobody
+/// reads it correctly. Clearing is [`crate::Library::clear_field`], which says
+/// what it does.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TrackEdit {
+    pub genre: Option<String>,
+    pub label: Option<String>,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub comment: Option<String>,
+    pub year: Option<i32>,
+    /// 0..=5.
+    pub rating: Option<u8>,
+    /// `#rrggbb`, as the browser shows it.
+    pub colour: Option<String>,
+}
+
+impl TrackEdit {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.genre.is_none()
+            && self.label.is_none()
+            && self.artist.is_none()
+            && self.album.is_none()
+            && self.comment.is_none()
+            && self.year.is_none()
+            && self.rating.is_none()
+            && self.colour.is_none()
+    }
+}
+
+/// A field a batch edit can clear.
+///
+/// An enum rather than a string, so the column name in the `UPDATE` is one of
+/// ours and never anything a caller typed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EditableField {
+    Genre,
+    Label,
+    Comment,
+    Year,
+    Rating,
+    Colour,
+}
+
+impl EditableField {
+    #[must_use]
+    pub const fn column(self) -> &'static str {
+        match self {
+            Self::Genre => "genre",
+            Self::Label => "label",
+            Self::Comment => "comment",
+            Self::Year => "year",
+            Self::Rating => "rating",
+            Self::Colour => "colour",
+        }
+    }
+
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "genre" => Some(Self::Genre),
+            "label" => Some(Self::Label),
+            "comment" => Some(Self::Comment),
+            "year" => Some(Self::Year),
+            "rating" => Some(Self::Rating),
+            "colour" | "color" => Some(Self::Colour),
+            _ => None,
         }
     }
 }

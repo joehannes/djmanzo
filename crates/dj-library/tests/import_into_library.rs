@@ -31,6 +31,7 @@ fn known_track(byte: u8, path: &str) -> LibraryTrack {
         added_at: 0,
         analysis: StoredAnalysis::default(),
         stats: PlayStats::default(),
+        colour: None,
     }
 }
 
@@ -320,6 +321,59 @@ fn importing_a_file_that_previously_failed_requeues_it() {
     .unwrap();
     assert_eq!(lib.pending_count().unwrap(), 1);
     assert!(lib.failed_pending().unwrap().is_empty());
+}
+
+/// The bug a screenshot found: Serato's in-file markers are usually cues with
+/// no tempo, and applying one blanked the grid the analyser had already found.
+#[test]
+fn a_payload_with_cues_but_no_tempo_leaves_the_grid_alone() {
+    let lib = Library::in_memory().unwrap();
+    let mut track = known_track(1, "/music/a.flac");
+    track.analysis = StoredAnalysis {
+        bpm: Some(128.0),
+        grid_anchor: Some(0.0),
+        grid_beats_per_bar: Some(4),
+        grid_confidence: Some(0.9),
+        grid_source: Some(dj_library::GridSource::Analysis),
+        ..StoredAnalysis::default()
+    };
+    lib.upsert_track(&track).unwrap();
+    lib.set_analysis(track.id, &track.analysis).unwrap();
+
+    // Cues, and nothing about the tempo — what a `GEOB` tag normally holds.
+    let cues_only = ImportPayload {
+        cues: vec![ImportedCue {
+            slot: 1,
+            seconds: 4.0,
+            label: None,
+            colour: None,
+        }],
+        ..ImportPayload::default()
+    };
+    lib.import(
+        &collection(
+            vec![ImportedTrack {
+                path: PathBuf::from("/music/a.flac"),
+                payload: cues_only,
+                ..ImportedTrack::default()
+            }],
+            Vec::new(),
+        ),
+        100,
+    )
+    .unwrap();
+
+    let found = lib.track(id(1)).unwrap().unwrap();
+    assert_eq!(
+        found.analysis.bpm,
+        Some(128.0),
+        "cues must not cost the track its tempo"
+    );
+    assert_eq!(
+        lib.cues(id(1)).unwrap().len(),
+        1,
+        "...and the cues still land"
+    );
 }
 
 #[test]
