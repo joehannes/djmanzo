@@ -699,6 +699,29 @@ this ships. They are a compatibility surface and need the same care action names
 Requested as its own thread: richer visual representation of the controls and of
 the audio, WebGL-driven visualisation, and motion throughout the interface.
 
+**This has since been answered by measurement and turned into a design.** See
+[ADR-0009](adr/0009-the-living-interface.md) for the decision and
+[VISUAL-LANGUAGE.md](VISUAL-LANGUAGE.md) for the system; the sequencing note
+below is kept because it is what prompted the measurement, and because its
+reasoning still holds for anything WebGL-only.
+
+The measurement, on the same no-GPU floor ADR-0004 used, with identical motion:
+
+| shapes | DOM (`transform`) | Canvas 2D | WebGL |
+|---|---|---|---|
+| 60 | 59.8 fps | 60.0 fps | 59.5 fps |
+| 240 | **27.0 fps** | 57.8 fps | 60.0 fps |
+| 960 | **18.6 fps** | 45.4 fps | 59.7 fps |
+
+The interface's *current* DOM approach is the worst of the three and the only one
+that collapses — one self-repainting surface beats N animating layers, because
+the cost ADR-0004 found was document invalidation rather than fill rate. The
+WebGL run also reported its renderer as "Apple GPU" on a headless Linux box with
+no GPU, which settles a question ADR-0004 left open: **the driver string cannot
+detect a software fallback**, and the frame probe is the only honest detector.
+
+The original note follows.
+
 Sequenced behind one thing, honestly: **[ADR-0004](adr/0004-waveform-rendering-strategy.md)
 was written specifically about the hazard WebGL under WebKitGTK presents** —
 contexts that create successfully and are then backed by a software rasteriser,

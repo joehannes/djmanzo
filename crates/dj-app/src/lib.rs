@@ -57,6 +57,14 @@ pub const NULL_BACKEND_ENV: &str = "DJMANZO_NULL_AUDIO";
 /// from a synthetic harness would not settle it.
 pub const BENCH_ENV: &str = "DJMANZO_BENCH";
 
+/// Set to anything to run the rendering-strategy benchmark on startup.
+///
+/// Answers a different question from [`BENCH_ENV`]: not whether the waveform
+/// strip composites, but whether a continuously animating interface is cheaper
+/// as DOM, as a 2D canvas, or as WebGL on this machine. See ADR-0004 for why
+/// the answer is not obvious and `ui/src/renderbench.ts` for what it measures.
+pub const RENDER_BENCH_ENV: &str = "DJMANZO_RENDERBENCH";
+
 /// Start the application.
 ///
 /// # Panics
@@ -158,6 +166,19 @@ pub fn run() {
                     std::thread::sleep(std::time::Duration::from_secs(3));
                     use tauri::Emitter;
                     let _ = handle.emit("bench", path);
+                });
+            }
+
+            if let Ok(value) = std::env::var(RENDER_BENCH_ENV) {
+                // The value is the shape count, so the scaling law can be
+                // measured rather than assumed. Anything unparseable means "the
+                // default", since a typo should still run the benchmark.
+                let shapes: u32 = value.trim().parse().unwrap_or(0);
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    use tauri::Emitter;
+                    let _ = handle.emit("renderbench", shapes);
                 });
             }
 

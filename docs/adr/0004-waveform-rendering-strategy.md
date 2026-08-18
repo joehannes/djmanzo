@@ -218,3 +218,17 @@ What it does say is worth keeping:
   fallback is the real hazard.
 - The native `wgpu` escape hatch stays exactly as available: `dj-render` remains
   host-agnostic, and nothing in it would change.
+
+### Follow-up, 2026-08-18
+
+[ADR-0009](0009-the-living-interface.md) re-ran the same environment against three
+rendering strategies and found two things that bear directly on this ADR.
+
+**The fixed per-frame cost is confirmed as document invalidation, not fill rate.**
+Replacing N animating DOM layers with one self-repainting canvas removes it:
+960 moving shapes cost 18.6 fps as DOM and 59.7 fps as WebGL, on the same machine.
+
+**`WEBGL_debug_renderer_info` cannot detect the software fallback this ADR fears.**
+WebKitGTK reported the renderer as "Apple GPU" on a headless Linux container with
+no GPU at all. Feature detection here is not unreliable, it is misleading — which
+promotes the runtime frame probe from a nicety to the only honest detector.
