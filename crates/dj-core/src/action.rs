@@ -127,6 +127,16 @@ pub enum DeckAction {
     GridTap,
     /// Throw the edits away and go back to what the analyser said.
     GridReset,
+
+    // -- saved loops --------------------------------------------------------
+    //
+    // A saved loop belongs to the *track*, not the deck: the eight-bar section
+    // you loop every time you play a record is a property of the record. So
+    // these say which slot, and the host looks the region up in the library.
+    /// Keep the loop that is playing in a numbered slot.
+    LoopSave(u8),
+    /// Put a saved loop back and start looping it.
+    LoopRecall(u8),
     /// Drop the loaded track.
     Eject,
 }
@@ -274,6 +284,8 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "grid_bpm" => DeckAction::GridSetBpm(f64::from(parse_f32(argument)?)),
         "grid_tap" => DeckAction::GridTap,
         "grid_reset" => DeckAction::GridReset,
+        "loop_save" => DeckAction::LoopSave(parse_slot(argument)?),
+        "loop_recall" => DeckAction::LoopRecall(parse_slot(argument)?),
         other => return Err(ParseError::UnknownVerb(other.to_owned())),
     })
 }
@@ -397,6 +409,8 @@ impl fmt::Display for Action {
                 DeckAction::GridSetBpm(b) => write!(f, "deck {deck} grid_bpm {}", number(*b)),
                 DeckAction::GridTap => write!(f, "deck {deck} grid_tap"),
                 DeckAction::GridReset => write!(f, "deck {deck} grid_reset"),
+                DeckAction::LoopSave(slot) => write!(f, "deck {deck} loop_save {slot}"),
+                DeckAction::LoopRecall(slot) => write!(f, "deck {deck} loop_recall {slot}"),
             },
             Action::Mixer(MixerAction::Crossfader(v)) => {
                 write!(f, "crossfader {}", number(f64::from(*v)))

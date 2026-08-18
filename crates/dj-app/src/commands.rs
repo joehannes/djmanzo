@@ -174,6 +174,16 @@ pub async fn load_track(
 
     let track_id = decoded.id;
     let sample_rate = decoded.buffer.sample_rate();
+
+    // Into the library *before* the deck is playable.
+    //
+    // Two reasons for the ordering. A cue row has a foreign key to its track,
+    // so without this every cue a DJ set on a file they opened from disk would
+    // be silently discarded. And a DJ who loads a file expects to find it in
+    // their collection afterwards -- a track you played is part of your library
+    // whether or not you ever pointed a scan at the folder it lives in.
+    remember_track(&state, &decoded, sample_rate);
+
     let buffer = Arc::new(decoded.buffer);
     // One allocation, two owners: the engine plays it, the analyser reads it.
     // Cloning the samples instead would double a hundred megabytes for no reason.
@@ -186,6 +196,12 @@ pub async fn load_track(
         })
         .map_err(|_| "engine is not accepting commands; is a device open?".to_owned())?;
 
+    // What this track had last time it was played: cues in the slots they were
+    // in, and the grid as it was left -- corrected by hand, if it was. Sent
+    // after the load so the engine applies them to the new track rather than to
+    // whatever was on the deck a moment ago.
+    restore_deck_state(&state, deck_id, track_id, sample_rate);
+
     // Analysis runs *after* the track is playable, on its own worker.
     //
     // The ordering is the whole point: tempo, key and loudness take FFT passes
@@ -196,6 +212,7 @@ pub async fn load_track(
     let bus = Arc::clone(state.bus());
     let waveforms = Arc::clone(state.waveforms());
     let tracks = state.deck_tracks();
+    let library = state.library();
     tauri::async_runtime::spawn_blocking(move || {
         let analysis = crate::analysis::analyse_or_cached(
             &store,
@@ -230,6 +247,18 @@ pub async fn load_track(
                 sample_rate,
             }),
         );
+
+        // And into the library, so a track loaded straight from disk gets a BPM
+        // and a key the browser can sort by without waiting for a scan to reach
+        // it. `if_absent`, so this cannot overwrite a grid the DJ corrected
+        // last time they played it -- which `restore_deck_state` has already
+        // put back on the deck.
+        if let Ok(db) = library.get()
+            && let Err(error) =
+                db.set_analysis_if_absent(track_id, &crate::library::stored_analysis(&analysis))
+        {
+            tracing::warn!(%error, "could not store the analysis");
+        }
 
         // And to the engine, which needs it for sync, quantize and beat jump.
         // Two destinations for one finding rather than one shared home,
@@ -275,6 +304,25 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
         state.clear_deck_track(deck);
         state.analysis().clear_deck(deck);
         state.taps().clear(deck);
+    }
+
+    // Saved loops live in the library with the track, so the host is the only
+    // place that can look one up or store one. Intercepted for the same reason
+    // as the grid edits below.
+    if let Action::Deck { deck, action } = parsed {
+        match action {
+            dj_core::DeckAction::LoopSave(slot) => {
+                save_loop(&state, deck, slot)?;
+                let _ = state.bus().dispatch(parsed);
+                return Ok(());
+            }
+            dj_core::DeckAction::LoopRecall(slot) => {
+                recall_loop(&state, deck, slot)?;
+                let _ = state.bus().dispatch(parsed);
+                return Ok(());
+            }
+            _ => {}
+        }
     }
 
     // Grid edits are the other kind: they need the analyser's original to undo
@@ -335,6 +383,7 @@ fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(),
     if let GridEdit::Reset = edit {
         let original = waveforms.analysed_grid(deck.human_number());
         waveforms.set_grid(deck, original);
+        save_grid(state, deck, original.map(|o| o.grid));
         return publish_grid(state, deck, original.map(|o| o.grid));
     }
 
@@ -401,7 +450,55 @@ fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(),
             sample_rate: rate,
         }),
     );
+    save_grid(state, deck, Some(edited));
     publish_grid(state, deck, Some(edited))
+}
+
+/// Keep a grid edit, so the correction is still there next time this track is
+/// played.
+///
+/// Unconditional, unlike the write identification does: this grid is what the
+/// DJ said, and it outranks whatever the analyser had found. Reset writes the
+/// analyser's original back, which is exactly right -- undoing an edit should
+/// be as durable as making one.
+///
+/// Synchronous rather than through the writer thread, because this is already
+/// off the interface thread and a DJ who edits a grid and quits immediately
+/// should not lose it to a queue that never drained.
+fn save_grid(state: &AppState, deck: DeckId, grid: Option<dj_core::Beatgrid>) {
+    let Some(track) = state.deck_track_id(deck) else {
+        return;
+    };
+    let Ok(db) = state.library().get() else {
+        return;
+    };
+
+    let stored = match db.track(track) {
+        Ok(Some(found)) => found.analysis,
+        // No row means the track is not in the library, which the load path
+        // should have seen to. Nothing to attach the grid to.
+        Ok(None) => return,
+        Err(error) => {
+            tracing::warn!(%error, "could not read the track to save its grid");
+            return;
+        }
+    };
+
+    let updated = match grid {
+        Some(grid) => stored.with_beatgrid(grid),
+        // A cleared grid, which only `grid_reset` on an unanalysed track can
+        // produce. Blank the four columns rather than leaving a stale tempo.
+        None => dj_library::StoredAnalysis {
+            bpm: None,
+            grid_anchor: None,
+            grid_beats_per_bar: None,
+            grid_confidence: None,
+            ..stored
+        },
+    };
+    if let Err(error) = db.set_analysis(track, &updated) {
+        tracing::warn!(%error, "could not save the grid edit");
+    }
 }
 
 /// Send a grid to the engine, which needs it for sync, quantize and beat jump.
@@ -939,4 +1036,408 @@ pub fn library_search(
     }
     .map_err(|e| e.to_string())?;
     Ok(found.into_iter().map(LibraryTrackDto::from).collect())
+}
+
+/// Add a freshly decoded track to the library.
+///
+/// Tags come from the decoder here rather than from `lofty`, because this is
+/// the load path and the file has already been opened once. A scan reads richer
+/// tags; if this track is later scanned, the upsert fills in the rest.
+fn remember_track(state: &AppState, decoded: &dj_decode::DecodedTrack, rate: dj_core::SampleRate) {
+    let Ok(db) = state.library().get() else {
+        return;
+    };
+    let track = dj_library::LibraryTrack {
+        id: decoded.id,
+        path: decoded.path.clone(),
+        tags: dj_library::Tags {
+            title: decoded.title.clone(),
+            artist: decoded.artist.clone(),
+            album: decoded.album.clone(),
+            ..dj_library::Tags::default()
+        },
+        duration_frames: decoded.buffer.len_frames() as u64,
+        sample_rate: rate,
+        channels: 2,
+        file_size: std::fs::metadata(&decoded.path).ok().map(|m| m.len()),
+        file_modified: None,
+        added_at: crate::library::now_seconds(),
+        analysis: dj_library::StoredAnalysis::default(),
+        stats: dj_library::PlayStats::default(),
+    };
+    if let Err(error) = db.upsert_track(&track) {
+        // Not fatal. The deck still plays; the DJ just will not find this track
+        // in the browser, and cues set on it will not be kept.
+        tracing::warn!(%error, path = ?decoded.path, "could not add the track to the library");
+    }
+}
+
+/// Put a track's stored cues and grid back on the deck it has just been loaded
+/// onto.
+fn restore_deck_state(
+    state: &AppState,
+    deck: DeckId,
+    track: dj_core::TrackId,
+    rate: dj_core::SampleRate,
+) {
+    let Ok(db) = state.library().get() else {
+        return;
+    };
+
+    // The watcher must not treat the restored cues as a change the DJ made --
+    // and must not treat the deck's *current* cues, which still belong to the
+    // previous track, as this one's. Forgetting the deck makes the next
+    // observation a first sight.
+    state.cue_watcher_forget(deck.human_number());
+
+    match db.cues(track) {
+        Ok(cues) if !cues.is_empty() => {
+            let _ = state.bus().send_command(dj_engine::Command::SetHotCues {
+                deck,
+                cues: crate::persist::from_stored(&cues),
+            });
+        }
+        Ok(_) => {}
+        Err(error) => tracing::warn!(%error, "could not read stored cues"),
+    }
+
+    // A stored grid wins over the analyser's, which has not run yet anyway --
+    // and which, when it does, will not overwrite this: `analyse_or_cached`
+    // only publishes a grid for a deck that has none stored.
+    match db.track(track) {
+        Ok(Some(found)) => {
+            if let Some(grid) = found.analysis.beatgrid() {
+                state.waveforms().set_analysed_grid(
+                    deck,
+                    Some(dj_render::GridOverlay {
+                        grid,
+                        sample_rate: rate,
+                    }),
+                );
+                let _ = state.bus().send_command(dj_engine::Command::SetGrid {
+                    deck,
+                    grid: Some(grid),
+                });
+            }
+        }
+        Ok(None) => {}
+        Err(error) => tracing::warn!(%error, "could not read the stored grid"),
+    }
+}
+
+/// Keep the loop that is playing, with the track.
+///
+/// Reads the region from the registry rather than from the action, because the
+/// engine is what decided it: `loop_in`/`loop_out` snap to the grid when
+/// quantize is on, and the loop the DJ can hear is the snapped one.
+fn save_loop(state: &AppState, deck: DeckId, slot: u8) -> Result<(), String> {
+    use dj_core::param::DeckParam;
+
+    let registry = state.registry();
+    let get = |param| registry.get(dj_core::ParamId::Deck(deck, param));
+    if get(DeckParam::LoopActive) < 0.5 {
+        return Err("there is no loop playing to save".to_owned());
+    }
+
+    let track = state
+        .deck_track_id(deck)
+        .ok_or("no track on that deck to save a loop with")?;
+    let db = state.library().get().map_err(|e| e.to_string())?;
+
+    let mut loops = db.loops(track).map_err(|e| e.to_string())?;
+    loops.retain(|region| region.slot != slot);
+    loops.push(dj_library::StoredLoop {
+        slot,
+        start_frame: f64::from(get(DeckParam::LoopStart)),
+        end_frame: f64::from(get(DeckParam::LoopEnd)),
+        label: None,
+    });
+    loops.sort_by_key(|region| region.slot);
+
+    db.set_loops(track, &loops).map_err(|e| e.to_string())
+}
+
+/// Put a saved loop back on the deck.
+fn recall_loop(state: &AppState, deck: DeckId, slot: u8) -> Result<(), String> {
+    let track = state
+        .deck_track_id(deck)
+        .ok_or("no track on that deck to recall a loop for")?;
+    let db = state.library().get().map_err(|e| e.to_string())?;
+
+    let stored = db
+        .loops(track)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|region| region.slot == slot)
+        .ok_or_else(|| format!("nothing saved in loop slot {slot}"))?;
+
+    // `LoopRegion::new` rejects a reversed or empty span. A row like that means
+    // the database is wrong, and looping over nothing would be worse than
+    // saying so.
+    let region = dj_core::LoopRegion::new(
+        dj_core::FramePos::new(stored.start_frame),
+        dj_core::FramePos::new(stored.end_frame),
+    )
+    .ok_or_else(|| format!("saved loop {slot} is not a region"))?;
+
+    state
+        .bus()
+        .send_command(dj_engine::Command::SetLoop {
+            deck,
+            region: Some(region),
+        })
+        .map_err(|_| "engine is not accepting commands; is a device open?".to_owned())
+}
+
+/// Cues, grids and loops surviving a track leaving a deck and coming back.
+///
+/// The unit tests cover the pieces. These cover the claim a DJ actually cares
+/// about: what you set on a record is still there next time you play it.
+#[cfg(test)]
+mod persistence_tests {
+    use super::*;
+    use dj_core::{Beatgrid, Bpm, Confidence, FramePos, SampleRate};
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+
+    fn deck() -> DeckId {
+        DeckId::from_human(1).unwrap()
+    }
+
+    fn id(byte: u8) -> dj_core::TrackId {
+        dj_core::TrackId::from_bytes([byte; 32])
+    }
+
+    /// An app with a device open and a track "on" deck 1: in the library, and
+    /// recorded as loaded, which is what the persistence paths key off.
+    fn app_with_track() -> AppState {
+        let state = AppState::new(true);
+        state.host().open(None, None, 128).unwrap();
+
+        let db = state.library().get().unwrap();
+        db.upsert_track(&dj_library::LibraryTrack {
+            id: id(1),
+            path: std::path::PathBuf::from("/music/a.flac"),
+            tags: dj_library::Tags::default(),
+            duration_frames: 48_000 * 200,
+            sample_rate: SR,
+            channels: 2,
+            file_size: None,
+            file_modified: None,
+            added_at: 0,
+            analysis: dj_library::StoredAnalysis::default(),
+            stats: dj_library::PlayStats::default(),
+        })
+        .unwrap();
+
+        state.set_deck_track(
+            deck(),
+            crate::state::LoadedTrackInfo {
+                title: "A".to_owned(),
+                artist: None,
+                id: id(1),
+            },
+        );
+        state
+    }
+
+    fn grid_on_deck(state: &AppState, grid: Beatgrid) {
+        state.waveforms().set_analysed_grid(
+            deck(),
+            Some(dj_render::GridOverlay {
+                grid,
+                sample_rate: SR,
+            }),
+        );
+    }
+
+    fn edit(state: &AppState, text: &str) -> Result<(), String> {
+        let Action::Deck { deck, action } = Action::parse(text).unwrap() else {
+            panic!("{text} is not a deck action");
+        };
+        let edit = grid_edit(action).expect("not a grid edit");
+        apply_grid_edit(state, deck, edit)
+    }
+
+    #[test]
+    fn a_grid_edit_is_kept_with_the_track() {
+        let state = app_with_track();
+        grid_on_deck(
+            &state,
+            Beatgrid::new(
+                FramePos::new(1_000.0),
+                Bpm::new(128.0).unwrap(),
+                Confidence::new(0.2),
+            ),
+        );
+
+        edit(&state, "deck 1 grid_nudge 10").unwrap();
+
+        let stored = state
+            .library()
+            .get()
+            .unwrap()
+            .track(id(1))
+            .unwrap()
+            .unwrap()
+            .analysis;
+        let expected = 1_000.0 + 10.0 / 1000.0 * SR.as_f64();
+        assert!((stored.grid_anchor.unwrap() - expected).abs() < 1e-6);
+        assert_eq!(stored.grid_confidence, Some(1.0), "an edit is certain");
+    }
+
+    /// Undoing an edit has to be as durable as making one, or a DJ who resets a
+    /// grid finds their bad edit back tomorrow.
+    #[test]
+    fn resetting_a_grid_is_kept_too() {
+        let state = app_with_track();
+        let original = Beatgrid::new(
+            FramePos::new(1_000.0),
+            Bpm::new(128.0).unwrap(),
+            Confidence::new(0.2),
+        );
+        grid_on_deck(&state, original);
+
+        edit(&state, "deck 1 grid_scale 2").unwrap();
+        edit(&state, "deck 1 grid_reset").unwrap();
+
+        let stored = state
+            .library()
+            .get()
+            .unwrap()
+            .track(id(1))
+            .unwrap()
+            .unwrap()
+            .analysis;
+        assert_eq!(stored.beatgrid(), Some(original));
+    }
+
+    /// A grid edit on a deck holding a track the library has never seen must
+    /// not fail the edit -- the deck still plays, there is simply nowhere to
+    /// keep the correction.
+    #[test]
+    fn editing_a_grid_for_an_unknown_track_still_edits() {
+        let state = AppState::new(true);
+        state.host().open(None, None, 128).unwrap();
+        state.set_deck_track(
+            deck(),
+            crate::state::LoadedTrackInfo {
+                title: "A".to_owned(),
+                artist: None,
+                id: id(9),
+            },
+        );
+        grid_on_deck(
+            &state,
+            Beatgrid::new(
+                FramePos::new(0.0),
+                Bpm::new(128.0).unwrap(),
+                Confidence::new(0.2),
+            ),
+        );
+
+        edit(&state, "deck 1 grid_nudge 5").unwrap();
+        assert!(state.waveforms().grid(1).is_some());
+    }
+
+    // -- saved loops -------------------------------------------------------
+
+    fn set_loop(state: &AppState, start: f32, end: f32) {
+        use dj_core::param::DeckParam;
+        let registry = state.registry();
+        let set = |param, value| registry.set(dj_core::ParamId::Deck(deck(), param), value);
+        set(DeckParam::LoopActive, 1.0);
+        set(DeckParam::LoopStart, start);
+        set(DeckParam::LoopEnd, end);
+    }
+
+    #[test]
+    fn a_saved_loop_survives_the_round_trip() {
+        let state = app_with_track();
+        set_loop(&state, 96_000.0, 192_000.0);
+
+        save_loop(&state, deck(), 1).unwrap();
+        let stored = state.library().get().unwrap().loops(id(1)).unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].slot, 1);
+        assert_eq!(stored[0].start_frame, 96_000.0);
+        assert_eq!(stored[0].end_frame, 192_000.0);
+
+        // And it comes back.
+        recall_loop(&state, deck(), 1).unwrap();
+    }
+
+    #[test]
+    fn saving_over_a_slot_replaces_it_rather_than_adding() {
+        let state = app_with_track();
+        set_loop(&state, 96_000.0, 192_000.0);
+        save_loop(&state, deck(), 1).unwrap();
+
+        set_loop(&state, 480_000.0, 576_000.0);
+        save_loop(&state, deck(), 1).unwrap();
+
+        let stored = state.library().get().unwrap().loops(id(1)).unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].start_frame, 480_000.0);
+    }
+
+    #[test]
+    fn several_slots_are_kept_separately_and_in_order() {
+        let state = app_with_track();
+        set_loop(&state, 480_000.0, 576_000.0);
+        save_loop(&state, deck(), 3).unwrap();
+        set_loop(&state, 96_000.0, 192_000.0);
+        save_loop(&state, deck(), 1).unwrap();
+
+        let stored = state.library().get().unwrap().loops(id(1)).unwrap();
+        assert_eq!(
+            stored.iter().map(|region| region.slot).collect::<Vec<_>>(),
+            vec![1, 3]
+        );
+    }
+
+    #[test]
+    fn saving_with_no_loop_playing_says_so() {
+        let state = app_with_track();
+        assert!(save_loop(&state, deck(), 1).is_err());
+    }
+
+    #[test]
+    fn recalling_an_empty_slot_says_so_rather_than_looping_over_nothing() {
+        let state = app_with_track();
+        let error = recall_loop(&state, deck(), 4).unwrap_err();
+        assert!(error.contains('4'), "the message should name the slot");
+    }
+
+    /// A row the database should not contain must be reported, not looped over.
+    #[test]
+    fn a_reversed_saved_loop_is_refused() {
+        let state = app_with_track();
+        state
+            .library()
+            .get()
+            .unwrap()
+            .set_loops(
+                id(1),
+                &[dj_library::StoredLoop {
+                    slot: 1,
+                    start_frame: 192_000.0,
+                    end_frame: 96_000.0,
+                    label: None,
+                }],
+            )
+            .unwrap();
+
+        assert!(recall_loop(&state, deck(), 1).is_err());
+    }
+
+    #[test]
+    fn every_saved_loop_verb_the_interface_sends_parses() {
+        for text in ["deck 1 loop_save 1", "deck 2 loop_recall 8"] {
+            assert!(Action::parse(text).is_ok(), "{text} must parse");
+        }
+        // Slot 0 and slot 9 are mistakes upstream, not requests.
+        assert!(Action::parse("deck 1 loop_save 0").is_err());
+        assert!(Action::parse("deck 1 loop_recall 9").is_err());
+    }
 }

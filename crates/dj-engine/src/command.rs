@@ -1,6 +1,6 @@
 //! What crosses into the audio thread.
 
-use dj_core::{Action, Beatgrid, DeckId};
+use dj_core::{Action, Beatgrid, DeckId, FramePos, HOT_CUE_SLOTS, LoopRegion};
 use dj_decode::TrackSource;
 use std::sync::Arc;
 
@@ -30,6 +30,29 @@ pub enum Command {
     SetGrid {
         deck: DeckId,
         grid: Option<Beatgrid>,
+    },
+    /// Put a track's stored hot cues back on a deck.
+    ///
+    /// A command rather than an [`Action`] for the same reason as
+    /// [`Command::SetGrid`]: nobody presses "restore cues". It is the library
+    /// handing back what this track had last time, and the action vocabulary
+    /// describes what a *person* does. `HotCueSet` exists for that, and it puts
+    /// the cue at the playhead, which is exactly wrong for a restore.
+    ///
+    /// A fixed-size array of `Option<FramePos>`, so it crosses the queue with
+    /// no allocation and needs no retirement.
+    SetHotCues {
+        deck: DeckId,
+        cues: [Option<FramePos>; HOT_CUE_SLOTS],
+    },
+    /// Put a saved loop back on a deck, or clear the active one.
+    ///
+    /// A command for the same reason as the two above: the region comes from
+    /// the library, not from a playhead, and no action in the vocabulary can
+    /// express "loop over exactly these frames".
+    SetLoop {
+        deck: DeckId,
+        region: Option<LoopRegion>,
     },
 }
 

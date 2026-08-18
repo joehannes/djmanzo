@@ -257,7 +257,7 @@ pub fn identify_file(file: &ScannedFile) -> Result<LibraryTrack, String> {
 /// all -- so a track the analyser could not read gets a row with null columns,
 /// which is the honest answer and is what the browser shows as a blank rather
 /// than a made-up zero.
-fn stored_analysis(analysis: &dj_analysis::Analysis) -> dj_library::StoredAnalysis {
+pub fn stored_analysis(analysis: &dj_analysis::Analysis) -> dj_library::StoredAnalysis {
     let mut stored = dj_library::StoredAnalysis {
         // Silence measures as negative infinity, which is a real answer and an
         // unstorable number: it does not survive JSON on the way to the

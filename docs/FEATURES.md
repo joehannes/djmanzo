@@ -58,6 +58,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Stacked / parallel multi-deck waveform view | M2 |
 | Overview waveform with position and cue markers | M2 |
 | Beat grid overlay, editable (shift, scale, tap) | M2 |
+| Saved loops, recalled per track | M3 |
+| Cues, grids and loops kept with the track across sessions | M3 |
 | Spectral colouring (bass/mid/high energy) | M2 |
 | Loop region and hot cue overlays | M2 |
 | Phrase / structure markers | M8 |

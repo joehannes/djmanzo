@@ -96,7 +96,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 53] = [
+static VOCABULARY: [VerbSpec; 55] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -435,6 +435,20 @@ static VOCABULARY: [VerbSpec; 53] = [
         help: "throw away grid edits and go back to what the analyser found",
         example: "deck 1 grid_reset",
     },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "loop_save",
+        argument: ArgSpec::Number { min: 1.0, max: 8.0 },
+        help: "keep the loop that is playing in a numbered slot, with the track",
+        example: "deck 1 loop_save 1",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "loop_recall",
+        argument: ArgSpec::Number { min: 1.0, max: 8.0 },
+        help: "put a saved loop back and start looping it",
+        example: "deck 1 loop_recall 1",
+    },
     // -- mixer -------------------------------------------------------------
     VerbSpec {
         target: Target::Mixer,
@@ -624,6 +638,8 @@ mod tests {
             "grid_bpm",
             "grid_tap",
             "grid_reset",
+            "loop_save",
+            "loop_recall",
             "master gain",
             "booth gain",
             "cue mix",

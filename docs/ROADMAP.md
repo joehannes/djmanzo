@@ -224,8 +224,38 @@ an empty table.
 Verified end to end against generated click tracks at 90, 120 and 140 BPM: scan, identify,
 analyse, store, serve and display, reading back 90.1, 120.1 and 139.9.
 
-Not yet: nothing writes to the playlist, history or saved-loop tables, and cues and grid edits
-are not yet persisted per track. The importers, SideView and layout presets are still ahead.
+Cues, grids and saved loops now belong to the track. Set a cue, correct a grid, save a loop —
+take the record off and put it back next week, and they are where you left them.
+
+They reach the library by two routes, because they are two shapes of event. A **grid edit** is
+a discrete action with a known result, so it is written where it happens. A **hot cue** is set
+by the *engine*, at a playhead quantize may have moved, so the host cannot know where it landed
+until the audio thread has published it — cues are noticed by watching the snapshot, which is
+the one place that reads engine state after the fact. The comparison is eight optional floats
+per deck per tick; anything that moved goes to a writer thread, because the snapshot pump runs
+at 60 Hz and a stalled pump is a frozen interface.
+
+Three things that had to be right. Ejecting is not "the DJ cleared every cue" — the watcher
+forgets the deck rather than writing an empty set, or a track would lose its cues every time it
+left a deck. A freshly loaded track is not a change either: its cues have just come *out* of
+the library, and on the tick before the restore reaches the engine they are still empty.
+And restoring replaces the whole set rather than filling slots, or the previous track's cues
+survive in the slots this one does not use. Each has a test, and each test was checked by
+breaking the feature to confirm it fails.
+
+Loading a file now also adds it to the library. Partly because a cue row has a foreign key to
+its track, so without it every cue set on a file opened from disk would be silently discarded —
+and partly because a track you played is part of your collection whether or not you ever
+pointed a scan at the folder it lives in.
+
+**Saved loops are in**, which closes the last M2 item. `loop_save` and `loop_recall` take a
+slot; the region is read from the registry rather than from the action, because quantize may
+have snapped it and the loop the DJ can hear is the snapped one. Four pads under each deck —
+click recalls, shift-click saves — because the destructive gesture should be the deliberate
+one. A saved loop belongs to the track, so one saved on deck 1 recalls on deck 2.
+
+Not yet: nothing writes to the playlist or history tables. The importers, SideView and layout
+presets are still ahead.
 
 ---
 

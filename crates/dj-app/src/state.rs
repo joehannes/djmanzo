@@ -89,6 +89,11 @@ pub struct AppState {
     /// could not be opened at all, which is the one case where there is nothing
     /// for it to do.
     identifier: Mutex<Option<crate::library::Identifier>>,
+    /// Writes deck state to the library, off the thread that noticed it.
+    library_writer: crate::persist::LibraryWriter,
+    /// Last saved cue set per deck. Shared with the snapshot pump, which is
+    /// where cue changes are noticed -- see `crate::persist`.
+    cue_watcher: Arc<Mutex<crate::persist::CueWatcher>>,
     /// Title and artist per deck.
     ///
     /// The engine knows nothing about metadata -- it has samples and a
@@ -168,6 +173,8 @@ impl AppState {
             presets: PresetLibrary::builtin(),
             bridge: Arc::new(Mutex::new(None)),
             analysis: Arc::new(crate::analysis::AnalysisStore::new()),
+            library_writer: crate::persist::LibraryWriter::start(Arc::clone(&library)),
+            cue_watcher: Arc::new(Mutex::new(crate::persist::CueWatcher::new())),
             library,
             identifier: Mutex::new(None),
             deck_tracks: Arc::new(Mutex::new(HashMap::new())),
@@ -193,6 +200,24 @@ impl AppState {
         );
         if let Ok(mut slot) = self.identifier.lock() {
             *slot = Some(worker);
+        }
+    }
+
+    #[must_use]
+    pub fn library_writer(&self) -> crate::persist::LibraryWriter {
+        self.library_writer.clone()
+    }
+
+    #[must_use]
+    pub fn cue_watcher(&self) -> Arc<Mutex<crate::persist::CueWatcher>> {
+        Arc::clone(&self.cue_watcher)
+    }
+
+    /// Forget a deck's saved cue state, so the next observation counts as a
+    /// fresh load rather than as the DJ having changed something.
+    pub fn cue_watcher_forget(&self, deck: u8) {
+        if let Ok(mut watcher) = self.cue_watcher.lock() {
+            watcher.forget(deck);
         }
     }
 
@@ -354,6 +379,16 @@ impl AppState {
         if let Ok(mut map) = self.deck_tracks.lock() {
             map.insert(deck.human_number(), info);
         }
+    }
+
+    /// The content hash of what is on a deck, if anything.
+    #[must_use]
+    pub fn deck_track_id(&self, deck: dj_core::DeckId) -> Option<dj_core::TrackId> {
+        self.deck_tracks
+            .lock()
+            .ok()?
+            .get(&deck.human_number())
+            .map(|loaded| loaded.id)
     }
 
     pub fn clear_deck_track(&self, deck: dj_core::DeckId) {

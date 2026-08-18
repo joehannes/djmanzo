@@ -198,6 +198,16 @@ impl Engine {
                         target.set_grid(grid);
                     }
                 }
+                Command::SetHotCues { deck, cues } => {
+                    if let Some(target) = self.deck_mut(deck) {
+                        target.set_hot_cues(cues);
+                    }
+                }
+                Command::SetLoop { deck, region } => {
+                    if let Some(target) = self.deck_mut(deck) {
+                        target.set_loop_region(region);
+                    }
+                }
                 Command::Load { deck, source } => {
                     if let Some(target) = self.deck_mut(deck) {
                         let previous = target.load(source);
@@ -317,7 +327,12 @@ impl Engine {
                     | DeckAction::GridScale(_)
                     | DeckAction::GridSetBpm(_)
                     | DeckAction::GridTap
-                    | DeckAction::GridReset => {}
+                    | DeckAction::GridReset
+                    // Saved loops are the same shape: the region lives in the
+                    // library with the track, so the host reads or writes it
+                    // and a recall arrives here as `Command::SetLoop`.
+                    | DeckAction::LoopSave(_)
+                    | DeckAction::LoopRecall(_) => {}
                 }
             }
             Action::Mixer(MixerAction::Crossfader(position)) => {

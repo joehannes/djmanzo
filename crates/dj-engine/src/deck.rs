@@ -505,6 +505,20 @@ impl Deck {
 
     /// Drop a manual loop's in point. The deck keeps playing until the out
     /// point lands.
+    /// Install a loop over an explicit region.
+    ///
+    /// For recalling a saved loop, which is the one case where the region comes
+    /// from outside rather than from the playhead. `None` clears, so recalling
+    /// an empty slot is a no-op rather than a loop over nothing.
+    ///
+    /// Does not move the playhead. A DJ recalling a saved loop while a track
+    /// plays wants the loop armed, not the music jumping; the wrap pulls the
+    /// playhead in on the next pass if it is past the end.
+    pub fn set_loop_region(&mut self, region: Option<LoopRegion>) {
+        self.active_loop = region;
+        self.pending_loop_in = None;
+    }
+
     pub fn set_loop_in(&mut self, quantize: bool) {
         self.pending_loop_in = Some(self.snapped(self.position, quantize));
     }
@@ -598,6 +612,16 @@ impl Deck {
         };
         *cell = Some(landing);
         true
+    }
+
+    /// Replace every hot cue at once.
+    ///
+    /// Wholesale rather than slot by slot, because that is what a restore is:
+    /// the set this track had, including the slots that were empty. Filling
+    /// them one at a time would leave the previous track's cues in whatever
+    /// slots this one does not use.
+    pub fn set_hot_cues(&mut self, cues: [Option<FramePos>; HOT_CUE_SLOTS]) {
+        self.hot_cues = cues;
     }
 
     pub fn clear_hot_cue(&mut self, slot: u8) -> bool {

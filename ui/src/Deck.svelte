@@ -355,6 +355,32 @@
         {/if}
       </button>
     </div>
+
+    <!--
+      Saved loops. Four slots rather than eight: a saved loop is the section you
+      come back to on a record you know, and a DJ who needs more than four of
+      those on one track is editing, not playing.
+
+      One pad per slot, the way the hot cue row works — click recalls, and
+      shift-click saves the loop that is playing over it. Saving on a modifier
+      rather than a separate row because the destructive gesture should be the
+      deliberate one.
+    -->
+    <div class="beatjump loop-row">
+      <span class="label">Saved</span>
+      {#each [1, 2, 3, 4] as slot (slot)}
+        <button
+          onclick={(event) =>
+            send(
+              `deck ${deck.number} ${event.shiftKey ? "loop_save" : "loop_recall"} ${slot}`,
+            )}
+          disabled={!enabled}
+          title="Recall saved loop {slot}. Shift-click to save the loop that is playing into it."
+        >
+          {slot}
+        </button>
+      {/each}
+    </div>
   {/if}
 
   <!--

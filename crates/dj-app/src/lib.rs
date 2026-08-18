@@ -26,6 +26,7 @@ pub mod commands;
 pub mod grid;
 pub mod host;
 pub mod library;
+pub mod persist;
 pub mod presets;
 pub mod snapshot;
 pub mod sources;
@@ -80,6 +81,13 @@ pub fn run() {
     let bridge_handle = state.bridge_handle();
     let analysis = Arc::clone(state.analysis());
     let deck_tracks = state.deck_tracks();
+    // The snapshot pump is where a hot cue change becomes visible to the host:
+    // the engine sets cues at a playhead quantize may have moved, so the only
+    // reliable reading is the one the audio thread publishes. See
+    // `crate::persist`.
+    let watched_tracks = state.deck_tracks();
+    let cue_watcher = state.cue_watcher();
+    let library_writer = state.library_writer();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -179,6 +187,7 @@ pub fn run() {
                 deck_tracks,
                 move |snapshot| {
                     use tauri::Emitter;
+                    save_changed_cues(&snapshot, &watched_tracks, &cue_watcher, &library_writer);
                     if let Err(error) = handle.emit("snapshot", &snapshot) {
                         tracing::warn!(%error, "failed to emit snapshot");
                     }
@@ -229,4 +238,28 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("failed to start djmanzo");
+}
+
+/// Note each deck's hot cues, saving any that moved.
+///
+/// Runs on the snapshot thread, which already only fires when something
+/// changed. The watcher compares and the writer does the I/O, so this costs one
+/// comparison of eight optional floats per deck on a quiet tick.
+fn save_changed_cues(
+    snapshot: &Snapshot,
+    tracks: &snapshot::DeckTracks,
+    watcher: &std::sync::Mutex<persist::CueWatcher>,
+    writer: &persist::LibraryWriter,
+) {
+    let Ok(mut watcher) = watcher.lock() else {
+        return;
+    };
+    let names = tracks.lock().ok();
+    for deck in &snapshot.decks {
+        let track = names
+            .as_ref()
+            .and_then(|map| map.get(&deck.number))
+            .map(|loaded| loaded.id);
+        watcher.observe(deck.number, track, &deck.hot_cues, writer);
+    }
 }
