@@ -167,6 +167,7 @@ pub async fn load_track(
         crate::state::LoadedTrackInfo {
             title: dto.title.clone(),
             artist: dto.artist.clone(),
+            id: decoded.id,
         },
     );
 
@@ -193,6 +194,7 @@ pub async fn load_track(
     let store = Arc::clone(state.analysis());
     let bus = Arc::clone(state.bus());
     let waveforms = Arc::clone(state.waveforms());
+    let tracks = state.deck_tracks();
     tauri::async_runtime::spawn_blocking(move || {
         let analysis = crate::analysis::analyse_or_cached(
             &store,
@@ -201,6 +203,21 @@ pub async fn load_track(
             buffer.as_interleaved(),
             sample_rate,
         );
+
+        // Analysis takes seconds on a long file, and a DJ can load two tracks
+        // onto one deck in that time. Without this check the first track's beat
+        // grid, and its auto-gain, would land on the second -- a wrong grid
+        // under a mix, arriving from nowhere a few seconds after the load.
+        let still_loaded = tracks
+            .lock()
+            .map(|map| {
+                map.get(&deck_id.human_number())
+                    .is_some_and(|t| t.id == track_id)
+            })
+            .unwrap_or(false);
+        if !still_loaded {
+            return;
+        }
 
         // The grid goes to the waveform store, which draws it into the tiles
         // themselves. Drawing it in the interface instead would be two

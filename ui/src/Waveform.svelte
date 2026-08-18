@@ -100,6 +100,35 @@
     }).filter((t) => t.startFrame + tileSpanFrames > 0 && t.startFrame < totalFrames);
   });
 
+  /**
+   * Cue markers and the loop band, positioned inside the scrolling strip.
+   *
+   * Deliberately *not* rasterised into the tiles, unlike the beat grid — and
+   * the difference is not inconsistency. Beat lines number in the hundreds and
+   * must align pixel-exactly with the audio under them, so they have to be
+   * drawn in the same pass as the waveform. There are at most eight cues and
+   * one loop; they sit inside the strip element, so the same transform that
+   * scrolls the waveform carries them for free, and changing one costs no tile
+   * re-render and no cache invalidation.
+   */
+  const markers = $derived(
+    deck.hot_cues
+      .map((frame, index) => ({ slot: index + 1, frame }))
+      .filter((c): c is { slot: number; frame: number } => c.frame != null)
+      .map((c) => ({ slot: c.slot, left: c.frame / framesPerPixel })),
+  );
+
+  const loopBand = $derived.by(() => {
+    const region = deck.active_loop;
+    if (!region) return null;
+    const left = region.start_frames / framesPerPixel;
+    const width = (region.end_frames - region.start_frames) / framesPerPixel;
+    // Sub-pixel loops exist — a sixteenth of a beat zoomed out is well under
+    // one — and a zero-width band is invisible rather than wrong. Floor it to a
+    // hairline so the loop is still locatable.
+    return { left, width: Math.max(width, 2) };
+  });
+
   onMount(() => {
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) laneWidth = entry.contentRect.width;
@@ -133,6 +162,18 @@
 <div class="lane" bind:this={lane} style:height="{height}px">
   {#if ready}
     <div class="strip" bind:this={strip}>
+      {#if loopBand}
+        <div
+          class="loop-band"
+          style:left="{loopBand.left}px"
+          style:width="{loopBand.width}px"
+        ></div>
+      {/if}
+      {#each markers as marker (marker.slot)}
+        <div class="cue-marker" style:left="{marker.left}px">
+          <span class="cue-flag">{marker.slot}</span>
+        </div>
+      {/each}
       {#each visibleTiles as tile (tile.key)}
         <img
           class="tile"
@@ -167,6 +208,42 @@
     position: absolute;
     inset: 0;
     will-change: transform;
+  }
+
+  /*
+    Under the tiles, so the waveform stays readable through it. A loop band
+    that covered the audio would hide exactly the part you are looping.
+  */
+  .loop-band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--accent-2);
+    opacity: 0.16;
+    pointer-events: none;
+  }
+
+  .cue-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--accent);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .cue-flag {
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 0 0.25rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--on-accent);
+    background: var(--accent);
+    border-radius: 0 3px 3px 0;
   }
 
   .tile {

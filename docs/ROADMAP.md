@@ -88,8 +88,17 @@ speed), aligns phase once, and then *holds* the tempo as the leader's pitch fade
 A grid below the confidence threshold refuses to sync in either direction, and the button is
 disabled rather than silently failing. Quantize snaps beat jumps to the grid.
 
-Not yet: grid editing (shift/scale/tap), hot cues, loops, the overview waveform, 4 decks in the
-interface, and the labelled regression set. `CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
+Hot cues and loops are in. Eight cues per deck, set and jumped from one pad the way a
+controller sends them, cleared on right-click, and honouring quantize. Loops come in three
+forms — auto loops in beats, manual in/out (which needs no beat grid at all, because a loop is
+stored in frames), and halve/double/move — and the playhead is folded back into the loop on
+**every frame** of both render paths, because at a sixteenth of a beat a loop is shorter than
+one callback and folding per block would play straight past it. Cue markers and the loop band
+are DOM inside the scrolling strip rather than rasterised into the tiles: there are at most
+nine of them, they ride the same transform for free, and moving one costs no tile re-render.
+
+Not yet: saved loops (they need M3's persistence), grid editing (shift/scale/tap), the overview
+waveform, 4 decks in the interface, and the labelled regression set. `CERTAIN_CORRELATION` in `crates/dj-analysis/src/tempo.rs` was
 calibrated against synthetic click tracks (0.95) and white noise (0.014); real music sits
 between those and the constant should be re-derived once there are hand-verified grids.
 

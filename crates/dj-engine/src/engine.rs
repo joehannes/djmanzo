@@ -255,6 +255,32 @@ impl Engine {
                     DeckAction::BeatJump(beats) => {
                         target.beat_jump(beats, quantize);
                     }
+                    DeckAction::HotCue(slot) => {
+                        target.hot_cue_pressed(slot, quantize);
+                    }
+                    DeckAction::HotCueSet(slot) => {
+                        target.set_hot_cue(slot, quantize);
+                    }
+                    DeckAction::HotCueClear(slot) => {
+                        target.clear_hot_cue(slot);
+                    }
+                    DeckAction::LoopBeats(beats) => {
+                        target.set_loop_beats(beats, quantize);
+                    }
+                    DeckAction::LoopOff => target.exit_loop(),
+                    DeckAction::LoopHalve => {
+                        target.scale_loop(0.5);
+                    }
+                    DeckAction::LoopDouble => {
+                        target.scale_loop(2.0);
+                    }
+                    DeckAction::LoopIn => target.set_loop_in(quantize),
+                    DeckAction::LoopOut => {
+                        target.set_loop_out(quantize);
+                    }
+                    DeckAction::LoopMove(beats) => {
+                        target.move_loop(beats);
+                    }
                     // Sync needs to read another deck while writing this one,
                     // so it cannot run inside a borrow of `target`.
                     DeckAction::Sync | DeckAction::SyncOff => unreachable!("handled above"),
@@ -366,6 +392,35 @@ impl Engine {
                 DeckParam::GridConfidence,
                 deck.grid().map_or(0.0, |g| g.confidence.get() as f32),
             );
+
+            let region = deck.active_loop();
+            set(
+                DeckParam::LoopActive,
+                if region.is_some() { 1.0 } else { 0.0 },
+            );
+            set(
+                DeckParam::LoopStart,
+                region.map_or(0.0, |r| r.start.get() as f32),
+            );
+            set(
+                DeckParam::LoopEnd,
+                region.map_or(0.0, |r| r.end.get() as f32),
+            );
+            set(
+                DeckParam::LoopBeats,
+                deck.loop_beats().unwrap_or(0.0) as f32,
+            );
+
+            for slot in 1..=dj_core::HOT_CUE_SLOTS as u8 {
+                let Some(param) = DeckParam::hot_cue(slot) else {
+                    continue;
+                };
+                set(
+                    param,
+                    deck.hot_cue(slot)
+                        .map_or(dj_core::param::UNSET_HOT_CUE, |pos| pos.get() as f32),
+                );
+            }
         }
     }
 
@@ -1981,6 +2036,518 @@ mod sync_tests {
             (rig.param(1, DeckParam::EffectiveBpm) - 138.24).abs() < 0.05,
             "published {}",
             rig.param(1, DeckParam::EffectiveBpm)
+        );
+    }
+}
+
+/// Hot cues and loops.
+///
+/// A loop is the one feature here whose correctness is a property of the
+/// *audio*, not of a flag: "the loop is active" means nothing if the playhead
+/// walks straight past the end. So these follow the playhead and read what
+/// comes out, rather than asserting on state.
+#[cfg(test)]
+mod loop_tests {
+    use super::*;
+    use dj_core::{Beatgrid, Bpm, Confidence, FramePos};
+    use dj_decode::{AudioBuffer, TrackSource};
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+    /// 120 BPM at 48 kHz.
+    const BEAT: f64 = 24_000.0;
+
+    fn deck(n: u8) -> DeckId {
+        DeckId::from_human(n).unwrap()
+    }
+
+    /// A ramp, so the sample value *is* the frame number.
+    ///
+    /// That is what makes looping observable: play a ramp through a loop and
+    /// the output has to come back down, not keep climbing.
+    fn ramp(frames: usize) -> Arc<dyn TrackSource> {
+        let samples: Vec<f32> = (0..frames)
+            .flat_map(|n| {
+                let v = n as f32 / frames as f32;
+                [v, v]
+            })
+            .collect();
+        Arc::new(AudioBuffer::from_interleaved(samples, SR))
+    }
+
+    struct Rig {
+        engine: Engine,
+        commands: rtrb::Producer<Command>,
+        registry: Arc<ParameterRegistry>,
+    }
+
+    fn new_rig() -> Rig {
+        let (command_tx, command_rx) = rtrb::RingBuffer::new(256);
+        let (retired_tx, _retired_rx) = rtrb::RingBuffer::new(64);
+        let registry = Arc::new(ParameterRegistry::new());
+        Rig {
+            engine: Engine::new(2, SR, command_rx, retired_tx, Arc::clone(&registry)),
+            commands: command_tx,
+            registry,
+        }
+    }
+
+    impl Rig {
+        fn send(&mut self, command: Command) {
+            self.commands.push(command).expect("queue full");
+        }
+
+        fn act(&mut self, n: u8, action: DeckAction) {
+            self.send(Command::Action(Action::Deck {
+                deck: deck(n),
+                action,
+            }));
+        }
+
+        /// Load a ramp with a 120 BPM grid anchored at zero, and play it.
+        fn prepare(&mut self, n: u8, playing: bool) {
+            self.send(Command::Load {
+                deck: deck(n),
+                source: ramp(48_000 * 120),
+            });
+            self.send(Command::SetGrid {
+                deck: deck(n),
+                grid: Some(Beatgrid::new(
+                    FramePos::new(0.0),
+                    Bpm::new(120.0).unwrap(),
+                    Confidence::new(0.9),
+                )),
+            });
+            if playing {
+                self.act(n, DeckAction::Play);
+            }
+        }
+
+        fn render(&mut self, frames: usize) {
+            let mut out = vec![0.0; frames * 2];
+            self.engine.render(
+                &mut out,
+                &RenderContext {
+                    frames,
+                    channels: 2,
+                    sample_rate: SR,
+                },
+            );
+        }
+
+        fn param(&self, n: u8, param: DeckParam) -> f32 {
+            self.registry.get(ParamId::Deck(deck(n), param))
+        }
+
+        fn pos(&self, n: u8) -> f64 {
+            self.engine.deck(deck(n)).unwrap().position().get()
+        }
+    }
+
+    /// **What a loop is.** Play long past the end of a four-beat loop and the
+    /// playhead must still be inside it. A flag that says "looping" while the
+    /// playhead walks away is the failure this test exists to catch.
+    #[test]
+    fn a_loop_holds_the_playhead_inside_it() {
+        let mut rig = new_rig();
+        rig.prepare(1, true);
+        rig.render(256);
+
+        rig.act(1, DeckAction::LoopBeats(4));
+        // Four beats is 96 000 frames; render three times that.
+        for _ in 0..1_200 {
+            rig.render(256);
+        }
+
+        let start = rig.param(1, DeckParam::LoopStart) as f64;
+        let end = rig.param(1, DeckParam::LoopEnd) as f64;
+        assert_eq!(rig.param(1, DeckParam::LoopActive), 1.0);
+        assert!(
+            (end - start - BEAT * 4.0).abs() < 2.0,
+            "loop is {} frames, expected {}",
+            end - start,
+            BEAT * 4.0
+        );
+        let here = rig.pos(1);
+        assert!(
+            here >= start && here < end,
+            "playhead at {here} escaped the loop [{start}, {end})"
+        );
+    }
+
+    /// **The case a per-block fold would get wrong.** A sixteenth of a beat is
+    /// 1 500 frames -- shorter than one 4 096-frame callback -- so the fold has
+    /// to happen per frame or the deck plays straight through.
+    #[test]
+    fn a_loop_shorter_than_one_buffer_still_holds() {
+        let mut rig = new_rig();
+        rig.prepare(1, true);
+        rig.render(256);
+
+        rig.act(1, DeckAction::LoopBeats(1));
+        rig.render(256);
+        for _ in 0..4 {
+            rig.act(1, DeckAction::LoopHalve);
+            rig.render(256);
+        }
+
+        let start = rig.param(1, DeckParam::LoopStart) as f64;
+        let end = rig.param(1, DeckParam::LoopEnd) as f64;
+        assert!(
+            end - start < 4_096.0,
+            "the fixture is not shorter than a buffer: {} frames",
+            end - start
+        );
+
+        // One render of 4 096 frames wraps this loop several times over.
+        for _ in 0..20 {
+            rig.render(4_096);
+        }
+        let here = rig.pos(1);
+        assert!(
+            here >= start && here < end,
+            "a sub-buffer loop leaked: playhead {here} outside [{start}, {end})"
+        );
+    }
+
+    /// The audio has to loop, not just the playhead. A ramp played through a
+    /// loop comes back down; a ramp played past one keeps climbing.
+    #[test]
+    fn the_audio_repeats_rather_than_running_on() {
+        let mut rig = new_rig();
+        rig.prepare(1, true);
+        rig.act(1, DeckAction::Seek(FramePos::new(BEAT * 8.0)));
+        rig.render(256);
+        rig.act(1, DeckAction::LoopBeats(1));
+        rig.render(256);
+
+        // Render more than a loop's worth and watch the ramp.
+        let mut out = vec![0.0f32; 48_000 * 2];
+        rig.engine.render(
+            &mut out,
+            &RenderContext {
+                frames: 48_000,
+                channels: 2,
+                sample_rate: SR,
+            },
+        );
+
+        // A ramp that never loops is monotonically increasing. Looping means it
+        // must fall at least once.
+        let fell = out
+            .chunks_exact(2)
+            .map(|f| f[0])
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|w| w[1] < w[0] - 1e-6);
+        assert!(fell, "the ramp never came back -- the audio did not loop");
+    }
+
+    /// Halving keeps the start, so a loop tightens onto the beat it began on.
+    #[test]
+    fn halving_and_doubling_keep_the_start() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::LoopBeats(4));
+        rig.render(256);
+        let start = rig.param(1, DeckParam::LoopStart);
+
+        rig.act(1, DeckAction::LoopHalve);
+        rig.render(256);
+        assert_eq!(rig.param(1, DeckParam::LoopStart), start);
+        assert!((rig.param(1, DeckParam::LoopBeats) - 2.0).abs() < 0.01);
+
+        rig.act(1, DeckAction::LoopDouble);
+        rig.act(1, DeckAction::LoopDouble);
+        rig.render(256);
+        assert_eq!(rig.param(1, DeckParam::LoopStart), start);
+        assert!((rig.param(1, DeckParam::LoopBeats) - 8.0).abs() < 0.01);
+    }
+
+    /// Halving until the playhead falls outside the new, shorter loop must pull
+    /// it back in -- otherwise the deck keeps playing forward and the loop
+    /// silently stops looping.
+    #[test]
+    fn shrinking_a_loop_pulls_the_playhead_back_in() {
+        let mut rig = new_rig();
+        rig.prepare(1, true);
+        rig.act(1, DeckAction::LoopBeats(8));
+        // Play until well past what a one-beat loop would cover.
+        for _ in 0..500 {
+            rig.render(256);
+        }
+        for _ in 0..3 {
+            rig.act(1, DeckAction::LoopHalve);
+            rig.render(256);
+        }
+
+        let start = rig.param(1, DeckParam::LoopStart) as f64;
+        let end = rig.param(1, DeckParam::LoopEnd) as f64;
+        let here = rig.pos(1);
+        assert!(
+            here >= start && here < end,
+            "playhead {here} left outside [{start}, {end}) after shrinking"
+        );
+    }
+
+    /// Manual looping: in, then out.
+    #[test]
+    fn a_manual_loop_takes_its_points_from_the_playhead() {
+        let mut rig = new_rig();
+        rig.prepare(1, true);
+        rig.act(1, DeckAction::Seek(FramePos::new(BEAT * 4.0)));
+        rig.render(256);
+        rig.act(1, DeckAction::LoopIn);
+        rig.render(256);
+
+        // An in point alone must not start looping.
+        assert_eq!(
+            rig.param(1, DeckParam::LoopActive),
+            0.0,
+            "half a loop started looping"
+        );
+
+        for _ in 0..100 {
+            rig.render(256);
+        }
+        rig.act(1, DeckAction::LoopOut);
+        rig.render(256);
+
+        assert_eq!(rig.param(1, DeckParam::LoopActive), 1.0);
+        let start = rig.param(1, DeckParam::LoopStart) as f64;
+        let end = rig.param(1, DeckParam::LoopEnd) as f64;
+        assert!(
+            (start - BEAT * 4.0).abs() < 512.0,
+            "in point landed at {start}"
+        );
+        assert!(end > start, "out point landed before the in point");
+    }
+
+    /// Leaving a loop must not move the playhead: the deck carries on from
+    /// where it is, which is what makes a loop something you can drop out of
+    /// on the beat.
+    #[test]
+    fn leaving_a_loop_carries_on_from_where_it_is() {
+        let mut rig = new_rig();
+        rig.prepare(1, true);
+        rig.act(1, DeckAction::LoopBeats(4));
+        for _ in 0..300 {
+            rig.render(256);
+        }
+        let before = rig.pos(1);
+
+        rig.act(1, DeckAction::LoopOff);
+        rig.render(256);
+        assert_eq!(rig.param(1, DeckParam::LoopActive), 0.0);
+
+        let after = rig.pos(1);
+        assert!(
+            after > before && after - before < 512.0,
+            "leaving the loop jumped from {before} to {after}"
+        );
+
+        // And it now runs past where the loop used to end.
+        for _ in 0..600 {
+            rig.render(256);
+        }
+        assert!(
+            rig.pos(1) > BEAT * 4.0,
+            "still trapped after the loop was released"
+        );
+    }
+
+    /// A loop of zero beats is how a controller encoder turned to zero reads.
+    /// It should mean "off" rather than being an error or a zero-length loop.
+    #[test]
+    fn a_zero_beat_loop_means_off() {
+        let mut rig = new_rig();
+        rig.prepare(1, true);
+        rig.act(1, DeckAction::LoopBeats(4));
+        rig.render(256);
+        assert_eq!(rig.param(1, DeckParam::LoopActive), 1.0);
+
+        rig.act(1, DeckAction::LoopBeats(0));
+        rig.render(256);
+        assert_eq!(rig.param(1, DeckParam::LoopActive), 0.0);
+    }
+
+    /// Without a grid there are no beats to loop over, so an auto loop must do
+    /// nothing rather than invent a length.
+    #[test]
+    fn an_auto_loop_needs_a_grid() {
+        let mut rig = new_rig();
+        rig.send(Command::Load {
+            deck: deck(1),
+            source: ramp(48_000 * 60),
+        });
+        rig.act(1, DeckAction::Play);
+        rig.render(256);
+
+        rig.act(1, DeckAction::LoopBeats(4));
+        rig.render(256);
+        assert_eq!(rig.param(1, DeckParam::LoopActive), 0.0);
+    }
+
+    /// A manual loop, by contrast, works perfectly well with no grid at all --
+    /// which is the whole reason a loop is stored in frames rather than beats.
+    #[test]
+    fn a_manual_loop_works_without_a_grid() {
+        let mut rig = new_rig();
+        rig.send(Command::Load {
+            deck: deck(1),
+            source: ramp(48_000 * 60),
+        });
+        rig.act(1, DeckAction::Play);
+        rig.render(256);
+
+        rig.act(1, DeckAction::LoopIn);
+        for _ in 0..50 {
+            rig.render(256);
+        }
+        rig.act(1, DeckAction::LoopOut);
+        rig.render(256);
+
+        assert_eq!(rig.param(1, DeckParam::LoopActive), 1.0);
+        // No grid, so no beat count -- but the loop is real.
+        assert_eq!(rig.param(1, DeckParam::LoopBeats), 0.0);
+    }
+
+    // -- hot cues -----------------------------------------------------------
+
+    /// The one-button behaviour every controller pad sends: set on an empty
+    /// slot, jump on a full one.
+    #[test]
+    fn a_pad_sets_an_empty_slot_and_jumps_to_a_full_one() {
+        let mut rig = new_rig();
+        rig.prepare(1, true);
+        rig.act(1, DeckAction::Seek(FramePos::new(BEAT * 6.0)));
+        rig.render(256);
+
+        rig.act(1, DeckAction::HotCue(1));
+        rig.render(256);
+        let stored = rig.param(1, DeckParam::HotCue1) as f64;
+        assert!(
+            (stored - BEAT * 6.0).abs() < 512.0,
+            "cue stored at {stored}, expected about {}",
+            BEAT * 6.0
+        );
+
+        // Play on, then press the same pad: it should come back.
+        for _ in 0..200 {
+            rig.render(256);
+        }
+        assert!(rig.pos(1) > stored + 1_000.0);
+        rig.act(1, DeckAction::HotCue(1));
+        rig.render(256);
+        assert!(
+            (rig.pos(1) - stored).abs() < 512.0,
+            "pressing a set pad landed at {} rather than {stored}",
+            rig.pos(1)
+        );
+    }
+
+    /// An empty slot has to be distinguishable from a cue at frame zero, which
+    /// is a perfectly ordinary place to put one.
+    #[test]
+    fn an_empty_slot_is_not_a_cue_at_zero() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.render(256);
+        assert_eq!(
+            rig.param(1, DeckParam::HotCue2),
+            dj_core::param::UNSET_HOT_CUE
+        );
+
+        rig.act(1, DeckAction::Seek(FramePos::new(0.0)));
+        rig.act(1, DeckAction::HotCueSet(2));
+        rig.render(256);
+        assert_eq!(
+            rig.param(1, DeckParam::HotCue2),
+            0.0,
+            "a cue at the very start read as unset"
+        );
+    }
+
+    #[test]
+    fn clearing_a_slot_empties_it() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::HotCueSet(3));
+        rig.render(256);
+        assert_ne!(
+            rig.param(1, DeckParam::HotCue3),
+            dj_core::param::UNSET_HOT_CUE
+        );
+
+        rig.act(1, DeckAction::HotCueClear(3));
+        rig.render(256);
+        assert_eq!(
+            rig.param(1, DeckParam::HotCue3),
+            dj_core::param::UNSET_HOT_CUE
+        );
+    }
+
+    /// All eight slots are independent. An off-by-one in the slot lookup would
+    /// show up as pads writing over each other.
+    #[test]
+    fn the_eight_slots_are_independent() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        for slot in 1..=8u8 {
+            rig.act(1, DeckAction::Seek(FramePos::new(BEAT * f64::from(slot))));
+            rig.act(1, DeckAction::HotCueSet(slot));
+            rig.render(256);
+        }
+
+        for slot in 1..=8u8 {
+            let param = DeckParam::hot_cue(slot).unwrap();
+            let stored = rig.param(1, param) as f64;
+            assert!(
+                (stored - BEAT * f64::from(slot)).abs() < 512.0,
+                "slot {slot} holds {stored}, expected about {}",
+                BEAT * f64::from(slot)
+            );
+        }
+    }
+
+    /// Quantize applies to cue points too, so a pad pressed slightly late still
+    /// lands on the beat.
+    #[test]
+    fn quantize_snaps_a_hot_cue_onto_the_beat() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.send(Command::Action(Action::Mixer(MixerAction::SetQuantize(
+            true,
+        ))));
+        // A little past beat 4.
+        rig.act(1, DeckAction::Seek(FramePos::new(BEAT * 4.0 + 3_000.0)));
+        rig.act(1, DeckAction::HotCueSet(1));
+        rig.render(256);
+
+        let stored = rig.param(1, DeckParam::HotCue1) as f64;
+        assert!(
+            (stored - BEAT * 4.0).abs() < 2.0,
+            "quantised cue landed at {stored}, not on the beat"
+        );
+    }
+
+    /// Ejecting must take the cues and the loop with the track, or the next one
+    /// inherits them.
+    #[test]
+    fn cues_and_loops_do_not_outlive_their_track() {
+        let mut rig = new_rig();
+        rig.prepare(1, true);
+        rig.act(1, DeckAction::HotCueSet(1));
+        rig.act(1, DeckAction::LoopBeats(4));
+        rig.render(256);
+        assert_eq!(rig.param(1, DeckParam::LoopActive), 1.0);
+
+        rig.act(1, DeckAction::Eject);
+        rig.render(256);
+        assert_eq!(rig.param(1, DeckParam::LoopActive), 0.0);
+        assert_eq!(
+            rig.param(1, DeckParam::HotCue1),
+            dj_core::param::UNSET_HOT_CUE,
+            "a hot cue outlived its track"
         );
     }
 }

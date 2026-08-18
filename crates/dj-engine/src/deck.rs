@@ -1,7 +1,9 @@
 //! A single deck.
 
 use crate::bus::BusLayout;
-use dj_core::{Beatgrid, FramePos, Rate, SampleRate, db_to_linear};
+use dj_core::{
+    Beatgrid, FramePos, HOT_CUE_SLOTS, LoopLimits, LoopRegion, Rate, SampleRate, db_to_linear,
+};
 use dj_decode::{AudioBuffer, TrackSource};
 use dj_dsp::{CHANNELS, Keylock, SmoothedValue, SweepFilter, ThreeBandEq};
 use std::sync::Arc;
@@ -80,6 +82,15 @@ pub struct Deck {
     grid: Option<Beatgrid>,
     /// True when this deck's tempo is being held to another's.
     synced: bool,
+    /// The region repeating right now, if any.
+    active_loop: Option<LoopRegion>,
+    /// Where a manual loop's in point was dropped, waiting for its out point.
+    ///
+    /// Separate from `active_loop` because a half-made loop is not a loop: the
+    /// deck keeps playing straight through until the out point lands.
+    pending_loop_in: Option<FramePos>,
+    /// Hot cues, 0-indexed here and 1-indexed everywhere a human can see.
+    hot_cues: [Option<FramePos>; HOT_CUE_SLOTS],
 }
 
 impl Deck {
@@ -115,6 +126,9 @@ impl Deck {
             scratch: vec![0.0; SCRATCH_FRAMES * CHANNELS],
             grid: None,
             synced: false,
+            active_loop: None,
+            pending_loop_in: None,
+            hot_cues: [None; HOT_CUE_SLOTS],
         }
     }
 
@@ -249,6 +263,16 @@ impl Deck {
         for filter in &mut self.filter {
             filter.reset();
         }
+        // Cues and the loop belong to the old track as surely as the filter
+        // memory does. A loop region is a pair of frame positions with no idea
+        // which audio they were measured against, so leaving one in place would
+        // set the new track looping over a passage nobody chose. The grid goes
+        // for the same reason -- it describes a tempo this audio may not have.
+        self.active_loop = None;
+        self.pending_loop_in = None;
+        self.hot_cues = [None; HOT_CUE_SLOTS];
+        self.grid = None;
+        self.synced = false;
         self.needs_prime = true;
         previous
     }
@@ -402,6 +426,216 @@ impl Deck {
     pub fn set_synced(&mut self, synced: bool) {
         // Only a deck with a grid can be locked to anything.
         self.synced = synced && self.grid.is_some();
+    }
+
+    // -- hot cues and loops -------------------------------------------------
+
+    /// Limits on loop length for this deck.
+    ///
+    /// Derived from the beat where there is a grid, so "an eighth of a beat"
+    /// means the same musical thing at any tempo, and from the sample rate
+    /// where there is not — a manual loop on an unanalysed track is perfectly
+    /// legitimate and must still be bounded.
+    #[must_use]
+    fn loop_limits(&self) -> LoopLimits {
+        match self.beat_frames() {
+            Some(beat) => LoopLimits::from_beat(beat),
+            None => LoopLimits::from_rate(self.source.sample_rate().as_f64()),
+        }
+    }
+
+    /// Where a cue or loop point should land, honouring quantize.
+    fn snapped(&self, pos: FramePos, quantize: bool) -> FramePos {
+        if quantize {
+            self.nearest_beat(pos).unwrap_or(pos)
+        } else {
+            pos
+        }
+    }
+
+    #[must_use]
+    pub fn active_loop(&self) -> Option<LoopRegion> {
+        self.active_loop
+    }
+
+    /// Loop length in beats, for display. `None` without a grid to measure it
+    /// against — the loop still works, it just cannot be named in beats.
+    #[must_use]
+    pub fn loop_beats(&self) -> Option<f64> {
+        let region = self.active_loop?;
+        let beat = self.beat_frames()?;
+        Some(region.len_frames() / beat)
+    }
+
+    /// Loop `beats` beats forward from the playhead, and start looping.
+    ///
+    /// Zero or fewer turns looping off, so a controller encoder that can reach
+    /// zero does the obvious thing rather than erroring.
+    pub fn set_loop_beats(&mut self, beats: i32, quantize: bool) -> bool {
+        if beats <= 0 {
+            self.exit_loop();
+            return true;
+        }
+        let Some(beat) = self.beat_frames() else {
+            return false;
+        };
+
+        let start = self.snapped(self.position, quantize);
+        let limits = self.loop_limits();
+        let len = (f64::from(beats) * beat).clamp(limits.min_frames, limits.max_frames);
+        let Some(region) = LoopRegion::new(start, FramePos::new(start.get() + len)) else {
+            return false;
+        };
+        self.enter_loop(region)
+    }
+
+    /// Drop a manual loop's in point. The deck keeps playing until the out
+    /// point lands.
+    pub fn set_loop_in(&mut self, quantize: bool) {
+        self.pending_loop_in = Some(self.snapped(self.position, quantize));
+    }
+
+    /// Drop the out point and start looping.
+    ///
+    /// Falls back to the *active* loop's start when no in point is pending, so
+    /// pressing out twice shortens an existing loop instead of doing nothing.
+    pub fn set_loop_out(&mut self, quantize: bool) -> bool {
+        let start = match self.pending_loop_in.or(self.active_loop.map(|r| r.start)) {
+            Some(start) => start,
+            None => return false,
+        };
+        let end = self.snapped(self.position, quantize);
+        let Some(region) = LoopRegion::new(start, end) else {
+            return false;
+        };
+        self.pending_loop_in = None;
+        self.enter_loop(region)
+    }
+
+    /// Halve or double the loop, keeping its start.
+    pub fn scale_loop(&mut self, factor: f64) -> bool {
+        let Some(region) = self.active_loop else {
+            return false;
+        };
+        let Some(scaled) = region.scaled(factor, self.loop_limits()) else {
+            return false;
+        };
+        self.enter_loop(scaled)
+    }
+
+    /// Slide the loop by whole beats, keeping its length.
+    pub fn move_loop(&mut self, beats: i32) -> bool {
+        let (Some(region), Some(beat)) = (self.active_loop, self.beat_frames()) else {
+            return false;
+        };
+        let Some(moved) = region.moved(f64::from(beats) * beat) else {
+            return false;
+        };
+        if moved.start.get() < 0.0 || moved.end.get() > self.len_frames() as f64 {
+            return false;
+        }
+        // The playhead moves with the loop, keeping its position *within* it --
+        // otherwise sliding a loop forward would drop the playhead outside it
+        // and the next wrap would jump audibly.
+        let offset = self.position.get() - region.start.get();
+        self.active_loop = Some(moved);
+        self.seek(FramePos::new(moved.start.get() + offset));
+        true
+    }
+
+    /// Stop looping. The playhead stays where it is and playback carries on.
+    pub fn exit_loop(&mut self) {
+        self.active_loop = None;
+        self.pending_loop_in = None;
+    }
+
+    /// Start looping over `region`, pulling the playhead in if it is outside.
+    fn enter_loop(&mut self, region: LoopRegion) -> bool {
+        if region.end.get() > self.len_frames() as f64 {
+            return false;
+        }
+        self.active_loop = Some(region);
+        // A loop set from outside itself -- by halving until the playhead falls
+        // past the new end, or by setting a loop behind the playhead -- has to
+        // pull the playhead in, or the deck would keep playing forward and the
+        // loop would never engage.
+        if !region.contains(self.position) {
+            self.seek(region.wrap(self.position));
+        }
+        true
+    }
+
+    #[must_use]
+    pub fn hot_cue(&self, slot: u8) -> Option<FramePos> {
+        self.hot_cues.get(slot.checked_sub(1)? as usize).copied()?
+    }
+
+    /// Set a hot cue at the playhead.
+    pub fn set_hot_cue(&mut self, slot: u8, quantize: bool) -> bool {
+        let Some(index) = slot.checked_sub(1).map(usize::from) else {
+            return false;
+        };
+        // Computed before the mutable borrow: `snapped` reads the grid, and the
+        // borrow checker is right that reading self while holding a mutable
+        // slot is not allowed.
+        let landing = self.snapped(self.position, quantize);
+        let Some(cell) = self.hot_cues.get_mut(index) else {
+            return false;
+        };
+        *cell = Some(landing);
+        true
+    }
+
+    pub fn clear_hot_cue(&mut self, slot: u8) -> bool {
+        let Some(index) = slot.checked_sub(1).map(usize::from) else {
+            return false;
+        };
+        match self.hot_cues.get_mut(index) {
+            Some(cell) => {
+                *cell = None;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Jump to a hot cue.
+    ///
+    /// Leaves an active loop alone rather than exiting it: jumping to a cue
+    /// inside a loop is a normal way to work, and the wrap will pull the
+    /// playhead back in if the cue is outside.
+    pub fn jump_to_hot_cue(&mut self, slot: u8) -> bool {
+        match self.hot_cue(slot) {
+            Some(pos) => {
+                self.seek(pos);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The one-button behaviour every controller pad sends: jump if set, set if
+    /// empty.
+    pub fn hot_cue_pressed(&mut self, slot: u8, quantize: bool) -> bool {
+        if self.hot_cue(slot).is_some() {
+            self.jump_to_hot_cue(slot)
+        } else {
+            self.set_hot_cue(slot, quantize)
+        }
+    }
+
+    /// Fold a position back into the active loop.
+    ///
+    /// Called on every frame of both render paths, which is why it is a plain
+    /// arithmetic function on `Option` rather than anything cleverer.
+    #[must_use]
+    fn fold(&self, pos: f64) -> f64 {
+        match self.active_loop {
+            Some(region) if pos >= region.end.get() || pos < region.start.get() => {
+                region.wrap(FramePos::new(pos)).get()
+            }
+            _ => pos,
+        }
     }
 
     /// Tempo the deck is actually playing at, pitch fader included.
@@ -627,7 +861,11 @@ impl Deck {
             let pre = self.shape(left, right, trim);
             Self::write_frame(frame, layout, cue_send, pre, fader, &mut levels);
 
-            position += step;
+            // Advance, then fold back into the loop. Per frame rather than per
+            // block: a loop shorter than one buffer -- which is most of them at
+            // a sixteenth of a beat -- wraps several times inside a single
+            // callback, and folding once per block would play straight past it.
+            position = self.fold(position + step);
         }
 
         self.finish(position, len);
@@ -675,8 +913,19 @@ impl Deck {
             // Read ahead of the playhead. Out of range is silence rather than a
             // skip: the shifter still has the previous audio in flight, and
             // feeding it nothing is how that tail gets flushed out in time.
+            // The playhead is tracked frame by frame here rather than by
+            // `n * step` at the end of the block, because a loop has to fold
+            // every frame: at a sixteenth of a beat a loop is shorter than one
+            // buffer, and folding once per block would play straight past it.
+            //
+            // The read cursor is `read_ahead` frames of *looped* time ahead of
+            // the playhead, so it is folded too. Reading across a loop point
+            // hands the shifter a discontinuity, which it smears over its
+            // window -- inherent to a phase vocoder, and the same thing that
+            // happens on any seek.
+            let mut cursor = position;
             for f in 0..n {
-                let p = position + f as f64 * step + read_ahead;
+                let p = self.fold(cursor + read_ahead);
                 let [left, right] = if p >= 0.0 && p < len {
                     self.source.frame_at(p)
                 } else {
@@ -684,6 +933,7 @@ impl Deck {
                 };
                 self.scratch[f * CHANNELS] = left;
                 self.scratch[f * CHANNELS + 1] = right;
+                cursor = self.fold(cursor + step);
             }
 
             self.keylock.process(&mut self.scratch[..n * CHANNELS]);
@@ -698,7 +948,7 @@ impl Deck {
                 Self::write_frame(frame, layout, cue_send, pre, fader, &mut levels);
             }
 
-            position += n as f64 * step;
+            position = cursor;
             done += n;
         }
 

@@ -96,7 +96,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 34] = [
+static VOCABULARY: [VerbSpec; 44] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -214,6 +214,83 @@ static VOCABULARY: [VerbSpec; 34] = [
         },
         help: "move the playhead by whole beats; negative goes back",
         example: "deck 1 beatjump 4",
+    },
+    // -- hot cues and loops -------------------------------------------------
+    VerbSpec {
+        target: Target::Deck,
+        verb: "hotcue",
+        argument: ArgSpec::Number { min: 1.0, max: 8.0 },
+        help: "jump to a hot cue, or set it here if the slot is empty",
+        example: "deck 1 hotcue 1",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "hotcue_set",
+        argument: ArgSpec::Number { min: 1.0, max: 8.0 },
+        help: "set a hot cue at the playhead, replacing whatever was there",
+        example: "deck 1 hotcue_set 2",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "hotcue_clear",
+        argument: ArgSpec::Number { min: 1.0, max: 8.0 },
+        help: "forget a hot cue",
+        example: "deck 1 hotcue_clear 2",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "loop",
+        argument: ArgSpec::Number {
+            min: 0.0,
+            max: 128.0,
+        },
+        help: "loop this many beats from here; 0 turns looping off",
+        example: "deck 1 loop 4",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "loop_off",
+        argument: ArgSpec::None,
+        help: "stop looping and carry on",
+        example: "deck 1 loop_off",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "loop_halve",
+        argument: ArgSpec::None,
+        help: "halve the loop, keeping its start",
+        example: "deck 1 loop_halve",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "loop_double",
+        argument: ArgSpec::None,
+        help: "double the loop, keeping its start",
+        example: "deck 1 loop_double",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "loop_in",
+        argument: ArgSpec::None,
+        help: "drop the loop's in point at the playhead",
+        example: "deck 1 loop_in",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "loop_out",
+        argument: ArgSpec::None,
+        help: "drop the out point and start looping",
+        example: "deck 1 loop_out",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "loop_move",
+        argument: ArgSpec::Number {
+            min: -64.0,
+            max: 64.0,
+        },
+        help: "slide the whole loop by whole beats, keeping its length",
+        example: "deck 1 loop_move 4",
     },
     // -- channel strip -----------------------------------------------------
     VerbSpec {
@@ -477,6 +554,16 @@ mod tests {
             "beatjump",
             "quantize on",
             "quantize off",
+            "hotcue",
+            "hotcue_set",
+            "hotcue_clear",
+            "loop",
+            "loop_off",
+            "loop_halve",
+            "loop_double",
+            "loop_in",
+            "loop_out",
+            "loop_move",
         ];
         for name in expected {
             assert!(

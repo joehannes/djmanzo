@@ -116,6 +116,21 @@ export interface DeckState {
    * the button rather than let it fail silently.
    */
   can_sync: boolean;
+  /** The region repeating right now, if any. */
+  active_loop: LoopRegion | null;
+  /**
+   * Hot cue positions in frames, slot 1 first. `null` for an empty slot — which
+   * is not the same as a cue at frame zero, and the start of a track is a
+   * perfectly ordinary place to put one.
+   */
+  hot_cues: (number | null)[];
+}
+
+export interface LoopRegion {
+  start_frames: number;
+  end_frames: number;
+  /** Length in beats, for a label. Null without a grid to measure against. */
+  beats: number | null;
 }
 
 /**

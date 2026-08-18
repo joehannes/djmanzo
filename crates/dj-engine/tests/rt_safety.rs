@@ -526,6 +526,104 @@ fn sync_and_beat_jump_never_allocate() {
     );
 }
 
+/// Loops fold the playhead on *every frame* of both render paths, and hot cues
+/// index a fixed array. Both are the kind of thing that grows a `Vec` if
+/// written carelessly, and the loop fold in particular runs 48 000 times a
+/// second per deck.
+///
+/// Driven with a loop shorter than one buffer, so the fold actually fires many
+/// times per block rather than never.
+#[test]
+fn loops_and_hot_cues_never_allocate() {
+    use dj_core::{Beatgrid, Bpm, Confidence, FramePos};
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.send(Command::SetGrid {
+        deck: deck(1),
+        grid: Some(Beatgrid::new(
+            FramePos::new(0.0),
+            Bpm::new(128.0).unwrap(),
+            Confidence::new(0.9),
+        )),
+    });
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::LoopBeats(1),
+    });
+    // Quarter of a beat: shorter than the 256-frame buffer at 128 BPM.
+    for _ in 0..2 {
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::LoopHalve,
+        });
+    }
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..2_000 {
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::HotCue((round % 8 + 1) as u8),
+            });
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: if round % 2 == 0 {
+                    DeckAction::LoopHalve
+                } else {
+                    DeckAction::LoopDouble
+                },
+            });
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::LoopMove(if round % 4 == 0 { 1 } else { -1 }),
+            });
+            rig.renderer.render_block();
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "loops and hot cues allocated {allocations} times"
+    );
+}
+
+/// The keylocked path folds the loop separately, with a read cursor running
+/// ahead of the playhead. It has its own arithmetic and so needs its own proof.
+#[test]
+fn a_keylocked_loop_never_allocates() {
+    use dj_core::{Beatgrid, Bpm, Confidence, FramePos};
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.send(Command::SetGrid {
+        deck: deck(1),
+        grid: Some(Beatgrid::new(
+            FramePos::new(0.0),
+            Bpm::new(128.0).unwrap(),
+            Confidence::new(0.9),
+        )),
+    });
+    for action in [
+        DeckAction::SetKeylock(true),
+        DeckAction::SetPitch(0.06),
+        DeckAction::LoopBeats(1),
+    ] {
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action,
+        });
+    }
+    rig.warm_up(64);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(3_000);
+    });
+    assert_eq!(
+        allocations, 0,
+        "a keylocked loop allocated {allocations} times"
+    );
+}
+
 /// Keylock puts a C++ phase vocoder in the audio path, and this is the test
 /// that says whether that was allowed.
 ///

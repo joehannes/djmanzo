@@ -10,6 +10,7 @@
 //! ever sees a string.
 
 use crate::deck::DeckId;
+use crate::hotcue::HOT_CUE_SLOTS;
 use crate::time::{FramePos, Rate};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -65,6 +66,35 @@ pub enum DeckAction {
     SyncOff,
     /// Move the playhead by whole beats. Negative goes back.
     BeatJump(i32),
+
+    /// One-button hot cue, 1-based: jump to it if set, set it here if not.
+    ///
+    /// The behaviour every controller's pads send, and the reason it is one
+    /// verb rather than two: a pad has one message, and a DJ reaching for a pad
+    /// mid-set does not want to think about which mode it is in.
+    HotCue(u8),
+    /// Set (or overwrite) a hot cue at the playhead.
+    HotCueSet(u8),
+    /// Forget a hot cue.
+    HotCueClear(u8),
+
+    /// Loop the next `n` beats from here, and start looping.
+    ///
+    /// Zero or negative turns looping off, so a controller encoder that can
+    /// reach zero does the obvious thing instead of an error.
+    LoopBeats(i32),
+    /// Stop looping and carry on from where the playhead is.
+    LoopOff,
+    /// Halve the loop, keeping its start. Repeatable down to a fraction of a beat.
+    LoopHalve,
+    /// Double the loop, keeping its start.
+    LoopDouble,
+    /// Drop the loop's in point at the playhead. Manual looping, half one.
+    LoopIn,
+    /// Drop the out point and start looping. Manual looping, half two.
+    LoopOut,
+    /// Slide the whole loop by whole beats, keeping its length.
+    LoopMove(i32),
     /// Drop the loaded track.
     Eject,
 }
@@ -185,6 +215,16 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "sync" => DeckAction::Sync,
         "sync_off" => DeckAction::SyncOff,
         "beatjump" => DeckAction::BeatJump(parse_i32(argument)?),
+        "hotcue" => DeckAction::HotCue(parse_slot(argument)?),
+        "hotcue_set" => DeckAction::HotCueSet(parse_slot(argument)?),
+        "hotcue_clear" => DeckAction::HotCueClear(parse_slot(argument)?),
+        "loop" => DeckAction::LoopBeats(parse_i32(argument)?),
+        "loop_off" => DeckAction::LoopOff,
+        "loop_halve" => DeckAction::LoopHalve,
+        "loop_double" => DeckAction::LoopDouble,
+        "loop_in" => DeckAction::LoopIn,
+        "loop_out" => DeckAction::LoopOut,
+        "loop_move" => DeckAction::LoopMove(parse_i32(argument)?),
         "keylock_on" => DeckAction::SetKeylock(true),
         "keylock_off" => DeckAction::SetKeylock(false),
         "keylock_toggle" => DeckAction::ToggleKeylock,
@@ -201,6 +241,22 @@ fn parse_i32(word: Option<&str>) -> Result<i32, ParseError> {
     word.ok_or(ParseError::MissingArgument)?
         .parse()
         .map_err(|_| ParseError::BadArgument)
+}
+
+/// A hot cue slot, 1-based as the interface and every controller number them.
+///
+/// Rejected rather than clamped: slot 0 or slot 99 is a mistake somewhere
+/// upstream, and silently firing slot 1 instead would hide it.
+fn parse_slot(word: Option<&str>) -> Result<u8, ParseError> {
+    let slot: u8 = word
+        .ok_or(ParseError::MissingArgument)?
+        .parse()
+        .map_err(|_| ParseError::BadArgument)?;
+    if (1..=HOT_CUE_SLOTS as u8).contains(&slot) {
+        Ok(slot)
+    } else {
+        Err(ParseError::BadArgument)
+    }
 }
 
 fn parse_f32(word: Option<&str>) -> Result<f32, ParseError> {
@@ -277,6 +333,16 @@ impl fmt::Display for Action {
                 DeckAction::Sync => write!(f, "deck {deck} sync"),
                 DeckAction::SyncOff => write!(f, "deck {deck} sync_off"),
                 DeckAction::BeatJump(n) => write!(f, "deck {deck} beatjump {n}"),
+                DeckAction::HotCue(n) => write!(f, "deck {deck} hotcue {n}"),
+                DeckAction::HotCueSet(n) => write!(f, "deck {deck} hotcue_set {n}"),
+                DeckAction::HotCueClear(n) => write!(f, "deck {deck} hotcue_clear {n}"),
+                DeckAction::LoopBeats(n) => write!(f, "deck {deck} loop {n}"),
+                DeckAction::LoopOff => write!(f, "deck {deck} loop_off"),
+                DeckAction::LoopHalve => write!(f, "deck {deck} loop_halve"),
+                DeckAction::LoopDouble => write!(f, "deck {deck} loop_double"),
+                DeckAction::LoopIn => write!(f, "deck {deck} loop_in"),
+                DeckAction::LoopOut => write!(f, "deck {deck} loop_out"),
+                DeckAction::LoopMove(n) => write!(f, "deck {deck} loop_move {n}"),
             },
             Action::Mixer(MixerAction::Crossfader(v)) => {
                 write!(f, "crossfader {}", number(f64::from(*v)))

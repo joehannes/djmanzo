@@ -95,6 +95,13 @@ pub struct AppState {
 pub struct LoadedTrackInfo {
     pub title: String,
     pub artist: Option<String>,
+    /// Content hash of the audio actually on the deck.
+    ///
+    /// Held so a worker can tell whether the track it was analysing is still
+    /// the one loaded. Analysis takes seconds; a DJ can easily load two tracks
+    /// onto the same deck in that time, and without this check the first
+    /// track's beat grid would be applied to the second.
+    pub id: dj_core::TrackId,
 }
 
 impl AppState {
@@ -301,6 +308,18 @@ impl AppState {
     #[must_use]
     pub fn deck_tracks(&self) -> Arc<Mutex<HashMap<u8, LoadedTrackInfo>>> {
         Arc::clone(&self.deck_tracks)
+    }
+
+    /// Whether `id` is still the track on `deck`.
+    ///
+    /// The guard against a slow analysis landing on a track that has already
+    /// been replaced.
+    #[must_use]
+    pub fn deck_still_holds(&self, deck: dj_core::DeckId, id: dj_core::TrackId) -> bool {
+        self.deck_tracks
+            .lock()
+            .map(|map| map.get(&deck.human_number()).is_some_and(|t| t.id == id))
+            .unwrap_or(false)
     }
 
     #[must_use]

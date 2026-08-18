@@ -29,6 +29,26 @@
   const analysis = $derived(deck.analysis);
 
   /**
+   * Loop length in whole beats, when it is one.
+   *
+   * Used only to light up the matching auto-loop button. A halved loop is half
+   * a beat and matches none of them, which is correct — the buttons say what
+   * they would set, not what is playing.
+   */
+  const activeLoopBeats = $derived.by(() => {
+    const beats = deck.active_loop?.beats;
+    if (beats == null) return null;
+    const rounded = Math.round(beats);
+    return Math.abs(beats - rounded) < 0.01 ? rounded : null;
+  });
+
+  /** "4" for whole loops, "1/4" for halved ones, which is how DJs say them. */
+  function formatBeats(beats: number): string {
+    if (beats >= 1) return String(Math.round(beats * 100) / 100);
+    return `1/${Math.round(1 / beats)}`;
+  }
+
+  /**
    * Take the analyser's rejected octave.
    *
    * Autocorrelation genuinely cannot tell 80 from 160 — a curve periodic at one
@@ -174,9 +194,37 @@
   </div>
 
   <!--
-    Beat jump. Only shown when there is a grid to jump along: without one the
-    buttons would be present and inert, which reads as broken rather than as
-    "this track has no beats yet".
+    Hot cues. Always shown when a track is loaded, because they need no beat
+    grid — a cue is a position, and a position exists whether or not the
+    analyser found a tempo.
+  -->
+  {#if deck.loaded}
+    <div class="pads">
+      {#each deck.hot_cues as cue, index (index)}
+        <button
+          class="pad"
+          class:set={cue != null}
+          disabled={!enabled}
+          onclick={() => send(`deck ${deck.number} hotcue ${index + 1}`)}
+          oncontextmenu={(e) => {
+            e.preventDefault();
+            send(`deck ${deck.number} hotcue_clear ${index + 1}`);
+          }}
+          title={cue != null
+            ? `Jump to cue ${index + 1} — right-click to clear`
+            : `Set cue ${index + 1} here`}
+        >
+          {index + 1}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
+  <!--
+    Beat jump and auto loops. Only shown when there is a grid to measure them
+    against: without one the buttons would be present and inert, which reads as
+    broken rather than as "this track has no beats yet". Manual looping still
+    works — see the in/out pair below, which needs no grid at all.
   -->
   {#if analysis?.bpm != null}
     <div class="beatjump">
@@ -192,6 +240,63 @@
           {beats > 0 ? `+${beats}` : beats}
         </button>
       {/each}
+
+      <span class="label loop-label">Loop</span>
+      {#each [1, 2, 4, 8] as beats (beats)}
+        <button
+          class:active={activeLoopBeats === beats}
+          onclick={() => send(`deck ${deck.number} loop ${beats}`)}
+          disabled={!enabled || !deck.loaded}
+          title="Loop {beats} beat{beats === 1 ? '' : 's'} from here"
+        >
+          {beats}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
+  {#if deck.loaded}
+    <div class="beatjump loop-row">
+      <button
+        onclick={() => send(`deck ${deck.number} loop_in`)}
+        disabled={!enabled}
+        title="Drop the loop's in point here"
+      >
+        In
+      </button>
+      <button
+        onclick={() => send(`deck ${deck.number} loop_out`)}
+        disabled={!enabled}
+        title="Drop the out point and start looping"
+      >
+        Out
+      </button>
+      <button
+        onclick={() => send(`deck ${deck.number} loop_halve`)}
+        disabled={!enabled || deck.active_loop == null}
+        title="Halve the loop, keeping its start"
+      >
+        ÷2
+      </button>
+      <button
+        onclick={() => send(`deck ${deck.number} loop_double`)}
+        disabled={!enabled || deck.active_loop == null}
+        title="Double the loop, keeping its start"
+      >
+        ×2
+      </button>
+      <button
+        class:active={deck.active_loop != null}
+        onclick={() => send(`deck ${deck.number} loop_off`)}
+        disabled={!enabled || deck.active_loop == null}
+        title="Stop looping and carry on"
+      >
+        {#if deck.active_loop}
+          Looping{deck.active_loop.beats ? ` ${formatBeats(deck.active_loop.beats)}` : ""}
+        {:else}
+          No loop
+        {/if}
+      </button>
     </div>
   {/if}
 
@@ -391,6 +496,36 @@
     align-items: center;
     gap: 0.65rem;
     min-width: 0;
+  }
+
+  .pads {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0.25rem;
+  }
+
+  .pad {
+    padding: 0.35rem 0;
+    font-size: 0.8em;
+    font-weight: 600;
+    color: var(--text-dim);
+  }
+
+  /* A filled pad is filled, not merely labelled: mid-set this is read by shape
+     and colour rather than by number. */
+  .pad.set {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .loop-label {
+    margin-left: 0.5rem;
+  }
+
+  .loop-row button {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.8em;
   }
 
   .beatjump {

@@ -75,6 +75,21 @@ pub struct DeckSnapshot {
     /// True when the grid is solid enough for sync to accept it. The interface
     /// uses this to disable the button rather than let it fail silently.
     pub can_sync: bool,
+    /// The region repeating right now, if any.
+    pub active_loop: Option<LoopSnapshot>,
+    /// Hot cue positions in frames, slot 1 first. `None` for an empty slot —
+    /// which is not the same as a cue at frame zero.
+    pub hot_cues: Vec<Option<f32>>,
+}
+
+/// A loop, as the interface draws it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LoopSnapshot {
+    pub start_frames: f32,
+    pub end_frames: f32,
+    /// Length in beats, for a label. `None` without a grid to measure against —
+    /// the loop is still real, it just cannot be named in beats.
+    pub beats: Option<f32>,
 }
 
 /// Tempo, key and loudness, as the interface needs them.
@@ -282,6 +297,21 @@ impl Snapshot {
                     },
                     can_sync: get(DeckParam::GridConfidence)
                         >= dj_core::Confidence::SYNC_THRESHOLD as f32,
+                    active_loop: (get(DeckParam::LoopActive) >= 0.5).then(|| {
+                        let beats = get(DeckParam::LoopBeats);
+                        LoopSnapshot {
+                            start_frames: get(DeckParam::LoopStart),
+                            end_frames: get(DeckParam::LoopEnd),
+                            beats: (beats > 0.0).then_some(beats),
+                        }
+                    }),
+                    hot_cues: (1..=dj_core::HOT_CUE_SLOTS as u8)
+                        .map(|slot| {
+                            let value = DeckParam::hot_cue(slot).map(&get)?;
+                            // Negative means empty. Frame zero is a real cue.
+                            (value >= 0.0).then_some(value)
+                        })
+                        .collect(),
                     analysis: analysis
                         .and_then(|store| store.for_deck(id.human_number()))
                         .map(|found| TrackAnalysisSnapshot::from_analysis(&found)),
@@ -703,6 +733,7 @@ mod tests {
             LoadedTrackInfo {
                 title: "Suavemente".to_owned(),
                 artist: Some("Elvis Crespo".to_owned()),
+                id: dj_core::TrackId::from_bytes([1; 32]),
             },
         )]));
 
@@ -728,6 +759,7 @@ mod tests {
             LoadedTrackInfo {
                 title: "untitled.wav".to_owned(),
                 artist: None,
+                id: dj_core::TrackId::from_bytes([2; 32]),
             },
         )]));
 

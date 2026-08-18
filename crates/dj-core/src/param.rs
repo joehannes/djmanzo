@@ -58,11 +58,59 @@ pub enum DeckParam {
     EffectiveBpm,
     /// Confidence in this deck's grid, 0.0..=1.0. 0.0 when there is no grid.
     GridConfidence,
+    /// 1.0 when a loop is repeating.
+    LoopActive,
+    /// Loop start and end, in frames. Meaningful only while `LoopActive`.
+    LoopStart,
+    LoopEnd,
+    /// Loop length in beats, for the interface to show "4" rather than "96000
+    /// frames". 0.0 when the deck has no grid to measure it against.
+    LoopBeats,
+    /// Hot cue positions in frames, 1-based in the interface.
+    ///
+    /// [`UNSET_HOT_CUE`] means empty. Frame zero is a legitimate cue position —
+    /// the very start of a track is a perfectly ordinary place to put one — so
+    /// zero cannot double as "not set".
+    HotCue1,
+    HotCue2,
+    HotCue3,
+    HotCue4,
+    HotCue5,
+    HotCue6,
+    HotCue7,
+    HotCue8,
 }
 
+/// What a hot cue parameter reads when the slot is empty.
+///
+/// Negative because no real position is, and because a parameter table of
+/// `f32` has no room for an `Option`.
+pub const UNSET_HOT_CUE: f32 = -1.0;
+
 impl DeckParam {
+    /// The hot cue parameter for a 1-based slot, or `None` if there is no such
+    /// slot.
+    ///
+    /// A lookup rather than arithmetic on the discriminant: the enum's order is
+    /// the memory layout, and computing an address from it would break silently
+    /// the first time somebody reorders a variant.
+    #[must_use]
+    pub const fn hot_cue(slot: u8) -> Option<DeckParam> {
+        match slot {
+            1 => Some(DeckParam::HotCue1),
+            2 => Some(DeckParam::HotCue2),
+            3 => Some(DeckParam::HotCue3),
+            4 => Some(DeckParam::HotCue4),
+            5 => Some(DeckParam::HotCue5),
+            6 => Some(DeckParam::HotCue6),
+            7 => Some(DeckParam::HotCue7),
+            8 => Some(DeckParam::HotCue8),
+            _ => None,
+        }
+    }
+
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 21;
+    pub const COUNT: usize = 33;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -94,6 +142,18 @@ impl DeckParam {
             Synced,
             EffectiveBpm,
             GridConfidence,
+            LoopActive,
+            LoopStart,
+            LoopEnd,
+            LoopBeats,
+            HotCue1,
+            HotCue2,
+            HotCue3,
+            HotCue4,
+            HotCue5,
+            HotCue6,
+            HotCue7,
+            HotCue8,
         ]
     }
 }
@@ -232,6 +292,18 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::Synced => "synced",
         DeckParam::EffectiveBpm => "effective_bpm",
         DeckParam::GridConfidence => "grid_confidence",
+        DeckParam::LoopActive => "loop_active",
+        DeckParam::LoopStart => "loop_start",
+        DeckParam::LoopEnd => "loop_end",
+        DeckParam::LoopBeats => "loop_beats",
+        DeckParam::HotCue1 => "hot_cue_1",
+        DeckParam::HotCue2 => "hot_cue_2",
+        DeckParam::HotCue3 => "hot_cue_3",
+        DeckParam::HotCue4 => "hot_cue_4",
+        DeckParam::HotCue5 => "hot_cue_5",
+        DeckParam::HotCue6 => "hot_cue_6",
+        DeckParam::HotCue7 => "hot_cue_7",
+        DeckParam::HotCue8 => "hot_cue_8",
     }
 }
 
