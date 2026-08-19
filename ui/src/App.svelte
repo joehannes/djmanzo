@@ -11,8 +11,10 @@
     listLayouts,
     setWatershed,
     watershedShowing,
+    type CrossfaderAssign,
     type Layout,
   } from "./api";
+  import Confluence from "./Confluence.svelte";
   import River from "./River.svelte";
   import {
     alarmDeck,
@@ -20,6 +22,7 @@
     getWorld,
     prefersStillness,
     tierFor,
+    type Entity,
     type World,
   } from "./world";
   import {
@@ -205,6 +208,21 @@
     world.entities.find((e) => e.name === "deck.mouth" && e.index === deck) ?? null;
   /** Which river holds the peripheral channel. At most one ever does. */
   const alarmingDeck = $derived(alarmDeck(world.alarm));
+  const confluenceEntity = $derived(
+    world.entities.find((e) => e.name === "mixer.confluence") ?? null,
+  );
+  /*
+    Which two rivers meet, read from the crossfader assignments the same way the
+    world does — with four decks the pair is the DJ's choice, and drawing the
+    wrong pair's beating would be worse than drawing none.
+  */
+  const bankEntities = $derived.by((): [Entity | null, Entity | null] => {
+    const side = (want: CrossfaderAssign) => {
+      const deck = snapshot?.decks.find((d) => d.loaded && d.crossfader_assign === want);
+      return deck ? (rivers.find((r) => r.index === deck.number) ?? null) : null;
+    };
+    return [side("left"), side("right")];
+  });
 
   /*
     The tier, from measurement rather than from asking the platform what it can
@@ -474,6 +492,17 @@
     -->
     {#if living && rivers.length > 0}
       <div class="watershed" class:seam={world.confluence === "Seam"}>
+        {#if confluenceEntity && bankEntities.some((b) => b !== null)}
+          <Confluence
+            confluence={confluenceEntity}
+            banks={bankEntities}
+            beating={world.beating}
+            seam={world.confluence === "Seam"}
+            height={72}
+            latencyMs={snapshot.master.output_latency_ms}
+            {tier}
+          />
+        {/if}
         {#each rivers as river (river.index)}
           <River
             {river}

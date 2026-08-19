@@ -237,6 +237,7 @@ control on the mixer has a physical meaning at the meeting point.
 | **Crossfader** | **where the rivers meet and which one dominates.** Hard left: only river A flows through. Hard right: only river B. Centre: both merge equally. The crossfader curve shapes how the merge happens — a sharp curve is a sudden diversion; a smooth curve is a gradual blending. |
 | **Channel fader** | the **sluice gate** on each river — how much water each one contributes to the confluence. Fader down = the sluice is closed, no water passes. Fader up = full flow. |
 | **Crossfader assign (A / thru / B)** | which bank the river enters on. A-assigned rivers approach from the left; B from the right; *thru* rivers bypass the confluence entirely and flow straight to the estuary at full volume. |
+| **Beating** | the relationship between two rivers, and there are **three of them, because they are three different actions**: *locked* (crests together at the same tempo — nothing to do), *offset* (same tempo, crests apart — a nudge, and the sign says which way), and *sliding* (tempos differ, so the offset is changing — the pitch fader, not a nudge). Every conventional interface shows these as two BPM numbers a DJ compares in their head. |
 | **Sync** | two rivers running in step: **crests align.** Beat sync means the travelling waves arrive at the confluence together. Out of sync, the crests interfere visibly — they beat against each other, creating a visible interference pattern that IS what being out of time sounds like. |
 | **Phase alignment** | the crests from both rivers arriving at exactly the same position at exactly the same moment. Drifting phase shows as one crest sliding ahead of the other. |
 | **Harmonic compatibility** | Adjacent keys (within 1–2 steps on the Camelot wheel) **blend** — the two hues merge into one body of water at the confluence. Clashing keys (3+ steps) **refuse** — a visible seam runs down the middle where the two colours will not mix. |
@@ -808,7 +809,7 @@ Order, and why.
 |---|---|---|
 | **V1** | The world model — entities, components, the tier selector, the DOM-listens/canvas-paints split | Nothing can be drawn before there is something to draw. Renderer-agnostic from the first line, or the abstraction will be fiction. |
 | **V2** | Canvas 2D renderer, one river, one deck — flow, pulse, riverbed, clarity, mouth, stones, eddies | One river proves the whole vocabulary. |
-| **V3** | The confluence — two rivers, crossfader, sync, harmonic blending, the limiter as estuary | The first thing that says something no rectangle could. |
+| **V3** | The confluence — two rivers, crossfader, beating, harmonic blending, the limiter as estuary | **Done.** The first thing that says something no rectangle could: *beating* names three states that are three different actions. |
 | **V4** | Strata and terrain — EQ, filter, effects as terrain features, stems as currents | The full control surface, once the world it lives in is proven. |
 | **V5** | WebGL renderer behind the same world | The second renderer is what proves V1 was real. |
 | **V6** | Highland and weather — library, analysis mist, sampler pools, recording dam, session light | The periphery, once the centre is right. |

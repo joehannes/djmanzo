@@ -84,11 +84,25 @@ export type Alarm =
   | "Limiting"
   | { EndingSoon: { deck: number } };
 
+/**
+ * How two rivers stand relative to each other in time.
+ *
+ * Three states because they are **three different actions**: locked is nothing
+ * to do, an offset is a nudge, and a slide is the pitch fader. A DJ reading
+ * "out of sync" learns only that something is wrong.
+ */
+export type Beating =
+  | "Unknown"
+  | "Locked"
+  | { Offset: { beats: number } }
+  | { Sliding: { bpm_difference: number } };
+
 export interface World {
   entities: Entity[];
   confluence: Confluence;
   strain: number;
   alarm: Alarm | null;
+  beating: Beating;
 }
 
 export const emptyWorld = (): World => ({
@@ -96,6 +110,7 @@ export const emptyWorld = (): World => ({
   confluence: "Unknown",
   strain: 0,
   alarm: null,
+  beating: "Unknown",
 });
 
 /** Which deck an alarm is about, when it is about one. */

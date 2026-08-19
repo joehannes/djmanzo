@@ -123,6 +123,51 @@ pub enum Alarm {
     EndingSoon { deck: u8 },
 }
 
+/// How two rivers stand relative to each other in time.
+///
+/// The single most valuable thing the confluence can say, because the three
+/// states are **three different actions**: locked is nothing to do, an offset is
+/// a nudge, and a slide is the pitch fader. A DJ reading "out of sync" learns
+/// only that something is wrong; reading which of these it is tells them which
+/// control to reach for.
+///
+/// Not a number, deliberately. The signed offset is carried inside `Offset`
+/// because it says which way to nudge, but the *category* is what the interface
+/// draws — nobody nudges by 0.13 of a beat, they nudge until the crests meet.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub enum Beating {
+    /// Nothing to compare: one side or both has no grid, or nothing is playing.
+    ///
+    /// The default, because an empty world has no two rivers to compare and
+    /// every other variant would be an assertion about decks that are not there.
+    #[default]
+    Unknown,
+    /// Same tempo, crests together. Nothing to do.
+    Locked,
+    /// Same tempo, crests apart. A nudge fixes it, and the sign says which way:
+    /// positive means the right bank is ahead.
+    Offset { beats: f32 },
+    /// The tempos differ, so the offset is *changing*. A nudge would not hold;
+    /// this is the pitch fader's problem. Positive means the right bank is
+    /// faster.
+    Sliding { bpm_difference: f32 },
+}
+
+/// Beats of phase difference inside which two rivers count as together.
+///
+/// An eighth of a beat is 59 ms at 128 BPM — about where a listener stops
+/// hearing "slightly early" and starts hearing two separate events. The same
+/// figure the beat-tracking regression harness uses for phase, and for the same
+/// reason.
+pub const LOCKED_WITHIN_BEATS: f32 = 0.125;
+
+/// Tempo difference inside which two rivers count as the same tempo.
+///
+/// Sync locks tempo exactly, so anything above this is a DJ riding the pitch
+/// fader or two decks that were never synced. Tight, because a tenth of a BPM
+/// over four bars is already a visible slide.
+pub const SAME_TEMPO_WITHIN_BPM: f32 = 0.05;
+
 /// Seconds of track left before the end is worth a peripheral claim.
 ///
 /// Thirty seconds is about a phrase and a half at club tempo: long enough to
@@ -139,6 +184,8 @@ pub struct World {
     pub strain: f32,
     /// The one thing allowed to move in the corner of a DJ's eye.
     pub alarm: Option<Alarm>,
+    /// How the two banks stand relative to each other in time.
+    pub beating: Beating,
 }
 
 /// What the world needs to know about one deck.
@@ -180,6 +227,10 @@ pub struct RoomReading {
     pub dropouts: bool,
     /// How hard the master limiter is working, in positive decibels.
     pub limiting_db: f32,
+    /// Crossfader, -1.0 hard left to 1.0 hard right.
+    pub crossfader: f32,
+    /// What the estuary carries, 0..=1.
+    pub master_level: f32,
 }
 
 impl RiverReading {
@@ -230,11 +281,121 @@ pub fn build(rivers: &[RiverReading], left: u8, right: u8, room: RoomReading) ->
             .and_then(|r| r.key)
     };
 
+    let bank = |deck: u8| rivers.iter().find(|r| r.deck == deck && r.loaded);
+    entities.push(confluence_entity(rivers, left, right, room));
+
     World {
         entities,
         confluence: confluence(key_of(left), key_of(right)),
         strain: room.strain.clamp(0.0, 1.0),
         alarm: alarm(rivers, room),
+        beating: beating(bank(left), bank(right)),
+    }
+}
+
+/// Where the two rivers meet.
+///
+/// `along` is the crossfader, mapped from -1..1 to 0..1, because that is
+/// literally what the control does in the world: it says *where* the merge
+/// happens and therefore which side dominates downstream.
+fn confluence_entity(rivers: &[RiverReading], left: u8, right: u8, room: RoomReading) -> Entity {
+    let of = |deck: u8| rivers.iter().find(|r| r.deck == deck && r.loaded);
+    let (a, b) = (of(left), of(right));
+
+    // The estuary's colour is the mix's, so it is the two banks' hues weighted
+    // by how much of each is getting through. A confluence carrying one river
+    // is that river's colour; carrying neither is grey, which is the honest
+    // answer for a mixer with nothing on it.
+    let position = ((room.crossfader.clamp(-1.0, 1.0)) + 1.0) / 2.0;
+    let tint = match (a.and_then(|r| r.key), b.and_then(|r| r.key)) {
+        (Some(_), Some(_)) | (Some(_), None) | (None, Some(_)) => {
+            let dominant = if position < 0.5 { a } else { b };
+            dominant
+                .map(|r| Tint::musical(r.key, r.key_confidence, room.master_level))
+                .unwrap_or_else(|| Tint::structural(0.3))
+        }
+        (None, None) => Tint::structural(0.3),
+    };
+
+    Entity {
+        name: "mixer.confluence".to_owned(),
+        index: 0,
+        form: Form::Flow,
+        bearing: Bearing::Foliage,
+        tint,
+        vitality: Vitality {
+            // The confluence pulses on whichever bank is dominant, so a DJ
+            // watching only the estuary still sees the beat they are playing.
+            ..match if position < 0.5 { a } else { b } {
+                Some(river) => Vitality::of(river),
+                None => Vitality::still(),
+            }
+        },
+        along: position,
+        // Constriction: how much of the channel the limiter has taken away.
+        // Six decibels of reduction is the mix being visibly squeezed.
+        extent: (1.0 - (room.limiting_db.max(0.0) / 6.0)).clamp(0.0, 1.0),
+        reading: describe_confluence(room),
+    }
+}
+
+fn describe_confluence(room: RoomReading) -> String {
+    let mut parts = Vec::new();
+    let position = room.crossfader.clamp(-1.0, 1.0);
+    parts.push(if position <= -0.98 {
+        "hard left".to_owned()
+    } else if position >= 0.98 {
+        "hard right".to_owned()
+    } else if position.abs() < 0.02 {
+        "centre".to_owned()
+    } else {
+        format!("{:+.0}%", position * 100.0)
+    });
+    if room.limiting_db > 0.1 {
+        // Said in decibels, because the constriction is the gestalt and this is
+        // the precision -- see VISUAL-LANGUAGE.md §7.
+        parts.push(format!("limiting {:.1} dB", room.limiting_db));
+    }
+    parts.join(" · ")
+}
+
+/// How the two banks stand relative to each other in time.
+///
+/// The order of the checks is the order of the questions a DJ asks: is there
+/// anything to compare, are the tempos the same, and only then are the crests
+/// together. Checking phase first would report a meaningless offset for two
+/// decks at different tempos, where the offset is not a fact but a moment.
+fn beating(left: Option<&RiverReading>, right: Option<&RiverReading>) -> Beating {
+    let (Some(a), Some(b)) = (left, right) else {
+        return Beating::Unknown;
+    };
+    if !a.playing || !b.playing {
+        return Beating::Unknown;
+    }
+    let (Some(bpm_a), Some(bpm_b)) = (a.bpm, b.bpm) else {
+        return Beating::Unknown;
+    };
+    if !bpm_a.is_finite() || !bpm_b.is_finite() || bpm_a <= 0.0 || bpm_b <= 0.0 {
+        return Beating::Unknown;
+    }
+
+    let difference = bpm_b - bpm_a;
+    if difference.abs() > SAME_TEMPO_WITHIN_BPM {
+        return Beating::Sliding {
+            bpm_difference: difference,
+        };
+    }
+
+    // Signed, and wrapped to the nearer half: a crest 0.9 of a beat ahead is
+    // 0.1 behind, and telling a DJ to nudge forward nine tenths of a beat when
+    // a tenth back would do is the interface being unhelpful on a technicality.
+    let raw = (b.beat_phase - a.beat_phase).rem_euclid(1.0);
+    let offset = if raw > 0.5 { raw - 1.0 } else { raw };
+
+    if offset.abs() <= LOCKED_WITHIN_BEATS {
+        Beating::Locked
+    } else {
+        Beating::Offset { beats: offset }
     }
 }
 
@@ -409,6 +570,8 @@ mod tests {
             strain,
             dropouts: false,
             limiting_db: 0.0,
+            crossfader: 0.0,
+            master_level: 0.8,
         }
     }
 
@@ -605,6 +768,195 @@ mod tests {
         );
     }
 
+    // -- the confluence ----------------------------------------------------
+
+    /// Two rivers at the same tempo with their crests together. The state a DJ
+    /// is trying to reach, and the one that needs no action.
+    #[test]
+    fn matched_decks_read_as_locked() {
+        let world = build(&[playing(1), playing(2)], 1, 2, calm(0.0));
+        assert_eq!(world.beating, Beating::Locked);
+    }
+
+    /// Same tempo, crests apart. A nudge fixes it, and the sign says which way.
+    #[test]
+    fn a_phase_difference_at_the_same_tempo_is_an_offset() {
+        let mut behind = playing(2);
+        behind.beat_phase = 0.3;
+        let world = build(&[playing(1), behind], 1, 2, calm(0.0));
+        match world.beating {
+            Beating::Offset { beats } => assert!((beats - 0.3).abs() < 1e-5, "{beats}"),
+            other => panic!("expected an offset, got {other:?}"),
+        }
+    }
+
+    /// A crest eight tenths of a beat ahead is two tenths behind. Telling a DJ
+    /// to nudge forward 0.8 when 0.2 back would do is unhelpful on a
+    /// technicality.
+    #[test]
+    fn an_offset_is_reported_the_short_way_round() {
+        let mut nearly_round = playing(2);
+        nearly_round.beat_phase = 0.8;
+        let world = build(&[playing(1), nearly_round], 1, 2, calm(0.0));
+        match world.beating {
+            Beating::Offset { beats } => {
+                assert!(beats < 0.0, "the short way is backwards, got {beats}");
+                assert!((beats + 0.2).abs() < 1e-5, "{beats}");
+            }
+            other => panic!("expected an offset, got {other:?}"),
+        }
+    }
+
+    /// The tolerance and the wrap interact, and the near-miss is the case that
+    /// gets it wrong: a tenth of a beat *the long way round* is still a tenth,
+    /// and a tenth is inside the locked window.
+    #[test]
+    fn a_crest_just_the_wrong_side_of_the_downbeat_is_still_locked() {
+        let mut a_hair_early = playing(2);
+        a_hair_early.beat_phase = 0.95;
+        assert_eq!(
+            build(&[playing(1), a_hair_early], 1, 2, calm(0.0)).beating,
+            Beating::Locked,
+            "0.95 is 0.05 behind, not 0.95 ahead"
+        );
+    }
+
+    /// The distinction that decides which control a DJ reaches for. Different
+    /// tempos mean the offset is changing, so a nudge would not hold.
+    #[test]
+    fn different_tempos_are_a_slide_not_an_offset() {
+        let mut faster = playing(2);
+        faster.bpm = Some(130.0);
+        // Crests happen to be together *right now*, which is exactly the trap:
+        // a phase-only reading would call this locked, and a bar later it is not.
+        let world = build(&[playing(1), faster], 1, 2, calm(0.0));
+        match world.beating {
+            Beating::Sliding { bpm_difference } => {
+                assert!((bpm_difference - 2.0).abs() < 1e-5, "{bpm_difference}");
+            }
+            other => panic!("expected a slide, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_hair_of_tempo_difference_still_counts_as_the_same_tempo() {
+        let mut hair = playing(2);
+        hair.bpm = Some(128.0 + SAME_TEMPO_WITHIN_BPM / 2.0);
+        assert_eq!(
+            build(&[playing(1), hair], 1, 2, calm(0.0)).beating,
+            Beating::Locked
+        );
+    }
+
+    #[test]
+    fn nothing_to_compare_reads_as_unknown() {
+        // Only one deck.
+        assert_eq!(
+            build(&[playing(1)], 1, 2, calm(0.0)).beating,
+            Beating::Unknown
+        );
+
+        // One paused: a stopped deck has no crests arriving.
+        let mut paused = playing(2);
+        paused.playing = false;
+        assert_eq!(
+            build(&[playing(1), paused], 1, 2, calm(0.0)).beating,
+            Beating::Unknown
+        );
+
+        // One ungridded: no beat to compare against.
+        let mut ungridded = playing(2);
+        ungridded.bpm = None;
+        assert_eq!(
+            build(&[playing(1), ungridded], 1, 2, calm(0.0)).beating,
+            Beating::Unknown
+        );
+    }
+
+    #[test]
+    fn a_nonsense_tempo_does_not_produce_a_slide() {
+        for bad in [f32::NAN, f32::INFINITY, 0.0, -4.0] {
+            let mut broken = playing(2);
+            broken.bpm = Some(bad);
+            assert_eq!(
+                build(&[playing(1), broken], 1, 2, calm(0.0)).beating,
+                Beating::Unknown,
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_confluence_sits_where_the_crossfader_puts_it() {
+        let at = |crossfader: f32| {
+            let room = RoomReading {
+                crossfader,
+                ..calm(0.0)
+            };
+            find(
+                &build(&[playing(1), playing(2)], 1, 2, room),
+                "mixer.confluence",
+                0,
+            )
+            .unwrap()
+            .along
+        };
+        assert!((at(-1.0) - 0.0).abs() < 1e-5, "hard left");
+        assert!((at(0.0) - 0.5).abs() < 1e-5, "centre");
+        assert!((at(1.0) - 1.0).abs() < 1e-5, "hard right");
+    }
+
+    /// The estuary's banks are fixed; the water is squeezed through them. More
+    /// limiting is more constriction, which is a DJ *seeing* the mix crushed
+    /// rather than reading a gain-reduction number.
+    #[test]
+    fn limiting_constricts_the_confluence() {
+        let squeezed = |db: f32| {
+            let room = RoomReading {
+                limiting_db: db,
+                ..calm(0.0)
+            };
+            find(
+                &build(&[playing(1), playing(2)], 1, 2, room),
+                "mixer.confluence",
+                0,
+            )
+            .unwrap()
+            .extent
+        };
+        assert_eq!(squeezed(0.0), 1.0, "nothing to squeeze");
+        assert!(squeezed(3.0) < squeezed(0.0));
+        assert!(squeezed(9.0) < squeezed(3.0));
+        assert!(
+            squeezed(9.0) >= 0.0,
+            "never negative, however hard it works"
+        );
+    }
+
+    #[test]
+    fn the_confluence_says_where_it_is_and_whether_it_is_limiting() {
+        let room = RoomReading {
+            crossfader: -1.0,
+            limiting_db: 4.2,
+            ..calm(0.0)
+        };
+        let world = build(&[playing(1), playing(2)], 1, 2, room);
+        let reading = &find(&world, "mixer.confluence", 0).unwrap().reading;
+        assert!(reading.contains("hard left"), "{reading}");
+        assert!(reading.contains("4.2 dB"), "{reading}");
+    }
+
+    /// A mixer with nothing on it has no musical colour to show, and inventing
+    /// one would be the interface asserting a key nobody has played.
+    #[test]
+    fn an_empty_confluence_carries_no_hue() {
+        let world = build(&[RiverReading::empty(1)], 1, 2, calm(0.0));
+        assert_eq!(
+            find(&world, "mixer.confluence", 0).unwrap().tint.saturation,
+            0.0
+        );
+    }
+
     // -- the alarm channel -------------------------------------------------
 
     fn ending(deck: u8, seconds: f32) -> RiverReading {
@@ -629,6 +981,7 @@ mod tests {
             strain: 1.0,
             dropouts: true,
             limiting_db: 9.0,
+            ..calm(0.0)
         };
         // Dropouts, limiting and a deck running out, all at once.
         let world = build(&[ending(1, 5.0)], 1, 2, room);
@@ -702,8 +1055,8 @@ mod tests {
     fn a_gently_working_limiter_does_not_take_the_channel() {
         let gentle = RoomReading {
             strain: 0.2,
-            dropouts: false,
             limiting_db: 1.0,
+            ..calm(0.0)
         };
         assert_eq!(build(&[playing(1)], 1, 2, gentle).alarm, None);
 
@@ -725,11 +1078,16 @@ mod tests {
         assert_eq!(build(&[], 1, 2, calm(-1.0)).strain, 0.0);
     }
 
+    /// A mixer exists whether or not anything is on it — unlike a mouth, which
+    /// belongs to a track. So an empty world has the confluence and nothing
+    /// else, which is also what the mixer panel shows.
     #[test]
-    fn a_world_with_no_decks_is_empty_rather_than_a_panic() {
+    fn a_world_with_no_decks_has_only_the_mixer() {
         let world = build(&[], 1, 2, calm(0.0));
-        assert!(world.entities.is_empty());
+        assert_eq!(world.entities.len(), 1);
+        assert_eq!(world.entities[0].name, "mixer.confluence");
         assert_eq!(world.confluence, Confluence::Unknown);
+        assert_eq!(world.beating, Beating::Unknown);
     }
 
     /// The world crosses to the interface sixty times a second, so it has to

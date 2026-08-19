@@ -99,6 +99,15 @@ fn room(snapshot: &Snapshot) -> RoomReading {
         strain: if dropouts { 1.0 } else { load },
         dropouts,
         limiting_db: snapshot.master.limiter_reduction_db.max(0.0),
+        crossfader: snapshot.master.crossfader.clamp(-1.0, 1.0),
+        // The estuary's level, from whichever meter is carrying more. Peak
+        // rather than an average of the two: a mix loud in one channel only is
+        // still a loud mix, and averaging would draw it as half as much water.
+        master_level: snapshot
+            .master
+            .peak_left
+            .max(snapshot.master.peak_right)
+            .clamp(0.0, 1.0),
     }
 }
 
