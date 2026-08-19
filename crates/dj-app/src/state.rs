@@ -85,6 +85,15 @@ pub struct AppState {
     assistant: Mutex<AssistantChoice>,
     budget: Arc<Budget>,
     presets: PresetLibrary,
+    /// The device that is open, as the interface describes it.
+    ///
+    /// Held here rather than only in the interface because opening a device is
+    /// not something only the Connect button does: a preset, a script, the
+    /// assistant or a restored session can all do it, and an interface that
+    /// learns about the device only from its own button call shows "no device"
+    /// while audio is playing. Not in the 60 Hz snapshot either — a device
+    /// changes on connect and never in between, and its name is a `String`.
+    active_device: Arc<Mutex<Option<crate::commands::ActiveDeviceDto>>>,
     /// Live figures from the two-device bridge, present only while a split
     /// output is open. Replaced on every device change, so it never reports
     /// numbers from a stream that has already been closed.
@@ -188,6 +197,7 @@ impl AppState {
             assistant: Mutex::new(AssistantChoice::default()),
             budget: Arc::new(Budget::default()),
             presets: PresetLibrary::builtin(),
+            active_device: Arc::new(Mutex::new(None)),
             bridge: Arc::new(Mutex::new(None)),
             analysis: Arc::new(crate::analysis::AnalysisStore::new()),
             library_writer: crate::persist::LibraryWriter::start(Arc::clone(&library)),
@@ -471,6 +481,18 @@ impl AppState {
         &self.host
     }
 
+    /// Remember what was opened, so anything can ask later.
+    pub fn set_active_device(&self, device: Option<crate::commands::ActiveDeviceDto>) {
+        if let Ok(mut slot) = self.active_device.lock() {
+            *slot = device;
+        }
+    }
+
+    #[must_use]
+    pub fn active_device(&self) -> Option<crate::commands::ActiveDeviceDto> {
+        self.active_device.lock().ok()?.clone()
+    }
+
     /// Record the bridge for the stream that was just opened, or clear it when
     /// the new stream is a single-device one.
     pub fn set_bridge(&self, bridge: Option<Arc<dj_audio::BridgeStats>>) {
@@ -589,6 +611,34 @@ pub const NOT_SLIPPING: f32 = -1.0;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The bug this covers: the interface kept its own note of what was open,
+    /// set only by its Connect button, and showed "no device" over playing
+    /// audio whenever anything else opened one. The engine's account has to be
+    /// available to ask for, or the interface has no way to correct itself.
+    #[test]
+    fn what_is_open_can_be_asked_for_by_anyone_not_only_by_whoever_opened_it() {
+        let state = AppState::new(true);
+        assert!(state.active_device().is_none(), "nothing open yet");
+
+        state.set_active_device(Some(crate::commands::ActiveDeviceDto {
+            name: "Null output (no hardware)".to_owned(),
+            sample_rate: 48_000,
+            buffer_frames: 256,
+            channels: 4,
+            latency_ms: 5.333_333,
+            cue: None,
+            cue_error: None,
+        }));
+        let open = state.active_device().expect("a device is open");
+        assert_eq!(open.sample_rate, 48_000);
+        assert_eq!(open.name, "Null output (no hardware)");
+
+        // Closing has to be sayable too, or the interface would show a device
+        // that has gone.
+        state.set_active_device(None);
+        assert!(state.active_device().is_none());
+    }
 
     // -- the chosen layout -------------------------------------------------
 

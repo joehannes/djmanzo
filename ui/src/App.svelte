@@ -29,6 +29,7 @@
     listDevices,
     logoUrl,
     onSnapshot,
+    activeDevice,
     openDevice,
     sessionLog,
     type ActiveDevice,
@@ -134,6 +135,26 @@
 
   $effect(() => {
     refreshDevices();
+  });
+
+  /**
+   * Adopt a device somebody else opened.
+   *
+   * `ready` comes from the snapshot, which is the engine's own account of
+   * itself; `active` is only ever set by this component's Connect button. When
+   * the first disagrees with the second, the snapshot is right — so ask the
+   * backend what is open rather than showing "no device" over playing audio.
+   *
+   * The condition is the disagreement itself, so this fires once and then stays
+   * quiet, and it covers every way a device gets opened without this button:
+   * the demo harness, a preset, a script, the assistant, a restored session.
+   */
+  $effect(() => {
+    if (ready && active == null) {
+      void activeDevice().then((device) => {
+        active ??= device;
+      });
+    }
   });
 
   $effect(() => {

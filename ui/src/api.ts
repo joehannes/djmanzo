@@ -276,6 +276,17 @@ export const openDevice = (
     bufferFrames,
   });
 
+/**
+ * What is open, if anything.
+ *
+ * Asked on startup and whenever the interface finds a running engine it did not
+ * start itself. Opening a device is not something only the Connect button does —
+ * a preset, a script, the assistant or a restored session can all do it — and an
+ * interface that learns about the device only from its own call shows "no
+ * device" while audio is playing.
+ */
+export const activeDevice = () => invoke<ActiveDevice | null>("active_device");
+
 export const startAudio = () => invoke<void>("start_audio");
 export const stopAudio = () => invoke<void>("stop_audio");
 

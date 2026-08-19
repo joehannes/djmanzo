@@ -247,6 +247,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_devices,
             commands::open_device,
+            commands::active_device,
             commands::start_audio,
             commands::stop_audio,
             commands::load_track,

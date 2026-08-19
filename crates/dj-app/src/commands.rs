@@ -97,7 +97,7 @@ pub fn open_device(
     state.set_bridge(outcome.bridge.clone());
     let master = outcome.master;
 
-    Ok(ActiveDeviceDto {
+    let dto = ActiveDeviceDto {
         latency_ms: master.latency_ms(),
         name: master.device_name,
         sample_rate: master.sample_rate.get(),
@@ -110,7 +110,23 @@ pub fn open_device(
             buffer_frames: cue.buffer_frames,
         }),
         cue_error: outcome.cue_error,
-    })
+    };
+    // Kept, so an interface that did not make this call can still find out. See
+    // `AppState::set_active_device`.
+    state.set_active_device(Some(dto.clone()));
+    Ok(dto)
+}
+
+/// What is open, if anything.
+///
+/// Asked once on startup and again whenever the interface finds itself with a
+/// running engine it did not start — which happens whenever something other
+/// than the Connect button opens a device. Not part of the 60 Hz snapshot: a
+/// device changes on connect and never in between.
+#[tauri::command]
+#[must_use]
+pub fn active_device(state: State<'_, AppState>) -> Option<ActiveDeviceDto> {
+    state.active_device()
 }
 
 #[tauri::command]
