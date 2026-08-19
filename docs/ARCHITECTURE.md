@@ -345,8 +345,8 @@ crates/
   dj-audio      AudioBackend trait, device enumeration, clock/drift correction, cpal backend
   dj-engine     THE realtime crate: decks, scaler, mixer, sampler, sync. RT rules apply here
                 and nowhere else.
-  dj-dsp        EQ, filters, stretch wrapper, resampler, meters, limiter — pure, testable,
-                allocation-free
+  dj-dsp        EQ, filters, stretch wrapper, resampler, meters, limiter, effect slots —
+                pure, testable, allocation-free
   dj-decode     symphonia + platform fallbacks, CachingReader, prefetch pool
   dj-analysis   beatgrid, BPM, key, loudness, waveform data, structure
   dj-stems      ONNX look-ahead separation + content-hashed cache

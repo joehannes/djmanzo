@@ -38,6 +38,9 @@ pub struct Layout {
     pub overview: bool,
     pub pads: bool,
     pub loops: bool,
+    /// Whether the three effect slots are on screen, per deck and on the
+    /// master. The flag the doc comment above has always named.
+    pub fx: bool,
     pub beat_jump: bool,
     pub eq: bool,
     pub filter: bool,
@@ -59,6 +62,7 @@ impl Default for Layout {
             overview: true,
             pads: true,
             loops: true,
+            fx: true,
             beat_jump: true,
             eq: true,
             filter: true,
@@ -108,6 +112,7 @@ pub fn builtin() -> Vec<Layout> {
             waveform_height: 160,
             pads: false,
             loops: false,
+            fx: false,
             beat_jump: false,
             filter: false,
             keylock: false,
@@ -119,6 +124,9 @@ pub fn builtin() -> Vec<Layout> {
             description: "Two decks with cues, loops and the EQ.".to_owned(),
             decks: 2,
             waveform_height: 120,
+            // Its own description says cues, loops and the EQ. A rack it does
+            // not mention would be a preset that does not do what it says.
+            fx: false,
             ..Layout::default()
         },
         Layout {

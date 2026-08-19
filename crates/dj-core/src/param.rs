@@ -88,6 +88,48 @@ pub enum DeckParam {
     /// and a roll does not. An interface that draws both as "looping" is
     /// telling a DJ the wrong thing about what happens next.
     Rolling,
+    /// The three effect slots.
+    ///
+    /// Six values each rather than one packed number: a packed one would be
+    /// unreadable in a log and impossible to watch a single control of. They
+    /// are laid out slot by slot so that a reader scanning the registry sees a
+    /// slot's whole state together.
+    /// Slot 1: Which effect is loaded, as an index into [`crate::fx::EffectKind::ALL`].
+    Fx1Kind,
+    /// Slot 1: 1.0 while the slot is switched on.
+    Fx1Enabled,
+    /// Slot 1: Dry-to-wet mix, 0..=1.
+    Fx1Wet,
+    /// Slot 1: Length in beats. Meaningless for effects with no time in them.
+    Fx1Beats,
+    /// Slot 1: The effect's own knob, 0..=1; see `EffectKind::amount_label`.
+    Fx1Amount,
+    /// Slot 1: 1.0 when the slot sits after the channel fader rather than before it.
+    Fx1Post,
+    /// Slot 2: Which effect is loaded, as an index into [`crate::fx::EffectKind::ALL`].
+    Fx2Kind,
+    /// Slot 2: 1.0 while the slot is switched on.
+    Fx2Enabled,
+    /// Slot 2: Dry-to-wet mix, 0..=1.
+    Fx2Wet,
+    /// Slot 2: Length in beats. Meaningless for effects with no time in them.
+    Fx2Beats,
+    /// Slot 2: The effect's own knob, 0..=1; see `EffectKind::amount_label`.
+    Fx2Amount,
+    /// Slot 2: 1.0 when the slot sits after the channel fader rather than before it.
+    Fx2Post,
+    /// Slot 3: Which effect is loaded, as an index into [`crate::fx::EffectKind::ALL`].
+    Fx3Kind,
+    /// Slot 3: 1.0 while the slot is switched on.
+    Fx3Enabled,
+    /// Slot 3: Dry-to-wet mix, 0..=1.
+    Fx3Wet,
+    /// Slot 3: Length in beats. Meaningless for effects with no time in them.
+    Fx3Beats,
+    /// Slot 3: The effect's own knob, 0..=1; see `EffectKind::amount_label`.
+    Fx3Amount,
+    /// Slot 3: 1.0 when the slot sits after the channel fader rather than before it.
+    Fx3Post,
     /// 1.0 when a loop is repeating.
     LoopActive,
     /// Loop start and end, in frames. Meaningful only while `LoopActive`.
@@ -145,7 +187,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 39;
+    pub const COUNT: usize = 57;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -182,6 +224,24 @@ impl DeckParam {
             Reversed,
             SlipPosition,
             Rolling,
+            Fx1Kind,
+            Fx1Enabled,
+            Fx1Wet,
+            Fx1Beats,
+            Fx1Amount,
+            Fx1Post,
+            Fx2Kind,
+            Fx2Enabled,
+            Fx2Wet,
+            Fx2Beats,
+            Fx2Amount,
+            Fx2Post,
+            Fx3Kind,
+            Fx3Enabled,
+            Fx3Wet,
+            Fx3Beats,
+            Fx3Amount,
+            Fx3Post,
             LoopActive,
             LoopStart,
             LoopEnd,
@@ -232,10 +292,129 @@ pub enum GlobalParam {
     /// Frames of latency the output chain adds after the decks. The interface
     /// needs it to explain the delay rather than let someone discover it.
     OutputLatencyFrames,
+    /// The three master effect slots. Same six values per slot as a deck's,
+    /// because it is the same rack in a different place.
+    /// Master slot 1: Which effect is loaded, as an index into [`crate::fx::EffectKind::ALL`].
+    MasterFx1Kind,
+    /// Master slot 1: 1.0 while the slot is switched on.
+    MasterFx1Enabled,
+    /// Master slot 1: Dry-to-wet mix, 0..=1.
+    MasterFx1Wet,
+    /// Master slot 1: Length in beats.
+    MasterFx1Beats,
+    /// Master slot 1: The effect's own knob, 0..=1.
+    MasterFx1Amount,
+    /// Master slot 1: 1.0 when the slot runs later in the chain.
+    MasterFx1Post,
+    /// Master slot 2: Which effect is loaded, as an index into [`crate::fx::EffectKind::ALL`].
+    MasterFx2Kind,
+    /// Master slot 2: 1.0 while the slot is switched on.
+    MasterFx2Enabled,
+    /// Master slot 2: Dry-to-wet mix, 0..=1.
+    MasterFx2Wet,
+    /// Master slot 2: Length in beats.
+    MasterFx2Beats,
+    /// Master slot 2: The effect's own knob, 0..=1.
+    MasterFx2Amount,
+    /// Master slot 2: 1.0 when the slot runs later in the chain.
+    MasterFx2Post,
+    /// Master slot 3: Which effect is loaded, as an index into [`crate::fx::EffectKind::ALL`].
+    MasterFx3Kind,
+    /// Master slot 3: 1.0 while the slot is switched on.
+    MasterFx3Enabled,
+    /// Master slot 3: Dry-to-wet mix, 0..=1.
+    MasterFx3Wet,
+    /// Master slot 3: Length in beats.
+    MasterFx3Beats,
+    /// Master slot 3: The effect's own knob, 0..=1.
+    MasterFx3Amount,
+    /// Master slot 3: 1.0 when the slot runs later in the chain.
+    MasterFx3Post,
+}
+
+impl DeckParam {
+    /// The six parameters of one effect slot, 1-based.
+    ///
+    /// A lookup rather than a match at every call site: the publisher and the
+    /// reader both want to walk the slots, and writing out eighteen arms twice
+    /// is where a copied line ends up pointing at the wrong slot.
+    #[must_use]
+    pub const fn fx(slot: u8) -> Option<FxParams> {
+        match slot {
+            1 => Some(FxParams {
+                kind: DeckParam::Fx1Kind,
+                enabled: DeckParam::Fx1Enabled,
+                wet: DeckParam::Fx1Wet,
+                beats: DeckParam::Fx1Beats,
+                amount: DeckParam::Fx1Amount,
+                post: DeckParam::Fx1Post,
+            }),
+            2 => Some(FxParams {
+                kind: DeckParam::Fx2Kind,
+                enabled: DeckParam::Fx2Enabled,
+                wet: DeckParam::Fx2Wet,
+                beats: DeckParam::Fx2Beats,
+                amount: DeckParam::Fx2Amount,
+                post: DeckParam::Fx2Post,
+            }),
+            3 => Some(FxParams {
+                kind: DeckParam::Fx3Kind,
+                enabled: DeckParam::Fx3Enabled,
+                wet: DeckParam::Fx3Wet,
+                beats: DeckParam::Fx3Beats,
+                amount: DeckParam::Fx3Amount,
+                post: DeckParam::Fx3Post,
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// Where one effect slot's six values live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FxParams<P = DeckParam> {
+    pub kind: P,
+    pub enabled: P,
+    pub wet: P,
+    pub beats: P,
+    pub amount: P,
+    pub post: P,
 }
 
 impl GlobalParam {
-    pub const COUNT: usize = 15;
+    /// The six parameters of one *master* slot, 1-based.
+    #[must_use]
+    pub const fn fx(slot: u8) -> Option<FxParams<GlobalParam>> {
+        match slot {
+            1 => Some(FxParams {
+                kind: GlobalParam::MasterFx1Kind,
+                enabled: GlobalParam::MasterFx1Enabled,
+                wet: GlobalParam::MasterFx1Wet,
+                beats: GlobalParam::MasterFx1Beats,
+                amount: GlobalParam::MasterFx1Amount,
+                post: GlobalParam::MasterFx1Post,
+            }),
+            2 => Some(FxParams {
+                kind: GlobalParam::MasterFx2Kind,
+                enabled: GlobalParam::MasterFx2Enabled,
+                wet: GlobalParam::MasterFx2Wet,
+                beats: GlobalParam::MasterFx2Beats,
+                amount: GlobalParam::MasterFx2Amount,
+                post: GlobalParam::MasterFx2Post,
+            }),
+            3 => Some(FxParams {
+                kind: GlobalParam::MasterFx3Kind,
+                enabled: GlobalParam::MasterFx3Enabled,
+                wet: GlobalParam::MasterFx3Wet,
+                beats: GlobalParam::MasterFx3Beats,
+                amount: GlobalParam::MasterFx3Amount,
+                post: GlobalParam::MasterFx3Post,
+            }),
+            _ => None,
+        }
+    }
+
+    pub const COUNT: usize = 33;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -261,6 +440,24 @@ impl GlobalParam {
             LimiterReductionDb,
             OutputLatencyFrames,
             Quantize,
+            MasterFx1Kind,
+            MasterFx1Enabled,
+            MasterFx1Wet,
+            MasterFx1Beats,
+            MasterFx1Amount,
+            MasterFx1Post,
+            MasterFx2Kind,
+            MasterFx2Enabled,
+            MasterFx2Wet,
+            MasterFx2Beats,
+            MasterFx2Amount,
+            MasterFx2Post,
+            MasterFx3Kind,
+            MasterFx3Enabled,
+            MasterFx3Wet,
+            MasterFx3Beats,
+            MasterFx3Amount,
+            MasterFx3Post,
         ]
     }
 }
@@ -338,6 +535,24 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::Reversed => "reversed",
         DeckParam::SlipPosition => "slip_position",
         DeckParam::Rolling => "rolling",
+        DeckParam::Fx1Kind => "fx1_kind",
+        DeckParam::Fx1Enabled => "fx1_enabled",
+        DeckParam::Fx1Wet => "fx1_wet",
+        DeckParam::Fx1Beats => "fx1_beats",
+        DeckParam::Fx1Amount => "fx1_amount",
+        DeckParam::Fx1Post => "fx1_post",
+        DeckParam::Fx2Kind => "fx2_kind",
+        DeckParam::Fx2Enabled => "fx2_enabled",
+        DeckParam::Fx2Wet => "fx2_wet",
+        DeckParam::Fx2Beats => "fx2_beats",
+        DeckParam::Fx2Amount => "fx2_amount",
+        DeckParam::Fx2Post => "fx2_post",
+        DeckParam::Fx3Kind => "fx3_kind",
+        DeckParam::Fx3Enabled => "fx3_enabled",
+        DeckParam::Fx3Wet => "fx3_wet",
+        DeckParam::Fx3Beats => "fx3_beats",
+        DeckParam::Fx3Amount => "fx3_amount",
+        DeckParam::Fx3Post => "fx3_post",
         DeckParam::LoopActive => "loop_active",
         DeckParam::LoopStart => "loop_start",
         DeckParam::LoopEnd => "loop_end",
@@ -370,6 +585,24 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::LimiterEnabled => "limiter_enabled",
         GlobalParam::LimiterReductionDb => "limiter_reduction_db",
         GlobalParam::OutputLatencyFrames => "output_latency_frames",
+        GlobalParam::MasterFx1Kind => "master_fx1_kind",
+        GlobalParam::MasterFx1Enabled => "master_fx1_enabled",
+        GlobalParam::MasterFx1Wet => "master_fx1_wet",
+        GlobalParam::MasterFx1Beats => "master_fx1_beats",
+        GlobalParam::MasterFx1Amount => "master_fx1_amount",
+        GlobalParam::MasterFx1Post => "master_fx1_post",
+        GlobalParam::MasterFx2Kind => "master_fx2_kind",
+        GlobalParam::MasterFx2Enabled => "master_fx2_enabled",
+        GlobalParam::MasterFx2Wet => "master_fx2_wet",
+        GlobalParam::MasterFx2Beats => "master_fx2_beats",
+        GlobalParam::MasterFx2Amount => "master_fx2_amount",
+        GlobalParam::MasterFx2Post => "master_fx2_post",
+        GlobalParam::MasterFx3Kind => "master_fx3_kind",
+        GlobalParam::MasterFx3Enabled => "master_fx3_enabled",
+        GlobalParam::MasterFx3Wet => "master_fx3_wet",
+        GlobalParam::MasterFx3Beats => "master_fx3_beats",
+        GlobalParam::MasterFx3Amount => "master_fx3_amount",
+        GlobalParam::MasterFx3Post => "master_fx3_post",
         GlobalParam::Quantize => "quantize",
     }
 }

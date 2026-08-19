@@ -6,6 +6,7 @@
 
 pub mod biquad;
 pub mod eq;
+pub mod fx;
 pub mod karaoke;
 pub mod keylock;
 pub mod limiter;
@@ -15,6 +16,7 @@ pub mod smooth;
 
 pub use biquad::Biquad;
 pub use eq::{SweepFilter, ThreeBandEq};
+pub use fx::{DelayLine, FxContext, Slot};
 pub use karaoke::CentreCancel;
 pub use keylock::Keylock;
 pub use limiter::Limiter;

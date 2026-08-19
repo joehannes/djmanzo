@@ -3,6 +3,7 @@
 use crate::bus::BusLayout;
 use crate::command::{Command, Retired};
 use crate::deck::Deck;
+use crate::rack::Rack;
 use dj_audio::{AudioCallback, RenderContext};
 use dj_control::ParameterRegistry;
 use dj_core::param::{DeckParam, GlobalParam};
@@ -10,6 +11,7 @@ use dj_core::{
     Action, CrossfaderAssign, DeckAction, DeckId, MAX_DECKS, MixerAction, ParamId, SampleRate,
     db_to_linear,
 };
+use dj_dsp::fx::FxContext;
 use dj_dsp::{CrossfaderCurve, Limiter, PeakMeter, SmoothedValue, crossfader_gains};
 use std::sync::Arc;
 
@@ -44,6 +46,14 @@ pub struct Engine {
     /// Snap beat jumps to the grid.
     quantize: bool,
 
+    /// Three effect slots over the whole mix.
+    ///
+    /// Placement is meaningless here — there is no fader after the master — so
+    /// both passes run, and a slot's placement setting is simply the order it
+    /// falls in. Unlike a deck's rack this one keeps running when every deck is
+    /// paused, which is what lets an echo thrown into the master ring out over
+    /// a silence.
+    master_rack: Rack,
     /// The last thing before the PA.
     limiter: Limiter,
     /// The last thing before the DJ's ears.
@@ -103,6 +113,7 @@ impl Engine {
             booth_gain: SmoothedValue::new(1.0, sr),
             booth_gain_db: 0.0,
             quantize: false,
+            master_rack: Rack::new(sr),
             limiter: Limiter::new(sr),
             cue_limiter: Limiter::new(sr),
             // Capacity for a pathological burst of loads; never grown at runtime.
@@ -144,6 +155,35 @@ impl Engine {
         );
         self.registry
             .set_bool(ParamId::Global(GlobalParam::Quantize), self.quantize);
+    }
+
+    /// The master rack's three slots.
+    ///
+    /// Alongside the deck racks in [`Self::publish_deck_state`] rather than
+    /// inside them, because the master is not a deck — but published on the
+    /// same schedule, so the interface never sees a half-updated rack.
+    fn publish_master_rack(&self) {
+        for number in 1..=dj_core::FX_SLOTS as u8 {
+            let (Some(param), Some(slot)) =
+                (GlobalParam::fx(number), self.master_rack.slot(number))
+            else {
+                continue;
+            };
+            let set = |p, value| self.registry.set(ParamId::Global(p), value);
+            set(param.kind, slot.kind().index() as f32);
+            set(param.enabled, if slot.is_enabled() { 1.0 } else { 0.0 });
+            set(param.wet, slot.wet());
+            set(param.beats, slot.beats());
+            set(param.amount, slot.amount());
+            set(
+                param.post,
+                if slot.placement() == dj_core::Placement::PostFader {
+                    1.0
+                } else {
+                    0.0
+                },
+            );
+        }
     }
 
     fn deck_mut(&mut self, id: DeckId) -> Option<&mut Deck> {
@@ -293,6 +333,9 @@ impl Engine {
                         target.set_reverse(!on);
                     }
                     DeckAction::SetCensor(held) => target.set_censor(held),
+                    DeckAction::Fx { slot, change } => {
+                        target.rack_mut().apply(slot, change);
+                    }
                     DeckAction::LoopRoll(beats) => {
                         target.set_loop_roll(beats, quantize);
                     }
@@ -374,6 +417,9 @@ impl Engine {
                 self.registry
                     .set_bool(ParamId::Global(GlobalParam::Quantize), on);
             }
+            Action::Mixer(MixerAction::Fx { slot, change }) => {
+                self.master_rack.apply(slot, change);
+            }
             Action::Mixer(MixerAction::SetLimiter(on)) => {
                 // The cue limiter is not switched with it. Bypass exists for
                 // the DJ feeding an external processor, and that processor is
@@ -419,6 +465,9 @@ impl Engine {
     }
 
     fn publish_deck_state(&self) {
+        // The master rack changes all night, so it rides with the per-block
+        // publisher rather than with the static state written at construction.
+        self.publish_master_rack();
         for (index, deck) in self.decks.iter().enumerate() {
             let Some(id) = DeckId::new(index as u8) else {
                 continue;
@@ -499,6 +548,26 @@ impl Engine {
                 DeckParam::LoopBeats,
                 deck.loop_beats().unwrap_or(0.0) as f32,
             );
+
+            for number in 1..=dj_core::FX_SLOTS as u8 {
+                let (Some(param), Some(slot)) = (DeckParam::fx(number), deck.rack().slot(number))
+                else {
+                    continue;
+                };
+                set(param.kind, slot.kind().index() as f32);
+                set(param.enabled, if slot.is_enabled() { 1.0 } else { 0.0 });
+                set(param.wet, slot.wet());
+                set(param.beats, slot.beats());
+                set(param.amount, slot.amount());
+                set(
+                    param.post,
+                    if slot.placement() == dj_core::Placement::PostFader {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                );
+            }
 
             for slot in 1..=dj_core::HOT_CUE_SLOTS as u8 {
                 let Some(param) = DeckParam::hot_cue(slot) else {
@@ -603,6 +672,40 @@ impl Engine {
         }
     }
 
+    /// What the master rack should measure a beat as.
+    ///
+    /// The master has no tempo of its own, so it borrows one from **the loudest
+    /// playing deck that has a grid**. Loudest rather than lowest-numbered
+    /// because that is the deck the room is hearing, and an echo over the mix
+    /// should be in time with the music people are dancing to — during a
+    /// transition it follows the incoming deck as it comes up, which is exactly
+    /// when a master effect gets thrown.
+    ///
+    /// Channel volume rather than the meter: the meter swings with every kick,
+    /// and a rule that changes its mind on every kick is not a rule.
+    fn master_fx_context(&self) -> FxContext {
+        let sample_rate = self.sample_rate.as_f64();
+        let mut best: Option<(f32, f64)> = None;
+        for deck in &self.decks {
+            if !deck.is_playing() {
+                continue;
+            }
+            let Some(bpm) = deck.effective_bpm() else {
+                continue;
+            };
+            let volume = deck.volume();
+            if best.is_none_or(|(loudest, _)| volume > loudest) {
+                best = Some((volume, bpm));
+            }
+        }
+        FxContext {
+            sample_rate: sample_rate as f32,
+            beat_frames: best
+                .map(|(_, bpm)| (sample_rate * 60.0 / bpm) as f32)
+                .filter(|frames| frames.is_finite() && *frames > 0.0),
+        }
+    }
+
     /// Number of decks this engine was built with.
     #[must_use]
     pub fn deck_count(&self) -> usize {
@@ -648,6 +751,9 @@ impl AudioCallback for Engine {
         }
 
         let (main_l, main_r) = layout.main;
+        // The master rack has no tempo of its own, so it borrows one. Computed
+        // once per block, before the loop.
+        let master_ctx = self.master_fx_context();
         for frame in out.chunks_exact_mut(channels) {
             let master = self.master_gain.next_value();
             let booth = self.booth_gain.next_value();
@@ -665,6 +771,17 @@ impl AudioCallback for Engine {
             } else {
                 frame[main_r] * master
             };
+
+            // The master rack, between the master gain and the limiter. After
+            // the gain so the DJ's level control is what feeds it, and before
+            // the limiter because the limiter is the last thing before the PA
+            // and nothing may get past it.
+            //
+            // Both passes run: there is no fader after the master for a
+            // placement to be on either side of, so pre and post here are
+            // simply the order the slots fall in.
+            let (raw_l, raw_r) = self.master_rack.process_pre(raw_l, raw_r, &master_ctx);
+            let (raw_l, raw_r) = self.master_rack.process_post(raw_l, raw_r, &master_ctx);
 
             // The clamp that remains is a backstop for a limiter that has been
             // bypassed, and for anything non-finite that got this far. It

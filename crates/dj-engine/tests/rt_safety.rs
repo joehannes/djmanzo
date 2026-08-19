@@ -587,6 +587,98 @@ fn loops_and_hot_cues_never_allocate() {
     );
 }
 
+/// The effect rack, switched and swept the way a DJ actually uses it.
+///
+/// This is the test the whole rack design exists to pass. An effect is an enum
+/// variant with a slot-owned buffer rather than a `Box<dyn Effect>` precisely so
+/// that changing one is an assignment: a boxed effect built on the control
+/// thread would have to cross a queue, and one built here would allocate inside
+/// the callback. Switching effects mid-callback is a normal DJ move — that is
+/// what an FX select knob does — so it has to be free.
+#[test]
+fn the_effect_rack_never_allocates() {
+    use dj_core::fx::{EffectKind, FxChange};
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.load_and_play(2, 2_000_000);
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..2_000 {
+            // Every effect in turn, in every slot, on a deck and on the master.
+            let kind = EffectKind::ALL[round % EffectKind::ALL.len()];
+            let slot = (round % dj_core::fx::FX_SLOTS) as u8 + 1;
+
+            for change in [
+                FxChange::Select(kind),
+                FxChange::SetEnabled(true),
+                FxChange::Wet(round as f32 % 100.0 / 100.0),
+                FxChange::Beats(1.0 / (1 + round % 8) as f32),
+                FxChange::Amount(round as f32 % 50.0 / 50.0),
+                FxChange::Place(if round % 2 == 0 {
+                    dj_core::fx::Placement::PreFader
+                } else {
+                    dj_core::fx::Placement::PostFader
+                }),
+            ] {
+                rig.act(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Fx { slot, change },
+                });
+                rig.act(Action::Mixer(MixerAction::Fx { slot, change }));
+            }
+            rig.renderer.render_block();
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "the effect rack allocated {allocations} times"
+    );
+}
+
+/// Keylock and effects together: the keylocked path runs the rack from a
+/// different loop, over a scratch buffer, and that loop has to stay clean too.
+#[test]
+fn a_keylocked_deck_with_effects_never_allocates() {
+    use dj_core::fx::{EffectKind, FxChange};
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::SetKeylock(true),
+    });
+    for change in [
+        FxChange::Select(EffectKind::Echo),
+        FxChange::SetEnabled(true),
+        FxChange::Wet(0.5),
+    ] {
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::Fx { slot: 1, change },
+        });
+    }
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..1_000 {
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::Fx {
+                    slot: 1,
+                    change: FxChange::Wet(round as f32 % 100.0 / 100.0),
+                },
+            });
+            rig.renderer.render_block();
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "a keylocked deck with effects allocated {allocations} times"
+    );
+}
+
 /// Slip runs a second playhead on the audio thread, and censor and reverse
 /// change the sign of the step mid-callback. All three are arithmetic on
 /// existing state, and this is what says so.

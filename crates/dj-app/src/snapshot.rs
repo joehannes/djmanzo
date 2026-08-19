@@ -9,8 +9,8 @@
 //! each change would flood the IPC channel with data the display cannot use.
 
 use dj_control::ParameterRegistry;
-use dj_core::param::{DeckParam, GlobalParam};
-use dj_core::{CrossfaderAssign, DeckId, ParamId};
+use dj_core::param::{DeckParam, FxParams, GlobalParam};
+use dj_core::{CrossfaderAssign, DeckId, EffectKind, ParamId};
 use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -107,9 +107,55 @@ pub struct DeckSnapshot {
     pub slip_position: Option<f32>,
     /// The region repeating right now, if any.
     pub active_loop: Option<LoopSnapshot>,
+    /// This deck's three effect slots, in order.
+    pub fx: Vec<FxSlotSnapshot>,
     /// Hot cue positions in frames, slot 1 first. `None` for an empty slot —
     /// which is not the same as a cue at frame zero.
     pub hot_cues: Vec<Option<f32>>,
+}
+
+/// Read one slot's six values, whichever rack they came from.
+///
+/// Generic over the parameter type so the deck racks and the master rack share
+/// it: they hold the same six things, and writing the conversion twice is how
+/// the two drift apart.
+fn fx_slot<P: Copy>(slot: u8, get: impl Fn(fn(FxParams<P>) -> P) -> f32) -> FxSlotSnapshot {
+    let kind = EffectKind::from_index(get(|p| p.kind).max(0.0) as usize);
+    FxSlotSnapshot {
+        slot,
+        kind: kind.name().to_owned(),
+        enabled: get(|p| p.enabled) >= 0.5,
+        wet: get(|p| p.wet),
+        beats: get(|p| p.beats),
+        amount: get(|p| p.amount),
+        amount_label: kind.amount_label().to_owned(),
+        timed: kind.is_timed(),
+        post_fader: get(|p| p.post) >= 0.5,
+    }
+}
+
+/// One effect slot, as the interface draws it.
+///
+/// The kind comes back as a name rather than an index: the registry has to
+/// carry it as a number because it holds `f32`, but a number in the interface
+/// is a thing to look up, and every lookup is somewhere the two sides can
+/// disagree about what effect 3 is.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FxSlotSnapshot {
+    /// 1-based, as the interface and controllers number them.
+    pub slot: u8,
+    /// `none`, `echo`, `gate`, `crush`, `flanger`.
+    pub kind: String,
+    pub enabled: bool,
+    pub wet: f32,
+    pub beats: f32,
+    pub amount: f32,
+    /// What the amount knob does, in the DJ's words. Empty for an empty slot.
+    pub amount_label: String,
+    /// Whether the beat control means anything for this effect.
+    pub timed: bool,
+    /// True when the slot sits after the channel fader.
+    pub post_fader: bool,
 }
 
 /// A loop, as the interface draws it.
@@ -177,6 +223,8 @@ impl TrackAnalysisSnapshot {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MasterSnapshot {
+    /// The master rack's three slots, in order.
+    pub fx: Vec<FxSlotSnapshot>,
     pub crossfader: f32,
     pub gain_db: f32,
     pub peak_left: f32,
@@ -349,6 +397,12 @@ impl Snapshot {
                             beats: (beats > 0.0).then_some(beats),
                         }
                     }),
+                    fx: (1..=dj_core::FX_SLOTS as u8)
+                        .filter_map(|slot| {
+                            let param = DeckParam::fx(slot)?;
+                            Some(fx_slot(slot, |p| get(p(param))))
+                        })
+                        .collect(),
                     hot_cues: (1..=dj_core::HOT_CUE_SLOTS as u8)
                         .map(|slot| {
                             let value = DeckParam::hot_cue(slot).map(&get)?;
@@ -366,6 +420,12 @@ impl Snapshot {
         Self {
             decks,
             master: MasterSnapshot {
+                fx: (1..=dj_core::FX_SLOTS as u8)
+                    .filter_map(|slot| {
+                        let param = GlobalParam::fx(slot)?;
+                        Some(fx_slot(slot, |p| registry.get(ParamId::Global(p(param)))))
+                    })
+                    .collect(),
                 crossfader: registry.get(ParamId::Global(GlobalParam::Crossfader)),
                 gain_db: registry.get(ParamId::Global(GlobalParam::MasterGainDb)),
                 peak_left: registry.get(ParamId::Global(GlobalParam::MasterPeakLeft)),

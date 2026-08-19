@@ -512,10 +512,10 @@ adding a new controller requires editing a file, not rebuilding the app.
 
 - Pad zone with pages: Cues, Loops, Loop Roll, Slicer, Sampler, FX.
 - Sampler: banks, pad grid, trigger modes, tempo sync, record from deck or master.
-- FX rack: multiple slots, per-deck and master routing, pre/post-fader placement, beat-synced
-  timing, presets.
-- Core built-in effects (echo, reverb, delay, flanger, phaser, filter, gate, bitcrush, roll,
-  brake, backspin).
+- **FX rack** — done: three chained slots per deck and on the master, pre/post-fader placement,
+  beat-synced timing. Chain presets still to come.
+- Core built-in effects — echo, gate, crush and flanger done; reverb, delay, phaser, filter,
+  roll, brake and backspin still to come.
 - **CLAP** plugin hosting.
 - **Slip mode, reverse/censor, loop roll** — done. 6 decks still to come.
 - Microphone/aux input with ducking.
@@ -545,6 +545,48 @@ Three decisions the tests pin:
 Allocation-free on both audio paths, proven by `rt_safety.rs` on the direct path
 and again on the keylocked one, which advances the shadow per block rather than
 per frame.
+
+### The effect rack
+
+Three slots per deck and three on the master, run as a **chain** rather than a
+parallel bank: slot 1 feeds slot 2 feeds slot 3. That is what makes stacking
+mean anything — a gate after an echo chops the repeats, a gate before it feeds
+the echo chopped audio, and a DJ can hear which one they built.
+
+Four decisions carry the design.
+
+**A slot owns the buffer, not the effect.** Every time-based effect wants
+somewhere to keep the recent past. Giving each its own would make rack memory
+scale with the size of the effect *catalogue* rather than with how many effects
+can run at once, and would make switching one cost an allocation. The slot holds
+one delay line and lends it to whichever effect is loaded.
+
+**An effect is an enum variant, not a `Box<dyn Effect>`.** Switching an effect is
+a normal DJ move — it is what an FX select knob does — and it happens on the
+audio thread like every other action. A boxed effect would have to be built on
+the control thread and posted across a queue, or built in the callback and
+allocate. A variant assignment does neither. `rt_safety.rs` switches every effect
+into every slot on a deck and the master two thousand times inside the callback
+and counts zero allocations.
+
+**Timing is in beats, and the beat comes from `effective_bpm`.** A quarter-beat
+echo stays a quarter-beat echo when the DJ rides the pitch fader, because the
+tempo the effect measures already has the fader in it. The deck's rack borrows
+its deck's tempo; the master rack has none of its own, so it borrows from **the
+loudest playing deck that has a grid** — loudest rather than lowest-numbered
+because that is the deck the room is hearing, and during a transition it follows
+the incoming track as it comes up, which is exactly when a master effect gets
+thrown.
+
+**One verb with a sub-grammar, not thirty-six verbs.** `deck 1 fx 2 echo`,
+`deck 1 fx 2 wet 0.5`, `master fx 1 beats 1/4`. Three slots times seven controls
+times two targets would have been thirty-six entries in a vocabulary that is read
+by a model on every request, where every token is paid for.
+
+Placement is per slot: pre-fader hears the DJ's EQ moves and its tail survives
+the fader coming down, post-fader hears what the room hears and dies with the
+fader. Pre-fader listen stays pre-fader either way — a post-fader effect changes
+what reaches the master and must not change what reaches the headphones.
 
 ### Loop roll
 

@@ -20,6 +20,7 @@ pub mod bus;
 pub mod command;
 pub mod deck;
 pub mod engine;
+pub mod rack;
 
 pub use bus::BusLayout;
 pub use command::{Command, Retired};

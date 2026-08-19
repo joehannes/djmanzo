@@ -10,6 +10,7 @@
 //! ever sees a string.
 
 use crate::deck::{CrossfaderAssign, DeckId};
+use crate::fx::{EffectKind, FX_SLOTS, FxChange, Placement};
 use crate::hotcue::HOT_CUE_SLOTS;
 use crate::time::{FramePos, Rate};
 use serde::{Deserialize, Serialize};
@@ -83,6 +84,15 @@ pub enum DeckAction {
     /// named after. Clamped by the engine's own loop limits, so 1/16 of a beat
     /// is the floor here as it is for halving a loop.
     LoopRoll(Option<f32>),
+    /// Change one of this deck's effect slots.
+    ///
+    /// One variant with a sub-grammar rather than a verb per slot per control.
+    /// Three slots times seven controls would be twenty-one verbs on the deck
+    /// alone, and the vocabulary is read by a model on every request.
+    Fx {
+        slot: u8,
+        change: FxChange,
+    },
     /// Match this deck's tempo, and align its phase once, to another playing
     /// deck. Refused when either grid is too weak to trust.
     Sync,
@@ -188,6 +198,14 @@ pub enum MixerAction {
     /// that is already doing the job — two limiters in series is worse than
     /// one, and the second one has no way to know that.
     SetLimiter(bool),
+    /// Change one of the master rack's effect slots.
+    ///
+    /// The same sub-grammar as a deck's, because it is the same rack in a
+    /// different place — and a DJ who has learnt one has learnt both.
+    Fx {
+        slot: u8,
+        change: FxChange,
+    },
 }
 
 impl Action {
@@ -215,6 +233,15 @@ impl Action {
                     .map_err(|_| ParseError::BadDeckNumber)?;
                 let deck = DeckId::from_human(number).ok_or(ParseError::BadDeckNumber)?;
                 let verb = words.next().ok_or(ParseError::MissingVerb)?;
+                // `fx` is the one verb with a sub-grammar of its own, so it
+                // takes the rest of the line rather than a single argument.
+                if verb == "fx" {
+                    let (slot, change) = parse_fx(&mut words)?;
+                    return Ok(Action::Deck {
+                        deck,
+                        action: DeckAction::Fx { slot, change },
+                    });
+                }
                 let action = parse_deck_verb(verb, words.next())?;
                 Ok(Action::Deck { deck, action })
             }
@@ -228,6 +255,10 @@ impl Action {
                 "gain" => Ok(Action::Mixer(MixerAction::MasterGainDb(parse_f32(
                     words.next(),
                 )?))),
+                "fx" => {
+                    let (slot, change) = parse_fx(&mut words)?;
+                    Ok(Action::Mixer(MixerAction::Fx { slot, change }))
+                }
                 other => Err(ParseError::UnknownVerb(other.to_owned())),
             },
             "booth" => match words.next().ok_or(ParseError::MissingVerb)? {
@@ -256,6 +287,49 @@ impl Action {
             },
             other => Err(ParseError::UnknownTarget(other.to_owned())),
         }
+    }
+}
+
+/// `<slot> <what> [value]` — the effect sub-grammar, shared by decks and master.
+///
+/// A bare effect name selects it, so `fx 1 echo` reads the way a DJ would say
+/// it. Everything else is a named control, which keeps the grammar open: a new
+/// control is a new word here rather than three new verbs in the vocabulary.
+fn parse_fx<'a>(words: &mut impl Iterator<Item = &'a str>) -> Result<(u8, FxChange), ParseError> {
+    let slot = parse_fx_slot(words.next())?;
+    let what = words.next().ok_or(ParseError::MissingArgument)?;
+    let change = match what {
+        "on" => FxChange::SetEnabled(true),
+        "off" => FxChange::SetEnabled(false),
+        "toggle" => FxChange::ToggleEnabled,
+        "pre" => FxChange::Place(Placement::PreFader),
+        "post" => FxChange::Place(Placement::PostFader),
+        "wet" => FxChange::Wet(parse_f32(words.next())?.clamp(0.0, 1.0)),
+        "beats" => FxChange::Beats(parse_beats(words.next())?),
+        "amount" => FxChange::Amount(parse_f32(words.next())?.clamp(0.0, 1.0)),
+        // Anything else must be an effect name, so an unknown word here is an
+        // unknown *effect* -- which is the error the caller actually made.
+        name => FxChange::Select(
+            EffectKind::parse(name).ok_or_else(|| ParseError::UnknownEffect(name.to_owned()))?,
+        ),
+    };
+    Ok((slot, change))
+}
+
+/// An effect slot, 1-based as the interface and every controller number them.
+///
+/// Rejected rather than clamped, for the same reason a hot cue slot is: slot 0
+/// or slot 9 is a mistake upstream, and quietly using slot 1 instead would hide
+/// it.
+fn parse_fx_slot(word: Option<&str>) -> Result<u8, ParseError> {
+    let slot: u8 = word
+        .ok_or(ParseError::MissingArgument)?
+        .parse()
+        .map_err(|_| ParseError::BadArgument)?;
+    if slot >= 1 && usize::from(slot) <= FX_SLOTS {
+        Ok(slot)
+    } else {
+        Err(ParseError::BadArgument)
     }
 }
 
@@ -468,6 +542,7 @@ impl fmt::Display for Action {
                 DeckAction::LoopRoll(Some(beats)) => write!(f, "deck {deck} roll {beats}"),
                 DeckAction::LoopRoll(None) => write!(f, "deck {deck} roll_off"),
                 DeckAction::SetKeyShift(n) => write!(f, "deck {deck} key {n}"),
+                DeckAction::Fx { slot, change } => write!(f, "deck {deck} fx {slot} {change}"),
                 DeckAction::Sync => write!(f, "deck {deck} sync"),
                 DeckAction::SyncOff => write!(f, "deck {deck} sync_off"),
                 DeckAction::BeatJump(n) => write!(f, "deck {deck} beatjump {n}"),
@@ -507,6 +582,9 @@ impl fmt::Display for Action {
             Action::Mixer(MixerAction::SplitCue(false)) => write!(f, "cue split_off"),
             Action::Mixer(MixerAction::SetQuantize(true)) => write!(f, "quantize on"),
             Action::Mixer(MixerAction::SetQuantize(false)) => write!(f, "quantize off"),
+            Action::Mixer(MixerAction::Fx { slot, change }) => {
+                write!(f, "master fx {slot} {change}")
+            }
             Action::Mixer(MixerAction::SetLimiter(true)) => write!(f, "limiter on"),
             Action::Mixer(MixerAction::SetLimiter(false)) => write!(f, "limiter off"),
         }
@@ -531,6 +609,11 @@ pub enum ParseError {
     MissingArgument,
     #[error("argument is not a finite number")]
     BadArgument,
+    /// Its own error rather than `UnknownVerb`, because in the effect
+    /// sub-grammar an unrecognised word is an effect name and saying "unknown
+    /// verb `revrb`" would point at the wrong thing.
+    #[error("unknown effect `{0}`")]
+    UnknownEffect(String),
 }
 
 #[cfg(test)]
@@ -654,6 +737,111 @@ mod tests {
             Action::parse("deck 1 roll half"),
             Err(ParseError::BadArgument)
         );
+    }
+
+    /// The effect grammar is one verb with a sub-grammar, so it needs testing
+    /// as a grammar rather than as a list of verbs.
+    #[test]
+    fn the_effect_sub_grammar_reaches_every_control() {
+        let fx = |text: &str, slot: u8, change: FxChange| {
+            assert_eq!(
+                Action::parse(text).unwrap(),
+                Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Fx { slot, change },
+                },
+                "parsing `{text}`"
+            );
+        };
+
+        // A bare effect name selects it, the way a DJ says it.
+        fx("deck 1 fx 1 echo", 1, FxChange::Select(EffectKind::Echo));
+        fx("deck 1 fx 3 none", 3, FxChange::Select(EffectKind::None));
+        fx("deck 1 fx 2 on", 2, FxChange::SetEnabled(true));
+        fx("deck 1 fx 2 off", 2, FxChange::SetEnabled(false));
+        fx("deck 1 fx 2 toggle", 2, FxChange::ToggleEnabled);
+        fx("deck 1 fx 1 wet 0.25", 1, FxChange::Wet(0.25));
+        fx("deck 1 fx 1 beats 1/4", 1, FxChange::Beats(0.25));
+        fx("deck 1 fx 1 amount 0.8", 1, FxChange::Amount(0.8));
+        fx("deck 1 fx 1 pre", 1, FxChange::Place(Placement::PreFader));
+        fx("deck 1 fx 1 post", 1, FxChange::Place(Placement::PostFader));
+    }
+
+    #[test]
+    fn the_master_rack_takes_the_same_grammar_as_a_deck() {
+        assert_eq!(
+            Action::parse("master fx 2 gate").unwrap(),
+            Action::Mixer(MixerAction::Fx {
+                slot: 2,
+                change: FxChange::Select(EffectKind::Gate),
+            })
+        );
+    }
+
+    /// An unknown word in the sub-grammar is an unknown *effect*, and saying
+    /// "unknown verb" would point the reader at the wrong thing entirely.
+    #[test]
+    fn a_misspelt_effect_says_so() {
+        assert_eq!(
+            Action::parse("deck 1 fx 1 revrb"),
+            Err(ParseError::UnknownEffect("revrb".to_owned()))
+        );
+    }
+
+    /// Slot 0 and slot 9 are mistakes upstream. Quietly using slot 1 instead
+    /// would hide a controller mapped to the wrong range.
+    #[test]
+    fn an_out_of_range_effect_slot_is_refused_rather_than_clamped() {
+        assert_eq!(
+            Action::parse("deck 1 fx 0 echo"),
+            Err(ParseError::BadArgument)
+        );
+        assert_eq!(
+            Action::parse("deck 1 fx 4 echo"),
+            Err(ParseError::BadArgument)
+        );
+        assert_eq!(
+            Action::parse("deck 1 fx x echo"),
+            Err(ParseError::BadArgument)
+        );
+        assert_eq!(Action::parse("deck 1 fx"), Err(ParseError::MissingArgument));
+        assert_eq!(
+            Action::parse("deck 1 fx 1"),
+            Err(ParseError::MissingArgument)
+        );
+    }
+
+    /// Everything in the log has to be replayable, and the effect grammar is
+    /// the first action whose text form is more than a verb and a number.
+    #[test]
+    fn every_effect_change_round_trips_through_its_text_form() {
+        let changes = [
+            FxChange::Select(EffectKind::Flanger),
+            FxChange::SetEnabled(true),
+            FxChange::SetEnabled(false),
+            FxChange::ToggleEnabled,
+            FxChange::Wet(0.5),
+            FxChange::Beats(0.25),
+            FxChange::Amount(0.75),
+            FxChange::Place(Placement::PreFader),
+            FxChange::Place(Placement::PostFader),
+        ];
+        for change in changes {
+            for action in [
+                Action::Deck {
+                    deck: deck(2),
+                    action: DeckAction::Fx { slot: 3, change },
+                },
+                Action::Mixer(MixerAction::Fx { slot: 3, change }),
+            ] {
+                let text = action.to_string();
+                assert_eq!(
+                    Action::parse(&text).unwrap(),
+                    action,
+                    "`{text}` did not survive the round trip"
+                );
+            }
+        }
     }
 
     /// Numbers arrive as `f32` and are stored widened, so printing one raw

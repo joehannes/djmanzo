@@ -148,6 +148,8 @@ export interface DeckState {
   grid_confidence: number;
   /** The region repeating right now, if any. */
   active_loop: LoopRegion | null;
+  /** This deck's three effect slots, in order. */
+  fx: FxSlot[];
   /**
    * Hot cue positions in frames, slot 1 first. `null` for an empty slot — which
    * is not the same as a cue at frame zero, and the start of a track is a
@@ -155,6 +157,33 @@ export interface DeckState {
    */
   hot_cues: (number | null)[];
 }
+
+/**
+ * One effect slot.
+ *
+ * The kind is a name, not an index. The registry has to carry it as a number
+ * because it holds `f32`, but a number here would be a thing to look up, and
+ * every lookup is somewhere the two sides can disagree about what effect 3 is.
+ */
+export interface FxSlot {
+  /** 1-based, as the interface and controllers number them. */
+  slot: number;
+  /** `none`, `echo`, `gate`, `crush`, `flanger`. */
+  kind: string;
+  enabled: boolean;
+  wet: number;
+  beats: number;
+  amount: number;
+  /** What the amount knob does, in the DJ's words. Empty for an empty slot. */
+  amount_label: string;
+  /** Whether the beat control means anything for this effect. */
+  timed: boolean;
+  /** True when the slot sits after the channel fader. */
+  post_fader: boolean;
+}
+
+/** Every effect, in the order they are offered. */
+export const EFFECTS = ["none", "echo", "gate", "crush", "flanger"] as const;
 
 export interface LoopRegion {
   start_frames: number;
@@ -192,6 +221,8 @@ export interface TrackAnalysis {
 }
 
 export interface MasterState {
+  /** The master rack's three slots, in order. */
+  fx: FxSlot[];
   crossfader: number;
   gain_db: number;
   peak_left: number;
@@ -629,6 +660,8 @@ export interface Layout {
   overview: boolean;
   pads: boolean;
   loops: boolean;
+  /** Whether the three effect slots are on screen. */
+  fx: boolean;
   beat_jump: boolean;
   eq: boolean;
   filter: boolean;

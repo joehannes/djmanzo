@@ -1,11 +1,13 @@
 //! A single deck.
 
 use crate::bus::BusLayout;
+use crate::rack::Rack;
 use dj_core::{
     Beatgrid, CrossfaderAssign, FramePos, HOT_CUE_SLOTS, LoopLimits, LoopRegion, Rate, SampleRate,
     db_to_linear,
 };
 use dj_decode::{AudioBuffer, TrackSource};
+use dj_dsp::fx::FxContext;
 use dj_dsp::{CHANNELS, Keylock, SmoothedValue, SweepFilter, ThreeBandEq};
 use std::sync::Arc;
 
@@ -77,6 +79,13 @@ pub struct Deck {
     needs_prime: bool,
     /// Staging buffer for the keylocked path. Never resized.
     scratch: Vec<f32>,
+    /// This deck's three effect slots.
+    ///
+    /// Per deck rather than only on the master because the commonest use of an
+    /// effect in a mix is on the track coming *in*, where it has to be audible
+    /// on one deck and not the other. Allocated with the deck, so switching an
+    /// effect on mid-set never allocates.
+    rack: Rack,
     /// The beat grid, when the analyser found one worth having.
     ///
     /// Sent in from the host thread rather than computed here: analysis is FFT
@@ -141,6 +150,7 @@ impl Deck {
             eq_mid: 1.0,
             eq_high: 1.0,
             filter_position: 0.0,
+            rack: Rack::new(sr),
             keylock: Keylock::new(sr),
             // Off by default: at unity pitch there is nothing to correct, and a
             // shifter in the path costs CPU and latency for no audible gain.
@@ -158,6 +168,36 @@ impl Deck {
             rolling: false,
             pending_loop_in: None,
             hot_cues: [None; HOT_CUE_SLOTS],
+        }
+    }
+
+    #[must_use]
+    pub fn rack(&self) -> &Rack {
+        &self.rack
+    }
+
+    pub fn rack_mut(&mut self) -> &mut Rack {
+        &mut self.rack
+    }
+
+    /// What this deck's effects should measure a beat as, in *device* frames.
+    ///
+    /// Device frames, not source frames: an echo's delay is counted in output
+    /// samples, and using the track's own rate would put the repeat a few
+    /// percent out on any track that is not at the device rate.
+    ///
+    /// Derived from `effective_bpm`, so it already includes the pitch fader —
+    /// which is the property the whole beat-synced design exists for. Ride the
+    /// pitch and the echo rides with it.
+    #[must_use]
+    fn fx_context(&self) -> FxContext {
+        let device = self.device_rate.as_f64();
+        FxContext {
+            sample_rate: device as f32,
+            beat_frames: self
+                .effective_bpm()
+                .map(|bpm| (device * 60.0 / bpm) as f32)
+                .filter(|frames| frames.is_finite() && *frames > 0.0),
         }
     }
 
@@ -1113,6 +1153,9 @@ impl Deck {
         let mut position = self.position.get();
         let channels = layout.channels.max(1);
         let cue_send = if self.cue_enabled { layout.cue } else { None };
+        // Once per block, not per frame: the tempo cannot change inside a
+        // block, and `effective_bpm` is a grid lookup and a division.
+        let ctx = self.fx_context();
 
         for frame in out.chunks_exact_mut(channels) {
             // Advance the smoothers every frame regardless of whether audio is
@@ -1126,8 +1169,9 @@ impl Deck {
             }
 
             let [left, right] = self.source.frame_at(position);
-            let pre = self.shape(left, right, trim);
-            Self::write_frame(frame, layout, cue_send, pre, fader, &mut levels);
+            let pre = self.shape(left, right, trim, &ctx);
+            let post = self.rack.process_post(pre.0 * fader, pre.1 * fader, &ctx);
+            Self::write_frame(frame, layout, cue_send, pre, post, &mut levels);
 
             // Advance, then fold back into the loop. Per frame rather than per
             // block: a loop shorter than one buffer -- which is most of them at
@@ -1165,6 +1209,7 @@ impl Deck {
         let channels = layout.channels.max(1);
         let cue_send = if self.cue_enabled { layout.cue } else { None };
         let mut levels = DeckLevels::default();
+        let ctx = self.fx_context();
 
         // Musical speed only. Sample-rate conversion is also part of `step` but
         // changes no pitch, so undoing it would put the track *out* of key.
@@ -1216,8 +1261,9 @@ impl Deck {
                 let fader = self.fader_gain.next_value() * self.crossfader_gain.next_value();
                 let left = self.scratch[f * CHANNELS];
                 let right = self.scratch[f * CHANNELS + 1];
-                let pre = self.shape(left, right, trim);
-                Self::write_frame(frame, layout, cue_send, pre, fader, &mut levels);
+                let pre = self.shape(left, right, trim, &ctx);
+                let post = self.rack.process_post(pre.0 * fader, pre.1 * fader, &ctx);
+                Self::write_frame(frame, layout, cue_send, pre, post, &mut levels);
             }
 
             position = cursor;
@@ -1262,11 +1308,13 @@ impl Deck {
     /// On a real mixer the channel fader attenuates the EQ'd signal, not the
     /// other way round; reversed, riding the fader would change the tone.
     #[inline]
-    fn shape(&mut self, left: f32, right: f32, trim: f32) -> (f32, f32) {
-        (
-            self.filter[0].process(self.eq[0].process(left)) * trim,
-            self.filter[1].process(self.eq[1].process(right)) * trim,
-        )
+    fn shape(&mut self, left: f32, right: f32, trim: f32, ctx: &FxContext) -> (f32, f32) {
+        let left = self.filter[0].process(self.eq[0].process(left)) * trim;
+        let right = self.filter[1].process(self.eq[1].process(right)) * trim;
+        // After the isolator and the trim, before the fader. An effect placed
+        // here hears the DJ's EQ moves, which is what a DJ expects: killing the
+        // bass under an echo should kill the bass in the repeats too.
+        self.rack.process_pre(left, right, ctx)
     }
 
     /// Add one shaped frame to the buses.
@@ -1279,12 +1327,15 @@ impl Deck {
         layout: &BusLayout,
         cue_send: Option<(usize, usize)>,
         pre: (f32, f32),
-        fader: f32,
+        post: (f32, f32),
         levels: &mut DeckLevels,
     ) {
         let (pre_left, pre_right) = pre;
-        let main_left = pre_left * fader;
-        let main_right = pre_right * fader;
+        // The fader has already been applied, along with any effect placed
+        // after it. Passed in rather than derived here because a post-fader
+        // effect changes what reaches the master and must not change what
+        // reaches the headphones -- pre-fader listen means pre-fader.
+        let (main_left, main_right) = post;
 
         if layout.is_mono() {
             frame[layout.main.0] += (main_left + main_right) * 0.5;

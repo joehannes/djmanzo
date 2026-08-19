@@ -47,6 +47,11 @@ pub enum ArgSpec {
     Number { min: f32, max: f32 },
     /// A position in frames. Clamped to the track length at execution.
     Frames,
+    /// A small sub-grammar of its own: several words, described by the help
+    /// line rather than by a range. Used where the alternative is multiplying
+    /// one verb out into one per thing it can address — see `fx`, where that
+    /// would have meant thirty-six verbs.
+    Words,
 }
 
 impl ArgSpec {
@@ -96,7 +101,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 65] = [
+static VOCABULARY: [VerbSpec; 67] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -253,6 +258,13 @@ static VOCABULARY: [VerbSpec; 65] = [
         argument: ArgSpec::None,
         help: "release the roll, and land where the track would have been",
         example: "deck 1 roll_off",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "fx",
+        argument: ArgSpec::Words,
+        help: "change an effect slot: `fx <1-3> <echo|gate|crush|flanger|none>` to load one, then `on`/`off`/`toggle`, `wet <0-1>`, `beats <0.0625-4>`, `amount <0-1>`, `pre`/`post`",
+        example: "deck 1 fx 1 wet 0.5",
     },
     VerbSpec {
         target: Target::Deck,
@@ -535,6 +547,13 @@ static VOCABULARY: [VerbSpec; 65] = [
     },
     VerbSpec {
         target: Target::Mixer,
+        verb: "master fx",
+        argument: ArgSpec::Words,
+        help: "change a master effect slot; the same grammar as a deck's, applied to the whole mix",
+        example: "master fx 1 wet 0.5",
+    },
+    VerbSpec {
+        target: Target::Mixer,
         verb: "master gain",
         argument: ArgSpec::Number {
             min: -24.0,
@@ -745,6 +764,8 @@ mod tests {
             "censor_off",
             "roll",
             "roll_off",
+            "fx",
+            "master fx",
         ];
         for name in expected {
             assert!(

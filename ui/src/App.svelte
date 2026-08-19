@@ -2,6 +2,7 @@
   import Assistant from "./Assistant.svelte";
   import Browse from "./Browse.svelte";
   import Deck from "./Deck.svelte";
+  import Fx from "./Fx.svelte";
   import Presets from "./Presets.svelte";
   import Settings from "./Settings.svelte";
   import { watchFrameRate } from "./framerate";
@@ -598,6 +599,18 @@
       </div>
 
       <!--
+        The master rack. Beside the meters rather than in the deck column,
+        because what it acts on is the mix — and it stays here whichever deck
+        the DJ is looking at.
+      -->
+      {#if layout?.fx ?? true}
+        <div class="master-fx">
+          <span class="label">Master FX</span>
+          <Fx slots={snapshot.master.fx} enabled={ready} target="master" {send} />
+        </div>
+      {/if}
+
+      <!--
         The master meters read post-limiter, so they physically cannot show
         over 0 dB. Without a reduction meter beside them there would be no way
         to tell a mix sitting neatly at the ceiling from one being crushed into
@@ -684,6 +697,13 @@
 </main>
 
 <style>
+  .master-fx {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0.4rem 0;
+  }
+
   main {
     display: flex;
     flex-direction: column;

@@ -93,11 +93,12 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 
 | Feature | Milestone |
 |---|---|
-| FX rack, multiple simultaneous slots | M5 |
-| Per-deck and master FX routing | M5 |
-| Pre-fader / post-fader chain placement | M5 |
-| Beat-synced FX timing (1/4, 1/2, 1, 2, 4 beats) | M5 |
-| Core effect set: echo, reverb, delay, flanger, phaser, filter, gate, bitcrush, roll, brake, backspine | M5 |
+| FX rack, three chained slots per deck and on the master | M5 — **done** |
+| Per-deck and master FX routing | M5 — **done** |
+| Pre-fader / post-fader chain placement | M5 — **done** |
+| Beat-synced FX timing (1/16 to 4 beats, following the pitch fader) | M5 — **done** |
+| Core effect set: echo, gate, crush, flanger | M5 — **done** |
+| Remaining effects: reverb, delay, phaser, filter, roll, brake, backspin | M5 |
 | CLAP plugin hosting | M5 |
 | Per-stem effects | M6 |
 | Effect chain presets | M5 |

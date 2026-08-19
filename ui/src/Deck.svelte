@@ -1,5 +1,6 @@
 <script lang="ts">
   import { dispatch, formatTime, loadTrack, type DeckState, type Layout } from "./api";
+  import Fx from "./Fx.svelte";
   import Overview from "./Overview.svelte";
   import Waveform from "./Waveform.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -33,6 +34,7 @@
   const showKeylock = $derived(layout?.keylock ?? true);
   // Shown with the loops: slip is what makes a loop something you can leave.
   const showSlip = $derived(layout?.loops ?? true);
+  const showFx = $derived(layout?.fx ?? true);
   const showOverview = $derived(layout?.overview ?? true);
   const waveHeight = $derived(layout?.waveform_height ?? 96);
 
@@ -480,6 +482,14 @@
       {/each}
     </div>
     {/if}
+  {/if}
+
+  <!--
+    The effect rack. Below the loops because that is the order a DJ builds in:
+    find the section, loop it, then colour it.
+  -->
+  {#if showFx}
+    <Fx slots={deck.fx} {enabled} target="deck {deck.number}" {send} />
   {/if}
 
   <!--
