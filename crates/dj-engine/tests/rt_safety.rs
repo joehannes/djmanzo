@@ -587,6 +587,76 @@ fn loops_and_hot_cues_never_allocate() {
     );
 }
 
+/// Slip runs a second playhead on the audio thread, and censor and reverse
+/// change the sign of the step mid-callback. All three are arithmetic on
+/// existing state, and this is what says so.
+#[test]
+fn slip_reverse_and_censor_never_allocate() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::SetSlip(true),
+    });
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..2_000 {
+            // A censor held and released every few blocks, which is the
+            // realistic gesture and also the one that jumps the playhead.
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::SetCensor(round % 8 < 4),
+            });
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::ToggleReverse,
+            });
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::ToggleSlip,
+            });
+            rig.renderer.render_block();
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "slip, reverse and censor allocated {allocations} times"
+    );
+}
+
+/// The keylocked path runs the shadow per block rather than per frame, and a
+/// reversed read cursor is its own arithmetic. Its own proof, for the same
+/// reason the loop has one.
+#[test]
+fn a_keylocked_censor_never_allocates() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::SetKeylock(true),
+    });
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::SetSlip(true),
+    });
+    rig.warm_up(64);
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..1_000 {
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::SetCensor(round % 6 < 3),
+            });
+            rig.renderer.render_block();
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "a keylocked censor allocated {allocations} times"
+    );
+}
+
 /// The keylocked path folds the loop separately, with a read cursor running
 /// ahead of the playhead. It has its own arithmetic and so needs its own proof.
 #[test]

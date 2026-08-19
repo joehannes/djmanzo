@@ -147,6 +147,7 @@ export function build(
   const labels: Scene["labels"] = [];
   const at = (t: number) => (still ? 0 : t);
 
+
   for (const lane of lanes) {
     const deck = Number(lane.of.split(".")[1]);
     if (!Number.isFinite(deck)) continue;
@@ -238,17 +239,55 @@ export function build(
 
     // The crests: the beat, travelling. Four to a bar, the downbeat brightest,
     // because a bar you can count is worth more than four identical pulses.
+    //
+    // Downstream is still the future when a deck is reversed; what changes is
+    // that the *water* runs the other way, which is what reverse sounds like.
+    // So the crests travel right to left.
     if (river.vitality.pulse_bpm > 0 && river.vitality.depth > 0.001) {
+      const backwards = river.vitality.backwards;
       for (let n = 0; n < 4; n += 1) {
+        const t = (n + phase) / 4;
         primitives.push({
           kind: "bar",
-          x: ((n + phase) / 4) * width,
+          x: (backwards ? 1 - t : t) * width,
           y: top,
           w: 1.5,
           h: surface,
           paint: structural(1, (n === 0 ? 0.55 : 0.22) * river.vitality.depth),
         });
       }
+    }
+
+    // Where the track will land when whatever is diverting it stops. A loop is
+    // only something you can *leave* if you can see where leaving it puts you.
+    //
+    // Drawn taller than the water and topped with a mark, because the first
+    // version was a thin dashed line inside the lane and was simply lost among
+    // the crests — findable only by counting them. A channel nobody can find
+    // is not carrying information.
+    const shadow = pick(world, "deck.shadow", deck);
+    if (shadow) {
+      const at = width * shadow.along;
+      primitives.push({
+        kind: "bar",
+        x: at,
+        y: lane.y,
+        w: 2,
+        h: lane.height,
+        paint: structural(0.85, 0.8),
+        dashed: true,
+      });
+      // A cap at the top, so it reads as a destination rather than as one more
+      // vertical line in a lane full of them.
+      primitives.push({
+        kind: "mark",
+        x: at - 4,
+        y: lane.y,
+        w: 8,
+        h: 8,
+        paint: structural(0.85, 0.9),
+        shape: "triangle",
+      });
     }
 
     // Murk, where the grid is not trusted. You do not navigate water you

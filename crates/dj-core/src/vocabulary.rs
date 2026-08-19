@@ -96,7 +96,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 55] = [
+static VOCABULARY: [VerbSpec; 63] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -180,6 +180,62 @@ static VOCABULARY: [VerbSpec; 55] = [
         argument: ArgSpec::None,
         help: "flip keylock",
         example: "deck 1 keylock_toggle",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "slip_on",
+        argument: ArgSpec::None,
+        help: "keep a shadow playhead running while a loop or a censor diverts this one",
+        example: "deck 1 slip_on",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "slip_off",
+        argument: ArgSpec::None,
+        help: "stop shadowing, and stay where the playhead is",
+        example: "deck 1 slip_off",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "slip_toggle",
+        argument: ArgSpec::None,
+        help: "flip slip mode",
+        example: "deck 1 slip_toggle",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "reverse_on",
+        argument: ArgSpec::None,
+        help: "play backwards",
+        example: "deck 1 reverse_on",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "reverse_off",
+        argument: ArgSpec::None,
+        help: "play forwards again",
+        example: "deck 1 reverse_off",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "reverse_toggle",
+        argument: ArgSpec::None,
+        help: "flip the direction of travel",
+        example: "deck 1 reverse_toggle",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "censor_on",
+        argument: ArgSpec::None,
+        help: "hold the censor: reverse over a word, and land back on the beat",
+        example: "deck 1 censor_on",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "censor_off",
+        argument: ArgSpec::None,
+        help: "release the censor",
+        example: "deck 1 censor_off",
     },
     VerbSpec {
         target: Target::Deck,
@@ -662,6 +718,14 @@ mod tests {
             "loop_in",
             "loop_out",
             "loop_move",
+            "slip_on",
+            "slip_off",
+            "slip_toggle",
+            "reverse_on",
+            "reverse_off",
+            "reverse_toggle",
+            "censor_on",
+            "censor_off",
         ];
         for name in expected {
             assert!(

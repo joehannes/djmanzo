@@ -31,6 +31,8 @@
   const showEq = $derived(layout?.eq ?? true);
   const showFilter = $derived(layout?.filter ?? true);
   const showKeylock = $derived(layout?.keylock ?? true);
+  // Shown with the loops: slip is what makes a loop something you can leave.
+  const showSlip = $derived(layout?.loops ?? true);
   const showOverview = $derived(layout?.overview ?? true);
   const waveHeight = $derived(layout?.waveform_height ?? 96);
 
@@ -630,6 +632,50 @@
         title="Up a semitone"
       >+</button>
     </div>
+    <!--
+      Slip, reverse and censor. One row because they are one idea: a shadow
+      playhead that keeps running at the natural rate while something diverts
+      the audible one. Censor is momentary — held, not toggled — because a
+      toggled censor is just reverse with extra steps.
+    -->
+    {#if showSlip}
+      <button
+        class="slip"
+        class:on={deck.slip}
+        disabled={!enabled}
+        onclick={() => send(`deck ${deck.number} slip_toggle`)}
+        title={deck.slip
+          ? "Slip on — loop, reverse or censor, and the track carries on underneath"
+          : "Slip off — the playhead stays wherever a loop or a censor leaves it"}
+      >
+        SLIP
+      </button>
+      <button
+        class="slip"
+        class:on={deck.reversed}
+        disabled={!enabled || !deck.loaded}
+        onclick={() => send(`deck ${deck.number} reverse_toggle`)}
+        title="Play backwards"
+        aria-label="Reverse"
+      >
+        ◀◀
+      </button>
+      <!--
+        Held rather than clicked, and on pointer events rather than mouse ones
+        so it works from a touchscreen. `pointerleave` releases too: dragging
+        off the pad mid-censor must not leave the deck stuck in reverse.
+      -->
+      <button
+        class="slip censor"
+        disabled={!enabled || !deck.loaded}
+        onpointerdown={() => send(`deck ${deck.number} censor_on`)}
+        onpointerup={() => send(`deck ${deck.number} censor_off`)}
+        onpointerleave={() => send(`deck ${deck.number} censor_off`)}
+        title="Hold to reverse over a word, and land back on the beat"
+      >
+        CENSOR
+      </button>
+    {/if}
     <button
       class="keylock"
       class:on={deck.keylock}
@@ -955,6 +1001,24 @@
     grid-template-columns: 1fr auto auto;
     align-items: end;
     gap: 0.5rem;
+  }
+
+  .slip {
+    padding: 0.15rem 0.35rem;
+    font-size: 0.7em;
+    letter-spacing: 0.03em;
+  }
+
+  .slip.on {
+    background: var(--accent-2);
+    color: var(--on-accent);
+    border-color: var(--accent-2);
+  }
+
+  /* Momentary, so it must not look like something that stays pressed. */
+  .slip.censor:active {
+    background: var(--accent-2);
+    color: var(--on-accent);
   }
 
   .keylock {

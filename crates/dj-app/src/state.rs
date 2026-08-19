@@ -570,8 +570,21 @@ fn seed_defaults(registry: &ParameterRegistry) {
             ParamId::Deck(id, DeckParam::CrossfaderAssign),
             CrossfaderAssign::default_for(id.index()).as_param(),
         );
+        // The same trap, and the second time this project has fallen into it:
+        // frame zero is a real playhead position, so an unseeded zero here
+        // does not read as "nothing is being slipped over" -- it reads as
+        // "the track will land at the very start", on every deck, before
+        // anything has happened.
+        registry.set(ParamId::Deck(id, DeckParam::SlipPosition), NOT_SLIPPING);
     }
 }
+
+/// What [`DeckParam::SlipPosition`] reads when nothing is being slipped over.
+///
+/// Outside the track and unambiguous, because zero is a real position. The
+/// engine publishes it and the snapshot reads it, so the two cannot disagree
+/// about what "none" looks like.
+pub const NOT_SLIPPING: f32 = -1.0;
 
 #[cfg(test)]
 mod tests {

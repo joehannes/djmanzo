@@ -27,8 +27,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Quantize to beat / bar | M2 |
 | Beat jump | M2 |
 | Track load, unload, clone deck, instant doubles | M3 |
-| Slip mode | M5 |
-| Reverse / censor | M5 |
+| Slip mode | M5 — **done** |
+| Reverse / censor | M5 — **done** |
 | Elapsed / remaining time, end-of-track warning | M1 |
 | **Key shift** — transpose in semitones for harmonic mixing, independent of tempo | M2 |
 | **Sandbox** — audition a mix in headphones while the master keeps playing | M5 |

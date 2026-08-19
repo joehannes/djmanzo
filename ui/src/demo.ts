@@ -82,6 +82,8 @@ export function armDemo(): void {
       await step("filter deck 2", () => dispatch("deck 2 filter -0.6"));
       await step("cue deck 1", () => dispatch("deck 1 hotcue_set 1"));
       await step("loop deck 2", () => dispatch("deck 2 loop 4"));
+      // Slip armed on the looping deck, so the shadow marker is visible.
+      await step("slip deck 2", () => dispatch("deck 2 slip_on"));
 
 
     } catch (e) {

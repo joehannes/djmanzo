@@ -88,6 +88,21 @@ pub struct Deck {
     synced: bool,
     /// The region repeating right now, if any.
     active_loop: Option<LoopRegion>,
+    /// Where the playhead would be if nothing had diverted it.
+    ///
+    /// `None` when nothing is diverting it, which is most of the time. Set the
+    /// moment a diversion begins and cleared when the playhead is put back, so
+    /// its presence *is* the answer to "is something being slipped over".
+    slip_anchor: Option<f64>,
+    /// Whether the DJ has armed slip mode.
+    slip: bool,
+    /// Playing backwards.
+    reversed: bool,
+    /// Censor is held: momentary reverse that always slips, whatever the slip
+    /// button says. That is the whole difference between a censor and simply
+    /// playing backwards -- a censor hides a word and puts you back on the
+    /// beat, and it cannot do the second half without slipping.
+    censoring: bool,
     /// Where a manual loop's in point was dropped, waiting for its out point.
     ///
     /// Separate from `active_loop` because a half-made loop is not a loop: the
@@ -132,6 +147,10 @@ impl Deck {
             grid: None,
             synced: false,
             active_loop: None,
+            slip_anchor: None,
+            slip: false,
+            reversed: false,
+            censoring: false,
             pending_loop_in: None,
             hot_cues: [None; HOT_CUE_SLOTS],
         }
@@ -515,8 +534,143 @@ impl Deck {
     /// plays wants the loop armed, not the music jumping; the wrap pulls the
     /// playhead in on the next pass if it is past the end.
     pub fn set_loop_region(&mut self, region: Option<LoopRegion>) {
+        let had = self.active_loop.is_some();
         self.active_loop = region;
         self.pending_loop_in = None;
+        match (had, region.is_some()) {
+            // A loop just started: from here the playhead is diverted.
+            (false, true) => self.begin_diversion(),
+            // A loop just ended: land where the track would have been.
+            (true, false) => self.end_diversion(),
+            _ => {}
+        }
+    }
+
+    // -- slip, reverse and censor ------------------------------------------
+
+    /// Whether the playhead is being slipped over.
+    ///
+    /// Censor always slips, whatever the slip button says: a censor hides a
+    /// word *and puts you back on the beat*, and it cannot do the second half
+    /// otherwise.
+    #[must_use]
+    pub fn is_slipping(&self) -> bool {
+        self.slip || self.censoring
+    }
+
+    #[must_use]
+    pub fn slip(&self) -> bool {
+        self.slip
+    }
+
+    #[must_use]
+    pub fn reversed(&self) -> bool {
+        self.reversed || self.censoring
+    }
+
+    #[must_use]
+    pub fn censoring(&self) -> bool {
+        self.censoring
+    }
+
+    /// Where the track would be if nothing had diverted it, when something has.
+    #[must_use]
+    pub fn slip_position(&self) -> Option<FramePos> {
+        self.slip_anchor.map(FramePos::new)
+    }
+
+    /// Arm or disarm slip mode.
+    ///
+    /// Arming *during* a diversion starts the shadow here rather than
+    /// retroactively: the DJ asked for slip now, and pretending the anchor had
+    /// been running since the loop began would jump the track forward by
+    /// however long they had been looping.
+    pub fn set_slip(&mut self, on: bool) {
+        if self.slip == on {
+            return;
+        }
+        self.slip = on;
+        if on {
+            if self.is_diverted() {
+                self.begin_diversion();
+            }
+        } else if !self.censoring {
+            // Disarming mid-loop leaves the playhead where it is. Jumping to
+            // the anchor would be the opposite of what turning slip *off*
+            // means.
+            self.slip_anchor = None;
+        }
+    }
+
+    /// Play backwards, or forwards again.
+    pub fn set_reverse(&mut self, on: bool) {
+        if self.reversed == on {
+            return;
+        }
+        self.reversed = on;
+        // Reversing is a discontinuity in the audio the shifter is holding
+        // history for, the same as a seek.
+        self.needs_prime = true;
+        if on {
+            self.begin_diversion();
+        } else if !self.censoring {
+            self.end_diversion();
+        }
+    }
+
+    /// Hold or release the censor.
+    pub fn set_censor(&mut self, held: bool) {
+        if self.censoring == held {
+            return;
+        }
+        self.censoring = held;
+        self.needs_prime = true;
+        if held {
+            self.begin_diversion();
+        } else if !self.reversed {
+            self.end_diversion();
+        }
+    }
+
+    /// Whether something is currently taking the playhead off its natural path.
+    fn is_diverted(&self) -> bool {
+        self.active_loop.is_some() || self.reversed || self.censoring
+    }
+
+    /// Start the shadow playhead here, if slip is in force.
+    fn begin_diversion(&mut self) {
+        if self.is_slipping() && self.slip_anchor.is_none() {
+            self.slip_anchor = Some(self.position.get());
+        }
+    }
+
+    /// Put the playhead where the track would have been, and stop shadowing.
+    ///
+    /// Only when nothing else is still diverting it — releasing a censor inside
+    /// a loop should return to the loop, not out of it.
+    fn end_diversion(&mut self) {
+        if self.is_diverted() {
+            return;
+        }
+        if let Some(anchor) = self.slip_anchor.take() {
+            let len = self.len_frames() as f64;
+            self.position = FramePos::new(anchor.clamp(0.0, len));
+            self.needs_prime = true;
+        }
+    }
+
+    /// Advance the shadow playhead by one output frame's worth of time.
+    ///
+    /// At the track's *natural forward* rate, whatever the audible playhead is
+    /// doing: that is the entire point — the shadow is where the record would
+    /// be if you had left it alone. Running off the end stops shadowing, since
+    /// there is nowhere to land.
+    fn advance_slip(&mut self, forward_step: f64, len: f64) {
+        let Some(anchor) = self.slip_anchor else {
+            return;
+        };
+        let next = anchor + forward_step.abs();
+        self.slip_anchor = if next >= len { None } else { Some(next) };
     }
 
     pub fn set_loop_in(&mut self, quantize: bool) {
@@ -842,6 +996,16 @@ impl Deck {
     /// device must advance at 0.919 frames per output frame or it plays sharp.
     #[must_use]
     fn step_per_output_frame(&self) -> f64 {
+        let forward = self.forward_step_per_output_frame();
+        if self.reversed() { -forward } else { forward }
+    }
+
+    /// The step the record would take if nothing were reversing it.
+    ///
+    /// What the shadow playhead advances by, and what the beat grid and the
+    /// waveform are measured in — reversing changes which way the audible
+    /// playhead moves, not how fast the music is nominally going.
+    fn forward_step_per_output_frame(&self) -> f64 {
         let ratio = self.source.sample_rate().as_f64() / self.device_rate.as_f64();
         self.rate.get() * (1.0 + self.pitch) * ratio
     }
@@ -904,6 +1068,10 @@ impl Deck {
             // a sixteenth of a beat -- wraps several times inside a single
             // callback, and folding once per block would play straight past it.
             position = self.fold(position + step);
+            // The shadow keeps going forward at the natural rate whatever the
+            // audible playhead is doing. One f64 add, so it costs nothing and
+            // stays allocation-free.
+            self.advance_slip(step, len);
         }
 
         self.finish(position, len);
@@ -987,6 +1155,14 @@ impl Deck {
             }
 
             position = cursor;
+            // The shadow advances by the same number of output frames the
+            // block produced, at the natural forward rate. Per block here
+            // rather than per frame, because that is how this path works —
+            // the result is the same, since the rate does not change inside a
+            // block.
+            for _ in 0..n {
+                self.advance_slip(step, len);
+            }
             done += n;
         }
 
@@ -1110,6 +1286,204 @@ mod tests {
         let mut deck = Deck::new(SR);
         let _ = deck.load(ramp(frames));
         deck
+    }
+
+    /// Render `frames` output frames and throw the audio away.
+    fn run(deck: &mut Deck, frames: usize) {
+        let mut out = vec![0.0; frames * 2];
+        deck.process(&mut out, &stereo());
+    }
+
+    // -- slip, reverse and censor ------------------------------------------
+
+    #[test]
+    fn a_deck_without_slip_stays_where_the_loop_left_it() {
+        let mut deck = deck_with(4000);
+        deck.play();
+        run(&mut deck, 100);
+        deck.set_loop_region(LoopRegion::new(FramePos::new(100.0), FramePos::new(200.0)));
+        run(&mut deck, 500);
+        deck.set_loop_region(None);
+        assert!(
+            deck.position().get() < 250.0,
+            "without slip the playhead is wherever the loop left it, got {}",
+            deck.position().get()
+        );
+    }
+
+    /// The whole point of slip: loop for a while, come out, and land where the
+    /// record would have been if you had left it alone.
+    #[test]
+    fn slipping_over_a_loop_lands_where_the_track_would_have_been() {
+        let mut deck = deck_with(4000);
+        deck.set_slip(true);
+        deck.play();
+        run(&mut deck, 100);
+        deck.set_loop_region(LoopRegion::new(FramePos::new(100.0), FramePos::new(200.0)));
+        run(&mut deck, 500);
+        deck.set_loop_region(None);
+        // 100 frames before the loop, 500 inside it: the record would be at 600.
+        assert!(
+            (deck.position().get() - 600.0).abs() < 2.0,
+            "expected to land near 600, got {}",
+            deck.position().get()
+        );
+    }
+
+    /// Arming slip in the middle of a loop starts the shadow *now*. Pretending
+    /// it had been running since the loop began would jump the track forward by
+    /// however long the DJ had been looping before they reached for the button.
+    #[test]
+    fn arming_slip_mid_loop_starts_the_shadow_from_that_moment() {
+        let mut deck = deck_with(4000);
+        deck.play();
+        deck.set_loop_region(LoopRegion::new(FramePos::new(0.0), FramePos::new(100.0)));
+        run(&mut deck, 500);
+        deck.set_slip(true);
+        run(&mut deck, 200);
+        deck.set_loop_region(None);
+        assert!(
+            deck.position().get() < 350.0,
+            "the shadow should have run for 200 frames, not 700; got {}",
+            deck.position().get()
+        );
+    }
+
+    /// Turning slip *off* mid-loop means "stay here", which is the opposite of
+    /// jumping to the shadow.
+    #[test]
+    fn disarming_slip_mid_loop_leaves_the_playhead_alone() {
+        let mut deck = deck_with(4000);
+        deck.set_slip(true);
+        deck.play();
+        deck.set_loop_region(LoopRegion::new(FramePos::new(0.0), FramePos::new(100.0)));
+        run(&mut deck, 500);
+        deck.set_slip(false);
+        deck.set_loop_region(None);
+        assert!(
+            deck.position().get() < 150.0,
+            "expected to stay inside the loop, got {}",
+            deck.position().get()
+        );
+    }
+
+    #[test]
+    fn reverse_walks_the_playhead_backwards() {
+        let mut deck = deck_with(4000);
+        deck.play();
+        run(&mut deck, 500);
+        let forward = deck.position().get();
+        deck.set_reverse(true);
+        run(&mut deck, 200);
+        assert!(
+            deck.position().get() < forward,
+            "reversed from {forward} to {}",
+            deck.position().get()
+        );
+    }
+
+    #[test]
+    fn reversing_to_the_start_stops_rather_than_running_negative() {
+        let mut deck = deck_with(4000);
+        deck.play();
+        run(&mut deck, 50);
+        deck.set_reverse(true);
+        run(&mut deck, 500);
+        assert_eq!(deck.position().get(), 0.0);
+        assert!(!deck.is_playing(), "a deck at the start is not playing");
+    }
+
+    /// A censor is a momentary reverse that puts you back on the beat, and it
+    /// slips whatever the slip button says — without the second half it would
+    /// just be reverse.
+    #[test]
+    fn a_censor_returns_to_where_the_track_would_have_been() {
+        let mut deck = deck_with(4000);
+        deck.play();
+        assert!(!deck.slip(), "slip is not armed");
+        run(&mut deck, 500);
+        deck.set_censor(true);
+        assert!(deck.is_slipping(), "a censor always slips");
+        run(&mut deck, 200);
+        assert!(deck.position().get() < 400.0, "the censor played backwards");
+        deck.set_censor(false);
+        assert!(
+            (deck.position().get() - 700.0).abs() < 2.0,
+            "expected to land near 700, got {}",
+            deck.position().get()
+        );
+    }
+
+    /// Releasing a censor inside a loop returns to the loop, not out of it:
+    /// the loop is still diverting the playhead.
+    #[test]
+    fn releasing_a_censor_inside_a_loop_stays_in_the_loop() {
+        let mut deck = deck_with(4000);
+        deck.play();
+        deck.set_loop_region(LoopRegion::new(FramePos::new(0.0), FramePos::new(400.0)));
+        run(&mut deck, 200);
+        deck.set_censor(true);
+        run(&mut deck, 50);
+        deck.set_censor(false);
+        assert!(
+            deck.position().get() < 400.0,
+            "still looping, so still inside it; got {}",
+            deck.position().get()
+        );
+        assert!(deck.active_loop().is_some());
+    }
+
+    #[test]
+    fn nothing_is_slipped_over_when_nothing_is_diverting_the_playhead() {
+        let mut deck = deck_with(4000);
+        deck.set_slip(true);
+        deck.play();
+        run(&mut deck, 200);
+        assert_eq!(
+            deck.slip_position(),
+            None,
+            "a shadow with nothing to shadow is just the playhead"
+        );
+    }
+
+    /// The shadow runs at the track's natural rate, not the reversed one — it
+    /// is where the record would be if you had left it alone.
+    #[test]
+    fn the_shadow_runs_forwards_while_the_audible_playhead_runs_back() {
+        let mut deck = deck_with(4000);
+        deck.play();
+        run(&mut deck, 300);
+        deck.set_censor(true);
+        run(&mut deck, 100);
+        let shadow = deck.slip_position().expect("censoring, so shadowing");
+        assert!(
+            shadow.get() > 300.0,
+            "the shadow went forward, got {}",
+            shadow.get()
+        );
+        assert!(
+            deck.position().get() < 300.0,
+            "the audible playhead went back"
+        );
+    }
+
+    /// A shadow that has run off the end has nowhere to land, so it stops
+    /// shadowing rather than parking the playhead past the end of the track.
+    #[test]
+    fn a_shadow_that_reaches_the_end_stops_shadowing() {
+        let mut deck = deck_with(400);
+        deck.play();
+        run(&mut deck, 100);
+        deck.set_loop_region(LoopRegion::new(FramePos::new(100.0), FramePos::new(150.0)));
+        deck.set_slip(true);
+        run(&mut deck, 600);
+        assert_eq!(deck.slip_position(), None);
+        deck.set_loop_region(None);
+        assert!(
+            deck.position().get() <= 400.0,
+            "never past the end, got {}",
+            deck.position().get()
+        );
     }
 
     #[test]

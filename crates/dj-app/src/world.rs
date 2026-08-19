@@ -67,6 +67,10 @@ fn river(deck: &crate::snapshot::DeckSnapshot) -> RiverReading {
         // The analyser has not finished while the deck is loaded and has
         // nothing to report. Drawn as mist over an unsurveyed stretch.
         surveying: deck.loaded && analysis.is_none(),
+        reversed: deck.reversed,
+        slip_at: deck
+            .slip_position
+            .and_then(|at| (deck.length_frames > 0.0).then_some(at / deck.length_frames)),
         eq: [deck.eq_low, deck.eq_mid, deck.eq_high],
         filter: deck.filter,
         loop_region: deck.active_loop.as_ref().and_then(|region| {
@@ -162,11 +166,16 @@ mod tests {
     use dj_core::CrossfaderAssign;
     use dj_world::Confluence;
 
+    /// A deck as the application actually starts it.
+    ///
+    /// From a *seeded* registry, not a bare one. The difference matters: a
+    /// bare registry reads zero for every parameter, and for the ones where
+    /// zero is a legitimate value that is not "unset", it is a confident wrong
+    /// answer. Testing against the unseeded state tests something that never
+    /// ships.
     fn deck(number: u8) -> crate::snapshot::DeckSnapshot {
-        let mut snapshot = crate::Snapshot::capture(
-            &dj_control::ParameterRegistry::new(),
-            crate::state::DECK_COUNT,
-        );
+        let state = crate::state::AppState::new(true);
+        let mut snapshot = crate::Snapshot::capture(&state.registry(), crate::state::DECK_COUNT);
         snapshot.decks.remove((number - 1) as usize)
     }
 
@@ -191,10 +200,8 @@ mod tests {
     }
 
     fn with(decks: Vec<crate::snapshot::DeckSnapshot>) -> Snapshot {
-        let mut snapshot = crate::Snapshot::capture(
-            &dj_control::ParameterRegistry::new(),
-            crate::state::DECK_COUNT,
-        );
+        let state = crate::state::AppState::new(true);
+        let mut snapshot = crate::Snapshot::capture(&state.registry(), crate::state::DECK_COUNT);
         snapshot.decks = decks;
         snapshot
     }
@@ -302,20 +309,58 @@ mod tests {
         assert!(river.reading.contains("analysing"), "{}", river.reading);
     }
 
+    /// The link between the engine's frames and the world's fractions, which
+    /// nothing else was checking.
+    #[test]
+    fn a_slipping_deck_reports_where_it_will_land_as_a_fraction() {
+        let mut slipping = loaded(1);
+        slipping.length_frames = 1000.0;
+        slipping.slip_position = Some(700.0);
+        let world = of_calm(&with(vec![slipping]));
+        let shadow = world
+            .entities
+            .iter()
+            .find(|e| e.name == "deck.shadow")
+            .expect("slipping, so shadowing");
+        assert!((shadow.along - 0.7).abs() < 1e-5);
+    }
+
+    #[test]
+    fn a_deck_that_is_not_slipping_reports_no_shadow() {
+        let world = of_calm(&with(vec![loaded(1)]));
+        assert!(world.entities.iter().all(|e| e.name != "deck.shadow"));
+    }
+
+    /// A track with no length yet has nowhere to put a fraction, and dividing
+    /// by it would put the shadow at infinity.
+    #[test]
+    fn a_zero_length_track_has_no_shadow_rather_than_one_at_infinity() {
+        let mut odd = loaded(1);
+        odd.length_frames = 0.0;
+        odd.slip_position = Some(700.0);
+        let world = of_calm(&with(vec![odd]));
+        assert!(world.entities.iter().all(|e| e.name != "deck.shadow"));
+    }
+
     // -- the banks ---------------------------------------------------------
 
     /// With four decks, which pair meets at the confluence is the DJ's choice.
     /// Drawing the wrong pair's compatibility is worse than drawing none.
     #[test]
     fn the_confluence_follows_the_crossfader_assignments() {
+        // All four explicitly: decks 1 and 2 start assigned left and right, so
+        // leaving them alone would find them before ever reaching 3 and 4 —
+        // which is the seeded reality and the whole point of the test.
         let mut one = loaded(1);
         one.crossfader_assign = CrossfaderAssign::Thru;
+        let mut two = loaded(2);
+        two.crossfader_assign = CrossfaderAssign::Thru;
         let mut three = loaded(3);
         three.crossfader_assign = CrossfaderAssign::Left;
         let mut four = loaded(4);
         four.crossfader_assign = CrossfaderAssign::Right;
 
-        let snapshot = with(vec![one, loaded(2), three, four]);
+        let snapshot = with(vec![one, two, three, four]);
         assert_eq!(banks(&snapshot), (3, 4));
     }
 

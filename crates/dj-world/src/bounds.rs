@@ -97,6 +97,12 @@ pub struct Vitality {
     pub depth: f32,
     /// Surface disturbance, 0..=1. Peak level, and machine strain.
     pub agitation: f32,
+    /// Running backwards.
+    ///
+    /// Part of a rate rather than a position, so it belongs here: downstream is
+    /// still the future when a deck is reversed, and what changes is that the
+    /// *water* runs the other way — which is what reverse sounds like.
+    pub backwards: bool,
     /// How murky, 0..=1. Uncertainty — a grid nobody trusts, a track nobody has
     /// analysed. You do not navigate water you cannot see through.
     pub turbidity: f32,
@@ -113,6 +119,7 @@ impl Vitality {
             phase: 0.0,
             depth: 0.0,
             agitation: 0.0,
+            backwards: false,
             turbidity: 0.0,
             excursion: Excursion::none(),
         }
@@ -139,6 +146,7 @@ impl Vitality {
             // say so: the pulse is there and shallow rather than absent.
             depth: level,
             agitation: clamp01(river.peak),
+            backwards: river.reversed,
             turbidity: 0.0,
             excursion: Excursion {
                 drift: Excursion::MAX_DRIFT * level,

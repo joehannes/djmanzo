@@ -52,6 +52,8 @@ export interface Vitality {
   phase: number;
   depth: number;
   agitation: number;
+  /** Running backwards: the water travels the other way. */
+  backwards: boolean;
   /** Uncertainty. You do not navigate water you cannot see through. */
   turbidity: number;
   excursion: Excursion;

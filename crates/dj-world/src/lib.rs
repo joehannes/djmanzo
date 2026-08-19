@@ -227,6 +227,12 @@ pub struct RiverReading {
     pub peak: f32,
     /// True while the analyser has not finished. Drawn as mist.
     pub surveying: bool,
+    /// Running backwards. Downstream is still the future, so the *water* runs
+    /// the other way — which is exactly what reverse sounds like.
+    pub reversed: bool,
+    /// Where the track would be if nothing were diverting it, 0..=1. `None`
+    /// when nothing is: a shadow with nothing to shadow is just the playhead.
+    pub slip_at: Option<f32>,
     /// The three strata of the water column, low to high. 0.0 is a killed
     /// band -- drought at that stratum -- and 1.0 is unity.
     pub eq: [f32; 3],
@@ -305,6 +311,8 @@ impl RiverReading {
             filter: 0.0,
             loop_region: None,
             cues: Vec::new(),
+            reversed: false,
+            slip_at: None,
         }
     }
 }
@@ -337,6 +345,9 @@ pub fn build(
             }
             if let Some(eddy) = eddy_entity(river) {
                 entities.push(eddy);
+            }
+            if let Some(shadow) = shadow_entity(river) {
+                entities.push(shadow);
             }
             entities.extend(stone_entities(river));
         }
@@ -602,6 +613,33 @@ fn format_beats(beats: f32) -> String {
     }
 }
 
+/// Where the track will land when whatever is diverting it stops.
+///
+/// The one thing slip mode needs a DJ to be able to see: a loop is only
+/// something you can *leave* if you know where leaving it puts you. Drawn as a
+/// marker downstream of the playhead, which is where it always is — the shadow
+/// runs forward while the audible playhead is held back.
+fn shadow_entity(river: &RiverReading) -> Option<Entity> {
+    let at = river.slip_at?;
+    if !at.is_finite() {
+        return None;
+    }
+    Some(Entity {
+        name: "deck.shadow".to_owned(),
+        index: river.deck,
+        slot: 0,
+        form: Form::Marker,
+        bearing: Bearing::Foliage,
+        // Structural: where the record *would* be is a fact about time, not
+        // about the music, and the key's hue would say otherwise.
+        tint: Tint::structural(0.6),
+        vitality: Vitality::still(),
+        along: at.clamp(0.0, 1.0),
+        extent: 0.0,
+        reading: "slipping".to_owned(),
+    })
+}
+
 /// Stones in the river: fixed, named landmarks a DJ can see from upstream.
 fn stone_entities(river: &RiverReading) -> Vec<Entity> {
     river
@@ -761,6 +799,9 @@ fn describe(river: &RiverReading) -> String {
         parts.push(key.camelot());
     }
     parts.push(clock(river.remaining_seconds));
+    if river.reversed {
+        parts.push("reverse".to_owned());
+    }
     if river.surveying {
         parts.push("analysing".to_owned());
     }
@@ -1170,6 +1211,54 @@ mod tests {
         let world = build(&[one, two], 1, 2, calm(0.0), quiet());
         assert!((slot(&world, "deck.stone", 1, 1).unwrap().along - 0.1).abs() < 1e-6);
         assert!((slot(&world, "deck.stone", 2, 1).unwrap().along - 0.9).abs() < 1e-6);
+    }
+
+    // -- slip and reverse ---------------------------------------------------
+
+    #[test]
+    fn a_deck_that_is_not_slipping_has_no_shadow() {
+        let world = build(&[playing(1)], 1, 2, calm(0.0), quiet());
+        assert!(all(&world, "deck.shadow").is_empty());
+    }
+
+    /// The one thing slip mode needs on screen: a loop is only something you
+    /// can *leave* if you can see where leaving it puts you.
+    #[test]
+    fn a_slipping_deck_marks_where_it_will_land() {
+        let mut slipping = playing(1);
+        slipping.slip_at = Some(0.7);
+        let world = build(&[slipping], 1, 2, calm(0.0), quiet());
+        let shadow = all(&world, "deck.shadow")[0];
+        assert!((shadow.along - 0.7).abs() < 1e-6);
+    }
+
+    /// Where the record *would* be is a fact about time, not about the music.
+    #[test]
+    fn the_shadow_carries_no_musical_colour() {
+        let mut slipping = playing(1);
+        slipping.slip_at = Some(0.5);
+        let world = build(&[slipping], 1, 2, calm(0.0), quiet());
+        assert_eq!(all(&world, "deck.shadow")[0].tint.saturation, 0.0);
+    }
+
+    #[test]
+    fn a_nonsense_shadow_is_dropped_rather_than_drawn() {
+        let mut broken = playing(1);
+        broken.slip_at = Some(f32::NAN);
+        let world = build(&[broken], 1, 2, calm(0.0), quiet());
+        assert!(all(&world, "deck.shadow").is_empty());
+    }
+
+    /// Downstream is still the future when a deck is reversed; what changes is
+    /// that the water runs the other way.
+    #[test]
+    fn a_reversed_river_runs_backwards_and_says_so() {
+        let mut backwards = playing(1);
+        backwards.reversed = true;
+        let world = build(&[backwards], 1, 2, calm(0.0), quiet());
+        let river = find(&world, "deck.river", 1).unwrap();
+        assert!(river.vitality.backwards);
+        assert!(river.reading.contains("reverse"), "{}", river.reading);
     }
 
     // -- the confluence ----------------------------------------------------

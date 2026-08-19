@@ -59,6 +59,18 @@ pub enum DeckAction {
     ToggleKeylock,
     /// Transpose in semitones for harmonic mixing, independent of tempo.
     SetKeyShift(i32),
+    /// Slip mode: keep a shadow playhead running at the natural rate while
+    /// something diverts the audible one, and land there when it stops.
+    SetSlip(bool),
+    /// Flip slip mode.
+    ToggleSlip,
+    /// Play backwards, or forwards again.
+    SetReverse(bool),
+    /// Flip the direction of travel.
+    ToggleReverse,
+    /// Hold or release the censor: momentary reverse that always slips, so it
+    /// hides a word and puts you back on the beat.
+    SetCensor(bool),
     /// Match this deck's tempo, and align its phase once, to another playing
     /// deck. Refused when either grid is too weak to trust.
     Sync,
@@ -270,6 +282,17 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "keylock_on" => DeckAction::SetKeylock(true),
         "keylock_off" => DeckAction::SetKeylock(false),
         "keylock_toggle" => DeckAction::ToggleKeylock,
+        "slip_on" => DeckAction::SetSlip(true),
+        "slip_off" => DeckAction::SetSlip(false),
+        "slip_toggle" => DeckAction::ToggleSlip,
+        "reverse_on" => DeckAction::SetReverse(true),
+        "reverse_off" => DeckAction::SetReverse(false),
+        "reverse_toggle" => DeckAction::ToggleReverse,
+        // Momentary: a censor is held, so it needs a press and a release
+        // rather than a toggle. A toggled censor would be reverse with extra
+        // steps.
+        "censor_on" => DeckAction::SetCensor(true),
+        "censor_off" => DeckAction::SetCensor(false),
         "key" => DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32),
         // Three verbs rather than one verb with a word argument, matching
         // `cue_on`/`cue_off` above: a three-position switch is three buttons on
@@ -386,6 +409,14 @@ impl fmt::Display for Action {
                 DeckAction::SetKeylock(true) => write!(f, "deck {deck} keylock_on"),
                 DeckAction::SetKeylock(false) => write!(f, "deck {deck} keylock_off"),
                 DeckAction::ToggleKeylock => write!(f, "deck {deck} keylock_toggle"),
+                DeckAction::SetSlip(true) => write!(f, "deck {deck} slip_on"),
+                DeckAction::SetSlip(false) => write!(f, "deck {deck} slip_off"),
+                DeckAction::ToggleSlip => write!(f, "deck {deck} slip_toggle"),
+                DeckAction::SetReverse(true) => write!(f, "deck {deck} reverse_on"),
+                DeckAction::SetReverse(false) => write!(f, "deck {deck} reverse_off"),
+                DeckAction::ToggleReverse => write!(f, "deck {deck} reverse_toggle"),
+                DeckAction::SetCensor(true) => write!(f, "deck {deck} censor_on"),
+                DeckAction::SetCensor(false) => write!(f, "deck {deck} censor_off"),
                 DeckAction::SetKeyShift(n) => write!(f, "deck {deck} key {n}"),
                 DeckAction::Sync => write!(f, "deck {deck} sync"),
                 DeckAction::SyncOff => write!(f, "deck {deck} sync_off"),

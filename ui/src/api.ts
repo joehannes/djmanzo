@@ -108,6 +108,12 @@ export interface DeckState {
   /** Deliberate transposition in semitones, for harmonic mixing. */
   key_shift: number;
   /** Which side of the crossfader cuts this deck, or neither. */
+  /** Slip mode is armed: a shadow playhead runs while something diverts this one. */
+  slip: boolean;
+  /** Playing backwards, from reverse or from a held censor. */
+  reversed: boolean;
+  /** Where the track would be if nothing were diverting it. Null when nothing is. */
+  slip_position: number | null;
   crossfader_assign: CrossfaderAssign;
   /**
    * What the analyser made of this track. Null while it is still running,

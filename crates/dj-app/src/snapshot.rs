@@ -91,6 +91,14 @@ pub struct DeckSnapshot {
     /// synced decks report the same value. See
     /// [ADR-0009](../../../docs/adr/0009-the-living-interface.md).
     pub beat_phase: f32,
+    /// Slip mode is armed: a shadow playhead runs at the natural rate while
+    /// something diverts this one, and the deck lands there when it stops.
+    pub slip: bool,
+    /// Playing backwards, from reverse or from a held censor.
+    pub reversed: bool,
+    /// Where the track would be if nothing were diverting it, in frames.
+    /// `None` when nothing is being slipped over.
+    pub slip_position: Option<f32>,
     /// The region repeating right now, if any.
     pub active_loop: Option<LoopSnapshot>,
     /// Hot cue positions in frames, slot 1 first. `None` for an empty slot —
@@ -318,6 +326,14 @@ impl Snapshot {
                         >= dj_core::Confidence::SYNC_THRESHOLD as f32,
                     grid_confidence: get(DeckParam::GridConfidence),
                     beat_phase: get(DeckParam::BeatPhase),
+                    slip: get(DeckParam::Slip) > 0.5,
+                    reversed: get(DeckParam::Reversed) > 0.5,
+                    slip_position: {
+                        // Negative means "nothing to slip over", because frame
+                        // zero is a real position. See `state::NOT_SLIPPING`.
+                        let at = get(DeckParam::SlipPosition);
+                        (at >= 0.0).then_some(at)
+                    },
                     active_loop: (get(DeckParam::LoopActive) >= 0.5).then(|| {
                         let beats = get(DeckParam::LoopBeats);
                         LoopSnapshot {

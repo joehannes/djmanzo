@@ -517,11 +517,34 @@ adding a new controller requires editing a file, not rebuilding the app.
 - Core built-in effects (echo, reverb, delay, flanger, phaser, filter, gate, bitcrush, roll,
   brake, backspin).
 - **CLAP** plugin hosting.
-- Slip mode, reverse/censor, 6 decks.
+- **Slip mode, reverse/censor** — done. 6 decks still to come.
 - Microphone/aux input with ducking.
 - Automix with configurable transition style.
 - Recording to disk; Icecast/Shoutcast broadcast.
 - Multi-monitor / detachable panels.
+
+### Slip, reverse and censor
+
+One engine concept delivers all three: **a shadow playhead that keeps running at
+the track's natural forward rate while something diverts the audible one.**
+Slip is that shadow made available; reverse flips the sign of the step; and a
+censor is the two composed — momentary reverse that always slips, because
+hiding a word *and landing back on the beat* is the whole gesture and it cannot
+do the second half without a shadow.
+
+Three decisions the tests pin:
+
+- **Arming slip mid-loop starts the shadow now.** Pretending it had been running
+  since the loop began would jump the track forward by however long the DJ had
+  been looping before they reached for the button.
+- **Disarming slip mid-loop leaves the playhead alone**, because "stay here" is
+  what turning slip off means.
+- **Releasing a censor inside a loop returns to the loop, not out of it** — the
+  loop is still diverting the playhead, so the diversion has not ended.
+
+Allocation-free on both audio paths, proven by `rt_safety.rs` on the direct path
+and again on the keylocked one, which advances the shadow per block rather than
+per frame.
 
 **Done when:** djmanzo is at feature parity with VirtualDJ for a standard club set.
 

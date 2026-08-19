@@ -278,6 +278,21 @@ impl Engine {
                     DeckAction::SetKeylock(on) => target.set_keylock(on),
                     DeckAction::ToggleKeylock => target.toggle_keylock(),
                     DeckAction::SetKeyShift(n) => target.set_key_shift(n),
+                    DeckAction::SetSlip(on) => target.set_slip(on),
+                    DeckAction::ToggleSlip => {
+                        let on = target.slip();
+                        target.set_slip(!on);
+                    }
+                    DeckAction::SetReverse(on) => target.set_reverse(on),
+                    DeckAction::ToggleReverse => {
+                        // The deck's own reverse, not `reversed()` -- that also
+                        // reports true while a censor is held, and toggling
+                        // during a censor would leave the deck reversed when
+                        // the pad came up.
+                        let on = target.reversed() && !target.censoring();
+                        target.set_reverse(!on);
+                    }
+                    DeckAction::SetCensor(held) => target.set_censor(held),
                     DeckAction::BeatJump(beats) => {
                         target.beat_jump(beats, quantize);
                     }
@@ -453,6 +468,14 @@ impl Engine {
             set(
                 DeckParam::BeatPhase,
                 deck.beat_phase().unwrap_or(0.0) as f32,
+            );
+            set(DeckParam::Slip, if deck.slip() { 1.0 } else { 0.0 });
+            set(DeckParam::Reversed, if deck.reversed() { 1.0 } else { 0.0 });
+            set(
+                DeckParam::SlipPosition,
+                // Zero is a real position, so "not slipping" cannot be zero.
+                // Negative one is outside the track and unambiguous.
+                deck.slip_position().map_or(-1.0, |p| p.get() as f32),
             );
 
             let region = deck.active_loop();

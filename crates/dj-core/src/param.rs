@@ -71,6 +71,16 @@ pub enum DeckParam {
     /// exactly on a beat, and deliberately so: with no grid nothing pulses, so
     /// the value is never read.
     BeatPhase,
+    /// 1.0 when slip mode is armed.
+    Slip,
+    /// 1.0 while the deck is playing backwards, whether from reverse or a
+    /// held censor -- the interface draws the same thing either way.
+    Reversed,
+    /// Where the track would be if nothing were diverting it, in frames.
+    ///
+    /// **-1.0 when nothing is being slipped over**, because frame zero is a
+    /// real position and cannot mean "none" as it can in an `Option`.
+    SlipPosition,
     /// 1.0 when a loop is repeating.
     LoopActive,
     /// Loop start and end, in frames. Meaningful only while `LoopActive`.
@@ -128,7 +138,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 35;
+    pub const COUNT: usize = 38;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -161,6 +171,9 @@ impl DeckParam {
             EffectiveBpm,
             GridConfidence,
             BeatPhase,
+            Slip,
+            Reversed,
+            SlipPosition,
             LoopActive,
             LoopStart,
             LoopEnd,
@@ -313,6 +326,9 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::EffectiveBpm => "effective_bpm",
         DeckParam::GridConfidence => "grid_confidence",
         DeckParam::BeatPhase => "beat_phase",
+        DeckParam::Slip => "slip",
+        DeckParam::Reversed => "reversed",
+        DeckParam::SlipPosition => "slip_position",
         DeckParam::LoopActive => "loop_active",
         DeckParam::LoopStart => "loop_start",
         DeckParam::LoopEnd => "loop_end",

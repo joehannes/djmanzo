@@ -32,6 +32,7 @@ function entity(over: Partial<Entity> & Pick<Entity, "name">): Entity {
       phase: 0,
       depth: 0.8,
       agitation: 0.2,
+      backwards: false,
       turbidity: 0,
       excursion: { drift: 0.2, scale: 1.05 },
     },
@@ -156,6 +157,56 @@ describe("the highland and the weather", () => {
     const calm = scene(world({ strain: 0 })).primitives.length;
     const strained = scene(world({ strain: 0.9 })).primitives.length;
     expect(strained).toBe(calm + 1);
+  });
+});
+
+describe("slip and reverse", () => {
+  /**
+   * A loop is only something you can *leave* if you can see where leaving it
+   * puts you, which is the one thing slip mode needs on screen.
+   */
+  it("marks where the track will land when it is being slipped over", () => {
+    const slipping = world({
+      entities: [
+        entity({ name: "deck.river", index: 1 }),
+        entity({ name: "deck.shadow", index: 1, along: 0.7 }),
+      ],
+    });
+    const marks = scene(slipping).primitives.filter(
+      (p) => p.kind === "bar" && p.dashed,
+    );
+    expect(marks).toHaveLength(1);
+    expect(marks[0].x).toBeCloseTo(700);
+  });
+
+  it("draws nothing when nothing is being slipped over", () => {
+    const plain = scene(world()).primitives.filter((p) => p.kind === "bar" && p.dashed);
+    expect(plain).toHaveLength(0);
+  });
+
+  /**
+   * Downstream is still the future when a deck is reversed; what changes is
+   * that the *water* runs the other way, which is what reverse sounds like.
+   */
+  it("runs the crests the other way when a deck is reversed", () => {
+    const crestsOf = (backwards: boolean) => {
+      const w = world({
+        entities: [
+          entity({
+            name: "deck.river",
+            index: 1,
+            vitality: { ...entity({ name: "x" }).vitality, phase: 0, backwards },
+          }),
+        ],
+      });
+      return scene(w)
+        .primitives.filter((p) => p.kind === "bar" && p.w <= 2)
+        .map((p) => p.x)
+        .sort((a, b) => a - b);
+    };
+    // Forwards the downbeat sits at 0; backwards it sits at the far end.
+    expect(Math.min(...crestsOf(false))).toBeCloseTo(0);
+    expect(Math.max(...crestsOf(true))).toBeCloseTo(1000);
   });
 });
 
