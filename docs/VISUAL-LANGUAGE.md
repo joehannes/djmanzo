@@ -810,7 +810,7 @@ Order, and why.
 | **V1** | The world model — entities, components, the tier selector, the DOM-listens/canvas-paints split | Nothing can be drawn before there is something to draw. Renderer-agnostic from the first line, or the abstraction will be fiction. |
 | **V2** | Canvas 2D renderer, one river, one deck — flow, pulse, riverbed, clarity, mouth, stones, eddies | One river proves the whole vocabulary. |
 | **V3** | The confluence — two rivers, crossfader, beating, harmonic blending, the limiter as estuary | **Done.** The first thing that says something no rectangle could: *beating* names three states that are three different actions. |
-| **V4** | Strata and terrain — EQ, filter, effects as terrain features, stems as currents | The full control surface, once the world it lives in is proven. |
+| **V4** | Strata and terrain — EQ, filter, eddies, stones | **Done**, except effects-as-terrain and stems-as-currents, which wait on M5 and M6 having anything to draw. |
 | **V5** | WebGL renderer behind the same world | The second renderer is what proves V1 was real. |
 | **V6** | Highland and weather — library, analysis mist, sampler pools, recording dam, session light | The periphery, once the centre is right. |
 

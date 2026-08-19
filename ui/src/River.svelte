@@ -22,6 +22,10 @@
   let {
     river,
     mouth = null,
+    strata = [],
+    shear = null,
+    eddy = null,
+    stones = [],
     height = 64,
     latencyMs = 0,
     alarming = false,
@@ -29,6 +33,14 @@
   }: {
     river: Entity;
     mouth?: Entity | null;
+    /** The three strata of the water column, low to high. */
+    strata?: Entity[];
+    /** Where the filter has narrowed the channel, when it has. */
+    shear?: Entity | null;
+    /** Water circulating instead of passing. */
+    eddy?: Entity | null;
+    /** Fixed places a DJ can return to. */
+    stones?: Entity[];
     height?: number;
     /**
      * What the output chain adds after the engine. The pulse is delayed by it
@@ -189,11 +201,120 @@
     }
 
     drawWater(ctx, w, h, body, phase);
+    drawStrata(ctx, w, body);
+    if (shear) drawShear(ctx, w, body);
     drawCrests(ctx, w, body, phase);
     drawTurbidity(ctx, w, body);
+    if (eddy) drawEddy(ctx, w, body, phase);
+    for (const stone of stones) drawStone(ctx, h, body, stone);
     drawPlayhead(ctx, h, body);
     if (mouth) drawMouth(ctx, w, h, mouth);
     if (alarming) drawAlarm(ctx, w, h);
+  }
+
+  /**
+   * The three strata of the water column.
+   *
+   * Low is the deep current at the bottom, high is the surface light at the top
+   * — which is where they physically are, so a DJ swapping lows on a transition
+   * watches the deep current pass from one river to the other. A killed band is
+   * drought at that stratum: a hard discontinuity, because a kill is not a
+   * gentle turn of a knob and must not look like one.
+   */
+  function drawStrata(ctx: CanvasRenderingContext2D, w: number, body: Body) {
+    if (strata.length === 0) return;
+    const slice = body.depth / 3;
+    for (const stratum of strata) {
+      // Slot 0 is low, and low is the bottom of the column.
+      const top = body.top + (2 - stratum.slot) * slice;
+      // Unity sits at half of `extent`'s range, so a band at unity fills its
+      // slice and a boosted one overflows upward into the light.
+      const fill = Math.min(1, stratum.extent * 2);
+      if (fill <= 0.001) {
+        // Drought: the stratum is scoured out, not merely dimmed.
+        ctx.fillStyle = "hsl(0 0% 0% / 0.55)";
+        ctx.fillRect(0, top, w, slice);
+        continue;
+      }
+      ctx.fillStyle = `hsl(0 0% 100% / ${0.04 + 0.1 * (fill - 0.5)})`;
+      ctx.fillRect(0, top + slice * (1 - fill), w, slice * fill);
+    }
+  }
+
+  /**
+   * The channel narrowed from one side.
+   *
+   * A low-pass shears the surface away and leaves something deep and slow; a
+   * high-pass cuts the depth and leaves something thin and bright. `along`
+   * below the middle is a low-pass, above it a high-pass — the world's
+   * convention, so the renderer does not have to know about filter signs.
+   */
+  function drawShear(ctx: CanvasRenderingContext2D, w: number, body: Body) {
+    if (!shear) return;
+    const fromTop = shear.along < 0.5;
+    const cut = body.depth * shear.extent;
+    ctx.fillStyle = "hsl(220 12% 8% / 0.72)";
+    ctx.fillRect(0, fromTop ? body.top : body.top + body.depth - cut, w, cut);
+
+    // The edge where the cut happens, which is the frequency being swept.
+    const edge = fromTop ? body.top + cut : body.top + body.depth - cut;
+    ctx.beginPath();
+    ctx.moveTo(0, edge);
+    ctx.lineTo(w, edge);
+    ctx.strokeStyle = "hsl(0 0% 85% / 0.5)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  /**
+   * Water circulating instead of passing.
+   *
+   * The clearest metaphor in the system: a loop *is* an eddy, and a DJ who has
+   * never read a word of this recognises a whirl in the water. It turns at the
+   * track's tempo, so a halved loop visibly turns twice as fast over the same
+   * stretch of water.
+   */
+  function drawEddy(ctx: CanvasRenderingContext2D, w: number, body: Body, phase: number) {
+    if (!eddy) return;
+    const from = w * eddy.along;
+    const width = Math.max(3, w * eddy.extent);
+    const mid = body.top + body.depth * 0.5;
+
+    ctx.fillStyle = "hsl(0 0% 100% / 0.12)";
+    ctx.fillRect(from, body.top, width, body.depth);
+
+    // The whirl: an arc that goes round rather than along, at the beat's rate.
+    const radius = Math.min(body.depth * 0.32, width * 0.42);
+    if (radius < 2) return;
+    const turn = phase * Math.PI * 2;
+    ctx.beginPath();
+    ctx.arc(from + width / 2, mid, radius, turn, turn + Math.PI * 1.4);
+    ctx.strokeStyle = "hsl(0 0% 100% / 0.7)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  /**
+   * A stone in the river: a fixed place, visible from upstream.
+   *
+   * Structural, never the key's hue — a cue is a place, not a sound, and giving
+   * it musical colour would put two meanings on one channel.
+   */
+  function drawStone(
+    ctx: CanvasRenderingContext2D,
+    h: number,
+    body: Body,
+    stone: Entity,
+  ) {
+    const at = body.width * stone.along;
+    ctx.beginPath();
+    ctx.moveTo(at, body.top - 2);
+    ctx.lineTo(at + 3, body.top + 4);
+    ctx.lineTo(at - 3, body.top + 4);
+    ctx.closePath();
+    ctx.fillStyle = css(stone.tint, 0.9);
+    ctx.fill();
+    void h;
   }
 
   /**

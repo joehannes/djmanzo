@@ -206,6 +206,9 @@
   );
   const mouthFor = (deck: number) =>
     world.entities.find((e) => e.name === "deck.mouth" && e.index === deck) ?? null;
+  const partsOf = (name: string, deck: number) =>
+    world.entities.filter((e) => e.name === name && e.index === deck);
+  const partOf = (name: string, deck: number) => partsOf(name, deck)[0] ?? null;
   /** Which river holds the peripheral channel. At most one ever does. */
   const alarmingDeck = $derived(alarmDeck(world.alarm));
   const confluenceEntity = $derived(
@@ -507,8 +510,13 @@
           <River
             {river}
             mouth={mouthFor(river.index)}
+            strata={partsOf("deck.stratum", river.index)}
+            shear={partOf("deck.shear", river.index)}
+            eddy={partOf("deck.eddy", river.index)}
+            stones={partsOf("deck.stone", river.index)}
             latencyMs={snapshot.master.output_latency_ms}
             {tier}
+            height={78}
             alarming={alarmingDeck === river.index ||
               (alarmingDeck === null && world.alarm !== null)}
           />

@@ -60,7 +60,10 @@ export interface Vitality {
 export interface Entity {
   /** The ADR-0008 widget name, e.g. `deck.river`. */
   name: string;
+  /** Which one — almost always the deck number. */
   index: number;
+  /** Which one *within* that: the cue slot, the EQ band. 0 when there is one. */
+  slot: number;
   form: Form;
   bearing: Bearing;
   tint: Tint;

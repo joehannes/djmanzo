@@ -78,8 +78,16 @@ pub struct Entity {
     /// e.g. `deck.river`. This is what ties the world to the vocabulary the
     /// controllers, network API and assistant already speak.
     pub name: String,
-    /// Which one, when a name has several: the deck number, the cue slot.
+    /// Which one, when a name has several: almost always the deck number.
     pub index: u8,
+    /// Which one *within* that, when a name has several per index: the cue
+    /// slot, the EQ band. Zero when the name has only one per deck.
+    ///
+    /// Two levels rather than a flattened number because the two are asked
+    /// separately — "deck 2's cues" and "cue 3" are different questions, and a
+    /// single index would make one of them arithmetic.
+    #[serde(default)]
+    pub slot: u8,
     pub form: Form,
     pub bearing: Bearing,
     pub tint: Tint,
@@ -216,6 +224,28 @@ pub struct RiverReading {
     pub peak: f32,
     /// True while the analyser has not finished. Drawn as mist.
     pub surveying: bool,
+    /// The three strata of the water column, low to high. 0.0 is a killed
+    /// band -- drought at that stratum -- and 1.0 is unity.
+    pub eq: [f32; 3],
+    /// -1.0 full low-pass through 0.0 off to 1.0 full high-pass.
+    pub filter: f32,
+    /// The loop repeating right now, as fractions of the track, with its
+    /// length in beats for the reading.
+    pub loop_region: Option<LoopRegion>,
+    /// Hot cue positions as fractions of the track, slot 1 first. `None` for an
+    /// empty slot, which is not the same as a cue at the very start.
+    pub cues: Vec<Option<f32>>,
+}
+
+/// Water circulating instead of passing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LoopRegion {
+    /// Where the eddy starts, 0..=1 through the track.
+    pub start: f32,
+    /// How much of the track it covers, 0..=1.
+    pub length: f32,
+    /// Its length in beats, when the deck has a grid to measure it against.
+    pub beats: Option<f32>,
 }
 
 /// What the world needs to know about the room, rather than any one deck.
@@ -251,6 +281,10 @@ impl RiverReading {
             level: 0.0,
             peak: 0.0,
             surveying: false,
+            eq: [1.0, 1.0, 1.0],
+            filter: 0.0,
+            loop_region: None,
+            cues: Vec::new(),
         }
     }
 }
@@ -271,6 +305,14 @@ pub fn build(rivers: &[RiverReading], left: u8, right: u8, room: RoomReading) ->
         // announcing an ending that is not coming.
         if river.loaded {
             entities.push(mouth_entity(river));
+            entities.extend(strata_entities(river));
+            if let Some(shear) = filter_entity(river) {
+                entities.push(shear);
+            }
+            if let Some(eddy) = eddy_entity(river) {
+                entities.push(eddy);
+            }
+            entities.extend(stone_entities(river));
         }
     }
 
@@ -320,6 +362,7 @@ fn confluence_entity(rivers: &[RiverReading], left: u8, right: u8, room: RoomRea
     Entity {
         name: "mixer.confluence".to_owned(),
         index: 0,
+        slot: 0,
         form: Form::Flow,
         bearing: Bearing::Foliage,
         tint,
@@ -399,6 +442,159 @@ fn beating(left: Option<&RiverReading>, right: Option<&RiverReading>) -> Beating
     }
 }
 
+/// The three strata of the water column.
+///
+/// A real river has them and so does an isolator EQ, which is why this is the
+/// EQ's shape rather than three knobs in a row: low is the deep current, mid is
+/// the body, high is the surface light. A DJ swapping lows on a transition sees
+/// the deep current pass from one river to the other, which is precisely what
+/// they are doing.
+fn strata_entities(river: &RiverReading) -> Vec<Entity> {
+    const NAMES: [&str; 3] = ["low", "mid", "high"];
+    river
+        .eq
+        .iter()
+        .enumerate()
+        .map(|(band, &gain)| {
+            let gain = if gain.is_finite() { gain.max(0.0) } else { 1.0 };
+            // A kill is drought at one stratum: total, and a visible
+            // discontinuity. It is not a gentle turn of a knob and must not
+            // look like one, so the threshold is the engine's own kill point.
+            let killed = gain < 0.001;
+            Entity {
+                name: "deck.stratum".to_owned(),
+                index: river.deck,
+                // Low at the bottom, high at the top, which is where they are.
+                slot: band as u8,
+                form: Form::Field,
+                bearing: Bearing::Foliage,
+                tint: Tint::musical(river.key, river.key_confidence, river.level),
+                // A stratum does not pulse on its own; it is part of the river,
+                // and two things pulsing at the same tempo beside each other
+                // reads as two tempos.
+                vitality: Vitality::still(),
+                along: band as f32 / 2.0,
+                // Unity is 1.0 and the band goes to +12 dB, so the scale runs
+                // past full: a boosted stratum genuinely stands higher.
+                extent: (gain / 2.0).clamp(0.0, 1.0),
+                reading: if killed {
+                    format!("{} killed", NAMES[band])
+                } else {
+                    format!("{} {:.2}", NAMES[band], gain)
+                },
+            }
+        })
+        .collect()
+}
+
+/// The channel narrowed from one side.
+///
+/// `along` is where the cut sits in the column — below the middle the surface
+/// is being sheared away (low-pass), above it the depth is (high-pass) — and
+/// `extent` is how much has gone. `None` when the filter is off, because a
+/// filter at noon is not narrowing anything and an entity saying "no cut" is a
+/// thing on screen that means nothing.
+fn filter_entity(river: &RiverReading) -> Option<Entity> {
+    let filter = if river.filter.is_finite() {
+        river.filter.clamp(-1.0, 1.0)
+    } else {
+        0.0
+    };
+    // The same dead zone the interface uses for "off", so the world and the
+    // readout agree about when a filter is doing nothing.
+    if filter.abs() <= 0.02 {
+        return None;
+    }
+    Some(Entity {
+        name: "deck.shear".to_owned(),
+        index: river.deck,
+        slot: 0,
+        form: Form::Field,
+        bearing: Bearing::Foliage,
+        tint: Tint::structural(0.55),
+        vitality: Vitality::still(),
+        along: (filter + 1.0) / 2.0,
+        extent: filter.abs(),
+        reading: if filter < 0.0 {
+            format!("low-pass {:.0}%", -filter * 100.0)
+        } else {
+            format!("high-pass {:.0}%", filter * 100.0)
+        },
+    })
+}
+
+/// Water circulating instead of passing.
+///
+/// The clearest case in the whole system: an eddy is *literally* what a loop is,
+/// and a DJ who has never seen this interface will recognise a whirl in the
+/// water without reading a word.
+fn eddy_entity(river: &RiverReading) -> Option<Entity> {
+    let region = river.loop_region?;
+    Some(Entity {
+        name: "deck.eddy".to_owned(),
+        index: river.deck,
+        slot: 0,
+        form: Form::Eddy,
+        bearing: Bearing::Foliage,
+        tint: Tint::musical(river.key, river.key_confidence, river.level),
+        // An eddy turns at the track's tempo, which is what makes a halved loop
+        // visibly turn twice as fast for the same water.
+        vitality: Vitality::of(river),
+        along: region.start.clamp(0.0, 1.0),
+        extent: region.length.clamp(0.0, 1.0),
+        reading: match region.beats {
+            Some(beats) if beats >= 1.0 => format!("loop {}", format_beats(beats)),
+            Some(beats) => format!("loop {}", format_beats(beats)),
+            // A loop set by hand on a track with no grid has a real length in
+            // seconds and no length in beats, and saying "loop" alone is more
+            // honest than inventing a beat count.
+            None => "loop".to_owned(),
+        },
+    })
+}
+
+/// "4" for whole loops, "1/4" for halved ones, which is how DJs say them.
+fn format_beats(beats: f32) -> String {
+    if beats >= 1.0 {
+        format!("{}", (beats * 100.0).round() / 100.0)
+    } else if beats > 0.0 {
+        format!("1/{}", (1.0 / beats).round())
+    } else {
+        "0".to_owned()
+    }
+}
+
+/// Stones in the river: fixed, named landmarks a DJ can see from upstream.
+fn stone_entities(river: &RiverReading) -> Vec<Entity> {
+    river
+        .cues
+        .iter()
+        .enumerate()
+        .filter_map(|(slot, position)| {
+            let at = (*position)?;
+            if !at.is_finite() {
+                return None;
+            }
+            Some(Entity {
+                name: "deck.stone".to_owned(),
+                index: river.deck,
+                // 1-based, as the pads are labelled. A DJ counting cues counts
+                // from one, and an off-by-one here would show in a tooltip.
+                slot: slot as u8 + 1,
+                form: Form::Marker,
+                bearing: Bearing::Foliage,
+                // Structural: a cue is a place, not a sound, and giving it the
+                // key's hue would put two meanings on one channel.
+                tint: Tint::structural(0.75),
+                vitality: Vitality::still(),
+                along: at.clamp(0.0, 1.0),
+                extent: 0.0,
+                reading: format!("cue {}", slot + 1),
+            })
+        })
+        .collect()
+}
+
 /// Gain reduction past which the limiter is doing real damage rather than
 /// catching the odd peak.
 ///
@@ -458,6 +654,7 @@ fn river_entity(river: &RiverReading) -> Entity {
     Entity {
         name: "deck.river".to_owned(),
         index: river.deck,
+        slot: 0,
         form: Form::Flow,
         bearing: Bearing::Foliage,
         tint: Tint::musical(river.key, river.key_confidence, river.level),
@@ -489,6 +686,7 @@ fn mouth_entity(river: &RiverReading) -> Entity {
     Entity {
         name: "deck.mouth".to_owned(),
         index: river.deck,
+        slot: 0,
         form: Form::Marker,
         bearing: Bearing::Foliage,
         // Structural rather than musical: the end of a track is a fact about
@@ -561,6 +759,7 @@ mod tests {
             level: 0.8,
             peak: 0.5,
             surveying: false,
+            ..RiverReading::empty(deck)
         }
     }
 
@@ -690,6 +889,238 @@ mod tests {
     fn the_mouth_carries_no_musical_colour() {
         let world = build(&[playing(1)], 1, 2, calm(0.0));
         assert_eq!(find(&world, "deck.mouth", 1).unwrap().tint.saturation, 0.0);
+    }
+
+    // -- strata, shear, eddies and stones -----------------------------------
+
+    fn all<'a>(world: &'a World, name: &str) -> Vec<&'a Entity> {
+        world.entities.iter().filter(|e| e.name == name).collect()
+    }
+
+    fn slot<'a>(world: &'a World, name: &str, deck: u8, slot: u8) -> Option<&'a Entity> {
+        world
+            .entities
+            .iter()
+            .find(|e| e.name == name && e.index == deck && e.slot == slot)
+    }
+
+    #[test]
+    fn a_loaded_deck_has_three_strata_low_to_high() {
+        let world = build(&[playing(1)], 1, 2, calm(0.0));
+        let strata = all(&world, "deck.stratum");
+        assert_eq!(strata.len(), 3);
+        assert!(
+            slot(&world, "deck.stratum", 1, 0)
+                .unwrap()
+                .reading
+                .contains("low")
+        );
+        assert!(
+            slot(&world, "deck.stratum", 1, 1)
+                .unwrap()
+                .reading
+                .contains("mid")
+        );
+        assert!(
+            slot(&world, "deck.stratum", 1, 2)
+                .unwrap()
+                .reading
+                .contains("high")
+        );
+    }
+
+    #[test]
+    fn an_empty_deck_has_no_strata() {
+        let world = build(&[RiverReading::empty(1)], 1, 2, calm(0.0));
+        assert!(
+            all(&world, "deck.stratum").is_empty(),
+            "no river, no water column"
+        );
+    }
+
+    /// A kill is drought at one stratum: total, and a visible discontinuity. It
+    /// is not a gentle turn of a knob and must not read as one.
+    #[test]
+    fn a_killed_band_is_drought_and_says_so() {
+        let mut killed = playing(1);
+        killed.eq = [0.0, 1.0, 1.0];
+        let world = build(&[killed], 1, 2, calm(0.0));
+        let low = slot(&world, "deck.stratum", 1, 0).unwrap();
+        assert_eq!(low.extent, 0.0);
+        assert!(low.reading.contains("killed"), "{}", low.reading);
+    }
+
+    /// The bands go to +12 dB, so a boosted stratum genuinely stands higher
+    /// than unity rather than saturating at it.
+    #[test]
+    fn a_boosted_band_stands_higher_than_unity() {
+        let mut boosted = playing(1);
+        boosted.eq = [2.0, 1.0, 1.0];
+        let world = build(&[boosted], 1, 2, calm(0.0));
+        assert!(
+            slot(&world, "deck.stratum", 1, 0).unwrap().extent
+                > slot(&world, "deck.stratum", 1, 1).unwrap().extent
+        );
+    }
+
+    /// Two things pulsing at the same tempo beside each other reads as two
+    /// tempos. The strata belong to the river and do not pulse on their own.
+    #[test]
+    fn the_strata_do_not_pulse_separately_from_their_river() {
+        let world = build(&[playing(1)], 1, 2, calm(0.0));
+        for stratum in all(&world, "deck.stratum") {
+            assert!(stratum.vitality.is_still(), "slot {}", stratum.slot);
+        }
+    }
+
+    /// A filter at noon is not narrowing anything, and an entity saying "no
+    /// cut" is a thing on screen that means nothing.
+    #[test]
+    fn a_filter_at_noon_draws_nothing() {
+        let world = build(&[playing(1)], 1, 2, calm(0.0));
+        assert!(all(&world, "deck.shear").is_empty());
+    }
+
+    #[test]
+    fn a_filter_shears_from_the_side_it_cuts() {
+        let sheared = |filter: f32| {
+            let mut river = playing(1);
+            river.filter = filter;
+            let world = build(&[river], 1, 2, calm(0.0));
+            all(&world, "deck.shear").first().copied().cloned()
+        };
+
+        let low_pass = sheared(-0.8).expect("a low-pass shears");
+        assert!(low_pass.along < 0.5, "a low-pass cuts from the top");
+        assert!(
+            low_pass.reading.contains("low-pass"),
+            "{}",
+            low_pass.reading
+        );
+
+        let high_pass = sheared(0.8).expect("a high-pass shears");
+        assert!(high_pass.along > 0.5, "a high-pass cuts from the bottom");
+        assert!(
+            (low_pass.extent - high_pass.extent).abs() < 1e-6,
+            "same amount cut"
+        );
+    }
+
+    #[test]
+    fn a_deck_with_no_loop_has_no_eddy() {
+        let world = build(&[playing(1)], 1, 2, calm(0.0));
+        assert!(all(&world, "deck.eddy").is_empty());
+    }
+
+    #[test]
+    fn a_loop_is_an_eddy_where_the_loop_is() {
+        let mut looping = playing(1);
+        looping.loop_region = Some(LoopRegion {
+            start: 0.4,
+            length: 0.05,
+            beats: Some(4.0),
+        });
+        let world = build(&[looping], 1, 2, calm(0.0));
+        let eddy = all(&world, "deck.eddy")[0];
+        assert!((eddy.along - 0.4).abs() < 1e-6);
+        assert!((eddy.extent - 0.05).abs() < 1e-6);
+        assert_eq!(eddy.reading, "loop 4");
+    }
+
+    /// A halved loop is half a beat and matches none of the auto-loop buttons.
+    /// DJs say "1/4", not "0.25".
+    #[test]
+    fn a_halved_loop_reads_as_a_fraction() {
+        let mut looping = playing(1);
+        looping.loop_region = Some(LoopRegion {
+            start: 0.4,
+            length: 0.006,
+            beats: Some(0.25),
+        });
+        let world = build(&[looping], 1, 2, calm(0.0));
+        assert_eq!(all(&world, "deck.eddy")[0].reading, "loop 1/4");
+    }
+
+    /// A loop set by hand on an ungridded track has a real length in seconds
+    /// and none in beats. Saying "loop" is more honest than inventing a count.
+    #[test]
+    fn a_loop_with_no_grid_does_not_invent_a_beat_count() {
+        let mut looping = playing(1);
+        looping.bpm = None;
+        looping.loop_region = Some(LoopRegion {
+            start: 0.4,
+            length: 0.05,
+            beats: None,
+        });
+        let world = build(&[looping], 1, 2, calm(0.0));
+        assert_eq!(all(&world, "deck.eddy")[0].reading, "loop");
+    }
+
+    /// An empty slot is not a cue at the very start of the track.
+    #[test]
+    fn empty_cue_slots_are_not_stones_at_zero() {
+        let mut cued = playing(1);
+        cued.cues = vec![Some(0.1), None, Some(0.6), None];
+        let world = build(&[cued], 1, 2, calm(0.0));
+        let stones = all(&world, "deck.stone");
+        assert_eq!(stones.len(), 2);
+        assert!(stones.iter().all(|s| s.along > 0.0));
+    }
+
+    /// The pads are labelled from one, and an off-by-one here shows in a
+    /// tooltip.
+    #[test]
+    fn stones_are_numbered_the_way_the_pads_are() {
+        let mut cued = playing(1);
+        cued.cues = vec![Some(0.1), Some(0.2), Some(0.3)];
+        let world = build(&[cued], 1, 2, calm(0.0));
+        assert_eq!(slot(&world, "deck.stone", 1, 1).unwrap().reading, "cue 1");
+        assert_eq!(slot(&world, "deck.stone", 1, 3).unwrap().reading, "cue 3");
+        assert!(slot(&world, "deck.stone", 1, 0).is_none(), "no cue zero");
+    }
+
+    /// A cue is a place, not a sound. Giving it the key's hue would put two
+    /// meanings on one channel.
+    #[test]
+    fn a_stone_carries_no_musical_colour() {
+        let mut cued = playing(1);
+        cued.cues = vec![Some(0.5)];
+        let world = build(&[cued], 1, 2, calm(0.0));
+        assert_eq!(all(&world, "deck.stone")[0].tint.saturation, 0.0);
+    }
+
+    #[test]
+    fn nonsense_positions_are_dropped_rather_than_drawn_off_the_river() {
+        let mut broken = playing(1);
+        broken.cues = vec![Some(f32::NAN), Some(0.5), Some(f32::INFINITY)];
+        broken.eq = [f32::NAN, -3.0, 1.0];
+        broken.filter = f32::NAN;
+        let world = build(&[broken], 1, 2, calm(0.0));
+        assert_eq!(all(&world, "deck.stone").len(), 1, "only the real one");
+        for stratum in all(&world, "deck.stratum") {
+            assert!(
+                (0.0..=1.0).contains(&stratum.extent),
+                "slot {}",
+                stratum.slot
+            );
+        }
+        assert!(
+            all(&world, "deck.shear").is_empty(),
+            "NaN is not a filter position"
+        );
+    }
+
+    /// Two decks' cues must not collide: the same slot on different decks is
+    /// two different stones, which is what the two-level index is for.
+    #[test]
+    fn two_decks_cues_are_told_apart() {
+        let mut one = playing(1);
+        one.cues = vec![Some(0.1)];
+        let mut two = playing(2);
+        two.cues = vec![Some(0.9)];
+        let world = build(&[one, two], 1, 2, calm(0.0));
+        assert!((slot(&world, "deck.stone", 1, 1).unwrap().along - 0.1).abs() < 1e-6);
+        assert!((slot(&world, "deck.stone", 2, 1).unwrap().along - 0.9).abs() < 1e-6);
     }
 
     // -- the confluence ----------------------------------------------------

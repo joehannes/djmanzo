@@ -51,6 +51,15 @@ export function armDemo(): void {
         await step(`load ${track.path}`, () => loadTrack(index + 1, track.path!));
         await step("play", () => dispatch(`deck ${index + 1} play`));
       }
+
+      // Exercise the control surface, so a headless run shows the strata, the
+      // shear, an eddy and some stones rather than two plain rivers.
+      await new Promise((r) => setTimeout(r, 2000));
+      await step("kill deck 1 lows", () => dispatch("deck 1 eq_low 0"));
+      await step("boost deck 1 highs", () => dispatch("deck 1 eq_high 1.6"));
+      await step("filter deck 2", () => dispatch("deck 2 filter -0.6"));
+      await step("cue deck 1", () => dispatch("deck 1 hotcue_set 1"));
+      await step("loop deck 2", () => dispatch("deck 2 loop 4"));
     } catch (e) {
       console.error("demo", e);
     }

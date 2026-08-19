@@ -22,7 +22,7 @@
 
 use crate::Snapshot;
 use dj_core::{Mode, MusicalKey};
-use dj_world::{RiverReading, RoomReading, World};
+use dj_world::{LoopRegion, RiverReading, RoomReading, World};
 
 /// Build the world the interface should draw.
 #[must_use]
@@ -63,6 +63,27 @@ fn river(deck: &crate::snapshot::DeckSnapshot) -> RiverReading {
         // The analyser has not finished while the deck is loaded and has
         // nothing to report. Drawn as mist over an unsurveyed stretch.
         surveying: deck.loaded && analysis.is_none(),
+        eq: [deck.eq_low, deck.eq_mid, deck.eq_high],
+        filter: deck.filter,
+        loop_region: deck.active_loop.as_ref().and_then(|region| {
+            // Everything along a river is a fraction of the track, so a loop
+            // has to be measured the same way -- and a track with no length
+            // yet has nowhere to put one.
+            (deck.length_frames > 0.0).then(|| LoopRegion {
+                start: region.start_frames / deck.length_frames,
+                length: (region.end_frames - region.start_frames) / deck.length_frames,
+                beats: region.beats,
+            })
+        }),
+        cues: deck
+            .hot_cues
+            .iter()
+            .map(|cue| {
+                cue.and_then(|frames| {
+                    (deck.length_frames > 0.0).then_some(frames / deck.length_frames)
+                })
+            })
+            .collect(),
     }
 }
 

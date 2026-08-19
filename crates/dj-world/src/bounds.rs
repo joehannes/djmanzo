@@ -191,6 +191,7 @@ mod tests {
             level: 1.0,
             peak: 0.4,
             surveying: false,
+            ..RiverReading::empty(1)
         }
     }
 
