@@ -12,6 +12,7 @@
 use crate::deck::{CrossfaderAssign, DeckId};
 use crate::fx::{EffectKind, FX_SLOTS, FxChange, Placement};
 use crate::hotcue::HOT_CUE_SLOTS;
+use crate::sampler::{SAMPLE_SLOTS, SampleChange, SampleOutput, SamplerChange, TriggerMode};
 use crate::time::{FramePos, Rate};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -211,6 +212,13 @@ pub enum MixerAction {
         slot: u8,
         change: FxChange,
     },
+    /// Fire or configure one sampler pad, in the bank that is showing.
+    Sample {
+        slot: u8,
+        change: SampleChange,
+    },
+    /// Change the sampler as a whole: its bank, its level, or stop everything.
+    Sampler(SamplerChange),
 }
 
 impl Action {
@@ -272,6 +280,23 @@ impl Action {
                 )?))),
                 other => Err(ParseError::UnknownVerb(other.to_owned())),
             },
+            // `sampler 3 trigger` addresses a pad; `sampler bank 2` addresses
+            // the sampler. Told apart by whether the next word is a slot
+            // number, which is unambiguous because no verb here is a number.
+            "sampler" => {
+                let what = words.next().ok_or(ParseError::MissingVerb)?;
+                match what.parse::<u8>() {
+                    Ok(slot) => {
+                        let slot = valid_sample_slot(slot)?;
+                        let change = parse_sample_change(words.next(), words.next())?;
+                        Ok(Action::Mixer(MixerAction::Sample { slot, change }))
+                    }
+                    Err(_) => Ok(Action::Mixer(MixerAction::Sampler(parse_sampler_change(
+                        what,
+                        words.next(),
+                    )?))),
+                }
+            }
             "quantize" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "on" => Ok(Action::Mixer(MixerAction::SetQuantize(true))),
                 "off" => Ok(Action::Mixer(MixerAction::SetQuantize(false))),
@@ -293,6 +318,50 @@ impl Action {
             other => Err(ParseError::UnknownTarget(other.to_owned())),
         }
     }
+}
+
+/// A sampler slot, 1-based as the pads number them.
+///
+/// Refused rather than clamped, like a hot cue slot: slot 0 or slot 9 is a
+/// mistake upstream, and quietly firing slot 1 instead would hide a controller
+/// mapped to the wrong range — while playing the wrong sample to a room.
+fn valid_sample_slot(slot: u8) -> Result<u8, ParseError> {
+    if slot >= 1 && usize::from(slot) <= SAMPLE_SLOTS {
+        Ok(slot)
+    } else {
+        Err(ParseError::BadArgument)
+    }
+}
+
+fn parse_sample_change(
+    what: Option<&str>,
+    value: Option<&str>,
+) -> Result<SampleChange, ParseError> {
+    Ok(match what.ok_or(ParseError::MissingArgument)? {
+        "trigger" => SampleChange::Trigger,
+        "release" => SampleChange::Release,
+        "stop" => SampleChange::Stop,
+        "master" => SampleChange::Route(SampleOutput::Master),
+        "cue" => SampleChange::Route(SampleOutput::Cue),
+        "sync" => SampleChange::SetSync(true),
+        "sync_off" => SampleChange::SetSync(false),
+        "clear" => SampleChange::Clear,
+        "volume" => SampleChange::Volume(parse_f32(value)?.clamp(0.0, 1.0)),
+        // Anything else must be a trigger mode, so an unknown word here is an
+        // unknown *mode* -- which is the mistake the caller actually made.
+        name => SampleChange::SetMode(
+            TriggerMode::parse(name).ok_or_else(|| ParseError::UnknownMode(name.to_owned()))?,
+        ),
+    })
+}
+
+fn parse_sampler_change(what: &str, value: Option<&str>) -> Result<SamplerChange, ParseError> {
+    Ok(match what {
+        "bank" => SamplerChange::Bank(parse_slot(value)?),
+        "volume" => SamplerChange::Volume(parse_f32(value)?.clamp(0.0, 1.0)),
+        "stop_all" => SamplerChange::StopAll,
+        other => return Err(ParseError::UnknownVerb(other.to_owned())),
+    })
 }
 
 /// `<slot> <what> [value]` — the effect sub-grammar, shared by decks and master.
@@ -590,6 +659,10 @@ impl fmt::Display for Action {
             Action::Mixer(MixerAction::Fx { slot, change }) => {
                 write!(f, "master fx {slot} {change}")
             }
+            Action::Mixer(MixerAction::Sample { slot, change }) => {
+                write!(f, "sampler {slot} {change}")
+            }
+            Action::Mixer(MixerAction::Sampler(change)) => write!(f, "sampler {change}"),
             Action::Mixer(MixerAction::SetLimiter(true)) => write!(f, "limiter on"),
             Action::Mixer(MixerAction::SetLimiter(false)) => write!(f, "limiter off"),
         }
@@ -619,6 +692,11 @@ pub enum ParseError {
     /// verb `revrb`" would point at the wrong thing.
     #[error("unknown effect `{0}`")]
     UnknownEffect(String),
+    /// Likewise for the sampler's sub-grammar: an unrecognised word there is a
+    /// trigger mode, and "unknown verb `sutter`" would point at the wrong
+    /// thing.
+    #[error("unknown trigger mode `{0}`")]
+    UnknownMode(String),
 }
 
 #[cfg(test)]
@@ -846,6 +924,124 @@ mod tests {
                     "`{text}` did not survive the round trip"
                 );
             }
+        }
+    }
+
+    /// The sampler grammar has to tell a pad from the sampler itself, and it
+    /// does that by whether the word after `sampler` is a number. Worth its own
+    /// test because it is the only place in the vocabulary where a *shape*
+    /// rather than a keyword picks the branch.
+    #[test]
+    fn the_sampler_grammar_tells_a_pad_from_the_sampler() {
+        assert_eq!(
+            Action::parse("sampler 3 trigger").unwrap(),
+            Action::Mixer(MixerAction::Sample {
+                slot: 3,
+                change: SampleChange::Trigger,
+            })
+        );
+        assert_eq!(
+            Action::parse("sampler bank 2").unwrap(),
+            Action::Mixer(MixerAction::Sampler(SamplerChange::Bank(2)))
+        );
+        assert_eq!(
+            Action::parse("sampler stop_all").unwrap(),
+            Action::Mixer(MixerAction::Sampler(SamplerChange::StopAll))
+        );
+        // `volume` exists on both sides, which is exactly the case the shape
+        // test has to get right.
+        assert_eq!(
+            Action::parse("sampler volume 0.5").unwrap(),
+            Action::Mixer(MixerAction::Sampler(SamplerChange::Volume(0.5)))
+        );
+        assert_eq!(
+            Action::parse("sampler 4 volume 0.5").unwrap(),
+            Action::Mixer(MixerAction::Sample {
+                slot: 4,
+                change: SampleChange::Volume(0.5),
+            })
+        );
+    }
+
+    #[test]
+    fn every_sampler_change_reaches_its_own_action() {
+        use SampleChange as C;
+        let cases = [
+            ("trigger", C::Trigger),
+            ("release", C::Release),
+            ("stop", C::Stop),
+            ("clear", C::Clear),
+            ("one_shot", C::SetMode(TriggerMode::OneShot)),
+            ("hold", C::SetMode(TriggerMode::Hold)),
+            ("loop", C::SetMode(TriggerMode::Loop)),
+            ("stutter", C::SetMode(TriggerMode::Stutter)),
+            ("master", C::Route(SampleOutput::Master)),
+            ("cue", C::Route(SampleOutput::Cue)),
+            ("sync", C::SetSync(true)),
+            ("sync_off", C::SetSync(false)),
+        ];
+        for (word, change) in cases {
+            assert_eq!(
+                Action::parse(&format!("sampler 1 {word}")).unwrap(),
+                Action::Mixer(MixerAction::Sample { slot: 1, change }),
+                "parsing `sampler 1 {word}`"
+            );
+        }
+    }
+
+    /// Firing the wrong sample plays it to a room, so an out-of-range slot has
+    /// to be refused rather than clamped onto slot 1.
+    #[test]
+    fn an_out_of_range_sampler_slot_is_refused() {
+        assert_eq!(
+            Action::parse("sampler 0 trigger"),
+            Err(ParseError::BadArgument)
+        );
+        assert_eq!(
+            Action::parse("sampler 9 trigger"),
+            Err(ParseError::BadArgument)
+        );
+        assert_eq!(Action::parse("sampler"), Err(ParseError::MissingVerb));
+        assert_eq!(Action::parse("sampler 1"), Err(ParseError::MissingArgument));
+        assert_eq!(
+            Action::parse("sampler 1 sutter"),
+            Err(ParseError::UnknownMode("sutter".to_owned()))
+        );
+    }
+
+    #[test]
+    fn every_sampler_action_round_trips_through_its_text_form() {
+        let mut actions: Vec<Action> = vec![
+            Action::Mixer(MixerAction::Sampler(SamplerChange::Bank(3))),
+            Action::Mixer(MixerAction::Sampler(SamplerChange::Volume(0.25))),
+            Action::Mixer(MixerAction::Sampler(SamplerChange::StopAll)),
+        ];
+        for change in [
+            SampleChange::Trigger,
+            SampleChange::Release,
+            SampleChange::Stop,
+            SampleChange::Clear,
+            SampleChange::Volume(0.75),
+            SampleChange::Route(SampleOutput::Master),
+            SampleChange::Route(SampleOutput::Cue),
+            SampleChange::SetSync(true),
+            SampleChange::SetSync(false),
+        ] {
+            actions.push(Action::Mixer(MixerAction::Sample { slot: 2, change }));
+        }
+        for mode in TriggerMode::ALL {
+            actions.push(Action::Mixer(MixerAction::Sample {
+                slot: 2,
+                change: SampleChange::SetMode(mode),
+            }));
+        }
+        for action in actions {
+            let text = action.to_string();
+            assert_eq!(
+                Action::parse(&text).unwrap(),
+                action,
+                "`{text}` did not survive the round trip"
+            );
         }
     }
 

@@ -101,7 +101,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 67] = [
+static VOCABULARY: [VerbSpec; 68] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -547,6 +547,13 @@ static VOCABULARY: [VerbSpec; 67] = [
     },
     VerbSpec {
         target: Target::Mixer,
+        verb: "sampler",
+        argument: ArgSpec::Words,
+        help: "the sampler: `sampler <1-8> trigger|release|stop|clear`, `sampler <1-8> one_shot|hold|loop|stutter` to set how a pad behaves, `sampler <1-8> volume <0-1>`, `master`/`cue` to route it, `sync`/`sync_off`; and `sampler bank <1-4>`, `sampler volume <0-1>`, `sampler stop_all`",
+        example: "sampler 1 volume 0.8",
+    },
+    VerbSpec {
+        target: Target::Mixer,
         verb: "master fx",
         argument: ArgSpec::Words,
         help: "change a master effect slot; the same grammar as a deck's, applied to the whole mix",
@@ -766,6 +773,7 @@ mod tests {
             "roll_off",
             "fx",
             "master fx",
+            "sampler",
         ];
         for name in expected {
             assert!(

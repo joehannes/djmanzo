@@ -144,6 +144,69 @@ pub fn stop_audio(state: State<'_, AppState>) -> Result<(), String> {
 /// Decoding is slow -- minutes of audio, plus a content hash -- so it runs on a
 /// blocking worker rather than on the UI thread or, catastrophically, the audio
 /// thread. Only the finished `Arc` crosses into the engine.
+/// Put a file in a sampler slot.
+///
+/// Decoded on a worker like a track, and for the same reason: reading a file is
+/// I/O and the audio thread may not do any. The bank is named rather than
+/// assumed, so a load cannot land in the wrong place because the DJ switched
+/// banks while the file was being read.
+///
+/// The tempo comes from the analyser when it can find one. `None` is not a
+/// failure — a vocal stab has no tempo — and a sample without one is never
+/// stretched, however the sync switch is set.
+#[tauri::command]
+pub async fn load_sample(
+    state: State<'_, AppState>,
+    bank: u8,
+    slot: u8,
+    path: String,
+) -> Result<LoadedSampleDto, String> {
+    if bank == 0 || usize::from(bank) > dj_core::SAMPLE_BANKS {
+        return Err(format!("no sampler bank {bank}"));
+    }
+    if slot == 0 || usize::from(slot) > dj_core::SAMPLE_SLOTS {
+        return Err(format!("no sampler slot {slot}"));
+    }
+
+    let decoded = tauri::async_runtime::spawn_blocking(move || decode_file(&path))
+        .await
+        .map_err(|e| format!("decode task failed: {e}"))?
+        .map_err(|e| e.to_string())?;
+
+    let dto = LoadedSampleDto {
+        bank,
+        slot,
+        name: decoded.display_title(),
+        duration_seconds: decoded.buffer.duration_seconds(),
+    };
+
+    state.set_sample_name(bank, slot, dto.name.clone());
+    let source: std::sync::Arc<dyn dj_decode::TrackSource> = std::sync::Arc::new(decoded.buffer);
+    state
+        .bus()
+        .send_command(dj_engine::Command::LoadSample {
+            bank,
+            slot,
+            source,
+            // Analysis of a sample is its own slice: a two-second stab has too
+            // few beats for the tempo detector to be honest about, and a wrong
+            // tempo is worse than none because sync would then stretch it.
+            bpm: None,
+        })
+        .map_err(|_| "the engine queue is full".to_owned())?;
+
+    Ok(dto)
+}
+
+/// A sample, as the interface names it after a load.
+#[derive(Debug, Clone, Serialize)]
+pub struct LoadedSampleDto {
+    pub bank: u8,
+    pub slot: u8,
+    pub name: String,
+    pub duration_seconds: f64,
+}
+
 #[tauri::command]
 pub async fn load_track(
     state: State<'_, AppState>,
@@ -320,6 +383,23 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
         state.clear_deck_track(deck);
         state.analysis().clear_deck(deck);
         state.taps().clear(deck);
+    }
+
+    // Clearing a sampler slot is the same shape of thing: the name lives here,
+    // and a slot emptied in the engine that kept its label here would show a
+    // sample that is no longer loaded.
+    if let Action::Mixer(dj_core::MixerAction::Sample {
+        slot,
+        change: dj_core::SampleChange::Clear,
+    }) = parsed
+    {
+        let bank = state
+            .registry()
+            .get(dj_core::ParamId::Global(
+                dj_core::param::GlobalParam::SamplerBank,
+            ))
+            .max(1.0) as u8;
+        state.clear_sample_name(bank, slot);
     }
 
     // Saved loops live in the library with the track, so the host is the only
@@ -543,12 +623,16 @@ fn publish_grid(
 pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
     let bridge = state.bridge();
     let tracks = state.deck_tracks();
+    let samples = state.sample_names();
     crate::Snapshot::capture_all(
         &state.registry(),
         state.deck_count(),
         bridge.as_deref(),
         Some(state.analysis()),
-        Some(&tracks),
+        crate::snapshot::Names {
+            decks: Some(&tracks),
+            samples: Some(&samples),
+        },
     )
 }
 
@@ -2175,8 +2259,17 @@ pub fn pad_pages(deck: u8) -> Vec<PadPageDto> {
         .collect()
 }
 
-fn render(deck: DeckId, action: dj_core::DeckAction) -> String {
-    dj_core::Action::Deck { deck, action }.to_string()
+/// A pad's action as a string the interface can dispatch without knowing the
+/// grammar.
+///
+/// A deck action is addressed to this deck; a mixer action already addresses
+/// the whole mixer and needs no deck number — the sampler is shared, and
+/// writing `deck 2 sampler 1 trigger` would suggest otherwise.
+fn render(deck: DeckId, action: dj_core::PadAction) -> String {
+    match action {
+        dj_core::PadAction::Deck(action) => dj_core::Action::Deck { deck, action }.to_string(),
+        dj_core::PadAction::Mixer(action) => dj_core::Action::Mixer(action).to_string(),
+    }
 }
 
 /// A pad's face, in words.

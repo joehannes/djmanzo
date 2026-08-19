@@ -19,6 +19,7 @@ import {
   dispatch,
   libraryAddFolder,
   librarySearch,
+  loadSample,
   loadTrack,
   openDevice,
 } from "./api";
@@ -84,6 +85,15 @@ export function armDemo(): void {
       await step("loop deck 2", () => dispatch("deck 2 loop 4"));
       // Slip armed on the looping deck, so the shadow marker is visible.
       await step("slip deck 2", () => dispatch("deck 2 slip_on"));
+
+      // And a sample in the first slot, so a headless run can check the
+      // sampler too — the pads, the panel and the mixing path all need
+      // something loaded before any of them show anything.
+      const first = found[0]?.path;
+      if (first) {
+        await step("load sample", () => loadSample(1, 1, first));
+        await step("loop the sample", () => dispatch("sampler 1 loop"));
+      }
 
 
     } catch (e) {

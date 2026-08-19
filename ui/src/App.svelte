@@ -4,6 +4,7 @@
   import Deck from "./Deck.svelte";
   import Fx from "./Fx.svelte";
   import Presets from "./Presets.svelte";
+  import Sampler from "./Sampler.svelte";
   import Settings from "./Settings.svelte";
   import { watchFrameRate } from "./framerate";
   import {
@@ -53,7 +54,9 @@
   let showLog = $state(false);
   let slowFrames = $state<number | null>(null);
   /** Which side panel is open, if any. Only one at a time: the decks matter more. */
-  let panel = $state<"none" | "browse" | "assistant" | "presets" | "settings">("none");
+  let panel = $state<
+    "none" | "browse" | "assistant" | "presets" | "sampler" | "settings"
+  >("none");
 
   /**
    * The layout in force.
@@ -409,6 +412,17 @@
       >
         Presets
       </button>
+      <!--
+        The panel is for setting the sampler up — loading, modes, routing. The
+        playing is done from the pads, which is why this is a thing you open
+        rather than something taking room on a deck all night.
+      -->
+      <button
+        class:active={panel === "sampler"}
+        onclick={() => (panel = panel === "sampler" ? "none" : "sampler")}
+      >
+        Sampler
+      </button>
       <button
         class:active={panel === "assistant"}
         onclick={() => (panel = panel === "assistant" ? "none" : "assistant")}
@@ -523,7 +537,13 @@
 
     <div class="decks" class:four={deckCount === 4}>
       {#each snapshot.decks.slice(0, deckCount) as deck (deck.number)}
-        <Deck {deck} enabled={ready} cueAvailable={snapshot.master.cue_available} {layout} />
+        <Deck
+          {deck}
+          sampler={snapshot.master.sampler}
+          enabled={ready}
+          cueAvailable={snapshot.master.cue_available}
+          {layout}
+        />
       {/each}
     </div>
 
@@ -699,6 +719,10 @@
         <Presets enabled={ready} deckCount={2} />
       {:else if panel === "assistant"}
         <Assistant enabled={ready} />
+      {:else if panel === "sampler"}
+        {#if snapshot}
+          <Sampler sampler={snapshot.master.sampler} enabled={ready} {send} />
+        {/if}
       {:else}
         <Settings onLogoChange={refreshLogo} />
       {/if}

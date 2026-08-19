@@ -17,6 +17,21 @@ pub enum Command {
         deck: DeckId,
         source: Arc<dyn TrackSource>,
     },
+    /// Put a sample in one sampler slot, addressing its bank explicitly.
+    ///
+    /// The bank is named rather than assumed to be the one showing, so a load
+    /// cannot land in the wrong place because the DJ switched banks while the
+    /// file was being read.
+    ///
+    /// `bpm` is the sample's own tempo when the analyser found one. `None` is
+    /// not a failure — a vocal stab has no tempo — and a sample without one is
+    /// never stretched, however the sync switch is set.
+    LoadSample {
+        bank: u8,
+        slot: u8,
+        source: Arc<dyn TrackSource>,
+        bpm: Option<f64>,
+    },
     /// Attach the analyser's beat grid to a deck, or clear it.
     ///
     /// A command rather than an [`Action`] because it is not something a DJ

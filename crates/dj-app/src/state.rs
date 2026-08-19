@@ -85,6 +85,14 @@ pub struct AppState {
     assistant: Mutex<AssistantChoice>,
     budget: Arc<Budget>,
     presets: PresetLibrary,
+    /// What is in each sampler slot, by `(bank, slot)`.
+    ///
+    /// The engine holds audio and nothing else, the same as it does for a
+    /// deck — so the application remembers the name. Here rather than in the
+    /// interface for the reason the device taught: a panel that only knows the
+    /// loads it made itself shows nothing for a sample a script, a preset or
+    /// the assistant put there.
+    sample_names: Arc<Mutex<HashMap<(u8, u8), String>>>,
     /// The device that is open, as the interface describes it.
     ///
     /// Held here rather than only in the interface because opening a device is
@@ -197,6 +205,7 @@ impl AppState {
             assistant: Mutex::new(AssistantChoice::default()),
             budget: Arc::new(Budget::default()),
             presets: PresetLibrary::builtin(),
+            sample_names: Arc::new(Mutex::new(HashMap::new())),
             active_device: Arc::new(Mutex::new(None)),
             bridge: Arc::new(Mutex::new(None)),
             analysis: Arc::new(crate::analysis::AnalysisStore::new()),
@@ -479,6 +488,30 @@ impl AppState {
     #[must_use]
     pub fn host(&self) -> &AudioHost {
         &self.host
+    }
+
+    pub fn set_sample_name(&self, bank: u8, slot: u8, name: String) {
+        if let Ok(mut map) = self.sample_names.lock() {
+            map.insert((bank, slot), name);
+        }
+    }
+
+    pub fn clear_sample_name(&self, bank: u8, slot: u8) {
+        if let Ok(mut map) = self.sample_names.lock() {
+            map.remove(&(bank, slot));
+        }
+    }
+
+    /// The whole map, shared, for the snapshot pump.
+    #[must_use]
+    pub fn sample_names(&self) -> Arc<Mutex<HashMap<(u8, u8), String>>> {
+        Arc::clone(&self.sample_names)
+    }
+
+    /// What is in one slot, by name. `None` for an empty one.
+    #[must_use]
+    pub fn sample_name_of(&self, bank: u8, slot: u8) -> Option<String> {
+        self.sample_names.lock().ok()?.get(&(bank, slot)).cloned()
     }
 
     /// Remember what was opened, so anything can ask later.

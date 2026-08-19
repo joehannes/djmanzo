@@ -18,6 +18,7 @@ pub mod hotcue;
 pub mod music;
 pub mod pads;
 pub mod param;
+pub mod sampler;
 pub mod time;
 pub mod vocabulary;
 
@@ -26,8 +27,11 @@ pub use deck::{CrossfaderAssign, DeckId, MAX_DECKS};
 pub use fx::{EffectKind, FX_SLOTS, FxChange, Placement};
 pub use hotcue::{HOT_CUE_SLOTS, LoopLimits, LoopRegion};
 pub use music::{Beatgrid, Bpm, Confidence, Mode, MusicalKey};
-pub use pads::{Lit, PADS, Pad, PadLabel, PadPage};
+pub use pads::{Lit, PADS, Pad, PadAction, PadLabel, PadPage};
 pub use param::{DeckParam, GlobalParam, ParamId};
+pub use sampler::{
+    SAMPLE_BANKS, SAMPLE_SLOTS, SampleChange, SampleOutput, SamplerChange, TriggerMode,
+};
 pub use time::{FramePos, Rate, SampleRate};
 pub use vocabulary::{ArgSpec, Target, VerbSpec, vocabulary};
 

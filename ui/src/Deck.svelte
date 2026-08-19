@@ -7,6 +7,7 @@
     type DeckState,
     type Layout,
     type PadPageDto,
+    type SamplerState,
   } from "./api";
   import Fx from "./Fx.svelte";
   import Pads from "./Pads.svelte";
@@ -16,11 +17,14 @@
 
   let {
     deck,
+    /** The sampler, for the pad page whose pads are not about this deck. */
+    sampler,
     enabled,
     cueAvailable = false,
     layout = null,
   }: {
     deck: DeckState;
+    sampler: SamplerState;
     enabled: boolean;
     cueAvailable?: boolean;
     /**
@@ -300,7 +304,7 @@
     being written a second time.
   -->
   {#if deck.loaded && showPads}
-    <Pads pages={padPageList} {deck} {enabled} {send} />
+    <Pads pages={padPageList} {deck} {sampler} {enabled} {send} />
   {/if}
 
   <!--

@@ -511,7 +511,8 @@ adding a new controller requires editing a file, not rebuilding the app.
 ## M5 — Performance
 
 - **Pad zone with pages** — done: Cues, Loops, Roll, Saved, FX. Slicer and Sampler still to come.
-- Sampler: banks, pad grid, trigger modes, tempo sync, record from deck or master.
+- **Sampler** — done: four banks of eight, four trigger modes, tempo sync, per-slot level
+  and routing, and its own pad page. Recording from a deck or the master still to come.
 - **FX rack** — done: three chained slots per deck and on the master, pre/post-fader placement,
   beat-synced timing. Chain presets still to come.
 - Core built-in effects — echo, delay, reverb, gate, crush, flanger, phaser and filter done.
@@ -547,6 +548,48 @@ Three decisions the tests pin:
 Allocation-free on both audio paths, proven by `rt_safety.rs` on the direct path
 and again on the keylocked one, which advances the shadow per block rather than
 per frame.
+
+### The sampler
+
+Four banks of eight, and a sample is **a deck with almost everything taken
+away**: a source, a playhead, a level. It reuses `TrackSource` rather than
+inventing a second kind of audio, so a sample is loaded, retired and
+interpolated by exactly the code that does those things for a track — and gets
+the same fractional reads, which is what lets it follow the tempo.
+
+Four decisions worth keeping:
+
+- **Four trigger modes, and a test that stops there being a fifth.** Two modes
+  are the same behaviour if they agree on both questions a mode answers: does
+  releasing stop it, and does a second press restart it. `no_two_modes_behave_identically`
+  checks every pair differs on at least one, because a mode that duplicates
+  another is a choice a DJ has to make for no reason. Hold and stutter differ
+  only on the second question — small on paper, the entire effect in practice.
+- **A sample with no tempo is never stretched.** Sync is a switch, but a
+  two-second vocal stab has no tempo to sync *from*, and stretching it by
+  whatever ratio was handy is worse than not stretching it. The switch is hidden
+  on such a slot rather than greyed out.
+- **A load names its bank.** A file takes a moment to decode, and a DJ who
+  switches banks in the meantime should not find their sample in the bank they
+  moved to.
+- **Banks are a view, not a mute.** A loop keeps running when the DJ switches
+  away from its bank — which is what banks are *for*, and also why `stop_all`
+  exists: eight loops running with no way to stop them in one gesture is a
+  sampler that will one day be the loudest thing in the room.
+
+One bug the restructuring caught: the sampler's own level was being applied to
+the whole main bus, decks included, because the mixing loop had slots outside
+and frames inside — and by then the decks had already added to that bus. Frames
+outside fixes it, and the sampler now gains only what it put there.
+
+Firing a pad allocates nothing, proven the same way everything else is. So does
+loading: the buffer is built on the host thread and the audio thread swaps two
+pointers and hands the old one back.
+
+The Sampler pad page is the one whose pads address the **mixer** rather than the
+deck. A sample belongs to the set, not to a deck — but the pads that fire it are
+the deck's, exactly as on hardware. Both are true at once, so a pad's action
+became either kind.
 
 ### The pad zone
 

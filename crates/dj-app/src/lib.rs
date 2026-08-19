@@ -98,6 +98,7 @@ pub fn run() {
     let bridge_handle = state.bridge_handle();
     let analysis = Arc::clone(state.analysis());
     let deck_tracks = state.deck_tracks();
+    let sample_names = state.sample_names();
     // The snapshot pump is where a hot cue change becomes visible to the host:
     // the engine sets cues at a playhead quantize may have moved, so the only
     // reliable reading is the one the audio thread publishes. See
@@ -225,6 +226,7 @@ pub fn run() {
                 bridge_handle,
                 Arc::clone(&analysis),
                 deck_tracks,
+                sample_names,
                 move |snapshot| {
                     use tauri::Emitter;
                     save_changed_cues(&snapshot, &watched_tracks, &cue_watcher, &library_writer);
@@ -251,6 +253,7 @@ pub fn run() {
             commands::start_audio,
             commands::stop_audio,
             commands::load_track,
+            commands::load_sample,
             commands::dispatch,
             commands::get_snapshot,
             commands::waveform_info,

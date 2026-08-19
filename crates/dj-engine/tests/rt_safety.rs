@@ -587,6 +587,93 @@ fn loops_and_hot_cues_never_allocate() {
     );
 }
 
+/// The sampler, played the way a DJ plays one.
+///
+/// Firing a pad has to be free: it happens on the audio thread like every other
+/// action, and a sampler that allocates when a pad is hit would drop out on the
+/// one gesture that is always in time with the music.
+///
+/// Loading is in here too, because a load hands the displaced buffer back
+/// through the retirement queue rather than dropping it — dropping an `Arc` can
+/// free memory, and freeing is an allocator call.
+#[test]
+fn the_sampler_never_allocates() {
+    use dj_core::{SampleChange, SampleOutput, SamplerChange, TriggerMode};
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    // Something in every slot of every bank, so the mixing loop has work.
+    for bank in 1..=dj_core::SAMPLE_BANKS as u8 {
+        for slot in 1..=dj_core::SAMPLE_SLOTS as u8 {
+            rig.send(Command::LoadSample {
+                bank,
+                slot,
+                source: tone(20_000),
+                bpm: Some(120.0),
+            });
+        }
+    }
+    rig.warm_up(64);
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..2_000 {
+            let slot = (round % dj_core::SAMPLE_SLOTS) as u8 + 1;
+            let mode = TriggerMode::ALL[round % TriggerMode::ALL.len()];
+            for change in [
+                SampleChange::SetMode(mode),
+                SampleChange::Trigger,
+                SampleChange::Volume(round as f32 % 100.0 / 100.0),
+                SampleChange::SetSync(round % 2 == 0),
+                SampleChange::Route(if round % 3 == 0 {
+                    SampleOutput::Cue
+                } else {
+                    SampleOutput::Master
+                }),
+                SampleChange::Release,
+            ] {
+                rig.act(Action::Mixer(MixerAction::Sample { slot, change }));
+            }
+            if round % 16 == 0 {
+                rig.act(Action::Mixer(MixerAction::Sampler(SamplerChange::Bank(
+                    (round % dj_core::SAMPLE_BANKS) as u8 + 1,
+                ))));
+            }
+            if round % 64 == 0 {
+                rig.act(Action::Mixer(MixerAction::Sampler(SamplerChange::StopAll)));
+            }
+            rig.renderer.render_block();
+        }
+    });
+    assert_eq!(allocations, 0, "the sampler allocated {allocations} times");
+}
+
+/// Loading a sample mid-set must not allocate either. The buffer is built on
+/// the host thread; all the audio thread does is swap two pointers and hand the
+/// old one back.
+#[test]
+fn loading_samples_never_allocates_on_the_audio_thread() {
+    let mut rig = rig(2, 256);
+    rig.warm_up(32);
+    let spare: Vec<Arc<dyn TrackSource>> = (0..64).map(|_| tone(10_000)).collect();
+
+    let (_, allocations) = count_allocations(|| {
+        for (round, source) in spare.iter().enumerate() {
+            rig.send(Command::LoadSample {
+                bank: (round % dj_core::SAMPLE_BANKS) as u8 + 1,
+                slot: (round % dj_core::SAMPLE_SLOTS) as u8 + 1,
+                source: Arc::clone(source),
+                bpm: None,
+            });
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "loading samples allocated {allocations} times"
+    );
+}
+
 /// The effect rack, switched and swept the way a DJ actually uses it.
 ///
 /// This is the test the whole rack design exists to pass. An effect is an enum

@@ -4,6 +4,7 @@ use crate::bus::BusLayout;
 use crate::command::{Command, Retired};
 use crate::deck::Deck;
 use crate::rack::Rack;
+use crate::sampler::Sampler;
 use dj_audio::{AudioCallback, RenderContext};
 use dj_control::ParameterRegistry;
 use dj_core::param::{DeckParam, GlobalParam};
@@ -46,6 +47,12 @@ pub struct Engine {
     /// Snap beat jumps to the grid.
     quantize: bool,
 
+    /// Four banks of eight samples.
+    ///
+    /// Beside the decks rather than inside one: a sample belongs to the set,
+    /// not to a track, and a DJ firing a stab does not first choose which deck
+    /// it comes out of.
+    sampler: Sampler,
     /// Three effect slots over the whole mix.
     ///
     /// Placement is meaningless here — there is no fader after the master — so
@@ -113,6 +120,7 @@ impl Engine {
             booth_gain: SmoothedValue::new(1.0, sr),
             booth_gain_db: 0.0,
             quantize: false,
+            sampler: Sampler::new(sample_rate.as_f64()),
             master_rack: Rack::new(sr),
             limiter: Limiter::new(sr),
             cue_limiter: Limiter::new(sr),
@@ -162,6 +170,38 @@ impl Engine {
     /// Alongside the deck racks in [`Self::publish_deck_state`] rather than
     /// inside them, because the master is not a deck — but published on the
     /// same schedule, so the interface never sees a half-updated rack.
+    /// The sampler's own state, and the showing bank's eight slots.
+    fn publish_sampler(&self) {
+        let set = |param, value| self.registry.set(ParamId::Global(param), value);
+        set(GlobalParam::SamplerBank, f32::from(self.sampler.bank()));
+        set(GlobalParam::SamplerVolume, self.sampler.volume());
+
+        for number in 1..=dj_core::SAMPLE_SLOTS as u8 {
+            let (Some(param), Some(slot)) =
+                (GlobalParam::sample(number), self.sampler.slot(number))
+            else {
+                continue;
+            };
+            set(param.loaded, if slot.is_loaded() { 1.0 } else { 0.0 });
+            set(param.playing, if slot.is_playing() { 1.0 } else { 0.0 });
+            set(param.mode, slot.mode().index() as f32);
+            set(param.volume, slot.volume());
+            set(param.progress, slot.progress());
+            set(
+                param.cue,
+                if slot.output() == dj_core::SampleOutput::Cue {
+                    1.0
+                } else {
+                    0.0
+                },
+            );
+            set(param.synced, if slot.is_synced() { 1.0 } else { 0.0 });
+            // Zero for a sample with no tempo of its own, which is how the
+            // interface knows to hide the sync switch rather than grey it out.
+            set(param.bpm, slot.bpm().unwrap_or(0.0) as f32);
+        }
+    }
+
     fn publish_master_rack(&self) {
         for number in 1..=dj_core::FX_SLOTS as u8 {
             let (Some(param), Some(slot)) =
@@ -251,6 +291,17 @@ impl Engine {
                 Command::Load { deck, source } => {
                     if let Some(target) = self.deck_mut(deck) {
                         let previous = target.load(source);
+                        self.retire(previous);
+                    }
+                }
+                Command::LoadSample {
+                    bank,
+                    slot,
+                    source,
+                    bpm,
+                } => {
+                    if let Some(target) = self.sampler.slot_in_mut(bank, slot) {
+                        let previous = target.load(source, bpm);
                         self.retire(previous);
                     }
                 }
@@ -420,6 +471,14 @@ impl Engine {
             Action::Mixer(MixerAction::Fx { slot, change }) => {
                 self.master_rack.apply(slot, change);
             }
+            Action::Mixer(MixerAction::Sample { slot, change }) => {
+                self.sampler.apply(slot, change);
+            }
+            Action::Mixer(MixerAction::Sampler(change)) => match change {
+                dj_core::SamplerChange::Bank(bank) => self.sampler.set_bank(bank),
+                dj_core::SamplerChange::Volume(volume) => self.sampler.set_volume(volume),
+                dj_core::SamplerChange::StopAll => self.sampler.stop_all(),
+            },
             Action::Mixer(MixerAction::SetLimiter(on)) => {
                 // The cue limiter is not switched with it. Bypass exists for
                 // the DJ feeding an external processor, and that processor is
@@ -468,6 +527,7 @@ impl Engine {
         // The master rack changes all night, so it rides with the per-block
         // publisher rather than with the static state written at construction.
         self.publish_master_rack();
+        self.publish_sampler();
         for (index, deck) in self.decks.iter().enumerate() {
             let Some(id) = DeckId::new(index as u8) else {
                 continue;
@@ -672,6 +732,28 @@ impl Engine {
         }
     }
 
+    /// The tempo the room is running at, if any.
+    ///
+    /// The loudest playing deck that has a grid — the same rule the master
+    /// effect rack borrows by, and for the same reason: it is the deck the room
+    /// is hearing, so it is the tempo a sample should stretch to.
+    fn master_bpm(&self) -> Option<f64> {
+        let mut best: Option<(f32, f64)> = None;
+        for deck in &self.decks {
+            if !deck.is_playing() {
+                continue;
+            }
+            let Some(bpm) = deck.effective_bpm() else {
+                continue;
+            };
+            let volume = deck.volume();
+            if best.is_none_or(|(loudest, _)| volume > loudest) {
+                best = Some((volume, bpm));
+            }
+        }
+        best.map(|(_, bpm)| bpm)
+    }
+
     /// What the master rack should measure a beat as.
     ///
     /// The master has no tempo of its own, so it borrows one from **the loudest
@@ -750,10 +832,15 @@ impl AudioCallback for Engine {
             }
         }
 
-        let (main_l, main_r) = layout.main;
-        // The master rack has no tempo of its own, so it borrows one. Computed
-        // once per block, before the loop.
+        // The sampler adds to the same bus the decks did, before the master
+        // gain and the rack — so a master effect covers the samples too, which
+        // is what a DJ throwing an echo over the mix expects.
         let master_ctx = self.master_fx_context();
+        let sample_peak = self.sampler.process(out, &layout, self.master_bpm());
+        self.registry
+            .set(ParamId::Global(GlobalParam::SamplerPeak), sample_peak);
+
+        let (main_l, main_r) = layout.main;
         for frame in out.chunks_exact_mut(channels) {
             let master = self.master_gain.next_value();
             let booth = self.booth_gain.next_value();

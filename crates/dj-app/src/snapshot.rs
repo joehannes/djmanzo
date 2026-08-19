@@ -134,6 +134,46 @@ fn fx_slot<P: Copy>(slot: u8, get: impl Fn(fn(FxParams<P>) -> P) -> f32) -> FxSl
     }
 }
 
+/// The sampler, as the interface draws it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SamplerSnapshot {
+    /// 1-based.
+    pub bank: u8,
+    pub volume: f32,
+    /// Peak the sampler put into the master, for its own meter.
+    pub peak: f32,
+    /// The showing bank's eight slots. The other banks keep playing; the pads
+    /// simply cannot reach them.
+    pub slots: Vec<SampleSlotSnapshot>,
+}
+
+/// One sampler pad.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SampleSlotSnapshot {
+    /// 1-based.
+    pub slot: u8,
+    /// What is in it, by name.
+    ///
+    /// From the application rather than the engine — the engine holds audio and
+    /// nothing else, the same as it does for a deck. In the snapshot rather
+    /// than kept by the panel, because a panel that only knows the loads it
+    /// made itself shows nothing for a sample a script or a preset put there.
+    pub name: Option<String>,
+    pub loaded: bool,
+    pub playing: bool,
+    /// `one_shot`, `hold`, `loop`, `stutter`.
+    pub mode: String,
+    pub volume: f32,
+    /// How far through, 0..=1.
+    pub progress: f32,
+    /// True when it goes to the headphones rather than the mix.
+    pub cue: bool,
+    pub synced: bool,
+    /// The sample's own tempo. `None` when it has none — which is why the sync
+    /// switch is hidden rather than greyed out.
+    pub bpm: Option<f32>,
+}
+
 /// One effect slot, as the interface draws it.
 ///
 /// The kind comes back as a name rather than an index: the registry has to
@@ -223,6 +263,8 @@ impl TrackAnalysisSnapshot {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MasterSnapshot {
+    /// The sampler: which bank is showing, its level, and that bank's slots.
+    pub sampler: SamplerSnapshot,
     /// The master rack's three slots, in order.
     pub fx: Vec<FxSlotSnapshot>,
     pub crossfader: f32,
@@ -308,19 +350,25 @@ impl Snapshot {
         bridge: Option<&dj_audio::BridgeStats>,
         analysis: Option<&crate::analysis::AnalysisStore>,
     ) -> Self {
-        Self::capture_all(registry, deck_count, bridge, analysis, None)
+        Self::capture_all(registry, deck_count, bridge, analysis, Names::default())
     }
 
-    /// The full picture, including what each deck is called.
+    /// The full picture, including what each deck and each sample is called.
     #[must_use]
     pub fn capture_all(
         registry: &ParameterRegistry,
         deck_count: usize,
         bridge: Option<&dj_audio::BridgeStats>,
         analysis: Option<&crate::analysis::AnalysisStore>,
-        tracks: Option<&DeckTracks>,
+        titles: Names<'_>,
     ) -> Self {
-        let names = tracks.and_then(|t| t.lock().ok());
+        let names = titles.decks.and_then(|t| t.lock().ok());
+        let sample_names = titles.samples.and_then(|t| t.lock().ok());
+        // Read once, before the slots: the names are keyed by bank, and reading
+        // it per slot would let a bank switch land in the middle of the eight.
+        let bank = registry
+            .get(ParamId::Global(GlobalParam::SamplerBank))
+            .max(1.0) as u8;
         let sample_rate = registry.get(ParamId::Global(GlobalParam::SampleRate));
         // Before a device is open the rate is zero; dividing by it would put
         // infinities on screen.
@@ -420,6 +468,38 @@ impl Snapshot {
         Self {
             decks,
             master: MasterSnapshot {
+                sampler: SamplerSnapshot {
+                    bank,
+                    volume: registry.get(ParamId::Global(GlobalParam::SamplerVolume)),
+                    peak: registry.get(ParamId::Global(GlobalParam::SamplerPeak)),
+                    slots: (1..=dj_core::SAMPLE_SLOTS as u8)
+                        .filter_map(|slot| {
+                            let param = GlobalParam::sample(slot)?;
+                            let get = |p| registry.get(ParamId::Global(p));
+                            let bpm = get(param.bpm);
+                            Some(SampleSlotSnapshot {
+                                slot,
+                                name: sample_names
+                                    .as_ref()
+                                    .and_then(|names| names.get(&(bank, slot)).cloned()),
+                                loaded: get(param.loaded) >= 0.5,
+                                playing: get(param.playing) >= 0.5,
+                                mode: dj_core::TriggerMode::from_index(
+                                    get(param.mode).max(0.0) as usize
+                                )
+                                .name()
+                                .to_owned(),
+                                volume: get(param.volume),
+                                progress: get(param.progress),
+                                cue: get(param.cue) >= 0.5,
+                                synced: get(param.synced) >= 0.5,
+                                // Zero means "no tempo of its own", because a
+                                // sample at 0 BPM is not a thing.
+                                bpm: (bpm > 0.0).then_some(bpm),
+                            })
+                        })
+                        .collect(),
+                },
                 fx: (1..=dj_core::FX_SLOTS as u8)
                     .filter_map(|slot| {
                         let param = GlobalParam::fx(slot)?;
@@ -467,6 +547,34 @@ pub type BridgeHandle = Arc<std::sync::Mutex<Option<Arc<dj_audio::BridgeStats>>>
 pub type DeckTracks =
     std::sync::Mutex<std::collections::HashMap<u8, crate::state::LoadedTrackInfo>>;
 
+/// And for what is in each sampler slot, by `(bank, slot)`.
+pub type SampleNames = std::sync::Mutex<std::collections::HashMap<(u8, u8), String>>;
+
+/// What the application remembers that the engine does not.
+///
+/// The engine holds audio and numbers; names live in the application, for decks
+/// and for samples alike. Grouped into one parameter rather than added to
+/// [`Snapshot::capture_all`] one at a time — this was the third such thing, and
+/// a fourth would have made that function take six arguments.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Names<'a> {
+    pub decks: Option<&'a DeckTracks>,
+    pub samples: Option<&'a SampleNames>,
+}
+
+/// Everything the pump reads besides the registry.
+///
+/// One struct rather than four parameters: `run` had grown to eight arguments,
+/// which is where a caller starts passing them in the wrong order and the
+/// compiler cannot tell, because three of them are `Option<Arc<_>>`.
+#[derive(Default)]
+struct Sources {
+    bridge: Option<BridgeHandle>,
+    analysis: Option<Arc<crate::analysis::AnalysisStore>>,
+    tracks: Option<Arc<DeckTracks>>,
+    samples: Option<Arc<SampleNames>>,
+}
+
 /// A running snapshot pump. Stops when dropped.
 #[derive(Debug)]
 pub struct SnapshotPump {
@@ -495,14 +603,18 @@ impl SnapshotPump {
         bridge: BridgeHandle,
         analysis: Arc<crate::analysis::AnalysisStore>,
         tracks: Arc<DeckTracks>,
+        samples: Arc<SampleNames>,
         emit: impl FnMut(Snapshot) + Send + 'static,
     ) -> Self {
         Self::run(
             registry,
             deck_count,
-            Some(bridge),
-            Some(analysis),
-            Some(tracks),
+            Sources {
+                bridge: Some(bridge),
+                analysis: Some(analysis),
+                tracks: Some(tracks),
+                samples: Some(samples),
+            },
             HEARTBEAT_INTERVAL,
             emit,
         )
@@ -518,18 +630,22 @@ impl SnapshotPump {
         heartbeat: Duration,
         emit: impl FnMut(Snapshot) + Send + 'static,
     ) -> Self {
-        Self::run(registry, deck_count, None, None, None, heartbeat, emit)
+        Self::run(registry, deck_count, Sources::default(), heartbeat, emit)
     }
 
     fn run(
         registry: Arc<ParameterRegistry>,
         deck_count: usize,
-        bridge: Option<BridgeHandle>,
-        analysis: Option<Arc<crate::analysis::AnalysisStore>>,
-        tracks: Option<Arc<DeckTracks>>,
+        sources: Sources,
         heartbeat: Duration,
         mut emit: impl FnMut(Snapshot) + Send + 'static,
     ) -> Self {
+        let Sources {
+            bridge,
+            analysis,
+            tracks,
+            samples,
+        } = sources;
         let alive = Arc::new(AtomicBool::new(true));
         let thread = {
             let alive = Arc::clone(&alive);
@@ -548,7 +664,10 @@ impl SnapshotPump {
                             deck_count,
                             current.as_deref(),
                             analysis.as_deref(),
-                            tracks.as_deref(),
+                            Names {
+                                decks: tracks.as_deref(),
+                                samples: samples.as_deref(),
+                            },
                         );
                         let changed = previous.as_ref() != Some(&snapshot);
 
@@ -821,6 +940,43 @@ mod tests {
         assert!(found.key_camelot.is_none());
     }
 
+    /// The bug this covers is the one the device taught: a panel that knows
+    /// only the loads it made itself shows nothing for a sample a script, a
+    /// preset or the assistant put there. The name belongs to the application,
+    /// the same as a deck's title, and it has to reach the interface the same
+    /// way — through the snapshot.
+    #[test]
+    fn a_sample_name_reaches_the_interface_whoever_loaded_it() {
+        let registry = ParameterRegistry::new();
+        registry.set(ParamId::Global(GlobalParam::SampleRate), 48_000.0);
+        registry.set(ParamId::Global(GlobalParam::SamplerBank), 2.0);
+        let param = GlobalParam::sample(3).expect("slot 3 exists");
+        registry.set(ParamId::Global(param.loaded), 1.0);
+
+        let samples: SampleNames = std::sync::Mutex::new(std::collections::HashMap::from([
+            ((2, 3), "airhorn".to_owned()),
+            // A name in another bank must not leak into the one showing.
+            ((1, 3), "wrong bank".to_owned()),
+        ]));
+
+        let snapshot = Snapshot::capture_all(
+            &registry,
+            2,
+            None,
+            None,
+            Names {
+                samples: Some(&samples),
+                ..Default::default()
+            },
+        );
+        let slots = &snapshot.master.sampler.slots;
+        assert_eq!(snapshot.master.sampler.bank, 2);
+        assert_eq!(slots[2].name.as_deref(), Some("airhorn"));
+        assert!(slots[2].loaded);
+        // And an empty slot has no name to show.
+        assert_eq!(slots[0].name, None);
+    }
+
     /// **The bug this field exists to fix.** The deck name used to be component
     /// state, set only by that deck's own Load button — so a track arriving
     /// from the browser, the assistant, a preset or a controller played
@@ -841,7 +997,16 @@ mod tests {
             },
         )]));
 
-        let snapshot = Snapshot::capture_all(&registry, 2, None, None, Some(&tracks));
+        let snapshot = Snapshot::capture_all(
+            &registry,
+            2,
+            None,
+            None,
+            Names {
+                decks: Some(&tracks),
+                ..Default::default()
+            },
+        );
         assert_eq!(snapshot.decks[0].title.as_deref(), Some("Suavemente"));
         assert_eq!(snapshot.decks[0].artist.as_deref(), Some("Elvis Crespo"));
 
@@ -867,7 +1032,16 @@ mod tests {
             },
         )]));
 
-        let snapshot = Snapshot::capture_all(&registry, 1, None, None, Some(&tracks));
+        let snapshot = Snapshot::capture_all(
+            &registry,
+            1,
+            None,
+            None,
+            Names {
+                decks: Some(&tracks),
+                ..Default::default()
+            },
+        );
         assert_eq!(snapshot.decks[0].title.as_deref(), Some("untitled.wav"));
         assert!(snapshot.decks[0].artist.is_none());
     }

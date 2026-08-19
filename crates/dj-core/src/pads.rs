@@ -17,9 +17,10 @@
 //! watches, in [`Lit`], and the interface evaluates that one enum rather than
 //! carrying a branch per page.
 
-use crate::action::DeckAction;
+use crate::action::{DeckAction, MixerAction};
 use crate::fx::{EffectKind, FxChange};
 use crate::hotcue::HOT_CUE_SLOTS;
+use crate::sampler::SampleChange;
 use serde::{Deserialize, Serialize};
 
 /// Pads per page.
@@ -40,16 +41,18 @@ pub enum PadPage {
     Loops,
     Roll,
     Saved,
+    Sampler,
     Fx,
 }
 
 impl PadPage {
     /// Every page, in the order they are offered.
-    pub const ALL: [PadPage; 5] = [
+    pub const ALL: [PadPage; 6] = [
         PadPage::Cues,
         PadPage::Loops,
         PadPage::Roll,
         PadPage::Saved,
+        PadPage::Sampler,
         PadPage::Fx,
     ];
 
@@ -60,6 +63,7 @@ impl PadPage {
             PadPage::Loops => "loops",
             PadPage::Roll => "roll",
             PadPage::Saved => "saved",
+            PadPage::Sampler => "sampler",
             PadPage::Fx => "fx",
         }
     }
@@ -82,14 +86,23 @@ impl PadPage {
     /// The eight pads of this page.
     #[must_use]
     pub fn pads(self) -> [Pad; PADS] {
+        // Wrappers, so the tables below read as tables rather than as nested
+        // constructors. `d` is a deck action, `m` a mixer one.
+        fn d(action: DeckAction) -> Option<PadAction> {
+            Some(PadAction::Deck(action))
+        }
+        fn m(action: MixerAction) -> Option<PadAction> {
+            Some(PadAction::Mixer(action))
+        }
+
         match self {
             PadPage::Cues => std::array::from_fn(|index| {
                 let slot = index as u8 + 1;
                 Pad {
                     label: PadLabel::Number(slot),
-                    press: Some(DeckAction::HotCue(slot)),
+                    press: d(DeckAction::HotCue(slot)),
                     release: None,
-                    clear: Some(DeckAction::HotCueClear(slot)),
+                    clear: d(DeckAction::HotCueClear(slot)),
                     lit: Lit::HotCueSet(slot),
                 }
             }),
@@ -100,11 +113,11 @@ impl PadPage {
                 let beats = beat_ladder(index);
                 Pad {
                     label: PadLabel::Beats(beats),
-                    press: Some(DeckAction::LoopBeats(beats)),
+                    press: d(DeckAction::LoopBeats(beats)),
                     release: None,
                     // A second press on a running loop leaves it, which is what
                     // the same pad twice should mean.
-                    clear: Some(DeckAction::LoopOff),
+                    clear: d(DeckAction::LoopOff),
                     lit: Lit::LoopBeats(beats),
                 }
             }),
@@ -112,9 +125,9 @@ impl PadPage {
                 let beats = beat_ladder(index);
                 Pad {
                     label: PadLabel::Beats(beats),
-                    press: Some(DeckAction::LoopRoll(Some(beats))),
+                    press: d(DeckAction::LoopRoll(Some(beats))),
                     // Momentary: the roll ends when the finger lifts.
-                    release: Some(DeckAction::LoopRoll(None)),
+                    release: d(DeckAction::LoopRoll(None)),
                     clear: None,
                     lit: Lit::RollBeats(beats),
                 }
@@ -123,12 +136,41 @@ impl PadPage {
                 let slot = index as u8 + 1;
                 Pad {
                     label: PadLabel::Number(slot),
-                    press: Some(DeckAction::LoopRecall(slot)),
+                    press: d(DeckAction::LoopRecall(slot)),
                     release: None,
                     // Saving is the destructive gesture, so it is the modified
                     // one — the same arrangement the browser uses.
-                    clear: Some(DeckAction::LoopSave(slot)),
+                    clear: d(DeckAction::LoopSave(slot)),
                     lit: Lit::Never,
+                }
+            }),
+            // The one page whose pads address the mixer rather than the deck.
+            // The sampler is shared across the whole mixer — a sample does not
+            // belong to a deck — but the pads that fire it are the deck's, the
+            // same as on hardware. Both are always true and the pad model has
+            // to allow it; see [`PadAction`].
+            //
+            // Release is sent whatever the mode, because the *slot* decides
+            // whether a release means anything. A pad cannot know: the mode is
+            // a setting the DJ changes, and baking it into the table would
+            // freeze it at whatever it was when the page was read.
+            PadPage::Sampler => std::array::from_fn(|index| {
+                let slot = index as u8 + 1;
+                Pad {
+                    label: PadLabel::Number(slot),
+                    press: m(MixerAction::Sample {
+                        slot,
+                        change: SampleChange::Trigger,
+                    }),
+                    release: m(MixerAction::Sample {
+                        slot,
+                        change: SampleChange::Release,
+                    }),
+                    clear: m(MixerAction::Sample {
+                        slot,
+                        change: SampleChange::Stop,
+                    }),
+                    lit: Lit::SamplePlaying(slot),
                 }
             }),
             // Three slots, so the page is a switch and a select per slot rather
@@ -138,12 +180,12 @@ impl PadPage {
                     let slot = index as u8 + 1;
                     Pad {
                         label: PadLabel::FxSlot(slot),
-                        press: Some(DeckAction::Fx {
+                        press: d(DeckAction::Fx {
                             slot,
                             change: FxChange::ToggleEnabled,
                         }),
                         release: None,
-                        clear: Some(DeckAction::Fx {
+                        clear: d(DeckAction::Fx {
                             slot,
                             change: FxChange::Select(EffectKind::None),
                         }),
@@ -154,12 +196,12 @@ impl PadPage {
                     let slot = index as u8 - 2;
                     Pad {
                         label: PadLabel::FxPlace(slot),
-                        press: Some(DeckAction::Fx {
+                        press: d(DeckAction::Fx {
                             slot,
                             change: FxChange::Place(crate::fx::Placement::PostFader),
                         }),
                         release: None,
-                        clear: Some(DeckAction::Fx {
+                        clear: d(DeckAction::Fx {
                             slot,
                             change: FxChange::Place(crate::fx::Placement::PreFader),
                         }),
@@ -179,6 +221,18 @@ fn beat_ladder(index: usize) -> f32 {
     2.0_f32.powi(index as i32 - 4)
 }
 
+/// What a pad sends.
+///
+/// Either kind of action, because a pad is a physical button and the things a
+/// DJ reaches for on one are not all on the deck: the sampler is shared across
+/// the whole mixer, and a Sampler page whose pads could only address a deck
+/// would be a page that cannot fire a sample.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PadAction {
+    Deck(DeckAction),
+    Mixer(MixerAction),
+}
+
 /// One pad.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pad {
@@ -187,12 +241,12 @@ pub struct Pad {
     /// rather than a do-nothing action, because a verb that does nothing would
     /// have to exist in the vocabulary and be explained to everything that
     /// reads it.
-    pub press: Option<DeckAction>,
+    pub press: Option<PadAction>,
     /// Sent on release, for a momentary pad. `None` means the pad latches.
-    pub release: Option<DeckAction>,
+    pub release: Option<PadAction>,
     /// Sent on the secondary gesture — right-click on screen, shift on
     /// hardware. `None` when the pad has no second meaning.
-    pub clear: Option<DeckAction>,
+    pub clear: Option<PadAction>,
     /// What makes this pad light up.
     pub lit: Lit,
 }
@@ -258,6 +312,8 @@ pub enum Lit {
     FxSlotOn(u8),
     /// This effect slot sits after the fader.
     FxSlotPost(u8),
+    /// This sampler slot is sounding.
+    SamplePlaying(u8),
 }
 
 #[cfg(test)]
@@ -289,6 +345,7 @@ mod tests {
         assert!(PadPage::Loops.needs_grid());
         assert!(PadPage::Roll.needs_grid());
         assert!(!PadPage::Saved.needs_grid());
+        assert!(!PadPage::Sampler.needs_grid());
         assert!(!PadPage::Fx.needs_grid());
     }
 
@@ -297,8 +354,11 @@ mod tests {
         let pads = PadPage::Cues.pads();
         for (index, pad) in pads.iter().enumerate() {
             let slot = index as u8 + 1;
-            assert_eq!(pad.press, Some(DeckAction::HotCue(slot)));
-            assert_eq!(pad.clear, Some(DeckAction::HotCueClear(slot)));
+            assert_eq!(pad.press, Some(PadAction::Deck(DeckAction::HotCue(slot))));
+            assert_eq!(
+                pad.clear,
+                Some(PadAction::Deck(DeckAction::HotCueClear(slot)))
+            );
             assert_eq!(pad.lit, Lit::HotCueSet(slot));
             assert_eq!(pad.label, PadLabel::Number(slot));
         }
@@ -312,12 +372,18 @@ mod tests {
         let expected = [0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
         for (pad, want) in PadPage::Loops.pads().iter().zip(expected) {
             assert_eq!(pad.label, PadLabel::Beats(want));
-            assert_eq!(pad.press, Some(DeckAction::LoopBeats(want)));
+            assert_eq!(
+                pad.press,
+                Some(PadAction::Deck(DeckAction::LoopBeats(want)))
+            );
         }
         // And the roll page walks the same ladder, so a DJ who has learnt one
         // has learnt the other.
         for (pad, want) in PadPage::Roll.pads().iter().zip(expected) {
-            assert_eq!(pad.press, Some(DeckAction::LoopRoll(Some(want))));
+            assert_eq!(
+                pad.press,
+                Some(PadAction::Deck(DeckAction::LoopRoll(Some(want))))
+            );
         }
     }
 
@@ -331,6 +397,8 @@ mod tests {
                 "a roll pad must send something on release"
             );
         }
+        // The sampler is the exception, and deliberately: its pads always
+        // send a release and the slot decides what to do with it.
         for page in [PadPage::Cues, PadPage::Loops, PadPage::Saved, PadPage::Fx] {
             for pad in page.pads() {
                 assert!(
@@ -356,6 +424,45 @@ mod tests {
         let fx = PadPage::Fx.pads();
         assert!(fx[6].is_blank() && fx[7].is_blank(), "the spare two");
         assert!(!fx[0].is_blank());
+    }
+
+    /// The Sampler page is the one whose pads address the mixer rather than
+    /// the deck, and the reason the pad model allows both. A page that could
+    /// only speak to a deck could not fire a sample.
+    #[test]
+    fn the_sampler_page_addresses_the_mixer() {
+        for (index, pad) in PadPage::Sampler.pads().iter().enumerate() {
+            let slot = index as u8 + 1;
+            assert_eq!(
+                pad.press,
+                Some(PadAction::Mixer(MixerAction::Sample {
+                    slot,
+                    change: SampleChange::Trigger,
+                }))
+            );
+            assert_eq!(pad.lit, Lit::SamplePlaying(slot));
+        }
+        // And every other page still speaks to its deck.
+        for page in [PadPage::Cues, PadPage::Loops, PadPage::Roll, PadPage::Saved] {
+            for pad in page.pads() {
+                assert!(
+                    matches!(pad.press, Some(PadAction::Deck(_))),
+                    "{} should address the deck",
+                    page.name()
+                );
+            }
+        }
+    }
+
+    /// The sampler page sends a release whatever the pad's mode, because the
+    /// *slot* decides whether a release means anything — the mode is a setting
+    /// the DJ changes, and baking it into the table would freeze it at
+    /// whatever it was when the page was read.
+    #[test]
+    fn the_sampler_page_always_sends_a_release() {
+        for pad in PadPage::Sampler.pads() {
+            assert!(pad.release.is_some());
+        }
     }
 
     /// Every pad that can be pressed has to say what it says, or the interface

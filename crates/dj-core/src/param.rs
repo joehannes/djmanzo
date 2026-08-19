@@ -292,6 +292,145 @@ pub enum GlobalParam {
     /// Frames of latency the output chain adds after the decks. The interface
     /// needs it to explain the delay rather than let someone discover it.
     OutputLatencyFrames,
+    /// Which bank the sampler's pads are showing, 1-based.
+    SamplerBank,
+    /// The sampler's own level, 0..=1.
+    SamplerVolume,
+    /// Peak the sampler put into the master this block.
+    SamplerPeak,
+    /// The eight slots of the bank that is showing.
+    ///
+    /// Only the showing bank: the others keep playing, but the pads cannot
+    /// reach them, and publishing thirty-two slots so the interface can ignore
+    /// twenty-four of them is thirty-two atomics read per frame for nothing.
+    /// Sample 1: 1.0 when something is in the slot.
+    Sample1Loaded,
+    /// Sample 1: 1.0 while it is sounding.
+    Sample1Playing,
+    /// Sample 1: Index into [`crate::TriggerMode::ALL`].
+    Sample1Mode,
+    /// Sample 1: The slot's own level, 0..=1.
+    Sample1Volume,
+    /// Sample 1: How far through, 0..=1.
+    Sample1Progress,
+    /// Sample 1: 1.0 when it goes to the headphones instead of the mix.
+    Sample1Cue,
+    /// Sample 1: 1.0 when it stretches to the room's tempo.
+    Sample1Synced,
+    /// Sample 1: The sample's own tempo, or 0.0 when it has none — which is why the sync switch is hidden rather than greyed.
+    Sample1Bpm,
+    /// Sample 2: 1.0 when something is in the slot.
+    Sample2Loaded,
+    /// Sample 2: 1.0 while it is sounding.
+    Sample2Playing,
+    /// Sample 2: Index into [`crate::TriggerMode::ALL`].
+    Sample2Mode,
+    /// Sample 2: The slot's own level, 0..=1.
+    Sample2Volume,
+    /// Sample 2: How far through, 0..=1.
+    Sample2Progress,
+    /// Sample 2: 1.0 when it goes to the headphones instead of the mix.
+    Sample2Cue,
+    /// Sample 2: 1.0 when it stretches to the room's tempo.
+    Sample2Synced,
+    /// Sample 2: The sample's own tempo, or 0.0 when it has none — which is why the sync switch is hidden rather than greyed.
+    Sample2Bpm,
+    /// Sample 3: 1.0 when something is in the slot.
+    Sample3Loaded,
+    /// Sample 3: 1.0 while it is sounding.
+    Sample3Playing,
+    /// Sample 3: Index into [`crate::TriggerMode::ALL`].
+    Sample3Mode,
+    /// Sample 3: The slot's own level, 0..=1.
+    Sample3Volume,
+    /// Sample 3: How far through, 0..=1.
+    Sample3Progress,
+    /// Sample 3: 1.0 when it goes to the headphones instead of the mix.
+    Sample3Cue,
+    /// Sample 3: 1.0 when it stretches to the room's tempo.
+    Sample3Synced,
+    /// Sample 3: The sample's own tempo, or 0.0 when it has none — which is why the sync switch is hidden rather than greyed.
+    Sample3Bpm,
+    /// Sample 4: 1.0 when something is in the slot.
+    Sample4Loaded,
+    /// Sample 4: 1.0 while it is sounding.
+    Sample4Playing,
+    /// Sample 4: Index into [`crate::TriggerMode::ALL`].
+    Sample4Mode,
+    /// Sample 4: The slot's own level, 0..=1.
+    Sample4Volume,
+    /// Sample 4: How far through, 0..=1.
+    Sample4Progress,
+    /// Sample 4: 1.0 when it goes to the headphones instead of the mix.
+    Sample4Cue,
+    /// Sample 4: 1.0 when it stretches to the room's tempo.
+    Sample4Synced,
+    /// Sample 4: The sample's own tempo, or 0.0 when it has none — which is why the sync switch is hidden rather than greyed.
+    Sample4Bpm,
+    /// Sample 5: 1.0 when something is in the slot.
+    Sample5Loaded,
+    /// Sample 5: 1.0 while it is sounding.
+    Sample5Playing,
+    /// Sample 5: Index into [`crate::TriggerMode::ALL`].
+    Sample5Mode,
+    /// Sample 5: The slot's own level, 0..=1.
+    Sample5Volume,
+    /// Sample 5: How far through, 0..=1.
+    Sample5Progress,
+    /// Sample 5: 1.0 when it goes to the headphones instead of the mix.
+    Sample5Cue,
+    /// Sample 5: 1.0 when it stretches to the room's tempo.
+    Sample5Synced,
+    /// Sample 5: The sample's own tempo, or 0.0 when it has none — which is why the sync switch is hidden rather than greyed.
+    Sample5Bpm,
+    /// Sample 6: 1.0 when something is in the slot.
+    Sample6Loaded,
+    /// Sample 6: 1.0 while it is sounding.
+    Sample6Playing,
+    /// Sample 6: Index into [`crate::TriggerMode::ALL`].
+    Sample6Mode,
+    /// Sample 6: The slot's own level, 0..=1.
+    Sample6Volume,
+    /// Sample 6: How far through, 0..=1.
+    Sample6Progress,
+    /// Sample 6: 1.0 when it goes to the headphones instead of the mix.
+    Sample6Cue,
+    /// Sample 6: 1.0 when it stretches to the room's tempo.
+    Sample6Synced,
+    /// Sample 6: The sample's own tempo, or 0.0 when it has none — which is why the sync switch is hidden rather than greyed.
+    Sample6Bpm,
+    /// Sample 7: 1.0 when something is in the slot.
+    Sample7Loaded,
+    /// Sample 7: 1.0 while it is sounding.
+    Sample7Playing,
+    /// Sample 7: Index into [`crate::TriggerMode::ALL`].
+    Sample7Mode,
+    /// Sample 7: The slot's own level, 0..=1.
+    Sample7Volume,
+    /// Sample 7: How far through, 0..=1.
+    Sample7Progress,
+    /// Sample 7: 1.0 when it goes to the headphones instead of the mix.
+    Sample7Cue,
+    /// Sample 7: 1.0 when it stretches to the room's tempo.
+    Sample7Synced,
+    /// Sample 7: The sample's own tempo, or 0.0 when it has none — which is why the sync switch is hidden rather than greyed.
+    Sample7Bpm,
+    /// Sample 8: 1.0 when something is in the slot.
+    Sample8Loaded,
+    /// Sample 8: 1.0 while it is sounding.
+    Sample8Playing,
+    /// Sample 8: Index into [`crate::TriggerMode::ALL`].
+    Sample8Mode,
+    /// Sample 8: The slot's own level, 0..=1.
+    Sample8Volume,
+    /// Sample 8: How far through, 0..=1.
+    Sample8Progress,
+    /// Sample 8: 1.0 when it goes to the headphones instead of the mix.
+    Sample8Cue,
+    /// Sample 8: 1.0 when it stretches to the room's tempo.
+    Sample8Synced,
+    /// Sample 8: The sample's own tempo, or 0.0 when it has none — which is why the sync switch is hidden rather than greyed.
+    Sample8Bpm,
     /// The three master effect slots. Same six values per slot as a deck's,
     /// because it is the same rack in a different place.
     /// Master slot 1: Which effect is loaded, as an index into [`crate::fx::EffectKind::ALL`].
@@ -370,6 +509,19 @@ impl DeckParam {
     }
 }
 
+/// Where one sampler slot's eight values live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SampleParams {
+    pub loaded: GlobalParam,
+    pub playing: GlobalParam,
+    pub mode: GlobalParam,
+    pub volume: GlobalParam,
+    pub progress: GlobalParam,
+    pub cue: GlobalParam,
+    pub synced: GlobalParam,
+    pub bpm: GlobalParam,
+}
+
 /// Where one effect slot's six values live.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FxParams<P = DeckParam> {
@@ -382,6 +534,94 @@ pub struct FxParams<P = DeckParam> {
 }
 
 impl GlobalParam {
+    /// The eight parameters of one sampler slot, 1-based.
+    #[must_use]
+    pub const fn sample(slot: u8) -> Option<SampleParams> {
+        match slot {
+            1 => Some(SampleParams {
+                loaded: GlobalParam::Sample1Loaded,
+                playing: GlobalParam::Sample1Playing,
+                mode: GlobalParam::Sample1Mode,
+                volume: GlobalParam::Sample1Volume,
+                progress: GlobalParam::Sample1Progress,
+                cue: GlobalParam::Sample1Cue,
+                synced: GlobalParam::Sample1Synced,
+                bpm: GlobalParam::Sample1Bpm,
+            }),
+            2 => Some(SampleParams {
+                loaded: GlobalParam::Sample2Loaded,
+                playing: GlobalParam::Sample2Playing,
+                mode: GlobalParam::Sample2Mode,
+                volume: GlobalParam::Sample2Volume,
+                progress: GlobalParam::Sample2Progress,
+                cue: GlobalParam::Sample2Cue,
+                synced: GlobalParam::Sample2Synced,
+                bpm: GlobalParam::Sample2Bpm,
+            }),
+            3 => Some(SampleParams {
+                loaded: GlobalParam::Sample3Loaded,
+                playing: GlobalParam::Sample3Playing,
+                mode: GlobalParam::Sample3Mode,
+                volume: GlobalParam::Sample3Volume,
+                progress: GlobalParam::Sample3Progress,
+                cue: GlobalParam::Sample3Cue,
+                synced: GlobalParam::Sample3Synced,
+                bpm: GlobalParam::Sample3Bpm,
+            }),
+            4 => Some(SampleParams {
+                loaded: GlobalParam::Sample4Loaded,
+                playing: GlobalParam::Sample4Playing,
+                mode: GlobalParam::Sample4Mode,
+                volume: GlobalParam::Sample4Volume,
+                progress: GlobalParam::Sample4Progress,
+                cue: GlobalParam::Sample4Cue,
+                synced: GlobalParam::Sample4Synced,
+                bpm: GlobalParam::Sample4Bpm,
+            }),
+            5 => Some(SampleParams {
+                loaded: GlobalParam::Sample5Loaded,
+                playing: GlobalParam::Sample5Playing,
+                mode: GlobalParam::Sample5Mode,
+                volume: GlobalParam::Sample5Volume,
+                progress: GlobalParam::Sample5Progress,
+                cue: GlobalParam::Sample5Cue,
+                synced: GlobalParam::Sample5Synced,
+                bpm: GlobalParam::Sample5Bpm,
+            }),
+            6 => Some(SampleParams {
+                loaded: GlobalParam::Sample6Loaded,
+                playing: GlobalParam::Sample6Playing,
+                mode: GlobalParam::Sample6Mode,
+                volume: GlobalParam::Sample6Volume,
+                progress: GlobalParam::Sample6Progress,
+                cue: GlobalParam::Sample6Cue,
+                synced: GlobalParam::Sample6Synced,
+                bpm: GlobalParam::Sample6Bpm,
+            }),
+            7 => Some(SampleParams {
+                loaded: GlobalParam::Sample7Loaded,
+                playing: GlobalParam::Sample7Playing,
+                mode: GlobalParam::Sample7Mode,
+                volume: GlobalParam::Sample7Volume,
+                progress: GlobalParam::Sample7Progress,
+                cue: GlobalParam::Sample7Cue,
+                synced: GlobalParam::Sample7Synced,
+                bpm: GlobalParam::Sample7Bpm,
+            }),
+            8 => Some(SampleParams {
+                loaded: GlobalParam::Sample8Loaded,
+                playing: GlobalParam::Sample8Playing,
+                mode: GlobalParam::Sample8Mode,
+                volume: GlobalParam::Sample8Volume,
+                progress: GlobalParam::Sample8Progress,
+                cue: GlobalParam::Sample8Cue,
+                synced: GlobalParam::Sample8Synced,
+                bpm: GlobalParam::Sample8Bpm,
+            }),
+            _ => None,
+        }
+    }
+
     /// The six parameters of one *master* slot, 1-based.
     #[must_use]
     pub const fn fx(slot: u8) -> Option<FxParams<GlobalParam>> {
@@ -414,7 +654,7 @@ impl GlobalParam {
         }
     }
 
-    pub const COUNT: usize = 33;
+    pub const COUNT: usize = 100;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -440,6 +680,73 @@ impl GlobalParam {
             LimiterReductionDb,
             OutputLatencyFrames,
             Quantize,
+            SamplerBank,
+            SamplerVolume,
+            SamplerPeak,
+            Sample1Loaded,
+            Sample1Playing,
+            Sample1Mode,
+            Sample1Volume,
+            Sample1Progress,
+            Sample1Cue,
+            Sample1Synced,
+            Sample1Bpm,
+            Sample2Loaded,
+            Sample2Playing,
+            Sample2Mode,
+            Sample2Volume,
+            Sample2Progress,
+            Sample2Cue,
+            Sample2Synced,
+            Sample2Bpm,
+            Sample3Loaded,
+            Sample3Playing,
+            Sample3Mode,
+            Sample3Volume,
+            Sample3Progress,
+            Sample3Cue,
+            Sample3Synced,
+            Sample3Bpm,
+            Sample4Loaded,
+            Sample4Playing,
+            Sample4Mode,
+            Sample4Volume,
+            Sample4Progress,
+            Sample4Cue,
+            Sample4Synced,
+            Sample4Bpm,
+            Sample5Loaded,
+            Sample5Playing,
+            Sample5Mode,
+            Sample5Volume,
+            Sample5Progress,
+            Sample5Cue,
+            Sample5Synced,
+            Sample5Bpm,
+            Sample6Loaded,
+            Sample6Playing,
+            Sample6Mode,
+            Sample6Volume,
+            Sample6Progress,
+            Sample6Cue,
+            Sample6Synced,
+            Sample6Bpm,
+            Sample7Loaded,
+            Sample7Playing,
+            Sample7Mode,
+            Sample7Volume,
+            Sample7Progress,
+            Sample7Cue,
+            Sample7Synced,
+            Sample7Bpm,
+            Sample8Loaded,
+            Sample8Playing,
+            Sample8Mode,
+            Sample8Volume,
+            Sample8Progress,
+            Sample8Cue,
+            Sample8Synced,
+            Sample8Bpm,
             MasterFx1Kind,
             MasterFx1Enabled,
             MasterFx1Wet,
@@ -585,6 +892,73 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::LimiterEnabled => "limiter_enabled",
         GlobalParam::LimiterReductionDb => "limiter_reduction_db",
         GlobalParam::OutputLatencyFrames => "output_latency_frames",
+        GlobalParam::SamplerBank => "sampler_bank",
+        GlobalParam::SamplerVolume => "sampler_volume",
+        GlobalParam::SamplerPeak => "sampler_peak",
+        GlobalParam::Sample1Loaded => "sample1_loaded",
+        GlobalParam::Sample1Playing => "sample1_playing",
+        GlobalParam::Sample1Mode => "sample1_mode",
+        GlobalParam::Sample1Volume => "sample1_volume",
+        GlobalParam::Sample1Progress => "sample1_progress",
+        GlobalParam::Sample1Cue => "sample1_cue",
+        GlobalParam::Sample1Synced => "sample1_synced",
+        GlobalParam::Sample1Bpm => "sample1_bpm",
+        GlobalParam::Sample2Loaded => "sample2_loaded",
+        GlobalParam::Sample2Playing => "sample2_playing",
+        GlobalParam::Sample2Mode => "sample2_mode",
+        GlobalParam::Sample2Volume => "sample2_volume",
+        GlobalParam::Sample2Progress => "sample2_progress",
+        GlobalParam::Sample2Cue => "sample2_cue",
+        GlobalParam::Sample2Synced => "sample2_synced",
+        GlobalParam::Sample2Bpm => "sample2_bpm",
+        GlobalParam::Sample3Loaded => "sample3_loaded",
+        GlobalParam::Sample3Playing => "sample3_playing",
+        GlobalParam::Sample3Mode => "sample3_mode",
+        GlobalParam::Sample3Volume => "sample3_volume",
+        GlobalParam::Sample3Progress => "sample3_progress",
+        GlobalParam::Sample3Cue => "sample3_cue",
+        GlobalParam::Sample3Synced => "sample3_synced",
+        GlobalParam::Sample3Bpm => "sample3_bpm",
+        GlobalParam::Sample4Loaded => "sample4_loaded",
+        GlobalParam::Sample4Playing => "sample4_playing",
+        GlobalParam::Sample4Mode => "sample4_mode",
+        GlobalParam::Sample4Volume => "sample4_volume",
+        GlobalParam::Sample4Progress => "sample4_progress",
+        GlobalParam::Sample4Cue => "sample4_cue",
+        GlobalParam::Sample4Synced => "sample4_synced",
+        GlobalParam::Sample4Bpm => "sample4_bpm",
+        GlobalParam::Sample5Loaded => "sample5_loaded",
+        GlobalParam::Sample5Playing => "sample5_playing",
+        GlobalParam::Sample5Mode => "sample5_mode",
+        GlobalParam::Sample5Volume => "sample5_volume",
+        GlobalParam::Sample5Progress => "sample5_progress",
+        GlobalParam::Sample5Cue => "sample5_cue",
+        GlobalParam::Sample5Synced => "sample5_synced",
+        GlobalParam::Sample5Bpm => "sample5_bpm",
+        GlobalParam::Sample6Loaded => "sample6_loaded",
+        GlobalParam::Sample6Playing => "sample6_playing",
+        GlobalParam::Sample6Mode => "sample6_mode",
+        GlobalParam::Sample6Volume => "sample6_volume",
+        GlobalParam::Sample6Progress => "sample6_progress",
+        GlobalParam::Sample6Cue => "sample6_cue",
+        GlobalParam::Sample6Synced => "sample6_synced",
+        GlobalParam::Sample6Bpm => "sample6_bpm",
+        GlobalParam::Sample7Loaded => "sample7_loaded",
+        GlobalParam::Sample7Playing => "sample7_playing",
+        GlobalParam::Sample7Mode => "sample7_mode",
+        GlobalParam::Sample7Volume => "sample7_volume",
+        GlobalParam::Sample7Progress => "sample7_progress",
+        GlobalParam::Sample7Cue => "sample7_cue",
+        GlobalParam::Sample7Synced => "sample7_synced",
+        GlobalParam::Sample7Bpm => "sample7_bpm",
+        GlobalParam::Sample8Loaded => "sample8_loaded",
+        GlobalParam::Sample8Playing => "sample8_playing",
+        GlobalParam::Sample8Mode => "sample8_mode",
+        GlobalParam::Sample8Volume => "sample8_volume",
+        GlobalParam::Sample8Progress => "sample8_progress",
+        GlobalParam::Sample8Cue => "sample8_cue",
+        GlobalParam::Sample8Synced => "sample8_synced",
+        GlobalParam::Sample8Bpm => "sample8_bpm",
         GlobalParam::MasterFx1Kind => "master_fx1_kind",
         GlobalParam::MasterFx1Enabled => "master_fx1_enabled",
         GlobalParam::MasterFx1Wet => "master_fx1_wet",

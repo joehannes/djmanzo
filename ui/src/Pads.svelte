@@ -11,16 +11,24 @@
    * what the pad says to send, and evaluates one `Lit` condition against the
    * snapshot to decide what glows.
    */
-  import type { DeckState, Lit, PadPageDto } from "./api";
+  import type { DeckState, Lit, PadPageDto, SamplerState } from "./api";
 
   let {
     pages,
     deck,
+    /**
+     * The sampler, for the one page whose pads are not about this deck.
+     *
+     * A sample belongs to the set rather than to a deck, but the pads that
+     * fire it are the deck's — the same as on hardware.
+     */
+    sampler,
     enabled,
     send,
   }: {
     pages: PadPageDto[];
     deck: DeckState;
+    sampler: SamplerState;
     enabled: boolean;
     send: (action: string) => void;
   } = $props();
@@ -96,6 +104,9 @@
     }
     if ("FxSlotPost" in condition) {
       return deck.fx[condition.FxSlotPost - 1]?.post_fader ?? false;
+    }
+    if ("SamplePlaying" in condition) {
+      return sampler.slots[condition.SamplePlaying - 1]?.playing ?? false;
     }
     return false;
   }

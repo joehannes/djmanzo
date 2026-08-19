@@ -195,7 +195,8 @@ export type Lit =
   | { LoopBeats: number }
   | { RollBeats: number }
   | { FxSlotOn: number }
-  | { FxSlotPost: number };
+  | { FxSlotPost: number }
+  | { SamplePlaying: number };
 
 /** One pad, with its actions already written out by the backend. */
 export interface PadDto {
@@ -274,7 +275,65 @@ export interface TrackAnalysis {
   auto_gain_db: number;
 }
 
+/** One sampler pad. */
+export interface SampleSlot {
+  /** 1-based. */
+  slot: number;
+  /**
+   * What is in it, by name.
+   *
+   * From the snapshot rather than remembered by the panel: a panel that only
+   * knows the loads it made itself shows nothing for a sample a script, a
+   * preset or the assistant put there.
+   */
+  name: string | null;
+  loaded: boolean;
+  playing: boolean;
+  /** `one_shot`, `hold`, `loop`, `stutter`. */
+  mode: string;
+  volume: number;
+  /** How far through, 0..=1. */
+  progress: number;
+  /** True when it goes to the headphones rather than the mix. */
+  cue: boolean;
+  synced: boolean;
+  /**
+   * The sample's own tempo. Null when it has none — which is why the sync
+   * switch is hidden rather than greyed out.
+   */
+  bpm: number | null;
+}
+
+export interface SamplerState {
+  /** 1-based. */
+  bank: number;
+  volume: number;
+  peak: number;
+  /**
+   * The showing bank's eight slots. The other banks keep playing; the pads
+   * simply cannot reach them.
+   */
+  slots: SampleSlot[];
+}
+
+/** Every trigger mode, in the order they are offered. */
+export const TRIGGER_MODES = ["one_shot", "hold", "loop", "stutter"] as const;
+
+/**
+ * Put a file in a sampler slot.
+ *
+ * The bank is named rather than assumed, so a load cannot land in the wrong
+ * place because the DJ switched banks while the file was being read.
+ */
+export const loadSample = (bank: number, slot: number, path: string) =>
+  invoke<{ bank: number; slot: number; name: string; duration_seconds: number }>(
+    "load_sample",
+    { bank, slot, path },
+  );
+
 export interface MasterState {
+  /** The sampler: which bank is showing, its level, and that bank's slots. */
+  sampler: SamplerState;
   /** The master rack's three slots, in order. */
   fx: FxSlot[];
   crossfader: number;

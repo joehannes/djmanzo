@@ -86,8 +86,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Loop move / halve / double | M2 |
 | Saved loops | M2 |
 | Slicer | M5 |
-| Pad pages: Cues · Loops · Roll · Saved · FX | M5 — **done** |
-| Pad pages: Slicer · Sampler · Stems | M5 (Stems page M6) |
+| Pad pages: Cues · Loops · Roll · Saved · Sampler · FX | M5 — **done** |
+| Pad pages: Slicer · Stems | M5 (Stems page M6) |
 | Pad colour and LED feedback to hardware | M4 |
 
 ### Effects
@@ -109,11 +109,11 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 
 | Feature | Milestone |
 |---|---|
-| Sampler banks with pad grid | M5 |
-| Trigger modes: one-shot, loop, hold, stutter | M5 |
-| Sync samples to master tempo | M5 |
+| Sampler banks with pad grid | M5 — **done** |
+| Trigger modes: one-shot, loop, hold, stutter | M5 — **done** |
+| Sync samples to master tempo | M5 — **done** |
+| Sample volume / output routing (mix or headphones) | M5 — **done** |
 | Record from deck or master into a sample slot | M5 |
-| Sample volume / pitch / output routing | M5 |
 
 ### Browser and library
 
