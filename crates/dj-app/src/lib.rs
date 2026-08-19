@@ -343,6 +343,10 @@ fn save_changed_cues(
     }
 }
 
+/// When the application started, for the play watcher's monotonic deltas.
+static START: std::sync::LazyLock<std::time::Instant> =
+    std::sync::LazyLock::new(std::time::Instant::now);
+
 /// Record any deck whose track has now been played far enough to count.
 ///
 /// Runs beside the cue watcher on the snapshot thread, for the same reason:
@@ -359,6 +363,12 @@ fn record_plays(
     let Ok(mut watcher) = watcher.lock() else {
         return;
     };
+    // One reading for the whole pass, so every deck measures the same instant
+    // and two decks cannot disagree about how long a frame took. Monotonic, so
+    // a clock adjustment mid-set cannot invent or erase playback.
+    let now = std::time::Instant::now()
+        .duration_since(*START)
+        .as_secs_f64();
     let names = tracks.lock().ok();
     for deck in &snapshot.decks {
         // The track, whether or not it is playing. Reporting `None` while
@@ -376,6 +386,7 @@ fn record_plays(
             deck.playing,
             f64::from(deck.position_seconds),
             f64::from(deck.length_seconds),
+            now,
         ) {
             writer.send(persist::Write::Play {
                 track: played,

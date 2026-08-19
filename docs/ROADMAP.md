@@ -469,6 +469,15 @@ filter will never select, so it goes in and never comes back out. The guard is i
 rather than only the interface, because the interface is not the only caller: importers, the
 assistant and the network API all reach it.
 
+**A looped track was never recorded as played.** The play watcher measured the playhead's
+*position*, on the stated reasoning that the playhead is what the room heard — right for a track
+cued near its end and played out in twenty seconds, which elapsed time would miss. But the
+reverse case is just as common: a DJ looping an intro through a whole transition never moves the
+playhead, so the track was silently absent from the set list however long it ran. Either counts
+now. The original objection to elapsed time — a deck parked at the drop for five minutes — never
+applied, because time only accrues while the deck is *playing*, which was already checked. Found
+by querying the database after a run: two decks played, one looping, one history row.
+
 **The crate tree and the browser kept separate copies of the playlist list**, and only the
 browser's was refreshed. Importing a rekordbox library with forty playlists put forty rows in
 the database and showed none of them in the tree until the panel remounted, so an import looked
