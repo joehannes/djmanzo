@@ -454,8 +454,25 @@ rather than taking the free width, wasting half the panel on a wide window. And 
 tabs shared width equally regardless of label, clipping the Sidelist's count off its own edge.
 None of the three is visible in the code; all three are obvious in a screenshot.
 
-Drag-and-drop onto a playlist is a select for now — the gesture DJs know is a drag, and it will
-come, but a control that works one-handed on a trackpad should not wait for it.
+**Drag-and-drop landed in the consolidation pass**, as an addition to the select rather than a
+replacement. A drag needs two hands and a surface, cannot be done from a keyboard, and is
+invisible to a screen reader; a select is none of those things. Both, always. Dragging a selected
+row takes the whole selection, because that is what a DJ who has just ticked eight boxes means;
+dragging an unselected row takes only it and leaves the selection alone, because picking
+something up should not silently change what was chosen.
+
+The pass also found two bugs in shipped M3 code, both quiet:
+
+**`add_to_playlist` accepted anything.** A folder holds lists and a smart folder holds a *query*,
+but neither was refused — and a track filed into a smart folder becomes a row that folder's own
+filter will never select, so it goes in and never comes back out. The guard is in the store
+rather than only the interface, because the interface is not the only caller: importers, the
+assistant and the network API all reach it.
+
+**The crate tree and the browser kept separate copies of the playlist list**, and only the
+browser's was refreshed. Importing a rekordbox library with forty playlists put forty rows in
+the database and showed none of them in the tree until the panel remounted, so an import looked
+like it had half worked.
 
 **M3 is complete.**
 

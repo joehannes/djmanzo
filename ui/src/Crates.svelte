@@ -10,6 +10,7 @@
    * stays put, which is what keeps a drag from flickering.
    */
   import {
+    addToPlaylist,
     createPlaylist,
     deletePlaylist,
     listPlaylists,
@@ -37,6 +38,19 @@
   let editing = $state<{ id: number; name: string } | null>(null);
   /** Node being dragged, for reparenting. */
   let dragging = $state<number | null>(null);
+
+  /**
+   * The drag payload for tracks coming from the browser.
+   *
+   * A custom type rather than `text/plain`, so a drop knows what it is being
+   * given: reparenting a folder and filing tracks into a list are different
+   * operations that happen to land on the same rows, and guessing between them
+   * from the payload's *shape* is how a folder ends up with a track id in it.
+   */
+  const TRACKS = "application/x-djmanzo-tracks";
+
+  /** Which node a track drag is currently over, so the target is visible. */
+  let over = $state<number | null>(null);
 
   export async function refresh() {
     try {
@@ -130,6 +144,33 @@
     }
   }
 
+  /**
+   * Tracks dropped onto a list.
+   *
+   * Folders are not lists — a folder holds lists, and putting tracks in one
+   * would need it to be both. Smart folders are not lists either: their
+   * contents are a *query*, and adding a track by hand would produce a member
+   * the filter does not select, which is a lie about what the folder means.
+   */
+  async function dropTracks(event: DragEvent, target: Playlist): Promise<void> {
+    const payload = event.dataTransfer?.getData(TRACKS);
+    over = null;
+    if (!payload || target.kind !== "list") return;
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      const ids: string[] = JSON.parse(payload);
+      for (const id of ids) await addToPlaylist(target.id, id);
+      onchange?.();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /** Whether a drag carries tracks, as opposed to a node being reparented. */
+  const carriesTracks = (event: DragEvent) =>
+    event.dataTransfer?.types.includes(TRACKS) ?? false;
+
   async function drop(target: Playlist | null) {
     if (dragging == null) return;
     const moved = dragging;
@@ -187,7 +228,13 @@
     role="tree"
     tabindex="-1"
     ondragover={(e) => e.preventDefault()}
-    ondrop={() => drop(null)}
+    ondrop={(e) => {
+      // Tracks dropped on the empty space below the tree land nowhere: there
+      // is no list there, and silently filing them into the last one a DJ
+      // happened to click would be worse than doing nothing.
+      if (carriesTracks(e)) return;
+      void drop(null);
+    }}
   >
     {#each tree as { node, depth } (node.id)}
       <div
@@ -199,10 +246,29 @@
         aria-selected={(selection.kind === "playlist" || selection.kind === "smart") &&
           selection.id === node.id}
         tabindex="-1"
+        class:targeted={over === node.id}
         draggable="true"
         ondragstart={() => (dragging = node.id)}
-        ondragover={(e) => node.kind === "folder" && e.preventDefault()}
+        ondragover={(e) => {
+          if (carriesTracks(e)) {
+            // Only a plain list can take tracks, so only a plain list says yes.
+            // A target that accepts a drop it cannot honour is worse than one
+            // that visibly refuses.
+            if (node.kind !== "list") return;
+            e.preventDefault();
+            over = node.id;
+            return;
+          }
+          if (node.kind === "folder") e.preventDefault();
+        }}
+        ondragleave={() => {
+          if (over === node.id) over = null;
+        }}
         ondrop={(e) => {
+          if (carriesTracks(e)) {
+            void dropTracks(e, node);
+            return;
+          }
           e.stopPropagation();
           void drop(node);
         }}
@@ -293,6 +359,16 @@
     display: flex;
     flex-direction: column;
     gap: 0.1rem;
+  }
+
+  /*
+    The target a drop would land on. Shown while dragging rather than only on
+    release, because a DJ aiming at a row in a list of twenty needs to know
+    which one they have before they let go.
+  */
+  .row.targeted {
+    outline: 2px solid var(--accent-2, #22d3aa);
+    outline-offset: -2px;
   }
 
   .row {

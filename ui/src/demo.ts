@@ -6,13 +6,27 @@
  * watershed reads — and on a headless machine there is nobody to click Load.
  *
  * Triggered by `DJMANZO_DEMO=<folder>`, so it never runs in a normal session.
+ *
+ * The interface *asks* whether there is a demo folder rather than waiting to be
+ * told: the first version emitted an event three seconds after startup and
+ * raced the webview, so on a cold dev server the run looked like it had
+ * silently failed.
  */
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { dispatch, libraryAddFolder, librarySearch, loadTrack, openDevice } from "./api";
+
+import {
+  createPlaylist,
+  dispatch,
+  libraryAddFolder,
+  librarySearch,
+  loadTrack,
+  openDevice,
+} from "./api";
 
 export function armDemo(): void {
-  void listen<string>("demo", async (event) => {
+  void (async () => {
+    const folder = await invoke<string | null>("demo_folder").catch(() => null);
+    if (!folder) return;
     // Each step independently, so one failure does not silently abort the
     // rest — a demo that opens no device should still load and draw tracks.
     const step = async (what: string, run: () => Promise<unknown>) => {
@@ -30,8 +44,16 @@ export function armDemo(): void {
     };
 
     try {
+      // One of each kind of crate, first, so the tree has read them by the
+      // time it mounts — the demo talks to the commands directly and cannot
+      // tell a component that its data changed.
+      await step("make a list", () => createPlaylist("Friday", null, "list"));
+      await step("make a folder", () => createPlaylist("Latin", null, "folder"));
+      await step("make a smart folder", () =>
+        createPlaylist("Fast", null, "smart", "bpm > 100"));
+
       await step("open device", () => openDevice(null, null, 256));
-      await step("add folder", () => libraryAddFolder(event.payload));
+      await step("add folder", () => libraryAddFolder(folder));
       // A scan is two halves and only the cheap one is synchronous, so rows
       // appear before they have been identified. Wait for a couple to arrive.
       let found: Awaited<ReturnType<typeof librarySearch>> = [];
@@ -60,8 +82,10 @@ export function armDemo(): void {
       await step("filter deck 2", () => dispatch("deck 2 filter -0.6"));
       await step("cue deck 1", () => dispatch("deck 1 hotcue_set 1"));
       await step("loop deck 2", () => dispatch("deck 2 loop 4"));
+
+
     } catch (e) {
       console.error("demo", e);
     }
-  });
+  })();
 }

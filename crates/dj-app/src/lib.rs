@@ -177,15 +177,6 @@ pub fn run() {
                 });
             }
 
-            if let Ok(folder) = std::env::var(DEMO_ENV) {
-                let handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(3));
-                    use tauri::Emitter;
-                    let _ = handle.emit("demo", folder);
-                });
-            }
-
             if let Ok(value) = std::env::var(RENDER_BENCH_ENV) {
                 // The value is the shape count, so the scaling law can be
                 // measured rather than assumed. Anything unparseable means "the
@@ -296,6 +287,7 @@ pub fn run() {
             commands::list_layouts,
             commands::layout_folder,
             commands::world,
+            commands::demo_folder,
             commands::watershed,
             commands::set_watershed,
             commands::chosen_layout,

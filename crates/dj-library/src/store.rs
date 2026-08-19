@@ -27,6 +27,13 @@ pub enum LibraryError {
     NoSuchPlaylist(i64),
     #[error("playlist {0} is not a folder, so nothing can go inside it")]
     NotAFolder(i64),
+    /// Tracks put into something that is not a plain list.
+    ///
+    /// A folder holds lists, not tracks. A smart folder holds a *query*, and a
+    /// track added by hand would be a member the filter does not select -- it
+    /// would go in and never come back out, which is worse than being refused.
+    #[error("playlist {0} is not a list, so tracks cannot go in it")]
+    NotAList(i64),
     /// Moving a node inside itself, or inside something below it. Refused
     /// rather than performed: the branch would still exist but nothing in the
     /// sidebar could reach it.
@@ -543,7 +550,16 @@ impl Library {
         })
     }
 
-    fn require_folder(&self, id: i64) -> Result<()> {
+    /// Refuse anything that is not a plain list.
+    fn require_list(&self, id: i64) -> Result<()> {
+        match self.kind_of(id)? {
+            Some(PlaylistKind::List) => Ok(()),
+            Some(_) => Err(LibraryError::NotAList(id)),
+            None => Err(LibraryError::NoSuchPlaylist(id)),
+        }
+    }
+
+    fn kind_of(&self, id: i64) -> Result<Option<PlaylistKind>> {
         let kind = self.with(|conn| {
             Ok(conn
                 .query_row("SELECT kind FROM playlists WHERE id = ?1", [id], |row| {
@@ -551,7 +567,11 @@ impl Library {
                 })
                 .optional()?)
         })?;
-        match kind.as_deref().and_then(PlaylistKind::from_sql) {
+        Ok(kind.as_deref().and_then(PlaylistKind::from_sql))
+    }
+
+    fn require_folder(&self, id: i64) -> Result<()> {
+        match self.kind_of(id)? {
             Some(kind) if kind.is_container() => Ok(()),
             Some(_) => Err(LibraryError::NotAFolder(id)),
             None => Err(LibraryError::NoSuchPlaylist(id)),
@@ -692,7 +712,15 @@ impl Library {
     /// Appends rather than deduplicating: a track appearing twice in a set is
     /// something DJs do on purpose, and silently refusing the second would look
     /// like the drag missed.
+    /// Put a track at the end of a list.
+    ///
+    /// Refuses anything that is not a plain list. That guard lives here rather
+    /// than only in the interface because the interface is not the only caller:
+    /// an importer, the assistant and the network API all reach this, and a
+    /// track filed into a smart folder is a row its own query will never
+    /// return -- it goes in and never comes back out.
     pub fn add_to_playlist(&self, playlist: i64, track: TrackId) -> Result<()> {
+        self.require_list(playlist)?;
         self.with(|conn| {
             conn.execute(
                 "INSERT INTO playlist_tracks (playlist_id, track_id, position)
@@ -2532,6 +2560,58 @@ mod tests {
         assert!(matches!(
             lib.create_playlist("Nested", Some(list), PlaylistKind::List, None, 0),
             Err(LibraryError::NotAFolder(_))
+        ));
+    }
+
+    /// A folder holds lists, not tracks. Without this guard the row went in
+    /// happily and simply never appeared anywhere.
+    #[test]
+    fn a_folder_will_not_take_tracks() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        let folder = lib
+            .create_playlist("Crates", None, PlaylistKind::Folder, None, 0)
+            .unwrap();
+        assert!(matches!(
+            lib.add_to_playlist(folder, id(1)),
+            Err(LibraryError::NotAList(_))
+        ));
+    }
+
+    /// The one that actually loses tracks. A smart folder's contents are a
+    /// query, so a track added by hand is a member the filter does not select:
+    /// it goes in and never comes back out.
+    #[test]
+    fn a_smart_folder_will_not_take_tracks_by_hand() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        let smart = lib
+            .create_playlist("Fast", None, PlaylistKind::Smart, Some("bpm > 128"), 0)
+            .unwrap();
+        assert!(matches!(
+            lib.add_to_playlist(smart, id(1)),
+            Err(LibraryError::NotAList(_))
+        ));
+    }
+
+    #[test]
+    fn a_plain_list_takes_tracks_as_it_always_did() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        let list = lib
+            .create_playlist("Set", None, PlaylistKind::List, None, 0)
+            .unwrap();
+        lib.add_to_playlist(list, id(1)).unwrap();
+        assert_eq!(lib.playlist_tracks(list).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_playlist_that_does_not_exist_says_so_rather_than_not_a_list() {
+        let lib = library();
+        lib.upsert_track(&track(1, "T", "X")).unwrap();
+        assert!(matches!(
+            lib.add_to_playlist(9999, id(1)),
+            Err(LibraryError::NoSuchPlaylist(_))
         ));
     }
 

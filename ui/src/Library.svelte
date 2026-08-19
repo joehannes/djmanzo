@@ -63,6 +63,30 @@
   }: { enabled: boolean; deckCount?: number; decks?: DeckState[] } = $props();
 
   /**
+   * The drag payload for tracks.
+   *
+   * A custom type rather than `text/plain` so a drop target knows what it is
+   * being handed: the crate tree also drags nodes around to reparent them, and
+   * telling the two apart by the payload's shape is how a folder ends up with
+   * a track id in it.
+   */
+  const TRACKS = "application/x-djmanzo-tracks";
+
+  /**
+   * Start dragging a track — or the whole selection, if it is part of one.
+   *
+   * Dragging a selected row takes everything selected, because that is what a
+   * DJ who has just ticked eight boxes means. Dragging an *unselected* row
+   * takes only that row, and does not disturb the selection: picking something
+   * up should not silently change what was chosen.
+   */
+  function startDrag(event: DragEvent, track: { id: string }) {
+    const ids = selected.has(track.id) ? [...selected] : [track.id];
+    event.dataTransfer?.setData(TRACKS, JSON.stringify(ids));
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+  }
+
+  /**
    * A track the DJ has asked to set aside, handed to SideView.
    *
    * Passed down rather than SideView reading the selection, because the two
@@ -172,9 +196,25 @@
     }
   }
 
+  /** The crate tree, so it can be told when the playlists change. */
+  let crates = $state<Crates | null>(null);
+
+  /**
+   * Re-read the playlists — *both* copies of them.
+   *
+   * The tree and this panel each hold their own list of the same rows, and for
+   * a while only this one was refreshed. The symptom was quiet and bad:
+   * importing a rekordbox library with forty playlists put forty rows in the
+   * database and showed none of them in the tree until the panel remounted, so
+   * an import looked like it had half worked.
+   *
+   * Both in one function rather than two calls at each site, because the bug
+   * was somebody remembering one of them.
+   */
   async function refreshPlaylists() {
     try {
       playlists = await listPlaylists();
+      await crates?.refresh();
     } catch (e) {
       error = String(e);
     }
@@ -432,7 +472,7 @@
     error = null;
     try {
       await libraryRescan();
-      await Promise.all([refresh(), refreshStatus()]);
+      await Promise.all([refresh(), refreshStatus(), refreshPlaylists()]);
     } catch (e) {
       error = String(e);
     } finally {
@@ -498,7 +538,7 @@
 </script>
 
 <div class="with-sidebar">
-<Crates bind:selection onchange={() => void refresh()} />
+<Crates bind:this={crates} bind:selection onchange={() => void refresh()} />
 
 <div class="library">
   <div class="controls">
@@ -795,7 +835,12 @@
         </thead>
         <tbody>
           {#each sorted as track (track.id)}
-            <tr class:unanalysed={!track.analysed} class:picked={selected.has(track.id)}>
+            <tr
+              class:unanalysed={!track.analysed}
+              class:picked={selected.has(track.id)}
+              draggable="true"
+              ondragstart={(event) => startDrag(event, track)}
+            >
               <td class="pick">
                 <input
                   type="checkbox"
@@ -831,7 +876,14 @@
                   works with one hand on a trackpad in a dark booth should not
                   wait for it.
                 -->
-                {#if playlists.some((p) => p.kind !== "folder")}
+                <!--
+                  Plain lists only. A folder holds lists, and a smart folder
+                  holds a query — a track filed into one is a member its own
+                  filter does not select, so it goes in and never comes back
+                  out. The store refuses both now; this stops the interface
+                  offering a target it knows will be refused.
+                -->
+                {#if playlists.some((p) => p.kind === "list")}
                   <select
                     class="add-to"
                     aria-label="Add {track.title} to a playlist"
@@ -843,7 +895,7 @@
                     }}
                   >
                     <option value="">+</option>
-                    {#each playlists.filter((p) => p.kind !== "folder") as list (list.id)}
+                    {#each playlists.filter((p) => p.kind === "list") as list (list.id)}
                       <option value={list.id}>{list.name}</option>
                     {/each}
                   </select>

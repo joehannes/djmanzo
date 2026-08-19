@@ -2093,6 +2093,20 @@ fn highland_of(state: &AppState) -> dj_world::HighlandReading {
     }
 }
 
+/// The folder a development run should load from, if any.
+///
+/// **Asked for** rather than pushed. The first version emitted an event three
+/// seconds after startup and raced the webview: on a cold dev server the
+/// listener was not registered yet, the event went nowhere, and the run looked
+/// like the demo had silently failed. A command has no such race — the
+/// interface asks once it exists.
+#[tauri::command]
+pub fn demo_folder() -> Option<String> {
+    std::env::var(crate::DEMO_ENV)
+        .ok()
+        .filter(|s| !s.is_empty())
+}
+
 /// Whether the watershed was showing last time.
 #[tauri::command]
 pub fn watershed(state: State<'_, AppState>) -> bool {
