@@ -352,7 +352,7 @@ impl Engine {
                         target.clear_hot_cue(slot);
                     }
                     DeckAction::LoopBeats(beats) => {
-                        target.set_loop_beats(beats, quantize);
+                        target.set_loop_length(f64::from(beats), quantize);
                     }
                     DeckAction::LoopOff => target.exit_loop(),
                     DeckAction::LoopHalve => {
@@ -2358,7 +2358,7 @@ mod loop_tests {
         rig.prepare(1, true);
         rig.render(256);
 
-        rig.act(1, DeckAction::LoopBeats(4));
+        rig.act(1, DeckAction::LoopBeats(4.0));
         // Four beats is 96 000 frames; render three times that.
         for _ in 0..1_200 {
             rig.render(256);
@@ -2389,7 +2389,7 @@ mod loop_tests {
         rig.prepare(1, true);
         rig.render(256);
 
-        rig.act(1, DeckAction::LoopBeats(1));
+        rig.act(1, DeckAction::LoopBeats(1.0));
         rig.render(256);
         for _ in 0..4 {
             rig.act(1, DeckAction::LoopHalve);
@@ -2423,7 +2423,7 @@ mod loop_tests {
         rig.prepare(1, true);
         rig.act(1, DeckAction::Seek(FramePos::new(BEAT * 8.0)));
         rig.render(256);
-        rig.act(1, DeckAction::LoopBeats(1));
+        rig.act(1, DeckAction::LoopBeats(1.0));
         rig.render(256);
 
         // Render more than a loop's worth and watch the ramp.
@@ -2453,7 +2453,7 @@ mod loop_tests {
     fn halving_and_doubling_keep_the_start() {
         let mut rig = new_rig();
         rig.prepare(1, false);
-        rig.act(1, DeckAction::LoopBeats(4));
+        rig.act(1, DeckAction::LoopBeats(4.0));
         rig.render(256);
         let start = rig.param(1, DeckParam::LoopStart);
 
@@ -2476,7 +2476,7 @@ mod loop_tests {
     fn shrinking_a_loop_pulls_the_playhead_back_in() {
         let mut rig = new_rig();
         rig.prepare(1, true);
-        rig.act(1, DeckAction::LoopBeats(8));
+        rig.act(1, DeckAction::LoopBeats(8.0));
         // Play until well past what a one-beat loop would cover.
         for _ in 0..500 {
             rig.render(256);
@@ -2535,7 +2535,7 @@ mod loop_tests {
     fn leaving_a_loop_carries_on_from_where_it_is() {
         let mut rig = new_rig();
         rig.prepare(1, true);
-        rig.act(1, DeckAction::LoopBeats(4));
+        rig.act(1, DeckAction::LoopBeats(4.0));
         for _ in 0..300 {
             rig.render(256);
         }
@@ -2567,11 +2567,11 @@ mod loop_tests {
     fn a_zero_beat_loop_means_off() {
         let mut rig = new_rig();
         rig.prepare(1, true);
-        rig.act(1, DeckAction::LoopBeats(4));
+        rig.act(1, DeckAction::LoopBeats(4.0));
         rig.render(256);
         assert_eq!(rig.param(1, DeckParam::LoopActive), 1.0);
 
-        rig.act(1, DeckAction::LoopBeats(0));
+        rig.act(1, DeckAction::LoopBeats(0.0));
         rig.render(256);
         assert_eq!(rig.param(1, DeckParam::LoopActive), 0.0);
     }
@@ -2588,7 +2588,7 @@ mod loop_tests {
         rig.act(1, DeckAction::Play);
         rig.render(256);
 
-        rig.act(1, DeckAction::LoopBeats(4));
+        rig.act(1, DeckAction::LoopBeats(4.0));
         rig.render(256);
         assert_eq!(rig.param(1, DeckParam::LoopActive), 0.0);
     }
@@ -2743,7 +2743,7 @@ mod loop_tests {
         let mut rig = new_rig();
         rig.prepare(1, true);
         rig.act(1, DeckAction::HotCueSet(1));
-        rig.act(1, DeckAction::LoopBeats(4));
+        rig.act(1, DeckAction::LoopBeats(4.0));
         rig.render(256);
         assert_eq!(rig.param(1, DeckParam::LoopActive), 1.0);
 

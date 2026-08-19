@@ -510,7 +510,7 @@ adding a new controller requires editing a file, not rebuilding the app.
 
 ## M5 — Performance
 
-- Pad zone with pages: Cues, Loops, Loop Roll, Slicer, Sampler, FX.
+- **Pad zone with pages** — done: Cues, Loops, Roll, Saved, FX. Slicer and Sampler still to come.
 - Sampler: banks, pad grid, trigger modes, tempo sync, record from deck or master.
 - **FX rack** — done: three chained slots per deck and on the master, pre/post-fader placement,
   beat-synced timing. Chain presets still to come.
@@ -545,6 +545,38 @@ Three decisions the tests pin:
 Allocation-free on both audio paths, proven by `rt_safety.rs` on the direct path
 and again on the keylocked one, which advances the shadow per block rather than
 per frame.
+
+### The pad zone
+
+Eight pads and a row of page tabs, replacing five separate fixed rows — hot
+cues, auto loops, saved loops, roll — each of which took vertical space whether
+or not the DJ wanted it.
+
+The point is not the space saved. It is that **a page is a mapping from pad
+number to action, and that mapping lives in Rust** (`crates/dj-core/src/pads.rs`).
+The same table has two consumers that must not disagree: the eight buttons on
+screen and the eight rubber pads on a controller in M4. Written twice, they
+drift, and a DJ ends up with a pad that does one thing under their finger and
+another on the display.
+
+Three consequences fall out of keeping it small:
+
+- **A pad names the condition that lights it**, in `Lit`, rather than the
+  interface carrying a branch per page. Adding a page is rows in a table, not
+  cases in a component.
+- **A blank pad has no action at all**, rather than a do-nothing one. A verb
+  that does nothing would have to exist in the vocabulary and be explained to
+  everything that reads it.
+- **The loop and roll pages walk the same ladder** — a sixteenth doubling to
+  eight beats — so halving or doubling is one pad left or right, and a DJ who
+  has learnt one page has learnt the other. `LoopBeats` became fractional to
+  make that true, which also collapsed the engine's two loop entry points into
+  one: halving already reached a sixteenth of a beat, so the length was never
+  really an integer.
+
+Pages that need a beat grid are hidden on a track without one rather than greyed
+out — the same rule the FX beat control follows. Cues is the default page
+precisely because it is the one that works on an unanalysed track.
 
 ### The effect rack
 

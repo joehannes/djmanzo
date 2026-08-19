@@ -549,7 +549,7 @@ fn loops_and_hot_cues_never_allocate() {
     });
     rig.act(Action::Deck {
         deck: deck(1),
-        action: DeckAction::LoopBeats(1),
+        action: DeckAction::LoopBeats(1.0),
     });
     // Quarter of a beat: shorter than the 256-frame buffer at 128 BPM.
     for _ in 0..2 {
@@ -768,7 +768,7 @@ fn a_keylocked_loop_never_allocates() {
     for action in [
         DeckAction::SetKeylock(true),
         DeckAction::SetPitch(0.06),
-        DeckAction::LoopBeats(1),
+        DeckAction::LoopBeats(1.0),
     ] {
         rig.act(Action::Deck {
             deck: deck(1),

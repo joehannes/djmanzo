@@ -116,7 +116,12 @@ pub enum DeckAction {
     ///
     /// Zero or negative turns looping off, so a controller encoder that can
     /// reach zero does the obvious thing instead of an error.
-    LoopBeats(i32),
+    ///
+    /// Fractional for the same reason a roll is: halving a loop already
+    /// reaches a sixteenth of a beat, so the length was never an integer —
+    /// only the way of asking for one was. `loop 1/4` and `loop 0.25` both
+    /// work, and the pad ladder runs from a sixteenth to eight beats.
+    LoopBeats(f32),
     /// Stop looping and carry on from where the playhead is.
     LoopOff,
     /// Halve the loop, keeping its start. Repeatable down to a fraction of a beat.
@@ -358,7 +363,7 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "hotcue" => DeckAction::HotCue(parse_slot(argument)?),
         "hotcue_set" => DeckAction::HotCueSet(parse_slot(argument)?),
         "hotcue_clear" => DeckAction::HotCueClear(parse_slot(argument)?),
-        "loop" => DeckAction::LoopBeats(parse_i32(argument)?),
+        "loop" => DeckAction::LoopBeats(parse_beats(argument)?),
         "loop_off" => DeckAction::LoopOff,
         "loop_halve" => DeckAction::LoopHalve,
         "loop_double" => DeckAction::LoopDouble,

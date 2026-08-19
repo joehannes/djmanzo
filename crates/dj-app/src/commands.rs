@@ -2142,6 +2142,84 @@ pub fn set_watershed(state: State<'_, AppState>, showing: bool) {
 /// The DJ's come second so one of theirs named "Pro" sits beside the built-in
 /// rather than replacing it — a layout somebody wrote should never make a
 /// shipped one unreachable.
+/// Every pad page and what is on it.
+///
+/// Sent to the interface rather than restated there, because the same table is
+/// what a controller's pads will map onto in M4 and the two must not drift. The
+/// action strings are pre-rendered against a deck number so the interface can
+/// dispatch them without knowing the grammar — a pad is a label, an action and
+/// a reason to light up.
+#[must_use]
+#[tauri::command]
+pub fn pad_pages(deck: u8) -> Vec<PadPageDto> {
+    let Some(id) = DeckId::from_human(deck) else {
+        return Vec::new();
+    };
+    dj_core::PadPage::ALL
+        .into_iter()
+        .map(|page| PadPageDto {
+            name: page.name().to_owned(),
+            needs_grid: page.needs_grid(),
+            pads: page
+                .pads()
+                .into_iter()
+                .map(|pad| PadDto {
+                    label: label_of(pad.label),
+                    press: pad.press.map(|action| render(id, action)),
+                    release: pad.release.map(|action| render(id, action)),
+                    clear: pad.clear.map(|action| render(id, action)),
+                    lit: pad.lit,
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+fn render(deck: DeckId, action: dj_core::DeckAction) -> String {
+    dj_core::Action::Deck { deck, action }.to_string()
+}
+
+/// A pad's face, in words.
+///
+/// Rendered here rather than in the interface so a beat length is spelt the one
+/// way — "1/4", the way a DJ says it and the way the loop controls already
+/// write it.
+fn label_of(label: dj_core::PadLabel) -> String {
+    use dj_core::PadLabel;
+    match label {
+        PadLabel::Blank => String::new(),
+        PadLabel::Number(n) => n.to_string(),
+        PadLabel::Beats(beats) if beats >= 1.0 => format!("{}", (beats * 100.0).round() / 100.0),
+        PadLabel::Beats(beats) if beats > 0.0 => format!("1/{}", (1.0 / beats).round()),
+        PadLabel::Beats(_) => "0".to_owned(),
+        PadLabel::FxSlot(n) => format!("FX{n}"),
+        PadLabel::FxPlace(n) => format!("{n} post"),
+    }
+}
+
+/// One page, as the interface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct PadPageDto {
+    pub name: String,
+    /// True when every pad on it is measured in beats, so the page is worth
+    /// hiding on a track with no grid rather than showing eight dead buttons.
+    pub needs_grid: bool,
+    pub pads: Vec<PadDto>,
+}
+
+/// One pad, with its actions already written out.
+#[derive(Debug, Clone, Serialize)]
+pub struct PadDto {
+    pub label: String,
+    /// `null` for a pad this page leaves blank.
+    pub press: Option<String>,
+    /// Present only on a momentary pad.
+    pub release: Option<String>,
+    /// The secondary gesture — right-click on screen, shift on hardware.
+    pub clear: Option<String>,
+    pub lit: dj_core::Lit,
+}
+
 #[tauri::command]
 pub fn list_layouts(state: State<'_, AppState>) -> Vec<crate::layout::Layout> {
     let mut layouts = crate::layout::builtin();

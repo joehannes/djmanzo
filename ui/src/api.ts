@@ -182,6 +182,50 @@ export interface FxSlot {
   post_fader: boolean;
 }
 
+/**
+ * What makes a pad light.
+ *
+ * Mirrors `dj_core::pads::Lit`. One condition the interface evaluates against
+ * the snapshot, rather than a branch per page — so a new page is rows in a Rust
+ * table, not cases in a Svelte component.
+ */
+export type Lit =
+  | "Never"
+  | { HotCueSet: number }
+  | { LoopBeats: number }
+  | { RollBeats: number }
+  | { FxSlotOn: number }
+  | { FxSlotPost: number };
+
+/** One pad, with its actions already written out by the backend. */
+export interface PadDto {
+  label: string;
+  /** Null for a pad this page leaves blank. */
+  press: string | null;
+  /** Present only on a momentary pad. */
+  release: string | null;
+  /** The secondary gesture — right-click on screen, shift on hardware. */
+  clear: string | null;
+  lit: Lit;
+}
+
+/** One page of eight pads. */
+export interface PadPageDto {
+  name: string;
+  /** True when every pad on it is measured in beats. */
+  needs_grid: boolean;
+  pads: PadDto[];
+}
+
+/**
+ * Every pad page for a deck, with the action strings pre-rendered.
+ *
+ * From Rust rather than restated here: the same table is what a controller's
+ * pads map onto, and two copies of a mapping is a pad that does one thing under
+ * the finger and another on the screen.
+ */
+export const padPages = (deck: number) => invoke<PadPageDto[]>("pad_pages", { deck });
+
 /** Every effect, in the order they are offered. */
 export const EFFECTS = ["none", "echo", "gate", "crush", "flanger"] as const;
 

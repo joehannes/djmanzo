@@ -286,6 +286,7 @@ pub fn run() {
             commands::sidelist_remove,
             commands::sidelist_clear,
             commands::list_layouts,
+            commands::pad_pages,
             commands::layout_folder,
             commands::world,
             commands::demo_folder,

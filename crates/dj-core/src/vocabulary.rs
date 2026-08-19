@@ -329,7 +329,7 @@ static VOCABULARY: [VerbSpec; 67] = [
             min: 0.0,
             max: 128.0,
         },
-        help: "loop this many beats from here; 0 turns looping off",
+        help: "loop this many beats from here, as a decimal or 1/4; 0 turns looping off",
         example: "deck 1 loop 4",
     },
     VerbSpec {

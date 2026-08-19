@@ -1,6 +1,15 @@
 <script lang="ts">
-  import { dispatch, formatTime, loadTrack, type DeckState, type Layout } from "./api";
+  import {
+    dispatch,
+    formatTime,
+    loadTrack,
+    padPages,
+    type DeckState,
+    type Layout,
+    type PadPageDto,
+  } from "./api";
   import Fx from "./Fx.svelte";
+  import Pads from "./Pads.svelte";
   import Overview from "./Overview.svelte";
   import Waveform from "./Waveform.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
@@ -57,20 +66,6 @@
 
   const analysis = $derived(deck.analysis);
 
-  /**
-   * Loop length in whole beats, when it is one.
-   *
-   * Used only to light up the matching auto-loop button. A halved loop is half
-   * a beat and matches none of them, which is correct — the buttons say what
-   * they would set, not what is playing.
-   */
-  const activeLoopBeats = $derived.by(() => {
-    const beats = deck.active_loop?.beats;
-    if (beats == null) return null;
-    const rounded = Math.round(beats);
-    return Math.abs(beats - rounded) < 0.01 ? rounded : null;
-  });
-
   /** "4" for whole loops, "1/4" for halved ones, which is how DJs say them. */
   function formatBeats(beats: number): string {
     if (beats >= 1) return String(Math.round(beats * 100) / 100);
@@ -78,36 +73,19 @@
   }
 
   /**
-   * Which roll pad is being held, if any.
+   * The pad pages, fetched once.
    *
-   * Local rather than read back from the deck because it is also a guard.
-   * Releasing a roll ends the loop, so a `roll_off` sent by a pad that was
-   * never pressed would cancel a loop the DJ set on purpose — the pointer
-   * merely passing over the row would do it. The censor can be sloppy about
-   * this because `censor_off` on a deck that is not censoring changes nothing.
+   * Once because they do not change: a page is a fixed table in Rust, and the
+   * only thing that varies is which deck number the actions are addressed to.
+   * Everything that *does* change — what is lit, what is held — comes from the
+   * snapshot the component already has.
    */
-  let rolling = $state<number | null>(null);
-
-  /**
-   * Hold a roll.
-   *
-   * Pointer capture rather than a `pointerleave` release: dragging off a pad
-   * mid-roll should keep rolling until the finger lifts, the way a hardware pad
-   * does, and capture also guarantees the release arrives at all.
-   */
-  function startRoll(event: PointerEvent, beats: number) {
-    // The action first. Capture is a convenience and the roll is the point, so
-    // a browser that refuses the capture must still roll.
-    rolling = beats;
-    send(`deck ${deck.number} roll ${beats}`);
-    (event.currentTarget as HTMLButtonElement).setPointerCapture(event.pointerId);
-  }
-
-  function endRoll() {
-    if (rolling == null) return;
-    rolling = null;
-    send(`deck ${deck.number} roll_off`);
-  }
+  let padPageList = $state<PadPageDto[]>([]);
+  $effect(() => {
+    void padPages(deck.number).then((pages) => {
+      padPageList = pages;
+    });
+  });
 
   /**
    * Take the analyser's rejected octave.
@@ -311,30 +289,18 @@
   </div>
 
   <!--
-    Hot cues. Always shown when a track is loaded, because they need no beat
-    grid — a cue is a position, and a position exists whether or not the
-    analyser found a tempo.
+    The pad zone. One grid of eight with a page selector, the way hardware
+    works — and the way it has to work if a controller's pads are ever to mean
+    the same thing as these. The pages come from Rust, already rendered into
+    action strings; see `crates/dj-core/src/pads.rs`.
+
+    This replaced five separate fixed rows — hot cues, auto loops, saved loops,
+    roll — each of which took vertical space whether or not the DJ wanted it,
+    and none of which a controller could have mapped onto without the mapping
+    being written a second time.
   -->
   {#if deck.loaded && showPads}
-    <div class="pads">
-      {#each deck.hot_cues as cue, index (index)}
-        <button
-          class="pad"
-          class:set={cue != null}
-          disabled={!enabled}
-          onclick={() => send(`deck ${deck.number} hotcue ${index + 1}`)}
-          oncontextmenu={(e) => {
-            e.preventDefault();
-            send(`deck ${deck.number} hotcue_clear ${index + 1}`);
-          }}
-          title={cue != null
-            ? `Jump to cue ${index + 1} — right-click to clear`
-            : `Set cue ${index + 1} here`}
-        >
-          {index + 1}
-        </button>
-      {/each}
-    </div>
+    <Pads pages={padPageList} {deck} {enabled} {send} />
   {/if}
 
   <!--
@@ -360,50 +326,6 @@
       {/each}
       {/if}
 
-      {#if showLoops}
-      <span class="label loop-label">Loop</span>
-      {#each [1, 2, 4, 8] as beats (beats)}
-        <button
-          class:active={activeLoopBeats === beats}
-          onclick={() => send(`deck ${deck.number} loop ${beats}`)}
-          disabled={!enabled || !deck.loaded}
-          title="Loop {beats} beat{beats === 1 ? '' : 's'} from here"
-        >
-          {beats}
-        </button>
-      {/each}
-      {/if}
-    </div>
-  {/if}
-
-  <!--
-    Loop roll. Held rather than clicked, and always slipping: the track carries
-    on underneath, so letting go lands you where you would have been. That is
-    the whole difference from the auto-loop row above, and it is why they are
-    two rows rather than one — the same length means a different thing here.
-
-    Fractions first, because the roll a DJ means by the word is the sub-beat
-    one. A grid is required: the engine refuses a roll it cannot measure, and a
-    pad that silently does nothing reads as broken.
-  -->
-  {#if deck.loaded && showLoops && analysis?.bpm != null}
-    <div class="beatjump loop-row">
-      <span class="label">Roll</span>
-      {#each [0.125, 0.25, 0.5, 1, 2, 4] as beats (beats)}
-        <button
-          class="roll"
-          class:on={rolling === beats && deck.rolling}
-          disabled={!enabled}
-          onpointerdown={(event) => startRoll(event, beats)}
-          onpointerup={endRoll}
-          onpointercancel={endRoll}
-          title="Hold to roll {formatBeats(beats)} beat{beats === 1
-            ? ''
-            : 's'}; let go and the track carries on from where it would have been"
-        >
-          {formatBeats(beats)}
-        </button>
-      {/each}
     </div>
   {/if}
 
@@ -455,33 +377,6 @@
       </button>
     </div>
 
-    <!--
-      Saved loops. Four slots rather than eight: a saved loop is the section you
-      come back to on a record you know, and a DJ who needs more than four of
-      those on one track is editing, not playing.
-
-      One pad per slot, the way the hot cue row works — click recalls, and
-      shift-click saves the loop that is playing over it. Saving on a modifier
-      rather than a separate row because the destructive gesture should be the
-      deliberate one.
-    -->
-    {#if showLoops}
-    <div class="beatjump loop-row">
-      <span class="label">Saved</span>
-      {#each [1, 2, 3, 4] as slot (slot)}
-        <button
-          onclick={(event) =>
-            send(
-              `deck ${deck.number} ${event.shiftKey ? "loop_save" : "loop_recall"} ${slot}`,
-            )}
-          disabled={!enabled}
-          title="Recall saved loop {slot}. Shift-click to save the loop that is playing into it."
-        >
-          {slot}
-        </button>
-      {/each}
-    </div>
-    {/if}
   {/if}
 
   <!--
@@ -823,42 +718,9 @@
     min-width: 0;
   }
 
-  .pads {
-    display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 0.25rem;
-  }
-
-  .pad {
-    padding: 0.35rem 0;
-    font-size: 0.8em;
-    font-weight: 600;
-    color: var(--text-dim);
-  }
-
-  /* A filled pad is filled, not merely labelled: mid-set this is read by shape
-     and colour rather than by number. */
-  .pad.set {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
-  }
-
-  .loop-label {
-    margin-left: 0.5rem;
-  }
-
   .loop-row button {
     padding: 0.2rem 0.5rem;
     font-size: 0.8em;
-  }
-
-  /* Held, not latched, so the lit state has to arrive and leave with the
-     finger. Same accent as the other momentary controls. */
-  .roll.on {
-    background: var(--accent-2);
-    border-color: var(--accent-2);
-    color: var(--on-accent);
   }
 
   .beatjump {

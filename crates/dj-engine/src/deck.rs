@@ -549,15 +549,10 @@ impl Deck {
     ///
     /// Zero or fewer turns looping off, so a controller encoder that can reach
     /// zero does the obvious thing rather than erroring.
-    pub fn set_loop_beats(&mut self, beats: i32, quantize: bool) -> bool {
-        self.set_loop_length(f64::from(beats), quantize)
-    }
-
-    /// The same, in fractions of a beat.
     ///
-    /// Halving a loop already reaches a sixteenth of a beat, so the length was
-    /// never really an integer — only the way of asking for one was. A loop
-    /// roll asks in fractions, and nothing else needs to change for it to.
+    /// Fractional because halving a loop already reaches a sixteenth of a beat:
+    /// the length was never really an integer, only the way of asking for one
+    /// was. The pad ladder runs from a sixteenth to eight beats through here.
     ///
     /// Clamped to [`LoopLimits`], so an absurd request produces the nearest
     /// loop the engine will make rather than an error a pad cannot report.
@@ -1505,7 +1500,7 @@ mod tests {
         deck.set_slip(true);
         deck.play();
         run(&mut deck, 1000);
-        assert!(deck.set_loop_beats(1, false), "a gridded deck can loop");
+        assert!(deck.set_loop_length(1.0, false), "a gridded deck can loop");
         assert!(
             deck.slip_position().is_some(),
             "arming slip then pressing a loop pad must start the shadow"

@@ -86,7 +86,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Loop move / halve / double | M2 |
 | Saved loops | M2 |
 | Slicer | M5 |
-| Pad pages: Cues · Loops · Loop Roll · Slicer · Sampler · Stems · FX | M5 (Stems page M6) |
+| Pad pages: Cues · Loops · Roll · Saved · FX | M5 — **done** |
+| Pad pages: Slicer · Sampler · Stems | M5 (Stems page M6) |
 | Pad colour and LED feedback to hardware | M4 |
 
 ### Effects
