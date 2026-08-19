@@ -20,10 +20,12 @@
 //! [`FxContext`]; nothing here reads a clock.
 
 mod line;
+mod tank;
 
 pub use line::DelayLine;
+pub use tank::Tank;
 
-use crate::SmoothedValue;
+use crate::{Biquad, CHANNELS, SmoothedValue};
 pub use dj_core::fx::{EffectKind, FX_SLOTS, Placement};
 
 /// What an effect needs to know about the music it is being applied to.
@@ -70,11 +72,27 @@ pub struct Slot {
     amount: f32,
     placement: Placement,
     line: DelayLine,
-    /// Per-effect scalar state. Cleared with the line on any switch.
+    /// The second buffer. Only the reverb uses it, but the slot owns it for
+    /// the same reason it owns the line: so switching to reverb costs an
+    /// assignment rather than an allocation.
+    tank: Tank,
+    /// Per-effect scalar state. Cleared with the buffers on any switch.
     phase: f32,
     hold: (f32, f32),
     held: f32,
+    /// The phaser's allpass chain: one sample of state per stage per channel.
+    /// No buffer, because a first-order allpass is one multiply and one add.
+    stages: [[f32; CHANNELS]; PHASER_STAGES],
+    /// The auto-filter's sweeping biquads, one per channel.
+    sweep: [Biquad; CHANNELS],
 }
+
+/// How many allpass stages the phaser runs.
+///
+/// Six, which is three notches. Four is thin and eight starts to sound like a
+/// flanger — and a phaser that sounds like the flanger in the next slot is a
+/// second name for one effect.
+const PHASER_STAGES: usize = 6;
 
 impl Slot {
     /// Shortest and longest a timed effect can be set to, in beats.
@@ -96,9 +114,15 @@ impl Slot {
             amount: 0.5,
             placement: Placement::default(),
             line: DelayLine::new(sample_rate),
+            tank: Tank::new(sample_rate),
             phase: 0.0,
             hold: (0.0, 0.0),
             held: 0.0,
+            stages: [[0.0; CHANNELS]; PHASER_STAGES],
+            sweep: [
+                Biquad::low_pass(sample_rate, 20_000.0, 0.707),
+                Biquad::low_pass(sample_rate, 20_000.0, 0.707),
+            ],
         }
     }
 
@@ -182,9 +206,14 @@ impl Slot {
     /// Forget everything time-based. Does not touch the controls.
     pub fn reset(&mut self) {
         self.line.clear();
+        self.tank.clear();
         self.phase = 0.0;
         self.hold = (0.0, 0.0);
         self.held = 0.0;
+        self.stages = [[0.0; CHANNELS]; PHASER_STAGES];
+        for filter in &mut self.sweep {
+            filter.reset();
+        }
     }
 
     /// Run one frame through, if this slot is doing anything.
@@ -204,9 +233,13 @@ impl Slot {
         let (wet_l, wet_r) = match self.kind {
             EffectKind::None => (left, right),
             EffectKind::Echo => self.echo(left, right, ctx),
+            EffectKind::Delay => self.delay(left, right, ctx),
+            EffectKind::Reverb => self.tank.process(left, right, self.amount),
             EffectKind::Gate => self.gate(left, right, ctx),
             EffectKind::Crush => self.crush(left, right),
             EffectKind::Flanger => self.flanger(left, right, ctx),
+            EffectKind::Phaser => self.phaser(left, right, ctx),
+            EffectKind::Filter => self.filter(left, right, ctx),
         };
 
         let dry = 1.0 - wet;
@@ -227,6 +260,91 @@ impl Slot {
         self.line
             .push(left + tail_l * feedback, right + tail_r * feedback);
         (tail_l, tail_r)
+    }
+
+    /// One repeat, and no feedback.
+    ///
+    /// The whole difference from the echo, and worth its own name: an echo is a
+    /// thing you throw and let ring, a delay is a thing you leave on. Without a
+    /// feedback path it never builds, so it can sit under a whole mix at a wet
+    /// setting an echo would make unlistenable.
+    ///
+    /// `amount` widens the stereo picture by offsetting the two channels — the
+    /// classic ping-pong at the top of the knob, mono at the bottom.
+    #[inline]
+    fn delay(&mut self, left: f32, right: f32, ctx: &FxContext) -> (f32, f32) {
+        let beat = self.beats * ctx.beat();
+        let limit = self.line.frames() as f32 - 2.0;
+        let spread = self.amount * 0.5;
+        let (tail_l, _) = self.line.read((beat * (1.0 - spread)).clamp(1.0, limit));
+        let (_, tail_r) = self.line.read((beat * (1.0 + spread)).clamp(1.0, limit));
+        self.line.push(left, right);
+        (tail_l, tail_r)
+    }
+
+    /// A chain of allpass filters swept by the beat, summed against the dry.
+    ///
+    /// The notches come from the interference between the two paths, so the
+    /// sum is the effect rather than a mix afterwards — a phaser whose wet
+    /// signal has no dry in it has nothing to interfere with.
+    ///
+    /// No buffer at all: a first-order allpass is one multiply and one add per
+    /// stage, which is why a phaser costs a fraction of what a flanger does.
+    #[inline]
+    fn phaser(&mut self, left: f32, right: f32, ctx: &FxContext) -> (f32, f32) {
+        let period = (self.beats * ctx.beat()).max(2.0);
+        self.phase += 1.0 / period;
+        if self.phase >= 1.0 {
+            self.phase -= self.phase.floor();
+        }
+
+        // The sweep runs over the range where the notches are audible as pitch
+        // movement rather than as a tone control.
+        let travel = 0.5 - 0.5 * (std::f32::consts::TAU * self.phase).cos();
+        let centre = 0.05 + 0.75 * travel * (0.3 + 0.7 * self.amount);
+        // First-order allpass coefficient. Straight from the bilinear
+        // transform: `(1 - t) / (1 + t)` where `t = tan(pi * f / rate)`.
+        let coefficient = (1.0 - centre) / (1.0 + centre);
+
+        let mut frame = [left, right];
+        for stage in &mut self.stages {
+            for (channel, sample) in frame.iter_mut().enumerate() {
+                let input = *sample;
+                let output = coefficient * input + stage[channel];
+                stage[channel] = input - coefficient * output;
+                *sample = output;
+            }
+        }
+        ((left + frame[0]) * 0.5, (right + frame[1]) * 0.5)
+    }
+
+    /// A low-pass whose corner sweeps on the beat.
+    ///
+    /// Distinct from the deck's filter knob, which is a control the DJ holds:
+    /// this one moves on its own, in time, and is a thing you switch on and
+    /// leave. `amount` is resonance — how much it whistles at the corner — so
+    /// the knob is called "bite".
+    #[inline]
+    fn filter(&mut self, left: f32, right: f32, ctx: &FxContext) -> (f32, f32) {
+        let period = (self.beats * ctx.beat()).max(2.0);
+        self.phase += 1.0 / period;
+        if self.phase >= 1.0 {
+            self.phase -= self.phase.floor();
+        }
+
+        let travel = 0.5 - 0.5 * (std::f32::consts::TAU * self.phase).cos();
+        // Exponential, because pitch is: a linear sweep spends nearly all its
+        // time in the top octave, where a listener hears almost no movement.
+        let hz = 120.0 * (60.0_f32).powf(travel);
+        let q = 0.707 + self.amount * 6.0;
+        // Retuned rather than replaced: swapping the whole struct would throw
+        // away the filter's memory, and a filter that forgets its last two
+        // samples every frame is a filter that clicks at every frame.
+        let tuned = Biquad::low_pass(ctx.sample_rate, hz, q);
+        for filter in &mut self.sweep {
+            filter.set_coefficients_from(&tuned);
+        }
+        (self.sweep[0].process(left), self.sweep[1].process(right))
     }
 
     /// Chop the signal in and out on the beat.
@@ -488,6 +606,126 @@ mod tests {
             "coarse produced {} values against fine's {}",
             coarse_values.len(),
             fine_values.len()
+        );
+    }
+
+    /// The one thing that separates a delay from an echo, and the reason both
+    /// exist: an echo builds on itself and a delay does not. A delay left on
+    /// under a whole mix must not climb.
+    #[test]
+    fn a_delay_never_builds_however_long_it_runs() {
+        let mut slot = slot(EffectKind::Delay);
+        slot.set_beats(0.25);
+        slot.set_amount(1.0);
+
+        let mut peak = 0.0f32;
+        for n in 0..(SR as usize * 4) {
+            let sample = if n % 4_800 == 0 { 1.0 } else { 0.0 };
+            let (left, _) = slot.process_frame(sample, sample, &ctx(120.0));
+            peak = peak.max(left.abs());
+        }
+        assert!(peak <= 1.01, "the delay climbed to {peak}");
+    }
+
+    /// And the delay's own knob has to do something a listener could name.
+    /// Spread offsets the two channels, so at the top the repeats arrive at
+    /// different times in each ear and at the bottom they arrive together.
+    #[test]
+    fn delay_spread_separates_the_two_channels() {
+        fn difference(spread: f32) -> f32 {
+            let mut slot = slot(EffectKind::Delay);
+            slot.set_beats(0.5);
+            slot.set_amount(spread);
+            let _ = slot.process_frame(1.0, 1.0, &ctx(120.0));
+            let mut total = 0.0;
+            for _ in 0..(SR as usize / 2) {
+                let (left, right) = slot.process_frame(0.0, 0.0, &ctx(120.0));
+                total += (left - right).abs();
+            }
+            total
+        }
+        assert!(difference(0.0) < 1e-6, "mono at the bottom of the knob");
+        assert!(difference(1.0) > 0.5, "separated at the top");
+    }
+
+    /// A reverb has to outlast its input. This is the property, and it is also
+    /// what a listener means by the word.
+    #[test]
+    fn a_reverb_rings_after_the_sound_stops() {
+        let mut slot = slot(EffectKind::Reverb);
+        slot.set_amount(0.7);
+        let _ = slot.process_frame(1.0, 1.0, &ctx(120.0));
+
+        let mut late = 0.0f32;
+        for frame in 0..(SR as usize / 2) {
+            let (left, _) = slot.process_frame(0.0, 0.0, &ctx(120.0));
+            if frame > SR as usize / 4 {
+                late = late.max(left.abs());
+            }
+        }
+        assert!(late > 1e-4, "the reverb died at {late}");
+    }
+
+    /// A phaser has to sweep, which shows up as the output changing over a
+    /// cycle for an input that does not. A phaser stuck at one setting is a
+    /// tone control.
+    #[test]
+    fn a_phaser_sweeps_across_its_cycle() {
+        let mut slot = slot(EffectKind::Phaser);
+        slot.set_beats(1.0);
+        slot.set_amount(1.0);
+
+        // A steady tone in, so any variation out came from the sweep — and at
+        // a frequency the sweep actually reaches. The first version of this
+        // test used 380 Hz, which sits below the whole travel, and reported
+        // that the phaser barely moved when in fact it never touched the tone.
+        let mut lowest = f32::MAX;
+        let mut highest = f32::MIN;
+        let beat = (SR * 60.0 / 120.0) as usize;
+        for n in 0..(beat * 2) {
+            // ~2 kHz, in the middle of the notches' range.
+            let tone = (n as f32 * 0.26).sin();
+            let (left, _) = slot.process_frame(tone, tone, &ctx(120.0));
+            // Compare like with like: only where the input is near its peak.
+            if tone > 0.99 {
+                lowest = lowest.min(left);
+                highest = highest.max(left);
+            }
+        }
+        assert!(
+            highest - lowest > 0.1,
+            "the phaser barely moved: {lowest} to {highest}"
+        );
+    }
+
+    /// The auto-filter has to actually close. Its point is that it moves on
+    /// its own, so somewhere in a cycle it must be taking the top off.
+    #[test]
+    fn the_auto_filter_closes_somewhere_in_its_cycle() {
+        let mut slot = slot(EffectKind::Filter);
+        slot.set_beats(1.0);
+        slot.set_amount(0.0);
+
+        // A high tone: it survives the open end of the sweep and not the shut.
+        let mut loudest = 0.0f32;
+        let mut quietest = f32::MAX;
+        let beat = (SR * 60.0 / 120.0) as usize;
+        let mut window = 0.0f32;
+        for n in 0..(beat * 2) {
+            let tone = (n as f32 * 1.2).sin();
+            let (left, _) = slot.process_frame(tone, tone, &ctx(120.0));
+            window = window.max(left.abs());
+            // Measured over short windows rather than per sample, so a zero
+            // crossing is not mistaken for the filter having closed.
+            if n % 2_000 == 1_999 {
+                loudest = loudest.max(window);
+                quietest = quietest.min(window);
+                window = 0.0;
+            }
+        }
+        assert!(
+            quietest < loudest * 0.5,
+            "the filter never closed: {quietest} against {loudest}"
         );
     }
 

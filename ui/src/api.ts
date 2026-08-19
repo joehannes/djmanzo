@@ -227,7 +227,17 @@ export interface PadPageDto {
 export const padPages = (deck: number) => invoke<PadPageDto[]>("pad_pages", { deck });
 
 /** Every effect, in the order they are offered. */
-export const EFFECTS = ["none", "echo", "gate", "crush", "flanger"] as const;
+export const EFFECTS = [
+  "none",
+  "echo",
+  "delay",
+  "reverb",
+  "gate",
+  "crush",
+  "flanger",
+  "phaser",
+  "filter",
+] as const;
 
 export interface LoopRegion {
   start_frames: number;

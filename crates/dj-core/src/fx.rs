@@ -27,19 +27,27 @@ pub enum EffectKind {
     #[default]
     None,
     Echo,
+    Delay,
+    Reverb,
     Gate,
     Crush,
     Flanger,
+    Phaser,
+    Filter,
 }
 
 impl EffectKind {
     /// Every effect, in the order they are offered.
-    pub const ALL: [EffectKind; 5] = [
+    pub const ALL: [EffectKind; 9] = [
         EffectKind::None,
         EffectKind::Echo,
+        EffectKind::Delay,
+        EffectKind::Reverb,
         EffectKind::Gate,
         EffectKind::Crush,
         EffectKind::Flanger,
+        EffectKind::Phaser,
+        EffectKind::Filter,
     ];
 
     #[must_use]
@@ -47,9 +55,13 @@ impl EffectKind {
         match self {
             EffectKind::None => "none",
             EffectKind::Echo => "echo",
+            EffectKind::Delay => "delay",
+            EffectKind::Reverb => "reverb",
             EffectKind::Gate => "gate",
             EffectKind::Crush => "crush",
             EffectKind::Flanger => "flanger",
+            EffectKind::Phaser => "phaser",
+            EffectKind::Filter => "filter",
         }
     }
 
@@ -66,9 +78,11 @@ impl EffectKind {
     /// that is absent asks no questions.
     #[must_use]
     pub const fn is_timed(self) -> bool {
-        matches!(
+        // Everything except the two with no time in them: crush is
+        // quantisation and reverb is a room, and neither has a rate to sync.
+        !matches!(
             self,
-            EffectKind::Echo | EffectKind::Gate | EffectKind::Flanger
+            EffectKind::None | EffectKind::Crush | EffectKind::Reverb
         )
     }
 
@@ -82,9 +96,13 @@ impl EffectKind {
         match self {
             EffectKind::None => "",
             EffectKind::Echo => "feedback",
+            EffectKind::Delay => "spread",
+            EffectKind::Reverb => "size",
             EffectKind::Gate => "width",
             EffectKind::Crush => "grit",
             EffectKind::Flanger => "depth",
+            EffectKind::Phaser => "sweep",
+            EffectKind::Filter => "bite",
         }
     }
 
@@ -194,10 +212,20 @@ mod tests {
 
     #[test]
     fn only_the_timed_effects_claim_to_be_timed() {
-        assert!(EffectKind::Echo.is_timed());
-        assert!(EffectKind::Gate.is_timed());
-        assert!(EffectKind::Flanger.is_timed());
+        for timed in [
+            EffectKind::Echo,
+            EffectKind::Delay,
+            EffectKind::Gate,
+            EffectKind::Flanger,
+            EffectKind::Phaser,
+            EffectKind::Filter,
+        ] {
+            assert!(timed.is_timed(), "{}", timed.name());
+        }
+        // Crush is quantisation and reverb is a room: neither has a rate, so a
+        // beat control on either would be a knob that does nothing.
         assert!(!EffectKind::Crush.is_timed());
+        assert!(!EffectKind::Reverb.is_timed());
         assert!(!EffectKind::None.is_timed());
     }
 }

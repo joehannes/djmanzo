@@ -263,7 +263,7 @@ static VOCABULARY: [VerbSpec; 67] = [
         target: Target::Deck,
         verb: "fx",
         argument: ArgSpec::Words,
-        help: "change an effect slot: `fx <1-3> <echo|gate|crush|flanger|none>` to load one, then `on`/`off`/`toggle`, `wet <0-1>`, `beats <0.0625-4>`, `amount <0-1>`, `pre`/`post`",
+        help: "change an effect slot: `fx <1-3> <none|echo|delay|reverb|gate|crush|flanger|phaser|filter>` to load one, then `on`/`off`/`toggle`, `wet <0-1>`, `beats <0.0625-4>`, `amount <0-1>`, `pre`/`post`",
         example: "deck 1 fx 1 wet 0.5",
     },
     VerbSpec {

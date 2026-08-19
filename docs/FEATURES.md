@@ -98,8 +98,9 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Per-deck and master FX routing | M5 — **done** |
 | Pre-fader / post-fader chain placement | M5 — **done** |
 | Beat-synced FX timing (1/16 to 4 beats, following the pitch fader) | M5 — **done** |
-| Core effect set: echo, gate, crush, flanger | M5 — **done** |
-| Remaining effects: reverb, delay, phaser, filter, roll, brake, backspin | M5 |
+| Core effect set: echo, delay, reverb, gate, crush, flanger, phaser, filter | M5 — **done** |
+| Roll (as a loop roll, on its own pad page rather than in a slot) | M5 — **done** |
+| Brake and backspin — transport, not signal: they belong on the deck | M5 |
 | CLAP plugin hosting | M5 |
 | Per-stem effects | M6 |
 | Effect chain presets | M5 |

@@ -514,8 +514,10 @@ adding a new controller requires editing a file, not rebuilding the app.
 - Sampler: banks, pad grid, trigger modes, tempo sync, record from deck or master.
 - **FX rack** — done: three chained slots per deck and on the master, pre/post-fader placement,
   beat-synced timing. Chain presets still to come.
-- Core built-in effects — echo, gate, crush and flanger done; reverb, delay, phaser, filter,
-  roll, brake and backspin still to come.
+- Core built-in effects — echo, delay, reverb, gate, crush, flanger, phaser and filter done.
+  Roll shipped as the loop roll, on its own pad page. Brake and backspin still to come, and
+  they are **transport rather than signal**: they change how fast the record turns, not what
+  comes off it, so they belong on the deck and not in a slot.
 - **CLAP** plugin hosting.
 - **Slip mode, reverse/censor, loop roll** — done. 6 decks still to come.
 - Microphone/aux input with ducking.
@@ -614,6 +616,28 @@ thrown.
 `deck 1 fx 2 wet 0.5`, `master fx 1 beats 1/4`. Three slots times seven controls
 times two targets would have been thirty-six entries in a vocabulary that is read
 by a model on every request, where every token is paid for.
+
+Eight effects, and two decisions inside them worth keeping:
+
+- **A slot owns two buffers, not one.** A reverb needs several short delays at
+  once, at lengths chosen so their repeats do not pile up into a flutter, and
+  the single line cannot be all of them. So the slot gained a tank. The
+  principle is unchanged — the *slot* owns the memory, not the effect — and
+  rack memory still scales with how many effects can run rather than with the
+  size of the catalogue.
+- **Echo and delay are two effects, not one with a knob at zero.** An echo has
+  feedback and builds; a delay does not and can sit under a whole mix at a wet
+  setting that would make an echo unlistenable. They are different tools and
+  a DJ reaches for them at different moments.
+
+Two tests in this slice failed for reasons worth recording rather than fixing
+quietly. The reverb's comb lengths were chosen as pretty millisecond values,
+which at 44.1 kHz round to frame counts sharing a factor of two — an audible
+flutter. They are now the next prime above each target, so any two are mutually
+prime at every sample rate. And the reverb's size knob barely did anything,
+because damping was climbing as fast as feedback and cancelling it: a big room
+does absorb more treble, but it still rings longer, and the control has to make
+that true.
 
 Placement is per slot: pre-fader hears the DJ's EQ moves and its tail survives
 the fader coming down, post-fader hears what the room hears and dies with the
