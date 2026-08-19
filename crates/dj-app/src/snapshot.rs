@@ -96,6 +96,12 @@ pub struct DeckSnapshot {
     pub slip: bool,
     /// Playing backwards, from reverse or from a held censor.
     pub reversed: bool,
+    /// A loop roll is being held.
+    ///
+    /// Distinct from `active_loop` because the two look alike and end
+    /// differently: a loop stays, a roll ends when the pad is released. The
+    /// interface has to be able to say which one is on screen.
+    pub rolling: bool,
     /// Where the track would be if nothing were diverting it, in frames.
     /// `None` when nothing is being slipped over.
     pub slip_position: Option<f32>,
@@ -328,6 +334,7 @@ impl Snapshot {
                     beat_phase: get(DeckParam::BeatPhase),
                     slip: get(DeckParam::Slip) > 0.5,
                     reversed: get(DeckParam::Reversed) > 0.5,
+                    rolling: get(DeckParam::Rolling) > 0.5,
                     slip_position: {
                         // Negative means "nothing to slip over", because frame
                         // zero is a real position. See `state::NOT_SLIPPING`.

@@ -83,6 +83,7 @@ fn river(deck: &crate::snapshot::DeckSnapshot) -> RiverReading {
                 beats: region.beats,
             })
         }),
+        rolling: deck.rolling,
         cues: deck
             .hot_cues
             .iter()

@@ -71,6 +71,18 @@ pub enum DeckAction {
     /// Hold or release the censor: momentary reverse that always slips, so it
     /// hides a word and puts you back on the beat.
     SetCensor(bool),
+    /// Hold a loop roll of this many beats, or release it with `None`.
+    ///
+    /// Momentary, like the censor, and for the same reason: a roll is a
+    /// stutter you hold, and the track carries on underneath so you land back
+    /// on the beat.
+    ///
+    /// Fractional because the roll a DJ means by the word is the sub-beat one:
+    /// a quarter-beat stutter into a drop. Whole-beat rolls are real too, but a
+    /// roll that could only be a whole beat would be missing the move it is
+    /// named after. Clamped by the engine's own loop limits, so 1/16 of a beat
+    /// is the floor here as it is for halving a loop.
+    LoopRoll(Option<f32>),
     /// Match this deck's tempo, and align its phase once, to another playing
     /// deck. Refused when either grid is too weak to trust.
     Sync,
@@ -293,6 +305,8 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         // steps.
         "censor_on" => DeckAction::SetCensor(true),
         "censor_off" => DeckAction::SetCensor(false),
+        "roll" => DeckAction::LoopRoll(Some(parse_beats(argument)?)),
+        "roll_off" => DeckAction::LoopRoll(None),
         "key" => DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32),
         // Three verbs rather than one verb with a word argument, matching
         // `cue_on`/`cue_off` above: a three-position switch is three buttons on
@@ -321,6 +335,40 @@ fn parse_i32(word: Option<&str>) -> Result<i32, ParseError> {
     word.ok_or(ParseError::MissingArgument)?
         .parse()
         .map_err(|_| ParseError::BadArgument)
+}
+
+/// A loop length in beats, written the way a DJ says it.
+///
+/// `1/4` as well as `0.25`, because a sub-beat loop has a spoken name and a
+/// script or a hardware mapping written by hand will use it. `Display` emits
+/// the decimal, so the canonical form still round-trips; this only widens what
+/// is accepted.
+fn parse_beats(word: Option<&str>) -> Result<f32, ParseError> {
+    let word = word.ok_or(ParseError::MissingArgument)?;
+    let value = match word.split_once('/') {
+        Some((numerator, denominator)) => {
+            let numerator: f32 = numerator
+                .trim()
+                .parse()
+                .map_err(|_| ParseError::BadArgument)?;
+            let denominator: f32 = denominator
+                .trim()
+                .parse()
+                .map_err(|_| ParseError::BadArgument)?;
+            if denominator == 0.0 {
+                return Err(ParseError::BadArgument);
+            }
+            numerator / denominator
+        }
+        None => word.parse().map_err(|_| ParseError::BadArgument)?,
+    };
+    // NaN would pass every later comparison by failing it, which is the one
+    // way a bad number gets past a range check without being noticed.
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(ParseError::BadArgument)
+    }
 }
 
 /// A hot cue slot, 1-based as the interface and every controller number them.
@@ -417,6 +465,8 @@ impl fmt::Display for Action {
                 DeckAction::ToggleReverse => write!(f, "deck {deck} reverse_toggle"),
                 DeckAction::SetCensor(true) => write!(f, "deck {deck} censor_on"),
                 DeckAction::SetCensor(false) => write!(f, "deck {deck} censor_off"),
+                DeckAction::LoopRoll(Some(beats)) => write!(f, "deck {deck} roll {beats}"),
+                DeckAction::LoopRoll(None) => write!(f, "deck {deck} roll_off"),
                 DeckAction::SetKeyShift(n) => write!(f, "deck {deck} key {n}"),
                 DeckAction::Sync => write!(f, "deck {deck} sync"),
                 DeckAction::SyncOff => write!(f, "deck {deck} sync_off"),
@@ -580,6 +630,30 @@ mod tests {
             Action::parse("deck 1 levitate"),
             Err(ParseError::UnknownVerb(_))
         ));
+    }
+
+    /// A roll is spoken as a fraction — "quarter-beat roll" — so a script or a
+    /// hand-written mapping will write one. Both spellings must reach the same
+    /// action, and `Display` must emit something that parses back.
+    #[test]
+    fn a_roll_can_be_written_as_a_fraction_or_a_decimal() {
+        let quarter = Action::Deck {
+            deck: deck(1),
+            action: DeckAction::LoopRoll(Some(0.25)),
+        };
+        assert_eq!(Action::parse("deck 1 roll 1/4").unwrap(), quarter);
+        assert_eq!(Action::parse("deck 1 roll 0.25").unwrap(), quarter);
+        assert_eq!(Action::parse(&quarter.to_string()).unwrap(), quarter);
+
+        assert_eq!(
+            Action::parse("deck 1 roll 1/0"),
+            Err(ParseError::BadArgument),
+            "a zero denominator is not an infinite roll"
+        );
+        assert_eq!(
+            Action::parse("deck 1 roll half"),
+            Err(ParseError::BadArgument)
+        );
     }
 
     /// Numbers arrive as `f32` and are stored widened, so printing one raw

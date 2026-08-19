@@ -98,6 +98,10 @@ pub struct Deck {
     slip: bool,
     /// Playing backwards.
     reversed: bool,
+    /// A loop roll is held: a momentary loop that always slips, for the same
+    /// reason a censor does -- the point of a roll is that the track carries on
+    /// underneath and you land back on the beat when you let go.
+    rolling: bool,
     /// Censor is held: momentary reverse that always slips, whatever the slip
     /// button says. That is the whole difference between a censor and simply
     /// playing backwards -- a censor hides a word and puts you back on the
@@ -151,6 +155,7 @@ impl Deck {
             slip: false,
             reversed: false,
             censoring: false,
+            rolling: false,
             pending_loop_in: None,
             hot_cues: [None; HOT_CUE_SLOTS],
         }
@@ -505,7 +510,21 @@ impl Deck {
     /// Zero or fewer turns looping off, so a controller encoder that can reach
     /// zero does the obvious thing rather than erroring.
     pub fn set_loop_beats(&mut self, beats: i32, quantize: bool) -> bool {
-        if beats <= 0 {
+        self.set_loop_length(f64::from(beats), quantize)
+    }
+
+    /// The same, in fractions of a beat.
+    ///
+    /// Halving a loop already reaches a sixteenth of a beat, so the length was
+    /// never really an integer — only the way of asking for one was. A loop
+    /// roll asks in fractions, and nothing else needs to change for it to.
+    ///
+    /// Clamped to [`LoopLimits`], so an absurd request produces the nearest
+    /// loop the engine will make rather than an error a pad cannot report.
+    pub fn set_loop_length(&mut self, beats: f64, quantize: bool) -> bool {
+        // `is_finite` first so a NaN length turns looping off rather than
+        // slipping through every comparison by failing it.
+        if !beats.is_finite() || beats <= 0.0 {
             self.exit_loop();
             return true;
         }
@@ -515,7 +534,7 @@ impl Deck {
 
         let start = self.snapped(self.position, quantize);
         let limits = self.loop_limits();
-        let len = (f64::from(beats) * beat).clamp(limits.min_frames, limits.max_frames);
+        let len = (beats * beat).clamp(limits.min_frames, limits.max_frames);
         let Some(region) = LoopRegion::new(start, FramePos::new(start.get() + len)) else {
             return false;
         };
@@ -533,16 +552,18 @@ impl Deck {
     /// Does not move the playhead. A DJ recalling a saved loop while a track
     /// plays wants the loop armed, not the music jumping; the wrap pulls the
     /// playhead in on the next pass if it is past the end.
+    /// Install or clear a loop directly, bypassing the beat maths.
+    ///
+    /// Routed through the same enter/exit as every other loop so slip behaves
+    /// identically however the loop arrived — a restored loop from the library
+    /// is not a different kind of loop from one a pad made.
     pub fn set_loop_region(&mut self, region: Option<LoopRegion>) {
-        let had = self.active_loop.is_some();
-        self.active_loop = region;
         self.pending_loop_in = None;
-        match (had, region.is_some()) {
-            // A loop just started: from here the playhead is diverted.
-            (false, true) => self.begin_diversion(),
-            // A loop just ended: land where the track would have been.
-            (true, false) => self.end_diversion(),
-            _ => {}
+        match region {
+            Some(region) => {
+                self.enter_loop(region);
+            }
+            None => self.exit_loop(),
         }
     }
 
@@ -555,7 +576,37 @@ impl Deck {
     /// otherwise.
     #[must_use]
     pub fn is_slipping(&self) -> bool {
-        self.slip || self.censoring
+        self.slip || self.censoring || self.rolling
+    }
+
+    /// Hold a loop roll of `beats`, or release it.
+    ///
+    /// A roll is a loop that always slips: hold for a stutter, let go and the
+    /// track is where it would have been. Returns false when the deck has no
+    /// grid to measure beats against, the same as any other beat-length loop.
+    pub fn set_loop_roll(&mut self, beats: Option<f32>, quantize: bool) -> bool {
+        match beats {
+            Some(beats) if beats > 0.0 => {
+                // Armed *before* the loop, so the loop's own `begin_diversion`
+                // sees a deck that is slipping. The other order would set the
+                // anchor only if the slip button happened to be on.
+                self.rolling = true;
+                let made = self.set_loop_length(f64::from(beats), quantize);
+                if !made {
+                    self.rolling = false;
+                }
+                made
+            }
+            _ => {
+                self.exit_loop();
+                true
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn rolling(&self) -> bool {
+        self.rolling
     }
 
     #[must_use]
@@ -727,8 +778,15 @@ impl Deck {
 
     /// Stop looping. The playhead stays where it is and playback carries on.
     pub fn exit_loop(&mut self) {
+        let had = self.active_loop.is_some();
         self.active_loop = None;
         self.pending_loop_in = None;
+        // A roll ends with the loop it made, so releasing the pad and the loop
+        // running out are the same thing.
+        self.rolling = false;
+        if had {
+            self.end_diversion();
+        }
     }
 
     /// Start looping over `region`, pulling the playhead in if it is outside.
@@ -736,7 +794,15 @@ impl Deck {
         if region.end.get() > self.len_frames() as f64 {
             return false;
         }
+        let fresh = self.active_loop.is_none();
         self.active_loop = Some(region);
+        // Here rather than in `set_loop_region`, because that is not the path
+        // the loop buttons take: `set_loop_beats`, `loop_out`, halve and double
+        // all come through here, and hanging the diversion off the other one
+        // meant slip simply never engaged from a pad.
+        if fresh {
+            self.begin_diversion();
+        }
         // A loop set from outside itself -- by halving until the playhead falls
         // past the new end, or by setting a loop behind the playhead -- has to
         // pull the playhead in, or the deck would keep playing forward and the
@@ -1365,6 +1431,134 @@ mod tests {
             "expected to stay inside the loop, got {}",
             deck.position().get()
         );
+    }
+
+    /// A grid, so beat-length loops and rolls can be measured.
+    fn gridded(frames: usize, bpm: f64) -> Deck {
+        use dj_core::{Beatgrid, Bpm, Confidence};
+        let mut deck = deck_with(frames);
+        deck.set_grid(Some(Beatgrid::new(
+            FramePos::ZERO,
+            Bpm::new(bpm).unwrap(),
+            Confidence::new(0.9),
+        )));
+        deck
+    }
+
+    /// The bug this found: the loop *buttons* do not go through
+    /// `set_loop_region`, so hanging the diversion off that one meant slip
+    /// never engaged from a pad — only from the path the first tests used.
+    #[test]
+    fn slip_engages_from_the_loop_buttons_not_only_from_a_set_region() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.set_slip(true);
+        deck.play();
+        run(&mut deck, 1000);
+        assert!(deck.set_loop_beats(1, false), "a gridded deck can loop");
+        assert!(
+            deck.slip_position().is_some(),
+            "arming slip then pressing a loop pad must start the shadow"
+        );
+    }
+
+    /// A roll always slips, whatever the slip button says — the point of a roll
+    /// is that the track carries on underneath.
+    #[test]
+    fn a_loop_roll_slips_even_with_slip_off() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.play();
+        assert!(!deck.slip());
+        run(&mut deck, 1000);
+        assert!(deck.set_loop_roll(Some(1.0), false));
+        assert!(deck.is_slipping(), "a roll always slips");
+        assert!(deck.slip_position().is_some());
+    }
+
+    #[test]
+    fn releasing_a_roll_lands_where_the_track_would_have_been() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.play();
+        run(&mut deck, 1000);
+        deck.set_loop_roll(Some(1.0), false);
+        run(&mut deck, 5000);
+        deck.set_loop_roll(None, false);
+        assert!(deck.active_loop().is_none(), "the roll's loop went with it");
+        assert!(!deck.rolling());
+        assert!(
+            (deck.position().get() - 6000.0).abs() < 50.0,
+            "expected to land near 6000, got {}",
+            deck.position().get()
+        );
+    }
+
+    /// A roll on a deck with no grid cannot be measured in beats, and must not
+    /// leave the deck believing it is rolling.
+    #[test]
+    fn a_roll_on_an_ungridded_deck_is_refused_cleanly() {
+        let mut deck = deck_with(400_000);
+        deck.play();
+        assert!(!deck.set_loop_roll(Some(1.0), false));
+        assert!(!deck.rolling(), "a refused roll is not a roll");
+        assert!(!deck.is_slipping());
+    }
+
+    /// The roll a DJ means by the word is the sub-beat one, so a quarter beat
+    /// has to make a quarter-beat loop and not round to nothing or to one.
+    #[test]
+    fn a_roll_can_be_a_fraction_of_a_beat() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.play();
+        run(&mut deck, 1000);
+        assert!(deck.set_loop_roll(Some(0.25), false));
+        let beats = deck.loop_beats().expect("a gridded deck can name its loop");
+        assert!(
+            (beats - 0.25).abs() < 0.01,
+            "expected a quarter-beat loop, got {beats}"
+        );
+    }
+
+    /// Below a sixteenth a loop is a pitched buzz, not a roll. The engine's own
+    /// limit catches it, and the roll must go through that limit rather than
+    /// around it.
+    #[test]
+    fn an_absurdly_short_roll_lands_on_the_shortest_loop_the_engine_makes() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.play();
+        assert!(deck.set_loop_roll(Some(0.001), false));
+        let beats = deck.loop_beats().expect("a gridded deck can name its loop");
+        assert!(
+            (beats - dj_core::hotcue::MIN_LOOP_BEATS).abs() < 0.001,
+            "expected the floor of {}, got {beats}",
+            dj_core::hotcue::MIN_LOOP_BEATS
+        );
+    }
+
+    /// Every other roll test plays for a while first and passes `quantize:
+    /// false`. A freshly loaded track is the opposite — paused, at frame zero,
+    /// with quantize on — and that is the state a DJ is in when they reach for
+    /// a pad to hear what a section does. Snapping to the nearest beat from
+    /// zero is the case most likely to produce a region the engine refuses.
+    #[test]
+    fn a_roll_works_on_a_freshly_loaded_paused_deck_with_quantize_on() {
+        let mut deck = gridded(400_000, 120.0);
+        assert!(!deck.is_playing());
+        assert_eq!(deck.position().get(), 0.0);
+        assert!(
+            deck.set_loop_roll(Some(0.25), true),
+            "a roll at the start of a gridded track must be accepted"
+        );
+        assert!(deck.active_loop().is_some(), "the roll made no loop");
+        assert!(deck.rolling());
+    }
+
+    /// The loop running out is the same event as letting go of the pad.
+    #[test]
+    fn a_roll_that_ends_any_other_way_stops_rolling() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.play();
+        deck.set_loop_roll(Some(1.0), false);
+        deck.exit_loop();
+        assert!(!deck.rolling());
     }
 
     #[test]

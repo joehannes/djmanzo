@@ -96,7 +96,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 63] = [
+static VOCABULARY: [VerbSpec; 65] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -236,6 +236,23 @@ static VOCABULARY: [VerbSpec; 63] = [
         argument: ArgSpec::None,
         help: "release the censor",
         example: "deck 1 censor_off",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "roll",
+        argument: ArgSpec::Number {
+            min: 0.0625,
+            max: 32.0,
+        },
+        help: "hold a loop roll this many beats long, as a decimal or 1/4 — the track carries on underneath",
+        example: "deck 1 roll 0.25",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "roll_off",
+        argument: ArgSpec::None,
+        help: "release the roll, and land where the track would have been",
+        example: "deck 1 roll_off",
     },
     VerbSpec {
         target: Target::Deck,
@@ -726,6 +743,8 @@ mod tests {
             "reverse_toggle",
             "censor_on",
             "censor_off",
+            "roll",
+            "roll_off",
         ];
         for name in expected {
             assert!(

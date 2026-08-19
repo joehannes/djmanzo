@@ -241,6 +241,12 @@ pub struct RiverReading {
     /// The loop repeating right now, as fractions of the track, with its
     /// length in beats for the reading.
     pub loop_region: Option<LoopRegion>,
+    /// That loop is a held roll rather than a loop that will stay.
+    ///
+    /// The same eddy either way — water circulating is water circulating — but
+    /// it reads differently, because a roll is a thing in progress and a loop
+    /// is a thing that has been set.
+    pub rolling: bool,
     /// Hot cue positions as fractions of the track, slot 1 first. `None` for an
     /// empty slot, which is not the same as a cue at the very start.
     pub cues: Vec<Option<f32>>,
@@ -310,6 +316,7 @@ impl RiverReading {
             eq: [1.0, 1.0, 1.0],
             filter: 0.0,
             loop_region: None,
+            rolling: false,
             cues: Vec::new(),
             reversed: false,
             slip_at: None,
@@ -591,13 +598,15 @@ fn eddy_entity(river: &RiverReading) -> Option<Entity> {
         vitality: Vitality::of(river),
         along: region.start.clamp(0.0, 1.0),
         extent: region.length.clamp(0.0, 1.0),
-        reading: match region.beats {
-            Some(beats) if beats >= 1.0 => format!("loop {}", format_beats(beats)),
-            Some(beats) => format!("loop {}", format_beats(beats)),
-            // A loop set by hand on a track with no grid has a real length in
-            // seconds and no length in beats, and saying "loop" alone is more
-            // honest than inventing a beat count.
-            None => "loop".to_owned(),
+        reading: {
+            let kind = if river.rolling { "roll" } else { "loop" };
+            match region.beats {
+                Some(beats) => format!("{kind} {}", format_beats(beats)),
+                // A loop set by hand on a track with no grid has a real length
+                // in seconds and no length in beats, and saying "loop" alone is
+                // more honest than inventing a beat count.
+                None => kind.to_owned(),
+            }
         },
     })
 }
@@ -1129,6 +1138,22 @@ mod tests {
         });
         let world = build(&[looping], 1, 2, calm(0.0), quiet());
         assert_eq!(all(&world, "deck.eddy")[0].reading, "loop 1/4");
+    }
+
+    /// A roll and a loop are the same eddy and a different situation: the roll
+    /// ends when the pad is released, the loop stays. A still frame has to say
+    /// which one is turning.
+    #[test]
+    fn a_held_roll_reads_as_a_roll_and_not_as_a_loop() {
+        let mut rolling = playing(1);
+        rolling.loop_region = Some(LoopRegion {
+            start: 0.4,
+            length: 0.006,
+            beats: Some(0.25),
+        });
+        rolling.rolling = true;
+        let world = build(&[rolling], 1, 2, calm(0.0), quiet());
+        assert_eq!(all(&world, "deck.eddy")[0].reading, "roll 1/4");
     }
 
     /// A loop set by hand on an ungridded track has a real length in seconds

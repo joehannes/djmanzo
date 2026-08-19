@@ -517,7 +517,7 @@ adding a new controller requires editing a file, not rebuilding the app.
 - Core built-in effects (echo, reverb, delay, flanger, phaser, filter, gate, bitcrush, roll,
   brake, backspin).
 - **CLAP** plugin hosting.
-- **Slip mode, reverse/censor** — done. 6 decks still to come.
+- **Slip mode, reverse/censor, loop roll** — done. 6 decks still to come.
 - Microphone/aux input with ducking.
 - Automix with configurable transition style.
 - Recording to disk; Icecast/Shoutcast broadcast.
@@ -545,6 +545,32 @@ Three decisions the tests pin:
 Allocation-free on both audio paths, proven by `rt_safety.rs` on the direct path
 and again on the keylocked one, which advances the shadow per block rather than
 per frame.
+
+### Loop roll
+
+A fourth move from the same shadow, and the one that shows the concept was the
+right one: a roll is a held loop that always slips, so letting go lands you where
+the track would have been. No new engine machinery — `rolling` joins `slip` and
+`censoring` in what counts as slipping, and the loop does the rest.
+
+Two things this slice settled:
+
+- **Rolls are fractions.** `set_loop_beats` took an integer, but halving a loop
+  already reaches a sixteenth of a beat, so the length was never really an
+  integer — only the way of asking for one was. `set_loop_length` takes beats as
+  a float and `set_loop_beats` delegates to it; the action accepts `roll 1/4` as
+  well as `roll 0.25`, because a sub-beat loop has a spoken name.
+- **The pads had the wrong choke point.** Slip was armed in `set_loop_region`,
+  which `set_loop_beats`, `loop_out`, halve and double all bypass — so slip
+  engaged from the test's entry point and from nothing a DJ actually presses.
+  `begin_diversion`/`end_diversion` now live in `enter_loop`/`exit_loop`, which
+  every path goes through. Reverting the move fails three tests.
+
+In the interface the roll pads are held, not clicked, and they take pointer
+capture: dragging off a pad mid-roll keeps rolling until the finger lifts, the
+way a hardware pad does. Releasing a roll ends its loop, so the release is
+guarded by which pad started it — a pointer merely crossing the row must not
+cancel a loop the DJ set on purpose.
 
 **Done when:** djmanzo is at feature parity with VirtualDJ for a standard club set.
 

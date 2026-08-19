@@ -112,6 +112,14 @@ export interface DeckState {
   slip: boolean;
   /** Playing backwards, from reverse or from a held censor. */
   reversed: boolean;
+  /**
+   * A loop roll is being held.
+   *
+   * Distinct from `active_loop`: the two look alike and end differently, and a
+   * DJ needs to know which of the two is on screen — a loop stays when you let
+   * go of the pad, a roll does not.
+   */
+  rolling: boolean;
   /** Where the track would be if nothing were diverting it. Null when nothing is. */
   slip_position: number | null;
   crossfader_assign: CrossfaderAssign;

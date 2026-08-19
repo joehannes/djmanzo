@@ -82,7 +82,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Hot cues (8+, named and colour-coded) | M2 |
 | Manual loop in / out, loop adjust | M2 |
 | Auto-loop by beat count | M2 |
-| Loop roll (momentary) | M5 |
+| Loop roll (momentary, always slipping, down to 1/16 beat) | M5 — **done** |
 | Loop move / halve / double | M2 |
 | Saved loops | M2 |
 | Slicer | M5 |

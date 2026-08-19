@@ -81,6 +81,13 @@ pub enum DeckParam {
     /// **-1.0 when nothing is being slipped over**, because frame zero is a
     /// real position and cannot mean "none" as it can in an `Option`.
     SlipPosition,
+    /// 1.0 while a loop roll is being held.
+    ///
+    /// Separate from [`DeckParam::LoopActive`] because a roll and a loop look
+    /// the same and behave differently: a loop stays when you stop touching it
+    /// and a roll does not. An interface that draws both as "looping" is
+    /// telling a DJ the wrong thing about what happens next.
+    Rolling,
     /// 1.0 when a loop is repeating.
     LoopActive,
     /// Loop start and end, in frames. Meaningful only while `LoopActive`.
@@ -138,7 +145,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 38;
+    pub const COUNT: usize = 39;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -174,6 +181,7 @@ impl DeckParam {
             Slip,
             Reversed,
             SlipPosition,
+            Rolling,
             LoopActive,
             LoopStart,
             LoopEnd,
@@ -329,6 +337,7 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::Slip => "slip",
         DeckParam::Reversed => "reversed",
         DeckParam::SlipPosition => "slip_position",
+        DeckParam::Rolling => "rolling",
         DeckParam::LoopActive => "loop_active",
         DeckParam::LoopStart => "loop_start",
         DeckParam::LoopEnd => "loop_end",

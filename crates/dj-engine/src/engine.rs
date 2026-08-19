@@ -293,6 +293,9 @@ impl Engine {
                         target.set_reverse(!on);
                     }
                     DeckAction::SetCensor(held) => target.set_censor(held),
+                    DeckAction::LoopRoll(beats) => {
+                        target.set_loop_roll(beats, quantize);
+                    }
                     DeckAction::BeatJump(beats) => {
                         target.beat_jump(beats, quantize);
                     }
@@ -471,6 +474,7 @@ impl Engine {
             );
             set(DeckParam::Slip, if deck.slip() { 1.0 } else { 0.0 });
             set(DeckParam::Reversed, if deck.reversed() { 1.0 } else { 0.0 });
+            set(DeckParam::Rolling, if deck.rolling() { 1.0 } else { 0.0 });
             set(
                 DeckParam::SlipPosition,
                 // Zero is a real position, so "not slipping" cannot be zero.

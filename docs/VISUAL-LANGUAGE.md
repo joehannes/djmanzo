@@ -272,6 +272,7 @@ under the DJ's fingers at the rate of the current, and resisting it slows the wa
 | **Slip mode** | the visible river continues flowing underneath, transparent and ghostly, while the DJ's action (a scratch, a loop roll, a backspin) happens on the surface. When the action ends, the surface snaps to where the underlying current has reached. The DJ sees both: what they are doing, and where they will land. |
 | **Reverse** | the current reverses. The water flows upstream. The crests travel backward. Simple and total. |
 | **Censor** | identical to reverse, but the DJ holds a button — release and the river resumes forward. It is reverse as a momentary gesture. |
+| **Loop roll** | a held eddy. The water spins in a tight circle at the surface while the current beneath keeps going; let go and the surface rejoins it downstream. The shorter the roll, the tighter and faster the eddy — a quarter-beat roll is a spin you read as texture rather than as a circuit. |
 
 ### Transport — play, pause and cue
 

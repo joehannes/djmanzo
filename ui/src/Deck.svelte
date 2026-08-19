@@ -76,6 +76,38 @@
   }
 
   /**
+   * Which roll pad is being held, if any.
+   *
+   * Local rather than read back from the deck because it is also a guard.
+   * Releasing a roll ends the loop, so a `roll_off` sent by a pad that was
+   * never pressed would cancel a loop the DJ set on purpose — the pointer
+   * merely passing over the row would do it. The censor can be sloppy about
+   * this because `censor_off` on a deck that is not censoring changes nothing.
+   */
+  let rolling = $state<number | null>(null);
+
+  /**
+   * Hold a roll.
+   *
+   * Pointer capture rather than a `pointerleave` release: dragging off a pad
+   * mid-roll should keep rolling until the finger lifts, the way a hardware pad
+   * does, and capture also guarantees the release arrives at all.
+   */
+  function startRoll(event: PointerEvent, beats: number) {
+    // The action first. Capture is a convenience and the roll is the point, so
+    // a browser that refuses the capture must still roll.
+    rolling = beats;
+    send(`deck ${deck.number} roll ${beats}`);
+    (event.currentTarget as HTMLButtonElement).setPointerCapture(event.pointerId);
+  }
+
+  function endRoll() {
+    if (rolling == null) return;
+    rolling = null;
+    send(`deck ${deck.number} roll_off`);
+  }
+
+  /**
    * Take the analyser's rejected octave.
    *
    * Autocorrelation genuinely cannot tell 80 from 160 — a curve periodic at one
@@ -342,6 +374,37 @@
     </div>
   {/if}
 
+  <!--
+    Loop roll. Held rather than clicked, and always slipping: the track carries
+    on underneath, so letting go lands you where you would have been. That is
+    the whole difference from the auto-loop row above, and it is why they are
+    two rows rather than one — the same length means a different thing here.
+
+    Fractions first, because the roll a DJ means by the word is the sub-beat
+    one. A grid is required: the engine refuses a roll it cannot measure, and a
+    pad that silently does nothing reads as broken.
+  -->
+  {#if deck.loaded && showLoops && analysis?.bpm != null}
+    <div class="beatjump loop-row">
+      <span class="label">Roll</span>
+      {#each [0.125, 0.25, 0.5, 1, 2, 4] as beats (beats)}
+        <button
+          class="roll"
+          class:on={rolling === beats && deck.rolling}
+          disabled={!enabled}
+          onpointerdown={(event) => startRoll(event, beats)}
+          onpointerup={endRoll}
+          onpointercancel={endRoll}
+          title="Hold to roll {formatBeats(beats)} beat{beats === 1
+            ? ''
+            : 's'}; let go and the track carries on from where it would have been"
+        >
+          {formatBeats(beats)}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
   {#if deck.loaded && showLoops}
     <div class="beatjump loop-row">
       <button
@@ -379,7 +442,11 @@
         title="Stop looping and carry on"
       >
         {#if deck.active_loop}
-          Looping{deck.active_loop.beats ? ` ${formatBeats(deck.active_loop.beats)}` : ""}
+          <!-- A roll is a loop that will end on its own, and saying "looping"
+               about one tells a DJ the wrong thing about what happens next. -->
+          {deck.rolling ? "Rolling" : "Looping"}{deck.active_loop.beats
+            ? ` ${formatBeats(deck.active_loop.beats)}`
+            : ""}
         {:else}
           No loop
         {/if}
@@ -774,6 +841,14 @@
   .loop-row button {
     padding: 0.2rem 0.5rem;
     font-size: 0.8em;
+  }
+
+  /* Held, not latched, so the lit state has to arrive and leave with the
+     finger. Same accent as the other momentary controls. */
+  .roll.on {
+    background: var(--accent-2);
+    border-color: var(--accent-2);
+    color: var(--on-accent);
   }
 
   .beatjump {
