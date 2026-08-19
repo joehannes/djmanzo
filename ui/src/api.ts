@@ -366,7 +366,28 @@ export interface MasterState {
   quantize: boolean;
 }
 
+export type SessionPhase = "warm_up" | "heat" | "peak" | "cooldown" | "chill_out";
+
+export interface EnvironmentContext {
+  time_of_day: string;
+  weather: string;
+  temperature_c: number;
+}
+
+export interface AudioMetrics {
+  momentary_loudness: number;
+  spectral_bands: [number, number, number, number];
+}
+
+export interface SessionContext {
+  phase: SessionPhase;
+  environment: EnvironmentContext;
+  energy_level: number;
+  audio: AudioMetrics;
+}
+
 export interface Snapshot {
+  context: SessionContext;
   decks: DeckState[];
   master: MasterState;
 }

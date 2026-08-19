@@ -11,6 +11,7 @@
 //! most expensive and a bad value most damaging.
 
 pub mod action;
+pub mod context;
 pub mod deck;
 
 pub mod fx;
@@ -23,6 +24,7 @@ pub mod time;
 pub mod vocabulary;
 
 pub use action::{Action, DeckAction, MixerAction};
+pub use context::{SessionContext, SessionPhase, EnvironmentContext};
 pub use deck::{CrossfaderAssign, DeckId, MAX_DECKS};
 pub use fx::{EffectKind, FX_SLOTS, FxChange, Placement};
 pub use hotcue::{HOT_CUE_SLOTS, LoopLimits, LoopRegion};

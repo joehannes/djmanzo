@@ -539,6 +539,7 @@
       {#each snapshot.decks.slice(0, deckCount) as deck (deck.number)}
         <Deck
           {deck}
+          context={snapshot.context}
           sampler={snapshot.master.sampler}
           enabled={ready}
           cueAvailable={snapshot.master.cue_available}

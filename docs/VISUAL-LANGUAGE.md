@@ -559,25 +559,20 @@ should have been said by shape.
 
 ---
 
-## 6. Trunk and foliage
+## 6. Trunk, foliage, and adaptive flora
 
-The rule that makes the whole thing usable, and it comes from the metaphor rather than fighting
-it: *a trunk is rigid and bears weight; foliage moves and carries the light.*
+The original rule stated that controls must be rigid DOM elements. This has been revised. The interface is now composed of three distinct concepts:
 
-| | Trunk | Foliage |
-|---|---|---|
-| What | anything a DJ clicks, drags or aims at | anything that reports state |
-| Behaviour | rigid, stable, exactly where it was last time | grows, flows, pulses, responds |
-| Rendered as | a real DOM element — focusable, keyboard-reachable, named to a screen reader | drawn into the canvas world |
-| May occlude | never occluded by foliage | may be occluded by other foliage |
+| | Trunk (Text) | Foliage (The World) | Adaptive Flora (SVG Controls) |
+|---|---|---|---|
+| **What** | Text and precise values (BPM, times, keys) | The living world (rivers, crests, eddies) | Anything a DJ clicks, drags, or aims at |
+| **Behaviour** | Rigid, standard typography | Flows, pulses, responds to state | Tangible but responsive: scales, morphs, and shifts with context |
+| **Rendered as** | Standard DOM text | Drawn into the canvas world | Interactive SVG geometry |
+| **May occlude** | Never occluded | May be occluded by controls | Floats above foliage |
 
-**Canvas paints, DOM listens.** A control's *appearance* is drawn as part of the world; its hit
-target, focus ring, keyboard handling and ARIA role stay a real element positioned by the world.
-Both, always, for every control.
+**Adaptive Flora replaces rigid HTML controls.** A fader is no longer a static `<input type="range">`. It is an SVG element that feels tangible to interact with, but visually responds to the session's context (e.g., sharpening during high energy, softening during warmups). 
 
-Text is trunk too — all of it stays in the DOM, because canvas text ignores the system's font
-rendering and the user's size preference, and a DJ who has set their system font to 20 px meant
-it.
+**SVG paints, Svelte listens.** These controls are still rendered natively by the browser and managed by Svelte's high-performance reactivity. Keyboard accessibility and screen-reader support must be manually maintained on the SVG groups via `tabindex` and ARIA attributes, as we are abandoning native HTML form elements for visual expressiveness.
 
 ---
 
@@ -799,6 +794,35 @@ it does not have a visual representation in the world (and §3 says it should no
 | Slip mode | a ghostly river flowing underneath |
 | Session phase | the light — dawn, noon, dusk |
 | Assistant suggestion | a fork in the river, faintly lit |
+
+---
+
+## 12. Contextual Expression (The Adaptive UI)
+
+The controls of the interface (the Adaptive Flora) are not static. They respond to the **Session Context**, dynamically adjusting their geometry and color without breaking the muscle memory required to use them.
+
+### The Session Context
+
+The engine continuously evaluates the environment and the music, exposing a context containing:
+- **Time of Day & Weather:** Local physical reality.
+- **Session Phase:** Warm-up, Heat (Peak), Slow Down, Chill Out.
+- **Audience/Mood:** Energy level inferred from tempo, loudness, and set history.
+
+### Expressive Geometry
+
+SVG controls react to this context by shifting their form within strictly defined boundaries:
+
+| Context | Visual Adaptation | Interaction Goal |
+|---|---|---|
+| **Warm-up / Chill Out** | Softer corners, rounder caps, cooler hues (blues/purples), lower contrast, wider hit areas. | Reduce cognitive load; invite relaxed, gradual mixing. |
+| **Heat / Peak Time** | Sharper edges, geometric precision, warmer hues (oranges/reds), high contrast, pulsing strokes. | Demand precision; reflect high energy and tension. |
+| **Winter / Cold Weather** | Contracted shapes, icy accents, slow easing transitions. | Connect the visual space to the physical environment. |
+
+### Technical Constraints for SVG Controls
+
+1. **No heavy pixel filters:** Controls must use pure geometry (paths, scales, rotations) and solid colors/gradients. WebKitGTK struggles with `feGaussianBlur` and `feDropShadow` at 60fps.
+2. **Hit areas are sacred:** A control's bounding box and center of mass must remain predictable regardless of its visual morphology. Muscle memory cannot be compromised.
+3. **Svelte native reactivity:** Controls must bind their SVG attributes directly to the state. No heavy JS animation libraries (like GSAP) should be used for simple UI morphing.
 
 ---
 

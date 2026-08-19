@@ -10,7 +10,7 @@
 
 use dj_control::ParameterRegistry;
 use dj_core::param::{DeckParam, FxParams, GlobalParam};
-use dj_core::{CrossfaderAssign, DeckId, EffectKind, ParamId};
+use dj_core::{CrossfaderAssign, DeckId, EffectKind, ParamId, SessionContext};
 use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -323,6 +323,8 @@ pub struct SplitOutputSnapshot {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Snapshot {
+    /// The global session context driving the UI's contextual expression.
+    pub context: SessionContext,
     pub decks: Vec<DeckSnapshot>,
     pub master: MasterSnapshot,
 }
@@ -467,8 +469,23 @@ impl Snapshot {
                 }
             })
             .collect();
+        let peak_left = registry.get(ParamId::Global(GlobalParam::MasterPeakLeft));
+        let peak_right = registry.get(ParamId::Global(GlobalParam::MasterPeakRight));
+        let momentary_loudness = (peak_left.max(peak_right)).clamp(0.0, 1.0);
+
+        let context = SessionContext {
+            phase: dj_core::SessionPhase::Peak,
+            environment: dj_core::EnvironmentContext::default(),
+            energy_level: 0.95,
+            audio: dj_core::AudioMetrics {
+                momentary_loudness,
+                // Placeholder proxy until FFT node is built
+                spectral_bands: [0.1, 0.2, 0.3, 0.4],
+            },
+        };
 
         Self {
+            context,
             decks,
             master: MasterSnapshot {
                 sampler: SamplerSnapshot {

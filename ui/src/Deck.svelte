@@ -13,10 +13,15 @@
   import Pads from "./Pads.svelte";
   import Overview from "./Overview.svelte";
   import Waveform from "./Waveform.svelte";
+  import SvgKnob from "./controls/SvgKnob.svelte";
+  import SvgFader from "./controls/SvgFader.svelte";
+  import SvgPad from "./controls/SvgPad.svelte";
+  import * as OrganicTheme from "./controls/themes/OrganicTheme.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
 
   let {
     deck,
+    context,
     /** The sampler, for the pad page whose pads are not about this deck. */
     sampler,
     enabled,
@@ -24,6 +29,7 @@
     layout = null,
   }: {
     deck: DeckState;
+    context: SessionContext;
     sampler: SamplerState;
     enabled: boolean;
     cueAvailable?: boolean;
@@ -452,29 +458,36 @@
   {/if}
 
   <div class="transport">
-    <button onclick={() => send(`deck ${deck.number} cue`)} disabled={!enabled || !deck.loaded}>
-      Cue
-    </button>
-    <button
-      class:active={deck.playing}
-      onclick={() => send(`deck ${deck.number} play_pause`)}
+    <SvgPad
+      {context}
+      theme={OrganicTheme}
+      label="CUE"
       disabled={!enabled || !deck.loaded}
-    >
-      {deck.playing ? "Pause" : "Play"}
-    </button>
-    <button
-      class:active={deck.synced}
-      onclick={() => send(`deck ${deck.number} ${deck.synced ? "sync_off" : "sync"}`)}
+      onclick={() => send(`deck ${deck.number} cue`)}
+    />
+    <SvgPad
+      {context}
+      theme={OrganicTheme}
+      label={deck.playing ? "PAUSE" : "PLAY"}
+      active={deck.playing}
+      disabled={!enabled || !deck.loaded}
+      onclick={() => send(`deck ${deck.number} play_pause`)}
+    />
+    <SvgPad
+      {context}
+      theme={OrganicTheme}
+      label="SYNC"
+      active={deck.synced}
       disabled={!enabled || !deck.can_sync}
-      title={deck.can_sync
-        ? "Match tempo and phase to the other playing deck"
-        : "No beat grid solid enough to sync to. Syncing to a guess is how a mix derails."}
-    >
-      Sync
-    </button>
-    <button onclick={() => send(`deck ${deck.number} eject`)} disabled={!enabled || !deck.loaded}>
-      Eject
-    </button>
+      onclick={() => send(`deck ${deck.number} ${deck.synced ? "sync_off" : "sync"}`)}
+    />
+    <SvgPad
+      {context}
+      theme={OrganicTheme}
+      label="EJECT"
+      disabled={!enabled || !deck.loaded}
+      onclick={() => send(`deck ${deck.number} eject`)}
+    />
   </div>
 
   <!--
@@ -506,15 +519,16 @@
   <div class="eq">
     {#each [{ id: "eq_high", label: "HI", value: deck.eq_high }, { id: "eq_mid", label: "MID", value: deck.eq_mid }, { id: "eq_low", label: "LOW", value: deck.eq_low }] as band (band.id)}
       <label class="band" class:killed={band.value < 0.001}>
-        <span>{band.label}</span>
-        <input
-          type="range"
-          min="0"
-          max="4"
-          step="0.01"
+        <SvgKnob
+          {context}
+          theme={OrganicTheme}
           value={band.value}
+          min={0}
+          max={4}
+          step={0.01}
+          label={band.label}
           disabled={!enabled}
-          oninput={(e) => send(`deck ${deck.number} ${band.id} ${e.currentTarget.value}`)}
+          oninput={(val) => send(`deck ${deck.number} ${band.id} ${val}`)}
           ondblclick={() => send(`deck ${deck.number} ${band.id} 1`)}
         />
         <button
@@ -532,37 +546,35 @@
 
   {#if showFilter}
   <label class="control">
-    <span>
-      Filter
-      <em class="mono">
-        {#if Math.abs(deck.filter) <= 0.02}off{:else if deck.filter < 0}LP {Math.round(
-            -deck.filter * 100,
-          )}%{:else}HP {Math.round(deck.filter * 100)}%{/if}
-      </em>
-    </span>
-    <input
-      type="range"
-      min="-1"
-      max="1"
-      step="0.01"
+    <SvgKnob
+      {context}
+      theme={OrganicTheme}
       value={deck.filter}
+      min={-1}
+      max={1}
+      step={0.01}
+      label="Filter"
       disabled={!enabled}
-      oninput={(e) => send(`deck ${deck.number} filter ${e.currentTarget.value}`)}
+      size={56}
+      oninput={(val) => send(`deck ${deck.number} filter ${val}`)}
       ondblclick={() => send(`deck ${deck.number} filter 0`)}
     />
   </label>
   {/if}
 
-  <label class="control">
-    <span>Volume <em class="mono">{deck.volume.toFixed(2)}</em></span>
-    <input
-      type="range"
-      min="0"
-      max="1"
-      step="0.01"
+  <label class="control fader-wrap">
+    <SvgFader
+      {context}
+      theme={OrganicTheme}
       value={deck.volume}
+      min={0}
+      max={1}
+      step={0.01}
+      label="Volume"
       disabled={!enabled}
-      oninput={(e) => send(`deck ${deck.number} volume ${e.currentTarget.value}`)}
+      height={140}
+      width={40}
+      oninput={(val) => send(`deck ${deck.number} volume ${val}`)}
     />
   </label>
 
@@ -573,16 +585,19 @@
     mouse is not something anyone can do mid-mix.
   -->
   <div class="pitch-row">
-    <label class="control">
-      <span>Pitch <em class="mono">{(deck.pitch * 100).toFixed(1)}%</em></span>
-      <input
-        type="range"
-        min="-0.16"
-        max="0.16"
-        step="0.001"
+    <label class="control fader-wrap">
+      <SvgFader
+        {context}
+        theme={OrganicTheme}
         value={deck.pitch}
+        min={-0.16}
+        max={0.16}
+        step={0.001}
+        label="Pitch"
         disabled={!enabled}
-        oninput={(e) => send(`deck ${deck.number} pitch ${e.currentTarget.value}`)}
+        height={140}
+        width={40}
+        oninput={(val) => send(`deck ${deck.number} pitch ${val}`)}
         ondblclick={() => send(`deck ${deck.number} pitch 0`)}
       />
     </label>
@@ -934,7 +949,7 @@
 
   .band {
     display: grid;
-    grid-template-columns: 2.2rem 1fr auto;
+    grid-template-columns: 1fr auto;
     align-items: center;
     gap: 0.5rem;
     font-size: 0.75em;
