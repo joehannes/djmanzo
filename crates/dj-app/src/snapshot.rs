@@ -84,6 +84,13 @@ pub struct DeckSnapshot {
     /// showing "38% confidence" next to an enabled Sync button would be the
     /// interface arguing with itself.
     pub grid_confidence: f32,
+    /// Where in the current beat the playhead is, 0.0..=1.0.
+    ///
+    /// The living interface's clock: everything that pulses pulses on this, so
+    /// the screen moves in time with the room rather than with wall clock. Two
+    /// synced decks report the same value. See
+    /// [ADR-0009](../../../docs/adr/0009-the-living-interface.md).
+    pub beat_phase: f32,
     /// The region repeating right now, if any.
     pub active_loop: Option<LoopSnapshot>,
     /// Hot cue positions in frames, slot 1 first. `None` for an empty slot —
@@ -310,6 +317,7 @@ impl Snapshot {
                     can_sync: get(DeckParam::GridConfidence)
                         >= dj_core::Confidence::SYNC_THRESHOLD as f32,
                     grid_confidence: get(DeckParam::GridConfidence),
+                    beat_phase: get(DeckParam::BeatPhase),
                     active_loop: (get(DeckParam::LoopActive) >= 0.5).then(|| {
                         let beats = get(DeckParam::LoopBeats);
                         LoopSnapshot {

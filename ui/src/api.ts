@@ -632,6 +632,13 @@ export const layoutFolder = () => invoke<string | null>("layout_folder");
 /** The layout chosen last time, or null when it no longer names one. */
 export const chosenLayout = () => invoke<Layout | null>("chosen_layout");
 
+/** Whether the watershed was showing last time. */
+export const watershedShowing = () => invoke<boolean>("watershed");
+
+/** Remember whether the watershed is showing. */
+export const setWatershed = (showing: boolean) =>
+  invoke<void>("set_watershed", { showing });
+
 /** Remember the chosen layout across restarts. */
 export const chooseLayout = (name: string) => invoke<void>("choose_layout", { name });
 

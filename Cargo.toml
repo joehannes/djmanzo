@@ -8,6 +8,7 @@ members = [
     "crates/dj-engine",
     "crates/dj-control",
     "crates/dj-render",
+    "crates/dj-world",
     "crates/dj-secrets",
     "crates/dj-sources",
     "crates/dj-assistant",
@@ -33,6 +34,7 @@ dj-decode = { path = "crates/dj-decode" }
 dj-engine = { path = "crates/dj-engine" }
 dj-control = { path = "crates/dj-control" }
 dj-render = { path = "crates/dj-render" }
+dj-world = { path = "crates/dj-world" }
 dj-secrets = { path = "crates/dj-secrets" }
 dj-sources = { path = "crates/dj-sources" }
 dj-assistant = { path = "crates/dj-assistant" }

@@ -427,6 +427,96 @@ a channel is over-loaded.
 
 ## 5. Motion
 
+### Where the eye reads it
+
+The design's hardest requirement is not beauty, it is this: **a DJ must be able to take the state
+of their mix without moving their primary focus.** For most of a set that focus is the crowd, the
+controller, or the other deck — not the screen. So the question for every channel is not only
+*what does it mean* but **which vision reads it**, and the two answers are very different.
+
+Foveal vision — the sharp part — covers about two degrees, which is a thumbnail at arm's length.
+Everything else is periphery, and periphery is a different instrument:
+
+| Channel | Read by | Fit for |
+|---|---|---|
+| **Motion onset** — something starts moving | periphery, involuntarily | the one thing that must reach you now |
+| **Luminance change** — something brightens | periphery, reliably | magnitude that must arrive unlooked-at |
+| **Large-scale shape and area** | periphery, coarsely | gross state: is the river wide, is the end near |
+| **Hue** | fovea | things you *look at* in order to decide — key, compatibility |
+| **Saturation** | fovea, mostly | certainty |
+| **Fine detail and text** | fovea only | precision, when you have chosen to check |
+
+From which one rule follows, and it is worth stating as flatly as possible:
+
+> **If a fact must reach a DJ who is not looking at the screen, it may not be carried by hue, by
+> saturation, or by text.**
+
+That rule reorganises §2's channels by *where they are read*, and the assignment is not the one a
+purely aesthetic design would reach:
+
+| Fact | Must reach an unlooking DJ? | Therefore carried by |
+|---|---|---|
+| Audio is dropping out | yes — the room can hear it | motion onset: the whole surface breaks up |
+| A playing deck is about to run out | yes | the mouth: growing area and rising luminance |
+| The limiter is squashing the mix | yes | visible constriction at the estuary — shape, not colour |
+| A deck stopped unexpectedly | yes | motion *ceasing*, which the periphery catches as readily as motion starting |
+| These two keys will clash | no — you look when choosing | hue, plus the seam at the confluence |
+| This grid is not trustworthy | only when you reach for sync | clarity, plus the sync control refusing |
+| The BPM is 128.4 | no — you look to check | text |
+
+The last two rows are the useful ones. Key compatibility genuinely *is* a foveal question: it is
+asked while choosing the next track, with your eyes on the browser. Spending a peripheral channel
+on it would waste the scarcest resource the interface has on the one question the DJ is already
+looking at.
+
+### Onset, not state
+
+Peripheral attention is captured by **change**, not by condition. A thing that has been red for
+five minutes is not a warning any more, it is wallpaper — and worse, it is wallpaper that hides
+the next warning behind it.
+
+So the interface signals **transitions with motion and states with form**:
+
+- when something crosses a threshold, it *moves* — briefly, and then stops;
+- once it has been seen, it settles into a static shape that still says the same thing;
+- if the condition worsens, that is a new transition and earns a new onset.
+
+A warning that never stops moving is a warning nobody can act on, because it has taken the
+channel a genuinely new event needed.
+
+### One alarm at a time
+
+Peripheral attention is close to a single channel. Three things demanding it at once means none of
+them arrive. So the world ranks what may take it, and **only the highest active claim gets
+motion** — everything below it degrades to static form, which is still legible when looked at:
+
+| Priority | Claim | Why it outranks the rest |
+|---|---|---|
+| 1 | Audio dropouts | the audience is hearing it right now |
+| 2 | A playing deck about to end with nothing cued | the only unrecoverable one |
+| 3 | The limiter working hard | the mix is being damaged while it plays |
+| 4 | End of track approaching, next track ready | expected, and handled |
+| 5 | Analysis finished, a track arrived, an assistant proposal | information, not urgency |
+
+Ranking is the point. Without it, an interface this alive becomes an interface a DJ learns to
+ignore, which is worse than a still one.
+
+### The screen must agree with the room
+
+The pulse has to coincide with **what the room hears**, not with what the engine computed. Those
+are not the same instant: the output chain has latency, and the interface draws from a snapshot
+that is already at least a frame old.
+
+djmanzo knows the number — `output_latency_ms` is published in the master snapshot precisely so
+it is stated rather than discovered — so the visual pulse is **delayed by it**. At 128 BPM one
+beat is 469 ms; a twenty-millisecond error is four percent of a beat, which is small but visible
+as a crest sitting slightly ahead of the kick. It costs one subtraction to be right, and an
+interface whose pulse is visibly early is one a DJ stops trusting for phase.
+
+The same rule at the next level up: **two decks that sound in sync must draw one crest.** If the
+screen shows them apart while the room hears them together, the DJ will believe the room and stop
+reading the screen — and every other channel loses its credibility with it.
+
 ### Stillness is the default
 
 Nature is mostly still. A forest that thrashed constantly would tell you nothing about the wind.
@@ -511,7 +601,7 @@ itself is one you cannot learn.
 |---|---|---|
 | The music | pulse rate, agitation, hue | where any control is |
 | Session phase (M9) | the light: dawn → noon → dusk | the layout |
-| Theme | palette and contrast | shape and meaning |
+| Biome (theme) | palette, texture, edges, ambient motion | what any channel *means* — see below |
 | Layout preset | which components exist at all ([ADR-0008](adr/0008-one-widget-vocabulary.md)) | the meaning of the ones that do |
 | Frame budget | rendering tier | what is communicated — every tier says the same things |
 
@@ -519,6 +609,50 @@ The last row is the load-bearing one. **Tier 3 and Tier 0 must convey the same s
 says it more beautifully; it must never say it *more completely*, or the design has made beauty
 load-bearing — which [KARAOKE.md](KARAOKE.md) already forbids for the lyrics and which
 generalises to everything.
+
+### Biomes
+
+A watershed exists somewhere. The same river in different country looks entirely different and
+behaves by the same physics, which is exactly what a theme should be — **a change of terrain, not
+a change of language.**
+
+| Biome | The country | What it changes |
+|---|---|---|
+| **Mountain stream** | cold, high, narrow | tight channels, high contrast, quick settling, pale rock |
+| **Lowland delta** | warm, wide, slow | broad braided channels, soft edges, long settling, silt tones |
+| **Rainforest** | dense, humid, saturated | deep greens, heavy ambient texture, water everywhere |
+| **High desert wadi** | sparse, sharp, dry | hard shadows, bare rock, water that matters because it is rare |
+| **Winter** | monochrome, iced | very low saturation, slow motion, still edges |
+
+The hard rule, and the reason a biome is safe:
+
+> **A biome may change palette, texture, edge treatment and ambient motion. It may never change
+> what a channel means.**
+
+Hue still means key. Clarity still means grid confidence. Width still means level. A theme that
+reassigned those would not be a skin, it would be a *dialect* — and a DJ who changed themes would
+have to relearn the instrument, which is the one thing the whole design exists to avoid.
+
+Three axes, deliberately orthogonal, and none of them can reach into another:
+
+| Axis | Decides | Defined by |
+|---|---|---|
+| **Layout preset** | which components exist at all | [ADR-0008](adr/0008-one-widget-vocabulary.md) |
+| **Biome** | what the country looks like | a token set — the same bounded vocabulary a skin restyles through |
+| **Session phase** (M9) | the light in it: dawn → noon → dusk | the hour of the night |
+
+A biome and a session phase compose without conflicting because they touch different things: the
+biome says *what the rock and water are*, the phase says *what the light is doing to them*. A
+winter dawn and a rainforest noon are both coherent, and neither needed a special case.
+
+Like a layout, a biome ships **as data** and cannot execute anything — so one somebody sent you is
+safe to open, and a DJ can make their own.
+
+**Every biome must pass the same two tests**: greyscale (§4) and still frame (§5). That is what
+stops a beautiful theme from quietly breaking the language — a biome that only reads because of
+its colours has moved information into a channel one man in twelve cannot see, and a biome that
+only reads while it is moving has made motion load-bearing. Neither ships, however good it
+looks.
 
 ---
 

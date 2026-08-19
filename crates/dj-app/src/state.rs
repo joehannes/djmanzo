@@ -289,6 +289,41 @@ impl AppState {
         Some(self.config_dir.lock().ok()?.clone()?.join("layout.txt"))
     }
 
+    /// Whether the DJ had the watershed showing.
+    ///
+    /// Stored beside the layout choice and for the same reason: somebody who
+    /// set the interface up the way they wanted should not have to do it again
+    /// before every set.
+    #[must_use]
+    pub fn watershed(&self) -> bool {
+        self.config_dir
+            .lock()
+            .ok()
+            .and_then(|d| d.clone())
+            .is_some_and(|dir| dir.join("watershed").exists())
+    }
+
+    /// Remember whether the watershed was showing.
+    pub fn set_watershed(&self, showing: bool) {
+        let Some(dir) = self.config_dir.lock().ok().and_then(|d| d.clone()) else {
+            return;
+        };
+        let marker = dir.join("watershed");
+        // Presence is the whole state, so there is nothing to parse and nothing
+        // that can be corrupt -- a file that exists means yes.
+        let result = if showing {
+            std::fs::write(&marker, "")
+        } else {
+            match std::fs::remove_file(&marker) {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                other => other,
+            }
+        };
+        if let Err(error) = result {
+            tracing::warn!(%error, ?marker, "the watershed choice will not survive a restart");
+        }
+    }
+
     /// Which layout the DJ last chose, if any.
     #[must_use]
     pub fn chosen_layout(&self) -> Option<String> {

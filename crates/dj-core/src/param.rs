@@ -58,6 +58,19 @@ pub enum DeckParam {
     EffectiveBpm,
     /// Confidence in this deck's grid, 0.0..=1.0. 0.0 when there is no grid.
     GridConfidence,
+    /// Where in the current beat the playhead is, 0.0..=1.0.
+    ///
+    /// Published so the interface can be *in time with the room* rather than
+    /// with wall clock -- see
+    /// [ADR-0009](../../../docs/adr/0009-the-living-interface.md), where every
+    /// pulse in the living interface runs off this. Two synced decks report the
+    /// same value, which is what makes their crests align on screen for the
+    /// same reason they align in the air.
+    ///
+    /// 0.0 when the deck has no grid. That is indistinguishable from being
+    /// exactly on a beat, and deliberately so: with no grid nothing pulses, so
+    /// the value is never read.
+    BeatPhase,
     /// 1.0 when a loop is repeating.
     LoopActive,
     /// Loop start and end, in frames. Meaningful only while `LoopActive`.
@@ -115,7 +128,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 34;
+    pub const COUNT: usize = 35;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -147,6 +160,7 @@ impl DeckParam {
             Synced,
             EffectiveBpm,
             GridConfidence,
+            BeatPhase,
             LoopActive,
             LoopStart,
             LoopEnd,
@@ -298,6 +312,7 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::Synced => "synced",
         DeckParam::EffectiveBpm => "effective_bpm",
         DeckParam::GridConfidence => "grid_confidence",
+        DeckParam::BeatPhase => "beat_phase",
         DeckParam::LoopActive => "loop_active",
         DeckParam::LoopStart => "loop_start",
         DeckParam::LoopEnd => "loop_end",

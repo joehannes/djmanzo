@@ -5,7 +5,23 @@
   import Presets from "./Presets.svelte";
   import Settings from "./Settings.svelte";
   import { watchFrameRate } from "./framerate";
-  import { chooseLayout, chosenLayout, listLayouts, type Layout } from "./api";
+  import {
+    chooseLayout,
+    chosenLayout,
+    listLayouts,
+    setWatershed,
+    watershedShowing,
+    type Layout,
+  } from "./api";
+  import River from "./River.svelte";
+  import {
+    alarmDeck,
+    emptyWorld,
+    getWorld,
+    prefersStillness,
+    tierFor,
+    type World,
+  } from "./world";
   import {
     dispatch,
     getSnapshot,
@@ -123,6 +139,80 @@
   $effect(() => {
     void loadLayouts();
   });
+
+  $effect(() => {
+    void watershedShowing()
+      .then((showing) => {
+        living = showing;
+      })
+      .catch(() => {})
+      .finally(() => {
+        livingRestored = true;
+      });
+  });
+
+  /*
+    The living interface, per ADR-0009. Off by default while it is being built
+    out: it currently says a subset of what the deck panels say, and a DJ should
+    not have to choose between a pretty river and a usable mixer.
+  */
+  let living = $state(false);
+  /** Set once the stored choice has been read, so restoring it is not saved back. */
+  let livingRestored = $state(false);
+  let world = $state<World>(emptyWorld());
+
+  /*
+    Pulled rather than pushed. The snapshot already streams at 60 Hz and a
+    second stream alongside it would double the traffic to say the same thing
+    twice, so the world is asked for only while it is being drawn — which, when
+    the river is hidden, is never.
+
+    Twenty times a second, not sixty: the world carries rates rather than
+    positions, so the renderer interpolates the pulse between reads and a slower
+    poll costs nothing visible. See `phaseAt` in world.ts.
+  */
+  $effect(() => {
+    if (!living) return;
+    let alive = true;
+    const tick = async () => {
+      while (alive) {
+        try {
+          world = await getWorld();
+        } catch {
+          // A world we could not read is not worth an error in a booth; the
+          // last one stays on screen until the next read succeeds.
+        }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    };
+    void tick();
+    return () => {
+      alive = false;
+    };
+  });
+
+  $effect(() => {
+    const showing = living;
+    // Not while restoring, or start-up would write back the value it just read.
+    if (!livingRestored) return;
+    void setWatershed(showing).catch(() => {});
+  });
+
+  const rivers = $derived(
+    world.entities.filter((e) => e.name === "deck.river" && e.index <= deckCount),
+  );
+  const mouthFor = (deck: number) =>
+    world.entities.find((e) => e.name === "deck.mouth" && e.index === deck) ?? null;
+  /** Which river holds the peripheral channel. At most one ever does. */
+  const alarmingDeck = $derived(alarmDeck(world.alarm));
+
+  /*
+    The tier, from measurement rather than from asking the platform what it can
+    do — see `tierFor`. `slowFrames` is already the probe's verdict, so the
+    demotion costs nothing new.
+  */
+  const reducedMotion = prefersStillness();
+  const tier = $derived(tierFor(slowFrames, reducedMotion));
 
   $effect(() => {
     void hasBrandLogo().then((present) => {
@@ -294,6 +384,15 @@
         Settings
       </button>
       <button
+        class:on={living}
+        onclick={() => (living = !living)}
+        title={living
+          ? "Hide the watershed"
+          : "Show the decks as a watershed — flow, pulse, clarity and how long is left"}
+      >
+        Watershed
+      </button>
+      <button
         onclick={() => (deckCount = deckCount === 2 ? 4 : 2)}
         title="Show {deckCount === 2 ? 'four' : 'two'} decks. The engine runs four either way."
       >
@@ -366,6 +465,28 @@
   -->
   <div class="stage" class:shared={panel !== "none"}>
   {#if snapshot}
+    <!--
+      The watershed. Above the decks rather than replacing them: it answers
+      "how is this going" at a glance, and the panels below answer "what
+      exactly" — nature carries the gestalt, digits carry the precision, and
+      removing either would be the fastest way to make this design fail in a
+      real booth. See docs/VISUAL-LANGUAGE.md.
+    -->
+    {#if living && rivers.length > 0}
+      <div class="watershed" class:seam={world.confluence === "Seam"}>
+        {#each rivers as river (river.index)}
+          <River
+            {river}
+            mouth={mouthFor(river.index)}
+            latencyMs={snapshot.master.output_latency_ms}
+            {tier}
+            alarming={alarmingDeck === river.index ||
+              (alarmingDeck === null && world.alarm !== null)}
+          />
+        {/each}
+      </div>
+    {/if}
+
     <div class="decks" class:four={deckCount === 4}>
       {#each snapshot.decks.slice(0, deckCount) as deck (deck.number)}
         <Deck {deck} enabled={ready} cueAvailable={snapshot.master.cue_available} {layout} />
@@ -601,6 +722,23 @@
     fit — which is how the Connect button, the one control that matters before
     a device is open, ended up squeezed to zero width behind the status row.
   */
+  .watershed {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-bottom: 0.6rem;
+  }
+
+  /*
+    Keys that do not mix get a seam down the middle of the confluence, rather
+    than a colour saying so — hue already means key, and one man in twelve
+    cannot read it anyway. Behaviour is the redundant channel.
+  */
+  .watershed.seam {
+    border-left: 2px solid var(--warn, #d8a657);
+    padding-left: 0.4rem;
+  }
+
   .device {
     display: flex;
     gap: 0.4rem;

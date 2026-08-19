@@ -28,6 +28,7 @@ dj-engine = { workspace = true }
 dj-control = { workspace = true }
 dj-dsp = { workspace = true }
 dj-render = { workspace = true }
+dj-world = { workspace = true }
 dj-secrets = { workspace = true }
 dj-sources = { workspace = true }
 dj-assistant = { workspace = true }

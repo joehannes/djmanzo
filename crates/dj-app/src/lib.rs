@@ -33,6 +33,7 @@ pub mod snapshot;
 pub mod sources;
 pub mod state;
 pub mod waveform;
+pub mod world;
 
 pub use host::{AudioHost, HostError};
 pub use snapshot::{Snapshot, SnapshotPump};
@@ -64,6 +65,13 @@ pub const BENCH_ENV: &str = "DJMANZO_BENCH";
 /// as DOM, as a 2D canvas, or as WebGL on this machine. See ADR-0004 for why
 /// the answer is not obvious and `ui/src/renderbench.ts` for what it measures.
 pub const RENDER_BENCH_ENV: &str = "DJMANZO_RENDERBENCH";
+
+/// Set to a folder of audio to load and play two decks on startup.
+///
+/// A development affordance, not a feature: the interface can only be judged
+/// with something actually playing, and on a headless machine there is nobody
+/// to click Load. Never set in a normal session.
+pub const DEMO_ENV: &str = "DJMANZO_DEMO";
 
 /// Start the application.
 ///
@@ -166,6 +174,15 @@ pub fn run() {
                     std::thread::sleep(std::time::Duration::from_secs(3));
                     use tauri::Emitter;
                     let _ = handle.emit("bench", path);
+                });
+            }
+
+            if let Ok(folder) = std::env::var(DEMO_ENV) {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    use tauri::Emitter;
+                    let _ = handle.emit("demo", folder);
                 });
             }
 
@@ -278,6 +295,9 @@ pub fn run() {
             commands::sidelist_clear,
             commands::list_layouts,
             commands::layout_folder,
+            commands::world,
+            commands::watershed,
+            commands::set_watershed,
             commands::chosen_layout,
             commands::choose_layout,
             sources::list_sources,

@@ -406,6 +406,115 @@ float crest = smoothstep(0.03, 0.0, abs(pathT - u_beat_phase));
 L += crest * 0.15;  // brighten at the crest
 ```
 
+### 5.1b Aligning the pulse with the room
+
+The crest has to land when the **room** hears the beat, not when the engine
+computed it. Those differ by the output chain's latency plus however old the
+snapshot is, and both numbers are known:
+
+```typescript
+/**
+ * Where in the beat the room is, now.
+ *
+ * `beat_phase` is where the *engine* was when the snapshot was taken. Two
+ * corrections turn that into where the room is: the age of the snapshot, and
+ * the output latency the audio has yet to travel through. Without the second
+ * the crest sits visibly early — at 128 BPM a 20 ms error is 4% of a beat.
+ */
+function roomPhase(deck: DeckSnapshot, master: MasterSnapshot, takenAt: number): number {
+    if (!(deck.bpm > 0)) return 0;
+    const beatsPerSecond = deck.bpm / 60;
+    const ageSeconds = (performance.now() - takenAt) / 1000;
+    // Subtracted, not added: the room is *behind* the engine by the latency,
+    // so the visual pulse must be too.
+    const lagSeconds = master.output_latency_ms / 1000;
+    const phase = deck.beat_phase + (ageSeconds - lagSeconds) * beatsPerSecond;
+    // `rem_euclid`, not `%`: a negative phase is early in the previous beat,
+    // not a negative beat.
+    return ((phase % 1) + 1) % 1;
+}
+```
+
+`output_latency_ms` is already in `MasterSnapshot`, stated rather than left to
+be discovered, and constant whether the limiter is engaged or bypassed.
+
+**The test that matters** is not that the number is right but that **two decks
+in sync draw one crest.** If the screen shows them apart while the room hears
+them together, the DJ believes the room, stops reading the screen, and every
+other channel loses its credibility at the same time. Since both decks take the
+same correction, sync is preserved by construction — which is the argument for
+applying it once, here, rather than per-renderer.
+
+### 5.1c The alarm channel
+
+VISUAL-LANGUAGE.md §5 gives peripheral motion to **one** claim at a time.
+Ranking is a pure function of the snapshot and belongs in `dj-world` beside the
+rest of the world's rules, not in a renderer:
+
+```rust
+/// What currently owns the peripheral channel, if anything.
+///
+/// Exactly one, and the highest-ranked. Peripheral attention is close to a
+/// single channel: three things claiming it means none of them arrive, and an
+/// interface this alive becomes one a DJ learns to ignore -- which is worse
+/// than a still one.
+pub enum Alarm {
+    /// The audience is hearing it right now.
+    Dropouts,
+    /// A playing deck about to end with nothing cued. The unrecoverable one.
+    RunningOut { deck: u8 },
+    /// The mix is being damaged while it plays.
+    Limiting,
+    /// Expected, and handled.
+    EndingSoon { deck: u8 },
+    /// Information, not urgency.
+    Arrived,
+}
+```
+
+Everything not holding the channel still shows its state — as **static form**,
+which stays legible when looked at. Losing the alarm is losing the *motion*, not
+losing the information.
+
+Two rules the renderer must honour, both from §5's "onset, not state":
+
+1. **Motion is spent on the transition**, then settles. A claim that has held
+   the channel for a while stops moving and rests as a shape.
+2. **A worsening condition is a new transition** and earns a fresh onset. That
+   is the only way a second event is distinguishable from the first.
+
+### 5.1d What the first implementation actually cost
+
+Measured on the no-GPU floor, with the watershed drawing two rivers over the
+existing deck panels:
+
+| State | fps | What it says |
+|---|---|---|
+| Nothing loaded, dry beds | 32 | |
+| Two decks playing, waveforms scrolling | 13 | |
+
+**The watershed is not what costs.** ADR-0004's own table measured 15.1 fps for
+two scrolling waveform lanes on this machine before any of this existed, so 13
+is that same known cost — the rivers are close to free beside it. The first
+reading of these numbers blamed the new code, wrongly; the comparison against
+the older table is what settles it.
+
+Two things the implementation did get wrong, both caught by running rather than
+reading:
+
+**The renderer animated when nothing was moving.** A dry bed, a paused deck and
+a reduced-motion preference all have nothing to animate, and the component was
+still driving `requestAnimationFrame` at 60 Hz to repaint identical pixels.
+"Stillness is the default" is a rule about what the *machine* does as much as
+what the DJ sees. The loop now starts and stops with the world.
+
+**Gradients are far more expensive than the benchmark suggested.**
+`ui/src/renderbench.ts` measures flat-filled discs, which under-counts
+`createLinearGradient` plus `addColorStop` work considerably. The gradient is
+now cached against the tint and the two y coordinates, none of which change on
+most frames. Worth remembering when reading that table: it bounds shape *count*,
+not fill cost.
+
 ### 5.2 Snapshot transport
 
 The snapshot reaches the webview over the existing Tauri Channel at 60 Hz.

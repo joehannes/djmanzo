@@ -2051,6 +2051,33 @@ pub fn sidelist_clear(state: State<'_, AppState>) -> Result<(), String> {
     db.clear_playlist(id).map_err(|e| e.to_string())
 }
 
+// -- the world -------------------------------------------------------------
+
+/// What the living interface should draw, right now.
+///
+/// A pull rather than a push: the interface already receives the snapshot at
+/// 60 Hz, and emitting a second stream alongside it would double the traffic to
+/// say the same thing twice. The renderer asks when it has a frame to draw --
+/// which, at Tier 0 or with the window hidden, is never.
+///
+/// See [ADR-0009](../../../docs/adr/0009-the-living-interface.md).
+#[tauri::command]
+pub fn world(state: State<'_, AppState>) -> dj_world::World {
+    crate::world::of(&get_snapshot(state))
+}
+
+/// Whether the watershed was showing last time.
+#[tauri::command]
+pub fn watershed(state: State<'_, AppState>) -> bool {
+    state.watershed()
+}
+
+/// Remember whether the watershed is showing.
+#[tauri::command]
+pub fn set_watershed(state: State<'_, AppState>, showing: bool) {
+    state.set_watershed(showing);
+}
+
 // -- layouts ---------------------------------------------------------------
 
 /// Every layout available: the four that ship, then the DJ's own.

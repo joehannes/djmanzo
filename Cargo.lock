@@ -1164,6 +1164,7 @@ dependencies = [
  "dj-render",
  "dj-secrets",
  "dj-sources",
+ "dj-world",
  "reqwest 0.12.28",
  "rtrb",
  "serde",
@@ -1314,6 +1315,15 @@ dependencies = [
  "tokio",
  "tracing",
  "urlencoding",
+]
+
+[[package]]
+name = "dj-world"
+version = "0.0.2"
+dependencies = [
+ "dj-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

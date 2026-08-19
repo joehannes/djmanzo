@@ -447,6 +447,13 @@ impl Engine {
                 DeckParam::GridConfidence,
                 deck.grid().map_or(0.0, |g| g.confidence.get() as f32),
             );
+            // The audio thread's own idea of where the beat is, which is what
+            // makes the interface able to move in time with the music rather
+            // than alongside it.
+            set(
+                DeckParam::BeatPhase,
+                deck.beat_phase().unwrap_or(0.0) as f32,
+            );
 
             let region = deck.active_loop();
             set(
