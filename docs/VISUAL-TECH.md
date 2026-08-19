@@ -515,6 +515,26 @@ now cached against the tint and the two y coordinates, none of which change on
 most frames. Worth remembering when reading that table: it bounds shape *count*,
 not fill cost.
 
+### 5.1e Two renderers, one scene
+
+`ui/src/render/scene.ts` turns a world into primitives — bands, bars, marks,
+whirls and streams — and knows nothing about how they are drawn.
+`canvas2d.ts` and `webgl.ts` consume it unchanged; neither mentions a river, a
+deck, a loop or a key. That is what makes ADR-0009's central claim checkable
+rather than asserted: if a drawing decision leaked into a renderer, the two
+would visibly disagree.
+
+The WebGL renderer draws every primitive as a quad and lets the fragment shader
+decide what the quad *is* from a kind attribute — gradient band, solid bar,
+disc, triangle, ring segment — so the whole watershed is one instanced draw.
+A curve is the one thing a quad cannot be, so a stream is flattened into thin
+columns here; the scene still describes it as a curve, because that is what it
+is, and the flattening is the renderer's problem.
+
+**One surface for the whole world**, not one per lane. The benchmark's finding
+about document invalidation applies to canvases as much as to divs, and a WebGL
+context per lane would be absurd besides.
+
 ### 5.2 Snapshot transport
 
 The snapshot reaches the webview over the existing Tauri Channel at 60 Hz.

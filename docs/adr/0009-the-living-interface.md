@@ -56,6 +56,32 @@ detect a software fallback.** Feature detection is not merely unreliable here, i
 misleading. The only honest detector is measuring frame times, which the shell already does
 (`ui/src/framerate.ts`).
 
+### 2b. And the isolated benchmark does not predict the application
+
+Added after building both renderers. Drawing the **identical scene** through the
+same world model, on the same no-GPU floor, embedded in the real application:
+
+| Backend | fps |
+|---|---|
+| Canvas 2D | 12 |
+| WebGL | 8 |
+
+That is the opposite of the table in §1, and the discrepancy is the lesson.
+`renderbench.ts` draws discs into a bare canvas; it measures a *renderer*. The
+application composites that canvas into a live document alongside four scrolling
+waveform lanes, and on software GL **compositing the GL surface into the page
+costs more than the drawing saves** — plus a per-frame instance upload that the
+isolated test barely exercises.
+
+Neither number is wrong. They answer different questions, and the one that
+decides a default is the second. WebGL therefore stays behind an opt-in until a
+machine with a GPU says otherwise — the same posture
+[ADR-0004](0004-waveform-rendering-strategy.md) takes with its own open gate.
+
+The general rule this sharpens: **measure the thing you are going to ship, in
+the place you are going to ship it.** A microbenchmark is evidence about a
+microbenchmark.
+
 ### 3. A DJ has to hit a cue in a dark room in 200 ms
 
 This is the strongest objection to the whole idea and it has to be answered in the design rather

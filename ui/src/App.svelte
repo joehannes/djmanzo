@@ -11,18 +11,14 @@
     listLayouts,
     setWatershed,
     watershedShowing,
-    type CrossfaderAssign,
     type Layout,
   } from "./api";
-  import Confluence from "./Confluence.svelte";
-  import River from "./River.svelte";
+  import Watershed from "./Watershed.svelte";
   import {
-    alarmDeck,
     emptyWorld,
     getWorld,
     prefersStillness,
     tierFor,
-    type Entity,
     type World,
   } from "./world";
   import {
@@ -204,29 +200,28 @@
   const rivers = $derived(
     world.entities.filter((e) => e.name === "deck.river" && e.index <= deckCount),
   );
-  const mouthFor = (deck: number) =>
-    world.entities.find((e) => e.name === "deck.mouth" && e.index === deck) ?? null;
-  const partsOf = (name: string, deck: number) =>
-    world.entities.filter((e) => e.name === name && e.index === deck);
-  const partOf = (name: string, deck: number) => partsOf(name, deck)[0] ?? null;
-  /** Which river holds the peripheral channel. At most one ever does. */
-  const alarmingDeck = $derived(alarmDeck(world.alarm));
-  const confluenceEntity = $derived(
-    world.entities.find((e) => e.name === "mixer.confluence") ?? null,
-  );
+  /** Which backend ended up drawing, for the log. Never an input to anything. */
+  let backend = $state("");
+  /*
+    WebGL is opt-in, and that is a measurement rather than a preference.
+
+    Drawing the identical scene on the no-GPU floor, Canvas 2D held 12 fps and
+    WebGL managed 8 — the opposite of what `renderbench.ts` predicted in
+    isolation. The isolated test drew discs into a bare canvas; embedded in a
+    real page on software GL, *compositing the GL surface into the document*
+    costs more than the drawing saves, and a per-frame instance upload is not
+    free either. The bench measures a renderer; this measures an application.
+
+    So Canvas 2D is the default until a machine with a GPU says otherwise, which
+    is the same posture ADR-0004 takes with its own open gate. `?accel` turns
+    WebGL on to take that measurement.
+  */
+  const accelerate = new URLSearchParams(window.location.search).has("accel");
   /*
     Which two rivers meet, read from the crossfader assignments the same way the
     world does — with four decks the pair is the DJ's choice, and drawing the
     wrong pair's beating would be worse than drawing none.
   */
-  const bankEntities = $derived.by((): [Entity | null, Entity | null] => {
-    const side = (want: CrossfaderAssign) => {
-      const deck = snapshot?.decks.find((d) => d.loaded && d.crossfader_assign === want);
-      return deck ? (rivers.find((r) => r.index === deck.number) ?? null) : null;
-    };
-    return [side("left"), side("right")];
-  });
-
   /*
     The tier, from measurement rather than from asking the platform what it can
     do — see `tierFor`. `slowFrames` is already the probe's verdict, so the
@@ -408,7 +403,7 @@
         class:on={living}
         onclick={() => (living = !living)}
         title={living
-          ? "Hide the watershed"
+          ? `Hide the watershed${backend ? ` (drawing with ${backend})` : ""}`
           : "Show the decks as a watershed — flow, pulse, clarity and how long is left"}
       >
         Watershed
@@ -494,34 +489,14 @@
       real booth. See docs/VISUAL-LANGUAGE.md.
     -->
     {#if living && rivers.length > 0}
-      <div class="watershed" class:seam={world.confluence === "Seam"}>
-        {#if confluenceEntity && bankEntities.some((b) => b !== null)}
-          <Confluence
-            confluence={confluenceEntity}
-            banks={bankEntities}
-            beating={world.beating}
-            seam={world.confluence === "Seam"}
-            height={72}
-            latencyMs={snapshot.master.output_latency_ms}
-            {tier}
-          />
-        {/if}
-        {#each rivers as river (river.index)}
-          <River
-            {river}
-            mouth={mouthFor(river.index)}
-            strata={partsOf("deck.stratum", river.index)}
-            shear={partOf("deck.shear", river.index)}
-            eddy={partOf("deck.eddy", river.index)}
-            stones={partsOf("deck.stone", river.index)}
-            latencyMs={snapshot.master.output_latency_ms}
-            {tier}
-            height={78}
-            alarming={alarmingDeck === river.index ||
-              (alarmingDeck === null && world.alarm !== null)}
-          />
-        {/each}
-      </div>
+      <Watershed
+        {world}
+        {tier}
+        decks={rivers.map((r) => r.index)}
+        latencyMs={snapshot.master.output_latency_ms}
+        {accelerate}
+        ondriver={(what) => (backend = what)}
+      />
     {/if}
 
     <div class="decks" class:four={deckCount === 4}>
@@ -759,23 +734,6 @@
     fit — which is how the Connect button, the one control that matters before
     a device is open, ended up squeezed to zero width behind the status row.
   */
-  .watershed {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
-    margin-bottom: 0.6rem;
-  }
-
-  /*
-    Keys that do not mix get a seam down the middle of the confluence, rather
-    than a colour saying so — hue already means key, and one man in twelve
-    cannot read it anyway. Behaviour is the redundant channel.
-  */
-  .watershed.seam {
-    border-left: 2px solid var(--warn, #d8a657);
-    padding-left: 0.4rem;
-  }
-
   .device {
     display: flex;
     gap: 0.4rem;
