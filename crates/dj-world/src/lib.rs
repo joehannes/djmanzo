@@ -192,6 +192,9 @@ pub struct World {
     pub strain: f32,
     /// The one thing allowed to move in the corner of a DJ's eye.
     pub alarm: Option<Alarm>,
+    /// How much of the collection is still under mist, 0..=1. Zero when there
+    /// is nothing left to survey, which is the normal state.
+    pub unsurveyed: f32,
     /// How the two banks stand relative to each other in time.
     pub beating: Beating,
 }
@@ -248,6 +251,23 @@ pub struct LoopRegion {
     pub beats: Option<f32>,
 }
 
+/// What the world needs to know about the collection.
+///
+/// The highland is where the rivers come from: tracks not yet flowing. Its one
+/// live fact is how much of it has been *surveyed* — the background identifier
+/// decoding files one at a time — which is drawn as mist retreating rather than
+/// as a progress bar, because a DJ wants to know whether their collection is
+/// usable yet, not what percentage a worker is at.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct HighlandReading {
+    /// Files waiting to be identified.
+    pub unsurveyed: u32,
+    /// Tracks identified so far in this run.
+    pub surveyed: u32,
+    /// Files that could not be identified, and will not be retried.
+    pub dry: u32,
+}
+
 /// What the world needs to know about the room, rather than any one deck.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct RoomReading {
@@ -295,7 +315,13 @@ impl RiverReading {
 /// the crossfader actually cuts between. Passed in rather than assumed to be 1
 /// and 2, because with four decks the assignment is a choice the DJ makes.
 #[must_use]
-pub fn build(rivers: &[RiverReading], left: u8, right: u8, room: RoomReading) -> World {
+pub fn build(
+    rivers: &[RiverReading],
+    left: u8,
+    right: u8,
+    room: RoomReading,
+    highland: HighlandReading,
+) -> World {
     let mut entities = Vec::with_capacity(rivers.len() * 2 + 1);
 
     for river in rivers {
@@ -332,6 +358,18 @@ pub fn build(rivers: &[RiverReading], left: u8, right: u8, room: RoomReading) ->
         strain: room.strain.clamp(0.0, 1.0),
         alarm: alarm(rivers, room),
         beating: beating(bank(left), bank(right)),
+        unsurveyed: {
+            // Of what this run knows about, not of the whole library: a DJ who
+            // adds forty files to a collection of four thousand is waiting on
+            // forty, and a figure computed against the four thousand would say
+            // "1%" and mean nothing.
+            let total = highland.unsurveyed + highland.surveyed + highland.dry;
+            if total == 0 {
+                0.0
+            } else {
+                highland.unsurveyed as f32 / total as f32
+            }
+        },
     }
 }
 
@@ -763,6 +801,11 @@ mod tests {
         }
     }
 
+    /// A collection with nothing left to survey, which is the normal state.
+    fn quiet() -> HighlandReading {
+        HighlandReading::default()
+    }
+
     /// A quiet room at a given strain: nothing dropping out, nothing limiting.
     fn calm(strain: f32) -> RoomReading {
         RoomReading {
@@ -785,7 +828,7 @@ mod tests {
 
     #[test]
     fn every_deck_gets_a_river() {
-        let world = build(&[playing(1), playing(2)], 1, 2, calm(0.0));
+        let world = build(&[playing(1), playing(2)], 1, 2, calm(0.0), quiet());
         assert!(find(&world, "deck.river", 1).is_some());
         assert!(find(&world, "deck.river", 2).is_some());
     }
@@ -794,7 +837,7 @@ mod tests {
     /// announce something that is not going to happen.
     #[test]
     fn an_empty_deck_has_a_river_but_no_mouth() {
-        let world = build(&[RiverReading::empty(1)], 1, 2, calm(0.0));
+        let world = build(&[RiverReading::empty(1)], 1, 2, calm(0.0), quiet());
         assert!(find(&world, "deck.river", 1).is_some());
         assert!(find(&world, "deck.mouth", 1).is_none());
     }
@@ -804,7 +847,13 @@ mod tests {
     /// ADR-0009 rule 4. Every entity, not only the interactive ones.
     #[test]
     fn every_entity_can_say_what_it_is() {
-        let world = build(&[playing(1), RiverReading::empty(2)], 1, 2, calm(0.3));
+        let world = build(
+            &[playing(1), RiverReading::empty(2)],
+            1,
+            2,
+            calm(0.3),
+            quiet(),
+        );
         assert!(!world.entities.is_empty());
         for entity in &world.entities {
             assert!(
@@ -820,7 +869,7 @@ mod tests {
     /// aims at, and nothing that moves may be trunk.
     #[test]
     fn nothing_that_moves_bears_weight() {
-        let world = build(&[playing(1), playing(2)], 1, 2, calm(0.0));
+        let world = build(&[playing(1), playing(2)], 1, 2, calm(0.0), quiet());
         for entity in &world.entities {
             if entity.bearing == Bearing::Trunk {
                 assert!(
@@ -838,7 +887,7 @@ mod tests {
     fn a_weak_grid_makes_the_water_murky() {
         let mut weak = playing(1);
         weak.grid_confidence = 0.1;
-        let world = build(&[weak, playing(2)], 1, 2, calm(0.0));
+        let world = build(&[weak, playing(2)], 1, 2, calm(0.0), quiet());
         let murky = find(&world, "deck.river", 1).unwrap();
         let clear = find(&world, "deck.river", 2).unwrap();
         assert!(murky.vitality.turbidity > clear.vitality.turbidity);
@@ -848,7 +897,7 @@ mod tests {
     fn a_hand_certain_grid_is_clear_water() {
         let mut certain = playing(1);
         certain.grid_confidence = 1.0;
-        let world = build(&[certain], 1, 2, calm(0.0));
+        let world = build(&[certain], 1, 2, calm(0.0), quiet());
         assert!(find(&world, "deck.river", 1).unwrap().vitality.turbidity < 1e-6);
     }
 
@@ -868,8 +917,8 @@ mod tests {
             r.remaining_seconds = 10.0;
             r
         };
-        let a = build(&[far], 1, 2, calm(0.0));
-        let b = build(&[near], 1, 2, calm(0.0));
+        let a = build(&[far], 1, 2, calm(0.0), quiet());
+        let b = build(&[near], 1, 2, calm(0.0), quiet());
         assert!(
             find(&b, "deck.mouth", 1).unwrap().extent > find(&a, "deck.mouth", 1).unwrap().extent
         );
@@ -879,7 +928,7 @@ mod tests {
     fn a_track_beyond_the_horizon_is_not_yet_news() {
         let mut plenty = playing(1);
         plenty.remaining_seconds = 600.0;
-        let world = build(&[plenty], 1, 2, calm(0.0));
+        let world = build(&[plenty], 1, 2, calm(0.0), quiet());
         assert_eq!(find(&world, "deck.mouth", 1).unwrap().extent, 0.0);
     }
 
@@ -887,7 +936,7 @@ mod tests {
     /// the key's hue would put two meanings on one channel.
     #[test]
     fn the_mouth_carries_no_musical_colour() {
-        let world = build(&[playing(1)], 1, 2, calm(0.0));
+        let world = build(&[playing(1)], 1, 2, calm(0.0), quiet());
         assert_eq!(find(&world, "deck.mouth", 1).unwrap().tint.saturation, 0.0);
     }
 
@@ -906,7 +955,7 @@ mod tests {
 
     #[test]
     fn a_loaded_deck_has_three_strata_low_to_high() {
-        let world = build(&[playing(1)], 1, 2, calm(0.0));
+        let world = build(&[playing(1)], 1, 2, calm(0.0), quiet());
         let strata = all(&world, "deck.stratum");
         assert_eq!(strata.len(), 3);
         assert!(
@@ -931,7 +980,7 @@ mod tests {
 
     #[test]
     fn an_empty_deck_has_no_strata() {
-        let world = build(&[RiverReading::empty(1)], 1, 2, calm(0.0));
+        let world = build(&[RiverReading::empty(1)], 1, 2, calm(0.0), quiet());
         assert!(
             all(&world, "deck.stratum").is_empty(),
             "no river, no water column"
@@ -944,7 +993,7 @@ mod tests {
     fn a_killed_band_is_drought_and_says_so() {
         let mut killed = playing(1);
         killed.eq = [0.0, 1.0, 1.0];
-        let world = build(&[killed], 1, 2, calm(0.0));
+        let world = build(&[killed], 1, 2, calm(0.0), quiet());
         let low = slot(&world, "deck.stratum", 1, 0).unwrap();
         assert_eq!(low.extent, 0.0);
         assert!(low.reading.contains("killed"), "{}", low.reading);
@@ -956,7 +1005,7 @@ mod tests {
     fn a_boosted_band_stands_higher_than_unity() {
         let mut boosted = playing(1);
         boosted.eq = [2.0, 1.0, 1.0];
-        let world = build(&[boosted], 1, 2, calm(0.0));
+        let world = build(&[boosted], 1, 2, calm(0.0), quiet());
         assert!(
             slot(&world, "deck.stratum", 1, 0).unwrap().extent
                 > slot(&world, "deck.stratum", 1, 1).unwrap().extent
@@ -967,7 +1016,7 @@ mod tests {
     /// tempos. The strata belong to the river and do not pulse on their own.
     #[test]
     fn the_strata_do_not_pulse_separately_from_their_river() {
-        let world = build(&[playing(1)], 1, 2, calm(0.0));
+        let world = build(&[playing(1)], 1, 2, calm(0.0), quiet());
         for stratum in all(&world, "deck.stratum") {
             assert!(stratum.vitality.is_still(), "slot {}", stratum.slot);
         }
@@ -977,7 +1026,7 @@ mod tests {
     /// cut" is a thing on screen that means nothing.
     #[test]
     fn a_filter_at_noon_draws_nothing() {
-        let world = build(&[playing(1)], 1, 2, calm(0.0));
+        let world = build(&[playing(1)], 1, 2, calm(0.0), quiet());
         assert!(all(&world, "deck.shear").is_empty());
     }
 
@@ -986,7 +1035,7 @@ mod tests {
         let sheared = |filter: f32| {
             let mut river = playing(1);
             river.filter = filter;
-            let world = build(&[river], 1, 2, calm(0.0));
+            let world = build(&[river], 1, 2, calm(0.0), quiet());
             all(&world, "deck.shear").first().copied().cloned()
         };
 
@@ -1008,7 +1057,7 @@ mod tests {
 
     #[test]
     fn a_deck_with_no_loop_has_no_eddy() {
-        let world = build(&[playing(1)], 1, 2, calm(0.0));
+        let world = build(&[playing(1)], 1, 2, calm(0.0), quiet());
         assert!(all(&world, "deck.eddy").is_empty());
     }
 
@@ -1020,7 +1069,7 @@ mod tests {
             length: 0.05,
             beats: Some(4.0),
         });
-        let world = build(&[looping], 1, 2, calm(0.0));
+        let world = build(&[looping], 1, 2, calm(0.0), quiet());
         let eddy = all(&world, "deck.eddy")[0];
         assert!((eddy.along - 0.4).abs() < 1e-6);
         assert!((eddy.extent - 0.05).abs() < 1e-6);
@@ -1037,7 +1086,7 @@ mod tests {
             length: 0.006,
             beats: Some(0.25),
         });
-        let world = build(&[looping], 1, 2, calm(0.0));
+        let world = build(&[looping], 1, 2, calm(0.0), quiet());
         assert_eq!(all(&world, "deck.eddy")[0].reading, "loop 1/4");
     }
 
@@ -1052,7 +1101,7 @@ mod tests {
             length: 0.05,
             beats: None,
         });
-        let world = build(&[looping], 1, 2, calm(0.0));
+        let world = build(&[looping], 1, 2, calm(0.0), quiet());
         assert_eq!(all(&world, "deck.eddy")[0].reading, "loop");
     }
 
@@ -1061,7 +1110,7 @@ mod tests {
     fn empty_cue_slots_are_not_stones_at_zero() {
         let mut cued = playing(1);
         cued.cues = vec![Some(0.1), None, Some(0.6), None];
-        let world = build(&[cued], 1, 2, calm(0.0));
+        let world = build(&[cued], 1, 2, calm(0.0), quiet());
         let stones = all(&world, "deck.stone");
         assert_eq!(stones.len(), 2);
         assert!(stones.iter().all(|s| s.along > 0.0));
@@ -1073,7 +1122,7 @@ mod tests {
     fn stones_are_numbered_the_way_the_pads_are() {
         let mut cued = playing(1);
         cued.cues = vec![Some(0.1), Some(0.2), Some(0.3)];
-        let world = build(&[cued], 1, 2, calm(0.0));
+        let world = build(&[cued], 1, 2, calm(0.0), quiet());
         assert_eq!(slot(&world, "deck.stone", 1, 1).unwrap().reading, "cue 1");
         assert_eq!(slot(&world, "deck.stone", 1, 3).unwrap().reading, "cue 3");
         assert!(slot(&world, "deck.stone", 1, 0).is_none(), "no cue zero");
@@ -1085,7 +1134,7 @@ mod tests {
     fn a_stone_carries_no_musical_colour() {
         let mut cued = playing(1);
         cued.cues = vec![Some(0.5)];
-        let world = build(&[cued], 1, 2, calm(0.0));
+        let world = build(&[cued], 1, 2, calm(0.0), quiet());
         assert_eq!(all(&world, "deck.stone")[0].tint.saturation, 0.0);
     }
 
@@ -1095,7 +1144,7 @@ mod tests {
         broken.cues = vec![Some(f32::NAN), Some(0.5), Some(f32::INFINITY)];
         broken.eq = [f32::NAN, -3.0, 1.0];
         broken.filter = f32::NAN;
-        let world = build(&[broken], 1, 2, calm(0.0));
+        let world = build(&[broken], 1, 2, calm(0.0), quiet());
         assert_eq!(all(&world, "deck.stone").len(), 1, "only the real one");
         for stratum in all(&world, "deck.stratum") {
             assert!(
@@ -1118,7 +1167,7 @@ mod tests {
         one.cues = vec![Some(0.1)];
         let mut two = playing(2);
         two.cues = vec![Some(0.9)];
-        let world = build(&[one, two], 1, 2, calm(0.0));
+        let world = build(&[one, two], 1, 2, calm(0.0), quiet());
         assert!((slot(&world, "deck.stone", 1, 1).unwrap().along - 0.1).abs() < 1e-6);
         assert!((slot(&world, "deck.stone", 2, 1).unwrap().along - 0.9).abs() < 1e-6);
     }
@@ -1135,17 +1184,26 @@ mod tests {
         c.key = Some(key(8, Mode::Minor));
 
         assert_eq!(
-            build(&[a.clone(), b, c.clone()], 1, 2, calm(0.0)).confluence,
+            build(&[a.clone(), b, c.clone()], 1, 2, calm(0.0), quiet()).confluence,
             Confluence::Seam
         );
-        assert_eq!(build(&[a, c], 1, 3, calm(0.0)).confluence, Confluence::Same);
+        assert_eq!(
+            build(&[a, c], 1, 3, calm(0.0), quiet()).confluence,
+            Confluence::Same
+        );
     }
 
     /// An unloaded deck has no key to clash with, and reporting a seam would
     /// tell a DJ their mix will fight on no evidence at all.
     #[test]
     fn an_empty_side_of_the_confluence_is_unknown() {
-        let world = build(&[playing(1), RiverReading::empty(2)], 1, 2, calm(0.0));
+        let world = build(
+            &[playing(1), RiverReading::empty(2)],
+            1,
+            2,
+            calm(0.0),
+            quiet(),
+        );
         assert_eq!(world.confluence, Confluence::Unknown);
     }
 
@@ -1153,7 +1211,7 @@ mod tests {
 
     #[test]
     fn a_river_reads_out_its_numbers() {
-        let world = build(&[playing(1)], 1, 2, calm(0.0));
+        let world = build(&[playing(1)], 1, 2, calm(0.0), quiet());
         let reading = &find(&world, "deck.river", 1).unwrap().reading;
         assert!(reading.contains("128.0 BPM"), "{reading}");
         assert!(reading.contains("8A"), "{reading}");
@@ -1165,7 +1223,7 @@ mod tests {
     fn a_track_with_no_grid_says_so() {
         let mut ungridded = playing(1);
         ungridded.bpm = None;
-        let world = build(&[ungridded], 1, 2, calm(0.0));
+        let world = build(&[ungridded], 1, 2, calm(0.0), quiet());
         assert!(
             find(&world, "deck.river", 1)
                 .unwrap()
@@ -1178,7 +1236,7 @@ mod tests {
     fn a_track_still_being_analysed_says_so() {
         let mut surveying = playing(1);
         surveying.surveying = true;
-        let world = build(&[surveying], 1, 2, calm(0.0));
+        let world = build(&[surveying], 1, 2, calm(0.0), quiet());
         assert!(
             find(&world, "deck.river", 1)
                 .unwrap()
@@ -1205,7 +1263,7 @@ mod tests {
     /// is trying to reach, and the one that needs no action.
     #[test]
     fn matched_decks_read_as_locked() {
-        let world = build(&[playing(1), playing(2)], 1, 2, calm(0.0));
+        let world = build(&[playing(1), playing(2)], 1, 2, calm(0.0), quiet());
         assert_eq!(world.beating, Beating::Locked);
     }
 
@@ -1214,7 +1272,7 @@ mod tests {
     fn a_phase_difference_at_the_same_tempo_is_an_offset() {
         let mut behind = playing(2);
         behind.beat_phase = 0.3;
-        let world = build(&[playing(1), behind], 1, 2, calm(0.0));
+        let world = build(&[playing(1), behind], 1, 2, calm(0.0), quiet());
         match world.beating {
             Beating::Offset { beats } => assert!((beats - 0.3).abs() < 1e-5, "{beats}"),
             other => panic!("expected an offset, got {other:?}"),
@@ -1228,7 +1286,7 @@ mod tests {
     fn an_offset_is_reported_the_short_way_round() {
         let mut nearly_round = playing(2);
         nearly_round.beat_phase = 0.8;
-        let world = build(&[playing(1), nearly_round], 1, 2, calm(0.0));
+        let world = build(&[playing(1), nearly_round], 1, 2, calm(0.0), quiet());
         match world.beating {
             Beating::Offset { beats } => {
                 assert!(beats < 0.0, "the short way is backwards, got {beats}");
@@ -1246,7 +1304,7 @@ mod tests {
         let mut a_hair_early = playing(2);
         a_hair_early.beat_phase = 0.95;
         assert_eq!(
-            build(&[playing(1), a_hair_early], 1, 2, calm(0.0)).beating,
+            build(&[playing(1), a_hair_early], 1, 2, calm(0.0), quiet()).beating,
             Beating::Locked,
             "0.95 is 0.05 behind, not 0.95 ahead"
         );
@@ -1260,7 +1318,7 @@ mod tests {
         faster.bpm = Some(130.0);
         // Crests happen to be together *right now*, which is exactly the trap:
         // a phase-only reading would call this locked, and a bar later it is not.
-        let world = build(&[playing(1), faster], 1, 2, calm(0.0));
+        let world = build(&[playing(1), faster], 1, 2, calm(0.0), quiet());
         match world.beating {
             Beating::Sliding { bpm_difference } => {
                 assert!((bpm_difference - 2.0).abs() < 1e-5, "{bpm_difference}");
@@ -1274,7 +1332,7 @@ mod tests {
         let mut hair = playing(2);
         hair.bpm = Some(128.0 + SAME_TEMPO_WITHIN_BPM / 2.0);
         assert_eq!(
-            build(&[playing(1), hair], 1, 2, calm(0.0)).beating,
+            build(&[playing(1), hair], 1, 2, calm(0.0), quiet()).beating,
             Beating::Locked
         );
     }
@@ -1283,7 +1341,7 @@ mod tests {
     fn nothing_to_compare_reads_as_unknown() {
         // Only one deck.
         assert_eq!(
-            build(&[playing(1)], 1, 2, calm(0.0)).beating,
+            build(&[playing(1)], 1, 2, calm(0.0), quiet()).beating,
             Beating::Unknown
         );
 
@@ -1291,7 +1349,7 @@ mod tests {
         let mut paused = playing(2);
         paused.playing = false;
         assert_eq!(
-            build(&[playing(1), paused], 1, 2, calm(0.0)).beating,
+            build(&[playing(1), paused], 1, 2, calm(0.0), quiet()).beating,
             Beating::Unknown
         );
 
@@ -1299,7 +1357,7 @@ mod tests {
         let mut ungridded = playing(2);
         ungridded.bpm = None;
         assert_eq!(
-            build(&[playing(1), ungridded], 1, 2, calm(0.0)).beating,
+            build(&[playing(1), ungridded], 1, 2, calm(0.0), quiet()).beating,
             Beating::Unknown
         );
     }
@@ -1310,7 +1368,7 @@ mod tests {
             let mut broken = playing(2);
             broken.bpm = Some(bad);
             assert_eq!(
-                build(&[playing(1), broken], 1, 2, calm(0.0)).beating,
+                build(&[playing(1), broken], 1, 2, calm(0.0), quiet()).beating,
                 Beating::Unknown,
                 "{bad}"
             );
@@ -1325,7 +1383,7 @@ mod tests {
                 ..calm(0.0)
             };
             find(
-                &build(&[playing(1), playing(2)], 1, 2, room),
+                &build(&[playing(1), playing(2)], 1, 2, room, quiet()),
                 "mixer.confluence",
                 0,
             )
@@ -1348,7 +1406,7 @@ mod tests {
                 ..calm(0.0)
             };
             find(
-                &build(&[playing(1), playing(2)], 1, 2, room),
+                &build(&[playing(1), playing(2)], 1, 2, room, quiet()),
                 "mixer.confluence",
                 0,
             )
@@ -1371,7 +1429,7 @@ mod tests {
             limiting_db: 4.2,
             ..calm(0.0)
         };
-        let world = build(&[playing(1), playing(2)], 1, 2, room);
+        let world = build(&[playing(1), playing(2)], 1, 2, room, quiet());
         let reading = &find(&world, "mixer.confluence", 0).unwrap().reading;
         assert!(reading.contains("hard left"), "{reading}");
         assert!(reading.contains("4.2 dB"), "{reading}");
@@ -1381,11 +1439,52 @@ mod tests {
     /// one would be the interface asserting a key nobody has played.
     #[test]
     fn an_empty_confluence_carries_no_hue() {
-        let world = build(&[RiverReading::empty(1)], 1, 2, calm(0.0));
+        let world = build(&[RiverReading::empty(1)], 1, 2, calm(0.0), quiet());
         assert_eq!(
             find(&world, "mixer.confluence", 0).unwrap().tint.saturation,
             0.0
         );
+    }
+
+    // -- the highland ------------------------------------------------------
+
+    #[test]
+    fn a_surveyed_collection_has_no_mist() {
+        assert_eq!(
+            build(&[playing(1)], 1, 2, calm(0.0), quiet()).unsurveyed,
+            0.0
+        );
+    }
+
+    /// The figure is of what this run knows about, not of the whole library: a
+    /// DJ who adds forty files to a collection of four thousand is waiting on
+    /// forty, and a percentage of the four thousand would mean nothing.
+    #[test]
+    fn the_mist_is_measured_against_this_run_not_the_library() {
+        let halfway = HighlandReading {
+            unsurveyed: 20,
+            surveyed: 20,
+            dry: 0,
+        };
+        let world = build(&[playing(1)], 1, 2, calm(0.0), halfway);
+        assert!((world.unsurveyed - 0.5).abs() < 1e-6);
+    }
+
+    /// A file that could not be identified is surveyed — the answer was "no".
+    /// Counting it as outstanding would leave the mist never clearing.
+    #[test]
+    fn a_file_that_failed_is_still_surveyed() {
+        let done = HighlandReading {
+            unsurveyed: 0,
+            surveyed: 8,
+            dry: 2,
+        };
+        assert_eq!(build(&[], 1, 2, calm(0.0), done).unsurveyed, 0.0);
+    }
+
+    #[test]
+    fn an_empty_highland_does_not_divide_by_nothing() {
+        assert_eq!(build(&[], 1, 2, calm(0.0), quiet()).unsurveyed, 0.0);
     }
 
     // -- the alarm channel -------------------------------------------------
@@ -1399,7 +1498,7 @@ mod tests {
     #[test]
     fn a_calm_room_has_no_alarm() {
         assert_eq!(
-            build(&[playing(1), playing(2)], 1, 2, calm(0.0)).alarm,
+            build(&[playing(1), playing(2)], 1, 2, calm(0.0), quiet()).alarm,
             None
         );
     }
@@ -1415,7 +1514,7 @@ mod tests {
             ..calm(0.0)
         };
         // Dropouts, limiting and a deck running out, all at once.
-        let world = build(&[ending(1, 5.0)], 1, 2, room);
+        let world = build(&[ending(1, 5.0)], 1, 2, room, quiet());
         assert_eq!(
             world.alarm,
             Some(Alarm::Dropouts),
@@ -1436,10 +1535,10 @@ mod tests {
     /// not the same event.
     #[test]
     fn a_track_ending_alone_outranks_one_ending_while_another_plays() {
-        let alone = build(&[ending(1, 8.0)], 1, 2, calm(0.0)).alarm;
+        let alone = build(&[ending(1, 8.0)], 1, 2, calm(0.0), quiet()).alarm;
         assert_eq!(alone, Some(Alarm::RunningOut { deck: 1 }));
 
-        let covered = build(&[ending(1, 8.0), playing(2)], 1, 2, calm(0.0)).alarm;
+        let covered = build(&[ending(1, 8.0), playing(2)], 1, 2, calm(0.0), quiet()).alarm;
         assert_eq!(covered, Some(Alarm::EndingSoon { deck: 1 }));
     }
 
@@ -1450,7 +1549,7 @@ mod tests {
         let mut faded = playing(2);
         faded.level = 0.0;
         assert_eq!(
-            build(&[ending(1, 8.0), faded], 1, 2, calm(0.0)).alarm,
+            build(&[ending(1, 8.0), faded], 1, 2, calm(0.0), quiet()).alarm,
             Some(Alarm::RunningOut { deck: 1 })
         );
     }
@@ -1459,7 +1558,7 @@ mod tests {
     #[test]
     fn a_deck_that_is_also_ending_does_not_cover_the_room() {
         assert_eq!(
-            build(&[ending(1, 8.0), ending(2, 6.0)], 1, 2, calm(0.0)).alarm,
+            build(&[ending(1, 8.0), ending(2, 6.0)], 1, 2, calm(0.0), quiet()).alarm,
             Some(Alarm::RunningOut { deck: 1 }),
             "two decks both ending is the room going quiet, not a handover"
         );
@@ -1469,13 +1568,20 @@ mod tests {
     fn a_paused_deck_near_its_end_is_not_running_out() {
         let mut paused = ending(1, 3.0);
         paused.playing = false;
-        assert_eq!(build(&[paused], 1, 2, calm(0.0)).alarm, None);
+        assert_eq!(build(&[paused], 1, 2, calm(0.0), quiet()).alarm, None);
     }
 
     #[test]
     fn a_track_with_plenty_left_makes_no_claim() {
         assert_eq!(
-            build(&[ending(1, ENDING_SOON_SECONDS + 1.0)], 1, 2, calm(0.0)).alarm,
+            build(
+                &[ending(1, ENDING_SOON_SECONDS + 1.0)],
+                1,
+                2,
+                calm(0.0),
+                quiet()
+            )
+            .alarm,
             None
         );
     }
@@ -1489,14 +1595,14 @@ mod tests {
             limiting_db: 1.0,
             ..calm(0.0)
         };
-        assert_eq!(build(&[playing(1)], 1, 2, gentle).alarm, None);
+        assert_eq!(build(&[playing(1)], 1, 2, gentle, quiet()).alarm, None);
 
         let hard = RoomReading {
             limiting_db: 8.0,
             ..gentle
         };
         assert_eq!(
-            build(&[playing(1)], 1, 2, hard).alarm,
+            build(&[playing(1)], 1, 2, hard, quiet()).alarm,
             Some(Alarm::Limiting)
         );
     }
@@ -1505,8 +1611,8 @@ mod tests {
 
     #[test]
     fn strain_is_clamped_rather_than_believed() {
-        assert_eq!(build(&[], 1, 2, calm(4.0)).strain, 1.0);
-        assert_eq!(build(&[], 1, 2, calm(-1.0)).strain, 0.0);
+        assert_eq!(build(&[], 1, 2, calm(4.0), quiet()).strain, 1.0);
+        assert_eq!(build(&[], 1, 2, calm(-1.0), quiet()).strain, 0.0);
     }
 
     /// A mixer exists whether or not anything is on it — unlike a mouth, which
@@ -1514,7 +1620,7 @@ mod tests {
     /// else, which is also what the mixer panel shows.
     #[test]
     fn a_world_with_no_decks_has_only_the_mixer() {
-        let world = build(&[], 1, 2, calm(0.0));
+        let world = build(&[], 1, 2, calm(0.0), quiet());
         assert_eq!(world.entities.len(), 1);
         assert_eq!(world.entities[0].name, "mixer.confluence");
         assert_eq!(world.confluence, Confluence::Unknown);
@@ -1525,7 +1631,7 @@ mod tests {
     /// survive the trip unchanged.
     #[test]
     fn a_world_survives_the_round_trip_through_json() {
-        let world = build(&[playing(1), playing(2)], 1, 2, calm(0.4));
+        let world = build(&[playing(1), playing(2)], 1, 2, calm(0.4), quiet());
         let text = serde_json::to_string(&world).unwrap();
         let back: World = serde_json::from_str(&text).unwrap();
         assert_eq!(back, world);

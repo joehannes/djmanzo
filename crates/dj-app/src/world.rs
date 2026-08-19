@@ -22,14 +22,18 @@
 
 use crate::Snapshot;
 use dj_core::{Mode, MusicalKey};
-use dj_world::{LoopRegion, RiverReading, RoomReading, World};
+use dj_world::{HighlandReading, LoopRegion, RiverReading, RoomReading, World};
 
 /// Build the world the interface should draw.
+///
+/// `highland` is passed in rather than read here because the collection lives
+/// behind a database handle that may not be open, and the world is built sixty
+/// times a second — a query per frame would be the wrong shape entirely.
 #[must_use]
-pub fn of(snapshot: &Snapshot) -> World {
+pub fn of(snapshot: &Snapshot, highland: HighlandReading) -> World {
     let rivers: Vec<RiverReading> = snapshot.decks.iter().map(river).collect();
     let (left, right) = banks(snapshot);
-    dj_world::build(&rivers, left, right, room(snapshot))
+    dj_world::build(&rivers, left, right, room(snapshot), highland)
 }
 
 fn river(deck: &crate::snapshot::DeckSnapshot) -> RiverReading {
@@ -180,6 +184,12 @@ mod tests {
         d
     }
 
+    /// The world with nothing left to survey, which is the normal state and
+    /// keeps these tests about the mapping rather than about the library.
+    fn of_calm(snapshot: &Snapshot) -> dj_world::World {
+        of(snapshot, HighlandReading::default())
+    }
+
     fn with(decks: Vec<crate::snapshot::DeckSnapshot>) -> Snapshot {
         let mut snapshot = crate::Snapshot::capture(
             &dj_control::ParameterRegistry::new(),
@@ -219,7 +229,7 @@ mod tests {
 
     #[test]
     fn an_empty_deck_makes_an_empty_river() {
-        let world = of(&with(vec![deck(1)]));
+        let world = of_calm(&with(vec![deck(1)]));
         let river = &world.entities[0];
         assert_eq!(river.name, "deck.river");
         assert_eq!(river.reading, "empty");
@@ -227,7 +237,7 @@ mod tests {
 
     #[test]
     fn progress_comes_from_the_playhead() {
-        let world = of(&with(vec![loaded(1)]));
+        let world = of_calm(&with(vec![loaded(1)]));
         let river = world
             .entities
             .iter()
@@ -242,7 +252,7 @@ mod tests {
     fn a_zero_length_track_is_at_the_start_rather_than_infinity() {
         let mut empty_length = loaded(1);
         empty_length.length_frames = 0.0;
-        let world = of(&with(vec![empty_length]));
+        let world = of_calm(&with(vec![empty_length]));
         let river = world
             .entities
             .iter()
@@ -259,7 +269,7 @@ mod tests {
         let mut quiet_moment = loaded(1);
         quiet_moment.volume = 1.0;
         quiet_moment.pre_fader_level = 0.02;
-        let world = of(&with(vec![quiet_moment]));
+        let world = of_calm(&with(vec![quiet_moment]));
         let river = world
             .entities
             .iter()
@@ -272,7 +282,7 @@ mod tests {
 
         let mut closed = loaded(1);
         closed.volume = 0.0;
-        let world = of(&with(vec![closed]));
+        let world = of_calm(&with(vec![closed]));
         let river = world
             .entities
             .iter()
@@ -283,7 +293,7 @@ mod tests {
 
     #[test]
     fn a_loaded_deck_with_no_analysis_yet_is_being_surveyed() {
-        let world = of(&with(vec![loaded(1)]));
+        let world = of_calm(&with(vec![loaded(1)]));
         let river = world
             .entities
             .iter()
@@ -336,7 +346,7 @@ mod tests {
                 auto_gain_db: 0.0,
             });
         }
-        assert_eq!(of(&with(vec![a, b])).confluence, Confluence::Same);
+        assert_eq!(of_calm(&with(vec![a, b])).confluence, Confluence::Same);
     }
 
     // -- strain ------------------------------------------------------------

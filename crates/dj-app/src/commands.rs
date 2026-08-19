@@ -2063,7 +2063,34 @@ pub fn sidelist_clear(state: State<'_, AppState>) -> Result<(), String> {
 /// See [ADR-0009](../../../docs/adr/0009-the-living-interface.md).
 #[tauri::command]
 pub fn world(state: State<'_, AppState>) -> dj_world::World {
-    crate::world::of(&get_snapshot(state))
+    // Read once here rather than inside the world builder: the collection lives
+    // behind a database handle that may not be open, and a query per frame
+    // would be the wrong shape entirely.
+    let highland = highland_of(&state);
+    crate::world::of(&get_snapshot(state), highland)
+}
+
+/// How much of the collection is still under mist.
+///
+/// Best effort: a library that is not open yet, or a query that fails, means
+/// there is nothing to say about the highland — not that the interface should
+/// stop drawing. Nothing here is worth an error in a booth.
+fn highland_of(state: &AppState) -> dj_world::HighlandReading {
+    use std::sync::atomic::Ordering::Relaxed;
+    let progress = state.identify_progress();
+    let surveyed = progress.as_ref().map_or(0, |p| p.done.load(Relaxed));
+    let dry = progress.as_ref().map_or(0, |p| p.failed.load(Relaxed));
+    let unsurveyed = state
+        .library()
+        .get()
+        .ok()
+        .and_then(|db| db.pending_count().ok())
+        .unwrap_or(0);
+    dj_world::HighlandReading {
+        unsurveyed: u32::try_from(unsurveyed).unwrap_or(u32::MAX),
+        surveyed: u32::try_from(surveyed).unwrap_or(u32::MAX),
+        dry: u32::try_from(dry).unwrap_or(u32::MAX),
+    }
 }
 
 /// Whether the watershed was showing last time.

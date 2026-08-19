@@ -63,6 +63,13 @@ jobs:
           npm ci
           npm run build
 
+      # The scene builder is pure, so the design's own standing rules -- the
+      # greyscale and still-frame tests from docs/VISUAL-LANGUAGE.md -- are
+      # executable, and this is what keeps them true.
+      - name: Test the interface
+        working-directory: ui
+        run: npm test
+
       - run: cargo clippy --workspace --all-targets
 
   test:

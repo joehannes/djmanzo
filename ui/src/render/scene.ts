@@ -264,6 +264,21 @@ export function build(
       });
     }
 
+    // Mist over an unsurveyed stretch: you know the river is there and cannot
+    // see its features. Distinct from murk, which is a grid you have and do not
+    // trust — this is not having one yet, and the two should not look alike.
+    if (river.reading.includes("analysing")) {
+      primitives.push({
+        kind: "band",
+        x: 0,
+        y: lane.y,
+        w: width,
+        h: lane.height,
+        top: { hue: 210, saturation: 0.08, lightness: 0.7, alpha: 0.3 },
+        bottom: { hue: 210, saturation: 0.08, lightness: 0.7, alpha: 0.12 },
+      });
+    }
+
     // The eddy: water going round instead of forward.
     const eddy = pick(world, "deck.eddy", deck);
     if (eddy) {
@@ -344,6 +359,47 @@ export function build(
         w: width,
         h: 2,
         paint: structural(1, 0.55),
+      });
+    }
+  }
+
+  // Weather. The machine struggling is a fact about the whole watershed, not
+  // about any one river, so it is drawn across all of them. Dropouts already
+  // own the peripheral channel when they happen; this is the state below that,
+  // and it stays still — a strained machine is a condition, not an event.
+  if (world.strain > 0.05) {
+    const last = lanes[lanes.length - 1];
+    primitives.push({
+      kind: "band",
+      x: 0,
+      y: 0,
+      w: width,
+      h: last ? last.y + last.height : 0,
+      top: { hue: 25, saturation: 0.35, lightness: 0.5, alpha: world.strain * 0.16 },
+    });
+  }
+
+  // The highland: how much of the collection is still under mist. Drawn only
+  // while there is something to survey — a band saying "nothing is happening"
+  // is noise, and stillness is the default.
+  if (world.unsurveyed > 0.001) {
+    const bar = lanes[0];
+    if (bar) {
+      primitives.push({
+        kind: "bar",
+        x: 0,
+        y: 0,
+        w: width * world.unsurveyed,
+        h: 2,
+        paint: { hue: 210, saturation: 0.25, lightness: 0.72, alpha: 0.6 },
+      });
+      labels.push({
+        of: "highland",
+        // The count, not the percentage: a DJ waiting on forty files wants to
+        // know it is forty.
+        text: `surveying · ${Math.round(world.unsurveyed * 100)}% under mist`,
+        x: 8,
+        y: bar.y + bar.height - 14,
       });
     }
   }

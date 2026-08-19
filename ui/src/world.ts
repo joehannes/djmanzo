@@ -106,6 +106,8 @@ export interface World {
   strain: number;
   alarm: Alarm | null;
   beating: Beating;
+  /** How much of the collection is still under mist, 0..1. */
+  unsurveyed: number;
 }
 
 export const emptyWorld = (): World => ({
@@ -114,6 +116,7 @@ export const emptyWorld = (): World => ({
   strain: 0,
   alarm: null,
   beating: "Unknown",
+  unsurveyed: 0,
 });
 
 /** Which deck an alarm is about, when it is about one. */

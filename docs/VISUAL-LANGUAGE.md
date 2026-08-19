@@ -812,7 +812,11 @@ Order, and why.
 | **V3** | The confluence — two rivers, crossfader, beating, harmonic blending, the limiter as estuary | **Done.** The first thing that says something no rectangle could: *beating* names three states that are three different actions. |
 | **V4** | Strata and terrain — EQ, filter, eddies, stones | **Done**, except effects-as-terrain and stems-as-currents, which wait on M5 and M6 having anything to draw. |
 | **V5** | WebGL renderer behind the same world | **Done.** The second renderer is what proves V1 was real. |
-| **V6** | Highland and weather — library, analysis mist, sampler pools, recording dam, session light | The periphery, once the centre is right. |
+| **V6** | Highland and weather — library, analysis mist, sampler pools, recording dam, session light | **Done** for mist, weather and the highland; groves and session light wait on M9. |
 
 Each step must leave the application usable, and each must pass the two tests: **greyscale** (§4)
 and **still frame** (§5).
+
+Both of those are now **executable**. The scene builder is pure — a world in,
+primitives out, no DOM — so `ui/src/render/scene.test.ts` asserts them directly and CI runs
+them. A rule that only lives in a document is a rule that quietly stops being true.
