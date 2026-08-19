@@ -387,6 +387,14 @@ impl Engine {
                     DeckAction::Fx { slot, change } => {
                         target.rack_mut().apply(slot, change);
                     }
+                    DeckAction::Brake(Some(beats)) => {
+                        target.brake(f64::from(beats), false);
+                    }
+                    DeckAction::Brake(None) => target.release_brake(),
+                    DeckAction::Backspin(Some(beats)) => {
+                        target.brake(f64::from(beats), true);
+                    }
+                    DeckAction::Backspin(None) => target.release_brake(),
                     DeckAction::LoopRoll(beats) => {
                         target.set_loop_roll(beats, quantize);
                     }
@@ -584,6 +592,10 @@ impl Engine {
             set(DeckParam::Slip, if deck.slip() { 1.0 } else { 0.0 });
             set(DeckParam::Reversed, if deck.reversed() { 1.0 } else { 0.0 });
             set(DeckParam::Rolling, if deck.rolling() { 1.0 } else { 0.0 });
+            set(
+                DeckParam::Spinning,
+                if deck.is_spinning() { 1.0 } else { 0.0 },
+            );
             set(
                 DeckParam::SlipPosition,
                 // Zero is a real position, so "not slipping" cannot be zero.

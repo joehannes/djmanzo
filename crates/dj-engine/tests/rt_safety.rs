@@ -587,6 +587,74 @@ fn loops_and_hot_cues_never_allocate() {
     );
 }
 
+/// A brake changes the playback rate every frame, which is the most a deck's
+/// inner loop is ever asked to do — and it also switches the deck off the
+/// keylocked path onto the direct one mid-set. Neither may allocate.
+#[test]
+fn braking_and_backspinning_never_allocate() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.load_and_play(2, 2_000_000);
+    // Deck 2 keylocked, so the path switch is exercised too.
+    rig.act(Action::Deck {
+        deck: deck(2),
+        action: DeckAction::SetKeylock(true),
+    });
+    rig.send(Command::SetGrid {
+        deck: deck(1),
+        grid: Some(dj_core::Beatgrid::new(
+            dj_core::FramePos::ZERO,
+            dj_core::Bpm::new(128.0).unwrap(),
+            dj_core::Confidence::new(0.9),
+        )),
+    });
+    rig.send(Command::SetGrid {
+        deck: deck(2),
+        grid: Some(dj_core::Beatgrid::new(
+            dj_core::FramePos::ZERO,
+            dj_core::Bpm::new(128.0).unwrap(),
+            dj_core::Confidence::new(0.9),
+        )),
+    });
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for round in 0..2_000 {
+            // Start one, let it run a while, release it, start the other kind.
+            match round % 64 {
+                0 => rig.act(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Brake(Some(1.0)),
+                }),
+                16 => rig.act(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Brake(None),
+                }),
+                32 => rig.act(Action::Deck {
+                    deck: deck(2),
+                    action: DeckAction::Backspin(Some(0.5)),
+                }),
+                48 => {
+                    rig.act(Action::Deck {
+                        deck: deck(2),
+                        action: DeckAction::Backspin(None),
+                    });
+                    // Put them back on, since a coast that runs out pauses.
+                    for n in 1..=2u8 {
+                        rig.act(Action::Deck {
+                            deck: deck(n),
+                            action: DeckAction::Play,
+                        });
+                    }
+                }
+                _ => {}
+            }
+            rig.renderer.render_block();
+        }
+    });
+    assert_eq!(allocations, 0, "braking allocated {allocations} times");
+}
+
 /// The sampler, played the way a DJ plays one.
 ///
 /// Firing a pad has to be free: it happens on the audio thread like every other

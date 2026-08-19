@@ -81,6 +81,8 @@ pub enum DeckParam {
     /// **-1.0 when nothing is being slipped over**, because frame zero is a
     /// real position and cannot mean "none" as it can in an `Option`.
     SlipPosition,
+    /// 1.0 while the platter is coasting — braking or thrown backwards.
+    Spinning,
     /// 1.0 while a loop roll is being held.
     ///
     /// Separate from [`DeckParam::LoopActive`] because a roll and a loop look
@@ -187,7 +189,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 57;
+    pub const COUNT: usize = 58;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -223,6 +225,7 @@ impl DeckParam {
             Slip,
             Reversed,
             SlipPosition,
+            Spinning,
             Rolling,
             Fx1Kind,
             Fx1Enabled,
@@ -841,6 +844,7 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::Slip => "slip",
         DeckParam::Reversed => "reversed",
         DeckParam::SlipPosition => "slip_position",
+        DeckParam::Spinning => "spinning",
         DeckParam::Rolling => "rolling",
         DeckParam::Fx1Kind => "fx1_kind",
         DeckParam::Fx1Enabled => "fx1_enabled",

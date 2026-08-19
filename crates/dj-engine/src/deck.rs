@@ -79,6 +79,11 @@ pub struct Deck {
     needs_prime: bool,
     /// Staging buffer for the keylocked path. Never resized.
     scratch: Vec<f32>,
+    /// A platter losing power, or thrown backwards.
+    ///
+    /// `None` is the ordinary case: the motor is driving and the record turns
+    /// at whatever the pitch fader says. See [`Spin`].
+    spin: Option<Spin>,
     /// This deck's three effect slots.
     ///
     /// Per deck rather than only on the master because the commonest use of an
@@ -150,6 +155,7 @@ impl Deck {
             eq_mid: 1.0,
             eq_high: 1.0,
             filter_position: 0.0,
+            spin: None,
             rack: Rack::new(sr),
             keylock: Keylock::new(sr),
             // Off by default: at unity pitch there is nothing to correct, and a
@@ -704,6 +710,70 @@ impl Deck {
         }
     }
 
+    /// Cut the motor: coast to a stop over `beats`, then pause.
+    ///
+    /// Refused on a deck with no grid, because a brake measured in beats needs
+    /// a beat to measure — and a brake that lands somewhere arbitrary is worse
+    /// than no brake. Returns whether it started.
+    pub fn brake(&mut self, beats: f64, backwards: bool) -> bool {
+        if !self.playing || !beats.is_finite() || beats <= 0.0 {
+            return false;
+        }
+        let Some(beat) = self.beat_frames() else {
+            return false;
+        };
+        // Beats of *source* audio converted to output frames, so a brake is the
+        // same length in the room whatever rate the deck is running at.
+        let ratio = self.device_rate.as_f64() / self.source.sample_rate().as_f64();
+        let frames = beats * beat * ratio;
+        self.spin = Some(if backwards {
+            Spin::thrown(frames)
+        } else {
+            Spin::braking(frames)
+        });
+        // The shifter's history is about to become meaningless: the rate now
+        // changes every frame, and the path changes under it too.
+        self.needs_prime = true;
+        self.begin_diversion();
+        true
+    }
+
+    /// Put the motor back on, wherever the record got to.
+    ///
+    /// Deliberately *not* a return to where the brake started. A DJ who brakes
+    /// and changes their mind wants the record moving again from here; the way
+    /// back is the cue button, which already exists.
+    pub fn release_brake(&mut self) {
+        if self.spin.take().is_some() {
+            self.needs_prime = true;
+            self.end_diversion();
+        }
+    }
+
+    #[must_use]
+    pub fn is_spinning(&self) -> bool {
+        self.spin.is_some()
+    }
+
+    /// What the coasting platter is doing, for the interface: 1.0 at full
+    /// speed, 0.0 stopped, negative while thrown backwards.
+    #[must_use]
+    pub fn spin_rate(&self) -> f64 {
+        self.spin.map_or(1.0, |spin| spin.rate)
+    }
+
+    /// Advance the coast by one output frame, stopping the deck when it rests.
+    #[inline]
+    fn advance_spin(&mut self) {
+        if let Some(spin) = &mut self.spin
+            && !spin.advance()
+        {
+            self.spin = None;
+            self.playing = false;
+            self.end_diversion();
+        }
+    }
+
     /// Hold or release the censor.
     pub fn set_censor(&mut self, held: bool) {
         if self.censoring == held {
@@ -720,7 +790,7 @@ impl Deck {
 
     /// Whether something is currently taking the playhead off its natural path.
     fn is_diverted(&self) -> bool {
-        self.active_loop.is_some() || self.reversed || self.censoring
+        self.active_loop.is_some() || self.reversed || self.censoring || self.spin.is_some()
     }
 
     /// Start the shadow playhead here, if slip is in force.
@@ -1098,7 +1168,13 @@ impl Deck {
     #[must_use]
     fn step_per_output_frame(&self) -> f64 {
         let forward = self.forward_step_per_output_frame();
-        if self.reversed() { -forward } else { forward }
+        let directed = if self.reversed() { -forward } else { forward };
+        // A coasting platter multiplies whatever the step was. Applied last, so
+        // a brake on a reversed deck slows to a stop rather than turning round.
+        match self.spin {
+            Some(spin) => directed * spin.rate,
+            None => directed,
+        }
     }
 
     /// The step the record would take if nothing were reversing it.
@@ -1133,7 +1209,12 @@ impl Deck {
         }
         // The shifter runs whenever it has something to do: correcting the
         // pitch that speed introduced, transposing on purpose, or both.
-        if self.keylock_on || self.key_shift != 0 {
+        // A coasting platter goes down the direct path whatever keylock says.
+        // The *sound* of a brake is the pitch falling; keylock exists to stop
+        // the pitch falling; a keylocked brake is a brake that does not brake.
+        // The shifter also works on blocks, and a rate that changes every frame
+        // is not something a block-based shifter can follow.
+        if (self.keylock_on || self.key_shift != 0) && self.spin.is_none() {
             self.process_keylocked(out, layout)
         } else {
             self.process_direct(out, layout)
@@ -1142,7 +1223,6 @@ impl Deck {
 
     /// The plain path: read, shape, mix. What runs whenever keylock is off.
     fn process_direct(&mut self, out: &mut [f32], layout: &BusLayout) -> DeckLevels {
-        let step = self.step_per_output_frame();
         let len = self.len_frames() as f64;
         let mut levels = DeckLevels::default();
         let mut position = self.position.get();
@@ -1172,11 +1252,26 @@ impl Deck {
             // block: a loop shorter than one buffer -- which is most of them at
             // a sixteenth of a beat -- wraps several times inside a single
             // callback, and folding once per block would play straight past it.
+            // Read per frame rather than once per block, because a coasting
+            // platter changes speed every frame. Per block a one-beat brake
+            // would fall in about ninety audible steps, which is a zipper
+            // rather than a slowdown.
+            let step = self.step_per_output_frame();
             position = self.fold(position + step);
             // The shadow keeps going forward at the natural rate whatever the
             // audible playhead is doing. One f64 add, so it costs nothing and
             // stays allocation-free.
             self.advance_slip(step, len);
+            self.advance_spin();
+            if !self.playing {
+                // The coast ended part-way through this block. Stop here: with
+                // the spin gone the multiplier is gone with it, and the
+                // remaining frames would play at *full speed* — up to a whole
+                // buffer of audio after the record has audibly stopped, which
+                // at 256 frames is five milliseconds of the track jumping back
+                // to pitch as it comes to rest.
+                break;
+            }
         }
 
         self.finish(position, len);
@@ -1361,6 +1456,65 @@ impl Deck {
             self.playing = false;
         } else {
             self.position = FramePos::new(position);
+        }
+    }
+}
+
+/// A platter coasting, because the motor was cut or the record was thrown.
+///
+/// One state for both moves, because they are one move with a different push:
+/// a brake starts at full speed and coasts to a stop, and a backspin starts
+/// several times faster in the other direction and coasts to the same place.
+///
+/// **Linear decay, not exponential.** A platter slows against roughly constant
+/// friction, so its speed falls in a straight line and it stops at a definite
+/// moment — which is why a brake has a *length* a DJ can put on a beat. An
+/// exponential decay would approach zero and never arrive, and the record would
+/// still be crawling four bars later.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Spin {
+    /// What the natural step is multiplied by. Starts at 1.0 for a brake and
+    /// at [`Spin::THROW`] for a backspin; decays toward zero.
+    rate: f64,
+    /// How much `rate` moves per output frame. Always toward zero.
+    per_frame: f64,
+}
+
+impl Spin {
+    /// How fast a thrown record spins backwards, as a multiple of playing
+    /// speed.
+    ///
+    /// Four. A real backspin is faster than that for an instant and then mostly
+    /// friction; four is where it stops sounding like a rewind and starts
+    /// sounding like a throw.
+    const THROW: f64 = -4.0;
+
+    fn braking(frames: f64) -> Self {
+        Self {
+            rate: 1.0,
+            per_frame: -1.0 / frames.max(1.0),
+        }
+    }
+
+    fn thrown(frames: f64) -> Self {
+        Self {
+            rate: Self::THROW,
+            per_frame: -Self::THROW / frames.max(1.0),
+        }
+    }
+
+    /// Advance one output frame. `false` once it has come to rest.
+    #[inline]
+    fn advance(&mut self) -> bool {
+        let was_negative = self.rate < 0.0;
+        self.rate += self.per_frame;
+        // Crossing zero is the stop, in both directions. Compared against the
+        // sign it started at rather than against zero, so a backspin does not
+        // stop the instant it passes through zero on the way up.
+        if was_negative {
+            self.rate < 0.0
+        } else {
+            self.rate > 0.0
         }
     }
 }
@@ -1595,6 +1749,191 @@ mod tests {
         );
         assert!(deck.active_loop().is_some(), "the roll made no loop");
         assert!(deck.rolling());
+    }
+
+    /// The whole point of a brake: the record measurably *slows*, and then
+    /// stops.
+    ///
+    /// The first version of this test only checked that each block travelled no
+    /// further than the last, and then that the deck had stopped. A mutation
+    /// that dropped the coast multiplier entirely passed it — a constant rate
+    /// satisfies "no faster than before", and the deck still stopped because
+    /// the coast's own timer ended it. So the assertion has to be that the
+    /// record ends up crawling compared with how it started.
+    #[test]
+    fn a_brake_slows_the_record_and_stops_it() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.play();
+        run(&mut deck, 1_000);
+        assert!(deck.brake(2.0, false), "a gridded playing deck can brake");
+
+        let travelled = |deck: &mut Deck| {
+            let before = deck.position().get();
+            run(deck, 256);
+            deck.position().get() - before
+        };
+
+        let first = travelled(&mut deck);
+        let mut last = first;
+        for _ in 0..400 {
+            if !deck.is_spinning() {
+                break;
+            }
+            last = travelled(&mut deck);
+        }
+        assert!(first > 0.0, "it never moved");
+        assert!(
+            last < first * 0.2,
+            "it barely slowed: {last} against {first}"
+        );
+        assert!(!deck.is_playing(), "a brake ends stopped");
+        assert!(!deck.is_spinning(), "and the coast is over");
+    }
+
+    /// A backspin goes the other way. Everything else about it is a brake.
+    #[test]
+    fn a_backspin_travels_backwards_and_stops() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.play();
+        run(&mut deck, 100_000);
+        let started = deck.position().get();
+        assert!(deck.brake(1.0, true));
+
+        for _ in 0..400 {
+            run(&mut deck, 256);
+            if !deck.is_spinning() {
+                break;
+            }
+        }
+        assert!(
+            deck.position().get() < started,
+            "a backspin should end behind where it started: {} against {started}",
+            deck.position().get()
+        );
+        assert!(!deck.is_playing());
+    }
+
+    /// A brake is measured in beats, so a deck with no grid has nothing to
+    /// measure it against — and a brake that lands somewhere arbitrary is worse
+    /// than no brake.
+    #[test]
+    fn a_brake_on_an_ungridded_deck_is_refused_cleanly() {
+        let mut deck = deck_with(400_000);
+        deck.play();
+        assert!(!deck.brake(2.0, false));
+        assert!(!deck.is_spinning());
+        assert!(deck.is_playing(), "and it keeps playing");
+    }
+
+    /// Braking a stopped deck is a gesture with no meaning, and starting a
+    /// coast on one would leave it spinning down from a standstill.
+    #[test]
+    fn a_paused_deck_cannot_brake() {
+        let mut deck = gridded(400_000, 120.0);
+        assert!(!deck.is_playing());
+        assert!(!deck.brake(2.0, false));
+        assert!(!deck.is_spinning());
+    }
+
+    /// Releasing puts the motor back on where the record got to — not back
+    /// where the brake started. The way back is the cue button.
+    #[test]
+    fn releasing_a_brake_carries_on_from_here() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.play();
+        run(&mut deck, 1_000);
+        deck.brake(4.0, false);
+        run(&mut deck, 2_000);
+        let part_way = deck.position().get();
+        assert!(part_way > 1_000.0);
+
+        deck.release_brake();
+        assert!(!deck.is_spinning());
+        assert!(deck.is_playing(), "the motor is back on");
+        run(&mut deck, 100);
+        assert!(
+            deck.position().get() > part_way,
+            "and it carried on from where it was"
+        );
+    }
+
+    /// The sound of a brake is the pitch falling. Keylock exists to stop the
+    /// pitch falling. A keylocked brake would be a brake that does not brake,
+    /// so a coast goes down the direct path whatever keylock says.
+    #[test]
+    fn a_brake_bypasses_keylock() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.set_keylock(true);
+        deck.play();
+        run(&mut deck, 1_000);
+        assert!(deck.brake(2.0, false));
+
+        for _ in 0..400 {
+            run(&mut deck, 256);
+            if !deck.is_spinning() {
+                break;
+            }
+        }
+        assert!(!deck.is_playing(), "a keylocked brake still ends stopped");
+    }
+
+    /// Slip and a backspin are the pair a DJ actually uses: throw the record,
+    /// and the shadow keeps running so there is somewhere to land.
+    #[test]
+    fn a_backspin_with_slip_keeps_a_shadow_running() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.set_slip(true);
+        deck.play();
+        run(&mut deck, 10_000);
+        assert!(deck.brake(1.0, true));
+        assert!(
+            deck.slip_position().is_some(),
+            "the shadow should be running"
+        );
+        for _ in 0..400 {
+            run(&mut deck, 256);
+            if !deck.is_spinning() {
+                break;
+            }
+        }
+        assert!(!deck.is_playing());
+    }
+
+    /// A brake on a deck already running backwards slows to a stop rather than
+    /// turning around: the coast multiplies whatever the step was.
+    #[test]
+    fn a_brake_on_a_reversed_deck_still_slows_to_a_stop() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.play();
+        run(&mut deck, 100_000);
+        deck.set_reverse(true);
+        let started = deck.position().get();
+        assert!(deck.brake(1.0, false));
+
+        for _ in 0..400 {
+            run(&mut deck, 256);
+            if !deck.is_spinning() {
+                break;
+            }
+        }
+        assert!(
+            deck.position().get() < started,
+            "a reversed deck braking still travels backwards"
+        );
+        assert!(!deck.is_playing());
+    }
+
+    /// Nonsense lengths must not become a coast that never ends or one that
+    /// divides by zero.
+    #[test]
+    fn a_nonsense_brake_length_is_refused() {
+        let mut deck = gridded(400_000, 120.0);
+        deck.play();
+        assert!(!deck.brake(0.0, false));
+        assert!(!deck.brake(-1.0, false));
+        assert!(!deck.brake(f64::NAN, false));
+        assert!(!deck.brake(f64::INFINITY, false));
+        assert!(!deck.is_spinning());
     }
 
     /// The loop running out is the same event as letting go of the pad.

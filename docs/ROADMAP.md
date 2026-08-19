@@ -516,9 +516,9 @@ adding a new controller requires editing a file, not rebuilding the app.
 - **FX rack** — done: three chained slots per deck and on the master, pre/post-fader placement,
   beat-synced timing. Chain presets still to come.
 - Core built-in effects — echo, delay, reverb, gate, crush, flanger, phaser and filter done.
-  Roll shipped as the loop roll, on its own pad page. Brake and backspin still to come, and
-  they are **transport rather than signal**: they change how fast the record turns, not what
-  comes off it, so they belong on the deck and not in a slot.
+  Roll shipped as the loop roll, on its own pad page. Brake and backspin are done and live on
+  the deck rather than in a slot — they are **transport rather than signal**: they change how
+  fast the record turns, not what comes off it.
 - **CLAP** plugin hosting.
 - **Slip mode, reverse/censor, loop roll** — done. 6 decks still to come.
 - Microphone/aux input with ducking.
@@ -548,6 +548,42 @@ Three decisions the tests pin:
 Allocation-free on both audio paths, proven by `rt_safety.rs` on the direct path
 and again on the keylocked one, which advances the shadow per block rather than
 per frame.
+
+### Brake and backspin
+
+One state for both, because they are one move with a different push: a brake
+starts at full speed and coasts to a stop, a backspin starts four times faster
+in the other direction and coasts to the same place.
+
+**Linear decay, not exponential.** A platter slows against roughly constant
+friction, so its speed falls in a straight line and it stops at a definite
+moment — which is why a brake has a *length* a DJ can put on a beat. An
+exponential decay would approach zero and never arrive, and the record would
+still be crawling four bars later.
+
+**A coast bypasses keylock.** The sound of a brake is the pitch falling;
+keylock exists to stop the pitch falling; a keylocked brake is a brake that does
+not brake. The shifter also works on blocks, and a rate that changes every frame
+is not something a block-based shifter can follow — so a spinning deck goes down
+the direct path whatever keylock says.
+
+**The step is read per frame, not per block.** Once per block a one-beat brake
+would fall in about ninety audible steps: a zipper rather than a slowdown.
+
+Two things the tests caught, both worth recording.
+
+The first version of the brake test only checked that each block travelled no
+further than the last, and then that the deck had stopped. A mutation removing
+the coast multiplier entirely **passed it** — a constant rate satisfies "no
+faster than before", and the deck stopped anyway because the coast's own timer
+ended it. The test now requires the record to end up crawling compared with how
+it started, and the mutation fails it.
+
+That stronger test then found a real bug: when the coast ended part-way through
+a block, the spin was cleared and the *remaining frames of that block played at
+full speed*. Up to a whole buffer of audio jumping back to pitch as the record
+came to rest — five milliseconds at 256 frames, and worse at bigger ones. The
+frame loop now stops when the deck does.
 
 ### The sampler
 

@@ -651,6 +651,41 @@
       >
         CENSOR
       </button>
+
+      <!--
+        Brake and backspin. Held rather than clicked, and momentary in an
+        unusual way: the press *starts* a coast that runs on its own, and the
+        release puts the motor back on wherever the record got to. Letting one
+        run to the end leaves the deck stopped, which is the point.
+
+        Only with a grid, because a coast is measured in beats — the engine
+        refuses one it cannot measure, and a control that silently does nothing
+        reads as broken.
+      -->
+      {#if analysis?.bpm != null}
+        <button
+          class="slip"
+          class:on={deck.spinning}
+          disabled={!enabled || !deck.playing}
+          onpointerdown={() => send(`deck ${deck.number} brake 2`)}
+          onpointerup={() => send(`deck ${deck.number} brake_off`)}
+          onpointercancel={() => send(`deck ${deck.number} brake_off`)}
+          title="Cut the motor and coast to a stop over two beats. Let go to put it back on."
+        >
+          BRAKE
+        </button>
+        <button
+          class="slip"
+          class:on={deck.spinning}
+          disabled={!enabled || !deck.playing}
+          onpointerdown={() => send(`deck ${deck.number} backspin 1`)}
+          onpointerup={() => send(`deck ${deck.number} backspin_off`)}
+          onpointercancel={() => send(`deck ${deck.number} backspin_off`)}
+          title="Throw the record backwards and let friction take it down over a beat"
+        >
+          SPIN
+        </button>
+      {/if}
     {/if}
     <button
       class="keylock"

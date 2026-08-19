@@ -94,6 +94,19 @@ pub enum DeckAction {
         slot: u8,
         change: FxChange,
     },
+    /// Cut the motor and coast to a stop over this many beats.
+    ///
+    /// `None` puts the motor back on, wherever the record got to — not back
+    /// where the brake started. A DJ who changes their mind wants the record
+    /// moving again from here; the way back is the cue button.
+    Brake(Option<f32>),
+    /// Throw the record backwards and let friction take it down, over this
+    /// many beats. `None` releases, as for a brake.
+    ///
+    /// The same machinery as a brake with a different push, but its own verb:
+    /// they are two gestures a DJ names separately and reaches for at
+    /// different moments.
+    Backspin(Option<f32>),
     /// Match this deck's tempo, and align its phase once, to another playing
     /// deck. Refused when either grid is too weak to trust.
     Sync,
@@ -453,6 +466,10 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         // steps.
         "censor_on" => DeckAction::SetCensor(true),
         "censor_off" => DeckAction::SetCensor(false),
+        "brake" => DeckAction::Brake(Some(parse_beats(argument)?)),
+        "brake_off" => DeckAction::Brake(None),
+        "backspin" => DeckAction::Backspin(Some(parse_beats(argument)?)),
+        "backspin_off" => DeckAction::Backspin(None),
         "roll" => DeckAction::LoopRoll(Some(parse_beats(argument)?)),
         "roll_off" => DeckAction::LoopRoll(None),
         "key" => DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32),
@@ -613,6 +630,10 @@ impl fmt::Display for Action {
                 DeckAction::ToggleReverse => write!(f, "deck {deck} reverse_toggle"),
                 DeckAction::SetCensor(true) => write!(f, "deck {deck} censor_on"),
                 DeckAction::SetCensor(false) => write!(f, "deck {deck} censor_off"),
+                DeckAction::Brake(Some(beats)) => write!(f, "deck {deck} brake {beats}"),
+                DeckAction::Brake(None) => write!(f, "deck {deck} brake_off"),
+                DeckAction::Backspin(Some(beats)) => write!(f, "deck {deck} backspin {beats}"),
+                DeckAction::Backspin(None) => write!(f, "deck {deck} backspin_off"),
                 DeckAction::LoopRoll(Some(beats)) => write!(f, "deck {deck} roll {beats}"),
                 DeckAction::LoopRoll(None) => write!(f, "deck {deck} roll_off"),
                 DeckAction::SetKeyShift(n) => write!(f, "deck {deck} key {n}"),

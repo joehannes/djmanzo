@@ -120,6 +120,8 @@ export interface DeckState {
    * go of the pad, a roll does not.
    */
   rolling: boolean;
+  /** The platter is coasting — braking, or thrown backwards. */
+  spinning: boolean;
   /** Where the track would be if nothing were diverting it. Null when nothing is. */
   slip_position: number | null;
   crossfader_assign: CrossfaderAssign;

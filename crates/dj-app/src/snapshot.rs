@@ -96,6 +96,8 @@ pub struct DeckSnapshot {
     pub slip: bool,
     /// Playing backwards, from reverse or from a held censor.
     pub reversed: bool,
+    /// The platter is coasting — braking, or thrown backwards.
+    pub spinning: bool,
     /// A loop roll is being held.
     ///
     /// Distinct from `active_loop` because the two look alike and end
@@ -431,6 +433,7 @@ impl Snapshot {
                     slip: get(DeckParam::Slip) > 0.5,
                     reversed: get(DeckParam::Reversed) > 0.5,
                     rolling: get(DeckParam::Rolling) > 0.5,
+                    spinning: get(DeckParam::Spinning) > 0.5,
                     slip_position: {
                         // Negative means "nothing to slip over", because frame
                         // zero is a real position. See `state::NOT_SLIPPING`.

@@ -101,7 +101,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 68] = [
+static VOCABULARY: [VerbSpec; 72] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -241,6 +241,40 @@ static VOCABULARY: [VerbSpec; 68] = [
         argument: ArgSpec::None,
         help: "release the censor",
         example: "deck 1 censor_off",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "brake",
+        argument: ArgSpec::Number {
+            min: 0.0625,
+            max: 32.0,
+        },
+        help: "cut the motor and coast to a stop over this many beats, like a turntable losing power",
+        example: "deck 1 brake 2",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "brake_off",
+        argument: ArgSpec::None,
+        help: "put the motor back on, wherever the record got to",
+        example: "deck 1 brake_off",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "backspin",
+        argument: ArgSpec::Number {
+            min: 0.0625,
+            max: 32.0,
+        },
+        help: "throw the record backwards and let friction take it down over this many beats",
+        example: "deck 1 backspin 1",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "backspin_off",
+        argument: ArgSpec::None,
+        help: "put the motor back on after a backspin",
+        example: "deck 1 backspin_off",
     },
     VerbSpec {
         target: Target::Deck,
@@ -769,6 +803,10 @@ mod tests {
             "reverse_toggle",
             "censor_on",
             "censor_off",
+            "brake",
+            "brake_off",
+            "backspin",
+            "backspin_off",
             "roll",
             "roll_off",
             "fx",
