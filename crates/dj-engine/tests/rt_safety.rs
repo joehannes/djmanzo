@@ -1198,3 +1198,57 @@ fn recording_never_allocates() {
         "recording allocated {allocations} times across {TAKES} takes"
     );
 }
+
+/// Slicing is a loop entered and left at pad speed.
+///
+/// A DJ working the slicer sends a press and a release several times a bar, and
+/// each one moves the playhead and re-anchors the shadow. None of that may
+/// allocate.
+#[test]
+fn slicing_never_allocates() {
+    let mut rig = rig(1, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.commands
+        .push(Command::SetGrid {
+            deck: deck(1),
+            grid: Some(dj_core::Beatgrid::new(
+                dj_core::FramePos::ZERO,
+                dj_core::Bpm::new(128.0).unwrap(),
+                dj_core::Confidence::new(0.9),
+            )),
+        })
+        .ok();
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for step in 0..2_000 {
+            let slice = (step % 8) as u8 + 1;
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Slice(Some(slice)),
+                }))
+                .ok();
+            rig.renderer.render_discarding(2);
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Slice(None),
+                }))
+                .ok();
+            rig.renderer.render_discarding(2);
+            // The span, too: a controller with an encoder on it sends these.
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::SliceDomain(if step % 2 == 0 { 8.0 } else { 16.0 }),
+                }))
+                .ok();
+        }
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "the slicer allocated {allocations} times across 2,000 presses"
+    );
+}

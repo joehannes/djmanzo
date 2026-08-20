@@ -40,6 +40,12 @@ pub enum PadPage {
     Cues,
     Loops,
     Roll,
+    /// Eight equal parts of a span of the grid, each one a pad.
+    ///
+    /// The page a DJ reaches for to rearrange a bar on the fly. Needs a grid
+    /// for the same reason the loop pages do: without one there is nothing to
+    /// divide.
+    Slicer,
     Saved,
     Sampler,
     Fx,
@@ -47,10 +53,11 @@ pub enum PadPage {
 
 impl PadPage {
     /// Every page, in the order they are offered.
-    pub const ALL: [PadPage; 6] = [
+    pub const ALL: [PadPage; 7] = [
         PadPage::Cues,
         PadPage::Loops,
         PadPage::Roll,
+        PadPage::Slicer,
         PadPage::Saved,
         PadPage::Sampler,
         PadPage::Fx,
@@ -62,6 +69,7 @@ impl PadPage {
             PadPage::Cues => "cues",
             PadPage::Loops => "loops",
             PadPage::Roll => "roll",
+            PadPage::Slicer => "slicer",
             PadPage::Saved => "saved",
             PadPage::Sampler => "sampler",
             PadPage::Fx => "fx",
@@ -80,7 +88,7 @@ impl PadPage {
     /// and need no grid at all — which is why cues are the default page.
     #[must_use]
     pub const fn needs_grid(self) -> bool {
-        matches!(self, PadPage::Loops | PadPage::Roll)
+        matches!(self, PadPage::Loops | PadPage::Roll | PadPage::Slicer)
     }
 
     /// The eight pads of this page.
@@ -130,6 +138,22 @@ impl PadPage {
                     release: d(DeckAction::LoopRoll(None)),
                     clear: None,
                     lit: Lit::RollBeats(beats),
+                }
+            }),
+            PadPage::Slicer => std::array::from_fn(|index| {
+                let slice = index as u8 + 1;
+                Pad {
+                    label: PadLabel::Number(slice),
+                    press: d(DeckAction::Slice(Some(slice))),
+                    // Momentary, like the roll: the slice ends when the finger
+                    // lifts and the track is where it would have been.
+                    release: d(DeckAction::Slice(None)),
+                    clear: None,
+                    // Lit by where the playhead *is*, not by what was pressed.
+                    // The light walks the grid on its own, which is what makes
+                    // the page readable before you touch it — you can see which
+                    // slice is coming.
+                    lit: Lit::SliceAt(slice),
                 }
             }),
             PadPage::Saved => std::array::from_fn(|index| {
@@ -314,6 +338,8 @@ pub enum Lit {
     FxSlotPost(u8),
     /// This sampler slot is sounding.
     SamplePlaying(u8),
+    /// The playhead is inside this slice of the slicer's domain.
+    SliceAt(u8),
 }
 
 #[cfg(test)]

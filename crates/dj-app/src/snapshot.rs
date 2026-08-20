@@ -104,6 +104,9 @@ pub struct DeckSnapshot {
     /// differently: a loop stays, a roll ends when the pad is released. The
     /// interface has to be able to say which one is on screen.
     pub rolling: bool,
+    /// The slicer: how many beats the eight pads divide, which one the
+    /// playhead is in, and whether a pad is held.
+    pub slice: SliceSnapshot,
     /// Where the track would be if nothing were diverting it, in frames.
     /// `None` when nothing is being slipped over.
     pub slip_position: Option<f32>,
@@ -134,6 +137,17 @@ fn fx_slot<P: Copy>(slot: u8, get: impl Fn(fn(FxParams<P>) -> P) -> f32) -> FxSl
         timed: kind.is_timed(),
         post_fader: get(|p| p.post) >= 0.5,
     }
+}
+
+/// The slicer's state, for the pad page that draws it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SliceSnapshot {
+    /// Beats the eight pads divide up.
+    pub beats: f32,
+    /// Which slice the playhead is in, 1-based. `None` without a grid.
+    pub at: Option<u8>,
+    /// A slice pad is held.
+    pub holding: bool,
 }
 
 /// The sampler, as the interface draws it.
@@ -458,6 +472,16 @@ impl Snapshot {
                     slip: get(DeckParam::Slip) > 0.5,
                     reversed: get(DeckParam::Reversed) > 0.5,
                     rolling: get(DeckParam::Rolling) > 0.5,
+                    slice: SliceSnapshot {
+                        beats: get(DeckParam::SliceBeats),
+                        // Zero means no grid, which is not slice zero — the pads
+                        // are numbered from one precisely so the two differ.
+                        at: match get(DeckParam::SliceIndex) as u8 {
+                            0 => None,
+                            n => Some(n),
+                        },
+                        holding: get(DeckParam::Slicing) > 0.5,
+                    },
                     spinning: get(DeckParam::Spinning) > 0.5,
                     slip_position: {
                         // Negative means "nothing to slip over", because frame

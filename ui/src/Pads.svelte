@@ -108,6 +108,11 @@
     if ("SamplePlaying" in condition) {
       return sampler.slots[condition.SamplePlaying - 1]?.playing ?? false;
     }
+    if ("SliceAt" in condition) {
+      // Where the playhead *is*, not what was pressed — so the light walks the
+      // grid on its own and you can see the next slice coming.
+      return deck.slice.at === condition.SliceAt;
+    }
     return false;
   }
 

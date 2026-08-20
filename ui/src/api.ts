@@ -77,6 +77,15 @@ export interface LoadedTrack {
  */
 export type CrossfaderAssign = "left" | "right" | "thru";
 
+/** The slicer, for the pad page that draws it. */
+export interface SliceState {
+  /** Beats the eight pads divide up. */
+  beats: number;
+  /** Which slice the playhead is in, 1-based. Null without a grid. */
+  at: number | null;
+  holding: boolean;
+}
+
 export interface DeckState {
   number: number;
   /**
@@ -120,6 +129,7 @@ export interface DeckState {
    * go of the pad, a roll does not.
    */
   rolling: boolean;
+  slice: SliceState;
   /** The platter is coasting — braking, or thrown backwards. */
   spinning: boolean;
   /** Where the track would be if nothing were diverting it. Null when nothing is. */
@@ -198,7 +208,8 @@ export type Lit =
   | { RollBeats: number }
   | { FxSlotOn: number }
   | { FxSlotPost: number }
-  | { SamplePlaying: number };
+  | { SamplePlaying: number }
+  | { SliceAt: number };
 
 /** One pad, with its actions already written out by the backend. */
 export interface PadDto {

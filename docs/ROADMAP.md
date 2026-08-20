@@ -510,7 +510,7 @@ adding a new controller requires editing a file, not rebuilding the app.
 
 ## M5 — Performance
 
-- **Pad zone with pages** — done: Cues, Loops, Roll, Saved, Sampler, FX. Slicer still to come.
+- **Pad zone with pages** — done: Cues, Loops, Roll, Slicer, Saved, Sampler, FX. All seven.
 - **Sampler** — done: four banks of eight, four trigger modes, tempo sync, per-slot level
   and routing, its own pad page, and recording into a slot from the master or from a deck.
   The deck tap is pre-fader, so a hook can be lifted off a track the room is not hearing yet.

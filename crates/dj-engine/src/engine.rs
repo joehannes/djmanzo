@@ -456,6 +456,13 @@ impl Engine {
                     DeckAction::LoopRoll(beats) => {
                         target.set_loop_roll(beats, quantize);
                     }
+                    DeckAction::Slice(Some(slice)) => {
+                        target.hold_slice(slice);
+                    }
+                    DeckAction::Slice(None) => target.release_slice(),
+                    DeckAction::SliceDomain(beats) => {
+                        target.set_slice_domain(f64::from(beats));
+                    }
                     DeckAction::BeatJump(beats) => {
                         target.beat_jump(beats, quantize);
                     }
@@ -665,6 +672,14 @@ impl Engine {
             set(DeckParam::Slip, if deck.slip() { 1.0 } else { 0.0 });
             set(DeckParam::Reversed, if deck.reversed() { 1.0 } else { 0.0 });
             set(DeckParam::Rolling, if deck.rolling() { 1.0 } else { 0.0 });
+            set(DeckParam::Slicing, if deck.slicing() { 1.0 } else { 0.0 });
+            set(DeckParam::SliceBeats, deck.slice_beats() as f32);
+            // Zero means "no grid, so no slices" — distinct from slice 1, which
+            // is why the pads are numbered from one.
+            set(
+                DeckParam::SliceIndex,
+                f32::from(deck.slice_index().unwrap_or(0)),
+            );
             set(
                 DeckParam::Spinning,
                 if deck.is_spinning() { 1.0 } else { 0.0 },

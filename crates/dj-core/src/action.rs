@@ -87,6 +87,18 @@ pub enum DeckAction {
     /// named after. Clamped by the engine's own loop limits, so 1/16 of a beat
     /// is the floor here as it is for halving a loop.
     LoopRoll(Option<f32>),
+    /// Hold one slice of the slicer's domain, or let it go.
+    ///
+    /// 1-based, to match the pad under the finger. `None` releases.
+    ///
+    /// A slice is a roll whose loop starts somewhere else: instead of looping
+    /// from the playhead, it loops the *n*th part of a fixed span of the grid.
+    /// That is the whole difference, and it is why both slip — a slice that did
+    /// not put you back where the record would have been would be a jump, and a
+    /// jump is not a performance move.
+    Slice(Option<u8>),
+    /// How many beats the eight slices divide up. 4, 8, 16 or 32 in practice.
+    SliceDomain(f32),
     /// Change one of this deck's effect slots.
     ///
     /// One variant with a sub-grammar rather than a verb per slot per control.
@@ -499,6 +511,9 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "backspin_off" => DeckAction::Backspin(None),
         "roll" => DeckAction::LoopRoll(Some(parse_beats(argument)?)),
         "roll_off" => DeckAction::LoopRoll(None),
+        "slice" => DeckAction::Slice(Some(parse_slot(argument)?)),
+        "slice_off" => DeckAction::Slice(None),
+        "slice_domain" => DeckAction::SliceDomain(parse_beats(argument)?),
         "key" => DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32),
         // Three verbs rather than one verb with a word argument, matching
         // `cue_on`/`cue_off` above: a three-position switch is three buttons on
@@ -663,6 +678,9 @@ impl fmt::Display for Action {
                 DeckAction::Backspin(None) => write!(f, "deck {deck} backspin_off"),
                 DeckAction::LoopRoll(Some(beats)) => write!(f, "deck {deck} roll {beats}"),
                 DeckAction::LoopRoll(None) => write!(f, "deck {deck} roll_off"),
+                DeckAction::Slice(Some(n)) => write!(f, "deck {deck} slice {n}"),
+                DeckAction::Slice(None) => write!(f, "deck {deck} slice_off"),
+                DeckAction::SliceDomain(beats) => write!(f, "deck {deck} slice_domain {beats}"),
                 DeckAction::SetKeyShift(n) => write!(f, "deck {deck} key {n}"),
                 DeckAction::Fx { slot, change } => write!(f, "deck {deck} fx {slot} {change}"),
                 DeckAction::Sync => write!(f, "deck {deck} sync"),

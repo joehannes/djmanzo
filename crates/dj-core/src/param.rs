@@ -90,6 +90,15 @@ pub enum DeckParam {
     /// and a roll does not. An interface that draws both as "looping" is
     /// telling a DJ the wrong thing about what happens next.
     Rolling,
+    /// How many beats the slicer's eight pads divide up.
+    SliceBeats,
+    /// Which slice the playhead is in, 1-based; 0 when there is no grid.
+    ///
+    /// Published so the pad page can light the slice you are *in* rather than
+    /// the one you pressed — which is what lets a DJ see the next one coming.
+    SliceIndex,
+    /// 1.0 while a slice pad is held.
+    Slicing,
     /// The three effect slots.
     ///
     /// Six values each rather than one packed number: a packed one would be
@@ -189,7 +198,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 58;
+    pub const COUNT: usize = 61;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -227,6 +236,9 @@ impl DeckParam {
             SlipPosition,
             Spinning,
             Rolling,
+            SliceBeats,
+            SliceIndex,
+            Slicing,
             Fx1Kind,
             Fx1Enabled,
             Fx1Wet,
@@ -893,6 +905,9 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::SlipPosition => "slip_position",
         DeckParam::Spinning => "spinning",
         DeckParam::Rolling => "rolling",
+        DeckParam::SliceBeats => "slice_beats",
+        DeckParam::SliceIndex => "slice_index",
+        DeckParam::Slicing => "slicing",
         DeckParam::Fx1Kind => "fx1_kind",
         DeckParam::Fx1Enabled => "fx1_enabled",
         DeckParam::Fx1Wet => "fx1_wet",

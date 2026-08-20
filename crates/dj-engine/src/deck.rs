@@ -4,8 +4,8 @@ use crate::bus::BusLayout;
 use crate::rack::Rack;
 use crate::record::Recorder;
 use dj_core::{
-    Beatgrid, CrossfaderAssign, FramePos, HOT_CUE_SLOTS, LoopLimits, LoopRegion, Rate, SampleRate,
-    db_to_linear,
+    Beatgrid, CrossfaderAssign, FramePos, HOT_CUE_SLOTS, LoopLimits, LoopRegion, PADS, Rate,
+    SampleRate, db_to_linear,
 };
 use dj_decode::{AudioBuffer, TrackSource};
 use dj_dsp::fx::FxContext;
@@ -117,6 +117,15 @@ pub struct Deck {
     /// reason a censor does -- the point of a roll is that the track carries on
     /// underneath and you land back on the beat when you let go.
     rolling: bool,
+    /// A slicer pad is held. Slips for the same reason a roll does — see
+    /// [`Deck::hold_slice`].
+    slicing: bool,
+    /// How many beats the slicer's eight pads divide up.
+    ///
+    /// Eight by default, which makes each pad exactly one beat: the reading a
+    /// DJ can follow without counting. Four gives half-beats for stutter work,
+    /// sixteen and thirty-two give whole bars for rearranging a phrase.
+    slice_beats: f64,
     /// Censor is held: momentary reverse that always slips, whatever the slip
     /// button says. That is the whole difference between a censor and simply
     /// playing backwards -- a censor hides a word and puts you back on the
@@ -173,6 +182,8 @@ impl Deck {
             reversed: false,
             censoring: false,
             rolling: false,
+            slicing: false,
+            slice_beats: 8.0,
             pending_loop_in: None,
             hot_cues: [None; HOT_CUE_SLOTS],
         }
@@ -618,7 +629,7 @@ impl Deck {
     /// otherwise.
     #[must_use]
     pub fn is_slipping(&self) -> bool {
-        self.slip || self.censoring || self.rolling
+        self.slip || self.censoring || self.rolling || self.slicing
     }
 
     /// Hold a loop roll of `beats`, or release it.
@@ -649,6 +660,116 @@ impl Deck {
     #[must_use]
     pub fn rolling(&self) -> bool {
         self.rolling
+    }
+
+    // -- slicer ------------------------------------------------------------
+
+    /// Beats the eight pads divide up. See [`Deck::slice_beats`].
+    pub fn set_slice_domain(&mut self, beats: f64) {
+        if beats.is_finite() && beats > 0.0 {
+            // A domain shorter than the pad count would give slices under a
+            // frame at any sane tempo, and one longer than a phrase is not a
+            // thing anyone slices.
+            self.slice_beats = beats.clamp(1.0, 64.0);
+        }
+    }
+
+    #[must_use]
+    pub fn slice_beats(&self) -> f64 {
+        self.slice_beats
+    }
+
+    #[must_use]
+    pub fn slicing(&self) -> bool {
+        self.slicing
+    }
+
+    /// Where the domain is measured from.
+    ///
+    /// The *shadow* playhead when one is running, not the audible one. That is
+    /// what keeps the domain walking forward underneath a held slice: press
+    /// pad 1 and hold it, and the light still crosses the grid, because the
+    /// record still would be. Measuring from the audible playhead would freeze
+    /// the domain around the loop it is stuck in — the slicer would stop
+    /// slicing the moment you used it.
+    fn slice_reference(&self) -> f64 {
+        self.slip_anchor.unwrap_or_else(|| self.position.get())
+    }
+
+    /// Start of the span the eight pads currently divide, in frames.
+    fn slice_domain_start(&self) -> Option<f64> {
+        let grid = self.grid?;
+        let beat = self.beat_frames()?;
+        let span = self.slice_beats * beat;
+        let from_anchor = self.slice_reference() - grid.anchor.get();
+        // `div_euclid` rather than a plain division: before the grid anchor the
+        // quotient is negative, and truncating toward zero would make the domain
+        // either side of the anchor twice as long as the rest.
+        let index = (from_anchor / span).div_euclid(1.0).floor();
+        Some(grid.anchor.get() + index * span)
+    }
+
+    /// Which slice the playhead is in, 1-based. `None` without a grid.
+    #[must_use]
+    pub fn slice_index(&self) -> Option<u8> {
+        let start = self.slice_domain_start()?;
+        let beat = self.beat_frames()?;
+        let each = self.slice_beats / f64::from(PADS as u8) * beat;
+        if each <= 0.0 {
+            return None;
+        }
+        let into = ((self.slice_reference() - start) / each).floor();
+        // Clamped rather than wrapped: a reference that has drifted past the
+        // domain by a rounding error belongs to the last slice, not the first
+        // one of the next domain.
+        let index = into.clamp(0.0, (PADS - 1) as f64) as u8;
+        Some(index + 1)
+    }
+
+    /// Hold slice `slice` of the current domain, 1-based.
+    ///
+    /// A slice is a loop over one eighth of a span of the grid, and it always
+    /// slips — which is what makes it a performance move rather than a jump.
+    /// Let go and the track is where it would have been, so eight pads can
+    /// rearrange a bar and hand it back in time.
+    ///
+    /// Refused without a grid, like every other beat-measured gesture, and
+    /// refused when the slice would run past the end of the track.
+    pub fn hold_slice(&mut self, slice: u8) -> bool {
+        if slice < 1 || slice > PADS as u8 {
+            return false;
+        }
+        let (Some(start), Some(beat)) = (self.slice_domain_start(), self.beat_frames()) else {
+            return false;
+        };
+        let each = self.slice_beats / f64::from(PADS as u8) * beat;
+        if !each.is_finite() || each <= 0.0 {
+            return false;
+        }
+
+        let from = start + f64::from(slice - 1) * each;
+        let to = from + each;
+        if from < 0.0 || to > self.len_frames() as f64 {
+            return false;
+        }
+
+        // Armed before the loop, so the loop's own `begin_diversion` sees a
+        // deck that is slipping — the same ordering the roll needs, and for the
+        // same reason.
+        self.slicing = true;
+        let region = LoopRegion::new(FramePos::new(from), FramePos::new(to));
+        let entered = region.is_some_and(|region| self.enter_loop(region));
+        if !entered {
+            self.slicing = false;
+        }
+        entered
+    }
+
+    /// Let a held slice go. The track lands where it would have been.
+    pub fn release_slice(&mut self) {
+        if self.slicing {
+            self.exit_loop();
+        }
     }
 
     #[must_use]
@@ -888,8 +1009,10 @@ impl Deck {
         self.active_loop = None;
         self.pending_loop_in = None;
         // A roll ends with the loop it made, so releasing the pad and the loop
-        // running out are the same thing.
+        // running out are the same thing. A slice is a roll with a different
+        // start, so it ends the same way.
         self.rolling = false;
+        self.slicing = false;
         if had {
             self.end_diversion();
         }
@@ -2852,5 +2975,229 @@ mod keylock_tests {
             out.iter().any(|s| s.abs() > 0.01),
             "a large block produced no audio"
         );
+    }
+}
+
+/// The slicer: eight equal parts of a span of the grid.
+///
+/// A slice is a roll whose loop starts somewhere else, so most of the machinery
+/// is already proved by the roll's tests. These pin the part that is new — where
+/// the eight parts *are*, and that they keep moving while one is held.
+#[cfg(test)]
+mod slicer_tests {
+    use super::*;
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+    /// 120 BPM at 48 kHz is exactly 24 000 frames a beat, so every expected
+    /// position in these tests is an integer rather than a tolerance.
+    const BPM: f64 = 120.0;
+    const BEAT: f64 = 24_000.0;
+
+    fn deck() -> Deck {
+        deck_of_beats(64.0)
+    }
+
+    fn deck_of_beats(beats: f64) -> Deck {
+        use dj_core::{Beatgrid, Bpm, Confidence};
+        let frames = (BEAT * beats) as usize;
+        let samples: Vec<f32> = (0..frames).flat_map(|n| [n as f32, n as f32]).collect();
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(samples, SR)));
+        deck.set_grid(Some(Beatgrid::new(
+            FramePos::ZERO,
+            Bpm::new(BPM).unwrap(),
+            Confidence::new(0.9),
+        )));
+        deck
+    }
+
+    /// Eight pads over eight beats is one beat each, which is the default
+    /// because it is the reading a DJ can follow without counting.
+    #[test]
+    fn the_eight_pads_divide_the_span_evenly() {
+        assert_eq!(deck().slice_beats(), 8.0);
+
+        for slice in 1..=8u8 {
+            let mut deck = deck();
+            assert!(deck.hold_slice(slice), "slice {slice} should be reachable");
+            let region = deck.active_loop().expect("a slice is a loop");
+            assert_eq!(region.start.get(), f64::from(slice - 1) * BEAT);
+            assert_eq!(region.end.get(), f64::from(slice) * BEAT);
+        }
+    }
+
+    /// The span is anchored to the grid, not to wherever the playhead is. Two
+    /// presses of the same pad from different points inside one span must give
+    /// the same slice, or the page is unplayable.
+    #[test]
+    fn the_span_is_anchored_to_the_grid() {
+        for offset in [0.0, BEAT * 0.4, BEAT * 3.0, BEAT * 7.9] {
+            let mut deck = deck();
+            deck.seek(FramePos::new(offset));
+            assert!(deck.hold_slice(3));
+            let region = deck.active_loop().unwrap();
+            assert_eq!(
+                region.start.get(),
+                BEAT * 2.0,
+                "pad 3 moved when the playhead did, from offset {offset}"
+            );
+        }
+    }
+
+    /// And it advances a whole span at a time, so the next bar's pad 3 is the
+    /// next bar's third beat rather than eight beats after wherever you were.
+    #[test]
+    fn the_span_advances_a_whole_span_at_a_time() {
+        let mut deck = deck();
+        deck.seek(FramePos::new(BEAT * 8.5));
+        assert!(deck.hold_slice(1));
+        assert_eq!(deck.active_loop().unwrap().start.get(), BEAT * 8.0);
+
+        deck.release_slice();
+        deck.seek(FramePos::new(BEAT * 17.0));
+        assert!(deck.hold_slice(1));
+        assert_eq!(deck.active_loop().unwrap().start.get(), BEAT * 16.0);
+    }
+
+    #[test]
+    fn a_shorter_span_gives_shorter_slices() {
+        let mut deck = deck();
+        deck.set_slice_domain(4.0);
+        assert!(deck.hold_slice(2));
+        let region = deck.active_loop().unwrap();
+        // Four beats over eight pads is half a beat each.
+        assert_eq!(region.start.get(), BEAT * 0.5);
+        assert_eq!(region.end.get(), BEAT * 1.0);
+    }
+
+    #[test]
+    fn a_longer_span_gives_longer_slices() {
+        let mut deck = deck();
+        deck.set_slice_domain(32.0);
+        assert!(deck.hold_slice(2));
+        let region = deck.active_loop().unwrap();
+        // Thirty-two beats over eight pads is a bar each.
+        assert_eq!(region.start.get(), BEAT * 4.0);
+        assert_eq!(region.end.get(), BEAT * 8.0);
+    }
+
+    /// **The property that makes it a performance move rather than a jump.**
+    /// Hold a slice, let go, and the track is where it would have been — so a
+    /// bar can be rearranged and handed back in time.
+    #[test]
+    fn letting_a_slice_go_lands_where_the_record_would_have_been() {
+        let mut deck = deck();
+        deck.play();
+        deck.seek(FramePos::new(BEAT * 4.0));
+
+        assert!(
+            deck.hold_slice(1),
+            "jump back to the first beat of the span"
+        );
+        assert!(deck.is_slipping(), "a slice always slips");
+
+        let mut out = vec![0.0; 4_096 * 2];
+        let layout = BusLayout::for_channels(2);
+        let _ = deck.process(&mut out, &layout, None);
+
+        deck.release_slice();
+        assert!(
+            (deck.position().get() - (BEAT * 4.0 + 4_096.0)).abs() < 2.0,
+            "landed at {} rather than where the record would have been",
+            deck.position().get()
+        );
+    }
+
+    /// **The bug this design exists to avoid.** If the span were measured from
+    /// the *audible* playhead it would freeze around the loop the slice put it
+    /// in — the slicer would stop slicing the moment you used it. Measuring
+    /// from the shadow keeps it walking.
+    #[test]
+    fn the_span_keeps_moving_underneath_a_held_slice() {
+        let mut deck = deck();
+        deck.play();
+        assert!(deck.hold_slice(1));
+        let first = deck.slice_index().unwrap();
+
+        // Long enough for the record to have crossed several slices.
+        let layout = BusLayout::for_channels(2);
+        let mut out = vec![0.0; (BEAT * 3.5) as usize * 2];
+        let _ = deck.process(&mut out, &layout, None);
+
+        let later = deck.slice_index().unwrap();
+        assert_ne!(
+            later, first,
+            "the light stopped walking while a slice was held"
+        );
+    }
+
+    #[test]
+    fn the_light_follows_the_playhead_across_the_span() {
+        let mut deck = deck();
+        for (beat, expect) in [(0.0, 1u8), (1.5, 2), (7.99, 8), (8.0, 1), (9.0, 2)] {
+            deck.seek(FramePos::new(BEAT * beat));
+            assert_eq!(
+                deck.slice_index(),
+                Some(expect),
+                "beat {beat} should be slice {expect}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_deck_with_no_grid_has_no_slices() {
+        let mut deck = deck();
+        deck.set_grid(None);
+        assert_eq!(deck.slice_index(), None);
+        assert!(!deck.hold_slice(1), "nothing to divide");
+        assert!(!deck.slicing());
+    }
+
+    #[test]
+    fn a_pad_outside_the_eight_is_refused() {
+        let mut deck = deck();
+        assert!(!deck.hold_slice(0));
+        assert!(!deck.hold_slice(9));
+        assert!(!deck.slicing());
+        assert!(deck.hold_slice(8), "and eight is still a pad");
+    }
+
+    /// A span is refused rather than clamped when it runs off the end: a slice
+    /// that silently played a different length would be worse than one that
+    /// does nothing.
+    #[test]
+    fn a_slice_past_the_end_of_the_track_is_refused() {
+        // Sixty beats, so the second thirty-two-beat span runs off the end and
+        // the eight-beat spans do not. A track that divided evenly would never
+        // exercise this at all, which is how the first version of this test
+        // passed while asserting the opposite.
+        let mut deck = deck_of_beats(60.0);
+        deck.seek(FramePos::new(BEAT * 56.5));
+        assert!(deck.hold_slice(4), "beats 56-60 are still there");
+        deck.release_slice();
+
+        deck.set_slice_domain(32.0);
+        deck.seek(FramePos::new(BEAT * 59.0));
+        // The span covering beat 59 runs from 32 to 64; pad 8 is beats 60-64,
+        // and the track stops at 60.
+        assert!(
+            !deck.hold_slice(8),
+            "a slice running past the end must be refused"
+        );
+        assert!(!deck.slicing(), "and a refused slice is not a slice");
+        assert!(deck.hold_slice(7), "the one before it still fits");
+    }
+
+    #[test]
+    fn the_span_is_kept_within_reason() {
+        let mut deck = deck();
+        deck.set_slice_domain(0.0);
+        assert_eq!(deck.slice_beats(), 8.0, "zero is not a span");
+        deck.set_slice_domain(f64::NAN);
+        assert_eq!(deck.slice_beats(), 8.0, "nor is a NaN");
+        deck.set_slice_domain(1_000.0);
+        assert_eq!(deck.slice_beats(), 64.0);
+        deck.set_slice_domain(0.01);
+        assert_eq!(deck.slice_beats(), 1.0);
     }
 }

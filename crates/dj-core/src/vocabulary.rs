@@ -101,7 +101,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 73] = [
+static VOCABULARY: [VerbSpec; 76] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -275,6 +275,30 @@ static VOCABULARY: [VerbSpec; 73] = [
         argument: ArgSpec::None,
         help: "put the motor back on after a backspin",
         example: "deck 1 backspin_off",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "slice",
+        argument: ArgSpec::Number { min: 1.0, max: 8.0 },
+        help: "hold one of the eight slices of the current span; releases with `slice_off`, and the track lands where it would have been",
+        example: "deck 1 slice 3",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "slice_off",
+        argument: ArgSpec::None,
+        help: "let a held slice go",
+        example: "deck 1 slice_off",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "slice_domain",
+        argument: ArgSpec::Number {
+            min: 1.0,
+            max: 64.0,
+        },
+        help: "how many beats the eight slices divide up; 4, 8, 16 or 32 in practice",
+        example: "deck 1 slice_domain 16",
     },
     VerbSpec {
         target: Target::Deck,
@@ -816,6 +840,9 @@ mod tests {
             "backspin_off",
             "roll",
             "roll_off",
+            "slice",
+            "slice_off",
+            "slice_domain",
             "fx",
             "master fx",
             "sampler",
