@@ -1051,3 +1051,47 @@ export const presetFolder = () => invoke<string>("preset_folder");
 export async function saveRackPreset(name: string, deck: number | null): Promise<string> {
   return invoke<string>("save_rack_preset", { name, deck });
 }
+
+// ---------------------------------------------------------------- controllers
+
+export interface ControlStatus {
+  /** Every MIDI input the machine can see. */
+  inputs: string[];
+  open_port: string | null;
+  open_mapping: string | null;
+  /**
+   * Why there are no inputs, when the reason is that MIDI itself is
+   * unavailable rather than that nothing is plugged in. Two different
+   * problems, and only one of them is fixed by plugging something in.
+   */
+  unavailable: string | null;
+  keyboard: boolean;
+  keyboard_name: string;
+}
+
+export interface MappingInfo {
+  name: string;
+  device: string;
+  bindings: number;
+  bundled: boolean;
+}
+
+export interface KeyBinding {
+  /** The canonical chord: `shift+space`, `keyq`. */
+  chord: string;
+  label: string;
+  group: string;
+  /** Whether it undoes itself on release. */
+  held: boolean;
+  press: string | null;
+  release: string | null;
+}
+
+export const controlStatus = () => invoke<ControlStatus>("control_status");
+export const controlMappings = () => invoke<MappingInfo[]>("control_mappings");
+export const keyboardKeys = () => invoke<KeyBinding[]>("keyboard_keys");
+export const setKeyboardEnabled = (on: boolean) =>
+  invoke<void>("set_keyboard_enabled", { on });
+export const openController = (port: string, mapping?: string) =>
+  invoke<void>("open_controller", { port, mapping: mapping ?? null });
+export const closeController = () => invoke<void>("close_controller");

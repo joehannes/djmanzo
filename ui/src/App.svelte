@@ -6,6 +6,8 @@
   import Presets from "./Presets.svelte";
   import Sampler from "./Sampler.svelte";
   import Settings from "./Settings.svelte";
+  import Shortcuts from "./Shortcuts.svelte";
+  import { Keyboard } from "./keyboard.svelte";
   import { watchFrameRate } from "./framerate";
   import { publishAudio } from "./audiovars.svelte";
   import { fill } from "./meter";
@@ -58,8 +60,40 @@
   let slowFrames = $state<number | null>(null);
   /** Which side panel is open, if any. Only one at a time: the decks matter more. */
   let panel = $state<
-    "none" | "browse" | "assistant" | "presets" | "sampler" | "settings"
+    | "none"
+    | "browse"
+    | "assistant"
+    | "presets"
+    | "sampler"
+    | "settings"
+    | "keyboard"
   >("none");
+
+  /**
+   * The keyboard, listening.
+   *
+   * Attached to the window rather than to any element, in the capture phase,
+   * so a button that has just been clicked does not swallow the space bar and
+   * turn it into "press me again". Built once for the life of the window: the
+   * shortcut sheet reads the same object the handler writes, and two copies
+   * would drift the first time a user mapping loaded.
+   */
+  const keyboard = new Keyboard();
+
+  $effect(() => {
+    const detach = keyboard.attach(window);
+    void keyboard.load().catch((why) => {
+      // Not fatal. The keyboard does nothing and every other way in still
+      // works, which is worth one line rather than a dialog on launch.
+      console.warn("keyboard mapping:", why);
+    });
+    return () => {
+      // Let go of anything held before detaching, or a censor held while the
+      // window closes stays on in the engine with nothing left to switch it off.
+      keyboard.releaseAll();
+      detach();
+    };
+  });
 
   /**
    * The layout in force.
@@ -473,6 +507,15 @@
         Settings
       </button>
       <button
+        class:active={panel === "keyboard"}
+        onclick={() => (panel = panel === "keyboard" ? "none" : "keyboard")}
+        title={keyboard.enabled
+          ? "The keys and what they do"
+          : "The keyboard is not listening"}
+      >
+        Keys{keyboard.enabled ? "" : " ·"}
+      </button>
+      <button
         class:on={living}
         onclick={() => (living = !living)}
         title={living
@@ -806,6 +849,8 @@
         <Presets enabled={ready} deckCount={2} />
       {:else if panel === "assistant"}
         <Assistant enabled={ready} />
+      {:else if panel === "keyboard"}
+        <Shortcuts {keyboard} onclose={() => (panel = "none")} />
       {:else if panel === "sampler"}
         {#if snapshot}
           <Sampler sampler={snapshot.master.sampler} enabled={ready} {send} />

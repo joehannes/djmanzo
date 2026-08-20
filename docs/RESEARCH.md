@@ -125,7 +125,7 @@ Chosen to keep djmanzo MIT-OR-Apache-2.0. See
 | Time-stretch / keylock | **Signalsmith Stretch** | **MIT** | Quality comparable to Rubber Band's R3 engine at a usable CPU cost. |
 | ~~Rubber Band~~ | — | GPL / commercial | Excellent quality, but GPL-or-pay and historically heavy. **Rejected.** |
 | RT-safe queues | `rtrb` | MIT | Lock-free SPSC ring buffer; the only channel type allowed to touch the audio thread. |
-| MIDI | `midir` | MIT | Cross-platform realtime MIDI, RtMidi-inspired. |
+| MIDI | `midir` | MIT | Cross-platform realtime MIDI, RtMidi-inspired. **In use** — `dj-hid`. Pulls `coremidi`/`coremidi-sys` (MIT) on macOS, `alsa`/`alsa-sys` (Apache-2.0 OR MIT, MIT) on Linux, `windows` (MIT OR Apache-2.0) on Windows. A thin wrapper over each platform's own MIDI API with no runtime of its own, which is what a callback that has to be cheap wants. |
 | HID | `hidapi` | MIT | Direct HID for high-res jogs and NI-class devices. |
 | Tags | `lofty` | MIT/Apache-2.0 | Reading/writing metadata across formats. |
 | `roxmltree` | MIT OR Apache-2.0 | Read-only XML tree for the library importers. Random access over a document already in memory, which is what rekordbox's id references and plist's key/value pairs need. |

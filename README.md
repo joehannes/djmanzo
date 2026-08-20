@@ -41,6 +41,9 @@ A native desktop DJ application with a Rust realtime audio engine and a skinnabl
 - **2–6 decks**, full mixer, keylock, sync, hot cues, loops, pads, FX rack, sampler
 - **Real hardware** — class-compliant MIDI controllers, HID controllers, and **motorized
   turntable controllers** (Rane Twelve, Hercules Inpulse T7, Denon SC5000M class)
+- **The keyboard as a controller**, not a pile of shortcuts — the same vocabulary and the
+  same file format as a MIDI mapping, so a laptop with nothing plugged into it is a playable
+  instrument. Press **Keys** to see the layout
 - **Club interop** — Pro DJ Link (Pioneer CDJ/XDJ) and StagelinQ (Denon Prime) over the network
 - **Neural stems** — separated ahead of the playhead, so the audio path adds zero latency
 - **Linux as a first-class target**, with PipeWire and JACK supported properly

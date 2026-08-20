@@ -491,17 +491,33 @@ like it had half worked.
 
 The milestone that makes the hardware in your hands work.
 
-- `dj-hid`: `midir` MIDI I/O and `hidapi` HID I/O on both platforms.
-- Mapping engine over the Action bus; TOML mapping files with optional Lua for real logic.
-- Inbound: 7-bit, 14-bit and high-resolution absolute controls; relative encoders; touch
-  detection.
+- `dj-hid` — **done for MIDI**: `midir` MIDI in, in four layers of which only the last
+  touches hardware, so the whole mapping engine is testable on a machine with nothing
+  plugged in. `hidapi` HID still to come.
+- Mapping engine over the action bus — **done**. TOML mapping files, every action in them
+  parsed through `Action::parse` *when the file loads*, so a typo is a message when you
+  choose the mapping rather than a control that silently does nothing an hour into a set.
+  The consequence worth stating: **a mapping cannot do anything the interface cannot**,
+  which is what makes a file from a stranger safe to open. Lua for real logic still to come.
+- Inbound — **done** for 7-bit, 14-bit pitch-bend and relative encoders. The encoder
+  convention is **declared, not guessed** (`signed`, `offset`, `absolute`): the same byte
+  means opposite things in two of them, and reading it blind sent a DJ turning an absolute
+  encoder *down* a beat jump *forward*. Touch detection still to come.
+- **The keyboard as a controller** — done, and the piece that matters most for a laptop with
+  nothing plugged into it. Keys are named by physical position (`KeyQ`, not `q`) so a layout
+  holds on AZERTY and QWERTZ. The bundled mapping is 76 keys laid out so the two hands
+  mirror each other, tested against its own promises: every key labelled "(hold)" has a
+  release, the two decks have the same moves, and nothing takes a Command chord because
+  Cmd-Q would quit the application mid-set. Held keys are let go when the window loses
+  focus — hold the bass kill, hit Cmd-Tab, and the key-up goes to whatever you switched to.
 - Outbound feedback: LEDs, pad colours, displays.
 - **Motorized platters** as a first-class control kind — absolute high-res position in, motor
   start/stop ramp and torque out.
 - Jog modes: scratch, bend, search. Vinyl vs CDJ mode.
-- Keyboard shortcut mapping. Controller-specific audio setup presets.
+- Controller-specific audio setup presets.
 - In-app mapping editor (learn a control, bind an action).
-- Mappings for the hardware actually on hand, committed to `mappings/`.
+- Mappings — bundled rather than installed, so a fresh install works with nothing
+  configured. A user file of the same name in the config directory replaces the bundled one.
 
 **Done when:** a full set can be played from the controller without touching the laptop, and
 adding a new controller requires editing a file, not rebuilding the app.
