@@ -1021,8 +1021,26 @@ Doing that in both lanes took four decks from **7 fps to 11**.
 
 Together with taking the audio out of the control pipeline, the interface went
 from **4 fps to 11** on this floor without changing a single rendering
-strategy. The watershed's ~32 ms is now the largest single item and has not
-been touched.
+strategy.
+
+### How much of this to believe
+
+Single readings drift. Six samples five seconds apart, one build, one session,
+nothing touched between them: **11, 11, 11, 10, 11, 12.** So the figure is
+11 ± 1, and any change measuring inside two frames a second has measured
+nothing. Two of this session's attempts died on that band after first appearing
+to work — a 30 Hz cap on the watershed, and skipping the watershed's label
+writes when unchanged, which read 13 on one sample and 11 on six.
+
+Take three or more samples before believing a number in this table, and treat
+anything under about three frames a second as noise.
+
+Two things that did survive it: the audio leaving the control pipeline
+(4 → 6) and whole-pixel transforms in the lanes (7 → 11).
+
+The watershed's canvas has not been touched. Its earlier ~32 ms figure came
+from toggling the whole component off, which removes its DOM and its layout as
+well as its drawing, so it overstates what the drawing itself costs.
 
 The original note follows.
 
