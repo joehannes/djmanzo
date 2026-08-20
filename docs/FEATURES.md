@@ -139,13 +139,14 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 
 | Feature | Milestone |
 |---|---|
-| Class-compliant MIDI controller support | M4 |
-| Mapping editor + data-file mappings (no recompile) | M4 |
+| Class-compliant MIDI controller support | **shipped** — 7-bit, 14-bit and all three encoder conventions |
+| Data-file mappings (no recompile) | **shipped** — TOML, bundled and user files, checked when the file loads |
+| Mapping editor (learn a control, bind an action) | M4 |
 | LED / display feedback to controllers | M4 |
 | HID controller support | M4 |
 | **Motorized platter support** — high-res absolute position, motor ramp, torque | M4 |
 | Controller-specific audio setup presets | M4 |
-| Keyboard shortcut mapping | M4 |
+| **Keyboard as a controller** — same vocabulary and file format as a MIDI mapping, with a live sheet | **shipped** |
 | Multi-device audio setup (4-channel, or two devices with drift correction) | M1 |
 | **Pro DJ Link** (Pioneer CDJ/XDJ) | M7 |
 | **StagelinQ** (Denon Prime) | M7 |
