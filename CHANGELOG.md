@@ -16,6 +16,73 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.1.0 — Beta: a playable instrument
+
+The first build worth downloading. M0 through M5 are substantially complete and
+the controller layer (M4) has arrived, which is what turns a set of panels into
+something a DJ can actually play.
+
+**These builds are unsigned and un-notarised.** macOS will refuse to open the
+app until you right-click it and choose Open, once. See
+[QUICKSTART.md](docs/QUICKSTART.md).
+
+### Added
+
+- **The keyboard as a controller.** Not a pile of shortcuts — the same
+  vocabulary, the same file format and the same validation as a MIDI mapping,
+  so a laptop with nothing plugged into it is a playable instrument. 76 keys,
+  laid out so the two hands mirror each other, with a live sheet that lights a
+  key while it is held. Keys are named by physical position, so the layout
+  holds on an AZERTY or QWERTZ keyboard.
+- **MIDI controllers.** `dj-hid`: a mapping engine over the action bus, TOML
+  mapping files, 7-bit and 14-bit controls, all three encoder conventions, and
+  bundled mappings so a fresh install works with nothing configured. Every
+  action in a file is checked when the file loads, so a typo is a message when
+  you choose the mapping rather than a control that silently does nothing an
+  hour into a set.
+- **Performance**: slip mode, reverse, censor, loop roll, the slicer, brake and
+  backspin, a pad zone with seven pages, a four-bank sampler with recording
+  into a slot, and an FX rack of three chained slots per deck and on the master
+  with eleven effects and chain presets. Two, four or six decks.
+- **Library**: SQLite collection with playlists, crates, smart folders, play
+  history, duplicate detection, and importers for rekordbox, Serato, Traktor
+  and iTunes — including the cue and grid tags written into the audio files.
+- **Analysis**: BPM, beat grid, key and loudness, with grid editing by shift,
+  scale and tap.
+- **Recording to disk**: the master, post-limiter, into a 16-bit WAV.
+- **Music sources**: Spotify, YouTube, YouTube Music, Jamendo and the Internet
+  Archive, each with an honest account of what it does and does not permit.
+- **The assistant** and preset packs, both speaking the same action vocabulary
+  as everything else — so their work is auditable, reversible and replayable.
+
+### Changed
+
+- **The sound card opens on launch** and the choice is remembered. Waiting to
+  be told to connect meant loading a track and pressing play did nothing, with
+  no visible reason.
+- **A first run offers to scan your music folder** in one click rather than
+  opening a file dialog onto a folder whose location you did not choose.
+- `Action::parse` refuses trailing words. `deck 1 volume 0.5 extra` used to
+  parse as `deck 1 volume 0.5`, quietly swallowing the typo.
+
+### Fixed
+
+- Encoder direction. The convention was guessed from the byte, which meant a DJ
+  turning an *absolute* encoder down from 60 to 30 got a beat jump *forward* —
+  30 is a position below centre to one convention and thirty clicks clockwise
+  to another. Mappings now declare which their hardware sends.
+
+### Known limits
+
+- Unsigned builds on both platforms; signing needs an Apple Developer ID.
+- No HID, no controller feedback (LEDs, displays), no motorised platters yet.
+- Neural stems, CLAP hosting, Pro DJ Link and StagelinQ are designed but not
+  built.
+- The waveform will not scroll smoothly on a machine without hardware-accelerated
+  compositing. The interface says so rather than looking broken; the audio
+  engine is unaffected.
+- **Nothing here has been through a real gig.** That is what a beta is.
+
 ## v0.0.2 — Headphone cue routing
 
 M1 continues. No release build (patch tag, by design).

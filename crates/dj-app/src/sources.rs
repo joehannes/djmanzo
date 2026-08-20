@@ -200,8 +200,22 @@ pub fn add_music_folder(state: State<'_, AppState>, path: String) -> Result<usiz
 #[must_use]
 pub fn default_music_folder(app: tauri::AppHandle) -> Option<String> {
     use tauri::Manager;
-    let found = app.path().audio_dir().ok()?;
-    found.is_dir().then(|| found.to_string_lossy().into_owned())
+    let path = app.path();
+    // `audio_dir` is the right answer where the platform has one: on macOS it
+    // is always `~/Music`, and on Linux it is whatever the DJ set
+    // `XDG_MUSIC_DIR` to -- which may not be spelled "Music" in their
+    // language. It comes back empty on a Linux install with no
+    // `user-dirs.dirs` (a container, a minimal desktop), and there `~/Music`
+    // is still the convention, so it is worth a look before giving up.
+    let candidates = [
+        path.audio_dir().ok(),
+        path.home_dir().ok().map(|home| home.join("Music")),
+    ];
+    candidates
+        .into_iter()
+        .flatten()
+        .find(|found| found.is_dir())
+        .map(|found| found.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
