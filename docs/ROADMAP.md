@@ -510,9 +510,10 @@ adding a new controller requires editing a file, not rebuilding the app.
 
 ## M5 — Performance
 
-- **Pad zone with pages** — done: Cues, Loops, Roll, Saved, FX. Slicer and Sampler still to come.
+- **Pad zone with pages** — done: Cues, Loops, Roll, Saved, Sampler, FX. Slicer still to come.
 - **Sampler** — done: four banks of eight, four trigger modes, tempo sync, per-slot level
-  and routing, and its own pad page. Recording from a deck or the master still to come.
+  and routing, its own pad page, and recording into a slot from the master or from a deck.
+  The deck tap is pre-fader, so a hook can be lifted off a track the room is not hearing yet.
 - **FX rack** — done: three chained slots per deck and on the master, pre/post-fader placement,
   beat-synced timing. Chain presets still to come.
 - Core built-in effects — echo, delay, reverb, gate, crush, flanger, phaser and filter done.
