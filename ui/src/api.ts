@@ -372,6 +372,11 @@ export interface EnvironmentContext {
   time_of_day: string;
   weather: string;
   temperature_c: number;
+  venue: string;
+  vibe: string;
+  density: number;
+  crowd_energy: number;
+  tempo_variance: number;
 }
 
 export interface AudioMetrics {

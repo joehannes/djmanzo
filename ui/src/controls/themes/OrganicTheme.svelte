@@ -1,14 +1,32 @@
 <script module lang="ts">
   import type { KnobState, FaderState, PadState } from "../grammar";
+  import { performance, type ResolvedPerformance } from "../../../performance.svelte";
 
   // Helper to generate a polygon (blob) based on vertices
-  function generateBlobPath(cx: number, cy: number, r: number, points: number, angleOffset: number, energy: number) {
+  function generateBlobPath(cx: number, cy: number, r: number, points: number, angleOffset: number, energy: number, bands: [number, number, number, number], perf: ResolvedPerformance) {
     let path = "";
     for (let i = 0; i < points; i++) {
       // Add some noise based on energy
-      const noise = (Math.random() - 0.5) * (energy * 10);
-      const radius = r + noise;
+      let noise = (Math.random() - 0.5) * (energy * 10);
+      
       const angle = (Math.PI * 2 * i) / points + (angleOffset * Math.PI) / 180;
+      const normalizedAngle = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      
+      // Bass pushes outward on the bottom
+      if (normalizedAngle > Math.PI * 0.75 && normalizedAngle < Math.PI * 1.25) {
+        noise += bands[0] * 15;
+      }
+      // Treble adds jaggedness on top (Skip on Balanced for perf)
+      if (perf === "Ultra" && (normalizedAngle > Math.PI * 1.5 || normalizedAngle < Math.PI * 0.5)) {
+        noise += (Math.random() - 0.5) * (bands[3] * 20);
+      }
+      // Mids expand the sides
+      if ((normalizedAngle >= Math.PI * 0.25 && normalizedAngle <= Math.PI * 0.75) || 
+          (normalizedAngle >= Math.PI * 1.25 && normalizedAngle <= Math.PI * 1.75)) {
+        noise += bands[1] * 10 + bands[2] * 5;
+      }
+
+      const radius = r + noise;
       const x = cx + radius * Math.cos(angle);
       const y = cy + radius * Math.sin(angle);
       path += i === 0 ? `M ${x} ${y} ` : `L ${x} ${y} `;
@@ -19,10 +37,11 @@
 
 {#snippet knob(state: KnobState)}
   <!-- Organic Theme Knob: Shape shifts from smooth circle to jagged polygon based on energy -->
-  {@const points = Math.max(3, Math.floor(30 - state.context.energy_level * 25))}
+  {@const perf = performance.resolved}
+  {@const points = perf === "Ultra" ? Math.max(3, Math.floor(30 - state.context.energy_level * 25)) : perf === "Balanced" ? 15 : 0}
   {@const strokeColor = `hsl(${220 - state.context.energy_level * 180}, 80%, 60%)`}
-  {@const blobRadius = 30 + (state.context.audio.momentary_loudness * 10)}
-  {@const innerBlob = generateBlobPath(50, 50, blobRadius, points, state.angle, state.context.energy_level)}
+  {@const blobRadius = perf === "Eco" ? 30 : 30 + (state.context.audio.momentary_loudness * 10)}
+  {@const innerBlob = perf === "Eco" ? "" : generateBlobPath(50, 50, blobRadius, points, state.angle, state.context.energy_level, state.context.audio.spectral_bands, perf)}
   
   <svg
     width={state.size}
@@ -40,17 +59,29 @@
       stroke-width="2"
       stroke-dasharray="{state.normalized * 280}, 280"
       transform="rotate(-90 50 50)"
-      style="transition: stroke-dasharray 0.2s ease-out;"
+      style={perf === "Eco" ? "" : "transition: stroke-dasharray 0.2s ease-out;"}
     />
     
-    <!-- Morphing Inner Blob -->
-    <path 
-      d={innerBlob}
-      fill="var(--panel)"
-      stroke={strokeColor}
-      stroke-width="3"
-      style="transition: d 0.1s linear, stroke 0.3s;"
-    />
+    {#if perf === "Eco"}
+      <!-- Static geometric circle for extreme power saving -->
+      <circle 
+        cx="50" 
+        cy="50" 
+        r="30" 
+        fill="var(--panel)"
+        stroke={strokeColor}
+        stroke-width="3"
+      />
+    {:else}
+      <!-- Morphing Inner Blob for Balanced/Ultra -->
+      <path 
+        d={innerBlob}
+        fill="var(--panel)"
+        stroke={strokeColor}
+        stroke-width="3"
+        style="transition: d 0.1s linear, stroke 0.3s;"
+      />
+    {/if}
 
     <!-- Indicator Line -->
     <line 

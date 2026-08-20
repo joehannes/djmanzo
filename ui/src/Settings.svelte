@@ -25,8 +25,33 @@
     type Source,
   } from "./api";
   import { theme, type ThemePreference } from "./theme.svelte";
+  import { performance, type PerformanceLevel } from "./performance.svelte";
+  import type { SessionContext } from "./api";
+  import SvgPad from "./controls/SvgPad.svelte";
+  import { themePackages } from "./controls/themes/packages";
 
-  let { onLogoChange }: { onLogoChange: () => void } = $props();
+  let { onLogoChange, context }: { onLogoChange: () => void, context?: SessionContext } = $props();
+
+  const dummyContext: SessionContext = {
+    phase: "peak",
+    environment: {
+      venue: "indoor",
+      vibe: "energetic",
+      density: 0.8,
+      time_of_day: "night",
+      weather: "clear",
+      temperature_c: 22,
+      crowd_energy: 0.8,
+      tempo_variance: 0.05
+    },
+    energy_level: 0.5,
+    audio: {
+      momentary_loudness: 0,
+      spectral_bands: [0, 0, 0, 0]
+    }
+  };
+  
+  let activeContext = $derived(context ?? dummyContext);
 
   let sources = $state<Source[]>([]);
   let library = $state<Library>({ folders: [], tracks: 0 });
@@ -147,20 +172,71 @@
       waveform is recoloured too — it is drawn outside the browser, so it does
       not follow a stylesheet on its own.
     </p>
-    <div class="row theme-choice">
+    <div class="row theme-choice" style="gap: 1rem;">
       {#each [{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }, { id: "system", label: "Follow system" }] as option (option.id)}
-        <button
-          class:active={theme.preference === option.id}
-          onclick={() => theme.set(option.id as ThemePreference)}
-        >
-          {option.label}
-        </button>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; width: 80px;">
+          <SvgPad
+            context={activeContext}
+            width={80}
+            height={50}
+            active={theme.preference === option.id}
+            onclick={() => theme.set(option.id as ThemePreference)}
+          />
+          <span style="font-size: 0.85em; color: var(--text-dim); text-align: center;">{option.label}</span>
+        </div>
       {/each}
     </div>
     {#if theme.preference === "system"}
       <p class="hint">
         Currently {theme.resolved}. Follows the operating system, including if
         it changes mid-set.
+      </p>
+    {/if}
+  </div>
+
+  <div class="block">
+    <h3>Visual Package</h3>
+    <p class="hint">
+      The aesthetic geometry and behavior of the SVG controls. Curated into specific vibes.
+    </p>
+    <div class="row theme-choice" style="gap: 1rem;">
+      {#each themePackages as pkg (pkg.id)}
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; width: 100px;">
+          <SvgPad
+            context={activeContext}
+            width={100}
+            height={50}
+            active={theme.activePackage.id === pkg.id}
+            onclick={() => theme.setPackage(pkg.id)}
+          />
+          <span style="font-size: 0.85em; color: var(--text-dim); text-align: center;">{pkg.name}</span>
+        </div>
+      {/each}
+    </div>
+  </div>
+
+  <div class="block">
+    <h3>Performance</h3>
+    <p class="hint">
+      Complex SVG themes can be expensive to draw. If the app detects frame drops, 'Auto' mode will step down visual complexity (Eco, Balanced) to ensure your live set runs flawlessly without stuttering.
+    </p>
+    <div class="row theme-choice" style="gap: 1rem;">
+      {#each [{ id: "Auto", label: "Auto (Detect)" }, { id: "Ultra", label: "Ultra (Full FX)" }, { id: "Balanced", label: "Balanced" }, { id: "Eco", label: "Eco (Static)" }] as option (option.id)}
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; width: 90px;">
+          <SvgPad
+            context={activeContext}
+            width={90}
+            height={50}
+            active={performance.preference === option.id}
+            onclick={() => performance.set(option.id as PerformanceLevel)}
+          />
+          <span style="font-size: 0.85em; color: var(--text-dim); text-align: center;">{option.label}</span>
+        </div>
+      {/each}
+    </div>
+    {#if performance.preference === "Auto"}
+      <p class="hint">
+        Currently rendering at {performance.resolved} mode.
       </p>
     {/if}
   </div>

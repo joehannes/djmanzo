@@ -15,6 +15,7 @@ use dj_core::{
 use dj_dsp::fx::FxContext;
 use dj_dsp::{CrossfaderCurve, Limiter, PeakMeter, SmoothedValue, crossfader_gains};
 use std::sync::Arc;
+use crate::analyzer::SpectralAnalyzer;
 
 /// The realtime engine.
 ///
@@ -77,6 +78,9 @@ pub struct Engine {
     /// Held rather than dropped -- dropping here is exactly what the queue
     /// exists to prevent. Drained on the next callback that has room.
     stranded: Vec<Retired>,
+
+    /// Realtime spectral analyzer for driving UI animations.
+    analyzer: SpectralAnalyzer,
 }
 
 impl Engine {
@@ -126,6 +130,7 @@ impl Engine {
             cue_limiter: Limiter::new(sr),
             // Capacity for a pathological burst of loads; never grown at runtime.
             stranded: Vec::with_capacity(MAX_DECKS * 2),
+            analyzer: SpectralAnalyzer::new(1024, sr),
         };
         let mut engine = engine;
         // Turn the starting assignments into starting gains before any audio
@@ -932,6 +937,9 @@ impl AudioCallback for Engine {
         let mut left_peak = 0.0f32;
         let mut right_peak = 0.0f32;
         for frame in out.chunks_exact(channels) {
+            let mono = (frame[main_l] + frame[main_r]) * 0.5;
+            self.analyzer.push(mono);
+
             left_peak = left_peak.max(frame[main_l].abs());
             right_peak = right_peak.max(frame[main_r].abs());
         }
@@ -941,6 +949,13 @@ impl AudioCallback for Engine {
             .set(ParamId::Global(GlobalParam::MasterPeakLeft), left);
         self.registry
             .set(ParamId::Global(GlobalParam::MasterPeakRight), right);
+
+        let (bass, low_mid, high_mid, treble) = self.analyzer.process_bands();
+        
+        self.registry.set(ParamId::Global(GlobalParam::MasterBandBass), bass);
+        self.registry.set(ParamId::Global(GlobalParam::MasterBandLowMid), low_mid);
+        self.registry.set(ParamId::Global(GlobalParam::MasterBandHighMid), high_mid);
+        self.registry.set(ParamId::Global(GlobalParam::MasterBandTreble), treble);
 
         // The master meter reads post-limiter, so it can never show over 0 dB
         // and cannot tell you how hard you are driving it. That is what the

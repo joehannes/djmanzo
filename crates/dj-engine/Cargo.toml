@@ -15,6 +15,7 @@ dj-decode = { workspace = true }
 dj-audio = { workspace = true }
 dj-control = { workspace = true }
 rtrb = { workspace = true }
+rustfft = { workspace = true }
 
 [lints]
 workspace = true

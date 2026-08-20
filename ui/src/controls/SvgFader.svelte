@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { SessionContext } from "../api";
   import type { FaderState } from "./grammar";
-  import * as BaseTheme from "./themes/BaseTheme.svelte";
+  import { theme as globalTheme } from "../theme.svelte";
+  import { executeThemePipeline } from "./themes/engine";
+  import SvgRenderer from "./SvgRenderer.svelte";
 
   interface Props {
     context: SessionContext;
@@ -31,8 +33,7 @@
     disabled = false,
     width = 30,
     height = 120,
-    orientation = "vertical",
-    theme = BaseTheme
+    orientation = "vertical"
   }: Props = $props();
 
   let dragging = $state(false);
@@ -45,6 +46,8 @@
   let state: FaderState = $derived({
     value, min, max, normalized, dragging, disabled, width, height, orientation, label, context
   });
+
+  let renderState = $derived(executeThemePipeline(globalTheme.activePackage, state));
 
   function clamp(v: number) {
     return Math.max(min, Math.min(max, v));
@@ -119,9 +122,7 @@
     <span class="label">{label}</span>
   {/if}
   
-  <div class="renderer" style="width: {width}px; height: {height}px;">
-    {@render theme.fader(state)}
-  </div>
+  <SvgRenderer {renderState} size={Math.max(width, height)} />
 
   {#if label && orientation === "horizontal"}
     <span class="label">{label}</span>

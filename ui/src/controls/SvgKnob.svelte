@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { SessionContext } from "../api";
   import type { KnobState } from "./grammar";
-  import * as BaseTheme from "./themes/BaseTheme.svelte";
+  import { theme as globalTheme } from "../theme.svelte";
+  import { executeThemePipeline } from "./themes/engine";
+  import SvgRenderer from "./SvgRenderer.svelte";
 
   interface Props {
     context: SessionContext;
@@ -28,8 +30,7 @@
     oninput,
     ondblclick,
     disabled = false,
-    size = 48,
-    theme = BaseTheme
+    size = 48
   }: Props = $props();
 
   let dragging = $state(false);
@@ -42,6 +43,8 @@
   let state: KnobState = $derived({
     value, min, max, normalized, angle, dragging, disabled, size, label, context
   });
+
+  let renderState = $derived(executeThemePipeline(globalTheme.activePackage, state));
 
   function clamp(v: number) {
     return Math.max(min, Math.min(max, v));
@@ -110,9 +113,7 @@
     <span class="label">{label}</span>
   {/if}
   
-  <div class="renderer" style="width: {size}px; height: {size}px;">
-    {@render theme.knob(state)}
-  </div>
+  <SvgRenderer {renderState} {size} />
 </div>
 
 <style>

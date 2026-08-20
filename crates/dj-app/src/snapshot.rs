@@ -473,14 +473,18 @@ impl Snapshot {
         let peak_right = registry.get(ParamId::Global(GlobalParam::MasterPeakRight));
         let momentary_loudness = (peak_left.max(peak_right)).clamp(0.0, 1.0);
 
+        let bass = registry.get(ParamId::Global(GlobalParam::MasterBandBass));
+        let low_mid = registry.get(ParamId::Global(GlobalParam::MasterBandLowMid));
+        let high_mid = registry.get(ParamId::Global(GlobalParam::MasterBandHighMid));
+        let treble = registry.get(ParamId::Global(GlobalParam::MasterBandTreble));
+
         let context = SessionContext {
             phase: dj_core::SessionPhase::Peak,
             environment: dj_core::EnvironmentContext::default(),
             energy_level: 0.95,
             audio: dj_core::AudioMetrics {
                 momentary_loudness,
-                // Placeholder proxy until FFT node is built
-                spectral_bands: [0.1, 0.2, 0.3, 0.4],
+                spectral_bands: [bass, low_mid, high_mid, treble],
             },
         };
 

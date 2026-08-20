@@ -472,6 +472,14 @@ pub enum GlobalParam {
     MasterFx3Amount,
     /// Master slot 3: 1.0 when the slot runs later in the chain.
     MasterFx3Post,
+    /// Spectral band 1 (Bass) energy, 0.0..=1.0.
+    MasterBandBass,
+    /// Spectral band 2 (Low Mid) energy, 0.0..=1.0.
+    MasterBandLowMid,
+    /// Spectral band 3 (High Mid) energy, 0.0..=1.0.
+    MasterBandHighMid,
+    /// Spectral band 4 (Treble) energy, 0.0..=1.0.
+    MasterBandTreble,
 }
 
 impl DeckParam {
@@ -657,7 +665,7 @@ impl GlobalParam {
         }
     }
 
-    pub const COUNT: usize = 100;
+    pub const COUNT: usize = 104;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -768,6 +776,10 @@ impl GlobalParam {
             MasterFx3Beats,
             MasterFx3Amount,
             MasterFx3Post,
+            MasterBandBass,
+            MasterBandLowMid,
+            MasterBandHighMid,
+            MasterBandTreble,
         ]
     }
 }
@@ -981,6 +993,10 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::MasterFx3Beats => "master_fx3_beats",
         GlobalParam::MasterFx3Amount => "master_fx3_amount",
         GlobalParam::MasterFx3Post => "master_fx3_post",
+        GlobalParam::MasterBandBass => "master_band_bass",
+        GlobalParam::MasterBandLowMid => "master_band_low_mid",
+        GlobalParam::MasterBandHighMid => "master_band_high_mid",
+        GlobalParam::MasterBandTreble => "master_band_treble",
         GlobalParam::Quantize => "quantize",
     }
 }

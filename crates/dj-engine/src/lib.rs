@@ -22,6 +22,7 @@ pub mod deck;
 pub mod engine;
 pub mod rack;
 pub mod sampler;
+pub mod analyzer;
 
 pub use bus::BusLayout;
 pub use command::{Command, Retired};

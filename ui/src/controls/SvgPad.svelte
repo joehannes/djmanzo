@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { SessionContext } from "../api";
   import type { PadState } from "./grammar";
-  import * as BaseTheme from "./themes/BaseTheme.svelte";
+  import { theme as globalTheme } from "../theme.svelte";
+  import { executeThemePipeline } from "./themes/engine";
+  import SvgRenderer from "./SvgRenderer.svelte";
 
   interface Props {
     context: SessionContext;
@@ -27,8 +29,7 @@
     onclick,
     onpointerdown,
     onpointerup,
-    onpointerleave,
-    theme = BaseTheme
+    onpointerleave
   }: Props = $props();
 
   let pressed = $state(false);
@@ -36,6 +37,8 @@
   let state: PadState = $derived({
     active, pressed, disabled, width, height, label, context
   });
+
+  let renderState = $derived(executeThemePipeline(globalTheme.activePackage, state));
   
   function handlePointerDown(e: PointerEvent) {
     if (disabled) return;
@@ -80,9 +83,7 @@
   onpointercancel={handlePointerLeave}
   onkeydown={handleKeyDown}
 >
-  <div class="renderer" style="width: {width}px; height: {height}px;">
-    {@render theme.pad(state)}
-  </div>
+  <SvgRenderer {renderState} size={Math.max(width, height)} />
 </div>
 
 <style>

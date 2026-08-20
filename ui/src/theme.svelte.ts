@@ -27,7 +27,10 @@ export type ThemePreference = "dark" | "light" | "system";
 /** What the interface actually renders as, once "system" has been resolved. */
 export type ResolvedTheme = "dark" | "light";
 
+import { themePackages, type ThemePackage } from "./controls/themes/packages";
+
 const STORAGE_KEY = "djmanzo.theme";
+const PKG_STORAGE_KEY = "djmanzo.themePackage";
 
 /**
  * The system query, held once.
@@ -53,6 +56,16 @@ function load(): ThemePreference {
   return "dark";
 }
 
+function loadPackage(): string {
+  try {
+    const stored = localStorage.getItem(PKG_STORAGE_KEY);
+    if (stored && themePackages.some(p => p.id === stored)) {
+      return stored;
+    }
+  } catch {}
+  return "pkg-organic";
+}
+
 class Theme {
   /** What the user asked for. */
   preference = $state<ThemePreference>(load());
@@ -63,6 +76,14 @@ class Theme {
    * exactly what someone who chose "system" is asking for.
    */
   #systemLight = $state(systemPrefersLight?.matches ?? false);
+
+  /** The currently selected visual SVG package */
+  #pkgId = $state<string>(loadPackage());
+
+  /** The resolved ThemePackage object */
+  activePackage = $derived<ThemePackage>(
+    themePackages.find(p => p.id === this.#pkgId) ?? themePackages[0]
+  );
 
   /** What is on screen right now. */
   resolved = $derived<ResolvedTheme>(
@@ -89,6 +110,13 @@ class Theme {
     } catch {
       // As above: the theme still applies for this session.
     }
+  }
+
+  setPackage(id: string) {
+    this.#pkgId = id;
+    try {
+      localStorage.setItem(PKG_STORAGE_KEY, id);
+    } catch {}
   }
 
   /**
