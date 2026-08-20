@@ -1122,3 +1122,79 @@ fn the_spectrum_never_allocates() {
         "the spectral analysis allocated {allocations} times"
     );
 }
+
+/// Recording writes into a buffer on the audio thread and hands it back full.
+///
+/// The handback is the part worth checking: a capture leaves through the
+/// retirement queue as a `Vec`, and a `Vec` moved by value is three words —
+/// but a `Vec` cloned, or a capture assembled by collecting, would be an
+/// allocation in the callback. Eight full takes, alternating between the deck
+/// tap and the master tap because they write from different points in the
+/// block.
+///
+/// The buffers are made up front. Each capture takes its buffer with it, so a
+/// version of this test that allocated a replacement inside the loop would be
+/// counting the *host's* allocation and calling it the engine's — and a
+/// version that sent no replacement at all would find takes two to eight
+/// silently doing nothing, which is why the capture count is asserted.
+#[test]
+fn recording_never_allocates() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.load_and_play(2, 2_000_000);
+
+    const TAKES: usize = 8;
+    let mut spare: Vec<Vec<f32>> = (0..TAKES).map(|_| vec![0.0; 48_000 * 2]).collect();
+    rig.commands
+        .push(Command::RecordSpace {
+            samples: spare.pop().unwrap(),
+        })
+        .ok();
+    rig.warm_up(32);
+
+    let mut captured = 0usize;
+    let (_, allocations) = count_allocations(|| {
+        for take in 0..TAKES {
+            let source = if take % 2 == 0 {
+                dj_core::RecordSource::Master
+            } else {
+                dj_core::RecordSource::Deck(deck(1))
+            };
+            rig.commands
+                .push(Command::Action(Action::Mixer(MixerAction::Sampler(
+                    dj_core::SamplerChange::Record { slot: 1, source },
+                ))))
+                .ok();
+            rig.renderer.render_discarding(20);
+            rig.commands
+                .push(Command::Action(Action::Mixer(MixerAction::Sampler(
+                    dj_core::SamplerChange::RecordStop,
+                ))))
+                .ok();
+            rig.renderer.render_discarding(2);
+
+            // The host thread's half. Forgotten rather than dropped only so
+            // that a `free` cannot be mistaken for the `malloc` being counted;
+            // the buffers are recycled from `spare` instead.
+            while let Ok(item) = rig.retired.pop() {
+                if matches!(item, Retired::Capture(_)) {
+                    captured += 1;
+                }
+                std::mem::forget(item);
+            }
+            if let Some(samples) = spare.pop() {
+                rig.commands.push(Command::RecordSpace { samples }).ok();
+                rig.renderer.render_discarding(1);
+            }
+        }
+    });
+
+    assert_eq!(
+        captured, TAKES,
+        "only {captured} of {TAKES} takes produced a capture, so this proved less than it looks"
+    );
+    assert_eq!(
+        allocations, 0,
+        "recording allocated {allocations} times across {TAKES} takes"
+    );
+}

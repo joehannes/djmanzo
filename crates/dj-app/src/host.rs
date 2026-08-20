@@ -18,10 +18,17 @@ use dj_audio::{
 };
 use dj_control::{ActionBus, ParameterRegistry};
 use dj_core::SampleRate;
-use dj_engine::{Command, Engine, Retired};
+use dj_engine::{Capture, Command, Engine, Retired};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, SyncSender, channel, sync_channel};
 use std::time::Duration;
+
+/// What the host does with a finished recording.
+///
+/// A callback rather than a handle on the interface's sample-name store: the
+/// capture arrives here, but naming the new sample is the interface's business,
+/// and this module has no reason to know where names are kept.
+pub type OnCapture = Box<dyn Fn(u8, u8, String) + Send>;
 
 /// Decks the engine is built with. Four covers the common layouts; six is the
 /// ceiling and arrives with the UI to drive it in M5.
@@ -84,11 +91,12 @@ impl AudioHost {
         bus: Arc<ActionBus<Command>>,
         registry: Arc<ParameterRegistry>,
         use_null_backend: bool,
+        on_capture: OnCapture,
     ) -> Self {
         let (tx, rx) = channel();
         let thread = std::thread::Builder::new()
             .name("dj-audio-host".to_owned())
-            .spawn(move || run_host(rx, bus, registry, use_null_backend))
+            .spawn(move || run_host(rx, bus, registry, use_null_backend, on_capture))
             .expect("failed to spawn audio host thread");
 
         Self {
@@ -160,6 +168,7 @@ fn run_host(
     bus: Arc<ActionBus<Command>>,
     registry: Arc<ParameterRegistry>,
     use_null_backend: bool,
+    on_capture: OnCapture,
 ) {
     let backend: Box<dyn AudioBackend> = if use_null_backend {
         Box::new(NullBackend::new())
@@ -222,11 +231,15 @@ fn run_host(
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
         }
 
-        // Free what the engine handed back. This is the blocking deallocation
-        // the audio callback deliberately refused to do.
+        // Take back what the engine handed over. Freeing a track buffer is the
+        // blocking deallocation the audio callback deliberately refused to do;
+        // a capture is the same handover with something to do at the end of it.
         if let Some(queue) = retired.as_mut() {
             while let Ok(item) = queue.pop() {
-                drop(item);
+                match item {
+                    Retired::Capture(capture) => land_capture(&bus, &on_capture, capture),
+                    other => drop(other),
+                }
             }
         }
     }
@@ -383,6 +396,18 @@ fn open_device(
         tracing::warn!(%reason, "headphone device would not open; cueing stays on the main device");
     }
 
+    // Somewhere for the sampler to record into. Sent on every open because the
+    // engine is new each time -- and it has to come from here, since the audio
+    // thread may not allocate one for itself. See `dj_engine::record`.
+    if bus
+        .send_command(Command::RecordSpace {
+            samples: fresh_record_space(sample_rate),
+        })
+        .is_err()
+    {
+        tracing::warn!("command queue full at open; the sampler cannot record until it drains");
+    }
+
     *stream_slot = Some(stream);
     *retired_slot = Some(retired_rx);
     Ok(OpenOutcome {
@@ -391,6 +416,68 @@ fn open_device(
         cue_error,
         bridge,
     })
+}
+
+/// A silent buffer long enough for one capture.
+///
+/// Sized from [`dj_core::MAX_RECORD_SECONDS`] at the device's rate, so a
+/// 96 kHz card gets the same thirty seconds a 44.1 kHz one does rather than
+/// half of them.
+fn fresh_record_space(sample_rate: SampleRate) -> Vec<f32> {
+    let frames = (sample_rate.as_f64() * dj_core::MAX_RECORD_SECONDS).ceil() as usize;
+    vec![0.0; frames * 2]
+}
+
+/// Turn a finished recording into a sample, and give the engine somewhere to
+/// record next.
+///
+/// Both halves matter. Without the second the recorder has nowhere to write and
+/// the record button stays greyed for the rest of the set -- which is why the
+/// engine publishes `RecordReady` rather than leaving the interface to guess.
+fn land_capture(bus: &Arc<ActionBus<Command>>, on_capture: &OnCapture, capture: Capture) {
+    let Capture {
+        bank,
+        slot,
+        source,
+        mut samples,
+        frames,
+        sample_rate,
+        bpm,
+    } = capture;
+
+    // The tail past `frames` is the silence the buffer was handed over with.
+    // Truncating rather than copying keeps the one allocation this whole path
+    // makes on the side of the thread that is allowed to make it.
+    samples.truncate(frames * 2);
+    let name = format!("rec {source}");
+    let buffer: Arc<dyn dj_decode::TrackSource> = Arc::new(
+        dj_decode::AudioBuffer::from_interleaved(samples, sample_rate),
+    );
+
+    if bus
+        .send_command(Command::LoadSample {
+            bank,
+            slot,
+            source: buffer,
+            bpm,
+        })
+        .is_err()
+    {
+        // The recording is lost, and saying so beats a slot that silently
+        // stays empty after the DJ watched the timer run.
+        tracing::warn!(bank, slot, "command queue full; a recording was dropped");
+        return;
+    }
+    on_capture(bank, slot, name);
+
+    if bus
+        .send_command(Command::RecordSpace {
+            samples: fresh_record_space(sample_rate),
+        })
+        .is_err()
+    {
+        tracing::warn!("command queue full; the recorder has nowhere to write until the next open");
+    }
 }
 
 #[cfg(test)]
@@ -402,7 +489,12 @@ mod tests {
         let (bus, _unused) = ActionBus::<Command>::new(16);
         let bus = Arc::new(bus);
         let registry = Arc::new(ParameterRegistry::new());
-        let host = AudioHost::start(Arc::clone(&bus), Arc::clone(&registry), true);
+        let host = AudioHost::start(
+            Arc::clone(&bus),
+            Arc::clone(&registry),
+            true,
+            Box::new(|_, _, _| {}),
+        );
         (host, bus, registry)
     }
 

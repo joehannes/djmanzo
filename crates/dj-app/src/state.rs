@@ -170,7 +170,24 @@ impl AppState {
         let bus = Arc::new(bus);
         let registry = Arc::new(ParameterRegistry::new());
         seed_defaults(&registry);
-        let host = AudioHost::start(Arc::clone(&bus), Arc::clone(&registry), use_null_backend);
+        // The names live here, so the host is handed a way to write one rather
+        // than a handle on the map -- the same reason the sampler's own loads
+        // record their names here and not in the engine.
+        let sample_names: Arc<Mutex<HashMap<(u8, u8), String>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let host = {
+            let names = Arc::clone(&sample_names);
+            AudioHost::start(
+                Arc::clone(&bus),
+                Arc::clone(&registry),
+                use_null_backend,
+                Box::new(move |bank, slot, name| {
+                    if let Ok(mut map) = names.lock() {
+                        map.insert((bank, slot), name);
+                    }
+                }),
+            )
+        };
 
         let (store, secrets_persist) = dj_secrets::open_store();
         let secrets: Arc<dyn SecretStore> = Arc::from(store);
@@ -205,7 +222,7 @@ impl AppState {
             assistant: Mutex::new(AssistantChoice::default()),
             budget: Arc::new(Budget::default()),
             presets: PresetLibrary::builtin(),
-            sample_names: Arc::new(Mutex::new(HashMap::new())),
+            sample_names,
             active_device: Arc::new(Mutex::new(None)),
             bridge: Arc::new(Mutex::new(None)),
             analysis: Arc::new(crate::analysis::AnalysisStore::new()),

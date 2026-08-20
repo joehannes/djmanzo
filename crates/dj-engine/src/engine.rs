@@ -4,6 +4,7 @@ use crate::bus::BusLayout;
 use crate::command::{Command, Retired};
 use crate::deck::Deck;
 use crate::rack::Rack;
+use crate::record::Recorder;
 use crate::sampler::Sampler;
 use dj_audio::{AudioCallback, RenderContext};
 use dj_control::ParameterRegistry;
@@ -61,6 +62,8 @@ pub struct Engine {
     /// paused, which is what lets an echo thrown into the master ring out over
     /// a silence.
     master_rack: Rack,
+    /// Capturing into a sampler slot. See [`crate::record`].
+    recorder: Recorder,
     /// The last thing before the PA.
     limiter: Limiter,
     /// The last thing before the DJ's ears.
@@ -126,6 +129,7 @@ impl Engine {
             quantize: false,
             sampler: Sampler::new(sample_rate.as_f64()),
             master_rack: Rack::new(sr),
+            recorder: Recorder::new(sample_rate),
             limiter: Limiter::new(sr),
             cue_limiter: Limiter::new(sr),
             // Capacity for a pathological burst of loads; never grown at runtime.
@@ -210,6 +214,40 @@ impl Engine {
         }
     }
 
+    /// What the interface needs to draw the record button.
+    ///
+    /// Published every block rather than on change, like everything else here:
+    /// the elapsed time moves continuously, and a snapshot that had to ask
+    /// separately for "is it recording" and "how long" could catch the two
+    /// disagreeing.
+    fn publish_recorder(&self) {
+        self.registry.set_bool(
+            ParamId::Global(GlobalParam::RecordReady),
+            self.recorder.is_ready(),
+        );
+        self.registry.set_bool(
+            ParamId::Global(GlobalParam::Recording),
+            self.recorder.is_running(),
+        );
+        self.registry.set(
+            ParamId::Global(GlobalParam::RecordSlot),
+            f32::from(self.recorder.slot().unwrap_or(0)),
+        );
+        self.registry.set(
+            ParamId::Global(GlobalParam::RecordSeconds),
+            self.recorder.seconds(),
+        );
+        // 0 for the master, otherwise the deck's own number — one reading
+        // rather than a flag plus a number that could disagree about which.
+        self.registry.set(
+            ParamId::Global(GlobalParam::RecordSourceDeck),
+            match self.recorder.tapping() {
+                Some(dj_core::RecordSource::Deck(deck)) => f32::from(deck.human_number()),
+                _ => 0.0,
+            },
+        );
+    }
+
     fn publish_master_rack(&self) {
         for number in 1..=dj_core::FX_SLOTS as u8 {
             let (Some(param), Some(slot)) =
@@ -238,12 +276,11 @@ impl Engine {
         self.decks.get_mut(id.index())
     }
 
-    /// Hand a source back to the host thread to be dropped.
+    /// Hand a buffer back to the host thread.
     ///
     /// If the queue is full we hold onto it rather than dropping it here --
     /// dropping on the audio thread is the whole thing we are avoiding.
-    fn retire(&mut self, source: Arc<dyn dj_decode::TrackSource>) {
-        let mut item = Retired(source);
+    fn retire(&mut self, mut item: Retired) {
         if self.stranded.len() < self.stranded.capacity() {
             // Try the queue first; stash only if it will not take it.
             match self.retired.push(item) {
@@ -253,9 +290,13 @@ impl Engine {
             self.stranded.push(item);
         } else {
             // Both the queue and the stash are full, which means the host thread
-            // has stopped draining entirely. Push and let it fail; leaking is
-            // strictly better than a dropout.
-            let _ = self.retired.push(item);
+            // has stopped draining entirely. Leak rather than free: a permanent
+            // loss of a few megabytes is strictly better than a dropout, and a
+            // plain drop here would be exactly the `free()` this queue exists to
+            // avoid.
+            if let Err(rtrb::PushError::Full(returned)) = self.retired.push(item) {
+                std::mem::forget(returned);
+            }
         }
     }
 
@@ -299,7 +340,7 @@ impl Engine {
                 Command::Load { deck, source } => {
                     if let Some(target) = self.deck_mut(deck) {
                         let previous = target.load(source);
-                        self.retire(previous);
+                        self.retire(Retired::Source(previous));
                     }
                 }
                 Command::LoadSample {
@@ -310,7 +351,16 @@ impl Engine {
                 } => {
                     if let Some(target) = self.sampler.slot_in_mut(bank, slot) {
                         let previous = target.load(source, bpm);
-                        self.retire(previous);
+                        self.retire(Retired::Source(previous));
+                    }
+                }
+                Command::RecordSpace { samples } => {
+                    // The displaced buffer goes back the way it came rather
+                    // than being dropped, for the same reason a displaced track
+                    // does. It is refused outright mid-capture, and refusing
+                    // hands it straight back.
+                    if let Some(previous) = self.recorder.give_space(samples) {
+                        self.retire(Retired::Buffer(previous));
                     }
                 }
             }
@@ -323,7 +373,7 @@ impl Engine {
                 if matches!(action, DeckAction::Eject) {
                     if let Some(target) = self.deck_mut(deck) {
                         let previous = target.eject();
-                        self.retire(previous);
+                        self.retire(Retired::Source(previous));
                     }
                     return;
                 }
@@ -494,6 +544,21 @@ impl Engine {
                 dj_core::SamplerChange::Bank(bank) => self.sampler.set_bank(bank),
                 dj_core::SamplerChange::Volume(volume) => self.sampler.set_volume(volume),
                 dj_core::SamplerChange::StopAll => self.sampler.stop_all(),
+                dj_core::SamplerChange::Record { slot, source } => {
+                    // The tempo stamped on the capture comes from whichever tap
+                    // it is: a recording off one deck is at that deck's tempo,
+                    // which is not the room's when it is not synced.
+                    let bpm = match source {
+                        dj_core::RecordSource::Master => self.master_bpm(),
+                        dj_core::RecordSource::Deck(deck) => self
+                            .decks
+                            .get(deck.index())
+                            .and_then(|deck| deck.effective_bpm()),
+                    };
+                    self.recorder.start(self.sampler.bank(), slot, source, bpm);
+                }
+                dj_core::SamplerChange::RecordStop => self.recorder.stop(),
+                dj_core::SamplerChange::RecordCancel => self.recorder.cancel(),
             },
             Action::Mixer(MixerAction::SetLimiter(on)) => {
                 // The cue limiter is not switched with it. Bypass exists for
@@ -840,8 +905,16 @@ impl AudioCallback for Engine {
 
         // Decks add into the shared buffer -- master post-fader, cue pre-fader
         // -- so no per-deck scratch is needed.
+        // Which deck, if any, the recorder is listening to. Read once for the
+        // block: the answer cannot change inside one, and asking per deck is a
+        // comparison rather than a branch on every frame.
+        let tapped_deck = match self.recorder.tapping() {
+            Some(dj_core::RecordSource::Deck(deck)) => Some(deck.index()),
+            _ => None,
+        };
         for index in 0..self.decks.len() {
-            let levels = self.decks[index].process(out, &layout);
+            let tap = (tapped_deck == Some(index)).then_some(&mut self.recorder);
+            let levels = self.decks[index].process(out, &layout, tap);
             if let Some(id) = DeckId::new(index as u8) {
                 self.registry
                     .set(ParamId::Deck(id, DeckParam::PeakLevel), levels.post_fader);
@@ -859,6 +932,8 @@ impl AudioCallback for Engine {
         let sample_peak = self.sampler.process(out, &layout, self.master_bpm());
         self.registry
             .set(ParamId::Global(GlobalParam::SamplerPeak), sample_peak);
+
+        let recording_master = self.recorder.tapping() == Some(dj_core::RecordSource::Master);
 
         let (main_l, main_r) = layout.main;
         for frame in out.chunks_exact_mut(channels) {
@@ -899,6 +974,13 @@ impl AudioCallback for Engine {
             frame[main_l] = master_l;
             if !layout.is_mono() {
                 frame[main_r] = master_r;
+            }
+
+            // The master tap sits here: after the limiter, so a capture of the
+            // master is a capture of what the room actually heard rather than
+            // of a signal that would have clipped on the way out.
+            if recording_master {
+                self.recorder.write(master_l, master_r);
             }
 
             // Booth is the master at its own level, so the monitors can be
@@ -967,6 +1049,14 @@ impl AudioCallback for Engine {
             ParamId::Global(GlobalParam::LimiterReductionDb),
             self.limiter.reduction_db(),
         );
+
+        // A finished capture goes out on the retirement queue. Here rather than
+        // the moment it finishes because a capture that ends mid-block would
+        // otherwise be pushed while the block is still being written.
+        if let Some(capture) = self.recorder.take() {
+            self.retire(Retired::Capture(capture));
+        }
+        self.publish_recorder();
 
         self.publish_deck_state();
 
@@ -1092,7 +1182,10 @@ mod tests {
         render(&mut engine, 64);
 
         let retired = h.retired.pop().expect("displaced source must be retired");
-        assert_eq!(retired.0.len_frames(), 100);
+        let Retired::Source(source) = &retired else {
+            panic!("a displaced track must come back as a source");
+        };
+        assert_eq!(source.len_frames(), 100);
         // The engine gave up its reference; ours is the only one left.
         drop(retired);
         assert_eq!(Arc::strong_count(&first), 1);
@@ -1714,7 +1807,7 @@ mod limiter_tests {
             rig.play(n, tone(400_000, 1.0));
         }
         // Warm through the fader ramps, then measure.
-        rig.render(48_000);
+        let _ = rig.render(48_000);
         let out = rig.render(48_000);
 
         let peak = rig.peak(&out, (0, 1));
@@ -1802,11 +1895,11 @@ mod limiter_tests {
 
         rig.play(1, tone(400_000, 1.0));
         rig.play(2, tone(400_000, 1.0));
-        rig.render(48_000);
+        let _ = rig.render(48_000);
         assert!(rig.global(GlobalParam::LimiterReductionDb) > 0.0);
 
         rig.act(Action::Mixer(MixerAction::SetLimiter(false)));
-        rig.render(48_000);
+        let _ = rig.render(48_000);
 
         assert_eq!(rig.global(GlobalParam::LimiterEnabled), 0.0);
         assert_eq!(
@@ -1824,7 +1917,7 @@ mod limiter_tests {
         let mut rig = rig(2, 2);
         let engaged = rig.global(GlobalParam::OutputLatencyFrames);
         rig.act(Action::Mixer(MixerAction::SetLimiter(false)));
-        rig.render(512);
+        let _ = rig.render(512);
         assert_eq!(rig.global(GlobalParam::OutputLatencyFrames), engaged);
     }
 
@@ -1834,7 +1927,7 @@ mod limiter_tests {
     fn an_ordinary_mix_is_not_touched() {
         let mut rig = rig(2, 2);
         rig.play(1, tone(400_000, 0.25));
-        rig.render(48_000);
+        let _ = rig.render(48_000);
         let out = rig.render(4_800);
 
         assert_eq!(
@@ -3025,7 +3118,7 @@ mod crossfader_assign_tests {
         rig.play(4, 0.5);
         // Fader first...
         rig.send(Action::Mixer(MixerAction::Crossfader(1.0)));
-        rig.render(512);
+        let _ = rig.render(512);
         // ...assignment second.
         rig.assign(4, CrossfaderAssign::Left);
 
@@ -3040,7 +3133,7 @@ mod crossfader_assign_tests {
     fn the_assignment_reaches_the_parameter_table() {
         let mut rig = new_rig();
         rig.assign(3, CrossfaderAssign::Left);
-        rig.render(64);
+        let _ = rig.render(64);
 
         let raw = rig
             .registry
@@ -3049,6 +3142,298 @@ mod crossfader_assign_tests {
             CrossfaderAssign::from_param(raw),
             CrossfaderAssign::Left,
             "the interface reads the assignment from here"
+        );
+    }
+}
+
+/// Recording into a sampler slot, as the engine wires it.
+///
+/// `crate::record` proves the recorder records. These prove the taps are in the
+/// right places in the signal path — which is the part that cannot be checked
+/// anywhere else, and the part where being one stage out gives a DJ a sample of
+/// something they did not mean to capture.
+#[cfg(test)]
+mod record_tests {
+    use super::*;
+    use crate::record::Capture;
+    use dj_core::{RecordSource, SamplerChange};
+    use dj_decode::{AudioBuffer, TrackSource};
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+    const SPACE: usize = 48_000;
+
+    fn deck(n: u8) -> DeckId {
+        DeckId::from_human(n).unwrap()
+    }
+
+    fn tone(frames: usize, amplitude: f32) -> Arc<dyn TrackSource> {
+        Arc::new(AudioBuffer::from_interleaved(
+            vec![amplitude; frames * 2],
+            SR,
+        ))
+    }
+
+    struct Rig {
+        engine: Engine,
+        commands: rtrb::Producer<Command>,
+        retired: rtrb::Consumer<Retired>,
+        registry: Arc<ParameterRegistry>,
+        channels: usize,
+    }
+
+    fn rig(channels: usize) -> Rig {
+        let (command_tx, command_rx) = rtrb::RingBuffer::new(256);
+        let (retired_tx, retired_rx) = rtrb::RingBuffer::new(64);
+        let registry = Arc::new(ParameterRegistry::new());
+        let mut rig = Rig {
+            engine: Engine::new(2, SR, command_rx, retired_tx, Arc::clone(&registry)),
+            commands: command_tx,
+            retired: retired_rx,
+            registry,
+            channels,
+        };
+        rig.give_space();
+        rig
+    }
+
+    impl Rig {
+        fn give_space(&mut self) {
+            self.commands
+                .push(Command::RecordSpace {
+                    samples: vec![0.0; SPACE * 2],
+                })
+                .unwrap();
+        }
+
+        fn act(&mut self, action: Action) {
+            self.commands.push(Command::Action(action)).unwrap();
+        }
+
+        fn load_and_play(&mut self, n: u8, amplitude: f32) {
+            self.commands
+                .push(Command::Load {
+                    deck: deck(n),
+                    source: tone(400_000, amplitude),
+                })
+                .unwrap();
+            self.act(Action::Deck {
+                deck: deck(n),
+                action: DeckAction::Play,
+            });
+        }
+
+        fn render(&mut self, frames: usize) -> Vec<f32> {
+            let mut out = vec![0.0; frames * self.channels];
+            self.engine.render(
+                &mut out,
+                &RenderContext {
+                    frames,
+                    channels: self.channels,
+                    sample_rate: SR,
+                },
+            );
+            out
+        }
+
+        /// Peak on the master pair of a rendered block.
+        fn master_peak(&self, out: &[f32]) -> f32 {
+            out.chunks_exact(self.channels).fold(0.0f32, |peak, frame| {
+                peak.max(frame[0].abs()).max(frame[1].abs())
+            })
+        }
+
+        /// Render until the gain ramps have settled, so a capture is of the
+        /// steady state rather than of a fade-in.
+        fn settle(&mut self) {
+            for _ in 0..40 {
+                let _ = self.render(2_048);
+            }
+        }
+
+        fn capture(&mut self) -> Option<Capture> {
+            while let Ok(item) = self.retired.pop() {
+                if let Retired::Capture(capture) = item {
+                    return Some(capture);
+                }
+            }
+            None
+        }
+
+        fn peak_of(capture: &Capture) -> f32 {
+            capture.samples[..capture.frames * 2]
+                .iter()
+                .fold(0.0f32, |peak, s| peak.max(s.abs()))
+        }
+
+        fn get(&self, param: GlobalParam) -> f32 {
+            self.registry.get(ParamId::Global(param))
+        }
+    }
+
+    /// The master tap is after the limiter, so what lands in the slot is what
+    /// the room heard.
+    #[test]
+    fn recording_the_master_captures_the_mix() {
+        let mut rig = rig(2);
+        rig.load_and_play(1, 0.5);
+        rig.settle();
+
+        rig.act(Action::Mixer(MixerAction::Sampler(SamplerChange::Record {
+            slot: 3,
+            source: RecordSource::Master,
+        })));
+        let out = rig.render(4_096);
+        // What the master actually put out over that block. Compared against
+        // rather than a guessed level: at 0.5 with the crossfader centred the
+        // master is 0.354, and a test asserting "louder than 0.4" would have
+        // been testing the crossfader curve by accident.
+        let master = rig.master_peak(&out);
+        assert!(master > 0.1, "the mix should be audible: {master}");
+        assert!(
+            rig.get(GlobalParam::Recording) > 0.5,
+            "it should be running"
+        );
+        assert_eq!(rig.get(GlobalParam::RecordSlot), 3.0);
+        assert_eq!(
+            rig.get(GlobalParam::RecordSourceDeck),
+            0.0,
+            "0 is the master"
+        );
+
+        rig.act(Action::Mixer(MixerAction::Sampler(
+            SamplerChange::RecordStop,
+        )));
+        let _ = rig.render(256);
+
+        let capture = rig.capture().expect("a capture should have come back");
+        assert_eq!(capture.slot, 3);
+        assert_eq!(capture.source, RecordSource::Master);
+        assert!(capture.frames > 4_000, "recorded {} frames", capture.frames);
+        assert!(
+            (Rig::peak_of(&capture) - master).abs() < 0.01,
+            "the capture is {} and the master was {master}",
+            Rig::peak_of(&capture)
+        );
+    }
+
+    /// **The reason the deck tap is pre-fader.** Lifting a hook off a track the
+    /// room cannot hear yet is the whole use for it, and that deck's fader is
+    /// down. A post-fader tap would have recorded silence.
+    #[test]
+    fn a_deck_can_be_recorded_with_its_fader_shut() {
+        let mut rig = rig(2);
+        rig.load_and_play(1, 0.5);
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetVolume(0.0),
+        });
+        rig.settle();
+
+        rig.act(Action::Mixer(MixerAction::Sampler(SamplerChange::Record {
+            slot: 1,
+            source: RecordSource::Deck(deck(1)),
+        })));
+        let _ = rig.render(4_096);
+        assert_eq!(rig.get(GlobalParam::RecordSourceDeck), 1.0);
+        rig.act(Action::Mixer(MixerAction::Sampler(
+            SamplerChange::RecordStop,
+        )));
+        let _ = rig.render(256);
+
+        let capture = rig.capture().expect("a capture should have come back");
+        // The deck's own level, not the mix's: pre-fader is before the
+        // crossfader too, so this is the full 0.5 the track carries.
+        assert!(
+            (Rig::peak_of(&capture) - 0.5).abs() < 0.01,
+            "a shut fader silenced the capture: peak {}",
+            Rig::peak_of(&capture)
+        );
+    }
+
+    /// And the deck tap takes *that* deck, not the bus. Recording deck 1 while
+    /// deck 2 is playing must not pick up deck 2.
+    #[test]
+    fn a_deck_tap_hears_only_that_deck() {
+        let mut rig = rig(2);
+        rig.load_and_play(2, 0.5);
+        // Deck 1 is loaded but stopped, so it contributes nothing.
+        rig.commands
+            .push(Command::Load {
+                deck: deck(1),
+                source: tone(400_000, 0.5),
+            })
+            .unwrap();
+        rig.settle();
+
+        rig.act(Action::Mixer(MixerAction::Sampler(SamplerChange::Record {
+            slot: 1,
+            source: RecordSource::Deck(deck(1)),
+        })));
+        let _ = rig.render(4_096);
+        rig.act(Action::Mixer(MixerAction::Sampler(
+            SamplerChange::RecordStop,
+        )));
+        let _ = rig.render(256);
+
+        assert!(
+            rig.capture().is_none(),
+            "a silent deck produced a capture, so the tap is on the wrong signal"
+        );
+    }
+
+    /// A cancelled take must not land in the slot.
+    #[test]
+    fn cancelling_sends_nothing_back() {
+        let mut rig = rig(2);
+        rig.load_and_play(1, 0.5);
+        rig.settle();
+
+        rig.act(Action::Mixer(MixerAction::Sampler(SamplerChange::Record {
+            slot: 1,
+            source: RecordSource::Master,
+        })));
+        let _ = rig.render(4_096);
+        rig.act(Action::Mixer(MixerAction::Sampler(
+            SamplerChange::RecordCancel,
+        )));
+        let _ = rig.render(256);
+
+        assert!(rig.capture().is_none(), "a cancelled take landed anyway");
+        assert!(
+            rig.get(GlobalParam::RecordReady) > 0.5,
+            "and the buffer should still be there"
+        );
+    }
+
+    /// The recorder says when it cannot record, because the reason is not one
+    /// the DJ caused: the buffer is out being turned into a sample.
+    #[test]
+    fn the_interface_is_told_when_there_is_nowhere_to_record() {
+        let mut rig = rig(2);
+        rig.load_and_play(1, 0.5);
+        rig.settle();
+        assert!(rig.get(GlobalParam::RecordReady) > 0.5);
+
+        rig.act(Action::Mixer(MixerAction::Sampler(SamplerChange::Record {
+            slot: 1,
+            source: RecordSource::Master,
+        })));
+        let _ = rig.render(2_048);
+        rig.act(Action::Mixer(MixerAction::Sampler(
+            SamplerChange::RecordStop,
+        )));
+        let _ = rig.render(256);
+
+        assert!(
+            rig.get(GlobalParam::RecordReady) < 0.5,
+            "the buffer left with the capture, and the interface must know"
+        );
+
+        rig.give_space();
+        let _ = rig.render(256);
+        assert!(
+            rig.get(GlobalParam::RecordReady) > 0.5,
+            "and know when it is back"
         );
     }
 }

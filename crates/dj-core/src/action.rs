@@ -12,7 +12,9 @@
 use crate::deck::{CrossfaderAssign, DeckId};
 use crate::fx::{EffectKind, FX_SLOTS, FxChange, Placement};
 use crate::hotcue::HOT_CUE_SLOTS;
-use crate::sampler::{SAMPLE_SLOTS, SampleChange, SampleOutput, SamplerChange, TriggerMode};
+use crate::sampler::{
+    RecordSource, SAMPLE_SLOTS, SampleChange, SampleOutput, SamplerChange, TriggerMode,
+};
 use crate::time::{FramePos, Rate};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -305,8 +307,7 @@ impl Action {
                         Ok(Action::Mixer(MixerAction::Sample { slot, change }))
                     }
                     Err(_) => Ok(Action::Mixer(MixerAction::Sampler(parse_sampler_change(
-                        what,
-                        words.next(),
+                        what, &mut words,
                     )?))),
                 }
             }
@@ -368,13 +369,39 @@ fn parse_sample_change(
     })
 }
 
-fn parse_sampler_change(what: &str, value: Option<&str>) -> Result<SamplerChange, ParseError> {
+fn parse_sampler_change<'a>(
+    what: &str,
+    words: &mut impl Iterator<Item = &'a str>,
+) -> Result<SamplerChange, ParseError> {
     Ok(match what {
-        "bank" => SamplerChange::Bank(parse_slot(value)?),
-        "volume" => SamplerChange::Volume(parse_f32(value)?.clamp(0.0, 1.0)),
+        "bank" => SamplerChange::Bank(parse_slot(words.next())?),
+        "volume" => SamplerChange::Volume(parse_f32(words.next())?.clamp(0.0, 1.0)),
         "stop_all" => SamplerChange::StopAll,
+        // The one verb here that takes more than a value: `record 3 deck 1` is
+        // four words, which is why this function reads the iterator rather than
+        // being handed a pair.
+        "record" => match words.next().ok_or(ParseError::MissingArgument)? {
+            "stop" => SamplerChange::RecordStop,
+            "cancel" => SamplerChange::RecordCancel,
+            slot => SamplerChange::Record {
+                slot: valid_sample_slot(slot.parse().map_err(|_| ParseError::BadArgument)?)?,
+                source: parse_record_source(words)?,
+            },
+        },
         other => return Err(ParseError::UnknownVerb(other.to_owned())),
     })
+}
+
+fn parse_record_source<'a>(
+    words: &mut impl Iterator<Item = &'a str>,
+) -> Result<RecordSource, ParseError> {
+    match words.next().ok_or(ParseError::MissingArgument)? {
+        "master" => Ok(RecordSource::Master),
+        "deck" => Ok(RecordSource::Deck(
+            DeckId::from_human(parse_slot(words.next())?).ok_or(ParseError::BadArgument)?,
+        )),
+        other => Err(ParseError::UnknownVerb(other.to_owned())),
+    }
 }
 
 /// `<slot> <what> [value]` — the effect sub-grammar, shared by decks and master.

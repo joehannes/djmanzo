@@ -21,9 +21,11 @@ pub mod command;
 pub mod deck;
 pub mod engine;
 pub mod rack;
+pub mod record;
 pub mod sampler;
 
 pub use bus::BusLayout;
 pub use command::{Command, Retired};
 pub use deck::{Deck, DeckLevels};
 pub use engine::Engine;
+pub use record::{Capture, Recorder};

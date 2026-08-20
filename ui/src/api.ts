@@ -306,6 +306,24 @@ export interface SampleSlot {
   bpm: number | null;
 }
 
+/** Capturing into a sampler slot. Mirrors `RecordSnapshot` in Rust. */
+export interface RecordState {
+  /**
+   * Whether there is a buffer to record into.
+   *
+   * False for the moment a finished capture is being turned into a sample.
+   * Shown rather than hidden: it is not a state the DJ caused, and a button
+   * that silently declines is worse than one that says why.
+   */
+  ready: boolean;
+  recording: boolean;
+  slot: number | null;
+  seconds: number;
+  max_seconds: number;
+  /** "master", or "deck 2". */
+  source: string | null;
+}
+
 export interface SamplerState {
   /** 1-based. */
   bank: number;
@@ -316,6 +334,7 @@ export interface SamplerState {
    * simply cannot reach them.
    */
   slots: SampleSlot[];
+  record: RecordState;
 }
 
 /** Every trigger mode, in the order they are offered. */

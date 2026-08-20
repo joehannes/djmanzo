@@ -2,6 +2,7 @@
 
 use crate::bus::BusLayout;
 use crate::rack::Rack;
+use crate::record::Recorder;
 use dj_core::{
     Beatgrid, CrossfaderAssign, FramePos, HOT_CUE_SLOTS, LoopLimits, LoopRegion, Rate, SampleRate,
     db_to_linear,
@@ -1203,7 +1204,17 @@ impl Deck {
     /// headphones while the audience hears nothing.
     ///
     /// Realtime-safe: no allocation, no locking, no I/O.
-    pub fn process(&mut self, out: &mut [f32], layout: &BusLayout) -> DeckLevels {
+    ///
+    /// `tap` is the sampler's recorder, when it is recording *this* deck. It is
+    /// fed the pre-fader signal — the same one the headphones get — so a hook
+    /// can be lifted off a track the room is not hearing yet. See
+    /// [`dj_core::RecordSource::Deck`].
+    pub fn process(
+        &mut self,
+        out: &mut [f32],
+        layout: &BusLayout,
+        tap: Option<&mut Recorder>,
+    ) -> DeckLevels {
         if !self.playing || self.source.is_empty() {
             return DeckLevels::default();
         }
@@ -1215,14 +1226,19 @@ impl Deck {
         // The shifter also works on blocks, and a rate that changes every frame
         // is not something a block-based shifter can follow.
         if (self.keylock_on || self.key_shift != 0) && self.spin.is_none() {
-            self.process_keylocked(out, layout)
+            self.process_keylocked(out, layout, tap)
         } else {
-            self.process_direct(out, layout)
+            self.process_direct(out, layout, tap)
         }
     }
 
     /// The plain path: read, shape, mix. What runs whenever keylock is off.
-    fn process_direct(&mut self, out: &mut [f32], layout: &BusLayout) -> DeckLevels {
+    fn process_direct(
+        &mut self,
+        out: &mut [f32],
+        layout: &BusLayout,
+        mut tap: Option<&mut Recorder>,
+    ) -> DeckLevels {
         let len = self.len_frames() as f64;
         let mut levels = DeckLevels::default();
         let mut position = self.position.get();
@@ -1246,7 +1262,15 @@ impl Deck {
             let [left, right] = self.source.frame_at(position);
             let pre = self.shape(left, right, trim, &ctx);
             let post = self.rack.process_post(pre.0 * fader, pre.1 * fader, &ctx);
-            Self::write_frame(frame, layout, cue_send, pre, post, &mut levels);
+            Self::write_frame(
+                frame,
+                layout,
+                cue_send,
+                pre,
+                post,
+                &mut levels,
+                tap.as_deref_mut(),
+            );
 
             // Advance, then fold back into the loop. Per frame rather than per
             // block: a loop shorter than one buffer -- which is most of them at
@@ -1293,7 +1317,12 @@ impl Deck {
     ///   does not shove a beatmatched track out of time.
     /// - `position` still advances by exactly `step` per output frame, so the
     ///   playhead, the waveform and the beat grid are unaffected by keylock.
-    fn process_keylocked(&mut self, out: &mut [f32], layout: &BusLayout) -> DeckLevels {
+    fn process_keylocked(
+        &mut self,
+        out: &mut [f32],
+        layout: &BusLayout,
+        mut tap: Option<&mut Recorder>,
+    ) -> DeckLevels {
         let step = self.step_per_output_frame();
         let len = self.len_frames() as f64;
         let channels = layout.channels.max(1);
@@ -1353,7 +1382,15 @@ impl Deck {
                 let right = self.scratch[f * CHANNELS + 1];
                 let pre = self.shape(left, right, trim, &ctx);
                 let post = self.rack.process_post(pre.0 * fader, pre.1 * fader, &ctx);
-                Self::write_frame(frame, layout, cue_send, pre, post, &mut levels);
+                Self::write_frame(
+                    frame,
+                    layout,
+                    cue_send,
+                    pre,
+                    post,
+                    &mut levels,
+                    tap.as_deref_mut(),
+                );
             }
 
             position = cursor;
@@ -1412,6 +1449,7 @@ impl Deck {
     /// An associated function rather than a method so it borrows nothing from
     /// the deck, and both process paths can call it while holding other fields.
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     fn write_frame(
         frame: &mut [f32],
         layout: &BusLayout,
@@ -1419,6 +1457,7 @@ impl Deck {
         pre: (f32, f32),
         post: (f32, f32),
         levels: &mut DeckLevels,
+        tap: Option<&mut Recorder>,
     ) {
         let (pre_left, pre_right) = pre;
         // The fader has already been applied, along with any effect placed
@@ -1437,6 +1476,13 @@ impl Deck {
         if let Some((cue_l, cue_r)) = cue_send {
             frame[cue_l] += pre_left;
             frame[cue_r] += pre_right;
+        }
+
+        // The recorder takes the pre-fader signal, exactly what the cue send
+        // above just took. Recording a deck is auditioning it and keeping the
+        // result, so the two should hear the same thing.
+        if let Some(recorder) = tap {
+            recorder.write(pre_left, pre_right);
         }
 
         levels.pre_fader = levels.pre_fader.max(pre_left.abs()).max(pre_right.abs());
@@ -1557,7 +1603,7 @@ mod tests {
     /// Render `frames` output frames and throw the audio away.
     fn run(deck: &mut Deck, frames: usize) {
         let mut out = vec![0.0; frames * 2];
-        deck.process(&mut out, &stereo());
+        deck.process(&mut out, &stereo(), None);
     }
 
     // -- slip, reverse and censor ------------------------------------------
@@ -2071,7 +2117,10 @@ mod tests {
         assert!(!deck.is_loaded());
         assert!(!deck.is_playing());
         let mut out = vec![0.0; 16];
-        assert_eq!(deck.process(&mut out, &stereo()), DeckLevels::default());
+        assert_eq!(
+            deck.process(&mut out, &stereo(), None),
+            DeckLevels::default()
+        );
         assert!(out.iter().all(|&s| s == 0.0));
     }
 
@@ -2116,7 +2165,7 @@ mod tests {
         let mut deck = deck_with(1000);
         deck.play();
         let mut out = vec![0.0; 32]; // 16 frames
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         assert!((deck.position().get() - 16.0).abs() < 1e-9);
     }
 
@@ -2126,7 +2175,7 @@ mod tests {
         deck.set_pitch(0.08);
         deck.play();
         let mut out = vec![0.0; 200]; // 100 frames
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         assert!(
             (deck.position().get() - 108.0).abs() < 1e-6,
             "+8% pitch should advance 108 frames, got {}",
@@ -2149,7 +2198,7 @@ mod tests {
         deck.play();
 
         let mut out = vec![0.0; 960]; // 480 output frames
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         let expected = 480.0 * (44_100.0 / 48_000.0);
         assert!(
             (deck.position().get() - expected).abs() < 1e-6,
@@ -2163,7 +2212,7 @@ mod tests {
         let mut deck = deck_with(1000);
         deck.seek(FramePos::new(100.0));
         let mut out = vec![0.0; 32];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         assert!(out.iter().all(|&s| s == 0.0));
         assert_eq!(deck.position().get(), 100.0);
     }
@@ -2173,7 +2222,7 @@ mod tests {
         let mut deck = deck_with(10);
         deck.play();
         let mut out = vec![0.0; 64]; // 32 frames, more than the track has
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         assert!(!deck.is_playing(), "deck should stop at the end");
         assert_eq!(deck.position().get(), 10.0);
     }
@@ -2184,7 +2233,7 @@ mod tests {
         let mut deck = deck_with(4);
         deck.play();
         let mut out = vec![0.0; 200];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         assert!(out.iter().all(|s| s.is_finite()));
     }
 
@@ -2195,7 +2244,7 @@ mod tests {
         deck.set_rate(Rate::new(-1.0));
         deck.play();
         let mut out = vec![0.0; 200]; // 100 frames of reverse
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         assert!(!deck.is_playing());
         assert_eq!(deck.position().get(), 0.0);
     }
@@ -2227,9 +2276,9 @@ mod tests {
         deck.play();
         // Long enough for the gain ramp to complete.
         let mut out = vec![0.0; 8192];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         let mut out = vec![0.0; 8192];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         let tail = &out[out.len() - 100..];
         assert!(
             tail.iter().all(|&s| s.abs() < 1e-4),
@@ -2264,7 +2313,7 @@ mod tests {
         let mut deck = deck_with(1000);
         deck.play();
         let mut out = vec![1.0; 32];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         // Frame 0 of the ramp is 0.0, so the pre-existing 1.0 must survive.
         assert!(out[0] >= 1.0, "deck overwrote existing mix content");
     }
@@ -2280,9 +2329,9 @@ mod tests {
         deck.play();
 
         let mut out = vec![0.0; 8_000];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         let mut out = vec![0.0; 8_000];
-        let peak = deck.process(&mut out, &stereo()).post_fader;
+        let peak = deck.process(&mut out, &stereo(), None).post_fader;
 
         assert!(
             (peak - 0.5).abs() < 0.02,
@@ -2309,9 +2358,9 @@ mod tests {
 
         // Let the gain ramp and filters settle before measuring.
         let mut out = vec![0.0; 20_000];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         let mut out = vec![0.0; 20_000];
-        let peak = deck.process(&mut out, &stereo()).post_fader;
+        let peak = deck.process(&mut out, &stereo(), None).post_fader;
 
         assert!(
             peak < 0.02,
@@ -2327,9 +2376,9 @@ mod tests {
         deck.play();
 
         let mut out = vec![0.0; 16_000];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         let mut out = vec![0.0; 8_000];
-        let peak = deck.process(&mut out, &stereo()).post_fader;
+        let peak = deck.process(&mut out, &stereo(), None).post_fader;
 
         assert!(
             (peak - 0.4).abs() < 0.02,
@@ -2345,14 +2394,14 @@ mod tests {
         let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(loud, SR)));
         deck.play();
         let mut out = vec![0.0; 8_000];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
 
         // Swap in silence; the first samples must be silent, not a filter tail.
         let silence = vec![0.0f32; 20_000];
         let _ = deck.load(Arc::new(AudioBuffer::from_interleaved(silence, SR)));
         deck.play();
         let mut out = vec![0.0; 512];
-        let peak = deck.process(&mut out, &stereo()).post_fader;
+        let peak = deck.process(&mut out, &stereo(), None).post_fader;
 
         assert!(
             peak < 1e-6,
@@ -2385,7 +2434,7 @@ mod cue_tests {
     /// Render and report peak on the master and cue buses separately.
     fn render(deck: &mut Deck, layout: &BusLayout, frames: usize) -> (f32, f32) {
         let mut out = vec![0.0; frames * layout.channels];
-        let _ = deck.process(&mut out, layout);
+        let _ = deck.process(&mut out, layout, None);
 
         let mut main = 0.0f32;
         let mut cue = 0.0f32;
@@ -2490,9 +2539,9 @@ mod cue_tests {
         let layout = BusLayout::for_channels(4);
 
         let mut out = vec![0.0; 16_000 * 4];
-        let _ = deck.process(&mut out, &layout);
+        let _ = deck.process(&mut out, &layout, None);
         let mut out = vec![0.0; 8_000 * 4];
-        let levels = deck.process(&mut out, &layout);
+        let levels = deck.process(&mut out, &layout, None);
 
         assert!(
             levels.pre_fader > levels.post_fader,
@@ -2516,10 +2565,10 @@ mod cue_tests {
 
         let layout = BusLayout::for_channels(1);
         let mut settle = vec![0.0; 16_000];
-        let _ = deck.process(&mut settle, &layout);
+        let _ = deck.process(&mut settle, &layout, None);
 
         let mut out = vec![0.0; 8_000];
-        let _ = deck.process(&mut out, &layout);
+        let _ = deck.process(&mut out, &layout, None);
 
         let peak = out.iter().fold(0.0f32, |a, s| a.max(s.abs()));
         assert!(
@@ -2601,7 +2650,7 @@ mod keylock_tests {
         deck.set_pitch(pitch);
         deck.play();
         let mut out = vec![0.0; frames * CHANNELS];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
         out
     }
 
@@ -2662,9 +2711,9 @@ mod keylock_tests {
         locked.play();
 
         let mut out = vec![0.0; 8_192];
-        let _ = plain.process(&mut out, &stereo());
+        let _ = plain.process(&mut out, &stereo(), None);
         out.fill(0.0);
-        let _ = locked.process(&mut out, &stereo());
+        let _ = locked.process(&mut out, &stereo(), None);
 
         // Not bit-equal, and should not be asserted as such: the direct path
         // adds `step` once per frame while the keylocked path adds it once per
@@ -2732,7 +2781,7 @@ mod keylock_tests {
         plain.set_pitch(0.25);
         plain.play();
         let mut out = vec![0.0; 160_000];
-        let _ = plain.process(&mut out, &stereo());
+        let _ = plain.process(&mut out, &stereo(), None);
         let sped_up = frequency(&out);
         assert!(
             (sped_up - 550.0).abs() < 15.0,
@@ -2745,7 +2794,7 @@ mod keylock_tests {
         locked.set_pitch(0.25);
         locked.play();
         let mut out = vec![0.0; 160_000];
-        let _ = locked.process(&mut out, &stereo());
+        let _ = locked.process(&mut out, &stereo(), None);
         // Skip the priming region, where the shifter is still filling.
         let measured = frequency(&out[20_000..]);
         assert!(
@@ -2770,10 +2819,10 @@ mod keylock_tests {
         // measuring. Both ramp; a window that includes the ramp measures the
         // ramp rather than the routing.
         let mut settle = vec![0.0; 32_768];
-        let _ = deck.process(&mut settle, &layout);
+        let _ = deck.process(&mut settle, &layout, None);
 
         let mut out = vec![0.0; 32_768];
-        let _ = deck.process(&mut out, &layout);
+        let _ = deck.process(&mut out, &layout, None);
 
         let master = out.chunks_exact(4).fold(0.0f32, |a, f| a.max(f[0].abs()));
         let cue = out.chunks_exact(4).fold(0.0f32, |a, f| a.max(f[2].abs()));
@@ -2792,7 +2841,7 @@ mod keylock_tests {
 
         let frames = SCRATCH_FRAMES * 5 + 37; // deliberately not a multiple
         let mut out = vec![0.0; frames * CHANNELS];
-        let _ = deck.process(&mut out, &stereo());
+        let _ = deck.process(&mut out, &stereo(), None);
 
         assert_eq!(
             deck.position().get().round() as usize,

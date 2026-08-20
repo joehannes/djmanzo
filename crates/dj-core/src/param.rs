@@ -301,6 +301,22 @@ pub enum GlobalParam {
     SamplerVolume,
     /// Peak the sampler put into the master this block.
     SamplerPeak,
+    /// 1.0 when the recorder has a buffer to write into.
+    ///
+    /// A state the interface has to be able to show, because it is not one the
+    /// DJ caused: the buffer is out being turned into a sample, and pressing
+    /// record in that moment does nothing. Better a greyed button than a button
+    /// that silently declines.
+    RecordReady,
+    /// 1.0 while a capture is running.
+    Recording,
+    /// The slot being recorded into, 1-based; 0 when nothing is.
+    RecordSlot,
+    /// How long the running capture has been going, in seconds.
+    RecordSeconds,
+    /// Where the running capture is coming from: 0 for the master, otherwise
+    /// the deck's 1-based number.
+    RecordSourceDeck,
     /// The eight slots of the bank that is showing.
     ///
     /// Only the showing bank: the others keep playing, but the pads cannot
@@ -677,7 +693,9 @@ impl GlobalParam {
         GlobalParam::MasterBandTreble,
     ];
 
-    pub const COUNT: usize = 104;
+    /// 100 before the spectrum and the recorder; four bands and five recorder
+    /// readings since.
+    pub const COUNT: usize = 109;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -706,6 +724,11 @@ impl GlobalParam {
             SamplerBank,
             SamplerVolume,
             SamplerPeak,
+            RecordReady,
+            Recording,
+            RecordSlot,
+            RecordSeconds,
+            RecordSourceDeck,
             Sample1Loaded,
             Sample1Playing,
             Sample1Mode,
@@ -923,6 +946,11 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::SamplerBank => "sampler_bank",
         GlobalParam::SamplerVolume => "sampler_volume",
         GlobalParam::SamplerPeak => "sampler_peak",
+        GlobalParam::RecordReady => "record_ready",
+        GlobalParam::Recording => "recording",
+        GlobalParam::RecordSlot => "record_slot",
+        GlobalParam::RecordSeconds => "record_seconds",
+        GlobalParam::RecordSourceDeck => "record_source_deck",
         GlobalParam::Sample1Loaded => "sample1_loaded",
         GlobalParam::Sample1Playing => "sample1_playing",
         GlobalParam::Sample1Mode => "sample1_mode",

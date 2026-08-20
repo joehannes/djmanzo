@@ -34,7 +34,8 @@ pub use music::{Beatgrid, Bpm, Confidence, Mode, MusicalKey};
 pub use pads::{Lit, PADS, Pad, PadAction, PadLabel, PadPage};
 pub use param::{DeckParam, GlobalParam, ParamId};
 pub use sampler::{
-    SAMPLE_BANKS, SAMPLE_SLOTS, SampleChange, SampleOutput, SamplerChange, TriggerMode,
+    MAX_RECORD_SECONDS, RecordSource, SAMPLE_BANKS, SAMPLE_SLOTS, SampleChange, SampleOutput,
+    SamplerChange, TriggerMode,
 };
 pub use time::{FramePos, Rate, SampleRate};
 pub use vocabulary::{ArgSpec, Target, VerbSpec, vocabulary};

@@ -60,6 +60,19 @@ pub enum Command {
         deck: DeckId,
         cues: [Option<FramePos>; HOT_CUE_SLOTS],
     },
+    /// Hand the recorder somewhere to put audio.
+    ///
+    /// Recording needs a buffer and the audio thread may not allocate one, so
+    /// the host allocates it and sends it in. The engine hands it back full
+    /// through [`Retired::Capture`] and needs another before it can record
+    /// again — which is why this is a command sent repeatedly rather than a
+    /// thing set up once.
+    ///
+    /// Interleaved stereo at the device rate; its length is the ceiling on how
+    /// long one capture can run.
+    RecordSpace {
+        samples: Vec<f32>,
+    },
     /// Put a saved loop back on a deck, or clear the active one.
     ///
     /// A command for the same reason as the two above: the region comes from
@@ -77,7 +90,7 @@ impl From<Action> for Command {
     }
 }
 
-/// A track buffer the engine has finished with.
+/// Something the engine has finished with, on its way back to the host thread.
 ///
 /// # Why this exists
 ///
@@ -87,10 +100,26 @@ impl From<Action> for Command {
 /// block on a lock inside the allocator and produce a dropout at exactly the
 /// moment the DJ is loading the next track.
 ///
-/// So the engine never drops a source. It pushes it here, and the host thread
-/// drains this queue and drops them where blocking is harmless.
+/// So the engine never drops a buffer. It pushes it here, and the host thread
+/// drains this queue where blocking is harmless.
 #[derive(Debug)]
-pub struct Retired(pub Arc<dyn TrackSource>);
+pub enum Retired {
+    /// A track buffer to be freed.
+    Source(Arc<dyn TrackSource>),
+    /// A recording buffer with nothing in it, to be freed.
+    ///
+    /// Distinct from [`Retired::Capture`] so that "free this" and "this is a
+    /// recording" are two statements rather than one statement read two ways —
+    /// a capture of zero frames addressed to slot zero would be neither.
+    Buffer(Vec<f32>),
+    /// A finished recording to be turned into a sample.
+    ///
+    /// The same queue as a freed buffer because it is the same problem seen
+    /// from the other end: a `Vec` the audio thread must part with rather than
+    /// drop. The only difference is that the host does something with this one
+    /// before letting it go.
+    Capture(crate::record::Capture),
+}
 
 #[cfg(test)]
 mod tests {
@@ -126,6 +155,27 @@ mod tests {
         if let Command::SetGrid { grid: Some(g), .. } = &command {
             assert_copy(g);
         }
+    }
+
+    /// A capture and a freed buffer ride the same queue, because they are the
+    /// same problem: something the audio thread may not drop.
+    #[test]
+    fn the_retirement_queue_carries_both_kinds_of_buffer() {
+        let source: Arc<dyn TrackSource> = Arc::new(AudioBuffer::empty());
+        assert!(matches!(Retired::Source(source), Retired::Source(_)));
+        assert!(matches!(Retired::Buffer(Vec::new()), Retired::Buffer(_)));
+        assert!(matches!(
+            Retired::Capture(crate::record::Capture {
+                bank: 1,
+                slot: 1,
+                source: dj_core::RecordSource::Master,
+                samples: Vec::new(),
+                frames: 0,
+                sample_rate: dj_core::SampleRate::DEFAULT,
+                bpm: None,
+            }),
+            Retired::Capture(_)
+        ));
     }
 
     #[test]

@@ -147,6 +147,29 @@ pub struct SamplerSnapshot {
     /// The showing bank's eight slots. The other banks keep playing; the pads
     /// simply cannot reach them.
     pub slots: Vec<SampleSlotSnapshot>,
+    /// Capturing into a slot. See [`RecordSnapshot`].
+    pub record: RecordSnapshot,
+}
+
+/// What the record control needs to draw itself.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RecordSnapshot {
+    /// Whether there is a buffer to record into.
+    ///
+    /// Not something the DJ caused when it is false — the buffer is out being
+    /// turned into a sample — so the interface says so rather than offering a
+    /// button that silently declines.
+    pub ready: bool,
+    pub recording: bool,
+    /// The slot being recorded into, 1-based; `None` when nothing is.
+    pub slot: Option<u8>,
+    /// How long the running capture has been going.
+    pub seconds: f32,
+    /// The longest one can run, so the interface can draw a bar rather than a
+    /// number climbing towards a limit nobody told it about.
+    pub max_seconds: f32,
+    /// `master`, or `deck 2`.
+    pub source: Option<String>,
 }
 
 /// One sampler pad.
@@ -485,6 +508,22 @@ impl Snapshot {
                     bank,
                     volume: registry.get(ParamId::Global(GlobalParam::SamplerVolume)),
                     peak: registry.get(ParamId::Global(GlobalParam::SamplerPeak)),
+                    record: {
+                        let get = |p| registry.get(ParamId::Global(p));
+                        let recording = get(GlobalParam::Recording) >= 0.5;
+                        let deck = get(GlobalParam::RecordSourceDeck) as u8;
+                        RecordSnapshot {
+                            ready: get(GlobalParam::RecordReady) >= 0.5,
+                            recording,
+                            slot: recording.then(|| get(GlobalParam::RecordSlot) as u8),
+                            seconds: get(GlobalParam::RecordSeconds),
+                            max_seconds: dj_core::MAX_RECORD_SECONDS as f32,
+                            source: recording.then(|| match deck {
+                                0 => "master".to_owned(),
+                                n => format!("deck {n}"),
+                            }),
+                        }
+                    },
                     slots: (1..=dj_core::SAMPLE_SLOTS as u8)
                         .filter_map(|slot| {
                             let param = GlobalParam::sample(slot)?;

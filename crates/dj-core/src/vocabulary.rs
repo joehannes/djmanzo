@@ -101,7 +101,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 72] = [
+static VOCABULARY: [VerbSpec; 73] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -588,6 +588,13 @@ static VOCABULARY: [VerbSpec; 72] = [
     },
     VerbSpec {
         target: Target::Mixer,
+        verb: "sampler record",
+        argument: ArgSpec::Words,
+        help: "record into a slot of the bank showing: `sampler record <1-8> master` takes what the room hears, `sampler record <1-8> deck <n>` takes that deck before its fader; then `sampler record stop` to keep it or `sampler record cancel` to bin it",
+        example: "sampler record 3 deck 1",
+    },
+    VerbSpec {
+        target: Target::Mixer,
         verb: "master fx",
         argument: ArgSpec::Words,
         help: "change a master effect slot; the same grammar as a deck's, applied to the whole mix",
@@ -812,6 +819,7 @@ mod tests {
             "fx",
             "master fx",
             "sampler",
+            "sampler record",
         ];
         for name in expected {
             assert!(

@@ -24,6 +24,28 @@
   let error = $state<string | null>(null);
   let busy = $state<number | null>(null);
 
+  /**
+   * Which slot the next recording lands in, and where it comes from.
+   *
+   * Chosen before the take rather than after it, because a recording is
+   * something you line up: you decide "the drop, into pad 5" and then wait for
+   * the drop. Asking afterwards means holding a nameless buffer while the DJ
+   * decides, at exactly the moment they are busiest.
+   */
+  let recordSlot = $state(1);
+  let recordSource = $state("master");
+
+  /** The deck taps, plus the master. Four decks, whatever is loaded. */
+  const SOURCES = ["master", "deck 1", "deck 2", "deck 3", "deck 4"];
+
+  function toggleRecord() {
+    if (sampler.record.recording) {
+      send("sampler record stop");
+    } else {
+      send(`sampler record ${recordSlot} ${recordSource}`);
+    }
+  }
+
   async function pick(slot: number) {
     const chosen = await open({
       multiple: false,
@@ -95,6 +117,71 @@
     <button class="panic" disabled={!enabled} onclick={() => send("sampler stop_all")}>
       Stop all
     </button>
+  </div>
+
+  <!--
+    Recording. A row of its own rather than a control per slot: there is one
+    recorder, and eight record buttons would suggest eight.
+  -->
+  <div class="record" class:live={sampler.record.recording}>
+    <button
+      class="arm"
+      class:live={sampler.record.recording}
+      disabled={!enabled || (!sampler.record.ready && !sampler.record.recording)}
+      onclick={toggleRecord}
+      title={sampler.record.ready || sampler.record.recording
+        ? "Capture into a slot"
+        : "The last recording is still being made into a sample"}
+    >
+      {sampler.record.recording ? "STOP" : "REC"}
+    </button>
+
+    {#if sampler.record.recording}
+      <!--
+        What is being recorded and for how long, in the words the backend used.
+        The elapsed bar runs against the ceiling rather than counting up on its
+        own, because "18.4" means nothing without knowing where it stops.
+      -->
+      <span class="what">
+        {sampler.record.source} → pad {sampler.record.slot}
+      </span>
+      <div class="elapsed">
+        <div
+          class="elapsed-fill"
+          style:width="{Math.min(1, sampler.record.seconds / sampler.record.max_seconds) * 100}%"
+        ></div>
+      </div>
+      <span class="mono">{sampler.record.seconds.toFixed(1)}s</span>
+      <button class="drop" disabled={!enabled} onclick={() => send("sampler record cancel")}>
+        ×
+      </button>
+    {:else}
+      <label class="pick">
+        <span>from</span>
+        <select bind:value={recordSource} disabled={!enabled} aria-label="What to record">
+          {#each SOURCES as source (source)}
+            <option value={source}>{source}</option>
+          {/each}
+        </select>
+      </label>
+      <label class="pick">
+        <span>into</span>
+        <select
+          bind:value={recordSlot}
+          disabled={!enabled}
+          aria-label="Which pad to record into"
+        >
+          {#each sampler.slots as slot (slot.slot)}
+            <option value={slot.slot}>
+              pad {slot.slot}{slot.loaded ? " — replaces" : ""}
+            </option>
+          {/each}
+        </select>
+      </label>
+      {#if !sampler.record.ready}
+        <span class="waiting">making the last one into a sample…</span>
+      {/if}
+    {/if}
   </div>
 
   {#if error}
@@ -250,6 +337,60 @@
   .panic {
     margin-left: auto;
     font-size: 0.8em;
+  }
+
+  .record {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8em;
+    color: var(--text-dim);
+  }
+
+  .arm {
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    min-width: 3.5rem;
+  }
+
+  /* A running recorder is the one thing in this panel that has to be visible
+     from across a booth. */
+  .arm.live {
+    background: var(--danger, #e06c75);
+    border-color: var(--danger, #e06c75);
+    color: var(--on-accent);
+  }
+
+  .what {
+    color: var(--text);
+  }
+
+  .elapsed {
+    flex: 1;
+    min-width: 3rem;
+    height: 4px;
+    background: var(--scrim);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .elapsed-fill {
+    height: 100%;
+    background: var(--danger, #e06c75);
+  }
+
+  .mono {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pick {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .waiting {
+    font-style: italic;
   }
 
   .error {

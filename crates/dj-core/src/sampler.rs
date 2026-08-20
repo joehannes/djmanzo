@@ -109,6 +109,47 @@ pub enum SampleOutput {
     Cue,
 }
 
+/// The longest a single capture can run.
+///
+/// A ceiling rather than a setting, because the buffer has to be allocated
+/// before any audio flows — the audio thread may not allocate one when the DJ
+/// presses record. Thirty seconds is longer than any sample anyone fires off a
+/// pad and costs about 11 MB at 48 kHz, which is a price worth paying once.
+pub const MAX_RECORD_SECONDS: f64 = 30.0;
+
+/// Where a recording is taken from.
+///
+/// Two taps, and the difference between them is the difference between the two
+/// reasons to record: catching what just happened, and lifting a piece out of a
+/// track before anyone hears it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum RecordSource {
+    /// What the room hears — after the master effects and the limiter.
+    ///
+    /// The whole mix, including the sampler itself, which is deliberate: a
+    /// capture of the master is a capture of the moment, and the moment
+    /// includes whatever was firing.
+    #[default]
+    Master,
+    /// One deck, after its EQ and before its fader.
+    ///
+    /// *Before* the fader, which is the choice worth arguing about. Post-fader
+    /// would record what the deck is contributing to the mix — but the useful
+    /// case is lifting a hook off a track nobody is hearing yet, and that deck's
+    /// fader is down. Pre-fader is the same signal the headphones get, so what
+    /// you record is what you were auditioning.
+    Deck(crate::DeckId),
+}
+
+impl std::fmt::Display for RecordSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RecordSource::Master => write!(f, "master"),
+            RecordSource::Deck(deck) => write!(f, "deck {}", deck.human_number()),
+        }
+    }
+}
+
 /// One change to one sampler slot.
 ///
 /// The same shape as [`crate::fx::FxChange`], and for the same reason: eight
@@ -162,6 +203,20 @@ pub enum SamplerChange {
     /// them in one gesture is a sampler that will one day be the loudest thing
     /// in the room.
     StopAll,
+    /// Start capturing into a slot of the bank that is showing.
+    ///
+    /// The bank is not named here, unlike [`crate::Command`]'s load, because
+    /// this *is* a thing a DJ does — they press record while looking at a bank,
+    /// and the one they are looking at is the one they mean.
+    Record { slot: u8, source: RecordSource },
+    /// Stop, and keep what was captured.
+    RecordStop,
+    /// Stop, and throw it away.
+    ///
+    /// Separate from `RecordStop` because a recording that turned out wrong is
+    /// the common case, and the alternative is landing it in a slot and then
+    /// having to clear the slot — two gestures where one will do.
+    RecordCancel,
 }
 
 impl std::fmt::Display for SamplerChange {
@@ -170,6 +225,9 @@ impl std::fmt::Display for SamplerChange {
             SamplerChange::Bank(n) => write!(f, "bank {n}"),
             SamplerChange::Volume(v) => write!(f, "volume {v}"),
             SamplerChange::StopAll => write!(f, "stop_all"),
+            SamplerChange::Record { slot, source } => write!(f, "record {slot} {source}"),
+            SamplerChange::RecordStop => write!(f, "record stop"),
+            SamplerChange::RecordCancel => write!(f, "record cancel"),
         }
     }
 }
