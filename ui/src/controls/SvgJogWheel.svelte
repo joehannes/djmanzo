@@ -23,19 +23,17 @@
 
   let dragging = $state(false);
   let startY = $state(0);
-  let startX = $state(0);
   
   // A fake state wrapper, since the Engine primarily expects KnobState for rotaries.
-  let state: KnobState = $derived({
+  let shape: KnobState = $derived({
     value, min: 0, max: 1, normalized: value % 1, angle: (value % 1) * 360, dragging, disabled, size, label: "JOG", context
   });
 
-  let renderState = $derived(executeThemePipeline(globalTheme.activePackage, state));
+  let renderState = $derived(executeThemePipeline(globalTheme.activePackage, shape));
 
   function handlePointerDown(e: PointerEvent) {
     if (disabled) return;
     dragging = true;
-    startX = e.clientX;
     startY = e.clientY;
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
@@ -75,7 +73,7 @@
   onpointercancel={handlePointerUp}
   style="width: {size}px; height: {size}px;"
 >
-  <SvgRenderer {renderState} {size} />
+  <SvgRenderer {renderState} width={size} height={size} />
   <div class="center-cap"></div>
 </div>
 

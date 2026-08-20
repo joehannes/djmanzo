@@ -368,27 +368,36 @@ export interface MasterState {
 
 export type SessionPhase = "warm_up" | "heat" | "peak" | "cooldown" | "chill_out";
 
+export type TimeOfDay = "dawn" | "day" | "dusk" | "night" | "small_hours";
+
 export interface EnvironmentContext {
-  time_of_day: string;
-  weather: string;
-  temperature_c: number;
-  venue: string;
-  vibe: string;
-  density: number;
-  crowd_energy: number;
-  tempo_variance: number;
+  time_of_day: TimeOfDay;
 }
 
+/** Measured off the master bus every snapshot. See `dj_dsp::Spectrum`. */
 export interface AudioMetrics {
-  momentary_loudness: number;
-  spectral_bands: [number, number, number, number];
+  /** 0..=1, an RMS rather than a peak — the limiter pins peaks at 1. */
+  loudness: number;
+  /** Bass, low mid, high mid, treble. 0..=1 and comparable with each other. */
+  bands: [number, number, number, number];
+}
+
+/**
+ * Somebody's reading of the room.
+ *
+ * Only ever present once something has actually read it, which is M9. Until
+ * then `SessionContext.session` is null and a theme shows its neutral
+ * treatment rather than guessing.
+ */
+export interface SessionRead {
+  phase: SessionPhase;
+  energy: number;
+  environment: EnvironmentContext;
 }
 
 export interface SessionContext {
-  phase: SessionPhase;
-  environment: EnvironmentContext;
-  energy_level: number;
   audio: AudioMetrics;
+  session: SessionRead | null;
 }
 
 export interface Snapshot {

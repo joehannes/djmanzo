@@ -24,10 +24,20 @@ export interface FrameHealth {
 }
 
 /**
- * Start measuring. Calls `onChange` only when the verdict changes, so a healthy
- * application never wakes anything up.
+ * Start measuring.
+ *
+ * `onChange` fires only when the verdict changes, so a healthy application
+ * never wakes anything up — right for a banner that appears and disappears.
+ *
+ * `onSample` fires once per completed window, about once a second, whatever the
+ * verdict. Anything that has to *count* — "has it been well for ten seconds
+ * yet" — needs this rather than `onChange`: an edge-triggered callback fires at
+ * most once per episode, so a counter driven by it never gets past one.
  */
-export function watchFrameRate(onChange: (health: FrameHealth) => void): () => void {
+export function watchFrameRate(
+  onChange: (health: FrameHealth) => void,
+  onSample?: (health: FrameHealth) => void,
+): () => void {
   const deltas = new Float32Array(WINDOW);
   let index = 0;
   let filled = 0;
@@ -47,8 +57,10 @@ export function watchFrameRate(onChange: (health: FrameHealth) => void): () => v
       let total = 0;
       for (let i = 0; i < WINDOW; i++) total += deltas[i];
       const fps = 1000 / (total / WINDOW);
+      const degraded = fps < DEGRADED_FPS;
+      onSample?.({ fps, degraded });
 
-      if (fps < DEGRADED_FPS) {
+      if (degraded) {
         badWindows++;
         if (badWindows >= PATIENCE && !reported) {
           reported = true;

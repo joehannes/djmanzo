@@ -12,13 +12,15 @@
     max: number;
     step?: number;
     label?: string;
+    /** The value in words, shown under the label. A knob with no number
+     *  beside it is a knob you cannot set to anything in particular. */
+    readout?: string;
     oninput?: (value: number) => void;
     ondblclick?: () => void;
     disabled?: boolean;
     width?: number;
     height?: number;
     orientation?: "vertical" | "horizontal";
-    theme?: any;
   }
 
   let {
@@ -28,6 +30,7 @@
     max,
     step = 0.01,
     label,
+    readout,
     oninput,
     ondblclick,
     disabled = false,
@@ -43,11 +46,11 @@
 
   let normalized = $derived((value - min) / (max - min));
   
-  let state: FaderState = $derived({
+  let shape: FaderState = $derived({
     value, min, max, normalized, dragging, disabled, width, height, orientation, label, context
   });
 
-  let renderState = $derived(executeThemePipeline(globalTheme.activePackage, state));
+  let renderState = $derived(executeThemePipeline(globalTheme.activePackage, shape));
 
   function clamp(v: number) {
     return Math.max(min, Math.min(max, v));
@@ -119,13 +122,13 @@
   onkeydown={handleKeyDown}
 >
   {#if label && orientation === "vertical"}
-    <span class="label">{label}</span>
+    <span class="label">{label}{#if readout}&nbsp;<em class="mono">{readout}</em>{/if}</span>
   {/if}
   
-  <SvgRenderer {renderState} size={Math.max(width, height)} />
+  <SvgRenderer {renderState} width={width} height={height} />
 
   {#if label && orientation === "horizontal"}
-    <span class="label">{label}</span>
+    <span class="label">{label}{#if readout}&nbsp;<em class="mono">{readout}</em>{/if}</span>
   {/if}
 </div>
 
@@ -143,12 +146,22 @@
     opacity: 0.5;
     pointer-events: none;
   }
+  .label .mono {
+    font-style: normal;
+    color: var(--text);
+  }
   .label {
     font-size: 0.75em;
     color: var(--text-dim);
     letter-spacing: 0.05em;
+    /* One line: "Filter LP 60%" broken across two lines reads as two
+       different facts, and the control below it moves when the text rewraps. */
+    white-space: nowrap;
   }
-  .fader-container:focus-visible .renderer {
-    box-shadow: 0 0 0 2px var(--accent);
+  .fader-container:focus-visible {
+    /* See SvgKnob: a child component's class cannot be styled from here. */
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 </style>

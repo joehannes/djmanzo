@@ -16,7 +16,6 @@
     onpointerdown?: (e: PointerEvent) => void;
     onpointerup?: (e: PointerEvent) => void;
     onpointerleave?: (e: PointerEvent) => void;
-    theme?: any;
   }
 
   let {
@@ -34,11 +33,11 @@
 
   let pressed = $state(false);
 
-  let state: PadState = $derived({
+  let shape: PadState = $derived({
     active, pressed, disabled, width, height, label, context
   });
 
-  let renderState = $derived(executeThemePipeline(globalTheme.activePackage, state));
+  let renderState = $derived(executeThemePipeline(globalTheme.activePackage, shape));
   
   function handlePointerDown(e: PointerEvent) {
     if (disabled) return;
@@ -83,22 +82,47 @@
   onpointercancel={handlePointerLeave}
   onkeydown={handleKeyDown}
 >
-  <SvgRenderer {renderState} size={Math.max(width, height)} />
+  <SvgRenderer {renderState} {width} {height} fill />
+  <!--
+    The label is HTML over the SVG rather than an SVG `<text>`: it inherits the
+    interface's font and colour tokens for free, and it stays legible when the
+    pad is stretched, which `preserveAspectRatio="none"` would otherwise
+    distort. Without this the transport pads rendered as four blank rectangles.
+  -->
+  {#if label}
+    <span class="label">{label}</span>
+  {/if}
 </div>
 
 <style>
   .pad-container {
-    display: inline-flex;
+    position: relative;
+    display: block;
+    width: 100%;
     user-select: none;
     cursor: pointer;
     outline: none;
+  }
+  .label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75em;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--text);
+    pointer-events: none;
   }
   .disabled {
     opacity: 0.5;
     pointer-events: none;
   }
-  .pad-container:focus-visible .renderer {
-    box-shadow: 0 0 0 2px var(--accent);
+  .pad-container:focus-visible {
+    /* See SvgKnob: a child component's class cannot be styled from here. */
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
     border-radius: 4px;
   }
 </style>

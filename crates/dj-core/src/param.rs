@@ -665,6 +665,18 @@ impl GlobalParam {
         }
     }
 
+    /// The spectral bands, in order, low to high.
+    ///
+    /// A table rather than four names spelt out wherever they are read: they
+    /// are only ever used together, and `dj_dsp::Spectrum` reports them as an
+    /// array of the same length.
+    pub const BANDS: [GlobalParam; 4] = [
+        GlobalParam::MasterBandBass,
+        GlobalParam::MasterBandLowMid,
+        GlobalParam::MasterBandHighMid,
+        GlobalParam::MasterBandTreble,
+    ];
+
     pub const COUNT: usize = 104;
 
     #[must_use]

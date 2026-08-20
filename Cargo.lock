@@ -1238,6 +1238,7 @@ name = "dj-dsp"
 version = "0.0.2"
 dependencies = [
  "dj-core",
+ "rustfft",
  "signalsmith-stretch",
 ]
 
@@ -1251,7 +1252,6 @@ dependencies = [
  "dj-decode",
  "dj-dsp",
  "rtrb",
- "rustfft",
 ]
 
 [[package]]

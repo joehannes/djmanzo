@@ -8,6 +8,7 @@
     type Layout,
     type PadPageDto,
     type SamplerState,
+    type SessionContext,
   } from "./api";
   import Fx from "./Fx.svelte";
   import Pads from "./Pads.svelte";
@@ -16,7 +17,6 @@
   import SvgKnob from "./controls/SvgKnob.svelte";
   import SvgFader from "./controls/SvgFader.svelte";
   import SvgPad from "./controls/SvgPad.svelte";
-  import * as OrganicTheme from "./controls/themes/OrganicTheme.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
 
   let {
@@ -460,14 +460,12 @@
   <div class="transport">
     <SvgPad
       {context}
-      theme={OrganicTheme}
       label="CUE"
       disabled={!enabled || !deck.loaded}
       onclick={() => send(`deck ${deck.number} cue`)}
     />
     <SvgPad
       {context}
-      theme={OrganicTheme}
       label={deck.playing ? "PAUSE" : "PLAY"}
       active={deck.playing}
       disabled={!enabled || !deck.loaded}
@@ -475,7 +473,6 @@
     />
     <SvgPad
       {context}
-      theme={OrganicTheme}
       label="SYNC"
       active={deck.synced}
       disabled={!enabled || !deck.can_sync}
@@ -483,7 +480,6 @@
     />
     <SvgPad
       {context}
-      theme={OrganicTheme}
       label="EJECT"
       disabled={!enabled || !deck.loaded}
       onclick={() => send(`deck ${deck.number} eject`)}
@@ -521,12 +517,13 @@
       <label class="band" class:killed={band.value < 0.001}>
         <SvgKnob
           {context}
-          theme={OrganicTheme}
           value={band.value}
           min={0}
           max={4}
           step={0.01}
           label={band.label}
+          readout={band.value < 0.001 ? "kill" : band.value.toFixed(2)}
+          size={46}
           disabled={!enabled}
           oninput={(val) => send(`deck ${deck.number} ${band.id} ${val}`)}
           ondblclick={() => send(`deck ${deck.number} ${band.id} 1`)}
@@ -548,12 +545,16 @@
   <label class="control">
     <SvgKnob
       {context}
-      theme={OrganicTheme}
       value={deck.filter}
       min={-1}
       max={1}
       step={0.01}
       label="Filter"
+      readout={Math.abs(deck.filter) <= 0.02
+        ? "off"
+        : deck.filter < 0
+          ? `LP ${Math.round(-deck.filter * 100)}%`
+          : `HP ${Math.round(deck.filter * 100)}%`}
       disabled={!enabled}
       size={56}
       oninput={(val) => send(`deck ${deck.number} filter ${val}`)}
@@ -565,12 +566,12 @@
   <label class="control fader-wrap">
     <SvgFader
       {context}
-      theme={OrganicTheme}
       value={deck.volume}
       min={0}
       max={1}
       step={0.01}
       label="Volume"
+      readout={deck.volume.toFixed(2)}
       disabled={!enabled}
       height={140}
       width={40}
@@ -588,12 +589,12 @@
     <label class="control fader-wrap">
       <SvgFader
         {context}
-        theme={OrganicTheme}
         value={deck.pitch}
         min={-0.16}
         max={0.16}
         step={0.001}
         label="Pitch"
+        readout={`${(deck.pitch * 100).toFixed(1)}%`}
         disabled={!enabled}
         height={140}
         width={40}
@@ -931,33 +932,34 @@
   .control {
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 0.25rem;
     font-size: 0.85em;
     color: var(--text-dim);
   }
 
-  .control em {
-    font-style: normal;
-    color: var(--text);
-  }
 
+  /* Three knobs across, as on the mixer they stand in for. The sliders these
+     replaced were stacked, which a knob cannot be without making the EQ taller
+     than the transport. */
   .eq {
     display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
+    justify-content: space-evenly;
+    align-items: flex-start;
+    gap: 0.5rem;
   }
 
   .band {
-    display: grid;
-    grid-template-columns: 1fr auto;
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.25rem;
     font-size: 0.75em;
     color: var(--text-dim);
     letter-spacing: 0.05em;
   }
 
-  .band.killed span {
+  .band.killed :global(.label) {
     color: var(--danger);
   }
 

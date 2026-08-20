@@ -469,23 +469,12 @@ impl Snapshot {
                 }
             })
             .collect();
-        let peak_left = registry.get(ParamId::Global(GlobalParam::MasterPeakLeft));
-        let peak_right = registry.get(ParamId::Global(GlobalParam::MasterPeakRight));
-        let momentary_loudness = (peak_left.max(peak_right)).clamp(0.0, 1.0);
-
-        let bass = registry.get(ParamId::Global(GlobalParam::MasterBandBass));
-        let low_mid = registry.get(ParamId::Global(GlobalParam::MasterBandLowMid));
-        let high_mid = registry.get(ParamId::Global(GlobalParam::MasterBandHighMid));
-        let treble = registry.get(ParamId::Global(GlobalParam::MasterBandTreble));
-
+        // Measured, and only measured. `session` stays `None` until M9 has
+        // something that actually reads the room -- see `dj_core::context`.
+        let bands = GlobalParam::BANDS.map(|param| registry.get(ParamId::Global(param)));
         let context = SessionContext {
-            phase: dj_core::SessionPhase::Peak,
-            environment: dj_core::EnvironmentContext::default(),
-            energy_level: 0.95,
-            audio: dj_core::AudioMetrics {
-                momentary_loudness,
-                spectral_bands: [bass, low_mid, high_mid, treble],
-            },
+            audio: dj_core::AudioMetrics::from_bands(bands),
+            session: None,
         };
 
         Self {

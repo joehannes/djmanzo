@@ -1098,3 +1098,27 @@ fn the_engine_reports_its_cpu_load() {
         "four decks should not exhaust the block budget, got {load}"
     );
 }
+
+/// The spectrum runs an FFT inside the callback, which is exactly the kind of
+/// thing that allocates if nobody checks.
+///
+/// It is covered incidentally by every test above -- the transform fires on a
+/// 512-frame hop and those tests render far more than that. This one names the
+/// property, so a change that makes `rustfft` allocate points here rather than
+/// at whichever unrelated test happens to notice first. Ten thousand blocks at
+/// 256 frames is roughly 5,000 transforms.
+#[test]
+fn the_spectrum_never_allocates() {
+    let mut rig = rig(1, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(10_000);
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "the spectral analysis allocated {allocations} times"
+    );
+}

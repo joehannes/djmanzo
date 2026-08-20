@@ -32,26 +32,20 @@
 
   let { onLogoChange, context }: { onLogoChange: () => void, context?: SessionContext } = $props();
 
-  const dummyContext: SessionContext = {
-    phase: "peak",
-    environment: {
-      venue: "indoor",
-      vibe: "energetic",
-      density: 0.8,
-      time_of_day: "night",
-      weather: "clear",
-      temperature_c: 22,
-      crowd_energy: 0.8,
-      tempo_variance: 0.05
-    },
-    energy_level: 0.5,
-    audio: {
-      momentary_loudness: 0,
-      spectral_bands: [0, 0, 0, 0]
-    }
+  /**
+   * What the previews show when this panel is opened before a device is.
+   *
+   * Silence, honestly stated, rather than a fabricated peak-time reading — the
+   * previews are for choosing a look, and a look chosen against invented data
+   * is not the look you get. Once audio flows, `context` arrives and this is
+   * never used again.
+   */
+  const silence: SessionContext = {
+    audio: { loudness: 0, bands: [0, 0, 0, 0] },
+    session: null,
   };
-  
-  let activeContext = $derived(context ?? dummyContext);
+
+  let activeContext = $derived(context ?? silence);
 
   let sources = $state<Source[]>([]);
   let library = $state<Library>({ folders: [], tracks: 0 });

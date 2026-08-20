@@ -24,7 +24,9 @@ pub mod time;
 pub mod vocabulary;
 
 pub use action::{Action, DeckAction, MixerAction};
-pub use context::{SessionContext, SessionPhase, EnvironmentContext};
+pub use context::{
+    AudioMetrics, EnvironmentContext, SessionContext, SessionPhase, SessionRead, TimeOfDay,
+};
 pub use deck::{CrossfaderAssign, DeckId, MAX_DECKS};
 pub use fx::{EffectKind, FX_SLOTS, FxChange, Placement};
 pub use hotcue::{HOT_CUE_SLOTS, LoopLimits, LoopRegion};

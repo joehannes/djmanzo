@@ -13,9 +13,8 @@ use dj_core::{
     db_to_linear,
 };
 use dj_dsp::fx::FxContext;
-use dj_dsp::{CrossfaderCurve, Limiter, PeakMeter, SmoothedValue, crossfader_gains};
+use dj_dsp::{CrossfaderCurve, Limiter, PeakMeter, SmoothedValue, Spectrum, crossfader_gains};
 use std::sync::Arc;
-use crate::analyzer::SpectralAnalyzer;
 
 /// The realtime engine.
 ///
@@ -79,8 +78,9 @@ pub struct Engine {
     /// exists to prevent. Drained on the next callback that has room.
     stranded: Vec<Retired>,
 
-    /// Realtime spectral analyzer for driving UI animations.
-    analyzer: SpectralAnalyzer,
+    /// Band energies off the master, for the interface to move to. Nothing in
+    /// the audio path reads it.
+    spectrum: Spectrum,
 }
 
 impl Engine {
@@ -130,7 +130,10 @@ impl Engine {
             cue_limiter: Limiter::new(sr),
             // Capacity for a pathological burst of loads; never grown at runtime.
             stranded: Vec::with_capacity(MAX_DECKS * 2),
-            analyzer: SpectralAnalyzer::new(1024, sr),
+            // 1024 frames of window, a transform every 512 — 94 Hz, comfortably
+            // ahead of the 60 Hz snapshot and a quarter of the work analysing
+            // every block would have been.
+            spectrum: Spectrum::new(1024, 512, sr),
         };
         let mut engine = engine;
         // Turn the starting assignments into starting gains before any audio
@@ -937,11 +940,12 @@ impl AudioCallback for Engine {
         let mut left_peak = 0.0f32;
         let mut right_peak = 0.0f32;
         for frame in out.chunks_exact(channels) {
-            let mono = (frame[main_l] + frame[main_r]) * 0.5;
-            self.analyzer.push(mono);
-
             left_peak = left_peak.max(frame[main_l].abs());
             right_peak = right_peak.max(frame[main_r].abs());
+            // Summed to mono for the spectrum: the interface wants to know what
+            // the room is hearing, and no theme has ever needed to know that the
+            // hats are panned left.
+            self.spectrum.push((frame[main_l] + frame[main_r]) * 0.5);
         }
         let left = self.peak_left.process(&[left_peak]);
         let right = self.peak_right.process(&[right_peak]);
@@ -950,12 +954,10 @@ impl AudioCallback for Engine {
         self.registry
             .set(ParamId::Global(GlobalParam::MasterPeakRight), right);
 
-        let (bass, low_mid, high_mid, treble) = self.analyzer.process_bands();
-        
-        self.registry.set(ParamId::Global(GlobalParam::MasterBandBass), bass);
-        self.registry.set(ParamId::Global(GlobalParam::MasterBandLowMid), low_mid);
-        self.registry.set(ParamId::Global(GlobalParam::MasterBandHighMid), high_mid);
-        self.registry.set(ParamId::Global(GlobalParam::MasterBandTreble), treble);
+        let bands = self.spectrum.bands();
+        for (band, param) in GlobalParam::BANDS.into_iter().enumerate() {
+            self.registry.set(ParamId::Global(param), bands[band]);
+        }
 
         // The master meter reads post-limiter, so it can never show over 0 dB
         // and cannot tell you how hard you are driving it. That is what the

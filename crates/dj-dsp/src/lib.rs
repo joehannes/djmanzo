@@ -13,6 +13,7 @@ pub mod limiter;
 pub mod meter;
 pub mod mixer;
 pub mod smooth;
+pub mod spectrum;
 
 pub use biquad::Biquad;
 pub use eq::{SweepFilter, ThreeBandEq};
@@ -23,6 +24,7 @@ pub use limiter::Limiter;
 pub use meter::PeakMeter;
 pub use mixer::{CrossfaderCurve, crossfader_gains};
 pub use smooth::SmoothedValue;
+pub use spectrum::{BANDS, Spectrum};
 
 /// Interleaved stereo audio, borrowed for the length of one callback.
 ///
