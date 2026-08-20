@@ -28,6 +28,7 @@
     addToPlaylist,
     checkFilter,
     clearTrackField,
+    defaultMusicFolder,
     editTracks,
     exportSession,
     findDuplicates,
@@ -388,10 +389,28 @@
   async function addFolder() {
     const picked = await open({ directory: true, multiple: false });
     if (typeof picked !== "string") return;
+    await scanFolder(picked);
+  }
+
+  /**
+   * The one-click first run.
+   *
+   * `null` until the backend answers, and hidden once there is anything in the
+   * collection — an offer to scan your music folder is help on a first launch
+   * and clutter on every one after it.
+   */
+  let musicFolder = $state<string | null>(null);
+  $effect(() => {
+    void defaultMusicFolder()
+      .then((found) => (musicFolder = found))
+      .catch(() => {});
+  });
+
+  async function scanFolder(path: string) {
     busy = true;
     error = null;
     try {
-      const report = await libraryAddFolder(picked);
+      const report = await libraryAddFolder(path);
       if (report.unreadable_dirs > 0) {
         error = `${report.unreadable_dirs} folder${
           report.unreadable_dirs === 1 ? "" : "s"
@@ -810,7 +829,21 @@
       {:else if status && status.pending > 0}
         Still identifying. Tracks appear here as they finish.
       {:else}
-        No music yet. Add a folder to get started.
+        {#if musicFolder && !status?.folders.length}
+          <!--
+            The one thing a first launch needs. Every operating system already
+            knows where music lives, so this is a click rather than a hunt
+            through a file dialog for a folder you did not choose the location
+            of.
+          -->
+          Nothing here yet.
+          <button class="offer" onclick={() => scanFolder(musicFolder!)} disabled={busy}>
+            Scan {musicFolder}
+          </button>
+          <span class="or">or add a folder of your own.</span>
+        {:else}
+          No music yet. Add a folder to get started.
+        {/if}
       {/if}
     </p>
   {:else}
@@ -1095,6 +1128,16 @@
 
   .hint,
   .warn,
+  /* The first-run offer: a button that reads as the obvious next thing. */
+  .offer {
+    margin: 0 0.35rem;
+    font-weight: 600;
+  }
+
+  .or {
+    color: var(--text-dim);
+  }
+
   .empty {
     margin: 0;
     font-size: 0.85em;

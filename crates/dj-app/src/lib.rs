@@ -333,6 +333,7 @@ pub fn run() {
             sources::clear_secret,
             sources::secrets_persist,
             sources::add_music_folder,
+            sources::default_music_folder,
             sources::remove_music_folder,
             sources::music_library,
             sources::search_sources,

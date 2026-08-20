@@ -185,6 +185,25 @@ pub fn add_music_folder(state: State<'_, AppState>, path: String) -> Result<usiz
     Ok(state.sources().local().add_root(path))
 }
 
+/// Where this platform keeps music, if the folder is actually there.
+///
+/// A first launch with an empty collection is the most common way somebody
+/// sees djmanzo, and "Add a folder" asks them to go and find one before
+/// anything works. Every operating system already knows where music lives —
+/// `~/Music` on macOS, `$XDG_MUSIC_DIR` on Linux — so the first run can offer
+/// it by name and be one click instead of a file dialog.
+///
+/// `None` rather than a guess when the folder does not exist: offering to scan
+/// a directory that is not there would fail on the click, which is worse than
+/// not offering.
+#[tauri::command]
+#[must_use]
+pub fn default_music_folder(app: tauri::AppHandle) -> Option<String> {
+    use tauri::Manager;
+    let found = app.path().audio_dir().ok()?;
+    found.is_dir().then(|| found.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 pub fn remove_music_folder(state: State<'_, AppState>, path: String) {
     state.sources().local().remove_root(PathBuf::from(path));

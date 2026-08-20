@@ -612,6 +612,13 @@ export const setSecret = (id: string, value: string) =>
 export const clearSecret = (id: string) => invoke<void>("clear_secret", { id });
 export const secretsPersist = () => invoke<boolean>("secrets_persist");
 
+/**
+ * Where this platform keeps music, when the folder is actually there.
+ *
+ * `null` rather than a guess: offering to scan a directory that does not exist
+ * would fail on the click, which is worse than not offering.
+ */
+export const defaultMusicFolder = () => invoke<string | null>("default_music_folder");
 export const addMusicFolder = (path: string) =>
   invoke<number>("add_music_folder", { path });
 export const removeMusicFolder = (path: string) =>

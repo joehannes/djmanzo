@@ -9,6 +9,12 @@
   import Shortcuts from "./Shortcuts.svelte";
   import { Keyboard } from "./keyboard.svelte";
   import { watchFrameRate } from "./framerate";
+  import {
+    deviceMissing,
+    deviceToOpen,
+    readAudioPreference,
+    writeAudioPreference,
+  } from "./audiopref";
   import { publishAudio } from "./audiovars.svelte";
   import { fill } from "./meter";
   import {
@@ -43,15 +49,34 @@
     type Snapshot,
   } from "./api";
 
+  const remembered = readAudioPreference();
+
   let devices = $state<Device[]>([]);
-  let selectedDevice = $state<string | null>(null);
+  let selectedDevice = $state<string | null>(remembered.device);
   /**
    * A second sound card for the headphone cue. Null means "keep it on the main
    * device", which is always better when that device has the channels — two
    * cards means two clocks, and a resampler between them.
    */
-  let selectedCueDevice = $state<string | null>(null);
-  let bufferFrames = $state(256);
+  let selectedCueDevice = $state<string | null>(remembered.cue);
+  let bufferFrames = $state(remembered.bufferFrames);
+  /**
+   * The sound card the DJ chose last time, when it is not here any more.
+   *
+   * Said out loud rather than silently falling back: "playing through the
+   * laptop speakers because your interface is not plugged in" and "playing
+   * through the laptop speakers because that is what you chose" look
+   * identical, and only one of them is a surprise.
+   */
+  let missingDevice = $state<string | null>(null);
+  /**
+   * Whether the launch connection has been attempted.
+   *
+   * Once, not on every device-list refresh: a DJ who deliberately disconnected
+   * should not be reconnected behind their back the next time the list is
+   * polled.
+   */
+  let connectedOnce = false;
   let active = $state<ActiveDevice | null>(null);
   let error = $state<string | null>(null);
   let snapshot = $state<Snapshot | null>(null);
@@ -347,7 +372,13 @@
   async function refreshDevices() {
     try {
       devices = await listDevices();
-      selectedDevice ??= devices.find((d) => d.is_default)?.id ?? devices[0]?.id ?? null;
+      if (deviceMissing(remembered.device, devices)) {
+        missingDevice = remembered.device;
+      }
+      selectedDevice = deviceToOpen(selectedDevice, devices);
+      // A headphone device that has been unplugged would fail the open and
+      // take the master down with it, so it is dropped rather than carried.
+      if (deviceMissing(selectedCueDevice, devices)) selectedCueDevice = null;
       error = null;
     } catch (e) {
       error = String(e);
@@ -358,11 +389,36 @@
     try {
       active = await openDevice(selectedDevice, selectedCueDevice, bufferFrames);
       error = null;
+      // Remembered only on success. Storing a device that failed to open would
+      // make the failure permanent across restarts.
+      writeAudioPreference({
+        device: selectedDevice,
+        cue: selectedCueDevice,
+        bufferFrames,
+      });
+      missingDevice = null;
     } catch (e) {
       error = String(e);
       active = null;
     }
   }
+
+  /**
+   * Open the sound card on launch.
+   *
+   * A DJ opening djmanzo expects it to make sound. Waiting to be told to
+   * connect meant loading a track and pressing play did nothing, with no
+   * visible reason — the interface looks the same connected or not. Every
+   * other DJ application opens the default output on launch.
+   *
+   * Guarded so it happens once: a later refresh of the device list must not
+   * reconnect a device the DJ deliberately closed.
+   */
+  $effect(() => {
+    if (connectedOnce || devices.length === 0 || active !== null) return;
+    connectedOnce = true;
+    void connect();
+  });
 
   async function send(action: string) {
     try {
@@ -606,6 +662,20 @@
 
   {#if error}
     <p class="error">{error}</p>
+  {/if}
+
+  <!--
+    The sound card from last time, not here any more. Silently falling back
+    would look identical to having chosen the laptop speakers on purpose, and
+    only one of those is a surprise.
+  -->
+  {#if missingDevice}
+    <p class="warning">
+      The sound card you used last time is not here. Playing through
+      <strong>{devices.find((d) => d.id === selectedDevice)?.name ?? "the default output"}</strong>
+      instead — plug the other one in and press Reconnect.
+      <button class="inline" onclick={() => (missingDevice = null)}>Dismiss</button>
+    </p>
   {/if}
 
   <!--
@@ -1226,6 +1296,13 @@
 
   .waiting {
     color: var(--text-dim);
+  }
+
+  /* A dismiss that sits inside its own sentence rather than beside it. */
+  .inline {
+    margin-left: 0.4rem;
+    padding: 0.05rem 0.4rem;
+    font-size: 0.7rem;
   }
 
   .warning {
