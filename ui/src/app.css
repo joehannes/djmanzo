@@ -231,6 +231,38 @@ button.on {
 
 /* Somebody in a booth may well have this on, and an instrument is exactly the
    kind of interface where unnecessary movement is worst. Honour it fully. */
+/*
+ * The audio's resting values.
+ *
+ * Declared here so a control renders sensibly before any audio has flowed, and
+ * so the whole vocabulary is written down in one place. `audiovars.svelte.ts`
+ * overwrites these on the root element once per snapshot; nothing else should
+ * write them.
+ */
+:root {
+  --audio-loudness: 0;
+  --audio-bass: 0;
+  --audio-low-mid: 0;
+  --audio-high-mid: 0;
+  --audio-treble: 0;
+  --audio-energy: 0;
+  --audio-hue: 220;
+}
+
+/*
+ * The industrial theme's jitter.
+ *
+ * Amplitude rather than a threshold: the animation always runs and its size is
+ * `--glitch`, which the theme sets from the treble. Below a hat it is zero
+ * pixels and therefore invisible, and no JavaScript decides anything per frame.
+ * `steps()` because a glitch that eases is not a glitch.
+ */
+@keyframes djmanzo-glitch {
+  0% { translate: calc(var(--glitch, 0px) * -1) var(--glitch, 0px); }
+  50% { translate: var(--glitch, 0px) calc(var(--glitch, 0px) * -1); }
+  100% { translate: calc(var(--glitch, 0px) * -1) 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

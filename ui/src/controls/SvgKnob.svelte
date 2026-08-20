@@ -1,12 +1,10 @@
 <script lang="ts">
-  import type { SessionContext } from "../api";
   import type { KnobState } from "./grammar";
   import { theme as globalTheme } from "../theme.svelte";
   import { executeThemePipeline } from "./themes/engine";
   import SvgRenderer from "./SvgRenderer.svelte";
 
   interface Props {
-    context: SessionContext;
     value: number;
     min: number;
     max: number;
@@ -24,7 +22,6 @@
   }
 
   let {
-    context,
     value,
     min,
     max,
@@ -45,7 +42,7 @@
   let angle = $derived(-135 + normalized * 270);
   
   let shape: KnobState = $derived({
-    value, min, max, normalized, angle, dragging, disabled, size, label, context
+    value, min, max, normalized, angle, dragging, disabled, size, label
   });
 
   let renderState = $derived(executeThemePipeline(globalTheme.activePackage, shape));

@@ -7,6 +7,7 @@
   import Sampler from "./Sampler.svelte";
   import Settings from "./Settings.svelte";
   import { watchFrameRate } from "./framerate";
+  import { publishAudio } from "./audiovars.svelte";
   import {
     chooseLayout,
     chosenLayout,
@@ -252,6 +253,17 @@
     do — see `tierFor`. `slowFrames` is already the probe's verdict, so the
     demotion costs nothing new.
   */
+  /*
+    The audio goes to CSS, not into the controls.
+
+    One property write per snapshot, inherited by every control on screen, in
+    place of rewriting a stroke on every path of every knob sixty times a
+    second. See `audiovars.svelte.ts` for the measurement this follows from.
+  */
+  $effect(() => {
+    publishAudio(snapshot?.context);
+  });
+
   const reducedMotion = prefersStillness();
   const tier = $derived(tierFor(slowFrames, reducedMotion));
 
@@ -269,9 +281,23 @@
   // Watch our own frame rate. On a machine where the webview has no accelerated
   // compositing the waveform drops to ~16 fps with nothing to indicate why --
   // see the benchmark in ADR-0004. Better to say so than to look broken.
-  $effect(() => watchFrameRate((health) => {
-    slowFrames = health.degraded ? health.fps : null;
-  }));
+  //
+  // The banner's *appearance* is edge-triggered, so a single hitch does not
+  // flash it. The number in it is not: it comes from `onSample`, once a second,
+  // for as long as the banner is up. Driving both from `onChange` meant the
+  // figure was whatever it had been at the moment things first went bad and
+  // never moved again — so an interface that recovered from 4 fps to 30 went on
+  // claiming 4, and one that got worse went on claiming it was fine.
+  $effect(() =>
+    watchFrameRate(
+      (health) => {
+        slowFrames = health.degraded ? health.fps : null;
+      },
+      (health) => {
+        if (slowFrames !== null) slowFrames = health.fps;
+      },
+    ),
+  );
 
   async function refreshDevices() {
     try {
@@ -539,7 +565,6 @@
       {#each snapshot.decks.slice(0, deckCount) as deck (deck.number)}
         <Deck
           {deck}
-          context={snapshot.context}
           sampler={snapshot.master.sampler}
           enabled={ready}
           cueAvailable={snapshot.master.cue_available}
@@ -725,7 +750,7 @@
           <Sampler sampler={snapshot.master.sampler} enabled={ready} {send} />
         {/if}
       {:else}
-        <Settings onLogoChange={refreshLogo} context={snapshot?.context} />
+        <Settings onLogoChange={refreshLogo} />
       {/if}
     </div>
   {/if}

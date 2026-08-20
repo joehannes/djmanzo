@@ -1,6 +1,12 @@
 import type { Snippet } from "svelte";
-import type { SessionContext } from "../api";
 
+/**
+ * What a control looks like right now.
+ *
+ * Deliberately carries no audio. The live signal reaches a control through CSS
+ * custom properties instead — see `audiovars.svelte.ts` — so that geometry
+ * recomputes when the *control* changes rather than sixty times a second.
+ */
 export interface KnobState {
   value: number;
   min: number;
@@ -11,7 +17,6 @@ export interface KnobState {
   disabled: boolean;
   size: number;
   label?: string;
-  context: SessionContext;
 }
 
 export interface FaderState {
@@ -25,7 +30,6 @@ export interface FaderState {
   height: number;
   orientation: "vertical" | "horizontal";
   label?: string;
-  context: SessionContext;
 }
 
 export interface PadState {
@@ -35,7 +39,6 @@ export interface PadState {
   width: number;
   height: number;
   label?: string;
-  context: SessionContext;
 }
 
 /**

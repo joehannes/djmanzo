@@ -47,7 +47,7 @@
         stroke-width={path.strokeWidth}
         stroke-linecap="round"
         vector-effect="non-scaling-stroke"
-        style={path.style}
+        style="--sw: {path.strokeWidth}px; {path.style ?? ''}"
         transform={path.transform}
       />
     {/each}

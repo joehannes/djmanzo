@@ -1,12 +1,10 @@
 <script lang="ts">
-  import type { SessionContext } from "../api";
   import type { KnobState } from "./grammar";
   import { theme as globalTheme } from "../theme.svelte";
   import { executeThemePipeline } from "./themes/engine";
   import SvgRenderer from "./SvgRenderer.svelte";
 
   interface Props {
-    context: SessionContext;
     value: number; // For playhead mapping (e.g. 0 to 1 loop, or infinite accumulating angle)
     size?: number;
     disabled?: boolean;
@@ -14,7 +12,6 @@
   }
 
   let {
-    context,
     value,
     size = 150,
     disabled = false,
@@ -26,7 +23,7 @@
   
   // A fake state wrapper, since the Engine primarily expects KnobState for rotaries.
   let shape: KnobState = $derived({
-    value, min: 0, max: 1, normalized: value % 1, angle: (value % 1) * 360, dragging, disabled, size, label: "JOG", context
+    value, min: 0, max: 1, normalized: value % 1, angle: (value % 1) * 360, dragging, disabled, size, label: "JOG"
   });
 
   let renderState = $derived(executeThemePipeline(globalTheme.activePackage, shape));

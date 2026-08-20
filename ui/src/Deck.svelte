@@ -8,7 +8,6 @@
     type Layout,
     type PadPageDto,
     type SamplerState,
-    type SessionContext,
   } from "./api";
   import Fx from "./Fx.svelte";
   import Pads from "./Pads.svelte";
@@ -21,7 +20,6 @@
 
   let {
     deck,
-    context,
     /** The sampler, for the pad page whose pads are not about this deck. */
     sampler,
     enabled,
@@ -29,7 +27,6 @@
     layout = null,
   }: {
     deck: DeckState;
-    context: SessionContext;
     sampler: SamplerState;
     enabled: boolean;
     cueAvailable?: boolean;
@@ -459,27 +456,23 @@
 
   <div class="transport">
     <SvgPad
-      {context}
       label="CUE"
       disabled={!enabled || !deck.loaded}
       onclick={() => send(`deck ${deck.number} cue`)}
     />
     <SvgPad
-      {context}
       label={deck.playing ? "PAUSE" : "PLAY"}
       active={deck.playing}
       disabled={!enabled || !deck.loaded}
       onclick={() => send(`deck ${deck.number} play_pause`)}
     />
     <SvgPad
-      {context}
       label="SYNC"
       active={deck.synced}
       disabled={!enabled || !deck.can_sync}
       onclick={() => send(`deck ${deck.number} ${deck.synced ? "sync_off" : "sync"}`)}
     />
     <SvgPad
-      {context}
       label="EJECT"
       disabled={!enabled || !deck.loaded}
       onclick={() => send(`deck ${deck.number} eject`)}
@@ -516,7 +509,6 @@
     {#each [{ id: "eq_high", label: "HI", value: deck.eq_high }, { id: "eq_mid", label: "MID", value: deck.eq_mid }, { id: "eq_low", label: "LOW", value: deck.eq_low }] as band (band.id)}
       <label class="band" class:killed={band.value < 0.001}>
         <SvgKnob
-          {context}
           value={band.value}
           min={0}
           max={4}
@@ -544,7 +536,6 @@
   {#if showFilter}
   <label class="control">
     <SvgKnob
-      {context}
       value={deck.filter}
       min={-1}
       max={1}
@@ -565,7 +556,6 @@
 
   <label class="control fader-wrap">
     <SvgFader
-      {context}
       value={deck.volume}
       min={0}
       max={1}
@@ -588,7 +578,6 @@
   <div class="pitch-row">
     <label class="control fader-wrap">
       <SvgFader
-        {context}
         value={deck.pitch}
         min={-0.16}
         max={0.16}

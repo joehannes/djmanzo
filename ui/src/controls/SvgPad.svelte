@@ -1,12 +1,10 @@
 <script lang="ts">
-  import type { SessionContext } from "../api";
   import type { PadState } from "./grammar";
   import { theme as globalTheme } from "../theme.svelte";
   import { executeThemePipeline } from "./themes/engine";
   import SvgRenderer from "./SvgRenderer.svelte";
 
   interface Props {
-    context: SessionContext;
     active?: boolean;
     disabled?: boolean;
     label?: string;
@@ -19,7 +17,6 @@
   }
 
   let {
-    context,
     active = false,
     disabled = false,
     label,
@@ -34,7 +31,7 @@
   let pressed = $state(false);
 
   let shape: PadState = $derived({
-    active, pressed, disabled, width, height, label, context
+    active, pressed, disabled, width, height, label
   });
 
   let renderState = $derived(executeThemePipeline(globalTheme.activePackage, shape));

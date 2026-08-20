@@ -1,12 +1,10 @@
 <script lang="ts">
-  import type { SessionContext } from "../api";
   import type { FaderState } from "./grammar";
   import { theme as globalTheme } from "../theme.svelte";
   import { executeThemePipeline } from "./themes/engine";
   import SvgRenderer from "./SvgRenderer.svelte";
 
   interface Props {
-    context: SessionContext;
     value: number;
     min: number;
     max: number;
@@ -24,7 +22,6 @@
   }
 
   let {
-    context,
     value,
     min,
     max,
@@ -47,7 +44,7 @@
   let normalized = $derived((value - min) / (max - min));
   
   let shape: FaderState = $derived({
-    value, min, max, normalized, dragging, disabled, width, height, orientation, label, context
+    value, min, max, normalized, dragging, disabled, width, height, orientation, label
   });
 
   let renderState = $derived(executeThemePipeline(globalTheme.activePackage, shape));

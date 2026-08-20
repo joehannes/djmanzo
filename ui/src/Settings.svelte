@@ -26,26 +26,11 @@
   } from "./api";
   import { theme, type ThemePreference } from "./theme.svelte";
   import { performance, type PerformanceLevel } from "./performance.svelte";
-  import type { SessionContext } from "./api";
   import SvgPad from "./controls/SvgPad.svelte";
   import { themePackages } from "./controls/themes/packages";
 
-  let { onLogoChange, context }: { onLogoChange: () => void, context?: SessionContext } = $props();
+  let { onLogoChange }: { onLogoChange: () => void } = $props();
 
-  /**
-   * What the previews show when this panel is opened before a device is.
-   *
-   * Silence, honestly stated, rather than a fabricated peak-time reading — the
-   * previews are for choosing a look, and a look chosen against invented data
-   * is not the look you get. Once audio flows, `context` arrives and this is
-   * never used again.
-   */
-  const silence: SessionContext = {
-    audio: { loudness: 0, bands: [0, 0, 0, 0] },
-    session: null,
-  };
-
-  let activeContext = $derived(context ?? silence);
 
   let sources = $state<Source[]>([]);
   let library = $state<Library>({ folders: [], tracks: 0 });
@@ -170,7 +155,6 @@
       {#each [{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }, { id: "system", label: "Follow system" }] as option (option.id)}
         <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; width: 80px;">
           <SvgPad
-            context={activeContext}
             width={80}
             height={50}
             active={theme.preference === option.id}
@@ -197,7 +181,6 @@
       {#each themePackages as pkg (pkg.id)}
         <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; width: 100px;">
           <SvgPad
-            context={activeContext}
             width={100}
             height={50}
             active={theme.activePackage.id === pkg.id}
@@ -218,7 +201,6 @@
       {#each [{ id: "Auto", label: "Auto (Detect)" }, { id: "Ultra", label: "Ultra (Full FX)" }, { id: "Balanced", label: "Balanced" }, { id: "Eco", label: "Eco (Static)" }] as option (option.id)}
         <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; width: 90px;">
           <SvgPad
-            context={activeContext}
             width={90}
             height={50}
             active={performance.preference === option.id}

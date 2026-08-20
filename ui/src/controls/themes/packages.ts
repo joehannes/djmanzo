@@ -1,4 +1,3 @@
-import type { SessionContext } from "../../api";
 import {
   type ThemePackage,
   type BehaviorModifier,
@@ -10,56 +9,64 @@ import {
 
 export type { ThemePackage } from "./engine";
 
-/**
- * How hard the room is going, as far as anything actually knows.
- *
- * `session` is null until M9 reads the room, so a theme keyed to energy falls
- * back to the loudness it can measure. That keeps the interface moving to the
- * music without claiming to know anything about the night — see
- * `dj_core::context`.
- */
-function energyOf(context: SessionContext): number {
-  return context.session?.energy ?? context.audio.loudness;
-}
+// -----------------------------------------------------------------------------
+// A note on how these move
+// -----------------------------------------------------------------------------
+//
+// None of the behaviours below read the audio. They emit *static* CSS that
+// refers to the custom properties `audiovars.svelte.ts` writes on the root
+// element once per snapshot.
+//
+// That is the whole performance story. The first version read `SessionContext`
+// here and rewrote `stroke` and `stroke-width` on every path of every control
+// sixty times a second — a few hundred animating DOM elements, which is the
+// exact workload the living-interface benchmark measured collapsing to 18.6 fps
+// on the no-GPU floor. Because the output no longer varies with the audio, the
+// pipeline's result is stable between user gestures, Svelte writes nothing, and
+// the motion happens in the style system off one property change.
 
 // -----------------------------------------------------------------------------
 // CORE BEHAVIORS
 // -----------------------------------------------------------------------------
 
-export const AudioReactiveStroke: BehaviorModifier = (render, state, perf) => {
+export const AudioReactiveStroke: BehaviorModifier = (render, _state, perf) => {
   if (perf === "Eco") return render;
-
-  const energy = energyOf(state.context);
 
   return decorate(render, (path) => ({
     ...path,
-    stroke: `hsl(${220 - energy * 180}, 80%, 60%)`,
-    strokeWidth: path.strokeWidth + energy * 4,
-    style: "transition: stroke 0.1s linear, stroke-width 0.1s linear;",
+    stroke: "hsl(var(--audio-hue, 220) 80% 60%)",
+    // `stroke-width` is an attribute, so the CSS custom property has to reach it
+    // through the `stroke-width` *property*, which wins over the attribute.
+    style: "stroke-width: calc(var(--sw, 2px) + var(--audio-energy, 0) * 4px); transition: stroke 0.1s linear;",
   }));
 };
 
-export const AudioReactiveGlitch: BehaviorModifier = (render, state, perf) => {
+/**
+ * Jitter on the hats.
+ *
+ * A container transform rather than a per-path one, and an amplitude rather
+ * than a threshold: the animation always runs, and its size is
+ * `var(--audio-treble)`, so it is invisible until there is treble and needs no
+ * per-frame decision in JavaScript. The first version called `Math.random()`
+ * once per path per frame, which meant new `transform` attributes on every path
+ * of every control on screen.
+ */
+export const AudioReactiveGlitch: BehaviorModifier = (render, _state, perf) => {
   if (perf === "Eco") return render;
-  
-  const treble = state.context.audio.bands[3];
-  if (treble < 0.3) return render; // Only glitch on loud hi-hats/cymbals
 
-  return decorate(render, (path) => ({
-    ...path,
-    transform: `translate(${(Math.random() - 0.5) * 10}px, ${(Math.random() - 0.5) * 10}px)`,
-  }));
-};
-
-export const TimeReactivePulse: BehaviorModifier = (render, state, perf) => {
-  if (perf === "Eco") return render;
-  
-  const bass = state.context.audio.bands[0];
-  
-  // Use CSS transform scale based on bass for hardware accelerated pulsing
   return {
     ...render,
-    containerStyle: `${render.containerStyle}; transform: scale(${1 + bass * 0.15}); transform-origin: center; transition: transform 0.05s ease-out;`
+    containerStyle: `${render.containerStyle}; animation: djmanzo-glitch 0.12s steps(2, end) infinite; --glitch: calc(var(--audio-treble, 0) * 4px);`,
+  };
+};
+
+/** Swelling on the kick. `transform` and nothing else, so the compositor has it. */
+export const TimeReactivePulse: BehaviorModifier = (render, _state, perf) => {
+  if (perf === "Eco") return render;
+
+  return {
+    ...render,
+    containerStyle: `${render.containerStyle}; transform: scale(calc(1 + var(--audio-bass, 0) * 0.15)); transform-origin: center; transition: transform 0.05s ease-out;`,
   };
 };
 
@@ -69,36 +76,38 @@ export const TimeReactivePulse: BehaviorModifier = (render, state, perf) => {
 
 export const NeonGlow: EffectProcessor = (render, _state, perf) => {
   if (perf === "Eco" || perf === "Balanced") return render; // Too heavy for Balanced
-  
+
   return {
     ...render,
-    containerStyle: `${render.containerStyle}; filter: drop-shadow(0 0 8px var(--accent-2));`
+    containerStyle: `${render.containerStyle}; filter: drop-shadow(0 0 8px var(--accent-2));`,
   };
 };
 
-export const ChromaticAberration: EffectProcessor = (render, state, perf) => {
+/**
+ * An RGB fringe that widens with the treble.
+ *
+ * The fringes are always present and always the same paths; only their offset
+ * moves, and it moves in CSS. Emitting them conditionally changed the path
+ * count between frames, which is the most expensive thing a list can do.
+ *
+ * Only the body is fringed: a chromatic ghost of the value indicator is a knob
+ * that appears to point three ways at once.
+ */
+export const ChromaticAberration: EffectProcessor = (render, _state, perf) => {
   if (perf !== "Ultra") return render;
-  
-  const treble = state.context.audio.bands[3];
-  if (treble < 0.2) return render;
 
-  // Fringes behind the real paths, offset either way. Only the body is
-  // fringed: a chromatic ghost of the value indicator is a knob that appears
-  // to be pointing three ways at once.
   const fringes = render.paths
     .filter((path) => path.role !== "value")
     .flatMap((path) => [
       {
         ...path,
         stroke: "red",
-        style: "mix-blend-mode: screen;",
-        transform: `translate(${treble * 5}px, 0)`,
+        style: "mix-blend-mode: screen; translate: calc(var(--audio-treble, 0) * 5px) 0;",
       },
       {
         ...path,
         stroke: "cyan",
-        style: "mix-blend-mode: screen;",
-        transform: `translate(${-treble * 5}px, 0)`,
+        style: "mix-blend-mode: screen; translate: calc(var(--audio-treble, 0) * -5px) 0;",
       },
     ]);
 
@@ -109,7 +118,7 @@ export const ExclusionBlend: EffectProcessor = (render, _state, perf) => {
   if (perf === "Eco") return render;
   return {
     ...render,
-    containerStyle: `${render.containerStyle}; mix-blend-mode: exclusion;`
+    containerStyle: `${render.containerStyle}; mix-blend-mode: exclusion;`,
   };
 };
 
