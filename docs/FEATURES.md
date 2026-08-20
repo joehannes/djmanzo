@@ -170,7 +170,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 |---|---|
 | Layout presets: Starter · Essentials · Pro · Performance | M3 |
 | Skin system (CSS themes + JSON layouts) | M3 |
-| Multi-monitor / detachable panels | M5 |
+| Multi-monitor / detachable panels | M5 — done |
 | Configurable waveform and jog appearance | M3 |
 | Light and dark themes | M1 |
 

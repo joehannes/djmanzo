@@ -110,6 +110,92 @@ pub fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceDto>, String
         .collect())
 }
 
+/// A panel that can be given a window of its own.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PanelDto {
+    /// The name used in the window label and in the URL.
+    pub id: String,
+    pub title: String,
+    pub detached: bool,
+}
+
+/// Which panels can be detached, and which are.
+#[tauri::command]
+pub fn list_panels(state: State<'_, AppState>) -> Vec<PanelDto> {
+    let detached = state.detached();
+    crate::monitors::Panel::ALL
+        .into_iter()
+        .map(|panel| PanelDto {
+            id: panel.slug().to_owned(),
+            title: panel.title().to_owned(),
+            detached: detached.contains(panel),
+        })
+        .collect()
+}
+
+/// Give a panel a window of its own.
+///
+/// The window is opened and nothing else: where it goes is the desktop's
+/// business. See `crate::monitors` for why djmanzo never asks how many screens
+/// there are.
+///
+/// # Errors
+/// When the panel name is not one of the six, or the window will not open.
+#[tauri::command]
+pub fn detach_panel(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    panel: String,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let panel = crate::monitors::Panel::parse(&panel)
+        .ok_or_else(|| format!("no panel called {panel:?}"))?;
+    let label = panel.label();
+
+    // Already open: bring it forward rather than opening a second one. A DJ
+    // pressing the button twice has lost the window behind something, and
+    // another identical window is not what they wanted.
+    if let Some(existing) = app.get_webview_window(&label) {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+
+    let (width, height) = panel.size();
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        &label,
+        tauri::WebviewUrl::App(format!("index.html?panel={}", panel.slug()).into()),
+    )
+    .title(panel.title())
+    .inner_size(width, height)
+    .min_inner_size(320.0, 240.0)
+    .resizable(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    state.detach_panel(panel);
+    Ok(())
+}
+
+/// Bring a panel back into the main window.
+#[tauri::command]
+pub fn attach_panel(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    panel: String,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let panel = crate::monitors::Panel::parse(&panel)
+        .ok_or_else(|| format!("no panel called {panel:?}"))?;
+    if let Some(window) = app.get_webview_window(&panel.label()) {
+        let _ = window.close();
+    }
+    state.attach_panel(panel);
+    Ok(())
+}
+
 /// A CLAP plugin found on disk, before anything is loaded.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

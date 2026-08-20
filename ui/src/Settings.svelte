@@ -8,6 +8,7 @@
    * cannot drift apart and leave the interface promising something the engine
    * refuses.
    */
+  import Screens from "./Screens.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import {
     addMusicFolder,
@@ -140,7 +141,15 @@
   {/if}
 
   <!--
-    Appearance and branding first: these are the two settings that change what
+    Screens first, because it is the one setting that changes the shape of the
+    whole application rather than a detail inside it.
+  -->
+  <div class="block">
+    <Screens />
+  </div>
+
+  <!--
+    Appearance and branding next: these are the two settings that change what
     the DJ looks at all night.
   -->
   <div class="block">

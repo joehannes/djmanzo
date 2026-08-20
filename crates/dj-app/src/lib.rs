@@ -29,6 +29,7 @@ pub mod grid;
 pub mod host;
 pub mod layout;
 pub mod library;
+pub mod monitors;
 pub mod persist;
 pub mod plugins;
 pub mod presets;
@@ -293,6 +294,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_devices,
             commands::list_inputs,
+            commands::list_panels,
+            commands::detach_panel,
+            commands::attach_panel,
             commands::list_plugins,
             commands::plugin_state,
             commands::load_plugin,

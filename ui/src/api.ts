@@ -619,6 +619,29 @@ export const loadPlugin = (path: string, pluginId?: string) =>
 
 export const clearPlugin = () => invoke<void>("clear_plugin");
 
+/** A panel that can be given a window of its own. */
+export interface PanelInfo {
+  id: string;
+  title: string;
+  detached: boolean;
+}
+
+export const listPanels = () => invoke<PanelInfo[]>("list_panels");
+
+/**
+ * Give a panel a window of its own.
+ *
+ * The window is opened and nothing else: where it goes is the desktop's
+ * business. djmanzo never asks how many screens there are — every attempt to
+ * be cleverer than that ends with an application that puts a panel on a
+ * projector.
+ */
+export const detachPanel = (panel: string) =>
+  invoke<void>("detach_panel", { panel });
+
+export const attachPanel = (panel: string) =>
+  invoke<void>("attach_panel", { panel });
+
 /**
  * Open the output.
  *

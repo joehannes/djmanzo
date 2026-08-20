@@ -617,7 +617,24 @@ adding a new controller requires editing a file, not rebuilding the app.
   thread, sizes rewritten every five seconds so a crash costs seconds rather than the file.
   A disk that cannot keep up loses samples and the interface says how many, because the
   audio thread will not wait for it. Icecast/Shoutcast broadcast still to come.
-- Multi-monitor / detachable panels.
+- **Multi-monitor / detachable panels** — done. A DJ with two screens does not want a
+  different arrangement on each; they want the same interface, spread out. So a panel is not
+  moved by changing a layout — it is taken out of the main window and given one of its own,
+  which the desktop's own window management then puts wherever it is dragged. Six panels can
+  go: browser, waveforms, effects, sampler, assistant, watershed.
+
+  djmanzo never asks how many screens there are, never positions a window on one, and never
+  has to cope with one being unplugged mid-set. It opens a window; the desktop decides where
+  windows go. Every attempt to be cleverer than that ends with an application that puts a
+  panel on a projector — which is also why *which* panels are detached is remembered and
+  *where* they were is not. A saved position is wrong the moment a screen is unplugged, and
+  restoring one onto a monitor that is no longer there is how a panel ends up invisible with
+  no way to get it back.
+
+  A detached window is the same application: same state, same action bus, same snapshot.
+  Tauri's `emit` reaches every window, so a detached waveform is drawn from exactly the same
+  sixty-times-a-second stream the main window draws from, and there is no second path to
+  keep in step.
 
 ### Slip, reverse and censor
 

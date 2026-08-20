@@ -148,6 +148,8 @@ pub struct AppState {
     deck_tracks: Arc<Mutex<HashMap<u8, LoadedTrackInfo>>>,
     /// Controllers and the keyboard. See [`crate::control`].
     control: Arc<crate::control::ControlHub>,
+    /// Which panels are on screens of their own. See [`crate::monitors`].
+    detached: Arc<Mutex<crate::monitors::Detached>>,
     /// The master's plugin insert. See [`crate::plugins`].
     ///
     /// A handle rather than the thing itself: a CLAP plugin instance is `!Send`
@@ -275,6 +277,7 @@ impl AppState {
             identifier: Mutex::new(None),
             deck_tracks: Arc::new(Mutex::new(HashMap::new())),
             control: Arc::new(control),
+            detached: Arc::new(Mutex::new(crate::monitors::Detached::default())),
             plugin,
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             control_inbox: Mutex::new(Some(control_inbox)),
@@ -722,6 +725,24 @@ impl AppState {
     #[must_use]
     pub fn bridge_handle(&self) -> Arc<Mutex<Option<Arc<dj_audio::BridgeStats>>>> {
         Arc::clone(&self.bridge)
+    }
+
+    /// Which panels are on screens of their own.
+    #[must_use]
+    pub fn detached(&self) -> crate::monitors::Detached {
+        self.detached.lock().map(|d| d.clone()).unwrap_or_default()
+    }
+
+    pub fn detach_panel(&self, panel: crate::monitors::Panel) {
+        if let Ok(mut detached) = self.detached.lock() {
+            detached.add(panel);
+        }
+    }
+
+    pub fn attach_panel(&self, panel: crate::monitors::Panel) {
+        if let Ok(mut detached) = self.detached.lock() {
+            detached.remove(panel);
+        }
     }
 
     /// The master's plugin insert. See [`crate::plugins`].
