@@ -1,0 +1,473 @@
+# The keyboard djmanzo ships with.
+#
+# Designed for a laptop with no controller plugged in — which is how most
+# people will open this for the first time, and how a lot of DJs actually
+# practise. Two decks, one under each hand, laid out so the two halves mirror
+# each other: whatever the left hand does to deck 1, the right hand does the
+# same distance from home position to deck 2.
+#
+#     1 2 3 4                    7 8 9 0     hot cues
+#     Q W E R                    U I O P     beat jump, loop
+#     A S D F        G  H        J K L ;     transport, roll
+#     Z X C V                    M , . /     EQ kills, brake
+#
+# Keys are named by position, not by the character they produce, so the layout
+# holds on an AZERTY or QWERTZ keyboard. See the module documentation in
+# `keys.rs` for why.
+#
+# Command chords are deliberately unused. On a Mac they belong to the menu bar,
+# and a mapping that took Cmd-Q would quit the application mid-set.
+
+name = "Default keyboard"
+
+# ---------------------------------------------------------------- transport
+
+[[key]]
+on = "Space"
+press = "deck 1 play_pause"
+label = "Play / pause deck 1"
+group = "Transport"
+
+[[key]]
+on = "shift+Space"
+press = "deck 2 play_pause"
+label = "Play / pause deck 2"
+group = "Transport"
+
+[[key]]
+on = "KeyA"
+press = "deck 1 play_pause"
+label = "Play / pause"
+group = "Deck 1"
+
+[[key]]
+on = "KeyJ"
+press = "deck 2 play_pause"
+label = "Play / pause"
+group = "Deck 2"
+
+# Cue is the DJ's cue, not the headphone cue: it jumps to the cue point and
+# plays from there while held, which is why it has a release.
+[[key]]
+on = "KeyS"
+press = "deck 1 cue"
+label = "Cue"
+group = "Deck 1"
+
+[[key]]
+on = "KeyK"
+press = "deck 2 cue"
+label = "Cue"
+group = "Deck 2"
+
+[[key]]
+on = "KeyD"
+press = "deck 1 sync"
+label = "Sync"
+group = "Deck 1"
+
+[[key]]
+on = "KeyL"
+press = "deck 2 sync"
+label = "Sync"
+group = "Deck 2"
+
+[[key]]
+on = "shift+KeyD"
+press = "deck 1 keylock_toggle"
+label = "Keylock"
+group = "Deck 1"
+
+[[key]]
+on = "shift+KeyL"
+press = "deck 2 keylock_toggle"
+label = "Keylock"
+group = "Deck 2"
+
+# --------------------------------------------------------------- headphones
+
+[[key]]
+on = "shift+KeyS"
+press = "deck 1 cue_toggle"
+label = "Headphone cue"
+group = "Deck 1"
+
+[[key]]
+on = "shift+KeyK"
+press = "deck 2 cue_toggle"
+label = "Headphone cue"
+group = "Deck 2"
+
+# ----------------------------------------------------------------- hot cues
+
+[[key]]
+on = "Digit1"
+press = "deck 1 hotcue 1"
+label = "Hot cue 1"
+group = "Deck 1"
+
+[[key]]
+on = "Digit2"
+press = "deck 1 hotcue 2"
+label = "Hot cue 2"
+group = "Deck 1"
+
+[[key]]
+on = "Digit3"
+press = "deck 1 hotcue 3"
+label = "Hot cue 3"
+group = "Deck 1"
+
+[[key]]
+on = "Digit4"
+press = "deck 1 hotcue 4"
+label = "Hot cue 4"
+group = "Deck 1"
+
+[[key]]
+on = "shift+Digit1"
+press = "deck 1 hotcue_set 1"
+label = "Set hot cue 1"
+group = "Deck 1"
+
+[[key]]
+on = "shift+Digit2"
+press = "deck 1 hotcue_set 2"
+label = "Set hot cue 2"
+group = "Deck 1"
+
+[[key]]
+on = "shift+Digit3"
+press = "deck 1 hotcue_set 3"
+label = "Set hot cue 3"
+group = "Deck 1"
+
+[[key]]
+on = "shift+Digit4"
+press = "deck 1 hotcue_set 4"
+label = "Set hot cue 4"
+group = "Deck 1"
+
+[[key]]
+on = "Digit7"
+press = "deck 2 hotcue 1"
+label = "Hot cue 1"
+group = "Deck 2"
+
+[[key]]
+on = "Digit8"
+press = "deck 2 hotcue 2"
+label = "Hot cue 2"
+group = "Deck 2"
+
+[[key]]
+on = "Digit9"
+press = "deck 2 hotcue 3"
+label = "Hot cue 3"
+group = "Deck 2"
+
+[[key]]
+on = "Digit0"
+press = "deck 2 hotcue 4"
+label = "Hot cue 4"
+group = "Deck 2"
+
+[[key]]
+on = "shift+Digit7"
+press = "deck 2 hotcue_set 1"
+label = "Set hot cue 1"
+group = "Deck 2"
+
+[[key]]
+on = "shift+Digit8"
+press = "deck 2 hotcue_set 2"
+label = "Set hot cue 2"
+group = "Deck 2"
+
+[[key]]
+on = "shift+Digit9"
+press = "deck 2 hotcue_set 3"
+label = "Set hot cue 3"
+group = "Deck 2"
+
+[[key]]
+on = "shift+Digit0"
+press = "deck 2 hotcue_set 4"
+label = "Set hot cue 4"
+group = "Deck 2"
+
+# ------------------------------------------------------- beat jump and loop
+
+[[key]]
+on = "KeyQ"
+press = "deck 1 beatjump -1"
+label = "Jump back a beat"
+group = "Deck 1"
+
+[[key]]
+on = "KeyW"
+press = "deck 1 beatjump 1"
+label = "Jump forward a beat"
+group = "Deck 1"
+
+[[key]]
+on = "shift+KeyQ"
+press = "deck 1 beatjump -4"
+label = "Jump back a bar"
+group = "Deck 1"
+
+[[key]]
+on = "shift+KeyW"
+press = "deck 1 beatjump 4"
+label = "Jump forward a bar"
+group = "Deck 1"
+
+[[key]]
+on = "KeyE"
+press = "deck 1 loop 4"
+label = "Loop 4 beats"
+group = "Deck 1"
+
+[[key]]
+on = "KeyR"
+press = "deck 1 loop_off"
+label = "Loop off"
+group = "Deck 1"
+
+[[key]]
+on = "shift+KeyE"
+press = "deck 1 loop_halve"
+label = "Halve the loop"
+group = "Deck 1"
+
+[[key]]
+on = "shift+KeyR"
+press = "deck 1 loop_double"
+label = "Double the loop"
+group = "Deck 1"
+
+[[key]]
+on = "KeyU"
+press = "deck 2 beatjump -1"
+label = "Jump back a beat"
+group = "Deck 2"
+
+[[key]]
+on = "KeyI"
+press = "deck 2 beatjump 1"
+label = "Jump forward a beat"
+group = "Deck 2"
+
+[[key]]
+on = "shift+KeyU"
+press = "deck 2 beatjump -4"
+label = "Jump back a bar"
+group = "Deck 2"
+
+[[key]]
+on = "shift+KeyI"
+press = "deck 2 beatjump 4"
+label = "Jump forward a bar"
+group = "Deck 2"
+
+[[key]]
+on = "KeyO"
+press = "deck 2 loop 4"
+label = "Loop 4 beats"
+group = "Deck 2"
+
+[[key]]
+on = "KeyP"
+press = "deck 2 loop_off"
+label = "Loop off"
+group = "Deck 2"
+
+[[key]]
+on = "shift+KeyO"
+press = "deck 2 loop_halve"
+label = "Halve the loop"
+group = "Deck 2"
+
+[[key]]
+on = "shift+KeyP"
+press = "deck 2 loop_double"
+label = "Double the loop"
+group = "Deck 2"
+
+# ---------------------------------------------------------------- held moves
+#
+# Everything below is momentary: it happens while the key is down and undoes
+# itself when the finger comes up. That is what makes them playable — a censor
+# you have to switch off again is not a censor, it is a mistake waiting.
+
+[[key]]
+on = "KeyF"
+press = "deck 1 censor_on"
+release = "deck 1 censor_off"
+label = "Censor (hold)"
+group = "Deck 1"
+
+[[key]]
+on = "Semicolon"
+press = "deck 2 censor_on"
+release = "deck 2 censor_off"
+label = "Censor (hold)"
+group = "Deck 2"
+
+[[key]]
+on = "shift+KeyF"
+press = "deck 1 slip_toggle"
+label = "Slip mode"
+group = "Deck 1"
+
+[[key]]
+on = "shift+Semicolon"
+press = "deck 2 slip_toggle"
+label = "Slip mode"
+group = "Deck 2"
+
+[[key]]
+on = "KeyG"
+press = "deck 1 roll 0.25"
+release = "deck 1 roll_off"
+label = "Loop roll 1/4 (hold)"
+group = "Deck 1"
+
+[[key]]
+on = "KeyH"
+press = "deck 2 roll 0.25"
+release = "deck 2 roll_off"
+label = "Loop roll 1/4 (hold)"
+group = "Deck 2"
+
+[[key]]
+on = "shift+KeyG"
+press = "deck 1 roll 1"
+release = "deck 1 roll_off"
+label = "Loop roll 1 beat (hold)"
+group = "Deck 1"
+
+[[key]]
+on = "shift+KeyH"
+press = "deck 2 roll 1"
+release = "deck 2 roll_off"
+label = "Loop roll 1 beat (hold)"
+group = "Deck 2"
+
+# ---------------------------------------------------------------- EQ kills
+
+[[key]]
+on = "KeyZ"
+press = "deck 1 eq_low 0"
+release = "deck 1 eq_low 1"
+label = "Bass kill (hold)"
+group = "Deck 1"
+
+[[key]]
+on = "KeyX"
+press = "deck 1 eq_mid 0"
+release = "deck 1 eq_mid 1"
+label = "Mid kill (hold)"
+group = "Deck 1"
+
+[[key]]
+on = "KeyC"
+press = "deck 1 eq_high 0"
+release = "deck 1 eq_high 1"
+label = "Treble kill (hold)"
+group = "Deck 1"
+
+[[key]]
+on = "KeyM"
+press = "deck 2 eq_low 0"
+release = "deck 2 eq_low 1"
+label = "Bass kill (hold)"
+group = "Deck 2"
+
+[[key]]
+on = "Comma"
+press = "deck 2 eq_mid 0"
+release = "deck 2 eq_mid 1"
+label = "Mid kill (hold)"
+group = "Deck 2"
+
+[[key]]
+on = "Period"
+press = "deck 2 eq_high 0"
+release = "deck 2 eq_high 1"
+label = "Treble kill (hold)"
+group = "Deck 2"
+
+# --------------------------------------------------------- brake and spin
+
+[[key]]
+on = "KeyV"
+press = "deck 1 brake 2"
+release = "deck 1 brake_off"
+label = "Brake (hold)"
+group = "Deck 1"
+
+[[key]]
+on = "Slash"
+press = "deck 2 brake 2"
+release = "deck 2 brake_off"
+label = "Brake (hold)"
+group = "Deck 2"
+
+[[key]]
+on = "shift+KeyV"
+press = "deck 1 backspin 2"
+release = "deck 1 backspin_off"
+label = "Backspin (hold)"
+group = "Deck 1"
+
+[[key]]
+on = "shift+Slash"
+press = "deck 2 backspin 2"
+release = "deck 2 backspin_off"
+label = "Backspin (hold)"
+group = "Deck 2"
+
+[[key]]
+on = "shift+KeyC"
+press = "deck 1 reverse_on"
+release = "deck 1 reverse_off"
+label = "Reverse (hold)"
+group = "Deck 1"
+
+[[key]]
+on = "shift+Period"
+press = "deck 2 reverse_on"
+release = "deck 2 reverse_off"
+label = "Reverse (hold)"
+group = "Deck 2"
+
+# --------------------------------------------------------------- crossfader
+#
+# The arrow keys are cuts, not a fader: full left, centre, full right. A
+# keyboard cannot hold a fader anywhere in between, and pretending otherwise
+# with a nudge-per-press would need thirty presses to cross.
+
+[[key]]
+on = "ArrowLeft"
+press = "crossfader -1"
+label = "Cut to deck 1"
+group = "Mixer"
+
+[[key]]
+on = "ArrowRight"
+press = "crossfader 1"
+label = "Cut to deck 2"
+group = "Mixer"
+
+[[key]]
+on = "ArrowDown"
+press = "crossfader 0"
+label = "Centre the crossfader"
+group = "Mixer"
+
+[[key]]
+on = "ArrowUp"
+press = "sampler stop_all"
+label = "Stop every sample"
+group = "Mixer"

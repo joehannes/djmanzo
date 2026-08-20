@@ -370,7 +370,23 @@ pub async fn load_track(
 /// ```
 #[tauri::command]
 pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String> {
-    let parsed = Action::parse(&action).map_err(|e| format!("{action:?}: {e}"))?;
+    perform(&state, &action)
+}
+
+/// The body of [`dispatch`], reachable without a Tauri `State`.
+///
+/// Split out because a controller does not arrive through a command: MIDI is
+/// delivered on a thread of the operating system's, and the actions a mapping
+/// produces there have to take exactly the same path as the ones a button in
+/// the interface produces — including the interceptions below, which are the
+/// difference between `record on` starting a recording and `record on` doing
+/// nothing at all.
+///
+/// # Errors
+/// When the text is not in the vocabulary, or the engine is not accepting
+/// commands because no device is open.
+pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
+    let parsed = Action::parse(action).map_err(|e| format!("{action:?}: {e}"))?;
 
     // Eject is the one action with consequences outside the engine: the deck's
     // name and its analysis live here, not there, and leaving them behind would
@@ -428,12 +444,12 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
     if let Action::Deck { deck, action } = parsed {
         match action {
             dj_core::DeckAction::LoopSave(slot) => {
-                save_loop(&state, deck, slot)?;
+                save_loop(state, deck, slot)?;
                 let _ = state.bus().dispatch(parsed);
                 return Ok(());
             }
             dj_core::DeckAction::LoopRecall(slot) => {
-                recall_loop(&state, deck, slot)?;
+                recall_loop(state, deck, slot)?;
                 let _ = state.bus().dispatch(parsed);
                 return Ok(());
             }
@@ -448,7 +464,7 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
     if let Action::Deck { deck, action } = parsed
         && let Some(edit) = grid_edit(action)
     {
-        apply_grid_edit(&state, deck, edit)?;
+        apply_grid_edit(state, deck, edit)?;
         // Dispatched *after* the edit has succeeded, so it lands in the session
         // log like every other action -- a grid the DJ moved mid-set is exactly
         // the kind of thing worth being able to look back at. The engine
@@ -2376,4 +2392,57 @@ pub fn chosen_layout(state: State<'_, AppState>) -> Option<crate::layout::Layout
 #[tauri::command]
 pub fn choose_layout(state: State<'_, AppState>, name: String) {
     state.set_chosen_layout(&name);
+}
+
+// ---------------------------------------------------------------- controllers
+
+/// What is plugged in and what is listening to it.
+#[tauri::command]
+#[must_use]
+pub fn control_status(state: State<'_, AppState>) -> crate::control::ControlStatus {
+    state.control().status()
+}
+
+/// Every mapping that can be opened.
+#[tauri::command]
+#[must_use]
+pub fn control_mappings(state: State<'_, AppState>) -> Vec<crate::control::MappingDto> {
+    state.control().mappings()
+}
+
+/// The keyboard, as a shortcut sheet.
+///
+/// The interface asks for this once and does the lookup itself, rather than
+/// sending every key press to the backend to be translated. A key press has to
+/// feel instant, and a round trip through the bridge for a key that turns out
+/// not to be bound is a round trip for nothing.
+#[tauri::command]
+#[must_use]
+pub fn keyboard_keys(state: State<'_, AppState>) -> Vec<crate::control::KeyDto> {
+    state.control().keys()
+}
+
+/// Turn the keyboard on or off.
+#[tauri::command]
+pub fn set_keyboard_enabled(state: State<'_, AppState>, on: bool) {
+    state.control().set_keyboard(on);
+}
+
+/// Open a MIDI input with a mapping. `mapping` unset means "whichever fits".
+///
+/// # Errors
+/// When no mapping matches, or the port cannot be opened.
+#[tauri::command]
+pub fn open_controller(
+    state: State<'_, AppState>,
+    port: String,
+    mapping: Option<String>,
+) -> Result<(), String> {
+    state.control().open(&port, mapping.as_deref())
+}
+
+/// Close whatever controller is open.
+#[tauri::command]
+pub fn close_controller(state: State<'_, AppState>) {
+    state.control().close();
 }

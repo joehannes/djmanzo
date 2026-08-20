@@ -271,7 +271,7 @@ impl Action {
         let lowered = input.trim().to_ascii_lowercase();
         let mut words = lowered.split_whitespace();
 
-        match words.next().ok_or(ParseError::Empty)? {
+        let action = match words.next().ok_or(ParseError::Empty)? {
             "deck" => {
                 let number: u8 = words
                     .next()
@@ -284,13 +284,14 @@ impl Action {
                 // takes the rest of the line rather than a single argument.
                 if verb == "fx" {
                     let (slot, change) = parse_fx(&mut words)?;
-                    return Ok(Action::Deck {
+                    Ok(Action::Deck {
                         deck,
                         action: DeckAction::Fx { slot, change },
-                    });
+                    })
+                } else {
+                    let action = parse_deck_verb(verb, words.next())?;
+                    Ok(Action::Deck { deck, action })
                 }
-                let action = parse_deck_verb(verb, words.next())?;
-                Ok(Action::Deck { deck, action })
             }
             "crossfader" => {
                 let value = parse_f32(words.next())?;
@@ -354,6 +355,16 @@ impl Action {
                 other => Err(ParseError::UnknownVerb(other.to_owned())),
             },
             other => Err(ParseError::UnknownTarget(other.to_owned())),
+        }?;
+
+        // Nothing may follow a complete action. Ignoring the rest of the line
+        // would make `deck 1 volume {value} extra` a working mapping that
+        // quietly drops the typo, and `deck 1 loop 4 beats` — a plausible
+        // thing for a DJ to write — would silently mean `deck 1 loop 4`
+        // whether or not that was intended.
+        match words.next() {
+            Some(extra) => Err(ParseError::TrailingWords(extra.to_owned())),
+            None => Ok(action),
         }
     }
 }
@@ -777,6 +788,11 @@ pub enum ParseError {
     /// thing.
     #[error("unknown trigger mode `{0}`")]
     UnknownMode(String),
+    /// The action was complete before the line was. Refused rather than
+    /// ignored so a typo in a mapping file is reported where it is written,
+    /// not discovered mid-set.
+    #[error("unexpected `{0}` after a complete action")]
+    TrailingWords(String),
 }
 
 #[cfg(test)]

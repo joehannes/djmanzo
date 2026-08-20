@@ -1,0 +1,464 @@
+//! Controllers and the keyboard, wired to the action bus.
+//!
+//! # One path in
+//!
+//! A pad on a controller, a key on the laptop, a button in the interface and a
+//! line in a script all end at [`crate::commands::perform`]. That is
+//! [ADR-0003](../../docs/adr/0003-action-bus-and-parameter-registry.md) in
+//! practice: nothing here can reach the engine directly, and nothing here can
+//! do anything the interface cannot, because everything it produces is text
+//! that has to survive `Action::parse`.
+//!
+//! # Where a mapping comes from
+//!
+//! Three places, in this order:
+//!
+//! 1. a file in the user's `mappings` directory, which wins;
+//! 2. a mapping bundled with the application;
+//! 3. nothing, and the controller sits there quietly.
+//!
+//! Bundled mappings are compiled in rather than installed, so a fresh install
+//! on a machine with nothing configured still has a working keyboard.
+
+use dj_hid::{KeyMap, Mapping};
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Mutex};
+
+/// A mapping the interface can list, whether or not it is in use.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MappingDto {
+    pub name: String,
+    /// The device it is for, or empty when it is not for a particular one.
+    pub device: String,
+    /// How many controls it binds — the difference between a real mapping and
+    /// a stub, at a glance.
+    pub bindings: usize,
+    /// False when it came from the user's own `mappings` directory.
+    pub bundled: bool,
+}
+
+/// One key on the shortcut sheet.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct KeyDto {
+    /// The canonical chord: `shift+space`, `keyq`.
+    pub chord: String,
+    /// What it does, in words.
+    pub label: String,
+    /// Which part of the sheet it belongs to.
+    pub group: String,
+    /// Whether it undoes itself on release.
+    pub held: bool,
+    pub press: Option<String>,
+    pub release: Option<String>,
+}
+
+/// What is plugged in and what is listening to it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ControlStatus {
+    /// Every MIDI input the machine can see.
+    pub inputs: Vec<String>,
+    /// The port currently open, if any.
+    pub open_port: Option<String>,
+    /// The mapping in use on it.
+    pub open_mapping: Option<String>,
+    /// Why there are no inputs, when the reason is that MIDI itself is
+    /// unavailable rather than that nothing is plugged in. Said out loud
+    /// because "no controllers found" and "this machine has no MIDI service"
+    /// are different problems and only one of them is fixed by plugging
+    /// something in.
+    pub unavailable: Option<String>,
+    /// Whether the keyboard is listening.
+    pub keyboard: bool,
+    pub keyboard_name: String,
+}
+
+/// Everything the controller layer owns.
+pub struct ControlHub {
+    /// Mappings that can be opened, bundled and user files together.
+    mappings: Mutex<Vec<(Mapping, bool)>>,
+    /// The keyboard mapping in force.
+    keyboard: Mutex<KeyMap>,
+    /// Whether the keyboard is listening at all. Off is a real setting: a DJ
+    /// typing into the search box does not want space to start deck 1.
+    keyboard_on: std::sync::atomic::AtomicBool,
+    /// The open port. Dropping it closes the port.
+    open: Mutex<Option<dj_hid::Connection>>,
+    /// Where the MIDI thread posts translated actions, kept so a new
+    /// connection reuses the drain that is already running.
+    post: Sender<String>,
+}
+
+impl std::fmt::Debug for ControlHub {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ControlHub").finish_non_exhaustive()
+    }
+}
+
+impl ControlHub {
+    /// Build the hub from the bundled mappings, and hand back the receiver the
+    /// drain thread will read.
+    ///
+    /// The receiver comes back rather than being consumed here because the
+    /// drain needs an `AppHandle`, and there is no handle until `setup` runs.
+    #[must_use]
+    pub fn new() -> (Self, Receiver<String>) {
+        let (post, take) = std::sync::mpsc::channel();
+        let mappings = dj_hid::bundled::controllers()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|mapping| (mapping, true))
+            .collect();
+        // A broken bundled keyboard is a build error caught by a test in
+        // `dj_hid::bundled`. If one somehow ships, an empty map means the
+        // keyboard does nothing rather than the application refusing to start.
+        let keyboard = dj_hid::bundled::keyboard().unwrap_or_default();
+        (
+            ControlHub {
+                mappings: Mutex::new(mappings),
+                keyboard: Mutex::new(keyboard),
+                keyboard_on: std::sync::atomic::AtomicBool::new(true),
+                open: Mutex::new(None),
+                post,
+            },
+            take,
+        )
+    }
+
+    /// Load every `.toml` in the user's mapping directory, replacing anything
+    /// bundled under the same name.
+    ///
+    /// Returns what could not be read, so a file with a typo in it is reported
+    /// rather than silently missing. One bad file does not stop the others.
+    pub fn load_user_mappings(&self, dir: &std::path::Path) -> Vec<String> {
+        let mut problems = Vec::new();
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return problems;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            let text = match std::fs::read_to_string(&path) {
+                Ok(text) => text,
+                Err(e) => {
+                    problems.push(format!("{name}: {e}"));
+                    continue;
+                }
+            };
+            // A keyboard file and a controller file are told apart by what is
+            // in them, not by where they are: a DJ who names theirs
+            // `my-layout.toml` should not have to learn a directory
+            // convention to be understood.
+            if text.contains("[[key]]") {
+                match KeyMap::parse(&text) {
+                    Ok(map) => *self.keyboard.lock().unwrap() = map,
+                    Err(e) => problems.push(format!("{name}: {e}")),
+                }
+                continue;
+            }
+            match Mapping::parse(&text) {
+                Ok(mapping) => {
+                    let mut all = self.mappings.lock().unwrap();
+                    // The user's own file replaces the bundled one of the same
+                    // name rather than sitting alongside it, so editing a
+                    // shipped mapping works the way editing a file should.
+                    all.retain(|(existing, _)| existing.name != mapping.name);
+                    all.push((mapping, false));
+                }
+                Err(e) => problems.push(format!("{name}: {e}")),
+            }
+        }
+        problems
+    }
+
+    /// Every mapping that can be opened.
+    #[must_use]
+    pub fn mappings(&self) -> Vec<MappingDto> {
+        self.mappings
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(mapping, bundled)| MappingDto {
+                name: mapping.name.clone(),
+                device: mapping.device.clone(),
+                bindings: mapping.bindings.len(),
+                bundled: *bundled,
+            })
+            .collect()
+    }
+
+    /// The keyboard, as a shortcut sheet.
+    #[must_use]
+    pub fn keys(&self) -> Vec<KeyDto> {
+        let keyboard = self.keyboard.lock().unwrap();
+        keyboard
+            .chords()
+            .iter()
+            .zip(&keyboard.keys)
+            .map(|(chord, key)| KeyDto {
+                chord: chord.text(),
+                label: key.label.clone(),
+                group: key.group.clone(),
+                held: key.release.is_some(),
+                press: key.press.clone(),
+                release: key.release.clone(),
+            })
+            .collect()
+    }
+
+    /// Whether the keyboard is listening.
+    #[must_use]
+    pub fn keyboard_on(&self) -> bool {
+        self.keyboard_on.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Turn the keyboard on or off.
+    pub fn set_keyboard(&self, on: bool) {
+        self.keyboard_on
+            .store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Open `port` with the mapping called `mapping`, or with whichever
+    /// bundled mapping fits the port when none is named.
+    ///
+    /// # Errors
+    /// When no such mapping exists, or the port cannot be opened.
+    pub fn open(&self, port: &str, mapping: Option<&str>) -> Result<(), String> {
+        let chosen = {
+            let all = self.mappings.lock().unwrap();
+            let found = match mapping {
+                Some(name) => all.iter().find(|(m, _)| m.name == name),
+                None => all.iter().find(|(m, _)| m.fits(port)),
+            };
+            found
+                .ok_or_else(|| match mapping {
+                    Some(name) => format!("no mapping called {name:?}"),
+                    None => format!("no mapping fits {port:?} — choose one"),
+                })?
+                .0
+                .clone()
+        };
+
+        let open =
+            dj_hid::port::open(port, chosen, self.post.clone()).map_err(|e| e.to_string())?;
+        // Assigned last, so a failed open leaves the previous connection alone
+        // rather than closing it and connecting to nothing.
+        *self.open.lock().unwrap() = Some(open);
+        Ok(())
+    }
+
+    /// Close whatever is open. Closing nothing is not an error.
+    pub fn close(&self) {
+        *self.open.lock().unwrap() = None;
+    }
+
+    /// What is plugged in and what is listening.
+    #[must_use]
+    pub fn status(&self) -> ControlStatus {
+        let (inputs, unavailable) = match dj_hid::port::inputs() {
+            Ok(found) => (found, None),
+            Err(e) => (Vec::new(), Some(e.to_string())),
+        };
+        let open = self.open.lock().unwrap();
+        let keyboard = self.keyboard.lock().unwrap();
+        ControlStatus {
+            inputs,
+            open_port: open.as_ref().map(|c| c.port().to_owned()),
+            open_mapping: open.as_ref().map(|c| c.mapping().to_owned()),
+            unavailable,
+            keyboard: self.keyboard_on(),
+            keyboard_name: keyboard.name.clone(),
+        }
+    }
+}
+
+/// Start the thread that turns queued action text into actions.
+///
+/// One thread for every controller, because the actions have to arrive in the
+/// order they were played: a censor-on that overtook its own censor-off would
+/// leave the deck muted.
+pub fn drain(handle: tauri::AppHandle, take: Receiver<String>) {
+    std::thread::Builder::new()
+        .name("djmanzo-control".into())
+        .spawn(move || {
+            use tauri::Manager;
+            // `recv` blocks until the sender is dropped, which happens when the
+            // application shuts down — so the loop ends by itself rather than
+            // needing to be told to.
+            while let Ok(action) = take.recv() {
+                let state = handle.state::<crate::state::AppState>();
+                if let Err(why) = crate::commands::perform(&state, &action) {
+                    // Not fatal and not silent: a mapping bound to something
+                    // the engine will not take yet — a deck action with no
+                    // device open — is worth one line, not a dialog.
+                    eprintln!("controller: {why}");
+                }
+            }
+        })
+        .expect("the control thread should start");
+}
+
+/// Hold the sender alive for as long as the application runs.
+///
+/// Without this the drain thread would end the moment the last connection
+/// closed, and the next one opened would post into a channel nobody reads.
+pub type Post = Arc<Sender<String>>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_new_hub_has_the_bundled_mappings_and_a_keyboard() {
+        let (hub, _take) = ControlHub::new();
+        assert!(!hub.mappings().is_empty(), "no bundled controller mappings");
+        assert!(hub.mappings().iter().all(|m| m.bundled));
+        assert!(hub.keys().len() > 40, "only {} keys", hub.keys().len());
+        assert!(hub.keyboard_on(), "the keyboard should start listening");
+    }
+
+    /// A DJ typing in the search box does not want the space bar to start
+    /// deck 1, so the keyboard has an off switch and it has to actually work.
+    #[test]
+    fn the_keyboard_can_be_switched_off_and_on() {
+        let (hub, _take) = ControlHub::new();
+        hub.set_keyboard(false);
+        assert!(!hub.keyboard_on());
+        assert!(!hub.status().keyboard);
+        hub.set_keyboard(true);
+        assert!(hub.keyboard_on());
+    }
+
+    /// Held keys are marked as such for the sheet, because a label that says
+    /// "(hold)" and a control that latches are two different instruments.
+    #[test]
+    fn the_sheet_says_which_keys_are_held() {
+        let (hub, _take) = ControlHub::new();
+        let keys = hub.keys();
+        let censor = keys
+            .iter()
+            .find(|k| k.press.as_deref() == Some("deck 1 censor_on"))
+            .expect("the bundled keyboard should have a censor");
+        assert!(censor.held);
+        assert_eq!(censor.release.as_deref(), Some("deck 1 censor_off"));
+
+        let play = keys
+            .iter()
+            .find(|k| k.chord == "space")
+            .expect("the bundled keyboard should have a space bar");
+        assert!(!play.held);
+    }
+
+    /// Naming a mapping that does not exist has to say so. Falling back to
+    /// "whatever fits" would connect a DJ's controller to somebody else's
+    /// layout and look like it worked.
+    #[test]
+    fn opening_with_an_unknown_mapping_says_which_one_was_missing() {
+        let (hub, _take) = ControlHub::new();
+        let why = hub.open("anything", Some("Not A Mapping")).unwrap_err();
+        assert!(why.contains("Not A Mapping"), "{why}");
+    }
+
+    #[test]
+    fn a_user_mapping_replaces_the_bundled_one_of_the_same_name() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("mine.toml"),
+            r#"
+            name = "Generic 2-deck"
+            device = "Mine"
+            [[binding]]
+            on = "note 1 36"
+            press = "deck 1 play_pause"
+            "#,
+        )
+        .unwrap();
+
+        let (hub, _take) = ControlHub::new();
+        let before = hub.mappings().len();
+        assert!(hub.load_user_mappings(dir.path()).is_empty());
+        let after = hub.mappings();
+        assert_eq!(after.len(), before, "it should replace, not add");
+        let replaced = after
+            .iter()
+            .find(|m| m.name == "Generic 2-deck")
+            .expect("still there");
+        assert!(!replaced.bundled);
+        assert_eq!(replaced.device, "Mine");
+    }
+
+    /// A keyboard file is recognised by what is in it, so a DJ can call theirs
+    /// anything.
+    #[test]
+    fn a_user_keyboard_file_is_recognised_by_its_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("whatever-i-called-it.toml"),
+            r#"
+            name = "Mine"
+            [[key]]
+            on = "Space"
+            press = "deck 3 play_pause"
+            label = "Play"
+            group = "Deck 3"
+            "#,
+        )
+        .unwrap();
+
+        let (hub, _take) = ControlHub::new();
+        assert!(hub.load_user_mappings(dir.path()).is_empty());
+        assert_eq!(hub.status().keyboard_name, "Mine");
+        assert_eq!(hub.keys().len(), 1);
+    }
+
+    /// One bad file must not take the others down with it, and must be named.
+    /// A mapping directory is hand-edited; a typo in one file is normal.
+    #[test]
+    fn a_broken_file_is_reported_and_the_others_still_load() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("broken.toml"),
+            r#"
+            name = "Broken"
+            [[binding]]
+            on = "note 1 36"
+            press = "deck 1 fly_to_the_moon"
+            "#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("fine.toml"),
+            r#"
+            name = "Fine"
+            device = "Fine"
+            [[binding]]
+            on = "note 1 36"
+            press = "deck 1 play_pause"
+            "#,
+        )
+        .unwrap();
+
+        let (hub, _take) = ControlHub::new();
+        let problems = hub.load_user_mappings(dir.path());
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("broken.toml"), "{problems:?}");
+        assert!(hub.mappings().iter().any(|m| m.name == "Fine"));
+    }
+
+    /// A mapping directory that is not there is the normal case on a fresh
+    /// install, not an error.
+    #[test]
+    fn a_missing_mapping_directory_is_quiet() {
+        let (hub, _take) = ControlHub::new();
+        assert!(
+            hub.load_user_mappings(std::path::Path::new("/nowhere/at/all"))
+                .is_empty()
+        );
+    }
+}

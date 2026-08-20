@@ -15,6 +15,7 @@ members = [
     "crates/dj-presets",
     "crates/dj-analysis",
     "crates/dj-library",
+    "crates/dj-hid",
     "crates/dj-app",
 ]
 
@@ -41,6 +42,7 @@ dj-assistant = { path = "crates/dj-assistant" }
 dj-presets = { path = "crates/dj-presets" }
 dj-analysis = { path = "crates/dj-analysis" }
 dj-library = { path = "crates/dj-library" }
+dj-hid = { path = "crates/dj-hid" }
 
 cpal = "0.15"
 symphonia = { version = "0.5", features = ["all-codecs", "all-formats"] }
@@ -53,6 +55,13 @@ rtrb = "0.3"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Controller mappings, which are files a DJ edits by hand. MIT OR Apache-2.0.
+toml = "0.9"
+# MIDI ports. MIT -- see docs/RESEARCH.md. Chosen over the alternatives for
+# being a thin wrapper over each platform's own MIDI API (CoreMIDI, ALSA seq,
+# WinMM) with no runtime of its own, which is what a callback that has to be
+# cheap wants.
+midir = { version = "0.11", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

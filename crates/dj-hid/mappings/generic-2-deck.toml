@@ -1,0 +1,185 @@
+# A starting point for a class-compliant two-deck controller.
+#
+# Almost every USB MIDI controller sold as a "DJ controller" sends notes for
+# its pads and transport and control changes for its faders and knobs. What
+# differs is the numbers, and those are in the manual. This file uses the
+# numbers most commonly seen and is meant to be copied and edited rather than
+# used untouched — which is why the numbers are written out rather than
+# generated, and why the comments say what each block is for.
+#
+# Channel 1 is deck 1 and channel 2 is deck 2, which is the usual arrangement.
+# A channel of 0 would mean "any channel"; it is not used here because a
+# two-deck controller needs to tell its decks apart.
+
+name = "Generic 2-deck"
+device = "MIDI"
+
+# ------------------------------------------------------- deck 1 transport
+
+[[binding]]
+on = "note 1 0x0B"
+press = "deck 1 play_pause"
+
+[[binding]]
+on = "note 1 0x0C"
+press = "deck 1 cue"
+
+[[binding]]
+on = "note 1 0x02"
+press = "deck 1 sync"
+
+[[binding]]
+on = "note 1 0x01"
+press = "deck 1 cue_toggle"
+
+# --------------------------------------------------------- deck 1 mixer
+
+[[binding]]
+on = "cc 1 0x16"
+move = "deck 1 volume {value}"
+
+[[binding]]
+on = "cc 1 0x07"
+move = "deck 1 eq_high {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc 1 0x0B"
+move = "deck 1 eq_mid {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc 1 0x0F"
+move = "deck 1 eq_low {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc 1 0x17"
+move = "deck 1 filter {value}"
+min = -1.0
+max = 1.0
+
+# The pitch fader wants the wheel's fourteen bits: a 7-bit control gives 128
+# steps across ±8%, which is 0.125% a step — audibly coarse when beatmatching.
+[[binding]]
+on = "bend 1"
+move = "deck 1 pitch {value}"
+min = -1.0
+max = 1.0
+
+# ------------------------------------------------------------ deck 1 pads
+
+[[binding]]
+on = "note 1 0x14"
+press = "deck 1 hotcue 1"
+
+[[binding]]
+on = "note 1 0x15"
+press = "deck 1 hotcue 2"
+
+[[binding]]
+on = "note 1 0x16"
+press = "deck 1 hotcue 3"
+
+[[binding]]
+on = "note 1 0x17"
+press = "deck 1 hotcue 4"
+
+# --------------------------------------------------------- deck 1 encoder
+
+[[binding]]
+on = "cc 1 0x18"
+encoding = "signed"
+turn_up = "deck 1 beatjump 1"
+turn_down = "deck 1 beatjump -1"
+
+# ------------------------------------------------------- deck 2 transport
+
+[[binding]]
+on = "note 2 0x0B"
+press = "deck 2 play_pause"
+
+[[binding]]
+on = "note 2 0x0C"
+press = "deck 2 cue"
+
+[[binding]]
+on = "note 2 0x02"
+press = "deck 2 sync"
+
+[[binding]]
+on = "note 2 0x01"
+press = "deck 2 cue_toggle"
+
+# --------------------------------------------------------- deck 2 mixer
+
+[[binding]]
+on = "cc 2 0x16"
+move = "deck 2 volume {value}"
+
+[[binding]]
+on = "cc 2 0x07"
+move = "deck 2 eq_high {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc 2 0x0B"
+move = "deck 2 eq_mid {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc 2 0x0F"
+move = "deck 2 eq_low {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc 2 0x17"
+move = "deck 2 filter {value}"
+min = -1.0
+max = 1.0
+
+[[binding]]
+on = "bend 2"
+move = "deck 2 pitch {value}"
+min = -1.0
+max = 1.0
+
+# ------------------------------------------------------------ deck 2 pads
+
+[[binding]]
+on = "note 2 0x14"
+press = "deck 2 hotcue 1"
+
+[[binding]]
+on = "note 2 0x15"
+press = "deck 2 hotcue 2"
+
+[[binding]]
+on = "note 2 0x16"
+press = "deck 2 hotcue 3"
+
+[[binding]]
+on = "note 2 0x17"
+press = "deck 2 hotcue 4"
+
+# --------------------------------------------------------- deck 2 encoder
+
+[[binding]]
+on = "cc 2 0x18"
+encoding = "signed"
+turn_up = "deck 2 beatjump 1"
+turn_down = "deck 2 beatjump -1"
+
+# ------------------------------------------------------------- crossfader
+
+[[binding]]
+on = "cc 1 0x08"
+move = "crossfader {value}"
+min = -1.0
+max = 1.0

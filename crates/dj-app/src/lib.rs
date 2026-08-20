@@ -23,6 +23,7 @@ pub mod analysis;
 pub mod assistant;
 pub mod brand;
 pub mod commands;
+pub mod control;
 pub mod grid;
 pub mod host;
 pub mod layout;
@@ -251,6 +252,23 @@ pub fn run() {
             );
             // Hand the pump to Tauri so it lives as long as the app does.
             app.manage(pump);
+
+            // Controllers. The drain thread needs a handle, so it cannot start
+            // until here; the queue itself exists from the moment the state
+            // does, so a controller opened before this point still has
+            // somewhere to post.
+            {
+                let state: tauri::State<'_, AppState> = app.state();
+                if let Ok(dir) = app.path().app_config_dir() {
+                    let dir = dir.join("mappings");
+                    for problem in state.control().load_user_mappings(&dir) {
+                        tracing::warn!(%problem, "a mapping file could not be read");
+                    }
+                }
+                if let Some(inbox) = state.take_control_inbox() {
+                    crate::control::drain(app.handle().clone(), inbox);
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -262,6 +280,12 @@ pub fn run() {
             commands::load_track,
             commands::load_sample,
             commands::dispatch,
+            commands::control_status,
+            commands::control_mappings,
+            commands::keyboard_keys,
+            commands::set_keyboard_enabled,
+            commands::open_controller,
+            commands::close_controller,
             commands::get_snapshot,
             commands::waveform_info,
             commands::report_bench,

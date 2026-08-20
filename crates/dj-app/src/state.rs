@@ -146,6 +146,12 @@ pub struct AppState {
     /// the deck's own Load button, and component-local state shows "no track"
     /// for every one of those.
     deck_tracks: Arc<Mutex<HashMap<u8, LoadedTrackInfo>>>,
+    /// Controllers and the keyboard. See [`crate::control`].
+    control: Arc<crate::control::ControlHub>,
+    /// The other end of the controller queue, until `setup` can start the
+    /// thread that drains it. Held rather than dropped: a receiver dropped
+    /// here would make every MIDI message a send into a closed channel.
+    control_inbox: Mutex<Option<std::sync::mpsc::Receiver<String>>>,
 }
 
 /// What is loaded on a deck, as far as the interface is concerned.
@@ -218,6 +224,8 @@ impl AppState {
             }
         };
 
+        let (control, control_inbox) = crate::control::ControlHub::new();
+
         Self {
             bus,
             registry,
@@ -246,6 +254,8 @@ impl AppState {
             library,
             identifier: Mutex::new(None),
             deck_tracks: Arc::new(Mutex::new(HashMap::new())),
+            control: Arc::new(control),
+            control_inbox: Mutex::new(Some(control_inbox)),
         }
     }
 
@@ -582,6 +592,21 @@ impl AppState {
     #[must_use]
     pub fn secrets(&self) -> &Arc<dyn SecretStore> {
         &self.secrets
+    }
+
+    /// Controllers and the keyboard.
+    #[must_use]
+    pub fn control(&self) -> &Arc<crate::control::ControlHub> {
+        &self.control
+    }
+
+    /// Take the controller queue's receiving end, once.
+    ///
+    /// Returns `None` on any call after the first, which is what a second
+    /// drain thread would be: two threads racing for the same actions, in an
+    /// order neither controls.
+    pub fn take_control_inbox(&self) -> Option<std::sync::mpsc::Receiver<String>> {
+        self.control_inbox.lock().unwrap().take()
     }
 
     #[must_use]
