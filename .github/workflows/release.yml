@@ -63,43 +63,47 @@ jobs:
             exit 1
           fi
 
+  # Which builds this run wants.
+  #
+  # The matrix is data rather than YAML because a job-level `if` cannot see the
+  # `matrix` context — so a run asking only for a Debian package has to be
+  # given a shorter matrix rather than a longer one that skips itself.
+  plan:
+    name: Decide what to build
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        env:
+          # Intel Macs are still booth workhorses; an arm64-only release would
+          # leave a lot of working DJs without a build.
+          ALL: >-
+            [{"os":"macos-latest","name":"macOS (Apple Silicon)","args":"--target aarch64-apple-darwin","target":"aarch64-apple-darwin"},
+             {"os":"macos-13","name":"macOS (Intel)","args":"--target x86_64-apple-darwin","target":"x86_64-apple-darwin"},
+             {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
+          LINUX: >-
+            [{"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.platforms }}" = "linux" ]; then
+            chosen="$LINUX"
+          else
+            chosen="$ALL"
+          fi
+          echo "matrix=$(echo "$chosen" | jq -c .)" >> "$GITHUB_OUTPUT"
+
   build:
     name: ${{ matrix.name }}
-    needs: check-version
+    needs: [check-version, plan]
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            name: macOS (Apple Silicon)
-            args: '--target aarch64-apple-darwin'
-            target: aarch64-apple-darwin
-            # A dispatch asking only for Linux still has to enumerate the whole
-            # matrix — GitHub has no way to filter one — so each entry carries
-            # whether it is wanted and skips itself.
-            linux: false
-          # Intel Macs are still booth workhorses; an arm64-only release would
-          # leave a lot of working DJs without a build.
-          - os: macos-13
-            name: macOS (Intel)
-            args: '--target x86_64-apple-darwin'
-            target: x86_64-apple-darwin
-            linux: false
-          - os: ubuntu-latest
-            name: Linux (x86_64)
-            args: ''
-            target: ''
-            linux: true
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
 
     runs-on: ${{ matrix.os }}
-    # Skipped rather than absent, so the run still shows what it chose not to
-    # build instead of quietly producing one artifact and looking complete.
-    if: >-
-      github.event_name != 'workflow_dispatch'
-      || inputs.platforms == 'all'
-      || matrix.linux
     steps:
       - uses: actions/checkout@v4
 
