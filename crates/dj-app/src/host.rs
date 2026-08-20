@@ -46,10 +46,24 @@ enum HostCommand {
         buffer_frames: u32,
         reply: SyncSender<Result<OpenOutcome, HostError>>,
     },
+    ListInputs(SyncSender<Result<Vec<DeviceInfo>, HostError>>),
+    OpenMic {
+        device: Option<DeviceId>,
+        reply: SyncSender<Result<ActiveConfig, HostError>>,
+    },
+    CloseMic(SyncSender<Result<(), HostError>>),
     Play(SyncSender<Result<(), HostError>>),
     Pause(SyncSender<Result<(), HostError>>),
     Shutdown,
 }
+
+/// How much microphone the ring between the two callbacks can hold.
+///
+/// Half a second. The ring's *steady* fill is set by the two buffer sizes, not
+/// by its capacity — this is headroom for a scheduling hiccup, and making it
+/// large would not add latency, only delay the point at which a genuinely
+/// stalled input starts dropping instead of piling up.
+const MIC_RING_SECONDS: f64 = 0.5;
 
 /// What opening produced.
 ///
@@ -126,6 +140,26 @@ impl AudioHost {
         self.request(HostCommand::ListDevices)
     }
 
+    /// Devices that can capture. Empty is a normal answer — many laptops in a
+    /// booth have nothing plugged in.
+    pub fn list_inputs(&self) -> Result<Vec<DeviceInfo>, HostError> {
+        self.request(HostCommand::ListInputs)
+    }
+
+    /// Attach an input device to the microphone strip.
+    ///
+    /// Independent of whether the *channel* is open: this is the cable, and
+    /// `mic on` is the switch. Opening a sound card takes long enough to miss a
+    /// cue, so a DJ plugs in once at the start of the night and toggles the
+    /// channel all evening.
+    pub fn open_mic(&self, device: Option<DeviceId>) -> Result<ActiveConfig, HostError> {
+        self.request(|reply| HostCommand::OpenMic { device, reply })
+    }
+
+    pub fn close_mic(&self) -> Result<(), HostError> {
+        self.request(HostCommand::CloseMic)
+    }
+
     /// Open the output.
     ///
     /// `cue_device` selects a *second* device for the headphone cue. Passing it
@@ -184,6 +218,9 @@ fn run_host(
     // headphone device. Kept beside the master so both are torn down together.
     let mut cue_stream: Option<Box<dyn AudioStream>> = None;
     let mut retired: Option<rtrb::Consumer<Retired>> = None;
+    // Held for its lifetime like the cue stream: dropping it closes the input
+    // device and stops the callback that fills the engine's ring.
+    let mut mic_stream: Option<Box<dyn AudioStream>> = None;
 
     loop {
         // Wake regularly even with no commands, so retired buffers are freed
@@ -217,6 +254,28 @@ fn run_host(
                 );
                 let _ = reply.send(result);
             }
+            Ok(HostCommand::ListInputs(reply)) => {
+                let result = backend
+                    .input_devices()
+                    .map_err(|e| HostError::Audio(e.to_string()));
+                let _ = reply.send(result);
+            }
+            Ok(HostCommand::OpenMic { device, reply }) => {
+                // The output has to be running first: the engine only exists
+                // once a device is open, and a microphone attached to nothing
+                // is a ring that fills and never drains.
+                let result = match stream.as_ref().map(|s| s.config().clone()) {
+                    Some(master) => {
+                        open_mic(backend.as_ref(), &bus, device, &master, &mut mic_stream)
+                    }
+                    None => Err(HostError::NoDevice),
+                };
+                let _ = reply.send(result);
+            }
+            Ok(HostCommand::CloseMic(reply)) => {
+                close_mic(&bus, &mut mic_stream);
+                let _ = reply.send(Ok(()));
+            }
             Ok(HostCommand::Play(reply)) => {
                 let result = match &stream {
                     Some(s) => s.play().map_err(|e| HostError::Audio(e.to_string())),
@@ -245,6 +304,80 @@ fn run_host(
                 }
             }
         }
+    }
+}
+
+/// Attach an input device to the microphone strip.
+///
+/// The ring is created here and split: the consumer goes to the engine through
+/// the command queue, the producer into the input callback. Neither end is ever
+/// dropped on an audio thread — the engine hands its half back through the
+/// retirement queue, and this one is dropped here when the stream closes.
+fn open_mic(
+    backend: &dyn AudioBackend,
+    bus: &Arc<ActionBus<Command>>,
+    device: Option<DeviceId>,
+    master: &ActiveConfig,
+    slot: &mut Option<Box<dyn AudioStream>>,
+) -> Result<ActiveConfig, HostError> {
+    // Whatever was there goes first, or two callbacks write to two rings and
+    // the engine reads one of them.
+    close_mic(bus, slot);
+
+    // The input runs at the *master's* rate, not at its own preference. A
+    // 44.1 kHz microphone read by a 48 kHz engine is a voice pitched up by a
+    // semitone and drifting further out all night — and unlike the headphone
+    // bridge, there is no drift correction on this path to hide it. If the
+    // device will not do that rate, that is worth failing over rather than
+    // papering over.
+    let sample_rate = master.sample_rate;
+    let buffer_frames = master.buffer_frames;
+
+    let capacity = (sample_rate.as_f64() * MIC_RING_SECONDS) as usize * dj_engine::mic::CHANNELS;
+    let (producer, consumer) = rtrb::RingBuffer::new(capacity);
+
+    let config = dj_audio::StreamConfig {
+        device,
+        sample_rate,
+        buffer_frames,
+        channels: dj_engine::mic::CHANNELS as u16,
+    };
+    let stream = backend
+        .open_input(&config, producer)
+        .map_err(|e| HostError::Audio(e.to_string()))?;
+
+    // Only once the device is actually open, so a failed open leaves the engine
+    // with no input rather than with a ring nobody fills.
+    if bus
+        .send_command(Command::MicInput {
+            source: Some(consumer),
+        })
+        .is_err()
+    {
+        return Err(HostError::Audio(
+            "command queue full; the microphone could not be attached".to_owned(),
+        ));
+    }
+
+    stream.play().map_err(|e| HostError::Audio(e.to_string()))?;
+    let active = stream.config().clone();
+    *slot = Some(stream);
+    Ok(active)
+}
+
+/// Detach the input device and tell the engine to let go of its end.
+fn close_mic(bus: &Arc<ActionBus<Command>>, slot: &mut Option<Box<dyn AudioStream>>) {
+    if let Some(previous) = slot.take() {
+        // The producer goes first, so the callback has stopped writing before
+        // the engine is told to stop reading.
+        let _ = previous.pause();
+        drop(previous);
+    }
+    if bus
+        .send_command(Command::MicInput { source: None })
+        .is_err()
+    {
+        tracing::warn!("command queue full; the microphone stays attached in the engine");
     }
 }
 

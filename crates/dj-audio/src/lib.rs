@@ -76,6 +76,40 @@ pub trait AudioBackend: Send + Sync + std::fmt::Debug {
     fn default_output(&self) -> Result<Option<DeviceInfo>, AudioError> {
         Ok(self.output_devices()?.into_iter().find(|d| d.is_default))
     }
+
+    /// Devices that can capture — microphones, line inputs, loopbacks.
+    ///
+    /// A separate list from the outputs rather than one list with a direction
+    /// flag, because on every platform they *are* separate lists: a USB
+    /// interface commonly presents two output devices and one input, and
+    /// pretending otherwise means the interface offers to record from a pair
+    /// of speakers.
+    ///
+    /// Defaults to empty so a backend that cannot capture — the null one used
+    /// in tests and headless runs — does not have to say so twice.
+    fn input_devices(&self) -> Result<Vec<DeviceInfo>, AudioError> {
+        Ok(Vec::new())
+    }
+
+    /// Open a capture stream, delivering interleaved stereo into `sink`.
+    ///
+    /// The engine holds the other end. Mono devices are doubled on the way in
+    /// so the engine has one shape to handle — see [`dj_engine::mic`] — and
+    /// devices with more than two channels have the first two taken.
+    ///
+    /// Defaults to refusing, for the same reason as [`Self::input_devices`].
+    fn open_input(
+        &self,
+        _config: &StreamConfig,
+        _sink: rtrb::Producer<f32>,
+    ) -> Result<Box<dyn AudioStream>, AudioError> {
+        Err(AudioError::NoInputDevice)
+    }
+
+    /// The system default input, if there is one.
+    fn default_input(&self) -> Result<Option<DeviceInfo>, AudioError> {
+        Ok(self.input_devices()?.into_iter().find(|d| d.is_default))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -84,6 +118,8 @@ pub enum AudioError {
     Enumerate(String),
     #[error("no default output device")]
     NoDefaultDevice,
+    #[error("no audio input device")]
+    NoInputDevice,
     #[error("cannot open output stream: {0}")]
     OpenStream(String),
     #[error("stream control failed: {0}")]

@@ -543,7 +543,22 @@ adding a new controller requires editing a file, not rebuilding the app.
   builds `MAX_DECKS`, and the interface shows two, four or six. Six is three rows of two
   rather than two of three — deck width is what decides whether pads are readable, and a
   six-deck rig is a scrolling one.
-- Microphone/aux input with ducking.
+- **Microphone/aux input with ducking** — done. A channel strip rather than a deck: gain,
+  a switch, a headphone send, and a ducker sidechained from itself. The input arrives on the
+  operating system's own callback, so a lock-free ring carries it to the render thread —
+  the mirror image of the recording path, and the same discipline: neither end of that ring
+  is ever dropped on an audio thread.
+
+  The part that decides whether talkover is usable is the **hold**. Speech is mostly gaps,
+  and a ducker that recovers whenever the microphone falls quiet surges the music back up
+  into every pause between two words. Half a second of hold bridges the gaps inside a
+  sentence and still lets the music back promptly at the end of one. The music is ducked and
+  the microphone is not — a ducker that ducked its own sidechain would be a gate — and the
+  headphone mix is never ducked at all, because the DJ already has the voice in their ears
+  and pulling the music down there removes the only reference they have.
+
+  Aux is the same strip with talkover switched off, which is why there is one of these and
+  not two. Microphone effects are still to come.
 - Automix with configurable transition style.
 - **Recording to disk** — done: `record on` streams the master, post-limiter, into a
   16-bit WAV beside the settings. Lock-free ring out of the callback, dither on the writer

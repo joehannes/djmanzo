@@ -42,6 +42,37 @@ pub struct ActiveDeviceDto {
     pub cue_error: Option<String>,
 }
 
+/// The input device feeding the microphone strip.
+///
+/// Its own type rather than [`ActiveDeviceDto`]: that one carries a headphone
+/// cue and a reason the cue failed, and an input has neither. Reusing it would
+/// mean two fields that are always null and a reader who has to know that.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MicDeviceDto {
+    pub name: String,
+    pub sample_rate: u32,
+    pub buffer_frames: u32,
+    pub channels: u16,
+    /// One-way latency of the input alone. The DJ hears themselves this much
+    /// late *plus* the output's own latency — worth showing, because a
+    /// microphone through a computer is late and no amount of software makes
+    /// it not so.
+    pub latency_ms: f64,
+}
+
+impl From<&dj_audio::ActiveConfig> for MicDeviceDto {
+    fn from(config: &dj_audio::ActiveConfig) -> Self {
+        MicDeviceDto {
+            name: config.device_name.clone(),
+            sample_rate: config.sample_rate.get(),
+            buffer_frames: config.buffer_frames,
+            channels: config.channels,
+            latency_ms: config.latency_ms(),
+        }
+    }
+}
+
 /// The headphone device in a two-card setup.
 #[derive(Debug, Clone, Serialize)]
 pub struct CueDeviceDto {
@@ -77,6 +108,45 @@ pub fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceDto>, String
             supports_split_output: d.max_output_channels >= 4,
         })
         .collect())
+}
+
+/// Devices that can capture. Empty is a normal answer — plenty of laptops in a
+/// booth have nothing plugged in.
+#[tauri::command]
+pub fn list_inputs(state: State<'_, AppState>) -> Result<Vec<DeviceDto>, String> {
+    let devices = state.host().list_inputs().map_err(|e| e.to_string())?;
+    Ok(devices
+        .into_iter()
+        .map(|d| DeviceDto {
+            id: d.id.as_str().to_owned(),
+            name: d.name,
+            channels: d.max_output_channels,
+            sample_rate: d.default_sample_rate.get(),
+            is_default: d.is_default,
+            // Meaningless for an input; there is no headphone bus to split.
+            supports_split_output: false,
+        })
+        .collect())
+}
+
+/// Attach an input device to the microphone strip.
+///
+/// This is the cable, not the switch. `mic on` opens the channel, and it is a
+/// separate action because opening a sound card takes long enough to miss a
+/// cue: a DJ plugs in once and toggles the channel all evening.
+#[tauri::command]
+pub fn open_mic(
+    state: State<'_, AppState>,
+    device_id: Option<String>,
+) -> Result<MicDeviceDto, String> {
+    let device = device_id.map(dj_audio::DeviceId::new);
+    let config = state.host().open_mic(device).map_err(|e| e.to_string())?;
+    Ok(MicDeviceDto::from(&config))
+}
+
+#[tauri::command]
+pub fn close_mic(state: State<'_, AppState>) -> Result<(), String> {
+    state.host().close_mic().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

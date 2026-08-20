@@ -64,6 +64,8 @@ pub struct Engine {
     master_rack: Rack,
     /// Capturing into a sampler slot. See [`crate::record`].
     recorder: Recorder,
+    /// The microphone / line input strip. See [`crate::mic::Mic`].
+    mic: crate::mic::Mic,
     /// The master, on its way to a file. See [`Command::RecordStream`].
     record_stream: Option<rtrb::Producer<f32>>,
     /// Samples the ring would not take since recording started.
@@ -139,6 +141,7 @@ impl Engine {
             sampler: Sampler::new(sample_rate.as_f64()),
             master_rack: Rack::new(sr),
             recorder: Recorder::new(sample_rate),
+            mic: crate::mic::Mic::new(sr),
             record_stream: None,
             dropped_samples: 0,
             limiter: Limiter::new(sr),
@@ -363,6 +366,11 @@ impl Engine {
                     if let Some(target) = self.sampler.slot_in_mut(bank, slot) {
                         let previous = target.load(source, bpm);
                         self.retire(Retired::Source(previous));
+                    }
+                }
+                Command::MicInput { source } => {
+                    if let Some(previous) = self.mic.set_input(source) {
+                        self.retire(Retired::MicInput(previous));
                     }
                 }
                 Command::RecordStream { sink } => {
@@ -596,6 +604,19 @@ impl Engine {
                 dj_core::SamplerChange::RecordStop => self.recorder.stop(),
                 dj_core::SamplerChange::RecordCancel => self.recorder.cancel(),
             },
+            Action::Mixer(MixerAction::Mic(change)) => {
+                use dj_core::action::MicChange;
+                match change {
+                    MicChange::SetOpen(open) => self.mic.set_open(open),
+                    MicChange::GainDb(db) => self.mic.set_gain_db(db),
+                    MicChange::SetCue(on) => self.mic.set_to_cue(on),
+                    MicChange::SetTalkover(on) => self.mic.ducker_mut().set_enabled(on),
+                    MicChange::DuckDb(db) => self.mic.ducker_mut().set_depth_db(db),
+                    MicChange::ThresholdDb(db) => self.mic.ducker_mut().set_threshold_db(db),
+                    MicChange::AttackMs(ms) => self.mic.ducker_mut().set_attack_ms(ms),
+                    MicChange::ReleaseMs(ms) => self.mic.ducker_mut().set_release_ms(ms),
+                }
+            }
             Action::Mixer(MixerAction::SetLimiter(on)) => {
                 // The cue limiter is not switched with it. Bypass exists for
                 // the DJ feeding an external processor, and that processor is
@@ -640,11 +661,36 @@ impl Engine {
         }
     }
 
+    /// The microphone strip, for the interface.
+    fn publish_mic(&self) {
+        let set = |param, value| self.registry.set(ParamId::Global(param), value);
+        let flag = |param, on: bool| set(param, if on { 1.0 } else { 0.0 });
+        flag(GlobalParam::MicPresent, self.mic.has_input());
+        flag(GlobalParam::MicOpen, self.mic.is_open());
+        flag(GlobalParam::MicCue, self.mic.to_cue());
+        flag(GlobalParam::MicTalkover, self.mic.ducker().is_enabled());
+        set(GlobalParam::MicGainDb, self.mic.gain_db());
+        set(GlobalParam::MicLevel, self.mic.level());
+        set(GlobalParam::MicDuckingDb, self.mic.ducker().reduction_db());
+        set(GlobalParam::MicDuckDb, -self.mic.ducker().depth_db());
+        set(
+            GlobalParam::MicThresholdDb,
+            self.mic.ducker().threshold_db(),
+        );
+        set(GlobalParam::MicAttackMs, self.mic.ducker().attack_ms());
+        set(GlobalParam::MicReleaseMs, self.mic.ducker().release_ms());
+        set(
+            GlobalParam::MicStarvedFrames,
+            self.mic.starved_frames() as f32,
+        );
+    }
+
     fn publish_deck_state(&self) {
         // The master rack changes all night, so it rides with the per-block
         // publisher rather than with the static state written at construction.
         self.publish_master_rack();
         self.publish_sampler();
+        self.publish_mic();
         for (index, deck) in self.decks.iter().enumerate() {
             let Some(id) = DeckId::new(index as u8) else {
                 continue;
@@ -985,17 +1031,34 @@ impl AudioCallback for Engine {
             let booth = self.booth_gain.next_value();
             let mix = self.cue_mix.next_value();
 
+            // The microphone, and what it does to everything else.
+            //
+            // Read every frame whether or not the channel is open, because the
+            // input ring has to be drained either way -- see `mic::Mic`.
+            let mic = self.mic.next_frame();
+
             // Master first: everything downstream is derived from it.
+            //
+            // The music is ducked and the microphone is not, which is the whole
+            // point: `music_gain` applies to the deck and sampler sum, and the
+            // microphone is added after it. A ducker that ducked its own
+            // sidechain would be a gate.
+            //
+            // Both then meet the master gain, and after it the master rack --
+            // so an echo thrown over the mix covers the microphone too. That is
+            // a deliberate choice rather than an accident of ordering: echo on
+            // the voice is a move DJs actually make, and a microphone routed
+            // around the rack could not do it.
             //
             // Deliberately *not* clamped before the limiter. A clamp is hard
             // digital clipping, and clipping the signal on the way into a
             // limiter throws away the very peaks it exists to catch -- the
             // damage would already be done and merely quieter.
-            let raw_l = frame[main_l] * master;
+            let raw_l = frame[main_l].mul_add(mic.music_gain, mic.left) * master;
             let raw_r = if layout.is_mono() {
                 raw_l
             } else {
-                frame[main_r] * master
+                frame[main_r].mul_add(mic.music_gain, mic.right) * master
             };
 
             // The master rack, between the master gain and the limiter. After
@@ -1044,7 +1107,19 @@ impl AudioCallback for Engine {
             // it is a grid the DJ would carefully match, and the room would
             // hear 5 ms out. Matching delays on both paths cancels exactly.
             if let Some((cue_l, cue_r)) = layout.cue {
-                let (raw_l, raw_r) = self.cue_limiter.process_frame(frame[cue_l], frame[cue_r]);
+                // The microphone joins the headphones when it is asked to, so a
+                // DJ can hear themselves without depending on a monitor wedge.
+                //
+                // The cue is *not* ducked. Ducking exists so a room can hear a
+                // voice over the music; the DJ's headphones already have the
+                // voice in them directly, and pulling the music down there as
+                // well would take away the only reference they have.
+                let (send_l, send_r) = if self.mic.to_cue() {
+                    (frame[cue_l] + mic.left, frame[cue_r] + mic.right)
+                } else {
+                    (frame[cue_l], frame[cue_r])
+                };
+                let (raw_l, raw_r) = self.cue_limiter.process_frame(send_l, send_r);
                 let (out_l, out_r) = if self.cue_split {
                     // Split cue: cue mono in the left ear, master mono in the
                     // right. Standard for beatmatching -- you hear both sources
@@ -3502,6 +3577,381 @@ mod record_tests {
         assert!(
             rig.get(GlobalParam::RecordReady) > 0.5,
             "and know when it is back"
+        );
+    }
+}
+
+/// The microphone in the engine: does it reach the master, does it duck the
+/// music, and does it stay out of the way when it should.
+#[cfg(test)]
+mod mic_tests {
+    use super::*;
+    use dj_core::action::MicChange;
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+    /// The ring the host's input callback would fill. Two seconds is far more
+    /// than a real one, and lets a test speak for as long as it needs to.
+    const RING: usize = 48_000 * 2 * crate::mic::CHANNELS;
+
+    struct Rig {
+        engine: Engine,
+        commands: rtrb::Producer<Command>,
+        retired: rtrb::Consumer<Retired>,
+        registry: Arc<ParameterRegistry>,
+        /// The sending half of the microphone's ring, kept so a test can speak.
+        voice: Option<rtrb::Producer<f32>>,
+    }
+
+    fn rig() -> Rig {
+        let (command_tx, command_rx) = rtrb::RingBuffer::new(256);
+        let (retired_tx, retired_rx) = rtrb::RingBuffer::new(64);
+        let registry = Arc::new(ParameterRegistry::new());
+        Rig {
+            engine: Engine::new(2, SR, command_rx, retired_tx, Arc::clone(&registry)),
+            commands: command_tx,
+            retired: retired_rx,
+            registry,
+            voice: None,
+        }
+    }
+
+    impl Rig {
+        fn send(&mut self, command: Command) {
+            self.commands.push(command).expect("queue full");
+        }
+
+        fn act(&mut self, action: Action) {
+            self.send(Command::Action(action));
+        }
+
+        fn mic(&mut self, change: MicChange) {
+            self.act(Action::Mixer(MixerAction::Mic(change)));
+        }
+
+        /// Attach an input device.
+        fn plug_in(&mut self) {
+            let (producer, consumer) = rtrb::RingBuffer::new(RING);
+            self.voice = Some(producer);
+            self.send(Command::MicInput {
+                source: Some(consumer),
+            });
+        }
+
+        /// Put `frames` of a steady level into the input ring.
+        fn speak(&mut self, level: f32, frames: usize) {
+            let voice = self.voice.as_mut().expect("no input attached");
+            for _ in 0..frames {
+                for _ in 0..crate::mic::CHANNELS {
+                    voice.push(level).expect("input ring full");
+                }
+            }
+        }
+
+        /// Load a steady tone on deck 1 and start it, so there is music to duck.
+        fn play_music(&mut self, level: f32) {
+            self.send(Command::Load {
+                deck: dj_core::deck::DeckId::from_human(1).unwrap(),
+                source: Arc::new(dj_decode::AudioBuffer::from_interleaved(
+                    vec![level; 48_000 * 60 * 2],
+                    SR,
+                )),
+            });
+            self.act(Action::Deck {
+                deck: dj_core::deck::DeckId::from_human(1).unwrap(),
+                action: DeckAction::Play,
+            });
+        }
+
+        /// Render `frames` and give back the peak of the master's left channel.
+        fn render_peak(&mut self, frames: usize) -> f32 {
+            self.render_peaks(frames, 2).0
+        }
+
+        /// Render across `channels` and give back the master and cue peaks.
+        ///
+        /// Four channels is the layout that has a headphone bus at all, which
+        /// is the only way to see whether the microphone reached it.
+        fn render_peaks(&mut self, frames: usize, channels: usize) -> (f32, f32) {
+            let mut out = vec![0.0; frames * channels];
+            self.engine.render(
+                &mut out,
+                &RenderContext {
+                    frames,
+                    channels,
+                    sample_rate: SR,
+                },
+            );
+            let layout = BusLayout::for_channels(channels);
+            let master = out
+                .chunks_exact(channels)
+                .map(|f| f[layout.main.0].abs())
+                .fold(0.0, f32::max);
+            let cue = layout.cue.map_or(0.0, |(left, _)| {
+                out.chunks_exact(channels)
+                    .map(|f| f[left].abs())
+                    .fold(0.0, f32::max)
+            });
+            (master, cue)
+        }
+
+        fn get(&self, param: GlobalParam) -> f32 {
+            self.registry.get(ParamId::Global(param))
+        }
+    }
+
+    #[test]
+    fn a_microphone_with_no_device_is_silent_and_says_so() {
+        let mut rig = rig();
+        rig.mic(MicChange::SetOpen(true));
+        assert_eq!(rig.render_peak(512), 0.0);
+        assert_eq!(rig.get(GlobalParam::MicPresent), 0.0);
+        assert_eq!(rig.get(GlobalParam::MicOpen), 1.0);
+    }
+
+    #[test]
+    fn a_closed_microphone_passes_nothing_to_the_master() {
+        let mut rig = rig();
+        rig.plug_in();
+        rig.render_peak(64);
+        rig.speak(0.5, 4096);
+        assert_eq!(rig.render_peak(4096), 0.0, "a closed channel was audible");
+        assert_eq!(rig.get(GlobalParam::MicPresent), 1.0);
+        assert_eq!(rig.get(GlobalParam::MicOpen), 0.0);
+    }
+
+    #[test]
+    fn an_open_microphone_reaches_the_master() {
+        let mut rig = rig();
+        rig.plug_in();
+        rig.mic(MicChange::SetOpen(true));
+        rig.render_peak(64);
+        rig.speak(0.5, 4096);
+        let peak = rig.render_peak(4096);
+        assert!((peak - 0.5).abs() < 0.01, "master peaked at {peak}");
+        assert!(rig.get(GlobalParam::MicLevel) > 0.4);
+    }
+
+    /// **The feature.** A voice over the music pulls the music down, and the
+    /// voice itself is not pulled down with it.
+    ///
+    /// Three measurements rather than one, because the second half of that
+    /// sentence is the half that is easy to get wrong and easy to test badly.
+    /// A ducker wired to attenuate `(music + voice)` instead of `music` alone
+    /// still passes any test that only checks the master got quieter — the
+    /// music *did* step back, it just took the voice with it. Comparing
+    /// against a measured voice-only level is what separates the two, and the
+    /// duck is set deep so the gap between "right" and "wrong" is an order of
+    /// magnitude rather than a rounding error.
+    ///
+    /// Confirmed by mutation: `(music + voice) * duck` passes the shallower
+    /// version of this test and fails this one.
+    #[test]
+    fn speaking_ducks_the_music_but_not_the_voice() {
+        const MUSIC: f32 = 0.4;
+        const VOICE: f32 = 0.05;
+        /// Deep enough that a ducked music bed is negligible beside the voice.
+        const DUCK_DB: f32 = -40.0;
+
+        let music_alone = {
+            let mut rig = rig();
+            rig.play_music(MUSIC);
+            rig.render_peak(4096);
+            rig.render_peak(4096)
+        };
+        let voice_alone = {
+            let mut rig = rig();
+            rig.plug_in();
+            rig.mic(MicChange::SetOpen(true));
+            rig.render_peak(64);
+            rig.speak(VOICE, 48_000);
+            rig.render_peak(24_000);
+            rig.render_peak(4096)
+        };
+        let mut both = rig();
+        both.play_music(MUSIC);
+        both.plug_in();
+        both.mic(MicChange::SetOpen(true));
+        both.mic(MicChange::DuckDb(DUCK_DB));
+        both.render_peak(4096);
+        both.speak(VOICE, 48_000);
+        both.render_peak(24_000);
+        let together = both.render_peak(4096);
+
+        // A deck at 0.4 with the crossfader centred arrives through the
+        // constant-power law, so this is 0.4/√2 rather than 0.4. Measured
+        // rather than assumed: asserting a round number would be testing the
+        // crossfader curve by accident.
+        assert!(music_alone > 0.2, "no music to duck: {music_alone}");
+        assert!(voice_alone > 0.04, "no voice to speak with: {voice_alone}");
+
+        assert!(
+            rig_reduction(&both) > 30.0,
+            "the music was barely ducked: {} dB",
+            rig_reduction(&both)
+        );
+        assert!(
+            together < music_alone * 0.3,
+            "master went {music_alone} -> {together}; the music did not step back"
+        );
+        // The discriminating assertion. Ducking the voice too would leave the
+        // master at (music + voice) x depth -- about 0.003 here, twenty times
+        // below the voice on its own.
+        assert!(
+            together > voice_alone * 0.8,
+            "the voice was ducked along with the music: {together} against \
+             {voice_alone} on its own"
+        );
+    }
+
+    /// The headphone send is opt-in. A microphone that always went to the
+    /// headphones would talk over the DJ's own cue every time it was open,
+    /// which is the one place they need to hear the incoming track.
+    #[test]
+    fn the_microphone_reaches_the_headphones_only_when_asked() {
+        let mut rig = rig();
+        rig.plug_in();
+        rig.mic(MicChange::SetOpen(true));
+        // Talkover off: this is about routing, and a duck on the master would
+        // muddy the comparison.
+        rig.mic(MicChange::SetTalkover(false));
+        rig.render_peaks(64, 4);
+        rig.speak(0.5, 48_000);
+
+        let (master, cue) = rig.render_peaks(4096, 4);
+        assert!(master > 0.4, "the microphone never reached the master");
+        assert_eq!(cue, 0.0, "the microphone reached the headphones uninvited");
+
+        rig.mic(MicChange::SetCue(true));
+        let (_, cue) = rig.render_peaks(4096, 4);
+        assert!(cue > 0.4, "the headphone send did nothing: {cue}");
+    }
+
+    /// The headphones are the DJ's reference. Ducking exists so a *room* can
+    /// hear a voice over the music; in the booth the voice is already there
+    /// directly, and pulling the music down would remove the only thing they
+    /// are listening for.
+    #[test]
+    fn the_headphone_mix_is_not_ducked() {
+        let mut rig = rig();
+        rig.play_music(0.4);
+        // Cue the deck, so there is something in the headphones to duck.
+        rig.act(Action::Deck {
+            deck: dj_core::deck::DeckId::from_human(1).unwrap(),
+            action: DeckAction::SetCue(true),
+        });
+        rig.plug_in();
+        rig.mic(MicChange::SetOpen(true));
+        rig.mic(MicChange::DuckDb(-40.0));
+        // With the microphone in the headphones too — the case that could be
+        // ducked at all. With the send off the cue bus never meets the ducker,
+        // so testing that path would prove nothing.
+        rig.mic(MicChange::SetCue(true));
+        // All cue, no master, so the reading is the cue bus alone.
+        rig.act(Action::Mixer(MixerAction::CueMix(0.0)));
+        rig.render_peaks(4096, 4);
+        let (_, quiet_cue) = rig.render_peaks(4096, 4);
+
+        rig.speak(0.05, 48_000);
+        rig.render_peaks(24_000, 4);
+        let (_, talking_cue) = rig.render_peaks(4096, 4);
+
+        assert!(quiet_cue > 0.2, "nothing in the headphones: {quiet_cue}");
+        assert!(
+            rig.get(GlobalParam::MicDuckingDb) > 30.0,
+            "the master was not ducked, so this proves nothing"
+        );
+        // The cue now carries the music *and* the voice, so it can only have
+        // gone up. A ducked cue bus would sit near the voice alone — an order
+        // of magnitude below the music it replaced.
+        assert!(
+            talking_cue > quiet_cue,
+            "the headphone mix was ducked: {quiet_cue} -> {talking_cue}"
+        );
+    }
+
+    fn rig_reduction(rig: &Rig) -> f32 {
+        rig.get(GlobalParam::MicDuckingDb)
+    }
+
+    /// An aux — a phone, a second laptop — must not duck the mix every time it
+    /// makes a sound, which is what switching talkover off is for.
+    #[test]
+    fn with_talkover_off_a_loud_input_leaves_the_music_alone() {
+        let mut rig = rig();
+        rig.play_music(0.4);
+        rig.plug_in();
+        rig.mic(MicChange::SetOpen(true));
+        rig.mic(MicChange::SetTalkover(false));
+        rig.render_peak(4096);
+        rig.speak(0.5, 48_000);
+        rig.render_peak(24_000);
+        assert_eq!(rig.get(GlobalParam::MicDuckingDb), 0.0);
+        assert_eq!(rig.get(GlobalParam::MicTalkover), 0.0);
+    }
+
+    /// The ducker must be sidechained from the microphone, not from the master.
+    /// If it were the master, loud music would duck itself — a compressor by
+    /// accident, and one nobody asked for.
+    #[test]
+    fn loud_music_alone_does_not_duck_anything() {
+        let mut rig = rig();
+        rig.play_music(0.9);
+        rig.plug_in();
+        rig.mic(MicChange::SetOpen(true));
+        rig.render_peak(48_000);
+        assert_eq!(
+            rig.get(GlobalParam::MicDuckingDb),
+            0.0,
+            "the music ducked itself"
+        );
+    }
+
+    #[test]
+    fn detaching_the_input_hands_the_ring_back_rather_than_dropping_it() {
+        let mut rig = rig();
+        rig.plug_in();
+        rig.render_peak(64);
+        rig.send(Command::MicInput { source: None });
+        rig.render_peak(64);
+        assert!(
+            matches!(rig.retired.pop(), Ok(Retired::MicInput(_))),
+            "the consumer was dropped on the audio thread"
+        );
+        assert_eq!(rig.get(GlobalParam::MicPresent), 0.0);
+    }
+
+    #[test]
+    fn every_setting_reaches_the_engine_and_comes_back_out() {
+        let mut rig = rig();
+        rig.mic(MicChange::GainDb(-6.0));
+        rig.mic(MicChange::SetCue(true));
+        rig.mic(MicChange::DuckDb(-18.0));
+        rig.mic(MicChange::ThresholdDb(-25.0));
+        rig.mic(MicChange::AttackMs(30.0));
+        rig.mic(MicChange::ReleaseMs(600.0));
+        rig.render_peak(64);
+
+        assert!((rig.get(GlobalParam::MicGainDb) - (-6.0)).abs() < 0.01);
+        assert_eq!(rig.get(GlobalParam::MicCue), 1.0);
+        assert!((rig.get(GlobalParam::MicDuckDb) - 18.0).abs() < 0.01);
+        assert!((rig.get(GlobalParam::MicThresholdDb) - (-25.0)).abs() < 0.01);
+        assert!((rig.get(GlobalParam::MicAttackMs) - 30.0).abs() < 0.01);
+        assert!((rig.get(GlobalParam::MicReleaseMs) - 600.0).abs() < 0.01);
+    }
+
+    /// An input that cannot keep up is a real fault with a real fix, and
+    /// completely invisible without a number.
+    #[test]
+    fn an_input_that_falls_behind_is_counted() {
+        let mut rig = rig();
+        rig.plug_in();
+        rig.mic(MicChange::SetOpen(true));
+        rig.speak(0.5, 100);
+        rig.render_peak(512);
+        assert!(
+            rig.get(GlobalParam::MicStarvedFrames) >= 400.0,
+            "starvation went unreported: {}",
+            rig.get(GlobalParam::MicStarvedFrames)
         );
     }
 }

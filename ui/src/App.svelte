@@ -4,6 +4,7 @@
   import Deck from "./Deck.svelte";
   import Fx from "./Fx.svelte";
   import Presets from "./Presets.svelte";
+  import Mic from "./Mic.svelte";
   import Sampler from "./Sampler.svelte";
   import Settings from "./Settings.svelte";
   import Shortcuts from "./Shortcuts.svelte";
@@ -809,6 +810,14 @@
           </p>
         {/if}
       </div>
+
+      <!--
+        The microphone sits in the mixer rather than behind a panel, because it
+        is a channel strip: it has a level, a switch and a send, exactly like
+        the decks either side of it. Putting it in a dialogue would make going
+        on air a two-step operation.
+      -->
+      <Mic mic={snapshot.master.mic} enabled={ready} {send} />
 
       <!--
         Quantize is global rather than per-deck because it is a way of working,

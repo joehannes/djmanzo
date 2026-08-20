@@ -273,6 +273,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_devices,
+            commands::list_inputs,
+            commands::open_mic,
+            commands::close_mic,
             commands::open_device,
             commands::active_device,
             commands::start_audio,

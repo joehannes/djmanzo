@@ -312,6 +312,38 @@ pub struct SetRecordingSnapshot {
     pub failed: bool,
 }
 
+/// The microphone / line input strip.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct MicSnapshot {
+    /// An input device is attached.
+    ///
+    /// Distinct from `open`: a DJ can arm the channel with nothing plugged in,
+    /// and an interface that showed those the same way would leave someone
+    /// talking into a microphone that was never connected.
+    pub present: bool,
+    /// The channel is open.
+    pub open: bool,
+    pub gain_db: f32,
+    /// Peak level after the gain, 0..=1.
+    pub level: f32,
+    /// The microphone is going to the headphones as well.
+    pub cue: bool,
+    /// Talkover is switched on. Off is the aux case — a phone or a second
+    /// laptop should not duck the mix every time it makes a sound.
+    pub talkover: bool,
+    /// How far the music is being ducked right now, in positive decibels.
+    /// Zero most of the time, which is what makes it worth showing.
+    pub ducking_db: f32,
+    /// How far the music drops when talkover engages, in positive decibels.
+    pub duck_db: f32,
+    pub threshold_db: f32,
+    pub attack_ms: f32,
+    pub release_ms: f32,
+    /// Frames the input ring could not supply. Non-zero means the input is not
+    /// keeping up — a real fault with a real fix, and invisible without this.
+    pub starved_frames: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MasterSnapshot {
     /// The sampler: which bank is showing, its level, and that bank's slots.
@@ -349,6 +381,8 @@ pub struct MasterSnapshot {
     pub split_output: Option<SplitOutputSnapshot>,
     /// True when beat jumps snap to the grid.
     pub quantize: bool,
+    /// The microphone / line input strip.
+    pub mic: MicSnapshot,
 }
 
 /// How the two-card bridge is doing.
@@ -634,6 +668,24 @@ impl Snapshot {
                     registry.get(ParamId::Global(GlobalParam::OutputLatencyFrames)),
                 ) * 1000.0,
                 quantize: registry.get(ParamId::Global(GlobalParam::Quantize)) >= 0.5,
+                mic: {
+                    let get = |p| registry.get(ParamId::Global(p));
+                    let flag = |p| get(p) >= 0.5;
+                    MicSnapshot {
+                        present: flag(GlobalParam::MicPresent),
+                        open: flag(GlobalParam::MicOpen),
+                        gain_db: get(GlobalParam::MicGainDb),
+                        level: get(GlobalParam::MicLevel),
+                        cue: flag(GlobalParam::MicCue),
+                        talkover: flag(GlobalParam::MicTalkover),
+                        ducking_db: get(GlobalParam::MicDuckingDb),
+                        duck_db: get(GlobalParam::MicDuckDb),
+                        threshold_db: get(GlobalParam::MicThresholdDb),
+                        attack_ms: get(GlobalParam::MicAttackMs),
+                        release_ms: get(GlobalParam::MicReleaseMs),
+                        starved_frames: f64::from(get(GlobalParam::MicStarvedFrames)),
+                    }
+                },
                 split_output: bridge.map(|stats| SplitOutputSnapshot {
                     drift_ppm: stats.drift_ppm() as f32,
                     queue_ms: to_seconds(stats.queued_frames() as f32) * 1000.0,

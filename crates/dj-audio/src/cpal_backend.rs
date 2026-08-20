@@ -50,6 +50,28 @@ impl CpalBackend {
             }
         }
     }
+
+    /// The same lookup for the capture side.
+    ///
+    /// Deliberately *not* folded into `find_device` with a direction flag. The
+    /// fallbacks differ in kind: an unplugged output falls back to the default
+    /// because a DJ application with no output is useless, while an unplugged
+    /// input must fail — silently opening the built-in microphone instead of
+    /// the DJ's chosen one puts laptop fan noise into a PA.
+    fn find_input(&self, id: Option<&DeviceId>) -> Result<cpal::Device, AudioError> {
+        match id {
+            None => self
+                .host
+                .default_input_device()
+                .ok_or(AudioError::NoInputDevice),
+            Some(wanted) => self
+                .host
+                .input_devices()
+                .map_err(|e| AudioError::Enumerate(e.to_string()))?
+                .find(|d| d.name().is_ok_and(|n| n == wanted.as_str()))
+                .ok_or(AudioError::NoInputDevice),
+        }
+    }
 }
 
 impl Default for CpalBackend {
@@ -100,6 +122,99 @@ impl AudioBackend for CpalBackend {
             });
         }
         Ok(out)
+    }
+
+    fn input_devices(&self) -> Result<Vec<DeviceInfo>, AudioError> {
+        let default_name = self.host.default_input_device().and_then(|d| d.name().ok());
+        let devices = self
+            .host
+            .input_devices()
+            .map_err(|e| AudioError::Enumerate(e.to_string()))?;
+
+        let mut out = Vec::new();
+        for device in devices {
+            let Ok(name) = device.name() else { continue };
+            let Ok(config) = device.default_input_config() else {
+                continue;
+            };
+            let Some(sample_rate) = SampleRate::new(config.sample_rate().0) else {
+                continue;
+            };
+            out.push(DeviceInfo {
+                id: DeviceId::new(name.clone()),
+                is_default: default_name.as_deref() == Some(name.as_str()),
+                name,
+                // An input device's channel count, in the field the type has
+                // for a channel count. The name says "output" because outputs
+                // came first; splitting it in two would mean two structs that
+                // differ in one word.
+                max_output_channels: config.channels(),
+                default_sample_rate: sample_rate,
+            });
+        }
+        Ok(out)
+    }
+
+    fn open_input(
+        &self,
+        config: &StreamConfig,
+        mut sink: rtrb::Producer<f32>,
+    ) -> Result<Box<dyn AudioStream>, AudioError> {
+        let device = self.find_input(config.device.as_ref())?;
+        let device_name = device.name().unwrap_or_else(|_| "unknown".to_owned());
+
+        // Ask the device for what it natively does rather than insisting on
+        // stereo. A great many microphones are mono, and a stereo request to a
+        // mono device fails outright on some backends — so the doubling happens
+        // here, in software, where it always works.
+        let supported = device
+            .default_input_config()
+            .map_err(|e| AudioError::OpenStream(e.to_string()))?;
+        let device_channels = supported.channels().max(1);
+
+        let stream_config = cpal::StreamConfig {
+            channels: device_channels,
+            sample_rate: cpal::SampleRate(config.sample_rate.get()),
+            buffer_size: cpal::BufferSize::Fixed(config.buffer_frames),
+        };
+
+        let stream = device
+            .build_input_stream(
+                &stream_config,
+                move |data: &[f32], _info: &cpal::InputCallbackInfo| {
+                    let stride = device_channels as usize;
+                    for frame in data.chunks_exact(stride) {
+                        // Mono is doubled, stereo passes through, and anything
+                        // wider has its first two channels taken. The engine
+                        // sees interleaved stereo either way.
+                        let left = frame[0];
+                        let right = if stride > 1 { frame[1] } else { left };
+                        // A full ring means the engine is not draining, which
+                        // it always is while it renders. Dropping is the only
+                        // option that keeps this callback bounded, and the
+                        // engine's starvation counter is the visible half of
+                        // the same fault.
+                        if sink.push(left).is_err() || sink.push(right).is_err() {
+                            break;
+                        }
+                    }
+                },
+                move |err| {
+                    tracing::error!(error = %err, "audio input stream error");
+                },
+                None,
+            )
+            .map_err(|e| AudioError::OpenStream(e.to_string()))?;
+
+        Ok(Box::new(CpalStream {
+            active: ActiveConfig {
+                device_name,
+                sample_rate: config.sample_rate,
+                buffer_frames: config.buffer_frames,
+                channels: device_channels,
+            },
+            stream,
+        }))
     }
 
     fn open_output(

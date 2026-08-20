@@ -20,6 +20,7 @@ pub mod bus;
 pub mod command;
 pub mod deck;
 pub mod engine;
+pub mod mic;
 pub mod rack;
 pub mod record;
 pub mod sampler;

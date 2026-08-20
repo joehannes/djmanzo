@@ -86,6 +86,19 @@ pub enum Command {
     RecordSpace {
         samples: Vec<f32>,
     },
+    /// Point the microphone strip at an input device, or detach it.
+    ///
+    /// `Some` installs the receiving half of a ring the host's input callback
+    /// fills; `None` detaches, and whatever was there comes back through
+    /// [`Retired::MicInput`] rather than being dropped here.
+    ///
+    /// The mirror image of [`Command::RecordStream`] — the operating system
+    /// delivers input on a callback of its own, which is a different thread
+    /// from the one rendering the master, so a lock-free ring is the only way
+    /// across.
+    MicInput {
+        source: Option<rtrb::Consumer<f32>>,
+    },
     /// Put a saved loop back on a deck, or clear the active one.
     ///
     /// A command for the same reason as the two above: the region comes from
@@ -125,6 +138,12 @@ pub enum Retired {
     /// has already gone, that share is the last one and the drop is a `free()`.
     /// Which is exactly what this queue exists to keep off the audio thread.
     Stream(rtrb::Producer<f32>),
+    /// The receiving half of a detached microphone input, to be freed.
+    ///
+    /// Same reasoning as [`Retired::Stream`]: dropping an `rtrb::Consumer`
+    /// releases a share of the ring, and if the host's input callback has
+    /// already gone that share is the last one and the drop is a `free()`.
+    MicInput(rtrb::Consumer<f32>),
     /// A recording buffer with nothing in it, to be freed.
     ///
     /// Distinct from [`Retired::Capture`] so that "free this" and "this is a

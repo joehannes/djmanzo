@@ -313,6 +313,39 @@ pub enum GlobalParam {
     SamplerVolume,
     /// Peak the sampler put into the master this block.
     SamplerPeak,
+    /// 1.0 when an input device is attached to the microphone strip.
+    ///
+    /// Distinct from [`GlobalParam::MicOpen`]: a DJ can arm the channel with no
+    /// device selected, and an interface that showed those two the same way
+    /// would leave someone talking into a microphone that was never connected.
+    MicPresent,
+    /// 1.0 when the microphone channel is open.
+    MicOpen,
+    /// Channel gain, in decibels.
+    MicGainDb,
+    /// Peak level of the microphone after its gain, 0..=1.
+    MicLevel,
+    /// 1.0 when the microphone is also going to the headphones.
+    MicCue,
+    /// 1.0 when talkover is switched on.
+    MicTalkover,
+    /// How far the music is being ducked right now, in positive decibels. Zero
+    /// most of the time, which is what makes it worth showing: a number that
+    /// moves is the DJ seeing talkover work.
+    MicDuckingDb,
+    /// How far the music drops when talkover engages, in positive decibels.
+    MicDuckDb,
+    /// The level the microphone has to reach before the music moves, in dBFS.
+    MicThresholdDb,
+    /// How fast the music steps back, in milliseconds.
+    MicAttackMs,
+    /// How fast it comes back, in milliseconds.
+    MicReleaseMs,
+    /// Frames the input ring could not supply since the device was opened.
+    ///
+    /// Nonzero means the input is not keeping up, which is a real fault with a
+    /// real fix — a larger buffer — and completely invisible without a number.
+    MicStarvedFrames,
     /// 1.0 when the recorder has a buffer to write into.
     ///
     /// A state the interface has to be able to show, because it is not one the
@@ -714,7 +747,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since.
-    pub const COUNT: usize = 110;
+    pub const COUNT: usize = 122;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -749,6 +782,18 @@ impl GlobalParam {
             RecordSeconds,
             RecordSourceDeck,
             SetRecordDropped,
+            MicPresent,
+            MicOpen,
+            MicGainDb,
+            MicLevel,
+            MicCue,
+            MicTalkover,
+            MicDuckingDb,
+            MicDuckDb,
+            MicThresholdDb,
+            MicAttackMs,
+            MicReleaseMs,
+            MicStarvedFrames,
             Sample1Loaded,
             Sample1Playing,
             Sample1Mode,
@@ -975,6 +1020,18 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::RecordSeconds => "record_seconds",
         GlobalParam::RecordSourceDeck => "record_source_deck",
         GlobalParam::SetRecordDropped => "set_record_dropped",
+        GlobalParam::MicPresent => "mic_present",
+        GlobalParam::MicOpen => "mic_open",
+        GlobalParam::MicGainDb => "mic_gain_db",
+        GlobalParam::MicLevel => "mic_level",
+        GlobalParam::MicCue => "mic_cue",
+        GlobalParam::MicTalkover => "mic_talkover",
+        GlobalParam::MicDuckingDb => "mic_ducking_db",
+        GlobalParam::MicDuckDb => "mic_duck_db",
+        GlobalParam::MicThresholdDb => "mic_threshold_db",
+        GlobalParam::MicAttackMs => "mic_attack_ms",
+        GlobalParam::MicReleaseMs => "mic_release_ms",
+        GlobalParam::MicStarvedFrames => "mic_starved_frames",
         GlobalParam::Sample1Loaded => "sample1_loaded",
         GlobalParam::Sample1Playing => "sample1_playing",
         GlobalParam::Sample1Mode => "sample1_mode",

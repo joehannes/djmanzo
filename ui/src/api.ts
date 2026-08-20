@@ -379,6 +379,55 @@ export interface SetRecordingState {
   failed: boolean;
 }
 
+/** The microphone / line input strip. */
+export interface MicState {
+  /**
+   * An input device is attached.
+   *
+   * Distinct from `open`: a DJ can arm the channel with nothing plugged in,
+   * and showing those the same way would leave someone talking into a
+   * microphone that was never connected.
+   */
+  present: boolean;
+  /** The channel is open. */
+  open: boolean;
+  gain_db: number;
+  /** Peak level after the gain, 0..=1. */
+  level: number;
+  /** The microphone is going to the headphones as well. */
+  cue: boolean;
+  /**
+   * Talkover is switched on. Off is the aux case — a phone or a second laptop
+   * should not duck the mix every time it makes a sound.
+   */
+  talkover: boolean;
+  /** How far the music is being ducked right now, in positive decibels. */
+  ducking_db: number;
+  /** How far the music drops when talkover engages, in positive decibels. */
+  duck_db: number;
+  threshold_db: number;
+  attack_ms: number;
+  release_ms: number;
+  /**
+   * Frames the input ring could not supply. Non-zero means the input is not
+   * keeping up — a real fault with a real fix, and invisible without this.
+   */
+  starved_frames: number;
+}
+
+/** An input device feeding the microphone strip. */
+export interface MicDevice {
+  name: string;
+  sampleRate: number;
+  bufferFrames: number;
+  channels: number;
+  /**
+   * One-way latency of the input alone. The DJ hears themselves this much late
+   * *plus* the output's own latency.
+   */
+  latencyMs: number;
+}
+
 export interface MasterState {
   /** The sampler: which bank is showing, its level, and that bank's slots. */
   sampler: SamplerState;
@@ -412,6 +461,8 @@ export interface MasterState {
   split_output: SplitOutput | null;
   /** True when beat jumps snap to the grid. */
   quantize: boolean;
+  /** The microphone / line input strip. */
+  mic: MicState;
 }
 
 export type SessionPhase = "warm_up" | "heat" | "peak" | "cooldown" | "chill_out";
@@ -455,6 +506,21 @@ export interface Snapshot {
 }
 
 export const listDevices = () => invoke<Device[]>("list_devices");
+
+/** Devices that can capture. Empty is a normal answer. */
+export const listInputs = () => invoke<Device[]>("list_inputs");
+
+/**
+ * Attach an input device to the microphone strip.
+ *
+ * The cable, not the switch — `mic on` opens the channel. Separate because
+ * opening a sound card takes long enough to miss a cue, so a DJ plugs in once
+ * and toggles the channel all evening.
+ */
+export const openMic = (deviceId: string | null) =>
+  invoke<MicDevice>("open_mic", { deviceId });
+
+export const closeMic = () => invoke<void>("close_mic");
 
 /**
  * Open the output.

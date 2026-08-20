@@ -46,7 +46,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Headphone cue (PFL) with cue/master blend and split-cue | M1 |
 | Booth output with independent level | M1 |
 | Master limiter | M1 |
-| Microphone / aux input with ducking | M5 |
+| Microphone / aux input with ducking | M5 — done |
 | Microphone effects (reverb, echo, pitch) | M5 |
 | Crossfader assign per channel (A / B / thru) | M1 |
 

@@ -5,6 +5,7 @@
 //! sized, and `process` only does arithmetic.
 
 pub mod biquad;
+pub mod duck;
 pub mod eq;
 pub mod fx;
 pub mod karaoke;
@@ -16,6 +17,7 @@ pub mod smooth;
 pub mod spectrum;
 
 pub use biquad::Biquad;
+pub use duck::Ducker;
 pub use eq::{SweepFilter, ThreeBandEq};
 pub use fx::{DelayLine, FxContext, Slot};
 pub use karaoke::CentreCancel;

@@ -1302,3 +1302,78 @@ fn recording_the_set_never_allocates() {
         "the ring was dropped on the audio thread rather than handed back"
     );
 }
+
+/// The microphone runs on the audio thread like everything else: two ring pops
+/// and arithmetic per frame, and no allocation anywhere in it.
+///
+/// Both paths are exercised deliberately. The happy one — a ring with audio in
+/// it — is the easy case; the starved one, where the ring has run dry and the
+/// engine has to decide what to do about it, is where a naive implementation
+/// reaches for something.
+#[test]
+fn the_microphone_never_allocates() {
+    use dj_core::action::MicChange;
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+
+    let (mut voice, consumer) = rtrb::RingBuffer::<f32>::new(48_000 * 2);
+    rig.commands
+        .push(Command::MicInput {
+            source: Some(consumer),
+        })
+        .ok();
+    rig.commands
+        .push(Command::Action(Action::Mixer(MixerAction::Mic(
+            MicChange::SetOpen(true),
+        ))))
+        .ok();
+    rig.commands
+        .push(Command::Action(Action::Mixer(MixerAction::Mic(
+            MicChange::SetCue(true),
+        ))))
+        .ok();
+    // Loud enough to hold the ducker open through the whole run, so the
+    // gain-reduction path is measured rather than the resting one.
+    for _ in 0..24_000 {
+        voice.push(0.6).ok();
+        voice.push(0.6).ok();
+    }
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(8_000);
+    });
+    assert_eq!(
+        allocations, 0,
+        "an open microphone allocated {allocations} times"
+    );
+
+    // The ring is dry by now; starving must not allocate either.
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(8_000);
+    });
+    assert_eq!(
+        allocations, 0,
+        "a starved microphone allocated {allocations} times"
+    );
+
+    // And detaching hands the consumer back rather than dropping it here.
+    rig.commands.push(Command::MicInput { source: None }).ok();
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(4);
+    });
+    assert_eq!(allocations, 0, "detaching allocated {allocations} times");
+
+    let mut handed_back = false;
+    while let Ok(item) = rig.retired.pop() {
+        if matches!(item, Retired::MicInput(_)) {
+            handed_back = true;
+        }
+        std::mem::forget(item);
+    }
+    assert!(
+        handed_back,
+        "the input ring was dropped on the audio thread rather than handed back"
+    );
+}

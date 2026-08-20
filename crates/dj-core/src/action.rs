@@ -208,6 +208,38 @@ pub enum DeckAction {
     Eject,
 }
 
+/// What can be done to the microphone / line input.
+///
+/// A sub-grammar rather than a spray of `mic_*` verbs on the mixer, for the
+/// same reason the effect rack has one: there are eleven of these and they all
+/// address the same strip, so `mic gain -3` reads as one thought while
+/// `mic_gain -3` reads as a name somebody had to invent.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum MicChange {
+    /// Open or close the channel. Instant, and independent of whether an input
+    /// device is attached — a DJ opens and closes a microphone dozens of times
+    /// a night, and re-opening a sound card takes long enough to miss a cue.
+    SetOpen(bool),
+    /// Channel gain, in decibels.
+    GainDb(f32),
+    /// Send the microphone to the headphones as well, so a DJ can hear
+    /// themselves without depending on a monitor wedge.
+    SetCue(bool),
+    /// Whether the music steps back while somebody is speaking.
+    ///
+    /// Off is the aux case: a phone or a second laptop plugged into the same
+    /// strip should not duck the mix every time it makes a sound.
+    SetTalkover(bool),
+    /// How far the music drops, in decibels. Always a cut, whatever the sign.
+    DuckDb(f32),
+    /// The level the microphone has to reach before the music moves.
+    ThresholdDb(f32),
+    /// How fast the music steps back, in milliseconds.
+    AttackMs(f32),
+    /// How fast it comes back, in milliseconds.
+    ReleaseMs(f32),
+}
+
 /// Something done to the mixer as a whole.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum MixerAction {
@@ -251,6 +283,8 @@ pub enum MixerAction {
         slot: u8,
         change: SampleChange,
     },
+    /// The microphone / line input strip.
+    Mic(MicChange),
     /// Change the sampler as a whole: its bank, its level, or stop everything.
     Sampler(SamplerChange),
 }
@@ -331,6 +365,7 @@ impl Action {
                     )?))),
                 }
             }
+            "mic" => Ok(Action::Mixer(MixerAction::Mic(parse_mic(&mut words)?))),
             "quantize" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "on" => Ok(Action::Mixer(MixerAction::SetQuantize(true))),
                 "off" => Ok(Action::Mixer(MixerAction::SetQuantize(false))),
@@ -444,6 +479,23 @@ fn parse_record_source<'a>(
 /// A bare effect name selects it, so `fx 1 echo` reads the way a DJ would say
 /// it. Everything else is a named control, which keeps the grammar open: a new
 /// control is a new word here rather than three new verbs in the vocabulary.
+fn parse_mic<'a>(words: &mut impl Iterator<Item = &'a str>) -> Result<MicChange, ParseError> {
+    Ok(match words.next().ok_or(ParseError::MissingVerb)? {
+        "on" => MicChange::SetOpen(true),
+        "off" => MicChange::SetOpen(false),
+        "gain" => MicChange::GainDb(parse_f32(words.next())?),
+        "cue_on" => MicChange::SetCue(true),
+        "cue_off" => MicChange::SetCue(false),
+        "talkover_on" => MicChange::SetTalkover(true),
+        "talkover_off" => MicChange::SetTalkover(false),
+        "duck" => MicChange::DuckDb(parse_f32(words.next())?),
+        "threshold" => MicChange::ThresholdDb(parse_f32(words.next())?),
+        "attack" => MicChange::AttackMs(parse_f32(words.next())?),
+        "release" => MicChange::ReleaseMs(parse_f32(words.next())?),
+        other => return Err(ParseError::UnknownVerb(other.to_owned())),
+    })
+}
+
 fn parse_fx<'a>(words: &mut impl Iterator<Item = &'a str>) -> Result<(u8, FxChange), ParseError> {
     let slot = parse_fx_slot(words.next())?;
     let what = words.next().ok_or(ParseError::MissingArgument)?;
@@ -483,78 +535,91 @@ fn parse_fx_slot(word: Option<&str>) -> Result<u8, ParseError> {
 }
 
 fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, ParseError> {
-    Ok(match verb {
-        "play" => DeckAction::Play,
-        "pause" => DeckAction::Pause,
-        "play_pause" | "playpause" => DeckAction::PlayPause,
-        "cue" => DeckAction::Cue,
-        "eject" => DeckAction::Eject,
-        "seek" => DeckAction::Seek(FramePos::new(f64::from(parse_f32(argument)?))),
-        "rate" => DeckAction::SetRate(Rate::new(f64::from(parse_f32(argument)?))),
-        "pitch" => DeckAction::SetPitch(f64::from(parse_f32(argument)?)),
-        "volume" => DeckAction::SetVolume(parse_f32(argument)?.clamp(0.0, 1.0)),
-        "gain" => DeckAction::SetGainDb(parse_f32(argument)?),
-        "eq_low" => DeckAction::SetEqLow(parse_f32(argument)?.clamp(0.0, 4.0)),
-        "eq_mid" => DeckAction::SetEqMid(parse_f32(argument)?.clamp(0.0, 4.0)),
-        "eq_high" => DeckAction::SetEqHigh(parse_f32(argument)?.clamp(0.0, 4.0)),
-        "filter" => DeckAction::SetFilter(parse_f32(argument)?.clamp(-1.0, 1.0)),
-        "cue_on" => DeckAction::SetCue(true),
-        "cue_off" => DeckAction::SetCue(false),
-        "cue_toggle" => DeckAction::ToggleCue,
-        "sync" => DeckAction::Sync,
-        "sync_off" => DeckAction::SyncOff,
-        "beatjump" => DeckAction::BeatJump(parse_i32(argument)?),
-        "hotcue" => DeckAction::HotCue(parse_slot(argument)?),
-        "hotcue_set" => DeckAction::HotCueSet(parse_slot(argument)?),
-        "hotcue_clear" => DeckAction::HotCueClear(parse_slot(argument)?),
-        "loop" => DeckAction::LoopBeats(parse_beats(argument)?),
-        "loop_off" => DeckAction::LoopOff,
-        "loop_halve" => DeckAction::LoopHalve,
-        "loop_double" => DeckAction::LoopDouble,
-        "loop_in" => DeckAction::LoopIn,
-        "loop_out" => DeckAction::LoopOut,
-        "loop_move" => DeckAction::LoopMove(parse_i32(argument)?),
-        "keylock_on" => DeckAction::SetKeylock(true),
-        "keylock_off" => DeckAction::SetKeylock(false),
-        "keylock_toggle" => DeckAction::ToggleKeylock,
-        "slip_on" => DeckAction::SetSlip(true),
-        "slip_off" => DeckAction::SetSlip(false),
-        "slip_toggle" => DeckAction::ToggleSlip,
-        "reverse_on" => DeckAction::SetReverse(true),
-        "reverse_off" => DeckAction::SetReverse(false),
-        "reverse_toggle" => DeckAction::ToggleReverse,
+    // A verb that takes no argument must not be given one. The trailing-word
+    // check in `Action::parse` cannot catch this on its own: by the time it
+    // looks, the extra word has already been consumed as this `argument` and
+    // silently discarded, so `deck 1 play now` would parse as `deck 1 play`
+    // and the typo would be invisible in a file somebody edits by hand.
+    let bare = |action: DeckAction| match argument {
+        Some(extra) => Err(ParseError::TrailingWords(extra.to_owned())),
+        None => Ok(action),
+    };
+    match verb {
+        "play" => bare(DeckAction::Play),
+        "pause" => bare(DeckAction::Pause),
+        "play_pause" | "playpause" => bare(DeckAction::PlayPause),
+        "cue" => bare(DeckAction::Cue),
+        "eject" => bare(DeckAction::Eject),
+        "seek" => Ok(DeckAction::Seek(FramePos::new(f64::from(parse_f32(
+            argument,
+        )?)))),
+        "rate" => Ok(DeckAction::SetRate(Rate::new(f64::from(parse_f32(
+            argument,
+        )?)))),
+        "pitch" => Ok(DeckAction::SetPitch(f64::from(parse_f32(argument)?))),
+        "volume" => Ok(DeckAction::SetVolume(parse_f32(argument)?.clamp(0.0, 1.0))),
+        "gain" => Ok(DeckAction::SetGainDb(parse_f32(argument)?)),
+        "eq_low" => Ok(DeckAction::SetEqLow(parse_f32(argument)?.clamp(0.0, 4.0))),
+        "eq_mid" => Ok(DeckAction::SetEqMid(parse_f32(argument)?.clamp(0.0, 4.0))),
+        "eq_high" => Ok(DeckAction::SetEqHigh(parse_f32(argument)?.clamp(0.0, 4.0))),
+        "filter" => Ok(DeckAction::SetFilter(parse_f32(argument)?.clamp(-1.0, 1.0))),
+        "cue_on" => bare(DeckAction::SetCue(true)),
+        "cue_off" => bare(DeckAction::SetCue(false)),
+        "cue_toggle" => bare(DeckAction::ToggleCue),
+        "sync" => bare(DeckAction::Sync),
+        "sync_off" => bare(DeckAction::SyncOff),
+        "beatjump" => Ok(DeckAction::BeatJump(parse_i32(argument)?)),
+        "hotcue" => Ok(DeckAction::HotCue(parse_slot(argument)?)),
+        "hotcue_set" => Ok(DeckAction::HotCueSet(parse_slot(argument)?)),
+        "hotcue_clear" => Ok(DeckAction::HotCueClear(parse_slot(argument)?)),
+        "loop" => Ok(DeckAction::LoopBeats(parse_beats(argument)?)),
+        "loop_off" => bare(DeckAction::LoopOff),
+        "loop_halve" => bare(DeckAction::LoopHalve),
+        "loop_double" => bare(DeckAction::LoopDouble),
+        "loop_in" => bare(DeckAction::LoopIn),
+        "loop_out" => bare(DeckAction::LoopOut),
+        "loop_move" => Ok(DeckAction::LoopMove(parse_i32(argument)?)),
+        "keylock_on" => bare(DeckAction::SetKeylock(true)),
+        "keylock_off" => bare(DeckAction::SetKeylock(false)),
+        "keylock_toggle" => bare(DeckAction::ToggleKeylock),
+        "slip_on" => bare(DeckAction::SetSlip(true)),
+        "slip_off" => bare(DeckAction::SetSlip(false)),
+        "slip_toggle" => bare(DeckAction::ToggleSlip),
+        "reverse_on" => bare(DeckAction::SetReverse(true)),
+        "reverse_off" => bare(DeckAction::SetReverse(false)),
+        "reverse_toggle" => bare(DeckAction::ToggleReverse),
         // Momentary: a censor is held, so it needs a press and a release
         // rather than a toggle. A toggled censor would be reverse with extra
         // steps.
-        "censor_on" => DeckAction::SetCensor(true),
-        "censor_off" => DeckAction::SetCensor(false),
-        "brake" => DeckAction::Brake(Some(parse_beats(argument)?)),
-        "brake_off" => DeckAction::Brake(None),
-        "backspin" => DeckAction::Backspin(Some(parse_beats(argument)?)),
-        "backspin_off" => DeckAction::Backspin(None),
-        "roll" => DeckAction::LoopRoll(Some(parse_beats(argument)?)),
-        "roll_off" => DeckAction::LoopRoll(None),
-        "slice" => DeckAction::Slice(Some(parse_slot(argument)?)),
-        "slice_off" => DeckAction::Slice(None),
-        "slice_domain" => DeckAction::SliceDomain(parse_beats(argument)?),
-        "key" => DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32),
+        "censor_on" => bare(DeckAction::SetCensor(true)),
+        "censor_off" => bare(DeckAction::SetCensor(false)),
+        "brake" => Ok(DeckAction::Brake(Some(parse_beats(argument)?))),
+        "brake_off" => bare(DeckAction::Brake(None)),
+        "backspin" => Ok(DeckAction::Backspin(Some(parse_beats(argument)?))),
+        "backspin_off" => bare(DeckAction::Backspin(None)),
+        "roll" => Ok(DeckAction::LoopRoll(Some(parse_beats(argument)?))),
+        "roll_off" => bare(DeckAction::LoopRoll(None)),
+        "slice" => Ok(DeckAction::Slice(Some(parse_slot(argument)?))),
+        "slice_off" => bare(DeckAction::Slice(None)),
+        "slice_domain" => Ok(DeckAction::SliceDomain(parse_beats(argument)?)),
+        "key" => Ok(DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32)),
         // Three verbs rather than one verb with a word argument, matching
         // `cue_on`/`cue_off` above: a three-position switch is three buttons on
         // a controller and three buttons in the interface, and one message per
         // position is what each of them sends.
-        "xfader_left" => DeckAction::SetCrossfaderAssign(CrossfaderAssign::Left),
-        "xfader_right" => DeckAction::SetCrossfaderAssign(CrossfaderAssign::Right),
-        "xfader_thru" => DeckAction::SetCrossfaderAssign(CrossfaderAssign::Thru),
-        "grid_here" => DeckAction::GridAnchorHere,
-        "grid_nudge" => DeckAction::GridNudge(f64::from(parse_f32(argument)?)),
-        "grid_scale" => DeckAction::GridScale(f64::from(parse_f32(argument)?)),
-        "grid_bpm" => DeckAction::GridSetBpm(f64::from(parse_f32(argument)?)),
-        "grid_tap" => DeckAction::GridTap,
-        "grid_reset" => DeckAction::GridReset,
-        "loop_save" => DeckAction::LoopSave(parse_slot(argument)?),
-        "loop_recall" => DeckAction::LoopRecall(parse_slot(argument)?),
-        other => return Err(ParseError::UnknownVerb(other.to_owned())),
-    })
+        "xfader_left" => bare(DeckAction::SetCrossfaderAssign(CrossfaderAssign::Left)),
+        "xfader_right" => bare(DeckAction::SetCrossfaderAssign(CrossfaderAssign::Right)),
+        "xfader_thru" => bare(DeckAction::SetCrossfaderAssign(CrossfaderAssign::Thru)),
+        "grid_here" => bare(DeckAction::GridAnchorHere),
+        "grid_nudge" => Ok(DeckAction::GridNudge(f64::from(parse_f32(argument)?))),
+        "grid_scale" => Ok(DeckAction::GridScale(f64::from(parse_f32(argument)?))),
+        "grid_bpm" => Ok(DeckAction::GridSetBpm(f64::from(parse_f32(argument)?))),
+        "grid_tap" => bare(DeckAction::GridTap),
+        "grid_reset" => bare(DeckAction::GridReset),
+        "loop_save" => Ok(DeckAction::LoopSave(parse_slot(argument)?)),
+        "loop_recall" => Ok(DeckAction::LoopRecall(parse_slot(argument)?)),
+        other => Err(ParseError::UnknownVerb(other.to_owned())),
+    }
 }
 
 /// Whole beats, for beat jump.
@@ -754,6 +819,21 @@ impl fmt::Display for Action {
                 write!(f, "sampler {slot} {change}")
             }
             Action::Mixer(MixerAction::Sampler(change)) => write!(f, "sampler {change}"),
+            Action::Mixer(MixerAction::Mic(change)) => match change {
+                MicChange::SetOpen(true) => write!(f, "mic on"),
+                MicChange::SetOpen(false) => write!(f, "mic off"),
+                MicChange::GainDb(db) => write!(f, "mic gain {}", number(f64::from(*db))),
+                MicChange::SetCue(true) => write!(f, "mic cue_on"),
+                MicChange::SetCue(false) => write!(f, "mic cue_off"),
+                MicChange::SetTalkover(true) => write!(f, "mic talkover_on"),
+                MicChange::SetTalkover(false) => write!(f, "mic talkover_off"),
+                MicChange::DuckDb(db) => write!(f, "mic duck {}", number(f64::from(*db))),
+                MicChange::ThresholdDb(db) => {
+                    write!(f, "mic threshold {}", number(f64::from(*db)))
+                }
+                MicChange::AttackMs(ms) => write!(f, "mic attack {}", number(f64::from(*ms))),
+                MicChange::ReleaseMs(ms) => write!(f, "mic release {}", number(f64::from(*ms))),
+            },
             Action::Mixer(MixerAction::SetLimiter(true)) => write!(f, "limiter on"),
             Action::Mixer(MixerAction::SetLimiter(false)) => write!(f, "limiter off"),
         }
@@ -1178,6 +1258,95 @@ mod tests {
             let action = Action::parse(input).unwrap();
             let reparsed = Action::parse(&action.to_string()).unwrap();
             assert_eq!(reparsed, action, "`{input}` did not survive formatting");
+        }
+    }
+
+    /// Every microphone change, through text and back. Exhaustive by
+    /// construction: the `match` at the top has no wildcard, so a new variant
+    /// stops compiling here until it is added to the list.
+    #[test]
+    fn every_microphone_change_round_trips_through_its_text_form() {
+        let cases = [
+            MicChange::SetOpen(true),
+            MicChange::SetOpen(false),
+            MicChange::GainDb(-3.5),
+            MicChange::SetCue(true),
+            MicChange::SetCue(false),
+            MicChange::SetTalkover(true),
+            MicChange::SetTalkover(false),
+            MicChange::DuckDb(-12.0),
+            MicChange::ThresholdDb(-30.0),
+            MicChange::AttackMs(15.0),
+            MicChange::ReleaseMs(400.0),
+        ];
+        for case in cases {
+            // The compiler's exhaustiveness check, borrowed: adding a variant
+            // without adding it above fails to build rather than silently
+            // going untested.
+            match case {
+                MicChange::SetOpen(_)
+                | MicChange::GainDb(_)
+                | MicChange::SetCue(_)
+                | MicChange::SetTalkover(_)
+                | MicChange::DuckDb(_)
+                | MicChange::ThresholdDb(_)
+                | MicChange::AttackMs(_)
+                | MicChange::ReleaseMs(_) => {}
+            }
+            let action = Action::Mixer(MixerAction::Mic(case));
+            let text = action.to_string();
+            assert_eq!(
+                Action::parse(&text).unwrap(),
+                action,
+                "`{text}` did not survive the round trip"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_microphone_verb_is_refused() {
+        assert!(matches!(
+            Action::parse("mic louder"),
+            Err(ParseError::UnknownVerb(_))
+        ));
+        assert!(matches!(Action::parse("mic"), Err(ParseError::MissingVerb)));
+        assert!(matches!(
+            Action::parse("mic gain"),
+            Err(ParseError::MissingArgument)
+        ));
+    }
+
+    /// A complete action followed by more words is a typo, and the whole
+    /// vocabulary is written down in files people edit by hand — mappings,
+    /// scripts, preset packs. Ignoring the rest of the line means
+    /// `deck 1 volume 0.5 extra` works and quietly does something slightly
+    /// other than what it says, which is discovered mid-set or never.
+    #[test]
+    fn a_complete_action_may_not_be_followed_by_anything() {
+        for line in [
+            "deck 1 volume 0.5 extra",
+            "deck 1 play now",
+            "crossfader 0 please",
+            "mic on loud",
+            "deck 1 fx 1 on immediately",
+        ] {
+            assert!(
+                matches!(Action::parse(line), Err(ParseError::TrailingWords(_))),
+                "`{line}` was accepted"
+            );
+        }
+    }
+
+    /// ...but the sub-grammars that legitimately take several words still do.
+    #[test]
+    fn multi_word_actions_are_not_mistaken_for_typos() {
+        for line in [
+            "deck 1 fx 1 echo",
+            "deck 2 fx 3 wet 0.5",
+            "sampler record 1 deck 2",
+            "mic threshold -30",
+        ] {
+            assert!(Action::parse(line).is_ok(), "`{line}` was refused");
         }
     }
 
