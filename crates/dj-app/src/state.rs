@@ -71,6 +71,11 @@ pub struct AppState {
     /// subdirectory to find where you started is the sort of implicit
     /// coupling that breaks silently the first time either path moves.
     config_dir: Mutex<Option<std::path::PathBuf>>,
+    /// The set being recorded, if one is. See [`crate::setrec`].
+    recording: Mutex<Option<crate::setrec::Recording>>,
+    /// Read by the snapshot pump sixty times a second, so it is held outside
+    /// the lock above rather than reached for through it.
+    recording_state: Arc<crate::setrec::RecordingState>,
     host: AudioHost,
     waveforms: Arc<WaveformStore>,
     /// API keys, in the OS keychain. Values go in and never come back out --
@@ -213,6 +218,8 @@ impl AppState {
             taps: crate::grid::TapTracker::new(),
             layout_dir: Mutex::new(None),
             config_dir: Mutex::new(None),
+            recording: Mutex::new(None),
+            recording_state: Arc::new(crate::setrec::RecordingState::default()),
             host,
             waveforms: Arc::new(WaveformStore::new()),
             secrets,
@@ -296,6 +303,104 @@ impl AppState {
     #[must_use]
     pub fn layout_dir(&self) -> Option<std::path::PathBuf> {
         self.layout_dir.lock().ok()?.clone()
+    }
+
+    // -- recording the set -------------------------------------------------
+
+    /// Where recordings go: `recordings/` beside the settings.
+    ///
+    /// Not the system's music folder, deliberately. A DJ's music folder is
+    /// their *library*, and dropping hour-long captures of a set into it means
+    /// the browser finds them and offers them as tracks to play.
+    #[must_use]
+    pub fn recordings_dir(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("recordings"))
+    }
+
+    /// Whether a recording is running.
+    #[must_use]
+    pub fn is_recording(&self) -> bool {
+        self.recording.lock().is_ok_and(|slot| slot.is_some())
+    }
+
+    /// Start recording the master at `sample_rate`.
+    ///
+    /// Returns the file it opened. Refuses rather than restarting if one is
+    /// already running: a second press of a record button means "I meant it",
+    /// not "throw the last twenty minutes away".
+    pub fn start_recording(&self, sample_rate: u32) -> Result<std::path::PathBuf, String> {
+        let mut slot = self
+            .recording
+            .lock()
+            .map_err(|_| "the recorder is wedged".to_owned())?;
+        if let Some(running) = slot.as_ref() {
+            return Ok(running.path().to_path_buf());
+        }
+
+        let dir = self
+            .recordings_dir()
+            .ok_or_else(|| "no settings folder to record into yet".to_owned())?;
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+
+        // Named for when it started, in a form that sorts chronologically and
+        // survives every filesystem this runs on.
+        let started = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let path = dir.join(format!("set-{started}.wav"));
+
+        let (sink, samples) =
+            rtrb::RingBuffer::<f32>::new(crate::setrec::Recording::ring_capacity(sample_rate));
+        let recording = crate::setrec::Recording::start(
+            &path,
+            sample_rate,
+            samples,
+            Arc::clone(&self.recording_state),
+        )
+        .map_err(|e| e.to_string())?;
+
+        // The engine only starts writing once it has the ring, so the file
+        // cannot be opened and then never fed.
+        self.bus()
+            .send_command(dj_engine::Command::RecordStream { sink: Some(sink) })
+            .map_err(|_| "the engine is not listening".to_owned())?;
+
+        let path = recording.path().to_path_buf();
+        *slot = Some(recording);
+        Ok(path)
+    }
+
+    /// Stop, and hand back the finished file.
+    pub fn stop_recording(&self) -> Option<std::path::PathBuf> {
+        let recording = self.recording.lock().ok()?.take()?;
+        // The engine first: it stops handing samples over, and the ring's other
+        // half comes back through the retirement queue rather than being
+        // dropped on the audio thread.
+        let _ = self
+            .bus()
+            .send_command(dj_engine::Command::RecordStream { sink: None });
+        Some(recording.finish())
+    }
+
+    /// The live counters, for the snapshot pump.
+    #[must_use]
+    pub fn recording_state(&self) -> Arc<crate::setrec::RecordingState> {
+        Arc::clone(&self.recording_state)
+    }
+
+    /// Where the running recording is going, for the interface to name.
+    #[must_use]
+    pub fn recording_path(&self) -> Option<String> {
+        let slot = self.recording.lock().ok()?;
+        let recording = slot.as_ref()?;
+        Some(
+            recording
+                .path()
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| recording.path().display().to_string()),
+        )
     }
 
     /// Point the application at a configuration directory, making the layout

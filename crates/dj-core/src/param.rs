@@ -329,6 +329,13 @@ pub enum GlobalParam {
     /// Where the running capture is coming from: 0 for the master, otherwise
     /// the deck's 1-based number.
     RecordSourceDeck,
+    /// Samples the set recording could not hand to the disk because the ring
+    /// was full.
+    ///
+    /// Non-zero means a gap in the file. Published rather than swallowed: a
+    /// recording with a hole in it has to say so, and the audio thread will
+    /// never wait for a slow disk to avoid one.
+    SetRecordDropped,
     /// The eight slots of the bank that is showing.
     ///
     /// Only the showing bank: the others keep playing, but the pads cannot
@@ -707,7 +714,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since.
-    pub const COUNT: usize = 109;
+    pub const COUNT: usize = 110;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -741,6 +748,7 @@ impl GlobalParam {
             RecordSlot,
             RecordSeconds,
             RecordSourceDeck,
+            SetRecordDropped,
             Sample1Loaded,
             Sample1Playing,
             Sample1Mode,
@@ -966,6 +974,7 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::RecordSlot => "record_slot",
         GlobalParam::RecordSeconds => "record_seconds",
         GlobalParam::RecordSourceDeck => "record_source_deck",
+        GlobalParam::SetRecordDropped => "set_record_dropped",
         GlobalParam::Sample1Loaded => "sample1_loaded",
         GlobalParam::Sample1Playing => "sample1_playing",
         GlobalParam::Sample1Mode => "sample1_mode",

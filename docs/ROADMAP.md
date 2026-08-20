@@ -524,7 +524,11 @@ adding a new controller requires editing a file, not rebuilding the app.
 - **Slip mode, reverse/censor, loop roll** — done. 6 decks still to come.
 - Microphone/aux input with ducking.
 - Automix with configurable transition style.
-- Recording to disk; Icecast/Shoutcast broadcast.
+- **Recording to disk** — done: `record on` streams the master, post-limiter, into a
+  16-bit WAV beside the settings. Lock-free ring out of the callback, dither on the writer
+  thread, sizes rewritten every five seconds so a crash costs seconds rather than the file.
+  A disk that cannot keep up loses samples and the interface says how many, because the
+  audio thread will not wait for it. Icecast/Shoutcast broadcast still to come.
 - Multi-monitor / detachable panels.
 
 ### Slip, reverse and censor

@@ -64,6 +64,15 @@ pub struct Engine {
     master_rack: Rack,
     /// Capturing into a sampler slot. See [`crate::record`].
     recorder: Recorder,
+    /// The master, on its way to a file. See [`Command::RecordStream`].
+    record_stream: Option<rtrb::Producer<f32>>,
+    /// Samples the ring would not take since recording started.
+    ///
+    /// A full ring means the writer thread is behind — a slow disk, a machine
+    /// under load. The audio thread will not wait for it, so the samples are
+    /// lost, and the count is published rather than swallowed: a recording with
+    /// a gap in it should say so, not be discovered later.
+    dropped_samples: u64,
     /// The last thing before the PA.
     limiter: Limiter,
     /// The last thing before the DJ's ears.
@@ -130,6 +139,8 @@ impl Engine {
             sampler: Sampler::new(sample_rate.as_f64()),
             master_rack: Rack::new(sr),
             recorder: Recorder::new(sample_rate),
+            record_stream: None,
+            dropped_samples: 0,
             limiter: Limiter::new(sr),
             cue_limiter: Limiter::new(sr),
             // Capacity for a pathological burst of loads; never grown at runtime.
@@ -354,6 +365,18 @@ impl Engine {
                         self.retire(Retired::Source(previous));
                     }
                 }
+                Command::RecordStream { sink } => {
+                    // The displaced half goes back rather than being dropped,
+                    // for the same reason a displaced track does.
+                    let previous = match sink {
+                        Some(sink) => self.record_stream.replace(sink),
+                        None => self.record_stream.take(),
+                    };
+                    self.dropped_samples = 0;
+                    if let Some(previous) = previous {
+                        self.retire(Retired::Stream(previous));
+                    }
+                }
                 Command::RecordSpace { samples } => {
                     // The displaced buffer goes back the way it came rather
                     // than being dropped, for the same reason a displaced track
@@ -536,6 +559,12 @@ impl Engine {
                 self.registry
                     .set_bool(ParamId::Global(GlobalParam::CueSplit), on);
             }
+            // Recording is the application's business, not the engine's: the
+            // engine has no idea what a file is. It is in the vocabulary so a
+            // controller and a script can start one, and the application
+            // intercepts it before it reaches here — this arm is only for an
+            // action that somehow arrived anyway.
+            Action::Mixer(MixerAction::SetRecording(_)) => {}
             Action::Mixer(MixerAction::SetQuantize(on)) => {
                 self.quantize = on;
                 self.registry
@@ -1043,6 +1072,26 @@ impl AudioCallback for Engine {
             // the room is hearing, and no theme has ever needed to know that the
             // hats are panned left.
             self.spectrum.push((frame[main_l] + frame[main_r]) * 0.5);
+
+            // Straight off the master, after the limiter: a recording of the
+            // set is a recording of what the room heard, including the effects
+            // and the sampler, and including whatever the limiter did about it.
+            //
+            // `push` per sample rather than a bulk chunk. At 256 frames that is
+            // 512 atomic stores a block, which measures in single-digit
+            // microseconds against a 5.3 ms budget — not worth the partial-write
+            // bookkeeping a chunked write would need. Never blocks: a ring the
+            // writer thread has fallen behind on loses samples and says so.
+            if let Some(sink) = self.record_stream.as_mut() {
+                let mut lost = 0u64;
+                if sink.push(frame[main_l]).is_err() {
+                    lost += 1;
+                }
+                if sink.push(frame[main_r]).is_err() {
+                    lost += 1;
+                }
+                self.dropped_samples = self.dropped_samples.saturating_add(lost);
+            }
         }
         let left = self.peak_left.process(&[left_peak]);
         let right = self.peak_right.process(&[right_peak]);
@@ -1072,6 +1121,10 @@ impl AudioCallback for Engine {
             self.retire(Retired::Capture(capture));
         }
         self.publish_recorder();
+        self.registry.set(
+            ParamId::Global(GlobalParam::SetRecordDropped),
+            self.dropped_samples as f32,
+        );
 
         self.publish_deck_state();
 

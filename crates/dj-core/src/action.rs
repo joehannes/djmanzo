@@ -225,6 +225,13 @@ pub enum MixerAction {
     /// property of a track: a DJ who wants quantised jumps wants them on
     /// whichever deck they happen to be touching.
     SetQuantize(bool),
+    /// Record the master to disk, or stop.
+    ///
+    /// In the vocabulary rather than only in the interface because a DJ starts
+    /// a recording from whatever is nearest — a controller button, a script at
+    /// the top of a set, the assistant. Where the file goes is the
+    /// application's business; this says only whether to.
+    SetRecording(bool),
     /// Engage or bypass the master limiter.
     ///
     /// On by default. Bypassing is for the DJ feeding an external processor
@@ -326,6 +333,11 @@ impl Action {
             "quantize" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "on" => Ok(Action::Mixer(MixerAction::SetQuantize(true))),
                 "off" => Ok(Action::Mixer(MixerAction::SetQuantize(false))),
+                other => Err(ParseError::UnknownVerb(other.to_owned())),
+            },
+            "record" => match words.next().ok_or(ParseError::MissingVerb)? {
+                "on" => Ok(Action::Mixer(MixerAction::SetRecording(true))),
+                "off" => Ok(Action::Mixer(MixerAction::SetRecording(false))),
                 other => Err(ParseError::UnknownVerb(other.to_owned())),
             },
             "limiter" => match words.next().ok_or(ParseError::MissingVerb)? {
@@ -720,6 +732,8 @@ impl fmt::Display for Action {
             Action::Mixer(MixerAction::CueMix(v)) => write!(f, "cue mix {}", number(f64::from(*v))),
             Action::Mixer(MixerAction::SplitCue(true)) => write!(f, "cue split_on"),
             Action::Mixer(MixerAction::SplitCue(false)) => write!(f, "cue split_off"),
+            Action::Mixer(MixerAction::SetRecording(true)) => write!(f, "record on"),
+            Action::Mixer(MixerAction::SetRecording(false)) => write!(f, "record off"),
             Action::Mixer(MixerAction::SetQuantize(true)) => write!(f, "quantize on"),
             Action::Mixer(MixerAction::SetQuantize(false)) => write!(f, "quantize off"),
             Action::Mixer(MixerAction::Fx { slot, change }) => {

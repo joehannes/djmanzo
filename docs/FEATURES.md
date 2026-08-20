@@ -113,7 +113,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Trigger modes: one-shot, loop, hold, stutter | M5 — **done** |
 | Sync samples to master tempo | M5 — **done** |
 | Sample volume / output routing (mix or headphones) | M5 — **done** |
-| Record from deck or master into a sample slot | M5 |
+| Record from deck or master into a sample slot | M5 — **done** |
 
 ### Browser and library
 
@@ -157,7 +157,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 
 | Feature | Milestone |
 |---|---|
-| Record the master to disk (WAV/FLAC/MP3) | M5 |
+| Record the master to disk (WAV; FLAC/MP3 later) | M5 — **done** |
 | Broadcast to Icecast/Shoutcast | M5 |
 | Per-deck and stem-bus outputs for external processing | M6 |
 | Video mixing / VJ output | M8 |

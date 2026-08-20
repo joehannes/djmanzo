@@ -13,6 +13,7 @@
     chooseLayout,
     chosenLayout,
     listLayouts,
+    formatTime,
     setWatershed,
     watershedShowing,
     type Layout,
@@ -265,6 +266,15 @@
     publishAudio(snapshot?.context);
   });
 
+  /**
+   * The set recording, or nothing if no snapshot has arrived.
+   *
+   * Pulled out rather than read through `snapshot` at each use: the record
+   * button's handler is a closure, and a closure cannot keep a narrowing on a
+   * variable that is reassigned every frame.
+   */
+  const setRecording = $derived(snapshot?.master.recording ?? null);
+
   const reducedMotion = prefersStillness();
   const tier = $derived(tierFor(slowFrames, reducedMotion));
 
@@ -471,6 +481,50 @@
       >
         Watershed
       </button>
+      <!--
+        Recording the set. Beside the panel toggles rather than inside one,
+        because it is the control a DJ has to be able to find at the start of a
+        night without hunting for it — and the one whose state has to be
+        readable from across a booth once it is running.
+      -->
+      {#if setRecording}
+        <button
+          class="record"
+          class:on={setRecording.active}
+          disabled={!ready}
+          onclick={() => send(setRecording.active ? "record off" : "record on")}
+          title={setRecording.active
+            ? "Stop recording and finish the file"
+            : "Record the master to disk, beside the settings"}
+        >
+          {#if setRecording.active}
+            ● {formatTime(setRecording.seconds)}
+          {:else}
+            REC
+          {/if}
+        </button>
+        {#if setRecording.dropped > 0}
+          <!--
+            A gap in the file, said now rather than discovered on playback. The
+            audio thread never waits for a disk, so this is the honest cost of
+            that and not something to hide.
+          -->
+          <span
+            class="warn-chip"
+            title="The disk could not keep up, so the recording has a gap in it"
+          >
+            {setRecording.dropped} lost
+          </span>
+        {/if}
+        {#if setRecording.failed}
+          <span
+            class="warn-chip"
+            title="The recording stopped on its own — the disk is probably full"
+          >
+            write failed
+          </span>
+        {/if}
+      {/if}
       <button
         onclick={() => (deckCount = deckCount === 2 ? 4 : 2)}
         title="Show {deckCount === 2 ? 'four' : 'two'} decks. The engine runs four either way."

@@ -29,9 +29,11 @@ pub mod layout;
 pub mod library;
 pub mod persist;
 pub mod presets;
+pub mod setrec;
 pub mod snapshot;
 pub mod sources;
 pub mod state;
+pub mod wav;
 pub mod waveform;
 pub mod world;
 
@@ -99,6 +101,7 @@ pub fn run() {
     let analysis = Arc::clone(state.analysis());
     let deck_tracks = state.deck_tracks();
     let sample_names = state.sample_names();
+    let recording_state = state.recording_state();
     // The snapshot pump is where a hot cue change becomes visible to the host:
     // the engine sets cues at a playhead quantize may have moved, so the only
     // reliable reading is the one the audio thread publishes. See
@@ -223,10 +226,13 @@ pub fn run() {
             let pump = SnapshotPump::start_with_bridge(
                 registry,
                 deck_count,
-                bridge_handle,
-                Arc::clone(&analysis),
-                deck_tracks,
-                sample_names,
+                crate::snapshot::Sources {
+                    bridge: Some(bridge_handle),
+                    analysis: Some(Arc::clone(&analysis)),
+                    tracks: Some(deck_tracks),
+                    samples: Some(sample_names),
+                    recording: Some(recording_state),
+                },
                 move |snapshot| {
                     use tauri::Emitter;
                     save_changed_cues(&snapshot, &watched_tracks, &cue_watcher, &library_writer);

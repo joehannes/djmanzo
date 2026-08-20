@@ -60,6 +60,19 @@ pub enum Command {
         deck: DeckId,
         cues: [Option<FramePos>; HOT_CUE_SLOTS],
     },
+    /// Point the master at a recording, or stop recording.
+    ///
+    /// `Some` installs the sending half of a ring buffer that the master bus
+    /// writes every block; the host thread owns the other half and puts what it
+    /// finds on disk. `None` stops, and whatever was there comes back through
+    /// [`Retired::Stream`] rather than being dropped here.
+    ///
+    /// Separate from [`Command::RecordSpace`] because the two record different
+    /// things for different reasons: that one fills a fixed buffer to make a
+    /// sample, this one streams for as long as a set lasts.
+    RecordStream {
+        sink: Option<rtrb::Producer<f32>>,
+    },
     /// Hand the recorder somewhere to put audio.
     ///
     /// Recording needs a buffer and the audio thread may not allocate one, so
@@ -106,6 +119,12 @@ impl From<Action> for Command {
 pub enum Retired {
     /// A track buffer to be freed.
     Source(Arc<dyn TrackSource>),
+    /// The sending half of a finished recording's ring buffer, to be freed.
+    ///
+    /// Dropping an `rtrb::Producer` releases a share of the ring; if the host
+    /// has already gone, that share is the last one and the drop is a `free()`.
+    /// Which is exactly what this queue exists to keep off the audio thread.
+    Stream(rtrb::Producer<f32>),
     /// A recording buffer with nothing in it, to be freed.
     ///
     /// Distinct from [`Retired::Capture`] so that "free this" and "this is a

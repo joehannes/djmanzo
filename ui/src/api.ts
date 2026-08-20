@@ -363,9 +363,27 @@ export const loadSample = (bank: number, slot: number, path: string) =>
     { bank, slot, path },
   );
 
+/** Recording the whole mix to disk. */
+export interface SetRecordingState {
+  active: boolean;
+  seconds: number;
+  /**
+   * Samples that never reached the disk.
+   *
+   * Non-zero means a gap in the file. Shown rather than swallowed: the audio
+   * thread will never wait for a slow disk, so a recording can have a hole in
+   * it, and the DJ should find that out now rather than on playback.
+   */
+  dropped: number;
+  /** The writer gave up — a full disk, usually. */
+  failed: boolean;
+}
+
 export interface MasterState {
   /** The sampler: which bank is showing, its level, and that bank's slots. */
   sampler: SamplerState;
+  /** Recording the whole mix to disk. */
+  recording: SetRecordingState;
   /** The master rack's three slots, in order. */
   fx: FxSlot[];
   crossfader: number;

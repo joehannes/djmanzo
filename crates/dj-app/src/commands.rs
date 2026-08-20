@@ -385,6 +385,26 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
         state.taps().clear(deck);
     }
 
+    // Recording is handled here and never forwarded: the engine cannot open a
+    // file, so the action's *meaning* lives in the application. It is in the
+    // vocabulary all the same, because a DJ starts a recording from whatever is
+    // nearest — a controller button, a line at the top of a script, the
+    // assistant — and ADR-0003 says all of those speak one language.
+    if let Action::Mixer(dj_core::MixerAction::SetRecording(on)) = parsed {
+        if on {
+            let rate = state
+                .registry()
+                .get(dj_core::ParamId::Global(
+                    dj_core::param::GlobalParam::SampleRate,
+                ))
+                .max(1.0) as u32;
+            state.start_recording(rate)?;
+        } else {
+            state.stop_recording();
+        }
+        return Ok(());
+    }
+
     // Clearing a sampler slot is the same shape of thing: the name lives here,
     // and a slot emptied in the engine that kept its label here would show a
     // sample that is no longer loaded.
@@ -624,6 +644,7 @@ pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
     let bridge = state.bridge();
     let tracks = state.deck_tracks();
     let samples = state.sample_names();
+    let recording = state.recording_state();
     crate::Snapshot::capture_all(
         &state.registry(),
         state.deck_count(),
@@ -633,6 +654,7 @@ pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
             decks: Some(&tracks),
             samples: Some(&samples),
         },
+        Some(&recording),
     )
 }
 

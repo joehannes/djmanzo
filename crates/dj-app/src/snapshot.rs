@@ -300,10 +300,24 @@ impl TrackAnalysisSnapshot {
     }
 }
 
+/// Recording the set to disk.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SetRecordingSnapshot {
+    pub active: bool,
+    pub seconds: f64,
+    /// Samples that never reached the disk. Non-zero means a gap in the file,
+    /// and the interface says so rather than letting it be discovered later.
+    pub dropped: u64,
+    /// The writer thread gave up — a full disk, usually.
+    pub failed: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MasterSnapshot {
     /// The sampler: which bank is showing, its level, and that bank's slots.
     pub sampler: SamplerSnapshot,
+    /// Recording the whole mix to disk.
+    pub recording: SetRecordingSnapshot,
     /// The master rack's three slots, in order.
     pub fx: Vec<FxSlotSnapshot>,
     pub crossfader: f32,
@@ -391,7 +405,14 @@ impl Snapshot {
         bridge: Option<&dj_audio::BridgeStats>,
         analysis: Option<&crate::analysis::AnalysisStore>,
     ) -> Self {
-        Self::capture_all(registry, deck_count, bridge, analysis, Names::default())
+        Self::capture_all(
+            registry,
+            deck_count,
+            bridge,
+            analysis,
+            Names::default(),
+            None,
+        )
     }
 
     /// The full picture, including what each deck and each sample is called.
@@ -402,6 +423,7 @@ impl Snapshot {
         bridge: Option<&dj_audio::BridgeStats>,
         analysis: Option<&crate::analysis::AnalysisStore>,
         titles: Names<'_>,
+        recording: Option<&crate::setrec::RecordingState>,
     ) -> Self {
         let names = titles.decks.and_then(|t| t.lock().ok());
         let sample_names = titles.samples.and_then(|t| t.lock().ok());
@@ -528,6 +550,18 @@ impl Snapshot {
             context,
             decks,
             master: MasterSnapshot {
+                recording: SetRecordingSnapshot {
+                    active: recording
+                        .is_some_and(|r| r.active.load(std::sync::atomic::Ordering::Relaxed)),
+                    seconds: recording.map(|r| r.seconds()).unwrap_or(0.0),
+                    // From the engine rather than from the writer: the engine is
+                    // the only side that knows what it could not hand over.
+                    dropped: registry
+                        .get(ParamId::Global(GlobalParam::SetRecordDropped))
+                        .max(0.0) as u64,
+                    failed: recording
+                        .is_some_and(|r| r.failed.load(std::sync::atomic::Ordering::Relaxed)),
+                },
                 sampler: SamplerSnapshot {
                     bank,
                     volume: registry.get(ParamId::Global(GlobalParam::SamplerVolume)),
@@ -643,12 +677,14 @@ pub struct Names<'a> {
 /// One struct rather than four parameters: `run` had grown to eight arguments,
 /// which is where a caller starts passing them in the wrong order and the
 /// compiler cannot tell, because three of them are `Option<Arc<_>>`.
-#[derive(Default)]
-struct Sources {
-    bridge: Option<BridgeHandle>,
-    analysis: Option<Arc<crate::analysis::AnalysisStore>>,
-    tracks: Option<Arc<DeckTracks>>,
-    samples: Option<Arc<SampleNames>>,
+#[derive(Debug, Default)]
+pub struct Sources {
+    pub bridge: Option<BridgeHandle>,
+    pub analysis: Option<Arc<crate::analysis::AnalysisStore>>,
+    pub tracks: Option<Arc<DeckTracks>>,
+    pub samples: Option<Arc<SampleNames>>,
+    /// The set recording's counters. See [`crate::setrec::RecordingState`].
+    pub recording: Option<Arc<crate::setrec::RecordingState>>,
 }
 
 /// A running snapshot pump. Stops when dropped.
@@ -676,24 +712,10 @@ impl SnapshotPump {
     pub fn start_with_bridge(
         registry: Arc<ParameterRegistry>,
         deck_count: usize,
-        bridge: BridgeHandle,
-        analysis: Arc<crate::analysis::AnalysisStore>,
-        tracks: Arc<DeckTracks>,
-        samples: Arc<SampleNames>,
+        sources: Sources,
         emit: impl FnMut(Snapshot) + Send + 'static,
     ) -> Self {
-        Self::run(
-            registry,
-            deck_count,
-            Sources {
-                bridge: Some(bridge),
-                analysis: Some(analysis),
-                tracks: Some(tracks),
-                samples: Some(samples),
-            },
-            HEARTBEAT_INTERVAL,
-            emit,
-        )
+        Self::run(registry, deck_count, sources, HEARTBEAT_INTERVAL, emit)
     }
 
     /// Start sampling with an explicit heartbeat interval.
@@ -721,6 +743,7 @@ impl SnapshotPump {
             analysis,
             tracks,
             samples,
+            recording,
         } = sources;
         let alive = Arc::new(AtomicBool::new(true));
         let thread = {
@@ -744,6 +767,7 @@ impl SnapshotPump {
                                 decks: tracks.as_deref(),
                                 samples: samples.as_deref(),
                             },
+                            recording.as_deref(),
                         );
                         let changed = previous.as_ref() != Some(&snapshot);
 
@@ -1044,6 +1068,7 @@ mod tests {
                 samples: Some(&samples),
                 ..Default::default()
             },
+            None,
         );
         let slots = &snapshot.master.sampler.slots;
         assert_eq!(snapshot.master.sampler.bank, 2);
@@ -1082,6 +1107,7 @@ mod tests {
                 decks: Some(&tracks),
                 ..Default::default()
             },
+            None,
         );
         assert_eq!(snapshot.decks[0].title.as_deref(), Some("Suavemente"));
         assert_eq!(snapshot.decks[0].artist.as_deref(), Some("Elvis Crespo"));
@@ -1117,6 +1143,7 @@ mod tests {
                 decks: Some(&tracks),
                 ..Default::default()
             },
+            None,
         );
         assert_eq!(snapshot.decks[0].title.as_deref(), Some("untitled.wav"));
         assert!(snapshot.decks[0].artist.is_none());

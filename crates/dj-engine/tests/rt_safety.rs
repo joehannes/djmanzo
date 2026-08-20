@@ -1252,3 +1252,53 @@ fn slicing_never_allocates() {
         "the slicer allocated {allocations} times across 2,000 presses"
     );
 }
+
+/// Recording the set streams the master out of the callback for hours.
+///
+/// The push is per sample and the ring is shared with a writer thread, so this
+/// is the one tap that runs on *every* frame of a whole night. It also has to
+/// stay allocation-free when the ring is full, which is the interesting half:
+/// a `push` that fails hands the sample back, and dropping it must cost
+/// nothing.
+#[test]
+fn recording_the_set_never_allocates() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.load_and_play(2, 2_000_000);
+
+    // Deliberately small, so it fills within the first few blocks and the rest
+    // of the run measures the overflow path rather than the happy one.
+    let (sink, _samples) = rtrb::RingBuffer::<f32>::new(4_096);
+    rig.commands
+        .push(Command::RecordStream { sink: Some(sink) })
+        .ok();
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(5_000);
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "streaming the master allocated {allocations} times"
+    );
+
+    // And stopping hands the ring back rather than dropping it here.
+    rig.commands.push(Command::RecordStream { sink: None }).ok();
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(4);
+    });
+    assert_eq!(allocations, 0, "stopping allocated {allocations} times");
+
+    let mut handed_back = false;
+    while let Ok(item) = rig.retired.pop() {
+        if matches!(item, Retired::Stream(_)) {
+            handed_back = true;
+        }
+        std::mem::forget(item);
+    }
+    assert!(
+        handed_back,
+        "the ring was dropped on the audio thread rather than handed back"
+    );
+}
