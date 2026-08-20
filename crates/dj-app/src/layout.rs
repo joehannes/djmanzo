@@ -82,7 +82,14 @@ impl Layout {
     /// a deck count the engine does not run.
     #[must_use]
     pub fn sane(mut self) -> Self {
-        self.decks = if self.decks >= 4 { 4 } else { 2 };
+        // Two, four or six — the counts the deck grid has a shape for. Anything
+        // between rounds *down*, so a layout asking for five gets four decks it
+        // can read rather than six it cannot.
+        self.decks = match self.decks {
+            0..=3 => 2,
+            4..=5 => 4,
+            _ => 6,
+        };
         self.waveform_height = self.waveform_height.clamp(48, 320);
         self.density = if self.density.is_finite() {
             self.density.clamp(0.8, 1.4)
@@ -240,14 +247,16 @@ mod tests {
         }
         .sane();
 
-        assert_eq!(layout.decks, 4);
+        assert_eq!(layout.decks, 6, "seven decks is more than six, so six");
         assert_eq!(layout.waveform_height, 320);
         assert!((layout.density - 1.4).abs() < 1e-6);
         assert_eq!(layout.name, "Custom", "a nameless layout is unpickable");
     }
 
+    /// Rounding *down* is the point: a layout asking for five decks gets four
+    /// it can read rather than six squeezed into the same width.
     #[test]
-    fn a_deck_count_between_two_and_four_rounds_down_to_two() {
+    fn a_deck_count_between_the_shapes_rounds_down() {
         assert_eq!(
             Layout {
                 decks: 3,
@@ -333,7 +342,7 @@ mod tests {
         .unwrap();
 
         let found = load_dir(dir.path());
-        assert_eq!(found[0].decks, 4);
+        assert_eq!(found[0].decks, 6, "nine decks is more than six, so six");
         assert!((found[0].density - 1.4).abs() < 1e-6);
     }
 }

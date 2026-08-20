@@ -523,7 +523,10 @@ adding a new controller requires editing a file, not rebuilding the app.
   the deck rather than in a slot — they are **transport rather than signal**: they change how
   fast the record turns, not what comes off it.
 - **CLAP** plugin hosting.
-- **Slip mode, reverse/censor, loop roll** — done. 6 decks still to come.
+- **Slip mode, reverse/censor, loop roll** — done. **6 decks** done: the engine always
+  builds `MAX_DECKS`, and the interface shows two, four or six. Six is three rows of two
+  rather than two of three — deck width is what decides whether pads are readable, and a
+  six-deck rig is a scrolling one.
 - Microphone/aux input with ducking.
 - Automix with configurable transition style.
 - **Recording to disk** — done: `record on` streams the master, post-limiter, into a

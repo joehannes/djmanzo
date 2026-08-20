@@ -30,9 +30,12 @@ use std::time::Duration;
 /// and this module has no reason to know where names are kept.
 pub type OnCapture = Box<dyn Fn(u8, u8, String) + Send>;
 
-/// Decks the engine is built with. Four covers the common layouts; six is the
-/// ceiling and arrives with the UI to drive it in M5.
-const DECK_COUNT: usize = 4;
+/// Decks the engine is built with.
+///
+/// Re-exported from `state` rather than declared again: the two used to be
+/// separate constants kept in step by a comment, which is a thing that stays
+/// true right up until it does not.
+use crate::state::DECK_COUNT;
 
 /// Commands sent from the application to the audio host thread.
 enum HostCommand {

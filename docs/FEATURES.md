@@ -16,7 +16,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 |---|---|
 | 2 decks | M1 |
 | 4 decks | M2 |
-| 6 decks | M5 |
+| 6 decks | M5 — **done** |
 | Play / pause / cue (CDJ-style cue behaviour) | M1 |
 | Pitch fader, configurable range (±6/8/10/16/25/50/100 %) | M1 |
 | Pitch bend (temporary nudge) | M1 |

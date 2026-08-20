@@ -47,8 +47,14 @@ pub struct AssistantSelection {
     pub output_price: Option<f64>,
 }
 
-/// Decks the engine runs. Kept in step with `host::DECK_COUNT`.
-pub const DECK_COUNT: usize = 4;
+/// Decks the engine runs.
+///
+/// Six, which is [`dj_core::MAX_DECKS`] — the engine builds them all and the
+/// interface shows two, four or six. An idle deck costs a few hundred bytes and
+/// a branch per block that returns immediately, so there is no reason to build
+/// fewer than the maximum and every reason not to make the number a setting
+/// that can disagree with the interface.
+pub const DECK_COUNT: usize = dj_core::MAX_DECKS;
 
 /// Everything a command handler needs.
 ///

@@ -525,9 +525,15 @@
           </span>
         {/if}
       {/if}
+      <!--
+        Two, four or six. The engine builds six whatever this says: an idle deck
+        is a branch per block that returns immediately, so there is nothing to
+        save by building fewer, and a count the engine and the interface could
+        disagree about is worse than an unused deck.
+      -->
       <button
-        onclick={() => (deckCount = deckCount === 2 ? 4 : 2)}
-        title="Show {deckCount === 2 ? 'four' : 'two'} decks. The engine runs four either way."
+        onclick={() => (deckCount = deckCount === 2 ? 4 : deckCount === 4 ? 6 : 2)}
+        title="Show {deckCount === 2 ? 'four' : deckCount === 4 ? 'six' : 'two'} decks. The engine runs six either way."
       >
         {deckCount} decks
       </button>
@@ -616,7 +622,7 @@
       />
     {/if}
 
-    <div class="decks" class:four={deckCount === 4}>
+    <div class="decks" class:four={deckCount === 4} class:six={deckCount === 6}>
       {#each snapshot.decks.slice(0, deckCount) as deck (deck.number)}
         <Deck
           {deck}
@@ -962,6 +968,18 @@
     not a deck.
   */
   .decks.four {
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: min-content;
+  }
+
+  /*
+    Six decks are three rows of two, not two rows of three, for the same reason
+    four are two rows of two: the width of a deck is what decides whether its
+    pads are readable, and thirds of a screen are not enough. Three rows is
+    taller than a screen, which is correct — six decks is a scrolling rig, and
+    pretending otherwise would shrink all six to fit.
+  */
+  .decks.six {
     grid-template-columns: repeat(2, 1fr);
     grid-auto-rows: min-content;
   }
