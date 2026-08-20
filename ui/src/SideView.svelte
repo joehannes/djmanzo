@@ -11,12 +11,13 @@
    * browser because that is where you are looking when you make it, and it is
    * deliberately not in the crate tree.
    *
-   * # The placeholders are honest
+   * # Two tabs that are signposts
    *
-   * Sampler and Automix are named because a DJ opening SideView expects to
-   * find them and should learn where they are rather than wonder whether they
-   * missed a setting. They say which milestone, and they do nothing else. A
-   * tab that looked functional and was not would be worse than an absent one.
+   * Sampler and Automix both shipped, and neither of them lives here — the
+   * sampler is on the pads, and the automix is in the mixer because it moves
+   * the channel faders. The tabs stay because a DJ opening SideView looks for
+   * them here, and being told where they are beats wondering whether a setting
+   * was missed. They point; they do not duplicate the controls.
    */
   import { onMount } from "svelte";
   import {
@@ -220,13 +221,14 @@
     {/if}
   {:else if tab === "sampler"}
     <p class="empty">
-      The sampler arrives in <strong>M5</strong>: banks of one-shots and loops on the
-      pads, synced to the master tempo.
+      The sampler lives on the <strong>Sampler</strong> pad page and in its own
+      panel, where a slot can be loaded, recorded into and given a trigger mode.
     </p>
   {:else}
     <p class="empty">
-      Automix arrives in <strong>M6</strong>: a queue that mixes itself when you step
-      away, using the beat grids and the transitions you have chosen.
+      Automix plays from this Sidelist, and its controls are in the
+      <strong>mixer</strong> — it moves the channel faders, so it sits with the
+      rest of the hands on the mix rather than with the library.
     </p>
   {/if}
 </aside>

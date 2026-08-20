@@ -379,6 +379,34 @@ export interface SetRecordingState {
   failed: boolean;
 }
 
+export type TransitionStyle = "cut" | "fade" | "blend" | "echo";
+
+/** Every style, in the order the interface offers them. */
+export const TRANSITION_STYLES: readonly TransitionStyle[] = [
+  "blend",
+  "fade",
+  "cut",
+  "echo",
+];
+
+/** What each style does, in the words a DJ would use. */
+export const TRANSITION_HELP: Record<TransitionStyle, string> = {
+  blend: "Crossfade with the outgoing bass pulled out. What a DJ does by hand.",
+  fade: "A straight crossfade.",
+  cut: "One stops, the next starts. Right for unrelated songs.",
+  echo: "An echo over the outgoing track so it dissolves rather than ends.",
+};
+
+/** The automix, when the DJ has handed the mix over. */
+export interface AutomixState {
+  enabled: boolean;
+  /** True only while a transition is actually running. */
+  mixing: boolean;
+  /** How long a transition lasts, in beats. */
+  beats: number;
+  style: TransitionStyle;
+}
+
 /** The microphone / line input strip. */
 export interface MicState {
   /**
@@ -463,6 +491,8 @@ export interface MasterState {
   quantize: boolean;
   /** The microphone / line input strip. */
   mic: MicState;
+  /** The automix. */
+  automix: AutomixState;
 }
 
 export type SessionPhase = "warm_up" | "heat" | "peak" | "cooldown" | "chill_out";

@@ -312,6 +312,18 @@ pub struct SetRecordingSnapshot {
     pub failed: bool,
 }
 
+/// The automix, when the DJ has handed the mix over.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct AutomixSnapshot {
+    pub enabled: bool,
+    /// True only while a transition is actually running.
+    pub mixing: bool,
+    /// How long a transition lasts, in beats.
+    pub beats: f32,
+    /// One of `cut`, `fade`, `blend`, `echo`.
+    pub style: &'static str,
+}
+
 /// The microphone / line input strip.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct MicSnapshot {
@@ -383,6 +395,8 @@ pub struct MasterSnapshot {
     pub quantize: bool,
     /// The microphone / line input strip.
     pub mic: MicSnapshot,
+    /// The automix.
+    pub automix: AutomixSnapshot,
 }
 
 /// How the two-card bridge is doing.
@@ -668,6 +682,19 @@ impl Snapshot {
                     registry.get(ParamId::Global(GlobalParam::OutputLatencyFrames)),
                 ) * 1000.0,
                 quantize: registry.get(ParamId::Global(GlobalParam::Quantize)) >= 0.5,
+                automix: {
+                    let get = |p| registry.get(ParamId::Global(p));
+                    AutomixSnapshot {
+                        enabled: get(GlobalParam::AutomixEnabled) >= 0.5,
+                        mixing: get(GlobalParam::AutomixMixing) >= 0.5,
+                        beats: get(GlobalParam::AutomixBeats),
+                        style: dj_core::action::TransitionStyle::from_index(get(
+                            GlobalParam::AutomixStyle,
+                        )
+                            as usize)
+                        .as_str(),
+                    }
+                },
                 mic: {
                     let get = |p| registry.get(ParamId::Global(p));
                     let flag = |p| get(p) >= 0.5;

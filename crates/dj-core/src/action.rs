@@ -240,6 +240,102 @@ pub enum MicChange {
     ReleaseMs(f32),
 }
 
+/// How one track gives way to the next when the application is mixing.
+///
+/// Named for what the room hears rather than for the mechanism, because that is
+/// what a DJ is choosing between. `Blend` and `Fade` both move the crossfader;
+/// what makes them different is that a blend takes the outgoing bass out of the
+/// way first, which is the difference between two tracks overlapping and two
+/// kick drums fighting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransitionStyle {
+    /// One stops, the next starts. Right for a set of unrelated songs, and the
+    /// only style that is honest about a track with no mixable outro.
+    Cut,
+    /// A straight crossfade over the transition length.
+    Fade,
+    /// A crossfade with the outgoing bass pulled out as the incoming one
+    /// arrives. The default, and what a DJ does by hand.
+    Blend,
+    /// An echo thrown over the outgoing track as it goes, so it dissolves
+    /// rather than ends. For a set where the next track is a change of mood.
+    Echo,
+}
+
+impl TransitionStyle {
+    /// Every style, for an interface that offers them.
+    pub const ALL: [TransitionStyle; 4] = [
+        TransitionStyle::Cut,
+        TransitionStyle::Fade,
+        TransitionStyle::Blend,
+        TransitionStyle::Echo,
+    ];
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TransitionStyle::Cut => "cut",
+            TransitionStyle::Fade => "fade",
+            TransitionStyle::Blend => "blend",
+            TransitionStyle::Echo => "echo",
+        }
+    }
+
+    /// Its position in [`Self::ALL`], for the parameter registry.
+    ///
+    /// The registry holds `f32`, so an enum crossing it has to be a number.
+    /// Index rather than a hand-written discriminant, so the two cannot drift.
+    #[must_use]
+    pub fn index(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|style| *style == self)
+            .unwrap_or(0)
+    }
+
+    /// The inverse of [`Self::index`]. Out of range falls back to the default
+    /// rather than failing: a garbled parameter should not stop an interface
+    /// from drawing.
+    #[must_use]
+    pub fn from_index(index: usize) -> TransitionStyle {
+        Self::ALL
+            .get(index)
+            .copied()
+            .unwrap_or(TransitionStyle::Blend)
+    }
+
+    #[must_use]
+    pub fn parse(word: &str) -> Option<TransitionStyle> {
+        TransitionStyle::ALL
+            .into_iter()
+            .find(|style| style.as_str() == word)
+    }
+}
+
+impl fmt::Display for TransitionStyle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// What can be told to the automix.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum AutomixChange {
+    /// Hand the mix over, or take it back.
+    ///
+    /// Switching off mid-transition does *not* abandon it half-faded — see
+    /// `dj_app::automix`. A crossfader left at 30% is not a state anybody
+    /// wants to be handed.
+    SetEnabled(bool),
+    /// How one track gives way to the next.
+    Style(TransitionStyle),
+    /// How long a transition lasts, in beats.
+    Beats(f32),
+    /// Start the next transition now, rather than waiting for the outgoing
+    /// track to reach its handover point.
+    Now,
+}
+
 /// Something done to the mixer as a whole.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum MixerAction {
@@ -285,6 +381,8 @@ pub enum MixerAction {
     },
     /// The microphone / line input strip.
     Mic(MicChange),
+    /// Automix: let the application run the mix.
+    Automix(AutomixChange),
     /// Change the sampler as a whole: its bank, its level, or stop everything.
     Sampler(SamplerChange),
 }
@@ -366,6 +464,9 @@ impl Action {
                 }
             }
             "mic" => Ok(Action::Mixer(MixerAction::Mic(parse_mic(&mut words)?))),
+            "automix" => Ok(Action::Mixer(MixerAction::Automix(parse_automix(
+                &mut words,
+            )?))),
             "quantize" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "on" => Ok(Action::Mixer(MixerAction::SetQuantize(true))),
                 "off" => Ok(Action::Mixer(MixerAction::SetQuantize(false))),
@@ -479,6 +580,25 @@ fn parse_record_source<'a>(
 /// A bare effect name selects it, so `fx 1 echo` reads the way a DJ would say
 /// it. Everything else is a named control, which keeps the grammar open: a new
 /// control is a new word here rather than three new verbs in the vocabulary.
+fn parse_automix<'a>(
+    words: &mut impl Iterator<Item = &'a str>,
+) -> Result<AutomixChange, ParseError> {
+    Ok(match words.next().ok_or(ParseError::MissingVerb)? {
+        "on" => AutomixChange::SetEnabled(true),
+        "off" => AutomixChange::SetEnabled(false),
+        "now" => AutomixChange::Now,
+        "beats" => AutomixChange::Beats(parse_beats(words.next())?),
+        "style" => {
+            let word = words.next().ok_or(ParseError::MissingArgument)?;
+            AutomixChange::Style(
+                TransitionStyle::parse(word)
+                    .ok_or_else(|| ParseError::UnknownVerb(word.to_owned()))?,
+            )
+        }
+        other => return Err(ParseError::UnknownVerb(other.to_owned())),
+    })
+}
+
 fn parse_mic<'a>(words: &mut impl Iterator<Item = &'a str>) -> Result<MicChange, ParseError> {
     Ok(match words.next().ok_or(ParseError::MissingVerb)? {
         "on" => MicChange::SetOpen(true),
@@ -819,6 +939,15 @@ impl fmt::Display for Action {
                 write!(f, "sampler {slot} {change}")
             }
             Action::Mixer(MixerAction::Sampler(change)) => write!(f, "sampler {change}"),
+            Action::Mixer(MixerAction::Automix(change)) => match change {
+                AutomixChange::SetEnabled(true) => write!(f, "automix on"),
+                AutomixChange::SetEnabled(false) => write!(f, "automix off"),
+                AutomixChange::Now => write!(f, "automix now"),
+                AutomixChange::Style(style) => write!(f, "automix style {style}"),
+                AutomixChange::Beats(beats) => {
+                    write!(f, "automix beats {}", number(f64::from(*beats)))
+                }
+            },
             Action::Mixer(MixerAction::Mic(change)) => match change {
                 MicChange::SetOpen(true) => write!(f, "mic on"),
                 MicChange::SetOpen(false) => write!(f, "mic off"),

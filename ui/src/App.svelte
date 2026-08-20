@@ -4,6 +4,7 @@
   import Deck from "./Deck.svelte";
   import Fx from "./Fx.svelte";
   import Presets from "./Presets.svelte";
+  import Automix from "./Automix.svelte";
   import Mic from "./Mic.svelte";
   import Sampler from "./Sampler.svelte";
   import Settings from "./Settings.svelte";
@@ -818,6 +819,14 @@
         on air a two-step operation.
       -->
       <Mic mic={snapshot.master.mic} enabled={ready} {send} />
+
+      <!--
+        Automix belongs in the mixer for the same reason: it moves the channel
+        faders. It is not a library panel that happens to start tracks — it is
+        a hand on the mixer that is not yours, and it goes where the other
+        hands are.
+      -->
+      <Automix automix={snapshot.master.automix} enabled={ready} {send} />
 
       <!--
         Quantize is global rather than per-deck because it is a way of working,

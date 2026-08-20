@@ -130,7 +130,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Duplicate detection | M3 |
 | Play history and session export | M3 |
 | Harmonic (Camelot) key display and compatible-key filtering | M3 |
-| Automix with configurable transition style | M5 |
+| Automix with configurable transition style | M5 — done |
 | Search across online sources (Spotify, YouTube, Jamendo, Internet Archive) | **shipped** |
 | Match an online result to a file you already own | **shipped** |
 | Licensed streaming catalogue (Beatsource/Beatport/TIDAL/SoundCloud) | slots shipped; **needs a partnership** — see [SOURCES.md](SOURCES.md) |

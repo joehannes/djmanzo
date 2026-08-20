@@ -148,6 +148,12 @@ pub struct AppState {
     deck_tracks: Arc<Mutex<HashMap<u8, LoadedTrackInfo>>>,
     /// Controllers and the keyboard. See [`crate::control`].
     control: Arc<crate::control::ControlHub>,
+    /// The automix, when the DJ has handed the mix over.
+    ///
+    /// A mutex rather than atomics because it is a state machine, and it is
+    /// only ever touched from the snapshot pump and from `perform` — sixty
+    /// times a second and on a button press. Nothing realtime is behind it.
+    automix: Arc<Mutex<crate::automix::Automix>>,
     /// The other end of the controller queue, until `setup` can start the
     /// thread that drains it. Held rather than dropped: a receiver dropped
     /// here would make every MIDI message a send into a closed channel.
@@ -255,6 +261,7 @@ impl AppState {
             identifier: Mutex::new(None),
             deck_tracks: Arc::new(Mutex::new(HashMap::new())),
             control: Arc::new(control),
+            automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             control_inbox: Mutex::new(Some(control_inbox)),
         }
     }
@@ -700,6 +707,12 @@ impl AppState {
     #[must_use]
     pub fn bridge_handle(&self) -> Arc<Mutex<Option<Arc<dj_audio::BridgeStats>>>> {
         Arc::clone(&self.bridge)
+    }
+
+    /// The automix. See [`crate::automix`].
+    #[must_use]
+    pub fn automix(&self) -> &Arc<Mutex<crate::automix::Automix>> {
+        &self.automix
     }
 
     #[must_use]

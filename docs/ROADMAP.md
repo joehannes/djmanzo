@@ -559,7 +559,32 @@ adding a new controller requires editing a file, not rebuilding the app.
 
   Aux is the same strip with talkover switched off, which is why there is one of these and
   not two. Microphone effects are still to come.
-- Automix with configurable transition style.
+- **Automix with configurable transition style** — done. Not a feature of the audio engine:
+  nothing in it is realtime and nothing in it touches a sample. It watches where the playing
+  track has got to and, at the right moment, sends the same actions a DJ would send by hand.
+  Every action it emits already existed in the vocabulary, which is the design — everything
+  automix can do, a person could have done, and it takes the same path through `perform` as
+  a button press.
+
+  Four styles: **cut** (one stops, the next starts), **fade** (a straight crossfade),
+  **blend** (a crossfade with the outgoing bass pulled out as the incoming one arrives —
+  the default, because both kicks at once is what makes an automatic mix sound automatic)
+  and **echo** (an echo thrown over the outgoing track so it dissolves rather than ends).
+
+  Two decisions worth recording. It moves the **channel faders, not the crossfader**: a
+  crossfader only cuts decks assigned to one of its halves, so a crossfader automix would
+  work on decks 1 and 2 and silently do nothing on 3 and 4 — and a DJ who parked the
+  crossfader hard left would hand over to a system fading in a deck the crossfader is
+  already silencing. Automix sets the decks it is using to *through* when it takes over.
+  And a transition's progress comes from the **outgoing deck's playhead**, not from
+  elapsed wall-clock time: a transition timed off the interface pump would stretch whenever
+  the machine got busy, which is exactly when a transition is happening.
+
+  It plays from the **Sidelist**, because a DJ already has somewhere they put what plays
+  next. It does not know where a track's outro is — the handover point is the end of the
+  file minus the transition length, which is right for a track that ends when the music
+  does and wrong for one with a minute of applause on it. Finding the real end is analysis
+  work and is not done yet.
 - **Recording to disk** — done: `record on` streams the master, post-limiter, into a
   16-bit WAV beside the settings. Lock-free ring out of the callback, dither on the writer
   thread, sizes rewritten every five seconds so a crash costs seconds rather than the file.

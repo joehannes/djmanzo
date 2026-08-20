@@ -290,6 +290,22 @@ pub async fn load_track(
         .map_err(|e| format!("decode task failed: {e}"))?
         .map_err(|e| e.to_string())?;
 
+    put_on_deck(&state, deck_id, decoded)
+}
+
+/// Everything a load does once the file is decoded.
+///
+/// Split from [`load_track`] because decoding is the part that has to happen
+/// off the caller's thread, and the automix arrives here from the snapshot
+/// pump rather than from a Tauri command — it has an `&AppState` and no
+/// `State`, and no business being `async`.
+pub fn put_on_deck(
+    state: &AppState,
+    deck_id: dj_core::DeckId,
+    decoded: dj_decode::DecodedTrack,
+) -> Result<LoadedTrackDto, String> {
+    let deck = deck_id.human_number();
+
     let dto = LoadedTrackDto {
         deck,
         title: decoded.display_title(),
@@ -331,7 +347,7 @@ pub async fn load_track(
     // be silently discarded. And a DJ who loads a file expects to find it in
     // their collection afterwards -- a track you played is part of your library
     // whether or not you ever pointed a scan at the folder it lives in.
-    remember_track(&state, &decoded, sample_rate);
+    remember_track(state, &decoded, sample_rate);
 
     let buffer = Arc::new(decoded.buffer);
     // One allocation, two owners: the engine plays it, the analyser reads it.
@@ -349,7 +365,7 @@ pub async fn load_track(
     // in, and the grid as it was left -- corrected by hand, if it was. Sent
     // after the load so the engine applies them to the new track rather than to
     // whatever was on the deck a moment ago.
-    restore_deck_state(&state, deck_id, track_id, sample_rate);
+    restore_deck_state(state, deck_id, track_id, sample_rate);
 
     // Analysis runs *after* the track is playable, on its own worker.
     //
@@ -488,6 +504,28 @@ pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
         } else {
             state.stop_recording();
         }
+        return Ok(());
+    }
+
+    // Automix is handled here and never forwarded. The engine renders audio;
+    // deciding *when* one track should give way to the next is a question about
+    // playheads and a queue, and both of those live on this side. It is in the
+    // vocabulary for the ADR-0003 reason: a DJ hands the mix over from whatever
+    // is nearest, and a controller button must be able to do it.
+    if let Action::Mixer(dj_core::MixerAction::Automix(change)) = parsed {
+        let decks = automix_view(state);
+        let plan = {
+            let mut mix = state
+                .automix()
+                .lock()
+                .map_err(|_| "automix is unavailable".to_owned())?;
+            let plan = mix.apply(change, &decks);
+            // Published from inside the lock, so a reader never sees the state
+            // from before a change it has already been told about.
+            publish_automix(state, &mix);
+            plan
+        };
+        run_automix_plan(state, plan);
         return Ok(());
     }
 
@@ -2202,6 +2240,118 @@ mod editing_command_tests {
 /// A constant rather than a literal at each call site, because it is the key
 /// that finds the list again after a restart and a typo in one of three places
 /// would quietly make a second one.
+/// The decks as the automix sees them, read from the same parameter registry
+/// the interface draws from.
+pub fn automix_view(state: &AppState) -> Vec<crate::automix::DeckView> {
+    use dj_core::param::{DeckParam, GlobalParam};
+    let registry = state.registry();
+    let sample_rate = f64::from(
+        registry
+            .get(dj_core::ParamId::Global(GlobalParam::SampleRate))
+            .max(1.0),
+    );
+    (0..state.deck_count())
+        .filter_map(|index| dj_core::DeckId::new(index as u8))
+        .map(|id| {
+            let get = |p| registry.get(dj_core::ParamId::Deck(id, p));
+            let bpm = f64::from(get(DeckParam::EffectiveBpm));
+            crate::automix::DeckView {
+                id,
+                loaded: get(DeckParam::Loaded) >= 0.5,
+                playing: get(DeckParam::Playing) >= 0.5,
+                position: f64::from(get(DeckParam::Position)),
+                length: f64::from(get(DeckParam::LengthFrames)),
+                bpm: (bpm > 1.0).then_some(bpm),
+                sample_rate,
+            }
+        })
+        .collect()
+}
+
+/// Put the automix's own state where the interface can read it.
+///
+/// Through the parameter registry rather than a command of its own, so it
+/// arrives on the same 60 Hz snapshot as everything else. One path to keep in
+/// step instead of two.
+pub fn publish_automix(state: &AppState, mix: &crate::automix::Automix) {
+    use dj_core::param::GlobalParam;
+    let registry = state.registry();
+    let set = |param, value: f32| registry.set(dj_core::ParamId::Global(param), value);
+    set(
+        GlobalParam::AutomixEnabled,
+        if mix.is_enabled() { 1.0 } else { 0.0 },
+    );
+    set(
+        GlobalParam::AutomixMixing,
+        if mix.is_mixing() { 1.0 } else { 0.0 },
+    );
+    set(GlobalParam::AutomixBeats, mix.beats());
+    set(GlobalParam::AutomixStyle, mix.style().index() as f32);
+}
+
+/// Send what the automix asked for.
+///
+/// Actions go back through `perform`, so they take exactly the same path as a
+/// button press — including the interceptions above. Automix does not get a
+/// private channel to the engine, and that is the point: everything it can do,
+/// a person could have done.
+pub fn run_automix_plan(state: &AppState, plan: crate::automix::Plan) {
+    for action in &plan.actions {
+        let text = action.to_string();
+        if let Err(error) = perform(state, &text) {
+            tracing::warn!(%error, %text, "automix action refused");
+        }
+    }
+    if let Some(deck) = plan.load {
+        load_next_from_sidelist(state, deck);
+    }
+}
+
+/// Take the top of the Sidelist and put it on `deck`.
+///
+/// The Sidelist rather than a queue of automix's own, because a DJ already has
+/// somewhere they put what plays next, and a second list they had to remember
+/// to fill would be a second list they forgot to fill. Taking the entry off as
+/// it loads means the list is also a record of what is left.
+fn load_next_from_sidelist(state: &AppState, deck: dj_core::DeckId) {
+    let Ok(db) = library(state) else { return };
+    let Ok(id) = db.system_playlist(SIDELIST, crate::library::now_seconds()) else {
+        return;
+    };
+    let Ok(entries) = db.playlist_tracks(id) else {
+        return;
+    };
+    let Some((position, track)) = entries.into_iter().next() else {
+        // Nothing queued. Not an error and not worth a warning on every tick —
+        // the interface shows an empty Sidelist, which is the whole message.
+        return;
+    };
+
+    // Decoding reads and expands a whole file. This is called from the snapshot
+    // pump, so doing it here would freeze the interface for as long as the
+    // track takes to read — which is exactly why the load is asked for twenty
+    // seconds ahead of when it is needed.
+    let path = track.path.clone();
+    match decode_file(&path) {
+        Ok(decoded) => {
+            if let Err(error) = put_on_deck(state, deck, decoded) {
+                tracing::warn!(%error, "automix could not put the next track on a deck");
+                return;
+            }
+        }
+        Err(error) => {
+            tracing::warn!(%error, path = %path.display(), "automix could not read the next track");
+            // Left in the list on purpose: a track that will not load is
+            // something the DJ needs to see, and silently dropping it means the
+            // queue empties itself when a drive is unplugged.
+            return;
+        }
+    }
+    if let Err(error) = db.remove_from_playlist(id, position) {
+        tracing::warn!(%error, "automix loaded a track but could not take it off the Sidelist");
+    }
+}
+
 const SIDELIST: &str = "sidelist";
 
 /// The Sidelist: what you have pulled aside for later.

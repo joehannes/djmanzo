@@ -21,6 +21,7 @@
 
 pub mod analysis;
 pub mod assistant;
+pub mod automix;
 pub mod brand;
 pub mod commands;
 pub mod control;
@@ -237,6 +238,23 @@ pub fn run() {
                 },
                 move |snapshot| {
                     use tauri::Emitter;
+                    // The automix rides the same pump the interface does, so it
+                    // sees exactly what the DJ sees and there is no second view
+                    // of the decks to keep in step. It does nothing at all
+                    // until it is switched on.
+                    {
+                        let state: tauri::State<'_, AppState> = handle.state();
+                        let plan = state.automix().lock().ok().map(|mut mix| {
+                            let plan = mix.tick(&crate::commands::automix_view(&state));
+                            crate::commands::publish_automix(&state, &mix);
+                            plan
+                        });
+                        if let Some(plan) =
+                            plan.filter(|p| !p.actions.is_empty() || p.load.is_some())
+                        {
+                            crate::commands::run_automix_plan(&state, plan);
+                        }
+                    }
                     save_changed_cues(&snapshot, &watched_tracks, &cue_watcher, &library_writer);
                     record_plays(
                         &snapshot,

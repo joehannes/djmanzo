@@ -604,6 +604,11 @@ impl Engine {
                 dj_core::SamplerChange::RecordStop => self.recorder.stop(),
                 dj_core::SamplerChange::RecordCancel => self.recorder.cancel(),
             },
+            // Automix is not the engine's business. It watches playheads and
+            // sends the same actions a DJ would; the engine only ever sees
+            // those. Named here rather than caught by a wildcard so that a new
+            // mixer action cannot be silently ignored by accident.
+            Action::Mixer(MixerAction::Automix(_)) => {}
             Action::Mixer(MixerAction::Mic(change)) => {
                 use dj_core::action::MicChange;
                 match change {

@@ -313,6 +313,14 @@ pub enum GlobalParam {
     SamplerVolume,
     /// Peak the sampler put into the master this block.
     SamplerPeak,
+    /// 1.0 when the automix has the mix.
+    AutomixEnabled,
+    /// 1.0 while a transition is actually running.
+    AutomixMixing,
+    /// How long a transition lasts, in beats.
+    AutomixBeats,
+    /// Which transition style, as an index into `TransitionStyle::ALL`.
+    AutomixStyle,
     /// 1.0 when an input device is attached to the microphone strip.
     ///
     /// Distinct from [`GlobalParam::MicOpen`]: a DJ can arm the channel with no
@@ -747,7 +755,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since.
-    pub const COUNT: usize = 122;
+    pub const COUNT: usize = 126;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -782,6 +790,10 @@ impl GlobalParam {
             RecordSeconds,
             RecordSourceDeck,
             SetRecordDropped,
+            AutomixEnabled,
+            AutomixMixing,
+            AutomixBeats,
+            AutomixStyle,
             MicPresent,
             MicOpen,
             MicGainDb,
@@ -1020,6 +1032,10 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::RecordSeconds => "record_seconds",
         GlobalParam::RecordSourceDeck => "record_source_deck",
         GlobalParam::SetRecordDropped => "set_record_dropped",
+        GlobalParam::AutomixEnabled => "automix_enabled",
+        GlobalParam::AutomixMixing => "automix_mixing",
+        GlobalParam::AutomixBeats => "automix_beats",
+        GlobalParam::AutomixStyle => "automix_style",
         GlobalParam::MicPresent => "mic_present",
         GlobalParam::MicOpen => "mic_open",
         GlobalParam::MicGainDb => "mic_gain_db",
