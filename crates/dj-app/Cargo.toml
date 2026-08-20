@@ -21,6 +21,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 dj-core = { workspace = true }
+dj-clap = { workspace = true }
 dj-audio = { workspace = true }
 dj-decode = { workspace = true }
 dj-library = { workspace = true }

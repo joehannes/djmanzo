@@ -538,7 +538,34 @@ adding a new controller requires editing a file, not rebuilding the app.
   Roll shipped as the loop roll, on its own pad page. Brake and backspin are done and live on
   the deck rather than in a slot — they are **transport rather than signal**: they change how
   fast the record turns, not what comes off it.
-- **CLAP** plugin hosting.
+- **CLAP plugin hosting** — done, as one insert on the master between the effect rack and
+  the limiter. CLAP rather than VST for a licensing reason before a technical one: VST3's SDK
+  is GPL-or-commercial and VST2's is gone, so ADR-0002 rules both out before the first
+  question is asked. CLAP is MIT, its threading model is written down, and a host can drive
+  one without a GUI.
+
+  The plugin's own window is **not** hosted, and will not be soon: a plugin's interface is a
+  native child window — an X11 window on Linux, an `NSView` on macOS — and there is nowhere
+  to put one inside a webview. Parameters are exposed generically instead and djmanzo draws
+  them. That is a real loss for a plugin whose panel *is* the product and a real gain
+  everywhere else: a generic control is in djmanzo's own vocabulary, so a controller can be
+  mapped to it, a preset can save it, and the assistant can move it. A plugin window can do
+  none of those.
+
+  The honest caveat: a CLAP plugin's `process` is only *supposed* to be free of allocation,
+  locks and I/O. Nothing in the specification enforces it and nothing here can. The
+  allocation-counting harness catches a badly behaved plugin the moment one is loaded, but
+  only for that plugin on that machine. A DJ loading a third-party plugin into the master
+  chain is taking on that risk.
+
+  Also not yet done: a plugin telling the host its parameters have changed — after loading a
+  preset in its own window, say — is recorded and not acted on. It matters for a plugin with
+  its own preset browser and not at all for one driven from here.
+
+  Tested against a real plugin, not a mock: `dj-clap` compiles a CLAP plugin into its own
+  test binary and hosts it through the same path a plugin read off a disk would take. There
+  are no `.clap` bundles on a CI machine, and a host tested only against whatever happens to
+  be installed is a host tested nowhere.
 - **Slip mode, reverse/censor, loop roll** — done. **6 decks** done: the engine always
   builds `MAX_DECKS`, and the interface shows two, four or six. Six is three rows of two
   rather than two of three — deck width is what decides whether pads are readable, and a

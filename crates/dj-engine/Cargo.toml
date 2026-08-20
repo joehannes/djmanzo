@@ -10,6 +10,7 @@ authors.workspace = true
 
 [dependencies]
 dj-core = { workspace = true }
+dj-clap = { workspace = true }
 dj-dsp = { workspace = true }
 dj-decode = { workspace = true }
 dj-audio = { workspace = true }
@@ -18,3 +19,6 @@ rtrb = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+dj-clap = { workspace = true, features = ["test-plugin"] }

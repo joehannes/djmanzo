@@ -17,6 +17,19 @@ use dj_dsp::fx::FxContext;
 use dj_dsp::{CrossfaderCurve, Limiter, PeakMeter, SmoothedValue, Spectrum, crossfader_gains};
 use std::sync::Arc;
 
+/// Channels a plugin insert carries. Stereo, like everything else.
+const CLAP_CHANNELS: usize = dj_clap::plugin::CHANNELS;
+
+/// The largest block a plugin insert will process in one go.
+///
+/// The engine is built before any device is open, so the scratch cannot be
+/// sized to the real block; it is sized to a generous ceiling instead. 8192
+/// frames is 170 ms at 48 kHz — an order of magnitude beyond any buffer a DJ
+/// would choose, and 64 kB of memory. A block larger than this has its first
+/// 8192 frames processed and the rest pass through, which is the same rule the
+/// plugin's own truncation follows.
+const CLAP_MAX_FRAMES: usize = 8192;
+
 /// The realtime engine.
 ///
 /// Lives on the audio thread and obeys its rules absolutely: no allocation, no
@@ -66,6 +79,20 @@ pub struct Engine {
     recorder: Recorder,
     /// The microphone / line input strip. See [`crate::mic::Mic`].
     mic: crate::mic::Mic,
+    /// A CLAP plugin on the master, when the DJ has put one there.
+    ///
+    /// Boxed because it is large and moved across the command queue; `Option`
+    /// because having none is the normal state.
+    clap: Option<Box<dj_clap::Processor>>,
+    /// Interleaved stereo for the plugin to work in. See
+    /// [`Engine::process_clap`].
+    clap_scratch: Vec<f32>,
+    /// Whether the plugin is in the signal path.
+    ///
+    /// Separate from having one loaded: a DJ comparing with and without wants
+    /// that instant and wants the plugin's state kept, which unloading would
+    /// lose.
+    clap_bypass: bool,
     /// The master, on its way to a file. See [`Command::RecordStream`].
     record_stream: Option<rtrb::Producer<f32>>,
     /// Samples the ring would not take since recording started.
@@ -142,6 +169,9 @@ impl Engine {
             master_rack: Rack::new(sr),
             recorder: Recorder::new(sample_rate),
             mic: crate::mic::Mic::new(sr),
+            clap: None,
+            clap_scratch: vec![0.0; CLAP_MAX_FRAMES * CLAP_CHANNELS],
+            clap_bypass: false,
             record_stream: None,
             dropped_samples: 0,
             limiter: Limiter::new(sr),
@@ -366,6 +396,21 @@ impl Engine {
                     if let Some(target) = self.sampler.slot_in_mut(bank, slot) {
                         let previous = target.load(source, bpm);
                         self.retire(Retired::Source(previous));
+                    }
+                }
+                Command::ClapInsert { processor } => {
+                    // The displaced processor goes back rather than being
+                    // dropped: dropping it here leaks whatever the plugin
+                    // allocated, and only its instance may deactivate it.
+                    let previous = match processor {
+                        Some(processor) => self.clap.replace(processor),
+                        None => self.clap.take(),
+                    };
+                    // A new plugin arrives in the path, not bypassed: a DJ who
+                    // has just chosen one expects to hear it.
+                    self.clap_bypass = false;
+                    if let Some(previous) = previous {
+                        self.retire(Retired::Clap(previous));
                     }
                 }
                 Command::MicInput { source } => {
@@ -604,6 +649,25 @@ impl Engine {
                 dj_core::SamplerChange::RecordStop => self.recorder.stop(),
                 dj_core::SamplerChange::RecordCancel => self.recorder.cancel(),
             },
+            Action::Mixer(MixerAction::Clap(change)) => {
+                use dj_core::action::ClapChange;
+                match change {
+                    ClapChange::SetBypass(bypass) => self.clap_bypass = bypass,
+                    ClapChange::ToggleBypass => self.clap_bypass = !self.clap_bypass,
+                    // Unloading needs the processor handed back to its
+                    // instance, which lives on the host thread. So the action
+                    // only bypasses; the application sees the state change on
+                    // the next snapshot and sends the command that takes it
+                    // out. Doing it the other way round would mean dropping a
+                    // plugin on the audio thread.
+                    ClapChange::Clear => self.clap_bypass = true,
+                    ClapChange::Param { id, value } => {
+                        if let Some(plugin) = self.clap.as_mut() {
+                            plugin.set_param(id, f64::from(value));
+                        }
+                    }
+                }
+            }
             // Automix is not the engine's business. It watches playheads and
             // sends the same actions a DJ would; the engine only ever sees
             // those. Named here rather than caught by a wildcard so that a new
@@ -666,10 +730,62 @@ impl Engine {
         }
     }
 
+    /// Run the master through the plugin insert, if there is one.
+    ///
+    /// A CLAP plugin wants contiguous interleaved stereo, and the output buffer
+    /// is not that: with a booth or a headphone bus the master is two channels
+    /// out of four or six. So the master is copied into a scratch, processed,
+    /// and copied back. Two passes over a block, against whatever the plugin
+    /// then does with it.
+    fn process_clap(&mut self, out: &mut [f32], layout: &BusLayout) {
+        if self.clap_bypass {
+            return;
+        }
+        let Some(plugin) = self.clap.as_mut() else {
+            return;
+        };
+        let channels = layout.channels;
+        let (main_l, main_r) = layout.main;
+        let frames = (out.len() / channels).min(self.clap_scratch.len() / CLAP_CHANNELS);
+        if frames == 0 {
+            return;
+        }
+
+        let scratch = &mut self.clap_scratch[..frames * CLAP_CHANNELS];
+        for (frame, slot) in out
+            .chunks_exact(channels)
+            .zip(scratch.chunks_exact_mut(CLAP_CHANNELS))
+        {
+            slot[0] = frame[main_l];
+            // A mono layout has one master channel, and a plugin expecting
+            // stereo gets the same signal twice rather than silence on one
+            // side — which is what a mono output means.
+            slot[1] = if layout.is_mono() {
+                frame[main_l]
+            } else {
+                frame[main_r]
+            };
+        }
+
+        plugin.process(scratch);
+
+        for (frame, slot) in out
+            .chunks_exact_mut(channels)
+            .zip(scratch.chunks_exact(CLAP_CHANNELS))
+        {
+            frame[main_l] = slot[0];
+            if !layout.is_mono() {
+                frame[main_r] = slot[1];
+            }
+        }
+    }
+
     /// The microphone strip, for the interface.
     fn publish_mic(&self) {
         let set = |param, value| self.registry.set(ParamId::Global(param), value);
         let flag = |param, on: bool| set(param, if on { 1.0 } else { 0.0 });
+        flag(GlobalParam::ClapLoaded, self.clap.is_some());
+        flag(GlobalParam::ClapBypass, self.clap_bypass);
         flag(GlobalParam::MicPresent, self.mic.has_input());
         flag(GlobalParam::MicOpen, self.mic.is_open());
         flag(GlobalParam::MicCue, self.mic.to_cue());
@@ -1033,8 +1149,6 @@ impl AudioCallback for Engine {
         let (main_l, main_r) = layout.main;
         for frame in out.chunks_exact_mut(channels) {
             let master = self.master_gain.next_value();
-            let booth = self.booth_gain.next_value();
-            let mix = self.cue_mix.next_value();
 
             // The microphone, and what it does to everything else.
             //
@@ -1077,6 +1191,48 @@ impl AudioCallback for Engine {
             let (raw_l, raw_r) = self.master_rack.process_pre(raw_l, raw_r, &master_ctx);
             let (raw_l, raw_r) = self.master_rack.process_post(raw_l, raw_r, &master_ctx);
 
+            // The pre-limiter master goes back into the buffer, and the second
+            // pass below picks it up. Splitting the loop is what makes room for
+            // a plugin insert between the two: a CLAP plugin processes a block,
+            // not a frame, and it has to sit before the limiter for the same
+            // reason the rack does.
+            frame[main_l] = raw_l;
+            if !layout.is_mono() {
+                frame[main_r] = raw_r;
+            }
+
+            // The microphone joins the headphones here rather than in the
+            // second pass, because this is where `mic` is in scope. The cue is
+            // deliberately *not* ducked: ducking exists so a room can hear a
+            // voice over the music, and the DJ's headphones already have the
+            // voice in them directly — pulling the music down there would take
+            // away the only reference they have.
+            if self.mic.to_cue()
+                && let Some((cue_l, cue_r)) = layout.cue
+            {
+                frame[cue_l] += mic.left;
+                frame[cue_r] += mic.right;
+            }
+        }
+
+        // The plugin insert: after the master rack, before the limiter.
+        //
+        // A block pass rather than a frame one, because that is the only shape
+        // CLAP has. See `dj_clap` — and note that a third-party plugin's
+        // `process` is only *supposed* to be free of allocation and locks;
+        // nothing here can enforce it.
+        self.process_clap(out, &layout);
+
+        for frame in out.chunks_exact_mut(channels) {
+            let booth = self.booth_gain.next_value();
+            let mix = self.cue_mix.next_value();
+            let raw_l = frame[main_l];
+            let raw_r = if layout.is_mono() {
+                raw_l
+            } else {
+                frame[main_r]
+            };
+
             // The clamp that remains is a backstop for a limiter that has been
             // bypassed, and for anything non-finite that got this far. It
             // should never engage while the limiter is engaged.
@@ -1112,19 +1268,9 @@ impl AudioCallback for Engine {
             // it is a grid the DJ would carefully match, and the room would
             // hear 5 ms out. Matching delays on both paths cancels exactly.
             if let Some((cue_l, cue_r)) = layout.cue {
-                // The microphone joins the headphones when it is asked to, so a
-                // DJ can hear themselves without depending on a monitor wedge.
-                //
-                // The cue is *not* ducked. Ducking exists so a room can hear a
-                // voice over the music; the DJ's headphones already have the
-                // voice in them directly, and pulling the music down there as
-                // well would take away the only reference they have.
-                let (send_l, send_r) = if self.mic.to_cue() {
-                    (frame[cue_l] + mic.left, frame[cue_r] + mic.right)
-                } else {
-                    (frame[cue_l], frame[cue_r])
-                };
-                let (raw_l, raw_r) = self.cue_limiter.process_frame(send_l, send_r);
+                // The cue sum already carries the microphone when the DJ asked
+                // for it — added in the first pass, where `mic` was in scope.
+                let (raw_l, raw_r) = self.cue_limiter.process_frame(frame[cue_l], frame[cue_r]);
                 let (out_l, out_r) = if self.cue_split {
                     // Split cue: cue mono in the left ear, master mono in the
                     // right. Standard for beatmatching -- you hear both sources
@@ -3958,5 +4104,417 @@ mod mic_tests {
             "starvation went unreported: {}",
             rig.get(GlobalParam::MicStarvedFrames)
         );
+    }
+}
+
+/// The plugin insert: does it sit in the right place, and does bypassing it
+/// take it out without unloading it.
+///
+/// A real plugin cannot be hosted from here — `dj_clap`'s own tests do that
+/// against a plugin compiled into their test binary. What these check is the
+/// engine's half: where the insert sits in the chain, that bypass is a switch
+/// rather than an unload, and that a processor is never dropped on the audio
+/// thread.
+#[cfg(test)]
+mod clap_tests {
+    use super::*;
+    use dj_core::action::ClapChange;
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+
+    fn rig() -> (
+        Engine,
+        rtrb::Producer<Command>,
+        rtrb::Consumer<Retired>,
+        Arc<ParameterRegistry>,
+    ) {
+        let (command_tx, command_rx) = rtrb::RingBuffer::new(64);
+        let (retired_tx, retired_rx) = rtrb::RingBuffer::new(64);
+        let registry = Arc::new(ParameterRegistry::new());
+        let engine = Engine::new(2, SR, command_rx, retired_tx, Arc::clone(&registry));
+        (engine, command_tx, retired_rx, registry)
+    }
+
+    fn render(engine: &mut Engine, frames: usize) {
+        let mut out = vec![0.0; frames * 2];
+        engine.render(
+            &mut out,
+            &RenderContext {
+                frames,
+                channels: 2,
+                sample_rate: SR,
+            },
+        );
+    }
+
+    /// The plugin processor out of the retirement queue, past anything else in
+    /// front of it.
+    ///
+    /// Loading a track retires the deck's previous source, so the plugin is not
+    /// always the first thing in there — and a test that assumed it was would
+    /// fail for a reason that has nothing to do with plugins.
+    fn take_plugin(rx: &mut rtrb::Consumer<Retired>) -> Option<Box<dj_clap::Processor>> {
+        while let Ok(item) = rx.pop() {
+            if let Retired::Clap(processor) = item {
+                return Some(processor);
+            }
+        }
+        None
+    }
+
+    /// A real plugin on the insert. Unity gain, so what it does to the signal
+    /// is nothing — which is exactly what makes it useful for checking the
+    /// *routing* rather than the arithmetic.
+    fn loaded_plugin(frames: u32) -> (dj_clap::Loaded, Box<dj_clap::Processor>) {
+        let bundle = dj_clap::testplug::bundle().expect("the test plugin would not load");
+        let mut loaded = bundle.instantiate(None).expect("no plugin in the bundle");
+        let processor = loaded
+            .activate(f64::from(SR.get()), frames)
+            .expect("the plugin refused the configuration");
+        (loaded, Box::new(processor))
+    }
+
+    #[test]
+    fn with_no_plugin_the_insert_reports_nothing() {
+        let (mut engine, _tx, _rx, registry) = rig();
+        render(&mut engine, 64);
+        assert_eq!(registry.get(ParamId::Global(GlobalParam::ClapLoaded)), 0.0);
+        assert_eq!(registry.get(ParamId::Global(GlobalParam::ClapBypass)), 0.0);
+    }
+
+    /// Bypass is a switch, not an unload: a DJ comparing with and without wants
+    /// it instant and wants the plugin's state kept.
+    #[test]
+    fn bypass_is_a_switch() {
+        let (mut engine, mut tx, _rx, registry) = rig();
+        let flag =
+            |registry: &ParameterRegistry| registry.get(ParamId::Global(GlobalParam::ClapBypass));
+
+        tx.push(Command::Action(Action::Mixer(MixerAction::Clap(
+            ClapChange::SetBypass(true),
+        ))))
+        .unwrap();
+        render(&mut engine, 64);
+        assert_eq!(flag(&registry), 1.0);
+
+        tx.push(Command::Action(Action::Mixer(MixerAction::Clap(
+            ClapChange::ToggleBypass,
+        ))))
+        .unwrap();
+        render(&mut engine, 64);
+        assert_eq!(flag(&registry), 0.0);
+
+        tx.push(Command::Action(Action::Mixer(MixerAction::Clap(
+            ClapChange::ToggleBypass,
+        ))))
+        .unwrap();
+        render(&mut engine, 64);
+        assert_eq!(flag(&registry), 1.0);
+    }
+
+    /// `clap clear` bypasses in the engine and nothing more. Letting go of the
+    /// plugin needs its processor handed back to the instance that made it, and
+    /// the instance is not on this thread — so the application does the second
+    /// half. A `Clear` that unloaded here would drop a plugin on the audio
+    /// thread, which is what the whole retirement queue exists to prevent.
+    #[test]
+    fn clearing_only_bypasses_here() {
+        let (mut engine, mut tx, mut rx, registry) = rig();
+        tx.push(Command::Action(Action::Mixer(MixerAction::Clap(
+            ClapChange::Clear,
+        ))))
+        .unwrap();
+        render(&mut engine, 64);
+        assert_eq!(registry.get(ParamId::Global(GlobalParam::ClapBypass)), 1.0);
+        assert!(
+            rx.pop().is_err(),
+            "the engine retired something on a bare `clear`"
+        );
+    }
+
+    /// Taking the insert out must hand back whatever was there rather than
+    /// dropping it. With nothing loaded there is nothing to hand back, and that
+    /// is not a fault.
+    #[test]
+    fn removing_an_absent_plugin_retires_nothing() {
+        let (mut engine, mut tx, mut rx, _registry) = rig();
+        tx.push(Command::ClapInsert { processor: None }).unwrap();
+        render(&mut engine, 64);
+        assert!(rx.pop().is_err());
+    }
+
+    /// A parameter change with no plugin loaded must be a no-op rather than a
+    /// panic: a controller can be mapped to a plugin control and turned before
+    /// anything is loaded.
+    #[test]
+    fn a_parameter_change_with_no_plugin_is_harmless() {
+        let (mut engine, mut tx, _rx, _registry) = rig();
+        tx.push(Command::Action(Action::Mixer(MixerAction::Clap(
+            ClapChange::Param { id: 7, value: 0.5 },
+        ))))
+        .unwrap();
+        render(&mut engine, 64);
+    }
+
+    /// **The insert is in the signal path.**
+    ///
+    /// The plugin's gain is turned down first, so what comes out of the master
+    /// is different from what went in. That difference is the whole assertion:
+    /// with the plugin left at unity a pass that never wrote its result back
+    /// would be indistinguishable from one that did, and the test would prove
+    /// nothing. Confirmed by mutation — both "never write back" and "collapse
+    /// the channels" pass against a unity-gain plugin.
+    #[test]
+    fn audio_goes_through_the_plugin_and_keeps_its_channels() {
+        const GAIN: f32 = 0.5;
+        let (mut engine, mut tx, mut rx, _registry) = rig();
+        let (mut instance, processor) = loaded_plugin(256);
+        tx.push(Command::ClapInsert {
+            processor: Some(processor),
+        })
+        .unwrap();
+        tx.push(Command::Action(Action::Mixer(MixerAction::Clap(
+            ClapChange::Param {
+                id: dj_clap::testplug::GAIN_ID,
+                value: GAIN,
+            },
+        ))))
+        .unwrap();
+        // Two different values, so a pass that copied one channel over the
+        // other shows up as well.
+        tx.push(Command::Load {
+            deck: dj_core::deck::DeckId::from_human(1).unwrap(),
+            source: Arc::new(dj_decode::AudioBuffer::from_interleaved(
+                (0..48_000 * 2)
+                    .map(|i| if i % 2 == 0 { 0.4 } else { -0.2 })
+                    .collect(),
+                SR,
+            )),
+        })
+        .unwrap();
+        tx.push(Command::Action(Action::Deck {
+            deck: dj_core::deck::DeckId::from_human(1).unwrap(),
+            action: DeckAction::Play,
+        }))
+        .unwrap();
+
+        let mut out = vec![0.0; 256 * 2];
+        engine.render(
+            &mut out,
+            &RenderContext {
+                frames: 256,
+                channels: 2,
+                sample_rate: SR,
+            },
+        );
+        let left = out.chunks_exact(2).map(|f| f[0]).fold(0.0f32, f32::max);
+        let right = out.chunks_exact(2).map(|f| f[1]).fold(0.0f32, f32::min);
+
+        // A single deck reaches the master through the constant-power
+        // crossfader law, so 0.4 arrives as 0.4/√2 — and then through the
+        // plugin at half gain.
+        let expected_left = 0.4 / std::f32::consts::SQRT_2 * GAIN;
+        let expected_right = -0.2 / std::f32::consts::SQRT_2 * GAIN;
+        assert!(
+            (left - expected_left).abs() < 0.01,
+            "left was {left}, expected about {expected_left}"
+        );
+        assert!(
+            (right - expected_right).abs() < 0.01,
+            "right was {right}, expected about {expected_right}; \
+             the channels may have collapsed"
+        );
+
+        // Take it back so the instance can deactivate it, exactly as the
+        // application does.
+        tx.push(Command::ClapInsert { processor: None }).unwrap();
+        let mut out = vec![0.0; 64 * 2];
+        engine.render(
+            &mut out,
+            &RenderContext {
+                frames: 64,
+                channels: 2,
+                sample_rate: SR,
+            },
+        );
+        let Some(processor) = take_plugin(&mut rx) else {
+            panic!("the plugin was dropped on the audio thread");
+        };
+        instance.deactivate(*processor);
+    }
+
+    /// **`clear` must not unload here.** Dropping a processor on the audio
+    /// thread frees whatever the plugin allocated, on the one thread that may
+    /// not free anything — and it leaks the instance, which can then never
+    /// deactivate. So `clear` bypasses, and the application sends the command
+    /// that takes it out.
+    #[test]
+    fn clearing_leaves_the_plugin_for_the_application_to_take_back() {
+        let (mut engine, mut tx, mut rx, registry) = rig();
+        let (mut instance, processor) = loaded_plugin(64);
+        tx.push(Command::ClapInsert {
+            processor: Some(processor),
+        })
+        .unwrap();
+        render(&mut engine, 64);
+        assert_eq!(registry.get(ParamId::Global(GlobalParam::ClapLoaded)), 1.0);
+
+        tx.push(Command::Action(Action::Mixer(MixerAction::Clap(
+            ClapChange::Clear,
+        ))))
+        .unwrap();
+        render(&mut engine, 64);
+        assert_eq!(
+            registry.get(ParamId::Global(GlobalParam::ClapLoaded)),
+            1.0,
+            "`clear` unloaded the plugin on the audio thread"
+        );
+        assert_eq!(registry.get(ParamId::Global(GlobalParam::ClapBypass)), 1.0);
+        assert!(rx.pop().is_err(), "it retired something on a bare `clear`");
+
+        tx.push(Command::ClapInsert { processor: None }).unwrap();
+        render(&mut engine, 64);
+        let Some(processor) = take_plugin(&mut rx) else {
+            panic!("the plugin never came back");
+        };
+        instance.deactivate(*processor);
+    }
+
+    /// A bypassed plugin is out of the path but still loaded.
+    ///
+    /// Checked by listening, not by reading the flag back. The flag saying
+    /// "bypassed" and the audio still going through the plugin is exactly the
+    /// bug this is for, and a test that only read the flag would miss it —
+    /// which a mutation confirmed.
+    #[test]
+    fn a_bypassed_plugin_is_not_heard() {
+        const GAIN: f32 = 0.5;
+        let (mut engine, mut tx, mut rx, registry) = rig();
+        let (mut instance, processor) = loaded_plugin(256);
+        tx.push(Command::ClapInsert {
+            processor: Some(processor),
+        })
+        .unwrap();
+        tx.push(Command::Action(Action::Mixer(MixerAction::Clap(
+            ClapChange::Param {
+                id: dj_clap::testplug::GAIN_ID,
+                value: GAIN,
+            },
+        ))))
+        .unwrap();
+        tx.push(Command::Action(Action::Mixer(MixerAction::Clap(
+            ClapChange::SetBypass(true),
+        ))))
+        .unwrap();
+        tx.push(Command::Load {
+            deck: dj_core::deck::DeckId::from_human(1).unwrap(),
+            source: Arc::new(dj_decode::AudioBuffer::from_interleaved(
+                vec![0.4; 48_000 * 2],
+                SR,
+            )),
+        })
+        .unwrap();
+        tx.push(Command::Action(Action::Deck {
+            deck: dj_core::deck::DeckId::from_human(1).unwrap(),
+            action: DeckAction::Play,
+        }))
+        .unwrap();
+
+        let mut out = vec![0.0; 256 * 2];
+        engine.render(
+            &mut out,
+            &RenderContext {
+                frames: 256,
+                channels: 2,
+                sample_rate: SR,
+            },
+        );
+        let peak = out.chunks_exact(2).map(|f| f[0]).fold(0.0f32, f32::max);
+        // Full level: through the crossfader law but *not* through the
+        // plugin's half gain.
+        let expected = 0.4 / std::f32::consts::SQRT_2;
+        assert!(
+            (peak - expected).abs() < 0.01,
+            "peak was {peak}, expected about {expected}; a bypassed plugin was heard"
+        );
+        assert_eq!(registry.get(ParamId::Global(GlobalParam::ClapLoaded)), 1.0);
+        assert_eq!(registry.get(ParamId::Global(GlobalParam::ClapBypass)), 1.0);
+
+        tx.push(Command::ClapInsert { processor: None }).unwrap();
+        render(&mut engine, 64);
+        let Some(processor) = take_plugin(&mut rx) else {
+            panic!("the plugin never came back");
+        };
+        instance.deactivate(*processor);
+    }
+
+    /// A plugin arriving replaces whatever was there, and the old one comes
+    /// home rather than being dropped.
+    #[test]
+    fn a_replaced_plugin_is_handed_back() {
+        let (mut engine, mut tx, mut rx, _registry) = rig();
+        let (mut first, processor) = loaded_plugin(64);
+        tx.push(Command::ClapInsert {
+            processor: Some(processor),
+        })
+        .unwrap();
+        render(&mut engine, 64);
+
+        let (mut second, processor) = loaded_plugin(64);
+        tx.push(Command::ClapInsert {
+            processor: Some(processor),
+        })
+        .unwrap();
+        render(&mut engine, 64);
+        let Some(processor) = take_plugin(&mut rx) else {
+            panic!("the displaced plugin was dropped on the audio thread");
+        };
+        first.deactivate(*processor);
+
+        tx.push(Command::ClapInsert { processor: None }).unwrap();
+        render(&mut engine, 64);
+        let Some(processor) = take_plugin(&mut rx) else {
+            panic!("the second plugin never came back");
+        };
+        second.deactivate(*processor);
+    }
+
+    /// The insert must not disturb the signal when there is nothing in it.
+    /// Splitting the render loop to make room for it is the kind of change that
+    /// silently costs a channel, so this is asserted rather than assumed.
+    #[test]
+    fn an_empty_insert_leaves_the_master_alone() {
+        let (mut engine, mut tx, _rx, _registry) = rig();
+        tx.push(Command::Load {
+            deck: dj_core::deck::DeckId::from_human(1).unwrap(),
+            source: Arc::new(dj_decode::AudioBuffer::from_interleaved(
+                (0..48_000 * 2)
+                    .map(|i| if i % 2 == 0 { 0.4 } else { -0.4 })
+                    .collect(),
+                SR,
+            )),
+        })
+        .unwrap();
+        tx.push(Command::Action(Action::Deck {
+            deck: dj_core::deck::DeckId::from_human(1).unwrap(),
+            action: DeckAction::Play,
+        }))
+        .unwrap();
+
+        let mut out = vec![0.0; 256 * 2];
+        engine.render(
+            &mut out,
+            &RenderContext {
+                frames: 256,
+                channels: 2,
+                sample_rate: SR,
+            },
+        );
+        // Left and right carry the two different values the source had, so a
+        // pass that had collapsed the channels would show up here.
+        let left = out.chunks_exact(2).map(|f| f[0]).fold(0.0f32, f32::max);
+        let right = out.chunks_exact(2).map(|f| f[1]).fold(0.0f32, f32::min);
+        assert!(left > 0.2, "the left channel went quiet: {left}");
+        assert!(right < -0.2, "the right channel went quiet: {right}");
     }
 }

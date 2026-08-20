@@ -133,6 +133,9 @@ Chosen to keep djmanzo MIT-OR-Apache-2.0. See
 | Loudness | `ebur128` | MIT | EBU R128 / ReplayGain for auto-gain. |
 | Neural inference | `ort` (ONNX Runtime) | Apache-2.0/MIT | One runtime for stems *and* optional beat tracking. Backends: CoreML (macOS), CUDA/DirectML, CPU. |
 | Effects hosting | **CLAP** | MIT | Truly permissive plugin standard from u-he/Bitwig, with a real ecosystem (~15 hosts, ~400 plugins). Preferred over VST3, whose SDK only moved to GPLv2 in late 2025 and remains Steinberg-controlled. |
+| CLAP host bindings | `clack-host` | MIT OR Apache-2.0 | Safe Rust wrappers over the CLAP C API. Its thread split — a `!Send` instance on the main thread, a `Send` audio processor — is the same one djmanzo already has, so a plugin's processor crosses on the command queue like a track buffer. Brings `clack-common` and `clap-sys`, both MIT OR Apache-2.0. |
+| CLAP extensions | `clack-extensions` | MIT OR Apache-2.0 | Parameters, audio ports, latency, state. |
+| CLAP plugin bindings | `clack-plugin` | MIT OR Apache-2.0 | **Test-only**, behind `dj-clap`'s `test-plugin` feature. Used to compile a real CLAP plugin into the test binary, because there are no `.clap` bundles on a CI machine and a host tested against nothing is a host tested nowhere. Not in a shipped build. |
 | rekordbox import | `rekordcrate` | MPL-2.0 | Compatible; file-level copyleft only. |
 | UI shell | Tauri 2 | MIT/Apache-2.0 | See ADR-0001. |
 

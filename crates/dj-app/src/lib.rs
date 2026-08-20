@@ -30,6 +30,7 @@ pub mod host;
 pub mod layout;
 pub mod library;
 pub mod persist;
+pub mod plugins;
 pub mod presets;
 pub mod rackcapture;
 pub mod setrec;
@@ -292,6 +293,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_devices,
             commands::list_inputs,
+            commands::list_plugins,
+            commands::plugin_state,
+            commands::load_plugin,
+            commands::clear_plugin,
             commands::open_mic,
             commands::close_mic,
             commands::open_device,

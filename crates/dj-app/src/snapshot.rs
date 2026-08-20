@@ -312,6 +312,21 @@ pub struct SetRecordingSnapshot {
     pub failed: bool,
 }
 
+/// The master's plugin insert.
+///
+/// Only what changes at 60 Hz: whether there is one and whether it is in the
+/// path. The plugin's *name* and its parameter list do not change on their own
+/// and are fetched by `plugin_state`, which is a command rather than a stream —
+/// pushing a two-hundred-parameter list sixty times a second for numbers that
+/// move when somebody drags a slider would be most of the traffic to the
+/// interface.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct ClapSnapshot {
+    pub loaded: bool,
+    /// Loaded but out of the signal path.
+    pub bypassed: bool,
+}
+
 /// The automix, when the DJ has handed the mix over.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct AutomixSnapshot {
@@ -397,6 +412,8 @@ pub struct MasterSnapshot {
     pub mic: MicSnapshot,
     /// The automix.
     pub automix: AutomixSnapshot,
+    /// The plugin insert.
+    pub clap: ClapSnapshot,
 }
 
 /// How the two-card bridge is doing.
@@ -682,6 +699,13 @@ impl Snapshot {
                     registry.get(ParamId::Global(GlobalParam::OutputLatencyFrames)),
                 ) * 1000.0,
                 quantize: registry.get(ParamId::Global(GlobalParam::Quantize)) >= 0.5,
+                clap: {
+                    let get = |p| registry.get(ParamId::Global(p));
+                    ClapSnapshot {
+                        loaded: get(GlobalParam::ClapLoaded) >= 0.5,
+                        bypassed: get(GlobalParam::ClapBypass) >= 0.5,
+                    }
+                },
                 automix: {
                     let get = |p| registry.get(ParamId::Global(p));
                     AutomixSnapshot {

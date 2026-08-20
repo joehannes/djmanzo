@@ -101,7 +101,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Core effect set: echo, delay, reverb, gate, crush, flanger, phaser, filter | M5 — **done** |
 | Roll (as a loop roll, on its own pad page rather than in a slot) | M5 — **done** |
 | Brake and backspin — transport, not signal: they live on the deck | M5 — **done** |
-| CLAP plugin hosting | M5 |
+| CLAP plugin hosting (master insert; generic controls, no plugin window) | M5 — done |
 | Per-stem effects | M6 |
 | Effect chain presets | M5 |
 

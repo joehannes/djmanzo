@@ -379,6 +379,50 @@ export interface SetRecordingState {
   failed: boolean;
 }
 
+/** One of a loaded plugin's own controls. */
+export interface PluginParam {
+  id: number;
+  name: string;
+  /** The plugin's own grouping, e.g. `Filter/Cutoff`. Empty when it does not group. */
+  module: string;
+  min: number;
+  max: number;
+  default: number;
+  value: number;
+  /** A mode switch rather than a knob: only whole numbers. */
+  stepped: boolean;
+  /** The plugin will not let a host change it. */
+  readOnly: boolean;
+}
+
+/** A CLAP plugin found on disk, before anything is loaded. */
+export interface PluginFile {
+  path: string;
+  name: string;
+}
+
+/** What is on the master's plugin insert. */
+export interface PluginState {
+  loaded: boolean;
+  name: string;
+  vendor: string;
+  path: string;
+  params: PluginParam[];
+}
+
+/**
+ * The plugin insert, on the 60 Hz snapshot.
+ *
+ * Only what changes that fast. The name and the parameter list are fetched by
+ * `pluginState()` — pushing a two-hundred-parameter list sixty times a second
+ * would be most of the traffic to this window.
+ */
+export interface ClapState {
+  loaded: boolean;
+  /** Loaded but out of the signal path. */
+  bypassed: boolean;
+}
+
 export type TransitionStyle = "cut" | "fade" | "blend" | "echo";
 
 /** Every style, in the order the interface offers them. */
@@ -493,6 +537,8 @@ export interface MasterState {
   mic: MicState;
   /** The automix. */
   automix: AutomixState;
+  /** The plugin insert. */
+  clap: ClapState;
 }
 
 export type SessionPhase = "warm_up" | "heat" | "peak" | "cooldown" | "chill_out";
@@ -551,6 +597,27 @@ export const openMic = (deviceId: string | null) =>
   invoke<MicDevice>("open_mic", { deviceId });
 
 export const closeMic = () => invoke<void>("close_mic");
+
+/**
+ * Every CLAP plugin in the standard search paths.
+ *
+ * Scanning reads directory names and nothing else — no plugin code runs until
+ * one is actually loaded.
+ */
+export const listPlugins = () => invoke<PluginFile[]>("list_plugins");
+
+export const pluginState = () => invoke<PluginState>("plugin_state");
+
+/**
+ * Put a plugin on the master.
+ *
+ * Loading runs third-party code in this process. There is no way to host
+ * plugins that is not that, and it is worth saying out loud.
+ */
+export const loadPlugin = (path: string, pluginId?: string) =>
+  invoke<PluginState>("load_plugin", { path, pluginId: pluginId ?? null });
+
+export const clearPlugin = () => invoke<void>("clear_plugin");
 
 /**
  * Open the output.

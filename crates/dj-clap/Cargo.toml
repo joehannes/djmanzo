@@ -1,0 +1,47 @@
+[package]
+name = "dj-clap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+clack-host = "0.1"
+clack-extensions = { version = "0.1", features = [
+    "clack-host",
+    "params",
+    "audio-ports",
+    "latency",
+    "state",
+] }
+dj-core.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+# A CLAP plugin *implementation*, so the tests can host one compiled into the
+# test binary rather than read off a disk that has none. Optional and off by
+# default: nothing in a shipped djmanzo implements a plugin. See `test-plugin`.
+clack-plugin = { version = "0.1", optional = true }
+
+[features]
+# Host a plugin that is compiled into this binary rather than read from disk.
+#
+# Only the tests want it, but a feature a dev-dependency turns on has to be
+# declared somewhere the dependency can name — so it lives here and the
+# self-dependency below switches it on for test builds alone.
+test-plugin = [
+    "clack-host/clack-plugin",
+    "clack-extensions/clack-plugin",
+    "dep:clack-plugin",
+]
+
+[dev-dependencies]
+# Turning on our own feature for test builds only.
+#
+# This is the whole reason the tests here mean anything. There are no `.clap`
+# bundles in CI and none in a fresh checkout, so a host tested only against
+# whatever happens to be installed is a host tested nowhere.
+dj-clap = { path = ".", features = ["test-plugin"] }
+
+[lints]
+workspace = true

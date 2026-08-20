@@ -30,6 +30,13 @@ use std::time::Duration;
 /// and this module has no reason to know where names are kept.
 pub type OnCapture = Box<dyn Fn(u8, u8, String) + Send>;
 
+/// What to do with a plugin processor the engine has finished with.
+///
+/// Its own callback rather than a drop, because dropping it is exactly wrong:
+/// only the plugin instance that made it may deactivate it, and that instance
+/// lives on the other side of this module. See `crate::plugins::Insert`.
+pub type OnPlugin = Box<dyn Fn(Box<dj_clap::Processor>) + Send>;
+
 /// Decks the engine is built with.
 ///
 /// Re-exported from `state` rather than declared again: the two used to be
@@ -109,11 +116,12 @@ impl AudioHost {
         registry: Arc<ParameterRegistry>,
         use_null_backend: bool,
         on_capture: OnCapture,
+        on_plugin: OnPlugin,
     ) -> Self {
         let (tx, rx) = channel();
         let thread = std::thread::Builder::new()
             .name("dj-audio-host".to_owned())
-            .spawn(move || run_host(rx, bus, registry, use_null_backend, on_capture))
+            .spawn(move || run_host(rx, bus, registry, use_null_backend, on_capture, on_plugin))
             .expect("failed to spawn audio host thread");
 
         Self {
@@ -206,6 +214,7 @@ fn run_host(
     registry: Arc<ParameterRegistry>,
     use_null_backend: bool,
     on_capture: OnCapture,
+    on_plugin: OnPlugin,
 ) {
     let backend: Box<dyn AudioBackend> = if use_null_backend {
         Box::new(NullBackend::new())
@@ -300,6 +309,9 @@ fn run_host(
             while let Ok(item) = queue.pop() {
                 match item {
                     Retired::Capture(capture) => land_capture(&bus, &on_capture, capture),
+                    // Not dropped: deactivating a plugin's processor is the
+                    // instance's job, and the instance is not here.
+                    Retired::Clap(processor) => on_plugin(processor),
                     other => drop(other),
                 }
             }
@@ -630,6 +642,7 @@ mod tests {
             Arc::clone(&registry),
             true,
             Box::new(|_, _, _| {}),
+            Box::new(|_| {}),
         );
         (host, bus, registry)
     }

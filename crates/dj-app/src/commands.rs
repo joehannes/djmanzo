@@ -110,6 +110,144 @@ pub fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceDto>, String
         .collect())
 }
 
+/// A CLAP plugin found on disk, before anything is loaded.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginFileDto {
+    pub path: String,
+    pub name: String,
+}
+
+/// One of a loaded plugin's own controls.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginParamDto {
+    pub id: u32,
+    pub name: String,
+    pub module: String,
+    pub min: f64,
+    pub max: f64,
+    pub default: f64,
+    pub value: f64,
+    pub stepped: bool,
+    pub read_only: bool,
+}
+
+/// What is on the master's plugin insert.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginStateDto {
+    pub loaded: bool,
+    pub name: String,
+    pub vendor: String,
+    pub path: String,
+    pub params: Vec<PluginParamDto>,
+}
+
+/// Every CLAP plugin in the standard search paths.
+///
+/// Scanning reads directory names and nothing else — no plugin code runs until
+/// one is actually loaded.
+#[tauri::command]
+pub fn list_plugins() -> Vec<PluginFileDto> {
+    dj_clap::scan()
+        .into_iter()
+        .map(|found| PluginFileDto {
+            path: found.path.display().to_string(),
+            name: found.name,
+        })
+        .collect()
+}
+
+/// What is on the insert right now.
+#[tauri::command]
+pub fn plugin_state(state: State<'_, AppState>) -> PluginStateDto {
+    let view = state.plugin().view();
+    PluginStateDto {
+        loaded: view.loaded,
+        name: view.name,
+        vendor: view.vendor,
+        path: view.path,
+        params: view
+            .params
+            .into_iter()
+            .map(|param| PluginParamDto {
+                id: param.id,
+                name: param.name,
+                module: param.module,
+                min: param.min,
+                max: param.max,
+                default: param.default,
+                value: param.value,
+                stepped: param.stepped,
+                read_only: param.read_only,
+            })
+            .collect(),
+    }
+}
+
+/// Put a plugin on the master.
+///
+/// Loading runs third-party code in this process — there is no way to host
+/// plugins that is not that. It happens on the plugin's own thread, and only
+/// once it has activated successfully does the engine hear about it.
+///
+/// # Errors
+/// When no device is open (the plugin has to be activated for a real sample
+/// rate and block size), when the file is not a plugin, or when the plugin
+/// refuses the configuration.
+#[tauri::command]
+pub fn load_plugin(
+    state: State<'_, AppState>,
+    path: String,
+    plugin_id: Option<String>,
+) -> Result<PluginStateDto, String> {
+    let active = state
+        .active_device()
+        .ok_or_else(|| "open an audio device first".to_owned())?;
+
+    let processor = state
+        .plugin()
+        .load(
+            std::path::Path::new(&path),
+            plugin_id.as_deref(),
+            f64::from(active.sample_rate),
+            active.buffer_frames,
+        )
+        .map_err(|e| e.to_string())?;
+
+    if state
+        .bus()
+        .send_command(dj_engine::Command::ClapInsert {
+            processor: Some(Box::new(processor)),
+        })
+        .is_err()
+    {
+        // The processor went with the failed send, so the instance now has one
+        // it will never get back. Letting go of it is the only way not to leak
+        // the instance as well.
+        state.plugin().unload();
+        return Err("engine is not accepting commands; is a device open?".to_owned());
+    }
+    Ok(plugin_state(state))
+}
+
+/// Take the plugin off the master.
+///
+/// Two steps, and this is only the first: the engine is told to release the
+/// processor, and it arrives back on the plugin thread some blocks later to be
+/// deactivated. Between those moments the plugin is loaded, silent and on its
+/// way out.
+#[tauri::command]
+pub fn clear_plugin(state: State<'_, AppState>) -> Result<(), String> {
+    state
+        .bus()
+        .send_command(dj_engine::Command::ClapInsert { processor: None })
+        .map_err(|_| "engine is not accepting commands".to_owned())?;
+    state.plugin().unload();
+    Ok(())
+}
+
 /// Devices that can capture. Empty is a normal answer — plenty of laptops in a
 /// booth have nothing plugged in.
 #[tauri::command]
@@ -504,6 +642,28 @@ pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
         } else {
             state.stop_recording();
         }
+        return Ok(());
+    }
+
+    // A plugin parameter goes to the engine like everything else — but the
+    // cached list the interface draws from lives here, and a slider that
+    // snapped back on the next snapshot would be unusable.
+    if let Action::Mixer(dj_core::MixerAction::Clap(dj_core::action::ClapChange::Param {
+        id,
+        value,
+    })) = parsed
+    {
+        state.plugin().note_param(id, f64::from(value));
+    }
+
+    // Clearing the plugin is the application's business for the same reason
+    // recording is: the engine can bypass it, but only the thread that owns the
+    // instance can let go of it, and the processor has to come home first.
+    if let Action::Mixer(dj_core::MixerAction::Clap(dj_core::action::ClapChange::Clear)) = parsed {
+        let _ = state
+            .bus()
+            .send_command(dj_engine::Command::ClapInsert { processor: None });
+        state.plugin().unload();
         return Ok(());
     }
 

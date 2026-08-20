@@ -6,6 +6,7 @@
   import Presets from "./Presets.svelte";
   import Automix from "./Automix.svelte";
   import Mic from "./Mic.svelte";
+  import Plugin from "./Plugin.svelte";
   import Sampler from "./Sampler.svelte";
   import Settings from "./Settings.svelte";
   import Shortcuts from "./Shortcuts.svelte";
@@ -827,6 +828,13 @@
         hands are.
       -->
       <Automix automix={snapshot.master.automix} enabled={ready} {send} />
+
+      <!--
+        The plugin insert sits on the master, between the effect rack and the
+        limiter, so it belongs with the master controls rather than in a
+        dialogue. See `dj_clap` for why its own window is not shown.
+      -->
+      <Plugin clap={snapshot.master.clap} enabled={ready} {send} />
 
       <!--
         Quantize is global rather than per-deck because it is a way of working,

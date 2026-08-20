@@ -313,6 +313,10 @@ pub enum GlobalParam {
     SamplerVolume,
     /// Peak the sampler put into the master this block.
     SamplerPeak,
+    /// 1.0 when a CLAP plugin is loaded on the master.
+    ClapLoaded,
+    /// 1.0 when that plugin is bypassed — loaded but out of the signal path.
+    ClapBypass,
     /// 1.0 when the automix has the mix.
     AutomixEnabled,
     /// 1.0 while a transition is actually running.
@@ -755,7 +759,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since.
-    pub const COUNT: usize = 126;
+    pub const COUNT: usize = 128;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -790,6 +794,8 @@ impl GlobalParam {
             RecordSeconds,
             RecordSourceDeck,
             SetRecordDropped,
+            ClapLoaded,
+            ClapBypass,
             AutomixEnabled,
             AutomixMixing,
             AutomixBeats,
@@ -1032,6 +1038,8 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::RecordSeconds => "record_seconds",
         GlobalParam::RecordSourceDeck => "record_source_deck",
         GlobalParam::SetRecordDropped => "set_record_dropped",
+        GlobalParam::ClapLoaded => "clap_loaded",
+        GlobalParam::ClapBypass => "clap_bypass",
         GlobalParam::AutomixEnabled => "automix_enabled",
         GlobalParam::AutomixMixing => "automix_mixing",
         GlobalParam::AutomixBeats => "automix_beats",

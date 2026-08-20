@@ -86,6 +86,19 @@ pub enum Command {
     RecordSpace {
         samples: Vec<f32>,
     },
+    /// Put a CLAP plugin on the master, or take it off.
+    ///
+    /// The processor is created, activated and sized on the host thread — all
+    /// of which allocates — and only then sent here. What comes back through
+    /// [`Retired::Clap`] has to go home to the instance that made it, because
+    /// deactivating it is deallocation and the plugin instance is the only
+    /// thing that may do it.
+    ///
+    /// A command rather than an [`Action`] because loading one means naming a
+    /// file: see `dj_core::action::ClapChange`.
+    ClapInsert {
+        processor: Option<Box<dj_clap::Processor>>,
+    },
     /// Point the microphone strip at an input device, or detach it.
     ///
     /// `Some` installs the receiving half of a ring the host's input callback
@@ -138,6 +151,13 @@ pub enum Retired {
     /// has already gone, that share is the last one and the drop is a `free()`.
     /// Which is exactly what this queue exists to keep off the audio thread.
     Stream(rtrb::Producer<f32>),
+    /// A plugin's audio processor, on its way home to be deactivated.
+    ///
+    /// Not "to be freed", unlike its neighbours here: dropping this one without
+    /// giving it back to its instance leaks whatever the plugin allocated, and
+    /// on some plugins leaves a thread running. The host has to hand it to
+    /// `dj_clap::Loaded::deactivate`.
+    Clap(Box<dj_clap::Processor>),
     /// The receiving half of a detached microphone input, to be freed.
     ///
     /// Same reasoning as [`Retired::Stream`]: dropping an `rtrb::Consumer`

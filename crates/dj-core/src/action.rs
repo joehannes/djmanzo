@@ -240,6 +240,33 @@ pub enum MicChange {
     ReleaseMs(f32),
 }
 
+/// What can be done to the master's plugin insert.
+///
+/// Loading is *not* here. A plugin arrives from a file picker with a path and a
+/// choice of which plugin inside the bundle — that is a command with a payload,
+/// not a line of text, and putting it in the vocabulary would mean a controller
+/// button could load arbitrary code off the disk. Everything a DJ does to a
+/// plugin once it is loaded is here, which is what a controller and a script
+/// actually need.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum ClapChange {
+    /// Take the plugin out of the signal path without unloading it.
+    ///
+    /// A DJ comparing with and without wants this to be instant and to keep
+    /// the plugin's state; unloading and reloading would lose both.
+    SetBypass(bool),
+    ToggleBypass,
+    /// Unload it entirely.
+    Clear,
+    /// Move one of the plugin's own controls, addressed by the plugin's id for
+    /// it. Plain value, in whatever units the plugin uses — see
+    /// `dj_clap::ParamInfo`.
+    Param {
+        id: u32,
+        value: f32,
+    },
+}
+
 /// How one track gives way to the next when the application is mixing.
 ///
 /// Named for what the room hears rather than for the mechanism, because that is
@@ -383,6 +410,8 @@ pub enum MixerAction {
     Mic(MicChange),
     /// Automix: let the application run the mix.
     Automix(AutomixChange),
+    /// The CLAP plugin inserted on the master.
+    Clap(ClapChange),
     /// Change the sampler as a whole: its bank, its level, or stop everything.
     Sampler(SamplerChange),
 }
@@ -467,6 +496,7 @@ impl Action {
             "automix" => Ok(Action::Mixer(MixerAction::Automix(parse_automix(
                 &mut words,
             )?))),
+            "clap" => Ok(Action::Mixer(MixerAction::Clap(parse_clap(&mut words)?))),
             "quantize" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "on" => Ok(Action::Mixer(MixerAction::SetQuantize(true))),
                 "off" => Ok(Action::Mixer(MixerAction::SetQuantize(false))),
@@ -580,6 +610,27 @@ fn parse_record_source<'a>(
 /// A bare effect name selects it, so `fx 1 echo` reads the way a DJ would say
 /// it. Everything else is a named control, which keeps the grammar open: a new
 /// control is a new word here rather than three new verbs in the vocabulary.
+fn parse_clap<'a>(words: &mut impl Iterator<Item = &'a str>) -> Result<ClapChange, ParseError> {
+    Ok(match words.next().ok_or(ParseError::MissingVerb)? {
+        "on" => ClapChange::SetBypass(false),
+        "off" => ClapChange::SetBypass(true),
+        "toggle" => ClapChange::ToggleBypass,
+        "clear" => ClapChange::Clear,
+        "param" => {
+            let id = words
+                .next()
+                .ok_or(ParseError::MissingArgument)?
+                .parse()
+                .map_err(|_| ParseError::BadArgument)?;
+            ClapChange::Param {
+                id,
+                value: parse_f32(words.next())?,
+            }
+        }
+        other => return Err(ParseError::UnknownVerb(other.to_owned())),
+    })
+}
+
 fn parse_automix<'a>(
     words: &mut impl Iterator<Item = &'a str>,
 ) -> Result<AutomixChange, ParseError> {
@@ -939,6 +990,18 @@ impl fmt::Display for Action {
                 write!(f, "sampler {slot} {change}")
             }
             Action::Mixer(MixerAction::Sampler(change)) => write!(f, "sampler {change}"),
+            Action::Mixer(MixerAction::Clap(change)) => match change {
+                // `on` and `off` name what the DJ hears, not the flag: a
+                // bypassed plugin is off, and `clap off` is what anyone would
+                // write for that.
+                ClapChange::SetBypass(false) => write!(f, "clap on"),
+                ClapChange::SetBypass(true) => write!(f, "clap off"),
+                ClapChange::ToggleBypass => write!(f, "clap toggle"),
+                ClapChange::Clear => write!(f, "clap clear"),
+                ClapChange::Param { id, value } => {
+                    write!(f, "clap param {id} {}", number(f64::from(*value)))
+                }
+            },
             Action::Mixer(MixerAction::Automix(change)) => match change {
                 AutomixChange::SetEnabled(true) => write!(f, "automix on"),
                 AutomixChange::SetEnabled(false) => write!(f, "automix off"),
@@ -1388,6 +1451,60 @@ mod tests {
             let reparsed = Action::parse(&action.to_string()).unwrap();
             assert_eq!(reparsed, action, "`{input}` did not survive formatting");
         }
+    }
+
+    /// Every plugin-insert change, through text and back.
+    #[test]
+    fn every_plugin_change_round_trips_through_its_text_form() {
+        let cases = [
+            ClapChange::SetBypass(true),
+            ClapChange::SetBypass(false),
+            ClapChange::ToggleBypass,
+            ClapChange::Clear,
+            ClapChange::Param {
+                id: 77,
+                value: 0.25,
+            },
+        ];
+        for case in cases {
+            match case {
+                ClapChange::SetBypass(_)
+                | ClapChange::ToggleBypass
+                | ClapChange::Clear
+                | ClapChange::Param { .. } => {}
+            }
+            let action = Action::Mixer(MixerAction::Clap(case));
+            let text = action.to_string();
+            assert_eq!(
+                Action::parse(&text).unwrap(),
+                action,
+                "`{text}` did not survive"
+            );
+        }
+    }
+
+    /// A parameter id is the plugin's own and may be any `u32`. Parsing it as
+    /// a float and rounding would silently address the wrong control on a
+    /// plugin whose ids are large.
+    #[test]
+    fn a_plugin_parameter_id_is_a_whole_number() {
+        assert_eq!(
+            Action::parse("clap param 4294967295 0.5").unwrap(),
+            Action::Mixer(MixerAction::Clap(ClapChange::Param {
+                id: u32::MAX,
+                value: 0.5
+            }))
+        );
+        assert!(Action::parse("clap param 1.5 0.5").is_err());
+        assert!(Action::parse("clap param -1 0.5").is_err());
+    }
+
+    #[test]
+    fn an_unknown_plugin_verb_is_refused() {
+        assert!(matches!(
+            Action::parse("clap explode"),
+            Err(ParseError::UnknownVerb(_))
+        ));
     }
 
     /// Every microphone change, through text and back. Exhaustive by

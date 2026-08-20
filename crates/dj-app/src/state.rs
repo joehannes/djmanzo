@@ -148,6 +148,12 @@ pub struct AppState {
     deck_tracks: Arc<Mutex<HashMap<u8, LoadedTrackInfo>>>,
     /// Controllers and the keyboard. See [`crate::control`].
     control: Arc<crate::control::ControlHub>,
+    /// The master's plugin insert. See [`crate::plugins`].
+    ///
+    /// A handle rather than the thing itself: a CLAP plugin instance is `!Send`
+    /// by design, so it lives on a thread of its own and this is how the rest
+    /// of the application talks to it.
+    plugin: crate::plugins::PluginHandle,
     /// The automix, when the DJ has handed the mix over.
     ///
     /// A mutex rather than atomics because it is a state machine, and it is
@@ -198,8 +204,12 @@ impl AppState {
         // record their names here and not in the engine.
         let sample_names: Arc<Mutex<HashMap<(u8, u8), String>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        // Started before the host, because the host's retirement drain has to
+        // be able to hand plugin processors back to it.
+        let plugin = crate::plugins::PluginHandle::start();
         let host = {
             let names = Arc::clone(&sample_names);
+            let insert = plugin.clone();
             AudioHost::start(
                 Arc::clone(&bus),
                 Arc::clone(&registry),
@@ -209,6 +219,10 @@ impl AppState {
                         map.insert((bank, slot), name);
                     }
                 }),
+                // Deactivation happens on the thread that owns the instance,
+                // which is neither this one nor the audio one. All that happens
+                // here is a send.
+                Box::new(move |processor| insert.retire(processor)),
             )
         };
 
@@ -261,6 +275,7 @@ impl AppState {
             identifier: Mutex::new(None),
             deck_tracks: Arc::new(Mutex::new(HashMap::new())),
             control: Arc::new(control),
+            plugin,
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             control_inbox: Mutex::new(Some(control_inbox)),
         }
@@ -707,6 +722,12 @@ impl AppState {
     #[must_use]
     pub fn bridge_handle(&self) -> Arc<Mutex<Option<Arc<dj_audio::BridgeStats>>>> {
         Arc::clone(&self.bridge)
+    }
+
+    /// The master's plugin insert. See [`crate::plugins`].
+    #[must_use]
+    pub fn plugin(&self) -> &crate::plugins::PluginHandle {
+        &self.plugin
     }
 
     /// The automix. See [`crate::automix`].

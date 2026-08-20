@@ -16,6 +16,7 @@ members = [
     "crates/dj-analysis",
     "crates/dj-library",
     "crates/dj-hid",
+    "crates/dj-clap",
     "crates/dj-app",
 ]
 
@@ -40,6 +41,7 @@ dj-secrets = { path = "crates/dj-secrets" }
 dj-sources = { path = "crates/dj-sources" }
 dj-assistant = { path = "crates/dj-assistant" }
 dj-presets = { path = "crates/dj-presets" }
+dj-clap = { path = "crates/dj-clap" }
 dj-analysis = { path = "crates/dj-analysis" }
 dj-library = { path = "crates/dj-library" }
 dj-hid = { path = "crates/dj-hid" }
