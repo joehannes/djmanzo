@@ -29,6 +29,7 @@ pub mod layout;
 pub mod library;
 pub mod persist;
 pub mod presets;
+pub mod rackcapture;
 pub mod setrec;
 pub mod snapshot;
 pub mod sources;
@@ -325,6 +326,7 @@ pub fn run() {
             presets::list_presets,
             presets::apply_preset,
             presets::preset_folder,
+            presets::save_rack_preset,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start djmanzo");

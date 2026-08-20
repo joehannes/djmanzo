@@ -11,7 +11,7 @@
    * controller, a script or the assistant moves this panel too
    * (`docs/adr/0003-action-bus-and-parameter-registry.md`).
    */
-  import { EFFECTS, type FxSlot } from "./api";
+  import { EFFECTS, saveRackPreset, type FxSlot } from "./api";
 
   let {
     slots,
@@ -25,6 +25,41 @@
     target: string;
     send: (action: string) => void;
   } = $props();
+
+  /**
+   * Which deck this rack belongs to, or nothing for the master.
+   *
+   * Parsed back out of `target` rather than passed separately: the target
+   * string is what every other control here sends, and a second prop saying the
+   * same thing is a second thing that can disagree with it.
+   */
+  const deckNumber = $derived.by(() => {
+    const match = /^deck (\d+)$/.exec(target);
+    return match ? Number(match[1]) : null;
+  });
+
+  const anyLoaded = $derived(slots.some((slot) => slot.kind !== "none"));
+
+  let naming = $state(false);
+  let chainName = $state("");
+  let saved = $state(false);
+  let error = $state<string | null>(null);
+
+  async function keep() {
+    const name = chainName.trim();
+    if (!name) return;
+    try {
+      await saveRackPreset(name, deckNumber);
+      naming = false;
+      chainName = "";
+      error = null;
+      saved = true;
+      // Long enough to notice, short enough not to become part of the layout.
+      setTimeout(() => (saved = false), 2_000);
+    } catch (e) {
+      error = String(e);
+    }
+  }
 
   /** Placement is meaningless on the master: there is no fader after it. */
   const showsPlacement = $derived(target !== "master");
@@ -149,9 +184,81 @@
       {/if}
     </div>
   {/each}
+
+  <!--
+    Saving the chain. Here rather than in the preset panel because this is
+    where a DJ *is* when they have just found something worth keeping — a
+    control that requires crossing the interface to reach is one that gets used
+    once and then forgotten.
+  -->
+  <div class="keep">
+    {#if naming}
+      <input
+        class="chain-name"
+        bind:value={chainName}
+        placeholder="name this chain"
+        onkeydown={(event) => {
+          if (event.key === "Enter") void keep();
+          if (event.key === "Escape") naming = false;
+        }}
+      />
+      <button disabled={!enabled || !chainName.trim()} onclick={() => void keep()}>Save</button>
+      <button onclick={() => (naming = false)}>Cancel</button>
+    {:else}
+      <button
+        class="keep-open"
+        disabled={!enabled || !anyLoaded}
+        onclick={() => {
+          naming = true;
+          error = null;
+        }}
+        title={anyLoaded
+          ? "Keep this chain as a preset"
+          : "Nothing in the rack to keep yet"}
+      >
+        Save chain
+      </button>
+      {#if saved}
+        <span class="kept">saved</span>
+      {/if}
+    {/if}
+  </div>
+  {#if error}
+    <p class="chain-error">{error}</p>
+  {/if}
 </div>
 
 <style>
+  .keep {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+  }
+
+  .keep-open,
+  .keep button {
+    font-size: 0.75em;
+    letter-spacing: 0.04em;
+  }
+
+  .chain-name {
+    flex: 1;
+    min-width: 5rem;
+    font-size: 0.8em;
+  }
+
+  .kept {
+    font-size: 0.75em;
+    color: var(--accent-2);
+  }
+
+  .chain-error {
+    margin: 0.2rem 0 0;
+    color: var(--danger, #e06c75);
+    font-size: 0.75em;
+  }
+
   .rack {
     display: flex;
     flex-direction: column;

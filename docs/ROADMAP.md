@@ -515,7 +515,9 @@ adding a new controller requires editing a file, not rebuilding the app.
   and routing, its own pad page, and recording into a slot from the master or from a deck.
   The deck tap is pre-fader, so a hook can be lifted off a track the room is not hearing yet.
 - **FX rack** — done: three chained slots per deck and on the master, pre/post-fader placement,
-  beat-synced timing. Chain presets still to come.
+  beat-synced timing, and chain presets. A chain needed no new kind of preset — a preset is
+  already action text and the rack is already in the action vocabulary — only a way to read
+  the rack back *out*, which is what `dj_app::rackcapture` does.
 - Core built-in effects — echo, delay, reverb, gate, crush, flanger, phaser and filter done.
   Roll shipped as the loop roll, on its own pad page. Brake and backspin are done and live on
   the deck rather than in a slot — they are **transport rather than signal**: they change how

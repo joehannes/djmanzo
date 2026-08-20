@@ -1037,3 +1037,17 @@ export const listPresets = () => invoke<PresetPack[]>("list_presets");
 export const applyPreset = (id: string, deck?: number) =>
   invoke<string[]>("apply_preset", { id, deck });
 export const presetFolder = () => invoke<string>("preset_folder");
+
+/**
+ * Keep the rack as it stands as a preset.
+ *
+ * `deck` names which rack: a number for a deck's, null for the master's. A
+ * deck chain is saved with the `{deck}` placeholder, so it can be recalled onto
+ * any deck rather than only the one it came from.
+ *
+ * Returns the id it saved under. Saving twice under one name replaces rather
+ * than duplicating — the second save is a correction.
+ */
+export async function saveRackPreset(name: string, deck: number | null): Promise<string> {
+  return invoke<string>("save_rack_preset", { name, deck });
+}

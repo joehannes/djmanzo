@@ -111,6 +111,90 @@ pub fn preset_folder(app: tauri::AppHandle) -> Result<String, String> {
         .to_string())
 }
 
+/// Save the rack as it stands now as a preset the DJ can get back.
+///
+/// The other direction from [`apply_preset`], and the half that was missing: a
+/// preset is already action text, and the rack is already reachable from the
+/// action vocabulary, so an effect chain needed no new kind of preset — only a
+/// way to read one out. See [`crate::rackcapture`].
+///
+/// Writes into the user pack, which the library reads on the next refresh, so
+/// nothing here has to touch the in-memory library.
+#[tauri::command]
+pub fn save_rack_preset(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    deck: Option<u8>,
+) -> Result<String, String> {
+    use tauri::Manager;
+
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("a preset needs a name".to_owned());
+    }
+
+    let rack = match deck {
+        Some(number) => crate::rackcapture::Rack::Deck(
+            dj_core::DeckId::from_human(number).ok_or("no such deck")?,
+        ),
+        None => crate::rackcapture::Rack::Master,
+    };
+    let actions = crate::rackcapture::capture(&state.registry(), rack);
+    if actions.is_empty() {
+        return Err("there is nothing in that rack to save".to_owned());
+    }
+
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?
+        .join("presets");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+
+    let path = dir.join("mine.json");
+    // Read, add, write. The user's own pack is one file so that a DJ can copy
+    // it between machines as one file.
+    let mut pack: dj_presets::Pack = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_else(|| dj_presets::Pack {
+            id: "mine".to_owned(),
+            name: "Mine".to_owned(),
+            description: "Chains and moves you saved.".to_owned(),
+            presets: Vec::new(),
+            user: true,
+        });
+
+    let id = format!(
+        "mine-{}",
+        name.to_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect::<String>()
+    );
+    let preset = dj_presets::Preset {
+        id: id.clone(),
+        name: name.to_owned(),
+        description: match deck {
+            Some(_) => "An effect chain you saved off a deck.".to_owned(),
+            None => "A master effect chain you saved.".to_owned(),
+        },
+        category: dj_presets::Category::Move,
+        actions,
+        per_deck: deck.is_some(),
+    };
+
+    // Saving twice under one name replaces rather than duplicating: the second
+    // save is a correction, not a second preset.
+    pack.presets.retain(|existing| existing.id != id);
+    pack.presets.push(preset);
+
+    let text = serde_json::to_string_pretty(&pack).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
