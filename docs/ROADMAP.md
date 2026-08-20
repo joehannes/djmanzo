@@ -972,6 +972,38 @@ WebGL run also reported its renderer as "Apple GPU" on a headless Linux box with
 no GPU, which settles a question ADR-0004 left open: **the driver string cannot
 detect a software fallback**, and the frame probe is the only honest detector.
 
+### A second measurement, in the application rather than in isolation
+
+20 August 2026, same no-GPU floor, four decks with controls, pads, FX rows and
+the watershed all on screen. The frame-rate banner was made to report a *live*
+figure first — it had been driven by an edge-triggered callback, so the number
+in it was whatever it had been when things first went bad and never moved again.
+
+| | fps |
+|---|---|
+| decks playing | 6 |
+| decks paused | 26 |
+
+The first reading of that was "the scrolling waveform costs four times the rest
+of the interface put together", and it was wrong. Pausing a deck stops far more
+than the waveform: the time readouts, the progress bars, the cue meters, the
+beat phase and every other per-snapshot value stop changing too, so almost all
+DOM churn everywhere stops at once.
+
+The waveform was then rewritten from a strip of `<img>` moved by `translate3d`
+into a single self-repainting `<canvas>` — the shape the table above endorses.
+It measured **7 fps playing and 25 paused**, against 6 and 26. No effect either
+way, and **the change was reverted**: an unproven benefit does not justify
+replacing a working design, which is the same rule this document already applies
+to the wgpu escape hatch.
+
+What the measurement *does* point at is the per-snapshot DOM update itself,
+spread thinly across the whole interface rather than concentrated in one
+component. The technique that worked on the controls — publish the value as a
+CSS custom property once, let static CSS read it, and never touch an element —
+is the one to try next, applied to meters, progress bars and anything else the
+snapshot moves sixty times a second.
+
 The original note follows.
 
 Sequenced behind one thing, honestly: **[ADR-0004](adr/0004-waveform-rendering-strategy.md)
