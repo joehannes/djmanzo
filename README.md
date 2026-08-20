@@ -3,10 +3,16 @@
 A VirtualDJ-class DJ application for **macOS** and **Linux/Xubuntu** — built to match
 VirtualDJ's feature set, appearance, workflow and handling, and then go past it.
 
-> **Status: early build.** [M0](docs/ROADMAP.md#m0--foundations-and-walking-skeleton) is done —
-> two decks, mixer, headphone cue, isolator EQ, filter, keylock, and a Rust-rendered scrolling
-> waveform, on a realtime engine proven allocation-free by test. It plays music; it is not yet
-> something to take to a gig. [M1](docs/ROADMAP.md) is in progress.
+> **Status: beta (v0.1.0).** Two to six decks, mixer, headphone cue, isolator EQ,
+> filter, keylock, hot cues, loops, an FX rack, a sampler, an SQLite collection
+> with importers, and a Rust-rendered scrolling waveform — on a realtime engine
+> proven allocation-free by test. The controller layer has arrived, which is
+> what turns a set of panels into something a DJ can play: the keyboard is a
+> first-class controller, so a laptop with nothing plugged into it is a playable
+> instrument.
+>
+> Start at [QUICKSTART.md](docs/QUICKSTART.md). Nothing here has been through a
+> real gig yet — that is what a beta is.
 
 ---
 
@@ -31,6 +37,9 @@ generates its bindings with `bindgen` — a C++ compiler and **libclang**.
   ```
 
 If `cargo build` fails with *"Unable to find libclang"*, that package is what is missing.
+
+For installable bundles — `.dmg`, `.deb`, `.AppImage` — and what CI does with
+them, see [BUILDING.md](docs/BUILDING.md).
 
 ---
 
@@ -68,6 +77,9 @@ they stay fast under WebKitGTK on Linux. Permissively licensed throughout (MIT O
 
 | | |
 |---|---|
+| [**QUICKSTART.md**](docs/QUICKSTART.md) | Five minutes with djmanzo, for somebody with a laptop and no controller |
+| [**BUILDING.md**](docs/BUILDING.md) | Building it yourself on either platform, and what CI does |
+| [**CONTROLLERS.md**](docs/CONTROLLERS.md) | The keyboard, MIDI mappings, and why a mapping from a stranger is safe to open |
 | [**ARCHITECTURE.md**](docs/ARCHITECTURE.md) | Threading model, signal flow, crate map, control model, stem engine, extension points |
 | [**FEATURES.md**](docs/FEATURES.md) | VirtualDJ parity matrix with milestones, differentiators, UI/workflow map |
 | [**ROADMAP.md**](docs/ROADMAP.md) | M0–M8 with acceptance criteria |

@@ -27,10 +27,25 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage", "dmg"],
-    "icon": ["icons/icon.png"],
+    "targets": [
+      "deb",
+      "appimage",
+      "dmg"
+    ],
+    "icon": [
+      "icons/icon.png"
+    ],
     "category": "Music",
     "shortDescription": "VirtualDJ-class DJ application",
-    "longDescription": "A DJ application for macOS and Linux with a Rust realtime audio engine."
+    "longDescription": "A DJ application for macOS and Linux with a Rust realtime audio engine.",
+    "linux": {
+      "deb": {
+        "depends": [
+          "libasound2t64 | libasound2",
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ]
+      }
+    }
   }
 }
