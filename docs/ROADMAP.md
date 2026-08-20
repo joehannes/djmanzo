@@ -997,12 +997,32 @@ way, and **the change was reverted**: an unproven benefit does not justify
 replacing a working design, which is the same rule this document already applies
 to the wgpu escape hatch.
 
-What the measurement *does* point at is the per-snapshot DOM update itself,
-spread thinly across the whole interface rather than concentrated in one
-component. The technique that worked on the controls — publish the value as a
-CSS custom property once, let static CSS read it, and never touch an element —
-is the one to try next, applied to meters, progress bars and anything else the
-snapshot moves sixty times a second.
+Bisecting from there gave a real breakdown rather than a hunch. Toggling the
+deck count and the watershed, four decks playing:
+
+| | fps | implied cost per frame |
+|---|---|---|
+| 4 decks | 7 | — |
+| 2 decks | 11 | **~26 ms per playing deck** |
+| 2 decks, watershed off | 17 | **~32 ms for the watershed** |
+| 4 decks, both paused | 26 | ~1.5 ms per paused deck |
+
+A playing deck costing seventeen times a paused one is the sharp fact, and the
+loops are not the reason: both `Waveform` and `Overview` run their
+`requestAnimationFrame` whether or not the deck moves. What changes is whether
+the transform they compute *differs from the last one*. A paused deck writes
+the identical string, the browser sees no change, and nothing repaints.
+
+**So the cost is per element whose transform actually moves, and the fix is to
+move fewer of them, less often.** An overview playhead crosses a whole track in
+minutes — a fraction of a pixel per frame — so rounding it to the pixel it
+would be rasterised at anyway means the great majority of frames write nothing.
+Doing that in both lanes took four decks from **7 fps to 11**.
+
+Together with taking the audio out of the control pipeline, the interface went
+from **4 fps to 11** on this floor without changing a single rendering
+strategy. The watershed's ~32 ms is now the largest single item and has not
+been touched.
 
 The original note follows.
 

@@ -8,6 +8,7 @@
   import Settings from "./Settings.svelte";
   import { watchFrameRate } from "./framerate";
   import { publishAudio } from "./audiovars.svelte";
+  import { fill } from "./meter";
   import {
     chooseLayout,
     chosenLayout,
@@ -655,12 +656,12 @@
       <div class="output-strip">
       <div class="master-meters">
         <div class="meter">
-          <div class="meter-fill" style:width="{Math.min(snapshot.master.peak_left, 1) * 100}%"></div>
+          <div class="meter-fill" style:scale="{fill(snapshot.master.peak_left)} 1"></div>
         </div>
         <div class="meter">
           <div
             class="meter-fill"
-            style:width="{Math.min(snapshot.master.peak_right, 1) * 100}%"
+            style:scale="{fill(snapshot.master.peak_right)} 1"
           ></div>
         </div>
       </div>
@@ -707,7 +708,7 @@
             <!-- Drawn right-to-left: reduction pulls *down* from the ceiling. -->
             <div
               class="reduction-fill"
-              style:width="{Math.min(snapshot.master.limiter_reduction_db / 12, 1) * 100}%"
+              style:scale="{fill(snapshot.master.limiter_reduction_db / 12)} 1"
             ></div>
           </div>
           <em class="mono reduction-value" class:working={reduction >= 0.1}>
@@ -1009,9 +1010,11 @@
   }
 
   .reduction-fill {
+    width: 100%;
+    transform-origin: left center;
     height: 100%;
     background: var(--warn);
-    transition: width 80ms linear;
+    transition: scale 80ms linear;
   }
 
   .reduction-value {
@@ -1059,6 +1062,8 @@
   }
 
   .meter-fill {
+    width: 100%;
+    transform-origin: left center;
     height: 100%;
     background: linear-gradient(90deg, var(--accent-2), var(--warn));
   }

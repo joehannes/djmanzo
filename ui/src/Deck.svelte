@@ -9,6 +9,7 @@
     type PadPageDto,
     type SamplerState,
   } from "./api";
+  import { fill } from "./meter";
   import Fx from "./Fx.svelte";
   import Pads from "./Pads.svelte";
   import Overview from "./Overview.svelte";
@@ -285,7 +286,7 @@
   {/if}
 
   <div class="progress" role="progressbar" aria-valuenow={progress * 100}>
-    <div class="fill" style:width="{Math.min(progress, 1) * 100}%"></div>
+    <div class="fill" style:scale="{fill(progress)} 1"></div>
   </div>
 
   <div class="times mono">
@@ -495,7 +496,7 @@
   >
     <span>CUE</span>
     <span class="pfl-meter" aria-hidden="true">
-      <span class="pfl-fill" style:width="{Math.min(deck.pre_fader_level, 1) * 100}%"></span>
+      <span class="pfl-fill" style:scale="{fill(deck.pre_fader_level)} 1"></span>
     </span>
   </button>
 
@@ -728,7 +729,7 @@
   </div>
 
   <div class="meter" aria-label="deck level">
-    <div class="meter-fill" style:width="{Math.min(deck.peak, 1) * 100}%"></div>
+    <div class="meter-fill" style:scale="{fill(deck.peak)} 1"></div>
   </div>
 
   {#if error}
@@ -891,6 +892,8 @@
   }
 
   .fill {
+    width: 100%;
+    transform-origin: left center;
     height: 100%;
     background: linear-gradient(90deg, var(--accent), var(--accent-2));
   }
@@ -1050,6 +1053,8 @@
   }
 
   .pfl-fill {
+    width: 100%;
+    transform-origin: left center;
     display: block;
     height: 100%;
     background: var(--accent-2);
@@ -1095,6 +1100,8 @@
   }
 
   .meter-fill {
+    width: 100%;
+    transform-origin: left center;
     height: 100%;
     background: var(--accent-2);
     /* No CSS transition: a level meter that lags is a lying level meter. */

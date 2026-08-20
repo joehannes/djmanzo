@@ -136,6 +136,9 @@
     if (lane) observer.observe(lane);
 
     let frame = 0;
+    /* See `Overview.svelte`: an unchanged transform must not be written, and a
+       whole-pixel offset is what a sub-pixel one would be rasterised to. */
+    let written = "";
     const tick = () => {
       if (strip) {
         // Interpolate forward from the last snapshot. Without this the strip
@@ -146,7 +149,11 @@
         const offset = laneWidth / 2 - frameNow / framesPerPixel;
         // translate3d, not left/top: this is the property compositors handle
         // without a layout or paint pass.
-        strip.style.transform = `translate3d(${offset}px, 0, 0)`;
+        const next = `translate3d(${Math.round(offset)}px, 0, 0)`;
+        if (next !== written) {
+          strip.style.transform = next;
+          written = next;
+        }
       }
       frame = requestAnimationFrame(tick);
     };
