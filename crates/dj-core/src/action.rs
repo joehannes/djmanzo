@@ -335,15 +335,20 @@ pub enum TransitionStyle {
     /// An echo thrown over the outgoing track as it goes, so it dissolves
     /// rather than ends. For a set where the next track is a change of mood.
     Echo,
+    /// A stem-aware mix: keep the outgoing vocal, cut its instruments, and
+    /// bring in the incoming track underneath. The outgoing vocal echoes out
+    /// at the end.
+    VocalDrop,
 }
 
 impl TransitionStyle {
     /// Every style, for an interface that offers them.
-    pub const ALL: [TransitionStyle; 4] = [
+    pub const ALL: [TransitionStyle; 5] = [
         TransitionStyle::Cut,
         TransitionStyle::Fade,
         TransitionStyle::Blend,
         TransitionStyle::Echo,
+        TransitionStyle::VocalDrop,
     ];
 
     #[must_use]
@@ -353,6 +358,7 @@ impl TransitionStyle {
             TransitionStyle::Fade => "fade",
             TransitionStyle::Blend => "blend",
             TransitionStyle::Echo => "echo",
+            TransitionStyle::VocalDrop => "vocal drop",
         }
     }
 

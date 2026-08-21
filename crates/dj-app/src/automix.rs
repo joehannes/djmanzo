@@ -335,7 +335,7 @@ impl Automix {
                 self.phase = Phase::Watching;
                 return;
             }
-            TransitionStyle::Echo => {
+            TransitionStyle::Echo | TransitionStyle::VocalDrop => {
                 // Slot 1 of the outgoing deck's rack, thrown as it leaves. The
                 // slot is overwritten rather than asked about: automix is
                 // driving, and a transition that depended on which effect the
@@ -362,6 +362,17 @@ impl Automix {
                         change: FxChange::SetEnabled(true),
                     },
                 });
+                
+                if self.style == TransitionStyle::VocalDrop {
+                    // Set the outgoing deck to Vocal solo
+                    plan.act(Action::Deck {
+                        deck: outgoing.id,
+                        action: DeckAction::Stem {
+                            stem: dj_core::action::Stem::Vocal,
+                            change: dj_core::action::StemChange::SetSolo(true),
+                        }
+                    });
+                }
             }
             TransitionStyle::Fade | TransitionStyle::Blend => {}
         }
@@ -437,13 +448,22 @@ impl Automix {
         // silent-with-the-fader-down, which reads as a broken channel.
         self.set_fader(outgoing, 1.0, plan);
         plan.deck(outgoing, DeckAction::SetEqLow(1.0));
-        if self.style == TransitionStyle::Echo {
+        if self.style == TransitionStyle::Echo || self.style == TransitionStyle::VocalDrop {
             plan.act(Action::Deck {
                 deck: outgoing,
                 action: DeckAction::Fx {
                     slot: 1,
                     change: FxChange::SetEnabled(false),
                 },
+            });
+        }
+        if self.style == TransitionStyle::VocalDrop {
+            plan.act(Action::Deck {
+                deck: outgoing,
+                action: DeckAction::Stem {
+                    stem: dj_core::action::Stem::Vocal,
+                    change: dj_core::action::StemChange::SetSolo(false),
+                }
             });
         }
         plan.deck(outgoing, DeckAction::Eject);
