@@ -26,6 +26,7 @@
     type PluginParam,
     type PluginState,
   } from "./api";
+  import IconButton from "./controls/IconButton.svelte";
 
   let {
     clap,
@@ -115,15 +116,13 @@
   <header>
     <h3>Plugin</h3>
     {#if clap.loaded}
-      <button
-        class="switch"
-        class:active={!clap.bypassed}
-        disabled={!enabled}
-        onclick={() => send(clap.bypassed ? "clap on" : "clap off")}
+      <IconButton
+        icon={clap.bypassed ? 'fa-solid fa-toggle-off' : 'fa-solid fa-toggle-on'}
         title="Take it in and out of the signal path without unloading it"
-      >
-        {clap.bypassed ? "Bypassed" : "In"}
-      </button>
+        active={!clap.bypassed}
+        disabled={!enabled}
+        onClick={() => send(clap.bypassed ? "clap on" : "clap off")}
+      />
     {/if}
   </header>
 
@@ -141,9 +140,7 @@
           <option value={file.path}>{file.name}</option>
         {/each}
       </select>
-      <button disabled={!enabled || busy || !chosen} onclick={load}>
-        {busy ? "Loading…" : "Load"}
-      </button>
+      <IconButton icon="fa-solid fa-file-import" title={busy ? "Loading…" : "Load"} onClick={load} disabled={!enabled || busy || !chosen} />
     </div>
     {#if scanned && available.length === 0}
       <p class="note">
@@ -188,7 +185,7 @@
       </div>
     {/if}
 
-    <button class="clear" disabled={busy} onclick={clear}>Unload</button>
+    <IconButton icon="fa-solid fa-trash" title="Unload" onClick={clear} disabled={busy} />
     <p class="note">
       Its own window is not shown — a plugin's interface is a native child
       window, and there is nowhere to put one here. These are its controls,

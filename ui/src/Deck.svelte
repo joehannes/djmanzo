@@ -18,6 +18,7 @@
   import SvgKnob from "./controls/SvgKnob.svelte";
   import SvgFader from "./controls/SvgFader.svelte";
   import SvgPad from "./controls/SvgPad.svelte";
+  import IconButton from "./controls/IconButton.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
 
   let {
@@ -254,21 +255,16 @@
           whether or not the analyser found a grid: a track it could not read at
           all is exactly the one that needs tapping in.
         -->
-        <button
-          class="grid-toggle"
-          class:active={gridOpen}
-          onclick={() => (gridOpen = !gridOpen)}
-          title={deck.can_sync
-            ? "Edit the beat grid"
-            : "Edit the beat grid — this one is too weak to sync to"}
-        >
-          Grid
-        </button>
+        <IconButton
+          icon="fa-solid fa-table-cells"
+          title={deck.can_sync ? "Edit the beat grid" : "Edit the beat grid — this one is too weak to sync to"}
+          active={gridOpen}
+          onClick={() => (gridOpen = !gridOpen)}
+          disabled={!enabled}
+        />
       </div>
     {/if}
-    <button onclick={pickTrack} disabled={!enabled || loading}>
-      {loading ? "Loading…" : "Load"}
-    </button>
+    <IconButton icon="fa-solid fa-folder-open" title={loading ? "Loading…" : "Load"} onClick={pickTrack} disabled={!enabled || loading} />
   </header>
 
   {#if deck.loaded}
@@ -350,14 +346,14 @@
         disabled={!enabled}
         title="Drop the loop's in point here"
       >
-        In
+        <i class="fa-solid fa-flag" aria-hidden="true"></i>
       </button>
       <button
         onclick={() => send(`deck ${deck.number} loop_out`)}
         disabled={!enabled}
         title="Drop the out point and start looping"
       >
-        Out
+        <i class="fa-solid fa-flag-checkered" aria-hidden="true"></i>
       </button>
       <button
         onclick={() => send(`deck ${deck.number} loop_halve`)}
@@ -419,8 +415,7 @@
         disabled={!enabled}
         title="Put a beat on the playhead, leaving the tempo alone. Cue to the downbeat and press once."
       >
-        Here
-      </button>
+      <IconButton icon="fa-solid fa-location-dot" title="Put a beat on the playhead" onClick={() => send(`deck ${deck.number} grid_here`)} disabled={!enabled} />
       {#each [-10, -1, 1, 10] as ms (ms)}
         <button
           onclick={() => send(`deck ${deck.number} grid_nudge ${ms}`)}
@@ -435,8 +430,7 @@
         disabled={!enabled}
         title="Tap along with the music. Two taps give a tempo; the last sets the phase."
       >
-        Tap
-      </button>
+      <IconButton icon="fa-solid fa-hand-pointer" title="Tap along with the music" onClick={() => send(`deck ${deck.number} grid_tap`)} disabled={!enabled} />
       <button
         onclick={() => send(`deck ${deck.number} grid_scale 0.5`)}
         disabled={!enabled}
@@ -456,8 +450,7 @@
         disabled={!enabled}
         title="Throw the edits away and go back to what the analyser found"
       >
-        Reset
-      </button>
+      <IconButton icon="fa-solid fa-rotate-left" title="Reset grid edits" onClick={() => send(`deck ${deck.number} grid_reset`)} disabled={!enabled} />
     </div>
   {/if}
 
