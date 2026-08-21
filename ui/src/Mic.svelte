@@ -13,7 +13,7 @@
    * the music is currently stepping back.
    */
   import { listInputs, openMic, closeMic, type Device, type MicState } from "./api";
-  import { fill } from "./meter";
+  import SvgMeter from "./SvgMeter.svelte";
 
   let {
     mic,
@@ -113,12 +113,8 @@
     </p>
   {:else}
     <div class="meters">
-      <div class="meter" title="Microphone level">
-        <span class="fill" style="transform: scaleX({fill(mic.level)})"></span>
-      </div>
-      <div class="meter duck" title="How far the music is stepping back">
-        <span class="fill" style="transform: scaleX({fill(duckFill)})"></span>
-      </div>
+      <SvgMeter label="Microphone level" value={mic.level} tone="var(--accent-warm, #d08a3a)" />
+      <SvgMeter label="How far the music is stepping back" value={duckFill} tone="var(--muted)" />
     </div>
 
     <label class="control">
@@ -285,28 +281,6 @@
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
-  }
-
-  .meter {
-    position: relative;
-    height: 0.4rem;
-    border-radius: 0.2rem;
-    background: var(--sunken, rgba(0, 0, 0, 0.3));
-    overflow: hidden;
-  }
-
-  .meter .fill {
-    position: absolute;
-    inset: 0;
-    transform-origin: left center;
-    background: var(--accent-warm, #d08a3a);
-    /* Whole-pixel transforms, and only when the value actually changed —
-       see `meter.ts`. */
-    will-change: transform;
-  }
-
-  .meter.duck .fill {
-    background: var(--muted);
   }
 
   .toggles {

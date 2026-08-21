@@ -85,9 +85,9 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Loop roll (momentary, always slipping, down to 1/16 beat) | M5 — **done** |
 | Loop move / halve / double | M2 |
 | Saved loops | M2 |
-| Slicer | M5 |
+| Slicer | M5 — **done** |
 | Pad pages: Cues · Loops · Roll · Saved · Sampler · FX | M5 — **done** |
-| Pad pages: Slicer · Stems | M5 (Stems page M6) |
+| Pad pages: Slicer · Stems | Slicer page M5 — **done**; Stems page M6 |
 | Pad colour and LED feedback to hardware | M4 |
 
 ### Effects
@@ -103,7 +103,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Brake and backspin — transport, not signal: they live on the deck | M5 — **done** |
 | CLAP plugin hosting (master insert; generic controls, no plugin window) | M5 — done |
 | Per-stem effects | M6 |
-| Effect chain presets | M5 |
+| Effect chain presets | M5 — **done** |
 
 ### Sampler
 
