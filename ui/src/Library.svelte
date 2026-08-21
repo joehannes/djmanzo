@@ -24,6 +24,7 @@
   import { open, save } from "@tauri-apps/plugin-dialog";
   import Crates, { type Selection } from "./Crates.svelte";
   import SideView from "./SideView.svelte";
+  import IconButton from "./controls/IconButton.svelte";
   import {
     addToPlaylist,
     checkFilter,
@@ -43,7 +44,6 @@
     libraryStatus,
     listPlaylists,
     loadTrack,
-    import IconButton from "./controls/IconButton.svelte";
     playHistory,
     playlistTracks,
     removeFromPlaylist,
