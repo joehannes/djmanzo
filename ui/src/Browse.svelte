@@ -81,22 +81,8 @@
 
 <section class="browse">
   <div class="tabs" role="tablist">
-    <button
-      role="tab"
-      class:active={tab === "library"}
-      aria-selected={tab === "library"}
-      onclick={() => (tab = "library")}
-    >
-      My collection
-    </button>
-    <button
-      role="tab"
-      class:active={tab === "sources"}
-      aria-selected={tab === "sources"}
-      onclick={() => (tab = "sources")}
-    >
-      Sources
-    </button>
+    <IconButton role="tab" aria-selected={tab === "library"} class:active={tab === "library"} icon="fa-solid fa-book" title="My collection" onClick={() => (tab = "library")} />
+    <IconButton role="tab" aria-selected={tab === "sources"} class:active={tab === "sources"} icon="fa-solid fa-cloud" title="Sources" onClick={() => (tab = "sources")} />
   </div>
 
 {#if tab === "library"}
@@ -109,9 +95,7 @@
       bind:value={text}
       onkeydown={(e) => e.key === "Enter" && run()}
     />
-    <button class="primary" onclick={run} disabled={searching || !text.trim()}>
-      {searching ? "Searching…" : "Search"}
-    </button>
+    <IconButton icon="fa-solid fa-magnifying-glass" title={searching ? "Searching…" : "Search"} onClick={run} disabled={searching || !text.trim()} />
   </div>
 
   {#if error}
