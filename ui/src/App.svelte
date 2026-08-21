@@ -30,6 +30,7 @@
     type Layout,
   } from "./api";
   import Watershed from "./Watershed.svelte";
+  import ThemeSwitcher from "./ThemeSwitcher.svelte";
   import {
     emptyWorld,
     getWorld,
@@ -465,6 +466,10 @@
         djmanzo
       {/if}
     </h1>
+
+    <div style="display:flex; gap:0.6rem; align-items:center;">
+      <ThemeSwitcher />
+    </div>
 
     <div class="device">
       <select bind:value={selectedDevice} disabled={devices.length === 0}>
