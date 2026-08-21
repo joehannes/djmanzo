@@ -254,9 +254,7 @@
               icon="fa-solid fa-sync"
               onClick={() => send(`sampler ${slot.slot} ${slot.synced ? "sync_off" : "sync"}`)}
               disabled={!enabled}
-              title="{slot.bpm.toFixed(1)} BPM — {slot.synced
-                ? 'stretching to the room'
-                : 'playing at its own speed'}"
+              title={`${slot.bpm.toFixed(1)} BPM — ${slot.synced ? 'stretching to the room' : 'playing at its own speed'}`}
             />
           {/if}
 
