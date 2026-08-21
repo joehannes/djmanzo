@@ -28,6 +28,7 @@ export type ThemePreference = "dark" | "light" | "system";
 export type ResolvedTheme = "dark" | "light";
 
 import { themePackages, type ThemePackage } from "./controls/themes/packages";
+import { applyPackagePalette } from "./controls/themes/colors";
 
 const STORAGE_KEY = "djmanzo.theme";
 const PKG_STORAGE_KEY = "djmanzo.themePackage";
@@ -117,6 +118,7 @@ class Theme {
     try {
       localStorage.setItem(PKG_STORAGE_KEY, id);
     } catch {}
+    this.#apply();
   }
 
   /**
@@ -138,6 +140,9 @@ class Theme {
     const root = document.documentElement;
     root.dataset.theme = this.resolved;
     root.style.colorScheme = this.resolved;
+    try {
+      applyPackagePalette(this.activePackage.id, this.resolved);
+    } catch {}
   }
 }
 

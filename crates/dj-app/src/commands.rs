@@ -591,6 +591,17 @@ pub fn put_on_deck(
     // whatever was on the deck a moment ago.
     restore_deck_state(state, deck_id, track_id, sample_rate);
 
+    // Queue stem separation in the background!
+    let stems_worker = state.stems_worker();
+    let audio_clone = buffer.as_interleaved().to_vec();
+    let lock_clone = buffer.stems_lock();
+    std::thread::spawn(move || {
+        let chunk_size = 44100 * 2 * 10; // 10 seconds of stereo audio per chunk
+        for (i, chunk) in audio_clone.chunks(chunk_size).enumerate() {
+            stems_worker.process_chunk(track_id, i, chunk, Some(lock_clone.clone()));
+        }
+    });
+
     // Analysis runs *after* the track is playable, on its own worker.
     //
     // The ordering is the whole point: tempo, key and loudness take FFT passes

@@ -11,6 +11,7 @@
   } from "./api";
   import { fill } from "./meter";
   import Fx from "./Fx.svelte";
+  import Stems from "./Stems.svelte";
   import Pads from "./Pads.svelte";
   import Overview from "./Overview.svelte";
   import Waveform from "./Waveform.svelte";
@@ -269,6 +270,11 @@
       {loading ? "Loading…" : "Load"}
     </button>
   </header>
+
+  {#if deck.loaded}
+    <!-- M6.1 STEMS UI MODULE -->
+    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} />
+  {/if}
 
   <!--
     Tiles come from the Rust renderer and are scrolled by a CSS transform;

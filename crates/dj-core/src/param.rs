@@ -167,6 +167,16 @@ pub enum DeckParam {
     /// [`CrossfaderAssign::as_param`] defines the encoding: negative left,
     /// positive right, zero through.
     CrossfaderAssign,
+    /// Stem Mutes: 1.0 when muted, 0.0 when active.
+    StemVocalMute,
+    StemDrumsMute,
+    StemBassMute,
+    StemOtherMute,
+    /// Stem Volumes: 0.0 to 1.0 (linear).
+    StemVocalVolume,
+    StemDrumsVolume,
+    StemBassVolume,
+    StemOtherVolume,
 }
 
 /// What a hot cue parameter reads when the slot is empty.
@@ -198,7 +208,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 61;
+    pub const COUNT: usize = 69;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -270,6 +280,14 @@ impl DeckParam {
             HotCue7,
             HotCue8,
             CrossfaderAssign,
+            StemVocalMute,
+            StemDrumsMute,
+            StemBassMute,
+            StemOtherMute,
+            StemVocalVolume,
+            StemDrumsVolume,
+            StemBassVolume,
+            StemOtherVolume,
         ]
     }
 }
@@ -1010,6 +1028,14 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::HotCue7 => "hot_cue_7",
         DeckParam::HotCue8 => "hot_cue_8",
         DeckParam::CrossfaderAssign => "crossfader_assign",
+        DeckParam::StemVocalMute => "stem_vocal_mute",
+        DeckParam::StemDrumsMute => "stem_drums_mute",
+        DeckParam::StemBassMute => "stem_bass_mute",
+        DeckParam::StemOtherMute => "stem_other_mute",
+        DeckParam::StemVocalVolume => "stem_vocal_volume",
+        DeckParam::StemDrumsVolume => "stem_drums_volume",
+        DeckParam::StemBassVolume => "stem_bass_volume",
+        DeckParam::StemOtherVolume => "stem_other_volume",
     }
 }
 

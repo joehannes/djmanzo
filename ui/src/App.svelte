@@ -31,6 +31,8 @@
     type Layout,
   } from "./api";
   import Watershed from "./Watershed.svelte";
+  import ThemeSwitcher from "./ThemeSwitcher.svelte";
+  import IconButton from "./controls/IconButton.svelte";
   import {
     emptyWorld,
     getWorld,
@@ -515,6 +517,10 @@
       {/if}
     </div>
 
+    <div style="display:flex; gap:0.6rem; align-items:center;">
+      <ThemeSwitcher />
+    </div>
+
     <div class="device">
       <select bind:value={selectedDevice} disabled={devices.length === 0}>
         {#each devices as device (device.id)}
@@ -579,59 +585,18 @@
       {:else}
         <span class="idle">no device</span>
       {/if}
-      <button
-        class:active={panel === "browse"}
-        onclick={() => (panel = panel === "browse" ? "none" : "browse")}
-      >
-        Browse
-      </button>
-      <button
-        class:active={panel === "presets"}
-        onclick={() => (panel = panel === "presets" ? "none" : "presets")}
-      >
-        Presets
-      </button>
+      <IconButton icon="fa-solid fa-folder-open" title="Browse" active={panel === "browse"} onClick={() => (panel = panel === "browse" ? "none" : "browse")} />
+      <IconButton icon="fa-solid fa-layer-group" title="Presets" active={panel === "presets"} onClick={() => (panel = panel === "presets" ? "none" : "presets")} />
       <!--
         The panel is for setting the sampler up — loading, modes, routing. The
         playing is done from the pads, which is why this is a thing you open
         rather than something taking room on a deck all night.
       -->
-      <button
-        class:active={panel === "sampler"}
-        onclick={() => (panel = panel === "sampler" ? "none" : "sampler")}
-      >
-        Sampler
-      </button>
-      <button
-        class:active={panel === "assistant"}
-        onclick={() => (panel = panel === "assistant" ? "none" : "assistant")}
-      >
-        Assistant
-      </button>
-      <button
-        class:active={panel === "settings"}
-        onclick={() => (panel = panel === "settings" ? "none" : "settings")}
-      >
-        Settings
-      </button>
-      <button
-        class:active={panel === "keyboard"}
-        onclick={() => (panel = panel === "keyboard" ? "none" : "keyboard")}
-        title={keyboard.enabled
-          ? "The keys and what they do"
-          : "The keyboard is not listening"}
-      >
-        Keys{keyboard.enabled ? "" : " ·"}
-      </button>
-      <button
-        class:on={living}
-        onclick={() => (living = !living)}
-        title={living
-          ? `Hide the watershed${backend ? ` (drawing with ${backend})` : ""}`
-          : "Show the decks as a watershed — flow, pulse, clarity and how long is left"}
-      >
-        Watershed
-      </button>
+      <IconButton icon="fa-solid fa-th" title="Sampler" active={panel === "sampler"} onClick={() => (panel = panel === "sampler" ? "none" : "sampler")} />
+      <IconButton icon="fa-solid fa-robot" title="Assistant" active={panel === "assistant"} onClick={() => (panel = panel === "assistant" ? "none" : "assistant")} />
+      <IconButton icon="fa-solid fa-cog" title="Settings" active={panel === "settings"} onClick={() => (panel = panel === "settings" ? "none" : "settings")} />
+      <IconButton icon="fa-solid fa-keyboard" title={keyboard.enabled ? "Keyboard: enabled" : "Keyboard: disabled"} active={panel === "keyboard"} onClick={() => (panel = panel === "keyboard" ? "none" : "keyboard")} />
+      <IconButton icon="fa-solid fa-water" title={living ? `Hide the watershed${backend ? ` (drawing with ${backend})` : ""}` : "Show the watershed"} active={living} onClick={() => (living = !living)} />
       <!--
         Recording the set. Beside the panel toggles rather than inside one,
         because it is the control a DJ has to be able to find at the start of a
@@ -708,7 +673,7 @@
           </option>
         {/each}
       </select>
-      <button onclick={toggleLog}>Log</button>
+      <IconButton icon="fa-solid fa-file-lines" title="Session log" onClick={toggleLog} />
     </div>
   </header>
 

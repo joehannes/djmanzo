@@ -134,7 +134,12 @@ export interface DeckState {
   spinning: boolean;
   /** Where the track would be if nothing were diverting it. Null when nothing is. */
   slip_position: number | null;
+  /** Which side of the crossfader cuts this deck, or neither. */
   crossfader_assign: CrossfaderAssign;
+  /** Mute states for the 4 stems (Vocal, Drums, Bass, Other). */
+  stem_mutes: [boolean, boolean, boolean, boolean];
+  /** Volume states for the 4 stems (Vocal, Drums, Bass, Other). */
+  stem_volumes: [number, number, number, number];
   /**
    * What the analyser made of this track. Null while it is still running,
    * which is the normal state for the first second after a load.

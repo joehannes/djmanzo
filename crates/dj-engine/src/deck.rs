@@ -211,6 +211,7 @@ impl Deck {
                 StemChannel::new(sr),
                 StemChannel::new(sr),
             ],
+            stem_mutes: [false; 4],
             spin: None,
             rack: Rack::new(sr),
             keylock: Keylock::new(sr),
