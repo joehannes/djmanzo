@@ -29,6 +29,8 @@
   import { performance, type PerformanceLevel } from "./performance.svelte";
   import SvgPad from "./controls/SvgPad.svelte";
   import { themePackages } from "./controls/themes/packages";
+  import IconButton from "./controls/IconButton.svelte";
+  import SvgKnob from "./controls/SvgKnob.svelte";
 
   let { onLogoChange }: { onLogoChange: () => void } = $props();
 
@@ -160,6 +162,15 @@
       waveform is recoloured too — it is drawn outside the browser, so it does
       not follow a stylesheet on its own.
     </p>
+    <div class="theme-preview" style="display:flex; gap:0.6rem; align-items:center; margin-bottom:0.6rem;">
+      <div style="width:120px; height:70px; display:flex; align-items:center; justify-content:center; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:0.5rem;">
+        <SvgPad width={100} height={50} active={true} />
+      </div>
+      <div style="display:flex; flex-direction:column; gap:0.3rem;">
+        <SvgKnob width={48} height={48} value={0.6} />
+        <div style="width:60px; height:14px; background:var(--accent); border-radius:4px;"></div>
+      </div>
+    </div>
     <div class="row theme-choice" style="gap: 1rem;">
       {#each [{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }, { id: "system", label: "Follow system" }] as option (option.id)}
         <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; width: 80px;">
@@ -233,15 +244,15 @@
       the app, so it keeps working after the original is moved or the stick is
       pulled.
     </p>
-    <div class="row">
+      <div class="row">
       {#if logo}
         <img class="logo-preview" src={logoUrl(logoVersion)} alt="Your logo" />
       {:else}
         <span class="wordmark">djmanzo</span>
       {/if}
-      <button onclick={pickLogo}>{logo ? "Replace" : "Choose image"}</button>
+      <IconButton icon="fa-solid fa-image" title={logo ? 'Replace logo' : 'Choose image'} onClick={pickLogo} />
       {#if logo}
-        <button onclick={dropLogo}>Remove</button>
+        <IconButton icon="fa-solid fa-trash" title="Remove logo" onClick={dropLogo} />
       {/if}
     </div>
   </div>

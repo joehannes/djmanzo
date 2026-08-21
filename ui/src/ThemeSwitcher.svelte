@@ -1,6 +1,7 @@
 <script lang="ts">
   import { theme, type ThemePreference } from "./theme.svelte";
   import { themePackages } from "./controls/themes/packages";
+  import IconButton from "./controls/IconButton.svelte";
   let open = $state(false);
 
   function toggle() {
@@ -26,9 +27,9 @@
       <div class="section">
         <strong>Appearance</strong>
         <div class="opts">
-          <button class:active={theme.preference === 'dark'} onclick={() => choosePref('dark')}>Dark</button>
-          <button class:active={theme.preference === 'light'} onclick={() => choosePref('light')}>Light</button>
-          <button class:active={theme.preference === 'system'} onclick={() => choosePref('system')}>System</button>
+          <IconButton icon="fa-solid fa-moon" title="Dark" active={theme.preference === 'dark'} onClick={() => choosePref('dark')} />
+          <IconButton icon="fa-solid fa-sun" title="Light" active={theme.preference === 'light'} onClick={() => choosePref('light')} />
+          <IconButton icon="fa-solid fa-desktop" title="System" active={theme.preference === 'system'} onClick={() => choosePref('system')} />
         </div>
       </div>
 
@@ -36,7 +37,7 @@
         <strong>Package</strong>
         <div class="opts">
           {#each themePackages as pkg (pkg.id)}
-            <button class:active={theme.activePackage.id === pkg.id} onclick={() => choosePkg(pkg.id)}>{pkg.name}</button>
+            <IconButton icon={pkg.category === 'organic' ? 'fa-solid fa-leaf' : pkg.category === 'industrial' ? 'fa-solid fa-industry' : 'fa-solid fa-robot'} title={pkg.name} active={theme.activePackage.id === pkg.id} onClick={() => choosePkg(pkg.id)} />
           {/each}
         </div>
       </div>
