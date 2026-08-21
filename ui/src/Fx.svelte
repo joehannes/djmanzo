@@ -202,8 +202,8 @@
           if (event.key === "Escape") naming = false;
         }}
       />
-      <button disabled={!enabled || !chainName.trim()} onclick={() => void keep()}>Save</button>
-      <button onclick={() => (naming = false)}>Cancel</button>
+      <IconButton icon="fa-solid fa-floppy-disk" title="Save" onClick={() => void keep()} disabled={!enabled || !chainName.trim()} />
+      <IconButton icon="fa-solid fa-xmark" title="Cancel" onClick={() => (naming = false)} />
     {:else}
       <button
         class="keep-open"

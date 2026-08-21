@@ -328,7 +328,7 @@
                 bind:value={drafts[credential.id]}
                 onkeydown={(e) => e.key === "Enter" && save(credential.id)}
               />
-              <button onclick={() => save(credential.id)}>Save</button>
+              <IconButton icon="fa-solid fa-floppy-disk" title="Save credential" onClick={() => save(credential.id)} />
               {#if credential.is_set}
                 <button onclick={() => forget(credential.id)}>Forget</button>
               {/if}

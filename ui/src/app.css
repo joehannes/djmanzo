@@ -48,6 +48,9 @@
   */
   --density: 1;
   font-size: calc(14px * var(--density));
+  /* Shape tokens */
+  --radius: 8px;
+  --edge: var(--border);
 }
 
 /*
@@ -102,11 +105,11 @@ button {
   font: inherit;
   color: var(--text);
   background: var(--panel-raised);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
   padding: 0.45rem 0.8rem;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease, transform 100ms ease;
 }
 
 button:hover:not(:disabled) {
@@ -202,6 +205,13 @@ button {
 /* A press should feel like a press. */
 button:active:not(:disabled) {
   transform: translateY(1px) scale(0.985);
+}
+
+/* Subtle elevation for focused, active elements to improve legibility in booths */
+button:focus-visible,
+button.active,
+button.on {
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
 }
 
 /* A control that just became active is the thing that changed, so it is the

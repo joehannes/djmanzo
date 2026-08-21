@@ -31,7 +31,7 @@
       <button class:on={keyboard.enabled} onclick={toggle}>
         {keyboard.enabled ? "Listening" : "Off"}
       </button>
-      <button onclick={onclose}>Close</button>
+      <IconButton icon="fa-solid fa-xmark" title="Close" onClick={onclose} />
     </div>
   </header>
 

@@ -168,7 +168,7 @@
                 bind:value={draft[provider.credential]}
                 onkeydown={(e) => e.key === "Enter" && saveKey(provider.credential!)}
               />
-              <button onclick={() => saveKey(provider.credential!)}>Save</button>
+              <IconButton icon="fa-solid fa-floppy-disk" title="Save key" onClick={() => saveKey(provider.credential!)} />
               {#if provider.signup_url}
                 <a href={provider.signup_url} target="_blank" rel="noreferrer">Get one →</a>
               {/if}

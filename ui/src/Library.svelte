@@ -689,7 +689,7 @@
         aria-label="Filter for {selection.name}"
       />
       {#if filterDirty && !filterError}
-        <button onclick={saveFilter}>Save</button>
+            <IconButton icon="fa-solid fa-floppy-disk" title="Save filter" onClick={saveFilter} />
       {/if}
     </div>
     {#if filterError}
