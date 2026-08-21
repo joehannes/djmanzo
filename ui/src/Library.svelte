@@ -582,20 +582,10 @@
     {:else}
       <span class="viewing">Tracks whose audio is in more than one place.</span>
     {/if}
-    <button onclick={addFolder} disabled={busy}>Add folder…</button>
-    <button onclick={rescan} disabled={busy || !status?.folders.length}>
-      {busy ? "Scanning…" : "Rescan"}
-    </button>
-    <button
-      onclick={() => importFrom(false)}
-      disabled={busy}
-      title="Import a rekordbox, Traktor or iTunes library export, with its cues and grids"
-    >Import…</button>
-    <button
-      onclick={() => importFrom(true)}
-      disabled={busy}
-      title="Import from Serato — choose the folder holding _Serato_, or _Serato_ itself"
-    >Serato…</button>
+    <IconButton icon="fa-solid fa-folder-plus" title="Add folder…" onClick={addFolder} disabled={busy} />
+    <IconButton icon="fa-solid fa-repeat" title={busy ? "Scanning…" : "Rescan"} onClick={rescan} disabled={busy || !status?.folders.length} />
+    <IconButton icon="fa-solid fa-file-import" title="Import a rekordbox, Traktor or iTunes library export" onClick={() => importFrom(false)} disabled={busy} />
+    <IconButton icon="fa-solid fa-compact-disc" title="Import from Serato" onClick={() => importFrom(true)} disabled={busy} />
   </div>
 
   {#if imported}
@@ -655,12 +645,12 @@
         {#each status.folders as folder (folder)}
           <span class="folder">
             <span class="path" title={folder}>{LTR}{folder}</span>
-            <button
-              class="remove"
-              onclick={() => removeFolder(folder)}
-              title="Stop watching this folder. The tracks already in the library stay."
-              aria-label="Stop watching {folder}"
-            >×</button>
+            <IconButton
+              icon="fa-solid fa-xmark"
+              title="Stop watching this folder"
+              aria-label={`Stop watching ${folder}`}
+              onClick={() => removeFolder(folder)}
+            />
           </span>
         {/each}
       </div>
