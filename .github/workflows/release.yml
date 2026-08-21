@@ -140,6 +140,10 @@ jobs:
             libxdo-dev \
             libayatana-appindicator3-dev
 
+      - name: Set LIBCLANG_PATH for Windows
+        if: runner.os == 'Windows'
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
