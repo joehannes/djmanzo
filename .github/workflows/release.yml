@@ -81,7 +81,9 @@ jobs:
           # Intel Macs are still booth workhorses; an arm64-only release would
           # leave a lot of working DJs without a build.
           ALL: >-
-            [{"os":"windows-latest","name":"Windows (x86_64)","args":"","target":""},
+            [{"os":"macos-latest","name":"macOS (Apple Silicon)","args":"--target aarch64-apple-darwin","target":"aarch64-apple-darwin"},
+             {"os":"macos-latest","name":"macOS (Intel)","args":"--target x86_64-apple-darwin","target":"x86_64-apple-darwin"},
+             {"os":"windows-latest","name":"Windows (x86_64)","args":"","target":""},
              {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
           LINUX: >-
             [{"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
