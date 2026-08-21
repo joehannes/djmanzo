@@ -8,6 +8,7 @@
    * something out and leaving the DJ to guess is the failure mode here.
    */
   import Library from "./Library.svelte";
+  import IconButton from "./controls/IconButton.svelte";
   import {
     loadTrack,
     resolveSourceTrack,
@@ -81,8 +82,8 @@
 
 <section class="browse">
   <div class="tabs" role="tablist">
-    <IconButton role="tab" aria-selected={tab === "library"} class:active={tab === "library"} icon="fa-solid fa-book" title="My collection" onClick={() => (tab = "library")} />
-    <IconButton role="tab" aria-selected={tab === "sources"} class:active={tab === "sources"} icon="fa-solid fa-cloud" title="Sources" onClick={() => (tab = "sources")} />
+    <IconButton role="tab" aria-selected={tab === "library"} active={tab === "library"} icon="fa-solid fa-book" title="My collection" onClick={() => (tab = "library")} />
+    <IconButton role="tab" aria-selected={tab === "sources"} active={tab === "sources"} icon="fa-solid fa-cloud" title="Sources" onClick={() => (tab = "sources")} />
   </div>
 
 {#if tab === "library"}

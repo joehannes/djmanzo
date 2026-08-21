@@ -10,6 +10,7 @@
    */
   import { loadSample, TRIGGER_MODES, type SamplerState } from "./api";
   import { open } from "@tauri-apps/plugin-dialog";
+    import IconButton from "./controls/IconButton.svelte";
 
   let {
     sampler,
@@ -121,17 +122,15 @@
     recorder, and eight record buttons would suggest eight.
   -->
   <div class="record" class:live={sampler.record.recording}>
-    <button
-      class="arm"
+    <IconButton
       class:live={sampler.record.recording}
+      icon={sampler.record.recording ? 'fa-solid fa-stop' : 'fa-solid fa-microphone'}
+      onClick={toggleRecord}
       disabled={!enabled || (!sampler.record.ready && !sampler.record.recording)}
-      onclick={toggleRecord}
       title={sampler.record.ready || sampler.record.recording
         ? "Capture into a slot"
         : "The last recording is still being made into a sample"}
-    >
-      {sampler.record.recording ? "STOP" : "REC"}
-    </button>
+    />
 
     {#if sampler.record.recording}
       <!--
@@ -149,9 +148,7 @@
         ></div>
       </div>
       <span class="mono">{sampler.record.seconds.toFixed(1)}s</span>
-      <button class="drop" disabled={!enabled} onclick={() => send("sampler record cancel")}>
-        ×
-      </button>
+      <IconButton icon="fa-solid fa-xmark" title="Cancel recording" onClick={() => send("sampler record cancel")} disabled={!enabled} />
     {:else}
       <label class="pick">
         <span>from</span>
@@ -236,17 +233,15 @@
             aria-label="Level of sample {slot.slot}"
           />
 
-          <button
-            class="route"
+          <IconButton
             class:on={slot.cue}
+            icon="fa-solid fa-headphones"
+            onClick={() => send(`sampler ${slot.slot} ${slot.cue ? "master" : "cue"}`)}
             disabled={!enabled}
-            onclick={() => send(`sampler ${slot.slot} ${slot.cue ? "master" : "cue"}`)}
             title={slot.cue
               ? "In the headphones only — click to send it to the mix"
               : "In the mix — click to audition it in the headphones instead"}
-          >
-            CUE
-          </button>
+          />
 
           <!--
             Hidden for a sample with no tempo of its own. Stretching one to a
@@ -254,28 +249,18 @@
             what it says is worse than no switch.
           -->
           {#if slot.bpm != null}
-            <button
-              class="route"
+            <IconButton
               class:on={slot.synced}
+              icon="fa-solid fa-sync"
+              onClick={() => send(`sampler ${slot.slot} ${slot.synced ? "sync_off" : "sync"}`)}
               disabled={!enabled}
-              onclick={() =>
-                send(`sampler ${slot.slot} ${slot.synced ? "sync_off" : "sync"}`)}
               title="{slot.bpm.toFixed(1)} BPM — {slot.synced
                 ? 'stretching to the room'
                 : 'playing at its own speed'}"
-            >
-              SYNC
-            </button>
+            />
           {/if}
 
-          <button
-            class="drop"
-            disabled={!enabled}
-            onclick={() => clear(slot.slot)}
-            title="Empty this slot"
-          >
-            ×
-          </button>
+          <IconButton icon="fa-solid fa-xmark" title="Empty this slot" onClick={() => clear(slot.slot)} disabled={!enabled} />
         {/if}
       </div>
     {/each}

@@ -410,11 +410,6 @@
   {#if deck.loaded && gridOpen}
     <div class="beatjump grid-row">
       <span class="label">Grid</span>
-      <button
-        onclick={() => send(`deck ${deck.number} grid_here`)}
-        disabled={!enabled}
-        title="Put a beat on the playhead, leaving the tempo alone. Cue to the downbeat and press once."
-      >
       <IconButton icon="fa-solid fa-location-dot" title="Put a beat on the playhead" onClick={() => send(`deck ${deck.number} grid_here`)} disabled={!enabled} />
       {#each [-10, -1, 1, 10] as ms (ms)}
         <button
@@ -425,11 +420,6 @@
           {ms > 0 ? `+${ms}` : ms}
         </button>
       {/each}
-      <button
-        onclick={() => send(`deck ${deck.number} grid_tap`)}
-        disabled={!enabled}
-        title="Tap along with the music. Two taps give a tempo; the last sets the phase."
-      >
       <IconButton icon="fa-solid fa-hand-pointer" title="Tap along with the music" onClick={() => send(`deck ${deck.number} grid_tap`)} disabled={!enabled} />
       <button
         onclick={() => send(`deck ${deck.number} grid_scale 0.5`)}
@@ -445,11 +435,6 @@
       >
         ×2
       </button>
-      <button
-        onclick={() => send(`deck ${deck.number} grid_reset`)}
-        disabled={!enabled}
-        title="Throw the edits away and go back to what the analyser found"
-      >
       <IconButton icon="fa-solid fa-rotate-left" title="Reset grid edits" onClick={() => send(`deck ${deck.number} grid_reset`)} disabled={!enabled} />
     </div>
   {/if}

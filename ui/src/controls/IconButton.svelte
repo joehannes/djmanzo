@@ -4,8 +4,7 @@
   export let active: boolean = false;
   export let disabled: boolean = false;
   export let onClick: () => void = () => {};
-  // forward any other attributes (role, aria-*, id, etc.)
-  export let $$restProps: Record<string, any>;
+  // forward any other attributes (role, aria-*, id, etc.) via Svelte's $$restProps
 </script>
 
 <button {...$$restProps} class:active on:click={() => !disabled && onClick()} {disabled} title={title} aria-pressed={active}>
