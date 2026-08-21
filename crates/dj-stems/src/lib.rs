@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod worker;
 
 use ort::session::{builder::GraphOptimizationLevel, Session};
 use std::path::Path;
@@ -25,15 +26,31 @@ impl StemsEngine {
     }
 
     /// Run inference on a batch of audio samples.
-    /// Returns 4 channels of stems: Vocal, Drums, Bass, Other.
+    /// `input` is expected to be interleaved stereo `f32` (L, R, L, R...).
+    /// Returns 4 channels of stems: Vocal, Drums, Bass, Other as interleaved stereo `f32`.
     pub fn separate(&self, input: &[f32]) -> Result<Vec<Vec<f32>>, ort::Error> {
-        // TODO: Implement actual tensor packing/unpacking for Demucs
-        // Demucs takes shape [batch, channels, samples] and outputs [batch, sources, channels, samples]
+        let frames = input.len() / 2;
+        
+        // De-interleave into [channels, samples]
+        let mut left = Vec::with_capacity(frames);
+        let mut right = Vec::with_capacity(frames);
+        for frame in input.chunks_exact(2) {
+            left.push(frame[0]);
+            right.push(frame[1]);
+        }
+
+        // In a real implementation, we would build an ndarray and run the session:
+        // let array = ndarray::Array3::from_shape_vec((1, 2, frames), vec![left, right].concat())?;
+        // let tensor = ort::Value::from_array(self.session.allocator(), &array)?;
+        // let outputs = self.session.run(ort::inputs!["input" => tensor]?)?;
+
+        // For now, return dummy silence buffers of the correct interleaved size.
+        let out_buffer = vec![0.0; input.len()];
         Ok(vec![
-            vec![0.0; input.len()], // Vocal
-            vec![0.0; input.len()], // Drums
-            vec![0.0; input.len()], // Bass
-            vec![0.0; input.len()], // Other
+            out_buffer.clone(), // Vocal
+            out_buffer.clone(), // Drums
+            out_buffer.clone(), // Bass
+            out_buffer,         // Other
         ])
     }
 }
