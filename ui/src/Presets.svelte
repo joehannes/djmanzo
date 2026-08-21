@@ -79,13 +79,11 @@
                 {preset.name}
                 {#if preset.per_deck}<em>{deck}</em>{/if}
               </button>
-              <button
-                class="peek"
-                onclick={() => (expanded[preset.id] = !expanded[preset.id])}
-                aria-label="Show what {preset.name} does"
-              >
-                {expanded[preset.id] ? "−" : "?"}
-              </button>
+              <IconButton
+                icon={expanded[preset.id] ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'}
+                title={expanded[preset.id] ? `Hide details for ${preset.name}` : `Show details for ${preset.name}`}
+                onClick={() => (expanded[preset.id] = !expanded[preset.id])}
+              />
               {#if expanded[preset.id]}
                 <div class="detail">
                   <p>{preset.description}</p>
