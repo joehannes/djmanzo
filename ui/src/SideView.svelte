@@ -184,17 +184,17 @@
                   {loading === entry.path ? "…" : deck}
                 </button>
               {/each}
-              <button
-                class="drop"
-                onclick={() => remove(entry.position)}
-                title="Take out of the Sidelist"
-                aria-label="Remove {entry.title}"
-              >×</button>
+                          <IconButton
+                            icon="fa-solid fa-xmark"
+                            title="Take out of the Sidelist"
+                            aria-label={`Remove ${entry.title}`}
+                            onClick={() => remove(entry.position)}
+                          />
             </div>
           </li>
         {/each}
       </ul>
-      <button class="clear" onclick={clear}>Clear the list</button>
+                  <IconButton icon="fa-solid fa-trash" title="Clear the list" onClick={clear} />
     {/if}
   {:else if tab === "clone"}
     <!--

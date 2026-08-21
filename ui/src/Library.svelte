@@ -43,6 +43,7 @@
     libraryStatus,
     listPlaylists,
     loadTrack,
+    import IconButton from "./controls/IconButton.svelte";
     playHistory,
     playlistTracks,
     removeFromPlaylist,
