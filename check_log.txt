@@ -1,5 +1,12 @@
         Info Looking up installed tauri packages to check mismatched versions...
-     Running beforeBuildCommand `cd $(git rev-parse --show-toplevel)/ui && npm run build`
-The system cannot find the path specified.
-beforeBuildCommand `cd $(git rev-parse --show-toplevel)/ui && npm run build` failed with exit code 1
-       Error beforeBuildCommand `cd $(git rev-parse --show-toplevel)/ui && npm run build` failed with exit code 1
+     Running beforeBuildCommand `npm run build --prefix ../../ui`
+npm error code ENOENT
+npm error syscall open
+npm error path D:\a\djmanzo\ui\package.json
+npm error errno -4058
+npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open 'D:\a\djmanzo\ui\package.json'
+npm error enoent This is related to npm not being able to find a file.
+npm error enoent
+npm error A complete log of this run can be found in: C:\npm\cache\_logs\2026-08-21T17_58_42_378Z-debug-0.log
+beforeBuildCommand `npm run build --prefix ../../ui` failed with exit code -4058
+       Error beforeBuildCommand `npm run build --prefix ../../ui` failed with exit code -4058
