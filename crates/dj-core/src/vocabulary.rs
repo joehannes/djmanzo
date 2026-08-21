@@ -101,7 +101,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 78] = [
+static VOCABULARY: [VerbSpec; 82] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -299,6 +299,34 @@ static VOCABULARY: [VerbSpec; 78] = [
         },
         help: "how many beats the eight slices divide up; 4, 8, 16 or 32 in practice",
         example: "deck 1 slice_domain 16",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "stem_mute",
+        argument: ArgSpec::Words,
+        help: "toggle one stem: vocal, drums, bass or other",
+        example: "deck 1 stem_mute vocal",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "stem_solo_on",
+        argument: ArgSpec::Words,
+        help: "hold only one stem in the deck mix",
+        example: "deck 1 stem_solo_on bass",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "stem_solo_off",
+        argument: ArgSpec::Words,
+        help: "release a held stem solo",
+        example: "deck 1 stem_solo_off bass",
+    },
+    VerbSpec {
+        target: Target::Deck,
+        verb: "stem_volume",
+        argument: ArgSpec::Words,
+        help: "set one stem level as stem:value, with value from 0 to 1",
+        example: "deck 1 stem_volume drums:0.5",
     },
     VerbSpec {
         target: Target::Deck,
@@ -749,10 +777,14 @@ mod tests {
     fn an_entry_that_takes_an_argument_shows_one() {
         for spec in vocabulary() {
             let words: Vec<&str> = spec.example.split_whitespace().collect();
-            let has_trailing_number = words.last().is_some_and(|w| w.parse::<f32>().is_ok());
+            let has_trailing_argument = match spec.argument {
+                ArgSpec::None => false,
+                ArgSpec::Words => words.len() > 3,
+                _ => words.last().is_some_and(|w| w.parse::<f32>().is_ok()),
+            };
             assert_eq!(
                 spec.argument.takes_argument(),
-                has_trailing_number,
+                has_trailing_argument,
                 "`{}` argument spec disagrees with its example `{}`",
                 spec.verb,
                 spec.example
@@ -859,6 +891,10 @@ mod tests {
             "slice",
             "slice_off",
             "slice_domain",
+            "stem_mute",
+            "stem_solo_on",
+            "stem_solo_off",
+            "stem_volume",
             "fx",
             "master fx",
             "sampler",

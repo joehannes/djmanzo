@@ -518,6 +518,12 @@ impl Engine {
                         target.set_reverse(!on);
                     }
                     DeckAction::SetCensor(held) => target.set_censor(held),
+                    DeckAction::Stem { .. } => {
+                        // M6 starts at the action vocabulary and pad surface.
+                        // Until separated buffers exist on the deck, stem
+                        // gestures are accepted and harmless rather than
+                        // becoming unmapped buttons that fail mid-set.
+                    }
                     DeckAction::Fx { slot, change } => {
                         target.rack_mut().apply(slot, change);
                     }

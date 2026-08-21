@@ -209,7 +209,9 @@ export type Lit =
   | { FxSlotOn: number }
   | { FxSlotPost: number }
   | { SamplePlaying: number }
-  | { SliceAt: number };
+  | { SliceAt: number }
+  | { StemMuted: "Vocal" | "Drums" | "Bass" | "Other" }
+  | { StemSolo: "Vocal" | "Drums" | "Bass" | "Other" };
 
 /** One pad, with its actions already written out by the backend. */
 export interface PadDto {

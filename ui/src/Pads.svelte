@@ -114,6 +114,10 @@
       // grid on its own and you can see the next slice coming.
       return deck.slice.at === condition.SliceAt;
     }
+    // The M6 stem page is visible before separated buffers land. Until the
+    // snapshot carries per-stem state, these pads behave and label correctly
+    // but do not latch visually.
+    if ("StemMuted" in condition || "StemSolo" in condition) return false;
     return false;
   }
 

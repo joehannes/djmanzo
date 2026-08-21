@@ -26,6 +26,45 @@ pub enum Action {
     Mixer(MixerAction),
 }
 
+/// The four musical currents a stem engine exposes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Stem {
+    Vocal,
+    Drums,
+    Bass,
+    Other,
+}
+
+impl Stem {
+    pub const ALL: [Stem; 4] = [Stem::Vocal, Stem::Drums, Stem::Bass, Stem::Other];
+
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Stem::Vocal => "vocal",
+            Stem::Drums => "drums",
+            Stem::Bass => "bass",
+            Stem::Other => "other",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|stem| stem.name() == name)
+    }
+}
+
+/// A change to one stem's contribution to a deck.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum StemChange {
+    /// Flip whether this stem is audible.
+    ToggleMute,
+    /// Keep only this stem while held; release restores the full mix.
+    SetSolo(bool),
+    /// Per-stem level, 0.0..=1.0.
+    Volume(f32),
+}
+
 /// Something done to one deck.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum DeckAction {
@@ -99,6 +138,15 @@ pub enum DeckAction {
     Slice(Option<u8>),
     /// How many beats the eight slices divide up. 4, 8, 16 or 32 in practice.
     SliceDomain(f32),
+    /// Change one stem's contribution to this deck.
+    ///
+    /// This is the first M6 surface: it is deliberately an action before it is
+    /// an implementation detail, so pads, controllers and the assistant all
+    /// learn the same vocabulary the audio engine will later execute.
+    Stem {
+        stem: Stem,
+        change: StemChange,
+    },
     /// Change one of this deck's effect slots.
     ///
     /// One variant with a sub-grammar rather than a verb per slot per control.
@@ -773,6 +821,35 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "slice" => Ok(DeckAction::Slice(Some(parse_slot(argument)?))),
         "slice_off" => bare(DeckAction::Slice(None)),
         "slice_domain" => Ok(DeckAction::SliceDomain(parse_beats(argument)?)),
+        "stem_mute" => Ok(DeckAction::Stem {
+            stem: parse_stem(argument)?,
+            change: StemChange::ToggleMute,
+        }),
+        "stem_solo_on" => Ok(DeckAction::Stem {
+            stem: parse_stem(argument)?,
+            change: StemChange::SetSolo(true),
+        }),
+        "stem_solo_off" => Ok(DeckAction::Stem {
+            stem: parse_stem(argument)?,
+            change: StemChange::SetSolo(false),
+        }),
+        "stem_volume" => {
+            let mut parts = argument.ok_or(ParseError::MissingArgument)?.split(':');
+            let stem = parse_stem(parts.next())?;
+            let volume = parts
+                .next()
+                .ok_or(ParseError::MissingArgument)?
+                .parse::<f32>()
+                .map_err(|_| ParseError::BadArgument)?
+                .clamp(0.0, 1.0);
+            if parts.next().is_some() {
+                return Err(ParseError::BadArgument);
+            }
+            Ok(DeckAction::Stem {
+                stem,
+                change: StemChange::Volume(volume),
+            })
+        }
         "key" => Ok(DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32)),
         // Three verbs rather than one verb with a word argument, matching
         // `cue_on`/`cue_off` above: a three-position switch is three buttons on
@@ -791,6 +868,11 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "loop_recall" => Ok(DeckAction::LoopRecall(parse_slot(argument)?)),
         other => Err(ParseError::UnknownVerb(other.to_owned())),
     }
+}
+
+fn parse_stem(word: Option<&str>) -> Result<Stem, ParseError> {
+    let word = word.ok_or(ParseError::MissingArgument)?;
+    Stem::parse(word).ok_or_else(|| ParseError::BadArgument)
 }
 
 /// Whole beats, for beat jump.
@@ -940,6 +1022,27 @@ impl fmt::Display for Action {
                 DeckAction::Slice(Some(n)) => write!(f, "deck {deck} slice {n}"),
                 DeckAction::Slice(None) => write!(f, "deck {deck} slice_off"),
                 DeckAction::SliceDomain(beats) => write!(f, "deck {deck} slice_domain {beats}"),
+                DeckAction::Stem {
+                    stem,
+                    change: StemChange::ToggleMute,
+                } => write!(f, "deck {deck} stem_mute {}", stem.name()),
+                DeckAction::Stem {
+                    stem,
+                    change: StemChange::SetSolo(true),
+                } => write!(f, "deck {deck} stem_solo_on {}", stem.name()),
+                DeckAction::Stem {
+                    stem,
+                    change: StemChange::SetSolo(false),
+                } => write!(f, "deck {deck} stem_solo_off {}", stem.name()),
+                DeckAction::Stem {
+                    stem,
+                    change: StemChange::Volume(volume),
+                } => write!(
+                    f,
+                    "deck {deck} stem_volume {}:{}",
+                    stem.name(),
+                    number(f64::from(*volume))
+                ),
                 DeckAction::SetKeyShift(n) => write!(f, "deck {deck} key {n}"),
                 DeckAction::Fx { slot, change } => write!(f, "deck {deck} fx {slot} {change}"),
                 DeckAction::Sync => write!(f, "deck {deck} sync"),
@@ -1450,6 +1553,51 @@ mod tests {
             let action = Action::parse(input).unwrap();
             let reparsed = Action::parse(&action.to_string()).unwrap();
             assert_eq!(reparsed, action, "`{input}` did not survive formatting");
+        }
+    }
+
+    /// Every first-slice stem action, through text and back. The stem engine is
+    /// not wired yet, but the vocabulary must already be stable because pad
+    /// mappings and controller files will be written against it.
+    #[test]
+    fn every_stem_change_round_trips_through_its_text_form() {
+        let cases = [
+            DeckAction::Stem {
+                stem: Stem::Vocal,
+                change: StemChange::ToggleMute,
+            },
+            DeckAction::Stem {
+                stem: Stem::Drums,
+                change: StemChange::SetSolo(true),
+            },
+            DeckAction::Stem {
+                stem: Stem::Bass,
+                change: StemChange::SetSolo(false),
+            },
+            DeckAction::Stem {
+                stem: Stem::Other,
+                change: StemChange::Volume(0.5),
+            },
+        ];
+
+        for action in cases {
+            match action {
+                DeckAction::Stem {
+                    change: StemChange::ToggleMute | StemChange::SetSolo(_) | StemChange::Volume(_),
+                    ..
+                } => {}
+                _ => unreachable!("test cases are all stem actions"),
+            }
+            let action = Action::Deck {
+                deck: deck(1),
+                action,
+            };
+            let text = action.to_string();
+            assert_eq!(
+                Action::parse(&text).unwrap(),
+                action,
+                "`{text}` did not survive"
+            );
         }
     }
 
