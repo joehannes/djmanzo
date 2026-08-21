@@ -2791,6 +2791,8 @@ fn label_of(label: dj_core::PadLabel) -> String {
         PadLabel::Beats(_) => "0".to_owned(),
         PadLabel::FxSlot(n) => format!("FX{n}"),
         PadLabel::FxPlace(n) => format!("{n} post"),
+        PadLabel::StemMute(stem) => format!("{} mute", stem.name()),
+        PadLabel::StemSolo(stem) => format!("{} solo", stem.name()),
     }
 }
 

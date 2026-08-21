@@ -17,7 +17,7 @@
 //! watches, in [`Lit`], and the interface evaluates that one enum rather than
 //! carrying a branch per page.
 
-use crate::action::{DeckAction, MixerAction};
+use crate::action::{DeckAction, MixerAction, Stem, StemChange};
 use crate::fx::{EffectKind, FxChange};
 use crate::hotcue::HOT_CUE_SLOTS;
 use crate::sampler::SampleChange;
@@ -48,18 +48,21 @@ pub enum PadPage {
     Slicer,
     Saved,
     Sampler,
+    /// The first M6 page: four stem mutes and four held stem solos.
+    Stems,
     Fx,
 }
 
 impl PadPage {
     /// Every page, in the order they are offered.
-    pub const ALL: [PadPage; 7] = [
+    pub const ALL: [PadPage; 8] = [
         PadPage::Cues,
         PadPage::Loops,
         PadPage::Roll,
         PadPage::Slicer,
         PadPage::Saved,
         PadPage::Sampler,
+        PadPage::Stems,
         PadPage::Fx,
     ];
 
@@ -72,6 +75,7 @@ impl PadPage {
             PadPage::Slicer => "slicer",
             PadPage::Saved => "saved",
             PadPage::Sampler => "sampler",
+            PadPage::Stems => "stems",
             PadPage::Fx => "fx",
         }
     }
@@ -197,6 +201,35 @@ impl PadPage {
                     lit: Lit::SamplePlaying(slot),
                 }
             }),
+            PadPage::Stems => std::array::from_fn(|index| {
+                let stem = Stem::ALL[index % Stem::ALL.len()];
+                if index < Stem::ALL.len() {
+                    Pad {
+                        label: PadLabel::StemMute(stem),
+                        press: d(DeckAction::Stem {
+                            stem,
+                            change: StemChange::ToggleMute,
+                        }),
+                        release: None,
+                        clear: None,
+                        lit: Lit::StemMuted(stem),
+                    }
+                } else {
+                    Pad {
+                        label: PadLabel::StemSolo(stem),
+                        press: d(DeckAction::Stem {
+                            stem,
+                            change: StemChange::SetSolo(true),
+                        }),
+                        release: d(DeckAction::Stem {
+                            stem,
+                            change: StemChange::SetSolo(false),
+                        }),
+                        clear: None,
+                        lit: Lit::StemSolo(stem),
+                    }
+                }
+            }),
             // Three slots, so the page is a switch and a select per slot rather
             // than eight of anything. The last two pads are spare and say so.
             PadPage::Fx => std::array::from_fn(|index| match index {
@@ -313,6 +346,10 @@ pub enum PadLabel {
     FxSlot(u8),
     /// Effect slot `n`'s placement.
     FxPlace(u8),
+    /// Mute/unmute one stem.
+    StemMute(Stem),
+    /// Hold one stem on its own.
+    StemSolo(Stem),
 }
 
 /// What makes a pad light.
@@ -340,6 +377,10 @@ pub enum Lit {
     SamplePlaying(u8),
     /// The playhead is inside this slice of the slicer's domain.
     SliceAt(u8),
+    /// This stem is muted.
+    StemMuted(Stem),
+    /// This stem is being soloed.
+    StemSolo(Stem),
 }
 
 #[cfg(test)]
@@ -358,7 +399,8 @@ mod tests {
         for page in PadPage::ALL {
             assert_eq!(PadPage::parse(page.name()), Some(page));
         }
-        assert_eq!(PadPage::parse("stems"), None);
+        assert_eq!(PadPage::parse("stems"), Some(PadPage::Stems));
+        assert_eq!(PadPage::parse("stem"), None);
     }
 
     /// The cue page is the default because it is the only one that works on a
@@ -372,6 +414,7 @@ mod tests {
         assert!(PadPage::Roll.needs_grid());
         assert!(!PadPage::Saved.needs_grid());
         assert!(!PadPage::Sampler.needs_grid());
+        assert!(!PadPage::Stems.needs_grid());
         assert!(!PadPage::Fx.needs_grid());
     }
 
@@ -469,7 +512,13 @@ mod tests {
             assert_eq!(pad.lit, Lit::SamplePlaying(slot));
         }
         // And every other page still speaks to its deck.
-        for page in [PadPage::Cues, PadPage::Loops, PadPage::Roll, PadPage::Saved] {
+        for page in [
+            PadPage::Cues,
+            PadPage::Loops,
+            PadPage::Roll,
+            PadPage::Saved,
+            PadPage::Stems,
+        ] {
             for pad in page.pads() {
                 assert!(
                     matches!(pad.press, Some(PadAction::Deck(_))),
@@ -488,6 +537,43 @@ mod tests {
     fn the_sampler_page_always_sends_a_release() {
         for pad in PadPage::Sampler.pads() {
             assert!(pad.release.is_some());
+        }
+    }
+
+    /// The stem page is the first M6 surface. Top row toggles mute; bottom row
+    /// solos momentarily, so a DJ can audition a vocal or bassline and let go.
+    #[test]
+    fn the_stem_page_has_mutes_above_held_solos() {
+        let pads = PadPage::Stems.pads();
+        for (index, stem) in Stem::ALL.into_iter().enumerate() {
+            assert_eq!(pads[index].label, PadLabel::StemMute(stem));
+            assert_eq!(
+                pads[index].press,
+                Some(PadAction::Deck(DeckAction::Stem {
+                    stem,
+                    change: StemChange::ToggleMute,
+                }))
+            );
+            assert_eq!(pads[index].release, None);
+            assert_eq!(pads[index].lit, Lit::StemMuted(stem));
+
+            let solo = index + Stem::ALL.len();
+            assert_eq!(pads[solo].label, PadLabel::StemSolo(stem));
+            assert_eq!(
+                pads[solo].press,
+                Some(PadAction::Deck(DeckAction::Stem {
+                    stem,
+                    change: StemChange::SetSolo(true),
+                }))
+            );
+            assert_eq!(
+                pads[solo].release,
+                Some(PadAction::Deck(DeckAction::Stem {
+                    stem,
+                    change: StemChange::SetSolo(false),
+                }))
+            );
+            assert_eq!(pads[solo].lit, Lit::StemSolo(stem));
         }
     }
 

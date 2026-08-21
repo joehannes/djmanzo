@@ -23,7 +23,7 @@ pub mod sampler;
 pub mod time;
 pub mod vocabulary;
 
-pub use action::{Action, DeckAction, MixerAction};
+pub use action::{Action, DeckAction, MixerAction, Stem, StemChange};
 pub use context::{
     AudioMetrics, EnvironmentContext, SessionContext, SessionPhase, SessionRead, TimeOfDay,
 };

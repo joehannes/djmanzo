@@ -869,7 +869,7 @@ cancel a loop the DJ set on purpose.
 - Look-ahead separation with a rolling window and content-hashed disk cache, bounded with LRU
   eviction, chunk boundaries crossfaded.
 - Graceful pending state: original mix plays while the first window is separating.
-- Stem pads page; per-stem volume, EQ and effects.
+- **Stem pads page — started**: the action vocabulary now has the four stems and the pad table exposes a Stems page with mute toggles over held solos, so the screen, controllers and assistant share the same verbs before separated buffers arrive. Per-stem volume, EQ and effects still to come.
 - Stem-aware transitions; stem swapping across decks.
 - Per-deck and per-stem outputs for external processing.
 

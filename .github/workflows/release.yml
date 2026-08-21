@@ -24,7 +24,7 @@ on:
       platforms:
         description: 'Which builds to produce'
         type: choice
-        default: linux
+        default: all
         options:
           - linux
           - all

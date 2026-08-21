@@ -12,6 +12,7 @@
    * snapshot to decide what glows.
    */
   import type { DeckState, Lit, PadPageDto, SamplerState } from "./api";
+  import SvgButton from "./SvgButton.svelte";
 
   let {
     pages,
@@ -113,6 +114,10 @@
       // grid on its own and you can see the next slice coming.
       return deck.slice.at === condition.SliceAt;
     }
+    // The M6 stem page is visible before separated buffers land. Until the
+    // snapshot carries per-stem state, these pads behave and label correctly
+    // but do not latch visually.
+    if ("StemMuted" in condition || "StemSolo" in condition) return false;
     return false;
   }
 
@@ -140,9 +145,7 @@
   <div class="zone">
     <div class="tabs">
       {#each usable as p (p.name)}
-        <button class:active={p.name === current.name} onclick={() => (page = p.name)}>
-          {p.name}
-        </button>
+        <SvgButton kind="tab" label={p.name} active={p.name === current.name} onclick={() => (page = p.name)} />
       {/each}
     </div>
 
@@ -153,11 +156,12 @@
     -->
     <div class="grid">
       {#each current.pads as pad, index (index)}
-        <button
-          class="pad"
-          class:blank={!pad.press}
-          class:lit={lit(pad.lit)}
-          class:held={held === index}
+        <SvgButton
+          kind="pad"
+          label={pad.label}
+          blank={!pad.press}
+          lit={lit(pad.lit)}
+          held={held === index}
           disabled={!enabled || !pad.press}
           onpointerdown={(event) => press(index, event)}
           onpointerup={() => release(index)}
@@ -168,9 +172,7 @@
             send(pad.clear);
           }}
           title={pad.clear ? `${pad.label} — right-click for the second gesture` : pad.label}
-        >
-          {pad.label}
-        </button>
+        />
       {/each}
     </div>
   </div>
@@ -188,52 +190,10 @@
     gap: 0.2rem;
   }
 
-  .tabs button {
-    padding: 0.1rem 0.4rem;
-    font-size: 0.75em;
-    letter-spacing: 0.04em;
-    color: var(--text-dim);
-  }
-
-  .tabs button.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
-  }
-
   .grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 0.25rem;
   }
 
-  .pad {
-    padding: 0.4rem 0.2rem;
-    font-size: 0.85em;
-    font-weight: 600;
-  }
-
-  /* A filled pad is filled, not merely labelled: mid-set this is read by shape
-     and colour rather than by the number on it. */
-  .pad.lit {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
-  }
-
-  /* Held is a different colour from lit, because they are different facts: one
-     is "this is set", the other is "your finger is on it right now". */
-  .pad.held {
-    background: var(--accent-2);
-    border-color: var(--accent-2);
-    color: var(--on-accent);
-  }
-
-  /* A pad with nothing on it keeps its place in the grid so the eight never
-     reflow, but stops looking like something to press. */
-  .pad.blank {
-    background: none;
-    border-style: dashed;
-    opacity: 0.35;
-  }
 </style>
