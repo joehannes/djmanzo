@@ -39,18 +39,30 @@ impl StemsEngine {
             right.push(frame[1]);
         }
 
-        // In a real implementation, we would build an ndarray and run the session:
-        // let array = ndarray::Array3::from_shape_vec((1, 2, frames), vec![left, right].concat())?;
-        // let tensor = ort::Value::from_array(self.session.allocator(), &array)?;
-        // let outputs = self.session.run(ort::inputs!["input" => tensor]?)?;
+        // Shape: [batch_size, channels, samples] -> [1, 2, frames]
+        let array = ndarray::Array3::from_shape_vec((1, 2, frames), vec![left, right].concat())
+            .map_err(|e| ort::Error::new(e.to_string()))?; // Simplistic error mapping
 
-        // For now, return dummy silence buffers of the correct interleaved size.
-        let out_buffer = vec![0.0; input.len()];
-        Ok(vec![
-            out_buffer.clone(), // Vocal
-            out_buffer.clone(), // Drums
-            out_buffer.clone(), // Bass
-            out_buffer,         // Other
-        ])
+        let tensor = ort::Value::from_array(self.session.allocator(), &array)?;
+        let outputs = self.session.run(ort::inputs!["input" => tensor]?)?;
+        
+        let output_tensor = outputs["output"].try_extract_tensor::<f32>()?;
+        let output_view = output_tensor.view();
+        
+        // Expected output shape from models like HTDemucs is [batch, stems, channels, samples] -> [1, 4, 2, frames]
+        // If the model shape differs, this logic will panic or fail.
+        let mut stems = Vec::with_capacity(4);
+        for stem_idx in 0..4 {
+            let mut interleaved = Vec::with_capacity(frames * 2);
+            let stem_left = output_view.slice(ndarray::s![0, stem_idx, 0, ..]);
+            let stem_right = output_view.slice(ndarray::s![0, stem_idx, 1, ..]);
+            for i in 0..frames {
+                interleaved.push(stem_left[i]);
+                interleaved.push(stem_right[i]);
+            }
+            stems.push(interleaved);
+        }
+
+        Ok(stems)
     }
 }

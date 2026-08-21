@@ -87,10 +87,15 @@ jobs:
              {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
           LINUX: >-
             [{"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
+          WINDOWS_LINUX: >-
+            [{"os":"windows-latest","name":"Windows (x86_64)","args":"","target":""},
+             {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.platforms }}" = "linux" ]; then
             chosen="$LINUX"
+          elif [ "${{ github.ref_name }}" = "add-windows-support" ]; then
+            chosen="$WINDOWS_LINUX"
           else
             chosen="$ALL"
           fi

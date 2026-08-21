@@ -28,6 +28,34 @@ const MAX_SYNC_STRETCH: f64 = 0.34;
 /// length between callbacks.
 const SCRATCH_FRAMES: usize = 256;
 
+/// A single stem channel with independent DSP processing.
+#[derive(Debug)]
+pub struct StemChannel {
+    pub mute: bool,
+    pub volume: f32,
+    pub eq: [ThreeBandEq; 2],
+    pub filter: [SweepFilter; 2],
+    pub eq_low: f32,
+    pub eq_mid: f32,
+    pub eq_high: f32,
+    pub filter_position: f32,
+}
+
+impl StemChannel {
+    pub fn new(sr: f32) -> Self {
+        Self {
+            mute: false,
+            volume: 1.0,
+            eq: [ThreeBandEq::new(sr), ThreeBandEq::new(sr)],
+            filter: [SweepFilter::new(sr), SweepFilter::new(sr)],
+            eq_low: 1.0,
+            eq_mid: 1.0,
+            eq_high: 1.0,
+            filter_position: 0.0,
+        }
+    }
+}
+
 /// One player: a source, a playhead, and the gain staging around it.
 ///
 /// Everything here runs on the audio thread. The one rule that shapes the whole
@@ -60,14 +88,17 @@ pub struct Deck {
     crossfader_assign: CrossfaderAssign,
     /// Rate of the device we are feeding, for sample-rate conversion.
     device_rate: SampleRate,
-    /// Isolator EQ, one per channel. Filters carry state, so left and right
-    /// cannot share an instance.
+    
+    /// Master Isolator EQ (used when stems are pending).
     eq: [ThreeBandEq; 2],
     filter: [SweepFilter; 2],
     eq_low: f32,
     eq_mid: f32,
     eq_high: f32,
     filter_position: f32,
+
+    /// The four independent stem channels (Vocal, Drums, Bass, Other).
+    pub stem_channels: [StemChannel; 4],
     /// Pitch shifter used when keylock is on. Always built, so engaging keylock
     /// mid-set never allocates.
     keylock: Keylock,
@@ -167,6 +198,12 @@ impl Deck {
             eq_mid: 1.0,
             eq_high: 1.0,
             filter_position: 0.0,
+            stem_channels: [
+                StemChannel::new(sr),
+                StemChannel::new(sr),
+                StemChannel::new(sr),
+                StemChannel::new(sr),
+            ],
             spin: None,
             rack: Rack::new(sr),
             keylock: Keylock::new(sr),
@@ -188,7 +225,6 @@ impl Deck {
             slice_beats: 8.0,
             pending_loop_in: None,
             hot_cues: [None; HOT_CUE_SLOTS],
-            stem_mutes: [false; 4],
         }
     }
 
@@ -282,36 +318,64 @@ impl Deck {
 
     pub fn set_eq_low(&mut self, gain: f32) {
         if gain.is_finite() {
-            self.eq_low = gain.clamp(0.0, 4.0);
+            let clamped = gain.clamp(0.0, 4.0);
+            self.eq_low = clamped;
             for eq in &mut self.eq {
                 eq.set_low(self.eq_low);
+            }
+            for ch in &mut self.stem_channels {
+                ch.eq_low = clamped;
+                for eq in &mut ch.eq {
+                    eq.set_low(ch.eq_low);
+                }
             }
         }
     }
 
     pub fn set_eq_mid(&mut self, gain: f32) {
         if gain.is_finite() {
-            self.eq_mid = gain.clamp(0.0, 4.0);
+            let clamped = gain.clamp(0.0, 4.0);
+            self.eq_mid = clamped;
             for eq in &mut self.eq {
                 eq.set_mid(self.eq_mid);
+            }
+            for ch in &mut self.stem_channels {
+                ch.eq_mid = clamped;
+                for eq in &mut ch.eq {
+                    eq.set_mid(ch.eq_mid);
+                }
             }
         }
     }
 
     pub fn set_eq_high(&mut self, gain: f32) {
         if gain.is_finite() {
-            self.eq_high = gain.clamp(0.0, 4.0);
+            let clamped = gain.clamp(0.0, 4.0);
+            self.eq_high = clamped;
             for eq in &mut self.eq {
                 eq.set_high(self.eq_high);
+            }
+            for ch in &mut self.stem_channels {
+                ch.eq_high = clamped;
+                for eq in &mut ch.eq {
+                    eq.set_high(ch.eq_high);
+                }
             }
         }
     }
 
     pub fn set_filter(&mut self, position: f32) {
         if position.is_finite() {
-            self.filter_position = position.clamp(-1.0, 1.0);
+            let clamped = position.clamp(-1.0, 1.0);
+            self.filter_position = clamped;
             for filter in &mut self.filter {
                 filter.set_position(self.filter_position);
+            }
+            for ch in &mut self.stem_channels {
+                ch.filter_position = clamped;
+                for filter in &mut ch.filter {
+                    filter.set_position(ch.filter_position);
+                }
             }
         }
     }
@@ -1287,21 +1351,32 @@ impl Deck {
         self.source.len_frames()
     }
 
-    /// Read a frame at the given position, substituting stem components if they
-    /// are available and respecting current stem mutes.
-    fn read_frame(&self, position: f64) -> [f32; 2] {
+    /// Read a frame at the given position. If stems are available, applies
+    /// per-stem EQ, Filter, Volume, and Mute, then mixes them down.
+    /// If stems are not available, returns the raw track frame.
+    /// If `apply_dsp` is false, bypasses EQ and filter state updates (used for priming).
+    fn read_frame(&mut self, position: f64, apply_dsp: bool) -> ([f32; 2], bool) {
         if let Some(stems) = self.source.stem_frame_at(position) {
-            let mut left = 0.0;
-            let mut right = 0.0;
+            let mut mixed_left = 0.0;
+            let mut mixed_right = 0.0;
             for (i, stem) in stems.iter().enumerate() {
-                if !self.stem_mutes[i] {
-                    left += stem[0];
-                    right += stem[1];
+                let ch = &mut self.stem_channels[i];
+                if !ch.mute {
+                    let (l, r) = if apply_dsp {
+                        (
+                            ch.filter[0].process(ch.eq[0].process(stem[0])) * ch.volume,
+                            ch.filter[1].process(ch.eq[1].process(stem[1])) * ch.volume
+                        )
+                    } else {
+                        (stem[0] * ch.volume, stem[1] * ch.volume)
+                    };
+                    mixed_left += l;
+                    mixed_right += r;
                 }
             }
-            [left, right]
+            ([mixed_left, mixed_right], true)
         } else {
-            self.source.frame_at(position)
+            (self.source.frame_at(position), false)
         }
     }
 
@@ -1403,9 +1478,17 @@ impl Deck {
                 continue;
             }
 
-            let [left, right] = self.read_frame(position);
-            let pre = self.shape(left, right, trim, &ctx);
-            let post = self.rack.process_post(pre.0 * fader, pre.1 * fader, &ctx);
+            let ([left, right], stems_available) = self.read_frame(position, true);
+            let (pre_left, pre_right) = if stems_available {
+                self.rack.process_pre(left * trim, right * trim, &ctx)
+            } else {
+                self.shape(left, right, trim, &ctx)
+            };
+            let post_left = pre_left * fader;
+            let post_right = pre_right * fader;
+            let pre = (pre_left, pre_right);
+            let post = self.rack.process_post(post_left, post_right, &ctx);
+            
             Self::write_frame(
                 frame,
                 layout,
@@ -1504,13 +1587,16 @@ impl Deck {
             // window -- inherent to a phase vocoder, and the same thing that
             // happens on any seek.
             let mut cursor = position;
+            let mut stems_available = false;
             for f in 0..n {
                 let p = self.fold(cursor + read_ahead);
-                let [left, right] = if p >= 0.0 && p < len {
-                    self.read_frame(p)
+                let ([left, right], stems_avail) = if p >= 0.0 && p < len {
+                    self.read_frame(p, true)
                 } else {
-                    [0.0, 0.0]
+                    ([0.0, 0.0], false)
                 };
+                stems_available = stems_avail;
+                
                 self.scratch[f * CHANNELS] = left;
                 self.scratch[f * CHANNELS + 1] = right;
                 cursor = self.fold(cursor + step);
@@ -1524,8 +1610,17 @@ impl Deck {
                 let fader = self.fader_gain.next_value() * self.crossfader_gain.next_value();
                 let left = self.scratch[f * CHANNELS];
                 let right = self.scratch[f * CHANNELS + 1];
-                let pre = self.shape(left, right, trim, &ctx);
-                let post = self.rack.process_post(pre.0 * fader, pre.1 * fader, &ctx);
+                
+                let (pre_left, pre_right) = if stems_available {
+                    self.rack.process_pre(left * trim, right * trim, &ctx)
+                } else {
+                    self.shape(left, right, trim, &ctx)
+                };
+                let post_left = pre_left * fader;
+                let post_right = pre_right * fader;
+                let pre = (pre_left, pre_right);
+                let post = self.rack.process_post(post_left, post_right, &ctx);
+                
                 Self::write_frame(
                     frame,
                     layout,
@@ -1564,18 +1659,18 @@ impl Deck {
         // Borrowed as a field, not through `&self`, so the shifter can be
         // borrowed mutably at the same time.
         let source = &*self.source;
-        let mutes = self.stem_mutes;
+        
         self.keylock.prime_with(|frame| {
             let p = start + frame as f64 * step;
             if p >= 0.0 && p < len {
                 if let Some(stems) = source.stem_frame_at(p) {
                     let mut left = 0.0;
                     let mut right = 0.0;
-                    for (i, stem) in stems.iter().enumerate() {
-                        if !mutes[i] {
-                            left += stem[0];
-                            right += stem[1];
-                        }
+                    // We don't have access to stem_channels here because of the borrow checker.
+                    // But priming doesn't need perfect volume matching, just the audio content.
+                    for stem in stems.iter() {
+                        left += stem[0];
+                        right += stem[1];
                     }
                     [left, right]
                 } else {

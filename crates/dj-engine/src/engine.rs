@@ -521,21 +521,25 @@ impl Engine {
                     DeckAction::Stem { stem, change } => {
                         let idx = stem as usize;
                         match change {
-                            dj_core::StemChange::ToggleMute => {
-                                target.stem_mutes[idx] = !target.stem_mutes[idx];
+                            dj_core::action::StemChange::ToggleMute => {
+                                target.stem_channels[idx].mute = !target.stem_channels[idx].mute;
                             }
-                            dj_core::StemChange::SetSolo(solo) => {
+                            dj_core::action::StemChange::SetSolo(solo) => {
                                 // If solo is true, mute everything else and unmute this.
                                 // If false, unmute everything (a simplified release action).
                                 if solo {
-                                    target.stem_mutes = [true; 4];
-                                    target.stem_mutes[idx] = false;
+                                    for ch in &mut target.stem_channels {
+                                        ch.mute = true;
+                                    }
+                                    target.stem_channels[idx].mute = false;
                                 } else {
-                                    target.stem_mutes = [false; 4];
+                                    for ch in &mut target.stem_channels {
+                                        ch.mute = false;
+                                    }
                                 }
                             }
-                            dj_core::StemChange::Volume(_) => {
-                                // Volume scaling to be implemented when DSP is expanded.
+                            dj_core::action::StemChange::Volume(vol) => {
+                                target.stem_channels[idx].volume = vol;
                             }
                         }
                     }
