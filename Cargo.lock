@@ -1371,6 +1371,7 @@ dependencies = [
  "dj-core",
  "dj-decode",
  "dj-dsp",
+ "dj-stems",
  "rtrb",
 ]
 

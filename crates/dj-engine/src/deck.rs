@@ -99,6 +99,8 @@ pub struct Deck {
     /// callback. A `Beatgrid` is four numbers and `Copy`, so it crosses the
     /// queue without allocating.
     grid: Option<Beatgrid>,
+    /// Stems state: true if muted
+    pub stem_mutes: [bool; 4],
     /// True when this deck's tempo is being held to another's.
     synced: bool,
     /// The region repeating right now, if any.
@@ -186,6 +188,7 @@ impl Deck {
             slice_beats: 8.0,
             pending_loop_in: None,
             hot_cues: [None; HOT_CUE_SLOTS],
+            stem_mutes: [false; 4],
         }
     }
 
@@ -1284,6 +1287,24 @@ impl Deck {
         self.source.len_frames()
     }
 
+    /// Read a frame at the given position, substituting stem components if they
+    /// are available and respecting current stem mutes.
+    fn read_frame(&self, position: f64) -> [f32; 2] {
+        if let Some(stems) = self.source.stem_frame_at(position) {
+            let mut left = 0.0;
+            let mut right = 0.0;
+            for (i, stem) in stems.iter().enumerate() {
+                if !self.stem_mutes[i] {
+                    left += stem[0];
+                    right += stem[1];
+                }
+            }
+            [left, right]
+        } else {
+            self.source.frame_at(position)
+        }
+    }
+
     /// Frames of source consumed per output frame.
     ///
     /// Combines the pitch fader, any directly-set rate, and conversion between
@@ -1382,7 +1403,7 @@ impl Deck {
                 continue;
             }
 
-            let [left, right] = self.source.frame_at(position);
+            let [left, right] = self.read_frame(position);
             let pre = self.shape(left, right, trim, &ctx);
             let post = self.rack.process_post(pre.0 * fader, pre.1 * fader, &ctx);
             Self::write_frame(
@@ -1486,7 +1507,7 @@ impl Deck {
             for f in 0..n {
                 let p = self.fold(cursor + read_ahead);
                 let [left, right] = if p >= 0.0 && p < len {
-                    self.source.frame_at(p)
+                    self.read_frame(p)
                 } else {
                     [0.0, 0.0]
                 };
@@ -1543,10 +1564,23 @@ impl Deck {
         // Borrowed as a field, not through `&self`, so the shifter can be
         // borrowed mutably at the same time.
         let source = &*self.source;
+        let mutes = self.stem_mutes;
         self.keylock.prime_with(|frame| {
             let p = start + frame as f64 * step;
             if p >= 0.0 && p < len {
-                source.frame_at(p)
+                if let Some(stems) = source.stem_frame_at(p) {
+                    let mut left = 0.0;
+                    let mut right = 0.0;
+                    for (i, stem) in stems.iter().enumerate() {
+                        if !mutes[i] {
+                            left += stem[0];
+                            right += stem[1];
+                        }
+                    }
+                    [left, right]
+                } else {
+                    source.frame_at(p)
+                }
             } else {
                 [0.0, 0.0]
             }

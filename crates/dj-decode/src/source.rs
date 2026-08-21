@@ -24,6 +24,13 @@ pub trait TrackSource: Send + Sync + std::fmt::Debug {
     fn is_empty(&self) -> bool {
         self.len_frames() == 0
     }
+
+    /// Interpolated stem frames at a fractional position, returning 4 stereo frames
+    /// (Vocal, Drums, Bass, Other). Returns `None` if the stems for this position
+    /// are not yet available, allowing the engine to gracefully fall back to the original mix.
+    fn stem_frame_at(&self, _position: f64) -> Option<[[f32; CHANNELS]; 4]> {
+        None
+    }
 }
 
 impl TrackSource for AudioBuffer {

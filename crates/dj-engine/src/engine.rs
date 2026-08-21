@@ -518,11 +518,26 @@ impl Engine {
                         target.set_reverse(!on);
                     }
                     DeckAction::SetCensor(held) => target.set_censor(held),
-                    DeckAction::Stem { .. } => {
-                        // M6 starts at the action vocabulary and pad surface.
-                        // Until separated buffers exist on the deck, stem
-                        // gestures are accepted and harmless rather than
-                        // becoming unmapped buttons that fail mid-set.
+                    DeckAction::Stem { stem, change } => {
+                        let idx = stem as usize;
+                        match change {
+                            dj_core::StemChange::ToggleMute => {
+                                target.stem_mutes[idx] = !target.stem_mutes[idx];
+                            }
+                            dj_core::StemChange::SetSolo(solo) => {
+                                // If solo is true, mute everything else and unmute this.
+                                // If false, unmute everything (a simplified release action).
+                                if solo {
+                                    target.stem_mutes = [true; 4];
+                                    target.stem_mutes[idx] = false;
+                                } else {
+                                    target.stem_mutes = [false; 4];
+                                }
+                            }
+                            dj_core::StemChange::Volume(_) => {
+                                // Volume scaling to be implemented when DSP is expanded.
+                            }
+                        }
                     }
                     DeckAction::Fx { slot, change } => {
                         target.rack_mut().apply(slot, change);
