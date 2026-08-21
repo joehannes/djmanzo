@@ -75,15 +75,9 @@
   </div>
   
   <div class="macros-row">
-    <button class="macro-btn" onclick={macroAcapella} title="Solo Vocals">
-      🎤 Acapella
-    </button>
-    <button class="macro-btn" onclick={macroInstrumental} title="Mute Vocals">
-      🎸 Instrumental
-    </button>
-    <button class="macro-btn" onclick={macroVocalFadeOut} title="Gradually fade out vocals">
-      👋 Vocal Fade
-    </button>
+    <IconButton icon="fa-solid fa-microphone" title="Solo Vocals (Acapella)" onClick={macroAcapella} />
+    <IconButton icon="fa-solid fa-guitar" title="Mute Vocals (Instrumental)" onClick={macroInstrumental} />
+    <IconButton icon="fa-solid fa-hand" title="Gradually fade out vocals" onClick={macroVocalFadeOut} />
   </div>
 </div>
 

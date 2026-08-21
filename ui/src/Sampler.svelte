@@ -114,10 +114,7 @@
       not just the one showing, because the ones you cannot see are exactly the
       ones you will have forgotten about.
     -->
-    <button class="panic" disabled={!enabled} onclick={() => send("sampler stop_all")}>
-      Stop all
-    </button>
-  </div>
+    <IconButton icon="fa-solid fa-stop" title="Stop all samples" onClick={() => send("sampler stop_all")} disabled={!enabled} />
 
   <!--
     Recording. A row of its own rather than a control per slot: there is one
