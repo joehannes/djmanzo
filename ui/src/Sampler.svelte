@@ -10,6 +10,7 @@
    */
   import { loadSample, TRIGGER_MODES, type SamplerState } from "./api";
   import { open } from "@tauri-apps/plugin-dialog";
+  import IconButton from "./controls/IconButton.svelte";
 
     let {
       sampler,
@@ -114,9 +115,13 @@
         not just the one showing, because the ones you cannot see are exactly the
         ones you will have forgotten about.
       -->
-      <button class="panic" disabled={!enabled} onclick={() => send("sampler stop_all")}>
-        Stop all
-      </button>
+      <IconButton
+        icon="fa-solid fa-stop"
+        title="Stop all"
+        aria-label="Stop all samples"
+        disabled={!enabled}
+        onClick={() => send("sampler stop_all")}
+      />
     </div>
 
     <!--
@@ -124,17 +129,16 @@
       recorder, and eight record buttons would suggest eight.
     -->
     <div class="record" class:live={sampler.record.recording}>
-      <button
-        class="arm"
-        class:live={sampler.record.recording}
-        disabled={!enabled || (!sampler.record.ready && !sampler.record.recording)}
-        onclick={toggleRecord}
+      <IconButton
+        icon={sampler.record.recording ? "fa-solid fa-stop" : "fa-solid fa-circle"}
         title={sampler.record.ready || sampler.record.recording
           ? "Capture into a slot"
           : "The last recording is still being made into a sample"}
-      >
-        {sampler.record.recording ? "STOP" : "REC"}
-      </button>
+        aria-label={sampler.record.recording ? "Stop recording" : "Record into a slot"}
+        active={sampler.record.recording}
+        disabled={!enabled || (!sampler.record.ready && !sampler.record.recording)}
+        onClick={toggleRecord}
+      />
 
       {#if sampler.record.recording}
         <!--
@@ -152,9 +156,13 @@
           ></div>
         </div>
         <span class="mono">{sampler.record.seconds.toFixed(1)}s</span>
-        <button class="drop" disabled={!enabled} onclick={() => send("sampler record cancel") }>
-          ×
-        </button>
+        <IconButton
+          icon="fa-solid fa-xmark"
+          title="Cancel recording"
+          aria-label="Cancel recording"
+          disabled={!enabled}
+          onClick={() => send("sampler record cancel")}
+        />
       {:else}
         <label class="pick">
           <span>from</span>
@@ -269,14 +277,13 @@
               </button>
             {/if}
 
-            <button
-              class="drop"
-              disabled={!enabled}
-              onclick={() => clear(slot.slot)}
+            <IconButton
+              icon="fa-solid fa-xmark"
               title="Empty this slot"
-            >
-              ×
-            </button>
+              aria-label={`Empty slot ${slot.slot}`}
+              disabled={!enabled}
+              onClick={() => clear(slot.slot)}
+            />
           {/if}
         </div>
       {/each}
