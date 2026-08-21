@@ -149,13 +149,14 @@ jobs:
 
       - name: Debug Windows build
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           cargo check --target x86_64-pc-windows-msvc > check_log.txt 2>&1 || true
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           git add check_log.txt
-          git commit -m "chore: upload check_log.txt"
-          git push
+          git commit -m "chore: upload check_log.txt" || true
+          git push origin HEAD:add-windows-support
 
       - uses: tauri-apps/tauri-action@v0
         id: tauri
