@@ -878,7 +878,7 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
 
 fn parse_stem(word: Option<&str>) -> Result<Stem, ParseError> {
     let word = word.ok_or(ParseError::MissingArgument)?;
-    Stem::parse(word).ok_or_else(|| ParseError::BadArgument)
+    Stem::parse(word).ok_or(ParseError::BadArgument)
 }
 
 /// Whole beats, for beat jump.

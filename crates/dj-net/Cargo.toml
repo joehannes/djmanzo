@@ -1,5 +1,6 @@
 [package]
-name = "dj-stems"
+name = "dj-net"
+description = "Network-control protocol core and tempo-clock utilities."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,12 +10,10 @@ authors.workspace = true
 
 [dependencies]
 dj-core.workspace = true
-ort = { version = "2.0.0-rc.8", features = ["fetch-models"] }
+dj-control.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
-blake3.workspace = true
-filetime = "0.2"
-ndarray = "0.15"
 
-[dev-dependencies]
-tempfile.workspace = true
+[lints]
+workspace = true

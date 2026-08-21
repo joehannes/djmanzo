@@ -119,6 +119,21 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Keyboard focus must be unmistakable in a dim booth. The browser default can
+   disappear against a dark panel, and removing it turns a dense instrument
+   into a mouse-only interface. Kept separate from hover: a controller or
+   keyboard user needs to know exactly where the next press will land. */
+:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  border-color: var(--accent-2);
+}
+
 button.primary {
   background: var(--accent);
   border-color: var(--accent);

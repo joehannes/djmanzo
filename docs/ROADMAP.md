@@ -880,6 +880,14 @@ change in audio latency, and instantly on the next load.
 
 ## M7 — Network
 
+**Foundation landed:** `dj-net` now gives every future transport a single,
+tested boundary: JSON control messages parse into the existing action bus and
+parameter registry, MIDI clock has bounded input/output timing utilities, and a
+phase follower applies only gentle tempo corrections. The documented control
+schema is transport-neutral so WebSocket and OSC adapters cannot grow private
+engine APIs. Pioneer/Denon discovery and actual socket adapters remain the
+next protocol-specific slices.
+
 - **Pro DJ Link** — join a Pioneer CDJ/XDJ network as a peer: device announcement, beat/tempo
   sync, on-air state, track metadata.
 - **StagelinQ** — Denon Prime discovery and state map.

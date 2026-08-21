@@ -522,24 +522,13 @@ impl Engine {
                         let idx = stem as usize;
                         match change {
                             dj_core::action::StemChange::ToggleMute => {
-                                target.stem_channels[idx].mute = !target.stem_channels[idx].mute;
+                                target.toggle_stem_mute(idx);
                             }
                             dj_core::action::StemChange::SetSolo(solo) => {
-                                // If solo is true, mute everything else and unmute this.
-                                // If false, unmute everything (a simplified release action).
-                                if solo {
-                                    for ch in &mut target.stem_channels {
-                                        ch.mute = true;
-                                    }
-                                    target.stem_channels[idx].mute = false;
-                                } else {
-                                    for ch in &mut target.stem_channels {
-                                        ch.mute = false;
-                                    }
-                                }
+                                target.set_stem_solo(idx, solo);
                             }
                             dj_core::action::StemChange::Volume(vol) => {
-                                target.stem_channels[idx].volume = vol;
+                                target.set_stem_volume(idx, vol);
                             }
                         }
                     }

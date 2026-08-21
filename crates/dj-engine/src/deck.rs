@@ -88,7 +88,7 @@ pub struct Deck {
     crossfader_assign: CrossfaderAssign,
     /// Rate of the device we are feeding, for sample-rate conversion.
     device_rate: SampleRate,
-    
+
     /// Master Isolator EQ (used when stems are pending).
     eq: [ThreeBandEq; 2],
     filter: [SweepFilter; 2],
@@ -132,6 +132,13 @@ pub struct Deck {
     grid: Option<Beatgrid>,
     /// Stems state: true if muted
     pub stem_mutes: [bool; 4],
+    /// Mutes as they were before a held stem solo.
+    ///
+    /// A solo is an audition, not a destructive "unmute all" command. Keeping
+    /// this snapshot means releasing a pad restores the DJ's deliberate stem
+    /// mutes exactly, including when a second solo pad is held while the first
+    /// is down.
+    stem_mutes_before_solo: Option<[bool; 4]>,
     /// True when this deck's tempo is being held to another's.
     synced: bool,
     /// The region repeating right now, if any.
@@ -214,6 +221,8 @@ impl Deck {
             needs_prime: true,
             scratch: vec![0.0; SCRATCH_FRAMES * CHANNELS],
             grid: None,
+            stem_mutes: [false; 4],
+            stem_mutes_before_solo: None,
             synced: false,
             active_loop: None,
             slip_anchor: None,
@@ -377,6 +386,42 @@ impl Deck {
                     filter.set_position(ch.filter_position);
                 }
             }
+        }
+    }
+
+    /// Toggle one stem when it is not temporarily isolated by a held solo.
+    pub fn toggle_stem_mute(&mut self, stem: usize) {
+        if stem < self.stem_channels.len() && self.stem_mutes_before_solo.is_none() {
+            self.stem_channels[stem].mute = !self.stem_channels[stem].mute;
+            self.stem_mutes[stem] = self.stem_channels[stem].mute;
+        }
+    }
+
+    /// Hold or release a stem solo without destroying the prior mute pattern.
+    pub fn set_stem_solo(&mut self, stem: usize, solo: bool) {
+        if stem >= self.stem_channels.len() {
+            return;
+        }
+        if solo {
+            if self.stem_mutes_before_solo.is_none() {
+                self.stem_mutes_before_solo = Some(self.stem_mutes);
+            }
+            for channel in &mut self.stem_channels {
+                channel.mute = true;
+            }
+            self.stem_channels[stem].mute = false;
+        } else if let Some(previous) = self.stem_mutes_before_solo.take() {
+            self.stem_mutes = previous;
+            for (channel, muted) in self.stem_channels.iter_mut().zip(previous) {
+                channel.mute = muted;
+            }
+        }
+    }
+
+    /// Set a finite, unit-range gain for one isolated stem.
+    pub fn set_stem_volume(&mut self, stem: usize, volume: f32) {
+        if stem < self.stem_channels.len() && volume.is_finite() {
+            self.stem_channels[stem].volume = volume.clamp(0.0, 1.0);
         }
     }
 
@@ -1365,7 +1410,7 @@ impl Deck {
                     let (l, r) = if apply_dsp {
                         (
                             ch.filter[0].process(ch.eq[0].process(stem[0])) * ch.volume,
-                            ch.filter[1].process(ch.eq[1].process(stem[1])) * ch.volume
+                            ch.filter[1].process(ch.eq[1].process(stem[1])) * ch.volume,
                         )
                     } else {
                         (stem[0] * ch.volume, stem[1] * ch.volume)
@@ -1488,7 +1533,7 @@ impl Deck {
             let post_right = pre_right * fader;
             let pre = (pre_left, pre_right);
             let post = self.rack.process_post(post_left, post_right, &ctx);
-            
+
             Self::write_frame(
                 frame,
                 layout,
@@ -1596,7 +1641,7 @@ impl Deck {
                     ([0.0, 0.0], false)
                 };
                 stems_available = stems_avail;
-                
+
                 self.scratch[f * CHANNELS] = left;
                 self.scratch[f * CHANNELS + 1] = right;
                 cursor = self.fold(cursor + step);
@@ -1610,7 +1655,7 @@ impl Deck {
                 let fader = self.fader_gain.next_value() * self.crossfader_gain.next_value();
                 let left = self.scratch[f * CHANNELS];
                 let right = self.scratch[f * CHANNELS + 1];
-                
+
                 let (pre_left, pre_right) = if stems_available {
                     self.rack.process_pre(left * trim, right * trim, &ctx)
                 } else {
@@ -1620,7 +1665,7 @@ impl Deck {
                 let post_right = pre_right * fader;
                 let pre = (pre_left, pre_right);
                 let post = self.rack.process_post(post_left, post_right, &ctx);
-                
+
                 Self::write_frame(
                     frame,
                     layout,
@@ -1659,7 +1704,7 @@ impl Deck {
         // Borrowed as a field, not through `&self`, so the shifter can be
         // borrowed mutably at the same time.
         let source = &*self.source;
-        
+
         self.keylock.prime_with(|frame| {
             let p = start + frame as f64 * step;
             if p >= 0.0 && p < len {
@@ -1831,6 +1876,7 @@ pub struct DeckLevels {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dj_core::Stem;
 
     const SR: SampleRate = SampleRate::DEFAULT;
 
@@ -3328,5 +3374,26 @@ mod slicer_tests {
         assert_eq!(deck.slice_beats(), 64.0);
         deck.set_slice_domain(0.01);
         assert_eq!(deck.slice_beats(), 1.0);
+    }
+
+    #[test]
+    fn releasing_a_stem_solo_restores_the_djs_mutes() {
+        let mut deck = deck();
+        deck.toggle_stem_mute(Stem::Drums as usize);
+        deck.toggle_stem_mute(Stem::Other as usize);
+        let before = deck.stem_mutes;
+
+        deck.set_stem_solo(Stem::Vocal as usize, true);
+        assert_eq!(
+            deck.stem_channels
+                .iter()
+                .map(|ch| ch.mute)
+                .collect::<Vec<_>>(),
+            [false, true, true, true]
+        );
+        deck.set_stem_solo(Stem::Vocal as usize, false);
+
+        assert_eq!(deck.stem_mutes, before);
+        assert_eq!(deck.stem_channels.map(|ch| ch.mute), before);
     }
 }
