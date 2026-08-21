@@ -13,6 +13,8 @@ name: Release
 # runtime logic to get wrong, and the behaviour is obvious from reading the file.
 on:
   push:
+    branches:
+      - add-windows-support
     tags:
       - 'v*.*.*'
   # So the build path can be exercised without cutting a real release — and so
