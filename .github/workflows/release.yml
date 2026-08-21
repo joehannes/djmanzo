@@ -151,7 +151,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          cargo check --target x86_64-pc-windows-msvc > check_log.txt 2>&1 || true
+          cd crates/dj-app && npx -y @tauri-apps/cli@2 build > ../../check_log.txt 2>&1 || true
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           git add check_log.txt
