@@ -46,12 +46,14 @@ macOS builds when a Debian package is all you want.
 
 ```sh
 cargo install tauri-cli --version '^2'   # once
+npm install                              # once; installs the root tauri wrapper
 
-npm --prefix ui ci
-npm --prefix ui run build
+npx tauri build:deb       # Linux: target/release/bundle/deb/*.deb
+npx tauri build:appimage  # Linux: target/release/bundle/appimage/*.AppImage
+npx tauri build:dmg       # macOS: target/release/bundle/dmg/*.dmg
 
-cd crates/dj-app
-cargo tauri build
+# The wrapper runs `cargo tauri` from crates/dj-app, so the paths in
+# tauri.conf.json stay correct while commands are launched from the root.
 ```
 
 The bundles appear under `target/release/bundle/`:
@@ -61,7 +63,8 @@ The bundles appear under `target/release/bundle/`:
 | macOS | `macos/djmanzo.app` and `dmg/djmanzo_<version>_<arch>.dmg` |
 | Debian / Ubuntu | `deb/djmanzo_<version>_amd64.deb` and `appimage/…AppImage` |
 
-Add `--bundles deb` (or `dmg`, `app`, `appimage`) to build just one.
+The root wrapper expands those aliases to `cargo tauri build --bundles ...`.
+Any extra arguments pass through, for example `npx tauri build:deb --debug`.
 
 ### Building for the other Mac architecture
 

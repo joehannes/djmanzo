@@ -1,0 +1,23 @@
+{
+  "name": "djmanzo-workspace",
+  "version": "0.1.0",
+  "description": "Root workspace commands for djmanzo builds and packages.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "ui:install": "npm --prefix ui ci",
+    "ui:build": "npm --prefix ui run build",
+    "ui:test": "npm --prefix ui test",
+    "check": "npm --prefix ui run check && cargo test --workspace --all-targets",
+    "build": "npm --prefix ui run build && cargo build --workspace --bin djmanzo",
+    "tauri": "tauri",
+    "build:deb": "tauri build:deb",
+    "build:dmg": "tauri build:dmg",
+    "build:appimage": "tauri build:appimage",
+    "build:linux": "tauri build:linux",
+    "build:macos": "tauri build:macos"
+  },
+  "devDependencies": {
+    "tauri": "file:tools/tauri-wrapper"
+  }
+}
