@@ -1,0 +1,10 @@
+{
+  "name": "tauri",
+  "version": "0.0.0-djmanzo-wrapper",
+  "description": "djmanzo root-workspace wrapper around cargo tauri.",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "tauri": "bin/tauri.mjs"
+  }
+}

@@ -22,6 +22,11 @@ VirtualDJ's feature set, appearance, workflow and handling, and then go past it.
 npm --prefix ui ci && npm --prefix ui run build   # tauri-build needs the bundle first
 cargo test --workspace --all-targets
 cargo run --bin djmanzo
+
+# installable bundles from the repository root
+npm install
+npx tauri build:deb        # Debian package on Linux
+npx tauri build:dmg        # macOS dmg on macOS
 ```
 
 **Prerequisites.** A Rust toolchain (1.90+), Node 22, and — because keylock builds
