@@ -66,6 +66,10 @@ pub struct DeckSnapshot {
     pub key_shift: i32,
     /// Which side of the crossfader cuts this deck, or neither.
     pub crossfader_assign: CrossfaderAssign,
+    /// Mute states for the 4 stems (Vocal, Drums, Bass, Other).
+    pub stem_mutes: [bool; 4],
+    /// Volume states for the 4 stems (Vocal, Drums, Bass, Other).
+    pub stem_volumes: [f32; 4],
     /// What the analyser made of this track. `None` while it is still running,
     /// which is the normal state for the first second after a load.
     pub analysis: Option<TrackAnalysisSnapshot>,
@@ -547,6 +551,18 @@ impl Snapshot {
                     crossfader_assign: CrossfaderAssign::from_param(get(
                         DeckParam::CrossfaderAssign,
                     )),
+                    stem_mutes: [
+                        get(DeckParam::StemVocalMute) >= 0.5,
+                        get(DeckParam::StemDrumsMute) >= 0.5,
+                        get(DeckParam::StemBassMute) >= 0.5,
+                        get(DeckParam::StemOtherMute) >= 0.5,
+                    ],
+                    stem_volumes: [
+                        get(DeckParam::StemVocalVolume),
+                        get(DeckParam::StemDrumsVolume),
+                        get(DeckParam::StemBassVolume),
+                        get(DeckParam::StemOtherVolume),
+                    ],
                     synced: get(DeckParam::Synced) >= 0.5,
                     effective_bpm: {
                         let bpm = get(DeckParam::EffectiveBpm);

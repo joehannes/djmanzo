@@ -45,6 +45,10 @@ impl TrackSource for AudioBuffer {
     fn sample_rate(&self) -> SampleRate {
         AudioBuffer::sample_rate(self)
     }
+
+    fn stem_frame_at(&self, position: f64) -> Option<[[f32; CHANNELS]; 4]> {
+        self.stem_frame_interpolated(position)
+    }
 }
 
 #[cfg(test)]

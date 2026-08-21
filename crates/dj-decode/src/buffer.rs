@@ -24,6 +24,9 @@ pub struct AudioBuffer {
     /// Interleaved L,R,L,R...
     samples: Vec<f32>,
     sample_rate: SampleRate,
+    /// Stems, if available. 4 stems * 2 channels = 8 floats per frame.
+    /// Uses RwLock so the background thread can write chunks.
+    stems: std::sync::Arc<parking_lot::RwLock<Vec<[f32; 8]>>>,
 }
 
 impl AudioBuffer {
@@ -32,24 +35,30 @@ impl AudioBuffer {
     /// A trailing partial frame is dropped rather than accepted, so
     /// `samples.len()` is always an exact multiple of the channel count and the
     /// reader can index without a bounds check on every access.
-    #[must_use]
     pub fn from_interleaved(mut samples: Vec<f32>, sample_rate: SampleRate) -> Self {
         let usable = samples.len() - (samples.len() % CHANNELS);
         samples.truncate(usable);
+        let frames = usable / CHANNELS;
         Self {
             samples,
             sample_rate,
+            stems: std::sync::Arc::new(parking_lot::RwLock::new(Vec::with_capacity(frames))),
         }
     }
 
     /// An empty buffer, which every deck starts with. Avoids `Option` in the
     /// engine's hot path.
-    #[must_use]
     pub fn empty() -> Self {
         Self {
             samples: Vec::new(),
             sample_rate: SampleRate::DEFAULT,
+            stems: std::sync::Arc::new(parking_lot::RwLock::new(Vec::new())),
         }
+    }
+    
+    /// Get a reference to the stems lock, to be populated by the background worker.
+    pub fn stems_lock(&self) -> std::sync::Arc<parking_lot::RwLock<Vec<[f32; 8]>>> {
+        self.stems.clone()
     }
 
     #[must_use]
@@ -117,6 +126,36 @@ impl AudioBuffer {
             a[0] + (b[0] - a[0]) * fraction,
             a[1] + (b[1] - a[1]) * fraction,
         ]
+    }
+
+    /// Linearly interpolated stem frame at a fractional position.
+    #[must_use]
+    pub fn stem_frame_interpolated(&self, position: f64) -> Option<[[f32; CHANNELS]; 4]> {
+        if position < 0.0 {
+            return None;
+        }
+        let index = position.floor();
+        let fraction = (position - index) as f32;
+        let index = index as usize;
+
+        // Use try_read to avoid blocking the audio thread!
+        let stems = self.stems.try_read()?;
+        
+        // If we haven't processed this far yet, fallback
+        if index + 1 >= stems.len() {
+            return None;
+        }
+
+        let a = stems[index];
+        let b = stems[index + 1];
+
+        let mut out = [[0.0; CHANNELS]; 4];
+        for s in 0..4 {
+            let offset = s * 2;
+            out[s][0] = a[offset] + (b[offset] - a[offset]) * fraction;
+            out[s][1] = a[offset + 1] + (b[offset + 1] - a[offset + 1]) * fraction;
+        }
+        Some(out)
     }
 }
 

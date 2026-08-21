@@ -20,8 +20,6 @@ pub struct BusLayout {
     pub cue: Option<(usize, usize)>,
     /// Booth output with independent level. Needs six channels.
     pub booth: Option<(usize, usize)>,
-    /// Direct outputs for external processing (e.g. per-deck or per-stem).
-    pub direct_outs: Vec<(usize, usize)>,
 }
 
 impl BusLayout {
@@ -40,28 +38,24 @@ impl BusLayout {
                 main: (0, 0),
                 cue: None,
                 booth: None,
-                direct_outs: Vec::new(),
             },
             2 | 3 => Self {
                 channels,
                 main: (0, 1),
                 cue: None,
                 booth: None,
-                direct_outs: Vec::new(),
             },
             4 | 5 => Self {
                 channels,
                 main: (0, 1),
                 cue: Some((2, 3)),
                 booth: None,
-                direct_outs: Vec::new(),
             },
             _ => Self {
                 channels,
                 main: (0, 1),
                 booth: Some((2, 3)),
                 cue: Some((4, 5)),
-                direct_outs: Vec::new(),
             },
         }
     }

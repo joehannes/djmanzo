@@ -166,6 +166,8 @@ pub struct AppState {
     /// thread that drains it. Held rather than dropped: a receiver dropped
     /// here would make every MIDI message a send into a closed channel.
     control_inbox: Mutex<Option<std::sync::mpsc::Receiver<String>>>,
+    /// Background worker for separating tracks into stems
+    stems_worker: Arc<dj_stems::worker::SeparationWorker>,
 }
 
 /// What is loaded on a deck, as far as the interface is concerned.
@@ -248,6 +250,10 @@ impl AppState {
 
         let (control, control_inbox) = crate::control::ControlHub::new();
 
+        let stems_engine = Arc::new(dj_stems::StemsEngine::new(std::path::Path::new("models/htdemucs.onnx")).expect("Failed to load Stems Engine"));
+        let stems_cache = Arc::new(dj_stems::cache::StemCache::new(std::env::temp_dir().join("djmanzo_stems"), 2 * 1024 * 1024 * 1024).expect("Failed to create Stem Cache"));
+        let stems_worker = Arc::new(dj_stems::worker::SeparationWorker::new(stems_engine, stems_cache));
+
         Self {
             bus,
             registry,
@@ -281,6 +287,7 @@ impl AppState {
             plugin,
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             control_inbox: Mutex::new(Some(control_inbox)),
+            stems_worker,
         }
     }
 
@@ -288,6 +295,12 @@ impl AppState {
     #[must_use]
     pub fn library(&self) -> Arc<crate::library::LibraryHandle> {
         Arc::clone(&self.library)
+    }
+
+    /// Background stem separator
+    #[must_use]
+    pub fn stems_worker(&self) -> Arc<dj_stems::worker::SeparationWorker> {
+        Arc::clone(&self.stems_worker)
     }
 
     /// Open the library at its real home and start identifying what a scan has

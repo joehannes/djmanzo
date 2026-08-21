@@ -30,16 +30,58 @@ impl StemCache {
         let now = filetime::FileTime::from_system_time(SystemTime::now());
         let _ = filetime::set_file_times(&path, now, now);
 
-        // TODO: Implement actual binary reading
-        None
+        let data = match fs::read(&path) {
+            Ok(d) => d,
+            Err(_) => return None,
+        };
+        
+        // Deserialize [chunk_size: u32, stems_count: u32, floats...]
+        if data.len() < 8 {
+            return None;
+        }
+        
+        let chunk_size = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+        let stems_count = u32::from_le_bytes(data[4..8].try_into().unwrap()) as usize;
+        
+        let expected_len = 8 + stems_count * chunk_size * 4;
+        if data.len() != expected_len {
+            return None;
+        }
+        
+        let mut stems = Vec::with_capacity(stems_count);
+        let mut offset = 8;
+        
+        for _ in 0..stems_count {
+            let mut stem = Vec::with_capacity(chunk_size);
+            for _ in 0..chunk_size {
+                let f = f32::from_le_bytes(data[offset..offset+4].try_into().unwrap());
+                stem.push(f);
+                offset += 4;
+            }
+            stems.push(stem);
+        }
+        
+        Some(stems)
     }
 
     /// Save a stem chunk to the cache.
-    pub fn put(&self, track_id: TrackId, chunk_index: usize, _stems: &[Vec<f32>]) -> std::io::Result<()> {
+    pub fn put(&self, track_id: TrackId, chunk_index: usize, stems: &[Vec<f32>]) -> std::io::Result<()> {
         let path = self.chunk_path(track_id, chunk_index);
         
-        // TODO: Implement actual binary writing
-        fs::write(&path, b"dummy")?;
+        let stems_count = stems.len() as u32;
+        let chunk_size = if stems_count > 0 { stems[0].len() as u32 } else { 0 };
+        
+        let mut data = Vec::with_capacity(8 + (stems_count * chunk_size * 4) as usize);
+        data.extend_from_slice(&chunk_size.to_le_bytes());
+        data.extend_from_slice(&stems_count.to_le_bytes());
+        
+        for stem in stems {
+            for &f in stem {
+                data.extend_from_slice(&f.to_le_bytes());
+            }
+        }
+        
+        fs::write(&path, &data)?;
 
         self.evict_if_needed()?;
         Ok(())
