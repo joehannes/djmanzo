@@ -8,18 +8,8 @@
    * headphones, picking a bank. Setting-up work rather than playing work, which
    * is why it is a panel you open rather than something taking room on a deck.
    */
-  <script lang="ts">
-    /**
-     * The sampler's own panel: what the pads cannot say.
-     *
-     * The pads fire samples — that is the Sampler page in the pad zone, and it is
-     * where a DJ actually plays from. This panel is the other half: loading a
-     * file into a slot, choosing how its pad behaves, sending it to the
-     * headphones, picking a bank. Setting-up work rather than playing work, which
-     * is why it is a panel you open rather than something taking room on a deck.
-     */
-    import { loadSample, TRIGGER_MODES, type SamplerState } from "./api";
-    import { open } from "@tauri-apps/plugin-dialog";
+  import { loadSample, TRIGGER_MODES, type SamplerState } from "./api";
+  import { open } from "@tauri-apps/plugin-dialog";
 
     let {
       sampler,
