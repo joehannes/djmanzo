@@ -147,6 +147,16 @@ jobs:
           npm ci
           npm run build
 
+      - name: Debug Windows build
+        if: runner.os == 'Windows'
+        run: |
+          cargo check --target x86_64-pc-windows-msvc > check_log.txt 2>&1 || true
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add check_log.txt
+          git commit -m "chore: upload check_log.txt"
+          git push
+
       - uses: tauri-apps/tauri-action@v0
         id: tauri
         env:
