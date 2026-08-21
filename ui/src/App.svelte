@@ -11,6 +11,7 @@
   import Settings from "./Settings.svelte";
   import Shortcuts from "./Shortcuts.svelte";
   import { Keyboard } from "./keyboard.svelte";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { watchFrameRate } from "./framerate";
   import {
     deviceMissing,
@@ -41,8 +42,10 @@
     dispatch,
     getSnapshot,
     hasBrandLogo,
+    clearBrandLogo,
     listDevices,
     logoUrl,
+    setBrandLogo,
     onSnapshot,
     activeDevice,
     openDevice,
@@ -351,6 +354,38 @@
     logoVersion += 1;
   }
 
+  /**
+   * The identity mark is also its control. This keeps a booth-critical action
+   * in the one place a DJ naturally looks for it, rather than burying it in
+   * Settings beside unrelated application preferences.
+   */
+  async function chooseLogo() {
+    try {
+      const path = await open({
+        multiple: false,
+        filters: [
+          { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg"] },
+        ],
+      });
+      if (typeof path !== "string") return;
+      await setBrandLogo(path);
+      await refreshLogo();
+      error = null;
+    } catch (e) {
+      error = `Could not set logo: ${String(e)}`;
+    }
+  }
+
+  async function resetLogo() {
+    try {
+      await clearBrandLogo();
+      await refreshLogo();
+      error = null;
+    } catch (e) {
+      error = `Could not reset logo: ${String(e)}`;
+    }
+  }
+
   // Watch our own frame rate. On a machine where the webview has no accelerated
   // compositing the waveform drops to ~16 fps with nothing to indicate why --
   // see the benchmark in ADR-0004. Better to say so than to look broken.
@@ -458,13 +493,27 @@
       else's product name all night is a small daily insult, so the
       application steps out of the way when asked.
     -->
-    <h1 class:branded={logo}>
+    <div class="brand">
+      <button
+        class:branded={logo}
+        class="brand-trigger"
+        onclick={chooseLogo}
+        title="Choose a booth logo (PNG, JPEG, GIF, WebP or SVG)"
+        aria-label="Choose your DJ logo"
+      >
+        {#if logo}
+          <img src={logoUrl(logoVersion)} alt="Your DJ logo" />
+        {:else}
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <span>DJ MANZO</span>
+        {/if}
+      </button>
       {#if logo}
-        <img src={logoUrl(logoVersion)} alt="" />
-      {:else}
-        djmanzo
+        <button class="brand-reset" onclick={resetLogo} title="Restore the DJ MANZO mark">
+          Reset
+        </button>
       {/if}
-    </h1>
+    </div>
 
     <div class="device">
       <select bind:value={selectedDevice} disabled={devices.length === 0}>
@@ -997,21 +1046,61 @@
     padding: 0.7rem 0.9rem;
   }
 
-  h1 {
-    margin: 0;
-    font-size: 1.1rem;
-    letter-spacing: 0.02em;
-    color: var(--accent);
+  .brand {
     display: flex;
     align-items: center;
+    gap: 0.25rem;
   }
 
   /* A logo is given room but never allowed to push the toolbar around. */
-  h1.branded img {
+  .brand-trigger {
+    min-height: 2.35rem;
+    margin: 0;
+    padding: 0.3rem 0.5rem;
+    border-color: transparent;
+    background: transparent;
+    color: var(--accent-2);
+    font-size: 0.9rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    white-space: nowrap;
+  }
+
+  .brand-trigger:hover:not(:disabled),
+  .brand-trigger:focus-visible {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+
+  .brand-mark {
+    display: inline-grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-right: 0.3rem;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    color: var(--warn);
+    font-size: 0.8rem;
+  }
+
+  .brand-trigger.branded {
+    padding: 0.2rem 0.35rem;
+  }
+
+  .brand-trigger.branded img {
     height: 28px;
     max-width: 200px;
     object-fit: contain;
     display: block;
+  }
+
+  .brand-reset {
+    padding: 0.25rem 0.4rem;
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 0.7rem;
   }
 
   .status button.active {
