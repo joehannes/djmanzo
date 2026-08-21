@@ -17,7 +17,7 @@
   }
 </script>
 
-<div class="switcher" on:click_outside={() => (open = false)}>
+<div class="switcher" onclick_outside={() => (open = false)}>
   <button class="icon" onclick={toggle} title="Theme">
     {theme.activePackage.name} · {theme.resolved}
   </button>
