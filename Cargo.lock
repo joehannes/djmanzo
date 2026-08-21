@@ -1403,6 +1403,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dj-net"
+version = "0.1.3"
+dependencies = [
+ "dj-control",
+ "dj-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "dj-presets"
 version = "0.1.3"
 dependencies = [
@@ -1459,6 +1470,7 @@ dependencies = [
  "filetime",
  "ndarray 0.15.6",
  "ort",
+ "tempfile",
  "thiserror 2.0.20",
  "tracing",
 ]
