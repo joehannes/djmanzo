@@ -147,18 +147,6 @@ jobs:
           npm ci
           npm run build
 
-      - name: Debug Windows build
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          cd crates/dj-app && npx -y @tauri-apps/cli@2 build > ../../check_log.txt 2>&1 || true
-          cd ../..
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          git add check_log.txt
-          git commit -m "chore: upload check_log.txt" || true
-          git push origin HEAD:add-windows-support
-
       - uses: tauri-apps/tauri-action@v0
         id: tauri
         env:
