@@ -1,5 +1,17 @@
         Info Looking up installed tauri packages to check mismatched versions...
-     Running beforeBuildCommand `node build-ui.js build`
+     Running beforeBuildCommand `node dj-app/build-ui.js build || node build-ui.js build`
+file:///D:/a/djmanzo/djmanzo/crates/dj-app/build-ui.js:1
+const { execSync } = require('child_process');
+                     ^
+
+ReferenceError: require is not defined in ES module scope, you can use import instead
+This file is being treated as an ES module because it has a '.js' file extension and 'D:\a\djmanzo\djmanzo\package.json' contains "type": "module". To treat it as a CommonJS script, rename it to use the '.cjs' file extension.
+    at file:///D:/a/djmanzo/djmanzo/crates/dj-app/build-ui.js:1:22
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.23.2
 node:internal/modules/cjs/loader:1433
   throw err;
   ^
@@ -17,5 +29,5 @@ Error: Cannot find module 'D:\a\djmanzo\djmanzo\crates\build-ui.js'
 }
 
 Node.js v22.23.2
-beforeBuildCommand `node build-ui.js build` failed with exit code 1
-       Error beforeBuildCommand `node build-ui.js build` failed with exit code 1
+beforeBuildCommand `node dj-app/build-ui.js build || node build-ui.js build` failed with exit code 1
+       Error beforeBuildCommand `node dj-app/build-ui.js build || node build-ui.js build` failed with exit code 1
