@@ -14,7 +14,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.0'
+      - 'v*.*.*'
   # So the build path can be exercised without cutting a real release — and so
   # an installable package can be had on demand. A dispatch run publishes
   # nothing: it uploads the bundles as workflow artifacts, downloadable from the
