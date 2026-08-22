@@ -415,10 +415,26 @@
       if (deviceMissing(remembered.device, devices)) {
         missingDevice = remembered.device;
       }
+      // Smart defaults: if no explicit selection, pick a sensible device.
       selectedDevice = deviceToOpen(selectedDevice, devices);
+      if (!selectedDevice) {
+        // Prefer a device marked default with at least 2 channels, else the highest-channel device.
+        const prefer = devices.find((d) => d.is_default && d.channels >= 2) ?? devices.slice().sort((a, b) => b.channels - a.channels)[0];
+        selectedDevice = prefer?.id ?? null;
+      }
       // A headphone device that has been unplugged would fail the open and
       // take the master down with it, so it is dropped rather than carried.
       if (deviceMissing(selectedCueDevice, devices)) selectedCueDevice = null;
+      // If no cue device chosen and there is a second device, choose one only
+      // when the master device lacks enough channels (less than 4) to host
+      // separate cue channels. Prefer a device with channels >= 2.
+      if (!selectedCueDevice && devices.length > 1) {
+        const master = devices.find((d) => d.id === selectedDevice);
+        if (!master || master.channels < 4) {
+          const candidate = devices.find((d) => d.id !== selectedDevice && d.channels >= 2) ?? devices.find((d) => d.id !== selectedDevice);
+          selectedCueDevice = candidate?.id ?? null;
+        }
+      }
       error = null;
     } catch (e) {
       error = String(e);
@@ -440,6 +456,8 @@
     } catch (e) {
       error = String(e);
       active = null;
+      // Show settings so the user can correct the audio configuration.
+      panel = "settings";
     }
   }
 
@@ -455,6 +473,9 @@
    * reconnect a device the DJ deliberately closed.
    */
   $effect(() => {
+    // Attempt an intelligent auto-connect once devices are known and we are
+    // not already connected. This uses the smart defaults chosen in
+    // `refreshDevices` and will surface the settings panel on failure.
     if (connectedOnce || devices.length === 0 || active !== null) return;
     connectedOnce = true;
     void connect();
@@ -522,40 +543,40 @@
     </div>
 
     <div class="device">
-      <select bind:value={selectedDevice} disabled={devices.length === 0}>
-        {#each devices as device (device.id)}
-          <option value={device.id}>
-            {device.name}{device.is_default ? " (default)" : ""}
-          </option>
-        {/each}
-      </select>
-
-      <select bind:value={bufferFrames}>
-        {#each [64, 128, 256, 512, 1024] as frames (frames)}
-          <option value={frames}>{frames} frames</option>
-        {/each}
-      </select>
-
-      <!--
-        Only worth offering when there is somewhere to send it. On a card with
-        four channels the cue already has a home and a second device would add
-        latency and a resampler for nothing.
-      -->
-      {#if devices.length > 1}
-        <select
-          bind:value={selectedCueDevice}
-          title="Send the headphone cue to a second sound card. Only needed when the main device has no spare channels."
-        >
-          <option value={null}>Cue: same device</option>
-          {#each devices.filter((d) => d.id !== selectedDevice) as device (device.id)}
-            <option value={device.id}>Cue: {device.name}</option>
+      {#if panel === "settings"}
+        <select bind:value={selectedDevice} disabled={devices.length === 0}>
+          {#each devices as device (device.id)}
+            <option value={device.id}>
+              {device.name}{device.is_default ? " (default)" : ""}
+            </option>
           {/each}
         </select>
-      {/if}
 
-      <button class="primary" onclick={connect}>
-        {active ? "Reconnect" : "Connect"}
-      </button>
+        <select bind:value={bufferFrames}>
+          {#each [64, 128, 256, 512, 1024] as frames (frames)}
+            <option value={frames}>{frames} frames</option>
+          {/each}
+        </select>
+
+        {#if devices.length > 1}
+          <select
+            bind:value={selectedCueDevice}
+            title="Send the headphone cue to a second sound card. Only needed when the main device has no spare channels."
+          >
+            <option value={null}>Cue: same device</option>
+            {#each devices.filter((d) => d.id !== selectedDevice) as device (device.id)}
+              <option value={device.id}>Cue: {device.name}</option>
+            {/each}
+          </select>
+        {/if}
+
+        <button class="primary" onclick={connect}>
+          {active ? "Reconnect" : "Connect"}
+        </button>
+      {:else}
+        <span class="device-brief">{active ? `${active.sample_rate / 1000} kHz • ${active.latency_ms.toFixed(1)} ms` : "No device"}</span>
+        <IconButton icon="fa-solid fa-cog" title="Audio settings" onClick={() => (panel = "settings")} />
+      {/if}
     </div>
 
     <div class="status mono">
