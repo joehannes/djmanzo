@@ -10,6 +10,7 @@
    */
   import { grouped, pretty, type Keyboard } from "./keyboard.svelte";
   import { setKeyboardEnabled } from "./api";
+  import IconButton from "./controls/IconButton.svelte";
 
   let { keyboard, onclose }: { keyboard: Keyboard; onclose: () => void } = $props();
 
@@ -28,9 +29,9 @@
   <header>
     <h2>Keyboard</h2>
     <div class="controls">
-      <button class:on={keyboard.enabled} onclick={toggle}>
+      <IconButton active={keyboard.enabled} onClick={toggle} title={keyboard.enabled ? "Listening" : "Off"}>
         {keyboard.enabled ? "Listening" : "Off"}
-      </button>
+      </IconButton>
       <IconButton icon="fa-solid fa-xmark" title="Close" onClick={onclose} />
     </div>
   </header>
