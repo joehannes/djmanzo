@@ -613,10 +613,10 @@
       {:else if selection.kind === "duplicates"}
         <strong>{duplicates.length.toLocaleString()}</strong>
         with more than one copy · {status.tracks.toLocaleString()} in your collection
-      <div style="display:flex; gap:0.4rem;">
+      <span style="display:inline-flex; gap:0.4rem; margin-left:0.4rem;">
         <IconButton icon="fa-solid fa-folder-plus" title="Add folder" onClick={addFolder} disabled={busy} />
         <IconButton icon="fa-solid fa-repeat" title="Rescan" onClick={rescan} disabled={busy || !status?.folders.length} />
-      </div>
+      </span>
         · <strong>{status.pending.toLocaleString()}</strong> waiting to be analysed
         {#if status.working}<em>(working…)</em>{/if}
       {/if}
