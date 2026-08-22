@@ -12,6 +12,7 @@
    * (`docs/adr/0003-action-bus-and-parameter-registry.md`).
    */
   import { EFFECTS, saveRackPreset, type FxSlot } from "./api";
+  import IconButton from "./controls/IconButton.svelte";
 
   let {
     slots,
@@ -87,19 +88,20 @@
         The switch first and largest, because it is the control reached for
         mid-mix. Selecting an effect is something done once, while setting up.
       -->
-      <button
+      <IconButton
         class="power"
-        class:lit={slot.enabled && loaded}
+        active={slot.enabled && loaded}
         disabled={!enabled || !loaded}
-        onclick={() => send(`${target} fx ${slot.slot} toggle`)}
+        onClick={() => send(`${target} fx ${slot.slot} toggle`)}
         title={loaded
           ? slot.enabled
             ? `${slot.kind} on — click to switch it off`
             : `${slot.kind} loaded — click to switch it on`
           : "Load an effect first"}
+        aria-pressed={slot.enabled && loaded}
       >
         {slot.slot}
-      </button>
+      </IconButton>
 
       <select
         class="pick"
@@ -157,30 +159,29 @@
       {#if slot.timed}
         <div class="lengths">
           {#each LENGTHS as beats (beats)}
-            <button
-              class:active={Math.abs(slot.beats - beats) < 0.001}
+            <IconButton
+              active={Math.abs(slot.beats - beats) < 0.001}
               disabled={!enabled}
-              onclick={() => send(`${target} fx ${slot.slot} beats ${beats}`)}
-              title="{formatBeats(beats)} beat{beats === 1 ? '' : 's'}"
+              onClick={() => send(`${target} fx ${slot.slot} beats ${beats}`)}
+              title={`${formatBeats(beats)} beat${beats === 1 ? '' : 's'}`}
             >
               {formatBeats(beats)}
-            </button>
+            </IconButton>
           {/each}
         </div>
       {/if}
 
       {#if showsPlacement && loaded}
-        <button
+        <IconButton
           class="place"
           disabled={!enabled}
-          onclick={() =>
-            send(`${target} fx ${slot.slot} ${slot.post_fader ? "pre" : "post"}`)}
+          onClick={() => send(`${target} fx ${slot.slot} ${slot.post_fader ? "pre" : "post"}`)}
           title={slot.post_fader
             ? "After the fader — pulling the fader down takes the tail with it"
             : "Before the fader — the tail survives the fader coming down"}
         >
           {slot.post_fader ? "post" : "pre"}
-        </button>
+        </IconButton>
       {/if}
     </div>
   {/each}

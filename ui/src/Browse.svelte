@@ -143,14 +143,14 @@
 
               {#if track.playable}
                 <div class="load">
-                  {#each Array.from({ length: deckCount }, (_, i) => i + 1) as deck (deck)}
-                    <button
+                    {#each Array.from({ length: deckCount }, (_, i) => i + 1) as deck (deck)}
+                    <IconButton
                       disabled={!enabled || loading === track.id}
-                      onclick={() => toDeck(track, deck)}
-                      title="Load to deck {deck}"
+                      onClick={() => toDeck(track, deck)}
+                      title={`Load to deck ${deck}`}
                     >
                       {loading === track.id ? "…" : deck}
-                    </button>
+                    </IconButton>
                   {/each}
                 </div>
               {:else}

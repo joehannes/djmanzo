@@ -19,6 +19,7 @@
     sidelist,
     type AutomixState,
   } from "./api";
+  import IconButton from "./controls/IconButton.svelte";
 
   let {
     automix,
@@ -54,26 +55,28 @@
 <section class="automix" class:running={automix.enabled}>
   <header>
     <h3>Automix</h3>
-    <button
+    <IconButton
       class="switch"
-      class:active={automix.enabled}
+      active={automix.enabled}
       disabled={!enabled}
-      onclick={() => send(automix.enabled ? "automix off" : "automix on")}
+      onClick={() => send(automix.enabled ? "automix off" : "automix on")}
+      aria-pressed={automix.enabled}
+      title={automix.enabled ? "Automix on" : "Automix off"}
     >
       {automix.enabled ? "On" : "Off"}
-    </button>
+    </IconButton>
   </header>
 
   <div class="styles">
     {#each TRANSITION_STYLES as style (style)}
-      <button
-        class:active={automix.style === style}
+      <IconButton
+        active={automix.style === style}
         disabled={!enabled}
         title={TRANSITION_HELP[style]}
-        onclick={() => send(`automix style ${style}`)}
+        onClick={() => send(`automix style ${style}`)}
       >
         {style}
-      </button>
+      </IconButton>
     {/each}
   </div>
 
@@ -99,13 +102,13 @@
       {:else}
         <span class="warn">Sidelist empty — nothing to mix into.</span>
       {/if}
-      <button
+      <IconButton
         disabled={!enabled || automix.mixing}
-        onclick={() => send("automix now")}
+        onClick={() => send("automix now")}
         title="Start the next transition now"
       >
         Now
-      </button>
+      </IconButton>
     </div>
   {/if}
 </section>
