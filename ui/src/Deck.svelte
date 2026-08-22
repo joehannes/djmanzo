@@ -323,15 +323,14 @@
       {#if showJump}
       <span class="label">Jump</span>
       {#each [-4, -1, 1, 4] as beats (beats)}
-        <button
-          onclick={() => send(`deck ${deck.number} beatjump ${beats}`)}
+        <IconButton
+          title={beats > 0 ? `Forward ${beats} beat${beats === 1 ? '' : 's'}` : `Back ${Math.abs(beats)} beat${Math.abs(beats) === 1 ? '' : 's'}`}
+          aria-label={beats > 0 ? `Forward ${beats}` : `Back ${Math.abs(beats)}`}
           disabled={!enabled || !deck.loaded}
-          title="{beats > 0 ? 'Forward' : 'Back'} {Math.abs(beats)} beat{Math.abs(beats) === 1
-            ? ''
-            : 's'}"
+          onClick={() => send(`deck ${deck.number} beatjump ${beats}`)}
         >
           {beats > 0 ? `+${beats}` : beats}
-        </button>
+        </IconButton>
       {/each}
       {/if}
 
@@ -420,20 +419,8 @@
         </button>
       {/each}
       <IconButton icon="fa-solid fa-hand-pointer" title="Tap along with the music" onClick={() => send(`deck ${deck.number} grid_tap`)} disabled={!enabled} />
-      <button
-        onclick={() => send(`deck ${deck.number} grid_scale 0.5`)}
-        disabled={!enabled}
-        title="Halve the grid tempo, keeping the beat you lined up"
-      >
-        ÷2
-      </button>
-      <button
-        onclick={() => send(`deck ${deck.number} grid_scale 2`)}
-        disabled={!enabled}
-        title="Double the grid tempo, keeping the beat you lined up"
-      >
-        ×2
-      </button>
+      <IconButton title="Halve the grid tempo, keeping the beat you lined up" aria-label="Grid ÷2" disabled={!enabled} onClick={() => send(`deck ${deck.number} grid_scale 0.5`)}>÷2</IconButton>
+      <IconButton title="Double the grid tempo, keeping the beat you lined up" aria-label="Grid ×2" disabled={!enabled} onClick={() => send(`deck ${deck.number} grid_scale 2`)}>×2</IconButton>
       <IconButton icon="fa-solid fa-rotate-left" title="Reset grid edits" onClick={() => send(`deck ${deck.number} grid_reset`)} disabled={!enabled} />
     </div>
   {/if}

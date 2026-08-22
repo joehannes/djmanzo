@@ -8,7 +8,11 @@
 </script>
 
 <button {...$$restProps} class:active on:click={() => !disabled && onClick()} {disabled} title={title} aria-pressed={active}>
-  <i class={icon} aria-hidden="true"></i>
+  <slot>
+    {#if icon}
+      <i class={icon} aria-hidden="true"></i>
+    {/if}
+  </slot>
 </button>
 
 <style>
