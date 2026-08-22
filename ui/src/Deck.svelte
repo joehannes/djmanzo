@@ -367,22 +367,20 @@
         disabled={!enabled || deck.active_loop == null}
         onClick={() => send(`deck ${deck.number} loop_double`)}
       />
-      <button
-        class:active={deck.active_loop != null}
-        onclick={() => send(`deck ${deck.number} loop_off`)}
-        disabled={!enabled || deck.active_loop == null}
+      <IconButton
         title="Stop looping and carry on"
+        active={deck.active_loop != null}
+        disabled={!enabled || deck.active_loop == null}
+        onClick={() => send(`deck ${deck.number} loop_off`)}
       >
         {#if deck.active_loop}
-          <!-- A roll is a loop that will end on its own, and saying "looping"
-               about one tells a DJ the wrong thing about what happens next. -->
           {deck.rolling ? "Rolling" : "Looping"}{deck.active_loop.beats
             ? ` ${formatBeats(deck.active_loop.beats)}`
             : ""}
         {:else}
           No loop
         {/if}
-      </button>
+      </IconButton>
     </div>
 
   {/if}
@@ -410,13 +408,13 @@
       <span class="label">Grid</span>
       <IconButton icon="fa-solid fa-location-dot" title="Put a beat on the playhead" onClick={() => send(`deck ${deck.number} grid_here`)} disabled={!enabled} />
       {#each [-10, -1, 1, 10] as ms (ms)}
-        <button
-          onclick={() => send(`deck ${deck.number} grid_nudge ${ms}`)}
+        <IconButton
+          title={`Slide the whole grid ${Math.abs(ms)} ms ${ms < 0 ? 'earlier' : 'later'}`}
           disabled={!enabled}
-          title="Slide the whole grid {Math.abs(ms)} ms {ms < 0 ? 'earlier' : 'later'}"
+          onClick={() => send(`deck ${deck.number} grid_nudge ${ms}`)}
         >
           {ms > 0 ? `+${ms}` : ms}
-        </button>
+        </IconButton>
       {/each}
       <IconButton icon="fa-solid fa-hand-pointer" title="Tap along with the music" onClick={() => send(`deck ${deck.number} grid_tap`)} disabled={!enabled} />
       <IconButton title="Halve the grid tempo, keeping the beat you lined up" aria-label="Grid ÷2" disabled={!enabled} onClick={() => send(`deck ${deck.number} grid_scale 0.5`)}>÷2</IconButton>
@@ -569,20 +567,24 @@
       one that wants semitone transposition either.
     -->
     {#if showKeylock}
-    <div class="keyshift">
-      <button
-        disabled={!enabled}
-        onclick={() => send(`deck ${deck.number} key ${deck.key_shift - 1}`)}
+      <div class="keyshift">
+      <IconButton
+        icon="fa-solid fa-minus"
         title="Down a semitone"
-      >−</button>
+        disabled={!enabled}
+        onClick={() => send(`deck ${deck.number} key ${deck.key_shift - 1}`)}
+        aria-label="Down a semitone"
+      />
       <span class="mono" class:shifted={deck.key_shift !== 0}>
         {deck.key_shift > 0 ? `+${deck.key_shift}` : deck.key_shift}
       </span>
-      <button
-        disabled={!enabled}
-        onclick={() => send(`deck ${deck.number} key ${deck.key_shift + 1}`)}
+      <IconButton
+        icon="fa-solid fa-plus"
         title="Up a semitone"
-      >+</button>
+        disabled={!enabled}
+        onClick={() => send(`deck ${deck.number} key ${deck.key_shift + 1}`)}
+        aria-label="Up a semitone"
+      />
     </div>
     <!--
       Slip, reverse and censor. One row because they are one idea: a shadow
@@ -591,42 +593,39 @@
       toggled censor is just reverse with extra steps.
     -->
     {#if showSlip}
-      <button
-        class="slip"
-        class:on={deck.slip}
-        disabled={!enabled}
-        onclick={() => send(`deck ${deck.number} slip_toggle`)}
+      <IconButton
         title={deck.slip
           ? "Slip on — loop, reverse or censor, and the track carries on underneath"
           : "Slip off — the playhead stays wherever a loop or a censor leaves it"}
+        active={deck.slip}
+        disabled={!enabled}
+        onClick={() => send(`deck ${deck.number} slip_toggle`)}
+        aria-label="Slip"
       >
         SLIP
-      </button>
-      <button
-        class="slip"
-        class:on={deck.reversed}
-        disabled={!enabled || !deck.loaded}
-        onclick={() => send(`deck ${deck.number} reverse_toggle`)}
+      </IconButton>
+      <IconButton
+        icon="fa-solid fa-backward"
         title="Play backwards"
+        active={deck.reversed}
+        disabled={!enabled || !deck.loaded}
+        onClick={() => send(`deck ${deck.number} reverse_toggle`)}
         aria-label="Reverse"
-      >
-        ◀◀
-      </button>
+      />
       <!--
         Held rather than clicked, and on pointer events rather than mouse ones
         so it works from a touchscreen. `pointerleave` releases too: dragging
         off the pad mid-censor must not leave the deck stuck in reverse.
       -->
-      <button
-        class="slip censor"
+      <IconButton
+        icon="fa-solid fa-hand-paper"
+        title="Hold to reverse over a word, and land back on the beat"
         disabled={!enabled || !deck.loaded}
         onpointerdown={() => send(`deck ${deck.number} censor_on`)}
         onpointerup={() => send(`deck ${deck.number} censor_off`)}
         onpointerleave={() => send(`deck ${deck.number} censor_off`)}
-        title="Hold to reverse over a word, and land back on the beat"
-      >
-        CENSOR
-      </button>
+        aria-label="Censor"
+      />
 
       <!--
         Brake and backspin. Held rather than clicked, and momentary in an
@@ -639,41 +638,40 @@
         reads as broken.
       -->
       {#if analysis?.bpm != null}
-        <button
-          class="slip"
-          class:on={deck.spinning}
+        <IconButton
+          title="Cut the motor and coast to a stop over two beats. Let go to put it back on."
+          active={deck.spinning}
           disabled={!enabled || !deck.playing}
           onpointerdown={() => send(`deck ${deck.number} brake 2`)}
           onpointerup={() => send(`deck ${deck.number} brake_off`)}
           onpointercancel={() => send(`deck ${deck.number} brake_off`)}
-          title="Cut the motor and coast to a stop over two beats. Let go to put it back on."
+          aria-label="Brake"
         >
           BRAKE
-        </button>
-        <button
-          class="slip"
-          class:on={deck.spinning}
+        </IconButton>
+        <IconButton
+          title="Throw the record backwards and let friction take it down over a beat"
+          active={deck.spinning}
           disabled={!enabled || !deck.playing}
           onpointerdown={() => send(`deck ${deck.number} backspin 1`)}
           onpointerup={() => send(`deck ${deck.number} backspin_off`)}
           onpointercancel={() => send(`deck ${deck.number} backspin_off`)}
-          title="Throw the record backwards and let friction take it down over a beat"
+          aria-label="Spin"
         >
           SPIN
-        </button>
+        </IconButton>
       {/if}
     {/if}
-    <button
-      class="keylock"
-      class:on={deck.keylock}
-      disabled={!enabled}
-      onclick={() => send(`deck ${deck.number} keylock_toggle`)}
+    <IconButton
+      icon="fa-solid fa-lock"
       title={deck.keylock
         ? `Keylock on — tempo changes without changing key (adds ${deck.keylock_latency_ms.toFixed(0)} ms, compensated)`
         : "Keylock off — the pitch fader moves tempo and key together"}
-    >
-      KEY
-    </button>
+      active={deck.keylock}
+      disabled={!enabled}
+      onClick={() => send(`deck ${deck.number} keylock_toggle`)}
+      aria-label="Keylock"
+    />
     {/if}
   </div>
 
@@ -686,15 +684,15 @@
   <div class="xfader-assign" role="group" aria-label="crossfader assignment">
     <span class="label">X</span>
     {#each assignments as option (option.value)}
-      <button
-        class:active={deck.crossfader_assign === option.value}
+      <IconButton
+        active={deck.crossfader_assign === option.value}
         disabled={!enabled}
-        onclick={() => send(`deck ${deck.number} xfader_${option.value}`)}
+        onClick={() => send(`deck ${deck.number} xfader_${option.value}`)}
         title={option.title}
         aria-pressed={deck.crossfader_assign === option.value}
       >
         {option.text}
-      </button>
+      </IconButton>
     {/each}
   </div>
 
