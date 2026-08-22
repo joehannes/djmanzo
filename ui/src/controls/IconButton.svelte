@@ -1,13 +1,13 @@
 <script lang="ts">
-  export let icon: string;
+  export let icon: string | null = null;
   export let title: string | null = null;
   export let active: boolean = false;
   export let disabled: boolean = false;
-  export let onClick: () => void = () => {};
+  export let onClick: (() => void) | null = null;
   // forward any other attributes (role, aria-*, id, etc.) via Svelte's $$restProps
 </script>
 
-<button {...$$restProps} class:active on:click={() => !disabled && onClick()} {disabled} title={title} aria-pressed={active}>
+<button {...$$restProps} class:active on:click={() => !disabled && onClick?.()} {disabled} title={title} aria-pressed={active}>
   <slot>
     {#if icon}
       <i class={icon} aria-hidden="true"></i>
