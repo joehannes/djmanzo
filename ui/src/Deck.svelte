@@ -340,20 +340,20 @@
 
   {#if deck.loaded && showLoops}
     <div class="beatjump loop-row">
-      <button
-        onclick={() => send(`deck ${deck.number} loop_in`)}
-        disabled={!enabled}
+      <IconButton
+        icon="fa-solid fa-flag"
         title="Drop the loop's in point here"
-      >
-        <i class="fa-solid fa-flag" aria-hidden="true"></i>
-      </button>
-      <button
-        onclick={() => send(`deck ${deck.number} loop_out`)}
+        aria-label="Loop in"
         disabled={!enabled}
+        onClick={() => send(`deck ${deck.number} loop_in`)}
+      />
+      <IconButton
+        icon="fa-solid fa-flag-checkered"
         title="Drop the out point and start looping"
-      >
-        <i class="fa-solid fa-flag-checkered" aria-hidden="true"></i>
-      </button>
+        aria-label="Loop out"
+        disabled={!enabled}
+        onClick={() => send(`deck ${deck.number} loop_out`)}
+      />
       <button
         onclick={() => send(`deck ${deck.number} loop_halve`)}
         disabled={!enabled || deck.active_loop == null}
