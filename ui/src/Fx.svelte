@@ -191,7 +191,7 @@
     control that requires crossing the interface to reach is one that gets used
     once and then forgotten.
   -->
-  <div class="keep">
+      <div class="keep">
     {#if naming}
       <input
         class="chain-name"
@@ -205,19 +205,16 @@
       <IconButton icon="fa-solid fa-floppy-disk" title="Save" onClick={() => void keep()} disabled={!enabled || !chainName.trim()} />
       <IconButton icon="fa-solid fa-xmark" title="Cancel" onClick={() => (naming = false)} />
     {:else}
-      <button
-        class="keep-open"
+      <IconButton
+        icon="fa-solid fa-floppy-disk"
+        title={anyLoaded ? "Keep this chain as a preset" : "Nothing in the rack to keep yet"}
+        aria-label="Save chain"
         disabled={!enabled || !anyLoaded}
-        onclick={() => {
+        onClick={() => {
           naming = true;
           error = null;
         }}
-        title={anyLoaded
-          ? "Keep this chain as a preset"
-          : "Nothing in the rack to keep yet"}
-      >
-        Save chain
-      </button>
+      />
       {#if saved}
         <span class="kept">saved</span>
       {/if}
