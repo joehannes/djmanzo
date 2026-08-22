@@ -191,31 +191,13 @@
 </script>
 
 <nav class="crates" aria-label="Playlists">
-  <button
-    class="entry"
-    class:active={selection.kind === "all"}
-    onclick={() => select({ kind: "all" })}
-  >
-    All tracks
-  </button>
-  <button
-    class="entry"
-    class:active={selection.kind === "history"}
-    onclick={() => select({ kind: "history" })}
-  >
-    History
-  </button>
+  <IconButton class="entry" active={selection.kind === "all"} onClick={() => select({ kind: "all" })}>All tracks</IconButton>
+  <IconButton class="entry" active={selection.kind === "history"} onClick={() => select({ kind: "history" })}>History</IconButton>
   <!--
     Duplicates is a *view* of the collection rather than a crate, so it belongs
     up here beside "All tracks" and not in the tree a DJ built.
   -->
-  <button
-    class="entry"
-    class:active={selection.kind === "duplicates"}
-    onclick={() => select({ kind: "duplicates" })}
-  >
-    Duplicates
-  </button>
+  <IconButton class="entry" active={selection.kind === "duplicates"} onClick={() => select({ kind: "duplicates" })}>Duplicates</IconButton>
 
   <div class="divider"></div>
 

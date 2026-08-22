@@ -712,7 +712,7 @@
       The sound card you used last time is not here. Playing through
       <strong>{devices.find((d) => d.id === selectedDevice)?.name ?? "the default output"}</strong>
       instead — plug the other one in and press Reconnect.
-      <button class="inline" onclick={() => (missingDevice = null)}>Dismiss</button>
+      <IconButton class="inline" icon="fa-solid fa-xmark" title="Dismiss" onClick={() => (missingDevice = null)} />
     </p>
   {/if}
 
@@ -835,12 +835,12 @@
             title="Cue in one ear, master in the other"
           >
             Split
-          </button>
-        {:else}
-          <p class="no-cue">
-            {#if ready}
-              No headphone cue — this device has only two output channels.
-              Cueing needs a four-channel interface.
+          <IconButton
+            title={`Show ${deckCount === 2 ? 'four' : deckCount === 4 ? 'six' : 'two'} decks. The engine runs six either way.`}
+            onClick={() => (deckCount = deckCount === 2 ? 4 : deckCount === 4 ? 6 : 2)}
+          >
+            {deckCount} decks
+          </IconButton>
             {:else}
               Connect a device to see whether it can carry a headphone cue.
             {/if}
