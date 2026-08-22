@@ -354,20 +354,20 @@
         disabled={!enabled}
         onClick={() => send(`deck ${deck.number} loop_out`)}
       />
-      <button
-        onclick={() => send(`deck ${deck.number} loop_halve`)}
-        disabled={!enabled || deck.active_loop == null}
+      <IconButton
+        icon="fa-solid fa-compress"
         title="Halve the loop, keeping its start"
-      >
-        ÷2
-      </button>
-      <button
-        onclick={() => send(`deck ${deck.number} loop_double`)}
+        aria-label="Halve loop"
         disabled={!enabled || deck.active_loop == null}
+        onClick={() => send(`deck ${deck.number} loop_halve`)}
+      />
+      <IconButton
+        icon="fa-solid fa-expand"
         title="Double the loop, keeping its start"
-      >
-        ×2
-      </button>
+        aria-label="Double loop"
+        disabled={!enabled || deck.active_loop == null}
+        onClick={() => send(`deck ${deck.number} loop_double`)}
+      />
       <button
         class:active={deck.active_loop != null}
         onclick={() => send(`deck ${deck.number} loop_off`)}
