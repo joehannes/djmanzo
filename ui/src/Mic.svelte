@@ -14,6 +14,7 @@
    */
   import { listInputs, openMic, closeMic, type Device, type MicState } from "./api";
   import SvgMeter from "./SvgMeter.svelte";
+  import IconButton from "./controls/IconButton.svelte";
 
   let {
     mic,
@@ -82,15 +83,16 @@
   <header>
     <h3>Microphone</h3>
     {#if mic.present}
-      <button
+      <IconButton
         class="switch"
-        class:active={mic.open}
+        active={mic.open}
         disabled={!enabled}
-        onclick={() => send(mic.open ? "mic off" : "mic on")}
+        onClick={() => send(mic.open ? "mic off" : "mic on")}
         title={mic.open ? "Close the channel" : "Open the channel"}
+        aria-pressed={mic.open}
       >
         {mic.open ? "On air" : "Off"}
-      </button>
+      </IconButton>
     {/if}
   </header>
 
@@ -102,9 +104,7 @@
           <option value={device.id}>{device.name}</option>
         {/each}
       </select>
-      <button disabled={!enabled || busy} onclick={attach}>
-        {busy ? "Opening…" : "Attach"}
-      </button>
+      <IconButton icon="fa-solid fa-paperclip" title={busy ? "Opening…" : "Attach"} disabled={!enabled || busy} onClick={attach} />
     </div>
     <p class="note">
       Nothing is attached. A microphone through a computer is late by the input
@@ -131,29 +131,9 @@
     </label>
 
     <div class="toggles">
-      <button
-        class:active={mic.talkover}
-        disabled={!enabled}
-        onclick={() => send(mic.talkover ? "mic talkover_off" : "mic talkover_on")}
-        title="Step the music back while somebody is speaking. Switch it off for a line input."
-      >
-        Talkover
-      </button>
-      <button
-        class:active={mic.cue}
-        disabled={!enabled}
-        onclick={() => send(mic.cue ? "mic cue_off" : "mic cue_on")}
-        title="Hear yourself in the headphones"
-      >
-        Headphones
-      </button>
-      <button
-        class:active={showSettings}
-        onclick={() => (showSettings = !showSettings)}
-        title="Talkover depth and timing"
-      >
-        Settings
-      </button>
+      <IconButton icon="fa-solid fa-microphone" title="Talkover" active={mic.talkover} disabled={!enabled} onClick={() => send(mic.talkover ? "mic talkover_off" : "mic talkover_on")} />
+      <IconButton icon="fa-solid fa-headphones" title="Headphones" active={mic.cue} disabled={!enabled} onClick={() => send(mic.cue ? "mic cue_off" : "mic cue_on")} />
+      <IconButton icon="fa-solid fa-gear" title="Talkover depth and timing" active={showSettings} onClick={() => (showSettings = !showSettings)} />
     </div>
 
     {#if showSettings}
@@ -206,9 +186,7 @@
             oninput={(e) => send(`mic release ${e.currentTarget.value}`)}
           />
         </label>
-        <button class="detach" disabled={busy} onclick={detach}>
-          Detach device
-        </button>
+        <IconButton icon="fa-solid fa-unlink" title="Detach device" class="detach" disabled={busy} onClick={detach} />
       </div>
     {/if}
 

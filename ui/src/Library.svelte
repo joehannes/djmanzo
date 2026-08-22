@@ -718,12 +718,10 @@
           <option value={String(stars)}>{"★".repeat(stars) || "none"}</option>
         {/each}
       </select>
-      <button onclick={applyEdit}>Apply</button>
-      <button onclick={() => clearField("genre")} title="Empty the genre on these tracks">
-        Clear genre
-      </button>
-      <button onclick={() => clearField("colour")}>Clear colour</button>
-      <button onclick={() => selected.clear()}>Deselect</button>
+      <IconButton icon="fa-solid fa-check" title="Apply edits" onClick={applyEdit} />
+      <IconButton icon="fa-solid fa-eraser" title="Empty the genre on these tracks" onClick={() => clearField("genre")} />
+      <IconButton icon="fa-solid fa-palette" title="Clear colour" onClick={() => clearField("colour")} />
+      <IconButton icon="fa-solid fa-ban" title="Deselect" onClick={() => selected.clear()} />
     </div>
   {/if}
 
