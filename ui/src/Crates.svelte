@@ -314,26 +314,23 @@
               <span class="count">{node.track_count}</span>
             {/if}
           </button>
-          <button
-            class="remove"
-            onclick={() => remove(node)}
+          <IconButton
+            icon="fa-solid fa-xmark"
             title={node.kind === "folder"
               ? "Delete this folder and everything in it. The tracks stay in your collection."
               : "Delete this playlist. The tracks stay in your collection."}
-            aria-label="Delete {node.name}"
-          >×</button>
+            aria-label={`Delete ${node.name}`}
+            onClick={() => remove(node)}
+          />
         {/if}
       </div>
     {/each}
   </div>
 
   <div class="actions">
-    <button onclick={() => add("list")} title="New playlist">+ List</button>
-    <button onclick={() => add("folder")} title="New folder">+ Folder</button>
-    <button
-      onclick={() => add("smart")}
-      title="New smart folder — a filter that keeps itself up to date"
-    >+ Filter</button>
+    <IconButton icon="fa-solid fa-list" title="New playlist" onClick={() => add("list")} />
+    <IconButton icon="fa-solid fa-folder-plus" title="New folder" onClick={() => add("folder")} />
+    <IconButton icon="fa-solid fa-filter" title="New smart folder — a filter that keeps itself up to date" onClick={() => add("smart")} />
   </div>
 
   {#if error}
