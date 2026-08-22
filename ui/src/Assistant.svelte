@@ -130,9 +130,9 @@
         </span>
       {/if}
     {/if}
-    <button class="setup" onclick={() => (showSetup = !showSetup)}>
+    <IconButton class="setup" icon="fa-solid fa-robot" title={showSetup ? "Hide setup" : "Setup"} active={showSetup} onClick={() => (showSetup = !showSetup)}>
       {showSetup ? "Hide setup" : "Setup"}
-    </button>
+    </IconButton>
   </header>
 
   {#if showSetup}
@@ -150,12 +150,11 @@
             <span class="name">{provider.label}</span>
             {#if provider.recommended}<span class="badge">start here</span>{/if}
             <span class="status {provider.status}">{provider.status_detail}</span>
-            <button
+            <IconButton
               disabled={provider.status !== "ready"}
-              onclick={() => loadModels(provider.id)}
-            >
-              {loadingModels ? "…" : "Models"}
-            </button>
+              onClick={() => loadModels(provider.id)}
+              title={loadingModels ? "Loading models…" : "Models"}
+            />
           </div>
           <p class="summary">{provider.summary}</p>
 
@@ -213,7 +212,7 @@
             state_ = await setSpendCap(Number(e.currentTarget.value));
           }}
         />
-        <button onclick={async () => (state_ = await resetSpend())}>Reset spend</button>
+        <IconButton icon="fa-solid fa-rotate-left" title="Reset spend" onClick={async () => (state_ = await resetSpend())} />
       </div>
     </div>
   {/if}
