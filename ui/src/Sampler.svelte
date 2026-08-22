@@ -85,14 +85,15 @@
       -->
       <div class="banks">
         {#each [1, 2, 3, 4] as bank (bank)}
-          <button
+          <IconButton
             class:active={sampler.bank === bank}
+            active={sampler.bank === bank}
             disabled={!enabled}
-            onclick={() => send(`sampler bank ${bank}`)}
-            title="Bank {bank}"
+            onClick={() => send(`sampler bank ${bank}`)}
+            title={`Bank ${bank}`}
           >
             {bank}
-          </button>
+          </IconButton>
         {/each}
       </div>
 
@@ -201,10 +202,10 @@
         <div class="slot" class:playing={slot.playing}>
           <span class="number">{slot.slot}</span>
 
-          <button
+          <IconButton
             class="name"
             disabled={!enabled || busy === slot.slot}
-            onclick={() => pick(slot.slot)}
+            onClick={() => pick(slot.slot)}
             title={slot.loaded ? "Replace what is in this slot" : "Load a sample here"}
           >
             {#if busy === slot.slot}
@@ -214,7 +215,7 @@
             {:else}
               — empty —
             {/if}
-          </button>
+          </IconButton>
 
           {#if slot.loaded}
             <!-- A progress bar rather than a number: mid-set this is read at a
@@ -247,17 +248,17 @@
               aria-label="Level of sample {slot.slot}"
             />
 
-            <button
+            <IconButton
               class="route"
-              class:on={slot.cue}
+              active={slot.cue}
               disabled={!enabled}
-              onclick={() => send(`sampler ${slot.slot} ${slot.cue ? "master" : "cue"}`)}
+              onClick={() => send(`sampler ${slot.slot} ${slot.cue ? "master" : "cue"}`)}
               title={slot.cue
                 ? "In the headphones only — click to send it to the mix"
                 : "In the mix — click to audition it in the headphones instead"}
             >
               CUE
-            </button>
+            </IconButton>
 
             <!--
               Hidden for a sample with no tempo of its own. Stretching one to a
@@ -265,16 +266,15 @@
               what it says is worse than no switch.
             -->
             {#if slot.bpm != null}
-              <button
+              <IconButton
                 class="route"
-                class:on={slot.synced}
+                active={slot.synced}
                 disabled={!enabled}
-                onclick={() =>
-                  send(`sampler ${slot.slot} ${slot.synced ? "sync_off" : "sync"}`)}
+                onClick={() => send(`sampler ${slot.slot} ${slot.synced ? "sync_off" : "sync"}`)}
                 title={slot.bpm.toFixed(1) + ' BPM — ' + (slot.synced ? 'stretching to the room' : 'playing at its own speed')}
               >
                 SYNC
-              </button>
+              </IconButton>
             {/if}
 
             <IconButton
