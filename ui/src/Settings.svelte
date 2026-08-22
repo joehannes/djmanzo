@@ -266,7 +266,7 @@
     {#each library.folders as folder (folder)}
       <div class="row folder">
         <span class="path mono" title={folder}>{folder}</span>
-        <button onclick={() => dropFolder(folder)}>Remove</button>
+        <IconButton icon="fa-solid fa-xmark" title="Remove folder" aria-label={`Remove ${folder}`} onClick={() => dropFolder(folder)} />
       </div>
     {/each}
     <button class="primary" onclick={pickFolder} disabled={busy}>
@@ -330,7 +330,7 @@
               />
               <IconButton icon="fa-solid fa-floppy-disk" title="Save credential" onClick={() => save(credential.id)} />
               {#if credential.is_set}
-                <button onclick={() => forget(credential.id)}>Forget</button>
+                <IconButton icon="fa-solid fa-trash" title="Forget credential" aria-label="Forget credential" onClick={() => forget(credential.id)} />
               {/if}
             </div>
             <p class="free-tier">
