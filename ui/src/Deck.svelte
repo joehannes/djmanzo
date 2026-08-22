@@ -224,16 +224,15 @@
             way the alternative is visible before you commit to it.
           -->
           {#if analysis.bpm_alternative != null}
-            <button
-              class="octave"
-              onclick={swapOctave}
-              title="Autocorrelation cannot tell one octave from its double. Use {(octaveSwapped
+            <IconButton
+              icon="fa-solid fa-circle-question"
+              title={`Autocorrelation cannot tell one octave from its double. Use ${(octaveSwapped
                 ? analysis.bpm
                 : analysis.bpm_alternative
-              ).toFixed(1)} instead."
-            >
-              {(octaveSwapped ? analysis.bpm : analysis.bpm_alternative).toFixed(0)}?
-            </button>
+              ).toFixed(1)} instead.`}
+              aria-label="Choose alternate octave"
+              onClick={swapOctave}
+            />
           {/if}
         {/if}
         {#if analysis?.key_camelot}
