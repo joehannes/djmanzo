@@ -8,35 +8,41 @@ use std::thread;
 /// The worker runs in the background and continuously separates audio ahead of the playhead.
 #[derive(Debug)]
 pub struct SeparationWorker {
-    sender: Sender<(TrackId, usize, Vec<f32>, Option<Arc<parking_lot::RwLock<Vec<[f32; 8]>>>>)>,
+    sender: Option<Sender<(TrackId, usize, Vec<f32>, Option<Arc<parking_lot::RwLock<Vec<[f32; 8]>>>>)>>,
 }
 
 impl SeparationWorker {
+    /// Create a worker with a live stems engine.
     pub fn new(engine: Arc<StemsEngine>, cache: Arc<StemCache>) -> Self {
         let (sender, receiver) = mpsc::channel();
-        
-        let worker_engine = engine.clone();
-        let worker_cache = cache.clone();
-        
+
         thread::Builder::new()
             .name("dj-stems-worker".into())
             .spawn(move || {
-                Self::worker_loop(receiver, worker_engine, worker_cache);
+                Self::worker_loop(receiver, Some(engine), cache);
             })
             .expect("Failed to spawn stem worker thread");
-            
-        Self { sender }
+
+        Self { sender: Some(sender) }
+    }
+
+    /// Create a no-op worker for environments where the stems engine is
+    /// unavailable (missing model file, no AVX2 support for the prebuilt ORT
+    /// binary, etc.).  All `process_chunk` calls are silently dropped.
+    pub fn unavailable() -> Self {
+        Self { sender: None }
     }
 
     /// Enqueue a chunk of audio for separation.
     pub fn process_chunk(&self, track_id: TrackId, chunk_index: usize, audio: &[f32], target: Option<Arc<parking_lot::RwLock<Vec<[f32; 8]>>>>) {
-        // Send a clone of the audio to the background thread
-        let _ = self.sender.send((track_id, chunk_index, audio.to_vec(), target));
+        if let Some(sender) = &self.sender {
+            let _ = sender.send((track_id, chunk_index, audio.to_vec(), target));
+        }
     }
     
     fn worker_loop(
-        receiver: Receiver<(TrackId, usize, Vec<f32>, Option<Arc<parking_lot::RwLock<Vec<[f32; 8]>>>>)>, 
-        engine: Arc<StemsEngine>, 
+        receiver: Receiver<(TrackId, usize, Vec<f32>, Option<Arc<parking_lot::RwLock<Vec<[f32; 8]>>>>)>,
+        engine: Option<Arc<StemsEngine>>,
         cache: Arc<StemCache>
     ) {
         while let Ok((track_id, chunk_index, audio, target)) = receiver.recv() {
@@ -47,15 +53,17 @@ impl SeparationWorker {
             }
             
             if separated.is_none() {
-                // 2. Run inference
-                match engine.separate(&audio) {
-                    Ok(seps) => {
-                        // 3. Save to cache
-                        let _ = cache.put(track_id, chunk_index, &seps);
-                        separated = Some(seps);
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to separate chunk {} for track {:?}: {:?}", chunk_index, track_id, e);
+                // 2. Run inference (only if an engine is available)
+                if let Some(eng) = &engine {
+                    match eng.separate(&audio) {
+                        Ok(seps) => {
+                            // 3. Save to cache
+                            let _ = cache.put(track_id, chunk_index, &seps);
+                            separated = Some(seps);
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to separate chunk {} for track {:?}: {:?}", chunk_index, track_id, e);
+                        }
                     }
                 }
             }

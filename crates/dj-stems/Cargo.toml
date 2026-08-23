@@ -9,7 +9,7 @@ authors.workspace = true
 
 [dependencies]
 dj-core.workspace = true
-ort = { version = "2.0.0-rc.8", features = ["fetch-models"] }
+ort = { version = "2.0.0-rc.8", features = ["load-dynamic"] }
 thiserror.workspace = true
 tracing.workspace = true
 blake3.workspace = true

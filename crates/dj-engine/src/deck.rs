@@ -211,7 +211,6 @@ impl Deck {
                 StemChannel::new(sr),
                 StemChannel::new(sr),
             ],
-            stem_mutes: [false; 4],
             spin: None,
             rack: Rack::new(sr),
             keylock: Keylock::new(sr),
@@ -3162,6 +3161,7 @@ mod keylock_tests {
 #[cfg(test)]
 mod slicer_tests {
     use super::*;
+    use dj_core::Stem;
 
     const SR: SampleRate = SampleRate::DEFAULT;
     /// 120 BPM at 48 kHz is exactly 24 000 frames a beat, so every expected

@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "dj-analysis"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "dj-core",
  "dj-dsp",
@@ -1253,7 +1253,7 @@ dependencies = [
 
 [[package]]
 name = "dj-app"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "dj-analysis",
  "dj-assistant",
@@ -1287,7 +1287,7 @@ dependencies = [
 
 [[package]]
 name = "dj-assistant"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "async-trait",
  "dj-core",
@@ -1302,7 +1302,7 @@ dependencies = [
 
 [[package]]
 name = "dj-audio"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "cpal",
  "dj-core",
@@ -1313,7 +1313,7 @@ dependencies = [
 
 [[package]]
 name = "dj-clap"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "clack-extensions",
  "clack-host",
@@ -1326,7 +1326,7 @@ dependencies = [
 
 [[package]]
 name = "dj-control"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "dj-core",
  "rtrb",
@@ -1336,7 +1336,7 @@ dependencies = [
 
 [[package]]
 name = "dj-core"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -1344,7 +1344,7 @@ dependencies = [
 
 [[package]]
 name = "dj-decode"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "blake3",
  "dj-core",
@@ -1356,7 +1356,7 @@ dependencies = [
 
 [[package]]
 name = "dj-dsp"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "dj-core",
  "rustfft",
@@ -1365,7 +1365,7 @@ dependencies = [
 
 [[package]]
 name = "dj-engine"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "dj-audio",
  "dj-clap",
@@ -1379,7 +1379,7 @@ dependencies = [
 
 [[package]]
 name = "dj-hid"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "dj-core",
  "midir",
@@ -1390,7 +1390,7 @@ dependencies = [
 
 [[package]]
 name = "dj-library"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "base64 0.22.1",
  "dj-core",
@@ -1405,8 +1405,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dj-net"
+version = "0.7.6"
+dependencies = [
+ "dj-control",
+ "dj-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "dj-presets"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "dj-core",
  "serde",
@@ -1417,7 +1428,7 @@ dependencies = [
 
 [[package]]
 name = "dj-render"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "dj-core",
  "dj-dsp",
@@ -1428,7 +1439,7 @@ dependencies = [
 
 [[package]]
 name = "dj-secrets"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "keyring",
  "serde",
@@ -1437,7 +1448,7 @@ dependencies = [
 
 [[package]]
 name = "dj-sources"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1454,7 +1465,7 @@ dependencies = [
 
 [[package]]
 name = "dj-stems"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "blake3",
  "dj-core",
@@ -1467,7 +1478,7 @@ dependencies = [
 
 [[package]]
 name = "dj-world"
-version = "0.1.3"
+version = "0.7.6"
 dependencies = [
  "dj-core",
  "serde",
@@ -2880,6 +2891,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libloading"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
+dependencies = [
+ "cfg-if",
+ "windows-link 0.2.1",
+]
+
+[[package]]
 name = "libredox"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3613,9 +3634,9 @@ version = "2.0.0-rc.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4336a1e2b38848325241c72889086886004e589b7c74f335e60a8e8db5138a0b"
 dependencies = [
+ "libloading 0.9.0",
  "ndarray",
  "ort-sys",
- "sha2",
  "smallvec",
  "tracing",
  "ureq",
