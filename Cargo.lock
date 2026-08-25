@@ -1474,6 +1474,7 @@ dependencies = [
  "libloading 0.9.0",
  "ort",
  "parking_lot",
+ "rustfft",
  "thiserror 2.0.20",
  "tracing",
 ]

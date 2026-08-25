@@ -615,19 +615,23 @@ export const listPlugins = () => invoke<PluginFile[]>("list_plugins");
 
 export const pluginState = () => invoke<PluginState>("plugin_state");
 
-/** Whether stem separation can run on this machine, and why not when it cannot. */
+/** Which separator is running, and what a better one would need. */
 export type StemsStatus = {
+  /** True when something is separating — the built-in separator counts. */
   available: boolean;
-  /** A sentence to show when `available` is false. */
+  /** What is doing it, to show beside the controls. */
+  backend: string | null;
+  /** Why a downloaded model is not being used. `null` when one is. */
   reason: string | null;
 };
 
 /**
- * Ask whether separation is available.
+ * Ask which separator is running.
  *
- * The model is a download rather than part of the package, so "no stems" is a
- * normal state on a fresh install, not an error. The panel shows the reason
- * instead of offering pads that would do nothing.
+ * Two different questions, deliberately kept apart. `available` is whether the
+ * stem controls do anything; `reason` is why the *better* separator is not the
+ * one doing it. A fresh install has no model, falls back to the built-in
+ * separator, and is therefore available *and* has a reason.
  */
 export const stemsStatus = () => invoke<StemsStatus>("stems_status");
 

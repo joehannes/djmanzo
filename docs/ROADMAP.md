@@ -866,6 +866,13 @@ cancel a loop the DJ set on purpose.
 ## M6 — Stems
 
 - `dj-stems`: HT-Demucs via ONNX (`ort`), CoreML on macOS, CUDA/DirectML where present.
+- **A built-in separator, so stems work on a fresh install — done.** The
+  downloaded model is the quality option, not the only option: `dj-stems::hpss`
+  implements Fitzgerald's harmonic/percussive separation over an FFT and splits
+  the harmonic part by band and by centredness, giving four stems from
+  arithmetic alone — no model, no runtime, nothing to fetch. Both separators
+  sit behind one `Separator` trait, so the worker and the cache do not know
+  which is running. The interface names it and says what a model would improve.
 - **Availability is a first-class state — done.** The model is a download, not
   part of the package, so "no stems on this machine" is normal rather than an
   error. `dj-stems` opens ONNX Runtime itself before letting `ort` near it,

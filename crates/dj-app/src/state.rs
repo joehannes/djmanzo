@@ -190,6 +190,9 @@ pub struct AppState {
     /// Why separation is or is not available, in a sentence the interface can
     /// show. `None` once a model is loaded and running.
     stems_reason: Mutex<Option<String>>,
+    /// Which separator is running, for the interface to name. `None` when
+    /// none is.
+    stems_backend: Mutex<Option<&'static str>>,
 }
 
 /// What is loaded on a deck, as far as the interface is concerned.
@@ -278,6 +281,7 @@ impl AppState {
         // start would take the whole set down over a feature they were not
         // using. Same reasoning as the HTTP client above.
         let stems_worker = Mutex::new(Arc::new(dj_stems::worker::SeparationWorker::unavailable()));
+        let stems_backend = Mutex::new(None);
         let stems_reason = Mutex::new(Some("separation has not been set up yet".to_owned()));
 
         Self {
@@ -314,6 +318,7 @@ impl AppState {
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
+            stems_backend,
             stems_reason,
         }
     }
@@ -339,7 +344,11 @@ impl AppState {
             .unwrap_or_else(|_| Arc::new(dj_stems::worker::SeparationWorker::unavailable()))
     }
 
-    /// Why separation is unavailable, or `None` when it is running.
+    /// Why the higher-quality separator is not in use, or `None` when it is.
+    ///
+    /// Not the same question as "are stems available": the built-in separator
+    /// always is, so this reads as an explanation of what is missing rather
+    /// than as a failure.
     #[must_use]
     pub fn stems_reason(&self) -> Option<String> {
         self.stems_reason
@@ -348,27 +357,45 @@ impl AppState {
             .and_then(|reason| reason.clone())
     }
 
-    /// Look for a separation model under `dir` and start the worker if one is
-    /// there. Called from `setup`, once Tauri can say where that is.
+    /// Which separator is running, if any.
+    #[must_use]
+    pub fn stems_backend(&self) -> Option<&'static str> {
+        self.stems_backend.lock().ok().and_then(|name| *name)
+    }
+
+    /// Start separation, preferring a downloaded model and falling back to the
+    /// built-in separator.
+    ///
+    /// # Why there is a fallback at all
+    ///
+    /// The model is a download, so on a fresh install there is none -- and
+    /// "stems, once you have found and installed a 60 MB file" is not a
+    /// feature a DJ can use on the night. The built-in separator is
+    /// arithmetic: no model, no runtime, nothing to fetch, and it works on
+    /// every machine. It is not as good as HTDemucs and the interface says so,
+    /// but a usable acapella now beats a better one after a restart.
     ///
     /// Every failure is recorded as a sentence rather than raised: this runs
-    /// during startup, and there is no useful way to fail it. `DJMANZO_STEMS_MODEL`
-    /// overrides the location, so a developer can point at a model without
-    /// copying it into the application's data directory.
+    /// during startup, and there is no useful way to fail it.
+    /// `DJMANZO_STEMS_MODEL` overrides where the model is looked for.
     pub fn open_stems(&self, dir: &std::path::Path) {
         let model = match std::env::var_os("DJMANZO_STEMS_MODEL") {
             Some(path) => std::path::PathBuf::from(path),
             None => dir.join("models").join(STEMS_MODEL_FILE),
         };
 
-        let engine = match dj_stems::StemsEngine::new(&model) {
-            Ok(engine) => Arc::new(engine),
-            Err(reason) => {
-                tracing::info!(%reason, "stem separation is unavailable");
-                self.set_stems_reason(Some(reason.to_string()));
-                return;
-            }
-        };
+        let (separator, reason): (Arc<dyn dj_stems::stems::Separator>, Option<String>) =
+            match dj_stems::StemsEngine::new(&model) {
+                Ok(engine) => (Arc::new(engine), None),
+                Err(unavailable) => {
+                    tracing::info!(%unavailable, "using the built-in separator");
+                    (
+                        Arc::new(dj_stems::hpss::Hpss),
+                        Some(unavailable.to_string()),
+                    )
+                }
+            };
+        let name = dj_stems::stems::Separator::name(separator.as_ref());
 
         let cache_dir = dir.join("stems-cache");
         let cache = match dj_stems::cache::StemCache::new(&cache_dir, STEMS_CACHE_BYTES) {
@@ -383,12 +410,15 @@ impl AppState {
             }
         };
 
-        let worker = Arc::new(dj_stems::worker::SeparationWorker::new(engine, cache));
+        let worker = Arc::new(dj_stems::worker::SeparationWorker::new(separator, cache));
         if let Ok(mut slot) = self.stems_worker.lock() {
             *slot = worker;
         }
-        self.set_stems_reason(None);
-        tracing::info!(?model, "stem separation is ready");
+        if let Ok(mut slot) = self.stems_backend.lock() {
+            *slot = Some(name);
+        }
+        self.set_stems_reason(reason);
+        tracing::info!(separator = name, "stem separation is ready");
     }
 
     fn set_stems_reason(&self, reason: Option<String>) {
@@ -998,32 +1028,42 @@ mod tests {
     #[test]
     fn a_machine_with_no_separation_model_still_gets_a_mixer() {
         let state = AppState::new(true);
-        assert!(
-            state.stems_reason().is_some(),
-            "with no model, the interface needs something to show"
-        );
-        // And the worker is still there to be called, so nothing downstream
-        // has to check first.
+        // Nothing has been opened yet, so nothing is separating.
+        assert!(state.stems_backend().is_none());
+        // The worker is still there to be called, so nothing downstream has
+        // to check first.
         let worker = state.stems_worker();
         worker.process_chunk(
             dj_core::track::TrackId::from_bytes([7u8; 32]),
             0,
             &[0.0; 64],
+            48_000,
             None,
         );
     }
 
-    /// Opening against a directory with no model leaves separation off and
-    /// says why, naming the file so the reason is actionable.
+    /// A fresh install has no model, and must still be able to drop a vocal.
+    /// Before the fallback existed this left separation switched off and the
+    /// stem pads inert -- a feature that only worked after finding and
+    /// installing a 60 MB file, which is not a feature a DJ can use on the
+    /// night.
     #[test]
-    fn opening_stems_where_there_is_no_model_reports_rather_than_panics() {
+    fn with_no_model_the_built_in_separator_takes_over() {
         let dir = tempfile::tempdir().unwrap();
         let state = AppState::new(true);
         state.open_stems(dir.path());
 
-        let reason = state
-            .stems_reason()
-            .expect("separation cannot have started");
+        let backend = state
+            .stems_backend()
+            .expect("something must be separating, even with no model");
+        assert!(
+            backend.contains("built-in"),
+            "expected the fallback, got {backend}"
+        );
+
+        // And it says why the better one is not running, naming the runtime
+        // or the model so the reader knows what to go and get.
+        let reason = state.stems_reason().expect("the model is absent");
         assert!(
             reason.contains("ONNX Runtime") || reason.contains(STEMS_MODEL_FILE),
             "the reason should name the runtime or the model, got: {reason}"
@@ -1031,7 +1071,7 @@ mod tests {
     }
 
     /// Whatever happens, the worker handle is never absent: callers push
-    /// chunks at it unconditionally and an unavailable worker drops them.
+    /// chunks at it unconditionally.
     #[test]
     fn the_worker_is_always_there_to_be_called() {
         let dir = tempfile::tempdir().unwrap();
@@ -1041,7 +1081,7 @@ mod tests {
         let track = dj_core::track::TrackId::from_bytes([9u8; 32]);
         let worker = state.stems_worker();
         for chunk in 0..4 {
-            worker.process_chunk(track, chunk, &[0.25; 128], None);
+            worker.process_chunk(track, chunk, &[0.25; 128], 48_000, None);
         }
     }
 

@@ -1,5 +1,5 @@
-use crate::StemsEngine;
 use crate::cache::StemCache;
+use crate::stems::Separator;
 use dj_core::track::TrackId;
 use dj_decode::buffer::StemBuffer;
 use std::sync::Arc;
@@ -16,6 +16,9 @@ struct SeparationJob {
     track: TrackId,
     chunk: usize,
     audio: Vec<f32>,
+    /// The rate the audio was decoded at. Carried per job rather than held on
+    /// the worker because two decks can hold tracks of different rates.
+    sample_rate: u32,
     /// Where to write the result, if a deck is still waiting for it.
     target: Option<StemBuffer>,
 }
@@ -27,14 +30,18 @@ pub struct SeparationWorker {
 }
 
 impl SeparationWorker {
-    /// Create a worker with a live stems engine.
-    pub fn new(engine: Arc<StemsEngine>, cache: Arc<StemCache>) -> Self {
+    /// Create a worker driven by `separator`.
+    ///
+    /// Takes the trait rather than a concrete engine so the built-in
+    /// separator and a downloaded model are the same thing from here on: the
+    /// only difference a DJ sees is the name and the quality.
+    pub fn new(separator: Arc<dyn Separator>, cache: Arc<StemCache>) -> Self {
         let (sender, receiver) = mpsc::channel();
 
         thread::Builder::new()
             .name("dj-stems-worker".into())
             .spawn(move || {
-                Self::worker_loop(receiver, Some(engine), cache);
+                Self::worker_loop(receiver, Some(separator), cache);
             })
             .expect("Failed to spawn stem worker thread");
 
@@ -56,6 +63,7 @@ impl SeparationWorker {
         track_id: TrackId,
         chunk_index: usize,
         audio: &[f32],
+        sample_rate: u32,
         target: Option<StemBuffer>,
     ) {
         if let Some(sender) = &self.sender {
@@ -63,6 +71,7 @@ impl SeparationWorker {
                 track: track_id,
                 chunk: chunk_index,
                 audio: audio.to_vec(),
+                sample_rate,
                 target,
             });
         }
@@ -70,13 +79,14 @@ impl SeparationWorker {
 
     fn worker_loop(
         receiver: Receiver<SeparationJob>,
-        engine: Option<Arc<StemsEngine>>,
+        separator: Option<Arc<dyn Separator>>,
         cache: Arc<StemCache>,
     ) {
         while let Ok(SeparationJob {
             track: track_id,
             chunk: chunk_index,
             audio,
+            sample_rate,
             target,
         }) = receiver.recv()
         {
@@ -87,9 +97,12 @@ impl SeparationWorker {
             }
 
             if separated.is_none() {
-                // 2. Run inference (only if an engine is available)
-                if let Some(eng) = &engine {
-                    match eng.separate(&audio) {
+                // 2. Separate (only if a separator is available)
+                if let Some(sep) = &separator {
+                    match sep
+                        .separate(&audio, sample_rate)
+                        .map(|stems| stems.into_parts().to_vec())
+                    {
                         Ok(seps) => {
                             // 3. Save to cache
                             let _ = cache.put(track_id, chunk_index, &seps);

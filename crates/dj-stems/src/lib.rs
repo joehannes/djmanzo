@@ -1,5 +1,7 @@
 pub mod availability;
 pub mod cache;
+pub mod hpss;
+pub mod stems;
 pub mod worker;
 
 pub use availability::Unavailable;
@@ -94,6 +96,33 @@ impl StemsEngine {
         }
 
         Ok(stems)
+    }
+}
+
+impl std::fmt::Debug for StemsEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StemsEngine").finish_non_exhaustive()
+    }
+}
+
+impl stems::Separator for StemsEngine {
+    fn name(&self) -> &'static str {
+        "HTDemucs (ONNX)"
+    }
+
+    /// The model works at whatever rate it was trained for and takes no rate
+    /// argument, so `_sample_rate` is ignored here. It matters to the built-in
+    /// separator, which computes its band edges from it, and the trait carries
+    /// it for that reason.
+    fn separate(&self, mix: &[f32], sample_rate: u32) -> Result<stems::Stems, stems::StemError> {
+        let parts = self.separate(mix).map_err(|error| {
+            tracing::error!(%error, "separation failed");
+            stems::StemError::NotStereo(mix.len())
+        })?;
+        let parts: [Vec<f32>; dj_core::Stem::COUNT] = parts
+            .try_into()
+            .map_err(|_| stems::StemError::NotStereo(mix.len()))?;
+        stems::Stems::new(parts, sample_rate)
     }
 }
 

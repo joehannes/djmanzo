@@ -21,12 +21,16 @@
    * to restart -- and being told that is better than pads that quietly do
    * nothing.
    */
-  let status = $state<StemsStatus>({ available: true, reason: null });
+  let status = $state<StemsStatus>({ available: true, backend: null, reason: null });
   onMount(async () => {
     try {
       status = await stemsStatus();
     } catch (error) {
-      status = { available: false, reason: `could not ask about stems: ${error}` };
+      status = {
+        available: false,
+        backend: null,
+        reason: `could not ask about stems: ${error}`,
+      };
     }
   });
 
@@ -68,6 +72,15 @@
   {#if !status.available}
     <p class="stems-reason" role="status">
       {status.reason ?? "stem separation is unavailable"}
+    </p>
+  {:else if status.reason}
+    <!--
+      Separating, but with the fallback. Worth saying: the controls work, and
+      a downloaded model would work better. Not an error, so it does not read
+      as one.
+    -->
+    <p class="stems-reason" role="status">
+      Using the {status.backend ?? "built-in"} separator — {status.reason}
     </p>
   {/if}
   <div class="stems-grid">

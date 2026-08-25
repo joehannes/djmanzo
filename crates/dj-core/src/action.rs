@@ -38,6 +38,33 @@ pub enum Stem {
 impl Stem {
     pub const ALL: [Stem; 4] = [Stem::Vocal, Stem::Drums, Stem::Bass, Stem::Other];
 
+    /// How many there are, for a fixed-size array of gains or buffers.
+    pub const COUNT: usize = Self::ALL.len();
+
+    /// Its place in [`Self::ALL`].
+    ///
+    /// The one order in the project. Separators, the parameter registry, the
+    /// pad pages and the interleaved stem frame all index by this, so two
+    /// modules disagreeing about whether drums come first is not possible.
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Stem::Vocal => 0,
+            Stem::Drums => 1,
+            Stem::Bass => 2,
+            Stem::Other => 3,
+        }
+    }
+
+    /// The inverse of [`Self::index`].
+    ///
+    /// Out of range is `None` rather than a fallback: an index nobody meant
+    /// should not quietly move the drums.
+    #[must_use]
+    pub fn from_index(index: usize) -> Option<Self> {
+        Self::ALL.get(index).copied()
+    }
+
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -51,6 +78,14 @@ impl Stem {
     #[must_use]
     pub fn parse(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|stem| stem.name() == name)
+    }
+}
+
+impl std::fmt::Display for Stem {
+    /// The same word the action grammar parses, so a message about a stem and
+    /// a mapping that names one cannot drift apart.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
     }
 }
 
@@ -1839,5 +1874,61 @@ mod tests {
                 "`{text}` round-tripped to a different action"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod stem_order_tests {
+    use super::Stem;
+
+    /// `index` and `ALL` have to agree, or a separator writing by index and a
+    /// deck reading by enum would swap two stems and nothing would say so.
+    #[test]
+    fn index_is_the_position_in_all() {
+        for (position, stem) in Stem::ALL.into_iter().enumerate() {
+            assert_eq!(stem.index(), position, "{stem:?}");
+            assert_eq!(Stem::from_index(position), Some(stem));
+        }
+    }
+
+    #[test]
+    fn no_two_stems_share_an_index() {
+        let mut seen = [false; Stem::COUNT];
+        for stem in Stem::ALL {
+            assert!(!seen[stem.index()], "{stem:?} collides");
+            seen[stem.index()] = true;
+        }
+        assert!(seen.into_iter().all(|hit| hit));
+    }
+
+    /// `deck.rs` casts `Stem::Drums as usize` to index its stem gains. That
+    /// cast and `index()` must be the same number, or replacing one with the
+    /// other -- which is the point of having `index()` -- would move the audio.
+    #[test]
+    fn the_discriminant_matches_the_index() {
+        for stem in Stem::ALL {
+            assert_eq!(stem as usize, stem.index(), "{stem:?}");
+        }
+    }
+
+    /// Anything printed has to be parseable again, or a log line naming a
+    /// stem would not be replayable as a mapping.
+    #[test]
+    fn display_round_trips_through_parse() {
+        for stem in Stem::ALL {
+            let text = stem.to_string();
+            assert_eq!(Stem::parse(&text), Some(stem), "`{text}`");
+        }
+    }
+
+    #[test]
+    fn count_matches_all() {
+        assert_eq!(Stem::COUNT, Stem::ALL.len());
+    }
+
+    #[test]
+    fn an_index_past_the_end_is_refused() {
+        assert_eq!(Stem::from_index(Stem::COUNT), None);
+        assert_eq!(Stem::from_index(usize::MAX), None);
     }
 }

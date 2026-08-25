@@ -245,27 +245,31 @@ pub fn list_plugins() -> Vec<PluginFileDto> {
         .collect()
 }
 
-/// Whether stem separation can run, and why not when it cannot.
+/// Which separator is running, and what a better one would need.
 ///
-/// The interface asks once at startup and shows the reason next to the stem
-/// controls. A DJ whose laptop has no separation model should read a sentence,
-/// not press four pads that do nothing.
+/// The interface asks once at startup. `available` is about whether the stem
+/// controls do anything at all; `reason` is about why the *better* separator
+/// is not the one doing it, which is a different question and a different
+/// sentence.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StemsStatusDto {
-    /// True when a model is loaded and the worker is running.
+    /// True when something is separating -- the built-in separator counts.
     pub available: bool,
-    /// Why it is not, in words. `None` when `available`.
+    /// What is doing it, to show beside the controls. `None` when nothing is.
+    pub backend: Option<String>,
+    /// Why a downloaded model is not being used. `None` when one is.
     pub reason: Option<String>,
 }
 
-/// Whether stem separation is available on this machine.
+/// Which separator is running on this machine.
 #[tauri::command]
 pub fn stems_status(state: State<'_, AppState>) -> StemsStatusDto {
-    let reason = state.stems_reason();
+    let backend = state.stems_backend();
     StemsStatusDto {
-        available: reason.is_none(),
-        reason,
+        available: backend.is_some(),
+        backend: backend.map(str::to_owned),
+        reason: state.stems_reason(),
     }
 }
 
@@ -620,9 +624,19 @@ pub fn put_on_deck(
     let audio_clone = buffer.as_interleaved().to_vec();
     let lock_clone = buffer.stems_lock();
     std::thread::spawn(move || {
-        let chunk_size = 44100 * 2 * 10; // 10 seconds of stereo audio per chunk
+        // Ten seconds of stereo audio per chunk, at the rate this track was
+        // actually decoded at -- the previous constant 44_100 made a chunk
+        // 9.2 seconds long on a 48 kHz track, and the built-in separator
+        // needs the real rate to place its band edges anyway.
+        let chunk_size = sample_rate.get() as usize * dj_decode::CHANNELS * 10;
         for (i, chunk) in audio_clone.chunks(chunk_size).enumerate() {
-            stems_worker.process_chunk(track_id, i, chunk, Some(lock_clone.clone()));
+            stems_worker.process_chunk(
+                track_id,
+                i,
+                chunk,
+                sample_rate.get(),
+                Some(lock_clone.clone()),
+            );
         }
     });
 
