@@ -9,6 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+arc-swap = "1.9.2"
 blake3 = { workspace = true }
 dj-core = { workspace = true }
 parking_lot = "0.12.5"

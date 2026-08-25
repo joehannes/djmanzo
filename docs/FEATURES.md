@@ -213,6 +213,12 @@ harmonic/percussive separation over an FFT, split by band and by how centred a
 sound is. Stems work out of the box; the panel names which separator is running
 and says what a model would improve.
 
+Separated audio reaches the deck without the audio thread ever taking a lock:
+the worker publishes an immutable table of chunks and swaps it in atomically.
+That is not incidental tidiness — the earlier lock-based handoff meant a muted
+stem came back every time the worker appended, which is exactly the moment a
+DJ would notice.
+
 djmanzo also does not start ONNX Runtime speculatively to find out whether it
 is there, because a missing runtime takes the process down at exit rather than
 returning an error.

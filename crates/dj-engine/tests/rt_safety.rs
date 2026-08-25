@@ -107,6 +107,31 @@ fn tone(frames: usize) -> Arc<dyn TrackSource> {
     Arc::new(AudioBuffer::from_interleaved(samples, SR))
 }
 
+/// A track whose stems are already separated, as one looks to a deck after
+/// the background worker has caught up.
+///
+/// The four parts are deliberately distinguishable -- each carries a different
+/// constant -- so a test can tell which of them a mute actually removed.
+fn tone_with_stems(frames: usize) -> Arc<dyn TrackSource> {
+    let samples: Vec<f32> = (0..frames)
+        .flat_map(|n| {
+            let v = ((n % 100) as f32 / 100.0) - 0.5;
+            [v, -v]
+        })
+        .collect();
+    let buffer = AudioBuffer::from_interleaved(samples, SR);
+    // vocal, drums, bass, other -- in dj_core::Stem::ALL order.
+    let chunk: dj_decode::StemChunk = (0..frames)
+        .map(|_| [0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4])
+        .collect();
+    buffer.stems_lock().store(Arc::new(
+        dj_decode::StemTable::default()
+            .with_chunk(0, chunk)
+            .expect("the first chunk always fits"),
+    ));
+    Arc::new(buffer)
+}
+
 struct Rig {
     renderer: OfflineRenderer,
     commands: rtrb::Producer<Command>,
@@ -152,6 +177,17 @@ impl Rig {
         self.send(Command::Load {
             deck: deck(n),
             source: tone(frames),
+        });
+        self.act(Action::Deck {
+            deck: deck(n),
+            action: DeckAction::Play,
+        });
+    }
+
+    fn load_and_play_separated(&mut self, n: u8, frames: usize) {
+        self.send(Command::Load {
+            deck: deck(n),
+            source: tone_with_stems(frames),
         });
         self.act(Action::Deck {
             deck: deck(n),
@@ -1375,5 +1411,78 @@ fn the_microphone_never_allocates() {
     assert!(
         handed_back,
         "the input ring was dropped on the audio thread rather than handed back"
+    );
+}
+
+/// Stems are the newest thing on the audio thread and the most suspicious:
+/// the deck reads them through a lock, from a `Vec` a background worker is
+/// still growing. Neither the read nor the per-stem EQ and filter may
+/// allocate.
+#[test]
+fn a_deck_playing_stems_never_allocates() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play_separated(1, 500_000);
+    rig.load_and_play_separated(2, 500_000);
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(5_000);
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "playing separated stems allocated {allocations} times"
+    );
+}
+
+/// Muting and soloing is what a DJ actually does with stems, and it happens
+/// mid-phrase. The solo path in particular saves and restores the previous
+/// mute state, which is the shape that invites a `Vec`.
+#[test]
+fn muting_and_soloing_stems_never_allocates() {
+    use dj_core::{Stem, StemChange};
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play_separated(1, 500_000);
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for step in 0..2_000 {
+            let stem = Stem::ALL[step % Stem::COUNT];
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Stem {
+                        stem,
+                        change: StemChange::ToggleMute,
+                    },
+                }))
+                .ok();
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Stem {
+                        stem,
+                        change: StemChange::SetSolo(step % 2 == 0),
+                    },
+                }))
+                .ok();
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Stem {
+                        stem,
+                        change: StemChange::Volume((step % 100) as f32 / 100.0),
+                    },
+                }))
+                .ok();
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "stem mutes and solos allocated {allocations} times"
     );
 }

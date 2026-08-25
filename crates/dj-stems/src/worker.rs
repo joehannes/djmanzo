@@ -1,7 +1,7 @@
 use crate::cache::StemCache;
 use crate::stems::Separator;
 use dj_core::track::TrackId;
-use dj_decode::buffer::StemBuffer;
+use dj_decode::buffer::{CHANNELS, StemBuffer, StemChunk};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -120,46 +120,82 @@ impl SeparationWorker {
                 }
             }
 
-            // 4. Update the in-memory buffer for real-time playback
-            if let (Some(seps), Some(target_lock)) = (separated, target) {
-                if seps.is_empty() {
+            // 4. Publish the chunk for realtime playback.
+            //
+            // Built here and handed over whole: the audio thread reads the
+            // published table without waiting, so nothing it does depends on
+            // how long this takes. The previous version appended into a
+            // `Vec` behind a write lock, and every read that landed during
+            // the append fell back to the unseparated mix -- a muted vocal
+            // came back, once per chunk. See `dj_decode::StemTable`.
+            if let (Some(seps), Some(target)) = (separated, target) {
+                let Some(chunk) = interleave(&seps) else {
                     continue;
-                }
-                let frames = seps[0].len() / 2; // CHANNELS=2
-
-                // Do crossfade logic here? Wait, we can just push directly for now
-                // and do the micro-crossfade logic here before pushing.
-                let mut interleaved = Vec::with_capacity(frames);
-                for i in 0..frames {
-                    let mut frame = [0.0; 8];
-                    for s in 0..4 {
-                        frame[s * 2] = seps[s][i * 2];
-                        frame[s * 2 + 1] = seps[s][i * 2 + 1];
-                    }
-                    interleaved.push(frame);
-                }
-
-                // Micro-crossfade the overlapping section with the existing data
-                // We'll overlap by 1024 frames.
-                let overlap = 1024.min(frames);
-                let mut lock = target_lock.write();
-
-                if !lock.is_empty() && lock.len() >= overlap {
-                    let start_idx = lock.len() - overlap;
-                    for i in 0..overlap {
-                        let fade_in = i as f32 / overlap as f32;
-                        let fade_out = 1.0 - fade_in;
-                        for c in 0..8 {
-                            lock[start_idx + i][c] =
-                                lock[start_idx + i][c] * fade_out + interleaved[i][c] * fade_in;
-                        }
-                    }
-                    // Extend the rest of the chunk
-                    lock.extend_from_slice(&interleaved[overlap..]);
-                } else {
-                    lock.extend_from_slice(&interleaved);
-                }
+                };
+                publish(&target, chunk_index, chunk);
             }
         }
+    }
+}
+
+/// Turn four interleaved-stereo stems into one interleaved frame per sample.
+///
+/// `None` when the stems are missing, ragged or not stereo -- all of which
+/// would otherwise show up as one stem playing at the wrong speed.
+fn interleave(stems: &[Vec<f32>]) -> Option<StemChunk> {
+    if stems.len() != dj_core::Stem::COUNT {
+        tracing::error!(
+            got = stems.len(),
+            "a separator returned the wrong number of stems"
+        );
+        return None;
+    }
+    let samples = stems[0].len();
+    if samples == 0 || !samples.is_multiple_of(CHANNELS) || stems.iter().any(|s| s.len() != samples)
+    {
+        tracing::error!("separated stems are ragged or not stereo");
+        return None;
+    }
+    let frames = samples / CHANNELS;
+
+    let mut chunk = Vec::with_capacity(frames);
+    for frame in 0..frames {
+        let mut out = [0.0; dj_core::Stem::COUNT * CHANNELS];
+        for (stem, samples) in stems.iter().enumerate() {
+            out[stem * CHANNELS] = samples[frame * CHANNELS];
+            out[stem * CHANNELS + 1] = samples[frame * CHANNELS + 1];
+        }
+        chunk.push(out);
+    }
+    Some(chunk.into())
+}
+
+/// Swap `chunk` into the published table.
+///
+/// A compare-and-swap loop rather than a plain store: a second worker thread,
+/// or a re-queued chunk, could publish between the load and the store, and
+/// overwriting that would drop a chunk from the middle of the track. Retrying
+/// against the table we actually read is what makes the append total.
+///
+/// A chunk the table refuses -- out of order, or after a short one -- is
+/// dropped with a warning rather than forced, because forcing it would move
+/// every later frame in the track.
+fn publish(target: &StemBuffer, index: usize, chunk: StemChunk) {
+    loop {
+        let current = target.load();
+        let Some(next) = current.with_chunk(index, Arc::clone(&chunk)) else {
+            tracing::warn!(
+                index,
+                have = current.len(),
+                "a separated chunk does not fit; dropped"
+            );
+            return;
+        };
+        let next = Arc::new(next);
+        let swapped = target.compare_and_swap(&current, Arc::clone(&next));
+        if Arc::ptr_eq(&swapped, &current) {
+            return;
+        }
+        // Someone else published first; try again against what they left.
     }
 }

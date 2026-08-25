@@ -3376,6 +3376,160 @@ mod slicer_tests {
         assert_eq!(deck.slice_beats(), 1.0);
     }
 
+    /// A separated track whose four stems each carry a different constant, so
+    /// a test can tell which one a mute removed.
+    fn separated(frames: usize) -> Arc<AudioBuffer> {
+        let buffer = AudioBuffer::from_interleaved(vec![0.0; frames * 2], SR);
+        let published = buffer.stems_lock();
+        // vocal, drums, bass, other -- dj_core::Stem::ALL order.
+        let chunk: dj_decode::StemChunk = (0..frames)
+            .map(|_| [0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4])
+            .collect();
+        published.store(Arc::new(
+            dj_decode::StemTable::default()
+                .with_chunk(0, chunk)
+                .expect("the first chunk always fits"),
+        ));
+        Arc::new(buffer)
+    }
+
+    fn peak(deck: &mut Deck, layout: &BusLayout, frames: usize) -> f32 {
+        let mut out = vec![0.0; frames * layout.channels];
+        let _ = deck.process(&mut out, layout, None);
+        out.chunks_exact(layout.channels)
+            .fold(0.0f32, |worst, frame| worst.max(frame[layout.main.0].abs()))
+    }
+
+    /// **The guard on every other stem test.** If the deck were not actually
+    /// reading the separated buffer, the mute tests and the realtime-safety
+    /// tests would all pass while exercising ordinary playback -- the stem
+    /// path would be dead code that nothing noticed.
+    ///
+    /// The four stems sum to 1.0 at the source, and the vocal is a tenth of
+    /// it, so muting the vocal must leave nine tenths.
+    ///
+    /// Compared as a **ratio between two fresh decks**, not against an
+    /// absolute level. Each stem goes through its own EQ and filter, and on
+    /// the constant this fixture feeds them the step response overshoots --
+    /// the unmuted peak is about 1.069, not 1.0. Asserting the absolute would
+    /// have been asserting the filters' transient, which is a different claim
+    /// and a fragile one. Two decks rendered identically share that transient
+    /// exactly, so the ratio isolates the mute.
+    #[test]
+    fn muting_a_stem_removes_exactly_that_stem() {
+        let layout = BusLayout::for_channels(2);
+
+        let mut whole_deck = Deck::new(SR);
+        let _ = whole_deck.load(separated(100_000));
+        whole_deck.play();
+        let whole = peak(&mut whole_deck, &layout, 512);
+
+        let mut muted_deck = Deck::new(SR);
+        let _ = muted_deck.load(separated(100_000));
+        muted_deck.play();
+        muted_deck.toggle_stem_mute(Stem::Vocal as usize);
+        let muted = peak(&mut muted_deck, &layout, 512);
+
+        assert!(whole > 0.5, "the stem path is not live at all: {whole}");
+        let share = muted / whole;
+        assert!(
+            (share - 0.9).abs() < 1e-3,
+            "muting the vocal should leave nine tenths; got {share} ({muted} of {whole})"
+        );
+    }
+
+    /// **The defect this pins.** The separated track used to live behind an
+    /// `RwLock<Vec<StemFrame>>` that the worker appended to. The audio thread
+    /// read it with `try_read` so it could never block -- but it could
+    /// *fail*, and `read_frame` falls back to the unseparated mix when the
+    /// stems are not readable. While the worker held the write lock for its
+    /// 1024-frame crossfade and fifteen-megabyte `extend_from_slice`, every
+    /// callback took that fallback: a DJ holding the vocal muted heard it
+    /// come back, once per chunk, for the whole track.
+    ///
+    /// Measured before the fix, with a writer simply holding the lock: the
+    /// level went from 0.90 to **0**. The stem mix was abandoned entirely.
+    ///
+    /// There is no write lock to hold now, so this drives the real thing --
+    /// a worker publishing chunk after chunk while the deck plays -- and
+    /// asserts the level never moves.
+    #[test]
+    fn a_muted_stem_stays_muted_while_the_worker_publishes() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let layout = BusLayout::for_channels(2);
+        const CHUNK: usize = 4_096;
+        /// Enough chunks to cover every frame this test reads, so the
+        /// playhead can never outrun separation. Running off the end of what
+        /// is separated is a real thing that happens -- and it is *not* what
+        /// this test is about, so it is designed out rather than raced.
+        const AHEAD: usize = 20;
+
+        // The unseparated mix is a constant 0.5, distinct from the 0.9 the
+        // stem path produces with the vocal muted. If the deck ever falls
+        // back, the number in the failure message says which happened.
+        let buffer = AudioBuffer::from_interleaved(vec![0.5; 200_000 * 2], SR);
+        let published = buffer.stems_lock();
+        let chunk: dj_decode::StemChunk = (0..CHUNK)
+            .map(|_| [0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4])
+            .collect();
+
+        let mut table = dj_decode::StemTable::default();
+        for index in 0..AHEAD {
+            table = table
+                .with_chunk(index, Arc::clone(&chunk))
+                .expect("chunks in order always fit");
+        }
+        published.store(Arc::new(table));
+
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(Arc::new(buffer));
+        deck.play();
+        deck.toggle_stem_mute(Stem::Vocal as usize);
+
+        // Settle past the per-stem filters' step response.
+        let _ = peak(&mut deck, &layout, 2_048);
+        let settled = peak(&mut deck, &layout, 512);
+        assert!(
+            settled > 0.8,
+            "the stem path is not live: {settled} (0.5 would mean the raw mix)"
+        );
+
+        // Now a worker publishes chunk after chunk *while* the deck reads.
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker = {
+            let published = Arc::clone(&published);
+            let stop = Arc::clone(&stop);
+            let chunk = Arc::clone(&chunk);
+            std::thread::spawn(move || {
+                let mut next = AHEAD;
+                while !stop.load(Ordering::Relaxed) {
+                    let current = published.load();
+                    let Some(table) = current.with_chunk(next, Arc::clone(&chunk)) else {
+                        break;
+                    };
+                    published.store(Arc::new(table));
+                    next += 1;
+                }
+            })
+        };
+
+        // 200 blocks of 256 frames stays well inside the pre-published span.
+        let mut worst = f32::MAX;
+        for _ in 0..200 {
+            worst = worst.min(peak(&mut deck, &layout, 256));
+        }
+        stop.store(true, Ordering::Relaxed);
+        worker.join().expect("the worker panicked");
+
+        let drift = (worst - settled).abs() / settled;
+        assert!(
+            drift < 0.01,
+            "a stem mute must survive the worker publishing; the level dipped \
+             from {settled} to {worst}"
+        );
+    }
+
     #[test]
     fn releasing_a_stem_solo_restores_the_djs_mutes() {
         let mut deck = deck();

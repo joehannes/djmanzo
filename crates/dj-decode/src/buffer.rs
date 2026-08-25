@@ -15,14 +15,116 @@ pub const STEM_COUNT: usize = 4;
 /// pointers.
 pub type StemFrame = [f32; STEM_COUNT * CHANNELS];
 
-/// The separated track a background worker fills and a deck reads.
+/// One separated chunk: a run of consecutive frames, immutable once published.
 ///
-/// The lock is an `RwLock` rather than a channel because separation arrives in
-/// chunks while the deck may already be playing: the worker appends, the deck
-/// reads what has landed so far. The audio thread only ever `try_read`s it, so
-/// it never waits on the worker -- see
-/// [`AudioBuffer::stem_frame_interpolated`].
-pub type StemBuffer = std::sync::Arc<parking_lot::RwLock<Vec<StemFrame>>>;
+/// `Arc<[_]>` rather than `Arc<Vec<_>>` so the table holds one pointer per
+/// chunk and copies none of the audio when it grows.
+pub type StemChunk = std::sync::Arc<[StemFrame]>;
+
+/// The separated part of a track that has arrived so far.
+///
+/// # Why a table of chunks rather than one growing `Vec`
+///
+/// Separation arrives in chunks while the deck is already playing, so the
+/// worker publishes and the audio thread reads at the same time. That handoff
+/// used to be an `RwLock<Vec<StemFrame>>` the worker appended to, and the
+/// audio thread read with `try_read` so it could never block.
+///
+/// It could not block, but it could *fail*: while the worker held the write
+/// lock -- a 1024-frame crossfade plus a fifteen-megabyte `extend_from_slice`,
+/// so milliseconds -- every read returned `None` and the deck fell back to the
+/// unseparated mix. A DJ holding the vocal muted heard it come back, once per
+/// chunk, for the whole track. `deck.rs`'s
+/// `a_muted_stem_stays_muted_while_the_worker_writes` pins that.
+///
+/// So the table is immutable. Publishing a chunk clones a vector of pointers
+/// -- tens of them, no audio -- and swaps it in atomically. The audio thread
+/// loads it and never waits, never fails, and never sees a half-written table.
+#[derive(Debug, Default)]
+pub struct StemTable {
+    chunks: Vec<StemChunk>,
+    /// Frames per chunk. Every chunk but the last has exactly this many, which
+    /// is what lets a lookup be a division rather than a search.
+    chunk_frames: usize,
+}
+
+impl StemTable {
+    /// An empty table: nothing separated yet.
+    #[must_use]
+    pub fn new(chunk_frames: usize) -> Self {
+        Self {
+            chunks: Vec::new(),
+            chunk_frames,
+        }
+    }
+
+    /// How many frames have been separated so far.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        match self.chunks.split_last() {
+            None => 0,
+            Some((last, rest)) => rest.len() * self.chunk_frames + last.len(),
+        }
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.chunks.is_empty()
+    }
+
+    /// The separated frame at `index`, if it has arrived.
+    #[must_use]
+    pub fn frame(&self, index: usize) -> Option<&StemFrame> {
+        if self.chunk_frames == 0 {
+            return None;
+        }
+        self.chunks
+            .get(index / self.chunk_frames)?
+            .get(index % self.chunk_frames)
+    }
+
+    /// This table with `chunk` appended, for publishing.
+    ///
+    /// Takes `&self` and returns a new table rather than mutating, because the
+    /// old one may be in use by the audio thread at this instant. Only the
+    /// pointers are copied.
+    ///
+    /// A chunk is refused if it would land out of order or if it is not the
+    /// agreed length, since either would silently move every frame after it.
+    /// The last chunk of a track may be short.
+    #[must_use]
+    pub fn with_chunk(&self, index: usize, chunk: StemChunk) -> Option<Self> {
+        if index != self.chunks.len() || chunk.is_empty() {
+            return None;
+        }
+        // The chunk size is the worker's decision, not the buffer's, so the
+        // first chunk to arrive establishes the stride for the rest.
+        let chunk_frames = if self.chunks.is_empty() {
+            chunk.len()
+        } else {
+            self.chunk_frames
+        };
+        if chunk.len() > chunk_frames {
+            return None;
+        }
+        // Every chunk but the last must be full, or `frame` would divide by a
+        // stride the table does not actually have.
+        if let Some(previous) = self.chunks.last()
+            && previous.len() != chunk_frames
+        {
+            return None;
+        }
+        let mut chunks = self.chunks.clone();
+        chunks.push(chunk);
+        Some(Self {
+            chunks,
+            chunk_frames,
+        })
+    }
+}
+
+/// The published separated track: swapped atomically, read without waiting.
+pub type StemBuffer = std::sync::Arc<arc_swap::ArcSwap<StemTable>>;
 
 /// Decoded audio, interleaved stereo `f32`, ready for the engine.
 ///
@@ -56,11 +158,10 @@ impl AudioBuffer {
     pub fn from_interleaved(mut samples: Vec<f32>, sample_rate: SampleRate) -> Self {
         let usable = samples.len() - (samples.len() % CHANNELS);
         samples.truncate(usable);
-        let frames = usable / CHANNELS;
         Self {
             samples,
             sample_rate,
-            stems: std::sync::Arc::new(parking_lot::RwLock::new(Vec::with_capacity(frames))),
+            stems: std::sync::Arc::new(arc_swap::ArcSwap::from_pointee(StemTable::default())),
         }
     }
 
@@ -70,7 +171,7 @@ impl AudioBuffer {
         Self {
             samples: Vec::new(),
             sample_rate: SampleRate::DEFAULT,
-            stems: std::sync::Arc::new(parking_lot::RwLock::new(Vec::new())),
+            stems: std::sync::Arc::new(arc_swap::ArcSwap::from_pointee(StemTable::default())),
         }
     }
 
@@ -156,16 +257,17 @@ impl AudioBuffer {
         let fraction = (position - index) as f32;
         let index = index as usize;
 
-        // Use try_read to avoid blocking the audio thread!
-        let stems = self.stems.try_read()?;
+        // A wait-free load, not a lock: the audio thread must never depend on
+        // what the separation worker is doing this instant. See [`StemTable`].
+        let stems = self.stems.load();
 
-        // If we haven't processed this far yet, fallback
-        if index + 1 >= stems.len() {
+        // Both frames or neither. Interpolating against a frame that has not
+        // arrived would fade every stem towards silence at the edge of what is
+        // separated -- a dip at the head of each chunk, once per chunk.
+        let (Some(a), Some(b)) = (stems.frame(index), stems.frame(index + 1)) else {
             return None;
-        }
-
-        let a = stems[index];
-        let b = stems[index + 1];
+        };
+        let (a, b) = (*a, *b);
 
         let mut out = [[0.0; CHANNELS]; STEM_COUNT];
         for (stem, frame) in out.iter_mut().enumerate() {
@@ -189,6 +291,139 @@ impl Default for AudioBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -- the stem table ----------------------------------------------------
+
+    fn chunk(value: f32, frames: usize) -> StemChunk {
+        (0..frames)
+            .map(|_| [value; STEM_COUNT * CHANNELS])
+            .collect()
+    }
+
+    /// **Both frames or neither.** Interpolation needs the frame at `index`
+    /// and the one after it. If the second is simply missing, treating it as
+    /// zero fades every stem towards silence across the last frame of what
+    /// has been separated -- a dip at the head of every chunk, once per chunk,
+    /// for the whole track.
+    ///
+    /// Mutation: replace the `let (Some(a), Some(b)) = ... else` in
+    /// `stem_frame_interpolated` with `unwrap_or([0.0; _])` for the second
+    /// frame. Without this test every other test in the crate stays green.
+    #[test]
+    fn a_position_past_what_is_separated_is_refused_not_faded() {
+        let buffer = AudioBuffer::from_interleaved(vec![0.0; 16], SampleRate::DEFAULT);
+        buffer.stems_lock().store(std::sync::Arc::new(
+            StemTable::default().with_chunk(0, chunk(1.0, 4)).unwrap(),
+        ));
+
+        // Inside: both frames are there, so the value is the constant.
+        let inside = buffer
+            .stem_frame_interpolated(2.5)
+            .expect("frames 2 and 3 are both separated");
+        assert!(
+            (inside[0][0] - 1.0).abs() < 1e-6,
+            "a constant should interpolate to itself, got {}",
+            inside[0][0]
+        );
+
+        // At the edge: frame 4 has not arrived. The answer is "not yet",
+        // never a half-faded frame.
+        assert_eq!(
+            buffer.stem_frame_interpolated(3.5),
+            None,
+            "interpolating into unseparated audio must be refused"
+        );
+        assert_eq!(
+            buffer.stem_frame_interpolated(3.0),
+            None,
+            "same at the last frame"
+        );
+    }
+
+    #[test]
+    fn an_empty_table_has_nothing_in_it() {
+        let table = StemTable::default();
+        assert!(table.is_empty());
+        assert_eq!(table.len(), 0);
+        assert_eq!(table.frame(0), None);
+    }
+
+    #[test]
+    fn the_first_chunk_sets_the_stride_and_the_rest_follow_it() {
+        let table = StemTable::default()
+            .with_chunk(0, chunk(1.0, 8))
+            .expect("the first chunk always fits");
+        assert_eq!(table.len(), 8);
+
+        let table = table
+            .with_chunk(1, chunk(2.0, 8))
+            .expect("a second full chunk");
+        assert_eq!(table.len(), 16);
+
+        assert_eq!(table.frame(7).unwrap()[0], 1.0);
+        assert_eq!(table.frame(8).unwrap()[0], 2.0, "chunk boundary is off");
+        assert_eq!(table.frame(15).unwrap()[0], 2.0);
+        assert_eq!(table.frame(16), None, "past the end");
+    }
+
+    /// The last chunk of a track is whatever is left over.
+    #[test]
+    fn a_short_final_chunk_is_allowed() {
+        let table = StemTable::default()
+            .with_chunk(0, chunk(1.0, 8))
+            .unwrap()
+            .with_chunk(1, chunk(2.0, 3))
+            .expect("the last chunk may be short");
+        assert_eq!(table.len(), 11);
+        assert_eq!(table.frame(10).unwrap()[0], 2.0);
+        assert_eq!(table.frame(11), None);
+    }
+
+    /// **Out of order is refused, not reordered.** Accepting chunk 3 where
+    /// chunk 1 belongs would put every later frame at the wrong time, and the
+    /// only symptom would be stems drifting out of sync with the track.
+    #[test]
+    fn a_chunk_out_of_order_is_refused() {
+        let table = StemTable::default().with_chunk(0, chunk(1.0, 8)).unwrap();
+        assert!(table.with_chunk(2, chunk(3.0, 8)).is_none(), "skipped one");
+        assert!(
+            table.with_chunk(0, chunk(9.0, 8)).is_none(),
+            "already have it"
+        );
+    }
+
+    /// Nothing may follow a short chunk: the stride would no longer be the
+    /// stride, and `frame` divides by it.
+    #[test]
+    fn nothing_follows_a_short_chunk() {
+        let table = StemTable::default()
+            .with_chunk(0, chunk(1.0, 8))
+            .unwrap()
+            .with_chunk(1, chunk(2.0, 3))
+            .unwrap();
+        assert!(table.with_chunk(2, chunk(3.0, 8)).is_none());
+    }
+
+    #[test]
+    fn a_chunk_longer_than_the_stride_is_refused() {
+        let table = StemTable::default().with_chunk(0, chunk(1.0, 8)).unwrap();
+        assert!(table.with_chunk(1, chunk(2.0, 9)).is_none());
+    }
+
+    #[test]
+    fn an_empty_chunk_is_refused() {
+        assert!(StemTable::default().with_chunk(0, chunk(1.0, 0)).is_none());
+    }
+
+    /// Publishing must not disturb what a reader already holds -- that is the
+    /// whole reason the table is rebuilt rather than mutated.
+    #[test]
+    fn the_old_table_is_untouched_by_publishing() {
+        let first = StemTable::default().with_chunk(0, chunk(1.0, 4)).unwrap();
+        let second = first.with_chunk(1, chunk(2.0, 4)).unwrap();
+        assert_eq!(first.len(), 4, "the reader's table grew underneath it");
+        assert_eq!(second.len(), 8);
+    }
 
     fn buffer(frames: &[[f32; 2]]) -> AudioBuffer {
         let samples = frames.iter().flat_map(|f| [f[0], f[1]]).collect();

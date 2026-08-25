@@ -866,6 +866,15 @@ cancel a loop the DJ set on purpose.
 ## M6 — Stems
 
 - `dj-stems`: HT-Demucs via ONNX (`ort`), CoreML on macOS, CUDA/DirectML where present.
+- **The separated track reaches the audio thread without a lock — done.** It
+  used to be an `RwLock<Vec<StemFrame>>` the worker appended to, read with
+  `try_read` so the audio thread could never block. It could not block, but it
+  could *fail*, and a failed read falls back to the unseparated mix: while the
+  worker held the write lock for a 1024-frame crossfade and a fifteen-megabyte
+  `extend_from_slice`, a DJ holding the vocal muted heard it come back — once
+  per chunk, for the whole track. Measured at 0.90 → **0**. The stems are now
+  an immutable table of chunks, published by an atomic swap; the deck loads it
+  wait-free and the audio thread takes no lock at all.
 - **A built-in separator, so stems work on a fresh install — done.** The
   downloaded model is the quality option, not the only option: `dj-stems::hpss`
   implements Fitzgerald's harmonic/percussive separation over an FFT and splits
