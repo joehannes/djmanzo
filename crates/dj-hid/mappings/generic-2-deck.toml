@@ -184,6 +184,39 @@ move = "crossfader {value}"
 min = -1.0
 max = 1.0
 
+# ------------------------------------------------------------ platters
+#
+# Almost every controller sends its jog wheel as a relative encoder on a CC,
+# and the touch plate on the top as a note. `jog` takes **revolutions**, so the
+# conversion from a device's own ticks happens here, in the file where that
+# device's resolution is written down -- the engine never has to know what a
+# particular wheel counts in.
+#
+# A tick of 1/600 of a turn suits the common 600-pulse wheel. A controller with
+# a different resolution changes this number and nothing else.
+
+[[binding]]
+on = "note 1 0x36"
+press = "deck 1 jog_touch"
+release = "deck 1 jog_release"
+
+[[binding]]
+on = "cc 1 0x35"
+encoding = "signed"
+turn_up = "deck 1 jog 0.00167"
+turn_down = "deck 1 jog -0.00167"
+
+[[binding]]
+on = "note 2 0x36"
+press = "deck 2 jog_touch"
+release = "deck 2 jog_release"
+
+[[binding]]
+on = "cc 2 0x35"
+encoding = "signed"
+turn_up = "deck 2 jog 0.00167"
+turn_down = "deck 2 jog -0.00167"
+
 # ============================================================ feedback
 #
 # The return path: the engine lighting the controller. Every line names a

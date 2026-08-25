@@ -223,6 +223,20 @@ djmanzo also does not start ONNX Runtime speculatively to find out whether it
 is there, because a missing runtime takes the process down at exit rather than
 returning an error.
 
+### A platter that behaves like a platter
+
+A jog wheel is the control a DJ touches most, so djmanzo is precise about what
+it does. One turn moves one turn of a record. A hand on the top in vinyl mode
+stops the music and drives it; the same hand in CDJ mode only nudges the tempo.
+The rim always bends. A paused deck searches, with sound, because that is how a
+cue point is found by ear.
+
+The two halves are deliberately different kinds of control: a scratch is a
+*position* and is applied the instant it arrives, while a bend is a *speed* and
+is estimated over time. That is why a scratch feels attached to the hand and a
+bend does not jump — and why neither changes when you pick a different audio
+buffer size.
+
 ### The universal hardware bridge
 
 No other application speaks Pro DJ Link *and* StagelinQ *and* network tempo sync *and* MIDI

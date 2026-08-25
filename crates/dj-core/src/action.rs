@@ -12,6 +12,7 @@
 use crate::deck::{CrossfaderAssign, DeckId};
 use crate::fx::{EffectKind, FX_SLOTS, FxChange, Placement};
 use crate::hotcue::HOT_CUE_SLOTS;
+use crate::jog::JogMode;
 use crate::sampler::{
     RecordSource, SAMPLE_SLOTS, SampleChange, SampleOutput, SamplerChange, TriggerMode,
 };
@@ -149,6 +150,19 @@ pub enum DeckAction {
     /// Hold or release the censor: momentary reverse that always slips, so it
     /// hides a word and puts you back on the beat.
     SetCensor(bool),
+    /// A hand landing on, or leaving, the top of the platter.
+    ///
+    /// Separate from the movement because the two mean different things: in
+    /// vinyl mode the touch alone stops the record, before anything turns.
+    JogTouch(bool),
+    /// The platter turned, in revolutions. Positive is forwards.
+    ///
+    /// Revolutions rather than device ticks so a mapping converts once, in the
+    /// file where the controller's resolution is written down, instead of the
+    /// engine having to know what a particular wheel counts in.
+    Jog(f32),
+    /// Whether the platter behaves like a record or like a CD player.
+    SetJogMode(JogMode),
     /// Hold a loop roll of this many beats, or release it with `None`.
     ///
     /// Momentary, like the censor, and for the same reason: a roll is a
@@ -852,6 +866,16 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         // rather than a toggle. A toggled censor would be reverse with extra
         // steps.
         "censor_on" => bare(DeckAction::SetCensor(true)),
+        // The platter. `jog` carries revolutions because that is what a
+        // mapping can state from a controller's manual; see `dj_engine::jog`.
+        "jog_touch" => bare(DeckAction::JogTouch(true)),
+        "jog_release" => bare(DeckAction::JogTouch(false)),
+        // `parse_beats` is the project's float parser: it refuses a NaN,
+        // which would otherwise pass every later range check by failing it.
+        "jog" => Ok(DeckAction::Jog(parse_beats(argument)?)),
+        "jog_mode" => JogMode::parse(argument.ok_or(ParseError::MissingArgument)?)
+            .map(DeckAction::SetJogMode)
+            .ok_or(ParseError::BadArgument),
         "censor_off" => bare(DeckAction::SetCensor(false)),
         "brake" => Ok(DeckAction::Brake(Some(parse_beats(argument)?))),
         "brake_off" => bare(DeckAction::Brake(None)),
@@ -1054,6 +1078,12 @@ impl fmt::Display for Action {
                 DeckAction::ToggleReverse => write!(f, "deck {deck} reverse_toggle"),
                 DeckAction::SetCensor(true) => write!(f, "deck {deck} censor_on"),
                 DeckAction::SetCensor(false) => write!(f, "deck {deck} censor_off"),
+                DeckAction::JogTouch(true) => write!(f, "deck {deck} jog_touch"),
+                DeckAction::JogTouch(false) => write!(f, "deck {deck} jog_release"),
+                DeckAction::Jog(turns) => {
+                    write!(f, "deck {deck} jog {}", number(f64::from(*turns)))
+                }
+                DeckAction::SetJogMode(mode) => write!(f, "deck {deck} jog_mode {mode}"),
                 DeckAction::Brake(Some(beats)) => write!(f, "deck {deck} brake {beats}"),
                 DeckAction::Brake(None) => write!(f, "deck {deck} brake_off"),
                 DeckAction::Backspin(Some(beats)) => write!(f, "deck {deck} backspin {beats}"),
@@ -1798,6 +1828,30 @@ mod tests {
             Action::Deck {
                 deck: deck(1),
                 action: DeckAction::Play,
+            },
+            Action::Deck {
+                deck: deck(1),
+                action: DeckAction::JogTouch(true),
+            },
+            Action::Deck {
+                deck: deck(2),
+                action: DeckAction::JogTouch(false),
+            },
+            Action::Deck {
+                deck: deck(1),
+                action: DeckAction::Jog(0.25),
+            },
+            Action::Deck {
+                deck: deck(1),
+                action: DeckAction::Jog(-1.5),
+            },
+            Action::Deck {
+                deck: deck(2),
+                action: DeckAction::SetJogMode(JogMode::Vinyl),
+            },
+            Action::Deck {
+                deck: deck(2),
+                action: DeckAction::SetJogMode(JogMode::Cdj),
             },
             Action::Deck {
                 deck: deck(3),

@@ -114,6 +114,12 @@ export interface DeckState {
   pre_fader_level: number;
   keylock: boolean;
   keylock_latency_ms: number;
+  /** Whether a hand is on this deck's platter. */
+  jog_touched: boolean;
+  /** `"vinyl"` or `"cdj"` — how the platter behaves under that hand. */
+  jog_mode: string;
+  /** How far the wheel is bending the tempo, as a fraction of normal speed. */
+  jog_bend: number;
   /** Deliberate transposition in semitones, for harmonic mixing. */
   key_shift: number;
   /** Which side of the crossfader cuts this deck, or neither. */

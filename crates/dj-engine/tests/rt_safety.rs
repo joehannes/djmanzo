@@ -1486,3 +1486,86 @@ fn muting_and_soloing_stems_never_allocates() {
         "stem mutes and solos allocated {allocations} times"
     );
 }
+
+/// The platter is on the audio thread: `take_jog` runs once a block and the
+/// step it produces is read every frame. A wheel is also the control a DJ
+/// touches most, so a dropout here would be the one they notice.
+#[test]
+fn scratching_and_bending_never_allocate() {
+    use dj_core::JogMode;
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 1_000_000);
+    rig.load_and_play(2, 1_000_000);
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for step in 0..2_000 {
+            // A hand on deck 1's platter, scratching.
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::JogTouch(step % 64 < 32),
+                }))
+                .ok();
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Jog(((step % 20) as f32 - 10.0) * 0.002),
+                }))
+                .ok();
+            // And a bend on deck 2, in the other mode.
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(2),
+                    action: DeckAction::SetJogMode(if step % 128 < 64 {
+                        JogMode::Cdj
+                    } else {
+                        JogMode::Vinyl
+                    }),
+                }))
+                .ok();
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(2),
+                    action: DeckAction::Jog(0.001),
+                }))
+                .ok();
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "the platter allocated {allocations} times across 2,000 blocks"
+    );
+}
+
+/// A paused deck being searched renders rather than taking the cheap early
+/// return, so that path has to be allocation-free too -- it is the one a DJ
+/// uses while hunting for a cue point with the crowd waiting.
+#[test]
+fn searching_a_paused_deck_never_allocates() {
+    let mut rig = rig(2, 256);
+    rig.send(Command::Load {
+        deck: deck(1),
+        source: tone(1_000_000),
+    });
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for step in 0..2_000 {
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Jog(if step % 2 == 0 { 0.01 } else { -0.01 }),
+                }))
+                .ok();
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+
+    assert_eq!(allocations, 0, "searching allocated {allocations} times");
+}

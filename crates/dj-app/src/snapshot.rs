@@ -59,6 +59,12 @@ pub struct DeckSnapshot {
     pub pre_fader_level: f32,
     /// Holding the musical key while the pitch fader changes tempo.
     pub keylock: bool,
+    /// Whether a hand is on this deck's platter.
+    pub jog_touched: bool,
+    /// `"vinyl"` or `"cdj"` -- how the platter behaves under that hand.
+    pub jog_mode: String,
+    /// How far the wheel is bending the tempo, as a fraction of normal speed.
+    pub jog_bend: f32,
     /// What keylock costs, in milliseconds, before the deck compensates for it.
     /// Surfaced so the figure is stated rather than guessed at.
     pub keylock_latency_ms: f32,
@@ -546,6 +552,14 @@ impl Snapshot {
                     cue_enabled: get(DeckParam::CueEnabled) >= 0.5,
                     pre_fader_level: get(DeckParam::PreFaderLevel),
                     keylock: get(DeckParam::Keylock) >= 0.5,
+                    jog_touched: get(DeckParam::JogTouched) >= 0.5,
+                    jog_mode: if get(DeckParam::JogMode) >= 0.5 {
+                        "cdj"
+                    } else {
+                        "vinyl"
+                    }
+                    .to_owned(),
+                    jog_bend: get(DeckParam::JogBend),
                     keylock_latency_ms: to_seconds(get(DeckParam::KeylockLatencyFrames)) * 1000.0,
                     key_shift: get(DeckParam::KeyShift).round() as i32,
                     crossfader_assign: CrossfaderAssign::from_param(get(

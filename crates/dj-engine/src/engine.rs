@@ -518,6 +518,9 @@ impl Engine {
                         target.set_reverse(!on);
                     }
                     DeckAction::SetCensor(held) => target.set_censor(held),
+                    DeckAction::JogTouch(touched) => target.set_jog_touch(touched),
+                    DeckAction::Jog(turns) => target.jog(turns),
+                    DeckAction::SetJogMode(mode) => target.set_jog_mode(mode),
                     DeckAction::Stem { stem, change } => {
                         let idx = stem as usize;
                         match change {
@@ -859,6 +862,19 @@ impl Engine {
                 deck.keylock_latency_frames() as f32,
             );
             set(DeckParam::KeyShift, deck.key_shift() as f32);
+            set(
+                DeckParam::JogTouched,
+                if deck.jog_touched() { 1.0 } else { 0.0 },
+            );
+            set(
+                DeckParam::JogMode,
+                if deck.jog_mode() == dj_core::JogMode::Cdj {
+                    1.0
+                } else {
+                    0.0
+                },
+            );
+            set(DeckParam::JogBend, deck.jog_bend() as f32);
             set(
                 DeckParam::CrossfaderAssign,
                 deck.crossfader_assign().as_param(),

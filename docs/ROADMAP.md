@@ -523,7 +523,19 @@ The milestone that makes the hardware in your hands work.
   to come.
 - **Motorized platters** as a first-class control kind — absolute high-res position in, motor
   start/stop ramp and torque out.
-- Jog modes: scratch, bend, search. Vinyl vs CDJ mode.
+- **Jog modes — done: scratch, bend and search, vinyl and CDJ.** One piece of
+  plastic doing three jobs, and which one you get depends on the mode, whether
+  the top is touched and whether the deck is playing. A turn of the wheel is a
+  turn of a record -- 1.8 seconds at 33 1/3 RPM -- which is the number that
+  makes a scratch feel right. Scratching is **position** control, applied the
+  frame it arrives, because any smoothing there is latency and latency is what
+  makes a scratch feel like rubber; bending is **rate** control, estimated from
+  wheel speed and smoothed, so it does not depend on how chatty the controller
+  is or how big the audio buffer is. A paused deck searches and makes sound
+  while it does, because finding a cue point by ear is what the wheel is for
+  when nothing is playing. On screen the platter answers to being *turned*
+  rather than dragged, so a movement is the same near the hub or out at the rim.
+  Motorised platters -- position in, torque out -- still to come.
 - Controller-specific audio setup presets.
 - In-app mapping editor (learn a control, bind an action).
 - Mappings — bundled rather than installed, so a fresh install works with nothing

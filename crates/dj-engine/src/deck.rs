@@ -1,11 +1,12 @@
 //! A single deck.
 
 use crate::bus::BusLayout;
+use crate::jog::{Jog, JogEffect};
 use crate::rack::Rack;
 use crate::record::Recorder;
 use dj_core::{
-    Beatgrid, CrossfaderAssign, FramePos, HOT_CUE_SLOTS, LoopLimits, LoopRegion, PADS, Rate,
-    SampleRate, db_to_linear,
+    Beatgrid, CrossfaderAssign, FramePos, HOT_CUE_SLOTS, JogMode, LoopLimits, LoopRegion, PADS,
+    Rate, SampleRate, db_to_linear,
 };
 use dj_decode::{AudioBuffer, TrackSource};
 use dj_dsp::fx::FxContext;
@@ -116,6 +117,18 @@ pub struct Deck {
     /// `None` is the ordinary case: the motor is driving and the record turns
     /// at whatever the pitch fader says. See [`Spin`].
     spin: Option<Spin>,
+    /// The platter under the hand: scratching, bending and searching.
+    ///
+    /// Held per deck and never reallocated, so a hand landing on a wheel
+    /// mid-set costs nothing. See [`crate::jog`] for what each mode does.
+    jog: Jog,
+    /// The step the hand is imposing this block, when it is driving.
+    ///
+    /// `Some` only while scratching or searching: the wheel replaces the motor
+    /// rather than adding to it, so this is not a multiplier.
+    jog_step: Option<f64>,
+    /// The wheel's bend this block, as a multiplier. `1.0` when still.
+    jog_bend: f64,
     /// This deck's three effect slots.
     ///
     /// Per deck rather than only on the master because the commonest use of an
@@ -212,6 +225,9 @@ impl Deck {
                 StemChannel::new(sr),
             ],
             spin: None,
+            jog: Jog::new(device_rate),
+            jog_step: None,
+            jog_bend: 1.0,
             rack: Rack::new(sr),
             keylock: Keylock::new(sr),
             // Off by default: at unity pitch there is nothing to correct, and a
@@ -454,6 +470,13 @@ impl Deck {
         self.position = FramePos::ZERO;
         self.cue_point = FramePos::ZERO;
         self.playing = false;
+        // A turn of the wheel is 1.8 seconds of *this* track, so the platter
+        // has to know what rate it was decoded at. Forgetting the hand too:
+        // whatever was being scratched is gone.
+        self.jog.set_source_rate(self.source.sample_rate());
+        self.jog.reset();
+        self.jog_step = None;
+        self.jog_bend = 1.0;
         // Filter memory belongs to the old track. Carrying it into a new one
         // would leak a fragment of the previous audio into the first samples.
         for eq in &mut self.eq {
@@ -942,6 +965,60 @@ impl Deck {
         } else if !self.censoring {
             self.end_diversion();
         }
+    }
+
+    // -- the platter ------------------------------------------------------
+
+    /// A hand landing on, or leaving, the top of the platter.
+    ///
+    /// In vinyl mode this alone stops the record, before anything turns --
+    /// which is why touch is a separate action from movement. The shifter's
+    /// history stops meaning anything the moment the hand drives the playhead,
+    /// so this primes it the same way a seek does.
+    pub fn set_jog_touch(&mut self, touched: bool) {
+        if self.jog.is_touched() == touched {
+            return;
+        }
+        self.jog.set_touched(touched);
+        if self.jog.mode() == JogMode::Vinyl && self.playing {
+            self.needs_prime = true;
+            if touched {
+                self.begin_diversion();
+            } else if !self.censoring {
+                self.end_diversion();
+            }
+        }
+    }
+
+    /// The platter turned, in revolutions. Positive is forwards.
+    pub fn jog(&mut self, revolutions: f32) {
+        self.jog.turn(revolutions);
+    }
+
+    pub fn set_jog_mode(&mut self, mode: JogMode) {
+        self.jog.set_mode(mode);
+    }
+
+    #[must_use]
+    pub fn jog_mode(&self) -> JogMode {
+        self.jog.mode()
+    }
+
+    #[must_use]
+    pub fn jog_touched(&self) -> bool {
+        self.jog.is_touched()
+    }
+
+    /// How far the wheel is currently bending the tempo, as a fraction.
+    #[must_use]
+    pub fn jog_bend(&self) -> f64 {
+        self.jog.bend()
+    }
+
+    /// Whether the hand is driving the playhead rather than the motor.
+    #[must_use]
+    pub fn is_scratching(&self) -> bool {
+        self.playing && self.jog.is_touched() && self.jog.mode() == JogMode::Vinyl
     }
 
     /// Cut the motor: coast to a stop over `beats`, then pause.
@@ -1434,11 +1511,44 @@ impl Deck {
     fn step_per_output_frame(&self) -> f64 {
         let forward = self.forward_step_per_output_frame();
         let directed = if self.reversed() { -forward } else { forward };
+        // A hand on the record beats everything else, because it physically
+        // would: while the platter is being scratched or searched the motor is
+        // not driving, the wheel is, so this replaces the step rather than
+        // scaling it.
+        if let Some(scrub) = self.jog_step {
+            return scrub;
+        }
         // A coasting platter multiplies whatever the step was. Applied last, so
         // a brake on a reversed deck slows to a stop rather than turning round.
-        match self.spin {
+        let coasted = match self.spin {
             Some(spin) => directed * spin.rate,
             None => directed,
+        };
+        // A bend is the last word on speed: it is "run a little faster while I
+        // push", on top of whatever the deck was already doing.
+        coasted * self.jog_bend
+    }
+
+    /// Fold the wheel's movement into this block.
+    ///
+    /// Called once per render block, before the step is taken, because the
+    /// step is what carries the answer. See [`crate::jog`].
+    fn take_jog(&mut self, frames: usize) {
+        match self.jog.advance_block(frames, self.playing) {
+            JogEffect::Free => {
+                self.jog_step = None;
+                self.jog_bend = 1.0;
+            }
+            JogEffect::Bend(multiplier) => {
+                self.jog_step = None;
+                self.jog_bend = multiplier;
+            }
+            JogEffect::Scrub(source_frames) => {
+                // Spread across the block: the movement that arrived during
+                // these frames is played over these frames.
+                self.jog_step = Some(source_frames / frames.max(1) as f64);
+                self.jog_bend = 1.0;
+            }
         }
     }
 
@@ -1479,7 +1589,15 @@ impl Deck {
         layout: &BusLayout,
         tap: Option<&mut Recorder>,
     ) -> DeckLevels {
-        if !self.playing || self.source.is_empty() {
+        if self.source.is_empty() {
+            return DeckLevels::default();
+        }
+        // A paused deck still plays while the wheel is being wound: searching
+        // by ear is how a DJ finds a cue point, and a silent search would be a
+        // wheel that scrolls a waveform rather than one that cues a record.
+        // A paused deck nobody is touching still takes the cheap path.
+        let searching = !self.playing && self.jog.has_movement();
+        if !self.playing && !searching {
             return DeckLevels::default();
         }
         // The shifter runs whenever it has something to do: correcting the
@@ -1489,7 +1607,10 @@ impl Deck {
         // the pitch falling; a keylocked brake is a brake that does not brake.
         // The shifter also works on blocks, and a rate that changes every frame
         // is not something a block-based shifter can follow.
-        if (self.keylock_on || self.key_shift != 0) && self.spin.is_none() {
+        // A search goes down the direct path for the same reason a brake does:
+        // the shifter works on blocks at a settled tempo, and a hand winding a
+        // wheel is neither.
+        if (self.keylock_on || self.key_shift != 0) && self.spin.is_none() && !searching {
             self.process_keylocked(out, layout, tap)
         } else {
             self.process_direct(out, layout, tap)
@@ -1511,6 +1632,9 @@ impl Deck {
         // Once per block, not per frame: the tempo cannot change inside a
         // block, and `effective_bpm` is a grid lookup and a division.
         let ctx = self.fx_context();
+        // The wheel's contribution is settled for the block before the first
+        // step is taken, so a hand on the platter is already in `step` below.
+        self.take_jog(out.len() / channels);
 
         for frame in out.chunks_exact_mut(channels) {
             // Advance the smoothers every frame regardless of whether audio is
@@ -1559,7 +1683,12 @@ impl Deck {
             // stays allocation-free.
             self.advance_slip(step, len);
             self.advance_spin();
-            if !self.playing {
+            // Stop early only when *nothing* is driving the record. A hand
+            // searching a paused deck keeps it turning: `jog_step` is `Some`
+            // exactly while the wheel is driving, so this asks whether the
+            // record has actually come to rest rather than whether the motor
+            // is on.
+            if !self.playing && self.jog_step.is_none() {
                 // The coast ended part-way through this block. Stop here: with
                 // the spin gone the multiplier is gone with it, and the
                 // remaining frames would play at *full speed* — up to a whole
@@ -1595,9 +1724,11 @@ impl Deck {
         layout: &BusLayout,
         mut tap: Option<&mut Recorder>,
     ) -> DeckLevels {
+        let channels = layout.channels.max(1);
+        // Before the step, for the same reason as the plain path.
+        self.take_jog(out.len() / channels);
         let step = self.step_per_output_frame();
         let len = self.len_frames() as f64;
-        let channels = layout.channels.max(1);
         let cue_send = if self.cue_enabled { layout.cue } else { None };
         let mut levels = DeckLevels::default();
         let ctx = self.fx_context();
@@ -3528,6 +3659,154 @@ mod slicer_tests {
             "a stem mute must survive the worker publishing; the level dipped \
              from {settled} to {worst}"
         );
+    }
+
+    // -- the platter, on a real deck ---------------------------------------
+
+    /// A ramp: frame `n` holds the value `n`, so a test can read the playhead
+    /// straight out of the audio.
+    fn ramp(frames: usize) -> Arc<AudioBuffer> {
+        let samples: Vec<f32> = (0..frames).flat_map(|n| [n as f32, n as f32]).collect();
+        Arc::new(AudioBuffer::from_interleaved(samples, SR))
+    }
+
+    fn playhead_after(deck: &mut Deck, layout: &BusLayout, frames: usize) -> f64 {
+        let mut out = vec![0.0; frames * layout.channels];
+        let _ = deck.process(&mut out, layout, None);
+        deck.position().get()
+    }
+
+    /// **The number that makes it feel like vinyl, end to end.** One turn of
+    /// the wheel has to move the playhead one revolution of a record --
+    /// 1.8 seconds -- through the engine, not just in the jog module.
+    #[test]
+    fn scratching_moves_the_playhead_by_a_revolution() {
+        let layout = BusLayout::for_channels(2);
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(ramp(2_000_000));
+        deck.play();
+        deck.set_jog_touch(true);
+
+        let before = deck.position().get();
+        deck.jog(1.0);
+        let after = playhead_after(&mut deck, &layout, 256);
+
+        let moved = after - before;
+        let expected = 1.8 * SR.as_f64();
+        assert!(
+            (moved - expected).abs() < expected * 0.01,
+            "one turn moved {moved} frames, not {expected}"
+        );
+    }
+
+    /// While the hand is on the record the motor is not driving: a touched
+    /// platter that is not being turned holds the playhead still, which is
+    /// what stops the music when you put a finger down.
+    #[test]
+    fn a_hand_on_the_record_stops_it() {
+        let layout = BusLayout::for_channels(2);
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(ramp(2_000_000));
+        deck.play();
+
+        // Playing normally, the playhead moves.
+        let start = playhead_after(&mut deck, &layout, 256);
+        assert!(start > 0.0);
+
+        deck.set_jog_touch(true);
+        let held = playhead_after(&mut deck, &layout, 256);
+        assert!(
+            (held - start).abs() < 1.0,
+            "the record kept moving under the hand: {start} to {held}"
+        );
+
+        // And it runs again when the hand comes off.
+        deck.set_jog_touch(false);
+        let released = playhead_after(&mut deck, &layout, 256);
+        assert!(released > held + 100.0, "the record did not start again");
+    }
+
+    /// In CDJ mode the top of the platter is not a record: touching it does
+    /// not stop the music, which is the whole difference between the modes.
+    #[test]
+    fn in_cdj_mode_a_hand_does_not_stop_the_record() {
+        let layout = BusLayout::for_channels(2);
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(ramp(2_000_000));
+        deck.set_jog_mode(JogMode::Cdj);
+        deck.play();
+
+        let free = playhead_after(&mut deck, &layout, 256);
+        deck.set_jog_touch(true);
+        let touched = playhead_after(&mut deck, &layout, 256);
+
+        assert!(
+            touched - free > 100.0,
+            "CDJ mode stopped the record under the hand"
+        );
+    }
+
+    /// **What a bend is for.** Pushing the wheel forwards has to make the deck
+    /// cover more ground while the hand is moving -- that is how a DJ pulls two
+    /// records back into line.
+    #[test]
+    fn bending_forwards_covers_more_ground() {
+        let layout = BusLayout::for_channels(2);
+
+        let mut plain = Deck::new(SR);
+        let _ = plain.load(ramp(2_000_000));
+        plain.play();
+        let normal = playhead_after(&mut plain, &layout, 4_096);
+
+        let mut bent = Deck::new(SR);
+        let _ = bent.load(ramp(2_000_000));
+        bent.play();
+        // A steady push at the side of the platter, block by block.
+        for _ in 0..16 {
+            bent.jog(0.05 * 256.0 / SR.as_f64() as f32);
+            let mut out = vec![0.0; 256 * layout.channels];
+            let _ = bent.process(&mut out, &layout, None);
+        }
+        let pushed = bent.position().get();
+
+        assert!(
+            pushed > normal,
+            "a bend covered {pushed} where normal play covered {normal}"
+        );
+        assert!(
+            bent.jog_bend() > 0.0,
+            "the deck does not report the bend it is applying"
+        );
+    }
+
+    /// A paused deck searches: winding the wheel finds a spot in the track,
+    /// and it does not start playing by itself.
+    #[test]
+    fn a_paused_deck_searches_and_stays_paused() {
+        let layout = BusLayout::for_channels(2);
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(ramp(2_000_000));
+
+        deck.jog(1.0);
+        let after = playhead_after(&mut deck, &layout, 256);
+
+        assert!(
+            after > 1.8 * SR.as_f64(),
+            "searching did not wind on: {after}"
+        );
+        assert!(!deck.is_playing(), "searching started the deck");
+    }
+
+    #[test]
+    fn a_new_track_forgets_the_hand() {
+        let mut deck = Deck::new(SR);
+        let _ = deck.load(ramp(100_000));
+        deck.set_jog_touch(true);
+        deck.jog(0.5);
+
+        let _ = deck.load(ramp(100_000));
+        assert!(!deck.jog_touched(), "the hand carried over to a new track");
+        assert_eq!(deck.jog_bend(), 0.0);
     }
 
     #[test]

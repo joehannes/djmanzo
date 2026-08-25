@@ -47,6 +47,12 @@ pub enum DeckParam {
     PreFaderLevel,
     /// 1.0 when keylock is holding the musical key.
     Keylock,
+    /// Whether a hand is on the platter. `1.0` while touched.
+    JogTouched,
+    /// Which way the platter behaves: `0.0` vinyl, `1.0` CDJ.
+    JogMode,
+    /// How far the wheel is bending the tempo, as a fraction.
+    JogBend,
     /// Frames of latency keylock is adding, before compensation. 0.0 when off.
     KeylockLatencyFrames,
     /// Deliberate transposition in semitones. 0.0 when not shifted.
@@ -208,7 +214,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 69;
+    pub const COUNT: usize = 72;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -235,6 +241,9 @@ impl DeckParam {
             CueEnabled,
             PreFaderLevel,
             Keylock,
+            JogTouched,
+            JogMode,
+            JogBend,
             KeylockLatencyFrames,
             KeyShift,
             Synced,
@@ -983,6 +992,9 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::CueEnabled => "cue_enabled",
         DeckParam::PreFaderLevel => "pre_fader_level",
         DeckParam::Keylock => "keylock",
+        DeckParam::JogTouched => "jog_touched",
+        DeckParam::JogMode => "jog_mode",
+        DeckParam::JogBend => "jog_bend",
         DeckParam::KeylockLatencyFrames => "keylock_latency_frames",
         DeckParam::KeyShift => "key_shift",
         DeckParam::Synced => "synced",

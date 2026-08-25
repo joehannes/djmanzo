@@ -9,6 +9,7 @@
     type PadPageDto,
     type SamplerState,
   } from "./api";
+  import JogWheel from "./JogWheel.svelte";
   import { fill } from "./meter";
   import Fx from "./Fx.svelte";
   import Stems from "./Stems.svelte";
@@ -449,6 +450,21 @@
   </div>
 
   <!--
+    The platter. Drag the middle to scratch, the rim to bend, and wind it to
+    search a paused deck -- the same three things the hardware does, and the
+    same actions a controller mapping sends.
+  -->
+  <div class="jog-row">
+    <JogWheel
+      deckNumber={deck.number}
+      touched={deck.jog_touched}
+      mode={deck.jog_mode}
+      bend={deck.jog_bend}
+      enabled={enabled && deck.loaded}
+    />
+  </div>
+
+  <!--
     Pre-fader listen. Deliberately explains itself when unavailable rather than
     just sitting greyed out: a 2-channel laptop output has nowhere to send a
     cue, and "why is this dead" is a bad thing to wonder mid-set.
@@ -706,6 +722,12 @@
 </section>
 
 <style>
+  .jog-row {
+    display: flex;
+    justify-content: center;
+    padding: 0.4rem 0;
+  }
+
   .deck {
     background: var(--panel);
     border: 1px solid var(--border);
