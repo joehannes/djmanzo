@@ -273,6 +273,68 @@ pub fn stems_status(state: State<'_, AppState>) -> StemsStatusDto {
     }
 }
 
+/// Whether a deck can be sent out in parts, and which one is.
+///
+/// `channels` rather than a bare boolean because the panel has to say *why*
+/// the control is unavailable, and "your interface has 2 outputs, this needs
+/// 8" is a sentence a DJ can act on where a greyed-out switch is not.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StemOutDto {
+    /// The deck going out in parts, as the DJ numbers it, or `None`.
+    pub deck: Option<u8>,
+    /// Outputs on the open device. `None` when no device is open.
+    pub channels: Option<u16>,
+    /// How many outputs this needs. Constant, but sent so the interface does
+    /// not restate a number the engine owns.
+    pub required: u16,
+    /// True when the open device is wide enough. False with no device open:
+    /// there is nothing to be wide enough yet.
+    pub supported: bool,
+}
+
+/// Which deck is being sent out in parts, and whether the device allows it.
+#[tauri::command]
+pub fn stem_out(state: State<'_, AppState>) -> StemOutDto {
+    stem_out_view(&state)
+}
+
+/// What `stem_out` reports, minus Tauri's `State` wrapper — which is the one
+/// thing in that function a unit test cannot build.
+fn stem_out_view(state: &AppState) -> StemOutDto {
+    let channels = state.active_device().map(|device| device.channels);
+    StemOutDto {
+        deck: state.stem_out().map(dj_core::DeckId::human_number),
+        channels,
+        required: REQUIRED_STEM_OUT_CHANNELS,
+        supported: channels.is_some_and(|open| open >= REQUIRED_STEM_OUT_CHANNELS),
+    }
+}
+
+/// Four stems, two channels each.
+const REQUIRED_STEM_OUT_CHANNELS: u16 = dj_engine::STEM_OUT_CHANNELS as u16;
+
+/// Send one deck out in parts, or stop.
+///
+/// Accepted even on a device too narrow for it: the engine refuses to build
+/// the arrangement and keeps mixing normally, and the choice takes effect if a
+/// wider device is opened later. Refusing here instead would mean a DJ who
+/// sets this up before plugging in the interface finds it silently forgotten.
+///
+/// # Errors
+/// When `deck` names a deck that does not exist.
+#[tauri::command]
+pub fn set_stem_out(state: State<'_, AppState>, deck: Option<u8>) -> Result<StemOutDto, String> {
+    let id = match deck {
+        Some(number) => {
+            Some(dj_core::DeckId::from_human(number).ok_or_else(|| format!("no deck {number}"))?)
+        }
+        None => None,
+    };
+    state.set_stem_out(id);
+    Ok(stem_out_view(&state))
+}
+
 /// What is on the insert right now.
 #[tauri::command]
 pub fn plugin_state(state: State<'_, AppState>) -> PluginStateDto {
@@ -408,6 +470,21 @@ pub fn open_device(
     cue_device_id: Option<String>,
     buffer_frames: Option<u32>,
 ) -> Result<ActiveDeviceDto, String> {
+    open_device_for(&state, device_id, cue_device_id, buffer_frames)
+}
+
+/// What `open_device` does, minus Tauri's `State` wrapper — which is the one
+/// thing in that function a unit test cannot build.
+///
+/// Extracted rather than duplicated because the interesting part of opening a
+/// device is not the open: it is everything that has to be said again
+/// afterwards to an engine that did not exist a moment ago.
+fn open_device_for(
+    state: &AppState,
+    device_id: Option<String>,
+    cue_device_id: Option<String>,
+    buffer_frames: Option<u32>,
+) -> Result<ActiveDeviceDto, String> {
     let device = device_id.map(dj_audio::DeviceId::new);
     let cue_device = cue_device_id.map(dj_audio::DeviceId::new);
     let frames = buffer_frames.unwrap_or(dj_audio::StreamConfig::DEFAULT_BUFFER_FRAMES);
@@ -437,8 +514,10 @@ pub fn open_device(
     // `AppState::set_active_device`.
     state.set_active_device(Some(dto.clone()));
     // The engine behind this device is brand new and knows nothing about the
-    // controller that is already plugged in. Tell it.
+    // controller that is already plugged in, nor about the deck the DJ asked
+    // to be sent out in parts. Tell it both.
     state.apply_controller_routing();
+    state.apply_stem_out();
     Ok(dto)
 }
 
@@ -1188,6 +1267,101 @@ mod tests {
         assert_eq!(log.len(), 1);
         let rendered = format!("{:>8.3}  {}", log[0].at.as_secs_f64(), log[0].action);
         assert!(rendered.contains("deck 1 play"), "got {rendered:?}");
+    }
+}
+
+/// Whether a deck can be sent out in parts is a fact about the open device,
+/// and the interface has to be able to say which.
+#[cfg(test)]
+mod stem_out_tests {
+    use super::*;
+
+    fn wide_device() -> String {
+        "null-wide".to_owned()
+    }
+
+    /// Opening a device builds a fresh engine, so the app has to tell it again
+    /// — the same trap `apply_controller_routing` exists for. Without this the
+    /// panel would keep claiming the stems were going out while the new engine
+    /// had never heard of them.
+    #[test]
+    fn the_choice_survives_opening_another_device() {
+        let state = AppState::new(true);
+        open_device_for(&state, Some(wide_device()), None, Some(128)).unwrap();
+        state.set_stem_out(DeckId::from_human(2));
+
+        // A different interface, as changing soundcards mid-set would be.
+        open_device_for(&state, None, None, Some(128)).unwrap();
+
+        assert_eq!(
+            state.stem_out(),
+            DeckId::from_human(2),
+            "the deck being sent out in parts was forgotten on a device change"
+        );
+    }
+
+    /// The panel has to distinguish "your interface is too narrow" from "this
+    /// is off", because only one of them is something the DJ can act on.
+    #[test]
+    fn a_narrow_device_reports_unsupported_rather_than_off() {
+        let state = AppState::new(true);
+        // The default null device has four outputs, which is not eight.
+        open_device_for(&state, None, None, Some(128)).unwrap();
+        set_stem_out_for_test(&state, Some(1)).unwrap();
+
+        let view = stem_out_view(&state);
+        assert_eq!(view.deck, Some(1), "the choice was refused, not remembered");
+        assert!(!view.supported, "four channels reported as enough");
+        assert_eq!(view.channels, Some(4));
+        assert_eq!(view.required, 8);
+    }
+
+    /// And on a wide enough one it says so.
+    #[test]
+    fn a_wide_device_reports_supported() {
+        let state = AppState::new(true);
+        open_device_for(&state, Some(wide_device()), None, Some(128)).unwrap();
+        set_stem_out_for_test(&state, Some(1)).unwrap();
+
+        let view = stem_out_view(&state);
+        assert!(
+            view.supported,
+            "eight channels reported as too few: {:?}",
+            view.channels
+        );
+        assert_eq!(view.channels, Some(8));
+    }
+
+    /// With nothing open there is no device to be too narrow, and claiming
+    /// support for a device that does not exist would put the control in front
+    /// of a DJ who has not plugged anything in yet.
+    #[test]
+    fn no_device_is_not_a_supported_device() {
+        let state = AppState::new(true);
+        let view = stem_out_view(&state);
+        assert_eq!(view.channels, None);
+        assert!(!view.supported);
+    }
+
+    #[test]
+    fn a_deck_that_does_not_exist_is_refused() {
+        let state = AppState::new(true);
+        open_device_for(&state, Some(wide_device()), None, Some(128)).unwrap();
+        assert!(set_stem_out_for_test(&state, Some(0)).is_err(), "deck 0");
+        assert!(set_stem_out_for_test(&state, Some(99)).is_err(), "deck 99");
+        assert_eq!(state.stem_out(), None, "a refused deck was stored anyway");
+    }
+
+    /// What `set_stem_out` does, minus Tauri's `State` wrapper.
+    fn set_stem_out_for_test(state: &AppState, deck: Option<u8>) -> Result<(), String> {
+        let id = match deck {
+            Some(number) => {
+                Some(DeckId::from_human(number).ok_or_else(|| format!("no deck {number}"))?)
+            }
+            None => None,
+        };
+        state.set_stem_out(id);
+        Ok(())
     }
 }
 

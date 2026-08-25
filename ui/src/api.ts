@@ -656,6 +656,31 @@ export type StemsStatus = {
  */
 export const stemsStatus = () => invoke<StemsStatus>("stems_status");
 
+/** Whether a deck can be sent out in parts, and which one is. */
+export type StemOut = {
+  /** The deck going out in parts, as the DJ numbers it. */
+  deck: number | null;
+  /** Outputs on the open device. `null` when no device is open. */
+  channels: number | null;
+  /** How many outputs this needs. */
+  required: number;
+  /** True when the open device is wide enough. */
+  supported: boolean;
+};
+
+/** Which deck is being sent out in parts, and whether the device allows it. */
+export const stemOut = () => invoke<StemOut>("stem_out");
+
+/**
+ * Send one deck out in parts, or stop.
+ *
+ * Accepted even on an interface too narrow for it. The choice is remembered
+ * and takes effect if a wider one is plugged in later, which is the order a DJ
+ * setting up actually does things in.
+ */
+export const setStemOut = (deck: number | null) =>
+  invoke<StemOut>("set_stem_out", { deck });
+
 // -- the mapping editor -----------------------------------------------------
 
 /** What a control should do. */

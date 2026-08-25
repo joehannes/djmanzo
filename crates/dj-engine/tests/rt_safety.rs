@@ -132,6 +132,34 @@ fn tone_with_stems(frames: usize) -> Arc<dyn TrackSource> {
     Arc::new(buffer)
 }
 
+/// A separated track whose vocal stem is a straight ramp: frame `n` carries
+/// `n / 1000`.
+///
+/// Constant stems cannot tell a working interpolation from one that reads the
+/// same frame all block. A ramp can: the value on the wire *is* the position
+/// it was read at.
+fn ramp_with_stems(frames: usize) -> Arc<dyn TrackSource> {
+    let samples: Vec<f32> = (0..frames)
+        .flat_map(|n| {
+            let v = ((n % 100) as f32 / 100.0) - 0.5;
+            [v, -v]
+        })
+        .collect();
+    let buffer = AudioBuffer::from_interleaved(samples, SR);
+    let chunk: dj_decode::StemChunk = (0..frames)
+        .map(|n| {
+            let v = n as f32 / 1000.0;
+            [v, v, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4]
+        })
+        .collect();
+    buffer.stems_lock().store(Arc::new(
+        dj_decode::StemTable::default()
+            .with_chunk(0, chunk)
+            .expect("the first chunk always fits"),
+    ));
+    Arc::new(buffer)
+}
+
 struct Rig {
     renderer: OfflineRenderer,
     commands: rtrb::Producer<Command>,
@@ -1568,4 +1596,247 @@ fn searching_a_paused_deck_never_allocates() {
     });
 
     assert_eq!(allocations, 0, "searching allocated {allocations} times");
+}
+
+// ---------------------------------------------------------------------------
+// Per-stem outputs
+// ---------------------------------------------------------------------------
+
+/// The whole feature in one assertion: four parts on four pairs, in order.
+///
+/// `tone_with_stems` gives each part its own constant, so this checks not
+/// "there is audio on channel 4" but "the *bass* is on channel 4" — which is
+/// the failure a transposed pair would actually produce, and the one a
+/// level-only test would sail straight past.
+#[test]
+fn each_stem_lands_on_its_own_output_pair() {
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play_separated(1, 500_000);
+    rig.send(Command::SetStemOut {
+        deck: Some(deck(1)),
+    });
+    rig.warm_up(8);
+
+    let block = rig.renderer.render_block();
+    // vocal, drums, bass, other -- the constants the harness writes.
+    for (pair, expected) in [0.1_f32, 0.2, 0.3, 0.4].iter().copied().enumerate() {
+        let left = block[pair * 2];
+        let right = block[pair * 2 + 1];
+        assert!(
+            (left - expected).abs() < 1e-6,
+            "pair {pair} left carried {left}, expected {expected}"
+        );
+        assert!(
+            (right - expected).abs() < 1e-6,
+            "pair {pair} right carried {right}, expected {expected}"
+        );
+    }
+}
+
+/// A muted stem must silence *its* pair and leave the other three alone.
+///
+/// The interesting half is the second assertion. A mute implemented by
+/// clearing the whole tap, or by muting the deck, would pass the first.
+#[test]
+fn muting_a_stem_silences_only_its_own_pair() {
+    use dj_core::{Stem, StemChange};
+
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play_separated(1, 500_000);
+    rig.send(Command::SetStemOut {
+        deck: Some(deck(1)),
+    });
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::Stem {
+            stem: Stem::Drums,
+            change: StemChange::ToggleMute,
+        },
+    });
+    rig.warm_up(8);
+
+    let block = rig.renderer.render_block();
+    assert_eq!(block[2], 0.0, "muted drums still on its left channel");
+    assert_eq!(block[3], 0.0, "muted drums still on its right channel");
+    assert!(block[0].abs() > 0.05, "muting drums silenced the vocal");
+    assert!(block[4].abs() > 0.05, "muting drums silenced the bass");
+    assert!(block[6].abs() > 0.05, "muting drums silenced the other");
+}
+
+/// Eight channels is the minimum, and there is no honest way to send three
+/// stems of four. A four-channel device keeps its normal mix.
+#[test]
+fn a_narrow_device_keeps_its_mix_instead() {
+    let mut rig = rig_with_channels(2, 256, 4);
+    rig.load_and_play_separated(1, 500_000);
+    rig.send(Command::SetStemOut {
+        deck: Some(deck(1)),
+    });
+    rig.warm_up(8);
+
+    let block = rig.renderer.render_block();
+    // The mix is the sum of the four parts (1.0 in, before the deck's own
+    // gain), and in particular is not one part sitting alone on a pair.
+    let main = block[0];
+    assert!(
+        main.abs() > 0.05,
+        "the master went silent on a device too narrow for stem out ({main})"
+    );
+    for pair in 1..2 {
+        let value = block[pair * 2];
+        assert!(
+            (value - 0.2).abs() > 1e-6,
+            "channel {} carried a stem constant on a 4-channel device",
+            pair * 2
+        );
+    }
+}
+
+/// Turning it off puts the mix back. Without this the feature is one-way and
+/// a DJ who tried it has to restart the application.
+#[test]
+fn clearing_stem_out_restores_the_mix() {
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play_separated(1, 500_000);
+    rig.send(Command::SetStemOut {
+        deck: Some(deck(1)),
+    });
+    rig.warm_up(8);
+    assert!(
+        (rig.renderer.render_block()[0] - 0.1).abs() < 1e-6,
+        "stem out never engaged, so this proves nothing"
+    );
+
+    rig.send(Command::SetStemOut { deck: None });
+    rig.warm_up(8);
+
+    let block = rig.renderer.render_block();
+    assert!(
+        (block[0] - 0.1).abs() > 1e-6,
+        "the vocal stem is still alone on the main output after clearing"
+    );
+    assert!(
+        block[0].abs() > 0.05,
+        "the mix did not come back after clearing stem out"
+    );
+}
+
+/// A track whose stems have not been separated yet gets silence on the pairs,
+/// not the mix.
+///
+/// Falling back to the mix would be worse than silence: it would send the same
+/// full track down all four cables and the external mixer would sum four
+/// copies of it.
+#[test]
+fn an_unseparated_track_sends_silence_not_the_mix() {
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play(1, 500_000); // No stems on this one.
+    rig.send(Command::SetStemOut {
+        deck: Some(deck(1)),
+    });
+    rig.warm_up(8);
+
+    let block = rig.renderer.render_block();
+    for (index, sample) in block[..8].iter().enumerate() {
+        assert_eq!(
+            *sample, 0.0,
+            "channel {index} carried {sample} for a track with no stems"
+        );
+    }
+}
+
+/// The tap runs inside the callback, reading through the same lock the deck
+/// does, and writes across the whole block. It must not allocate.
+#[test]
+fn sending_a_deck_out_in_parts_never_allocates() {
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play_separated(1, 2_000_000);
+    rig.load_and_play_separated(2, 2_000_000);
+    rig.send(Command::SetStemOut {
+        deck: Some(deck(1)),
+    });
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(5_000);
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "the stem tap allocated {allocations} times across 5,000 blocks"
+    );
+}
+
+/// Switching it on and off mid-set changes the bus layout under the callback,
+/// which is the shape that invites a fresh buffer.
+#[test]
+fn toggling_stem_out_never_allocates() {
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play_separated(1, 2_000_000);
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for step in 0..2_000 {
+            rig.commands
+                .push(Command::SetStemOut {
+                    deck: (step % 2 == 0).then(|| deck(1)),
+                })
+                .ok();
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "toggling stem out allocated {allocations} times"
+    );
+}
+
+/// The tap reads the deck's position once per block and walks the rest, so the
+/// walk has to land on the same frames the deck actually played.
+///
+/// With a ramp for the vocal stem, the value on channel 0 *is* the position it
+/// came from: one frame of the track per frame of output, in order. A tap that
+/// held one frame for the whole block, or that stepped at the wrong rate,
+/// would be a pitch error on the stem cables that the mix in the room would
+/// never reveal.
+#[test]
+fn the_stem_tap_advances_one_frame_per_frame() {
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.send(Command::Load {
+        deck: deck(1),
+        source: ramp_with_stems(500_000),
+    });
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::Play,
+    });
+    rig.send(Command::SetStemOut {
+        deck: Some(deck(1)),
+    });
+    rig.warm_up(8);
+
+    let block = rig.renderer.render_block();
+    let frames: Vec<f32> = block.chunks_exact(8).map(|frame| frame[0]).collect();
+    assert_eq!(
+        frames.len(),
+        256,
+        "expected one value per frame of the block"
+    );
+
+    // Measured from the first frame rather than between neighbours. A
+    // per-neighbour step is a difference of two f32s a few thousand frames
+    // into a ramp, and its noise floor is wider than the error being looked
+    // for — an off-by-one in the divisor is 0.4% of a step, which a
+    // neighbour check cannot see and a cumulative one cannot miss.
+    let first = frames[0];
+    for (index, value) in frames.iter().enumerate() {
+        let expected = index as f32 * 0.001;
+        let walked = value - first;
+        assert!(
+            (walked - expected).abs() < 2e-4,
+            "frame {index} of the block came from {walked} into the ramp, expected {expected}"
+        );
+    }
 }

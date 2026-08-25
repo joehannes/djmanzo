@@ -20,7 +20,18 @@ pub struct BusLayout {
     pub cue: Option<(usize, usize)>,
     /// Booth output with independent level. Needs six channels.
     pub booth: Option<(usize, usize)>,
+    /// Where each separated stem goes, when a deck is being sent out in parts.
+    ///
+    /// `None` normally, which is every set that is not being fed through an
+    /// external processor.
+    pub stems: Option<[(usize, usize); 4]>,
 }
+
+/// How many outputs sending a deck out in parts needs.
+///
+/// Four stems, two channels each. There is no arrangement that fits in fewer,
+/// and no honest way to send three of four.
+pub const STEM_OUT_CHANNELS: usize = 8;
 
 impl BusLayout {
     /// Work out the layout for a device with `channels` outputs.
@@ -38,26 +49,54 @@ impl BusLayout {
                 main: (0, 0),
                 cue: None,
                 booth: None,
+                stems: None,
             },
             2 | 3 => Self {
                 channels,
                 main: (0, 1),
                 cue: None,
                 booth: None,
+                stems: None,
             },
             4 | 5 => Self {
                 channels,
                 main: (0, 1),
                 cue: Some((2, 3)),
                 booth: None,
+                stems: None,
             },
             _ => Self {
                 channels,
                 main: (0, 1),
                 booth: Some((2, 3)),
                 cue: Some((4, 5)),
+                stems: None,
             },
         }
+    }
+
+    /// Send a deck out in parts instead of mixing it.
+    ///
+    /// **This takes the whole output.** Four stems need eight channels, which
+    /// leaves nowhere for the master — and that is the point: a DJ sending
+    /// stems to an external mixer is monitoring from the external mixer.
+    ///
+    /// Returns the layout unchanged when the device has fewer than
+    /// [`STEM_OUT_CHANNELS`] outputs, because there is no honest way to send
+    /// three stems of four.
+    #[must_use]
+    pub fn with_stem_out(mut self) -> Self {
+        if self.channels < STEM_OUT_CHANNELS {
+            return self;
+        }
+        self.stems = Some([(0, 1), (2, 3), (4, 5), (6, 7)]);
+        self
+    }
+
+    /// True when a deck is being sent out in parts.
+    #[must_use]
+    pub fn is_stem_out(&self) -> bool {
+        self.stems.is_some()
     }
 
     /// True when the device can carry a headphone cue.
@@ -143,6 +182,7 @@ impl BusRouting {
             main: self.main,
             cue: self.cue,
             booth: self.booth,
+            stems: None,
         })
     }
 }

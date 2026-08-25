@@ -34,6 +34,9 @@
     followClock,
     unfollowClock,
     controlStatus,
+    stemOut,
+    setStemOut,
+    type StemOut,
     type ClockStatus,
     type MidiOutputs,
     type Library,
@@ -47,7 +50,22 @@
   import IconButton from "./controls/IconButton.svelte";
   import SvgKnob from "./controls/SvgKnob.svelte";
 
-  let { onLogoChange }: { onLogoChange: () => void } = $props();
+  let {
+    onLogoChange,
+    deviceChannels = null,
+  }: {
+    onLogoChange: () => void;
+    /**
+     * How many outputs the open device has, or `null` for none.
+     *
+     * Passed in rather than asked for once on mount, because the sequence a DJ
+     * actually performs is: open this panel, pick the interface, press
+     * Reconnect. A panel that asked only on mount would still be telling them
+     * their interface is too narrow while the wide one they just connected was
+     * running.
+     */
+    deviceChannels?: number | null;
+  } = $props();
 
 
   let sources = $state<Source[]>([]);
@@ -119,6 +137,47 @@
     clock = await unfollowClock();
   }
   let outputs = $state<MidiOutputs>({ ports: [], unavailable: null });
+
+  /**
+   * Sending one deck out in parts, for an external mixer or a DAW.
+   *
+   * `supported` is a fact about the interface that is open, so it is asked for
+   * rather than guessed. The card says which of the two reasons the control is
+   * unavailable — no device, or a device too narrow — because only one of them
+   * is something the DJ can do anything about.
+   */
+  let stems = $state<StemOut>({
+    deck: null,
+    channels: null,
+    required: 8,
+    supported: false,
+  });
+
+  // Re-ask whenever the device changes width. Reading the prop is what
+  // subscribes this effect to it; the value itself comes back from the
+  // backend, so the panel never computes support from a number the engine did
+  // not agree to.
+  $effect(() => {
+    void deviceChannels;
+    void refreshStemOut();
+  });
+
+  async function refreshStemOut() {
+    try {
+      stems = await stemOut();
+    } catch {
+      // Left as it was. A failed re-ask is not evidence the device changed.
+    }
+  }
+
+  async function chooseStemOut(deck: number | null) {
+    try {
+      stems = await setStemOut(deck);
+      error = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
   let clockPort = $state<string | null>(null);
 
   async function startClockOut() {
@@ -153,14 +212,16 @@
         hasBrandLogo(),
         remoteStatus(),
       ]);
-      const [status, ports, control] = await Promise.all([
+      const [status, ports, control, parts] = await Promise.all([
         clockStatus(),
         midiOutputs(),
         controlStatus(),
+        stemOut(),
       ]);
       clock = status;
       outputs = ports;
       clockInputs = control.inputs;
+      stems = parts;
       if (!clockPort) clockPort = clock.port ?? outputs.ports[0] ?? null;
       if (!followPort) followPort = clock.following ?? clockInputs[0] ?? null;
       error = null;
@@ -338,6 +399,60 @@
     {#if performance.preference === "Auto"}
       <p class="hint">
         Currently rendering at {performance.resolved} mode.
+      </p>
+    {/if}
+  </div>
+
+  <div class="block">
+    <h3>Stems out</h3>
+    <p class="hint">
+      Sends one deck out as four separate stereo pairs — vocals, drums, bass and
+      everything else — for an external mixer or a DAW. The parts leave before
+      djmanzo's own EQ, filter, fader and keylock, because what a processor on
+      the other end wants is the separated parts, not the parts with someone
+      else's tone shaping already on them.
+    </p>
+    <p class="hint">
+      <strong>This takes the whole output.</strong> Four stems need
+      {stems.required} channels, which leaves nowhere for a master — so while
+      it is on, the room is hearing the external mixer, not djmanzo.
+    </p>
+    {#if stems.channels === null}
+      <p class="hint">
+        No audio device is open. Connect one with at least {stems.required}
+        outputs and this becomes available.
+      </p>
+    {:else if !stems.supported}
+      <p class="hint">
+        The open interface has {stems.channels}
+        {stems.channels === 1 ? "output" : "outputs"} and this needs
+        {stems.required}. You can still choose a deck now — it takes effect if
+        you plug in a wider interface later.
+      </p>
+    {/if}
+    <div class="row" style="gap: 0.5rem;">
+      <button
+        class:active={stems.deck === null}
+        onclick={() => chooseStemOut(null)}
+      >
+        Off
+      </button>
+      {#each [1, 2, 3, 4] as n (n)}
+        <button
+          class:active={stems.deck === n}
+          onclick={() => chooseStemOut(stems.deck === n ? null : n)}
+        >
+          Deck {n}
+        </button>
+      {/each}
+    </div>
+    {#if stems.deck !== null && stems.supported}
+      <p class="hint">
+        Deck {stems.deck} is going out in parts: vocals on outputs 1–2, drums on
+        3–4, bass on 5–6, everything else on 7–8. A stem you mute here is silent
+        on its own pair and leaves the other three alone. Until the track has
+        been separated, the pairs carry silence rather than four copies of the
+        mix.
       </p>
     {/if}
   </div>

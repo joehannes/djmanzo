@@ -629,7 +629,32 @@ impl Deck {
         !self.source.is_empty()
     }
 
+    /// The four separated stems at `position`, with this deck's own per-stem
+    /// volume and mute applied — and nothing else.
+    ///
+    /// For the stem tap in [`crate::Engine`], which sends the parts out to an
+    /// external processor. **Deliberately before the deck's EQ, filter, fader
+    /// and keylock**: what an external processor wants is the separated parts,
+    /// not the parts with the mix's tone shaping already on them. The per-stem
+    /// controls are the exception, because those *are* stem controls.
+    ///
+    /// `None` when the track has not been separated yet, which is the normal
+    /// state for the first few seconds after a load.
     #[must_use]
+    pub fn stems_at(&self, position: f64) -> Option<[[f32; CHANNELS]; 4]> {
+        let stems = self.source.stem_frame_at(position)?;
+        let mut out = [[0.0; CHANNELS]; 4];
+        for (index, stem) in stems.iter().enumerate() {
+            let channel = &self.stem_channels[index];
+            if channel.mute {
+                continue;
+            }
+            out[index][0] = stem[0] * channel.volume;
+            out[index][1] = stem[1] * channel.volume;
+        }
+        Some(out)
+    }
+
     pub fn position(&self) -> FramePos {
         self.position
     }

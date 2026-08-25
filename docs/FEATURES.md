@@ -167,7 +167,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 |---|---|
 | Record the master to disk (WAV; FLAC/MP3 later) | M5 — **done** |
 | Broadcast to Icecast/Shoutcast | M5 |
-| Per-deck and stem-bus outputs for external processing | M6 |
+| **Per-stem outputs for external processing** | **shipped** — one deck as four stereo pairs (vocals 1–2, drums 3–4, bass 5–6, other 7–8), pre-EQ and pre-fader, on an interface with eight outputs |
+| Per-deck outputs for external processing | M6 |
 | Video mixing / VJ output | M8 |
 | Karaoke | K1 / K2 — see [KARAOKE.md](KARAOKE.md) |
 
@@ -209,7 +210,10 @@ what fits in a 5 ms budget. On top of that:
   and executed as one action rather than four hands;
 - **stem swapping across decks** — take deck 1's vocal onto deck 2's instrumental as a
   first-class operation;
-- stem isolation as a mixing surface, with the beat grid and phrase markers to align it.
+- stem isolation as a mixing surface, with the beat grid and phrase markers to align it;
+- **the stems as four physical outputs** — one deck's parts on four stereo
+  pairs, ahead of djmanzo's own EQ and fader, so an external mixer or a DAW
+  gets the separation rather than the separation-plus-our-opinion-of-it.
 
 The best separation model is a **download rather than part of the package** --
 it is tens of megabytes and carries its own licence, so it is the DJ's to

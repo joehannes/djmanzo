@@ -43,6 +43,8 @@ pub struct Engine {
 
     crossfader: f32,
     crossfader_curve: CrossfaderCurve,
+    /// The deck being sent out in parts, if any.
+    stem_out: Option<DeckId>,
     /// The stem swap in force, if any.
     ///
     /// Remembered rather than inferred, because putting it back needs to know
@@ -168,6 +170,7 @@ impl Engine {
             crossfader_curve: CrossfaderCurve::default(),
             external_tempo: None,
             swap: None,
+            stem_out: None,
             routing: None,
             master_gain: SmoothedValue::new(1.0, sr),
             master_gain_db: 0.0,
@@ -395,6 +398,7 @@ impl Engine {
                 }
                 Command::SetRouting { routing } => self.routing = routing,
                 Command::SetExternalTempo { bpm } => self.external_tempo = bpm,
+                Command::SetStemOut { deck } => self.stem_out = deck,
                 Command::SetLoop { deck, region } => {
                     if let Some(target) = self.deck_mut(deck) {
                         target.set_loop_region(region);
@@ -1191,6 +1195,84 @@ impl Engine {
         best.map(|(_, bpm)| bpm)
     }
 
+    /// Write one deck's separated parts to their own output pairs.
+    ///
+    /// # Why this is a tap and not a signal path
+    ///
+    /// The parts go out **before** the deck's EQ, filter, fader, effects and
+    /// keylock. What an external processor wants is the separated parts, not
+    /// the parts with the mix's tone shaping already on them — and the
+    /// alternative would mean four independent time-stretchers, which is four
+    /// times the CPU for a result nobody asked for.
+    ///
+    /// The deck is still advanced normally, so the position, the waveform and
+    /// everything the interface shows keep working. Its *output* is simply not
+    /// summed into a master that has nowhere to go.
+    fn write_stem_out(
+        &self,
+        out: &mut [f32],
+        channels: usize,
+        deck: DeckId,
+        stems: [(usize, usize); 4],
+        start: f64,
+        frames: usize,
+    ) {
+        let Some(target) = self.deck(deck) else {
+            return;
+        };
+        let end = target.position().get();
+
+        // Linear across the block, from where the deck started towards where
+        // it ended.
+        //
+        // Divided by `frames`, not `frames - 1`: `end` is where the deck sits
+        // *after* the block, one past the last frame it played. Over a block it
+        // played `start ..= start + frames - 1`, so the last output frame must
+        // land a step short of `end` rather than on it. Dividing by
+        // `frames - 1` stretches the walk by one frame every block, which is a
+        // steady pitch error on the stem cables — inaudible in the room,
+        // because the room is hearing the untouched mix.
+        //
+        // Exact at a constant rate, and within a fraction of a frame while the
+        // pitch fader is moving, which is the only time it is not.
+        #[allow(clippy::cast_precision_loss)]
+        let step = if frames > 0 {
+            (end - start) / frames as f64
+        } else {
+            0.0
+        };
+
+        for f in 0..frames {
+            let base = f * channels;
+            // Cleared first. The mix that was here is not wanted, and adding to
+            // it would send the room's signal down the stem cables.
+            for (left, right) in stems {
+                if let Some(slot) = out.get_mut(base + left) {
+                    *slot = 0.0;
+                }
+                if let Some(slot) = out.get_mut(base + right) {
+                    *slot = 0.0;
+                }
+            }
+
+            #[allow(clippy::cast_precision_loss)]
+            let position = start + step * f as f64;
+            let Some(parts) = target.stems_at(position) else {
+                // Not separated yet. Silence is honest here: the mix is not
+                // available to fall back on, because it has just been cleared.
+                continue;
+            };
+            for (part, (left, right)) in parts.iter().zip(stems) {
+                if let Some(slot) = out.get_mut(base + left) {
+                    *slot = part[0];
+                }
+                if let Some(slot) = out.get_mut(base + right) {
+                    *slot = part[1];
+                }
+            }
+        }
+    }
+
     /// What the master rack should measure a beat as.
     ///
     /// The master has no tempo of its own, so it borrows one from **the loudest
@@ -1264,10 +1346,16 @@ impl AudioCallback for Engine {
         // and the guess otherwise. Re-checked every block rather than when the
         // routing arrives, because the device is chosen separately from the
         // controller and either can change while the other stays put.
-        let layout = self
+        let mut layout = self
             .routing
             .and_then(|routing| routing.layout(ctx.channels))
             .unwrap_or_else(|| BusLayout::for_channels(ctx.channels));
+        // Sending a deck out in parts takes the whole output, so it is decided
+        // here, after the arrangement and before anything writes.
+        if self.stem_out.is_some() {
+            layout = layout.with_stem_out();
+        }
+        let layout = layout;
         let channels = layout.channels;
         self.registry
             .set_bool(ParamId::Global(GlobalParam::CueAvailable), layout.has_cue());
@@ -1281,6 +1369,12 @@ impl AudioCallback for Engine {
             Some(dj_core::RecordSource::Deck(deck)) => Some(deck.index()),
             _ => None,
         };
+        // Where the tapped deck starts this block, noted before it moves.
+        let stem_out_start = self
+            .stem_out
+            .filter(|_| layout.is_stem_out())
+            .and_then(|deck| Some(self.deck(deck)?.position().get()));
+
         for index in 0..self.decks.len() {
             let tap = (tapped_deck == Some(index)).then_some(&mut self.recorder);
             let levels = self.decks[index].process(out, &layout, tap);
@@ -1534,6 +1628,19 @@ impl AudioCallback for Engine {
             ParamId::Global(GlobalParam::SetRecordDropped),
             self.dropped_samples as f32,
         );
+
+        // Sending a deck out in parts, if that is what this is.
+        //
+        // **Last, and it overwrites.** The mix is computed normally above so
+        // that the decks advance, the meters move and the waveform scrolls
+        // exactly as in a set — and then the first eight channels are replaced
+        // by the separated parts, because on an eight-channel device there is
+        // nowhere for a master to go.
+        if let (Some(deck), Some(stems), Some(start)) =
+            (self.stem_out, layout.stems, stem_out_start)
+        {
+            self.write_stem_out(out, channels, deck, stems, start, ctx.frames);
+        }
 
         self.publish_deck_state();
 

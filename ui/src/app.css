@@ -167,6 +167,30 @@ button.active {
   font-weight: 600;
 }
 
+/* An engaged button stays engaged under the pointer.
+
+   `button:hover:not(:disabled)` carries two pseudo-classes and therefore
+   outranks a bare `.active` or `.primary`, so hovering the control that is
+   currently *on* repainted it in the neutral panel colour and it read as off.
+   In a dark booth that is worse than no highlight at all: the one button whose
+   state you are checking is the one the pointer is sitting on. These restate
+   the accent at matching specificity and lift it slightly, so hover still says
+   "you are over this" without saying "this is off". */
+button.active:hover:not(:disabled),
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+button.active:hover:not(:disabled) {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 select,
 input[type="number"] {
   font: inherit;

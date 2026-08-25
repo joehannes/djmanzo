@@ -72,6 +72,13 @@ enum HostCommand {
 /// stalled input starts dropping instead of piling up.
 const MIC_RING_SECONDS: f64 = 0.5;
 
+/// The widest output djmanzo opens, however many sockets an interface has.
+///
+/// Eight, because that is the widest arrangement anything asks for: four
+/// stereo stems, which is [`dj_engine::STEM_OUT_CHANNELS`]. Beyond it the
+/// extra channels would be buffer allocated to carry silence.
+const MAX_OUTPUT_CHANNELS: u16 = dj_engine::STEM_OUT_CHANNELS as u16;
+
 /// What opening produced.
 ///
 /// Two configs rather than one, because in split mode the headphone device is a
@@ -503,14 +510,26 @@ fn open_device(
         }
     }
 
-    // Open four channels when the device has them, so master and headphone cue
-    // can share one interface -- the layout every controller with a built-in
-    // card provides. Opening only two would make cueing impossible on hardware
-    // that supports it perfectly well. In split mode the cue leaves by another
-    // card entirely, so this device only needs its stereo pair.
+    // Open everything the device has, in stereo pairs, up to the widest
+    // arrangement anything asks for.
+    //
+    // Four channels is the controller-with-a-built-in-card layout and the
+    // common case: master and headphone cue on one interface. Opening only two
+    // would make cueing impossible on hardware that supports it perfectly
+    // well. But stopping at four is the same mistake one step further out --
+    // `BusLayout::for_channels` puts the booth on a six-channel device, and
+    // sending a deck out in parts needs eight, and neither could ever happen
+    // on an interface whose extra sockets were never opened.
+    //
+    // Rounded down to a pair because every bus is stereo; an odd channel has
+    // nothing to carry. Capped because opening sockets nothing routes to costs
+    // buffer for silence on the interfaces that have thirty-two of them.
+    //
+    // In split mode the cue leaves by another card entirely, so this device
+    // only needs its stereo pair.
     let channels = match chosen.as_ref().map(|d| d.max_output_channels) {
         _ if cue_active.is_some() => 2,
-        Some(available) if available >= 4 => 4,
+        Some(available) if available >= 4 => (available.min(MAX_OUTPUT_CHANNELS) / 2) * 2,
         _ => 2,
     };
 
@@ -651,10 +670,49 @@ mod tests {
     fn lists_the_null_devices() {
         let (host, _bus, _reg) = host();
         let devices = host.list_devices().unwrap();
-        // A master and a stand-in headphone device, so the split path has
-        // somewhere to split to.
-        assert_eq!(devices.len(), 2);
+        // A master, a stand-in headphone device so the split path has somewhere
+        // to split to, and a wide one so the eight-channel paths are reachable.
+        assert_eq!(devices.len(), 3);
         assert!(devices[0].is_default);
+    }
+
+    /// An interface with eight sockets has to get eight channels opened.
+    ///
+    /// The bug this covers is the one that was here: the width was capped at
+    /// four, so `BusLayout::for_channels` never saw a six-channel device to
+    /// put a booth output on and never saw an eight-channel one to send a deck
+    /// out in parts through. Both features were reachable in the engine's own
+    /// tests and unreachable from the application, on any hardware.
+    #[test]
+    fn a_wide_device_opens_all_of_its_channels() {
+        let (host, _bus, _reg) = host();
+        let outcome = host
+            .open(Some(DeviceId::new("null-wide")), None, 128)
+            .unwrap();
+        assert_eq!(
+            outcome.master.channels, 8,
+            "an eight-output interface was opened at {} channels",
+            outcome.master.channels
+        );
+    }
+
+    /// The common case is unchanged: master and cue sharing one card.
+    #[test]
+    fn a_four_channel_device_still_opens_four() {
+        let (host, _bus, _reg) = host();
+        let outcome = host.open(Some(DeviceId::new("null")), None, 128).unwrap();
+        assert_eq!(outcome.master.channels, 4);
+    }
+
+    /// A stereo interface gets a stereo stream, not two silent channels of
+    /// padding.
+    #[test]
+    fn a_stereo_device_still_opens_stereo() {
+        let (host, _bus, _reg) = host();
+        let outcome = host
+            .open(Some(DeviceId::new("null-cue")), None, 128)
+            .unwrap();
+        assert_eq!(outcome.master.channels, 2);
     }
 
     /// **The two-device path.** Master on one card, headphones on another, with

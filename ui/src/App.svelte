@@ -885,7 +885,7 @@
           <Sampler sampler={snapshot.master.sampler} enabled={ready} {send} />
         {/if}
       {:else}
-        <Settings onLogoChange={refreshLogo} />
+        <Settings onLogoChange={refreshLogo} deviceChannels={active?.channels ?? null} />
       {/if}
     </div>
   {/if}

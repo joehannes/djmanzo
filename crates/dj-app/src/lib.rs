@@ -314,6 +314,8 @@ pub fn run() {
             commands::list_plugins,
             commands::plugin_state,
             commands::stems_status,
+            commands::stem_out,
+            commands::set_stem_out,
             commands::load_plugin,
             commands::clear_plugin,
             commands::open_mic,

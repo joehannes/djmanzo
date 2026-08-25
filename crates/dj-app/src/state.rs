@@ -206,6 +206,14 @@ pub struct AppState {
     /// Which separator is running, for the interface to name. `None` when
     /// none is.
     stems_backend: Mutex<Option<&'static str>>,
+    /// The deck being sent out in parts, if one is. See [`AppState::set_stem_out`].
+    ///
+    /// Remembered here for the reason the controller routing is: opening an
+    /// audio device builds a **fresh engine**, and a selection sent to the
+    /// previous one is simply gone. Without this, plugging in a different
+    /// interface would silently drop the DJ back to a normal mix while the
+    /// panel still claimed the stems were going out.
+    stem_out: Mutex<Option<dj_core::DeckId>>,
 }
 
 /// What is loaded on a deck, as far as the interface is concerned.
@@ -340,6 +348,7 @@ impl AppState {
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
             stems_backend,
+            stem_out: Mutex::new(None),
             stems_reason,
         }
     }
@@ -882,6 +891,36 @@ impl AppState {
         &self.bus
     }
 
+    /// Send one deck out in parts, or stop.
+    ///
+    /// Refused by the engine on a device with fewer than eight outputs, which
+    /// is a fact about the device rather than about what the DJ wants — so the
+    /// choice is remembered either way and takes effect if a wider device is
+    /// opened later.
+    pub fn set_stem_out(&self, deck: Option<dj_core::DeckId>) {
+        *self.stem_out.lock().unwrap_or_else(|e| e.into_inner()) = deck;
+        self.apply_stem_out();
+    }
+
+    /// Which deck is being sent out in parts, if any.
+    #[must_use]
+    pub fn stem_out(&self) -> Option<dj_core::DeckId> {
+        *self.stem_out.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Put the remembered stem-out selection on the engine.
+    ///
+    /// Called after every audio device open, alongside
+    /// [`AppState::apply_controller_routing`] and for the same reason: the
+    /// engine behind a freshly opened device has never heard of it.
+    ///
+    /// Silent on failure, because there is no engine to tell until a device is
+    /// open and the next open calls this again.
+    pub fn apply_stem_out(&self) {
+        let deck = self.stem_out();
+        let _ = self.bus().send_command(Command::SetStemOut { deck });
+    }
+
     /// Put the open controller's output arrangement on the engine.
     ///
     /// Called both when a controller is opened or closed and after every audio
@@ -1269,8 +1308,8 @@ mod tests {
         let devices = state.host().list_devices().unwrap();
         assert_eq!(
             devices.len(),
-            2,
-            "null backend exposes a master and a headphone device"
+            3,
+            "null backend exposes a master, a headphone device and a wide one"
         );
     }
 }

@@ -52,9 +52,29 @@ impl NullBackend {
         }
     }
 
+    /// A third virtual device, wide enough for the arrangements that need
+    /// real sockets.
+    ///
+    /// Also not padding. Sending a deck out in parts needs eight outputs, and
+    /// the booth and cue buses only exist above four — so on a backend that
+    /// tops out at four, none of those paths can be reached at all. That is
+    /// the shape of bug this project keeps finding: code that compiles, passes
+    /// its own tests and cannot be exercised. Eight channels, like the
+    /// multi-out interface a DJ running an external mixer actually owns.
+    fn wide_device_info() -> DeviceInfo {
+        DeviceInfo {
+            id: DeviceId::new("null-wide"),
+            name: "Null 8-channel output (no hardware)".to_owned(),
+            max_output_channels: 8,
+            default_sample_rate: SampleRate::DEFAULT,
+            is_default: false,
+        }
+    }
+
     fn describe(id: Option<&DeviceId>) -> DeviceInfo {
         match id {
             Some(wanted) if wanted == &Self::cue_device_info().id => Self::cue_device_info(),
+            Some(wanted) if wanted == &Self::wide_device_info().id => Self::wide_device_info(),
             _ => Self::device_info(),
         }
     }
@@ -66,7 +86,11 @@ impl AudioBackend for NullBackend {
     }
 
     fn output_devices(&self) -> Result<Vec<DeviceInfo>, AudioError> {
-        Ok(vec![Self::device_info(), Self::cue_device_info()])
+        Ok(vec![
+            Self::device_info(),
+            Self::cue_device_info(),
+            Self::wide_device_info(),
+        ])
     }
 
     fn open_output(
@@ -260,10 +284,11 @@ mod tests {
     }
 
     #[test]
-    fn null_backend_reports_a_default_and_a_second_device() {
+    fn null_backend_reports_a_default_and_two_more_devices() {
         let devices = NullBackend::new().output_devices().unwrap();
-        // Two, so the split-output path has somewhere to split *to*.
-        assert_eq!(devices.len(), 2);
+        // Three: one to split *to*, and one wide enough for the arrangements
+        // four channels cannot hold.
+        assert_eq!(devices.len(), 3);
         assert!(devices[0].is_default);
         assert!(devices[0].supports_split_output());
         assert!(!devices[1].is_default);
@@ -271,6 +296,38 @@ mod tests {
             !devices[1].supports_split_output(),
             "the stand-in headphone device should be stereo, like the hardware it represents"
         );
+        assert!(!devices[2].is_default);
+        assert_eq!(
+            devices[2].max_output_channels, 8,
+            "the wide device exists to make the eight-channel paths reachable"
+        );
+    }
+
+    /// Opening the wide device must give eight channels, not the default
+    /// device's four -- otherwise it is a name in a list and nothing more.
+    #[test]
+    fn the_wide_device_opens_at_its_own_width() {
+        let backend = NullBackend::new();
+        let info = backend
+            .output_devices()
+            .unwrap()
+            .into_iter()
+            .find(|device| device.max_output_channels == 8)
+            .expect("the wide device is listed");
+        let (callback, _calls) = callback(0.0);
+        let stream = backend
+            .open_output(
+                &StreamConfig {
+                    buffer_frames: 64,
+                    sample_rate: SampleRate::DEFAULT,
+                    channels: 8,
+                    device: Some(info.id.clone()),
+                },
+                callback,
+            )
+            .unwrap();
+        assert_eq!(stream.config().channels, 8);
+        assert_eq!(stream.config().device_name, info.name);
     }
 
     /// Opening the second device must actually open the second device, or a

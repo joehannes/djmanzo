@@ -147,6 +147,19 @@ pub enum Command {
     SetExternalTempo {
         bpm: Option<f64>,
     },
+    /// Send one deck out in parts, or stop.
+    ///
+    /// Four stems on four output pairs, for an external mixer or a DAW.
+    /// **Takes the whole output**: eight channels leaves nowhere for the
+    /// master, and a DJ doing this is monitoring from the external mixer.
+    ///
+    /// A command rather than an [`Action`] because it names a hardware
+    /// arrangement, like [`Command::SetRouting`] — and because it is refused
+    /// on a device with fewer than eight outputs, which is a fact about the
+    /// device rather than about what the DJ wants.
+    SetStemOut {
+        deck: Option<DeckId>,
+    },
 }
 
 impl From<Action> for Command {

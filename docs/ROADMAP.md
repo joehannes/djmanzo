@@ -1018,7 +1018,31 @@ cancel a loop the DJ set on purpose.
   release — which is exactly how the Acapella button used to leave a deck dead
   for the rest of a set.
   Stem-aware transitions shipped earlier as the automix VocalDrop.
-- Per-deck and per-stem outputs for external processing.
+- **Per-stem outputs for external processing — done.** One deck leaves as four
+  stereo pairs — vocals on 1–2, drums on 3–4, bass on 5–6, everything else on
+  7–8 — for an external mixer or a DAW.
+  A **tap, not a signal path**: the parts go out before the deck's EQ, filter,
+  fader, effects and keylock, because what a processor on the other end wants
+  is the separated parts, not the parts with djmanzo's tone shaping already on
+  them — and the alternative would mean four independent time-stretchers for a
+  result nobody asked for. The per-stem volume and mute *are* applied, because
+  those are stem controls.
+  The mix is computed normally first and the eight channels are overwritten at
+  the very end of `render`, so the decks advance, the meters move and the
+  waveform scrolls exactly as in a set; only the *output* is replaced. That
+  ordering is what makes the feature unable to regress the mix path.
+  Eight channels is the floor and it is refused below that — there is no honest
+  way to send three stems of four — but the *choice* is remembered either way
+  and takes effect when a wider interface arrives, because a DJ sets this up
+  before plugging in, not after. An unseparated track sends silence rather than
+  the mix: four copies of the same full track down four cables would be worse
+  than nothing.
+  This is also what surfaced the **four-channel cap in the audio host**: every
+  device was opened at four channels however many sockets it had, so the booth
+  bus (six) and this (eight) were reachable in the engine's own tests and
+  unreachable from the application, on any hardware. Devices now open at their
+  full width, rounded down to a stereo pair and capped at eight.
+- Per-deck outputs for external processing.
 
 **Done when:** load a track, and within a couple of seconds you can drop the vocal — with no
 change in audio latency, and instantly on the next load.
