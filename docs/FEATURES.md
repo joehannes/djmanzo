@@ -149,6 +149,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Controllers panel — what is connected, on which mapping, with which outputs | **shipped** |
 | **Keyboard as a controller** — same vocabulary and file format as a MIDI mapping, with a live sheet | **shipped** |
 | Multi-device audio setup (4-channel, or two devices with drift correction) | M1 |
+| **MIDI clock out** — djmanzo as clock master for a drum machine or light desk | **shipped** — 24 PPQN at the room's tempo, on its own thread |
+| **MIDI clock in** — follow a drum machine or a second DJ | **shipped** — an external clock outranks every deck as the sync leader |
 | Network control API — drive djmanzo from a script, a Stream Deck or a lighting desk | **shipped** — line-delimited JSON over TCP, off by default, loopback by default, passphrase required off-machine |
 | **Pro DJ Link** (Pioneer CDJ/XDJ) | M7 |
 | **StagelinQ** (Denon Prime) | M7 |

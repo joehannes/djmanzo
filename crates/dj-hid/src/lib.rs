@@ -30,6 +30,7 @@ pub mod feedback;
 pub mod keys;
 pub mod mapping;
 pub mod message;
+pub mod out;
 pub mod platter;
 pub mod port;
 pub mod report;

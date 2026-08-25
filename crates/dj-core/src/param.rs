@@ -337,6 +337,14 @@ pub enum GlobalParam {
     /// Gain reduction the limiter is applying, in positive decibels. Zero means
     /// it is doing nothing, which is where it should sit most of the night.
     LimiterReductionDb,
+    /// The tempo the room is running at, or 0.0 when nothing is playing.
+    ///
+    /// **The loudest playing deck that has a grid** -- the same rule the master
+    /// effect rack and the sampler already borrow by, because it is the deck
+    /// the room is hearing. The engine had this figure and kept it to itself;
+    /// a MIDI clock outside the audio thread needs it, and so does anything
+    /// else that has to be in time with the music rather than with a deck.
+    MasterBpm,
     /// 1.0 when beat jumps snap to the grid.
     Quantize,
     /// Frames of latency the output chain adds after the decks. The interface
@@ -794,7 +802,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since.
-    pub const COUNT: usize = 128;
+    pub const COUNT: usize = 129;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -818,6 +826,7 @@ impl GlobalParam {
             CueAvailable,
             LimiterEnabled,
             LimiterReductionDb,
+            MasterBpm,
             OutputLatencyFrames,
             Quantize,
             SamplerBank,
@@ -1075,6 +1084,7 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::CueAvailable => "cue_available",
         GlobalParam::LimiterEnabled => "limiter_enabled",
         GlobalParam::LimiterReductionDb => "limiter_reduction_db",
+        GlobalParam::MasterBpm => "master_bpm",
         GlobalParam::OutputLatencyFrames => "output_latency_frames",
         GlobalParam::SamplerBank => "sampler_bank",
         GlobalParam::SamplerVolume => "sampler_volume",

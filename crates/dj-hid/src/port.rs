@@ -153,6 +153,89 @@ impl Listener {
     }
 }
 
+/// Listen to `port` for MIDI clock, and report the sender's tempo.
+///
+/// Separate from [`open`] because it is a different job on a different cable:
+/// a clock usually arrives from the thing that is *not* the DJ's controller,
+/// and `open` deliberately tells midir to ignore realtime bytes so a
+/// controller's own clock does not wake its callback several hundred times a
+/// second for nothing.
+///
+/// `on_tempo` is called from the MIDI thread with each new estimate, and with
+/// `None` when the sender stops. It must not block.
+///
+/// # Errors
+/// When MIDI is unavailable, no port matches, or the platform refuses it.
+pub fn listen_to_clock(
+    port: &str,
+    mut on_tempo: impl FnMut(Option<dj_core::Bpm>) + Send + 'static,
+) -> Result<ClockConnection, PortError> {
+    let mut midi =
+        MidiInput::new(CLIENT_NAME).map_err(|e| PortError::Unavailable(e.to_string()))?;
+    // The opposite of `open`: realtime is the *only* thing wanted here.
+    midi.ignore(midir::Ignore::SysexAndTime);
+
+    let ports = midi.ports();
+    let found = ports
+        .iter()
+        .find(|candidate| {
+            midi.port_name(candidate).is_ok_and(|name| {
+                name == port || name.to_lowercase().contains(&port.to_lowercase())
+            })
+        })
+        .ok_or_else(|| PortError::NoSuchPort(port.to_owned()))?
+        .clone();
+    let name = midi.port_name(&found).unwrap_or_else(|_| port.to_owned());
+
+    let open = midi
+        .connect(
+            &found,
+            CLIENT_NAME,
+            move |_timestamp, bytes, following: &mut dj_net::MidiClockIn| {
+                match bytes.first() {
+                    // 0xF8 -- one pulse of twenty-four.
+                    Some(0xF8) => on_tempo(following.tick(std::time::Instant::now())),
+                    // Stop or start: the estimate is discarded rather than
+                    // averaged across the gap, and the follower is told the
+                    // room has no tempo rather than left on a stale one.
+                    Some(0xFA | 0xFC) => {
+                        *following = dj_net::MidiClockIn::default();
+                        on_tempo(None);
+                    }
+                    _ => {}
+                }
+            },
+            dj_net::MidiClockIn::default(),
+        )
+        .map_err(|e| PortError::Refused(name.clone(), e.to_string()))?;
+
+    Ok(ClockConnection {
+        _open: open,
+        port: name,
+    })
+}
+
+/// An open clock input. Dropping it stops listening.
+pub struct ClockConnection {
+    _open: MidiInputConnection<dj_net::MidiClockIn>,
+    port: String,
+}
+
+impl ClockConnection {
+    #[must_use]
+    pub fn port(&self) -> &str {
+        &self.port
+    }
+}
+
+impl std::fmt::Debug for ClockConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClockConnection")
+            .field("port", &self.port)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Open `port` and send everything it says, translated, down `out`.
 ///
 /// The port is matched by [`Mapping::fits`] rules — loosely, on a substring —

@@ -25,6 +25,15 @@
     remoteStatus,
     startRemote,
     stopRemote,
+    clockStatus,
+    midiOutputs,
+    startClock,
+    stopClock,
+    followClock,
+    unfollowClock,
+    controlStatus,
+    type ClockStatus,
+    type MidiOutputs,
     type Library,
     type RemoteStatus,
     type Source,
@@ -70,6 +79,44 @@
     }
   }
 
+  let clock = $state<ClockStatus>({
+    running: false,
+    port: null,
+    error: null,
+    following: null,
+    external_bpm: null,
+  });
+  let clockInputs = $state<string[]>([]);
+  let followPort = $state<string | null>(null);
+
+  async function followClockIn() {
+    if (!followPort) return;
+    try {
+      clock = await followClock(followPort);
+    } catch (e) {
+      clock = { ...clock, following: null, error: String(e) };
+    }
+  }
+
+  async function unfollowClockIn() {
+    clock = await unfollowClock();
+  }
+  let outputs = $state<MidiOutputs>({ ports: [], unavailable: null });
+  let clockPort = $state<string | null>(null);
+
+  async function startClockOut() {
+    if (!clockPort) return;
+    try {
+      clock = await startClock(clockPort);
+    } catch (e) {
+      clock = { ...clock, running: false, error: String(e) };
+    }
+  }
+
+  async function stopClockOut() {
+    clock = await stopClock();
+  }
+
   async function stopRemoteServer() {
     remote = await stopRemote();
     // Typed once, kept out of memory once it is no longer in force.
@@ -89,6 +136,16 @@
         hasBrandLogo(),
         remoteStatus(),
       ]);
+      const [status, ports, control] = await Promise.all([
+        clockStatus(),
+        midiOutputs(),
+        controlStatus(),
+      ]);
+      clock = status;
+      outputs = ports;
+      clockInputs = control.inputs;
+      if (!clockPort) clockPort = clock.port ?? outputs.ports[0] ?? null;
+      if (!followPort) followPort = clock.following ?? clockInputs[0] ?? null;
       error = null;
     } catch (e) {
       error = String(e);
@@ -269,6 +326,90 @@
   </div>
 
   <div class="block">
+    <h3>MIDI clock</h3>
+    <p class="hint">
+      Makes djmanzo the clock master: twenty-four pulses to the beat, at
+      whatever the loudest playing deck is doing. A drum machine, a light desk
+      or a second piece of software follows it. It is the oldest sync protocol
+      there is and still the one most likely to be on the other end of a cable
+      in a small club.
+    </p>
+    {#if outputs.unavailable}
+      <p class="hint">
+        {outputs.unavailable}. That is MIDI itself, not an empty list — plugging
+        something in will not change it.
+      </p>
+    {:else if outputs.ports.length === 0}
+      <p class="hint">No MIDI outputs on this machine.</p>
+    {:else}
+      <div class="row">
+        <select class="grow" bind:value={clockPort} disabled={clock.running}>
+          {#each outputs.ports as port (port)}
+            <option value={port}>{port}</option>
+          {/each}
+        </select>
+        {#if clock.running}
+          <IconButton icon="ban" title="Stop the clock" onClick={stopClockOut} />
+        {:else}
+          <IconButton
+            icon="check"
+            title="Send clock to this output"
+            onClick={startClockOut}
+            disabled={!clockPort}
+          />
+        {/if}
+      </div>
+    {/if}
+    {#if clock.running}
+      <p class="hint">
+        Sending to <code>{clock.port}</code>. Pausing every deck sends a stop
+        rather than going quiet — a follower that simply stops hearing pulses
+        decides it has lost its master.
+      </p>
+    {/if}
+
+    <h4>Follow somebody else's clock</h4>
+    <p class="hint">
+      The other direction: djmanzo takes its tempo from a drum machine or a
+      second DJ. While a clock is being followed it <em>outranks every deck</em>
+      as the sync leader — a DJ who plugged the room's clock in wants the
+      room's clock, not deck 1.
+    </p>
+    {#if clockInputs.length === 0}
+      <p class="hint">No MIDI inputs to follow.</p>
+    {:else}
+      <div class="row">
+        <select class="grow" bind:value={followPort} disabled={!!clock.following}>
+          {#each clockInputs as port (port)}
+            <option value={port}>{port}</option>
+          {/each}
+        </select>
+        {#if clock.following}
+          <IconButton icon="ban" title="Stop following" onClick={unfollowClockIn} />
+        {:else}
+          <IconButton
+            icon="check"
+            title="Follow this input"
+            onClick={followClockIn}
+            disabled={!followPort}
+          />
+        {/if}
+      </div>
+    {/if}
+    {#if clock.following}
+      <p class="hint">
+        Following <code>{clock.following}</code>{clock.external_bpm
+          ? ` at ${clock.external_bpm.toFixed(1)} BPM.`
+          : " — still counting pulses."}
+      </p>
+    {/if}
+
+    {#if clock.error}
+      <p class="warn">{clock.error}</p>
+    {/if}
+  </div>
+
+  <div class="block">
     <h3>Remote control</h3>
     <p class="hint">
       Lets something else drive djmanzo — a script, a Stream Deck, a lighting
@@ -440,6 +581,14 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 0.9rem;
+  }
+
+  h4 {
+    margin: 0.6rem 0 0;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
   }
 
   h3 {

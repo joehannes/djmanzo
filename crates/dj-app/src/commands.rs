@@ -3178,6 +3178,78 @@ pub fn close_hid_controller(state: State<'_, AppState>) {
     state.apply_controller_routing();
 }
 
+/// Every MIDI output the machine can see, and why it can see none.
+#[tauri::command]
+#[must_use]
+pub fn midi_outputs() -> MidiOutputsDto {
+    match dj_hid::out::outputs() {
+        Ok(ports) => MidiOutputsDto {
+            ports,
+            unavailable: None,
+        },
+        Err(e) => MidiOutputsDto {
+            ports: Vec::new(),
+            unavailable: Some(e.to_string()),
+        },
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MidiOutputsDto {
+    pub ports: Vec<String>,
+    /// Said out loud, because "no outputs" and "no MIDI on this machine" are
+    /// different problems and only one is fixed by plugging something in.
+    pub unavailable: Option<String>,
+}
+
+/// Whether djmanzo is sending MIDI clock, and where.
+#[tauri::command]
+#[must_use]
+pub fn clock_status(state: State<'_, AppState>) -> crate::clock::ClockStatus {
+    state.clock().status(state.clock_follow())
+}
+
+/// Become the MIDI clock master on `port`.
+///
+/// # Errors
+/// When MIDI is unavailable, no output matches the name, or it refuses.
+#[tauri::command]
+pub fn start_clock(
+    state: State<'_, AppState>,
+    port: String,
+) -> Result<crate::clock::ClockStatus, String> {
+    state.clock().start(&port, state.registry())
+}
+
+/// Stop sending clock. The follower is told, rather than left running.
+#[tauri::command]
+pub fn stop_clock(state: State<'_, AppState>) -> crate::clock::ClockStatus {
+    state.clock().stop();
+    state.clock().status(state.clock_follow())
+}
+
+/// Follow the MIDI clock arriving on `port`.
+///
+/// While one is being followed it outranks every deck as the sync leader.
+///
+/// # Errors
+/// When MIDI is unavailable, no input matches, or the port refuses.
+#[tauri::command]
+pub fn follow_clock(
+    state: State<'_, AppState>,
+    port: String,
+) -> Result<crate::clock::ClockStatus, String> {
+    state.clock_follow().start(&port, Arc::clone(state.bus()))?;
+    Ok(state.clock().status(state.clock_follow()))
+}
+
+/// Stop following, and hand the lead back to the decks.
+#[tauri::command]
+pub fn unfollow_clock(state: State<'_, AppState>) -> crate::clock::ClockStatus {
+    state.clock_follow().stop(Some(state.bus()));
+    state.clock().status(state.clock_follow())
+}
+
 /// What the network control server is doing.
 #[tauri::command]
 #[must_use]

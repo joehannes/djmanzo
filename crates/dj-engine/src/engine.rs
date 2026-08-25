@@ -43,6 +43,12 @@ pub struct Engine {
 
     crossfader: f32,
     crossfader_curve: CrossfaderCurve,
+    /// A tempo arriving from outside — a MIDI clock, later a network peer.
+    ///
+    /// `None` means nothing is driving djmanzo, which is the normal state.
+    /// When it is set, it outranks every deck as the sync leader: a DJ who has
+    /// plugged the room's clock in wants the room's clock, not deck 1.
+    external_tempo: Option<f64>,
     /// Where the current controller's mapping says each bus comes out, when it
     /// says anything. `None` means guess from the channel count.
     routing: Option<crate::bus::BusRouting>,
@@ -155,6 +161,7 @@ impl Engine {
             registry,
             crossfader: 0.0,
             crossfader_curve: CrossfaderCurve::default(),
+            external_tempo: None,
             routing: None,
             master_gain: SmoothedValue::new(1.0, sr),
             master_gain_db: 0.0,
@@ -381,6 +388,7 @@ impl Engine {
                     }
                 }
                 Command::SetRouting { routing } => self.routing = routing,
+                Command::SetExternalTempo { bpm } => self.external_tempo = bpm,
                 Command::SetLoop { deck, region } => {
                     if let Some(target) = self.deck_mut(deck) {
                         target.set_loop_region(region);
@@ -1074,15 +1082,24 @@ impl Engine {
             let Some(follower_id) = DeckId::new(index as u8) else {
                 continue;
             };
-            let Some(leader_index) = self.sync_leader(follower_id) else {
-                // The leader stopped or lost its grid. The lock is released
-                // rather than frozen at the last tempo, because a lock to
-                // nothing is a lie the interface would keep showing.
-                self.decks[index].set_synced(false);
-                continue;
-            };
-            let Some(leader_bpm) = self.decks[leader_index].effective_bpm() else {
-                continue;
+            // An external clock outranks every deck. A DJ who plugged the
+            // room's clock in wants the room's clock, and a deck quietly
+            // leading instead would be the software overruling them.
+            let leader_bpm = if let Some(external) = self.external_tempo {
+                external
+            } else {
+                let Some(leader_index) = self.sync_leader(follower_id) else {
+                    // The leader stopped or lost its grid. The lock is
+                    // released rather than frozen at the last tempo, because a
+                    // lock to nothing is a lie the interface would keep
+                    // showing.
+                    self.decks[index].set_synced(false);
+                    continue;
+                };
+                let Some(bpm) = self.decks[leader_index].effective_bpm() else {
+                    continue;
+                };
+                bpm
             };
             if !self.decks[index].match_tempo(leader_bpm) {
                 self.decks[index].set_synced(false);
@@ -1407,6 +1424,15 @@ impl AudioCallback for Engine {
         self.registry.set(
             ParamId::Global(GlobalParam::LimiterReductionDb),
             self.limiter.reduction_db(),
+        );
+
+        // The room's tempo, published rather than kept inside the audio
+        // thread. Zero when nothing is playing, which is also the answer to
+        // "is there anything to be in time with".
+        #[allow(clippy::cast_possible_truncation)]
+        self.registry.set(
+            ParamId::Global(GlobalParam::MasterBpm),
+            self.master_bpm().unwrap_or(0.0) as f32,
         );
 
         // A finished capture goes out on the retirement queue. Here rather than
@@ -2500,6 +2526,81 @@ mod sync_tests {
         fn engine_deck(&self, n: u8) -> &crate::deck::Deck {
             self.engine.deck(deck(n)).unwrap()
         }
+    }
+
+    /// **An external clock outranks every deck.**
+    ///
+    /// A DJ who has plugged the room's MIDI clock in wants the room's clock. A
+    /// deck quietly leading instead would be the software overruling them, and
+    /// the two tempos differ by exactly enough to hear.
+    #[test]
+    fn an_external_clock_leads_instead_of_the_other_deck() {
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.prepare(2, 120.0, 0.0, 0.9, true);
+        rig.render(256);
+
+        // Without the clock, deck 2 would follow deck 1 at 128.
+        rig.send(Command::SetExternalTempo { bpm: Some(140.0) });
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+        rig.render(256);
+
+        let followed = f64::from(rig.param(2, DeckParam::EffectiveBpm));
+        assert!(
+            (followed - 140.0).abs() < 0.5,
+            "followed {followed}, not the external clock's 140"
+        );
+        assert!(
+            (followed - 128.0).abs() > 1.0,
+            "it followed deck 1 instead of the clock"
+        );
+    }
+
+    /// Unplugging the clock hands the lead back rather than freezing the deck
+    /// at the tempo of a clock that is no longer there.
+    #[test]
+    fn losing_the_external_clock_returns_the_lead_to_the_decks() {
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.prepare(2, 120.0, 0.0, 0.9, true);
+        rig.render(256);
+
+        rig.send(Command::SetExternalTempo { bpm: Some(140.0) });
+        rig.deck_act(2, DeckAction::Sync);
+        rig.render(256);
+        rig.render(256);
+        assert!((f64::from(rig.param(2, DeckParam::EffectiveBpm)) - 140.0).abs() < 0.5);
+
+        rig.send(Command::SetExternalTempo { bpm: None });
+        rig.render(256);
+        rig.render(256);
+        let followed = f64::from(rig.param(2, DeckParam::EffectiveBpm));
+        assert!(
+            (followed - 128.0).abs() < 0.5,
+            "after the clock went away deck 2 sits at {followed}, not deck 1's 128"
+        );
+    }
+
+    /// The room's tempo is published, so a MIDI clock outside the audio thread
+    /// has something to send and the interface has something to show.
+    #[test]
+    fn the_rooms_tempo_is_published_for_everything_outside_the_engine() {
+        let mut rig = new_rig();
+        assert_eq!(
+            rig.registry.get(ParamId::Global(GlobalParam::MasterBpm)),
+            0.0,
+            "a silent room reported a tempo"
+        );
+
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.render(256);
+        rig.render(256);
+        let published = rig.registry.get(ParamId::Global(GlobalParam::MasterBpm));
+        assert!(
+            (published - 128.0).abs() < 0.5,
+            "the room is at 128 and the registry says {published}"
+        );
     }
 
     /// **What sync is for.** Two tracks at different tempos, one command, and

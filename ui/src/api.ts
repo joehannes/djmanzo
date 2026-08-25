@@ -1439,6 +1439,32 @@ export interface RemoteStatus {
   error: string | null;
 }
 
+/** MIDI clock out: djmanzo as clock master for a drum machine or a light desk. */
+export interface ClockStatus {
+  running: boolean;
+  port: string | null;
+  error: string | null;
+  /** The port djmanzo is following, when something else is the master. */
+  following: string | null;
+  /** That clock's tempo, once there are two pulses to compare. */
+  external_bpm: number | null;
+}
+
+export interface MidiOutputs {
+  ports: string[];
+  /** Why there are none, when MIDI itself is the problem. */
+  unavailable: string | null;
+}
+
+export const midiOutputs = () => invoke<MidiOutputs>("midi_outputs");
+export const clockStatus = () => invoke<ClockStatus>("clock_status");
+export const startClock = (port: string) =>
+  invoke<ClockStatus>("start_clock", { port });
+export const stopClock = () => invoke<ClockStatus>("stop_clock");
+export const followClock = (port: string) =>
+  invoke<ClockStatus>("follow_clock", { port });
+export const unfollowClock = () => invoke<ClockStatus>("unfollow_clock");
+
 export const remoteStatus = () => invoke<RemoteStatus>("remote_status");
 export const startRemote = (address: string, token?: string) =>
   invoke<RemoteStatus>("start_remote", { address, token: token || null });

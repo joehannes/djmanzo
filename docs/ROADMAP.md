@@ -1026,7 +1026,31 @@ anything.
 - **StagelinQ** — Denon Prime discovery and state map.
 - Network tempo sync (Ableton Link, or a clean-room implementation — see
   [RESEARCH.md](RESEARCH.md#2-open-source-prior-art) for the licensing decision).
-- MIDI clock in/out.
+- **MIDI clock in/out — done.** The oldest sync protocol there is, and still
+  the one most likely to be on the other end of a cable in a small club.
+  `dj-net` had the arithmetic and, like `ControlService`, nothing used it.
+  **Out:** djmanzo is the clock master, twenty-four pulses to the beat at
+  whatever the loudest playing deck is doing. That figure existed inside the
+  engine as `master_bpm()` and was kept there; it is now `master_bpm` in the
+  registry, because a clock outside the audio thread needs it and so does
+  anything else that has to be in time with the music rather than with a deck.
+  The pulses go out on a dedicated thread rather than the audio callback:
+  sending MIDI is I/O, and a callback firing in 5.3 ms lumps would jitter a
+  pulse by up to a whole buffer.
+  Two details a follower would notice. Finding a tempo sends **continue**, not
+  start -- `start` means "from the top", and a drum machine told that mid-set
+  jumps to bar one. And pausing every deck sends `stop` while the **pulses keep
+  going**, because a follower that simply stops hearing them decides it has
+  lost its master altogether.
+  **In:** djmanzo follows a drum machine or a second DJ, and while it does the
+  external clock **outranks every deck as the sync leader** -- a DJ who plugged
+  the room's clock in wants the room's clock, not deck 1. Unplugging it hands
+  the lead back rather than freezing a synced deck at the tempo of a clock
+  nobody is sending.
+  The timing is proved rather than listened to: `ClockDriver` takes an elapsed
+  time and a sink, so "one minute at 120 BPM is exactly 2,880 pulses" is a test.
+  So is the drift: ten minutes of 5.333 ms intervals -- 256 frames at 48 kHz,
+  deliberately not a whole tick -- comes out within one pulse.
 - WebSocket + OSC adapters over the line protocol above — the same Actions and
   Parameters, different framing. Documented in
   [NETWORK-API.md](NETWORK-API.md).

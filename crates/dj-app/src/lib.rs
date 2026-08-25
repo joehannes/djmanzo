@@ -23,6 +23,7 @@ pub mod analysis;
 pub mod assistant;
 pub mod automix;
 pub mod brand;
+pub mod clock;
 pub mod commands;
 pub mod control;
 pub mod grid;
@@ -339,6 +340,12 @@ pub fn run() {
             commands::close_controller,
             commands::open_hid_controller,
             commands::close_hid_controller,
+            commands::midi_outputs,
+            commands::clock_status,
+            commands::start_clock,
+            commands::stop_clock,
+            commands::follow_clock,
+            commands::unfollow_clock,
             commands::remote_status,
             commands::start_remote,
             commands::stop_remote,

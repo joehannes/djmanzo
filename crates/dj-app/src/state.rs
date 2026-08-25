@@ -83,6 +83,10 @@ pub struct AppState {
     /// The network control server. Off until a DJ switches it on; see
     /// `crate::remote` for why that is not a preference.
     remote: Arc<crate::remote::Remote>,
+    /// MIDI clock out, when djmanzo is the clock master.
+    clock: Arc<crate::clock::MidiClock>,
+    /// MIDI clock in, when something else is.
+    clock_follow: Arc<crate::clock::ClockFollow>,
     /// Tap-tempo runs in progress. Lives here rather than on the audio thread
     /// because a run is host state -- see `crate::grid`.
     taps: crate::grid::TapTracker,
@@ -297,6 +301,8 @@ impl AppState {
             bus,
             registry,
             remote: Arc::new(crate::remote::Remote::default()),
+            clock: Arc::new(crate::clock::MidiClock::default()),
+            clock_follow: Arc::new(crate::clock::ClockFollow::default()),
             taps: crate::grid::TapTracker::new(),
             layout_dir: Mutex::new(None),
             mapping_draft: Mutex::new(dj_hid::editor::Draft::new("My mapping", String::new())),
@@ -853,6 +859,18 @@ impl AppState {
     #[must_use]
     pub fn remote(&self) -> &Arc<crate::remote::Remote> {
         &self.remote
+    }
+
+    /// The MIDI clock, sending or not.
+    #[must_use]
+    pub fn clock(&self) -> &Arc<crate::clock::MidiClock> {
+        &self.clock
+    }
+
+    /// The MIDI clock djmanzo is following, if any.
+    #[must_use]
+    pub fn clock_follow(&self) -> &Arc<crate::clock::ClockFollow> {
+        &self.clock_follow
     }
 
     #[must_use]

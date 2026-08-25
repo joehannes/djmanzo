@@ -137,6 +137,16 @@ pub enum Command {
     SetRouting {
         routing: Option<crate::bus::BusRouting>,
     },
+    /// A tempo arriving from outside — a MIDI clock, later a network peer.
+    ///
+    /// A command rather than an [`Action`] for the same reason the grid is: a
+    /// DJ does not press "the room is at 128". It is a measurement, taken by
+    /// something that is not the engine, and putting it in the action
+    /// vocabulary would offer it to controllers and scripts as though it were
+    /// a thing to do.
+    SetExternalTempo {
+        bpm: Option<f64>,
+    },
 }
 
 impl From<Action> for Command {
