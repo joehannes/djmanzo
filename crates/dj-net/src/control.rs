@@ -12,12 +12,34 @@ pub enum ControlRequest {
     Parameters,
 }
 
+/// Why a control request was refused.
+///
+/// An enum rather than a string so a client can branch on it, and so the set
+/// is closed: a transport cannot invent a code, and adding one here is a
+/// visible change to the protocol.
+///
+/// It was `&'static str`, which serialised fine and could not be
+/// *deserialised* at all -- `#[derive(Deserialize)]` on a borrowed `'static`
+/// field requires `'static` input, so any client trying to parse a response
+/// would not have compiled. A response type that cannot be read back is not a
+/// protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ErrorCode {
+    /// The frame was not the JSON this protocol expects.
+    BadRequest,
+    /// The frame was well formed but the action text is not in the grammar.
+    BadAction,
+    /// The engine is not keeping up; the sender should back off and retry.
+    QueueFull,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ControlResponse {
     Accepted,
     Parameters { values: Vec<NamedParameter> },
-    Error { code: &'static str, message: String },
+    Error { code: ErrorCode, message: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,12 +81,12 @@ where
             Ok(request) => match self.handle(request) {
                 Ok(response) => response,
                 Err(error) => ControlResponse::Error {
-                    code: error_code(&error),
+                    code: error.code(),
                     message: error.to_string(),
                 },
             },
             Err(error) => ControlResponse::Error {
-                code: "bad_request",
+                code: ErrorCode::BadRequest,
                 message: error.to_string(),
             },
         }
@@ -90,17 +112,22 @@ where
     }
 }
 
-fn error_code(error: &ControlError) -> &'static str {
-    match error {
-        ControlError::Json(_) => "bad_request",
-        ControlError::Action(_) => "bad_action",
-        ControlError::QueueFull => "queue_full",
+impl ControlError {
+    /// The code a client branches on.
+    #[must_use]
+    pub fn code(&self) -> ErrorCode {
+        match self {
+            Self::Json(_) => ErrorCode::BadRequest,
+            Self::Action(_) => ErrorCode::BadAction,
+            Self::QueueFull => ErrorCode::QueueFull,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[derive(Debug, Clone, Copy, PartialEq)]
     enum Command {
         Action(Action),
@@ -110,10 +137,15 @@ mod tests {
             Self::Action(value)
         }
     }
+
+    fn service(depth: usize) -> (ControlService<Command>, rtrb::Consumer<Command>) {
+        let (bus, consumer) = ActionBus::<Command>::new(depth);
+        (ControlService::new(bus, ParameterRegistry::new()), consumer)
+    }
+
     #[test]
     fn action_requests_use_the_shared_bus() {
-        let (bus, mut consumer) = ActionBus::<Command>::new(2);
-        let service = ControlService::new(bus, ParameterRegistry::new());
+        let (service, mut consumer) = service(2);
         assert_eq!(
             service.handle_json(r#"{"type":"action","action":"deck 1 play"}"#),
             ControlResponse::Accepted
@@ -123,23 +155,132 @@ mod tests {
             Command::Action(Action::parse("deck 1 play").unwrap())
         );
     }
+
     #[test]
     fn malformed_input_is_a_safe_structured_error() {
-        let (bus, _) = ActionBus::<Command>::new(2);
-        let service = ControlService::new(bus, ParameterRegistry::new());
+        let (service, _consumer) = service(2);
         assert!(matches!(
             service.handle_json("not json"),
             ControlResponse::Error {
-                code: "bad_request",
+                code: ErrorCode::BadRequest,
                 ..
             }
         ));
         assert!(matches!(
             service.handle_json(r#"{"type":"action","action":"deck nope play"}"#),
             ControlResponse::Error {
-                code: "bad_action",
+                code: ErrorCode::BadAction,
                 ..
             }
         ));
+    }
+
+    /// A request naming something this protocol does not have is refused as a
+    /// bad request, not ignored. Silence would leave a client waiting.
+    #[test]
+    fn an_unknown_request_type_is_refused() {
+        let (service, _consumer) = service(2);
+        assert!(matches!(
+            service.handle_json(r#"{"type":"shutdown"}"#),
+            ControlResponse::Error {
+                code: ErrorCode::BadRequest,
+                ..
+            }
+        ));
+    }
+
+    /// **The back-pressure path**, and the one a flooding peer will find
+    /// first. A full queue has to be a refusal the sender can act on, not a
+    /// silent drop and not a panic.
+    #[test]
+    fn a_full_queue_is_reported_rather_than_dropped() {
+        let (service, _consumer) = service(2);
+        let frame = r#"{"type":"action","action":"deck 1 play"}"#;
+
+        let mut refusals = 0;
+        for _ in 0..32 {
+            if let ControlResponse::Error { code, .. } = service.handle_json(frame) {
+                assert_eq!(code, ErrorCode::QueueFull);
+                refusals += 1;
+            }
+        }
+        assert!(refusals > 0, "a bounded queue never filled");
+    }
+
+    /// The other half of the API. Reading parameters is what keeps a network
+    /// client from scraping the interface for state.
+    #[test]
+    fn parameters_come_back_named() {
+        let (service, _consumer) = service(2);
+        let ControlResponse::Parameters { values } =
+            service.handle_json(r#"{"type":"parameters"}"#)
+        else {
+            panic!("expected a parameter map");
+        };
+
+        assert!(!values.is_empty(), "no parameters at all");
+        assert_eq!(
+            values.len(),
+            ParamId::all().count(),
+            "the map has to be every parameter, or a client cannot tell what is missing"
+        );
+        assert!(
+            values.iter().all(|p| !p.name.is_empty()),
+            "a parameter with no name is not addressable"
+        );
+    }
+
+    /// **ADR-0003, at the network boundary.** A peer gets the same text
+    /// grammar as a controller mapping or the assistant -- no more. If some
+    /// action were reachable over the network and not by parsing, this crate
+    /// would have grown a private engine API.
+    #[test]
+    fn the_network_can_say_exactly_what_the_grammar_can_say() {
+        let (service, mut consumer) = service(64);
+        for text in [
+            "deck 1 play",
+            "deck 2 cue",
+            "deck 1 volume 0.5",
+            "crossfader 0.0",
+            "deck 1 stem_mute vocal",
+        ] {
+            let frame = format!(r#"{{"type":"action","action":"{text}"}}"#);
+            assert_eq!(
+                service.handle_json(&frame),
+                ControlResponse::Accepted,
+                "the grammar accepts `{text}` but the network did not"
+            );
+            assert_eq!(
+                consumer.pop().unwrap(),
+                Command::Action(Action::parse(text).unwrap()),
+                "`{text}` did not arrive as the action it parses to"
+            );
+        }
+    }
+
+    /// A response has to survive the round trip, or a client cannot read it.
+    /// The error code used to be a `&'static str`, which no client could have
+    /// deserialised.
+    #[test]
+    fn every_response_round_trips_through_json() {
+        let responses = [
+            ControlResponse::Accepted,
+            ControlResponse::Parameters {
+                values: vec![NamedParameter {
+                    name: "deck.1.volume".to_owned(),
+                    value: 0.5,
+                }],
+            },
+            ControlResponse::Error {
+                code: ErrorCode::QueueFull,
+                message: "the action queue is full".to_owned(),
+            },
+        ];
+
+        for response in responses {
+            let text = serde_json::to_string(&response).expect("serialise");
+            let back: ControlResponse = serde_json::from_str(&text).expect("deserialise");
+            assert_eq!(back, response, "round trip changed {text}");
+        }
     }
 }

@@ -33,6 +33,15 @@ impl Bpm {
         rate.as_f64() * 60.0 / self.0
     }
 
+    /// Length of one beat in seconds.
+    ///
+    /// Sample-rate-free, for the things that live in wall time rather than in
+    /// frames: MIDI clock, network phase, a tap tempo.
+    #[must_use]
+    pub fn beat_seconds(self) -> f64 {
+        60.0 / self.0
+    }
+
     /// The rate a deck must run at to play this tempo as `target`.
     #[must_use]
     pub fn rate_to_match(self, target: Bpm) -> f64 {
@@ -330,5 +339,32 @@ mod tests {
     fn key_hour_is_validated() {
         assert!(MusicalKey::new(0, Mode::Major).is_none());
         assert!(MusicalKey::new(13, Mode::Major).is_none());
+    }
+}
+
+#[cfg(test)]
+mod beat_seconds_tests {
+    use super::Bpm;
+
+    #[test]
+    fn a_beat_at_120_is_half_a_second() {
+        let bpm = Bpm::new(120.0).expect("a real tempo");
+        assert!((bpm.beat_seconds() - 0.5).abs() < 1e-12);
+    }
+
+    /// The bound is what keeps a beat period from collapsing towards zero.
+    /// Anything that schedules by dividing a span into beat periods -- MIDI
+    /// clock output, network phase -- would otherwise be asked for an
+    /// unbounded number of them.
+    #[test]
+    fn a_beat_period_is_never_absurdly_short() {
+        let fastest = Bpm::new(Bpm::MAX).expect("the top of the range");
+        assert!(
+            fastest.beat_seconds() > 0.1,
+            "even the fastest tempo has a beat of {} s",
+            fastest.beat_seconds()
+        );
+        assert_eq!(Bpm::new(f64::MAX), None, "an absurd tempo is not a tempo");
+        assert_eq!(Bpm::new(0.0), None);
     }
 }

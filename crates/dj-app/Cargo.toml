@@ -19,6 +19,19 @@ path = "src/main.rs"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+# Tauri computes `dev = !custom-protocol`, so without this feature declared
+# **every** build -- release included -- is a development build that loads the
+# interface from `devUrl` instead of embedding `ui/dist`. A packaged app then
+# opens on "Could not connect to localhost: Connection refused".
+#
+# It is deliberately not in `default`: `tauri dev` wants the dev server and its
+# hot reload, and `tauri build` turns this on itself. A plain
+# `cargo build --release` is therefore *not* a shippable binary -- pass
+# `--features custom-protocol`, or build through the Tauri CLI. `xtask` does
+# this for you; see docs/BUILD.md.
+custom-protocol = ["tauri/custom-protocol"]
+
 [dependencies]
 dj-core = { workspace = true }
 dj-clap = { workspace = true }

@@ -9,6 +9,6 @@ pub mod control;
 pub mod midi_clock;
 pub mod tempo;
 
-pub use control::{ControlError, ControlRequest, ControlResponse, ControlService};
+pub use control::{ControlError, ControlRequest, ControlResponse, ControlService, ErrorCode};
 pub use midi_clock::{MIDI_CLOCK_TICKS_PER_BEAT, MidiClockIn, MidiClockOut};
-pub use tempo::{PhaseFollower, Tempo};
+pub use tempo::PhaseFollower;
