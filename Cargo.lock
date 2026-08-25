@@ -1485,6 +1485,7 @@ dependencies = [
  "ort",
  "parking_lot",
  "rustfft",
+ "tempfile",
  "thiserror 2.0.20",
  "tracing",
 ]

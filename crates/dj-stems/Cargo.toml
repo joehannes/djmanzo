@@ -18,3 +18,6 @@ filetime = "0.2"
 parking_lot = "0.12.5"
 libloading = "0.9"
 rustfft.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

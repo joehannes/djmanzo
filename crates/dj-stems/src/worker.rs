@@ -90,11 +90,12 @@ impl SeparationWorker {
             target,
         }) = receiver.recv()
         {
-            // 1. Check if the chunk already exists in the cache
-            let mut separated = None;
-            if let Some(cached) = cache.get(track_id, chunk_index) {
-                separated = Some(cached);
-            }
+            // The cache is keyed by which separator produced the audio, so a
+            // model installed later is actually used rather than answered
+            // with the built-in separator's older work.
+            let name = separator.as_ref().map_or("none", |s| s.name());
+
+            let mut separated = cache.get(name, track_id, chunk_index);
 
             if separated.is_none() {
                 // 2. Separate (only if a separator is available)
@@ -105,7 +106,11 @@ impl SeparationWorker {
                     {
                         Ok(seps) => {
                             // 3. Save to cache
-                            let _ = cache.put(track_id, chunk_index, &seps);
+                            if let Err(error) = cache.put(name, track_id, chunk_index, &seps) {
+                                // Not fatal: the chunk still plays, it is just
+                                // separated again next time.
+                                tracing::warn!(%error, chunk_index, "a separated chunk was not cached");
+                            }
                             separated = Some(seps);
                         }
                         Err(e) => {
