@@ -25,6 +25,8 @@
     remoteStatus,
     startRemote,
     stopRemote,
+    startOsc,
+    stopOsc,
     clockStatus,
     midiOutputs,
     startClock,
@@ -64,7 +66,22 @@
     address: null,
     token_set: false,
     error: null,
+    osc: null,
   });
+  // 9000 is what TouchOSC and most surfaces default to.
+  let oscAddress = $state("127.0.0.1:9000");
+
+  async function startOscPort() {
+    try {
+      remote = await startOsc(oscAddress);
+    } catch (e) {
+      remote = { ...remote, osc: null, error: String(e) };
+    }
+  }
+
+  async function stopOscPort() {
+    remote = await stopOsc();
+  }
   // Loopback and a port well clear of anything a DJ laptop already runs.
   let remoteAddress = $state("127.0.0.1:7654");
   let remoteToken = $state("");
@@ -451,6 +468,32 @@
           : " — no passphrase, which is fine on this machine only."}
       </p>
     {/if}
+
+    <h4>OSC</h4>
+    <p class="hint">
+      The protocol TouchOSC, Lemur and QLab already speak. djmanzo invents no
+      address space: the action grammar <em>is</em> the addresses, with slashes
+      for spaces — <code>/deck/1/play</code>, <code>/deck/1/volume</code> with a
+      float. A layout reads like a controller mapping.
+    </p>
+    <p class="hint">
+      <strong>Loopback only, and that is not a default.</strong> OSC is UDP, so
+      there is no handshake to carry a passphrase — nothing to authenticate
+      with, so a port facing the network is refused rather than protected
+      badly. Use the line protocol above for anything off this machine.
+    </p>
+    <div class="row">
+      <input class="grow" bind:value={oscAddress} placeholder="127.0.0.1:9000" disabled={!!remote.osc} />
+      {#if remote.osc}
+        <IconButton icon="ban" title="Close the OSC port" onClick={stopOscPort} />
+      {:else}
+        <IconButton icon="check" title="Open the OSC port" onClick={startOscPort} />
+      {/if}
+    </div>
+    {#if remote.osc}
+      <p class="hint">Listening for OSC on <code>{remote.osc}</code>.</p>
+    {/if}
+
     {#if remote.error}
       <p class="warn">{remote.error}</p>
     {/if}

@@ -1051,11 +1051,21 @@ anything.
   time and a sink, so "one minute at 120 BPM is exactly 2,880 pulses" is a test.
   So is the drift: ten minutes of 5.333 ms intervals -- 256 frames at 48 kHz,
   deliberately not a whole tick -- comes out within one pulse.
-- WebSocket + OSC adapters over the line protocol above — the same Actions and
-  Parameters, different framing. Documented in
-  [NETWORK-API.md](NETWORK-API.md).
-- Rate limiting. The bus is bounded, so a client that outruns the engine gets
-  `queue_full` and is expected to back off; that is backpressure, not a limit.
+- **OSC — done.** The protocol TouchOSC, Lemur and QLab already speak, so a DJ
+  with an iPad has a control surface already. djmanzo invents no address space:
+  **the action grammar is the address space**, `/deck/1/volume` with a float,
+  which makes a layout readable next to a controller mapping.
+  Loopback only, and that is not a default — OSC is UDP, so there is no
+  handshake to carry a passphrase and nothing to authenticate with. A port
+  facing the network is refused rather than protected badly.
+  Bundles are refused rather than partly applied; a bundle exists to make
+  several messages take effect together, and applying the first alone would be
+  a scene change that half happened.
+- **Rate limiting — done.** Sixty requests a second with a hundred and twenty in
+  hand: a scene change firing a dozen at once is not throttled, a runaway script
+  hits the wall immediately, and the answer is `too_fast` with the connection
+  left open.
+- WebSocket, for a browser client. A framing layer over the line protocol.
 - Art-Net / DMX output driven by beat and structure data.
 
 **Done when:** djmanzo can be plugged into a running club setup and stay in phase, and an

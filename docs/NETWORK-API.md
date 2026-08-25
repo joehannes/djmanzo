@@ -54,12 +54,48 @@ f.write(json.dumps({"type": "action", "action": "deck 1 play"}) + "\n"); f.flush
 print(json.loads(f.readline()))          # {"type": "accepted"}
 ```
 
-### What it does not do
+### Limits
 
-**There is no rate limiting.** The action bus is bounded, so a client that
-outruns the engine gets `queue_full` and is expected to back off — that is
-backpressure, not a rate limit, and a client that ignores it will keep getting
-refused rather than being disconnected. Worth having; not yet built.
+**Sixty requests a second, with a hundred and twenty in hand.** A DJ's hands
+produce a few actions a second; a scene change fires a dozen at once and must
+not be throttled for it; a runaway script hits the wall immediately. Past the
+budget the answer is `too_fast` and **the connection stays open** — this is a
+client to slow down, not one to throw out.
+
+The bus is bounded as well, so a flood could never reach the audio thread
+regardless; the limit is about the rest of the process not spending its evening
+parsing frames instead of drawing waveforms.
 
 **A connection is dropped after five minutes of silence.** Send something, or
-reconnect.
+reconnect. Frames are capped at 8 KB.
+
+## OSC
+
+The protocol TouchOSC, Lemur and QLab already speak. Settings → Remote control.
+
+djmanzo invents no address space. **The action grammar is the address space**,
+with slashes for spaces:
+
+```text
+  deck 1 play          ->  /deck/1/play
+  deck 1 volume 0.4    ->  /deck/1/volume        , f 0.4
+  crossfader -1        ->  /crossfader           , f -1.0
+```
+
+A float argument becomes the action's last word. That is the whole translation,
+and it is what makes a TouchOSC layout readable next to a controller mapping.
+
+**Loopback only, and that is not a default.** OSC is UDP: there is no handshake
+to carry a passphrase, so there is nothing to authenticate *with*. A port facing
+the network is refused outright rather than protected badly. Use the line
+protocol for anything off this machine.
+
+Three things are deliberately absent:
+
+- **Bundles are refused**, not partly applied. A bundle exists to make several
+  messages take effect together; quietly applying the first would be a scene
+  change that half happened.
+- **No pattern matching.** `/deck/*/play` would let one packet start every
+  deck, which is a way to end a set rather than to run one.
+- **No replies.** UDP has nobody to reply to. A surface that needs state should
+  read it over the line protocol, which can answer.

@@ -20,6 +20,9 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RemoteStatus {
     pub running: bool,
+    /// Where the OSC listener is, when one is open. Loopback only — UDP has
+    /// no handshake, so there is nothing to authenticate with.
+    pub osc: Option<String>,
     /// Where it is listening, once it is. Includes the port the operating
     /// system chose when the request was for port 0.
     pub address: Option<String>,
@@ -33,6 +36,7 @@ pub struct RemoteStatus {
 #[derive(Debug, Default)]
 pub struct Remote {
     server: Mutex<Option<ControlServer>>,
+    osc: Mutex<Option<dj_net::OscServer>>,
     error: Mutex<Option<String>>,
     token_set: std::sync::atomic::AtomicBool,
 }
@@ -63,6 +67,7 @@ impl Remote {
                     address: Some(server.address().to_string()),
                     token_set,
                     error: None,
+                    osc: self.osc_address(),
                 };
                 *self.server.lock().unwrap() = Some(server);
                 *self.error.lock().unwrap() = None;
@@ -92,7 +97,52 @@ impl Remote {
             address: server.as_ref().map(|s| s.address().to_string()),
             token_set: self.token_set.load(std::sync::atomic::Ordering::Acquire),
             error: self.error.lock().unwrap().clone(),
+            osc: self.osc_address(),
         }
+    }
+
+    fn osc_address(&self) -> Option<String> {
+        self.osc
+            .lock()
+            .ok()?
+            .as_ref()
+            .map(|s| s.address().to_string())
+    }
+
+    /// Open an OSC port, replacing anything already listening.
+    ///
+    /// Loopback only, and that is not a default: UDP has no handshake, so a
+    /// token cannot be offered once and remembered. There is nothing to
+    /// authenticate *with*, which is why a port facing the network is refused
+    /// outright rather than protected badly.
+    ///
+    /// # Errors
+    /// When the address cannot be bound, or is not loopback.
+    pub fn start_osc(
+        &self,
+        address: SocketAddr,
+        bus: Arc<dj_control::ActionBus<Command>>,
+        registry: Arc<dj_control::ParameterRegistry>,
+    ) -> Result<RemoteStatus, String> {
+        *self.osc.lock().unwrap() = None;
+        let service = Arc::new(ControlService::new(bus, registry));
+        match dj_net::OscServer::start(address, service) {
+            Ok(server) => {
+                *self.osc.lock().unwrap() = Some(server);
+                *self.error.lock().unwrap() = None;
+                Ok(self.status())
+            }
+            Err(why) => {
+                let why = why.to_string();
+                *self.error.lock().unwrap() = Some(why.clone());
+                Err(why)
+            }
+        }
+    }
+
+    /// Close the OSC port.
+    pub fn stop_osc(&self) {
+        *self.osc.lock().unwrap() = None;
     }
 }
 
@@ -120,6 +170,10 @@ mod tests {
         let status = remote.status();
         assert!(!status.running, "the port was open before anybody asked");
         assert_eq!(status.address, None);
+        assert_eq!(
+            status.osc, None,
+            "an OSC port was open before anybody asked"
+        );
     }
 
     #[test]
@@ -172,6 +226,43 @@ mod tests {
             again.unwrap().address.as_deref(),
             Some(&*address.to_string())
         );
+    }
+
+    /// OSC is a second door onto the same room, opened and closed on its own.
+    #[test]
+    fn the_osc_port_opens_and_closes_independently_of_the_line_protocol() {
+        let remote = Remote::default();
+        let (bus, registry, _engine) = parts();
+
+        let started = remote
+            .start_osc(
+                SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+                Arc::clone(&bus),
+                Arc::clone(&registry),
+            )
+            .expect("loopback binds");
+        let osc = started.osc.clone().expect("an OSC address");
+        assert!(osc.starts_with("127.0.0.1:"), "bound {osc}");
+        assert!(
+            !started.running,
+            "opening OSC also claimed the line protocol was running"
+        );
+
+        remote.stop_osc();
+        assert_eq!(remote.status().osc, None);
+    }
+
+    /// UDP cannot carry a token, so a public OSC bind is refused rather than
+    /// protected badly.
+    #[test]
+    fn an_osc_port_facing_the_network_is_refused() {
+        let remote = Remote::default();
+        let (bus, registry, _engine) = parts();
+        let why = remote
+            .start_osc(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)), bus, registry)
+            .expect_err("a public OSC bind should be refused");
+        assert!(why.contains("token") || why.contains("loopback"), "{why}");
+        assert_eq!(remote.status().osc, None, "it opened anyway");
     }
 
     /// The refusal reaches the interface as a message rather than as silence,

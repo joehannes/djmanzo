@@ -43,11 +43,66 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 const ACCEPT_POLL: std::time::Duration = std::time::Duration::from_millis(200);
 
+/// How many requests a connection may make in a second, sustained.
+///
+/// A DJ's hands produce a few actions a second at most; a Stream Deck page
+/// turn is a handful at once. Sixty leaves room for a fader being swept by a
+/// script -- which is the one legitimate reason to send a lot -- while a
+/// runaway loop hits the wall immediately.
+const REQUESTS_PER_SECOND: f64 = 60.0;
+
+/// How far a client may run ahead of that rate in one go.
+///
+/// A burst is normal: a scene change fires a dozen actions at once and should
+/// not be throttled for it. Sustained flooding is not.
+const BURST: f64 = 120.0;
+
 /// The longest line a client may send.
 ///
 /// An action is a short string and a frame that is not one is either a mistake
 /// or an attempt to make djmanzo allocate. Bounded so neither costs anything.
 const MAX_LINE: usize = 8 * 1024;
+
+/// A token bucket: `rate` requests a second, `burst` in hand.
+///
+/// Kept here rather than reached for from a crate because it is nine lines and
+/// a dependency for nine lines is a dependency to keep updated forever.
+///
+/// **The bus is bounded, so a flood cannot reach the audio thread either way**
+/// -- it would be refused with `queue_full`. This is about the rest of the
+/// process: parsing and answering a hundred thousand frames a second is work
+/// djmanzo does instead of drawing waveforms.
+#[derive(Debug)]
+struct Bucket {
+    tokens: f64,
+    rate: f64,
+    burst: f64,
+    last: std::time::Instant,
+}
+
+impl Bucket {
+    fn new(rate: f64, burst: f64) -> Self {
+        Self {
+            tokens: burst,
+            rate,
+            burst,
+            last: std::time::Instant::now(),
+        }
+    }
+
+    /// Take one token, or say there was none.
+    fn take(&mut self, now: std::time::Instant) -> bool {
+        let elapsed = now.duration_since(self.last).as_secs_f64();
+        self.last = now;
+        self.tokens = (self.tokens + elapsed * self.rate).min(self.burst);
+        if self.tokens >= 1.0 {
+            self.tokens -= 1.0;
+            true
+        } else {
+            false
+        }
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
@@ -188,6 +243,7 @@ where
     let lines = BufReader::new(stream).take(u64::MAX).lines();
 
     let mut authorised = token.is_none();
+    let mut budget = Bucket::new(REQUESTS_PER_SECOND, BURST);
     for line in lines {
         let line = line?;
         if line.len() > MAX_LINE {
@@ -217,6 +273,17 @@ where
                     return Ok(());
                 }
             }
+        }
+
+        // Checked after the greeting, so a client that has not authenticated
+        // cannot spend somebody else's budget, and before the work, because
+        // the work is the thing being limited.
+        if !budget.take(std::time::Instant::now()) {
+            write_line(
+                &mut out,
+                &refused(ErrorCode::TooFast, "slow down and try again"),
+            )?;
+            continue;
         }
 
         write_line(&mut out, &service.handle_json(&line))?;
@@ -466,6 +533,67 @@ mod tests {
         // hang. A short retry covers the moment the OS takes to reap it.
         let gone = wait_for(|| TcpStream::connect(address).err().map(|_| ()));
         assert!(gone.is_some(), "the port was still open after a stop");
+    }
+
+    /// **A runaway script must hit a wall.** The bus is bounded so a flood
+    /// cannot reach the audio thread either way; this is about the rest of the
+    /// process not spending its evening parsing frames instead of drawing
+    /// waveforms.
+    #[test]
+    fn a_client_that_floods_is_told_to_slow_down() {
+        let rig = rig(None, Ipv4Addr::LOCALHOST).expect("loopback");
+        let mut client = Client::connect(&rig.server);
+
+        let mut accepted = 0usize;
+        let mut refused = 0usize;
+        // Comfortably past the burst, sent as fast as a socket allows.
+        for _ in 0..(BURST as usize + 200) {
+            client.send(r#"{"type":"parameters"}"#);
+            match client.reply() {
+                Some(ControlResponse::Error {
+                    code: ErrorCode::TooFast,
+                    ..
+                }) => refused += 1,
+                Some(_) => accepted += 1,
+                None => break,
+            }
+        }
+        assert!(refused > 0, "{accepted} accepted and nothing refused");
+        // The burst is honoured -- a scene change firing a dozen actions at
+        // once is normal and must not be throttled.
+        assert!(
+            accepted >= 100,
+            "only {accepted} got through; the burst is too tight to use"
+        );
+
+        // And the connection is still there: this is a client to slow down,
+        // not one to throw out.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        client.send(r#"{"type":"parameters"}"#);
+        assert!(
+            matches!(client.reply(), Some(ControlResponse::Parameters { .. })),
+            "the connection was dropped instead of throttled"
+        );
+    }
+
+    /// The bucket refills, or a client is throttled for the rest of the night
+    /// after one busy moment.
+    #[test]
+    fn the_budget_comes_back_with_time() {
+        let mut bucket = Bucket::new(60.0, 10.0);
+        let start = std::time::Instant::now();
+        for _ in 0..10 {
+            assert!(bucket.take(start), "the burst was not honoured");
+        }
+        assert!(!bucket.take(start), "it never ran out");
+
+        // A second later, sixty tokens' worth of time has passed, capped at
+        // the burst.
+        let later = start + std::time::Duration::from_secs(1);
+        for _ in 0..10 {
+            assert!(bucket.take(later), "the bucket did not refill");
+        }
+        assert!(!bucket.take(later), "it refilled past its burst");
     }
 
     /// Poll until a thing happens, so a test is not a race in disguise.

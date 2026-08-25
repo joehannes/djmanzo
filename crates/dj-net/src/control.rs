@@ -41,6 +41,9 @@ pub enum ErrorCode {
     QueueFull,
     /// The token was missing or wrong. The connection is closed after this.
     Unauthorised,
+    /// Too many requests too quickly. The connection stays open: this is a
+    /// client to slow down, not one to throw out.
+    TooFast,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -107,6 +110,20 @@ where
                 message: error.to_string(),
             },
         }
+    }
+
+    /// Send one action, for a transport that has already parsed it.
+    ///
+    /// OSC arrives as an address rather than as action text, so it has an
+    /// `Action` in hand before it reaches here. It still goes through the same
+    /// bus, the same bound and the same log as everything else.
+    ///
+    /// # Errors
+    /// When the engine's queue is full.
+    pub fn dispatch(&self, action: Action) -> Result<(), ControlError> {
+        self.bus
+            .dispatch(action)
+            .map_err(|_: BusFull| ControlError::QueueFull)
     }
 
     pub fn handle(&self, request: ControlRequest) -> Result<ControlResponse, ControlError> {

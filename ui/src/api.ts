@@ -1437,6 +1437,11 @@ export interface RemoteStatus {
   /** Whether a token is required. The token itself never comes back. */
   token_set: boolean;
   error: string | null;
+  /**
+   * The OSC port, when one is open. Loopback only — UDP has no handshake, so
+   * there is nothing to authenticate with.
+   */
+  osc: string | null;
 }
 
 /** MIDI clock out: djmanzo as clock master for a drum machine or a light desk. */
@@ -1469,3 +1474,6 @@ export const remoteStatus = () => invoke<RemoteStatus>("remote_status");
 export const startRemote = (address: string, token?: string) =>
   invoke<RemoteStatus>("start_remote", { address, token: token || null });
 export const stopRemote = () => invoke<RemoteStatus>("stop_remote");
+export const startOsc = (address: string) =>
+  invoke<RemoteStatus>("start_osc", { address });
+export const stopOsc = () => invoke<RemoteStatus>("stop_osc");

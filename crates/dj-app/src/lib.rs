@@ -349,6 +349,8 @@ pub fn run() {
             commands::remote_status,
             commands::start_remote,
             commands::stop_remote,
+            commands::start_osc,
+            commands::stop_osc,
             commands::get_snapshot,
             commands::waveform_info,
             commands::report_bench,

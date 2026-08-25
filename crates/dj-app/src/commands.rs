@@ -3284,6 +3284,34 @@ pub fn start_remote(
     )
 }
 
+/// Open an OSC port, so TouchOSC or QLab can drive djmanzo.
+///
+/// Loopback only. UDP has no handshake, so a token cannot be offered once and
+/// remembered — there is nothing to authenticate with, which is why a port
+/// facing the network is refused rather than protected badly.
+///
+/// # Errors
+/// When the address cannot be parsed or bound, or is not loopback.
+#[tauri::command]
+pub fn start_osc(
+    state: State<'_, AppState>,
+    address: String,
+) -> Result<crate::remote::RemoteStatus, String> {
+    let parsed: std::net::SocketAddr = address
+        .parse()
+        .map_err(|_| format!("{address:?} is not an address and port, like 127.0.0.1:9000"))?;
+    state
+        .remote()
+        .start_osc(parsed, Arc::clone(state.bus()), state.registry())
+}
+
+/// Close the OSC port.
+#[tauri::command]
+pub fn stop_osc(state: State<'_, AppState>) -> crate::remote::RemoteStatus {
+    state.remote().stop_osc();
+    state.remote().status()
+}
+
 /// Close the control port.
 #[tauri::command]
 pub fn stop_remote(state: State<'_, AppState>) -> crate::remote::RemoteStatus {

@@ -7,10 +7,12 @@
 
 pub mod control;
 pub mod midi_clock;
+pub mod osc;
 pub mod server;
 pub mod tempo;
 
 pub use control::{ControlError, ControlRequest, ControlResponse, ControlService, ErrorCode};
 pub use midi_clock::{MIDI_CLOCK_TICKS_PER_BEAT, MidiClockIn, MidiClockOut};
+pub use osc::{OscError, OscServer};
 pub use server::{ControlServer, ServerError};
 pub use tempo::PhaseFollower;
