@@ -283,6 +283,16 @@ pub fn stems_status(state: State<'_, AppState>) -> StemsStatusDto {
 pub struct StemOutDto {
     /// The deck going out in parts, as the DJ numbers it, or `None`.
     pub deck: Option<u8>,
+    /// How many decks are going out on pairs of their own, or `None`.
+    ///
+    /// In the same shape as `deck` rather than a panel of its own, because the
+    /// two arrangements are exclusive: they want the same sockets, and an
+    /// interface that could show both switched on would be describing an
+    /// engine state that cannot exist.
+    pub decks: Option<usize>,
+    /// The most decks this device could carry a pair for. Zero with nothing
+    /// open.
+    pub deck_capacity: usize,
     /// Outputs on the open device. `None` when no device is open.
     pub channels: Option<u16>,
     /// How many outputs this needs. Constant, but sent so the interface does
@@ -305,10 +315,40 @@ fn stem_out_view(state: &AppState) -> StemOutDto {
     let channels = state.active_device().map(|device| device.channels);
     StemOutDto {
         deck: state.stem_out().map(dj_core::DeckId::human_number),
+        decks: state.deck_out(),
+        deck_capacity: channels.map_or(0, |open| usize::from(open) / 2),
         channels,
         required: REQUIRED_STEM_OUT_CHANNELS,
         supported: channels.is_some_and(|open| open >= REQUIRED_STEM_OUT_CHANNELS),
     }
+}
+
+/// Send every deck out on a pair of its own, or stop.
+///
+/// `decks` is how many, so a four-deck set on an eight-output interface can
+/// send all four while a two-deck set on the same interface leaves four
+/// sockets free. `None`, or zero, puts the mix back.
+///
+/// Accepted even where the device is too narrow, for the reason
+/// [`set_stem_out`] is: the interface arrives after the plan does.
+///
+/// # Errors
+/// When `decks` is more decks than djmanzo has.
+#[tauri::command]
+pub fn set_deck_out(
+    state: State<'_, AppState>,
+    decks: Option<usize>,
+) -> Result<StemOutDto, String> {
+    if let Some(count) = decks
+        && count > crate::state::DECK_COUNT
+    {
+        return Err(format!(
+            "djmanzo has {} decks, not {count}",
+            crate::state::DECK_COUNT
+        ));
+    }
+    state.set_deck_out(decks);
+    Ok(stem_out_view(&state))
 }
 
 /// Four stems, two channels each.
@@ -518,6 +558,7 @@ fn open_device_for(
     // to be sent out in parts. Tell it both.
     state.apply_controller_routing();
     state.apply_stem_out();
+    state.apply_deck_out();
     Ok(dto)
 }
 
@@ -1350,6 +1391,76 @@ mod stem_out_tests {
         assert!(set_stem_out_for_test(&state, Some(0)).is_err(), "deck 0");
         assert!(set_stem_out_for_test(&state, Some(99)).is_err(), "deck 99");
         assert_eq!(state.stem_out(), None, "a refused deck was stored anyway");
+    }
+
+    /// The two arrangements want the same sockets, so the panel must never be
+    /// able to show both switched on. Enforced in the application as well as
+    /// in the engine: the interface reads this, not the audio thread.
+    #[test]
+    fn choosing_one_arrangement_puts_the_other_away() {
+        let state = AppState::new(true);
+        open_device_for(&state, Some(wide_device()), None, Some(128)).unwrap();
+
+        state.set_deck_out(Some(4));
+        assert_eq!(stem_out_view(&state).decks, Some(4));
+
+        state.set_stem_out(DeckId::from_human(1));
+        let view = stem_out_view(&state);
+        assert_eq!(view.deck, Some(1));
+        assert_eq!(
+            view.decks, None,
+            "the panel would show per-deck outputs and stem out both on"
+        );
+
+        state.set_deck_out(Some(2));
+        let view = stem_out_view(&state);
+        assert_eq!(view.decks, Some(2));
+        assert_eq!(view.deck, None, "stem out was left on beneath per-deck out");
+    }
+
+    /// How many pairs the open device could carry, which is what the panel
+    /// offers. Four sockets is two decks, not four.
+    #[test]
+    fn the_device_decides_how_many_decks_can_go_out() {
+        let state = AppState::new(true);
+        assert_eq!(
+            stem_out_view(&state).deck_capacity,
+            0,
+            "capacity with no device open"
+        );
+
+        open_device_for(&state, None, None, Some(128)).unwrap();
+        assert_eq!(stem_out_view(&state).deck_capacity, 2, "four outputs");
+
+        open_device_for(&state, Some(wide_device()), None, Some(128)).unwrap();
+        assert_eq!(stem_out_view(&state).deck_capacity, 4, "eight outputs");
+    }
+
+    /// Zero decks is not an arrangement, it is off — and it must read as off
+    /// rather than as "per-deck outputs, of nothing".
+    #[test]
+    fn zero_decks_is_off() {
+        let state = AppState::new(true);
+        open_device_for(&state, Some(wide_device()), None, Some(128)).unwrap();
+        state.set_deck_out(Some(0));
+        assert_eq!(state.deck_out(), None);
+    }
+
+    /// Opening a device builds a fresh engine, and it has never heard of this
+    /// either.
+    #[test]
+    fn the_per_deck_choice_survives_opening_another_device() {
+        let state = AppState::new(true);
+        open_device_for(&state, Some(wide_device()), None, Some(128)).unwrap();
+        state.set_deck_out(Some(4));
+
+        open_device_for(&state, None, None, Some(128)).unwrap();
+
+        assert_eq!(
+            state.deck_out(),
+            Some(4),
+            "per-deck outputs were forgotten on a device change"
+        );
     }
 
     /// What `set_stem_out` does, minus Tauri's `State` wrapper.

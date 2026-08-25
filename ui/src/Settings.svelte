@@ -36,6 +36,7 @@
     controlStatus,
     stemOut,
     setStemOut,
+    setDeckOut,
     type StemOut,
     type ClockStatus,
     type MidiOutputs,
@@ -148,6 +149,8 @@
    */
   let stems = $state<StemOut>({
     deck: null,
+    decks: null,
+    deckCapacity: 0,
     channels: null,
     required: 8,
     supported: false,
@@ -167,6 +170,15 @@
       stems = await stemOut();
     } catch {
       // Left as it was. A failed re-ask is not evidence the device changed.
+    }
+  }
+
+  async function chooseDeckOut(decks: number | null) {
+    try {
+      stems = await setDeckOut(decks);
+      error = null;
+    } catch (e) {
+      error = String(e);
     }
   }
 
@@ -453,6 +465,61 @@
         on its own pair and leaves the other three alone. Until the track has
         been separated, the pairs carry silence rather than four copies of the
         mix.
+      </p>
+    {/if}
+  </div>
+
+  <div class="block">
+    <h3>Decks out</h3>
+    <p class="hint">
+      Sends each deck out on a stereo pair of its own instead of mixing them,
+      for mixing on an external mixer. Deck 1 on outputs 1–2, deck 2 on 3–4, and
+      so on — pre-fader, because the mixer on the other end has its own fader
+      and two in series is one the person standing at it cannot see.
+    </p>
+    <p class="hint">
+      <strong>This takes the whole output</strong>, like Stems out: there is no
+      master left to send anywhere and no headphone cue to take from a mix that
+      no longer exists. Choosing one of the two puts the other away.
+    </p>
+    {#if stems.deckCapacity === 0}
+      <p class="hint">
+        No audio device is open. Connect one and this becomes available — each
+        deck needs two outputs.
+      </p>
+    {:else}
+      <p class="hint">
+        The open interface has {stems.channels}
+        {stems.channels === 1 ? "output" : "outputs"}, which is room for
+        {stems.deckCapacity}
+        {stems.deckCapacity === 1 ? "deck" : "decks"}.
+      </p>
+    {/if}
+    <div class="row" style="gap: 0.5rem;">
+      <button
+        class:active={stems.decks === null}
+        onclick={() => chooseDeckOut(null)}
+      >
+        Off
+      </button>
+      {#each [2, 4, 6] as n (n)}
+        <button
+          class:active={stems.decks === n}
+          disabled={n > stems.deckCapacity}
+          title={n > stems.deckCapacity
+            ? `Needs ${n * 2} outputs; this interface has ${stems.channels ?? 0}`
+            : `Send ${n} decks out on ${n} pairs`}
+          onclick={() => chooseDeckOut(stems.decks === n ? null : n)}
+        >
+          {n} decks
+        </button>
+      {/each}
+    </div>
+    {#if stems.decks !== null}
+      <p class="hint">
+        {stems.decks} decks are going out separately, pre-fader. djmanzo's own
+        crossfader, master gain, microphone and limiter are out of the path —
+        the mixing is happening on the other end of the cables.
       </p>
     {/if}
   </div>

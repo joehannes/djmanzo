@@ -316,6 +316,7 @@ pub fn run() {
             commands::stems_status,
             commands::stem_out,
             commands::set_stem_out,
+            commands::set_deck_out,
             commands::load_plugin,
             commands::clear_plugin,
             commands::open_mic,

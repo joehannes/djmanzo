@@ -1042,7 +1042,29 @@ cancel a loop the DJ set on purpose.
   bus (six) and this (eight) were reachable in the engine's own tests and
   unreachable from the application, on any hardware. Devices now open at their
   full width, rounded down to a stereo pair and capped at eight.
-- Per-deck outputs for external processing.
+- **Per-deck outputs for external processing — done.** Each deck on a stereo
+  pair of its own instead of the mix: deck 1 on outputs 1–2, deck 2 on 3–4, and
+  so on, for a DJ who mixes on an external mixer and wants djmanzo to be four
+  turntables rather than a mixer.
+  **Pre-fader**, taken at the same point the headphone cue and the deck
+  recorder take: the mixer on the other end has its own fader, and sending it a
+  signal ours had already closed would be two faders in series with the second
+  invisible to the person standing at it. A deck on its own socket is
+  deliberately *not* also summed into a master — being heard twice, once
+  through our crossfader and once through the external mixer, is the failure
+  this exists to avoid.
+  Mutually exclusive with stem out, which wants the same sockets; whichever is
+  asked for last wins, in the engine and in the application both, so the panel
+  cannot show an arrangement the audio is not in.
+  The master chain does not run at all in this mode — no master gain, no
+  microphone, no ducker, no limiter, no plugin insert — because there is no
+  master. The microphone ring is still drained on purpose, since the loop that
+  usually does it is the one being skipped and a backed-up ring would replay
+  everything said while the decks were out.
+  Found a bug on the way in: the master chain is **two** frame loops, not one,
+  and the second writes the booth send from the master. On an eight-channel
+  device the booth is channels 3–4, which is deck 2's cable — the decks were
+  reaching their sockets and two of them were being wiped a few lines later.
 
 **Done when:** load a track, and within a couple of seconds you can drop the vocal — with no
 change in audio latency, and instantly on the next load.

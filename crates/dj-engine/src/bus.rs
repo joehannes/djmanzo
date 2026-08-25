@@ -25,6 +25,12 @@ pub struct BusLayout {
     /// `None` normally, which is every set that is not being fed through an
     /// external processor.
     pub stems: Option<[(usize, usize); 4]>,
+    /// How many decks are going out on pairs of their own, if any.
+    ///
+    /// A count rather than a list of pairs: deck *n* always gets pair *n*, so
+    /// a list would be the same arithmetic written down twice and free to
+    /// disagree with itself.
+    pub decks_out: Option<usize>,
 }
 
 /// How many outputs sending a deck out in parts needs.
@@ -50,6 +56,7 @@ impl BusLayout {
                 cue: None,
                 booth: None,
                 stems: None,
+                decks_out: None,
             },
             2 | 3 => Self {
                 channels,
@@ -57,6 +64,7 @@ impl BusLayout {
                 cue: None,
                 booth: None,
                 stems: None,
+                decks_out: None,
             },
             4 | 5 => Self {
                 channels,
@@ -64,6 +72,7 @@ impl BusLayout {
                 cue: Some((2, 3)),
                 booth: None,
                 stems: None,
+                decks_out: None,
             },
             _ => Self {
                 channels,
@@ -71,6 +80,7 @@ impl BusLayout {
                 booth: Some((2, 3)),
                 cue: Some((4, 5)),
                 stems: None,
+                decks_out: None,
             },
         }
     }
@@ -97,6 +107,48 @@ impl BusLayout {
     #[must_use]
     pub fn is_stem_out(&self) -> bool {
         self.stems.is_some()
+    }
+
+    /// Send each deck out on a stereo pair of its own instead of mixing them.
+    ///
+    /// **This takes the whole output**, for the same reason stem out does: the
+    /// mixing is happening on the other end of the cables, so there is no
+    /// master to send anywhere and no headphone cue to take from a mix that no
+    /// longer exists. A DJ running per-deck outputs monitors from the external
+    /// mixer.
+    ///
+    /// Returns the layout unchanged when the device cannot carry a pair for
+    /// every deck asked for. Half the decks out and half of them mixed would
+    /// be a signal path nobody could reason about, and silently dropping deck
+    /// 4 would be worse.
+    ///
+    /// `decks` of zero is the same as not asking.
+    #[must_use]
+    pub fn with_deck_out(mut self, decks: usize) -> Self {
+        if decks == 0 || decks * 2 > self.channels {
+            return self;
+        }
+        self.decks_out = Some(decks);
+        self
+    }
+
+    /// Where deck `index` goes when it has an output of its own.
+    ///
+    /// `None` when this arrangement is not sending decks out separately, or
+    /// when the deck is beyond the number of pairs the device could carry.
+    #[must_use]
+    pub fn deck_out(&self, index: usize) -> Option<(usize, usize)> {
+        let decks = self.decks_out?;
+        if index >= decks {
+            return None;
+        }
+        Some((index * 2, index * 2 + 1))
+    }
+
+    /// True when the decks are leaving on pairs of their own.
+    #[must_use]
+    pub fn is_deck_out(&self) -> bool {
+        self.decks_out.is_some()
     }
 
     /// True when the device can carry a headphone cue.
@@ -183,6 +235,7 @@ impl BusRouting {
             cue: self.cue,
             booth: self.booth,
             stems: None,
+            decks_out: None,
         })
     }
 }

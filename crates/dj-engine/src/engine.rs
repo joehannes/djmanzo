@@ -45,6 +45,8 @@ pub struct Engine {
     crossfader_curve: CrossfaderCurve,
     /// The deck being sent out in parts, if any.
     stem_out: Option<DeckId>,
+    /// How many decks are going out on pairs of their own, if any.
+    deck_out: Option<usize>,
     /// The stem swap in force, if any.
     ///
     /// Remembered rather than inferred, because putting it back needs to know
@@ -171,6 +173,7 @@ impl Engine {
             external_tempo: None,
             swap: None,
             stem_out: None,
+            deck_out: None,
             routing: None,
             master_gain: SmoothedValue::new(1.0, sr),
             master_gain_db: 0.0,
@@ -398,7 +401,22 @@ impl Engine {
                 }
                 Command::SetRouting { routing } => self.routing = routing,
                 Command::SetExternalTempo { bpm } => self.external_tempo = bpm,
-                Command::SetStemOut { deck } => self.stem_out = deck,
+                Command::SetStemOut { deck } => {
+                    self.stem_out = deck;
+                    // They want the same sockets. Whichever was asked for last
+                    // is the one the DJ means; leaving both set would make the
+                    // arrangement depend on the order two unrelated `if`s
+                    // happen to appear in `render`.
+                    if deck.is_some() {
+                        self.deck_out = None;
+                    }
+                }
+                Command::SetDeckOut { decks } => {
+                    self.deck_out = decks.filter(|count| *count > 0);
+                    if self.deck_out.is_some() {
+                        self.stem_out = None;
+                    }
+                }
                 Command::SetLoop { deck, region } => {
                     if let Some(target) = self.deck_mut(deck) {
                         target.set_loop_region(region);
@@ -1354,6 +1372,8 @@ impl AudioCallback for Engine {
         // here, after the arrangement and before anything writes.
         if self.stem_out.is_some() {
             layout = layout.with_stem_out();
+        } else if let Some(decks) = self.deck_out {
+            layout = layout.with_deck_out(decks);
         }
         let layout = layout;
         let channels = layout.channels;
@@ -1377,7 +1397,7 @@ impl AudioCallback for Engine {
 
         for index in 0..self.decks.len() {
             let tap = (tapped_deck == Some(index)).then_some(&mut self.recorder);
-            let levels = self.decks[index].process(out, &layout, tap);
+            let levels = self.decks[index].process(out, &layout, tap, layout.deck_out(index));
             if let Some(id) = DeckId::new(index as u8) {
                 self.registry
                     .set(ParamId::Deck(id, DeckParam::PeakLevel), levels.post_fader);
@@ -1392,14 +1412,40 @@ impl AudioCallback for Engine {
         // gain and the rack — so a master effect covers the samples too, which
         // is what a DJ throwing an echo over the mix expects.
         let master_ctx = self.master_fx_context();
-        let sample_peak = self.sampler.process(out, &layout, self.master_bpm());
+        // In deck-out mode there is no master bus for the sampler to land on:
+        // channels 0..2n are the decks' own signal, and a sample added there
+        // would arrive on deck 1's cable.
+        let sample_peak = if layout.is_deck_out() {
+            0.0
+        } else {
+            self.sampler.process(out, &layout, self.master_bpm())
+        };
         self.registry
             .set(ParamId::Global(GlobalParam::SamplerPeak), sample_peak);
 
         let recording_master = self.recorder.tapping() == Some(dj_core::RecordSource::Master);
 
         let (main_l, main_r) = layout.main;
-        for frame in out.chunks_exact_mut(channels) {
+        // The master chain does not run when the decks are going out
+        // separately — `layout.main` is deck 1's pair, and the master gain,
+        // the microphone, the ducker and the limiter would all land on it.
+        //
+        // Expressed as an empty slice rather than an `if` around a hundred and
+        // seventy lines, so that the ordinary path is the *same code* it was
+        // before this feature existed rather than the same code re-indented.
+        //
+        // The microphone is drained first regardless, because the input ring
+        // fills whether or not anything is listening — see `mic::Mic`. A DJ who
+        // switches to per-deck outputs mid-set and back would otherwise find
+        // the microphone playing back a queue of everything said in between.
+        if layout.is_deck_out() {
+            for _ in 0..ctx.frames {
+                let _ = self.mic.next_frame();
+                let _ = self.master_gain.next_value();
+            }
+        }
+        let master_bus: &mut [f32] = if layout.is_deck_out() { &mut [] } else { out };
+        for frame in master_bus.chunks_exact_mut(channels) {
             let master = self.master_gain.next_value();
 
             // The microphone, and what it does to everything else.
@@ -1473,9 +1519,22 @@ impl AudioCallback for Engine {
         // CLAP has. See `dj_clap` — and note that a third-party plugin's
         // `process` is only *supposed* to be free of allocation and locks;
         // nothing here can enforce it.
-        self.process_clap(out, &layout);
+        // Skipped with the decks going out separately, for the reason the
+        // master chain is: there is no master for an insert to process, and
+        // handing a plugin deck 1's cable would be worse than handing it
+        // nothing.
+        if !layout.is_deck_out() {
+            self.process_clap(out, &layout);
+        }
 
-        for frame in out.chunks_exact_mut(channels) {
+        // The second half of the master chain -- insert, booth send, headphone
+        // blend -- and it is gated exactly as the first half is. This is the
+        // loop that made the bug: it writes the booth from the master, and on
+        // an eight-channel device the booth is channels 2-3, which is deck 2's
+        // cable. The decks were reaching their sockets and this was wiping two
+        // of them a few lines later.
+        let master_tail: &mut [f32] = if layout.is_deck_out() { &mut [] } else { out };
+        for frame in master_tail.chunks_exact_mut(channels) {
             let booth = self.booth_gain.next_value();
             let mix = self.cue_mix.next_value();
             let raw_l = frame[main_l];

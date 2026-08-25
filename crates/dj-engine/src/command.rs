@@ -160,6 +160,17 @@ pub enum Command {
     SetStemOut {
         deck: Option<DeckId>,
     },
+    /// Send each deck out on a pair of its own, or stop.
+    ///
+    /// For mixing on an external mixer instead of in djmanzo: `decks` pairs,
+    /// pre-fader, with no master and no cue — the same "takes the whole
+    /// output" bargain [`Command::SetStemOut`] makes, and for the same reason.
+    /// `None` puts the mix back.
+    ///
+    /// Mutually exclusive with stem out, which wants the same sockets.
+    SetDeckOut {
+        decks: Option<usize>,
+    },
 }
 
 impl From<Action> for Command {

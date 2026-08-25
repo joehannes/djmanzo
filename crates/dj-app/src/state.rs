@@ -206,6 +206,11 @@ pub struct AppState {
     /// Which separator is running, for the interface to name. `None` when
     /// none is.
     stems_backend: Mutex<Option<&'static str>>,
+    /// How many decks are going out on pairs of their own, if any.
+    ///
+    /// Remembered for the same reason `stem_out` is: a fresh device means a
+    /// fresh engine that has never heard of it.
+    deck_out: Mutex<Option<usize>>,
     /// The deck being sent out in parts, if one is. See [`AppState::set_stem_out`].
     ///
     /// Remembered here for the reason the controller routing is: opening an
@@ -349,6 +354,7 @@ impl AppState {
             stems_worker,
             stems_backend,
             stem_out: Mutex::new(None),
+            deck_out: Mutex::new(None),
             stems_reason,
         }
     }
@@ -899,7 +905,42 @@ impl AppState {
     /// opened later.
     pub fn set_stem_out(&self, deck: Option<dj_core::DeckId>) {
         *self.stem_out.lock().unwrap_or_else(|e| e.into_inner()) = deck;
+        // They want the same sockets, so choosing one puts the other away.
+        if deck.is_some() {
+            *self.deck_out.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
         self.apply_stem_out();
+        self.apply_deck_out();
+    }
+
+    /// Send every deck out on a pair of its own, or stop.
+    ///
+    /// Mutually exclusive with stem out, which wants the same sockets — and
+    /// the exclusion is applied here as well as in the engine, so the panel
+    /// never shows both switched on while the audio can only be one of them.
+    pub fn set_deck_out(&self, decks: Option<usize>) {
+        let decks = decks.filter(|count| *count > 0);
+        *self.deck_out.lock().unwrap_or_else(|e| e.into_inner()) = decks;
+        if decks.is_some() {
+            *self.stem_out.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+        self.apply_stem_out();
+        self.apply_deck_out();
+    }
+
+    /// How many decks are going out on pairs of their own, if any.
+    #[must_use]
+    pub fn deck_out(&self) -> Option<usize> {
+        *self.deck_out.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Put the remembered per-deck arrangement on the engine.
+    ///
+    /// Called after every audio device open, for the reason
+    /// [`AppState::apply_stem_out`] is.
+    pub fn apply_deck_out(&self) {
+        let decks = self.deck_out();
+        let _ = self.bus().send_command(Command::SetDeckOut { decks });
     }
 
     /// Which deck is being sent out in parts, if any.

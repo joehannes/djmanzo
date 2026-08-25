@@ -1840,3 +1840,283 @@ fn the_stem_tap_advances_one_frame_per_frame() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Per-deck outputs
+// ---------------------------------------------------------------------------
+
+/// Each deck on its own pair, and nothing summed.
+///
+/// The decks are given different gains so the pairs are told apart by level:
+/// a transposition, or a deck arriving on two pairs, changes what is on a
+/// channel and this notices.
+#[test]
+fn each_deck_lands_on_its_own_output_pair() {
+    let mut rig = rig_with_channels(4, 256, 8);
+    for n in 1..=4u8 {
+        rig.load_and_play(n, 500_000);
+        rig.act(Action::Deck {
+            deck: deck(n),
+            action: DeckAction::SetGainDb(-6.0 * f32::from(n - 1)),
+        });
+    }
+    rig.send(Command::SetDeckOut { decks: Some(4) });
+    rig.warm_up(16);
+
+    let block = rig.renderer.render_block();
+    let peaks: Vec<f32> = (0..4)
+        .map(|pair| {
+            block
+                .chunks_exact(8)
+                .map(|frame| frame[pair * 2].abs())
+                .fold(0.0_f32, f32::max)
+        })
+        .collect();
+
+    for (pair, peak) in peaks.iter().enumerate() {
+        assert!(
+            *peak > 0.001,
+            "pair {pair} was silent; deck {} never reached its socket",
+            pair + 1
+        );
+    }
+    // Each deck is 6 dB below the one before it, so the pairs must descend.
+    for window in peaks.windows(2) {
+        assert!(
+            window[0] > window[1] * 1.5,
+            "the pairs do not descend in level: {peaks:?} — decks are being summed"
+        );
+    }
+}
+
+/// The whole point: nothing is mixed. A deck sent out on its own pair must not
+/// *also* arrive on the master, or the room hears it twice — once through our
+/// crossfader and once through the external mixer.
+#[test]
+fn a_deck_sent_out_separately_is_not_also_mixed() {
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play(2, 500_000);
+    rig.send(Command::SetDeckOut { decks: Some(2) });
+    rig.warm_up(16);
+
+    let block = rig.renderer.render_block();
+    let on_own_pair = block
+        .chunks_exact(8)
+        .map(|frame| frame[2].abs())
+        .fold(0.0_f32, f32::max);
+    let on_the_master = block
+        .chunks_exact(8)
+        .map(|frame| frame[0].abs())
+        .fold(0.0_f32, f32::max);
+
+    assert!(on_own_pair > 0.001, "deck 2 never reached pair 2");
+    assert_eq!(
+        on_the_master, 0.0,
+        "deck 2 is on its own pair and on channel 0 as well"
+    );
+}
+
+/// Pre-fader, because the mixing is happening on the other end of the cables.
+///
+/// A closed fader here must not silence the socket: that would be two faders
+/// in series, and the second one invisible to the person standing at the
+/// external mixer.
+#[test]
+fn the_deck_socket_is_pre_fader() {
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play(1, 500_000);
+    rig.send(Command::SetDeckOut { decks: Some(2) });
+    rig.warm_up(16);
+
+    let open = rig
+        .renderer
+        .render_block()
+        .chunks_exact(8)
+        .map(|frame| frame[0].abs())
+        .fold(0.0_f32, f32::max);
+
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::SetVolume(0.0),
+    });
+    rig.warm_up(16);
+
+    let closed = rig
+        .renderer
+        .render_block()
+        .chunks_exact(8)
+        .map(|frame| frame[0].abs())
+        .fold(0.0_f32, f32::max);
+
+    assert!(open > 0.001, "the socket was silent with the fader open");
+    assert!(
+        (closed - open).abs() < open * 0.05,
+        "closing the fader changed the socket: {open} -> {closed}"
+    );
+}
+
+/// Two decks need four channels, six decks need twelve — and a device that
+/// cannot carry a pair for every deck keeps its mix instead of sending half of
+/// them out and mixing the rest.
+#[test]
+fn a_device_too_narrow_for_every_deck_keeps_its_mix() {
+    let mut rig = rig_with_channels(4, 256, 4);
+    rig.load_and_play(1, 500_000);
+    rig.load_and_play(3, 500_000);
+    rig.send(Command::SetDeckOut { decks: Some(4) });
+    rig.warm_up(16);
+
+    let block = rig.renderer.render_block();
+    let main = block
+        .chunks_exact(4)
+        .map(|frame| frame[0].abs())
+        .fold(0.0_f32, f32::max);
+    assert!(
+        main > 0.001,
+        "the master went silent on a device too narrow for per-deck outputs"
+    );
+}
+
+/// Stem out and deck out want the same sockets, so asking for one puts the
+/// other away. Without this the arrangement would depend on which `if` came
+/// first in `render`.
+#[test]
+fn deck_out_and_stem_out_do_not_both_apply() {
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play_separated(1, 500_000);
+    rig.send(Command::SetDeckOut { decks: Some(2) });
+    rig.send(Command::SetStemOut {
+        deck: Some(deck(1)),
+    });
+    rig.warm_up(16);
+
+    // Stem out was asked for last, so the vocal constant is on pair 1.
+    let block = rig.renderer.render_block();
+    assert!(
+        (block[0] - 0.1).abs() < 1e-6,
+        "the last arrangement asked for did not win: channel 0 carried {}",
+        block[0]
+    );
+
+    rig.send(Command::SetDeckOut { decks: Some(2) });
+    rig.warm_up(16);
+    let block = rig.renderer.render_block();
+    assert!(
+        (block[0] - 0.1).abs() > 1e-6,
+        "asking for deck out did not put stem out away"
+    );
+}
+
+/// Turning it off puts the mix back, master chain and all.
+#[test]
+fn clearing_deck_out_restores_the_master() {
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play(2, 500_000);
+    rig.send(Command::SetDeckOut { decks: Some(2) });
+    rig.warm_up(16);
+    assert_eq!(
+        rig.renderer
+            .render_block()
+            .chunks_exact(8)
+            .map(|frame| frame[0].abs())
+            .fold(0.0_f32, f32::max),
+        0.0,
+        "deck out never engaged, so this proves nothing"
+    );
+
+    rig.send(Command::SetDeckOut { decks: None });
+    rig.warm_up(16);
+
+    let main = rig
+        .renderer
+        .render_block()
+        .chunks_exact(8)
+        .map(|frame| frame[0].abs())
+        .fold(0.0_f32, f32::max);
+    assert!(main > 0.001, "the master did not come back");
+}
+
+/// The microphone ring fills whether or not anything is listening.
+///
+/// In deck-out mode the master loop that drains it does not run, so it has to
+/// be drained on purpose. Without that the ring backs up, and a DJ who
+/// switched to per-deck outputs and back would hear a queue of everything said
+/// in between — the input equivalent of a tape delay nobody asked for.
+///
+/// Written by filling the ring and watching it empty, because "it did not
+/// panic" is not a claim about draining.
+#[test]
+fn the_microphone_is_still_drained_with_the_decks_out() {
+    let (mut producer, consumer) = rtrb::RingBuffer::<f32>::new(8192);
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play(1, 500_000);
+    rig.send(Command::MicInput {
+        source: Some(consumer),
+    });
+    rig.send(Command::SetDeckOut { decks: Some(2) });
+    rig.warm_up(16);
+    while rig.retired.pop().is_ok() {}
+
+    // A block's worth of microphone, four times over.
+    for _ in 0..(256 * 4) {
+        producer.push(0.25).expect("the ring was sized for this");
+    }
+    let queued = producer.slots();
+    rig.renderer.render_discarding(8);
+
+    assert!(
+        producer.slots() > queued,
+        "the microphone ring did not empty with the decks going out separately: \
+         {queued} free slots before, {} after",
+        producer.slots()
+    );
+}
+
+/// Sending the decks out separately runs a different path through the block —
+/// no master chain, a write per deck — and it must not allocate.
+#[test]
+fn sending_the_decks_out_separately_never_allocates() {
+    let mut rig = rig_with_channels(4, 256, 8);
+    for n in 1..=4u8 {
+        rig.load_and_play(n, 2_000_000);
+    }
+    rig.send(Command::SetDeckOut { decks: Some(4) });
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        rig.renderer.render_discarding(5_000);
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "per-deck outputs allocated {allocations} times across 5,000 blocks"
+    );
+}
+
+/// Switching between the two arrangements mid-set changes the bus layout under
+/// the callback, which is the shape that invites a fresh buffer.
+#[test]
+fn toggling_deck_out_never_allocates() {
+    let mut rig = rig_with_channels(4, 256, 8);
+    for n in 1..=4u8 {
+        rig.load_and_play(n, 2_000_000);
+    }
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for step in 0..2_000 {
+            rig.commands
+                .push(Command::SetDeckOut {
+                    decks: (step % 2 == 0).then_some(4),
+                })
+                .ok();
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "toggling per-deck outputs allocated {allocations} times"
+    );
+}

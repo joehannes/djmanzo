@@ -660,6 +660,16 @@ export const stemsStatus = () => invoke<StemsStatus>("stems_status");
 export type StemOut = {
   /** The deck going out in parts, as the DJ numbers it. */
   deck: number | null;
+  /**
+   * How many decks are going out on pairs of their own.
+   *
+   * In the same shape as `deck` because the two are exclusive — they want the
+   * same sockets, and a panel that could show both on would be describing an
+   * engine state that cannot exist.
+   */
+  decks: number | null;
+  /** The most decks this device could carry a pair for. */
+  deckCapacity: number;
   /** Outputs on the open device. `null` when no device is open. */
   channels: number | null;
   /** How many outputs this needs. */
@@ -680,6 +690,15 @@ export const stemOut = () => invoke<StemOut>("stem_out");
  */
 export const setStemOut = (deck: number | null) =>
   invoke<StemOut>("set_stem_out", { deck });
+
+/**
+ * Send every deck out on a pair of its own, or stop.
+ *
+ * `null` or zero puts the mix back. Choosing this puts stem out away, because
+ * the two arrangements want the same sockets.
+ */
+export const setDeckOut = (decks: number | null) =>
+  invoke<StemOut>("set_deck_out", { decks });
 
 // -- the mapping editor -----------------------------------------------------
 
