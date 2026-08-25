@@ -11,7 +11,9 @@
   import Sampler from "./Sampler.svelte";
   import Settings from "./Settings.svelte";
   import Shortcuts from "./Shortcuts.svelte";
+  import MappingEditor from "./MappingEditor.svelte";
   import { Keyboard } from "./keyboard.svelte";
+  import { controlMappings as listControlMappings } from "./api";
   import { open } from "@tauri-apps/plugin-dialog";
   import { watchFrameRate } from "./framerate";
   import {
@@ -100,7 +102,16 @@
     | "sampler"
     | "settings"
     | "keyboard"
+    | "mapping"
   >("none");
+
+  /**
+   * Mappings the editor can start a draft from.
+   *
+   * Fetched once: the list only changes when a mapping is saved, and a DJ who
+   * has just saved one is looking at their own work rather than at this list.
+   */
+  let controlMappings = $state<{ name: string }[]>([]);
 
   /**
    * The keyboard, listening.
@@ -112,6 +123,23 @@
    * would drift the first time a user mapping loaded.
    */
   const keyboard = new Keyboard();
+
+  // The list the mapping editor can start a draft from. Fetched once: it only
+  // changes when a mapping is saved, and a DJ who has just saved one is
+  // looking at their own work rather than at this list.
+  $effect(() => {
+    void controlMappings_load();
+  });
+
+  async function controlMappings_load() {
+    try {
+      controlMappings = await listControlMappings();
+    } catch (why) {
+      // Not fatal: the editor still works, it just cannot offer a starting
+      // point. One line rather than a dialog on launch.
+      console.warn("control mappings:", why);
+    }
+  }
 
   $effect(() => {
     const detach = keyboard.attach(window);
@@ -574,6 +602,12 @@
       {:else}
         <span class="device-brief">{active ? `${active.sample_rate / 1000} kHz • ${active.latency_ms.toFixed(1)} ms` : "No device"}</span>
         <IconButton icon="fa-solid fa-cog" title="Audio settings" onClick={() => (panel = "settings")} />
+        <IconButton
+          icon="fa-solid fa-hand-pointer"
+          title="Map a controller"
+          active={panel === "mapping"}
+          onClick={() => (panel = panel === "mapping" ? "none" : "mapping")}
+        />
       {/if}
     </div>
 
@@ -838,6 +872,8 @@
         <Assistant enabled={ready} />
       {:else if panel === "keyboard"}
         <Shortcuts {keyboard} onclose={() => (panel = "none")} />
+      {:else if panel === "mapping"}
+        <MappingEditor mappings={controlMappings} />
       {:else if panel === "sampler"}
         {#if snapshot}
           <Sampler sampler={snapshot.master.sampler} enabled={ready} {send} />

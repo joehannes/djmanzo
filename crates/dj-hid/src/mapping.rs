@@ -166,7 +166,7 @@ pub struct Binding {
 }
 
 /// A whole mapping file.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Mapping {
     pub name: String,
     /// The port name to look for, matched loosely — a device announces itself
@@ -204,6 +204,23 @@ pub enum MappingError {
 }
 
 impl Mapping {
+    /// Build a mapping from its parts, without going through a file.
+    ///
+    /// For the editor, which assembles one control at a time. The result is
+    /// **not** prepared: its triggers are unparsed, so it is only good for
+    /// writing back out. Anything that wants to run a mapping goes through
+    /// [`Mapping::parse`], which is what makes a saved file and a built one
+    /// the same thing.
+    #[must_use]
+    pub fn from_parts(name: String, device: String, bindings: Vec<Binding>) -> Self {
+        Self {
+            name,
+            device,
+            bindings,
+            ..Self::default()
+        }
+    }
+
     /// Read a mapping from TOML, checking every action it contains.
     ///
     /// **Every action is parsed here, when the file loads, not when a pad is

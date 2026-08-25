@@ -230,6 +230,13 @@ pub fn run() {
                 // after the directory is known and before the interface asks
                 // whether stems are available.
                 state.open_stems(&dir);
+                // The editor saves here, so the loader has to look here too --
+                // otherwise a mapping a DJ just made would not be in the list
+                // they can open until the next restart.
+                let problems = state.control().load_user_mappings(&dir.join("mappings"));
+                for problem in problems {
+                    tracing::warn!(%problem, "a user mapping could not be loaded");
+                }
                 state.set_config_dir(dir);
             }
 
@@ -318,6 +325,13 @@ pub fn run() {
             commands::dispatch,
             commands::control_status,
             commands::control_mappings,
+            commands::mapping_learn,
+            commands::mapping_draft,
+            commands::mapping_rename,
+            commands::mapping_bind,
+            commands::mapping_unbind,
+            commands::mapping_draft_from,
+            commands::mapping_save,
             commands::keyboard_keys,
             commands::set_keyboard_enabled,
             commands::open_controller,

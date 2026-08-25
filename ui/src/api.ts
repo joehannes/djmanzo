@@ -641,6 +641,56 @@ export type StemsStatus = {
  */
 export const stemsStatus = () => invoke<StemsStatus>("stems_status");
 
+// -- the mapping editor -----------------------------------------------------
+
+/** What a control should do. */
+export type Role =
+  | { kind: "latching"; press: string }
+  | { kind: "momentary"; press: string; release: string }
+  | { kind: "continuous"; action: string; min?: number; max?: number }
+  | { kind: "encoder"; up: string; down: string; encoding: string };
+
+export type DraftBinding = { on: string; does: string };
+
+export type MappingDraft = {
+  name: string;
+  device: string;
+  bindings: DraftBinding[];
+  /** Whether the port is describing controls rather than acting on them. */
+  learning: boolean;
+  /** The last control touched while learning, as a mapping file writes it. */
+  learned: string | null;
+};
+
+/**
+ * Turn learning on or off.
+ *
+ * While it is on a control says what it is instead of doing what it does —
+ * otherwise learning the play button would start the deck every time.
+ */
+export const mappingLearn = (on: boolean) =>
+  invoke<MappingDraft>("mapping_learn", { on });
+
+/** The draft as it stands, including whatever control was last touched. */
+export const mappingDraft = () => invoke<MappingDraft>("mapping_draft");
+
+export const mappingRename = (name: string, device: string) =>
+  invoke<MappingDraft>("mapping_rename", { name, device });
+
+/** Give a control a job. Rejects an action the engine does not have. */
+export const mappingBind = (on: string, role: Role) =>
+  invoke<MappingDraft>("mapping_bind", { on, role });
+
+export const mappingUnbind = (on: string) =>
+  invoke<MappingDraft>("mapping_unbind", { on });
+
+/** Start again, optionally from a mapping that already nearly fits. */
+export const mappingDraftFrom = (name: string | null) =>
+  invoke<MappingDraft>("mapping_draft_from", { name });
+
+/** Write the draft into the user's mappings directory. Returns the path. */
+export const mappingSave = () => invoke<string>("mapping_save");
+
 /**
  * Put a plugin on the master.
  *

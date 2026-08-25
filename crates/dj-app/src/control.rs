@@ -86,6 +86,12 @@ pub struct ControlHub {
     /// Where the MIDI thread posts translated actions, kept so a new
     /// connection reuses the drain that is already running.
     post: Sender<String>,
+    /// What the mapping editor watches the port with.
+    ///
+    /// Held here rather than on the connection so that turning learning on
+    /// before a controller is plugged in still works: the flag is already set
+    /// when the port opens.
+    listener: dj_hid::Listener,
 }
 
 impl std::fmt::Debug for ControlHub {
@@ -119,6 +125,7 @@ impl ControlHub {
                 keyboard_on: std::sync::atomic::AtomicBool::new(true),
                 open: Mutex::new(None),
                 post,
+                listener: dj_hid::Listener::default(),
             },
             take,
         )
@@ -175,6 +182,77 @@ impl ControlHub {
             }
         }
         problems
+    }
+
+    // -- the mapping editor ------------------------------------------------
+
+    /// Start describing controls instead of acting on them.
+    ///
+    /// Learning suppresses the action a control already has, because learning
+    /// the play button by pressing the play button would otherwise start the
+    /// deck -- sixty times, over a mapping session.
+    pub fn start_learning(&self) {
+        self.listener.start();
+    }
+
+    pub fn stop_learning(&self) {
+        self.listener.stop();
+    }
+
+    #[must_use]
+    pub fn is_learning(&self) -> bool {
+        self.listener.is_learning()
+    }
+
+    /// The last control touched since learning began.
+    #[must_use]
+    pub fn learned(&self) -> Option<String> {
+        self.listener.seen()
+    }
+
+    /// Forget it, so the next press is unambiguous.
+    pub fn forget_learned(&self) {
+        self.listener.clear();
+    }
+
+    /// Write a mapping into the user's `mappings` directory and load it.
+    ///
+    /// Saved through the parser, not around it: what lands on disk is read
+    /// back before it is accepted, so a mapping that could not be reopened is
+    /// reported now rather than at the start of the next set.
+    ///
+    /// # Errors
+    /// If the draft will not parse, or the file cannot be written.
+    pub fn save_mapping(
+        &self,
+        dir: &std::path::Path,
+        draft: &dj_hid::editor::Draft,
+    ) -> Result<std::path::PathBuf, String> {
+        let text = draft.to_toml().map_err(|e| e.to_string())?;
+        // Prove it reloads before writing it, so a broken file never reaches
+        // the directory the loader scans.
+        dj_hid::Mapping::parse(&text).map_err(|e| e.to_string())?;
+
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        let path = dir.join(format!("{}.toml", file_stem(&draft.name)));
+        std::fs::write(&path, &text).map_err(|e| e.to_string())?;
+
+        self.load_user_mappings(dir);
+        Ok(path)
+    }
+
+    /// The mapping called `name`, if there is one.
+    ///
+    /// For the editor, which starts most drafts from a mapping that already
+    /// nearly fits rather than from nothing.
+    #[must_use]
+    pub fn mapping_named(&self, name: &str) -> Option<dj_hid::Mapping> {
+        self.mappings
+            .lock()
+            .ok()?
+            .iter()
+            .find(|(mapping, _)| mapping.name == name)
+            .map(|(mapping, _)| mapping.clone())
     }
 
     /// Every mapping that can be opened.
@@ -245,8 +323,8 @@ impl ControlHub {
                 .clone()
         };
 
-        let open =
-            dj_hid::port::open(port, chosen, self.post.clone()).map_err(|e| e.to_string())?;
+        let open = dj_hid::port::open(port, chosen, self.post.clone(), self.listener.clone())
+            .map_err(|e| e.to_string())?;
         // Assigned last, so a failed open leaves the previous connection alone
         // rather than closing it and connecting to nothing.
         *self.open.lock().unwrap() = Some(open);
@@ -310,8 +388,148 @@ pub fn drain(handle: tauri::AppHandle, take: Receiver<String>) {
 /// closed, and the next one opened would post into a channel nobody reads.
 pub type Post = Arc<Sender<String>>;
 
+/// A mapping name as a file name.
+///
+/// A name reaches the filesystem, so anything that is not plainly a name
+/// becomes a dash: a mapping called `../../autostart` must not write outside
+/// the directory it was given.
+fn file_stem(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    let trimmed = cleaned.trim_matches('-');
+    if trimmed.is_empty() {
+        "mapping".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    // -- the mapping editor -------------------------------------------------
+
+    fn draft() -> dj_hid::editor::Draft {
+        let mut draft = dj_hid::editor::Draft::new("My Controller", "Some Device");
+        draft
+            .bind(
+                "note 1 0x0b",
+                &dj_hid::editor::Role::Latching {
+                    press: "deck 1 play_pause".to_owned(),
+                },
+            )
+            .expect("a normal binding");
+        draft
+    }
+
+    #[test]
+    fn learning_is_off_until_it_is_asked_for() {
+        let (hub, _take) = ControlHub::new();
+        assert!(!hub.is_learning());
+        assert_eq!(hub.learned(), None);
+    }
+
+    #[test]
+    fn learning_can_be_started_and_stopped() {
+        let (hub, _take) = ControlHub::new();
+        hub.start_learning();
+        assert!(hub.is_learning());
+        hub.stop_learning();
+        assert!(!hub.is_learning());
+    }
+
+    /// Starting again forgets the last control: a DJ who brushed the wrong pad
+    /// and pressed the button again must not be shown the pad they brushed.
+    #[test]
+    fn starting_to_learn_forgets_the_previous_control() {
+        let (hub, _take) = ControlHub::new();
+        hub.start_learning();
+        assert_eq!(hub.learned(), None);
+        hub.forget_learned();
+        assert_eq!(hub.learned(), None);
+    }
+
+    /// **What the editor is for.** A saved mapping has to appear in the list
+    /// of mappings that can be opened, or the DJ's work went nowhere.
+    #[test]
+    fn a_saved_mapping_can_be_opened_afterwards() {
+        let dir = tempfile::tempdir().unwrap();
+        let (hub, _take) = ControlHub::new();
+        let before = hub.mappings().len();
+
+        let path = hub.save_mapping(dir.path(), &draft()).expect("saving");
+        assert!(path.exists(), "nothing was written");
+
+        let names: Vec<String> = hub.mappings().into_iter().map(|m| m.name).collect();
+        assert!(
+            names.iter().any(|n| n == "My Controller"),
+            "the saved mapping is not in {names:?}"
+        );
+        assert_eq!(hub.mappings().len(), before + 1);
+    }
+
+    /// The file on disk is a mapping file like any other -- editable by hand,
+    /// and readable by the loader that reads the bundled ones.
+    #[test]
+    fn what_is_saved_is_an_ordinary_mapping_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let (hub, _take) = ControlHub::new();
+        let path = hub.save_mapping(dir.path(), &draft()).unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        let reloaded = dj_hid::Mapping::parse(&text).expect("the saved file parses");
+        assert_eq!(reloaded.name, "My Controller");
+        assert_eq!(reloaded.bindings.len(), 1);
+    }
+
+    /// A mapping name reaches the filesystem. One that tries to climb out of
+    /// the directory must not.
+    #[test]
+    fn a_mapping_name_cannot_escape_the_mappings_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let (hub, _take) = ControlHub::new();
+
+        let mut escaping = draft();
+        escaping.name = "../../autostart".to_owned();
+        let path = hub.save_mapping(dir.path(), &escaping).expect("saving");
+
+        assert_eq!(
+            path.parent(),
+            Some(dir.path()),
+            "{path:?} was written outside the mappings directory"
+        );
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(!name.contains(".."), "{name} still has a traversal in it");
+    }
+
+    /// A name with nothing usable in it still has to produce a file, rather
+    /// than a dotfile or an empty name.
+    #[test]
+    fn a_nameless_mapping_still_gets_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let (hub, _take) = ControlHub::new();
+
+        let mut nameless = draft();
+        nameless.name = "///".to_owned();
+        let path = hub.save_mapping(dir.path(), &nameless).expect("saving");
+        assert_eq!(path.file_name().unwrap(), "mapping.toml");
+    }
+
+    /// Saving the same mapping twice replaces it rather than piling up
+    /// `My Controller (2)` files nobody asked for.
+    #[test]
+    fn saving_twice_replaces_rather_than_accumulates() {
+        let dir = tempfile::tempdir().unwrap();
+        let (hub, _take) = ControlHub::new();
+
+        hub.save_mapping(dir.path(), &draft()).unwrap();
+        hub.save_mapping(dir.path(), &draft()).unwrap();
+
+        let files: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
+        assert_eq!(files.len(), 1, "saving twice left {} files", files.len());
+    }
     use super::*;
 
     #[test]

@@ -237,6 +237,19 @@ is estimated over time. That is why a scratch feels attached to the hand and a
 bend does not jump — and why neither changes when you pick a different audio
 buffer size.
 
+### A controller you can map yourself
+
+Every DJ application claims that mappings are files you can edit. djmanzo means
+it in both directions: the files are plain TOML with the same action grammar
+the interface and the assistant use, *and* you can make one without reading a
+manual — press a control, choose what it does, save.
+
+Two things make that safe rather than merely convenient. Learning suppresses
+whatever the control already does, so mapping a play button does not start the
+deck. And a binding is checked against the engine's vocabulary the moment it is
+made, so a mistake is a sentence while you are still looking at the control
+rather than a pad that quietly does nothing an hour into a set.
+
 ### The universal hardware bridge
 
 No other application speaks Pro DJ Link *and* StagelinQ *and* network tempo sync *and* MIDI

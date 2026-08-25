@@ -86,6 +86,12 @@ pub struct AppState {
     /// Where the DJ's own layout files live. `None` until `setup` resolves it,
     /// and then only the built-in layouts are available.
     layout_dir: Mutex<Option<std::path::PathBuf>>,
+    /// The mapping being built in the editor.
+    ///
+    /// One at a time, and held here rather than in the interface so that a
+    /// half-finished mapping survives closing the panel -- a DJ mapping a
+    /// controller looks things up mid-way through.
+    mapping_draft: Mutex<dj_hid::editor::Draft>,
     /// The configuration directory itself, which is the layout directory's
     /// parent. Held rather than derived: walking back up out of a
     /// subdirectory to find where you started is the sort of implicit
@@ -289,6 +295,7 @@ impl AppState {
             registry,
             taps: crate::grid::TapTracker::new(),
             layout_dir: Mutex::new(None),
+            mapping_draft: Mutex::new(dj_hid::editor::Draft::new("My mapping", String::new())),
             config_dir: Mutex::new(None),
             recording: Mutex::new(None),
             recording_state: Arc::new(crate::setrec::RecordingState::default()),
@@ -474,6 +481,58 @@ impl AppState {
         // same record the DJ played an hour ago.
         if let Ok(mut watcher) = self.play_watcher.lock() {
             watcher.forget(deck);
+        }
+    }
+
+    /// Where user mappings live: beside the presets and layouts, because they
+    /// are things a DJ made rather than things the system may reclaim.
+    #[must_use]
+    pub fn mappings_dir(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("mappings"))
+    }
+
+    /// A copy of the mapping being edited.
+    #[must_use]
+    pub fn mapping_draft(&self) -> dj_hid::editor::Draft {
+        self.mapping_draft
+            .lock()
+            .map(|draft| draft.clone())
+            .unwrap_or_else(|_| dj_hid::editor::Draft::new("My mapping", String::new()))
+    }
+
+    /// Change the draft, returning whatever the change returned.
+    ///
+    /// `None` only if the lock is poisoned, which means a previous edit
+    /// panicked. Reported rather than papered over with a default: a mapping
+    /// editor that silently discarded a binding would be worse than one that
+    /// says it is broken.
+    pub fn edit_mapping_draft<T>(
+        &self,
+        change: impl FnOnce(&mut dj_hid::editor::Draft) -> T,
+    ) -> Option<T> {
+        self.mapping_draft
+            .lock()
+            .ok()
+            .map(|mut draft| change(&mut draft))
+    }
+
+    /// Begin a new draft, optionally from a mapping that already exists.
+    ///
+    /// Starting from an existing mapping is the common case: most controllers
+    /// are nearly one of the bundled ones, and a DJ wants to move four pads
+    /// rather than name sixty from scratch.
+    pub fn start_mapping_draft(&self, from: Option<&str>) {
+        let fresh = match from {
+            Some(name) => self
+                .control()
+                .mapping_named(name)
+                .map(|mapping| dj_hid::editor::Draft::from_mapping(&mapping)),
+            None => None,
+        }
+        .unwrap_or_else(|| dj_hid::editor::Draft::new("My mapping", String::new()));
+
+        if let Ok(mut draft) = self.mapping_draft.lock() {
+            *draft = fresh;
         }
     }
 

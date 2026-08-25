@@ -19,7 +19,9 @@
 use crate::mapping::Mapping;
 use crate::message::Message;
 use midir::{MidiInput, MidiInputConnection};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
 /// What the application calls the client when it appears in a DJ's MIDI setup.
 const CLIENT_NAME: &str = "djmanzo";
@@ -88,6 +90,67 @@ impl std::fmt::Debug for Connection {
 struct Wiring {
     mapping: Mapping,
     out: Sender<String>,
+    listener: Listener,
+}
+
+/// What the mapping editor watches the port for.
+///
+/// Shared with the callback rather than polled through a channel because the
+/// question the editor asks -- "what did they just touch?" -- has one answer
+/// at a time, and a queue of them would replay every pad a DJ brushed while
+/// reaching for the right one.
+#[derive(Clone, Debug, Default)]
+pub struct Listener {
+    /// While set, messages are described instead of translated.
+    ///
+    /// Suppressing the action matters: learning the play button by pressing
+    /// the play button would otherwise start the deck, which is not what a DJ
+    /// sitting down to map a controller wants to happen sixty times.
+    learning: Arc<AtomicBool>,
+    /// The last control seen while learning, as a mapping file would write it.
+    seen: Arc<Mutex<Option<String>>>,
+}
+
+impl Listener {
+    /// Start describing controls instead of acting on them.
+    pub fn start(&self) {
+        self.clear();
+        self.learning.store(true, Ordering::Release);
+    }
+
+    /// Go back to acting on them.
+    pub fn stop(&self) {
+        self.learning.store(false, Ordering::Release);
+    }
+
+    #[must_use]
+    pub fn is_learning(&self) -> bool {
+        self.learning.load(Ordering::Acquire)
+    }
+
+    /// The last control touched since learning began, if any.
+    #[must_use]
+    pub fn seen(&self) -> Option<String> {
+        self.seen.lock().ok()?.clone()
+    }
+
+    /// Forget it, so the next press is unambiguous.
+    pub fn clear(&self) {
+        if let Ok(mut slot) = self.seen.lock() {
+            *slot = None;
+        }
+    }
+
+    /// Called from the MIDI callback.
+    fn note(&self, message: Message) -> bool {
+        if !self.is_learning() {
+            return false;
+        }
+        if let Ok(mut slot) = self.seen.lock() {
+            *slot = Some(crate::editor::describe(message));
+        }
+        true
+    }
 }
 
 /// Open `port` and send everything it says, translated, down `out`.
@@ -100,7 +163,12 @@ struct Wiring {
 /// # Errors
 /// When MIDI is unavailable, no port matches, or the platform refuses to open
 /// the one that does.
-pub fn open(port: &str, mapping: Mapping, out: Sender<String>) -> Result<Connection, PortError> {
+pub fn open(
+    port: &str,
+    mapping: Mapping,
+    out: Sender<String>,
+    listener: Listener,
+) -> Result<Connection, PortError> {
     let mut midi =
         MidiInput::new(CLIENT_NAME).map_err(|e| PortError::Unavailable(e.to_string()))?;
     // Without this, a controller's own clock — twenty-four messages a beat,
@@ -130,6 +198,11 @@ pub fn open(port: &str, mapping: Mapping, out: Sender<String>) -> Result<Connect
                 let Some(message) = Message::from_bytes(bytes) else {
                     return;
                 };
+                // While the editor is listening, a control says what it is
+                // instead of doing what it does.
+                if wiring.listener.note(message) {
+                    return;
+                }
                 for action in wiring.mapping.translate(message) {
                     // A full or disconnected channel means the application has
                     // gone away. There is nothing useful to do about it here
@@ -138,7 +211,11 @@ pub fn open(port: &str, mapping: Mapping, out: Sender<String>) -> Result<Connect
                     let _ = wiring.out.send(action);
                 }
             },
-            Wiring { mapping, out },
+            Wiring {
+                mapping,
+                out,
+                listener,
+            },
         )
         .map_err(|e| PortError::Refused(name.clone(), e.to_string()))?;
 
@@ -189,7 +266,7 @@ mod tests {
         )
         .unwrap();
         let (out, _keep) = std::sync::mpsc::channel();
-        match open("a device nobody owns", mapping, out) {
+        match open("a device nobody owns", mapping, out, Listener::default()) {
             Err(PortError::NoSuchPort(name)) => assert_eq!(name, "a device nobody owns"),
             // A machine with no MIDI service at all fails earlier, which is
             // also correct.

@@ -24,6 +24,7 @@
 //! Opening a MIDI port is a separate, thin thing that sits on top.
 
 pub mod bundled;
+pub mod editor;
 pub mod feedback;
 pub mod keys;
 pub mod mapping;
@@ -33,4 +34,4 @@ pub mod port;
 pub use keys::{Chord, KeyBinding, KeyError, KeyMap};
 pub use mapping::{Binding, Mapping, MappingError, Trigger};
 pub use message::Message;
-pub use port::{Connection, PortError};
+pub use port::{Connection, Listener, PortError};

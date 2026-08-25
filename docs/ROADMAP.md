@@ -537,7 +537,17 @@ The milestone that makes the hardware in your hands work.
   rather than dragged, so a movement is the same near the hub or out at the rim.
   Motorised platters -- position in, torque out -- still to come.
 - Controller-specific audio setup presets.
-- In-app mapping editor (learn a control, bind an action).
+- **In-app mapping editor — done.** M4's promise is that adding a controller
+  means editing a file rather than rebuilding the application, which is only
+  half true while the only way to write the file is by hand from a manual. Now:
+  press the control, say what it should do, save. Learning **suppresses** the
+  action the control already has, because learning the play button by pressing
+  the play button would otherwise start the deck sixty times over a mapping
+  session. A binding is checked at the moment it is made, so a typo is a
+  message while the DJ is still looking at the pad they pressed. What is saved
+  is an ordinary mapping file — hand-editable afterwards, and proved to reload
+  *before* it is written, so a file the loader would refuse never reaches the
+  directory the loader scans.
 - Mappings — bundled rather than installed, so a fresh install works with nothing
   configured. A user file of the same name in the config directory replaces the bundled one.
 

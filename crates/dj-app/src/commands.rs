@@ -2927,6 +2927,176 @@ pub fn control_mappings(state: State<'_, AppState>) -> Vec<crate::control::Mappi
     state.control().mappings()
 }
 
+// -- the mapping editor ---------------------------------------------------
+
+/// What a control should do, as the interface describes it.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RoleDto {
+    Latching {
+        press: String,
+    },
+    Momentary {
+        press: String,
+        release: String,
+    },
+    Continuous {
+        action: String,
+        min: Option<f32>,
+        max: Option<f32>,
+    },
+    Encoder {
+        up: String,
+        down: String,
+        encoding: String,
+    },
+}
+
+impl From<RoleDto> for dj_hid::editor::Role {
+    fn from(dto: RoleDto) -> Self {
+        use dj_hid::editor::Role;
+        match dto {
+            RoleDto::Latching { press } => Role::Latching { press },
+            RoleDto::Momentary { press, release } => Role::Momentary { press, release },
+            RoleDto::Continuous { action, min, max } => Role::Continuous { action, min, max },
+            RoleDto::Encoder { up, down, encoding } => Role::Encoder {
+                up,
+                down,
+                // An unknown convention falls back to the common one rather
+                // than refusing: the encoding is a hint about hardware, and a
+                // mapping that would not save over a typo here is worse than
+                // one whose encoder turns the wrong way and can be corrected.
+                encoding: match encoding.as_str() {
+                    "offset" => dj_hid::mapping::Encoding::Offset,
+                    "absolute" => dj_hid::mapping::Encoding::Absolute,
+                    _ => dj_hid::mapping::Encoding::Signed,
+                },
+            },
+        }
+    }
+}
+
+/// One control in a draft, for the interface to list.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftBindingDto {
+    pub on: String,
+    /// What it does, in the action grammar, for showing back to the DJ.
+    pub does: String,
+}
+
+/// The draft as the interface sees it.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftDto {
+    pub name: String,
+    pub device: String,
+    pub bindings: Vec<DraftBindingDto>,
+    /// Whether the port is describing controls rather than acting on them.
+    pub learning: bool,
+    /// The last control touched while learning.
+    pub learned: Option<String>,
+}
+
+fn draft_dto(state: &AppState) -> DraftDto {
+    let draft = state.mapping_draft();
+    DraftDto {
+        name: draft.name.clone(),
+        device: draft.device.clone(),
+        bindings: draft
+            .bindings()
+            .iter()
+            .map(|b| DraftBindingDto {
+                on: b.on.clone(),
+                does: [&b.press, &b.moved, &b.turn_up]
+                    .into_iter()
+                    .flatten()
+                    .next()
+                    .cloned()
+                    .unwrap_or_default(),
+            })
+            .collect(),
+        learning: state.control().is_learning(),
+        learned: state.control().learned(),
+    }
+}
+
+/// Start describing controls instead of acting on them.
+#[tauri::command]
+pub fn mapping_learn(state: State<'_, AppState>, on: bool) -> DraftDto {
+    if on {
+        state.control().start_learning();
+    } else {
+        state.control().stop_learning();
+    }
+    draft_dto(&state)
+}
+
+/// The draft as it stands, including whatever control was last touched.
+#[tauri::command]
+#[must_use]
+pub fn mapping_draft(state: State<'_, AppState>) -> DraftDto {
+    draft_dto(&state)
+}
+
+/// Name the mapping being built.
+#[tauri::command]
+pub fn mapping_rename(state: State<'_, AppState>, name: String, device: String) -> DraftDto {
+    state.edit_mapping_draft(|draft| {
+        draft.name = name;
+        draft.device = device;
+    });
+    draft_dto(&state)
+}
+
+/// Give a control a job.
+///
+/// # Errors
+/// If the control or the action would not parse -- reported now, while the DJ
+/// is still looking at the control they pressed.
+#[tauri::command]
+pub fn mapping_bind(
+    state: State<'_, AppState>,
+    on: String,
+    role: RoleDto,
+) -> Result<DraftDto, String> {
+    let role: dj_hid::editor::Role = role.into();
+    state
+        .edit_mapping_draft(|draft| draft.bind(&on, &role))
+        .ok_or_else(|| "the mapping editor is unavailable".to_owned())?
+        .map_err(|e| e.to_string())?;
+    state.control().forget_learned();
+    Ok(draft_dto(&state))
+}
+
+/// Take a control's job away.
+#[tauri::command]
+pub fn mapping_unbind(state: State<'_, AppState>, on: String) -> DraftDto {
+    state.edit_mapping_draft(|draft| draft.unbind(&on));
+    draft_dto(&state)
+}
+
+/// Start again from nothing, or from a mapping that already exists.
+#[tauri::command]
+pub fn mapping_draft_from(state: State<'_, AppState>, name: Option<String>) -> DraftDto {
+    state.start_mapping_draft(name.as_deref());
+    draft_dto(&state)
+}
+
+/// Write the draft into the user's mappings directory.
+///
+/// # Errors
+/// If there is nowhere to write, or the draft would not reload.
+#[tauri::command]
+pub fn mapping_save(state: State<'_, AppState>) -> Result<String, String> {
+    let dir = state
+        .mappings_dir()
+        .ok_or_else(|| "there is nowhere to save mappings yet".to_owned())?;
+    let draft = state.mapping_draft();
+    let path = state.control().save_mapping(&dir, &draft)?;
+    Ok(path.display().to_string())
+}
+
 /// The keyboard, as a shortcut sheet.
 ///
 /// The interface asks for this once and does the lookup itself, rather than
