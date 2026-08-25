@@ -16,7 +16,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": true,
-    "types": ["svelte", "vite/client"]
+    // `node` is here for the one test that reads the components off disk to
+    // check every icon they name has a drawing -- see src/controls/icons.test.ts.
+    "types": ["svelte", "vite/client", "node"]
   },
   "include": ["src/**/*.ts", "src/**/*.svelte"]
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import Icon from "./Icon.svelte";
 
   /**
    * A square button carrying an icon, or whatever the caller renders inside it.
@@ -59,7 +60,7 @@
   {#if children}
     {@render children()}
   {:else if icon}
-    <i class={icon} aria-hidden="true"></i>
+    <Icon name={icon} />
   {/if}
 </button>
 
