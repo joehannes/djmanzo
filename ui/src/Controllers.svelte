@@ -122,10 +122,11 @@
   </header>
 
   {#if status?.unavailable}
+    <!-- The backend sentence already begins "MIDI is not available on this
+         machine", so this adds the distinction rather than restating it. -->
     <p class="warn">
-      MIDI itself is unavailable here: {status.unavailable}. That is a different
-      problem from nothing being plugged in, and plugging something in will not
-      fix it.
+      {status.unavailable}. Plugging a controller in will not change that —
+      this is the MIDI service itself, not an empty list of devices.
     </p>
   {:else if status && status.inputs.length === 0}
     <p class="note">No MIDI inputs. Plug a controller in — this checks again
