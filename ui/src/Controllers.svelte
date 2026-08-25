@@ -22,8 +22,10 @@
   import IconButton from "./controls/IconButton.svelte";
   import {
     closeController,
+    closeHidController,
     controlStatus,
     openController,
+    openHidController,
     setKeyboardEnabled,
     type AudioRouting,
     type ControlStatus,
@@ -34,6 +36,8 @@
   let status = $state<ControlStatus | null>(null);
   let chosenPort = $state<string | null>(null);
   let chosenMapping = $state<string | null>(null);
+  let chosenHid = $state<string | null>(null);
+  let chosenHidMapping = $state<string | null>(null);
   let error = $state<string | null>(null);
   let busy = $state(false);
 
@@ -53,6 +57,9 @@
       // Keep the choice pointing at something that still exists.
       if (chosenPort && !status.inputs.includes(chosenPort)) chosenPort = null;
       if (!chosenPort) chosenPort = status.open_port ?? status.inputs[0] ?? null;
+      if (chosenHid && !status.hid_inputs.some((d) => d.path === chosenHid))
+        chosenHid = null;
+      if (!chosenHid) chosenHid = status.hid_inputs[0]?.path ?? null;
     } catch (e) {
       error = String(e);
     }
@@ -81,6 +88,33 @@
     error = null;
     try {
       await closeController();
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function connectHid() {
+    if (!chosenHid || !chosenHidMapping) return;
+    busy = true;
+    error = null;
+    try {
+      await openHidController(chosenHid, chosenHidMapping);
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function disconnectHid() {
+    busy = true;
+    error = null;
+    try {
+      await closeHidController();
       await refresh();
     } catch (e) {
       error = String(e);
@@ -179,6 +213,59 @@
     {/if}
   {/if}
 
+  {#if status}
+    <div class="hid">
+      <h4>HID</h4>
+      {#if status.open_hid}
+        <div class="open">
+          <strong>{status.open_hid}</strong>
+          <span class="mapping">{status.open_hid_mapping ?? "no mapping"}</span>
+          <IconButton
+            icon="unlink"
+            title="Disconnect"
+            onClick={disconnectHid}
+            disabled={busy}
+          />
+        </div>
+      {:else if status.hid_unavailable}
+        <p class="note">
+          {status.hid_unavailable}. On Linux a controller's device node usually
+          belongs to root until a udev rule says otherwise.
+        </p>
+      {:else if status.hid_inputs.length === 0}
+        <p class="note">No HID devices.</p>
+      {:else}
+        <div class="pick">
+          <select bind:value={chosenHid} disabled={busy}>
+            {#each status.hid_inputs as device (device.path)}
+              <option value={device.path}>{device.name} · {device.id}</option>
+            {/each}
+          </select>
+          <select bind:value={chosenHidMapping} disabled={busy}>
+            <option value={null}>Choose a mapping…</option>
+            {#each mappings as mapping (mapping.name)}
+              <option value={mapping.name}>{mapping.name}</option>
+            {/each}
+          </select>
+          <IconButton
+            icon="check"
+            title={chosenHidMapping
+              ? "Connect"
+              : "A HID mapping names byte offsets, so it has to be chosen"}
+            onClick={connectHid}
+            disabled={busy || !chosenHid || !chosenHidMapping}
+          />
+        </div>
+        <p class="note">
+          HID is for controllers whose jog wheels need more than seven bits.
+          There is no “whichever fits” here: a HID mapping names byte offsets
+          into this device's reports, and another device's offsets would bind
+          the wrong controls rather than fail.
+        </p>
+      {/if}
+    </div>
+  {/if}
+
   {#if error}
     <p class="warn">{error}</p>
   {/if}
@@ -222,6 +309,22 @@
   .pick select {
     flex: 1;
     min-width: 0;
+  }
+
+  .hid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--edge);
+  }
+
+  h4 {
+    margin: 0;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
   }
 
   .open {

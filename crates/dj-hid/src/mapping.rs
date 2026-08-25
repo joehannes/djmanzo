@@ -53,6 +53,13 @@ pub enum Trigger {
     Control { channel: u8, controller: u8 },
     /// A high-resolution control that uses the pitch wheel. `bend <channel>`.
     Bend { channel: u8 },
+    /// A field in a raw HID report. `hid <report> byte|word|word-le|bit <n>`.
+    ///
+    /// Unlike the three above, this one carries the **layout**: a HID packet is
+    /// opaque bytes and nothing in it says what a control is. See
+    /// [`crate::report`] for why that is, and why the change from the previous
+    /// report is what matters rather than the value itself.
+    Hid(crate::report::Field),
 }
 
 impl Trigger {
@@ -84,7 +91,52 @@ impl Trigger {
             "bend" => Ok(Trigger::Bend {
                 channel: number(words.next())?,
             }),
+            "hid" => Self::parse_hid(text, &mut words),
             _ => Err(MappingError::BadTrigger(text.to_owned())),
+        }
+    }
+
+    /// The tail of a `hid ...` trigger: report number, width, offset.
+    ///
+    /// `hid 1 bit 3.2` is report 1, byte 3, bit 2. The dotted form is used
+    /// because a bit belongs to a byte and writing them apart invites getting
+    /// them the wrong way round.
+    fn parse_hid<'a>(
+        text: &str,
+        words: &mut impl Iterator<Item = &'a str>,
+    ) -> Result<Self, MappingError> {
+        use crate::report::{Field, Width};
+        let bad = || MappingError::BadTrigger(text.to_owned());
+
+        let report: u8 = words.next().ok_or_else(bad)?.parse().map_err(|_| bad())?;
+        let kind = words.next().ok_or_else(bad)?;
+        let where_ = words.next().ok_or_else(bad)?;
+
+        let (offset, width) = match kind {
+            "bit" => {
+                // `3.2` -- byte then bit, in that order, because that is the
+                // order they are written in every device manual.
+                let (byte, bit) = where_.split_once('.').ok_or_else(bad)?;
+                let bit: u8 = bit.parse().map_err(|_| bad())?;
+                if bit > 7 {
+                    return Err(bad());
+                }
+                (byte.parse::<usize>().map_err(|_| bad())?, Width::Bit(bit))
+            }
+            "byte" => (where_.parse::<usize>().map_err(|_| bad())?, Width::Byte),
+            "word" => (where_.parse::<usize>().map_err(|_| bad())?, Width::Word),
+            "word-le" => (where_.parse::<usize>().map_err(|_| bad())?, Width::WordLe),
+            _ => return Err(bad()),
+        };
+        Ok(Trigger::Hid(Field::new(report, offset, width)))
+    }
+
+    /// The HID field this trigger reads, if it is a HID trigger at all.
+    #[must_use]
+    pub fn field(self) -> Option<crate::report::Field> {
+        match self {
+            Trigger::Hid(field) => Some(field),
+            _ => None,
         }
     }
 
@@ -206,6 +258,15 @@ pub struct Mapping {
     /// turned and a fader can be asked what it is set to.
     #[serde(skip)]
     last: HashMap<Trigger, u8>,
+    /// The last value seen for each HID field.
+    ///
+    /// Separate from `last` and wider because a HID field carries up to
+    /// sixteen bits, and because it is doing a different job: MIDI's `last`
+    /// tells an encoder which way it turned, while this one is what turns a
+    /// stream of identical level reports into the handful of changes that
+    /// actually happened. See [`crate::report`].
+    #[serde(skip)]
+    last_hid: HashMap<Trigger, u32>,
     /// One unwrapper per motorised platter, keyed by the control it is on.
     ///
     /// Per mapping rather than per message because a platter's angle only
@@ -238,6 +299,13 @@ pub enum MappingError {
     BadPlatter(String, String),
     #[error("the audio preset is not usable: {0}")]
     BadAudioPreset(String),
+    #[error(
+        "the encoder on {0:?} is a HID field; HID reports a level, not a turn, \
+         so `turn_up`/`turn_down` cannot be read from one"
+    )]
+    EncoderOnHid(String),
+    #[error("the platter on {0:?} needs {1} steps and the field it reads holds only {2}")]
+    PlatterTooFineForField(String, u32, u32),
 }
 
 impl Mapping {
@@ -309,10 +377,32 @@ impl Mapping {
             // a wrap can be told from a movement in. Both checked here, when
             // the file loads, so a platter that could never work says so
             // before a DJ puts a hand on it.
+            // A HID field is a level, not an event, and two of the binding
+            // shapes have no meaning against one. Both are refused here rather
+            // than ignored at run time, so a mapping that could never work
+            // says so when it is chosen.
+            let field = Trigger::parse(&binding.on)?.field();
+            if field.is_some() && (binding.turn_up.is_some() || binding.turn_down.is_some()) {
+                return Err(MappingError::EncoderOnHid(binding.on.clone()));
+            }
+
             if binding.platter.is_some() {
                 let steps = binding
                     .resolution
                     .ok_or_else(|| MappingError::NoResolution(binding.on.clone()))?;
+                // A platter of 3,600 steps read out of one byte would wrap
+                // fourteen times a revolution and be unusable. The field has
+                // to be wide enough for the resolution the manual gives.
+                if let Some(field) = field {
+                    let holds = field.width.max() + 1;
+                    if steps > holds {
+                        return Err(MappingError::PlatterTooFineForField(
+                            binding.on.clone(),
+                            steps,
+                            holds,
+                        ));
+                    }
+                }
                 let unwrapper = crate::platter::AbsolutePlatter::new(steps)
                     .map_err(|e| MappingError::BadPlatter(binding.on.clone(), e.to_string()))?;
                 self.platters
@@ -410,6 +500,95 @@ impl Mapping {
             }
         }
         out
+    }
+
+    /// What a raw HID input report means, as action text.
+    ///
+    /// # Level in, edges out
+    ///
+    /// A HID device sends the state of **every** control it has, in one
+    /// packet, as often as a thousand times a second. Nothing in the packet
+    /// says what changed. So each field is compared with the last value seen
+    /// and only a change becomes an action -- otherwise holding the play
+    /// button would send "play" a thousand times a second, and a fader
+    /// standing still would flood the bus with the value it already had.
+    ///
+    /// # The first report
+    ///
+    /// A switch with nothing remembered is treated as **off**, so the first
+    /// packet does not fire a release for every button that is merely not
+    /// being pressed. A button that genuinely *is* held when the device is
+    /// plugged in reads as a press, and its release arrives when the DJ lets
+    /// go -- a matched pair, where suppressing the press would leave an
+    /// unmatched release.
+    ///
+    /// A range has no such default: its first report is a change, because a
+    /// fader's position is a fact worth knowing the moment the device
+    /// appears.
+    pub fn translate_report(&mut self, report: &[u8]) -> Vec<String> {
+        let mut out = Vec::new();
+        for (index, trigger) in self.triggers.clone().into_iter().enumerate() {
+            let Some(field) = trigger.field() else {
+                continue;
+            };
+            // Not this field's report, or a packet too short to hold it.
+            // Ordinary traffic on a device that sends more than one kind.
+            let Some(value) = field.read(report) else {
+                continue;
+            };
+            let Some(binding) = self.bindings.get(index) else {
+                continue;
+            };
+            let previous = self.last_hid.insert(trigger, value);
+
+            if field.width.is_switch() {
+                if previous.unwrap_or(0) == value {
+                    continue;
+                }
+                let action = if value == 0 {
+                    &binding.release
+                } else {
+                    &binding.press
+                };
+                if let Some(action) = action {
+                    out.push(action.clone());
+                }
+                continue;
+            }
+
+            if previous == Some(value) {
+                continue;
+            }
+
+            if let Some(template) = binding.platter.clone() {
+                if let Some(turns) = self
+                    .platters
+                    .get_mut(&trigger)
+                    .map(|platter| platter.advance(value))
+                {
+                    out.push(fill(&template, turns));
+                }
+                continue;
+            }
+            if let Some(template) = &binding.moved {
+                // The field's own full scale, so sixteen bits are worth
+                // sixteen bits rather than being squeezed through 127.
+                let span = field.width.max();
+                #[allow(clippy::cast_precision_loss)]
+                let position = value as f32 / span as f32;
+                out.push(fill(template, scale(binding, position)));
+            }
+        }
+        out
+    }
+
+    /// Every HID field this mapping reads.
+    ///
+    /// For the device layer, which needs to know whether a mapping is a HID
+    /// mapping at all before it goes looking for a HID device.
+    #[must_use]
+    pub fn hid_fields(&self) -> Vec<crate::report::Field> {
+        self.triggers.iter().filter_map(|t| t.field()).collect()
     }
 
     /// The triggers this mapping listens to, for a learn mode to show.
@@ -1292,5 +1471,277 @@ mod audio_preset_tests {
             reloaded.audio, original.audio,
             "editing the mapping lost its audio routing"
         );
+    }
+}
+
+/// HID: turning a stream of level reports into the changes that happened.
+///
+/// The property everything here rests on is that a device sending the same
+/// state a thousand times a second must produce **nothing** a thousand times,
+/// and exactly one action when a finger lands.
+#[cfg(test)]
+mod hid_tests {
+    use super::*;
+
+    fn mapping(bindings: &str) -> Mapping {
+        Mapping::parse(&format!(
+            "name = \"HID test\"\ndevice = \"Test\"\n\n{bindings}"
+        ))
+        .expect("the test mapping parses")
+    }
+
+    fn pad() -> Mapping {
+        mapping(
+            "[[binding]]\non = \"hid 1 bit 0.2\"\n\
+             press = \"deck 1 play_pause\"\nrelease = \"deck 1 cue\"\n",
+        )
+    }
+
+    #[test]
+    fn a_hid_trigger_parses_every_width_it_offers() {
+        use crate::report::{Field, Width};
+        for (text, want) in [
+            ("hid 1 bit 3.2", Field::new(1, 3, Width::Bit(2))),
+            ("hid 1 byte 5", Field::new(1, 5, Width::Byte)),
+            ("hid 2 word 6", Field::new(2, 6, Width::Word)),
+            ("hid 2 word-le 6", Field::new(2, 6, Width::WordLe)),
+        ] {
+            assert_eq!(Trigger::parse(text), Ok(Trigger::Hid(want)), "{text}");
+        }
+    }
+
+    /// A bit index past the end of a byte is a typo, and a typo in a mapping
+    /// is a message when the file loads -- the same promise the action text
+    /// makes.
+    #[test]
+    fn a_bit_index_past_the_end_of_a_byte_is_refused() {
+        assert!(Trigger::parse("hid 1 bit 3.8").is_err());
+        assert!(Trigger::parse("hid 1 bit 3").is_err());
+        assert!(Trigger::parse("hid 1 nibble 3").is_err());
+        assert!(Trigger::parse("hid 1 byte").is_err());
+        assert!(Trigger::parse("hid").is_err());
+    }
+
+    /// **The load-bearing one.** A HID device repeats itself; djmanzo must
+    /// not. Holding a pad through a hundred reports is one press.
+    ///
+    /// Both kinds of field are checked here on purpose. A switch and a range
+    /// take different paths through [`Mapping::translate_report`], and a test
+    /// that only pressed a pad would leave the fader path -- the one that
+    /// would flood the action bus at a thousand values a second -- uncovered.
+    #[test]
+    fn a_repeated_report_says_nothing_after_the_first_change() {
+        let mut map = mapping(
+            "[[binding]]\non = \"hid 1 bit 0.2\"\n\
+             press = \"deck 1 play_pause\"\nrelease = \"deck 1 cue\"\n\n\
+             [[binding]]\non = \"hid 1 byte 1\"\nmove = \"deck 1 volume {value}\"\n",
+        );
+        let held = [1u8, 0b0000_0100, 0x40];
+
+        // The first packet: the pad went down and the fader said where it is.
+        assert_eq!(
+            map.translate_report(&held),
+            vec!["deck 1 play_pause", "deck 1 volume 0.25098"]
+        );
+        // A thousand identical packets a second must produce nothing at all.
+        for _ in 0..100 {
+            assert!(
+                map.translate_report(&held).is_empty(),
+                "a report that changed nothing produced an action"
+            );
+        }
+        // And a real change still gets through, from either field alone.
+        assert_eq!(
+            map.translate_report(&[1u8, 0, 0x40]),
+            vec!["deck 1 cue"],
+            "letting go of the pad was lost"
+        );
+        assert_eq!(
+            map.translate_report(&[1u8, 0, 0x41]),
+            vec!["deck 1 volume 0.254902"],
+            "moving the fader was lost"
+        );
+    }
+
+    /// The first packet must not fire a release for every button that simply
+    /// is not being pressed. A mapping with sixteen pads would otherwise
+    /// deliver sixteen actions the moment a controller is plugged in.
+    #[test]
+    fn the_first_report_does_not_release_buttons_nobody_touched() {
+        let mut map = pad();
+        assert!(
+            map.translate_report(&[1u8, 0]).is_empty(),
+            "an untouched button reported as up produced an action"
+        );
+    }
+
+    /// A button genuinely held when the device appears reads as a press, so
+    /// the release that follows has something to match. Suppressing the press
+    /// instead would leave a momentary binding switched on with no way back.
+    #[test]
+    fn a_button_already_held_when_the_device_appears_is_a_matched_pair() {
+        let mut map = pad();
+        assert_eq!(
+            map.translate_report(&[1u8, 0b0000_0100]),
+            vec!["deck 1 play_pause"]
+        );
+        assert_eq!(map.translate_report(&[1u8, 0]), vec!["deck 1 cue"]);
+    }
+
+    /// A fader's position is a fact worth knowing the moment the device
+    /// appears, so unlike a switch its first report *is* a change.
+    #[test]
+    fn a_fader_reports_where_it_is_on_the_first_packet() {
+        let mut map =
+            mapping("[[binding]]\non = \"hid 1 byte 1\"\nmove = \"deck 1 volume {value}\"\n");
+        assert_eq!(
+            map.translate_report(&[1u8, 0, 0xFF]),
+            vec!["deck 1 volume 1"]
+        );
+        assert!(map.translate_report(&[1u8, 0, 0xFF]).is_empty());
+    }
+
+    /// The reason to use HID at all. Two adjacent sixteen-bit values are two
+    /// distinguishable positions; squeezed through seven bits they would be
+    /// the same number, and a jog wheel would step where it should glide.
+    #[test]
+    fn sixteen_bits_of_travel_survive_the_whole_way_through() {
+        let mut map =
+            mapping("[[binding]]\non = \"hid 1 word 1\"\nmove = \"deck 1 volume {value}\"\n");
+        let low = map.translate_report(&[1u8, 0, 0x80, 0x00]);
+        let high = map.translate_report(&[1u8, 0, 0x80, 0x01]);
+        assert_eq!(low.len(), 1);
+        assert_eq!(high.len(), 1);
+        assert_ne!(
+            low[0], high[0],
+            "one step of a 16-bit control vanished: {low:?} == {high:?}"
+        );
+
+        // And the same two values through a 7-bit MIDI control would not be
+        // distinguishable at all -- 0x8000 and 0x8001 are both 128/65536 of
+        // the way up, which is one 127th step.
+        let step = 1.0 / 65_535.0;
+        assert!(
+            step < 1.0 / 127.0,
+            "a 16-bit step is finer than a 7-bit one"
+        );
+    }
+
+    /// A HID field reports a level. `turn_up` and `turn_down` describe an
+    /// encoder's *event*, and there is no honest way to read one from the
+    /// other -- so it is refused when the file loads rather than silently
+    /// doing nothing.
+    #[test]
+    fn an_encoder_on_a_hid_field_is_refused_when_the_file_loads() {
+        let why = Mapping::parse(
+            "name = \"x\"\ndevice = \"y\"\n\n[[binding]]\non = \"hid 1 byte 2\"\n\
+             turn_up = \"deck 1 beat_jump 1\"\nturn_down = \"deck 1 beat_jump -1\"\n",
+        )
+        .expect_err("an encoder on a HID field should be refused");
+        assert!(
+            matches!(why, MappingError::EncoderOnHid(_)),
+            "wrong error: {why}"
+        );
+    }
+
+    /// A 3,600-step platter read out of one byte would wrap fourteen times a
+    /// revolution. The field has to be wide enough for the resolution, and
+    /// that is arithmetic djmanzo can do when the file loads.
+    #[test]
+    fn a_platter_finer_than_its_field_is_refused() {
+        let text = |on: &str| {
+            format!(
+                "name = \"x\"\ndevice = \"y\"\n\n[[binding]]\non = \"{on}\"\n\
+                 platter = \"deck 1 jog {{value}}\"\nresolution = 3600\n"
+            )
+        };
+        let why =
+            Mapping::parse(&text("hid 1 byte 2")).expect_err("3600 steps do not fit in a byte");
+        assert!(
+            matches!(why, MappingError::PlatterTooFineForField(_, 3600, 256)),
+            "wrong error: {why}"
+        );
+        // The same platter in a sixteen-bit field is fine, which is the whole
+        // reason a mapping would reach for HID.
+        assert!(Mapping::parse(&text("hid 1 word 2")).is_ok());
+    }
+
+    /// A device that sends several kinds of report sends them down one pipe.
+    /// A field on report 1 reading report 2 would be a button pressing itself.
+    #[test]
+    fn a_report_for_another_field_is_ignored_entirely() {
+        let mut map = pad();
+        assert!(map.translate_report(&[2u8, 0b0000_0100]).is_empty());
+        assert!(map.translate_report(&[1u8]).is_empty());
+        assert!(map.translate_report(&[]).is_empty());
+        // And the state it did not see must not have been remembered: the real
+        // press still has to arrive.
+        assert_eq!(
+            map.translate_report(&[1u8, 0b0000_0100]),
+            vec!["deck 1 play_pause"]
+        );
+    }
+
+    /// A HID platter turns like any other: what reaches the deck is movement,
+    /// not the angle, and a wrap through zero is a small step rather than a
+    /// revolution backwards.
+    #[test]
+    fn a_hid_platter_reports_movement_through_the_wrap() {
+        let mut map = mapping(
+            "[[binding]]\non = \"hid 1 word 1\"\n\
+             platter = \"deck 1 jog {value}\"\nresolution = 3600\n",
+        );
+        let at = |angle: u16| {
+            let [hi, lo] = angle.to_be_bytes();
+            [1u8, 0, hi, lo]
+        };
+        // The first report is a starting point: it establishes where the
+        // platter *is*, so what it reports is a movement of zero -- not
+        // nothing, and emphatically not 3,590 steps of jog.
+        let first = map.translate_report(&at(3_590));
+        assert_eq!(
+            first,
+            vec!["deck 1 jog 0"],
+            "the first angle was read as movement"
+        );
+        let over = map.translate_report(&at(10));
+        assert_eq!(over.len(), 1, "a wrap produced nothing");
+        let turns: f64 = over[0]
+            .rsplit(' ')
+            .next()
+            .and_then(|n| n.parse().ok())
+            .expect("the action ends in a number");
+        // Twenty steps forward of 3,600 is a small step, not 0.997 backwards.
+        assert!(
+            (turns - 20.0 / 3600.0).abs() < 1e-4,
+            "a wrap was read as a revolution: {turns}"
+        );
+    }
+
+    /// MIDI and HID triggers live in one mapping and must not disturb each
+    /// other: a controller with a HID jog and MIDI pads is exactly the device
+    /// this is for.
+    #[test]
+    fn hid_and_midi_bindings_coexist_in_one_mapping() {
+        let mut map = mapping(
+            "[[binding]]\non = \"hid 1 bit 0.2\"\npress = \"deck 1 play_pause\"\n\n\
+             [[binding]]\non = \"note 1 0x0B\"\npress = \"deck 2 play_pause\"\n",
+        );
+        assert_eq!(map.hid_fields().len(), 1);
+        assert_eq!(
+            map.translate_report(&[1u8, 0b0000_0100]),
+            vec!["deck 1 play_pause"]
+        );
+        assert_eq!(
+            map.translate(crate::Message::NoteOn {
+                channel: 0,
+                note: 0x0B,
+                velocity: 127,
+            }),
+            vec!["deck 2 play_pause"]
+        );
+        // A MIDI message must not be mistaken for a HID field, or every note
+        // on a busy controller would run the HID path.
+        assert!(Trigger::parse("note 1 0x0B").unwrap().field().is_none());
     }
 }

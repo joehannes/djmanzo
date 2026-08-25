@@ -68,6 +68,17 @@ toml = "0.9"
 # WinMM) with no runtime of its own, which is what a callback that has to be
 # cheap wants.
 midir = { version = "0.11", default-features = false }
+# HID, for controllers whose jog wheels need more than seven bits.
+#
+# The Rust wrapper is MIT. On Linux the backend is chosen per target in
+# `crates/dj-hid/Cargo.toml`: `linux-native-basic-udev` is pure Rust
+# (basic-udev MIT/Apache-2.0, nix MIT), so a Linux build compiles no C hidapi
+# and needs no libudev-dev -- which is what keeps the .deb build buildable on
+# a plain machine. macOS uses the vendored C hidapi over IOKit; that library
+# is triple-licensed and says so in its own LICENSE.txt -- "The license chosen
+# is at the discretion of the user of HIDAPI" -- and djmanzo takes the
+# BSD-style one, which ADR-0002 permits. See RESEARCH.md.
+hidapi = { version = "2.6", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

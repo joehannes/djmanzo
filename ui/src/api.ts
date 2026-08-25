@@ -1349,6 +1349,23 @@ export interface ControlStatus {
    * one djmanzo already assumes.
    */
   audio: AudioRouting | null;
+  /**
+   * HID devices, listed apart from MIDI ports because they are opened
+   * differently: a HID mapping names byte offsets into a report, so it must be
+   * chosen deliberately rather than matched by "whichever fits".
+   */
+  hid_inputs: HidDevice[];
+  hid_unavailable: string | null;
+  open_hid: string | null;
+  open_hid_mapping: string | null;
+}
+
+export interface HidDevice {
+  /** `2b73:0017`, the way lsusb and every manual write it. */
+  id: string;
+  name: string;
+  /** What identifies this exact device when two identical ones are plugged in. */
+  path: string;
 }
 
 /**
@@ -1397,3 +1414,6 @@ export const setKeyboardEnabled = (on: boolean) =>
 export const openController = (port: string, mapping?: string) =>
   invoke<void>("open_controller", { port, mapping: mapping ?? null });
 export const closeController = () => invoke<void>("close_controller");
+export const openHidController = (device: string, mapping: string) =>
+  invoke<void>("open_hid_controller", { device, mapping });
+export const closeHidController = () => invoke<void>("close_hid_controller");

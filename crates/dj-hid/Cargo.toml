@@ -21,3 +21,12 @@ midir = { workspace = true }
 
 [lints]
 workspace = true
+
+# Pure Rust on Linux: no C hidapi, no libudev-dev to install before building.
+[target.'cfg(target_os = "linux")'.dependencies]
+hidapi = { workspace = true, features = ["linux-native-basic-udev"] }
+
+# Everywhere else the crate's own backend: IOKit on macOS, the native API on
+# Windows. Neither needs a feature flag.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+hidapi = { workspace = true }

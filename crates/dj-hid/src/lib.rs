@@ -32,6 +32,8 @@ pub mod mapping;
 pub mod message;
 pub mod platter;
 pub mod port;
+pub mod report;
+pub mod usb;
 
 pub use keys::{Chord, KeyBinding, KeyError, KeyMap};
 pub use mapping::{Binding, Mapping, MappingError, Trigger};

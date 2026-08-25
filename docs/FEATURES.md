@@ -143,7 +143,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Data-file mappings (no recompile) | **shipped** — TOML, bundled and user files, checked when the file loads |
 | Mapping editor (learn a control, bind an action) | **shipped** — press the control, pick the action, save; the file is proved to reload before it is written |
 | LED / display feedback to controllers | **shipped** for LEDs and pad colours; segment displays still M4 |
-| HID controller support | M4 |
+| HID controller support | **shipped** — 8- and 16-bit fields, both byte orders, level-to-edge conversion, and a learn mode that diffs two reports to name the control that moved |
 | **Motorized platter support** — high-res absolute position, motor ramp, torque | **shipped** — absolute angle with wrap handling, motor driven by the transport |
 | Controller-specific audio setup presets | **shipped** — an `[audio]` block per mapping; a master that overlaps the cue is refused when the file loads |
 | Controllers panel — what is connected, on which mapping, with which outputs | **shipped** |

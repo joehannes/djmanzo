@@ -336,6 +336,8 @@ pub fn run() {
             commands::set_keyboard_enabled,
             commands::open_controller,
             commands::close_controller,
+            commands::open_hid_controller,
+            commands::close_hid_controller,
             commands::get_snapshot,
             commands::waveform_info,
             commands::report_bench,

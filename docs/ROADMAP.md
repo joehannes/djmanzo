@@ -491,9 +491,9 @@ like it had half worked.
 
 The milestone that makes the hardware in your hands work.
 
-- `dj-hid` — **done for MIDI**: `midir` MIDI in, in four layers of which only the last
-  touches hardware, so the whole mapping engine is testable on a machine with nothing
-  plugged in. `hidapi` HID still to come.
+- `dj-hid` — **done for MIDI and HID**: `midir` and `hidapi` in, in four layers of
+  which only the last touches hardware, so the whole mapping engine is testable on a
+  machine with nothing plugged in.
 - Mapping engine over the action bus — **done**. TOML mapping files, every action in them
   parsed through `Action::parse` *when the file loads*, so a typo is a message when you
   choose the mapping rather than a control that silently does nothing an hour into a set.
@@ -561,6 +561,38 @@ The milestone that makes the hardware in your hands work.
   the guess on a stereo laptop rather than writing past the end of the buffer.
   A mapping that does not fit is *said out loud* in the Controllers panel
   rather than half-applied.
+- **HID — done.** The reason to want it is one thing only: **resolution.** A
+  7-bit MIDI control gives 128 steps across a jog wheel's whole travel; a
+  16-bit HID field gives 65,536, which is the difference between a wheel that
+  scratches and one that steps.
+  Everything else about HID is harder than MIDI and this is why. **MIDI is
+  edge-based** -- a pad sends a note-on when it goes down and says nothing in
+  between. **HID is level-based**: the device sends the state of every control
+  it has, in one packet, up to a thousand times a second, and nothing in the
+  packet says what changed. So the whole job is turning level into edge: each
+  field is compared with the last value seen and only a *change* becomes an
+  action. Without that, holding play would send "play" a thousand times a
+  second. Two details that took a test each: a switch with nothing remembered
+  reads as **off**, so the first packet does not fire a release for every
+  button nobody is touching; a range has no such default, because a fader's
+  position is a fact worth knowing the moment the device appears.
+  A HID packet is also **anonymous bytes** -- nothing in it is labelled, and
+  where a control lives is decided by whoever wrote the firmware. djmanzo does
+  not guess: the mapping states the offset, `hid 1 word-le 2`, exactly as it
+  states a note number for MIDI. Which is unwritable by hand for an
+  undocumented controller, so the editor learns it: two consecutive reports are
+  diffed and the field that moved is named. One bit is a button, several bits
+  of one byte is a fader, two adjacent bytes is the 16-bit control HID exists
+  for, and **three or more is a DJ brushing two controls, where guessing would
+  bind the wrong one** -- so it says nothing and asks again.
+  Two things are refused when the file loads rather than discovered later: an
+  encoder on a HID field (`turn_up` describes an event, a HID field is a
+  level, and there is no honest way to read one from the other), and a platter
+  finer than the field it reads (3,600 steps in one byte would wrap fourteen
+  times a revolution).
+  On Linux the backend is **pure Rust** -- no C hidapi, no `libudev-dev` to
+  install before building, which is what keeps the `.deb` build buildable on a
+  plain machine. See RESEARCH.md for the licence election on macOS.
 - **The Controllers panel — done, and it was missing.** `control_status` had no
   consumer at all: djmanzo could read a controller and edit a mapping, and
   offered no way to see whether the thing on the table was connected. A DJ

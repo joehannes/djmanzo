@@ -1,0 +1,104 @@
+# A starting point for a HID controller.
+#
+# Read this first: **these offsets are almost certainly wrong for your
+# device.** They cannot be otherwise. A MIDI controller announces itself —
+# press a pad and a note number arrives, and that number is the same on every
+# copy of that model. A HID report is anonymous bytes, and where a control
+# lives in them is decided by whoever wrote the firmware.
+#
+# So this file is a shape to copy, not a mapping to use. Two ways to fill it
+# in with your device's real numbers:
+#
+#   1. Open the Controllers panel, connect the device, and use "Learn a
+#      control" in the mapping editor. Press a pad and djmanzo compares two
+#      reports and writes the `on = "..."` line for you. That is the only
+#      practical way for an undocumented controller.
+#   2. Read the manual, if the maker published the report layout. Some do.
+#
+# ------------------------------------------------------------------ the syntax
+#
+#   on = "hid <report> bit <byte>.<bit>"   a button, a switch, a touch sensor
+#   on = "hid <report> byte <byte>"        an 8-bit fader or knob
+#   on = "hid <report> word <byte>"        16 bits, high byte first
+#   on = "hid <report> word-le <byte>"     16 bits, low byte first
+#
+# `<report>` is the report ID. Devices that number their reports put it in the
+# first byte; devices that do not use 0, and then the whole packet is payload.
+# Byte offsets count from the start of the payload, after any report ID —
+# which is how a device's own manual numbers them.
+#
+# Endianness is declared rather than guessed because the two orderings give
+# completely different numbers from the same two bytes, and a jog wheel read
+# the wrong way round jumps between its halves instead of turning. If yours
+# does that, change `word-le` to `word`.
+#
+# ---------------------------------------------------- why bother with HID at all
+#
+# Resolution, and nothing else. A 7-bit MIDI control gives 128 steps across a
+# jog wheel's whole travel. Sixteen bits give 65,536. That is the difference
+# between a wheel that scratches and one that steps.
+
+name = "Generic HID"
+device = "HID"
+
+# --------------------------------------------------------------- deck 1
+
+[[binding]]
+on = "hid 1 bit 0.0"
+press = "deck 1 play_pause"
+
+[[binding]]
+on = "hid 1 bit 0.1"
+press = "deck 1 cue"
+
+[[binding]]
+on = "hid 1 bit 0.2"
+press = "deck 1 sync"
+
+# A jog wheel reporting its angle. `resolution` is how many steps make one
+# revolution and comes from the device's manual — it cannot be learned, since
+# watching a wheel turn tells you the numbers it sends, not how many of them
+# make a turn.
+#
+# The field has to be wide enough for the resolution: 3,600 steps do not fit
+# in a byte, and djmanzo refuses that combination when the file loads rather
+# than letting the platter wrap fourteen times a revolution.
+[[binding]]
+on = "hid 1 word-le 2"
+platter = "deck 1 jog {value}"
+resolution = 3600
+
+[[binding]]
+on = "hid 1 byte 4"
+move = "deck 1 volume {value}"
+
+# --------------------------------------------------------------- deck 2
+
+[[binding]]
+on = "hid 1 bit 1.0"
+press = "deck 2 play_pause"
+
+[[binding]]
+on = "hid 1 bit 1.1"
+press = "deck 2 cue"
+
+[[binding]]
+on = "hid 1 bit 1.2"
+press = "deck 2 sync"
+
+[[binding]]
+on = "hid 1 word-le 5"
+platter = "deck 2 jog {value}"
+resolution = 3600
+
+[[binding]]
+on = "hid 1 byte 7"
+move = "deck 2 volume {value}"
+
+# --------------------------------------------------------------- mixer
+
+[[binding]]
+on = "hid 1 byte 8"
+move = "crossfader {value}"
+min = -1.0
+max = 1.0

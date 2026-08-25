@@ -102,7 +102,13 @@ impl Light {
                 controller & 0x7F,
                 value,
             ]),
-            Trigger::Bend { .. } => None,
+            // Neither can carry a MIDI light. A pitch bend is a fourteen-bit
+            // *input*; a HID field is a location in an inbound report, and
+            // lighting a HID device means writing an output report of its own
+            // shape -- a different thing entirely, and not something a
+            // `[[feedback]]` line can express. Saying so beats sending three
+            // bytes a HID device would read as something else.
+            Trigger::Bend { .. } | Trigger::Hid(_) => None,
         }
     }
 }
@@ -594,15 +600,27 @@ mod tests {
         assert!(map.is_empty());
     }
 
-    /// The bundled controller mapping ships with lights, and every one of them
-    /// has to name a parameter that exists and a control that can carry it --
+    /// The bundled MIDI mappings ship with lights, and every one of them has
+    /// to name a parameter that exists and a control that can carry it --
     /// checked here rather than discovered on somebody's first launch.
+    ///
+    /// A HID mapping is exempt, and the exemption is real rather than an
+    /// oversight: a `[[feedback]]` line is three MIDI bytes, and lighting a
+    /// HID device means writing an output report of that device's own shape.
+    /// There is no honest way to express one as the other, so a HID mapping
+    /// with no lights is correct and this asserts that it also has none of the
+    /// broken kind.
     #[test]
     fn the_bundled_controller_mapping_lights_up() {
         for (name, text) in crate::bundled::CONTROLLERS {
             let map = FeedbackMap::parse(text)
                 .unwrap_or_else(|e| panic!("bundled mapping {name} has a broken light: {e}"));
-            assert!(!map.is_empty(), "{name} lights nothing at all");
+            let is_hid = crate::mapping::Mapping::parse(text)
+                .is_ok_and(|mapping| !mapping.hid_fields().is_empty());
+            assert!(
+                !map.is_empty() || is_hid,
+                "{name} is a MIDI mapping that lights nothing at all"
+            );
             for light in &map.lights {
                 assert!(
                     light.message(0).is_some(),

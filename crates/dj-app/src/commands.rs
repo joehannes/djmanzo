@@ -3142,6 +3142,33 @@ pub fn open_controller(
     Ok(())
 }
 
+/// Open a HID device with a named mapping.
+///
+/// The mapping is required, unlike the MIDI path. A HID mapping states byte
+/// offsets into a report, and applying one device's offsets to another's
+/// packets would not fail -- it would bind the crossfader to a button.
+///
+/// # Errors
+/// When no such mapping exists, when it is a MIDI mapping, or when the device
+/// cannot be opened.
+#[tauri::command]
+pub fn open_hid_controller(
+    state: State<'_, AppState>,
+    device: String,
+    mapping: String,
+) -> Result<(), String> {
+    state.control().open_hid(&device, &mapping)?;
+    state.apply_controller_routing();
+    Ok(())
+}
+
+/// Close whatever HID device is open.
+#[tauri::command]
+pub fn close_hid_controller(state: State<'_, AppState>) {
+    state.control().close_hid();
+    state.apply_controller_routing();
+}
+
 /// Close whatever controller is open.
 #[tauri::command]
 pub fn close_controller(state: State<'_, AppState>) {

@@ -74,6 +74,28 @@ pub struct ControlStatus {
     /// says anything. Shown so a DJ can see the arrangement being used rather
     /// than inferring it from which socket is quiet.
     pub audio: Option<AudioRoutingDto>,
+    /// Every HID device the machine can see. Listed separately from the MIDI
+    /// ports because they are opened differently -- a HID mapping must be
+    /// chosen deliberately, never matched by "whichever fits".
+    pub hid_inputs: Vec<HidDeviceDto>,
+    /// Why there are no HID devices, when the reason is that HID itself is
+    /// unreachable. On Linux that is usually permissions on the device node
+    /// rather than an empty USB bus.
+    pub hid_unavailable: Option<String>,
+    pub open_hid: Option<String>,
+    pub open_hid_mapping: Option<String>,
+}
+
+/// A HID device, as the interface lists it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct HidDeviceDto {
+    /// `2b73:0017`, the way `lsusb` and every manual write it. Shown because
+    /// two controllers from one maker often report the same name.
+    pub id: String,
+    pub name: String,
+    /// What `open_hid_controller` should be given: unique even when two
+    /// identical controllers are plugged in.
+    pub path: String,
 }
 
 /// A controller's own output arrangement, as the interface shows it.
@@ -115,6 +137,19 @@ pub struct ControlHub {
     /// Where the MIDI thread posts translated actions, kept so a new
     /// connection reuses the drain that is already running.
     post: Sender<String>,
+    /// The open HID device, if the controller speaks HID rather than MIDI.
+    ///
+    /// Separate from `open` rather than an enum because a DJ can genuinely
+    /// have both: a MIDI mixer and a HID jog deck on the same table is a real
+    /// setup, and refusing the second one to keep this field simple would be
+    /// the software's convenience beating the DJ's.
+    open_hid: Mutex<Option<dj_hid::usb::Connection>>,
+    /// What the editor watches a HID device with.
+    ///
+    /// Its own listener because learning from HID needs the previous report to
+    /// compare against -- a MIDI message names its own control and a HID
+    /// packet does not.
+    hid_listener: dj_hid::usb::Listener,
     /// What the mapping editor watches the port with.
     ///
     /// Held here rather than on the connection so that turning learning on
@@ -153,6 +188,8 @@ impl ControlHub {
                 keyboard: Mutex::new(keyboard),
                 keyboard_on: std::sync::atomic::AtomicBool::new(true),
                 open: Mutex::new(None),
+                open_hid: Mutex::new(None),
+                hid_listener: dj_hid::usb::Listener::default(),
                 audio: Mutex::new(None),
                 post,
                 listener: dj_hid::Listener::default(),
@@ -221,12 +258,18 @@ impl ControlHub {
     /// Learning suppresses the action a control already has, because learning
     /// the play button by pressing the play button would otherwise start the
     /// deck -- sixty times, over a mapping session.
+    ///
+    /// Both transports listen, so a DJ pressing a pad does not first have to
+    /// know whether their controller speaks MIDI or HID -- which is a question
+    /// about a USB descriptor, not about music.
     pub fn start_learning(&self) {
         self.listener.start();
+        self.hid_listener.start();
     }
 
     pub fn stop_learning(&self) {
         self.listener.stop();
+        self.hid_listener.stop();
     }
 
     #[must_use]
@@ -235,14 +278,19 @@ impl ControlHub {
     }
 
     /// The last control touched since learning began.
+    ///
+    /// MIDI first when both have something, because a MIDI message names its
+    /// own control while a HID field is inferred from a difference -- so the
+    /// MIDI answer is the more certain of the two.
     #[must_use]
     pub fn learned(&self) -> Option<String> {
-        self.listener.seen()
+        self.listener.seen().or_else(|| self.hid_listener.seen())
     }
 
     /// Forget it, so the next press is unambiguous.
     pub fn forget_learned(&self) {
         self.listener.clear();
+        self.hid_listener.clear();
     }
 
     /// Write a mapping into the user's `mappings` directory and load it.
@@ -365,6 +413,62 @@ impl ControlHub {
         Ok(())
     }
 
+    /// Open a HID device with the mapping called `mapping`.
+    ///
+    /// Unlike the MIDI path there is no "whichever fits": a HID mapping states
+    /// byte offsets into a report, and applying one device's offsets to
+    /// another's packets would not fail -- it would bind the crossfader to a
+    /// button. A mapping has to be chosen deliberately.
+    ///
+    /// # Errors
+    /// When no such mapping exists, when it is not a HID mapping at all, or
+    /// when the device cannot be opened.
+    pub fn open_hid(&self, device: &str, mapping: &str) -> Result<(), String> {
+        let chosen = {
+            let all = self.mappings.lock().unwrap();
+            all.iter()
+                .find(|(m, _)| m.name == mapping)
+                .ok_or_else(|| format!("no mapping called {mapping:?}"))?
+                .0
+                .clone()
+        };
+        if chosen.hid_fields().is_empty() {
+            return Err(format!(
+                "{mapping:?} has no HID bindings, so it cannot read a HID device — \
+                 it is a MIDI mapping"
+            ));
+        }
+
+        let preset = chosen.audio.clone();
+        let open = dj_hid::usb::open(device, chosen, self.post.clone(), self.hid_listener.clone())
+            .map_err(|e| e.to_string())?;
+        // Assigned last, so a failed open leaves the previous device alone.
+        *self.open_hid.lock().unwrap() = Some(open);
+        if preset.is_some() {
+            *self.audio.lock().unwrap() = preset;
+        }
+        Ok(())
+    }
+
+    /// Close the HID device. Closing nothing is not an error.
+    pub fn close_hid(&self) {
+        *self.open_hid.lock().unwrap() = None;
+        // The routing only goes with it when no MIDI controller is still
+        // holding one -- unplugging the jog deck should not unroute the mixer.
+        if self.open.lock().unwrap().is_none() {
+            *self.audio.lock().unwrap() = None;
+        }
+    }
+
+    /// Every HID device the machine can see, and why it cannot see any.
+    #[must_use]
+    pub fn hid_devices(&self) -> (Vec<dj_hid::usb::DeviceInfo>, Option<String>) {
+        match dj_hid::usb::devices() {
+            Ok(found) => (found, None),
+            Err(e) => (Vec::new(), Some(e.to_string())),
+        }
+    }
+
     /// Close whatever is open. Closing nothing is not an error.
     pub fn close(&self) {
         *self.open.lock().unwrap() = None;
@@ -408,6 +512,16 @@ impl ControlHub {
             Err(e) => (Vec::new(), Some(e.to_string())),
         };
         let open = self.open.lock().unwrap();
+        let open_hid = self.open_hid.lock().unwrap();
+        let (found, hid_unavailable) = self.hid_devices();
+        let hid_inputs = found
+            .into_iter()
+            .map(|device| HidDeviceDto {
+                id: device.id(),
+                name: device.name,
+                path: device.path,
+            })
+            .collect();
         let keyboard = self.keyboard.lock().unwrap();
         ControlStatus {
             inputs,
@@ -417,6 +531,10 @@ impl ControlHub {
             keyboard: self.keyboard_on(),
             keyboard_name: keyboard.name.clone(),
             audio: self.audio_routing_dto(channels),
+            hid_inputs,
+            hid_unavailable,
+            open_hid: open_hid.as_ref().map(|c| c.device().to_owned()),
+            open_hid_mapping: open_hid.as_ref().map(|c| c.mapping().to_owned()),
         }
     }
 

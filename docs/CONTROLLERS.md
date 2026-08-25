@@ -199,13 +199,83 @@ you like.
 One broken file is reported and the others still load. A mapping directory is
 hand-edited; a typo in one file is normal and should not take the rest down.
 
+## HID
+
+A MIDI controller announces itself: press a pad and a note number arrives, and
+that number is the same on every copy of that model. **A HID report is
+anonymous bytes.** Where a control lives in them is decided by whoever wrote
+the firmware, and nothing in the packet says what just changed.
+
+There is one reason to put up with that, and it is enough: **resolution.** A
+7-bit MIDI control gives 128 steps across a jog wheel's whole travel. Sixteen
+bits give 65,536. That is the difference between a wheel that scratches and one
+that steps.
+
+### The syntax
+
+```toml
+on = "hid 1 bit 3.2"      # report 1, byte 3, bit 2 — a button or a switch
+on = "hid 1 byte 5"       # an 8-bit fader or knob
+on = "hid 1 word 6"       # 16 bits, high byte first
+on = "hid 1 word-le 6"    # 16 bits, low byte first
+```
+
+The report ID is the first number. Devices that number their reports put it in
+the first byte of every packet; devices that do not use `0`, and then the whole
+packet is payload. Byte offsets count from the start of the payload, **after**
+any report ID — which is how a device's own manual numbers them.
+
+Endianness is declared rather than guessed, for the same reason the encoder
+convention is: the two orderings give completely different numbers from the
+same two bytes, and a jog wheel read the wrong way round jumps between its
+halves instead of turning. If yours does that, change `word-le` to `word`.
+
+### Learning a control
+
+Byte offsets are unwritable by hand for an undocumented controller, so the
+editor works them out. It watches two consecutive reports and names the field
+that moved:
+
+- one bit → a button;
+- several bits of one byte → a fader;
+- two adjacent bytes → the 16-bit control HID exists for;
+- **three or more bytes → nothing.** That is a DJ brushing two controls on the
+  way to the right one, and binding either would be a guess.
+
+Both transports listen while learning, so pressing a pad works without first
+knowing whether your controller speaks MIDI or HID — a question about a USB
+descriptor, not about music.
+
+### Two things a HID binding cannot be
+
+Refused when the file loads, not discovered mid-set:
+
+- **An encoder.** `turn_up` and `turn_down` describe an event; a HID field is a
+  level. There is no honest way to read one from the other.
+- **A platter finer than its field.** A 3,600-step platter read out of one byte
+  would wrap fourteen times a revolution. Use `word` or `word-le`.
+
+### Lights
+
+A `[[feedback]]` line is three MIDI bytes. Lighting a HID device means writing
+an output report of that device's own shape — a different thing, and not one a
+feedback line can express. A HID mapping therefore has no lights, and that is
+correct rather than missing.
+
+### Permissions on Linux
+
+A controller's HID device node usually belongs to `root` until a udev rule says
+otherwise. If the Controllers panel lists your device but refuses to open it,
+that is why, and it is fixed with a rule rather than by running djmanzo as
+root.
+
 ## What is not here yet
 
-- HID, for jog wheels that need more than seven bits of resolution.
 - Lua, for mappings that need real logic rather than a table.
+- Outbound feedback to HID devices — see the note above.
 
-Done since this list was first written: outbound feedback (LEDs, pad colours,
-ring lights), motorised platters that report an angle rather than a delta, the
-in-app learn mode, and the audio section above.
+Done since this list was first written: outbound feedback to MIDI (LEDs, pad
+colours, ring lights), motorised platters that report an angle rather than a
+delta, the in-app learn mode, the audio section above, and HID.
 
 See [ROADMAP.md](ROADMAP.md#m4--controllers).

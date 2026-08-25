@@ -21,6 +21,7 @@ pub const CONTROLLERS: &[(&str, &str)] = &[
         "motorised-platter",
         include_str!("../mappings/motorised-platter.toml"),
     ),
+    ("generic-hid", include_str!("../mappings/generic-hid.toml")),
 ];
 
 /// The default keyboard mapping, parsed.
