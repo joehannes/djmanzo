@@ -286,7 +286,11 @@ impl AppState {
             }
         };
 
-        let (control, control_inbox) = crate::control::ControlHub::new();
+        let (mut control, control_inbox) = crate::control::ControlHub::new();
+        // So a mapping's script can ask what the engine is doing. Set here
+        // rather than taken by `new`, because the hub is built before the
+        // registry exists.
+        control.set_registry(Arc::clone(&registry));
 
         // Separation starts unavailable and is attached later, once `setup`
         // knows where the application's data lives. Nothing here may panic:

@@ -150,6 +150,12 @@ pub struct ControlHub {
     /// compare against -- a MIDI message names its own control and a HID
     /// packet does not.
     hid_listener: dj_hid::usb::Listener,
+    /// Read by a mapping's script, when it has one.
+    ///
+    /// Held here rather than passed in per call because a controller is opened
+    /// from the interface, and the interface has no business knowing that
+    /// scripts read parameters.
+    registry: Option<Arc<dj_control::ParameterRegistry>>,
     /// What the mapping editor watches the port with.
     ///
     /// Held here rather than on the connection so that turning learning on
@@ -189,6 +195,7 @@ impl ControlHub {
                 keyboard_on: std::sync::atomic::AtomicBool::new(true),
                 open: Mutex::new(None),
                 open_hid: Mutex::new(None),
+                registry: None,
                 hid_listener: dj_hid::usb::Listener::default(),
                 audio: Mutex::new(None),
                 post,
@@ -196,6 +203,15 @@ impl ControlHub {
             },
             take,
         )
+    }
+
+    /// Give the hub the registry a mapping's script reads.
+    ///
+    /// Set once at startup rather than taken in `new`, because the hub is
+    /// built before the registry exists — the same reason its action receiver
+    /// comes back rather than being consumed.
+    pub fn set_registry(&mut self, registry: Arc<dj_control::ParameterRegistry>) {
+        self.registry = Some(registry);
     }
 
     /// Load every `.toml` in the user's mapping directory, replacing anything
@@ -404,8 +420,17 @@ impl ControlHub {
         // Taken before the mapping is handed to the port, which consumes it.
         let preset = chosen.audio.clone();
 
-        let open = dj_hid::port::open(port, chosen, self.post.clone(), self.listener.clone())
-            .map_err(|e| e.to_string())?;
+        // The registry goes with it, so a script can ask what the engine is
+        // doing -- "is the deck playing" is the difference between a mapping
+        // that decides and a table with extra syntax.
+        let open = dj_hid::port::open_with(
+            port,
+            chosen,
+            self.post.clone(),
+            self.listener.clone(),
+            self.registry.clone(),
+        )
+        .map_err(|e| e.to_string())?;
         // Assigned last, so a failed open leaves the previous connection alone
         // rather than closing it and connecting to nothing.
         *self.open.lock().unwrap() = Some(open);

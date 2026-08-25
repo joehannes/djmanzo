@@ -1,0 +1,104 @@
+# A shift key, which is the thing a table cannot describe.
+#
+# Every mapping in djmanzo is a table: this control does that action. That
+# covers almost everything — and it cannot express "this pad does one thing
+# normally and another while shift is held", because that is a *decision*, and
+# a decision needs an `if`.
+#
+# So a mapping may carry a script. Marked controls go to it; everything else
+# stays a table entry, which is why the crossfader below is unchanged.
+#
+# -------------------------------------------------------------- what a script
+#                                                                    may do
+#
+# `on_control(control, event, value)` is called with:
+#
+#   control  the binding's own `on` text, so a script can tell its pads apart
+#   event    "press", "release" or "move"
+#   value    0..=1 for a move, scaled by the binding's own min/max
+#
+# It returns nothing, one action, or a list of them. **Every action goes
+# through the same parser a table entry's does**, so a script cannot ask for
+# anything djmanzo could not do from the interface. That is what makes a
+# mapping safe to accept from a stranger, and it is not negotiable.
+#
+# `parameter("deck.1.playing")` reads any parameter by the same stable name the
+# interface and the network API use, so a script can decide on what the engine
+# is actually doing. An unknown name is `nil` rather than an error.
+#
+# ------------------------------------------------------------- what it may not
+#
+# There is no `io`, no `os`, no `require`, no `dofile`. A mapping that could
+# open a file or spawn a process is a mapping nobody should download. `math`,
+# `string` and `table` are there, because a mapping computes numbers and builds
+# action text.
+#
+# A script also runs on the MIDI thread, so it is stopped after a hundred
+# thousand instructions. That is far more than any real mapping needs and far
+# less than a `while true do end` would cost.
+
+name = "Scripted shift"
+device = "MIDI"
+
+script = """
+-- Held, not latched: a shift key is held.
+local shifted = false
+
+function on_control(control, event, value)
+  if control == "note 1 0x3f" then
+    shifted = (event == "press")
+    return nil
+  end
+
+  if event ~= "press" then return nil end
+
+  -- The four pads: jump to a hot cue, or set one while shift is held.
+  local slot = ({
+    ["note 1 0x01"] = 1,
+    ["note 1 0x02"] = 2,
+    ["note 1 0x03"] = 3,
+    ["note 1 0x04"] = 4,
+  })[control]
+
+  if slot == nil then return nil end
+
+  if shifted then
+    return string.format("deck 1 hotcue_set %d", slot)
+  end
+  return string.format("deck 1 hotcue %d", slot)
+end
+"""
+
+# ------------------------------------------------------------- scripted pads
+
+[[binding]]
+on = "note 1 0x3f"
+script = true
+
+[[binding]]
+on = "note 1 0x01"
+script = true
+
+[[binding]]
+on = "note 1 0x02"
+script = true
+
+[[binding]]
+on = "note 1 0x03"
+script = true
+
+[[binding]]
+on = "note 1 0x04"
+script = true
+
+# ------------------------------------------------- and the ordinary half
+
+[[binding]]
+on = "note 1 0x0b"
+press = "deck 1 play_pause"
+
+[[binding]]
+on = "cc 1 0x08"
+move = "crossfader {value}"
+min = -1.0
+max = 1.0

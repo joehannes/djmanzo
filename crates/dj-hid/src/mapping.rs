@@ -189,6 +189,12 @@ pub enum Encoding {
 pub struct Binding {
     /// `note 1 36`, `cc 1 7`, `bend 1`.
     pub on: String,
+    /// Hand this control to the mapping's script instead of acting on it here.
+    ///
+    /// Per binding rather than per file, so a mapping can script the eight
+    /// pads that need a shift key and leave the crossfader as a table entry.
+    #[serde(default)]
+    pub script: bool,
     /// Sent when a button goes down.
     #[serde(default)]
     pub press: Option<String>,
@@ -250,6 +256,17 @@ pub struct Mapping {
     /// [`crate::audio`].
     #[serde(default)]
     pub audio: Option<crate::audio::AudioPreset>,
+    /// Lua, for the controls a table cannot describe.
+    ///
+    /// A shift button that changes what eight pads do is a *decision*, and a
+    /// decision needs an `if`. Bindings still handle everything else: the
+    /// script sees only the controls that name it with `script = true`, so a
+    /// mapping is not all-or-nothing.
+    ///
+    /// Nothing a script returns skips the vocabulary -- see
+    /// [`crate::script`], which is also where the sandbox is.
+    #[serde(default)]
+    pub script: Option<String>,
 
     /// Parsed triggers, built once when the file loads.
     #[serde(skip)]
@@ -295,6 +312,8 @@ pub enum MappingError {
     NoResolution(String),
     #[error("{0:?} has a `resolution` but is not a platter")]
     ResolutionWithoutPlatter(String),
+    #[error("{0:?} is marked `script` but the mapping has no script")]
+    ScriptWithoutOne(String),
     #[error("the platter on {0:?} cannot be followed: {1}")]
     BadPlatter(String, String),
     #[error("the audio preset is not usable: {0}")]
@@ -326,12 +345,14 @@ impl Mapping {
         device: String,
         bindings: Vec<Binding>,
         audio: Option<crate::audio::AudioPreset>,
+        script: Option<String>,
     ) -> Self {
         Self {
             name,
             device,
             bindings,
             audio,
+            script,
             ..Self::default()
         }
     }
@@ -369,7 +390,14 @@ impl Mapping {
                 || binding.turn_up.is_some()
                 || binding.turn_down.is_some()
                 || binding.platter.is_some();
-            if !says_something {
+            // A scripted control says what it does in Lua, so it is allowed to
+            // say nothing here -- but only if there is a script to say it in.
+            // A binding marked `script` in a file with no `script` block is a
+            // dead control, which is what this check exists to prevent.
+            if binding.script && self.script.is_none() {
+                return Err(MappingError::ScriptWithoutOne(binding.on.clone()));
+            }
+            if !says_something && !binding.script {
                 return Err(MappingError::Silent(binding.on.clone()));
             }
 
@@ -446,6 +474,12 @@ impl Mapping {
             let Some(binding) = self.bindings.get(index) else {
                 continue;
             };
+            // Scripted controls belong to the script. Handling them here as
+            // well would fire both, which is the one thing a shift key must
+            // not do.
+            if binding.script {
+                continue;
+            }
 
             match message {
                 crate::Message::NoteOn { .. } => {
@@ -580,6 +614,51 @@ impl Mapping {
             }
         }
         out
+    }
+
+    /// Whether `message` belongs to the script rather than to the table.
+    ///
+    /// The script sees only the controls that asked for it, so a mapping can
+    /// script eight pads and leave the crossfader as a table entry.
+    #[must_use]
+    pub fn is_scripted(&self, message: crate::Message) -> bool {
+        self.triggers
+            .iter()
+            .zip(&self.bindings)
+            .any(|(trigger, binding)| binding.script && trigger.matches(message))
+    }
+
+    /// The `on = "..."` text and scaled value a script should be handed.
+    ///
+    /// `None` when nothing scripted matches. The value is scaled by the
+    /// binding's own `min`/`max` exactly as a `move` action's would be, so a
+    /// script sees the number the table would have produced.
+    #[must_use]
+    pub fn script_event(
+        &self,
+        message: crate::Message,
+    ) -> Option<(String, crate::script::Event, f32)> {
+        let index = self
+            .triggers
+            .iter()
+            .zip(&self.bindings)
+            .position(|(trigger, binding)| binding.script && trigger.matches(message))?;
+        let binding = self.bindings.get(index)?;
+        let (event, value) = match message {
+            crate::Message::NoteOn { velocity: 0, .. } | crate::Message::NoteOff { .. } => {
+                (crate::script::Event::Release, 0.0)
+            }
+            crate::Message::NoteOn { .. } => (crate::script::Event::Press, 1.0),
+            crate::Message::Control { value, .. } => (
+                crate::script::Event::Move,
+                scale(binding, f32::from(value) / 127.0),
+            ),
+            crate::Message::PitchBend { value, .. } => (
+                crate::script::Event::Move,
+                scale(binding, f32::from(value) / 16_383.0),
+            ),
+        };
+        Some((binding.on.clone(), event, value))
     }
 
     /// Every HID field this mapping reads.
@@ -1470,6 +1549,179 @@ mod audio_preset_tests {
         assert_eq!(
             reloaded.audio, original.audio,
             "editing the mapping lost its audio routing"
+        );
+    }
+}
+
+/// Lua, where a table cannot express what a control does.
+#[cfg(test)]
+mod script_binding_tests {
+    use super::*;
+
+    const SHIFTED: &str = r#"
+name = "Scripted"
+device = "Test"
+
+script = """
+local shifted = false
+function on_control(control, event, value)
+  if control == "note 1 0x3f" then
+    shifted = (event == "press")
+    return nil
+  end
+  if event ~= "press" then return nil end
+  if shifted then return "deck 1 hotcue_set 1" end
+  return "deck 1 hotcue 1"
+end
+"""
+
+[[binding]]
+on = "note 1 0x3f"
+script = true
+
+# Deliberately carries a `press` as well. A DJ converting a table binding to a
+# scripted one leaves the old line behind, and if the table still handled it
+# the pad would fire twice.
+[[binding]]
+on = "note 1 0x01"
+script = true
+press = "deck 2 play"
+
+[[binding]]
+on = "cc 1 0x08"
+move = "crossfader {value}"
+min = -1.0
+max = 1.0
+"#;
+
+    fn note(note: u8, down: bool) -> crate::Message {
+        if down {
+            crate::Message::NoteOn {
+                channel: 0,
+                note,
+                velocity: 127,
+            }
+        } else {
+            crate::Message::NoteOff { channel: 0, note }
+        }
+    }
+
+    /// A mapping may be part table and part script. The crossfader stays a
+    /// table entry; the pads that need a shift key go to Lua.
+    #[test]
+    fn a_mapping_is_part_table_and_part_script() {
+        let mut map = Mapping::parse(SHIFTED).expect("it parses");
+        assert!(map.script.is_some());
+
+        assert!(map.is_scripted(note(0x01, true)), "the pad is not scripted");
+        assert!(
+            !map.is_scripted(crate::Message::Control {
+                channel: 0,
+                controller: 0x08,
+                value: 127,
+            }),
+            "the crossfader was taken by the script"
+        );
+
+        // The table half still works.
+        assert_eq!(
+            map.translate(crate::Message::Control {
+                channel: 0,
+                controller: 0x08,
+                value: 127,
+            }),
+            vec!["crossfader 1"]
+        );
+    }
+
+    /// **A scripted control must not fire twice.**
+    ///
+    /// The binding in `SHIFTED` keeps a `press` action on purpose: a DJ
+    /// converting a table binding to a scripted one leaves the old line
+    /// behind, and if the table still handled it the pad would do the scripted
+    /// thing *and* the old thing. A binding with nothing but `script = true`
+    /// would pass this test whether or not the rule held.
+    #[test]
+    fn a_scripted_control_is_not_also_handled_by_the_table() {
+        let mut map = Mapping::parse(SHIFTED).expect("it parses");
+        let binding = map
+            .bindings
+            .iter()
+            .find(|b| b.on == "note 1 0x01")
+            .expect("the pad is in the file");
+        assert!(
+            binding.press.is_some(),
+            "this test only means something while the binding has a table action too"
+        );
+
+        assert!(
+            map.translate(note(0x01, true)).is_empty(),
+            "the table acted on a control the script owns, so the pad fires twice"
+        );
+    }
+
+    /// What the script is handed: the control's own `on` text, so it can tell
+    /// its pads apart, and the value the table would have produced.
+    #[test]
+    fn the_script_is_handed_the_control_and_its_scaled_value() {
+        let map = Mapping::parse(
+            "name = \"x\"\ndevice = \"y\"\n\nscript = \"\"\"\nfunction on_control(c,e,v) return nil end\n\"\"\"\n\n             [[binding]]\non = \"cc 1 0x08\"\nscript = true\nmin = -1.0\nmax = 1.0\n",
+        )
+        .expect("it parses");
+
+        let (control, event, value) = map
+            .script_event(crate::Message::Control {
+                channel: 0,
+                controller: 0x08,
+                value: 127,
+            })
+            .expect("the control is scripted");
+        assert_eq!(control, "cc 1 0x08");
+        assert_eq!(event, crate::script::Event::Move);
+        assert!(
+            (value - 1.0).abs() < 1e-6,
+            "the binding's own min/max were not applied: {value}"
+        );
+    }
+
+    /// A press and a release are told apart, which is the whole basis of a
+    /// held shift key.
+    #[test]
+    fn a_press_and_a_release_are_told_apart() {
+        let map = Mapping::parse(SHIFTED).expect("it parses");
+        assert_eq!(
+            map.script_event(note(0x3f, true)).map(|e| e.1),
+            Some(crate::script::Event::Press)
+        );
+        assert_eq!(
+            map.script_event(note(0x3f, false)).map(|e| e.1),
+            Some(crate::script::Event::Release)
+        );
+        // Note-on with velocity 0 is a release, which half the controllers in
+        // the world send instead of a note-off.
+        assert_eq!(
+            map.script_event(crate::Message::NoteOn {
+                channel: 0,
+                note: 0x3f,
+                velocity: 0,
+            })
+            .map(|e| e.1),
+            Some(crate::script::Event::Release)
+        );
+    }
+
+    /// **A dead control is refused when the file loads.** A binding marked
+    /// `script` in a mapping with no script does nothing at all, which is
+    /// exactly the failure the whole crate checks for at load time.
+    #[test]
+    fn a_scripted_binding_with_no_script_is_refused() {
+        let why = Mapping::parse(
+            "name = \"x\"\ndevice = \"y\"\n\n[[binding]]\non = \"note 1 0x01\"\nscript = true\n",
+        )
+        .expect_err("a scripted binding with no script should be refused");
+        assert!(
+            matches!(why, MappingError::ScriptWithoutOne(ref on) if on == "note 1 0x01"),
+            "wrong error: {why}"
         );
     }
 }

@@ -89,6 +89,12 @@ impl std::fmt::Debug for Connection {
 /// What the callback owns and mutates.
 struct Wiring {
     mapping: Mapping,
+    /// The mapping's Lua, compiled here rather than carried in the `Mapping`.
+    ///
+    /// A `Mapping` is plain data -- cloned into the hub's list, serialised by
+    /// the editor -- and a Lua state is neither cloneable nor serialisable. It
+    /// belongs where it runs, which is this thread.
+    script: Option<crate::script::Script>,
     out: Sender<String>,
     listener: Listener,
 }
@@ -252,6 +258,42 @@ pub fn open(
     out: Sender<String>,
     listener: Listener,
 ) -> Result<Connection, PortError> {
+    open_with(port, mapping, out, listener, None)
+}
+
+/// Open `port`, with `registry` readable from the mapping's script.
+///
+/// The plain [`open`] is this with no registry, which leaves a script able to
+/// decide but not to look — enough for a shift key, not enough for "do
+/// something different while the deck is playing".
+///
+/// # Errors
+/// As [`open`], plus a script that does not compile — reported when the
+/// mapping is chosen rather than when a pad is pressed, the same promise the
+/// action text makes.
+pub fn open_with(
+    port: &str,
+    mapping: Mapping,
+    out: Sender<String>,
+    listener: Listener,
+    registry: Option<std::sync::Arc<dj_control::ParameterRegistry>>,
+) -> Result<Connection, PortError> {
+    // Compiled before the port opens, so a broken script is a message at the
+    // moment a DJ chooses the mapping rather than a control that does nothing
+    // an hour into a set.
+    let script = match &mapping.script {
+        Some(source) => Some(
+            crate::script::Script::load(
+                &mapping.name,
+                source,
+                registry
+                    .unwrap_or_else(|| std::sync::Arc::new(dj_control::ParameterRegistry::new())),
+            )
+            .map_err(|e| PortError::Refused(mapping.name.clone(), e.to_string()))?,
+        ),
+        None => None,
+    };
+
     let mut midi =
         MidiInput::new(CLIENT_NAME).map_err(|e| PortError::Unavailable(e.to_string()))?;
     // Without this, a controller's own clock — twenty-four messages a beat,
@@ -286,6 +328,31 @@ pub fn open(
                 if wiring.listener.note(message) {
                     return;
                 }
+                // A scripted control is the script's, and the script decides
+                // what it means -- including that it means nothing.
+                if wiring.mapping.is_scripted(message) {
+                    let Some(script) = &wiring.script else {
+                        return;
+                    };
+                    let Some((control, event, value)) = wiring.mapping.script_event(message) else {
+                        return;
+                    };
+                    match script.on_control(&control, event, value) {
+                        Ok(actions) => {
+                            for action in actions {
+                                let _ = wiring.out.send(action);
+                            }
+                        }
+                        Err(why) => {
+                            // One line, not a dialog: a script that fails on
+                            // one pad should not take the controller down, and
+                            // the next press is a fresh call.
+                            tracing::warn!(%why, %control, "a mapping script failed");
+                        }
+                    }
+                    return;
+                }
+
                 for action in wiring.mapping.translate(message) {
                     // A full or disconnected channel means the application has
                     // gone away. There is nothing useful to do about it here
@@ -296,6 +363,7 @@ pub fn open(
             },
             Wiring {
                 mapping,
+                script,
                 out,
                 listener,
             },

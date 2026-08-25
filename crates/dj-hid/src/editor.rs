@@ -84,6 +84,9 @@ impl Role {
     pub fn bind(&self, trigger: String) -> Binding {
         let mut binding = Binding {
             on: trigger,
+            // The editor learns tables, not scripts: a script is written by
+            // hand, and a control it should handle is marked by hand too.
+            script: false,
             press: None,
             release: None,
             moved: None,
@@ -129,6 +132,14 @@ impl Role {
 pub struct Draft {
     pub name: String,
     pub device: String,
+    /// The mapping's Lua, when it has some.
+    ///
+    /// Carried for the same reason the audio preset is, and it is the same
+    /// bug: an editor that dropped it would leave every `script = true`
+    /// binding pointing at a script that no longer exists, and the file would
+    /// not load at all. Caught by `a_bundled_mapping_can_be_opened_edited_and_saved`
+    /// the moment a scripted mapping was bundled.
+    pub script: Option<String>,
     /// Where the controller's own soundcard puts each bus, when it says.
     ///
     /// The editor does not currently offer a way to change this -- a socket
@@ -145,6 +156,7 @@ impl Draft {
         Self {
             name: name.into(),
             device: device.into(),
+            script: None,
             audio: None,
             bindings: Vec::new(),
         }
@@ -156,6 +168,7 @@ impl Draft {
         Self {
             name: mapping.name.clone(),
             device: mapping.device.clone(),
+            script: mapping.script.clone(),
             audio: mapping.audio.clone(),
             bindings: mapping.bindings.clone(),
         }
@@ -214,6 +227,7 @@ impl Draft {
             self.device.clone(),
             self.bindings.clone(),
             self.audio.clone(),
+            self.script.clone(),
         );
         let body = toml::to_string_pretty(&mapping)
             .map_err(|e| MappingError::Unreadable(e.to_string()))?;

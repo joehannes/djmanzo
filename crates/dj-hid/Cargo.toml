@@ -19,6 +19,8 @@ toml = { workspace = true }
 thiserror = { workspace = true }
 midir = { workspace = true }
 dj-net = { workspace = true }
+mlua = { workspace = true }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

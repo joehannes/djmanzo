@@ -22,6 +22,10 @@ pub const CONTROLLERS: &[(&str, &str)] = &[
         include_str!("../mappings/motorised-platter.toml"),
     ),
     ("generic-hid", include_str!("../mappings/generic-hid.toml")),
+    (
+        "scripted-shift",
+        include_str!("../mappings/scripted-shift.toml"),
+    ),
 ];
 
 /// The default keyboard mapping, parsed.
@@ -102,6 +106,55 @@ mod tests {
             routing.master,
             (0, 1),
             "the example shows the arrangement djmanzo already guesses"
+        );
+    }
+
+    /// A bundled script has to *work*, not merely parse. The shift mapping is
+    /// documentation as much as it is a mapping, and documentation that does
+    /// the wrong thing is worse than none.
+    #[test]
+    fn the_bundled_script_actually_shifts() {
+        let (_, text) = CONTROLLERS
+            .iter()
+            .find(|(stem, _)| *stem == "scripted-shift")
+            .expect("it is bundled");
+        let mapping = Mapping::parse(text).expect("it parses");
+        let source = mapping.script.as_ref().expect("it has a script");
+        let script = crate::script::Script::load(
+            "scripted-shift",
+            source,
+            std::sync::Arc::new(dj_control::ParameterRegistry::new()),
+        )
+        .expect("the script loads");
+
+        use crate::script::Event;
+        assert_eq!(
+            script.on_control("note 1 0x02", Event::Press, 1.0).unwrap(),
+            vec!["deck 1 hotcue 2"]
+        );
+
+        script.on_control("note 1 0x3f", Event::Press, 1.0).unwrap();
+        assert_eq!(
+            script.on_control("note 1 0x02", Event::Press, 1.0).unwrap(),
+            vec!["deck 1 hotcue_set 2"],
+            "shift was held and the pad did the unshifted thing"
+        );
+
+        script
+            .on_control("note 1 0x3f", Event::Release, 0.0)
+            .unwrap();
+        assert_eq!(
+            script.on_control("note 1 0x02", Event::Press, 1.0).unwrap(),
+            vec!["deck 1 hotcue 2"],
+            "shift was released and the pad stayed shifted"
+        );
+
+        // A pad the script does not know about is nothing, not a guess.
+        assert!(
+            script
+                .on_control("note 1 0x7f", Event::Press, 1.0)
+                .unwrap()
+                .is_empty()
         );
     }
 

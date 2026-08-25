@@ -79,6 +79,22 @@ midir = { version = "0.11", default-features = false }
 # is at the discretion of the user of HIDAPI" -- and djmanzo takes the
 # BSD-style one, which ADR-0002 permits. See RESEARCH.md.
 hidapi = { version = "2.6", default-features = false }
+# Lua, for mappings that need logic rather than a table.
+#
+# `mlua` is MIT and `vendored` builds Lua 5.4 from source -- also MIT, about
+# 200 KB of C with no system dependencies, unlike the libudev question above.
+# A C compiler is already a build requirement because keylock builds
+# Signalsmith Stretch from C++.
+#
+# **No standard library reaches a script.** See `crates/dj-hid/src/script.rs`:
+# a mapping that could open a file would break the promise that makes a file
+# from a stranger safe to open.
+mlua = { version = "0.12", default-features = false, features = [
+    "lua54",
+    "vendored",
+    # The script runs on the MIDI thread, so the state has to cross to it.
+    "send",
+] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

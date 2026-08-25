@@ -498,7 +498,20 @@ The milestone that makes the hardware in your hands work.
   parsed through `Action::parse` *when the file loads*, so a typo is a message when you
   choose the mapping rather than a control that silently does nothing an hour into a set.
   The consequence worth stating: **a mapping cannot do anything the interface cannot**,
-  which is what makes a file from a stranger safe to open. Lua for real logic still to come.
+  which is what makes a file from a stranger safe to open.
+- **Lua — done, and the sandbox is the point.** A table cannot say "this pad
+  does one thing normally and another while shift is held", because that is a
+  decision and a decision needs an `if`. Marked controls go to a script;
+  everything else stays a table entry, so a mapping is not all-or-nothing.
+  A scripting language is exactly how "a mapping cannot do anything the
+  interface cannot" gets lost, so: nothing reaches outside the process; every
+  action a script returns goes through the same parser a table entry's does;
+  and a script is stopped after a hundred thousand instructions, because it
+  runs on the MIDI thread where a `while true do end` would take the controller
+  with it.
+  Asking Lua for *no* standard library turned out not to be enough — mlua
+  installs the base library regardless, so `dofile` and `loadfile` were
+  reachable until a test enumerated them by name and they were taken away.
 - Inbound — **done** for 7-bit, 14-bit pitch-bend and relative encoders. The encoder
   convention is **declared, not guessed** (`signed`, `offset`, `absolute`): the same byte
   means opposite things in two of them, and reading it blind sent a DJ turning an absolute

@@ -615,12 +615,14 @@ mod tests {
         for (name, text) in crate::bundled::CONTROLLERS {
             let map = FeedbackMap::parse(text)
                 .unwrap_or_else(|e| panic!("bundled mapping {name} has a broken light: {e}"));
-            let is_hid = crate::mapping::Mapping::parse(text)
-                .is_ok_and(|mapping| !mapping.hid_fields().is_empty());
-            assert!(
-                !map.is_empty() || is_hid,
-                "{name} is a MIDI mapping that lights nothing at all"
-            );
+            // The generic controller mapping is the one a DJ starts from, so
+            // it has to demonstrate lights. The others are examples of one
+            // thing each -- a motorised platter, a HID device, a script -- and
+            // a light would be noise in them. What every mapping must do is
+            // have no *broken* lights, which is the loop below.
+            if *name == "generic-2-deck" {
+                assert!(!map.is_empty(), "the mapping DJs start from lights nothing");
+            }
             for light in &map.lights {
                 assert!(
                     light.message(0).is_some(),

@@ -269,13 +269,87 @@ otherwise. If the Controllers panel lists your device but refuses to open it,
 that is why, and it is fixed with a rule rather than by running djmanzo as
 root.
 
+## Lua, where a table cannot describe a control
+
+Every mapping here is a table: this control does that action. That covers
+almost everything — and it cannot express **"this pad does one thing normally
+and another while shift is held"**, because that is a *decision*, and a
+decision needs an `if`.
+
+So a mapping may carry a script. Marked controls go to it; everything else
+stays a table entry, so a mapping is not all-or-nothing:
+
+```toml
+script = """
+local shifted = false
+
+function on_control(control, event, value)
+  if control == "note 1 0x3f" then
+    shifted = (event == "press")
+    return nil
+  end
+  if event ~= "press" then return nil end
+  if shifted then return "deck 1 hotcue_set 1" end
+  return "deck 1 hotcue 1"
+end
+"""
+
+[[binding]]
+on = "note 1 0x3f"
+script = true
+
+[[binding]]
+on = "note 1 0x01"
+script = true
+
+# Still an ordinary table entry.
+[[binding]]
+on = "cc 1 0x08"
+move = "crossfader {value}"
+min = -1.0
+max = 1.0
+```
+
+`on_control` receives the binding's own `on` text — so a script can tell its
+pads apart — the event (`press`, `release` or `move`) and, for a move, the
+value scaled by the binding's own `min`/`max`. It returns nothing, one action,
+or a list.
+
+`parameter("deck.1.playing")` reads any parameter by the same stable name the
+interface and the network API use, so a script can decide on what the engine is
+actually doing. An unknown name is `nil`, not an error.
+
+`crates/dj-hid/mappings/scripted-shift.toml` is a working example, and a test
+presses its pads.
+
+### What a script may not do
+
+**A mapping cannot do anything the interface cannot.** That is what makes a
+file from a stranger safe to open, and a scripting language is exactly how a
+promise like that gets lost. So:
+
+- **Nothing reaches outside the process.** No `io`, no `os`, no `require`, no
+  `dofile`, no `load`. `math`, `string` and `table` are there, because a
+  mapping computes numbers and builds action text.
+- **Actions still go through the parser.** A script returns *text*, and that
+  text is checked against the vocabulary exactly as a table entry's is. There
+  is no path from Lua to the engine that skips it.
+- **It is stopped after a hundred thousand instructions.** A script runs on the
+  MIDI thread, where a `while true do end` would take the controller with it.
+  The budget is per control event, so a script stopped once still works on the
+  next press.
+
+One thing worth knowing if you are reading the source: asking Lua for *no*
+standard library is not enough. mlua installs the base library regardless, so
+`dofile` and `loadfile` were reachable until they were taken away by name. A
+test enumerates them rather than trusting the flag.
+
 ## What is not here yet
 
-- Lua, for mappings that need real logic rather than a table.
 - Outbound feedback to HID devices — see the note above.
 
 Done since this list was first written: outbound feedback to MIDI (LEDs, pad
 colours, ring lights), motorised platters that report an angle rather than a
-delta, the in-app learn mode, the audio section above, and HID.
+delta, the in-app learn mode, the audio section above, HID, and Lua.
 
 See [ROADMAP.md](ROADMAP.md#m4--controllers).
