@@ -81,9 +81,14 @@ jobs:
         include:
           - os: ubuntu-latest
             name: Linux x86_64
-          # macos-latest is Apple Silicon, which is the target laptop platform.
-          # - os: macos-latest
-          #   name: macOS arm64
+          # macos-latest is Apple Silicon, which is the target laptop platform
+          # and one of the two builds this project promises. It was commented
+          # out while Windows was being added and stayed that way, so the
+          # platform the README names first went untested for four days.
+          - os: macos-latest
+            name: macOS arm64
+          # Windows builds and is tested, but nothing has ever been run on it:
+          # see docs/BUILDING.md.
           - os: windows-latest
             name: Windows x86_64
 

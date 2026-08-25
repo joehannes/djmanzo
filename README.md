@@ -21,10 +21,14 @@ VirtualDJ's feature set, appearance, workflow and handling, and then go past it.
 ```sh
 npm --prefix ui ci && npm --prefix ui run build   # tauri-build needs the bundle first
 cargo test --workspace --all-targets
-cargo run --bin djmanzo
+
+# run it. `--features dj-app/custom-protocol` is not optional: without it Tauri
+# loads the interface from the dev server instead of the bundle, and the window
+# opens on "Connection refused". See docs/BUILDING.md.
+cargo run --release --bin djmanzo --features dj-app/custom-protocol
 
 # installable bundles from the repository root
-npm install
+npm install                # once; installs the root tauri wrapper
 npx tauri build:deb        # Debian package on Linux
 npx tauri build:dmg        # macOS dmg on macOS
 ```

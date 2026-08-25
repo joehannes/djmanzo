@@ -24,8 +24,9 @@ ALSA. The rest is what Tauri links against.
 
 ## In CI
 
-Push a tag whose patch component is zero and the release workflow builds all
-three targets and opens a draft release:
+Push a tag whose patch component is zero and the release workflow builds every
+target — macOS on both architectures, Linux and Windows — and opens a draft
+release:
 
 ```sh
 git tag -a v0.1.0 -m "..." && git push origin v0.1.0
@@ -62,6 +63,12 @@ The bundles appear under `target/release/bundle/`:
 |---|---|
 | macOS | `macos/djmanzo.app` and `dmg/djmanzo_<version>_<arch>.dmg` |
 | Debian / Ubuntu | `deb/djmanzo_<version>_amd64.deb` and `appimage/…AppImage` |
+| Windows | `msi/djmanzo_<version>_x64_en-US.msi` and `nsis/…-setup.exe` |
+
+**Windows is built and tested, but has never been run.** CI compiles it and the
+test suite passes there; nobody has opened the application on a Windows machine,
+and the audio backend has had no attention beyond what `cpal` gives for free.
+Treat those bundles as untried. macOS and Debian are the two djmanzo claims.
 
 The root wrapper expands those aliases to `cargo tauri build --bundles ...`.
 Any extra arguments pass through, for example `npx tauri build:deb --debug`.
@@ -77,6 +84,31 @@ cargo tauri build --target x86_64-apple-darwin
 
 There is no universal binary in the release workflow. Two separate builds keep
 each download half the size, and a DJ knows which Mac they have.
+
+## The one thing a plain `cargo build --release` gets wrong
+
+**`cargo build --release` alone does not produce a shippable binary.**
+
+Tauri computes `dev = !custom-protocol`. Without that feature the interface is
+loaded from `devUrl` — `http://localhost:5173` — instead of from the bundle in
+`ui/dist`, so a packaged application opens on
+
+    Could not connect to localhost: Connection refused
+
+The feature is declared in `crates/dj-app/Cargo.toml` and is deliberately kept
+out of `default`, because `tauri dev` wants the dev server and its hot reload.
+`cargo tauri build` turns it on itself, which is why the commands above and CI
+are fine — a hand-rolled `cargo build` is not:
+
+```sh
+( cd ui && npm ci && npm run build )     # tauri-build needs the bundle first
+cargo build --release --bin djmanzo --features dj-app/custom-protocol
+```
+
+To check a binary you already have, **run it**: a working build shows the
+mixer, a broken one shows the connection error. There is no way to tell from
+`strings`, because Tauri stores the embedded interface compressed and keeps
+`devUrl` in the embedded config either way.
 
 ## Signing
 
@@ -105,8 +137,8 @@ Two environment variables are worth knowing:
 ## The tests
 
 ```sh
-cargo test --workspace --all-targets     # 1,377 tests
-npm --prefix ui test                     # 61 tests
+cargo test --workspace --all-targets     # 1,739 tests
+npm --prefix ui test                     # 66 tests
 cargo clippy --workspace --all-targets   # clean, with -D warnings
 ```
 

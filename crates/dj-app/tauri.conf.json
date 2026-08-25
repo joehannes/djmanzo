@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../../ui/dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "node dj-app/build-ui.cjs dev || node build-ui.cjs dev",
-    "beforeBuildCommand": "node dj-app/build-ui.cjs build || node build-ui.cjs build"
+    "beforeDevCommand": "node dj-app/build-ui.cjs dev",
+    "beforeBuildCommand": "node dj-app/build-ui.cjs build"
   },
   "app": {
     "windows": [

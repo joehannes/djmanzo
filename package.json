@@ -1,6 +1,6 @@
 {
   "name": "djmanzo-workspace",
-  "version": "0.1.0",
+  "version": "0.7.6",
   "description": "Root workspace commands for djmanzo builds and packages.",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "ui:build": "npm --prefix ui run build",
     "ui:test": "npm --prefix ui test",
     "check": "npm --prefix ui run check && cargo test --workspace --all-targets",
-    "build": "npm --prefix ui run build && cargo build --workspace --bin djmanzo",
+    "build": "npm --prefix ui run build && cargo build --release --bin djmanzo --features dj-app/custom-protocol",
     "tauri": "tauri",
     "build:deb": "tauri build:deb",
     "build:dmg": "tauri build:dmg",

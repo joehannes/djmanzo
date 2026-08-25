@@ -13,8 +13,6 @@ name: Release
 # runtime logic to get wrong, and the behaviour is obvious from reading the file.
 on:
   push:
-    branches:
-      - add-windows-support
     tags:
       - 'v*.*.*'
   # So the build path can be exercised without cutting a real release — and so
@@ -87,15 +85,10 @@ jobs:
              {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
           LINUX: >-
             [{"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
-          WINDOWS_LINUX: >-
-            [{"os":"windows-latest","name":"Windows (x86_64)","args":"","target":""},
-             {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.platforms }}" = "linux" ]; then
             chosen="$LINUX"
-          elif [ "${{ github.ref_name }}" = "add-windows-support" ]; then
-            chosen="$WINDOWS_LINUX"
           else
             chosen="$ALL"
           fi
@@ -175,6 +168,7 @@ jobs:
             | macOS, Apple Silicon | `.dmg` (aarch64) |
             | macOS, Intel | `.dmg` (x86_64) |
             | Linux | `.deb` and `.AppImage` |
+            | Windows | `.msi` and `.exe` |
 
             ### Before you run it
 
