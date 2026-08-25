@@ -157,6 +157,21 @@ pub struct Binding {
     /// binding has `turn_up` or `turn_down`.
     #[serde(default)]
     pub encoding: Encoding,
+    /// Sent when a **motorised platter** reports its angle. Contains `{value}`,
+    /// which is filled with the movement since the last report in revolutions.
+    ///
+    /// Distinct from `move` because the number means something different: a
+    /// fader's value is a position and a platter's is an angle that wraps, and
+    /// reading a wrap as a position would be a whole revolution of audio every
+    /// time the record passes zero. See [`crate::platter`].
+    #[serde(default)]
+    pub platter: Option<String>,
+    /// Steps in one revolution of that platter, from the device's manual.
+    ///
+    /// Required alongside `platter`: without it there is no way to tell a
+    /// movement from a wrap, and every device counts differently.
+    #[serde(default)]
+    pub resolution: Option<u32>,
     /// What `{value}` runs between. Defaults to 0..=1, which is what most of
     /// the vocabulary wants; an EQ wants 0..=4 and a pitch fader -1..=1.
     #[serde(default)]
@@ -183,6 +198,12 @@ pub struct Mapping {
     /// turned and a fader can be asked what it is set to.
     #[serde(skip)]
     last: HashMap<Trigger, u8>,
+    /// One unwrapper per motorised platter, keyed by the control it is on.
+    ///
+    /// Per mapping rather than per message because a platter's angle only
+    /// means anything against the previous one.
+    #[serde(skip)]
+    platters: HashMap<Trigger, crate::platter::AbsolutePlatter>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -201,6 +222,12 @@ pub enum MappingError {
     UnknownParameter(String),
     #[error("the light on {0:?} is both a switch and a range; it can only be one")]
     AmbiguousFeedback(String),
+    #[error("the platter on {0:?} has no `resolution`, so a wrap cannot be told from a turn")]
+    NoResolution(String),
+    #[error("{0:?} has a `resolution` but is not a platter")]
+    ResolutionWithoutPlatter(String),
+    #[error("the platter on {0:?} cannot be followed: {1}")]
+    BadPlatter(String, String),
 }
 
 impl Mapping {
@@ -242,9 +269,26 @@ impl Mapping {
                 || binding.release.is_some()
                 || binding.moved.is_some()
                 || binding.turn_up.is_some()
-                || binding.turn_down.is_some();
+                || binding.turn_down.is_some()
+                || binding.platter.is_some();
             if !says_something {
                 return Err(MappingError::Silent(binding.on.clone()));
+            }
+
+            // A platter needs its resolution, and the resolution has to be one
+            // a wrap can be told from a movement in. Both checked here, when
+            // the file loads, so a platter that could never work says so
+            // before a DJ puts a hand on it.
+            if binding.platter.is_some() {
+                let steps = binding
+                    .resolution
+                    .ok_or_else(|| MappingError::NoResolution(binding.on.clone()))?;
+                let unwrapper = crate::platter::AbsolutePlatter::new(steps)
+                    .map_err(|e| MappingError::BadPlatter(binding.on.clone(), e.to_string()))?;
+                self.platters
+                    .insert(Trigger::parse(&binding.on)?, unwrapper);
+            } else if binding.resolution.is_some() {
+                return Err(MappingError::ResolutionWithoutPlatter(binding.on.clone()));
             }
 
             for action in [
@@ -253,6 +297,7 @@ impl Mapping {
                 &binding.moved,
                 &binding.turn_up,
                 &binding.turn_down,
+                &binding.platter,
             ]
             .into_iter()
             .flatten()
@@ -294,6 +339,18 @@ impl Mapping {
                     }
                 }
                 crate::Message::Control { value, .. } => {
+                    if let Some(template) = binding.platter.clone() {
+                        // A 7-bit control is a coarse platter, but a real one:
+                        // some devices send the angle's high byte only.
+                        if let Some(turns) = self
+                            .platters
+                            .get_mut(&trigger)
+                            .map(|platter| platter.advance(u32::from(value)))
+                        {
+                            out.push(fill(&template, turns));
+                        }
+                        continue;
+                    }
                     let previous = self.last.insert(trigger, value);
                     if binding.turn_up.is_some() || binding.turn_down.is_some() {
                         if let Some(action) = turned(binding, value, previous) {
@@ -304,6 +361,18 @@ impl Mapping {
                     }
                 }
                 crate::Message::PitchBend { value, .. } => {
+                    // Fourteen bits is what a motorised platter's angle
+                    // actually needs: 3600 steps does not fit in seven.
+                    if let Some(template) = binding.platter.clone() {
+                        if let Some(turns) = self
+                            .platters
+                            .get_mut(&trigger)
+                            .map(|platter| platter.advance(u32::from(value)))
+                        {
+                            out.push(fill(&template, turns));
+                        }
+                        continue;
+                    }
                     if let Some(template) = &binding.moved {
                         out.push(fill(template, scale(binding, f32::from(value) / 16_383.0)));
                     }
@@ -384,9 +453,32 @@ fn scale(binding: &Binding, position: f32) -> f32 {
 /// Three because a 7-bit control has 128 steps and printing a full `f32` of
 /// them gives `0.6929134` — a number with five digits of precision the hardware
 /// never had.
+/// Put a number into a `{value}` template.
+///
+/// Six decimal places, trailing zeros trimmed. It used to be three, which was
+/// enough for a knob and wrong for the two controls that need better:
+///
+/// - one step of a 3600-step motorised platter is 0.000278 of a revolution,
+///   which rounds to **zero** at three places -- the platter would be dead
+///   until it was turned fast enough to cover two steps between reports;
+/// - a 14-bit pitch fader across ±1 moves 0.000122 a step, so the fourteen
+///   bits the bundled mapping deliberately asks for were being quantised back
+///   to about a thousand.
+///
+/// Six places keeps everything the wire can carry -- a 14-bit control has
+/// 16,384 steps, and six places resolves a million -- while still writing
+/// `0.5` rather than `0.500000` for the common case.
 fn fill(template: &str, value: f32) -> String {
-    let rounded = (value * 1000.0).round() / 1000.0;
-    template.replace("{value}", &format!("{rounded}"))
+    let text = format!("{value:.6}");
+    let trimmed = if text.contains('.') {
+        text.trim_end_matches('0').trim_end_matches('.')
+    } else {
+        &text
+    };
+    // An empty string would be a template filled with nothing, which does not
+    // parse; `-0` and `0.000000` both trim to something, but guard anyway.
+    let filled = if trimmed.is_empty() { "0" } else { trimmed };
+    template.replace("{value}", filled)
 }
 
 #[cfg(test)]
@@ -506,16 +598,19 @@ mod tests {
             }),
             vec!["deck 1 eq_low 4"]
         );
-        // Centre of a 7-bit control is 63 or 64; neither is exactly the middle,
-        // and the rounding must not turn a pitch fader's centre into a number
-        // with six decimal places.
+        // Centre of a 7-bit control is 63 or 64, and neither is exactly the
+        // middle: 64 of 127 across -1..=1 is 0.007874 above centre. This used
+        // to be written as `0.008`, because `fill` rounded to three places to
+        // keep the number tidy -- which also rounded a platter step to nothing
+        // and collapsed adjacent 14-bit fader steps. The number is now what
+        // the control actually said.
         assert_eq!(
             map.translate(Message::Control {
                 channel: 0,
                 controller: 21,
                 value: 64
             }),
-            vec!["deck 1 pitch 0.008"]
+            vec!["deck 1 pitch 0.007874"]
         );
     }
 
@@ -628,13 +723,27 @@ mod tests {
             }),
             vec!["deck 1 volume 1"]
         );
-        // A 14-bit control resolves steps a 7-bit one cannot: 8192 is not the
-        // same as 8191, and both are "0.5" to two places.
-        let mid = map.translate(Message::PitchBend {
+        // A 14-bit control resolves steps a 7-bit one cannot, and this now
+        // tests that rather than asserting the opposite: 8191 and 8192 are
+        // adjacent positions and must not write the same number. They both
+        // used to be `0.5`, because `fill` rounded to three places -- so this
+        // test's name claimed fourteen bits while its assertion proved eleven.
+        let below = map.translate(Message::PitchBend {
+            channel: 0,
+            value: 8_191,
+        });
+        let above = map.translate(Message::PitchBend {
             channel: 0,
             value: 8_192,
         });
-        assert_eq!(mid, vec!["deck 1 volume 0.5"]);
+        assert_ne!(
+            below, above,
+            "two adjacent 14-bit positions wrote the same number"
+        );
+
+        // And the value is the truth about where the fader is: 8192 of 16383
+        // is a half-step above centre, not exactly centre.
+        assert_eq!(above, vec!["deck 1 volume 0.500031"]);
     }
 
     /// **The property that makes a mapping from a stranger safe to load.**
@@ -846,5 +955,237 @@ mod tests {
             }),
             vec!["deck 1 cue", "deck 1 sync"]
         );
+    }
+}
+
+#[cfg(test)]
+mod platter_tests {
+    use super::*;
+
+    fn mapping(extra: &str) -> Result<Mapping, MappingError> {
+        Mapping::parse(&format!(
+            "name = \"Motorised\"\ndevice = \"Twelve\"\n\n[[binding]]\n{extra}\n"
+        ))
+    }
+
+    /// **The whole point of the platter path.** A motorised platter's angle
+    /// wraps, and a mapping has to turn that into movement rather than into a
+    /// revolution of audio every time the record passes zero.
+    #[test]
+    fn a_platter_reports_movement_rather_than_position() {
+        let mut map =
+            mapping("on = \"bend 1\"\nplatter = \"deck 1 jog {value}\"\nresolution = 3600")
+                .expect("a platter binding");
+
+        // The first report is a starting point.
+        assert!(
+            map.translate(crate::Message::PitchBend {
+                channel: 0,
+                value: 3_598
+            })
+            .first()
+            .is_some_and(|a| a.ends_with('0')),
+            "the first report should be no movement"
+        );
+
+        // Crossing zero: 3598 -> 2 is four steps forwards, not a revolution
+        // backwards.
+        let out = map.translate(crate::Message::PitchBend {
+            channel: 0,
+            value: 2,
+        });
+        let action = out.first().expect("a platter always reports something");
+        let turns: f32 = action
+            .rsplit(' ')
+            .next()
+            .expect("the action ends in a number")
+            .parse()
+            .expect("a number");
+        assert!(
+            (turns - 4.0 / 3600.0).abs() < 1e-5,
+            "crossing zero produced {turns} of a revolution"
+        );
+    }
+
+    /// A platter is a different kind of control from a fader, and the file has
+    /// to say which. Without the resolution there is no way to tell a wrap
+    /// from a turn, so the file is refused when it loads rather than producing
+    /// nonsense all night.
+    #[test]
+    fn a_platter_without_its_resolution_is_refused() {
+        let error = mapping("on = \"bend 1\"\nplatter = \"deck 1 jog {value}\"")
+            .expect_err("a platter needs its resolution");
+        assert!(
+            matches!(error, MappingError::NoResolution(_)),
+            "got {error}"
+        );
+    }
+
+    /// And a resolution on something that is not a platter is a mistake worth
+    /// naming: it means the DJ thought they had written a platter binding.
+    #[test]
+    fn a_resolution_on_something_that_is_not_a_platter_is_refused() {
+        let error =
+            mapping("on = \"cc 1 0x10\"\nmove = \"deck 1 volume {value}\"\nresolution = 3600")
+                .expect_err("a fader has no resolution");
+        assert!(
+            matches!(error, MappingError::ResolutionWithoutPlatter(_)),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn a_platter_too_coarse_to_follow_is_refused_when_the_file_loads() {
+        let error = mapping("on = \"bend 1\"\nplatter = \"deck 1 jog {value}\"\nresolution = 2")
+            .expect_err("two steps is not a platter");
+        assert!(matches!(error, MappingError::BadPlatter(..)), "got {error}");
+    }
+
+    /// A platter binding is not silent, so it must not be refused as one.
+    #[test]
+    fn a_platter_counts_as_saying_something() {
+        assert!(
+            mapping("on = \"bend 1\"\nplatter = \"deck 1 jog {value}\"\nresolution = 3600").is_ok()
+        );
+    }
+
+    /// The action is checked like every other, when the file loads.
+    #[test]
+    fn a_platters_action_is_checked_too() {
+        let error = mapping("on = \"bend 1\"\nplatter = \"deck 1 jgo {value}\"\nresolution = 3600")
+            .expect_err("that is not an action");
+        assert!(matches!(error, MappingError::BadAction(..)), "got {error}");
+    }
+
+    /// Two platters on one mapping keep their own angles: a two-deck
+    /// controller has two, and sharing an unwrapper between them would make
+    /// each one's movement depend on the other's.
+    #[test]
+    fn two_platters_do_not_share_an_angle() {
+        let mut map = Mapping::parse(
+            r#"
+            name = "Two platters"
+            device = "Twelve"
+
+            [[binding]]
+            on = "bend 1"
+            platter = "deck 1 jog {value}"
+            resolution = 3600
+
+            [[binding]]
+            on = "bend 2"
+            platter = "deck 2 jog {value}"
+            resolution = 3600
+            "#,
+        )
+        .expect("two platters");
+
+        // Deck 1 starts at 0, deck 2 starts at 1800.
+        map.translate(crate::Message::PitchBend {
+            channel: 0,
+            value: 0,
+        });
+        map.translate(crate::Message::PitchBend {
+            channel: 1,
+            value: 1_800,
+        });
+
+        // Deck 1 moves ten steps. If they shared an angle this would be read
+        // against deck 2's 1800 and refused as a jump.
+        let out = map.translate(crate::Message::PitchBend {
+            channel: 0,
+            value: 10,
+        });
+        let turns: f32 = out
+            .first()
+            .expect("deck 1 reports")
+            .rsplit(' ')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(
+            turns > 0.0,
+            "deck 1's movement was read against deck 2's angle"
+        );
+    }
+}
+
+#[cfg(test)]
+mod fill_precision_tests {
+    use super::*;
+
+    /// **The bug this pins.** One step of a 3600-step platter is 0.000278 of a
+    /// revolution. At three decimal places that is zero, so a platter turned
+    /// slowly -- which is most of the time, since a record turns at 33 1/3 RPM
+    /// -- would report no movement at all.
+    #[test]
+    fn one_step_of_a_platter_survives_being_written_down() {
+        let step = 1.0 / 3600.0;
+        let text = fill("deck 1 jog {value}", step);
+        let written: f32 = text.rsplit(' ').next().unwrap().parse().unwrap();
+        assert!(
+            written > 0.0,
+            "one platter step was written as {text:?} and rounds to nothing"
+        );
+        assert!(
+            (written - step).abs() < step * 0.01,
+            "one platter step became {written} instead of {step}"
+        );
+    }
+
+    /// The bundled mapping takes the pitch fader on pitch bend specifically to
+    /// get fourteen bits, because 128 steps across ±8% is audibly coarse when
+    /// beatmatching. Rounding it back to three places threw that away.
+    #[test]
+    fn a_fourteen_bit_fader_keeps_its_fourteen_bits() {
+        // Across -1..=1, one step of 16,384 is 0.000122.
+        let step = 2.0 / 16_384.0;
+        let a: f32 = fill("x {value}", step)
+            .rsplit(' ')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let b: f32 = fill("x {value}", step * 2.0)
+            .rsplit(' ')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(
+            b > a,
+            "two adjacent 14-bit positions wrote the same number: {a} and {b}"
+        );
+    }
+
+    /// And the common case still reads like a number a person would write.
+    #[test]
+    fn a_round_number_is_still_written_roundly() {
+        assert_eq!(fill("v {value}", 0.5), "v 0.5");
+        assert_eq!(fill("v {value}", 1.0), "v 1");
+        assert_eq!(fill("v {value}", 0.0), "v 0");
+        assert_eq!(fill("v {value}", -1.0), "v -1");
+    }
+
+    /// Whatever is written has to parse back, or the mapping produces actions
+    /// the engine refuses.
+    #[test]
+    fn everything_written_parses_as_an_action() {
+        for value in [
+            0.0,
+            1.0,
+            -1.0,
+            0.5,
+            1.0 / 3600.0,
+            -1.0 / 3600.0,
+            2.0 / 16_384.0,
+            0.123_456_7,
+            f32::MIN_POSITIVE,
+        ] {
+            let text = fill("deck 1 jog {value}", value);
+            dj_core::Action::parse(&text)
+                .unwrap_or_else(|e| panic!("{text:?} does not parse: {e}"));
+        }
     }
 }

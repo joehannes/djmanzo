@@ -29,6 +29,7 @@ pub mod feedback;
 pub mod keys;
 pub mod mapping;
 pub mod message;
+pub mod platter;
 pub mod port;
 
 pub use keys::{Chord, KeyBinding, KeyError, KeyMap};

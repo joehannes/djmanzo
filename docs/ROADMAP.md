@@ -521,8 +521,18 @@ The milestone that makes the hardware in your hands work.
   device is told everything again, and letting go of one turns its lights off
   rather than leaving a board showing last night's set. Segment displays still
   to come.
-- **Motorized platters** as a first-class control kind — absolute high-res position in, motor
-  start/stop ramp and torque out.
+- **Motorised platters — done.** A platter that reports where it *is* rather
+  than how far it moved is a different control kind, and `dj-hid::platter` is
+  it: `platter = "..."` plus a `resolution` from the device's manual. The angle
+  wraps at zero, and reading a wrap as movement would play a whole revolution
+  of audio backwards every time the record went round — so the short way is
+  taken, which is safe because a platter covers three thousandths of a turn
+  between reports at playing speed and half a turn is physically impossible.
+  Past a tenth of a turn the reading is a dropped packet rather than a
+  movement, and the honest answer is nothing rather than a lurch. The motor is
+  the transport: these decks spin when the deck plays, so `deck.N.playing`
+  drives it through the feedback path and a motor that could disagree with the
+  transport does not exist.
 - **Jog modes — done: scratch, bend and search, vinyl and CDJ.** One piece of
   plastic doing three jobs, and which one you get depends on the mode, whether
   the top is touched and whether the deck is playing. A turn of the wheel is a

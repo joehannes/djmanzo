@@ -69,6 +69,12 @@ pub enum Role {
         down: String,
         encoding: Encoding,
     },
+    /// A motorised platter reporting its angle.
+    ///
+    /// The resolution comes from the device's manual and cannot be learned:
+    /// watching a platter turn tells you the numbers it sends, not how many of
+    /// them make a revolution.
+    Platter { action: String, resolution: u32 },
 }
 
 impl Role {
@@ -83,6 +89,8 @@ impl Role {
             turn_up: None,
             turn_down: None,
             encoding: Encoding::default(),
+            platter: None,
+            resolution: None,
             min: None,
             max: None,
         };
@@ -101,6 +109,10 @@ impl Role {
                 binding.turn_up = Some(up.clone());
                 binding.turn_down = Some(down.clone());
                 binding.encoding = *encoding;
+            }
+            Role::Platter { action, resolution } => {
+                binding.platter = Some(action.clone());
+                binding.resolution = Some(*resolution);
             }
         }
         binding
@@ -233,9 +245,20 @@ fn check(binding: &Binding) -> Result<(), MappingError> {
         &binding.moved,
         &binding.turn_up,
         &binding.turn_down,
+        &binding.platter,
     ];
     if actions.iter().all(|a| a.is_none()) {
         return Err(MappingError::Silent(binding.on.clone()));
+    }
+    // A platter without its resolution cannot be followed, and the loader
+    // refuses it -- so the editor refuses it here rather than write a file
+    // that will not open.
+    if binding.platter.is_some() {
+        let steps = binding
+            .resolution
+            .ok_or_else(|| MappingError::NoResolution(binding.on.clone()))?;
+        crate::platter::AbsolutePlatter::new(steps)
+            .map_err(|e| MappingError::BadPlatter(binding.on.clone(), e.to_string()))?;
     }
     for action in actions.into_iter().flatten() {
         // `{value}` is substituted at dispatch time, so it has to be stood in

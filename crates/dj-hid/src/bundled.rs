@@ -12,10 +12,16 @@ use crate::mapping::{Mapping, MappingError};
 pub const KEYBOARD_DEFAULT: &str = include_str!("../mappings/keyboard-default.toml");
 
 /// Every bundled controller mapping, as `(file stem, text)`.
-pub const CONTROLLERS: &[(&str, &str)] = &[(
-    "generic-2-deck",
-    include_str!("../mappings/generic-2-deck.toml"),
-)];
+pub const CONTROLLERS: &[(&str, &str)] = &[
+    (
+        "generic-2-deck",
+        include_str!("../mappings/generic-2-deck.toml"),
+    ),
+    (
+        "motorised-platter",
+        include_str!("../mappings/motorised-platter.toml"),
+    ),
+];
 
 /// The default keyboard mapping, parsed.
 ///

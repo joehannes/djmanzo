@@ -1,0 +1,93 @@
+# A motorised platter deck: a Rane Twelve, a Denon SC6000M, or any controller
+# whose platter reports where it *is* rather than how far it moved.
+#
+# The difference matters and is the reason this file exists separately. An
+# ordinary jog wheel sends a delta and never wraps. A motorised platter sends
+# an angle, thousands of steps to the revolution, and it wraps at zero — so a
+# mapping that read it as a delta would play a whole revolution of audio
+# backwards every time the record went round. `platter` says which kind it is
+# and `resolution` says how many steps make a turn; both are in the device's
+# manual.
+#
+# 3600 steps is a tenth of a degree, which is what most of these devices send.
+# Change it to whatever yours says and change nothing else.
+
+name = "Motorised platter"
+device = "Twelve"
+
+# ---------------------------------------------------------------- platters
+
+[[binding]]
+on = "bend 1"
+platter = "deck 1 jog {value}"
+resolution = 3600
+
+[[binding]]
+on = "bend 2"
+platter = "deck 2 jog {value}"
+resolution = 3600
+
+# The touch plate. On a motorised deck this is what tells the difference
+# between a hand resting on a spinning record and one that means to stop it.
+
+[[binding]]
+on = "note 1 0x36"
+press = "deck 1 jog_touch"
+release = "deck 1 jog_release"
+
+[[binding]]
+on = "note 2 0x36"
+press = "deck 2 jog_touch"
+release = "deck 2 jog_release"
+
+# A motorised platter is a record, so vinyl mode is what it is for: a hand on
+# the top stops the music.
+
+[[binding]]
+on = "note 1 0x37"
+press = "deck 1 jog_mode vinyl"
+
+[[binding]]
+on = "note 2 0x37"
+press = "deck 2 jog_mode vinyl"
+
+# ---------------------------------------------------------------- transport
+
+[[binding]]
+on = "note 1 0x0B"
+press = "deck 1 play_pause"
+
+[[binding]]
+on = "note 2 0x0B"
+press = "deck 2 play_pause"
+
+[[binding]]
+on = "note 1 0x0C"
+press = "deck 1 cue"
+
+[[binding]]
+on = "note 2 0x0C"
+press = "deck 2 cue"
+
+# ---------------------------------------------------------------- feedback
+#
+# The motor. On these decks the platter spins when the deck plays, so the
+# transport state *is* the motor command — there is no separate vocabulary for
+# it, and there should not be: a motor that could disagree with the transport
+# would be a record turning under a stopped deck.
+
+[[feedback]]
+when = "deck.1.playing"
+send = "note 1 0x0B"
+
+[[feedback]]
+when = "deck.2.playing"
+send = "note 2 0x0B"
+
+[[feedback]]
+when = "deck.1.cue_enabled"
+send = "note 1 0x0C"
+
+[[feedback]]
+when = "deck.2.cue_enabled"
+send = "note 2 0x0C"

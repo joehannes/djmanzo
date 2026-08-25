@@ -237,6 +237,22 @@ is estimated over time. That is why a scratch feels attached to the hand and a
 bend does not jump — and why neither changes when you pick a different audio
 buffer size.
 
+### Motorised platters, without the revolution
+
+A motorised platter — a Rane Twelve, a Denon SC6000M — reports its **angle**,
+not its movement, and that angle wraps at zero. Treating it like an ordinary
+jog wheel plays a whole revolution of audio backwards every time the record
+goes round, which is the kind of bug that sounds like the software is broken
+because it is.
+
+djmanzo treats it as its own kind of control, with the number of steps in a
+revolution declared in the mapping because every device counts differently. It
+takes the short way round two readings, which is not a guess: at playing speed
+a platter covers three thousandths of a turn between reports, so the long way
+is physically impossible. And when a reading is too far to believe — a dropped
+packet, a cable knocked — it reports nothing rather than lurching the record,
+because the truth is that nobody knows how far it went.
+
 ### A controller you can map yourself
 
 Every DJ application claims that mappings are files you can edit. djmanzo means
