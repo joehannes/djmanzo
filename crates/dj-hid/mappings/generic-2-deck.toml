@@ -183,3 +183,38 @@ on = "cc 1 0x08"
 move = "crossfader {value}"
 min = -1.0
 max = 1.0
+
+# ============================================================ feedback
+#
+# The return path: the engine lighting the controller. Every line names a
+# parameter by the same stable name the interface and the network API use, and
+# the name is checked when this file loads -- a typo is a message at that
+# moment rather than an LED that never comes on.
+#
+# The note numbers are the same ones the transport bindings above use, because
+# on almost every controller a lit button and the button you press are the same
+# piece of plastic. Only what changes is sent; see `feedback.rs` for why.
+
+[[feedback]]
+when = "deck.1.playing"
+send = "note 1 0x0B"
+
+[[feedback]]
+when = "deck.2.playing"
+send = "note 2 0x0B"
+
+[[feedback]]
+when = "deck.1.cue_enabled"
+send = "note 1 0x01"
+
+[[feedback]]
+when = "deck.2.cue_enabled"
+send = "note 2 0x01"
+
+[[feedback]]
+when = "deck.1.loop_active"
+send = "note 1 0x02"
+
+[[feedback]]
+when = "deck.2.loop_active"
+send = "note 2 0x02"

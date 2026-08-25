@@ -197,6 +197,10 @@ pub enum MappingError {
     Silent(String),
     #[error("could not read the mapping: {0}")]
     Unreadable(String),
+    #[error("{0:?} is not a parameter djmanzo has")]
+    UnknownParameter(String),
+    #[error("the light on {0:?} is both a switch and a range; it can only be one")]
+    AmbiguousFeedback(String),
 }
 
 impl Mapping {

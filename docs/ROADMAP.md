@@ -510,7 +510,17 @@ The milestone that makes the hardware in your hands work.
   release, the two decks have the same moves, and nothing takes a Command chord because
   Cmd-Q would quit the application mid-set. Held keys are let go when the window loses
   focus — hold the bass kill, hit Cmd-Tab, and the key-up goes to whatever you switched to.
-- Outbound feedback: LEDs, pad colours, displays.
+- **Outbound feedback — done for LEDs and pad colours.** A `[[feedback]]` block
+  names a parameter by the same stable name the interface and the network API
+  use, and the name is resolved *when the file loads*, so a typo is a message
+  at the moment a DJ chooses the mapping rather than a light that never comes
+  on — the same promise the inbound side makes about actions. Only what changed
+  is sent: a DIN cable carries about a thousand messages a second, and sixty
+  lit controls refreshed at the snapshot rate would be 3,600, so the pad a DJ
+  just hit would queue behind fifty-nine that had not moved. A reconnected
+  device is told everything again, and letting go of one turns its lights off
+  rather than leaving a board showing last night's set. Segment displays still
+  to come.
 - **Motorized platters** as a first-class control kind — absolute high-res position in, motor
   start/stop ramp and torque out.
 - Jog modes: scratch, bend, search. Vinyl vs CDJ mode.

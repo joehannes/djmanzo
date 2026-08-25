@@ -24,6 +24,7 @@
 //! Opening a MIDI port is a separate, thin thing that sits on top.
 
 pub mod bundled;
+pub mod feedback;
 pub mod keys;
 pub mod mapping;
 pub mod message;

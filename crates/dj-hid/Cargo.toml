@@ -10,6 +10,7 @@ authors.workspace = true
 
 [dependencies]
 dj-core = { workspace = true }
+dj-control.workspace = true
 serde = { workspace = true }
 # Mappings are files a DJ edits by hand, so they are TOML rather than JSON:
 # comments, trailing commas forgiven, and no quoting every key. MIT OR
