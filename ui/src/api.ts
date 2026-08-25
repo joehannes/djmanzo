@@ -1343,6 +1343,32 @@ export interface ControlStatus {
   unavailable: string | null;
   keyboard: boolean;
   keyboard_name: string;
+  /**
+   * Where the connected controller says its own sockets go, when it says.
+   * Absent for the great majority of controllers, whose arrangement is the
+   * one djmanzo already assumes.
+   */
+  audio: AudioRouting | null;
+}
+
+/**
+ * A controller's own output arrangement.
+ *
+ * Channels are numbered as they are printed on the back of the device —
+ * from one — because that is the number a DJ is looking at while they plug
+ * a cable in.
+ */
+export interface AudioRouting {
+  master: [number, number];
+  cue: [number, number] | null;
+  booth: [number, number] | null;
+  channels_needed: number;
+  /**
+   * Why the arrangement is not in force, when it is not: the open device has
+   * fewer outputs than the mapping names, so djmanzo is using its usual
+   * layout instead.
+   */
+  not_applied: string | null;
 }
 
 export interface MappingInfo {

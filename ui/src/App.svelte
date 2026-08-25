@@ -11,6 +11,7 @@
   import Sampler from "./Sampler.svelte";
   import Settings from "./Settings.svelte";
   import Shortcuts from "./Shortcuts.svelte";
+  import Controllers from "./Controllers.svelte";
   import MappingEditor from "./MappingEditor.svelte";
   import { Keyboard } from "./keyboard.svelte";
   import { controlMappings as listControlMappings } from "./api";
@@ -873,7 +874,10 @@
       {:else if panel === "keyboard"}
         <Shortcuts {keyboard} onclose={() => (panel = "none")} />
       {:else if panel === "mapping"}
-        <MappingEditor mappings={controlMappings} />
+        <div class="stack">
+          <Controllers mappings={controlMappings} />
+          <MappingEditor mappings={controlMappings} />
+        </div>
       {:else if panel === "sampler"}
         {#if snapshot}
           <Sampler sampler={snapshot.master.sampler} enabled={ready} {send} />
@@ -1061,6 +1065,17 @@
     /* A floor, so a short window still leaves the panel usable rather than
        collapsing it to a sliver. */
     min-height: 220px;
+  }
+
+  /* Two panels in the space of one: what is connected, then what it does.
+     They scroll together, because the mapping editor alone is taller than the
+     panel on a laptop screen. */
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .decks {

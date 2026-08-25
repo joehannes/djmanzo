@@ -26,7 +26,7 @@ pub mod rack;
 pub mod record;
 pub mod sampler;
 
-pub use bus::BusLayout;
+pub use bus::{BusLayout, BusRouting};
 pub use command::{Command, Retired};
 pub use deck::{Deck, DeckLevels};
 pub use engine::Engine;

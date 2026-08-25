@@ -121,6 +121,22 @@ pub enum Command {
         deck: DeckId,
         region: Option<LoopRegion>,
     },
+    /// Put each bus on the sockets a controller's mapping named, or go back to
+    /// guessing from the channel count.
+    ///
+    /// A command rather than an [`Action`] for the same reason as the grid: a
+    /// DJ does not press "route the cue to outputs 3-4". It is a fact about
+    /// the hardware, read out of the mapping file the moment the controller is
+    /// chosen.
+    ///
+    /// `Copy` and allocation-free, so applying it on the audio thread is an
+    /// assignment. The engine still checks it against the device's real
+    /// channel count every block -- see [`crate::bus::BusRouting::layout`] --
+    /// because the device can change under a routing that was right for the
+    /// previous one.
+    SetRouting {
+        routing: Option<crate::bus::BusRouting>,
+    },
 }
 
 impl From<Action> for Command {

@@ -436,6 +436,9 @@ pub fn open_device(
     // Kept, so an interface that did not make this call can still find out. See
     // `AppState::set_active_device`.
     state.set_active_device(Some(dto.clone()));
+    // The engine behind this device is brand new and knows nothing about the
+    // controller that is already plugged in. Tell it.
+    state.apply_controller_routing();
     Ok(dto)
 }
 
@@ -2917,7 +2920,12 @@ pub fn choose_layout(state: State<'_, AppState>, name: String) {
 #[tauri::command]
 #[must_use]
 pub fn control_status(state: State<'_, AppState>) -> crate::control::ControlStatus {
-    state.control().status()
+    // The device's channel count, so a controller asking for outputs the
+    // device does not have is reported as not applied rather than as in force.
+    let channels = state
+        .active_device()
+        .map(|device| usize::from(device.channels));
+    state.control().status(channels)
 }
 
 /// Every mapping that can be opened.
@@ -3125,11 +3133,20 @@ pub fn open_controller(
     port: String,
     mapping: Option<String>,
 ) -> Result<(), String> {
-    state.control().open(&port, mapping.as_deref())
+    state.control().open(&port, mapping.as_deref())?;
+    // A controller with its own soundcard usually states where its sockets go.
+    // Applied here rather than left in Settings because a DJ plugging in
+    // mid-set has no time to find it, and the failure it prevents -- the room
+    // hearing the cue -- is the loudest kind.
+    state.apply_controller_routing();
+    Ok(())
 }
 
 /// Close whatever controller is open.
 #[tauri::command]
 pub fn close_controller(state: State<'_, AppState>) {
     state.control().close();
+    // Back to guessing from the channel count, which is right for the built-in
+    // output the DJ has just fallen back to.
+    state.apply_controller_routing();
 }

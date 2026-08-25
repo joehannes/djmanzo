@@ -43,6 +43,9 @@ pub struct Engine {
 
     crossfader: f32,
     crossfader_curve: CrossfaderCurve,
+    /// Where the current controller's mapping says each bus comes out, when it
+    /// says anything. `None` means guess from the channel count.
+    routing: Option<crate::bus::BusRouting>,
     master_gain: SmoothedValue,
     master_gain_db: f32,
 
@@ -152,6 +155,7 @@ impl Engine {
             registry,
             crossfader: 0.0,
             crossfader_curve: CrossfaderCurve::default(),
+            routing: None,
             master_gain: SmoothedValue::new(1.0, sr),
             master_gain_db: 0.0,
             peak_left: PeakMeter::new(sr),
@@ -376,6 +380,7 @@ impl Engine {
                         target.set_hot_cues(cues);
                     }
                 }
+                Command::SetRouting { routing } => self.routing = routing,
                 Command::SetLoop { deck, region } => {
                     if let Some(target) = self.deck_mut(deck) {
                         target.set_loop_region(region);
@@ -1159,7 +1164,14 @@ impl AudioCallback for Engine {
         self.hold_sync();
         self.apply_crossfader();
 
-        let layout = BusLayout::for_channels(ctx.channels);
+        // The mapping's arrangement when the device is wide enough for it,
+        // and the guess otherwise. Re-checked every block rather than when the
+        // routing arrives, because the device is chosen separately from the
+        // controller and either can change while the other stays put.
+        let layout = self
+            .routing
+            .and_then(|routing| routing.layout(ctx.channels))
+            .unwrap_or_else(|| BusLayout::for_channels(ctx.channels));
         let channels = layout.channels;
         self.registry
             .set_bool(ParamId::Global(GlobalParam::CueAvailable), layout.has_cue());
@@ -2039,6 +2051,108 @@ mod cue_routing_tests {
         assert!(
             rig.peak(&out, layout(2).main) > 0.4,
             "master must still work when cue is unavailable"
+        );
+    }
+
+    /// A controller whose mapping says its sockets are the other way round.
+    ///
+    /// The guess would put the room on 1-2 and the headphones on 3-4. This
+    /// device does the opposite, and says so, so the audio has to follow the
+    /// mapping rather than the convention -- otherwise the room hears the cue,
+    /// which is the failure the whole preset exists to prevent.
+    #[test]
+    fn a_stated_routing_puts_the_buses_where_the_mapping_says() {
+        let mut rig = rig(4);
+        rig.commands
+            .push(Command::SetRouting {
+                routing: Some(crate::bus::BusRouting::new((2, 3), Some((0, 1)), None)),
+            })
+            .unwrap();
+        rig.load_and_play(1, 0.5);
+        // Cued but crossfaded away: the deck is loud in the headphones and
+        // silent in the room. The two buses therefore carry *different*
+        // signals, which is what makes a swap visible -- an arrangement where
+        // both are loud would pass whether or not the routing was honoured.
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetCue(true),
+        });
+        rig.act(Action::Mixer(MixerAction::Crossfader(1.0)));
+        rig.act(Action::Mixer(MixerAction::CueMix(0.0)));
+
+        let out = rig.settle_then_render(4_096);
+        assert!(
+            rig.peak(&out, (0, 1)) > 0.4,
+            "the headphones are on 1-2 and should carry the cued deck, got {}",
+            rig.peak(&out, (0, 1))
+        );
+        assert!(
+            rig.peak(&out, (2, 3)) < 0.02,
+            "the room is on 3-4 and must stay silent, got {}",
+            rig.peak(&out, (2, 3))
+        );
+        // The guess would have put these the other way round, which is the
+        // only reason the mapping is allowed to override it.
+        assert_eq!(layout(4).main, (0, 1));
+        assert_eq!(layout(4).cue, Some((2, 3)));
+    }
+
+    /// The routing is checked against the device every block, not once when it
+    /// arrives: a DJ can unplug the controller's soundcard and keep the
+    /// mapping, and a routing naming channel 6 on a stereo output would write
+    /// past the end of the buffer the device handed over.
+    #[test]
+    fn a_routing_too_wide_for_the_device_falls_back_to_the_guess() {
+        let mut rig = rig(4);
+        rig.commands
+            .push(Command::SetRouting {
+                routing: Some(crate::bus::BusRouting::new((0, 1), Some((4, 5)), None)),
+            })
+            .unwrap();
+        rig.load_and_play(1, 0.5);
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::SetCue(true),
+        });
+        rig.act(Action::Mixer(MixerAction::Crossfader(-1.0)));
+        rig.act(Action::Mixer(MixerAction::CueMix(0.0)));
+
+        let out = rig.settle_then_render(4_096);
+        assert!(
+            rig.peak(&out, (0, 1)) > 0.4,
+            "the room must still be heard, got {}",
+            rig.peak(&out, (0, 1))
+        );
+        assert!(
+            rig.peak(&out, (2, 3)) > 0.4,
+            "the cue should fall back to 3-4, got {}",
+            rig.peak(&out, (2, 3))
+        );
+    }
+
+    /// Clearing the routing goes back to the guess, so unplugging a controller
+    /// does not leave its socket arrangement behind on the laptop's output.
+    #[test]
+    fn clearing_the_routing_restores_the_guess() {
+        let mut rig = rig(4);
+        rig.commands
+            .push(Command::SetRouting {
+                routing: Some(crate::bus::BusRouting::new((2, 3), Some((0, 1)), None)),
+            })
+            .unwrap();
+        rig.load_and_play(1, 0.5);
+        rig.act(Action::Mixer(MixerAction::Crossfader(-1.0)));
+        let swapped = rig.settle_then_render(4_096);
+        assert!(rig.peak(&swapped, (2, 3)) > 0.4, "master on 3-4 first");
+
+        rig.commands
+            .push(Command::SetRouting { routing: None })
+            .unwrap();
+        let restored = rig.settle_then_render(4_096);
+        assert!(
+            rig.peak(&restored, (0, 1)) > 0.4,
+            "master should be back on 1-2, got {}",
+            rig.peak(&restored, (0, 1))
         );
     }
 }

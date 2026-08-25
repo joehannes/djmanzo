@@ -14,6 +14,28 @@
 name = "Generic 2-deck"
 device = "MIDI"
 
+# ------------------------------------------------------------ audio outputs
+#
+# A controller with a built-in soundcard has a fixed arrangement of sockets,
+# and the manual says what it is. djmanzo otherwise guesses from the channel
+# count -- master on 1-2, headphones on 3-4, booth on 5-6 -- which is right for
+# most devices and wrong for the ones that do it differently. "Wrong" here
+# means the room hears what you are cueing.
+#
+# Uncomment and edit if yours differs. Channels are counted from zero, so
+# socket 1 is channel 0. The master and the cue may not share a channel: that
+# combination is refused when the file loads, not when the crowd notices.
+#
+#   [audio]
+#   device = "DDJ"      # part of the soundcard's name, matched loosely
+#   master = [2, 3]     # outputs 3-4
+#   cue = [0, 1]        # outputs 1-2
+#   booth = [4, 5]      # optional
+#
+# There is no block here because a mapping called "Generic" cannot know what
+# sockets your device has -- guessing would be exactly the mistake this
+# section exists to fix.
+
 # ------------------------------------------------------- deck 1 transport
 
 [[binding]]

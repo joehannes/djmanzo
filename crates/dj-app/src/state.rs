@@ -850,6 +850,21 @@ impl AppState {
         &self.bus
     }
 
+    /// Put the open controller's output arrangement on the engine.
+    ///
+    /// Called both when a controller is opened or closed and after every audio
+    /// device open, because opening a device builds a **fresh engine** with
+    /// fresh queues -- so a routing sent to the previous one is simply gone.
+    /// The hub is the thing that remembers, and this is how the engine is told
+    /// again.
+    ///
+    /// Failure is silent on purpose: there is no engine to route to until a
+    /// device is open, and the next device open calls this again.
+    pub fn apply_controller_routing(&self) {
+        let routing = self.control().routing();
+        let _ = self.bus().send_command(Command::SetRouting { routing });
+    }
+
     #[must_use]
     pub fn taps(&self) -> &crate::grid::TapTracker {
         &self.taps

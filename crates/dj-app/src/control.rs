@@ -70,6 +70,28 @@ pub struct ControlStatus {
     /// Whether the keyboard is listening.
     pub keyboard: bool,
     pub keyboard_name: String,
+    /// What the open controller's mapping says about its own outputs, when it
+    /// says anything. Shown so a DJ can see the arrangement being used rather
+    /// than inferring it from which socket is quiet.
+    pub audio: Option<AudioRoutingDto>,
+}
+
+/// A controller's own output arrangement, as the interface shows it.
+///
+/// Channel numbers are 1-based here because the sockets on the back of the
+/// device are labelled 1-4, not 0-3, and a panel that disagreed with the
+/// silkscreen would be worse than no panel.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AudioRoutingDto {
+    pub master: (usize, usize),
+    pub cue: Option<(usize, usize)>,
+    pub booth: Option<(usize, usize)>,
+    /// How many outputs the device must have for this arrangement.
+    pub channels_needed: usize,
+    /// Set when the arrangement cannot be used on the device that is open --
+    /// the mapping names an output the device does not have -- in which case
+    /// djmanzo falls back to guessing from the channel count and says so.
+    pub not_applied: Option<String>,
 }
 
 /// Everything the controller layer owns.
@@ -83,6 +105,13 @@ pub struct ControlHub {
     keyboard_on: std::sync::atomic::AtomicBool,
     /// The open port. Dropping it closes the port.
     open: Mutex<Option<dj_hid::Connection>>,
+    /// Where the open controller's mapping says its own sockets go.
+    ///
+    /// Kept beside the connection rather than inside it because the routing
+    /// outlives every audio device: opening a device builds a fresh engine, so
+    /// the arrangement has to be put back afterwards from somewhere that
+    /// remembers it.
+    audio: Mutex<Option<dj_hid::audio::AudioPreset>>,
     /// Where the MIDI thread posts translated actions, kept so a new
     /// connection reuses the drain that is already running.
     post: Sender<String>,
@@ -124,6 +153,7 @@ impl ControlHub {
                 keyboard: Mutex::new(keyboard),
                 keyboard_on: std::sync::atomic::AtomicBool::new(true),
                 open: Mutex::new(None),
+                audio: Mutex::new(None),
                 post,
                 listener: dj_hid::Listener::default(),
             },
@@ -323,22 +353,56 @@ impl ControlHub {
                 .clone()
         };
 
+        // Taken before the mapping is handed to the port, which consumes it.
+        let preset = chosen.audio.clone();
+
         let open = dj_hid::port::open(port, chosen, self.post.clone(), self.listener.clone())
             .map_err(|e| e.to_string())?;
         // Assigned last, so a failed open leaves the previous connection alone
         // rather than closing it and connecting to nothing.
         *self.open.lock().unwrap() = Some(open);
+        *self.audio.lock().unwrap() = preset;
         Ok(())
     }
 
     /// Close whatever is open. Closing nothing is not an error.
     pub fn close(&self) {
         *self.open.lock().unwrap() = None;
+        // Cleared with the connection: a routing left behind would send the
+        // laptop's built-in output to sockets that belonged to a controller
+        // which is no longer plugged in.
+        *self.audio.lock().unwrap() = None;
+    }
+
+    /// What the open controller says about its own outputs.
+    ///
+    /// `None` when nothing is open, or when the mapping says nothing -- which
+    /// is the normal case, since most controllers put the master first and the
+    /// guess is right for them.
+    #[must_use]
+    pub fn audio_preset(&self) -> Option<dj_hid::audio::AudioPreset> {
+        self.audio.lock().ok()?.clone()
+    }
+
+    /// The open controller's arrangement as the engine wants it.
+    ///
+    /// A preset that does not validate comes back as `None` rather than as an
+    /// error: it was already refused when the mapping was parsed, so reaching
+    /// here means something opened a mapping that never loaded, and the safe
+    /// answer is the guess.
+    #[must_use]
+    pub fn routing(&self) -> Option<dj_engine::BusRouting> {
+        let routing = self.audio_preset()?.routing().ok()?;
+        Some(dj_engine::BusRouting::new(
+            routing.master,
+            routing.cue,
+            routing.booth,
+        ))
     }
 
     /// What is plugged in and what is listening.
     #[must_use]
-    pub fn status(&self) -> ControlStatus {
+    pub fn status(&self, channels: Option<usize>) -> ControlStatus {
         let (inputs, unavailable) = match dj_hid::port::inputs() {
             Ok(found) => (found, None),
             Err(e) => (Vec::new(), Some(e.to_string())),
@@ -352,7 +416,32 @@ impl ControlHub {
             unavailable,
             keyboard: self.keyboard_on(),
             keyboard_name: keyboard.name.clone(),
+            audio: self.audio_routing_dto(channels),
         }
+    }
+
+    /// The open controller's arrangement, described for the interface.
+    ///
+    /// `channels` is what the open audio device actually provides, so a
+    /// mapping that asks for more outputs than the device has is reported as
+    /// not applied instead of appearing to be in force.
+    fn audio_routing_dto(&self, channels: Option<usize>) -> Option<AudioRoutingDto> {
+        let routing = self.audio_preset()?.routing().ok()?;
+        let not_applied = match channels {
+            Some(available) if routing.channels_needed > available => Some(format!(
+                "this mapping needs {} outputs and the open device has {available}; \
+                 djmanzo is using the usual arrangement instead",
+                routing.channels_needed
+            )),
+            _ => None,
+        };
+        Some(AudioRoutingDto {
+            master: human(routing.master),
+            cue: routing.cue.map(human),
+            booth: routing.booth.map(human),
+            channels_needed: routing.channels_needed,
+            not_applied,
+        })
     }
 }
 
@@ -387,6 +476,16 @@ pub fn drain(handle: tauri::AppHandle, take: Receiver<String>) {
 /// Without this the drain thread would end the moment the last connection
 /// closed, and the next one opened would post into a channel nobody reads.
 pub type Post = Arc<Sender<String>>;
+
+/// A zero-based channel pair as the sockets are labelled on the device.
+///
+/// The engine counts from zero because that is how the buffer is indexed; the
+/// back of a controller counts from one because that is how it is printed. The
+/// translation happens once, here, at the edge where a number stops being an
+/// index and starts being something a person reads.
+fn human(pair: (usize, usize)) -> (usize, usize) {
+    (pair.0 + 1, pair.1 + 1)
+}
 
 /// A mapping name as a file name.
 ///
@@ -548,7 +647,7 @@ mod tests {
         let (hub, _take) = ControlHub::new();
         hub.set_keyboard(false);
         assert!(!hub.keyboard_on());
-        assert!(!hub.status().keyboard);
+        assert!(!hub.status(None).keyboard);
         hub.set_keyboard(true);
         assert!(hub.keyboard_on());
     }
@@ -631,7 +730,7 @@ mod tests {
 
         let (hub, _take) = ControlHub::new();
         assert!(hub.load_user_mappings(dir.path()).is_empty());
-        assert_eq!(hub.status().keyboard_name, "Mine");
+        assert_eq!(hub.status(None).keyboard_name, "Mine");
         assert_eq!(hub.keys().len(), 1);
     }
 

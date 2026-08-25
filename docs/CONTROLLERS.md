@@ -140,6 +140,43 @@ A 7-bit control gives 128 steps across ±8%, which is 0.125% per step —
 audibly coarse when beatmatching by ear. Controllers that have a good pitch
 fader send it on the pitch wheel; use `bend`.
 
+## Where the sound comes out
+
+A controller with a built-in soundcard has a fixed arrangement of sockets, and
+its manual says what it is. djmanzo otherwise works it out from the channel
+count — master on outputs 1-2, headphones on 3-4, booth on 5-6 — which is
+right for most devices and wrong for the ones that do it differently.
+
+Wrong here has one specific meaning: **the room hears what you are cueing.**
+
+So a mapping may state its own arrangement, in the same file as the pads,
+because they are the same fact about the same piece of hardware:
+
+```toml
+[audio]
+device = "DDJ"      # part of the soundcard's name, matched loosely
+master = [2, 3]     # outputs 3-4
+cue = [0, 1]        # outputs 1-2
+booth = [4, 5]      # optional
+```
+
+Channels are counted from zero, as the audio buffer indexes them; the panel
+shows them from one, as the sockets are labelled.
+
+Three things are checked when the file loads, not when the crowd notices:
+
+- every bus is a **pair** — a mono master is not something a mapping can ask
+  for;
+- **no two buses share a channel**, which is the rule the whole section exists
+  for;
+- and when a device is open, whether it has enough outputs. A mapping that
+  asks for six on a device with two is reported in the Controllers panel and
+  the usual arrangement is used instead — never a silent half-application.
+
+The arrangement is applied when the controller is connected and re-applied
+after every audio device change, because opening a device builds a fresh audio
+engine that knows nothing about what is plugged in.
+
 ## Where mappings live
 
 Bundled mappings are compiled into the application, so a fresh install on a
@@ -165,9 +202,10 @@ hand-edited; a typo in one file is normal and should not take the rest down.
 ## What is not here yet
 
 - HID, for jog wheels that need more than seven bits of resolution.
-- Outbound feedback — LEDs, pad colours, displays.
-- Motorised platters.
-- An in-app learn mode: press a control, pick an action, save.
 - Lua, for mappings that need real logic rather than a table.
+
+Done since this list was first written: outbound feedback (LEDs, pad colours,
+ring lights), motorised platters that report an angle rather than a delta, the
+in-app learn mode, and the audio section above.
 
 See [ROADMAP.md](ROADMAP.md#m4--controllers).

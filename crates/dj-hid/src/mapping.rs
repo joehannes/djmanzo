@@ -190,6 +190,14 @@ pub struct Mapping {
     pub device: String,
     #[serde(default, rename = "binding")]
     pub bindings: Vec<Binding>,
+    /// Which sockets on this controller carry which bus.
+    ///
+    /// In the mapping rather than a settings panel because it is the same fact
+    /// about the same piece of hardware as which pad is play, and a DJ should
+    /// not have to find it separately with a crowd waiting. See
+    /// [`crate::audio`].
+    #[serde(default)]
+    pub audio: Option<crate::audio::AudioPreset>,
 
     /// Parsed triggers, built once when the file loads.
     #[serde(skip)]
@@ -228,6 +236,8 @@ pub enum MappingError {
     ResolutionWithoutPlatter(String),
     #[error("the platter on {0:?} cannot be followed: {1}")]
     BadPlatter(String, String),
+    #[error("the audio preset is not usable: {0}")]
+    BadAudioPreset(String),
 }
 
 impl Mapping {
@@ -238,12 +248,22 @@ impl Mapping {
     /// writing back out. Anything that wants to run a mapping goes through
     /// [`Mapping::parse`], which is what makes a saved file and a built one
     /// the same thing.
+    ///
+    /// The audio preset is a parameter rather than a default because a part
+    /// that can be forgotten is a part that will be: an editor that dropped it
+    /// would silently unroute a controller the moment a DJ renamed a pad.
     #[must_use]
-    pub fn from_parts(name: String, device: String, bindings: Vec<Binding>) -> Self {
+    pub fn from_parts(
+        name: String,
+        device: String,
+        bindings: Vec<Binding>,
+        audio: Option<crate::audio::AudioPreset>,
+    ) -> Self {
         Self {
             name,
             device,
             bindings,
+            audio,
             ..Self::default()
         }
     }
@@ -261,6 +281,16 @@ impl Mapping {
     }
 
     fn prepare(&mut self) -> Result<(), MappingError> {
+        // The audio preset is checked here for the same reason the actions
+        // are: a layout where the master and the cue overlap puts the next
+        // track through the speakers, and there is no moment later at which
+        // finding that out is any use.
+        if let Some(preset) = &self.audio {
+            preset
+                .routing()
+                .map_err(|e| MappingError::BadAudioPreset(e.to_string()))?;
+        }
+
         self.triggers = Vec::with_capacity(self.bindings.len());
         for binding in &self.bindings {
             self.triggers.push(Trigger::parse(&binding.on)?);
@@ -1187,5 +1217,80 @@ mod fill_precision_tests {
             dj_core::Action::parse(&text)
                 .unwrap_or_else(|e| panic!("{text:?} does not parse: {e}"));
         }
+    }
+}
+
+#[cfg(test)]
+mod audio_preset_tests {
+    use super::*;
+
+    fn mapping(audio: &str) -> Result<Mapping, MappingError> {
+        Mapping::parse(&format!(
+            "name = \"Preset\"\ndevice = \"DDJ\"\n\n\
+             [[binding]]\non = \"note 1 0x0b\"\npress = \"deck 1 play_pause\"\n\n{audio}"
+        ))
+    }
+
+    #[test]
+    fn a_mapping_can_say_where_its_sockets_go() {
+        let map = mapping("[audio]\ndevice = \"DDJ-400\"\nmaster = [0, 1]\ncue = [2, 3]")
+            .expect("a normal controller");
+        let preset = map.audio.expect("the preset was read");
+        let routing = preset.routing().expect("and it is usable");
+
+        assert_eq!(routing.master, (0, 1));
+        assert_eq!(routing.cue, Some((2, 3)));
+        assert!(preset.fits("PIONEER DDJ-400 Analog Stereo"));
+    }
+
+    /// **The check that matters.** A mapping from a stranger that routed the
+    /// cue into the master would play the next track through the speakers, and
+    /// the first anyone would know is the crowd hearing it. Refused when the
+    /// file loads.
+    #[test]
+    fn a_mapping_whose_cue_overlaps_the_master_is_refused() {
+        let error = mapping("[audio]\ndevice = \"X\"\nmaster = [0, 1]\ncue = [1, 2]")
+            .expect_err("that would put the cue in the room");
+        assert!(
+            matches!(error, MappingError::BadAudioPreset(_)),
+            "got {error}"
+        );
+        assert!(
+            error.to_string().contains("room would hear the cue"),
+            "the message should say what is wrong: {error}"
+        );
+    }
+
+    /// Most mappings are for controllers with no soundcard of their own, and
+    /// saying nothing about audio has to stay the normal case.
+    #[test]
+    fn a_mapping_with_no_audio_section_is_fine() {
+        let map = mapping("").expect("a mapping need not mention audio");
+        assert!(map.audio.is_none());
+    }
+
+    /// The preset survives being written back out by the editor, or a DJ who
+    /// edits a controller mapping loses its routing.
+    #[test]
+    fn an_audio_preset_survives_the_editor() {
+        let original = mapping("[audio]\ndevice = \"DDJ-400\"\nmaster = [0, 1]\ncue = [2, 3]")
+            .expect("a normal controller");
+
+        let mut draft = crate::editor::Draft::from_mapping(&original);
+        draft
+            .bind(
+                "note 1 0x0c",
+                &crate::editor::Role::Latching {
+                    press: "deck 1 cue".to_owned(),
+                },
+            )
+            .expect("adding a control");
+
+        let saved = draft.to_toml().expect("writable");
+        let reloaded = Mapping::parse(&saved).expect("readable");
+        assert_eq!(
+            reloaded.audio, original.audio,
+            "editing the mapping lost its audio routing"
+        );
     }
 }

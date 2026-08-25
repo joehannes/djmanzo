@@ -546,7 +546,28 @@ The milestone that makes the hardware in your hands work.
   when nothing is playing. On screen the platter answers to being *turned*
   rather than dragged, so a movement is the same near the hub or out at the rim.
   Motorised platters -- position in, torque out -- still to come.
-- Controller-specific audio setup presets.
+- **Controller-specific audio setup presets — done.** A controller with a
+  built-in soundcard has a fixed arrangement of sockets and its manual says
+  what it is; djmanzo otherwise works it out from the channel count. That guess
+  is right for most devices and wrong for the ones that differ, and wrong here
+  has one meaning: the room hears what you are cueing. So an `[audio]` block in
+  the same file as the pads states master, cue and booth, and **a layout where
+  the master and the cue share a channel is refused when the file loads** --
+  there is no later moment at which finding out is any use. The arrangement is
+  applied when the controller connects and re-applied after every audio device
+  change, because opening a device builds a fresh engine that knows nothing
+  about what is plugged in; and it is re-checked against the device's real
+  channel count every block, so a routing written for six outputs falls back to
+  the guess on a stereo laptop rather than writing past the end of the buffer.
+  A mapping that does not fit is *said out loud* in the Controllers panel
+  rather than half-applied.
+- **The Controllers panel — done, and it was missing.** `control_status` had no
+  consumer at all: djmanzo could read a controller and edit a mapping, and
+  offered no way to see whether the thing on the table was connected. A DJ
+  pressing a dead pad had three candidate problems -- no port open, the wrong
+  mapping, a missing binding -- and no way to tell them apart. The panel names
+  which, and distinguishes "nothing is plugged in" from "this machine has no
+  MIDI service", because only one of those is fixed by plugging something in.
 - **In-app mapping editor — done.** M4's promise is that adding a controller
   means editing a file rather than rebuilding the application, which is only
   half true while the only way to write the file is by hand from a manual. Now:

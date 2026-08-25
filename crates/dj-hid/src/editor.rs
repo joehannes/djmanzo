@@ -21,6 +21,7 @@
 //! channel: what comes back is what a person would have written having read
 //! the manual, which is what makes the learned file editable afterwards.
 
+use crate::audio::AudioPreset;
 use crate::mapping::{Binding, Encoding, Mapping, MappingError};
 use crate::message::Message;
 
@@ -128,6 +129,13 @@ impl Role {
 pub struct Draft {
     pub name: String,
     pub device: String,
+    /// Where the controller's own soundcard puts each bus, when it says.
+    ///
+    /// The editor does not currently offer a way to change this -- a socket
+    /// arrangement is a fact about the hardware, not a preference -- but it
+    /// carries it, because a draft that dropped it would unroute the
+    /// controller the moment anybody edited a pad.
+    pub audio: Option<AudioPreset>,
     bindings: Vec<Binding>,
 }
 
@@ -137,6 +145,7 @@ impl Draft {
         Self {
             name: name.into(),
             device: device.into(),
+            audio: None,
             bindings: Vec::new(),
         }
     }
@@ -147,6 +156,7 @@ impl Draft {
         Self {
             name: mapping.name.clone(),
             device: mapping.device.clone(),
+            audio: mapping.audio.clone(),
             bindings: mapping.bindings.clone(),
         }
     }
@@ -203,6 +213,7 @@ impl Draft {
             self.name.clone(),
             self.device.clone(),
             self.bindings.clone(),
+            self.audio.clone(),
         );
         let body = toml::to_string_pretty(&mapping)
             .map_err(|e| MappingError::Unreadable(e.to_string()))?;

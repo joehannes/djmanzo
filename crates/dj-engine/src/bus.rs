@@ -84,6 +84,69 @@ impl BusLayout {
     }
 }
 
+/// A bus arrangement a device's own mapping asked for.
+///
+/// [`BusLayout::for_channels`] guesses from the channel count, which is right
+/// for most devices and wrong for the ones that arrange their sockets
+/// differently -- and wrong here means the room hears the cue. A controller
+/// that states its arrangement gets it honoured instead.
+///
+/// Plain pairs rather than a `dj-hid` type, so the engine does not depend on
+/// the controller crate: the engine's business is where the audio goes, not
+/// where the instruction came from.
+///
+/// `Copy` and free of allocation because it crosses to the audio thread and is
+/// read there once a block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BusRouting {
+    pub main: (usize, usize),
+    pub cue: Option<(usize, usize)>,
+    pub booth: Option<(usize, usize)>,
+}
+
+impl BusRouting {
+    #[must_use]
+    pub fn new(
+        main: (usize, usize),
+        cue: Option<(usize, usize)>,
+        booth: Option<(usize, usize)>,
+    ) -> Self {
+        Self { main, cue, booth }
+    }
+
+    /// How many outputs a device needs for this arrangement to fit.
+    #[must_use]
+    pub fn channels_needed(&self) -> usize {
+        [Some(self.main), self.cue, self.booth]
+            .into_iter()
+            .flatten()
+            .flat_map(|(left, right)| [left, right])
+            .max()
+            .map_or(0, |highest| highest + 1)
+    }
+
+    /// This arrangement on a device with `channels` outputs.
+    ///
+    /// `None` when it does not fit, which is the whole reason the check lives
+    /// here rather than at each call site: a routing written for a controller
+    /// with six sockets, applied unchecked to the laptop's built-in stereo
+    /// output, would index past the end of the buffer the device handed over.
+    /// The caller falls back to [`BusLayout::for_channels`], which is a worse
+    /// answer than the mapping's and a much better one than a crash.
+    #[must_use]
+    pub fn layout(&self, channels: usize) -> Option<BusLayout> {
+        if self.channels_needed() > channels {
+            return None;
+        }
+        Some(BusLayout {
+            channels,
+            main: self.main,
+            cue: self.cue,
+            booth: self.booth,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,5 +231,65 @@ mod tests {
     fn zero_channels_does_not_divide_by_zero() {
         let layout = BusLayout::for_channels(0);
         assert_eq!(layout.frames(64), 64);
+    }
+
+    /// The case the type exists for: a controller whose master is not first.
+    #[test]
+    fn a_routing_overrides_the_guess() {
+        let routing = BusRouting::new((2, 3), Some((0, 1)), None);
+        let layout = routing.layout(4).expect("four channels is enough for four");
+        assert_eq!(layout.main, (2, 3));
+        assert_eq!(layout.cue, Some((0, 1)));
+        assert_ne!(layout.main, BusLayout::for_channels(4).main);
+    }
+
+    /// A routing that does not fit must be refused rather than clamped: every
+    /// index it names is written into the device's buffer, and there is no
+    /// honest way to squeeze channel 5 into a stereo output.
+    #[test]
+    fn a_routing_wider_than_the_device_does_not_fit() {
+        let routing = BusRouting::new((0, 1), Some((4, 5)), None);
+        assert_eq!(routing.channels_needed(), 6);
+        assert!(routing.layout(2).is_none());
+        assert!(routing.layout(4).is_none());
+        assert!(routing.layout(6).is_some());
+    }
+
+    /// Every index a routing hands back has to be inside the buffer, whatever
+    /// the mapping said -- this is the assertion that stands between a typo in
+    /// a controller file and a write past the end of the device's buffer.
+    #[test]
+    fn a_fitting_routing_names_only_channels_that_exist() {
+        for (main, cue, booth, channels) in [
+            ((0usize, 1usize), None, None, 2usize),
+            ((2, 3), Some((0, 1)), None, 4),
+            ((0, 1), Some((4, 5)), Some((2, 3)), 6),
+            ((6, 7), Some((0, 1)), Some((2, 3)), 8),
+        ] {
+            let routing = BusRouting::new(main, cue, booth);
+            let layout = routing
+                .layout(channels)
+                .expect("this routing fits by construction");
+            let mut indices = vec![layout.main.0, layout.main.1];
+            if let Some((l, r)) = layout.cue {
+                indices.extend([l, r]);
+            }
+            if let Some((l, r)) = layout.booth {
+                indices.extend([l, r]);
+            }
+            for index in indices {
+                assert!(index < channels, "channel {index} is past {channels}");
+            }
+        }
+    }
+
+    /// A device with room to spare keeps its own channel count, because the
+    /// buffer is still that wide however few sockets the mapping names.
+    #[test]
+    fn a_narrow_routing_on_a_wide_device_keeps_the_device_count() {
+        let routing = BusRouting::new((0, 1), Some((2, 3)), None);
+        let layout = routing.layout(8).expect("four channels of eight");
+        assert_eq!(layout.channels, 8);
+        assert_eq!(layout.frames(64), 8);
     }
 }

@@ -58,6 +58,52 @@ mod tests {
         assert!(map.keys.len() > 40, "only {} keys", map.keys.len());
     }
 
+    /// The commented-out `[audio]` example is documentation, and documentation
+    /// that does not parse is worse than none: a DJ uncomments it, the mapping
+    /// stops loading, and the file they were told to copy is the reason.
+    ///
+    /// So it is uncommented here and put through the real parser.
+    #[test]
+    fn the_documented_audio_example_parses_when_uncommented() {
+        let (_, text) = CONTROLLERS
+            .iter()
+            .find(|(stem, _)| *stem == "generic-2-deck")
+            .expect("the generic mapping is bundled");
+
+        // The example is indented under `#   `, which is what tells it apart
+        // from the prose around it.
+        let example: String = text
+            .lines()
+            .filter_map(|line| line.strip_prefix("#   "))
+            .map(|line| format!("{line}\n"))
+            .collect();
+        assert!(
+            example.contains("[audio]"),
+            "the documented example has moved or lost its indentation:\n{example}"
+        );
+
+        let uncommented = format!(
+            "name = \"Example\"\ndevice = \"MIDI\"\n\n{example}\n             [[binding]]\non = \"note 1 0x0B\"\npress = \"deck 1 play_pause\"\n"
+        );
+        let mapping = Mapping::parse(&uncommented).unwrap_or_else(|e| {
+            panic!("the documented example does not parse: {e}\n{uncommented}")
+        });
+
+        let routing = mapping
+            .audio
+            .expect("the example is an audio preset")
+            .routing()
+            .expect("the example is a usable arrangement");
+        // And it demonstrates the case the section exists for. An example
+        // showing master on 1-2 would be indistinguishable from the guess, so
+        // it would teach a reader nothing about when to write one at all.
+        assert_ne!(
+            routing.master,
+            (0, 1),
+            "the example shows the arrangement djmanzo already guesses"
+        );
+    }
+
     #[test]
     fn every_bundled_controller_parses() {
         for (name, text) in CONTROLLERS {
