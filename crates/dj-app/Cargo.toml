@@ -48,6 +48,7 @@ dj-sources = { workspace = true }
 dj-assistant = { workspace = true }
 dj-presets = { workspace = true }
 dj-hid = { workspace = true }
+dj-net = { workspace = true }
 
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"

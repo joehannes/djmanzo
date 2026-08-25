@@ -80,6 +80,9 @@ const STEMS_CACHE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub struct AppState {
     bus: Arc<ActionBus<Command>>,
     registry: Arc<ParameterRegistry>,
+    /// The network control server. Off until a DJ switches it on; see
+    /// `crate::remote` for why that is not a preference.
+    remote: Arc<crate::remote::Remote>,
     /// Tap-tempo runs in progress. Lives here rather than on the audio thread
     /// because a run is host state -- see `crate::grid`.
     taps: crate::grid::TapTracker,
@@ -293,6 +296,7 @@ impl AppState {
         Self {
             bus,
             registry,
+            remote: Arc::new(crate::remote::Remote::default()),
             taps: crate::grid::TapTracker::new(),
             layout_dir: Mutex::new(None),
             mapping_draft: Mutex::new(dj_hid::editor::Draft::new("My mapping", String::new())),
@@ -843,6 +847,12 @@ impl AppState {
     #[must_use]
     pub fn waveforms(&self) -> &Arc<WaveformStore> {
         &self.waveforms
+    }
+
+    /// The network control server, running or not.
+    #[must_use]
+    pub fn remote(&self) -> &Arc<crate::remote::Remote> {
+        &self.remote
     }
 
     #[must_use]

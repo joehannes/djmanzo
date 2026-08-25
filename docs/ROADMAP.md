@@ -999,13 +999,27 @@ change in audio latency, and instantly on the next load.
 
 ## M7 — Network
 
-**Foundation landed:** `dj-net` now gives every future transport a single,
-tested boundary: JSON control messages parse into the existing action bus and
-parameter registry, MIDI clock has bounded input/output timing utilities, and a
-phase follower applies only gentle tempo corrections. The documented control
-schema is transport-neutral so WebSocket and OSC adapters cannot grow private
-engine APIs. Pioneer/Denon discovery and actual socket adapters remain the
-next protocol-specific slices.
+**Foundation landed, and now reachable.** `dj-net` gives every future transport
+a single, tested boundary: JSON control messages parse into the existing action
+bus and parameter registry, MIDI clock has bounded input/output timing
+utilities, and a phase follower applies only gentle tempo corrections. The
+control schema is transport-neutral so WebSocket and OSC adapters cannot grow
+private engine APIs.
+
+It was, for four days, a boundary with no door. **Nothing depended on the
+crate** -- and it could not have: `ControlService::new` took the bus and the
+registry *by value*, and djmanzo holds both in `Arc`s because there is one of
+each. Any service built from it would have dispatched into a private ring
+buffer nobody reads. It took shared handles and a socket to make the tests mean
+anything.
+
+- **A local control server — done.** One JSON object per line over TCP, in
+  Settings → Remote control. Off unless switched on; `127.0.0.1:7654` by
+  default; **a passphrase required the moment the address is not loopback**,
+  refused in `ControlServer::start` rather than left to the panel. Verified by
+  driving a running djmanzo from a separate process: `deck.1.volume` 1.0 → 0.42
+  over the socket. WebSocket is a framing layer over this and remains a slice;
+  the capability came first.
 
 - **Pro DJ Link** — join a Pioneer CDJ/XDJ network as a peer: device announcement, beat/tempo
   sync, on-air state, track metadata.
@@ -1013,7 +1027,11 @@ next protocol-specific slices.
 - Network tempo sync (Ableton Link, or a clean-room implementation — see
   [RESEARCH.md](RESEARCH.md#2-open-source-prior-art) for the licensing decision).
 - MIDI clock in/out.
-- WebSocket + OSC control API over the same Actions and Parameters the UI uses; documented.
+- WebSocket + OSC adapters over the line protocol above — the same Actions and
+  Parameters, different framing. Documented in
+  [NETWORK-API.md](NETWORK-API.md).
+- Rate limiting. The bus is bounded, so a client that outruns the engine gets
+  `queue_full` and is expected to back off; that is backpressure, not a limit.
 - Art-Net / DMX output driven by beat and structure data.
 
 **Done when:** djmanzo can be plugged into a running club setup and stay in phase, and an

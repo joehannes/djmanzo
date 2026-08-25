@@ -3178,6 +3178,47 @@ pub fn close_hid_controller(state: State<'_, AppState>) {
     state.apply_controller_routing();
 }
 
+/// What the network control server is doing.
+#[tauri::command]
+#[must_use]
+pub fn remote_status(state: State<'_, AppState>) -> crate::remote::RemoteStatus {
+    state.remote().status()
+}
+
+/// Open a control port so something else can drive djmanzo.
+///
+/// `address` is a socket address — `127.0.0.1:7654` for this machine only,
+/// `0.0.0.0:7654` to face the network. A token is **required** for the second,
+/// and refusing it is `dj_net`'s job rather than this one's, so it cannot be
+/// forgotten by a caller.
+///
+/// # Errors
+/// When the address cannot be parsed or bound, or when it faces the network
+/// with no token.
+#[tauri::command]
+pub fn start_remote(
+    state: State<'_, AppState>,
+    address: String,
+    token: Option<String>,
+) -> Result<crate::remote::RemoteStatus, String> {
+    let parsed: std::net::SocketAddr = address
+        .parse()
+        .map_err(|_| format!("{address:?} is not an address and port, like 127.0.0.1:7654"))?;
+    state.remote().start(
+        parsed,
+        token.filter(|t| !t.is_empty()),
+        Arc::clone(state.bus()),
+        state.registry(),
+    )
+}
+
+/// Close the control port.
+#[tauri::command]
+pub fn stop_remote(state: State<'_, AppState>) -> crate::remote::RemoteStatus {
+    state.remote().stop();
+    state.remote().status()
+}
+
 /// Close whatever controller is open.
 #[tauri::command]
 pub fn close_controller(state: State<'_, AppState>) {

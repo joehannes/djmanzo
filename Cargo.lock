@@ -1281,6 +1281,7 @@ dependencies = [
  "dj-engine",
  "dj-hid",
  "dj-library",
+ "dj-net",
  "dj-presets",
  "dj-render",
  "dj-secrets",

@@ -1422,3 +1422,24 @@ export const closeController = () => invoke<void>("close_controller");
 export const openHidController = (device: string, mapping: string) =>
   invoke<void>("open_hid_controller", { device, mapping });
 export const closeHidController = () => invoke<void>("close_hid_controller");
+
+// ------------------------------------------------------------ remote control
+
+/**
+ * The network control port: what M7's action boundary looks like from outside
+ * the application. Off unless switched on, loopback unless told otherwise, and
+ * a token is required the moment it faces the network.
+ */
+export interface RemoteStatus {
+  running: boolean;
+  /** Where it is listening, including the port the OS chose for port 0. */
+  address: string | null;
+  /** Whether a token is required. The token itself never comes back. */
+  token_set: boolean;
+  error: string | null;
+}
+
+export const remoteStatus = () => invoke<RemoteStatus>("remote_status");
+export const startRemote = (address: string, token?: string) =>
+  invoke<RemoteStatus>("start_remote", { address, token: token || null });
+export const stopRemote = () => invoke<RemoteStatus>("stop_remote");

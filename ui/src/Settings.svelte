@@ -22,7 +22,11 @@
     secretsPersist,
     setBrandLogo,
     setSecret,
+    remoteStatus,
+    startRemote,
+    stopRemote,
     type Library,
+    type RemoteStatus,
     type Source,
   } from "./api";
   import { theme, type ThemePreference } from "./theme.svelte";
@@ -46,17 +50,44 @@
   let drafts = $state<Record<string, string>>({});
   let expanded = $state<Record<string, boolean>>({});
 
+  let remote = $state<RemoteStatus>({
+    running: false,
+    address: null,
+    token_set: false,
+    error: null,
+  });
+  // Loopback and a port well clear of anything a DJ laptop already runs.
+  let remoteAddress = $state("127.0.0.1:7654");
+  let remoteToken = $state("");
+
+  async function startRemoteServer() {
+    try {
+      remote = await startRemote(remoteAddress, remoteToken);
+    } catch (e) {
+      // The refusal is the useful part -- "not loopback, so a passphrase is
+      // required" is an instruction, not a failure.
+      remote = { ...remote, running: false, error: String(e) };
+    }
+  }
+
+  async function stopRemoteServer() {
+    remote = await stopRemote();
+    // Typed once, kept out of memory once it is no longer in force.
+    remoteToken = "";
+  }
+
   $effect(() => {
     void refresh();
   });
 
   async function refresh() {
     try {
-      [sources, library, persist, logo] = await Promise.all([
+      [sources, library, persist, logo, remote] = await Promise.all([
         listSources(),
         musicLibrary(),
         secretsPersist(),
         hasBrandLogo(),
+        remoteStatus(),
       ]);
       error = null;
     } catch (e) {
@@ -234,6 +265,53 @@
       <p class="hint">
         Currently rendering at {performance.resolved} mode.
       </p>
+    {/if}
+  </div>
+
+  <div class="block">
+    <h3>Remote control</h3>
+    <p class="hint">
+      Lets something else drive djmanzo — a script, a Stream Deck, a lighting
+      desk — using the same actions the interface and your controller send. One
+      JSON object per line, over TCP. Nothing it can ask for is anything you
+      could not do by hand.
+    </p>
+    <p class="hint">
+      <strong>It is off until you switch it on.</strong>
+      <code>127.0.0.1:7654</code> reaches this machine only, which is what a
+      script on the same laptop wants. <code>0.0.0.0:7654</code> faces the
+      network, and then a passphrase is <em>required</em> — otherwise anybody
+      on the club's wifi has a hand on your crossfader.
+    </p>
+    <div class="row">
+      <input
+        class="grow"
+        bind:value={remoteAddress}
+        placeholder="127.0.0.1:7654"
+        disabled={remote.running}
+      />
+      <input
+        class="grow"
+        type="password"
+        bind:value={remoteToken}
+        placeholder="passphrase (required off this machine)"
+        disabled={remote.running}
+      />
+      {#if remote.running}
+        <IconButton icon="ban" title="Stop listening" onClick={stopRemoteServer} />
+      {:else}
+        <IconButton icon="check" title="Start listening" onClick={startRemoteServer} />
+      {/if}
+    </div>
+    {#if remote.running}
+      <p class="hint">
+        Listening on <code>{remote.address}</code>{remote.token_set
+          ? " — a passphrase is required."
+          : " — no passphrase, which is fine on this machine only."}
+      </p>
+    {/if}
+    {#if remote.error}
+      <p class="warn">{remote.error}</p>
     {/if}
   </div>
 

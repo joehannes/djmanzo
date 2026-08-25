@@ -34,6 +34,7 @@ pub mod persist;
 pub mod plugins;
 pub mod presets;
 pub mod rackcapture;
+pub mod remote;
 pub mod setrec;
 pub mod snapshot;
 pub mod sources;
@@ -338,6 +339,9 @@ pub fn run() {
             commands::close_controller,
             commands::open_hid_controller,
             commands::close_hid_controller,
+            commands::remote_status,
+            commands::start_remote,
+            commands::stop_remote,
             commands::get_snapshot,
             commands::waveform_info,
             commands::report_bench,

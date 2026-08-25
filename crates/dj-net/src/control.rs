@@ -1,6 +1,7 @@
 use dj_control::{ActionBus, BusFull, ParameterRegistry};
 use dj_core::{Action, ParamId};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Versioned, JSON-serializable control message for WebSocket and OSC bridges.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -10,6 +11,12 @@ pub enum ControlRequest {
     Action { action: String },
     /// Return the named, stable parameter map. This avoids UI/DOM scraping.
     Parameters,
+    /// Offer a token. Required as the first frame when the server has one.
+    ///
+    /// Part of the request vocabulary rather than a transport header because
+    /// the transport is a line of JSON: there is nowhere else to put it, and a
+    /// client that can send an action can send this.
+    Hello { token: String },
 }
 
 /// Why a control request was refused.
@@ -32,6 +39,8 @@ pub enum ErrorCode {
     BadAction,
     /// The engine is not keeping up; the sender should back off and retry.
     QueueFull,
+    /// The token was missing or wrong. The connection is closed after this.
+    Unauthorised,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,10 +68,18 @@ pub enum ControlError {
 }
 
 /// Applies control requests through the public action bus and registry only.
+///
+/// **Shared handles, not owned ones.** These were taken by value, which meant
+/// the service could only ever be built on a bus and a registry of its own --
+/// and an application dispatching into a private ring buffer nobody reads is
+/// not remote control, it is a very well tested no-op. `ActionBus` and
+/// `ParameterRegistry` are deliberately not `Clone` (one bus, one log, one set
+/// of atomics), so sharing means an `Arc`, which is how every other consumer
+/// in djmanzo holds them.
 #[derive(Debug)]
 pub struct ControlService<C> {
-    bus: ActionBus<C>,
-    registry: ParameterRegistry,
+    bus: Arc<ActionBus<C>>,
+    registry: Arc<ParameterRegistry>,
 }
 
 impl<C> ControlService<C>
@@ -70,7 +87,7 @@ where
     C: From<Action>,
 {
     #[must_use]
-    pub fn new(bus: ActionBus<C>, registry: ParameterRegistry) -> Self {
+    pub fn new(bus: Arc<ActionBus<C>>, registry: Arc<ParameterRegistry>) -> Self {
         Self { bus, registry }
     }
 
@@ -100,6 +117,10 @@ where
                     .map_err(|_: BusFull| ControlError::QueueFull)?;
                 Ok(ControlResponse::Accepted)
             }
+            // Answered rather than refused so a client may greet a server that
+            // wants no token: "I offered a key and the door was already open"
+            // is not an error worth failing a connection over.
+            ControlRequest::Hello { .. } => Ok(ControlResponse::Accepted),
             ControlRequest::Parameters => Ok(ControlResponse::Parameters {
                 values: ParamId::all()
                     .map(|id| NamedParameter {
@@ -140,7 +161,10 @@ mod tests {
 
     fn service(depth: usize) -> (ControlService<Command>, rtrb::Consumer<Command>) {
         let (bus, consumer) = ActionBus::<Command>::new(depth);
-        (ControlService::new(bus, ParameterRegistry::new()), consumer)
+        (
+            ControlService::new(Arc::new(bus), Arc::new(ParameterRegistry::new())),
+            consumer,
+        )
     }
 
     #[test]
