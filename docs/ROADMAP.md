@@ -1002,7 +1002,22 @@ cancel a loop the DJ set on purpose.
   eviction, chunk boundaries crossfaded.
 - Graceful pending state: original mix plays while the first window is separating.
 - **Stem pads page — started**: the action vocabulary now has the four stems and the pad table exposes a Stems page with mute toggles over held solos, so the screen, controllers and assistant share the same verbs before separated buffers arrive. Per-stem volume, EQ and effects still to come.
-- Stem-aware transitions; stem swapping across decks.
+- **Stem swapping across decks — done.** The gesture stems exist for: deck 1's
+  vocal over deck 2's mix, as one move rather than four pad presses.
+  `stem_swap vocal 1 2` keeps only that stem on the source and takes the
+  receiving deck's own copy of it away, so the two do not fight over the same
+  part of the spectrum. A mixer action rather than a deck action, because it is
+  about **two** decks and an action living on one would have to name the other
+  anyway.
+  Latching, with `stem_swap_off` to undo it — and **undone to what the DJ
+  chose, not to nothing**: the receiving deck's own mute pattern is remembered
+  before the swap takes it, because by the time you want it back it has been
+  changed. A second swap replaces the first rather than stacking, since
+  stacking loses the first deck's snapshot and then nothing can undo it. And it
+  is published, because a state nothing can *see* is a state nothing can
+  release — which is exactly how the Acapella button used to leave a deck dead
+  for the rest of a set.
+  Stem-aware transitions shipped earlier as the automix VocalDrop.
 - Per-deck and per-stem outputs for external processing.
 
 **Done when:** load a track, and within a couple of seconds you can drop the vocal — with no

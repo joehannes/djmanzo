@@ -8,6 +8,7 @@
     type Layout,
     type PadPageDto,
     type SamplerState,
+    type StemSwap,
   } from "./api";
   import JogWheel from "./JogWheel.svelte";
   import { fill } from "./meter";
@@ -29,11 +30,17 @@
     enabled,
     cueAvailable = false,
     layout = null,
+    stemSwap = null,
+    deckCount = 2,
   }: {
     deck: DeckState;
     sampler: SamplerState;
     enabled: boolean;
     cueAvailable?: boolean;
+    /** The one stem swap in force, from the master snapshot. */
+    stemSwap?: StemSwap | null;
+    /** How many decks there are, so a swap can name a real one. */
+    deckCount?: number;
     /**
      * The layout in force, or null before one has been chosen.
      *
@@ -269,7 +276,7 @@
 
   {#if deck.loaded}
     <!-- M6.1 STEMS UI MODULE -->
-    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} soloing={deck.stem_soloing} />
+    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} soloing={deck.stem_soloing} swap={stemSwap} deckCount={deckCount} />
   {/if}
 
   <!--

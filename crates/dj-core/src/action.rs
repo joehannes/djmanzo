@@ -500,6 +500,26 @@ pub enum MixerAction {
     /// the top of a set, the assistant. Where the file goes is the
     /// application's business; this says only whether to.
     SetRecording(bool),
+    /// Play one deck's stem over another deck's mix.
+    ///
+    /// The gesture stems exist for: deck 1's vocal over deck 2's instrumental,
+    /// as one move rather than four pad presses. `from` keeps only that stem;
+    /// `to` loses its own copy of it, so the two do not fight.
+    ///
+    /// A mixer action rather than a deck action because it is about **two**
+    /// decks, and an action that lives on one of them would have to name the
+    /// other anyway — at which point it is not a deck action.
+    ///
+    /// Latching, with [`MixerAction::StemSwapOff`] to undo it. A held swap that
+    /// nothing could release is how the interface's Acapella macro used to
+    /// leave a deck dead for the rest of a set.
+    StemSwap {
+        stem: Stem,
+        from: DeckId,
+        to: DeckId,
+    },
+    /// Put both decks back the way they were.
+    StemSwapOff,
     /// Engage or bypass the master limiter.
     ///
     /// On by default. Bypassing is for the DJ feeding an external processor
@@ -620,6 +640,16 @@ impl Action {
                 "off" => Ok(Action::Mixer(MixerAction::SetRecording(false))),
                 other => Err(ParseError::UnknownVerb(other.to_owned())),
             },
+            // `stem_swap vocal 1 2` -- the vocal from deck 1, over deck 2.
+            "stem_swap" => {
+                let stem = parse_stem(words.next())?;
+                let deck =
+                    |word| DeckId::from_human(parse_slot(word)?).ok_or(ParseError::BadDeckNumber);
+                let from = deck(words.next())?;
+                let to = deck(words.next())?;
+                Ok(Action::Mixer(MixerAction::StemSwap { stem, from, to }))
+            }
+            "stem_swap_off" => Ok(Action::Mixer(MixerAction::StemSwapOff)),
             "limiter" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "on" => Ok(Action::Mixer(MixerAction::SetLimiter(true))),
                 "off" => Ok(Action::Mixer(MixerAction::SetLimiter(false))),
@@ -1226,6 +1256,14 @@ impl fmt::Display for Action {
                 MicChange::AttackMs(ms) => write!(f, "mic attack {}", number(f64::from(*ms))),
                 MicChange::ReleaseMs(ms) => write!(f, "mic release {}", number(f64::from(*ms))),
             },
+            Action::Mixer(MixerAction::StemSwap { stem, from, to }) => write!(
+                f,
+                "stem_swap {} {} {}",
+                stem.name(),
+                from.human_number(),
+                to.human_number()
+            ),
+            Action::Mixer(MixerAction::StemSwapOff) => write!(f, "stem_swap_off"),
             Action::Mixer(MixerAction::SetLimiter(true)) => write!(f, "limiter on"),
             Action::Mixer(MixerAction::SetLimiter(false)) => write!(f, "limiter off"),
         }

@@ -384,6 +384,16 @@ pub struct MicSnapshot {
     pub starved_frames: f64,
 }
 
+/// One deck's stem playing over another's mix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StemSwapSnapshot {
+    /// The stem's place in `Stem::ALL`.
+    pub stem: usize,
+    /// 1-based, as the decks are labelled.
+    pub from: u8,
+    pub to: u8,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MasterSnapshot {
     /// The sampler: which bank is showing, its level, and that bank's slots.
@@ -404,6 +414,8 @@ pub struct MasterSnapshot {
     pub booth_gain_db: f32,
     /// False on a two-channel device, where there is nowhere to send a cue.
     pub cue_available: bool,
+    /// The stem swap in force, if any.
+    pub stem_swap: Option<StemSwapSnapshot>,
     /// False when the master limiter has been bypassed.
     pub limiter_enabled: bool,
     /// Gain reduction the limiter is applying, in positive decibels.
@@ -726,6 +738,17 @@ impl Snapshot {
                 cue_split: registry.get(ParamId::Global(GlobalParam::CueSplit)) >= 0.5,
                 booth_gain_db: registry.get(ParamId::Global(GlobalParam::BoothGainDb)),
                 cue_available: registry.get(ParamId::Global(GlobalParam::CueAvailable)) >= 0.5,
+                stem_swap: {
+                    // -1 means no swap. A separate flag would be one more
+                    // thing that can disagree with the stem it describes.
+                    let stem = registry.get(ParamId::Global(GlobalParam::StemSwapStem));
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    (stem >= 0.0).then(|| StemSwapSnapshot {
+                        stem: stem as usize,
+                        from: registry.get(ParamId::Global(GlobalParam::StemSwapFrom)) as u8,
+                        to: registry.get(ParamId::Global(GlobalParam::StemSwapTo)) as u8,
+                    })
+                },
                 limiter_enabled: registry.get(ParamId::Global(GlobalParam::LimiterEnabled)) >= 0.5,
                 limiter_reduction_db: registry
                     .get(ParamId::Global(GlobalParam::LimiterReductionDb)),

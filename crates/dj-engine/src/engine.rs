@@ -43,6 +43,11 @@ pub struct Engine {
 
     crossfader: f32,
     crossfader_curve: CrossfaderCurve,
+    /// The stem swap in force, if any.
+    ///
+    /// Remembered rather than inferred, because putting it back needs to know
+    /// what the receiving deck's mute *was* — and by then it has been changed.
+    swap: Option<StemSwap>,
     /// A tempo arriving from outside — a MIDI clock, later a network peer.
     ///
     /// `None` means nothing is driving djmanzo, which is the normal state.
@@ -162,6 +167,7 @@ impl Engine {
             crossfader: 0.0,
             crossfader_curve: CrossfaderCurve::default(),
             external_tempo: None,
+            swap: None,
             routing: None,
             master_gain: SmoothedValue::new(1.0, sr),
             master_gain_db: 0.0,
@@ -719,6 +725,10 @@ impl Engine {
                     MicChange::ReleaseMs(ms) => self.mic.ducker_mut().set_release_ms(ms),
                 }
             }
+            Action::Mixer(MixerAction::StemSwap { stem, from, to }) => {
+                self.set_stem_swap(stem, from, to);
+            }
+            Action::Mixer(MixerAction::StemSwapOff) => self.clear_stem_swap(),
             Action::Mixer(MixerAction::SetLimiter(on)) => {
                 // The cue limiter is not switched with it. Bypass exists for
                 // the DJ feeding an external processor, and that processor is
@@ -1107,6 +1117,58 @@ impl Engine {
         }
     }
 
+    /// Play `from`'s `stem` over `to`'s mix.
+    ///
+    /// `from` keeps only that stem; `to` loses its own copy, so the two do not
+    /// fight over the same part of the spectrum. Both halves are remembered,
+    /// because putting them back needs to know what they were.
+    ///
+    /// A deck cannot swap with itself: soloing a stem and muting the same stem
+    /// on the same deck is silence, and silence is not what the DJ asked for.
+    fn set_stem_swap(&mut self, stem: dj_core::Stem, from: DeckId, to: DeckId) {
+        if from == to {
+            return;
+        }
+        if self.deck(from).is_none() || self.deck(to).is_none() {
+            return;
+        }
+        // A second swap replaces the first rather than stacking on it.
+        // Otherwise the first deck's snapshot is lost and nothing can undo it.
+        self.clear_stem_swap();
+
+        let index = stem.index();
+        let to_was_muted = self.deck(to).is_some_and(|deck| deck.stem_mutes[index]);
+
+        if let Some(source) = self.deck_mut(from) {
+            source.set_stem_solo(index, true);
+        }
+        if let Some(target) = self.deck_mut(to) {
+            target.set_stem_mute(index, true);
+        }
+        self.swap = Some(StemSwap {
+            stem,
+            from,
+            to,
+            to_was_muted,
+        });
+    }
+
+    /// Put both decks back the way they were.
+    fn clear_stem_swap(&mut self) {
+        let Some(swap) = self.swap.take() else {
+            return;
+        };
+        let index = swap.stem.index();
+        if let Some(source) = self.deck_mut(swap.from) {
+            // Releasing the solo restores the DJ's own mute pattern; that is
+            // what the snapshot inside the deck is for.
+            source.set_stem_solo(index, false);
+        }
+        if let Some(target) = self.deck_mut(swap.to) {
+            target.set_stem_mute(index, swap.to_was_muted);
+        }
+    }
+
     /// The tempo the room is running at, if any.
     ///
     /// The loudest playing deck that has a grid — the same rule the master
@@ -1177,6 +1239,16 @@ impl Engine {
     pub fn set_crossfader_curve(&mut self, curve: CrossfaderCurve) {
         self.crossfader_curve = curve;
     }
+}
+
+/// A stem swap in force.
+#[derive(Debug, Clone, Copy)]
+struct StemSwap {
+    stem: dj_core::Stem,
+    from: DeckId,
+    to: DeckId,
+    /// What the receiving deck's mute was before the swap took it.
+    to_was_muted: bool,
 }
 
 impl AudioCallback for Engine {
@@ -1434,6 +1506,22 @@ impl AudioCallback for Engine {
             ParamId::Global(GlobalParam::MasterBpm),
             self.master_bpm().unwrap_or(0.0) as f32,
         );
+
+        // The swap, so the interface can show it and -- the part that matters
+        // -- release it.
+        let (stem, from, to) = self.swap.map_or((-1.0, 0.0, 0.0), |swap| {
+            (
+                swap.stem.index() as f32,
+                f32::from(swap.from.human_number()),
+                f32::from(swap.to.human_number()),
+            )
+        });
+        self.registry
+            .set(ParamId::Global(GlobalParam::StemSwapStem), stem);
+        self.registry
+            .set(ParamId::Global(GlobalParam::StemSwapFrom), from);
+        self.registry
+            .set(ParamId::Global(GlobalParam::StemSwapTo), to);
 
         // A finished capture goes out on the retirement queue. Here rather than
         // the moment it finishes because a capture that ends mid-block would
@@ -2526,6 +2614,228 @@ mod sync_tests {
         fn engine_deck(&self, n: u8) -> &crate::deck::Deck {
             self.engine.deck(deck(n)).unwrap()
         }
+    }
+
+    /// **The gesture stems exist for.** Deck 1's vocal over deck 2's mix, as
+    /// one move rather than four pad presses.
+    #[test]
+    fn a_swap_keeps_one_stem_on_one_deck_and_removes_it_from_the_other() {
+        use dj_core::Stem;
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.prepare(2, 128.0, 0.0, 0.9, true);
+        rig.render(256);
+
+        rig.act(Action::Mixer(MixerAction::StemSwap {
+            stem: Stem::Vocal,
+            from: deck(1),
+            to: deck(2),
+        }));
+        rig.render(256);
+
+        // Deck 1 keeps only its vocal.
+        let source = rig.engine_deck(1);
+        assert!(
+            !source.stem_channels[Stem::Vocal.index()].mute,
+            "deck 1 lost its vocal"
+        );
+        for other in [Stem::Drums, Stem::Bass, Stem::Other] {
+            assert!(
+                source.stem_channels[other.index()].mute,
+                "deck 1 is still playing its {other:?}"
+            );
+        }
+
+        // Deck 2 loses its own copy, and keeps everything else.
+        let target = rig.engine_deck(2);
+        assert!(
+            target.stem_channels[Stem::Vocal.index()].mute,
+            "both decks are playing a vocal, which is what the swap avoids"
+        );
+        for other in [Stem::Drums, Stem::Bass, Stem::Other] {
+            assert!(
+                !target.stem_channels[other.index()].mute,
+                "deck 2 lost its {other:?}"
+            );
+        }
+    }
+
+    /// **Undoable, and back to what the DJ chose — not to nothing.**
+    ///
+    /// Deck 2's own mute pattern before the swap has to survive it, or
+    /// releasing a swap silently un-mutes something the DJ muted on purpose.
+    #[test]
+    fn releasing_a_swap_restores_what_each_deck_had() {
+        use dj_core::Stem;
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.prepare(2, 128.0, 0.0, 0.9, true);
+        rig.render(256);
+
+        // Deliberate mutes on both sides, of the kind a swap must not eat.
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::Stem {
+                stem: Stem::Drums,
+                change: dj_core::action::StemChange::SetMute(true),
+            },
+        });
+        rig.act(Action::Deck {
+            deck: deck(2),
+            action: DeckAction::Stem {
+                stem: Stem::Vocal,
+                change: dj_core::action::StemChange::SetMute(true),
+            },
+        });
+        rig.render(256);
+        let before_1 = rig.engine_deck(1).stem_mutes;
+        let before_2 = rig.engine_deck(2).stem_mutes;
+
+        rig.act(Action::Mixer(MixerAction::StemSwap {
+            stem: Stem::Vocal,
+            from: deck(1),
+            to: deck(2),
+        }));
+        rig.render(256);
+        rig.act(Action::Mixer(MixerAction::StemSwapOff));
+        rig.render(256);
+
+        assert_eq!(
+            rig.engine_deck(1).stem_mutes,
+            before_1,
+            "deck 1 came back wrong"
+        );
+        assert_eq!(
+            rig.engine_deck(2).stem_mutes,
+            before_2,
+            "deck 2's own vocal mute did not survive the swap"
+        );
+    }
+
+    /// A second swap replaces the first rather than stacking on it. Stacking
+    /// loses the first deck's snapshot, and then nothing can undo it.
+    #[test]
+    fn a_second_swap_replaces_the_first() {
+        use dj_core::Stem;
+        let mut rig = new_rig();
+        for n in 1..=3 {
+            rig.prepare(n, 128.0, 0.0, 0.9, true);
+        }
+        rig.render(256);
+        let before = rig.engine_deck(1).stem_mutes;
+
+        rig.act(Action::Mixer(MixerAction::StemSwap {
+            stem: Stem::Vocal,
+            from: deck(1),
+            to: deck(2),
+        }));
+        rig.render(256);
+        rig.act(Action::Mixer(MixerAction::StemSwap {
+            stem: Stem::Bass,
+            from: deck(3),
+            to: deck(2),
+        }));
+        rig.render(256);
+
+        // Deck 1 is out of it entirely.
+        //
+        // Checked with `stem_soloing` rather than `stem_mutes`: a solo
+        // deliberately leaves the DJ's mute pattern alone and changes only
+        // what is audible, so `stem_mutes` is unchanged either way and would
+        // pass whether or not the first swap was released.
+        assert!(
+            !rig.engine_deck(1).stem_soloing(),
+            "the first swap's source was left soloed, so nothing can release it"
+        );
+        assert_eq!(
+            std::array::from_fn::<bool, 4, _>(|i| rig.engine_deck(1).stem_channels[i].mute),
+            [false; 4],
+            "deck 1 is still only playing one stem"
+        );
+        assert_eq!(rig.engine_deck(1).stem_mutes, before);
+        assert_eq!(
+            rig.registry.get(ParamId::Global(GlobalParam::StemSwapFrom)),
+            3.0
+        );
+
+        rig.act(Action::Mixer(MixerAction::StemSwapOff));
+        rig.render(256);
+        assert!(!rig.engine_deck(3).stem_soloing());
+        assert_eq!(
+            std::array::from_fn::<bool, 4, _>(|i| rig.engine_deck(3).stem_channels[i].mute),
+            [false; 4]
+        );
+    }
+
+    /// A deck cannot swap with itself: soloing a stem and muting the same stem
+    /// on the same deck is silence, and silence is not what was asked for.
+    #[test]
+    fn a_deck_cannot_swap_with_itself() {
+        use dj_core::Stem;
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.render(256);
+        let before = rig.engine_deck(1).stem_mutes;
+
+        rig.act(Action::Mixer(MixerAction::StemSwap {
+            stem: Stem::Vocal,
+            from: deck(1),
+            to: deck(1),
+        }));
+        rig.render(256);
+
+        assert_eq!(
+            rig.engine_deck(1).stem_mutes,
+            before,
+            "the deck silenced itself"
+        );
+        assert_eq!(
+            rig.registry.get(ParamId::Global(GlobalParam::StemSwapStem)),
+            -1.0,
+            "a refused swap was published as though it happened"
+        );
+    }
+
+    /// **A swap that cannot be seen cannot be released**, which is exactly how
+    /// the interface's Acapella button left a deck dead for a whole set.
+    #[test]
+    fn the_swap_is_published_so_it_can_be_undone() {
+        use dj_core::Stem;
+        let mut rig = new_rig();
+        rig.prepare(1, 128.0, 0.0, 0.9, true);
+        rig.prepare(2, 128.0, 0.0, 0.9, true);
+        rig.render(256);
+        assert_eq!(
+            rig.registry.get(ParamId::Global(GlobalParam::StemSwapStem)),
+            -1.0,
+            "a swap was reported before anybody asked for one"
+        );
+
+        rig.act(Action::Mixer(MixerAction::StemSwap {
+            stem: Stem::Bass,
+            from: deck(2),
+            to: deck(1),
+        }));
+        rig.render(256);
+        assert_eq!(
+            rig.registry.get(ParamId::Global(GlobalParam::StemSwapStem)),
+            Stem::Bass.index() as f32
+        );
+        assert_eq!(
+            rig.registry.get(ParamId::Global(GlobalParam::StemSwapFrom)),
+            2.0
+        );
+        assert_eq!(
+            rig.registry.get(ParamId::Global(GlobalParam::StemSwapTo)),
+            1.0
+        );
+
+        rig.act(Action::Mixer(MixerAction::StemSwapOff));
+        rig.render(256);
+        assert_eq!(
+            rig.registry.get(ParamId::Global(GlobalParam::StemSwapStem)),
+            -1.0
+        );
     }
 
     /// **An external clock outranks every deck.**

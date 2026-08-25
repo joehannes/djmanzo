@@ -813,6 +813,8 @@
           sampler={snapshot.master.sampler}
           enabled={ready}
           cueAvailable={snapshot.master.cue_available}
+          stemSwap={snapshot.master.stem_swap}
+          {deckCount}
           {layout}
         />
       {/each}

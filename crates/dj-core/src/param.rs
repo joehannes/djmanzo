@@ -345,6 +345,17 @@ pub enum GlobalParam {
     /// a MIDI clock outside the audio thread needs it, and so does anything
     /// else that has to be in time with the music rather than with a deck.
     MasterBpm,
+    /// The stem being swapped between decks, by [`crate::Stem::index`], or
+    /// -1.0 when no swap is in force.
+    ///
+    /// Published for the reason the interface's Acapella button taught: a
+    /// state nothing can *see* is a state nothing can release, and one click
+    /// left a deck dead for the rest of a set.
+    StemSwapStem,
+    /// The deck the swapped stem comes from, 1-based. 0.0 when off.
+    StemSwapFrom,
+    /// The deck it is played over, 1-based. 0.0 when off.
+    StemSwapTo,
     /// 1.0 when beat jumps snap to the grid.
     Quantize,
     /// Frames of latency the output chain adds after the decks. The interface
@@ -802,7 +813,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since.
-    pub const COUNT: usize = 129;
+    pub const COUNT: usize = 132;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -827,6 +838,9 @@ impl GlobalParam {
             LimiterEnabled,
             LimiterReductionDb,
             MasterBpm,
+            StemSwapStem,
+            StemSwapFrom,
+            StemSwapTo,
             OutputLatencyFrames,
             Quantize,
             SamplerBank,
@@ -1085,6 +1099,9 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::LimiterEnabled => "limiter_enabled",
         GlobalParam::LimiterReductionDb => "limiter_reduction_db",
         GlobalParam::MasterBpm => "master_bpm",
+        GlobalParam::StemSwapStem => "stem_swap_stem",
+        GlobalParam::StemSwapFrom => "stem_swap_from",
+        GlobalParam::StemSwapTo => "stem_swap_to",
         GlobalParam::OutputLatencyFrames => "output_latency_frames",
         GlobalParam::SamplerBank => "sampler_bank",
         GlobalParam::SamplerVolume => "sampler_volume",

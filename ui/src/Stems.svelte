@@ -1,6 +1,6 @@
 <script lang="ts">
   import IconButton from "./controls/IconButton.svelte";
-  import { dispatch, stemsStatus, type StemsStatus } from "./api";
+  import { dispatch, stemsStatus, type StemsStatus, type StemSwap } from "./api";
   import { onDestroy, onMount } from "svelte";
 
   let {
@@ -8,10 +8,15 @@
     muteState = [false, false, false, false],
     volumeState = [1.0, 1.0, 1.0, 1.0],
     soloing = false,
+    swap = null,
+    deckCount = 2,
   }: {
     deckNumber: number;
     muteState?: boolean[];
     volumeState?: number[];
+    /** The stem swap in force anywhere, from the engine. */
+    swap?: StemSwap | null;
+    deckCount?: number;
     /**
      * Whether a stem solo is held on this deck.
      *
@@ -98,6 +103,31 @@
     dispatch(`deck ${deckNumber} stem_mute_on vocal`);
   }
 
+  /**
+   * Which stem this deck is sending elsewhere, if any.
+   *
+   * There is one swap in the whole engine, so a panel shows it only when this
+   * deck is the source — otherwise every deck would offer to cancel a swap it
+   * has nothing to do with.
+   */
+  const sending = $derived(swap && swap.from === deckNumber ? swap : null);
+  /** The deck a swap would go to. Anything but this one. */
+  let target = $state<number | null>(null);
+  $effect(() => {
+    if (target === null || target === deckNumber) {
+      target = deckNumber === 1 ? 2 : 1;
+    }
+  });
+
+  function swapStem(index: number) {
+    if (sending) {
+      dispatch("stem_swap_off");
+      return;
+    }
+    if (target === null) return;
+    dispatch(`stem_swap ${STEM_KEYS[index]} ${deckNumber} ${target}`);
+  }
+
   /** The running vocal fade, so a second click stops it rather than racing it. */
   let fade = $state<ReturnType<typeof setInterval> | null>(null);
 
@@ -179,6 +209,41 @@
     {/each}
   </div>
   
+  {#if status.available}
+    <div class="swap-row">
+      {#if sending}
+        <span class="swap-note">
+          {STEM_LABELS[sending.stem]} over deck {sending.to}
+        </span>
+        <IconButton
+          icon="unlink"
+          title="Put both decks back"
+          active={true}
+          onClick={() => swapStem(sending.stem)}
+        />
+      {:else}
+        <span class="swap-note">Send a stem to deck</span>
+        <select bind:value={target} aria-label="Which deck to send a stem to">
+          {#each Array.from({ length: deckCount }, (_, i) => i + 1) as n (n)}
+            {#if n !== deckNumber}
+              <option value={n}>{n}</option>
+            {/if}
+          {/each}
+        </select>
+        {#each STEM_LABELS as name, i}
+          <button
+            class="swap-pick"
+            style="--stem-color: {STEM_COLORS[i]}"
+            title="Play this deck's {name.toLowerCase()} over deck {target}"
+            onclick={() => swapStem(i)}
+          >
+            {name.slice(0, 2)}
+          </button>
+        {/each}
+      {/if}
+    </div>
+  {/if}
+
   <div class="macros-row">
     <IconButton
       icon="fa-solid fa-microphone"
@@ -348,6 +413,33 @@
   
   .stem-slider::-webkit-slider-thumb:active {
     cursor: grabbing;
+  }
+
+  .swap-row {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 6px;
+    font-size: 0.68rem;
+    color: var(--text-dim);
+  }
+
+  .swap-note {
+    white-space: nowrap;
+  }
+
+  .swap-pick {
+    border: 1px solid var(--stem-color);
+    background: var(--panel);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 0.1rem 0.3rem;
+    font-size: 0.65rem;
+    cursor: pointer;
+  }
+
+  .swap-pick:hover {
+    background: var(--panel-hover);
   }
 
   .macros-row {

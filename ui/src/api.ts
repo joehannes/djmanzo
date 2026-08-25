@@ -518,6 +518,14 @@ export interface MicDevice {
   latencyMs: number;
 }
 
+export interface StemSwap {
+  /** The stem's place in the project's one stem order. */
+  stem: number;
+  /** 1-based, as the decks are labelled. */
+  from: number;
+  to: number;
+}
+
 export interface MasterState {
   /** The sampler: which bank is showing, its level, and that bank's slots. */
   sampler: SamplerState;
@@ -536,6 +544,8 @@ export interface MasterState {
   cue_split: boolean;
   booth_gain_db: number;
   cue_available: boolean;
+  /** One deck's stem playing over another's mix, if a swap is in force. */
+  stem_swap: StemSwap | null;
   /** False when the master limiter has been bypassed. */
   limiter_enabled: boolean;
   /**
