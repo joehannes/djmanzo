@@ -183,6 +183,13 @@ pub enum DeckParam {
     StemDrumsVolume,
     StemBassVolume,
     StemOtherVolume,
+    /// 1.0 while a stem solo is held on this deck.
+    ///
+    /// Published because a solo that cannot be *seen* cannot be released, and
+    /// every stem mute is refused while one is held. An interface with a
+    /// latching "Acapella" button needs this to know which way the button
+    /// goes; a controller with a lit pad needs it to light the pad.
+    StemSoloing,
 }
 
 /// What a hot cue parameter reads when the slot is empty.
@@ -214,7 +221,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 72;
+    pub const COUNT: usize = 73;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -297,6 +304,7 @@ impl DeckParam {
             StemDrumsVolume,
             StemBassVolume,
             StemOtherVolume,
+            StemSoloing,
         ]
     }
 }
@@ -1040,6 +1048,7 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::HotCue7 => "hot_cue_7",
         DeckParam::HotCue8 => "hot_cue_8",
         DeckParam::CrossfaderAssign => "crossfader_assign",
+        DeckParam::StemSoloing => "stem_soloing",
         DeckParam::StemVocalMute => "stem_vocal_mute",
         DeckParam::StemDrumsMute => "stem_drums_mute",
         DeckParam::StemBassMute => "stem_bass_mute",

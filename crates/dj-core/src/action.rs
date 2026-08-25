@@ -95,6 +95,16 @@ impl std::fmt::Display for Stem {
 pub enum StemChange {
     /// Flip whether this stem is audible.
     ToggleMute,
+    /// Say whether this stem is audible, rather than flipping it.
+    ///
+    /// A toggle is what a controller pad sends; a *macro* needs to state the
+    /// outcome. "Instrumental" that toggles the vocal does the opposite of its
+    /// name whenever the vocal was already muted -- which is exactly what the
+    /// interface's macro did before this existed.
+    ///
+    /// The same distinction [`StemChange::SetSolo`] already makes, and for the
+    /// same reason the crossfader assign is three verbs rather than one.
+    SetMute(bool),
     /// Keep only this stem while held; release restores the full mix.
     SetSolo(bool),
     /// Per-stem level, 0.0..=1.0.
@@ -890,6 +900,14 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
             stem: parse_stem(argument)?,
             change: StemChange::ToggleMute,
         }),
+        "stem_mute_on" => Ok(DeckAction::Stem {
+            stem: parse_stem(argument)?,
+            change: StemChange::SetMute(true),
+        }),
+        "stem_mute_off" => Ok(DeckAction::Stem {
+            stem: parse_stem(argument)?,
+            change: StemChange::SetMute(false),
+        }),
         "stem_solo_on" => Ok(DeckAction::Stem {
             stem: parse_stem(argument)?,
             change: StemChange::SetSolo(true),
@@ -1097,6 +1115,14 @@ impl fmt::Display for Action {
                     stem,
                     change: StemChange::ToggleMute,
                 } => write!(f, "deck {deck} stem_mute {}", stem.name()),
+                DeckAction::Stem {
+                    stem,
+                    change: StemChange::SetMute(true),
+                } => write!(f, "deck {deck} stem_mute_on {}", stem.name()),
+                DeckAction::Stem {
+                    stem,
+                    change: StemChange::SetMute(false),
+                } => write!(f, "deck {deck} stem_mute_off {}", stem.name()),
                 DeckAction::Stem {
                     stem,
                     change: StemChange::SetSolo(true),

@@ -413,6 +413,29 @@ impl Deck {
         }
     }
 
+    /// Say whether a stem is muted, rather than flipping it.
+    ///
+    /// Refused while a solo is held, for the same reason the toggle is: a solo
+    /// is an audition over the top of the DJ's own mute pattern, and writing
+    /// into that pattern while it is snapshotted would make the release
+    /// restore something they never chose.
+    pub fn set_stem_mute(&mut self, stem: usize, muted: bool) {
+        if stem < self.stem_channels.len() && self.stem_mutes_before_solo.is_none() {
+            self.stem_channels[stem].mute = muted;
+            self.stem_mutes[stem] = muted;
+        }
+    }
+
+    /// Whether a stem solo is being held on this deck.
+    ///
+    /// Published so the interface can show it and, above all, *release* it: a
+    /// solo held by a button nobody can un-press leaves every stem mute on the
+    /// deck refused for the rest of the set.
+    #[must_use]
+    pub fn stem_soloing(&self) -> bool {
+        self.stem_mutes_before_solo.is_some()
+    }
+
     /// Hold or release a stem solo without destroying the prior mute pattern.
     pub fn set_stem_solo(&mut self, stem: usize, solo: bool) {
         if stem >= self.stem_channels.len() {
@@ -3828,5 +3851,65 @@ mod slicer_tests {
 
         assert_eq!(deck.stem_mutes, before);
         assert_eq!(deck.stem_channels.map(|ch| ch.mute), before);
+    }
+
+    /// A held solo is *observable*, which is what makes it releasable.
+    ///
+    /// The interface's "Acapella" macro sent `stem_solo_on` and nothing ever
+    /// sent `stem_solo_off` -- not the interface, not any bundled mapping. The
+    /// solo latched, and because every mute is refused while one is held, one
+    /// click killed the deck's whole stem panel for the rest of the set. The
+    /// engine was right; nothing could see the state to undo it.
+    #[test]
+    fn a_held_solo_can_be_seen_so_it_can_be_released() {
+        let mut deck = deck();
+        assert!(!deck.stem_soloing());
+
+        deck.set_stem_solo(Stem::Vocal as usize, true);
+        assert!(deck.stem_soloing(), "a held solo is invisible");
+
+        // While it is held the mutes are deliberately refused -- that is the
+        // audition working, not the bug.
+        deck.toggle_stem_mute(Stem::Drums as usize);
+        assert!(!deck.stem_mutes[Stem::Drums as usize]);
+
+        deck.set_stem_solo(Stem::Vocal as usize, false);
+        assert!(!deck.stem_soloing());
+
+        // And now they work again, which is the half that was unreachable.
+        deck.toggle_stem_mute(Stem::Drums as usize);
+        assert!(
+            deck.stem_mutes[Stem::Drums as usize],
+            "the deck never recovered from the solo"
+        );
+    }
+
+    /// A macro has to be able to state an outcome. "Instrumental" that toggles
+    /// the vocal un-mutes it whenever it was already muted, which is the
+    /// opposite of what the button says.
+    #[test]
+    fn setting_a_stem_mute_states_the_outcome_rather_than_flipping_it() {
+        let mut deck = deck();
+        for _ in 0..2 {
+            deck.set_stem_mute(Stem::Vocal as usize, true);
+            assert!(
+                deck.stem_mutes[Stem::Vocal as usize],
+                "asking twice for muted gave unmuted"
+            );
+        }
+        for _ in 0..2 {
+            deck.set_stem_mute(Stem::Vocal as usize, false);
+            assert!(!deck.stem_mutes[Stem::Vocal as usize]);
+        }
+        // And it respects the solo guard exactly as the toggle does, or a
+        // macro pressed during an audition would rewrite the snapshot.
+        deck.set_stem_mute(Stem::Drums as usize, true);
+        deck.set_stem_solo(Stem::Vocal as usize, true);
+        deck.set_stem_mute(Stem::Drums as usize, false);
+        deck.set_stem_solo(Stem::Vocal as usize, false);
+        assert!(
+            deck.stem_mutes[Stem::Drums as usize],
+            "a macro during a solo rewrote what the release restored"
+        );
     }
 }

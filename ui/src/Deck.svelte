@@ -269,7 +269,7 @@
 
   {#if deck.loaded}
     <!-- M6.1 STEMS UI MODULE -->
-    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} />
+    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} soloing={deck.stem_soloing} />
   {/if}
 
   <!--

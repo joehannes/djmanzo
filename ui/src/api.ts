@@ -147,6 +147,11 @@ export interface DeckState {
   /** Volume states for the 4 stems (Vocal, Drums, Bass, Other). */
   stem_volumes: [number, number, number, number];
   /**
+   * True while a stem solo is held. Every stem mute is refused while it is,
+   * so the panel needs this both to show the state and to release it.
+   */
+  stem_soloing: boolean;
+  /**
    * What the analyser made of this track. Null while it is still running,
    * which is the normal state for the first second after a load.
    */

@@ -246,7 +246,7 @@
     border-radius: 8px;
     padding: 0.6rem 0.7rem;
     margin-top: 0.2rem;
-    box-shadow: 0 8px 24px #0008;
+    box-shadow: 0 8px 24px var(--scrim);
   }
 
   .detail p {

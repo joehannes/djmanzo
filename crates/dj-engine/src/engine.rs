@@ -532,6 +532,9 @@ impl Engine {
                             dj_core::action::StemChange::ToggleMute => {
                                 target.toggle_stem_mute(idx);
                             }
+                            dj_core::action::StemChange::SetMute(muted) => {
+                                target.set_stem_mute(idx, muted);
+                            }
                             dj_core::action::StemChange::SetSolo(solo) => {
                                 target.set_stem_solo(idx, solo);
                             }
@@ -954,6 +957,10 @@ impl Engine {
             set(
                 DeckParam::StemOtherMute,
                 if deck.stem_channels[3].mute { 1.0 } else { 0.0 },
+            );
+            set(
+                DeckParam::StemSoloing,
+                if deck.stem_soloing() { 1.0 } else { 0.0 },
             );
             set(DeckParam::StemVocalVolume, deck.stem_channels[0].volume);
             set(DeckParam::StemDrumsVolume, deck.stem_channels[1].volume);

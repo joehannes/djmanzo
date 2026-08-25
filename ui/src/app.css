@@ -38,6 +38,22 @@
   /* A scrim over content, e.g. the label sitting on top of a waveform. */
   --scrim: #0e0f1466;
 
+  /* The four stems, each borrowing a hue the palette already defines.
+   *
+   * Derived rather than fixed on purpose. These were four literal hex values,
+   * which made the stem pads the only controls in djmanzo that ignored the
+   * theme -- the same blue and red on the light palette, the industrial one
+   * and the cyber one. Pointing them at existing tokens means every palette
+   * gets four distinguishable stem colours for free, because those four
+   * tokens already have to be distinguishable from one another.
+   *
+   * A palette that wants its own stem hues can still override these; nothing
+   * here depends on the derivation. */
+  --stem-vocal: var(--accent);
+  --stem-drums: var(--warn);
+  --stem-bass: var(--danger);
+  --stem-other: var(--accent-2);
+
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
     "Helvetica Neue", sans-serif;

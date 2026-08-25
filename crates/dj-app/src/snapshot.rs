@@ -76,6 +76,9 @@ pub struct DeckSnapshot {
     pub stem_mutes: [bool; 4],
     /// Volume states for the 4 stems (Vocal, Drums, Bass, Other).
     pub stem_volumes: [f32; 4],
+    /// True while a stem solo is held. Every stem mute is refused while it is,
+    /// so the interface needs it both to show the state and to release it.
+    pub stem_soloing: bool,
     /// What the analyser made of this track. `None` while it is still running,
     /// which is the normal state for the first second after a load.
     pub analysis: Option<TrackAnalysisSnapshot>,
@@ -577,6 +580,7 @@ impl Snapshot {
                         get(DeckParam::StemBassVolume),
                         get(DeckParam::StemOtherVolume),
                     ],
+                    stem_soloing: get(DeckParam::StemSoloing) >= 0.5,
                     synced: get(DeckParam::Synced) >= 0.5,
                     effective_bpm: {
                         let bpm = get(DeckParam::EffectiveBpm);
