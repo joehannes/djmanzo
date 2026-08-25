@@ -56,6 +56,20 @@ pub struct AssistantSelection {
 /// that can disagree with the interface.
 pub const DECK_COUNT: usize = dj_core::MAX_DECKS;
 
+/// The separation model the application looks for in its data directory.
+///
+/// Not bundled: the model is tens of megabytes and its licence is separate
+/// from ours, so it is a download rather than part of the package. A machine
+/// without it gets a mixer with the stem controls off and a sentence saying so.
+const STEMS_MODEL_FILE: &str = "htdemucs.onnx";
+
+/// How much disk separated audio may occupy before the oldest is evicted.
+///
+/// Separation is slow enough that re-doing it mid-set would be felt, so the
+/// cache is generous: two gigabytes is a few hours of material and a rounding
+/// error next to a music library.
+const STEMS_CACHE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Everything a command handler needs.
 ///
 /// Deliberately small: a bus to send intent into, a registry to read state from,
@@ -166,8 +180,16 @@ pub struct AppState {
     /// thread that drains it. Held rather than dropped: a receiver dropped
     /// here would make every MIDI message a send into a closed channel.
     control_inbox: Mutex<Option<std::sync::mpsc::Receiver<String>>>,
-    /// Background worker for separating tracks into stems
-    stems_worker: Arc<dj_stems::worker::SeparationWorker>,
+    /// Background worker for separating tracks into stems.
+    ///
+    /// Behind a mutex because it is replaced, not mutated: the application
+    /// starts before Tauri can tell it where its data directory is, so the
+    /// worker begins life unavailable and is swapped for a real one once
+    /// [`AppState::open_stems`] has somewhere to look for a model.
+    stems_worker: Mutex<Arc<dj_stems::worker::SeparationWorker>>,
+    /// Why separation is or is not available, in a sentence the interface can
+    /// show. `None` once a model is loaded and running.
+    stems_reason: Mutex<Option<String>>,
 }
 
 /// What is loaded on a deck, as far as the interface is concerned.
@@ -250,9 +272,13 @@ impl AppState {
 
         let (control, control_inbox) = crate::control::ControlHub::new();
 
-        let stems_engine = Arc::new(dj_stems::StemsEngine::new(std::path::Path::new("models/htdemucs.onnx")).expect("Failed to load Stems Engine"));
-        let stems_cache = Arc::new(dj_stems::cache::StemCache::new(std::env::temp_dir().join("djmanzo_stems"), 2 * 1024 * 1024 * 1024).expect("Failed to create Stem Cache"));
-        let stems_worker = Arc::new(dj_stems::worker::SeparationWorker::new(stems_engine, stems_cache));
+        // Separation starts unavailable and is attached later, once `setup`
+        // knows where the application's data lives. Nothing here may panic:
+        // a DJ with no separation model still has a mixer, and refusing to
+        // start would take the whole set down over a feature they were not
+        // using. Same reasoning as the HTTP client above.
+        let stems_worker = Mutex::new(Arc::new(dj_stems::worker::SeparationWorker::unavailable()));
+        let stems_reason = Mutex::new(Some("separation has not been set up yet".to_owned()));
 
         Self {
             bus,
@@ -288,6 +314,7 @@ impl AppState {
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
+            stems_reason,
         }
     }
 
@@ -297,10 +324,77 @@ impl AppState {
         Arc::clone(&self.library)
     }
 
-    /// Background stem separator
+    /// Background stem separator.
+    ///
+    /// Always returns a worker. When separation is unavailable that worker
+    /// drops the chunks it is given, so callers never have to branch: the
+    /// difference between "separating" and "not separating" belongs in the
+    /// interface, next to [`AppState::stems_reason`], not scattered through
+    /// every call site.
     #[must_use]
     pub fn stems_worker(&self) -> Arc<dj_stems::worker::SeparationWorker> {
-        Arc::clone(&self.stems_worker)
+        self.stems_worker
+            .lock()
+            .map(|worker| Arc::clone(&worker))
+            .unwrap_or_else(|_| Arc::new(dj_stems::worker::SeparationWorker::unavailable()))
+    }
+
+    /// Why separation is unavailable, or `None` when it is running.
+    #[must_use]
+    pub fn stems_reason(&self) -> Option<String> {
+        self.stems_reason
+            .lock()
+            .ok()
+            .and_then(|reason| reason.clone())
+    }
+
+    /// Look for a separation model under `dir` and start the worker if one is
+    /// there. Called from `setup`, once Tauri can say where that is.
+    ///
+    /// Every failure is recorded as a sentence rather than raised: this runs
+    /// during startup, and there is no useful way to fail it. `DJMANZO_STEMS_MODEL`
+    /// overrides the location, so a developer can point at a model without
+    /// copying it into the application's data directory.
+    pub fn open_stems(&self, dir: &std::path::Path) {
+        let model = match std::env::var_os("DJMANZO_STEMS_MODEL") {
+            Some(path) => std::path::PathBuf::from(path),
+            None => dir.join("models").join(STEMS_MODEL_FILE),
+        };
+
+        let engine = match dj_stems::StemsEngine::new(&model) {
+            Ok(engine) => Arc::new(engine),
+            Err(reason) => {
+                tracing::info!(%reason, "stem separation is unavailable");
+                self.set_stems_reason(Some(reason.to_string()));
+                return;
+            }
+        };
+
+        let cache_dir = dir.join("stems-cache");
+        let cache = match dj_stems::cache::StemCache::new(&cache_dir, STEMS_CACHE_BYTES) {
+            Ok(cache) => Arc::new(cache),
+            Err(error) => {
+                tracing::warn!(%error, ?cache_dir, "no stem cache; separation stays off");
+                self.set_stems_reason(Some(format!(
+                    "the stem cache at {} could not be opened: {error}",
+                    cache_dir.display()
+                )));
+                return;
+            }
+        };
+
+        let worker = Arc::new(dj_stems::worker::SeparationWorker::new(engine, cache));
+        if let Ok(mut slot) = self.stems_worker.lock() {
+            *slot = worker;
+        }
+        self.set_stems_reason(None);
+        tracing::info!(?model, "stem separation is ready");
+    }
+
+    fn set_stems_reason(&self, reason: Option<String>) {
+        if let Ok(mut slot) = self.stems_reason.lock() {
+            *slot = reason;
+        }
     }
 
     /// Open the library at its real home and start identifying what a scan has
@@ -892,6 +986,63 @@ mod tests {
         // that has gone.
         state.set_active_device(None);
         assert!(state.active_device().is_none());
+    }
+
+    // -- stem separation ---------------------------------------------------
+
+    /// The bug this covers: `AppState::new` used to build the separation
+    /// engine with `.expect("Failed to load Stems Engine")` against a path
+    /// relative to the working directory. Every machine without that file --
+    /// which is every machine, since the model is not bundled -- could not
+    /// start the application at all.
+    #[test]
+    fn a_machine_with_no_separation_model_still_gets_a_mixer() {
+        let state = AppState::new(true);
+        assert!(
+            state.stems_reason().is_some(),
+            "with no model, the interface needs something to show"
+        );
+        // And the worker is still there to be called, so nothing downstream
+        // has to check first.
+        let worker = state.stems_worker();
+        worker.process_chunk(
+            dj_core::track::TrackId::from_bytes([7u8; 32]),
+            0,
+            &[0.0; 64],
+            None,
+        );
+    }
+
+    /// Opening against a directory with no model leaves separation off and
+    /// says why, naming the file so the reason is actionable.
+    #[test]
+    fn opening_stems_where_there_is_no_model_reports_rather_than_panics() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(true);
+        state.open_stems(dir.path());
+
+        let reason = state
+            .stems_reason()
+            .expect("separation cannot have started");
+        assert!(
+            reason.contains("ONNX Runtime") || reason.contains(STEMS_MODEL_FILE),
+            "the reason should name the runtime or the model, got: {reason}"
+        );
+    }
+
+    /// Whatever happens, the worker handle is never absent: callers push
+    /// chunks at it unconditionally and an unavailable worker drops them.
+    #[test]
+    fn the_worker_is_always_there_to_be_called() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::new(true);
+        state.open_stems(dir.path());
+
+        let track = dj_core::track::TrackId::from_bytes([9u8; 32]);
+        let worker = state.stems_worker();
+        for chunk in 0..4 {
+            worker.process_chunk(track, chunk, &[0.25; 128], None);
+        }
     }
 
     // -- the chosen layout -------------------------------------------------

@@ -167,7 +167,7 @@
         <SvgPad width={100} height={50} active={true} />
       </div>
       <div style="display:flex; flex-direction:column; gap:0.3rem;">
-        <SvgKnob width={48} height={48} value={0.6} />
+        <SvgKnob size={48} value={0.6} min={0} max={1} />
         <div style="width:60px; height:14px; background:var(--accent); border-radius:4px;"></div>
       </div>
     </div>

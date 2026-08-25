@@ -19,6 +19,7 @@
    * them here, and being told where they are beats wondering whether a setting
    * was missed. They point; they do not duplicate the controls.
    */
+  import IconButton from "./controls/IconButton.svelte";
   import { onMount } from "svelte";
   import {
     formatTime,

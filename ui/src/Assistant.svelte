@@ -16,6 +16,7 @@
    * The `local` badge is worth watching: it means the answer cost nothing and
    * took no round trip, which is true for most of what gets typed here.
    */
+  import IconButton from "./controls/IconButton.svelte";
   import {
     ask,
     assistantState,

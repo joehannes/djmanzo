@@ -245,6 +245,30 @@ pub fn list_plugins() -> Vec<PluginFileDto> {
         .collect()
 }
 
+/// Whether stem separation can run, and why not when it cannot.
+///
+/// The interface asks once at startup and shows the reason next to the stem
+/// controls. A DJ whose laptop has no separation model should read a sentence,
+/// not press four pads that do nothing.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StemsStatusDto {
+    /// True when a model is loaded and the worker is running.
+    pub available: bool,
+    /// Why it is not, in words. `None` when `available`.
+    pub reason: Option<String>,
+}
+
+/// Whether stem separation is available on this machine.
+#[tauri::command]
+pub fn stems_status(state: State<'_, AppState>) -> StemsStatusDto {
+    let reason = state.stems_reason();
+    StemsStatusDto {
+        available: reason.is_none(),
+        reason,
+    }
+}
+
 /// What is on the insert right now.
 #[tauri::command]
 pub fn plugin_state(state: State<'_, AppState>) -> PluginStateDto {

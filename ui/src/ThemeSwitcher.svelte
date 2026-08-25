@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clickOutside } from "./controls/clickOutside";
   import { theme, type ThemePreference } from "./theme.svelte";
   import { themePackages } from "./controls/themes/packages";
   import IconButton from "./controls/IconButton.svelte";
@@ -17,7 +18,7 @@
   }
 </script>
 
-<div class="switcher" onclick_outside={() => (open = false)}>
+<div class="switcher" use:clickOutside={() => (open = false)}>
   <button class="icon" onclick={toggle} title="Theme">
     {theme.activePackage.name} · {theme.resolved}
   </button>

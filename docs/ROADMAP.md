@@ -866,6 +866,14 @@ cancel a loop the DJ set on purpose.
 ## M6 — Stems
 
 - `dj-stems`: HT-Demucs via ONNX (`ort`), CoreML on macOS, CUDA/DirectML where present.
+- **Availability is a first-class state — done.** The model is a download, not
+  part of the package, so "no stems on this machine" is normal rather than an
+  error. `dj-stems` opens ONNX Runtime itself before letting `ort` near it,
+  because `ort` panics on a missing library and that panic poisons a mutex its
+  own exit handler locks — aborting the process at exit, long after the code
+  that asked for a stem. The application now starts without a model, reports
+  why through `stems_status`, and greys out the stem controls with the reason
+  beside them instead of offering pads that do nothing.
 - Look-ahead separation with a rolling window and content-hashed disk cache, bounded with LRU
   eviction, chunk boundaries crossfaded.
 - Graceful pending state: original mix plays while the first window is separating.

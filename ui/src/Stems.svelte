@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { dispatch } from "./api";
+  import IconButton from "./controls/IconButton.svelte";
+  import { dispatch, stemsStatus, type StemsStatus } from "./api";
+  import { onMount } from "svelte";
 
   let {
     deckNumber,
@@ -10,6 +12,23 @@
     muteState?: boolean[];
     volumeState?: number[];
   } = $props();
+
+  /**
+   * Whether separation can run here.
+   *
+   * Asked once, on mount. It cannot change while the application is running:
+   * the model is looked for at startup, so a DJ who installs one mid-set has
+   * to restart -- and being told that is better than pads that quietly do
+   * nothing.
+   */
+  let status = $state<StemsStatus>({ available: true, reason: null });
+  onMount(async () => {
+    try {
+      status = await stemsStatus();
+    } catch (error) {
+      status = { available: false, reason: `could not ask about stems: ${error}` };
+    }
+  });
 
   const STEM_LABELS = ["Vocals", "Drums", "Bass", "Other"];
   const STEM_KEYS = ["vocal", "drums", "bass", "other"];
@@ -45,7 +64,12 @@
   }
 </script>
 
-<div class="stems-module">
+<div class="stems-module" class:unavailable={!status.available}>
+  {#if !status.available}
+    <p class="stems-reason" role="status">
+      {status.reason ?? "stem separation is unavailable"}
+    </p>
+  {/if}
   <div class="stems-grid">
     {#each STEM_LABELS as name, i}
       <div class="stem-column">
@@ -53,6 +77,7 @@
           class="stem-pad"
           class:muted={muteState[i]}
           style="--stem-color: {STEM_COLORS[i]}"
+          disabled={!status.available}
           onclick={() => toggleMute(i)}
           title="Toggle {name}"
         >
@@ -66,6 +91,7 @@
             max="1" 
             step="0.01" 
             value={volumeState[i]} 
+            disabled={!status.available}
             oninput={(e) => changeVolume(i, e.currentTarget.value)}
             class="stem-slider" 
           />
@@ -75,9 +101,24 @@
   </div>
   
   <div class="macros-row">
-    <IconButton icon="fa-solid fa-microphone" title="Solo Vocals (Acapella)" onClick={macroAcapella} />
-    <IconButton icon="fa-solid fa-guitar" title="Mute Vocals (Instrumental)" onClick={macroInstrumental} />
-    <IconButton icon="fa-solid fa-hand" title="Gradually fade out vocals" onClick={macroVocalFadeOut} />
+    <IconButton
+      icon="fa-solid fa-microphone"
+      title="Solo Vocals (Acapella)"
+      disabled={!status.available}
+      onClick={macroAcapella}
+    />
+    <IconButton
+      icon="fa-solid fa-guitar"
+      title="Mute Vocals (Instrumental)"
+      disabled={!status.available}
+      onClick={macroInstrumental}
+    />
+    <IconButton
+      icon="fa-solid fa-hand"
+      title="Gradually fade out vocals"
+      disabled={!status.available}
+      onClick={macroVocalFadeOut}
+    />
   </div>
 </div>
 
@@ -90,6 +131,17 @@
     border-radius: 8px;
     padding: 8px;
     margin: 8px 0;
+  }
+
+  .stems-reason {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--text-dim, rgba(255, 255, 255, 0.6));
+  }
+
+  .stems-module.unavailable .stems-grid {
+    opacity: 0.45;
   }
 
   .stems-grid {

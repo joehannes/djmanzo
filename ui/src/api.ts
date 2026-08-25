@@ -615,6 +615,22 @@ export const listPlugins = () => invoke<PluginFile[]>("list_plugins");
 
 export const pluginState = () => invoke<PluginState>("plugin_state");
 
+/** Whether stem separation can run on this machine, and why not when it cannot. */
+export type StemsStatus = {
+  available: boolean;
+  /** A sentence to show when `available` is false. */
+  reason: string | null;
+};
+
+/**
+ * Ask whether separation is available.
+ *
+ * The model is a download rather than part of the package, so "no stems" is a
+ * normal state on a fresh install, not an error. The panel shows the reason
+ * instead of offering pads that would do nothing.
+ */
+export const stemsStatus = () => invoke<StemsStatus>("stems_status");
+
 /**
  * Put a plugin on the master.
  *

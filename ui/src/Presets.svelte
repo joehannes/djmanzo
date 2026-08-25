@@ -8,6 +8,7 @@
    * the same bus, anything one sets can be changed back with the control that
    * owns it.
    */
+  import IconButton from "./controls/IconButton.svelte";
   import { applyPreset, listPresets, presetFolder, type PresetItem, type PresetPack } from "./api";
 
   let { enabled, deckCount = 2 }: { enabled: boolean; deckCount?: number } = $props();

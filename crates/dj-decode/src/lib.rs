@@ -8,6 +8,6 @@ pub mod buffer;
 pub mod decoder;
 pub mod source;
 
-pub use buffer::{AudioBuffer, CHANNELS};
+pub use buffer::{AudioBuffer, CHANNELS, STEM_COUNT, StemBuffer, StemFrame};
 pub use decoder::{DecodeError, DecodedTrack, decode_file};
 pub use source::TrackSource;

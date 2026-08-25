@@ -362,7 +362,7 @@ impl Automix {
                         change: FxChange::SetEnabled(true),
                     },
                 });
-                
+
                 if self.style == TransitionStyle::VocalDrop {
                     // Set the outgoing deck to Vocal solo
                     plan.act(Action::Deck {
@@ -370,7 +370,7 @@ impl Automix {
                         action: DeckAction::Stem {
                             stem: dj_core::action::Stem::Vocal,
                             change: dj_core::action::StemChange::SetSolo(true),
-                        }
+                        },
                     });
                 }
             }
@@ -463,7 +463,7 @@ impl Automix {
                 action: DeckAction::Stem {
                     stem: dj_core::action::Stem::Vocal,
                     change: dj_core::action::StemChange::SetSolo(false),
-                }
+                },
             });
         }
         plan.deck(outgoing, DeckAction::Eject);

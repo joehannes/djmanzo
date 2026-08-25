@@ -86,7 +86,6 @@
       <div class="banks">
         {#each [1, 2, 3, 4] as bank (bank)}
           <IconButton
-            class:active={sampler.bank === bank}
             active={sampler.bank === bank}
             disabled={!enabled}
             onClick={() => send(`sampler bank ${bank}`)}

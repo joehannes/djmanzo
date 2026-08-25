@@ -6,6 +6,24 @@ use dj_core::SampleRate;
 /// time so nothing downstream branches on channel count.
 pub const CHANNELS: usize = 2;
 
+/// Separation splits a track four ways. The order is [`dj_core::Stem::ALL`] --
+/// vocal, drums, bass, other -- and every index downstream means that order.
+pub const STEM_COUNT: usize = 4;
+
+/// One frame of separated audio: every stem's channels interleaved, so a deck
+/// reads the whole frame as one contiguous chunk instead of chasing four
+/// pointers.
+pub type StemFrame = [f32; STEM_COUNT * CHANNELS];
+
+/// The separated track a background worker fills and a deck reads.
+///
+/// The lock is an `RwLock` rather than a channel because separation arrives in
+/// chunks while the deck may already be playing: the worker appends, the deck
+/// reads what has landed so far. The audio thread only ever `try_read`s it, so
+/// it never waits on the worker -- see
+/// [`AudioBuffer::stem_frame_interpolated`].
+pub type StemBuffer = std::sync::Arc<parking_lot::RwLock<Vec<StemFrame>>>;
+
 /// Decoded audio, interleaved stereo `f32`, ready for the engine.
 ///
 /// Always stereo: mono sources are duplicated at decode time so that nothing
@@ -26,7 +44,7 @@ pub struct AudioBuffer {
     sample_rate: SampleRate,
     /// Stems, if available. 4 stems * 2 channels = 8 floats per frame.
     /// Uses RwLock so the background thread can write chunks.
-    stems: std::sync::Arc<parking_lot::RwLock<Vec<[f32; 8]>>>,
+    stems: StemBuffer,
 }
 
 impl AudioBuffer {
@@ -55,9 +73,9 @@ impl AudioBuffer {
             stems: std::sync::Arc::new(parking_lot::RwLock::new(Vec::new())),
         }
     }
-    
+
     /// Get a reference to the stems lock, to be populated by the background worker.
-    pub fn stems_lock(&self) -> std::sync::Arc<parking_lot::RwLock<Vec<[f32; 8]>>> {
+    pub fn stems_lock(&self) -> StemBuffer {
         self.stems.clone()
     }
 
@@ -130,7 +148,7 @@ impl AudioBuffer {
 
     /// Linearly interpolated stem frame at a fractional position.
     #[must_use]
-    pub fn stem_frame_interpolated(&self, position: f64) -> Option<[[f32; CHANNELS]; 4]> {
+    pub fn stem_frame_interpolated(&self, position: f64) -> Option<[[f32; CHANNELS]; STEM_COUNT]> {
         if position < 0.0 {
             return None;
         }
@@ -140,7 +158,7 @@ impl AudioBuffer {
 
         // Use try_read to avoid blocking the audio thread!
         let stems = self.stems.try_read()?;
-        
+
         // If we haven't processed this far yet, fallback
         if index + 1 >= stems.len() {
             return None;
@@ -149,11 +167,14 @@ impl AudioBuffer {
         let a = stems[index];
         let b = stems[index + 1];
 
-        let mut out = [[0.0; CHANNELS]; 4];
-        for s in 0..4 {
-            let offset = s * 2;
-            out[s][0] = a[offset] + (b[offset] - a[offset]) * fraction;
-            out[s][1] = a[offset + 1] + (b[offset + 1] - a[offset + 1]) * fraction;
+        let mut out = [[0.0; CHANNELS]; STEM_COUNT];
+        for (stem, frame) in out.iter_mut().enumerate() {
+            let offset = stem * CHANNELS;
+            for (channel, sample) in frame.iter_mut().enumerate() {
+                let from = a[offset + channel];
+                let to = b[offset + channel];
+                *sample = from + (to - from) * fraction;
+            }
         }
         Some(out)
     }

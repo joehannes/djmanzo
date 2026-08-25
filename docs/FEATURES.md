@@ -204,6 +204,13 @@ what fits in a 5 ms budget. On top of that:
   first-class operation;
 - stem isolation as a mixing surface, with the beat grid and phrase markers to align it.
 
+The separation model is a **download rather than part of the package** -- it is
+tens of megabytes and carries its own licence, so it is the DJ's to accept.
+djmanzo therefore treats "no stems on this machine" as an ordinary state: it
+starts normally, greys the stem controls out, and puts the reason next to them.
+It does not start ONNX Runtime speculatively to find out, because a missing
+runtime takes the process down at exit rather than returning an error.
+
 ### The universal hardware bridge
 
 No other application speaks Pro DJ Link *and* StagelinQ *and* network tempo sync *and* MIDI

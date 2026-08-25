@@ -918,10 +918,22 @@ impl Engine {
                 DeckParam::LoopBeats,
                 deck.loop_beats().unwrap_or(0.0) as f32,
             );
-            set(DeckParam::StemVocalMute, if deck.stem_channels[0].mute { 1.0 } else { 0.0 });
-            set(DeckParam::StemDrumsMute, if deck.stem_channels[1].mute { 1.0 } else { 0.0 });
-            set(DeckParam::StemBassMute, if deck.stem_channels[2].mute { 1.0 } else { 0.0 });
-            set(DeckParam::StemOtherMute, if deck.stem_channels[3].mute { 1.0 } else { 0.0 });
+            set(
+                DeckParam::StemVocalMute,
+                if deck.stem_channels[0].mute { 1.0 } else { 0.0 },
+            );
+            set(
+                DeckParam::StemDrumsMute,
+                if deck.stem_channels[1].mute { 1.0 } else { 0.0 },
+            );
+            set(
+                DeckParam::StemBassMute,
+                if deck.stem_channels[2].mute { 1.0 } else { 0.0 },
+            );
+            set(
+                DeckParam::StemOtherMute,
+                if deck.stem_channels[3].mute { 1.0 } else { 0.0 },
+            );
             set(DeckParam::StemVocalVolume, deck.stem_channels[0].volume);
             set(DeckParam::StemDrumsVolume, deck.stem_channels[1].volume);
             set(DeckParam::StemBassVolume, deck.stem_channels[2].volume);

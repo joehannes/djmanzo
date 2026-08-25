@@ -9,6 +9,7 @@
    * whenever anything moved; this walks the list once per change and the DOM
    * stays put, which is what keeps a drag from flickering.
    */
+  import IconButton from "./controls/IconButton.svelte";
   import {
     addToPlaylist,
     createPlaylist,

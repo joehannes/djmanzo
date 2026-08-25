@@ -11,6 +11,7 @@
    * controller, a script or the assistant moves this panel too
    * (`docs/adr/0003-action-bus-and-parameter-registry.md`).
    */
+  import IconButton from "./controls/IconButton.svelte";
   import { EFFECTS, saveRackPreset, type FxSlot } from "./api";
 
   let {

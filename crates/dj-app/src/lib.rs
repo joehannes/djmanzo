@@ -225,6 +225,11 @@ pub fn run() {
             // may delete to reclaim space.
             if let Ok(dir) = app.path().app_config_dir() {
                 let state: tauri::State<'_, AppState> = handle.state();
+                // Separation looks for its model here too, and reports why it
+                // cannot run rather than refusing to start. It has to happen
+                // after the directory is known and before the interface asks
+                // whether stems are available.
+                state.open_stems(&dir);
                 state.set_config_dir(dir);
             }
 
@@ -299,6 +304,7 @@ pub fn run() {
             commands::attach_panel,
             commands::list_plugins,
             commands::plugin_state,
+            commands::stems_status,
             commands::load_plugin,
             commands::clear_plugin,
             commands::open_mic,

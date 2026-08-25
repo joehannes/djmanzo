@@ -1876,7 +1876,6 @@ pub struct DeckLevels {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dj_core::Stem;
 
     const SR: SampleRate = SampleRate::DEFAULT;
 
