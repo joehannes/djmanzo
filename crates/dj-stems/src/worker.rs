@@ -3,7 +3,7 @@ use crate::stems::Separator;
 use dj_core::track::TrackId;
 use dj_decode::buffer::{CHANNELS, StemBuffer, StemChunk};
 use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
 
 /// One chunk of audio handed to the separation worker.
@@ -23,10 +23,25 @@ struct SeparationJob {
     target: Option<StemBuffer>,
 }
 
+/// How many chunks may wait to be separated.
+///
+/// **Bounded, and the number matters.** A chunk is ten seconds of stereo
+/// audio: at 48 kHz that is 960,000 floats, 3.8 MB. A six-minute track is
+/// thirty-six of them, so an unbounded queue -- which is what this was -- held
+/// the entire track in memory a second time while the worker chewed through
+/// it, and loading four decks in quick succession queued half a gigabyte of
+/// audio nobody had asked for yet.
+///
+/// Four chunks is about 15 MB and forty seconds of lookahead, which is far
+/// more than a DJ can get ahead of. Past the bound the producer blocks, which
+/// is exactly right: it is a background thread whose only job is to feed this
+/// one, and having it wait costs nothing.
+const QUEUED_CHUNKS: usize = 4;
+
 /// The worker runs in the background and continuously separates audio ahead of the playhead.
 #[derive(Debug)]
 pub struct SeparationWorker {
-    sender: Option<Sender<SeparationJob>>,
+    sender: Option<SyncSender<SeparationJob>>,
 }
 
 impl SeparationWorker {
@@ -36,7 +51,7 @@ impl SeparationWorker {
     /// separator and a downloaded model are the same thing from here on: the
     /// only difference a DJ sees is the name and the quality.
     pub fn new(separator: Arc<dyn Separator>, cache: Arc<StemCache>) -> Self {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::sync_channel(QUEUED_CHUNKS);
 
         thread::Builder::new()
             .name("dj-stems-worker".into())
@@ -57,7 +72,12 @@ impl SeparationWorker {
         Self { sender: None }
     }
 
-    /// Enqueue a chunk of audio for separation.
+    /// Enqueue a chunk of audio for separation, waiting if the worker is behind.
+    ///
+    /// **This blocks** once [`QUEUED_CHUNKS`] are already waiting. Callers are
+    /// background threads feeding this one, so waiting is the correct
+    /// behaviour and the alternative -- an unbounded queue -- costs a whole
+    /// track of memory per load. Nothing on the audio thread ever calls this.
     pub fn process_chunk(
         &self,
         track_id: TrackId,
@@ -202,5 +222,138 @@ fn publish(target: &StemBuffer, index: usize, chunk: StemChunk) {
             return;
         }
         // Someone else published first; try again against what they left.
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::stems::{StemError, Stems};
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::mpsc::Receiver as StdReceiver;
+    use std::time::{Duration, Instant};
+
+    /// A separator that will not finish until it is told to.
+    ///
+    /// Blocking is the point: the queue's bound is only observable while the
+    /// worker is behind, which is exactly the condition it exists for.
+    #[derive(Debug)]
+    struct HeldSeparator {
+        release: Mutex<StdReceiver<()>>,
+        started: Arc<AtomicUsize>,
+    }
+
+    impl Separator for HeldSeparator {
+        fn name(&self) -> &'static str {
+            "held"
+        }
+
+        fn separate(&self, mix: &[f32], sample_rate: u32) -> Result<Stems, StemError> {
+            self.started.fetch_add(1, Ordering::SeqCst);
+            // One permit per chunk; the test hands them out.
+            let _ = self.release.lock().expect("not poisoned").recv();
+            let silence = vec![0.0; mix.len()];
+            Stems::new(
+                [silence.clone(), silence.clone(), silence.clone(), silence],
+                sample_rate,
+            )
+        }
+    }
+
+    fn wait_until(deadline: Duration, mut done: impl FnMut() -> bool) -> bool {
+        let start = Instant::now();
+        while start.elapsed() < deadline {
+            if done() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        done()
+    }
+
+    /// **The bound has to actually bind.**
+    ///
+    /// A chunk is ten seconds of stereo audio -- 3.8 MB at 48 kHz -- and a
+    /// six-minute track is thirty-six of them. With an unbounded queue, which
+    /// is what this was, loading a track put the whole thing in memory a
+    /// second time; four decks in a row queued half a gigabyte.
+    ///
+    /// So a producer that outruns the worker must be made to wait, and this is
+    /// what proves it does: with the separator held, only a handful of sends
+    /// may complete however many are offered.
+    #[test]
+    fn a_producer_that_outruns_the_worker_is_made_to_wait() {
+        let (permit, wait_for_permit) = mpsc::channel();
+        let started = Arc::new(AtomicUsize::new(0));
+        let separator = Arc::new(HeldSeparator {
+            release: Mutex::new(wait_for_permit),
+            started: Arc::clone(&started),
+        });
+        let dir = tempfile::tempdir().expect("a temp dir");
+        let cache = Arc::new(StemCache::new(dir.path(), 10 * 1024 * 1024).expect("a fresh cache"));
+        let worker = SeparationWorker::new(separator, cache);
+
+        const OFFERED: usize = 12;
+        let sent = Arc::new(AtomicUsize::new(0));
+        let producer = {
+            let sent = Arc::clone(&sent);
+            std::thread::spawn(move || {
+                let track = TrackId::from_bytes([1u8; 32]);
+                for index in 0..OFFERED {
+                    worker.process_chunk(track, index, &[0.0; CHANNELS * 8], 48_000, None);
+                    sent.fetch_add(1, Ordering::SeqCst);
+                }
+                worker
+            })
+        };
+
+        // Give it every chance to run away. The queue holds QUEUED_CHUNKS, the
+        // worker has taken one and is stuck inside it, so one more send fits.
+        let ceiling = QUEUED_CHUNKS + 2;
+        assert!(
+            wait_until(Duration::from_secs(2), || sent.load(Ordering::SeqCst) > 0),
+            "nothing was sent at all"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+        let stalled = sent.load(Ordering::SeqCst);
+        assert!(
+            stalled <= ceiling,
+            "the producer sent {stalled} chunks with the worker held; \
+             the queue is not bounded (ceiling {ceiling}, offered {OFFERED})"
+        );
+        assert!(
+            stalled < OFFERED,
+            "every chunk was accepted, so nothing was waiting"
+        );
+
+        // Let it drain, and confirm the producer was blocked rather than lost.
+        for _ in 0..OFFERED {
+            let _ = permit.send(());
+        }
+        assert!(
+            wait_until(Duration::from_secs(10), || sent.load(Ordering::SeqCst)
+                == OFFERED),
+            "the producer never finished: {} of {OFFERED}",
+            sent.load(Ordering::SeqCst)
+        );
+        drop(producer.join().expect("the producer thread finished"));
+    }
+
+    /// A worker with no separator drops what it is given rather than queueing
+    /// it, so a machine without stems does not accumulate audio it will never
+    /// look at.
+    #[test]
+    fn an_unavailable_worker_never_blocks_and_never_queues() {
+        let worker = SeparationWorker::unavailable();
+        let track = TrackId::from_bytes([1u8; 32]);
+        let start = Instant::now();
+        for index in 0..1_000 {
+            worker.process_chunk(track, index, &[0.0; CHANNELS * 8], 48_000, None);
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "an unavailable worker blocked its caller"
+        );
     }
 }

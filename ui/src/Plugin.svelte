@@ -227,17 +227,6 @@
     letter-spacing: 0.08em;
     color: var(--muted);
   }
-
-  .switch {
-    min-width: 5rem;
-    font-weight: 600;
-  }
-
-  .switch.active {
-    background: var(--accent, #4a90a4);
-    color: var(--panel);
-  }
-
   .pick {
     display: flex;
     gap: 0.4rem;
@@ -303,11 +292,6 @@
   .warn {
     color: var(--warn, #d4756b);
   }
-
-  .clear {
-    font-size: 0.7rem;
-  }
-
   code {
     font-size: 0.95em;
   }

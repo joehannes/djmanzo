@@ -328,12 +328,6 @@
     padding: 0.05rem 0.3rem;
     font-size: 0.9em;
   }
-
-  .clear {
-    flex: none;
-    font-size: 0.9em;
-  }
-
   .empty {
     margin: 0;
     color: var(--text-dim);

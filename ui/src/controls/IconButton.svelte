@@ -95,7 +95,4 @@
     opacity: 0.45;
     cursor: not-allowed;
   }
-  i {
-    font-size: 1.05rem;
-  }
 </style>

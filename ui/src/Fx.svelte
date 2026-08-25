@@ -234,12 +234,6 @@
     margin-top: 0.2rem;
   }
 
-  .keep-open,
-  .keep button {
-    font-size: 0.75em;
-    letter-spacing: 0.04em;
-  }
-
   .chain-name {
     flex: 1;
     min-width: 5rem;

@@ -752,12 +752,6 @@
     gap: 0.65rem;
     min-width: 0;
   }
-
-  .loop-row button {
-    padding: 0.2rem 0.5rem;
-    font-size: 0.8em;
-  }
-
   .beatjump {
     display: flex;
     align-items: center;
@@ -770,32 +764,10 @@
     part of playing, and it should not compete with the loop controls for
     attention while a mix is running.
   */
-  .grid-row button {
-    font-size: 0.85em;
-  }
-
-  .grid-toggle {
-    padding: 0.05rem 0.35rem;
-    font-size: 0.85em;
-  }
-
-  .grid-toggle.active {
-    background: var(--accent-2);
-    color: var(--on-accent);
-    border-color: var(--accent-2);
-  }
-
   .beatjump .label {
     color: var(--text-dim);
     margin-right: 0.2rem;
   }
-
-  .beatjump button {
-    padding: 0.2rem 0.5rem;
-    font-size: 0.95em;
-    font-variant-numeric: tabular-nums;
-  }
-
   .analysis {
     display: flex;
     align-items: baseline;
@@ -815,14 +787,6 @@
     color: var(--text);
     font-weight: 600;
   }
-
-  .octave {
-    padding: 0.05rem 0.3rem;
-    font-size: 0.75em;
-    border-radius: 4px;
-    color: var(--text-dim);
-  }
-
   /*
     A number the analyser is not sure of still gets shown — it is usually right,
     and a blank would be less useful — but it is visibly dimmer, because the one
@@ -964,12 +928,6 @@
     gap: 0.15rem;
     font-size: 0.72em;
   }
-
-  .keyshift button {
-    padding: 0.25rem 0.4rem;
-    font-size: 0.9em;
-  }
-
   .keyshift span {
     min-width: 1.6rem;
     text-align: center;
@@ -987,38 +945,7 @@
     align-items: end;
     gap: 0.5rem;
   }
-
-  .slip {
-    padding: 0.15rem 0.35rem;
-    font-size: 0.7em;
-    letter-spacing: 0.03em;
-  }
-
-  .slip.on {
-    background: var(--accent-2);
-    color: var(--on-accent);
-    border-color: var(--accent-2);
-  }
-
   /* Momentary, so it must not look like something that stays pressed. */
-  .slip.censor:active {
-    background: var(--accent-2);
-    color: var(--on-accent);
-  }
-
-  .keylock {
-    font-size: 0.7em;
-    letter-spacing: 0.08em;
-    font-weight: 600;
-    padding: 0.3rem 0.5rem;
-  }
-
-  .keylock.on {
-    background: var(--accent-2);
-    border-color: var(--accent-2);
-    color: var(--on-accent);
-  }
-
   .cue {
     display: flex;
     align-items: center;
@@ -1067,21 +994,6 @@
     color: var(--text-dim);
     margin-right: 0.3rem;
   }
-
-  .xfader-assign button {
-    flex: 1;
-    padding: 0.15rem 0;
-    font-size: 0.7rem;
-    line-height: 1.2;
-    min-width: 0;
-  }
-
-  .xfader-assign button.active {
-    background: var(--accent-2);
-    color: var(--on-accent);
-    border-color: var(--accent-2);
-  }
-
   .meter {
     height: 4px;
     background: var(--panel-raised);

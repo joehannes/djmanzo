@@ -234,17 +234,6 @@
     letter-spacing: 0.08em;
     color: var(--muted);
   }
-
-  .switch {
-    min-width: 5rem;
-    font-weight: 600;
-  }
-
-  .switch.active {
-    background: var(--accent-warm, #d08a3a);
-    color: var(--panel);
-  }
-
   .attach {
     display: flex;
     gap: 0.4rem;
@@ -265,12 +254,6 @@
     display: flex;
     gap: 0.3rem;
   }
-
-  .toggles button {
-    flex: 1;
-    font-size: 0.7rem;
-  }
-
   .settings {
     display: flex;
     flex-direction: column;
@@ -301,9 +284,5 @@
 
   .warn {
     color: var(--warn, #d4756b);
-  }
-
-  .detach {
-    font-size: 0.7rem;
   }
 </style>

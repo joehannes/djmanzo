@@ -1180,12 +1180,6 @@
     text-align: left;
     max-width: 22rem;
   }
-
-  .folder .remove {
-    padding: 0 0.3rem;
-    line-height: 1.2;
-  }
-
   .failed {
     font-size: 0.8em;
     color: var(--text-dim);

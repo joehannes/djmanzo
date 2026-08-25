@@ -313,18 +313,6 @@
       display: flex;
       gap: 0.2rem;
     }
-
-    .banks button {
-      padding: 0.15rem 0.5rem;
-      font-size: 0.85em;
-    }
-
-    .banks button.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: var(--on-accent);
-    }
-
     .level {
       display: flex;
       align-items: center;
@@ -337,12 +325,6 @@
     .level input {
       flex: 1;
     }
-
-    .panic {
-      margin-left: auto;
-      font-size: 0.8em;
-    }
-
     .record {
       display: flex;
       align-items: center;
@@ -350,20 +332,8 @@
       font-size: 0.8em;
       color: var(--text-dim);
     }
-
-    .arm {
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      min-width: 3.5rem;
-    }
-
     /* A running recorder is the one thing in this panel that has to be visible
        from across a booth. */
-    .arm.live {
-      background: var(--danger, #e06c75);
-      border-color: var(--danger, #e06c75);
-      color: var(--on-accent);
-    }
 
     .what {
       color: var(--text);
@@ -431,17 +401,6 @@
       border-radius: 3px;
       font-weight: 600;
     }
-
-    .name {
-      flex: 1 1 8rem;
-      min-width: 6rem;
-      text-align: left;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 0.95em;
-    }
-
     .through {
       width: 4rem;
       height: 3px;
@@ -457,23 +416,5 @@
 
     .volume {
       width: 5rem;
-    }
-
-    .route {
-      padding: 0.1rem 0.3rem;
-      font-size: 0.75em;
-      letter-spacing: 0.05em;
-      color: var(--text-dim);
-    }
-
-    .route.on {
-      background: var(--accent-2);
-      border-color: var(--accent-2);
-      color: var(--on-accent);
-    }
-
-    .drop {
-      padding: 0.05rem 0.35rem;
-      color: var(--text-dim);
     }
   </style>

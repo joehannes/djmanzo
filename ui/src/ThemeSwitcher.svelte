@@ -69,6 +69,4 @@
   }
   .section { margin-bottom: 0.5rem; }
   .opts { display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.4rem }
-  .opts button { padding: 0.4rem 0.6rem; border-radius:6px; border:1px solid var(--border); background:var(--panel-raised); color:var(--text); }
-  .opts button.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent-2); }
 </style>

@@ -439,16 +439,6 @@
   }
 
   /* Only on hover: a delete button beside every row is a mis-click waiting. */
-  .remove {
-    visibility: hidden;
-    padding: 0 0.3rem;
-    line-height: 1.2;
-  }
-
-  .row:hover .remove {
-    visibility: visible;
-  }
-
   .divider {
     height: 1px;
     background: var(--border);
@@ -460,13 +450,6 @@
     gap: 0.3rem;
     flex: none;
   }
-
-  .actions button {
-    flex: 1;
-    font-size: 0.9em;
-    padding: 0.15rem 0.3rem;
-  }
-
   .error {
     margin: 0;
     font-size: 0.85em;

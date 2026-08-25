@@ -173,18 +173,6 @@
     display: flex;
     gap: 0.3rem;
   }
-
-  .tabs button {
-    font-size: 0.85em;
-    padding: 0.2rem 0.7rem;
-  }
-
-  .tabs button.active {
-    background: var(--accent-2);
-    color: var(--on-accent);
-    border-color: var(--accent-2);
-  }
-
   .browse {
     display: flex;
     flex-direction: column;

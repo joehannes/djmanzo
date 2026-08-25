@@ -622,9 +622,15 @@ pub fn put_on_deck(
     // whatever was on the deck a moment ago.
     restore_deck_state(state, deck_id, track_id, sample_rate);
 
-    // Queue stem separation in the background!
+    // Queue stem separation in the background.
+    //
+    // The buffer is shared, not copied. This used to `to_vec()` the whole
+    // decoded track to have something to slice in the thread -- 138 MB for a
+    // six-minute track -- directly beneath the comment above explaining why
+    // the analyser gets an `Arc` instead. The worker copies each chunk it
+    // takes, which it has to: that one crosses a channel.
     let stems_worker = state.stems_worker();
-    let audio_clone = buffer.as_interleaved().to_vec();
+    let audio = Arc::clone(&buffer);
     let lock_clone = buffer.stems_lock();
     std::thread::spawn(move || {
         // Ten seconds of stereo audio per chunk, at the rate this track was
@@ -632,7 +638,10 @@ pub fn put_on_deck(
         // 9.2 seconds long on a 48 kHz track, and the built-in separator
         // needs the real rate to place its band edges anyway.
         let chunk_size = sample_rate.get() as usize * dj_decode::CHANNELS * 10;
-        for (i, chunk) in audio_clone.chunks(chunk_size).enumerate() {
+        // `process_chunk` blocks once the worker is a few chunks behind, so
+        // this thread spends most of its life asleep rather than racing ahead
+        // building a queue. That is the point of the bound.
+        for (i, chunk) in audio.as_interleaved().chunks(chunk_size).enumerate() {
             stems_worker.process_chunk(
                 track_id,
                 i,

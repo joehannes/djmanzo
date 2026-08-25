@@ -279,28 +279,4 @@
     margin-top: 12px;
     gap: 8px;
   }
-
-  .macro-btn {
-    flex: 1;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.8);
-    padding: 6px 0;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .macro-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
-    color: #fff;
-    transform: translateY(-1px);
-  }
-
-  .macro-btn:active {
-    transform: translateY(1px);
-  }
 </style>

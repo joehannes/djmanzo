@@ -984,13 +984,6 @@
     color: var(--text-dim);
     font-size: 0.7rem;
   }
-
-  .status button.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
-  }
-
   /*
     A basis rather than a bare `flex: 1`, so that when the window is too narrow
     the toolbar *wraps* instead of crushing this group. With `min-width: 0` and
@@ -1125,21 +1118,6 @@
     line-height: 1.4;
     color: var(--text-dim);
   }
-
-  .meter {
-    height: 6px;
-    background: var(--panel-raised);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-
-  .meter-fill {
-    width: 100%;
-    transform-origin: left center;
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent-2), var(--warn));
-  }
-
   .log {
     background: var(--panel);
     border: 1px solid var(--border);
