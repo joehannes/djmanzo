@@ -18,6 +18,7 @@
     listSources,
     logoUrl,
     musicLibrary,
+    openSignupLink,
     removeMusicFolder,
     secretsPersist,
     setBrandLogo,
@@ -1055,9 +1056,10 @@
             </div>
             <p class="free-tier">
               {credential.free_tier}
-              <a href={credential.signup_url} target="_blank" rel="noreferrer">
+              <!-- See Assistant.svelte: a webview link cannot reach a browser. -->
+              <button type="button" class="signup" onclick={() => openSignupLink(credential.signup_url)}>
                 Get one →
-              </a>
+              </button>
             </p>
           </div>
         {/each}
@@ -1288,9 +1290,22 @@
     margin-left: 0.3rem;
   }
 
-  .free-tier a {
+  /*
+    Was an anchor until it turned out a webview anchor reaches nothing. It is a
+    button now and still has to read as a link, because the DJ's understanding
+    of it -- "this takes me somewhere" -- was the only correct part before.
+  */
+  .signup {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
     color: var(--accent);
     white-space: nowrap;
+    cursor: pointer;
+  }
+  .signup:hover {
+    text-decoration: underline;
   }
 
   .error,

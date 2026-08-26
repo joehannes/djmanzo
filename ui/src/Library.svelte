@@ -21,7 +21,8 @@
    */
   import { onMount } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
-  import { open, save } from "@tauri-apps/plugin-dialog";
+  import { open } from "@tauri-apps/plugin-dialog";
+  import ShareSet from "./ShareSet.svelte";
   import Crates, { type Selection } from "./Crates.svelte";
   import SideView from "./SideView.svelte";
   import IconButton from "./controls/IconButton.svelte";
@@ -31,7 +32,6 @@
     clearTrackField,
     defaultMusicFolder,
     editTracks,
-    exportSession,
     findDuplicates,
     forgetTrackPath,
     formatTime,
@@ -114,6 +114,8 @@
   let playlists = $state<Playlist[]>([]);
   let duplicates = $state<Duplicate[]>([]);
   let sessions = $state<Session[]>([]);
+  /** Which night the share sheet is open for, if any. */
+  let sharing = $state<string | null>(null);
 
   /**
    * Which rows are selected, by track id.
@@ -330,20 +332,6 @@
     try {
       await forgetTrackPath(track, path);
       duplicates = await findDuplicates();
-    } catch (e) {
-      error = String(e);
-    }
-  }
-
-  async function saveSession(session: string) {
-    const picked = await save({
-      defaultPath: `${session}.txt`,
-      filters: [{ name: "Set list", extensions: ["txt"] }],
-    });
-    if (typeof picked !== "string") return;
-    try {
-      const count = await exportSession(session, picked);
-      imported = `Exported ${count} track${count === 1 ? "" : "s"} to ${picked}`;
     } catch (e) {
       error = String(e);
     }
@@ -592,7 +580,12 @@
     <p class="status">Imported — {imported}</p>
   {/if}
 
-  {#if status}
+  <!--
+    Hidden while the share sheet is open. It reports how many plays there
+    are, which the sheet restates as "N of M" beside the records themselves,
+    and the panel is short enough that a redundant line costs a control.
+  -->
+  {#if status && !sharing}
     <!--
       Both halves of the scan, always. "4,000 found, 12 identified" is a DJ
       waiting; an empty collection with no explanation is a DJ filing a bug.
@@ -775,15 +768,32 @@
         {#each sessions as session (session.id)}
           <button
             class="session"
-            onclick={() => saveSession(session.id)}
-            title="Export {session.id} as a set list"
+            class:chosen={sharing === session.id}
+            aria-pressed={sharing === session.id}
+            onclick={() => (sharing = sharing === session.id ? null : session.id)}
+            title="Share or export {session.id}"
           >
-            {session.id} · {session.tracks} ↓
+            {session.id} · {session.tracks}
           </button>
         {/each}
       </div>
     {/if}
-    {#if history.length === 0}
+    {#if sharing}
+      <!--
+        Selecting a night opens the share sheet rather than a file dialog. The
+        chip used to export straight to disk, which was one click fewer and
+        gave the DJ no sight of what they were handing over and no choice of
+        where it went.
+
+        The sheet takes the table's place rather than sitting above it. A
+        browser panel with the decks open is about three hundred pixels tall,
+        and a sheet stacked on top of a table put its own buttons below the
+        window edge with nothing to scroll. Replacing it costs nothing: the
+        preview *is* the tracklist, so the table underneath was showing the
+        same records twice.
+      -->
+      <ShareSet session={sharing} onclose={() => (sharing = null)} />
+    {:else if history.length === 0}
       <p class="empty">
         Nothing played yet. A track counts once it has been playing for thirty
         seconds — long enough that auditioning the first four bars of everything
@@ -1005,6 +1015,12 @@
   .session {
     font-size: 0.8em;
     padding: 0.15rem 0.45rem;
+  }
+
+  /* The open sheet belongs to one chip, and the chip says which. */
+  .session.chosen {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   .copy {

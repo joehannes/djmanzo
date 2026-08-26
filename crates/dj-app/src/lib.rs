@@ -42,6 +42,7 @@ pub mod remote;
 pub mod replay;
 pub mod session;
 pub mod setrec;
+pub mod share;
 pub mod snapshot;
 pub mod sources;
 pub mod state;
@@ -127,6 +128,9 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // Handing a URL to the operating system, so the WhatsApp handoff
+        // reaches WhatsApp instead of opening inside our own webview.
+        .plugin(tauri_plugin_opener::init())
         // Tiles are served as images rather than pushed over IPC, so the webview
         // decodes once off the main thread and every subsequent frame is a
         // compositor translation. See docs/adr/0004.
@@ -414,6 +418,9 @@ pub fn run() {
             commands::forget_track_path,
             commands::list_sessions,
             commands::export_session,
+            commands::open_signup_link,
+            commands::share_preview,
+            commands::share_to_whatsapp,
             commands::sidelist,
             commands::sidelist_add,
             commands::sidelist_remove,

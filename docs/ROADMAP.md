@@ -1890,7 +1890,7 @@ the existing bus.** It is a client, not a component.
 | **A3** | Music intelligence | A1, **M2**, **M3** | The Dominican/Caribbean domain pack — genres, tempo ranges, and which transitions actually work. Session planner taking absolute and relative instruction. Templates. Live steering that adjusts the remaining plan without discarding it. Suggestions that state their reasoning. |
 | **A4** | Sources | A1, M3 | `SourceProvider` abstraction per [ADR-0006](adr/0006-music-sources-and-licensing.md). Local pool search. Spotify for discovery and planning only — never audio. YouTube search, with optional acquisition off by default. A provider slot ready for a licensed streaming partner. |
 | **A5** | Generated music | A1 | Kaggle credentials and notebook deployment. HeartMuLa job lifecycle. Spoken song requests. Results land in a Generated container, analysed like any other track. |
-| **A6** | Sharing | A5 | Export and hand off to WhatsApp with a prefilled message. djmanzo prepares the share; the user presses send. |
+| **A6** | Sharing | — | **Shipped.** Export and hand off to WhatsApp with a prefilled message. djmanzo prepares the share; the user presses send. Built without waiting for A5: the dependency was on generated music being *shareable*, and a tracklist of records that were actually played is the thing people ask for after a night. |
 
 ### Karaoke
 
@@ -1904,6 +1904,34 @@ Two milestones, designed in [KARAOKE.md](KARAOKE.md).
 **K1 delivers a usable karaoke night on its own**: centre cancellation plus
 LRCLIB covers a great deal of real repertoire with no model, no GPU and no
 cache.
+
+#### What A6 decided, and why
+
+- **djmanzo prepares, the human sends.** The link opens a compose window with
+  no recipient chosen. Nothing is posted, and no contact list is read. That is
+  not a limitation working around an API — it is the line: a set going to a
+  particular person is a decision a person makes.
+- **The preview comes before the send.** Once WhatsApp has the text it belongs
+  to a chat window, and "wait, not that one" stops being something software can
+  offer. It is also where a four-hour set announces that it will not fit in a
+  link, while there is still a file to choose instead.
+- **The URL is built in Rust; the interface names a session.** A command that
+  took a URL and opened it would hand the webview a general-purpose way to
+  launch anything, granted permanently the first time it was convenient. The
+  interface says *which night*; djmanzo decides what that means.
+- **The length budget is counted in encoded bytes, not characters.** One
+  accented character costs nine bytes once percent-encoded, and this repertoire
+  is mostly accented. A character count would pass a list the operating system
+  then refuses — failing on precisely the sets djmanzo exists for.
+- **A truncated share says it was truncated, in the message itself.** The
+  person reading it in the chat is the one who would otherwise assume the night
+  ended there.
+
+Fixed alongside it: every **"Get one →" link was decorative**. A webview cannot
+reach a browser on its own — `target="_blank"` inside a Tauri window opens
+nothing at all on Linux — so every link next to a credential field had been
+silently doing nothing. They are buttons now, and the address is checked
+against djmanzo's own catalogs before the operating system is asked to open it.
 
 **A1 and A2 are buildable now.** A3 is deliberately gated behind M2 and M3: a
 planner needs beatgrids, keys, energy and play history to reason about, and

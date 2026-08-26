@@ -1556,6 +1556,47 @@ export const chooseLayout = (name: string) => invoke<void>("choose_layout", { na
 export const exportSession = (session: string, path: string) =>
   invoke<number>("export_session", { session, path });
 
+// -- sharing a set ----------------------------------------------------------
+
+/** A set written out ready to send, and what did not fit. */
+export interface Share {
+  /** The message itself, exactly as it will arrive. */
+  message: string;
+  /** How many records had to be left out of the link. Zero if it all fits. */
+  dropped: number;
+  /** How many there were altogether. */
+  total: number;
+}
+
+/**
+ * What the message will say, without opening anything.
+ *
+ * Always call this before {@link shareToWhatsApp}: it is where the DJ finds
+ * out that a four-hour set does not fit in a link, while they can still
+ * choose the file instead.
+ */
+export const sharePreview = (session: string, heading: string) =>
+  invoke<Share>("share_preview", { session, heading });
+
+/**
+ * Open WhatsApp with the set already typed into the message box.
+ *
+ * Sends nothing and names no recipient. djmanzo prepares the share; the
+ * person presses send.
+ */
+export const shareToWhatsApp = (session: string, heading: string) =>
+  invoke<Share>("share_to_whatsapp", { session, heading });
+
+/**
+ * Open one of djmanzo's own links in the real browser.
+ *
+ * `target="_blank"` inside a Tauri window opens nothing at all on Linux,
+ * which is why every "Get one" link needs this. The backend checks the
+ * address against its own catalogs and refuses anything it did not publish.
+ */
+export const openSignupLink = (url: string) =>
+  invoke<void>("open_signup_link", { url });
+
 export interface ImportResult {
   /** "rekordbox XML", "Traktor NML" or "iTunes XML". */
   format: string;

@@ -163,6 +163,8 @@ Chosen to keep djmanzo MIT-OR-Apache-2.0. See
 | CLAP plugin bindings | `clack-plugin` | MIT OR Apache-2.0 | **Test-only**, behind `dj-clap`'s `test-plugin` feature. Used to compile a real CLAP plugin into the test binary, because there are no `.clap` bundles on a CI machine and a host tested against nothing is a host tested nowhere. Not in a shipped build. |
 | rekordbox import | `rekordcrate` | MPL-2.0 | Compatible; file-level copyleft only. |
 | UI shell | Tauri 2 | MIT/Apache-2.0 | See ADR-0001. |
+| Opening a link | `tauri-plugin-opener` | MIT OR Apache-2.0 | Hands a URL to the operating system. A webview cannot reach a browser by itself — `target="_blank"` inside a Tauri window opens nothing at all on Linux — so every external link needs this, including the WhatsApp handoff in A6. The plugin's own IPC command is deliberately **not** granted to the webview: djmanzo opens URLs from Rust, having first checked them against its own catalogs. See `commands::open_signup_link`. |
+| URL escaping | `urlencoding` | MIT | Percent-encoding, for the source APIs in `dj-sources` and the shared tracklist in `dj-app::share`. Small enough to have written by hand and exactly the kind of thing that is wrong when written by hand — the failure is a set list truncated at the first `&` in an artist name. |
 
 ### The analysis gap
 

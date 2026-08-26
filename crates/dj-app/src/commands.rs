@@ -3905,6 +3905,11 @@ pub fn list_sessions(state: State<'_, AppState>) -> Result<Vec<SessionDto>, Stri
 ///
 /// Plain text with the time, artist and title — the format a promoter or a
 /// royalty return actually asks for, and one a DJ can read without a tool.
+///
+/// The formatting lives in [`crate::share`], which is the same text the
+/// WhatsApp handoff sends. Two formatters for one tracklist would drift, and
+/// the drift would show up as a promoter and a group chat being given
+/// different accounts of the same night.
 #[tauri::command]
 pub fn export_session(
     state: State<'_, AppState>,
@@ -3918,24 +3923,129 @@ pub fn export_session(
         return Err(format!("there is nothing recorded for {session}"));
     }
 
-    let mut out = format!("{session}\n\n");
-    // Times relative to the first track: what somebody reading a set list
-    // wants is how far into the night it was, not the wall clock of a machine
-    // in another time zone.
-    let start = plays.first().map_or(0, |play| play.played_at);
-    for play in &plays {
-        let elapsed = (play.played_at - start).max(0);
-        out.push_str(&format!(
-            "{:02}:{:02}  {} — {}\n",
-            elapsed / 3600,
-            (elapsed % 3600) / 60,
-            play.artist,
-            play.title
-        ));
-    }
-
+    let entries = crate::share::entries(&plays);
+    let out = format!("{}\n", crate::share::as_file(&entries, &session));
     std::fs::write(&path, out).map_err(|e| format!("could not write {path}: {e}"))?;
     Ok(plays.len())
+}
+
+// -- sharing a set -------------------------------------------------------
+//
+// See `crate::share` for why the destination is decided in Rust and not
+// named by the interface.
+
+/// A set, ready to send, and what had to be left out to make it fit.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShareDto {
+    /// The message itself, exactly as it will arrive.
+    pub message: String,
+    /// How many records did not fit in the link. Zero for a set that fits.
+    pub dropped: usize,
+    /// How many there were altogether.
+    pub total: usize,
+}
+
+/// Read one session and build the message for it.
+fn share_message(
+    state: &State<'_, AppState>,
+    session: &str,
+    heading: &str,
+) -> Result<ShareDto, String> {
+    let plays = library(state)?
+        .session(session)
+        .map_err(|e| e.to_string())?;
+    if plays.is_empty() {
+        return Err(format!("there is nothing recorded for {session}"));
+    }
+    let entries = crate::share::entries(&plays);
+    let style = crate::share::Style {
+        heading: heading.to_string(),
+        timestamps: true,
+        limit_for_url: true,
+    };
+    let (message, dropped) = crate::share::message_and_dropped(&entries, &style);
+    Ok(ShareDto {
+        message,
+        dropped,
+        total: entries.len(),
+    })
+}
+
+/// Every external address djmanzo will open on the DJ's behalf.
+///
+/// Assembled from the two catalogs rather than written out, so a provider
+/// added later is reachable without anybody remembering to update a list
+/// here — a list that silently fell behind would show up as a "Get one"
+/// link that does nothing, which is indistinguishable from a broken app.
+fn known_links() -> Vec<&'static str> {
+    let mut links: Vec<&'static str> = dj_assistant::catalog()
+        .iter()
+        .filter_map(|provider| provider.signup_url)
+        .collect();
+    for source in dj_sources::catalog() {
+        links.extend(source.credentials.iter().map(|kind| kind.signup_url()));
+    }
+    links
+}
+
+/// Open one of djmanzo's own links in the DJ's browser.
+///
+/// A webview cannot reach a browser on its own: `target="_blank"` inside a
+/// Tauri window opens nothing at all on Linux, which is how the "Get one →"
+/// links next to every credential field came to be decorative.
+///
+/// The URL is checked against the catalogs rather than trusted. The interface
+/// already has it — it came from a DTO this process filled in — so passing it
+/// back is convenient, but "the webview handed me a URL" is not a reason to
+/// ask the operating system to open it. Membership makes the difference
+/// between a fixed link and a general-purpose way to launch anything.
+#[tauri::command]
+pub fn open_signup_link(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt as _;
+
+    if !known_links().contains(&url.as_str()) {
+        return Err(format!("{url} is not one of djmanzo's links"));
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("could not open the link: {e}"))
+}
+
+/// Show the DJ what will be sent, before anything opens.
+///
+/// A preview rather than a straight-to-send button, because the message is
+/// about to leave djmanzo entirely. It is also where the DJ finds out that a
+/// four-hour set does not fit in a link, at a point where they can still
+/// choose the file instead.
+#[tauri::command]
+pub fn share_preview(
+    state: State<'_, AppState>,
+    session: String,
+    heading: String,
+) -> Result<ShareDto, String> {
+    share_message(&state, &session, &heading)
+}
+
+/// Open WhatsApp with the set already written into the message box.
+///
+/// Sends nothing. It opens a compose window with no recipient chosen, and the
+/// DJ picks who and presses send — see [`crate::share`] for why that division
+/// is deliberate rather than a limitation.
+#[tauri::command]
+pub fn share_to_whatsapp(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    session: String,
+    heading: String,
+) -> Result<ShareDto, String> {
+    use tauri_plugin_opener::OpenerExt as _;
+
+    let share = share_message(&state, &session, &heading)?;
+    let url = crate::share::Channel::WhatsApp.compose_url(&share.message);
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("could not hand the set to WhatsApp: {e}"))?;
+    Ok(share)
 }
 
 /// Several ids at once, refusing the whole batch if any is malformed.
@@ -3944,6 +4054,66 @@ pub fn export_session(
 /// selected forty tracks and had thirty-nine change has no way to tell which.
 fn parse_track_ids(hexes: &[String]) -> Result<Vec<dj_core::TrackId>, String> {
     hexes.iter().map(|hex| parse_track_id(hex)).collect()
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::known_links;
+
+    /// **The links djmanzo shows are the links djmanzo will open.**
+    ///
+    /// If these fall out of step, a "Get one" button next to a credential
+    /// field refuses to open — and to the DJ that is a broken app, not a
+    /// security decision.
+    #[test]
+    fn every_signup_link_shown_is_one_we_will_open() {
+        let known = known_links();
+        for provider in dj_assistant::catalog() {
+            if let Some(url) = provider.signup_url {
+                assert!(
+                    known.contains(&url),
+                    "{:?} is shown but refused",
+                    provider.id
+                );
+            }
+        }
+        for source in dj_sources::catalog() {
+            for kind in source.credentials {
+                let url = kind.signup_url();
+                assert!(known.contains(&url), "{url} is shown but refused");
+            }
+        }
+    }
+
+    /// **And nothing else is.**
+    ///
+    /// The whole point of checking membership rather than trusting the
+    /// webview. Without this the command is a general-purpose way to ask the
+    /// operating system to open anything at all.
+    #[test]
+    fn an_address_we_never_showed_is_not_in_the_list() {
+        let known = known_links();
+        for url in [
+            "https://example.com/",
+            "file:///etc/passwd",
+            "https://openrouter.ai/keys/../../elsewhere",
+            "javascript:alert(1)",
+        ] {
+            assert!(!known.contains(&url), "{url} should not be openable");
+        }
+    }
+
+    /// **Every link is one djmanzo could actually reach.**
+    ///
+    /// A `file:` or `javascript:` entry creeping into a catalog would pass the
+    /// membership check by definition, so the catalogs themselves are held to
+    /// the rule rather than only the lookup.
+    #[test]
+    fn every_known_link_is_https() {
+        for url in known_links() {
+            assert!(url.starts_with("https://"), "{url} is not https");
+        }
+    }
 }
 
 #[cfg(test)]

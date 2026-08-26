@@ -53,6 +53,11 @@ dj-net = { workspace = true }
 
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+# Handing a URL to the operating system, so a `wa.me` link reaches the
+# WhatsApp app rather than opening inside our own webview. MIT/Apache-2.0.
+tauri-plugin-opener = "2"
+# Percent-encoding the shared tracklist into that link. MIT.
+urlencoding = { workspace = true }
 rtrb = { workspace = true }
 # Fetching a streamed track to the cache before it reaches a deck. See
 # `sources::resolve_source_track` for why it lands on disk first.

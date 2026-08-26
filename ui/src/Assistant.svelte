@@ -23,6 +23,7 @@
     assistantState,
     listLlmModels,
     listLlmProviders,
+    openSignupLink,
     resetSpend,
     setAssistantModel,
     setSecret,
@@ -181,7 +182,14 @@
               />
               <IconButton icon="fa-solid fa-floppy-disk" title="Save key" onClick={() => saveKey(provider.credential!)} />
               {#if provider.signup_url}
-                <a href={provider.signup_url} target="_blank" rel="noreferrer">Get one →</a>
+                <!--
+                  A button, not a link. `target="_blank"` inside a Tauri
+                  window opens nothing at all on Linux, so this looked
+                  like a link and behaved like dead text.
+                -->
+                <button type="button" class="signup" onclick={() => openSignupLink(provider.signup_url!)}>
+                  Get one →
+                </button>
               {/if}
             </div>
             {#if provider.free_tier}
@@ -397,6 +405,24 @@
     font-size: 0.76em;
     line-height: 1.5;
     color: var(--text-dim);
+  }
+
+  /*
+    Was an anchor until it turned out a webview anchor reaches nothing. It is a
+    button now and still has to read as a link, because the DJ's understanding
+    of it -- "this takes me somewhere" -- was the only correct part before.
+  */
+  .signup {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--accent);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .signup:hover {
+    text-decoration: underline;
   }
 
   .models {
