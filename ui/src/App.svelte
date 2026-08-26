@@ -1258,11 +1258,23 @@
   .panel {
     display: flex;
     flex-direction: column;
-    min-height: 0;
     flex: 1 1 45%;
     /* A floor, so a short window still leaves the panel usable rather than
        collapsing it to a sliver. */
     min-height: 220px;
+    /*
+      And a ceiling that is actually enforced. `.stage` above has scrolled
+      since it was written; this did not, so a panel whose content ran past
+      the bottom of the window was simply cut off by `main`'s hidden
+      overflow — the last rows of every library table, and any control below
+      them. At djmanzo's own default 1280x800 with the decks open that is
+      about eighty pixels of panel that could not be reached at all.
+
+      Panels that size themselves correctly are unaffected: their content
+      fits, so no scrollbar appears. The ones that do not are now reachable
+      instead of invisible.
+    */
+    overflow: auto;
   }
 
   /* Two panels in the space of one: what is connected, then what it does.
