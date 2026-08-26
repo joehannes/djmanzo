@@ -40,7 +40,7 @@ pub mod format;
 pub mod lfsr;
 pub mod synth;
 
-pub use decode::{Decoder, Reading};
+pub use decode::{Decoder, PositionTable, Reading};
 pub use format::TimecodeFormat;
 pub use lfsr::Lfsr;
 pub use synth::Synth;

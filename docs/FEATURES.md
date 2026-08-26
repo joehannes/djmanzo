@@ -171,7 +171,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Broadcast to Icecast/Shoutcast | M5 |
 | **Per-stem outputs for external processing** | **shipped** — one deck as four stereo pairs (vocals 1–2, drums 3–4, bass 5–6, other 7–8), pre-EQ and pre-fader, on an interface with eight outputs |
 | **Per-deck outputs for external processing** | **shipped** — each deck on its own stereo pair, pre-fader, no master chain; exclusive with stem out |
-| **Timecode vinyl / DVS — decoder** | **shipped** — speed, direction and absolute position from a control signal, with a synthesiser so any turntable works without a licensed record. **Not yet wired to a deck, and not yet run against a pressed record** |
+| **Timecode vinyl / DVS** | **shipped** — speed, direction and absolute position drive a deck, in relative or absolute mode; a synthesiser means any turntable works without a licensed record. **Not yet run against a pressed record**, and no input picker or calibration screen yet |
 | Video mixing / VJ output | M8 |
 | Karaoke | K1 / K2 — see [KARAOKE.md](KARAOKE.md) |
 

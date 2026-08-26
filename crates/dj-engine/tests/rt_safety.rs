@@ -2421,3 +2421,238 @@ fn per_stem_tone_never_allocates() {
         "per-stem tone allocated {allocations} times"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Timecode vinyl
+// ---------------------------------------------------------------------------
+
+/// A deck driven by a control record, with the record's signal generated here.
+fn timecode_rig(absolute: bool) -> (Rig, rtrb::Producer<f32>, dj_dvs::Synth) {
+    let format = dj_dvs::TimecodeFormat::bundled()[0].clone();
+    let synth = dj_dvs::Synth::new(format.clone(), SR.as_f64()).expect("a synth");
+    let decoder = dj_dvs::Decoder::new(format, SR.as_f64()).expect("a decoder");
+    let (producer, consumer) = rtrb::RingBuffer::<f32>::new(1 << 16);
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.send(Command::SetTimecode {
+        deck: deck(1),
+        input: Some(Box::new(dj_engine::command::TimecodeInput {
+            decoder,
+            source: consumer,
+            absolute,
+        })),
+    });
+    (rig, producer, synth)
+}
+
+/// A continuous stretch of control signal, rendered once.
+///
+/// **Continuous matters.** A block of 256 frames at 48 kHz carries 5.3 cycles
+/// of a 1 kHz carrier, and therefore 5.3 bits — not 256. Rendering each block
+/// from a bit index advanced by the *frame* count gives a signal that jumps
+/// forty-eight times too fast and decodes to nonsense, which is how the first
+/// version of these tests seeked the playhead to the end of the track and then
+/// blamed the engine.
+fn stream(synth: &dj_dvs::Synth, from: u32, speed: f64, frames: usize) -> Vec<f32> {
+    synth.render(from, speed, frames)
+}
+
+/// Feed one block from a rendered stream, then let the engine answer.
+fn play_block(
+    rig: &mut Rig,
+    producer: &mut rtrb::Producer<f32>,
+    signal: &[f32],
+    block: usize,
+    frames: usize,
+) {
+    let from = block * frames * 2;
+    let to = (from + frames * 2).min(signal.len());
+    for sample in &signal[from..to] {
+        let _ = producer.push(*sample);
+    }
+    rig.renderer.render_block();
+    while rig.retired.pop().is_ok() {}
+}
+
+/// The deck's rate after `blocks` of a record turning at `speed`.
+fn rate_after(absolute: bool, from: u32, speed: f64, blocks: usize) -> f32 {
+    let (mut rig, mut producer, synth) = timecode_rig(absolute);
+    let signal = stream(&synth, from, speed, blocks * 256);
+    for block in 0..blocks {
+        play_block(&mut rig, &mut producer, &signal, block, 256);
+    }
+    rig.registry.get(ParamId::Deck(deck(1), DeckParam::Rate))
+}
+
+/// **The record drives the deck.** A control record turning at normal speed
+/// leaves the deck at normal speed.
+#[test]
+fn a_control_record_at_normal_speed_plays_the_deck_at_normal_speed() {
+    let rate = rate_after(false, 10_000, 1.0, 40);
+    assert!(
+        (rate - 1.0).abs() < 0.15,
+        "a record at normal speed drove the deck at {rate}"
+    );
+}
+
+/// Half speed on the platter is half speed on the deck — the pitch fader a DJ
+/// is actually holding.
+#[test]
+fn a_slower_record_plays_the_deck_slower() {
+    let rate = rate_after(false, 10_000, 0.5, 40);
+    assert!(
+        (rate - 0.5).abs() < 0.15,
+        "a record at half speed drove the deck at {rate}"
+    );
+}
+
+/// **Backwards is backwards.** Half of scratching, and the thing a decoder that
+/// lost the quadrature sign would get exactly wrong.
+#[test]
+fn a_record_turned_backwards_reverses_the_deck() {
+    let rate = rate_after(false, 40_000, -1.0, 40);
+    assert!(rate < -0.5, "a backwards record drove the deck at {rate}");
+}
+
+/// **Relative mode leaves the playhead alone.**
+///
+/// Not a lesser mode: a DJ nudging the record to beatmatch moves the needle
+/// without meaning to move the playhead, and a deck that jumped back to where
+/// the vinyl said it should be would undo the nudge every time.
+#[test]
+fn relative_mode_does_not_move_the_playhead() {
+    let (mut rig, mut producer, synth) = timecode_rig(false);
+    let near = stream(&synth, 1_000, 1.0, 20 * 256);
+    for block in 0..20 {
+        play_block(&mut rig, &mut producer, &near, block, 256);
+    }
+    let before = rig
+        .registry
+        .get(ParamId::Deck(deck(1), DeckParam::Position));
+
+    // A record claiming to be ten minutes further on. Relative mode must
+    // ignore the claim and keep following the movement.
+    let far = stream(&synth, 600_000, 1.0, 40 * 256);
+    for block in 0..40 {
+        play_block(&mut rig, &mut producer, &far, block, 256);
+    }
+    let after = rig
+        .registry
+        .get(ParamId::Deck(deck(1), DeckParam::Position));
+
+    let advanced = after - before;
+    assert!(
+        advanced > 0.0,
+        "the deck did not advance at all: {advanced} frames"
+    );
+    assert!(
+        advanced < 48_000.0 * 30.0,
+        "relative mode jumped the playhead by {advanced} frames"
+    );
+}
+
+/// Absolute mode does move it — that is what dropping the needle is for.
+#[test]
+fn absolute_mode_follows_the_needle() {
+    let (mut rig, mut producer, synth) = timecode_rig(true);
+    // Twenty seconds in. Inside the track: the deck holds 2,000,000 frames,
+    // which is forty-one seconds, and a seek past the end is clamped to it --
+    // so a landing point beyond the track would test the clamp, not the needle.
+    let landing = 20_000u32;
+    let signal = stream(&synth, landing, 1.0, 60 * 256);
+    for block in 0..60 {
+        play_block(&mut rig, &mut producer, &signal, block, 256);
+    }
+    let position = rig
+        .registry
+        .get(ParamId::Deck(deck(1), DeckParam::Position));
+    let expected = f64::from(landing) / 1000.0 * SR.as_f64();
+    let drift = (f64::from(position) - expected).abs();
+    assert!(
+        drift < SR.as_f64() * 2.0,
+        "the needle landed at {expected} and the playhead went to {position}"
+    );
+}
+
+/// Blocks of control signal, rendered up front.
+///
+/// The renderer allocates, so an allocation test must not call it inside the
+/// window it is measuring — and because the counter behind `count_allocations`
+/// is global while its "am I watching" flag is per-thread, allocating there
+/// does not merely inflate this test's own figure: it corrupts whichever other
+/// allocation test happens to be measuring at the same moment.
+fn prerendered(synth: &dj_dvs::Synth, from: u32, blocks: usize, frames: usize) -> Vec<Vec<f32>> {
+    // One continuous stretch, cut into blocks — see `stream`.
+    synth
+        .render(from, 1.0, blocks * frames)
+        .chunks(frames * 2)
+        .map(<[f32]>::to_vec)
+        .collect()
+}
+
+/// Detaching hands the decoder back through the retirement queue rather than
+/// freeing four megabytes on the audio thread.
+#[test]
+fn detaching_a_timecode_input_retires_it() {
+    let (mut rig, mut producer, synth) = timecode_rig(false);
+    let signal = stream(&synth, 10_000, 1.0, 256);
+    play_block(&mut rig, &mut producer, &signal, 0, 256);
+
+    rig.send(Command::SetTimecode {
+        deck: deck(1),
+        input: None,
+    });
+    rig.renderer.render_block();
+
+    let retired = std::iter::from_fn(|| rig.retired.pop().ok()).count();
+    assert!(
+        retired > 0,
+        "the decoder was dropped on the audio thread instead of retired"
+    );
+}
+
+/// The decoder runs inside the callback, so it must not allocate — the table
+/// was built before it ever got there.
+#[test]
+fn decoding_timecode_never_allocates() {
+    let (mut rig, mut producer, synth) = timecode_rig(true);
+    let warm = stream(&synth, 10_000, 1.0, 8 * 256);
+    for block in 0..8 {
+        play_block(&mut rig, &mut producer, &warm, block, 256);
+    }
+
+    // Rendered before the window opens: see `prerendered`.
+    let blocks = prerendered(&synth, 10_000, 500, 256);
+
+    let (_, allocations) = count_allocations(|| {
+        for block in &blocks {
+            for sample in block {
+                let _ = producer.push(*sample);
+            }
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+    assert_eq!(
+        allocations, 0,
+        "decoding timecode allocated {allocations} times"
+    );
+}
+
+/// A deck with no control record is untouched — the feature is off unless
+/// asked for, and must not cost a deck that never opts in.
+#[test]
+fn a_deck_without_a_record_is_left_alone() {
+    let (mut rig, mut producer, synth) = timecode_rig(false);
+    rig.load_and_play(2, 2_000_000);
+    let signal = stream(&synth, 10_000, 0.5, 30 * 256);
+    for block in 0..30 {
+        play_block(&mut rig, &mut producer, &signal, block, 256);
+    }
+    let untouched = rig.registry.get(ParamId::Deck(deck(2), DeckParam::Rate));
+    assert!(
+        (untouched - 1.0).abs() < 0.01,
+        "deck 2 has no record and was driven to {untouched}"
+    );
+}

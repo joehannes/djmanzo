@@ -26,7 +26,7 @@
 //! at its peak says which way the record is turning.
 
 use crate::{Lfsr, TimecodeFormat};
-use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Where the needle is and what it is doing.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -49,22 +49,86 @@ pub struct Reading {
     pub quality: f64,
 }
 
+/// Every window of output bits to its place on the record.
+///
+/// Keyed on the **bits that come out**, not on the register's state. For a
+/// Galois register those are not the same thing — the state is not the last
+/// `n` outputs, which is a Fibonacci property — and keying on the state
+/// returned a real entry for the wrong place on the record.
+///
+/// A flat `Vec` indexed by the window rather than a hash map: four megabytes
+/// for a 20-bit register, one indexing operation on the audio path, and no
+/// hashing. Shared behind an `Arc` because six decks reading the same kind of
+/// record have no reason to hold six copies.
+#[derive(Debug)]
+pub struct PositionTable {
+    /// Window to bit index, with [`PositionTable::NONE`] for a window that
+    /// never occurs.
+    entries: Vec<u32>,
+    carrier_hz: f64,
+    bits: u32,
+}
+
+impl PositionTable {
+    /// A window that does not occur in the sequence — the all-zero one, and
+    /// anything a garbled read produces.
+    pub const NONE: u32 = u32::MAX;
+
+    /// Build the table for `format`.
+    ///
+    /// Allocates, and takes a moment: a million steps of a shift register.
+    /// **Off the audio thread**, once, when a record type is chosen.
+    #[must_use]
+    pub fn build(format: &TimecodeFormat) -> Option<Self> {
+        if !format.is_usable() {
+            return None;
+        }
+        let mut lfsr = Lfsr::new(format.bits, format.seed, format.taps)?;
+        let width = 1usize << format.bits;
+        let mut entries = vec![Self::NONE; width];
+        let mask = (width - 1) as u32;
+        let mut window = 0u32;
+        for index in 0..format.period() {
+            window = ((window << 1) | lfsr.step()) & mask;
+            if index + 1 >= format.bits {
+                let slot = &mut entries[window as usize];
+                if *slot == Self::NONE {
+                    *slot = index;
+                }
+            }
+        }
+        Some(Self {
+            entries,
+            carrier_hz: format.carrier_hz,
+            bits: format.bits,
+        })
+    }
+
+    /// Where a window of bits sits on the record, in seconds at normal speed.
+    ///
+    /// One index and one comparison — no hashing, no allocation, safe on the
+    /// audio path.
+    #[must_use]
+    pub fn seconds(&self, window: u32) -> Option<f64> {
+        let index = *self.entries.get(window as usize)?;
+        if index == Self::NONE {
+            return None;
+        }
+        Some(f64::from(index) / self.carrier_hz)
+    }
+
+    #[must_use]
+    pub const fn bits(&self) -> u32 {
+        self.bits
+    }
+}
+
 /// Turns a control record's audio into a [`Reading`].
 #[derive(Debug)]
 pub struct Decoder {
     format: TimecodeFormat,
     sample_rate: f64,
-    /// Every window of output bits to its place in the sequence.
-    ///
-    /// Keyed on the **bits that come out**, not on the register's state. For a
-    /// Galois register those are not the same thing — the state is not the last
-    /// `n` outputs, which is a Fibonacci property — and keying on the state
-    /// returned a real entry for the wrong place on the record.
-    ///
-    /// Built once, at construction: a million entries is a few megabytes, and
-    /// the alternative is walking the register up to a million steps for every
-    /// position, on the audio path.
-    positions: HashMap<u32, u32>,
+    positions: Arc<PositionTable>,
     /// The most recent bits, oldest in the low positions.
     window: u32,
     /// How many of them are actually there yet.
@@ -105,31 +169,33 @@ const SILENCE: f32 = 0.05;
 const ONE_LEVEL: f32 = 0.75;
 
 impl Decoder {
+    /// A decoder for `format`, building its own table.
+    ///
+    /// Convenient for tests and for a one-off; a host with several decks should
+    /// build one [`PositionTable`] and use [`Self::with_table`].
+    ///
     /// # Errors
     /// When the format could not describe a working record, or the sample rate
     /// is not positive.
     #[must_use]
     pub fn new(format: TimecodeFormat, sample_rate: f64) -> Option<Self> {
-        if !format.is_usable() || sample_rate <= 0.0 {
+        let table = Arc::new(PositionTable::build(&format)?);
+        Self::with_table(format, sample_rate, table)
+    }
+
+    /// A decoder sharing an already-built table.
+    ///
+    /// # Errors
+    /// When the sample rate is not positive, or the table was built for a
+    /// register of a different width.
+    #[must_use]
+    pub fn with_table(
+        format: TimecodeFormat,
+        sample_rate: f64,
+        positions: Arc<PositionTable>,
+    ) -> Option<Self> {
+        if sample_rate <= 0.0 || !format.is_usable() || positions.bits() != format.bits {
             return None;
-        }
-        let mut positions = HashMap::with_capacity(format.period() as usize);
-        let mut lfsr = Lfsr::new(format.bits, format.seed, format.taps)?;
-        // A rolling window of outputs, assembled exactly as the decoder
-        // assembles it, mapped to the index of its **newest** bit. Every
-        // non-zero window of `bits` outputs occurs exactly once per period,
-        // which is the property that makes a position findable at all.
-        let mask = if format.bits >= 32 {
-            u32::MAX
-        } else {
-            (1u32 << format.bits) - 1
-        };
-        let mut window = 0u32;
-        for index in 0..format.period() {
-            window = ((window << 1) | lfsr.step()) & mask;
-            if index + 1 >= format.bits {
-                positions.entry(window).or_insert(index);
-            }
         }
         Some(Self {
             format,
@@ -271,8 +337,7 @@ impl Decoder {
         if self.filled < self.format.bits {
             return None;
         }
-        let index = *self.positions.get(&self.window)?;
-        Some(f64::from(index) / self.format.carrier_hz)
+        self.positions.seconds(self.window)
     }
 
     #[must_use]
@@ -455,14 +520,14 @@ mod tests {
     fn feeding_a_block_does_not_grow_anything() {
         let (synth, mut decoder) = rig();
         let audio = synth.render(10_000, 1.0, 4800);
-        let before = decoder.positions.len();
+        let before = Arc::strong_count(&decoder.positions);
         for _ in 0..50 {
             decoder.feed(&audio);
         }
         assert_eq!(
-            decoder.positions.len(),
+            Arc::strong_count(&decoder.positions),
             before,
-            "the position table grew while decoding"
+            "decoding took a reference to the table it did not give back"
         );
     }
 }

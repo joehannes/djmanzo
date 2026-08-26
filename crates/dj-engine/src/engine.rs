@@ -47,6 +47,17 @@ pub struct Engine {
     stem_out: Option<DeckId>,
     /// How many decks are going out on pairs of their own, if any.
     deck_out: Option<usize>,
+    /// A timecode input per deck, for the decks a control record is driving.
+    ///
+    /// `Box`ed because a decoder carries a four-megabyte table and this array
+    /// is a field of the engine; `None` for every deck that is not on vinyl,
+    /// which is all of them until a DJ says otherwise.
+    timecode: [Option<Box<crate::command::TimecodeInput>>; dj_core::MAX_DECKS],
+    /// Scratch for draining a timecode ring without allocating.
+    ///
+    /// Sized for the largest block the engine will ever be handed. Allocated
+    /// once, with the engine.
+    timecode_scratch: Vec<f32>,
     /// The stem swap in force, if any.
     ///
     /// Remembered rather than inferred, because putting it back needs to know
@@ -174,6 +185,10 @@ impl Engine {
             swap: None,
             stem_out: None,
             deck_out: None,
+            timecode: [const { None }; dj_core::MAX_DECKS],
+            // Two channels, and generous: a host that hands us a bigger block
+            // than this simply reads the ring over two passes.
+            timecode_scratch: vec![0.0; 8192 * 2],
             routing: None,
             master_gain: SmoothedValue::new(1.0, sr),
             master_gain_db: 0.0,
@@ -409,6 +424,16 @@ impl Engine {
                     // happen to appear in `render`.
                     if deck.is_some() {
                         self.deck_out = None;
+                    }
+                }
+                Command::SetTimecode { deck, input } => {
+                    let previous = self.timecode[deck.index()].take();
+                    self.timecode[deck.index()] = input;
+                    // Out through the retirement queue: the table inside is
+                    // four megabytes and freeing it here is a `free()` on the
+                    // audio thread.
+                    if let Some(old) = previous {
+                        self.retire(Retired::Timecode(old));
                     }
                 }
                 Command::SetDeckOut { decks } => {
@@ -1268,6 +1293,68 @@ impl Engine {
         best.map(|(_, deck)| deck)
     }
 
+    /// Let the control records drive their decks.
+    ///
+    /// # Why the speed is applied and the position usually is not
+    ///
+    /// The speed *is* the control: a hand on the platter is asking for a rate,
+    /// and it has to arrive this block or it is felt as lag. The position is a
+    /// different kind of claim — "the needle is here" — and acting on it every
+    /// time would fight the DJ, because nudging a record to beatmatch moves the
+    /// needle without meaning to move the playhead.
+    ///
+    /// So the position only moves the playhead in **absolute** mode, and only
+    /// when it disagrees with the playhead by more than a moment. Below that
+    /// threshold the record and the track are telling the same story and the
+    /// quieter one should not interrupt.
+    fn apply_timecode(&mut self, frames: usize) {
+        for index in 0..self.decks.len() {
+            let Some(input) = self.timecode[index].as_mut() else {
+                continue;
+            };
+
+            // Drain what the input callback has left, into a buffer that was
+            // allocated with the engine.
+            let wanted = (frames * 2).min(self.timecode_scratch.len());
+            let mut read = 0;
+            while read < wanted {
+                let Ok(sample) = input.source.pop() else {
+                    break;
+                };
+                self.timecode_scratch[read] = sample;
+                read += 1;
+            }
+            if read < 2 {
+                continue;
+            }
+            // Whole frames only: half a frame would put the two channels out
+            // of step for the rest of the record.
+            let reading = input
+                .decoder
+                .feed(&self.timecode_scratch[..read - (read % 2)]);
+
+            let Some(deck) = self.decks.get_mut(index) else {
+                continue;
+            };
+            deck.set_rate(dj_core::Rate::new(reading.speed));
+
+            if !input.absolute {
+                continue;
+            }
+            let Some(seconds) = reading.position else {
+                continue;
+            };
+            let target = seconds * self.sample_rate.as_f64();
+            let drift = (target - deck.position().get()).abs();
+            // A quarter of a second. Wide enough that a nudge, a little wow and
+            // the decoder's own smoothing do not move the playhead; narrow
+            // enough that dropping the needle somewhere else does.
+            if drift > self.sample_rate.as_f64() * 0.25 {
+                deck.seek(dj_core::FramePos::new(target));
+            }
+        }
+    }
+
     /// Write one deck's separated parts to their own output pairs.
     ///
     /// # Why this is a tap and not a signal path
@@ -1449,6 +1536,15 @@ impl AudioCallback for Engine {
             .stem_out
             .filter(|_| layout.is_stem_out())
             .and_then(|deck| Some(self.deck(deck)?.position().get()));
+
+        // The control records, before the decks move.
+        //
+        // Read here rather than in the deck loop because a timecode input
+        // *decides* what the deck does this block: it sets the rate the deck is
+        // about to advance at, so reading it afterwards would apply this
+        // block's record movement to the next block's audio -- a buffer of lag
+        // on the one control where lag is the whole complaint.
+        self.apply_timecode(ctx.frames);
 
         for index in 0..self.decks.len() {
             let tap = (tapped_deck == Some(index)).then_some(&mut self.recorder);

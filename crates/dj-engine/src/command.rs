@@ -171,6 +171,36 @@ pub enum Command {
     SetDeckOut {
         decks: Option<usize>,
     },
+    /// Point a deck at a timecode input, or detach it.
+    ///
+    /// `Some` installs a decoder and the receiving half of a ring the host's
+    /// input callback fills; `None` detaches, and whatever was there comes back
+    /// through [`Retired::Timecode`] rather than being dropped here — a
+    /// decoder carries a four-megabyte table, and freeing that on the audio
+    /// thread is exactly the kind of `free()` the retirement queue exists for.
+    ///
+    /// The decoder arrives **built**. Its table takes a million steps of a
+    /// shift register to fill, which is a background job however fast the
+    /// machine is.
+    SetTimecode {
+        deck: DeckId,
+        input: Option<Box<TimecodeInput>>,
+    },
+}
+
+/// A deck's timecode input: where the signal comes from, and what reads it.
+#[derive(Debug)]
+pub struct TimecodeInput {
+    pub decoder: dj_dvs::Decoder,
+    pub source: rtrb::Consumer<f32>,
+    /// Whether the record's absolute position moves the playhead.
+    ///
+    /// **Relative mode is not a lesser mode.** With absolute tracking a DJ who
+    /// nudges the record to beatmatch finds the playhead jumping back to where
+    /// the vinyl says it should be; relative follows the movement and leaves
+    /// the position alone, which is what a DJ using vinyl as a jog wheel
+    /// wants. Absolute is for dropping the needle at a known point.
+    pub absolute: bool,
 }
 
 impl From<Action> for Command {
@@ -227,6 +257,11 @@ pub enum Retired {
     /// drop. The only difference is that the host does something with this one
     /// before letting it go.
     Capture(crate::record::Capture),
+    /// A detached timecode input, to be freed.
+    ///
+    /// Carries the decoder's position table — four megabytes for a 20-bit
+    /// register — which the audio thread must not be the one to release.
+    Timecode(Box<TimecodeInput>),
 }
 
 #[cfg(test)]

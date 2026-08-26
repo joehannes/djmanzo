@@ -1153,8 +1153,23 @@ change in audio latency, and instantly on the next load.
   quadrature are conventions, and a convention agreed with oneself is agreed
   with nobody. See RESEARCH.md on why the published Serato parameters are not
   shipped.
-  Still to do: wire it to a deck through an audio input, and a calibration
-  screen.
+  **Wired to a deck.** `Command::SetTimecode` installs a decoder and a ring the
+  host's input callback fills; the engine reads it at the *top* of the block,
+  before the decks move, because the record decides what the deck is about to
+  do and reading it afterwards would apply this block's hand movement to the
+  next block's audio — a buffer of lag on the one control where lag is the
+  whole complaint.
+  Two modes, and **relative is not the lesser one**: with absolute tracking a
+  DJ who nudges the record to beatmatch finds the playhead snapping back to
+  where the vinyl says it should be. Relative follows the movement and leaves
+  the position alone, which is what using vinyl as a jog wheel means. Absolute
+  is for dropping the needle at a known point, and even then it only moves the
+  playhead when the disagreement is more than a quarter second — below that the
+  record and the track are telling the same story.
+  The decoder's four-megabyte table is built on the host thread and handed
+  over, and comes back through the retirement queue rather than being freed on
+  the audio thread. Proved allocation-free by `rt_safety`.
+  Still to do: an input-device picker and a calibration screen.
 - **Pro DJ Link** and **StagelinQ** — not started, and honestly gated. Neither
   vendor publishes an SDK; Pioneer's official route is a certification and
   licensing partnership, and both protocols are reverse-engineered by the

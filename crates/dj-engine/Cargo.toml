@@ -13,6 +13,7 @@ dj-core = { workspace = true }
 dj-clap = { workspace = true }
 dj-dsp = { workspace = true }
 dj-decode = { workspace = true }
+dj-dvs = { workspace = true }
 dj-audio = { workspace = true }
 dj-stems = { workspace = true }
 dj-control = { workspace = true }
