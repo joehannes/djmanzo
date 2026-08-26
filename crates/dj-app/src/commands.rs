@@ -584,6 +584,27 @@ pub fn stop_audio(state: State<'_, AppState>) -> Result<(), String> {
     state.host().pause().map_err(|e| e.to_string())
 }
 
+/// Which chunk to separate next, given where the playhead is.
+///
+/// Nearest to `here` wins, and at equal distance the one *ahead* wins: the
+/// playhead moves one way, so audio it is about to reach is worth more than
+/// audio it has just passed. `None` when everything is already separated.
+///
+/// A free function rather than a closure inside the feeder because it is the
+/// only part of look-ahead separation with a decision in it, and a decision
+/// buried in a spawned thread inside a Tauri command is a decision nothing can
+/// test.
+#[must_use]
+fn next_chunk_to_separate(
+    total: usize,
+    here: usize,
+    separated: impl Fn(usize) -> bool,
+) -> Option<usize> {
+    (0..total)
+        .filter(|index| !separated(*index))
+        .min_by_key(|index| (index.abs_diff(here), u8::from(*index < here)))
+}
+
 /// Decode a file and put it on a deck.
 ///
 /// Decoding is slow -- minutes of audio, plus a content hash -- so it runs on a
@@ -752,20 +773,58 @@ pub fn put_on_deck(
     let stems_worker = state.stems_worker();
     let audio = Arc::clone(&buffer);
     let lock_clone = buffer.stems_lock();
+    let registry = state.registry();
     std::thread::spawn(move || {
         // Ten seconds of stereo audio per chunk, at the rate this track was
         // actually decoded at -- the previous constant 44_100 made a chunk
         // 9.2 seconds long on a 48 kHz track, and the built-in separator
         // needs the real rate to place its band edges anyway.
         let chunk_size = sample_rate.get() as usize * dj_decode::CHANNELS * 10;
-        // `process_chunk` blocks once the worker is a few chunks behind, so
-        // this thread spends most of its life asleep rather than racing ahead
-        // building a queue. That is the point of the bound.
-        for (i, chunk) in audio.as_interleaved().chunks(chunk_size).enumerate() {
+        let chunks: Vec<&[f32]> = audio.as_interleaved().chunks(chunk_size).collect();
+        let chunk_frames = chunk_size / dj_decode::CHANNELS;
+
+        // **Separate outward from the playhead, not forward from the file.**
+        //
+        // Walking 0..n is the wrong order for the one thing a DJ actually
+        // does with a fresh track: load it and cue straight to the drop. The
+        // worker would be twenty seconds in while the playhead sat at three
+        // minutes, and the stem pads would quietly do nothing there for as
+        // long as it took to grind through everything in between.
+        //
+        // So the next chunk to separate is chosen each time round, by distance
+        // from wherever the playhead is *now* -- which also means a seek
+        // mid-separation redirects the work rather than being ignored.
+        // Slightly ahead is preferred to slightly behind at equal distance,
+        // because the playhead is moving one way.
+        for _ in 0..chunks.len() {
+            let position = f64::from(registry.get(dj_core::param::ParamId::Deck(
+                deck_id,
+                dj_core::param::DeckParam::Position,
+            )));
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let here = if chunk_frames == 0 {
+                0
+            } else {
+                (position.max(0.0) / chunk_frames as f64) as usize
+            };
+
+            let table = lock_clone.load();
+            let Some(next) =
+                next_chunk_to_separate(chunks.len(), here, |index| table.has_chunk(index))
+            else {
+                break;
+            };
+            drop(table);
+
+            // `process_chunk` blocks once the worker is a few chunks behind,
+            // so this thread spends most of its life asleep rather than racing
+            // ahead building a queue. That is the point of the bound -- and it
+            // is also what makes re-choosing worthwhile, because by the time it
+            // wakes the playhead has usually moved.
             stems_worker.process_chunk(
                 track_id,
-                i,
-                chunk,
+                next,
+                chunks[next],
                 sample_rate.get(),
                 Some(lock_clone.clone()),
             );
@@ -1308,6 +1367,85 @@ mod tests {
         assert_eq!(log.len(), 1);
         let rendered = format!("{:>8.3}  {}", log[0].at.as_secs_f64(), log[0].action);
         assert!(rendered.contains("deck 1 play"), "got {rendered:?}");
+    }
+}
+
+/// The order separation happens in, which is the whole of look-ahead.
+#[cfg(test)]
+mod separation_order_tests {
+    use super::next_chunk_to_separate;
+
+    /// The bug this covers: separation used to walk the file from chunk 0. A
+    /// DJ who loads a track and cues straight to the drop at 3:00 -- which is
+    /// what a DJ does with a fresh track -- had the worker twenty seconds in
+    /// while the playhead sat two and a half minutes away, and the stem pads
+    /// quietly did nothing for as long as it took to grind through the gap.
+    #[test]
+    fn separation_starts_where_the_playhead_is() {
+        let none = |_| false;
+        assert_eq!(next_chunk_to_separate(40, 18, none), Some(18));
+        assert_eq!(next_chunk_to_separate(40, 0, none), Some(0));
+        assert_eq!(
+            next_chunk_to_separate(40, 39, none),
+            Some(39),
+            "the last chunk is reachable"
+        );
+    }
+
+    /// It works outward from there, and at equal distance the chunk ahead wins
+    /// -- the playhead moves one way, so audio it is about to reach is worth
+    /// more than audio it has just passed.
+    #[test]
+    fn it_works_outward_preferring_ahead() {
+        let done = [18usize];
+        let separated = |index: usize| done.contains(&index);
+        assert_eq!(
+            next_chunk_to_separate(40, 18, separated),
+            Some(19),
+            "19 and 17 are both one away; ahead should win"
+        );
+
+        let done = [17usize, 18, 19];
+        let separated = |index: usize| done.contains(&index);
+        assert_eq!(next_chunk_to_separate(40, 18, separated), Some(20));
+    }
+
+    /// A seek redirects the work rather than being ignored, because the
+    /// playhead is read again on every round.
+    #[test]
+    fn a_seek_redirects_the_next_chunk() {
+        let done = [0usize, 1, 2];
+        let separated = |index: usize| done.contains(&index);
+        assert_eq!(next_chunk_to_separate(40, 1, separated), Some(3));
+        // Same table, playhead jumped to the far end.
+        assert_eq!(
+            next_chunk_to_separate(40, 30, separated),
+            Some(30),
+            "a seek should not keep grinding through the beginning"
+        );
+    }
+
+    /// Work already done is never queued twice. After a seek the feeder
+    /// revisits a region it may already have covered, and re-separating ten
+    /// seconds of audio for nothing is ten seconds another chunk did not get.
+    #[test]
+    fn separated_chunks_are_not_queued_again() {
+        let separated = |index: usize| index != 7;
+        assert_eq!(next_chunk_to_separate(40, 0, separated), Some(7));
+        assert_eq!(next_chunk_to_separate(40, 39, separated), Some(7));
+        assert_eq!(
+            next_chunk_to_separate(40, 0, |_| true),
+            None,
+            "a fully separated track has nothing left to do"
+        );
+    }
+
+    /// A playhead past the end -- which a finished track reports -- must still
+    /// name a real chunk rather than running off the end or wrapping.
+    #[test]
+    fn a_playhead_past_the_end_still_picks_the_last_chunk() {
+        assert_eq!(next_chunk_to_separate(40, 9_000, |_| false), Some(39));
+        assert_eq!(next_chunk_to_separate(0, 5, |_| false), None, "empty track");
     }
 }
 

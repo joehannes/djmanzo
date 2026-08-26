@@ -42,7 +42,19 @@ pub type StemChunk = std::sync::Arc<[StemFrame]>;
 /// loads it and never waits, never fails, and never sees a half-written table.
 #[derive(Debug, Default)]
 pub struct StemTable {
-    chunks: Vec<StemChunk>,
+    /// Sparse, because separation follows the playhead rather than the file.
+    ///
+    /// A DJ who loads a track and cues straight to the drop at 3:00 wants the
+    /// stems *there*, not at 0:00 — so the worker is fed the chunks nearest
+    /// the playhead first, and they arrive out of order with holes between
+    /// them. A `Vec` that only accepted the next index could not hold that;
+    /// it forced separation to walk the file from the beginning, which is
+    /// where the stems are least likely to be wanted.
+    ///
+    /// A hole reads as "not yet", exactly as the end of a partly-separated
+    /// track already does, and the deck falls back to the unseparated mix for
+    /// that stretch.
+    chunks: Vec<Option<StemChunk>>,
     /// Frames per chunk. Every chunk but the last has exactly this many, which
     /// is what lets a lookup be a division rather than a search.
     chunk_frames: usize,
@@ -58,18 +70,44 @@ impl StemTable {
         }
     }
 
-    /// How many frames have been separated so far.
+    /// How many frames have been separated, counting only what has actually
+    /// arrived.
+    ///
+    /// Holes are not counted. This is "how much audio is available", not "how
+    /// far into the track the furthest chunk sits" — the two stopped being the
+    /// same number when separation stopped walking the file in order.
     #[must_use]
     pub fn len(&self) -> usize {
-        match self.chunks.split_last() {
-            None => 0,
-            Some((last, rest)) => rest.len() * self.chunk_frames + last.len(),
-        }
+        self.chunks.iter().flatten().map(|chunk| chunk.len()).sum()
     }
 
+    /// True when nothing has been separated yet.
+    ///
+    /// Written as "no chunk has arrived" rather than "the vector is empty"
+    /// because that is the question being asked. The two cannot currently
+    /// disagree — [`Self::with_chunk`] always stores a chunk, so no reachable
+    /// table holds nothing but holes — and no test pins the difference,
+    /// because none can. It is stated this way so that it stays correct if a
+    /// chunk ever becomes removable.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.chunks.is_empty()
+        self.chunks.iter().all(Option::is_none)
+    }
+
+    /// The highest chunk index this table has room for, whether or not that
+    /// chunk has arrived.
+    #[must_use]
+    pub fn chunk_span(&self) -> usize {
+        self.chunks.len()
+    }
+
+    /// Whether the chunk at `index` has been separated.
+    ///
+    /// Asked by the feeder so it does not queue work already done — after a
+    /// seek it revisits a region it may have covered already.
+    #[must_use]
+    pub fn has_chunk(&self, index: usize) -> bool {
+        self.chunks.get(index).is_some_and(Option::is_some)
     }
 
     /// The separated frame at `index`, if it has arrived.
@@ -80,42 +118,58 @@ impl StemTable {
         }
         self.chunks
             .get(index / self.chunk_frames)?
+            .as_ref()?
             .get(index % self.chunk_frames)
     }
 
-    /// This table with `chunk` appended, for publishing.
+    /// This table with `chunk` placed at `index`, for publishing.
     ///
     /// Takes `&self` and returns a new table rather than mutating, because the
     /// old one may be in use by the audio thread at this instant. Only the
-    /// pointers are copied.
+    /// pointers are copied — a [`StemChunk`] is an `Arc<[StemFrame]>`, so the
+    /// audio itself is never duplicated.
     ///
-    /// A chunk is refused if it would land out of order or if it is not the
-    /// agreed length, since either would silently move every frame after it.
-    /// The last chunk of a track may be short.
+    /// **Any index is accepted**, and the gaps between become holes.
+    /// Separation follows the playhead, so chunk 18 routinely arrives before
+    /// chunk 3; a table that only took the next index in order forced the
+    /// worker to walk the file from the beginning, which is where the stems
+    /// are least likely to be wanted.
+    ///
+    /// Refused when the chunk is empty, when the slot is already filled, or
+    /// when the result would break the one invariant a lookup depends on:
+    /// **every chunk but the highest one present must be full length**, because
+    /// [`Self::frame`] finds a chunk by division rather than by search. A short
+    /// chunk is the last of the track; anything sitting beyond it would be
+    /// found at the wrong offset.
     #[must_use]
     pub fn with_chunk(&self, index: usize, chunk: StemChunk) -> Option<Self> {
-        if index != self.chunks.len() || chunk.is_empty() {
+        if chunk.is_empty() || self.has_chunk(index) {
             return None;
         }
-        // The chunk size is the worker's decision, not the buffer's, so the
-        // first chunk to arrive establishes the stride for the rest.
-        let chunk_frames = if self.chunks.is_empty() {
-            chunk.len()
-        } else {
-            self.chunk_frames
-        };
-        if chunk.len() > chunk_frames {
-            return None;
-        }
-        // Every chunk but the last must be full, or `frame` would divide by a
-        // stride the table does not actually have.
-        if let Some(previous) = self.chunks.last()
-            && previous.len() != chunk_frames
-        {
-            return None;
-        }
+        // A longer chunk raises the stride rather than being refused: the
+        // first chunk to arrive may be the short final one, and it must not
+        // fix the stride for every full chunk that follows.
+        let chunk_frames = self.chunk_frames.max(chunk.len());
+
         let mut chunks = self.chunks.clone();
-        chunks.push(chunk);
+        if chunks.len() <= index {
+            chunks.resize(index + 1, None);
+        }
+        chunks[index] = Some(chunk);
+
+        // Built first, then checked. Stating the invariant once, over the
+        // result, is worth more than three guards that each half-state it and
+        // have to agree with each other.
+        let highest = chunks.iter().rposition(Option::is_some)?;
+        let sound = chunks
+            .iter()
+            .enumerate()
+            .filter_map(|(at, held)| held.as_ref().map(|c| (at, c)))
+            .all(|(at, held)| at == highest || held.len() == chunk_frames);
+        if !sound {
+            return None;
+        }
+
         Some(Self {
             chunks,
             chunk_frames,
@@ -379,17 +433,78 @@ mod tests {
         assert_eq!(table.frame(11), None);
     }
 
-    /// **Out of order is refused, not reordered.** Accepting chunk 3 where
-    /// chunk 1 belongs would put every later frame at the wrong time, and the
-    /// only symptom would be stems drifting out of sync with the track.
+    /// **Out of order is placed, not appended.**
+    ///
+    /// This used to be `a_chunk_out_of_order_is_refused`, on the reasoning that
+    /// accepting chunk 3 where chunk 1 belongs would put every later frame at
+    /// the wrong time. That reasoning was right about *appending* and wrong
+    /// about the feature: separation follows the playhead, so chunk 3 arriving
+    /// first is the normal case, and refusing it forced the worker to walk the
+    /// file from the beginning — which is where the stems are least likely to
+    /// be wanted. A chunk now goes to the index it names, and the gap before it
+    /// stays a hole until it is filled.
+    ///
+    /// The invariant that mattered is kept, and kept exactly: a lookup is a
+    /// division, so a chunk still has to sit at the offset its index implies.
     #[test]
-    fn a_chunk_out_of_order_is_refused() {
+    fn a_chunk_lands_at_the_index_it_names() {
+        let table = StemTable::default()
+            .with_chunk(0, chunk(1.0, 8))
+            .unwrap()
+            .with_chunk(2, chunk(3.0, 8))
+            .expect("chunk 2 should be placed, leaving a hole at 1");
+
+        // Chunk 0 is where it was, chunk 2 is at frames 16..24, and the hole
+        // between them reads as "not yet" rather than as chunk 2's audio.
+        assert_eq!(table.frame(0).map(|f| f[0]), Some(1.0));
+        assert_eq!(table.frame(8), None, "the hole leaked the next chunk");
+        assert_eq!(table.frame(15), None, "the hole leaked the next chunk");
+        assert_eq!(
+            table.frame(16).map(|f| f[0]),
+            Some(3.0),
+            "chunk 2 must sit at the offset its index implies"
+        );
+
+        // Filling the hole afterwards is the point of allowing gaps.
+        let filled = table
+            .with_chunk(1, chunk(2.0, 8))
+            .expect("the hole should accept its chunk");
+        assert_eq!(filled.frame(8).map(|f| f[0]), Some(2.0));
+        assert_eq!(filled.frame(16).map(|f| f[0]), Some(3.0), "chunk 2 moved");
+    }
+
+    /// A slot that is already filled is not overwritten.
+    ///
+    /// Re-separating the same audio produces the same result, so this costs
+    /// nothing — but a chunk queued before a seek can arrive after one queued
+    /// afterwards, and "the newest write wins" is not a rule worth having when
+    /// "the first write wins" is free and cannot reorder anything.
+    #[test]
+    fn a_slot_already_filled_is_left_alone() {
         let table = StemTable::default().with_chunk(0, chunk(1.0, 8)).unwrap();
-        assert!(table.with_chunk(2, chunk(3.0, 8)).is_none(), "skipped one");
         assert!(
             table.with_chunk(0, chunk(9.0, 8)).is_none(),
             "already have it"
         );
+        assert_eq!(table.frame(0).map(|f| f[0]), Some(1.0));
+    }
+
+    /// A hole is not separated audio, and `len` counts what has arrived.
+    #[test]
+    fn holes_are_not_counted_as_separated() {
+        let table = StemTable::default()
+            .with_chunk(3, chunk(1.0, 8))
+            .expect("a first chunk may land anywhere");
+        assert_eq!(table.len(), 8, "three holes were counted as audio");
+        assert_eq!(table.chunk_span(), 4, "the table reaches chunk 3");
+        assert!(!table.is_empty());
+        assert!(table.has_chunk(3));
+        assert!(!table.has_chunk(1), "a hole reported as separated");
+
+        // A table of nothing but holes has separated nothing.
+        let empty = StemTable::default();
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
     }
 
     /// Nothing may follow a short chunk: the stride would no longer be the

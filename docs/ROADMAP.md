@@ -998,8 +998,22 @@ cancel a loop the DJ set on purpose.
   that asked for a stem. The application now starts without a model, reports
   why through `stems_status`, and greys out the stem controls with the reason
   beside them instead of offering pads that do nothing.
-- Look-ahead separation with a rolling window and content-hashed disk cache, bounded with LRU
-  eviction, chunk boundaries crossfaded.
+- **Look-ahead separation that follows the playhead — done.** The content-hashed
+  disk cache with LRU eviction was already here; the *look-ahead* was not.
+  Separation walked the file from chunk 0, which is the wrong order for the one
+  thing a DJ actually does with a fresh track: load it and cue straight to the
+  drop. The worker would be twenty seconds in while the playhead sat at three
+  minutes, and the stem pads quietly did nothing there for as long as it took to
+  grind through everything in between.
+  What blocked it was the stem table, which accepted a chunk only at the next
+  index in order — so out-of-order results had nowhere to go. It is sparse now:
+  a chunk lands at the index it names, the gaps are holes, and a hole reads as
+  "not yet" exactly as the end of a partly-separated track already did.
+  The feeder re-reads the playhead on every round rather than planning an order
+  once, so a seek mid-separation redirects the work instead of being ignored;
+  at equal distance the chunk *ahead* wins, because the playhead moves one way.
+  The one invariant that mattered is kept exactly: a lookup is a division, not a
+  search, so every chunk but the last must still be full length.
 - Graceful pending state: original mix plays while the first window is separating.
 - **Stem pads page — done**: the action vocabulary has the four stems and the
   pad table exposes a Stems page with mute toggles over held solos, so the
