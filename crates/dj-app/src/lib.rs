@@ -387,6 +387,7 @@ pub fn run() {
             commands::genre_families,
             commands::assistant_packs,
             commands::assistant_conduct,
+            commands::coach_report,
             commands::assistant_set_posture,
             commands::assistant_set_occasion,
             commands::assistant_apply_pack,

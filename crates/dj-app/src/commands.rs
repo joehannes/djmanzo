@@ -2253,6 +2253,187 @@ pub fn assistant_conduct(state: State<'_, AppState>) -> Result<ConductDto, Strin
     })
 }
 
+// -- the coach ----------------------------------------------------------
+//
+// See `dj_assistant::coach` for why this reads the action log rather than the
+// audio: every action is already timestamped on one bus, so what the DJ did is
+// known exactly rather than inferred.
+
+/// How far back the coach looks.
+///
+/// Two minutes. Long enough to contain a whole transition at any danceable
+/// tempo — the longest djmanzo will plan is 64 beats, under two minutes — and
+/// short enough that a DJ is told about the mix they just did rather than one
+/// from earlier in the night.
+const COACH_WINDOW: std::time::Duration = std::time::Duration::from_secs(120);
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ObservedDto {
+    pub technique: String,
+    /// What it does, in one line.
+    pub what: String,
+    /// The bridge from the world. See ASSISTANT.md §12.
+    pub metaphor: String,
+    /// Seconds into the session.
+    pub at: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NoteDto {
+    pub what: String,
+    pub why: String,
+    pub fix: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CoachDto {
+    /// What the coach recognised, oldest first — reading it back is watching
+    /// the mix again.
+    pub observed: Vec<ObservedDto>,
+    /// At most one thing to say. §12's rule: a learner handed three
+    /// corrections applies none of them.
+    pub note: Option<NoteDto>,
+    /// The next thing worth practising, if there is one.
+    pub next: Option<String>,
+    /// Why that one — the same metaphor the lesson is taught in.
+    pub next_metaphor: Option<String>,
+}
+
+/// What the rig can actually do right now.
+///
+/// Read rather than configured. A DJ should not have to tell djmanzo whether
+/// they have a controller plugged in, and a setting they forgot to change is
+/// how a laptop DJ ends up being taught scratches.
+fn rig(state: &AppState) -> dj_assistant::technique::Rig {
+    let registry = state.registry();
+    // Any loaded deck with a confident grid means the structural techniques
+    // are real. `> 0.0` rather than a threshold: the analyser reports its own
+    // confidence and a grid it is unsure of is still a grid to jump around.
+    let analysis = (1..=state.deck_count())
+        .filter_map(|n| dj_core::DeckId::from_human(u8::try_from(n).ok()?))
+        .any(|d| {
+            registry.get(dj_core::ParamId::Deck(d, dj_core::param::DeckParam::Loaded)) > 0.5
+                && registry.get(dj_core::ParamId::Deck(
+                    d,
+                    dj_core::param::DeckParam::GridConfidence,
+                )) > 0.0
+        });
+
+    // A controller that is *open*, not one that exists on disk or is merely
+    // plugged in. A DJ whose device is connected but whose mapping was never
+    // opened has, as far as their hands are concerned, a laptop.
+    let controller = state.control().status(None).open_port.is_some();
+
+    dj_assistant::technique::Rig {
+        platter: controller,
+        crossfader: controller,
+        stems: state.stems_backend().is_some(),
+        analysis,
+    }
+}
+
+/// What the coach makes of the last couple of minutes.
+///
+/// Says nothing rather than something vague: an empty result is the honest
+/// answer when nothing recognisable happened, and is far better than a
+/// generated remark that makes the DJ stop reading.
+/// The tail of the session log, as the coach wants it.
+///
+/// Separated from the command so it can be tested: the command needs a live
+/// `AppState` and this is the part with a decision in it.
+///
+/// Measured from the *last* event rather than from now. A DJ who mixed and
+/// then stood still for five minutes should still be told what they did —
+/// wall-clock silence is not a reason to forget the mix.
+#[must_use]
+fn recent_moments(
+    log: &[dj_control::TimedEvent],
+    window: std::time::Duration,
+) -> Vec<dj_assistant::coach::Moment> {
+    let latest = log.last().map(|e| e.at).unwrap_or_default();
+    let since = latest.saturating_sub(window);
+    log.iter()
+        .filter(|e| e.at >= since)
+        .filter_map(|e| match &e.event {
+            dj_control::SessionEvent::Action(action) => {
+                Some(dj_assistant::coach::Moment::new(e.at, *action))
+            }
+            // A load is not a technique. It is how a record got here.
+            dj_control::SessionEvent::Load { .. } => None,
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn coach_report(state: State<'_, AppState>) -> Result<CoachDto, String> {
+    let log = state.bus().log();
+    let latest = log.last().map(|e| e.at).unwrap_or_default();
+    let moments = recent_moments(&log, COACH_WINDOW);
+
+    let mut observed: Vec<_> = dj_assistant::coach::observe(&moments)
+        .into_iter()
+        .map(|o| ObservedDto {
+            technique: o.technique.name.to_string(),
+            what: o.technique.what.to_string(),
+            metaphor: o.technique.metaphor.to_string(),
+            at: o.at.as_secs_f64(),
+        })
+        .collect();
+
+    // The shape of the crossfade is a technique too, and the only one that
+    // cannot be seen in a single action.
+    if let Some(shape) = dj_assistant::coach::crossfade_shape(&moments) {
+        observed.push(ObservedDto {
+            technique: shape.name.to_string(),
+            what: shape.what.to_string(),
+            metaphor: shape.metaphor.to_string(),
+            at: latest.as_secs_f64(),
+        });
+    }
+
+    let note = coach_note(&state).map(|n| NoteDto {
+        what: n.what,
+        why: n.why,
+        fix: n.fix,
+    });
+
+    let shown: Vec<&str> = observed.iter().map(|o| o.technique.as_str()).collect();
+    let next = dj_assistant::coach::next_lesson(&shown, rig(&state));
+
+    Ok(CoachDto {
+        observed,
+        note,
+        next: next.map(|t| t.name.to_string()),
+        next_metaphor: next.map(|t| t.metaphor.to_string()),
+    })
+}
+
+/// The one thing worth saying about the mix as it stands.
+///
+/// Two lows up is checked before a phrase that is off, because it is the one
+/// the DJ cannot hear in headphones — it sounds fine there and wrong in the
+/// room, so it is the correction that most needs a machine to make it.
+fn coach_note(state: &AppState) -> Option<dj_assistant::coach::Note> {
+    let registry = state.registry();
+    let read = |deck: dj_core::DeckId, p| registry.get(dj_core::ParamId::Deck(deck, p));
+
+    let playing: Vec<dj_core::DeckId> = (1..=state.deck_count())
+        .filter_map(|n| dj_core::DeckId::from_human(u8::try_from(n).ok()?))
+        .filter(|d| read(*d, dj_core::param::DeckParam::Playing) > 0.5)
+        .collect();
+
+    if let [a, b] = playing[..]
+        && let Some(note) = dj_assistant::coach::critique_lows(
+            read(a, dj_core::param::DeckParam::EqLow),
+            read(b, dj_core::param::DeckParam::EqLow),
+        )
+    {
+        return Some(note);
+    }
+
+    None
+}
+
 /// Set how much the assistant does.
 #[tauri::command]
 pub fn assistant_set_posture(state: State<'_, AppState>, posture: String) -> Result<(), String> {
@@ -4054,6 +4235,78 @@ pub fn share_to_whatsapp(
 /// selected forty tracks and had thirty-nine change has no way to tell which.
 fn parse_track_ids(hexes: &[String]) -> Result<Vec<dj_core::TrackId>, String> {
     hexes.iter().map(|hex| parse_track_id(hex)).collect()
+}
+
+#[cfg(test)]
+mod coach_tests {
+    use super::{COACH_WINDOW, recent_moments};
+    use dj_control::{SessionEvent, TimedEvent};
+    use dj_core::{Action, DeckAction, DeckId, TrackId};
+    use std::time::Duration;
+
+    fn action(secs: u64, action: Action) -> TimedEvent {
+        TimedEvent {
+            event: SessionEvent::Action(action),
+            at: Duration::from_secs(secs),
+        }
+    }
+
+    fn backspin(deck: u8) -> Action {
+        Action::Deck {
+            deck: DeckId::from_human(deck).expect("valid deck"),
+            action: DeckAction::Backspin(None),
+        }
+    }
+
+    /// **A load is not a technique.**
+    ///
+    /// It is how a record got there. Letting it through would put an entry in
+    /// the coach's list that names nothing the DJ did with their hands.
+    #[test]
+    fn putting_a_record_on_is_not_something_to_name() {
+        let log = vec![
+            TimedEvent {
+                event: SessionEvent::Load {
+                    deck: DeckId::from_human(1).expect("valid deck"),
+                    track: TrackId::from_hex(&"a".repeat(64)).expect("valid id"),
+                },
+                at: Duration::from_secs(1),
+            },
+            action(2, backspin(1)),
+        ];
+        let moments = recent_moments(&log, COACH_WINDOW);
+        assert_eq!(moments.len(), 1);
+        assert_eq!(moments[0].action, backspin(1));
+    }
+
+    /// **The window is measured from the last event, not from now.**
+    ///
+    /// A DJ who mixed and then stood still should still be told what they
+    /// did. Measuring from wall-clock now would erase the mix precisely
+    /// because they stopped to look at the panel.
+    #[test]
+    fn a_pause_does_not_erase_what_came_before_it() {
+        let log = vec![action(1_000, backspin(1)), action(1_030, backspin(2))];
+        let moments = recent_moments(&log, COACH_WINDOW);
+        assert_eq!(moments.len(), 2, "a set that started late lost its history");
+    }
+
+    /// **Earlier in the night is not this mix.**
+    #[test]
+    fn events_older_than_the_window_are_left_out() {
+        let log = vec![
+            action(0, backspin(1)),
+            action(1_000, backspin(2)),
+            action(1_030, backspin(2)),
+        ];
+        let moments = recent_moments(&log, COACH_WINDOW);
+        assert_eq!(moments.len(), 2, "an hour-old move was reported as recent");
+    }
+
+    #[test]
+    fn an_empty_log_is_an_empty_window() {
+        assert!(recent_moments(&[], COACH_WINDOW).is_empty());
+    }
 }
 
 #[cfg(test)]

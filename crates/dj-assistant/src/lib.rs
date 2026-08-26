@@ -31,6 +31,7 @@
 pub mod assistant;
 pub mod budget;
 pub mod catalog;
+pub mod coach;
 pub mod http;
 pub mod intent;
 pub mod native;
@@ -38,10 +39,12 @@ pub mod openai_compat;
 pub mod posture;
 pub mod provider;
 pub mod takeover;
+pub mod technique;
 
 pub use assistant::{Assistant, Plan, Source, extract_actions, system_prompt};
 pub use budget::Budget;
 pub use catalog::{ProviderInfo, catalog, info};
+pub use coach::{Footing, Moment, Note, Observed};
 pub use http::{HttpJson, ReqwestJson};
 pub use native::{AnthropicProvider, GoogleProvider};
 pub use openai_compat::OpenAiCompatProvider;
@@ -50,6 +53,7 @@ pub use provider::{
     AssistantError, Completion, LlmProvider, Model, ProviderId, ProviderStatus, Role, Turn, Usage,
 };
 pub use takeover::{Holder, Takeover};
+pub use technique::{Difficulty, Kind, Needs, Rig, Technique, catalogue};
 
 use dj_secrets::SecretStore;
 use std::sync::Arc;

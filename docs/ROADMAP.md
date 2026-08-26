@@ -1584,13 +1584,61 @@ set that never leaves the DJ's four favourite families is the set they would
 have built by hand. Avoided genres are strict, because "no country at my
 wedding" is not a preference to be balanced.
 
-And the knowledge it still needs: **regional genre families** (Latin America, North
-America, Europe, Africa and beyond) encoding that felt tempo is not written
-tempo and that dembow and four-on-the-floor are different rhythmic grammars;
-**DJ technique** including the laptop-only ones like stem swaps; and **a
-learning module** that names what the hand just did, catches the specific error
-rather than saying "that was off", and explains through the same nature language
-the interface already speaks.
+**DJ technique — done.** `dj_assistant::technique` is a table of twenty-eight
+moves, and it is consulted rather than read: `for_situation` takes how the two
+records blend and what the DJ has in front of them, and returns the handful that
+apply. A manual would hold the same sentences and never be opened in a booth.
+
+Three fields carry the weight. **`Needs` says what a move is impossible
+without**, not what it is nicest with — a laptop DJ shown a list half of which
+their setup cannot perform learns to ignore the list. **`Kind` decides what the
+other record has to be**: holding two records together needs them to agree, so
+a blend is withheld across a dembow/four-on-the-floor seam, while a cut is
+available always, which is exactly why it is the move that saves a set. And
+**every entry carries a metaphor**, because that is what the teaching is made
+of — a table entry with no picture is one the learning module cannot use.
+
+The rig is read, never configured: a controller counts when its mapping is
+*open*, not when the device is merely plugged in. And when nothing is analysed
+yet — a fresh import, the grid still being built — every structural technique
+drops away and beatmatching by ear is what is left. That is the moment a table
+which assumed a grid would go blank, and it is the moment the DJ most needs it.
+
+**The learning module — done.** `dj_assistant::coach` reads the action log, not
+the audio. Every action is already timestamped on one bus
+([ADR-0003](adr/0003-action-bus-and-parameter-registry.md)), so what the DJ did
+is *known* rather than inferred; a listener guessing a bass swap from a spectrum
+would be wrong in the noisy, unarguable way that teaches a learner to distrust
+the whole feature. What the log cannot say is whether it sounded good, and the
+coach therefore does not claim to.
+
+It does three things, in this order:
+
+- **Names what the hand just did.** Most of early DJing is doing something that
+  worked and having no word for it, which means not being able to do it on
+  purpose. Some moves are their own name — a backspin is a backspin. A bass swap
+  is not: it is one deck's low leaving as another's arrives, close enough
+  together to have been one intention. Two lows *arriving* together is not a
+  swap but the commonest mistake there is, and calling it one would have the
+  coach congratulating a DJ for it.
+- **Catches the specific error, one at a time.** Not "that was off": "you came in
+  three beats before the phrase on deck 2". Early and late are different
+  mistakes made for different reasons — early is nerves about dead air, late is
+  not having decided — so the note says which. Two lows up is checked first,
+  because it sounds fine in headphones and wrong in the room, which makes it the
+  correction that most needs a machine to make it.
+- **Sets one thing to practise.** The easiest technique not yet shown, on the rig
+  actually present. Easiest, not most impressive: a learner sent at a transformer
+  scratch after two nights stops being a learner.
+
+Nothing is scored. No marks, no streak, no percentage — a DJ practising at home
+is not revising for an exam, and a number attached to a mix invites playing for
+the number.
+
+In the interface it follows the occasion's own verbosity, which is the one part
+of the Conduct panel that appears and disappears: loud when learning, brief when
+practising, absent in front of people. Coaching at peak time is not help, it is
+a second thing competing with the room.
 - AI transition planner — suggests where and how, with stated reasoning.
 - Next-track suggestions ranked by harmonic compatibility, energy trajectory and phrase fit.
 - **Deterministic set replay and offline re-render** from the action log; practice loops; take

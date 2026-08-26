@@ -1556,6 +1556,46 @@ export const chooseLayout = (name: string) => invoke<void>("choose_layout", { na
 export const exportSession = (session: string, path: string) =>
   invoke<number>("export_session", { session, path });
 
+// -- the coach --------------------------------------------------------------
+
+/** A technique the coach recognised in the log. */
+export interface Observed {
+  technique: string;
+  /** What it does, in one line. */
+  what: string;
+  /** The bridge from the world, for teaching. */
+  metaphor: string;
+  /** Seconds into the session. */
+  at: number;
+}
+
+/** One thing worth saying, in three parts that do different jobs. */
+export interface CoachNote {
+  /** What happened. */
+  what: string;
+  /** Why it sounded the way it did. */
+  why: string;
+  /** What to do differently — the line a DJ mid-mix reads. */
+  fix: string;
+}
+
+export interface CoachReport {
+  /** Oldest first; reading it back is watching the mix again. */
+  observed: Observed[];
+  /** At most one. A learner handed three corrections applies none. */
+  note: CoachNote | null;
+  next: string | null;
+  next_metaphor: string | null;
+}
+
+/**
+ * What the coach makes of the last couple of minutes.
+ *
+ * Reads the action log rather than the audio, so what the DJ did is known
+ * rather than inferred. It says nothing rather than something vague.
+ */
+export const coachReport = () => invoke<CoachReport>("coach_report");
+
 // -- sharing a set ----------------------------------------------------------
 
 /** A set written out ready to send, and what did not fit. */

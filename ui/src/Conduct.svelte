@@ -38,6 +38,7 @@
     type Conduct,
   } from "./api";
   import { onMount } from "svelte";
+  import Coach from "./Coach.svelte";
 
   let { enabled }: { enabled: boolean } = $props();
 
@@ -180,6 +181,13 @@
       {/each}
     </div>
   {/if}
+
+  <!--
+    The coach follows the occasion's own verbosity: loud when learning, brief
+    when practising, absent in front of people. Passed down rather than
+    fetched again, so the two never disagree mid-change.
+  -->
+  <Coach {enabled} verbosity={conduct?.verbosity ?? 0} />
 
   {#if error}
     <p class="error">{error}</p>
