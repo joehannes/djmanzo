@@ -601,8 +601,25 @@
           {active ? "Reconnect" : "Connect"}
         </button>
       {:else}
-        <span class="device-brief">{active ? `${active.sample_rate / 1000} kHz • ${active.latency_ms.toFixed(1)} ms` : "No device"}</span>
-        <IconButton icon="fa-solid fa-cog" title="Audio settings" onClick={() => (panel = "settings")} />
+        <!--
+          The device's **name**, which was the one thing about it not shown
+          anywhere. This said "48 kHz • 5.3 ms" -- the same two numbers already
+          in the readouts three inches to the right -- while the question a DJ
+          actually has when they glance up is "am I playing out of the
+          interface or the laptop speakers?", which no part of the interface
+          answered.
+
+          The settings cog that sat beside it is gone: it opened the same panel
+          as the labelled Settings button below, so there were two identical
+          icons for one destination.
+        -->
+        <button
+          class="device-brief"
+          title={active ? `Playing out of ${active.name}. Press to change it.` : "Nothing is open. Press to choose a sound card."}
+          onclick={() => (panel = "settings")}
+        >
+          {active ? active.name : "No device"}
+        </button>
         <IconButton
           icon="fa-solid fa-hand-pointer"
           title="Map a controller"
@@ -639,17 +656,33 @@
       {:else}
         <span class="idle">no device</span>
       {/if}
-      <IconButton icon="fa-solid fa-folder-open" title="Browse" active={panel === "browse"} onClick={() => (panel = panel === "browse" ? "none" : "browse")} />
-      <IconButton icon="fa-solid fa-layer-group" title="Presets" active={panel === "presets"} onClick={() => (panel = panel === "presets" ? "none" : "presets")} />
+    </div>
+
+    <!--
+      Where you go, as opposed to how it is going.
+
+      This was one row with the readouts above, and every destination in it was
+      an unlabelled grey square: Browse looked exactly like Presets looked
+      exactly like the keyboard-shortcut reference. Finding the browser -- the
+      most-used control in the application, and a DJ's very first action -- meant
+      hovering each square in turn, which nobody does with a record running out.
+
+      So the destinations are named, and they are their own row: a readout is
+      something you glance at, a destination is something you press, and putting
+      the two in one line meant neither read as what it was.
+    -->
+    <nav class="go" aria-label="Panels">
+      <IconButton icon="fa-solid fa-folder-open" label="Browse" title="Find and load tracks" active={panel === "browse"} onClick={() => (panel = panel === "browse" ? "none" : "browse")} />
+      <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={panel === "presets"} onClick={() => (panel = panel === "presets" ? "none" : "presets")} />
       <!--
         The panel is for setting the sampler up — loading, modes, routing. The
         playing is done from the pads, which is why this is a thing you open
         rather than something taking room on a deck all night.
       -->
-      <IconButton icon="fa-solid fa-th" title="Sampler" active={panel === "sampler"} onClick={() => (panel = panel === "sampler" ? "none" : "sampler")} />
-      <IconButton icon="fa-solid fa-robot" title="Assistant" active={panel === "assistant"} onClick={() => (panel = panel === "assistant" ? "none" : "assistant")} />
-      <IconButton icon="fa-solid fa-cog" title="Settings" active={panel === "settings"} onClick={() => (panel = panel === "settings" ? "none" : "settings")} />
-      <IconButton icon="fa-solid fa-keyboard" title={keyboard.enabled ? "Keyboard: enabled" : "Keyboard: disabled"} active={panel === "keyboard"} onClick={() => (panel = panel === "keyboard" ? "none" : "keyboard")} />
+      <IconButton icon="fa-solid fa-th" label="Sampler" title="Load and route the sample banks" active={panel === "sampler"} onClick={() => (panel = panel === "sampler" ? "none" : "sampler")} />
+      <IconButton icon="fa-solid fa-robot" label="Assistant" title="Ask for a next track, or a transition" active={panel === "assistant"} onClick={() => (panel = panel === "assistant" ? "none" : "assistant")} />
+      <IconButton icon="fa-solid fa-cog" label="Settings" title="Audio, sources, controllers, timecode" active={panel === "settings"} onClick={() => (panel = panel === "settings" ? "none" : "settings")} />
+      <IconButton icon="fa-solid fa-keyboard" label="Keys" title={keyboard.enabled ? "Keyboard shortcuts — enabled" : "Keyboard shortcuts — disabled"} active={panel === "keyboard"} onClick={() => (panel = panel === "keyboard" ? "none" : "keyboard")} />
       <IconButton icon="fa-solid fa-water" title={living ? `Hide the watershed${backend ? ` (drawing with ${backend})` : ""}` : "Show the watershed"} active={living} onClick={() => (living = !living)} />
       <!--
         Recording the set. Beside the panel toggles rather than inside one,
@@ -727,8 +760,8 @@
           </option>
         {/each}
       </select>
-      <IconButton icon="fa-solid fa-file-lines" title="Session log" onClick={toggleLog} />
-    </div>
+      <IconButton icon="fa-solid fa-file-lines" label="Log" title="What the session has done so far" onClick={toggleLog} />
+    </nav>
   </header>
 
   {#if error}
@@ -1014,6 +1047,38 @@
 
   .device .primary {
     flex: 0 0 auto;
+  }
+
+  /* The open device, as a control rather than a caption: it names what is
+     playing and takes you to where that is changed. */
+  .device-brief {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 0.9em;
+    padding: 0.2rem 0.4rem;
+    border-radius: var(--radius);
+    max-width: 18rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .device-brief:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+
+  .go {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    /* Sits under the readouts and above the decks, so the eye meets "how it is
+       going" and then "where to go" in that order -- which is the order a DJ
+       asks them in. */
+    padding-top: 0.35rem;
   }
 
   .status {

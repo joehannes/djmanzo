@@ -13,6 +13,7 @@
    */
   let {
     icon = null,
+    label = null,
     title = null,
     active = undefined,
     disabled = false,
@@ -23,6 +24,20 @@
   }: {
     /** A Font Awesome class, when the button is just an icon. */
     icon?: string | null;
+    /**
+     * Text beside the icon.
+     *
+     * Not decoration. A row of identical grey squares is unreadable without
+     * hovering every one of them, and a DJ mid-set is not going to hover: the
+     * control that opens the browser has to be findable at a glance, and it
+     * cannot be if it looks exactly like the one that shows keyboard
+     * shortcuts. Where a control has a name, say it.
+     *
+     * Left `null` where the icon really is unambiguous *in its context* -- the
+     * folder on a deck's own header, the play triangle -- because a label
+     * there is noise on a surface that has none to spare.
+     */
+    label?: string | null;
     title?: string | null;
     /**
      * Whether this is a toggle, and whether it is on.
@@ -59,8 +74,13 @@
 >
   {#if children}
     {@render children()}
-  {:else if icon}
-    <Icon name={icon} />
+  {:else}
+    {#if icon}
+      <Icon name={icon} />
+    {/if}
+    {#if label}
+      <span class="label">{label}</span>
+    {/if}
   {/if}
 </button>
 
@@ -77,6 +97,8 @@
     color: var(--text);
     cursor: pointer;
     padding: 0 0.4rem;
+    gap: 0.4rem;
+    white-space: nowrap;
     transition:
       background 120ms ease,
       border-color 120ms ease,
@@ -91,6 +113,13 @@
     border-color: var(--accent-2);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   }
+  .label {
+    font-size: 0.8em;
+    /* Trails the icon's optical edge rather than sitting flush, so the pair
+       reads as one control instead of two things that happen to touch. */
+    padding-right: 0.15rem;
+  }
+
   .icon-button:disabled {
     opacity: 0.45;
     cursor: not-allowed;

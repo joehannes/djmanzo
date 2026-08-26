@@ -22,6 +22,7 @@
   import SvgPad from "./controls/SvgPad.svelte";
   import IconButton from "./controls/IconButton.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { acceptFiles, isOver } from "./dragdrop.svelte";
 
   let {
     deck,
@@ -124,6 +125,37 @@
     octaveSwapped = false;
   });
 
+  /**
+   * The element a desktop drop is aimed at.
+   *
+   * The whole deck, not just its header: aiming at a strip of text while
+   * dragging a file is a precision task, and the deck is the thing a DJ means
+   * when they drag a track "onto deck 2".
+   */
+  let dropZone = $state<HTMLElement | null>(null);
+
+  $effect(() => {
+    if (!dropZone) return;
+    return acceptFiles(dropZone, (paths) => {
+      // One track per deck, so the first of a multi-file drag wins rather than
+      // the last -- dropping five files should load the one you grabbed first,
+      // not leave you on whichever the operating system happened to list last.
+      void load(paths[0]);
+    });
+  });
+
+  async function load(path: string) {
+    loading = true;
+    error = null;
+    try {
+      await loadTrack(deck.number, path);
+    } catch (e) {
+      error = String(e);
+    } finally {
+      loading = false;
+    }
+  }
+
   async function pickTrack() {
     error = null;
     const path = await open({
@@ -136,15 +168,7 @@
       ],
     });
     if (typeof path !== "string") return;
-
-    loading = true;
-    try {
-      await loadTrack(deck.number, path);
-    } catch (e) {
-      error = String(e);
-    } finally {
-      loading = false;
-    }
+    await load(path);
   }
 
   /**
@@ -183,13 +207,43 @@
   };
 </script>
 
-<section class="deck" class:playing={deck.playing}>
+<section
+  class="deck"
+  class:playing={deck.playing}
+  class:drop-target={isOver(dropZone)}
+  bind:this={dropZone}
+>
   <header>
     <span class="number">{deck.number}</span>
-    <div class="meta">
-      <div class="title" title={title}>{title || "— no track —"}</div>
-      <div class="artist">{artist || (deck.loaded ? "" : "load a file to begin")}</div>
-    </div>
+    <!--
+      An empty deck is a **button**, not a caption.
+      
+      It read "— no track —  /  load a file to begin", which is an instruction
+      pointing at a small folder icon three hundred pixels away at the other end
+      of the header. Loading a track is the first thing anybody does and the
+      thing done most often all night; the largest empty area on the deck should
+      be the way to do it, rather than telling you to look elsewhere.
+      
+      Once something is loaded it goes back to being a caption -- clicking the
+      title of a playing track to replace it is not a gesture anyone wants
+      within reach.
+    -->
+    {#if deck.loaded}
+      <div class="meta">
+        <div class="title" title={title}>{title}</div>
+        <div class="artist">{artist}</div>
+      </div>
+    {:else}
+      <button
+        class="meta empty"
+        onclick={pickTrack}
+        disabled={!enabled || loading}
+        title="Load a track onto deck {deck.number}"
+      >
+        <span class="title">{loading ? "Loading…" : "Load a track"}</span>
+        <span class="artist">or drop a file here</span>
+      </button>
+    {/if}
 
     <!--
       Tempo and key, once the analyser has them.
@@ -729,6 +783,42 @@
 </section>
 
 <style>
+  /* A drag with no feedback is a drag you cannot aim: without this, a DJ
+     dropping a file onto four decks finds out which one they hit by hearing
+     it. */
+  .deck.drop-target {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  /* The empty deck's load target. Fills the space a title would take, so the
+     affordance is where the eye already is. */
+  .meta.empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0.1rem;
+    text-align: left;
+    background: transparent;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    color: var(--text-dim);
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
+  }
+
+  .meta.empty:hover:not(:disabled) {
+    background: var(--panel-hover);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .meta.empty:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
   .jog-row {
     display: flex;
     justify-content: center;
