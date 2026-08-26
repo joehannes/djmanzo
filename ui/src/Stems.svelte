@@ -7,6 +7,13 @@
     deckNumber,
     muteState = [false, false, false, false],
     volumeState = [1.0, 1.0, 1.0, 1.0],
+    eqState = [
+      [1, 1, 1],
+      [1, 1, 1],
+      [1, 1, 1],
+      [1, 1, 1],
+    ],
+    filterState = [0, 0, 0, 0],
     soloing = false,
     swap = null,
     deckCount = 2,
@@ -14,6 +21,16 @@
     deckNumber: number;
     muteState?: boolean[];
     volumeState?: number[];
+    /**
+     * Per-stem EQ trim, low/mid/high, from the engine.
+     *
+     * The DJ's own setting rather than the effective coefficient: the deck's
+     * EQ multiplies into it, and a knob showing the product would jump every
+     * time the channel strip moved.
+     */
+    eqState?: number[][];
+    /** Per-stem filter sweep, -1 low-pass .. 0 open .. +1 high-pass. */
+    filterState?: number[];
     /** The stem swap in force anywhere, from the engine. */
     swap?: StemSwap | null;
     deckCount?: number;
@@ -67,6 +84,46 @@
 
   function toggleMute(index: number) {
     dispatch(`deck ${deckNumber} stem_mute ${STEM_KEYS[index]}`);
+  }
+
+  /** low, mid, high — matching `EqBand::ALL` on the engine side. */
+  const BANDS = ["low", "mid", "high"];
+
+  function changeEq(index: number, band: number, value: string) {
+    const gain = parseFloat(value);
+    dispatch(
+      `deck ${deckNumber} stem_eq_${BANDS[band]} ${STEM_KEYS[index]}:${gain.toFixed(3)}`,
+    );
+  }
+
+  function changeStemFilter(index: number, value: string) {
+    const position = parseFloat(value);
+    dispatch(
+      `deck ${deckNumber} stem_filter ${STEM_KEYS[index]}:${position.toFixed(3)}`,
+    );
+  }
+
+  /**
+   * Put one stem's tone back to flat.
+   *
+   * Four knobs to return by hand is four chances to leave one slightly off,
+   * and "slightly off" on a stem EQ is the kind of thing a DJ hears twenty
+   * minutes later and cannot find.
+   */
+  function resetTone(index: number) {
+    for (let band = 0; band < BANDS.length; band += 1) {
+      dispatch(`deck ${deckNumber} stem_eq_${BANDS[band]} ${STEM_KEYS[index]}:1`);
+    }
+    dispatch(`deck ${deckNumber} stem_filter ${STEM_KEYS[index]}:0`);
+  }
+
+  /** True when this stem's tone is anywhere but flat, so the reset can say so. */
+  function toneTouched(index: number): boolean {
+    const eq = eqState?.[index] ?? [1, 1, 1];
+    return (
+      eq.some((gain) => Math.abs(gain - 1) > 0.001) ||
+      Math.abs(filterState?.[index] ?? 0) > 0.001
+    );
   }
 
   function changeVolume(index: number, value: string) {
@@ -205,6 +262,51 @@
             class="stem-slider" 
           />
         </div>
+        <!--
+          This stem's own tone, on top of the deck's EQ rather than instead of
+          it. Flat is 1.0 for the bands and 0.0 for the filter, so an untouched
+          stem sits in the middle of every control and the deck's channel strip
+          behaves exactly as it did before these existed.
+        -->
+        <div class="stem-tone" style="--stem-color: {STEM_COLORS[i]}">
+          {#each ["Lo", "Md", "Hi"] as band, b (band)}
+            <label class="tone-knob">
+              <span>{band}</span>
+              <input
+                type="range"
+                min="0"
+                max="4"
+                step="0.05"
+                value={eqState?.[i]?.[b] ?? 1}
+                disabled={!status.available}
+                aria-label="{STEM_LABELS[i]} {['low', 'mid', 'high'][b]}"
+                oninput={(e) => changeEq(i, b, e.currentTarget.value)}
+              />
+            </label>
+          {/each}
+          <label class="tone-knob">
+            <span>Flt</span>
+            <input
+              type="range"
+              min="-1"
+              max="1"
+              step="0.02"
+              value={filterState?.[i] ?? 0}
+              disabled={!status.available}
+              aria-label="{STEM_LABELS[i]} filter"
+              oninput={(e) => changeStemFilter(i, e.currentTarget.value)}
+            />
+          </label>
+          <button
+            class="tone-reset"
+            class:active={toneTouched(i)}
+            disabled={!status.available || !toneTouched(i)}
+            title="Put {STEM_LABELS[i]} back to flat"
+            onclick={() => resetTone(i)}
+          >
+            ⌀
+          </button>
+        </div>
       </div>
     {/each}
   </div>
@@ -269,6 +371,43 @@
 </div>
 
 <style>
+  /* The tone row sits under each stem's fader, in that stem's colour, so a
+     glance says which column a knob belongs to without reading a label. */
+  .stem-tone {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin-top: 0.3rem;
+  }
+
+  .tone-knob {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.62rem;
+    color: var(--text-dim);
+  }
+
+  .tone-knob span {
+    width: 1.4em;
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tone-knob input[type="range"] {
+    accent-color: var(--stem-color);
+    flex: 1;
+    min-width: 0;
+    height: 0.7rem;
+  }
+
+  .tone-reset {
+    margin-top: 0.15rem;
+    padding: 0.1rem 0;
+    font-size: 0.7rem;
+    line-height: 1;
+  }
+
   /* Tokens, not white-on-black: `rgba(255,255,255,0.03)` is a panel on the
      dark theme and an invisible one on the light theme. */
   .stems-module {

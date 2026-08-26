@@ -40,6 +40,21 @@ pub struct StemChannel {
     pub eq_mid: f32,
     pub eq_high: f32,
     pub filter_position: f32,
+    /// This stem's own EQ, on top of the deck's — low, mid, high.
+    ///
+    /// A trim rather than a replacement. The deck's EQ is the channel strip
+    /// and applies to everything on the deck; this shapes one part within it.
+    /// Multiplying means an untouched stem behaves exactly as it did when the
+    /// deck's EQ simply broadcast to all four, and a stem whose low is pulled
+    /// down stays down whatever the channel strip is doing — which is the
+    /// whole reason to have per-stem EQ at all.
+    pub eq_trim: [f32; 3],
+    /// This stem's own filter sweep, added to the deck's and clamped.
+    ///
+    /// Added rather than multiplied because a filter position is a sweep, not
+    /// a gain: two half-closed filters should be more closed than either, and
+    /// multiplying two negatives would open it instead.
+    pub filter_trim: f32,
 }
 
 impl StemChannel {
@@ -52,6 +67,8 @@ impl StemChannel {
             eq_low: 1.0,
             eq_mid: 1.0,
             eq_high: 1.0,
+            eq_trim: [1.0; 3],
+            filter_trim: 0.0,
             filter_position: 0.0,
         }
     }
@@ -343,65 +360,107 @@ impl Deck {
 
     pub fn set_eq_low(&mut self, gain: f32) {
         if gain.is_finite() {
-            let clamped = gain.clamp(0.0, 4.0);
-            self.eq_low = clamped;
+            self.eq_low = gain.clamp(0.0, 4.0);
             for eq in &mut self.eq {
                 eq.set_low(self.eq_low);
             }
-            for ch in &mut self.stem_channels {
-                ch.eq_low = clamped;
-                for eq in &mut ch.eq {
-                    eq.set_low(ch.eq_low);
-                }
-            }
+            self.refresh_stem_tone();
         }
     }
 
     pub fn set_eq_mid(&mut self, gain: f32) {
         if gain.is_finite() {
-            let clamped = gain.clamp(0.0, 4.0);
-            self.eq_mid = clamped;
+            self.eq_mid = gain.clamp(0.0, 4.0);
             for eq in &mut self.eq {
                 eq.set_mid(self.eq_mid);
             }
-            for ch in &mut self.stem_channels {
-                ch.eq_mid = clamped;
-                for eq in &mut ch.eq {
-                    eq.set_mid(ch.eq_mid);
-                }
-            }
+            self.refresh_stem_tone();
         }
     }
 
     pub fn set_eq_high(&mut self, gain: f32) {
         if gain.is_finite() {
-            let clamped = gain.clamp(0.0, 4.0);
-            self.eq_high = clamped;
+            self.eq_high = gain.clamp(0.0, 4.0);
             for eq in &mut self.eq {
                 eq.set_high(self.eq_high);
             }
-            for ch in &mut self.stem_channels {
-                ch.eq_high = clamped;
-                for eq in &mut ch.eq {
-                    eq.set_high(ch.eq_high);
-                }
-            }
+            self.refresh_stem_tone();
         }
     }
 
     pub fn set_filter(&mut self, position: f32) {
         if position.is_finite() {
-            let clamped = position.clamp(-1.0, 1.0);
-            self.filter_position = clamped;
+            self.filter_position = position.clamp(-1.0, 1.0);
             for filter in &mut self.filter {
                 filter.set_position(self.filter_position);
             }
-            for ch in &mut self.stem_channels {
-                ch.filter_position = clamped;
-                for filter in &mut ch.filter {
-                    filter.set_position(ch.filter_position);
-                }
-            }
+            self.refresh_stem_tone();
+        }
+    }
+
+    /// This stem's own EQ trim, on top of the deck's.
+    ///
+    /// `band` is 0 (low), 1 (mid) or 2 (high) — [`dj_core::EqBand::index`].
+    pub fn set_stem_eq(&mut self, stem: usize, band: usize, gain: f32) {
+        if stem < self.stem_channels.len() && band < 3 && gain.is_finite() {
+            self.stem_channels[stem].eq_trim[band] = gain.clamp(0.0, 4.0);
+            self.refresh_stem_tone_at(stem);
+        }
+    }
+
+    /// This stem's own filter sweep, added to the deck's.
+    pub fn set_stem_filter(&mut self, stem: usize, position: f32) {
+        if stem < self.stem_channels.len() && position.is_finite() {
+            self.stem_channels[stem].filter_trim = position.clamp(-1.0, 1.0);
+            self.refresh_stem_tone_at(stem);
+        }
+    }
+
+    #[must_use]
+    pub fn stem_eq(&self, stem: usize, band: usize) -> f32 {
+        self.stem_channels
+            .get(stem)
+            .and_then(|ch| ch.eq_trim.get(band).copied())
+            .unwrap_or(1.0)
+    }
+
+    #[must_use]
+    pub fn stem_filter(&self, stem: usize) -> f32 {
+        self.stem_channels
+            .get(stem)
+            .map_or(0.0, |ch| ch.filter_trim)
+    }
+
+    fn refresh_stem_tone(&mut self) {
+        for stem in 0..self.stem_channels.len() {
+            self.refresh_stem_tone_at(stem);
+        }
+    }
+
+    /// Fold the deck's EQ and filter together with one stem's own, and put the
+    /// result on that stem's filters.
+    ///
+    /// The two are composed here rather than in the audio path so that the
+    /// per-frame cost stays one EQ and one filter per stem — the same as
+    /// before per-stem tone existed. A knob moves a few hundred times a second
+    /// at most; a frame happens forty-eight thousand times.
+    fn refresh_stem_tone_at(&mut self, stem: usize) {
+        let (deck_low, deck_mid, deck_high, deck_filter) =
+            (self.eq_low, self.eq_mid, self.eq_high, self.filter_position);
+        let Some(ch) = self.stem_channels.get_mut(stem) else {
+            return;
+        };
+        ch.eq_low = deck_low * ch.eq_trim[0];
+        ch.eq_mid = deck_mid * ch.eq_trim[1];
+        ch.eq_high = deck_high * ch.eq_trim[2];
+        ch.filter_position = (deck_filter + ch.filter_trim).clamp(-1.0, 1.0);
+        for eq in &mut ch.eq {
+            eq.set_low(ch.eq_low);
+            eq.set_mid(ch.eq_mid);
+            eq.set_high(ch.eq_high);
+        }
+        for filter in &mut ch.filter {
+            filter.set_position(ch.filter_position);
         }
     }
 

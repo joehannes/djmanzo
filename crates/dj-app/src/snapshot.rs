@@ -76,6 +76,14 @@ pub struct DeckSnapshot {
     pub stem_mutes: [bool; 4],
     /// Volume states for the 4 stems (Vocal, Drums, Bass, Other).
     pub stem_volumes: [f32; 4],
+    /// Per-stem EQ trim for the 4 stems, each low/mid/high.
+    ///
+    /// The DJ's own setting, on top of the deck's EQ rather than instead of
+    /// it — 1.0 is flat, which is what an untouched stem reads.
+    pub stem_eq: [[f32; 3]; 4],
+    /// Per-stem filter sweep, -1.0 (low-pass) to 1.0 (high-pass), added to the
+    /// deck's own. 0.0 is open.
+    pub stem_filters: [f32; 4],
     /// True while a stem solo is held. Every stem mute is refused while it is,
     /// so the interface needs it both to show the state and to release it.
     pub stem_soloing: bool,
@@ -591,6 +599,34 @@ impl Snapshot {
                         get(DeckParam::StemDrumsVolume),
                         get(DeckParam::StemBassVolume),
                         get(DeckParam::StemOtherVolume),
+                    ],
+                    stem_eq: [
+                        [
+                            get(DeckParam::StemVocalEqLow),
+                            get(DeckParam::StemVocalEqMid),
+                            get(DeckParam::StemVocalEqHigh),
+                        ],
+                        [
+                            get(DeckParam::StemDrumsEqLow),
+                            get(DeckParam::StemDrumsEqMid),
+                            get(DeckParam::StemDrumsEqHigh),
+                        ],
+                        [
+                            get(DeckParam::StemBassEqLow),
+                            get(DeckParam::StemBassEqMid),
+                            get(DeckParam::StemBassEqHigh),
+                        ],
+                        [
+                            get(DeckParam::StemOtherEqLow),
+                            get(DeckParam::StemOtherEqMid),
+                            get(DeckParam::StemOtherEqHigh),
+                        ],
+                    ],
+                    stem_filters: [
+                        get(DeckParam::StemVocalFilter),
+                        get(DeckParam::StemDrumsFilter),
+                        get(DeckParam::StemBassFilter),
+                        get(DeckParam::StemOtherFilter),
                     ],
                     stem_soloing: get(DeckParam::StemSoloing) >= 0.5,
                     synced: get(DeckParam::Synced) >= 0.5,

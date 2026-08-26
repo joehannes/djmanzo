@@ -32,6 +32,29 @@ fn realistic_track() -> Vec<f32> {
         .collect()
 }
 
+/// The fastest of a few attempts, in milliseconds per iteration.
+///
+/// These four tests each build a five-minute track and then race each other
+/// for CPU, because `cargo test` runs them in parallel. A single wall-clock
+/// sample therefore measures the scheduler as much as the renderer, and the
+/// per-tile assertions below were failing about one run in three on
+/// unmodified code — a gate that cries wolf gets ignored the one time it is
+/// right.
+///
+/// The *fastest* attempt is the one least polluted by contention, and it is
+/// still a real measurement: a genuine regression makes even the best attempt
+/// slow. Serialised, these come in at about a third of their limits.
+fn fastest_ms_per(iterations: usize, attempts: usize, mut work: impl FnMut()) -> f64 {
+    let mut best = f64::INFINITY;
+    for _ in 0..attempts {
+        let start = Instant::now();
+        work();
+        let ms = start.elapsed().as_secs_f64() * 1000.0 / iterations as f64;
+        best = best.min(ms);
+    }
+    best
+}
+
 #[test]
 fn summarising_a_five_minute_track_is_fast_enough_to_load_with() {
     let samples = realistic_track();
@@ -67,25 +90,24 @@ fn a_full_screen_of_tiles_renders_far_inside_one_frame() {
     const TILES: usize = 32;
     const TILE_WIDTH: u32 = 512;
 
-    let start = Instant::now();
     let mut total_bytes = 0usize;
-    for i in 0..TILES {
-        let tile = render_tile(
-            &summary,
-            &TileSpec {
-                width: TILE_WIDTH,
-                height: 128,
-                start_frame: (i as f64) * 512.0 * 256.0,
-                frames_per_pixel: 256.0,
-            },
-            &palette,
-        );
-        total_bytes += tile.pixels.len();
-    }
-    let elapsed = start.elapsed();
-
-    let total_ms = elapsed.as_secs_f64() * 1000.0;
-    let per_tile = total_ms / TILES as f64;
+    let per_tile = fastest_ms_per(TILES, 3, || {
+        total_bytes = 0;
+        for i in 0..TILES {
+            let tile = render_tile(
+                &summary,
+                &TileSpec {
+                    width: TILE_WIDTH,
+                    height: 128,
+                    start_frame: (i as f64) * 512.0 * 256.0,
+                    frames_per_pixel: 256.0,
+                },
+                &palette,
+            );
+            total_bytes += tile.pixels.len();
+        }
+    });
+    let total_ms = per_tile * TILES as f64;
     println!(
         "rendered {TILES} tiles ({:.1} MB) in {total_ms:.2} ms -- {per_tile:.2} ms/tile \
          (one 60 fps frame is 16.7 ms)",
@@ -111,20 +133,20 @@ fn scrolling_only_costs_the_newly_exposed_edge() {
 
     // Scrolling reveals one tile at a time; the rest are already cached. This is
     // the steady-state cost of a moving waveform.
-    let start = Instant::now();
-    for i in 0..60 {
-        let _ = render_tile(
-            &summary,
-            &TileSpec {
-                width: 512,
-                height: 128,
-                start_frame: (i as f64) * 512.0 * 256.0,
-                frames_per_pixel: 256.0,
-            },
-            &palette,
-        );
-    }
-    let per_tile = start.elapsed().as_secs_f64() * 1000.0 / 60.0;
+    let per_tile = fastest_ms_per(60, 3, || {
+        for i in 0..60 {
+            let _ = render_tile(
+                &summary,
+                &TileSpec {
+                    width: 512,
+                    height: 128,
+                    start_frame: (i as f64) * 512.0 * 256.0,
+                    frames_per_pixel: 256.0,
+                },
+                &palette,
+            );
+        }
+    });
 
     println!("steady-state scroll: {per_tile:.3} ms per newly-exposed tile");
     assert!(

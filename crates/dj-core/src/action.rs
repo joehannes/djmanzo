@@ -109,6 +109,43 @@ pub enum StemChange {
     SetSolo(bool),
     /// Per-stem level, 0.0..=1.0.
     Volume(f32),
+    /// Per-stem EQ, one band at a time. `0.0` is a kill, `1.0` is flat, and
+    /// the range goes to `4.0` like the deck's own EQ.
+    ///
+    /// A band and a gain rather than three verbs, because unlike the
+    /// crossfader assign these are not three positions of one switch — they
+    /// are three knobs, and a controller sends one message per knob.
+    Eq(EqBand, f32),
+    /// Per-stem filter sweep, `-1.0` (low-pass) through `0.0` (open) to `1.0`
+    /// (high-pass). The same shape as the deck's own filter knob.
+    Filter(f32),
+}
+
+/// Which band of an EQ a change is aimed at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum EqBand {
+    Low,
+    Mid,
+    High,
+}
+
+impl EqBand {
+    pub const ALL: [EqBand; 3] = [EqBand::Low, EqBand::Mid, EqBand::High];
+
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            EqBand::Low => "low",
+            EqBand::Mid => "mid",
+            EqBand::High => "high",
+        }
+    }
+
+    /// Its position in [`Self::ALL`], for the parameter registry.
+    #[must_use]
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|band| *band == self).unwrap_or(0)
+    }
 }
 
 /// Something done to one deck.
@@ -946,23 +983,29 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
             stem: parse_stem(argument)?,
             change: StemChange::SetSolo(false),
         }),
-        "stem_volume" => {
-            let mut parts = argument.ok_or(ParseError::MissingArgument)?.split(':');
-            let stem = parse_stem(parts.next())?;
-            let volume = parts
-                .next()
-                .ok_or(ParseError::MissingArgument)?
-                .parse::<f32>()
-                .map_err(|_| ParseError::BadArgument)?
-                .clamp(0.0, 1.0);
-            if parts.next().is_some() {
-                return Err(ParseError::BadArgument);
-            }
-            Ok(DeckAction::Stem {
-                stem,
-                change: StemChange::Volume(volume),
-            })
-        }
+        "stem_volume" => parse_stem_pair(argument, 0.0, 1.0).map(|(stem, v)| DeckAction::Stem {
+            stem,
+            change: StemChange::Volume(v),
+        }),
+        // The three bands share one parser, because a stem EQ verb is a stem
+        // and a number exactly as `stem_volume` is -- the band is in the verb
+        // so that a controller knob maps to one message.
+        "stem_eq_low" => parse_stem_pair(argument, 0.0, 4.0).map(|(stem, v)| DeckAction::Stem {
+            stem,
+            change: StemChange::Eq(EqBand::Low, v),
+        }),
+        "stem_eq_mid" => parse_stem_pair(argument, 0.0, 4.0).map(|(stem, v)| DeckAction::Stem {
+            stem,
+            change: StemChange::Eq(EqBand::Mid, v),
+        }),
+        "stem_eq_high" => parse_stem_pair(argument, 0.0, 4.0).map(|(stem, v)| DeckAction::Stem {
+            stem,
+            change: StemChange::Eq(EqBand::High, v),
+        }),
+        "stem_filter" => parse_stem_pair(argument, -1.0, 1.0).map(|(stem, v)| DeckAction::Stem {
+            stem,
+            change: StemChange::Filter(v),
+        }),
         "key" => Ok(DeckAction::SetKeyShift(parse_f32(argument)?.round() as i32)),
         // Three verbs rather than one verb with a word argument, matching
         // `cue_on`/`cue_off` above: a three-position switch is three buttons on
@@ -981,6 +1024,26 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "loop_recall" => Ok(DeckAction::LoopRecall(parse_slot(argument)?)),
         other => Err(ParseError::UnknownVerb(other.to_owned())),
     }
+}
+
+/// `stem:number`, the shape every per-stem continuous control takes.
+///
+/// One parser rather than one per verb, because the failure a hand-written
+/// copy invites is a clamp that disagrees with the one beside it — and a
+/// filter clamped to 0.0..=1.0 is a filter that can only sweep one way.
+fn parse_stem_pair(argument: Option<&str>, low: f32, high: f32) -> Result<(Stem, f32), ParseError> {
+    let mut parts = argument.ok_or(ParseError::MissingArgument)?.split(':');
+    let stem = parse_stem(parts.next())?;
+    let value = parts
+        .next()
+        .ok_or(ParseError::MissingArgument)?
+        .parse::<f32>()
+        .map_err(|_| ParseError::BadArgument)?
+        .clamp(low, high);
+    if parts.next().is_some() {
+        return Err(ParseError::BadArgument);
+    }
+    Ok((stem, value))
 }
 
 fn parse_stem(word: Option<&str>) -> Result<Stem, ParseError> {
@@ -1169,6 +1232,25 @@ impl fmt::Display for Action {
                     "deck {deck} stem_volume {}:{}",
                     stem.name(),
                     number(f64::from(*volume))
+                ),
+                DeckAction::Stem {
+                    stem,
+                    change: StemChange::Eq(band, gain),
+                } => write!(
+                    f,
+                    "deck {deck} stem_eq_{} {}:{}",
+                    band.name(),
+                    stem.name(),
+                    number(f64::from(*gain))
+                ),
+                DeckAction::Stem {
+                    stem,
+                    change: StemChange::Filter(position),
+                } => write!(
+                    f,
+                    "deck {deck} stem_filter {}:{}",
+                    stem.name(),
+                    number(f64::from(*position))
                 ),
                 DeckAction::SetKeyShift(n) => write!(f, "deck {deck} key {n}"),
                 DeckAction::Fx { slot, change } => write!(f, "deck {deck} fx {slot} {change}"),
@@ -1713,14 +1795,31 @@ mod tests {
                 stem: Stem::Other,
                 change: StemChange::Volume(0.5),
             },
+            DeckAction::Stem {
+                stem: Stem::Vocal,
+                change: StemChange::Eq(EqBand::Low, 0.0),
+            },
+            DeckAction::Stem {
+                stem: Stem::Drums,
+                change: StemChange::Eq(EqBand::Mid, 2.5),
+            },
+            DeckAction::Stem {
+                stem: Stem::Bass,
+                change: StemChange::Eq(EqBand::High, 4.0),
+            },
+            DeckAction::Stem {
+                stem: Stem::Other,
+                change: StemChange::Filter(-0.75),
+            },
+            DeckAction::Stem {
+                stem: Stem::Vocal,
+                change: StemChange::Filter(0.75),
+            },
         ];
 
         for action in cases {
             match action {
-                DeckAction::Stem {
-                    change: StemChange::ToggleMute | StemChange::SetSolo(_) | StemChange::Volume(_),
-                    ..
-                } => {}
+                DeckAction::Stem { .. } => {}
                 _ => unreachable!("test cases are all stem actions"),
             }
             let action = Action::Deck {
@@ -1734,6 +1833,63 @@ mod tests {
                 "`{text}` did not survive"
             );
         }
+    }
+
+    /// The per-stem controls do not all share a range, and the shared parser is
+    /// where a hand-copied one would get that wrong.
+    ///
+    /// A filter clamped to a volume's `0.0..=1.0` would be a filter that can
+    /// only sweep one way — high-pass reachable, low-pass silently discarded —
+    /// which is half a control that looks like a whole one.
+    #[test]
+    fn each_per_stem_control_keeps_its_own_range() {
+        let low = |text: &str| match Action::parse(text).unwrap() {
+            Action::Deck {
+                action: DeckAction::Stem { change, .. },
+                ..
+            } => change,
+            other => unreachable!("{other:?}"),
+        };
+
+        assert_eq!(
+            low("deck 1 stem_filter vocal:-1"),
+            StemChange::Filter(-1.0),
+            "a filter must reach fully low-pass"
+        );
+        assert_eq!(
+            low("deck 1 stem_filter vocal:-9"),
+            StemChange::Filter(-1.0),
+            "and clamp there rather than run away"
+        );
+        assert_eq!(
+            low("deck 1 stem_volume vocal:-1"),
+            StemChange::Volume(0.0),
+            "a volume has no negative half"
+        );
+        assert_eq!(
+            low("deck 1 stem_eq_low vocal:4"),
+            StemChange::Eq(EqBand::Low, 4.0),
+            "the EQ reaches the same +4 boost the deck's own does"
+        );
+        assert_eq!(
+            low("deck 1 stem_eq_low vocal:9"),
+            StemChange::Eq(EqBand::Low, 4.0)
+        );
+        assert_eq!(
+            low("deck 1 stem_volume vocal:9"),
+            StemChange::Volume(1.0),
+            "a volume stops at unity"
+        );
+    }
+
+    /// A malformed argument has to be reported, not silently taken as zero.
+    #[test]
+    fn a_stem_control_without_a_value_is_refused() {
+        assert!(Action::parse("deck 1 stem_eq_low vocal").is_err());
+        assert!(Action::parse("deck 1 stem_eq_low").is_err());
+        assert!(Action::parse("deck 1 stem_filter vocal:x").is_err());
+        assert!(Action::parse("deck 1 stem_filter vocal:0.5:0.5").is_err());
+        assert!(Action::parse("deck 1 stem_eq_low banjo:0.5").is_err());
     }
 
     /// Every plugin-insert change, through text and back.

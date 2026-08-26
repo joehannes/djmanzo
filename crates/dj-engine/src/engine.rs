@@ -577,6 +577,12 @@ impl Engine {
                             dj_core::action::StemChange::Volume(vol) => {
                                 target.set_stem_volume(idx, vol);
                             }
+                            dj_core::action::StemChange::Eq(band, gain) => {
+                                target.set_stem_eq(idx, band.index(), gain);
+                            }
+                            dj_core::action::StemChange::Filter(position) => {
+                                target.set_stem_filter(idx, position);
+                            }
                         }
                     }
                     DeckAction::Fx { slot, change } => {
@@ -1006,6 +1012,36 @@ impl Engine {
             set(DeckParam::StemDrumsVolume, deck.stem_channels[1].volume);
             set(DeckParam::StemBassVolume, deck.stem_channels[2].volume);
             set(DeckParam::StemOtherVolume, deck.stem_channels[3].volume);
+
+            // The DJ's own per-stem trim, not the effective coefficient: the
+            // deck's EQ multiplies into these, and showing the product on a
+            // knob the DJ left flat would be showing them someone else's
+            // number.
+            set(DeckParam::StemVocalEqLow, deck.stem_channels[0].eq_trim[0]);
+            set(DeckParam::StemVocalEqMid, deck.stem_channels[0].eq_trim[1]);
+            set(DeckParam::StemVocalEqHigh, deck.stem_channels[0].eq_trim[2]);
+            set(
+                DeckParam::StemVocalFilter,
+                deck.stem_channels[0].filter_trim,
+            );
+            set(DeckParam::StemDrumsEqLow, deck.stem_channels[1].eq_trim[0]);
+            set(DeckParam::StemDrumsEqMid, deck.stem_channels[1].eq_trim[1]);
+            set(DeckParam::StemDrumsEqHigh, deck.stem_channels[1].eq_trim[2]);
+            set(
+                DeckParam::StemDrumsFilter,
+                deck.stem_channels[1].filter_trim,
+            );
+            set(DeckParam::StemBassEqLow, deck.stem_channels[2].eq_trim[0]);
+            set(DeckParam::StemBassEqMid, deck.stem_channels[2].eq_trim[1]);
+            set(DeckParam::StemBassEqHigh, deck.stem_channels[2].eq_trim[2]);
+            set(DeckParam::StemBassFilter, deck.stem_channels[2].filter_trim);
+            set(DeckParam::StemOtherEqLow, deck.stem_channels[3].eq_trim[0]);
+            set(DeckParam::StemOtherEqMid, deck.stem_channels[3].eq_trim[1]);
+            set(DeckParam::StemOtherEqHigh, deck.stem_channels[3].eq_trim[2]);
+            set(
+                DeckParam::StemOtherFilter,
+                deck.stem_channels[3].filter_trim,
+            );
 
             for number in 1..=dj_core::FX_SLOTS as u8 {
                 let (Some(param), Some(slot)) = (DeckParam::fx(number), deck.rack().slot(number))

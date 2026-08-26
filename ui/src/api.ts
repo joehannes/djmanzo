@@ -147,6 +147,16 @@ export interface DeckState {
   /** Volume states for the 4 stems (Vocal, Drums, Bass, Other). */
   stem_volumes: [number, number, number, number];
   /**
+   * Per-stem EQ trim for the 4 stems, each low/mid/high.
+   *
+   * The DJ's own setting on top of the deck's EQ rather than instead of it —
+   * 1.0 is flat, which is what an untouched stem reads. Showing the product of
+   * the two would make the knob jump whenever the channel strip moved.
+   */
+  stem_eq: [[number, number, number], [number, number, number], [number, number, number], [number, number, number]];
+  /** Per-stem filter sweep, -1 (low-pass) through 0 (open) to 1 (high-pass). */
+  stem_filters: [number, number, number, number];
+  /**
    * True while a stem solo is held. Every stem mute is refused while it is,
    * so the panel needs this both to show the state and to release it.
    */

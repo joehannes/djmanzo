@@ -2120,3 +2120,304 @@ fn toggling_deck_out_never_allocates() {
         "toggling per-deck outputs allocated {allocations} times"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Per-stem tone
+// ---------------------------------------------------------------------------
+
+/// A per-stem EQ that nothing can set is decoration, and that is what this was
+/// before the verbs existed: the filters ran on every frame with the
+/// coefficients the constructor gave them, and no action could reach them.
+///
+/// Measured on the **mix**, not on the stem-out tap. The tap is deliberately
+/// pre-EQ — that is the whole point of it — so an EQ change can never show
+/// there, and the first version of this test proved nothing for exactly that
+/// reason. One stem is isolated by muting the other three instead.
+#[test]
+fn a_per_stem_eq_kill_changes_that_stem_and_no_other() {
+    use dj_core::{EqBand, Stem, StemChange};
+
+    /// Peak of the main bus over a block.
+    fn level(rig: &mut Rig) -> f32 {
+        rig.renderer
+            .render_block()
+            .chunks_exact(2)
+            .map(|frame| frame[0].abs())
+            .fold(0.0_f32, f32::max)
+    }
+
+    fn only(rig: &mut Rig, audible: Stem) {
+        for stem in Stem::ALL {
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::Stem {
+                    stem,
+                    change: StemChange::SetMute(stem != audible),
+                },
+            });
+        }
+    }
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play_separated(1, 500_000);
+    only(&mut rig, Stem::Drums);
+    rig.warm_up(64);
+    let drums_before = level(&mut rig);
+    assert!(
+        drums_before > 0.001,
+        "the drums were not audible to begin with"
+    );
+
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::Stem {
+            stem: Stem::Drums,
+            change: StemChange::Eq(EqBand::Low, 0.0),
+        },
+    });
+    rig.warm_up(64);
+    let drums_after = level(&mut rig);
+    assert!(
+        drums_after < drums_before * 0.5,
+        "killing the drums' low band did nothing: {drums_before} -> {drums_after}"
+    );
+
+    // The same kill is still in force. Switch to the vocal, which was never
+    // touched: it must be unaffected.
+    only(&mut rig, Stem::Vocal);
+    rig.warm_up(64);
+    let vocal_with_drums_killed = level(&mut rig);
+
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::Stem {
+            stem: Stem::Drums,
+            change: StemChange::Eq(EqBand::Low, 1.0),
+        },
+    });
+    rig.warm_up(64);
+    let vocal_with_drums_flat = level(&mut rig);
+
+    assert!(
+        (vocal_with_drums_killed - vocal_with_drums_flat).abs()
+            < vocal_with_drums_flat.max(1e-6) * 0.05,
+        "the drums' EQ moved the vocal: {vocal_with_drums_killed} vs {vocal_with_drums_flat}"
+    );
+}
+
+/// The deck's EQ is the channel strip and a stem's is a trim on top, so the two
+/// multiply.
+///
+/// The claim that matters is the **default**: on a separated track the deck's
+/// own `shape` is skipped and the tone comes entirely from the stem channels,
+/// so if the deck's EQ stopped reaching an untouched stem it would stop working
+/// altogether the moment a track finished separating. That is a silent
+/// regression in a control every DJ uses on every mix.
+#[test]
+fn an_untouched_stem_still_follows_the_deck_eq() {
+    use dj_core::{EqBand, Stem, StemChange};
+
+    fn level(rig: &mut Rig) -> f32 {
+        rig.renderer
+            .render_block()
+            .chunks_exact(2)
+            .map(|frame| frame[0].abs())
+            .fold(0.0_f32, f32::max)
+    }
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play_separated(1, 500_000);
+    // Only the vocal, so the figure below is one stem's and not a sum.
+    for stem in Stem::ALL {
+        rig.act(Action::Deck {
+            deck: deck(1),
+            action: DeckAction::Stem {
+                stem,
+                change: StemChange::SetMute(stem != Stem::Vocal),
+            },
+        });
+    }
+    rig.warm_up(64);
+    let before = level(&mut rig);
+    assert!(before > 0.001, "the vocal was not audible to begin with");
+
+    // The deck's own low kill. Nothing per-stem has been told about it.
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::SetEqLow(0.0),
+    });
+    rig.warm_up(64);
+    let after = level(&mut rig);
+    assert!(
+        after < before * 0.5,
+        "the deck's EQ stopped reaching an untouched stem: {before} -> {after}"
+    );
+
+    // And a stem boosting its own low cannot get past a deck kill, because the
+    // two multiply and one of them is zero.
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::Stem {
+            stem: Stem::Vocal,
+            change: StemChange::Eq(EqBand::Low, 4.0),
+        },
+    });
+    rig.warm_up(64);
+    let boosted = level(&mut rig);
+    assert!(
+        boosted < before * 0.5,
+        "a stem boost got past the deck's kill, so the two are not composed: \
+         {before} -> {boosted}"
+    );
+}
+
+/// The stem filter, which the EQ tests do not cover and a mutation proved they
+/// did not: dropping `filter_trim` on the floor left every test green.
+///
+/// Swept fully high-pass, a stem whose content sits at the bottom has to go
+/// away — and the three stems nobody touched have to stay exactly where they
+/// were.
+#[test]
+fn a_per_stem_filter_sweep_changes_that_stem_and_no_other() {
+    use dj_core::{Stem, StemChange};
+
+    fn level(rig: &mut Rig) -> f32 {
+        rig.renderer
+            .render_block()
+            .chunks_exact(2)
+            .map(|frame| frame[0].abs())
+            .fold(0.0_f32, f32::max)
+    }
+
+    fn only(rig: &mut Rig, audible: Stem) {
+        for stem in Stem::ALL {
+            rig.act(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::Stem {
+                    stem,
+                    change: StemChange::SetMute(stem != audible),
+                },
+            });
+        }
+    }
+
+    let mut rig = rig(2, 256);
+    rig.load_and_play_separated(1, 500_000);
+    only(&mut rig, Stem::Bass);
+    rig.warm_up(64);
+    let before = level(&mut rig);
+    assert!(before > 0.001, "the bass was not audible to begin with");
+
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::Stem {
+            stem: Stem::Bass,
+            change: StemChange::Filter(1.0),
+        },
+    });
+    rig.warm_up(64);
+    let after = level(&mut rig);
+    assert!(
+        after < before * 0.5,
+        "sweeping the bass stem fully high-pass did nothing: {before} -> {after}"
+    );
+
+    // The sweep is still in force. A stem nobody touched is unaffected.
+    only(&mut rig, Stem::Other);
+    rig.warm_up(64);
+    let other_with_bass_swept = level(&mut rig);
+
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::Stem {
+            stem: Stem::Bass,
+            change: StemChange::Filter(0.0),
+        },
+    });
+    rig.warm_up(64);
+    let other_with_bass_open = level(&mut rig);
+
+    assert!(
+        (other_with_bass_swept - other_with_bass_open).abs()
+            < other_with_bass_open.max(1e-6) * 0.05,
+        "the bass stem's filter moved another stem: \
+         {other_with_bass_swept} vs {other_with_bass_open}"
+    );
+}
+
+/// The trim is what the DJ set, not the product of theirs and the deck's — a
+/// knob that showed someone else's number would jump the moment the channel
+/// strip moved.
+#[test]
+fn the_published_stem_eq_is_the_djs_own_setting() {
+    use dj_core::{EqBand, Stem, StemChange};
+
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play_separated(1, 500_000);
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::Stem {
+            stem: Stem::Bass,
+            change: StemChange::Eq(EqBand::Mid, 2.0),
+        },
+    });
+    rig.act(Action::Deck {
+        deck: deck(1),
+        action: DeckAction::SetEqMid(0.5),
+    });
+    rig.warm_up(8);
+
+    let published = rig
+        .registry
+        .get(ParamId::Deck(deck(1), DeckParam::StemBassEqMid));
+    assert!(
+        (published - 2.0).abs() < 1e-6,
+        "the panel would show {published} for a knob the DJ set to 2.0"
+    );
+}
+
+/// Per-stem tone runs inside the callback on four channels at once, and the
+/// coefficient recalculation happens on the audio thread when a knob moves.
+#[test]
+fn per_stem_tone_never_allocates() {
+    use dj_core::{EqBand, Stem, StemChange};
+
+    let mut rig = rig_with_channels(2, 256, 8);
+    rig.load_and_play_separated(1, 2_000_000);
+    rig.load_and_play_separated(2, 2_000_000);
+    rig.warm_up(32);
+
+    let (_, allocations) = count_allocations(|| {
+        for step in 0..2_000 {
+            let stem = Stem::ALL[step % Stem::COUNT];
+            let band = EqBand::ALL[step % EqBand::ALL.len()];
+            #[allow(clippy::cast_precision_loss)]
+            let value = (step % 40) as f32 / 10.0;
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Stem {
+                        stem,
+                        change: StemChange::Eq(band, value),
+                    },
+                }))
+                .ok();
+            rig.commands
+                .push(Command::Action(Action::Deck {
+                    deck: deck(1),
+                    action: DeckAction::Stem {
+                        stem,
+                        change: StemChange::Filter(value / 4.0 - 0.5),
+                    },
+                }))
+                .ok();
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+
+    assert_eq!(
+        allocations, 0,
+        "per-stem tone allocated {allocations} times"
+    );
+}

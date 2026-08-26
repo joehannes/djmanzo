@@ -102,6 +102,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Roll (as a loop roll, on its own pad page rather than in a slot) | M5 — **done** |
 | Brake and backspin — transport, not signal: they live on the deck | M5 — **done** |
 | CLAP plugin hosting (master insert; generic controls, no plugin window) | M5 — done |
+| **Per-stem EQ and filter** | **shipped** — three bands and a sweep per stem, composed with the deck's own EQ rather than replacing it |
 | Per-stem effects | M6 |
 | Effect chain presets | M5 — **done** |
 
@@ -205,7 +206,7 @@ persistent cache, which means the audio path adds exactly zero latency, the seco
 track is instant, and the quality ceiling is set by the best available model rather than by
 what fits in a 5 ms budget. On top of that:
 
-- per-stem EQ and effects, not just per-stem volume;
+- per-stem EQ and filter, not just per-stem volume — **shipped**, and composed with the deck's channel strip rather than fighting it;
 - **stem-aware transitions** — drop the incoming vocal over the outgoing instrumental, planned
   and executed as one action rather than four hands;
 - **stem swapping across decks** — take deck 1's vocal onto deck 2's instrumental as a

@@ -1001,7 +1001,28 @@ cancel a loop the DJ set on purpose.
 - Look-ahead separation with a rolling window and content-hashed disk cache, bounded with LRU
   eviction, chunk boundaries crossfaded.
 - Graceful pending state: original mix plays while the first window is separating.
-- **Stem pads page — started**: the action vocabulary now has the four stems and the pad table exposes a Stems page with mute toggles over held solos, so the screen, controllers and assistant share the same verbs before separated buffers arrive. Per-stem volume, EQ and effects still to come.
+- **Stem pads page — done**: the action vocabulary has the four stems and the
+  pad table exposes a Stems page with mute toggles over held solos, so the
+  screen, controllers and assistant share the same verbs.
+- **Per-stem volume, EQ and filter — done.** The per-stem EQ and filter were
+  the sharpest example of this project's recurring bug: they *ran on every
+  frame*, in the audio path, with the coefficients the constructor gave them —
+  and no verb existed that could reach them. Four knobs per stem that could
+  never move.
+  Now `stem_eq_low|mid|high vocal:1.5` and `stem_filter vocal:-0.4`, sharing
+  one parser with `stem_volume` so the three ranges cannot drift apart — a
+  filter clamped to a volume's `0.0..=1.0` would be a filter that only sweeps
+  one way.
+  **Composed with the deck's own EQ rather than replacing it.** The deck's EQ
+  is the channel strip; a stem's is a trim within it, so the gains multiply and
+  the filter sweeps add. That matters more than it sounds: on a separated track
+  the deck's `shape` is skipped entirely and its EQ reaches the audio *only*
+  through the stem channels, so a per-stem EQ that overwrote them would have
+  silently disabled the deck EQ the moment a track finished separating. An
+  untouched stem reads 1.0 and behaves exactly as it did before any of this
+  existed.
+  Published as the DJ's own trim rather than the effective coefficient, because
+  a knob showing the product would jump every time the channel strip moved.
 - **Stem swapping across decks — done.** The gesture stems exist for: deck 1's
   vocal over deck 2's mix, as one move rather than four pad presses.
   `stem_swap vocal 1 2` keeps only that stem on the source and takes the

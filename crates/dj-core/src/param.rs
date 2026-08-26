@@ -190,6 +190,33 @@ pub enum DeckParam {
     /// latching "Acapella" button needs this to know which way the button
     /// goes; a controller with a lit pad needs it to light the pad.
     StemSoloing,
+    /// Per-stem tone: three EQ bands and a filter sweep for each of the four
+    /// stems.
+    ///
+    /// Published for the reason every other control is — a knob a controller
+    /// or a script moved has to show on screen, and a panel that only knew
+    /// about its own clicks would snap back to the wrong position the moment
+    /// anything else touched it.
+    ///
+    /// These are the DJ's *trim*, not the effective coefficient: the deck's
+    /// own EQ multiplies into the stems, and showing the product on a knob the
+    /// DJ set to flat would be showing them someone else's number.
+    StemVocalEqLow,
+    StemVocalEqMid,
+    StemVocalEqHigh,
+    StemVocalFilter,
+    StemDrumsEqLow,
+    StemDrumsEqMid,
+    StemDrumsEqHigh,
+    StemDrumsFilter,
+    StemBassEqLow,
+    StemBassEqMid,
+    StemBassEqHigh,
+    StemBassFilter,
+    StemOtherEqLow,
+    StemOtherEqMid,
+    StemOtherEqHigh,
+    StemOtherFilter,
 }
 
 /// What a hot cue parameter reads when the slot is empty.
@@ -221,7 +248,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 73;
+    pub const COUNT: usize = 89;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -305,6 +332,22 @@ impl DeckParam {
             StemBassVolume,
             StemOtherVolume,
             StemSoloing,
+            StemVocalEqLow,
+            StemVocalEqMid,
+            StemVocalEqHigh,
+            StemVocalFilter,
+            StemDrumsEqLow,
+            StemDrumsEqMid,
+            StemDrumsEqHigh,
+            StemDrumsFilter,
+            StemBassEqLow,
+            StemBassEqMid,
+            StemBassEqHigh,
+            StemBassFilter,
+            StemOtherEqLow,
+            StemOtherEqMid,
+            StemOtherEqHigh,
+            StemOtherFilter,
         ]
     }
 }
@@ -1080,6 +1123,22 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::StemDrumsVolume => "stem_drums_volume",
         DeckParam::StemBassVolume => "stem_bass_volume",
         DeckParam::StemOtherVolume => "stem_other_volume",
+        DeckParam::StemVocalEqLow => "stem_vocal_eq_low",
+        DeckParam::StemVocalEqMid => "stem_vocal_eq_mid",
+        DeckParam::StemVocalEqHigh => "stem_vocal_eq_high",
+        DeckParam::StemVocalFilter => "stem_vocal_filter",
+        DeckParam::StemDrumsEqLow => "stem_drums_eq_low",
+        DeckParam::StemDrumsEqMid => "stem_drums_eq_mid",
+        DeckParam::StemDrumsEqHigh => "stem_drums_eq_high",
+        DeckParam::StemDrumsFilter => "stem_drums_filter",
+        DeckParam::StemBassEqLow => "stem_bass_eq_low",
+        DeckParam::StemBassEqMid => "stem_bass_eq_mid",
+        DeckParam::StemBassEqHigh => "stem_bass_eq_high",
+        DeckParam::StemBassFilter => "stem_bass_filter",
+        DeckParam::StemOtherEqLow => "stem_other_eq_low",
+        DeckParam::StemOtherEqMid => "stem_other_eq_mid",
+        DeckParam::StemOtherEqHigh => "stem_other_eq_high",
+        DeckParam::StemOtherFilter => "stem_other_filter",
     }
 }
 
