@@ -83,12 +83,12 @@ jobs:
           # Intel Macs are still booth workhorses; an arm64-only release would
           # leave a lot of working DJs without a build.
           ALL: >-
-            [{"os":"macos-latest","name":"macOS (Apple Silicon)","args":"--target aarch64-apple-darwin","target":"aarch64-apple-darwin"},
-             {"os":"macos-latest","name":"macOS (Intel)","args":"--target x86_64-apple-darwin","target":"x86_64-apple-darwin"},
-             {"os":"windows-latest","name":"Windows (x86_64)","args":"","target":""},
-             {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
+            [{"os":"macos-latest","name":"macOS (Apple Silicon)","args":"--target aarch64-apple-darwin","target":"aarch64-apple-darwin","artifact":"macos-aarch64"},
+             {"os":"macos-latest","name":"macOS (Intel)","args":"--target x86_64-apple-darwin","target":"x86_64-apple-darwin","artifact":"macos-x86_64"},
+             {"os":"windows-latest","name":"Windows (x86_64)","args":"","target":"","artifact":"windows-x86_64"},
+             {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":"","artifact":"linux-x86_64"}]
           LINUX: >-
-            [{"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":""}]
+            [{"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":"","artifact":"linux-x86_64"}]
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.platforms }}" = "linux" ]; then
@@ -196,7 +196,12 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: djmanzo-${{ matrix.target || 'x86_64-unknown-linux-gnu' }}
+          # Named per platform, not derived from `matrix.target`. Windows and
+          # Linux both leave `target` empty -- neither needs a cross-compile
+          # triple -- so the old fallback uploaded the **Windows** bundle under
+          # the name `djmanzo-x86_64-unknown-linux-gnu`, and whoever downloaded
+          # the Linux package had even odds of getting an `.msi`.
+          name: djmanzo-${{ matrix.artifact }}
           if-no-files-found: error
           retention-days: 14
           path: |
