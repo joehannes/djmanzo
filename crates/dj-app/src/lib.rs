@@ -22,6 +22,7 @@
 pub mod analysis;
 pub mod assistant;
 pub mod automix;
+pub mod autopilot;
 pub mod brand;
 pub mod clock;
 pub mod commands;
