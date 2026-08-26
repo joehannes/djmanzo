@@ -309,6 +309,14 @@ pub enum DeckAction {
     /// only the way of asking for one was. `loop 1/4` and `loop 0.25` both
     /// work, and the pad ladder runs from a sixteenth to eight beats.
     LoopBeats(f32),
+    /// Loop whole phrases, starting at the phrase boundary the playhead is
+    /// inside -- not at the playhead.
+    ///
+    /// That difference is the point. A beat loop pressed three beats into a
+    /// phrase loops a fragment starting three beats in; this loops the phrase.
+    /// Does nothing on a track with no phrase structure, which is a real state
+    /// rather than a failure.
+    LoopPhrases(f32),
     /// Stop looping and carry on from where the playhead is.
     LoopOff,
     /// Halve the loop, keeping its start. Repeatable down to a fraction of a beat.
@@ -941,6 +949,7 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "hotcue_set" => Ok(DeckAction::HotCueSet(parse_slot(argument)?)),
         "hotcue_clear" => Ok(DeckAction::HotCueClear(parse_slot(argument)?)),
         "loop" => Ok(DeckAction::LoopBeats(parse_beats(argument)?)),
+        "loop_phrase" => Ok(DeckAction::LoopPhrases(parse_beats(argument)?)),
         "loop_off" => bare(DeckAction::LoopOff),
         "loop_halve" => bare(DeckAction::LoopHalve),
         "loop_double" => bare(DeckAction::LoopDouble),
@@ -1280,6 +1289,7 @@ impl fmt::Display for Action {
                 DeckAction::HotCueSet(n) => write!(f, "deck {deck} hotcue_set {n}"),
                 DeckAction::HotCueClear(n) => write!(f, "deck {deck} hotcue_clear {n}"),
                 DeckAction::LoopBeats(n) => write!(f, "deck {deck} loop {n}"),
+                DeckAction::LoopPhrases(n) => write!(f, "deck {deck} loop_phrase {n}"),
                 DeckAction::LoopOff => write!(f, "deck {deck} loop_off"),
                 DeckAction::LoopHalve => write!(f, "deck {deck} loop_halve"),
                 DeckAction::LoopDouble => write!(f, "deck {deck} loop_double"),

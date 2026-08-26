@@ -668,6 +668,9 @@ impl Engine {
                     DeckAction::HotCueClear(slot) => {
                         target.clear_hot_cue(slot);
                     }
+                    DeckAction::LoopPhrases(phrases) => {
+                        target.set_loop_phrases(f64::from(phrases));
+                    }
                     DeckAction::LoopBeats(beats) => {
                         target.set_loop_length(f64::from(beats), quantize);
                     }

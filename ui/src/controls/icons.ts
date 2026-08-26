@@ -66,6 +66,14 @@ export const ICONS: Record<string, IconGlyph> = {
   "moon": { d: "M20 15.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 11.5z" },
   "palette": { d: "M12 3a9 9 0 0 0 0 18 2 2 0 0 0 1.6 -3.2 2 2 0 0 1 1.6 -3.2H18a3 3 0 0 0 3 -3c0-4.8-4-8.6-9-8.6zM8 8.8a1.2 1.2 0 1 0 0 2.4a1.2 1.2 0 1 0 0 -2.4zM12 6.3a1.2 1.2 0 1 0 0 2.4a1.2 1.2 0 1 0 0 -2.4zM15.5 8.8a1.2 1.2 0 1 0 0 2.4a1.2 1.2 0 1 0 0 -2.4z" },
   "paperclip": { d: "M20 11l-8.5 8.5a5 5 0 0 1 -7 -7l9-9a3.5 3.5 0 0 1 5 5l-9 9a2 2 0 0 1 -3 -3l8-8" },
+  // A phrase: two boundaries with beats between them. Not a Font Awesome name
+  // -- there is no phrase icon to borrow -- so it is keyed plainly, and the
+  // call site asks for "phrase" rather than pretending otherwise.
+  //
+  // Deliberately not another arrow. "repeat" already means loop, and a phrase
+  // loop differs from a beat loop in *where it starts*, which is a span, not a
+  // direction.
+  "phrase": { d: "M4 5v14M20 5v14M8 10v4M12 10v4M16 10v4" },
   "plus": { d: "M12 5v14M5 12h14" },
   "repeat": { d: "M6 9V8a3 3 0 0 1 3 -3h9M18 15v1a3 3 0 0 1 -3 3H6M15 2l3 3-3 3M9 16l-3 3 3 3" },
   "robot": { d: "M6 9h12v9H6zM12 9V5M9 5h6M9 13h.01M15 13h.01M4 12v3M20 12v3" },

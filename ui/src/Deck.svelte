@@ -415,6 +415,21 @@
         disabled={!enabled}
         onClick={() => send(`deck ${deck.number} loop_out`)}
       />
+      <!--
+        Loop the phrase the playhead is inside. Disabled, rather than hidden,
+        when the analyser found no phrase structure: a control that vanishes
+        between tracks is one a DJ stops reaching for, and "this track has no
+        phrases" is worth saying.
+      -->
+      <IconButton
+        icon="phrase"
+        title={analysis?.phrase_beats != null
+          ? `Loop this ${analysis.phrase_beats}-beat phrase`
+          : "No phrase structure was found in this track"}
+        aria-label="Loop this phrase"
+        disabled={!enabled || analysis?.phrase_beats == null}
+        onClick={() => send(`deck ${deck.number} loop_phrase 1`)}
+      />
       <IconButton
         icon="fa-solid fa-compress"
         title="Halve the loop, keeping its start"

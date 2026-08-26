@@ -314,6 +314,19 @@ export interface TrackAnalysis {
   lufs: number | null;
   /** Trim that would bring this track to the reference loudness. */
   auto_gain_db: number;
+  /**
+   * Phrase length in beats — 8, 16 or 32 — when the track has a phrase
+   * structure. `null` is a real answer: live and ambient records may have
+   * none, and marking one anyway gives a DJ something to mix on that means
+   * nothing.
+   */
+  phrase_beats: number | null;
+  /**
+   * Which beat, counted from the grid anchor, starts a phrase. Not always
+   * zero: plenty of records open with a four- or eight-beat pickup.
+   */
+  phrase_anchor: number | null;
+  phrase_confidence: number | null;
 }
 
 /** One sampler pad. */

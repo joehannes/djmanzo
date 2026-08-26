@@ -912,6 +912,60 @@ impl Deck {
         self.enter_loop(region)
     }
 
+    /// Loop `phrases` phrases, starting at the phrase boundary the playhead is
+    /// inside.
+    ///
+    /// The difference from [`set_loop_length`](Self::set_loop_length) is where
+    /// it *starts*. A beat loop starts at the playhead: press it three beats
+    /// into a phrase and the loop runs from there, cutting across the phrase
+    /// boundary and looping a fragment that begins in the middle of a musical
+    /// idea. This starts at the boundary, so "loop this phrase" loops the
+    /// phrase, whichever part of it the DJ happened to press in.
+    ///
+    /// Fractional lengths are allowed, for the same reason beat loops are: half
+    /// a phrase, aligned to the phrase start, is a real thing to want.
+    ///
+    /// Takes no `quantize`: the start is a phrase boundary, which is a stronger
+    /// snap than quantize offers, and "let me play against the grid" has no
+    /// meaning for a loop whose whole purpose is to be phrase-aligned.
+    ///
+    /// `false` without a grid or a phrase structure. Zero or fewer turns
+    /// looping off, matching the beat loop, so an encoder that reaches zero
+    /// does the obvious thing.
+    pub fn set_loop_phrases(&mut self, phrases: f64) -> bool {
+        // `is_finite` first, so a NaN turns looping off rather than slipping
+        // through every comparison below by failing it.
+        if !phrases.is_finite() || phrases <= 0.0 {
+            self.exit_loop();
+            return true;
+        }
+        let (Some(grid), Some(phrase)) = (self.grid, self.phrase) else {
+            return false;
+        };
+        let Some(beat) = self.beat_frames() else {
+            return false;
+        };
+
+        let rate = self.source.sample_rate();
+        // `beat_index_at` floors, so this is the boundary at or before the
+        // playhead -- never one ahead of it, which would install a loop the
+        // playhead is outside of.
+        let current = grid.beat_index_at(self.position, rate);
+        let within = i64::from(phrase.beat_within(current));
+        let start = grid.beat_position(current - within, rate);
+        if !start.get().is_finite() {
+            return false;
+        }
+
+        let limits = self.loop_limits();
+        let len =
+            (phrases * f64::from(phrase.beats) * beat).clamp(limits.min_frames, limits.max_frames);
+        let Some(region) = LoopRegion::new(start, FramePos::new(start.get() + len)) else {
+            return false;
+        };
+        self.enter_loop(region)
+    }
+
     /// Drop a manual loop's in point. The deck keeps playing until the out
     /// point lands.
     /// Install a loop over an explicit region.
@@ -3527,6 +3581,157 @@ mod slicer_tests {
             Confidence::new(0.9),
         )));
         deck
+    }
+
+    /// **A phrase loop starts at the phrase boundary, not at the playhead.**
+    ///
+    /// The whole difference from a beat loop, and the reason it is a separate
+    /// verb. Pressed three beats into a phrase, a beat loop of sixteen would
+    /// run from beat 3 to beat 19 -- a fragment starting in the middle of a
+    /// musical idea and ending in the middle of the next. This runs from the
+    /// phrase start.
+    #[test]
+    fn a_phrase_loop_starts_at_the_phrase_boundary_not_the_playhead() {
+        let mut deck = deck_of_beats(128.0);
+        deck.set_phrase(dj_core::Phrase::new(16, 0));
+        deck.seek(FramePos::new(BEAT * 19.0));
+
+        assert!(deck.set_loop_phrases(1.0));
+        let region = deck.active_loop().expect("a loop");
+        assert!(
+            (region.start.get() - BEAT * 16.0).abs() < 1.0,
+            "the loop started at {} rather than the phrase boundary at {}",
+            region.start.get(),
+            BEAT * 16.0
+        );
+        assert!(
+            (region.len_frames() - BEAT * 16.0).abs() < 1.0,
+            "the loop is {} frames, expected one 16-beat phrase",
+            region.len_frames()
+        );
+    }
+
+    /// The comparison the test above is really making: the same press as a beat
+    /// loop starts somewhere else entirely.
+    #[test]
+    fn a_beat_loop_of_the_same_length_starts_somewhere_else() {
+        let mut deck = deck_of_beats(128.0);
+        deck.set_phrase(dj_core::Phrase::new(16, 0));
+        deck.seek(FramePos::new(BEAT * 19.0));
+
+        deck.set_loop_length(16.0, false);
+        let beats = deck.active_loop().expect("a loop").start.get();
+        deck.exit_loop();
+        deck.seek(FramePos::new(BEAT * 19.0));
+        deck.set_loop_phrases(1.0);
+        let phrase = deck.active_loop().expect("a loop").start.get();
+
+        assert!(
+            (beats - phrase).abs() > BEAT,
+            "a phrase loop and a beat loop started in the same place, so the \
+             phrase alignment is not doing anything"
+        );
+    }
+
+    /// **An offset phrase start moves the loop with it.**
+    ///
+    /// A track opening with a five-beat pickup has its phrases at 5, 21, 37.
+    /// A loop that assumed phrases begin at the grid anchor would land on beat
+    /// 16 -- still on a beat, still wrong, and wrong in a way that sounds like
+    /// the track is drifting rather than like a bug.
+    #[test]
+    fn a_phrase_loop_follows_an_offset_phrase_start() {
+        let mut deck = deck_of_beats(128.0);
+        deck.set_phrase(dj_core::Phrase::new(16, 5));
+        deck.seek(FramePos::new(BEAT * 24.0));
+
+        assert!(deck.set_loop_phrases(1.0));
+        let region = deck.active_loop().expect("a loop");
+        assert!(
+            (region.start.get() - BEAT * 21.0).abs() < 1.0,
+            "the loop started at {} rather than the phrase boundary at {}",
+            region.start.get(),
+            BEAT * 21.0
+        );
+    }
+
+    /// Half a phrase, still aligned to the phrase start.
+    #[test]
+    fn a_fractional_phrase_loop_keeps_its_alignment() {
+        let mut deck = deck_of_beats(128.0);
+        deck.set_phrase(dj_core::Phrase::new(16, 0));
+        deck.seek(FramePos::new(BEAT * 19.0));
+
+        assert!(deck.set_loop_phrases(0.5));
+        let region = deck.active_loop().expect("a loop");
+        assert!((region.start.get() - BEAT * 16.0).abs() < 1.0);
+        assert!(
+            (region.len_frames() - BEAT * 8.0).abs() < 1.0,
+            "half a 16-beat phrase should be 8 beats, got {} frames",
+            region.len_frames()
+        );
+    }
+
+    /// **Without a phrase structure it does nothing** -- rather than falling
+    /// back to a beat loop of some guessed length. A track with no phrases is a
+    /// real state, and a loop over an arbitrary span is worse than no loop.
+    #[test]
+    fn a_phrase_loop_without_phrases_does_nothing() {
+        let mut deck = deck_of_beats(128.0);
+        deck.seek(FramePos::new(BEAT * 19.0));
+
+        assert!(!deck.set_loop_phrases(1.0), "it claimed to have looped");
+        assert!(
+            deck.active_loop().is_none(),
+            "a deck with no phrase structure was given a loop anyway"
+        );
+    }
+
+    /// Zero turns looping off, matching the beat loop, so an encoder that can
+    /// reach zero does the obvious thing rather than erroring.
+    #[test]
+    fn a_phrase_loop_of_zero_turns_looping_off() {
+        let mut deck = deck_of_beats(128.0);
+        deck.set_phrase(dj_core::Phrase::new(16, 0));
+        deck.seek(FramePos::new(BEAT * 19.0));
+        deck.set_loop_phrases(1.0);
+        assert!(deck.active_loop().is_some());
+
+        assert!(deck.set_loop_phrases(0.0));
+        assert!(deck.active_loop().is_none(), "zero left the loop running");
+        // And a NaN, which would otherwise slip past every comparison.
+        deck.set_loop_phrases(1.0);
+        assert!(deck.set_loop_phrases(f64::NAN));
+        assert!(deck.active_loop().is_none(), "NaN left the loop running");
+    }
+
+    /// **A 32-beat phrase makes a 32-beat loop.**
+    ///
+    /// Every other test here uses a 16-beat phrase, which is the common case
+    /// and is exactly why this one exists: with only those, replacing
+    /// `phrase.beats` with a hardcoded 16 passes the whole suite. Mutation
+    /// testing found that, and this is the test that closes it.
+    #[test]
+    fn a_phrase_loop_uses_the_tracks_own_phrase_length() {
+        let mut deck = deck_of_beats(128.0);
+        deck.set_phrase(dj_core::Phrase::new(32, 0));
+        deck.seek(FramePos::new(BEAT * 40.0));
+
+        assert!(deck.set_loop_phrases(1.0));
+        let region = deck.active_loop().expect("a loop");
+        assert!(
+            (region.start.get() - BEAT * 32.0).abs() < 1.0,
+            "the loop started at {} rather than the 32-beat phrase boundary at {}",
+            region.start.get(),
+            BEAT * 32.0
+        );
+        assert!(
+            (region.len_frames() - BEAT * 32.0).abs() < 1.0,
+            "the loop is {} frames, expected 32 beats -- a hardcoded 16 would \
+             give {}",
+            region.len_frames(),
+            BEAT * 16.0
+        );
     }
 
     /// **Clearing the grid clears the phrase, at the deck itself.**

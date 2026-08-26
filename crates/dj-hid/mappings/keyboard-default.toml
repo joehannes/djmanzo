@@ -260,6 +260,18 @@ press = "deck 1 loop 4"
 label = "Loop 4 beats"
 group = "Deck 1"
 
+# The phrase loop sits on the alt+shift layer of the same loop key -- the same
+# layer the phrase jumps use, so "alt+shift" reads consistently as "the phrase
+# one". It starts at the
+# phrase boundary rather than the playhead, so pressing it part-way through a
+# phrase loops the phrase rather than a fragment beginning wherever the finger
+# landed. Silent on a track with no phrase structure.
+[[key]]
+on = "alt+shift+KeyE"
+press = "deck 1 loop_phrase 1"
+label = "Loop this phrase"
+group = "Deck 1"
+
 [[key]]
 on = "KeyR"
 press = "deck 1 loop_off"
@@ -319,6 +331,13 @@ group = "Deck 2"
 on = "KeyO"
 press = "deck 2 loop 4"
 label = "Loop 4 beats"
+group = "Deck 2"
+
+# The mirror of deck 1's phrase loop.
+[[key]]
+on = "alt+shift+KeyO"
+press = "deck 2 loop_phrase 1"
+label = "Loop this phrase"
 group = "Deck 2"
 
 [[key]]

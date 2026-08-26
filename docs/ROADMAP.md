@@ -1356,8 +1356,16 @@ external system can drive it over the network without a private API.
   than merely discouraged. Editing a grid clears the phrase; resetting one
   restores it.
 
-- Next in M8: phrase-locked loops, then the transition planner and next-track
-  suggestions, which both need "where does the phrase end" and now have it.
+- **Phrase-locked loops — done.** `loop_phrase`, on `alt+shift+E` and `O` and on
+  the deck panel. It starts at the phrase boundary the playhead is inside, not
+  at the playhead: pressed three beats into a phrase, a 16-beat *beat* loop runs
+  from beat 3 to beat 19 — a fragment beginning in the middle of one musical
+  idea and ending in the middle of the next — while this loops the phrase.
+  Fractional lengths keep the alignment, so half a phrase is still phrase-start
+  aligned.
+
+- Next in M8: the transition planner and next-track suggestions, which both need
+  "where does the phrase end" and now have it. Then deterministic set replay.
 - AI transition planner — suggests where and how, with stated reasoning.
 - Next-track suggestions ranked by harmonic compatibility, energy trajectory and phrase fit.
 - **Deterministic set replay and offline re-render** from the action log; practice loops; take
