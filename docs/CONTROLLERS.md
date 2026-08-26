@@ -77,6 +77,27 @@ The keyboard steps aside for text: typing in the search box gives you letters,
 not transport. There is also an explicit off switch on the Keys panel, for
 when you want the interface to have every key.
 
+## What a keyboard can reach
+
+`dj-hid` asserts, as a test, that **every deck verb djmanzo has is either on a
+key or written down as deliberately keyless with a reason**. The verb list is
+read out of the parser's own source rather than kept as a second list, because a
+second list is the thing that goes stale — and a verb added to the engine with
+no key is invisible: it works, it is tested, and the only person who finds out
+it is unreachable is a DJ on a laptop in a booth.
+
+It found three the first time it ran: the **crossfader could not be assigned**,
+a **beat grid could not be corrected**, and **sync could be engaged and never
+released** — there was no toggle verb at all, so every key and every controller
+pad could only turn it on.
+
+Two kinds of thing are legitimately keyless, and the list says which:
+
+- **continuous** — it carries a position, and a key is a switch. A key can kill
+  an EQ band; it cannot sweep one.
+- **covered by a toggle** — the explicit on/off pair exists for scripts and for
+  controllers with two buttons, and the keyboard uses the toggle.
+
 ## A MIDI mapping
 
 ```toml

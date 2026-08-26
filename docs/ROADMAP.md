@@ -1649,7 +1649,7 @@ prettily unusable.
 | # | Pass | What it covers |
 |---|---|---|
 | **P1** | Does it work? | Every feature exercised end to end on real hardware. Bugs fixed, edge cases safeguarded, failure modes made survivable rather than silent. Every "needs the user to verify" item from earlier milestones actually verified. |
-| **P2** | Is it usable? | Every feature reachable and worth reaching. Missing affordances added, dead ends removed, defaults reconsidered against real use. |
+| **P2** | Is it usable? | Every feature reachable and worth reaching. Missing affordances added, dead ends removed, defaults reconsidered against real use. **Under way.** The keyboard half is done and is now a test — see CONTROLLERS.md — which found that the crossfader could not be assigned, a beat grid could not be corrected, and sync could be engaged and never released. The interface half cannot be audited the same way: scraping Svelte templates for what they dispatch gives both false positives and false negatives, and a test built on it would fail for the wrong reasons and get muted. It is being done by using the thing. |
 | **P3** | Does it flow? | The whole daily workflow as one motion: load → cue → beatmatch → mix → next, with each step handing off cleanly to the one after it. Keyboard and controller paths as complete as the mouse path. The interface should stop being a set of panels and start being an instrument. |
 | **P4** | Is it beautiful? | Only once P1–P3 land. Colour, form, spacing, hierarchy, motion, feedback. Animation that communicates state rather than decorating it. Consistency between light and dark, and legibility in a dark booth at arm's length. |
 

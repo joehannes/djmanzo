@@ -48,7 +48,7 @@ press = "deck 1 cue"
 
 [[binding]]
 on = "note 1 0x58"
-press = "deck 1 sync"
+press = "deck 1 sync_toggle"
 
 [[binding]]
 on = "note 1 0x54"
@@ -127,7 +127,7 @@ press = "deck 2 cue"
 
 [[binding]]
 on = "note 2 0x58"
-press = "deck 2 sync"
+press = "deck 2 sync_toggle"
 
 [[binding]]
 on = "note 2 0x54"

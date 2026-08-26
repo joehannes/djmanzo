@@ -532,6 +532,20 @@ impl Engine {
                         }
                         return;
                     }
+                    DeckAction::SyncToggle => {
+                        // Read, then act. `sync_deck` reads another deck while
+                        // writing this one, so the state has to be taken before
+                        // either borrow rather than inside one.
+                        let engaged = self.deck(deck).is_some_and(Deck::is_synced);
+                        if engaged {
+                            if let Some(target) = self.deck_mut(deck) {
+                                target.set_synced(false);
+                            }
+                        } else {
+                            self.sync_deck(deck);
+                        }
+                        return;
+                    }
                     // Handled here rather than below because changing the
                     // assignment has to recompute *every* deck's crossfader
                     // gain, which needs the engine and not just this deck.
@@ -662,7 +676,9 @@ impl Engine {
                     }
                     // Sync needs to read another deck while writing this one,
                     // so it cannot run inside a borrow of `target`.
-                    DeckAction::Sync | DeckAction::SyncOff => unreachable!("handled above"),
+                    DeckAction::Sync | DeckAction::SyncOff | DeckAction::SyncToggle => {
+                        unreachable!("handled above")
+                    }
                     DeckAction::SetCrossfaderAssign(_) => unreachable!("handled above"),
                     DeckAction::Eject => unreachable!("handled above"),
                     // Grid edits are computed by the host and arrive here as

@@ -41,15 +41,18 @@ press = "deck 1 cue"
 
 [[binding]]
 on = "note 1 0x16"
-press = "deck 1 sync"
+press = "deck 1 sync_toggle"
 
 # MASTER on a CDJ nominates the sync leader. djmanzo picks its leader from what
 # is playing, so this is bound to sync rather than left dead: pressing it on
 # the deck you want followed is close enough to what the button says, and
 # closer than nothing happening.
+#
+# `sync_toggle` and not `sync`, here and on every mapping: a pad sends one
+# fixed action, so bound to `sync` it could engage sync and never release it.
 [[binding]]
 on = "note 1 0x15"
-press = "deck 1 sync"
+press = "deck 1 sync_toggle"
 
 # MASTER TEMPO is Pioneer's name for keylock.
 [[binding]]
@@ -180,11 +183,11 @@ press = "deck 2 cue"
 
 [[binding]]
 on = "note 2 0x16"
-press = "deck 2 sync"
+press = "deck 2 sync_toggle"
 
 [[binding]]
 on = "note 2 0x15"
-press = "deck 2 sync"
+press = "deck 2 sync_toggle"
 
 [[binding]]
 on = "note 2 0x0B"

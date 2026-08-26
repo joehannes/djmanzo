@@ -330,6 +330,210 @@ mod tests {
         assert!(backward < 0.0, "backwards moved the deck by {backward}");
     }
 
+    /// Every deck verb djmanzo has, taken from the parser's own source.
+    ///
+    /// Read out of `action.rs` rather than kept as a list, because a list is
+    /// the thing that goes stale: a verb added to the parser and forgotten here
+    /// would leave this test quietly passing over a feature nobody can reach,
+    /// which is precisely the failure it exists to catch.
+    fn every_deck_verb() -> Vec<String> {
+        let source = include_str!("../../dj-core/src/action.rs");
+        let start = source
+            .find("fn parse_deck_verb")
+            .expect("the deck verb parser moved");
+        let end = source[start..]
+            .find("\nfn ")
+            .map_or(source.len(), |offset| start + offset);
+        let mut verbs = Vec::new();
+        for line in source[start..end].lines() {
+            let trimmed = line.trim_start();
+            if !trimmed.starts_with('"') {
+                continue;
+            }
+            let Some(arrow) = trimmed.find("=>") else {
+                continue;
+            };
+            // The left of `=>` is one or more quoted verbs joined by `|`.
+            for piece in trimmed[..arrow].split('|') {
+                let piece = piece.trim();
+                if let Some(verb) = piece.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+                    verbs.push(verb.to_owned());
+                }
+            }
+        }
+        assert!(
+            verbs.len() > 40,
+            "only {} verbs were read out of the parser, so the extraction broke rather than \
+             the vocabulary shrinking",
+            verbs.len()
+        );
+        verbs
+    }
+
+    /// Every deck verb the bundled keyboard can send.
+    fn keyboard_verbs() -> std::collections::HashSet<String> {
+        let map = keyboard().expect("the bundled keyboard parses");
+        let mut found = std::collections::HashSet::new();
+        for key in &map.keys {
+            for action in [key.press.as_deref(), key.release.as_deref()]
+                .into_iter()
+                .flatten()
+            {
+                // An action line may chain several with `&`.
+                for one in action.split('&') {
+                    let words: Vec<&str> = one.split_whitespace().collect();
+                    if words.len() >= 3 && words[0] == "deck" {
+                        found.insert(words[2].to_owned());
+                    }
+                }
+            }
+        }
+        found
+    }
+
+    /// Verbs that deliberately have no key, and why.
+    ///
+    /// An allow-list rather than a smaller assertion, because "this one is fine
+    /// to leave out" is a judgement and judgements should be written down. Every
+    /// entry here is one of two things:
+    ///
+    /// - **continuous** -- it carries a position, and a key is a switch. A key
+    ///   can kill an EQ band and cannot sweep one.
+    /// - **covered by a toggle** -- the explicit on/off pair exists for scripts
+    ///   and for controllers with two buttons; the keyboard uses the toggle.
+    ///
+    /// Anything else missing is a feature a DJ with no controller cannot use,
+    /// which is what this list exists to keep visible.
+    const KEYLESS: &[(&str, &str)] = &[
+        ("jog", "continuous: a platter angle"),
+        ("jog_touch", "continuous: paired with the platter"),
+        ("jog_release", "continuous: paired with the platter"),
+        ("seek", "continuous: a position in the track"),
+        ("pitch", "continuous: a fader"),
+        (
+            "rate",
+            "continuous: a fader, and `pitch` is the one a DJ names",
+        ),
+        ("volume", "continuous: a fader"),
+        ("gain", "continuous: a trim"),
+        ("filter", "continuous: a sweep"),
+        ("stem_volume", "continuous"),
+        ("stem_eq_low", "continuous"),
+        ("stem_eq_mid", "continuous"),
+        ("stem_eq_high", "continuous"),
+        ("stem_filter", "continuous"),
+        ("grid_scale", "continuous: a tempo multiplier"),
+        ("grid_bpm", "continuous: a tempo, typed rather than pressed"),
+        ("loop_move", "continuous: a distance"),
+        ("slice_domain", "continuous: a length"),
+        ("play", "covered by play_pause"),
+        ("pause", "covered by play_pause"),
+        ("playpause", "an alias of play_pause"),
+        ("cue_on", "covered by cue_toggle"),
+        ("cue_off", "covered by cue_toggle"),
+        ("keylock_on", "covered by keylock_toggle"),
+        ("keylock_off", "covered by keylock_toggle"),
+        ("slip_on", "covered by slip_toggle"),
+        ("slip_off", "covered by slip_toggle"),
+        ("sync", "covered by sync_toggle"),
+        ("sync_off", "covered by sync_toggle"),
+        (
+            "reverse_toggle",
+            "the keyboard holds reverse rather than latching it: a track playing \
+             backwards because a key was pressed and forgotten is not a state to \
+             be one keystroke away from",
+        ),
+        ("stem_mute_on", "covered by stem_mute"),
+        ("stem_mute_off", "covered by stem_mute"),
+        (
+            "stem_mute",
+            "no key: four stems on two decks is eight more chords on an already \
+             dense default, and stems need a separated track, so this lives on \
+             the pad grid and the stems panel like the slicer does",
+        ),
+        ("stem_solo_on", "no key: soloing a stem is a panel decision"),
+        (
+            "stem_solo_off",
+            "no key: soloing a stem is a panel decision",
+        ),
+        ("loop_save", "no key: saved loops are a browser feature"),
+        ("loop_recall", "no key: saved loops are a browser feature"),
+        ("slice", "no key: the slicer is a pad-grid instrument"),
+        ("slice_off", "no key: the slicer is a pad-grid instrument"),
+        (
+            "grid_reset",
+            "no key: undoing a grid edit is a panel decision",
+        ),
+    ];
+
+    /// **A DJ with no controller can reach everything a DJ with one can.**
+    ///
+    /// The reason this is a test and not a review: the vocabulary grows, and a
+    /// verb added to the engine with no key is invisible -- it works, it is
+    /// tested, and the only person who finds out it is unreachable is somebody
+    /// on a laptop in a booth. That is the shape of thing this project keeps
+    /// finding, one layer up.
+    ///
+    /// It found three the first time it ran: **the crossfader could not be
+    /// assigned**, **a beat grid could not be corrected**, and **sync could be
+    /// engaged and never released** -- there was no toggle verb at all, so
+    /// every key and every controller pad in existence could only turn it on.
+    #[test]
+    fn every_deck_verb_is_on_a_key_or_says_why_not() {
+        let excused: std::collections::HashMap<&str, &str> = KEYLESS.iter().copied().collect();
+        let reachable = keyboard_verbs();
+        let mut orphans = Vec::new();
+        for verb in every_deck_verb() {
+            if reachable.contains(&verb) || excused.contains_key(verb.as_str()) {
+                continue;
+            }
+            orphans.push(verb);
+        }
+        assert!(
+            orphans.is_empty(),
+            "these can be done with a controller and not with a keyboard, and nothing says \
+             why: {}. Give each one a key, or add it to KEYLESS with the reason.",
+            orphans.join(", ")
+        );
+    }
+
+    /// **An excuse must still be needed.**
+    ///
+    /// One of these was written backwards on the first attempt: `reverse_on`
+    /// and `reverse_off` were excused as "covered by reverse_toggle" when the
+    /// keyboard binds exactly those two and not the toggle. Harmless, and
+    /// exactly the kind of stale note that makes a list stop being read.
+    #[test]
+    fn nothing_is_excused_that_is_already_on_a_key() {
+        let reachable = keyboard_verbs();
+        let stale: Vec<&str> = KEYLESS
+            .iter()
+            .map(|(verb, _)| *verb)
+            .filter(|verb| reachable.contains(*verb))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "these are excused from having a key and have one: {}",
+            stale.join(", ")
+        );
+    }
+
+    /// The allow-list must not outlive the thing it excuses.
+    ///
+    /// A verb renamed or removed leaves an entry here that excuses nothing,
+    /// and the next verb with a similar name inherits an excuse written for a
+    /// different feature.
+    #[test]
+    fn nothing_is_excused_that_does_not_exist() {
+        let verbs: std::collections::HashSet<String> = every_deck_verb().into_iter().collect();
+        for (verb, reason) in KEYLESS {
+            assert!(
+                verbs.contains(*verb),
+                "KEYLESS excuses `{verb}` ({reason}), which is not a verb djmanzo has"
+            );
+        }
+    }
+
     /// The two hands are meant to mirror each other. If deck 1 gains a move
     /// and deck 2 does not, the layout stops being learnable — you can no
     /// longer reason "same shape, other hand".

@@ -254,6 +254,28 @@ fn pick_format(name: Option<&str>) -> Result<dj_dvs::TimecodeFormat, String> {
     }
 }
 
+/// How long a record to write, given what was asked for.
+///
+/// Its own function because it is a **decision**, and the write around it is
+/// I/O. Testing a decision through the I/O meant rendering the record's whole
+/// period to disk to find out whether a number had been clamped -- 180 MB of
+/// WAV per assertion, which filled the disk on the machine this was written on
+/// and would do the same to a constrained continuous-integration runner.
+///
+/// # Errors
+/// When the requested length is not a length: zero, negative, or not a number.
+fn usable_length(format: &dj_dvs::TimecodeFormat, requested: Option<f64>) -> Result<f64, String> {
+    let seconds = requested.unwrap_or_else(|| format.unambiguous_seconds());
+    if !(seconds.is_finite() && seconds > 0.0) {
+        return Err("a control record needs a length".to_owned());
+    }
+    // Past this the sequence repeats and two places on the record share a
+    // position, which is exactly the failure `is_usable` exists to prevent.
+    // Capped rather than refused: a DJ asking for an hour wants as much as they
+    // can have, not an error.
+    Ok(seconds.min(format.unambiguous_seconds()))
+}
+
 /// How loud the written signal is, as a fraction of full scale.
 ///
 /// Not 1.0. A control record played into a phono stage and back out arrives
@@ -310,15 +332,7 @@ pub fn write_timecode_signal(
             "{rate} Hz is not a sample rate to write a record at"
         ));
     }
-    let seconds = seconds.unwrap_or_else(|| chosen.unambiguous_seconds());
-    if !(seconds.is_finite() && seconds > 0.0) {
-        return Err("a control record needs a length".to_owned());
-    }
-    // Past this the sequence repeats and two places on the record share a
-    // position, which is exactly the failure `is_usable` exists to prevent.
-    // Capped rather than refused: a DJ asking for an hour wants as much as they
-    // can have, not an error.
-    let seconds = seconds.min(chosen.unambiguous_seconds());
+    let seconds = usable_length(&chosen, seconds)?;
 
     let synth = dj_dvs::Synth::new(chosen.clone(), f64::from(rate))
         .ok_or_else(|| format!("{} cannot be rendered at {rate} Hz", chosen.name))?;
@@ -527,35 +541,34 @@ mod tests {
         }
     }
 
+    /// **A length past the record's own period is capped, not refused.**
+    ///
+    /// Past that point the shift register repeats and two places on the record
+    /// share a position, which is the silent failure the whole format check
+    /// exists to prevent. A DJ asking for an hour wants as much as they can
+    /// have, not an error.
     #[test]
     fn a_length_past_the_records_own_period_is_capped_not_refused() {
-        let temp = TempWav::new("capped");
         let format = pick_format(None).unwrap();
-        let written = write_timecode_signal(
-            temp.0.display().to_string(),
-            None,
-            Some(format.unambiguous_seconds() * 4.0),
-            Some(44_100),
-        )
-        .expect("a long request is answered with what the record can carry");
-        assert!(
-            written.seconds <= format.unambiguous_seconds() + 0.01,
-            "wrote {}s of a record that repeats after {}s",
-            written.seconds,
-            format.unambiguous_seconds()
+        let period = format.unambiguous_seconds();
+        assert_eq!(
+            usable_length(&format, Some(period * 4.0)).expect("a long request is answered"),
+            period
         );
+        // And a length within the period is left alone rather than clamped to
+        // something tidy.
+        assert_eq!(usable_length(&format, Some(30.0)).unwrap(), 30.0);
+        // Asking for nothing in particular gives the whole record.
+        assert_eq!(usable_length(&format, None).unwrap(), period);
     }
 
     #[test]
     fn a_nonsense_length_is_refused() {
-        let temp = TempWav::new("nonsense");
-        assert!(
-            write_timecode_signal(temp.0.display().to_string(), None, Some(0.0), None).is_err()
-        );
-        assert!(
-            write_timecode_signal(temp.0.display().to_string(), None, Some(f64::NAN), None)
-                .is_err()
-        );
+        let format = pick_format(None).unwrap();
+        assert!(usable_length(&format, Some(0.0)).is_err());
+        assert!(usable_length(&format, Some(-5.0)).is_err());
+        assert!(usable_length(&format, Some(f64::NAN)).is_err());
+        assert!(usable_length(&format, Some(f64::INFINITY)).is_err());
     }
 
     #[test]

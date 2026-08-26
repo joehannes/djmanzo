@@ -11,6 +11,21 @@
 #     A S D F        G  H        J K L ;     transport, roll
 #     Z X C V                    M , . /     EQ kills, brake
 #
+# **Hold Alt for the same geometry, one layer down: setting up rather than
+# playing.** Everything on the alt layer is something you do to a track before
+# or between mixes -- marking a loop, fixing a grid the analyser got wrong,
+# clearing a cue, assigning the crossfader -- and none of it had a key at all
+# before, which meant a DJ with no controller simply could not do it.
+#
+#     ⌥1 2 3 4                  ⌥7 8 9 0     clear a hot cue
+#     ⌥Q W E R                  ⌥U I O P     grid: set, tap, nudge
+#     ⌥A S D F                  ⌥J K L ;     loop in / out, key shift, eject
+#     ⌥Z X C V                  ⌥M , . /     crossfader assign, jog mode
+#
+# Alt and Ctrl were both entirely unused. Alt is taken here; Ctrl is left for a
+# DJ's own mapping, because a default that used every modifier leaves nowhere
+# to add anything.
+#
 # Keys are named by position, not by the character they produce, so the layout
 # holds on an AZERTY or QWERTZ keyboard. See the module documentation in
 # `keys.rs` for why.
@@ -62,14 +77,14 @@ group = "Deck 2"
 
 [[key]]
 on = "KeyD"
-press = "deck 1 sync"
-label = "Sync"
+press = "deck 1 sync_toggle"
+label = "Sync on / off"
 group = "Deck 1"
 
 [[key]]
 on = "KeyL"
-press = "deck 2 sync"
-label = "Sync"
+press = "deck 2 sync_toggle"
+label = "Sync on / off"
 group = "Deck 2"
 
 [[key]]
@@ -471,3 +486,227 @@ on = "ArrowUp"
 press = "sampler stop_all"
 label = "Stop every sample"
 group = "Mixer"
+
+# ============================================================ the alt layer
+#
+# Setting a track up, rather than playing it. See the diagram at the top.
+
+# ----------------------------------------------------------- deck 1, alt
+
+# A manual loop: mark the start, mark the end. The plain layer's `loop 4` is
+# the quick one; this is the one for looping a break that is not four bars.
+[[key]]
+on = "alt+KeyA"
+press = "deck 1 loop_in"
+label = "Loop in"
+group = "Deck 1"
+
+[[key]]
+on = "alt+KeyS"
+press = "deck 1 loop_out"
+label = "Loop out"
+group = "Deck 1"
+
+# Key shift, in semitones. Under the same two fingers as loop, because both are
+# things you set once and leave.
+[[key]]
+on = "alt+KeyD"
+press = "deck 1 key -1"
+label = "Key down a semitone"
+group = "Deck 1"
+
+# Eject. On the alt layer specifically: a key that clears a playing deck should
+# not be one finger away from the one that starts it.
+[[key]]
+on = "alt+KeyF"
+press = "deck 1 eject"
+label = "Eject"
+group = "Deck 1"
+
+# The beat grid, for when the analyser got it wrong and the track is already
+# playing -- which is the only time it matters and the worst time to reach for
+# a mouse.
+[[key]]
+on = "alt+KeyQ"
+press = "deck 1 grid_here"
+label = "Grid: the downbeat is here"
+group = "Deck 1"
+
+[[key]]
+on = "alt+KeyW"
+press = "deck 1 grid_tap"
+label = "Grid: tap the tempo"
+group = "Deck 1"
+
+[[key]]
+on = "alt+KeyE"
+press = "deck 1 grid_nudge -0.01"
+label = "Grid: nudge earlier"
+group = "Deck 1"
+
+[[key]]
+on = "alt+KeyR"
+press = "deck 1 grid_nudge 0.01"
+label = "Grid: nudge later"
+group = "Deck 1"
+
+# Crossfader assignment. Every DJ mixer has this switch and djmanzo had it
+# nowhere but the deck panel.
+[[key]]
+on = "alt+KeyZ"
+press = "deck 1 xfader_left"
+label = "Crossfader: assign left"
+group = "Deck 1"
+
+[[key]]
+on = "alt+KeyX"
+press = "deck 1 xfader_thru"
+label = "Crossfader: ignore it"
+group = "Deck 1"
+
+[[key]]
+on = "alt+KeyC"
+press = "deck 1 xfader_right"
+label = "Crossfader: assign right"
+group = "Deck 1"
+
+# Vinyl mode: whether a hand on the platter stops the music.
+[[key]]
+on = "alt+KeyV"
+press = "deck 1 jog_mode vinyl"
+label = "Jog: vinyl mode"
+group = "Deck 1"
+
+[[key]]
+on = "alt+Digit1"
+press = "deck 1 hotcue_clear 1"
+label = "Clear hot cue 1"
+group = "Deck 1"
+
+[[key]]
+on = "alt+Digit2"
+press = "deck 1 hotcue_clear 2"
+label = "Clear hot cue 2"
+group = "Deck 1"
+
+[[key]]
+on = "alt+Digit3"
+press = "deck 1 hotcue_clear 3"
+label = "Clear hot cue 3"
+group = "Deck 1"
+
+[[key]]
+on = "alt+Digit4"
+press = "deck 1 hotcue_clear 4"
+label = "Clear hot cue 4"
+group = "Deck 1"
+
+# ----------------------------------------------------------- deck 2, alt
+
+# A manual loop: mark the start, mark the end. The plain layer's `loop 4` is
+# the quick one; this is the one for looping a break that is not four bars.
+[[key]]
+on = "alt+KeyJ"
+press = "deck 2 loop_in"
+label = "Loop in"
+group = "Deck 2"
+
+[[key]]
+on = "alt+KeyK"
+press = "deck 2 loop_out"
+label = "Loop out"
+group = "Deck 2"
+
+# Key shift, in semitones. Under the same two fingers as loop, because both are
+# things you set once and leave.
+[[key]]
+on = "alt+KeyL"
+press = "deck 2 key -1"
+label = "Key down a semitone"
+group = "Deck 2"
+
+# Eject. On the alt layer specifically: a key that clears a playing deck should
+# not be one finger away from the one that starts it.
+[[key]]
+on = "alt+Semicolon"
+press = "deck 2 eject"
+label = "Eject"
+group = "Deck 2"
+
+# The beat grid, for when the analyser got it wrong and the track is already
+# playing -- which is the only time it matters and the worst time to reach for
+# a mouse.
+[[key]]
+on = "alt+KeyU"
+press = "deck 2 grid_here"
+label = "Grid: the downbeat is here"
+group = "Deck 2"
+
+[[key]]
+on = "alt+KeyI"
+press = "deck 2 grid_tap"
+label = "Grid: tap the tempo"
+group = "Deck 2"
+
+[[key]]
+on = "alt+KeyO"
+press = "deck 2 grid_nudge -0.01"
+label = "Grid: nudge earlier"
+group = "Deck 2"
+
+[[key]]
+on = "alt+KeyP"
+press = "deck 2 grid_nudge 0.01"
+label = "Grid: nudge later"
+group = "Deck 2"
+
+# Crossfader assignment. Every DJ mixer has this switch and djmanzo had it
+# nowhere but the deck panel.
+[[key]]
+on = "alt+KeyM"
+press = "deck 2 xfader_left"
+label = "Crossfader: assign left"
+group = "Deck 2"
+
+[[key]]
+on = "alt+Comma"
+press = "deck 2 xfader_thru"
+label = "Crossfader: ignore it"
+group = "Deck 2"
+
+[[key]]
+on = "alt+Period"
+press = "deck 2 xfader_right"
+label = "Crossfader: assign right"
+group = "Deck 2"
+
+# Vinyl mode: whether a hand on the platter stops the music.
+[[key]]
+on = "alt+Slash"
+press = "deck 2 jog_mode vinyl"
+label = "Jog: vinyl mode"
+group = "Deck 2"
+
+[[key]]
+on = "alt+Digit7"
+press = "deck 2 hotcue_clear 1"
+label = "Clear hot cue 1"
+group = "Deck 2"
+
+[[key]]
+on = "alt+Digit8"
+press = "deck 2 hotcue_clear 2"
+label = "Clear hot cue 2"
+group = "Deck 2"
+
+[[key]]
+on = "alt+Digit9"
+press = "deck 2 hotcue_clear 3"
+label = "Clear hot cue 3"
+group = "Deck 2"
+
+[[key]]
+on = "alt+Digit0"
+press = "deck 2 hotcue_clear 4"
+label = "Clear hot cue 4"
+group = "Deck 2"

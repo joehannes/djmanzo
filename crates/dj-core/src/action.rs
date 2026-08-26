@@ -270,6 +270,14 @@ pub enum DeckAction {
     Sync,
     /// Release the tempo lock; the pitch fader is the DJ's again.
     SyncOff,
+    /// Engage sync, or release it if it is already engaged.
+    ///
+    /// Needed because a **mapping has no state**. The interface can read
+    /// `synced` and send whichever of the two above applies, and a key or a
+    /// controller pad cannot: it sends one fixed action forever. Without this,
+    /// every keyboard and every controller could turn sync on and never off --
+    /// which is not a lesser version of the feature, it is a trap.
+    SyncToggle,
     /// Move the playhead by whole beats. Negative goes back.
     BeatJump(i32),
 
@@ -919,6 +927,7 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "cue_toggle" => bare(DeckAction::ToggleCue),
         "sync" => bare(DeckAction::Sync),
         "sync_off" => bare(DeckAction::SyncOff),
+        "sync_toggle" => bare(DeckAction::SyncToggle),
         "beatjump" => Ok(DeckAction::BeatJump(parse_i32(argument)?)),
         "hotcue" => Ok(DeckAction::HotCue(parse_slot(argument)?)),
         "hotcue_set" => Ok(DeckAction::HotCueSet(parse_slot(argument)?)),
@@ -1256,6 +1265,7 @@ impl fmt::Display for Action {
                 DeckAction::Fx { slot, change } => write!(f, "deck {deck} fx {slot} {change}"),
                 DeckAction::Sync => write!(f, "deck {deck} sync"),
                 DeckAction::SyncOff => write!(f, "deck {deck} sync_off"),
+                DeckAction::SyncToggle => write!(f, "deck {deck} sync_toggle"),
                 DeckAction::BeatJump(n) => write!(f, "deck {deck} beatjump {n}"),
                 DeckAction::HotCue(n) => write!(f, "deck {deck} hotcue {n}"),
                 DeckAction::HotCueSet(n) => write!(f, "deck {deck} hotcue_set {n}"),
