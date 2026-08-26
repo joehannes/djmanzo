@@ -37,6 +37,7 @@ pub mod native;
 pub mod openai_compat;
 pub mod posture;
 pub mod provider;
+pub mod takeover;
 
 pub use assistant::{Assistant, Plan, Source, extract_actions, system_prompt};
 pub use budget::Budget;
@@ -48,6 +49,7 @@ pub use posture::{Occasion, Pack, Posture, packs};
 pub use provider::{
     AssistantError, Completion, LlmProvider, Model, ProviderId, ProviderStatus, Role, Turn, Usage,
 };
+pub use takeover::{Holder, Takeover};
 
 use dj_secrets::SecretStore;
 use std::sync::Arc;

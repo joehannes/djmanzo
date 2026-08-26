@@ -1477,6 +1477,20 @@ Designed in full in [ASSISTANT.md](ASSISTANT.md) part two. In short, two dials:
   named packs that can be chosen by hand or moved between by the assistant,
   visibly and undoably.
 
+**Takeover and resume — done.** `dj_assistant::takeover` holds who has which
+control. Touching one takes it immediately, per control rather than globally — a
+DJ reaching for the bass on deck one has not asked the assistant to stop keeping
+deck two in sync, and taking everything would punish them for touching anything.
+
+The asymmetry is the point: **taking is implicit and instant, handing back is
+explicit and total.** A hand on a fader is unambiguous; letting go is not a
+decision, and a DJ who releases the crossfader to pick up a drink has not asked
+the machine to resume. There is a panic gesture that takes everything, one
+gesture that hands everything back, and a ten-minute expiry — long enough that
+it can never fire during a transition (the longest djmanzo will plan is 64
+beats, under two minutes at any danceable tempo) and short enough that a nudge
+at the start of a set is not still being honoured at the end.
+
 Plus: **touching a control takes over** — not a mode button, the fader itself —
 and handing back is one gesture in one place that never moves. The interface
 changes density with the occasion for exactly one reason: to make the right
