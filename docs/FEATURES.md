@@ -201,7 +201,7 @@ Parity is the floor. These are the reasons to switch.
 
 ### Stem engine done right
 
-VirtualDJ separates on the GPU in realtime. We separate **ahead of the playhead** into a
+VirtualDJ separates on the GPU in realtime. We separate **outward from the playhead** into a
 persistent cache, which means the audio path adds exactly zero latency, the second load of a
 track is instant, and the quality ceiling is set by the best available model rather than by
 what fits in a 5 ms budget. On top of that:

@@ -780,8 +780,10 @@ pub fn put_on_deck(
         // 9.2 seconds long on a 48 kHz track, and the built-in separator
         // needs the real rate to place its band edges anyway.
         let chunk_size = sample_rate.get() as usize * dj_decode::CHANNELS * 10;
-        let chunks: Vec<&[f32]> = audio.as_interleaved().chunks(chunk_size).collect();
+        let interleaved = audio.as_interleaved();
         let chunk_frames = chunk_size / dj_decode::CHANNELS;
+        let total_frames = interleaved.len() / dj_decode::CHANNELS;
+        let chunk_count = total_frames.div_ceil(chunk_frames.max(1));
 
         // **Separate outward from the playhead, not forward from the file.**
         //
@@ -796,7 +798,7 @@ pub fn put_on_deck(
         // mid-separation redirects the work rather than being ignored.
         // Slightly ahead is preferred to slightly behind at equal distance,
         // because the playhead is moving one way.
-        for _ in 0..chunks.len() {
+        for _ in 0..chunk_count {
             let position = f64::from(registry.get(dj_core::param::ParamId::Deck(
                 deck_id,
                 dj_core::param::DeckParam::Position,
@@ -810,7 +812,7 @@ pub fn put_on_deck(
 
             let table = lock_clone.load();
             let Some(next) =
-                next_chunk_to_separate(chunks.len(), here, |index| table.has_chunk(index))
+                next_chunk_to_separate(chunk_count, here, |index| table.has_chunk(index))
             else {
                 break;
             };
@@ -821,10 +823,24 @@ pub fn put_on_deck(
             // ahead building a queue. That is the point of the bound -- and it
             // is also what makes re-choosing worthwhile, because by the time it
             // wakes the playhead has usually moved.
+            // Separated with the audio either side of it, and trimmed back to
+            // the chunk afterwards.
+            //
+            // A chunk separated alone is wrong at both edges -- the windows
+            // there have no neighbours to overlap-add with -- so butting them
+            // together put a glitch at every seam, once every ten seconds, for
+            // the whole track. See `dj_stems::stems::SEPARATION_MARGIN`.
+            let body_start = next * chunk_frames;
+            let body_end = (body_start + chunk_frames).min(total_frames);
+            let lead = body_start.min(dj_stems::stems::SEPARATION_MARGIN);
+            let from = body_start - lead;
+            let to = (body_end + dj_stems::stems::SEPARATION_MARGIN).min(total_frames);
+
             stems_worker.process_chunk(
                 track_id,
                 next,
-                chunks[next],
+                &interleaved[from * dj_decode::CHANNELS..to * dj_decode::CHANNELS],
+                lead..lead + (body_end - body_start),
                 sample_rate.get(),
                 Some(lock_clone.clone()),
             );

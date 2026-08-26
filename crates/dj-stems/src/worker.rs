@@ -21,6 +21,15 @@ struct SeparationJob {
     sample_rate: u32,
     /// Where to write the result, if a deck is still waiting for it.
     target: Option<StemBuffer>,
+    /// Which frames of `audio` are the chunk, the rest being context.
+    ///
+    /// A chunk cannot be separated alone: the windows at either end of any
+    /// buffer have no neighbours to overlap-add with, so an independently
+    /// separated chunk is wrong at its edges — measurably, by more than the
+    /// signal itself. See [`crate::stems::SEPARATION_MARGIN`]. The fix is to
+    /// separate *more* than the chunk and keep only the middle, which is what
+    /// this range names.
+    body: std::ops::Range<usize>,
 }
 
 /// How many chunks may wait to be separated.
@@ -78,11 +87,21 @@ impl SeparationWorker {
     /// background threads feeding this one, so waiting is the correct
     /// behaviour and the alternative -- an unbounded queue -- costs a whole
     /// track of memory per load. Nothing on the audio thread ever calls this.
+    /// Queue one chunk for separation.
+    ///
+    /// `audio` is interleaved stereo and may carry context on either side of
+    /// the chunk itself; `body` names, in frames, which part of it is the
+    /// chunk. Separating with context and keeping the middle is what stops a
+    /// glitch landing at every chunk boundary — see [`SeparationJob::body`].
+    ///
+    /// Passing `0..frames` means "no context", which is honest for a track
+    /// short enough to be one chunk and wrong for anything else.
     pub fn process_chunk(
         &self,
         track_id: TrackId,
         chunk_index: usize,
         audio: &[f32],
+        body: std::ops::Range<usize>,
         sample_rate: u32,
         target: Option<StemBuffer>,
     ) {
@@ -93,6 +112,7 @@ impl SeparationWorker {
                 audio: audio.to_vec(),
                 sample_rate,
                 target,
+                body,
             });
         }
     }
@@ -108,6 +128,7 @@ impl SeparationWorker {
             audio,
             sample_rate,
             target,
+            body,
         }) = receiver.recv()
         {
             // The cache is keyed by which separator produced the audio, so a
@@ -122,7 +143,7 @@ impl SeparationWorker {
                 if let Some(sep) = &separator {
                     match sep
                         .separate(&audio, sample_rate)
-                        .map(|stems| stems.into_parts().to_vec())
+                        .map(|stems| trim_to_body(stems.into_parts(), &body))
                     {
                         Ok(seps) => {
                             // 3. Save to cache
@@ -160,6 +181,76 @@ impl SeparationWorker {
                 publish(&target, chunk_index, chunk);
             }
         }
+    }
+}
+
+/// Keep only the frames a chunk actually owns, discarding the context it was
+/// separated with.
+///
+/// The context exists so the transform has neighbours at the chunk's edges; it
+/// is not the chunk, and storing it would overlap the chunks either side and
+/// put the whole table at the wrong offsets.
+///
+/// A range past the end is clamped rather than refused: the last chunk of a
+/// track has no audio after it to use as context, so its body legitimately
+/// runs to the end of what was separated.
+fn trim_to_body(
+    parts: [Vec<f32>; dj_core::Stem::COUNT],
+    body: &std::ops::Range<usize>,
+) -> Vec<Vec<f32>> {
+    parts
+        .into_iter()
+        .map(|stem| {
+            let frames = stem.len() / CHANNELS;
+            let start = body.start.min(frames);
+            let end = body.end.clamp(start, frames);
+            stem[start * CHANNELS..end * CHANNELS].to_vec()
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod trim_tests {
+    use super::trim_to_body;
+
+    fn ramp(frames: usize) -> Vec<f32> {
+        (0..frames).flat_map(|n| [n as f32, -(n as f32)]).collect()
+    }
+
+    /// The context is thrown away and the chunk is not.
+    ///
+    /// Keeping it would overlap the chunks either side and put every frame in
+    /// the table at the wrong time — the stems would drift against the track by
+    /// the margin, growing with every chunk.
+    #[test]
+    fn the_context_is_discarded_and_the_body_kept() {
+        let parts = std::array::from_fn(|_| ramp(100));
+        let trimmed = trim_to_body(parts, &(20..70));
+
+        for stem in &trimmed {
+            assert_eq!(stem.len(), 50 * 2, "the body is fifty frames");
+            assert_eq!(stem[0], 20.0, "the body starts at frame 20, not frame 0");
+            assert_eq!(stem[1], -20.0, "the right channel came from another frame");
+            assert_eq!(stem[98], 69.0, "the body ends at frame 69");
+        }
+    }
+
+    /// The last chunk of a track has no audio after it to use as context, so
+    /// its body legitimately runs past what was separated. Clamped rather than
+    /// refused: refusing would drop the end of every track.
+    #[test]
+    fn a_body_past_the_end_is_clamped_not_refused() {
+        let parts = std::array::from_fn(|_| ramp(40));
+        let trimmed = trim_to_body(parts, &(30..90));
+        for stem in &trimmed {
+            assert_eq!(stem.len(), 10 * 2);
+            assert_eq!(stem[0], 30.0);
+        }
+
+        // A body starting past the end yields nothing rather than panicking.
+        let parts = std::array::from_fn(|_| ramp(40));
+        let trimmed = trim_to_body(parts, &(90..120));
+        assert!(trimmed.iter().all(Vec::is_empty));
     }
 }
 
@@ -301,7 +392,7 @@ mod tests {
             std::thread::spawn(move || {
                 let track = TrackId::from_bytes([1u8; 32]);
                 for index in 0..OFFERED {
-                    worker.process_chunk(track, index, &[0.0; CHANNELS * 8], 48_000, None);
+                    worker.process_chunk(track, index, &[0.0; CHANNELS * 8], 0..8, 48_000, None);
                     sent.fetch_add(1, Ordering::SeqCst);
                 }
                 worker
@@ -349,7 +440,7 @@ mod tests {
         let track = TrackId::from_bytes([1u8; 32]);
         let start = Instant::now();
         for index in 0..1_000 {
-            worker.process_chunk(track, index, &[0.0; CHANNELS * 8], 48_000, None);
+            worker.process_chunk(track, index, &[0.0; CHANNELS * 8], 0..8, 48_000, None);
         }
         assert!(
             start.elapsed() < Duration::from_secs(2),

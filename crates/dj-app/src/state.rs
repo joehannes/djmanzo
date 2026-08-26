@@ -1223,6 +1223,7 @@ mod tests {
             dj_core::track::TrackId::from_bytes([7u8; 32]),
             0,
             &[0.0; 64],
+            0..32,
             48_000,
             None,
         );
@@ -1267,7 +1268,7 @@ mod tests {
         let track = dj_core::track::TrackId::from_bytes([9u8; 32]);
         let worker = state.stems_worker();
         for chunk in 0..4 {
-            worker.process_chunk(track, chunk, &[0.25; 128], 48_000, None);
+            worker.process_chunk(track, chunk, &[0.25; 128], 0..64, 48_000, None);
         }
     }
 

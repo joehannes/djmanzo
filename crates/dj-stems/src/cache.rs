@@ -18,6 +18,18 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+/// What a cached chunk *means*, bumped when that changes.
+///
+/// Not the file format — the contents. Version 1 held a chunk separated on its
+/// own, edges and all; version 2 holds one separated with surrounding context
+/// and trimmed, which is different audio for the same track and chunk number.
+/// Reading a v1 file as if it were v2 would reintroduce exactly the glitch the
+/// margin exists to remove, silently, on any machine that had used djmanzo
+/// before.
+///
+/// Old files simply stop being found and the LRU sweep reclaims them.
+const FORMAT: u32 = 2;
+
 /// How many stems a cached chunk must contain.
 ///
 /// Checked on read as well as write. A file claiming a different number is
@@ -183,7 +195,7 @@ impl StemCache {
             .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
             .collect();
         self.cache_dir
-            .join(format!("{tag}_{}_{chunk}.stem", track.to_hex()))
+            .join(format!("{tag}-v{FORMAT}_{}_{chunk}.stem", track.to_hex()))
     }
 
     /// Delete the least recently used chunks until the cache fits again.

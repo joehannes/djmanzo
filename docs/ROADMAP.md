@@ -1014,6 +1014,24 @@ cancel a loop the DJ set on purpose.
   at equal distance the chunk *ahead* wins, because the playhead moves one way.
   The one invariant that mattered is kept exactly: a lookup is a division, not a
   search, so every chunk but the last must still be full length.
+- **Chunk boundaries no longer glitch — done.** Separation is a windowed
+  transform, so the first and last windows of any buffer have no neighbours to
+  overlap-add with. Chunks were being separated independently and butted
+  together, which put a **large** discontinuity at every seam — measured at 3.77
+  on material peaking at 0.9, in every stem, once every ten seconds, for the
+  whole track.
+  Fixed by separating *more* than the chunk and keeping only the middle, rather
+  than by crossfading the seam: with enough context either side the interior is
+  simply correct, and there is nothing left to fade between.
+  The margin is measured rather than guessed — 0 frames deviates by 3.77, 1024
+  by 0.014, 2048 and beyond by 0.0053 and flat. What remains at the flat end is
+  the median filters' longer-range statistics, a real difference rather than an
+  edge artefact, at half a percent of full scale. The constant is 4096: the
+  turn in the curve with a factor of two in hand, costing under two percent more
+  work on a ten-second chunk.
+  The stem cache is versioned with it. Entries written before this hold the
+  glitched audio, and reading one back would reintroduce the fault silently on
+  any machine that had run djmanzo before.
 - Graceful pending state: original mix plays while the first window is separating.
 - **Stem pads page — done**: the action vocabulary has the four stems and the
   pad table exposes a Stems page with mute toggles over held solos, so the

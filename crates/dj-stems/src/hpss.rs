@@ -565,3 +565,106 @@ mod tests {
         assert_eq!(Hpss.separate(&[0.0; 8], 0), Err(StemError::NoSampleRate));
     }
 }
+
+#[cfg(test)]
+mod seam_tests {
+    use super::*;
+    use crate::stems::{SEPARATION_MARGIN, Separator};
+
+    /// Four seconds of something with a sustained tone and a repeating tick, so
+    /// the harmonic/percussive split has real work to do.
+    fn material(sr: u32, seconds: usize) -> Vec<f32> {
+        (0..sr as usize * seconds)
+            .flat_map(|n| {
+                let t = n as f32 / sr as f32;
+                let bass = (2.0 * std::f32::consts::PI * 80.0 * t).sin() * 0.5;
+                let hat = if n % 4800 < 60 { 0.4 } else { 0.0 };
+                let s = bass + hat;
+                [s, s]
+            })
+            .collect()
+    }
+
+    /// The deviation of one passage separated with `margin` frames of context
+    /// against the same passage separated as part of the whole track.
+    fn deviation_with_margin(margin: usize) -> f32 {
+        let sr = 48_000u32;
+        let mix = material(sr, 6);
+        let frames = mix.len() / 2;
+        let sep = Hpss;
+        let whole = sep.separate(&mix, sr).unwrap().into_parts();
+
+        let body_start = 96_000usize;
+        let body_len = 48_000usize;
+        let lead = margin.min(body_start);
+        let from = (body_start - lead) * 2;
+        let to = ((body_start + body_len + margin).min(frames)) * 2;
+        let padded = sep.separate(&mix[from..to], sr).unwrap().into_parts();
+
+        let mut worst = 0.0f32;
+        for stem in 0..dj_core::Stem::COUNT {
+            for f in 0..body_len {
+                let got = padded[stem][(lead + f) * 2];
+                let want = whole[stem][(body_start + f) * 2];
+                worst = worst.max((got - want).abs());
+            }
+        }
+        worst
+    }
+
+    /// **A chunk separated on its own is wrong at its edges**, and this is how
+    /// wrong.
+    ///
+    /// Not a subtlety: the deviation is larger than the signal. Separation is a
+    /// windowed transform, and the first and last windows of any buffer have no
+    /// neighbours to overlap-add with. Butting independently separated chunks
+    /// together therefore put a glitch at every seam — once every ten seconds,
+    /// for the whole track, in every stem.
+    ///
+    /// Kept as a test rather than deleted once fixed, because it is the reason
+    /// [`SEPARATION_MARGIN`] exists and the only thing that would notice if
+    /// someone decided the margin was wasted work.
+    #[test]
+    fn a_chunk_separated_with_no_context_is_badly_wrong_at_its_edges() {
+        let worst = deviation_with_margin(0);
+        assert!(
+            worst > 1.0,
+            "separating with no context deviated by only {worst}, so the margin \
+             may no longer be earning its cost -- re-measure before removing it"
+        );
+    }
+
+    /// And with the margin it is not. Half a percent of full scale, which is
+    /// the median filters' longer-range statistics rather than an edge
+    /// artefact: it does not improve with more context.
+    #[test]
+    fn the_margin_makes_a_chunk_match_the_whole_track() {
+        let worst = deviation_with_margin(SEPARATION_MARGIN);
+        assert!(
+            worst < 0.008,
+            "a chunk separated with {SEPARATION_MARGIN} frames of context still \
+             deviated by {worst} from the whole-track separation"
+        );
+    }
+
+    /// The margin is where the curve flattens, and the threshold above is set
+    /// **between** the two sides of that turn — 1024 frames measures about
+    /// 0.014, the margin about 0.005.
+    ///
+    /// This test exists because the first version of it did not work. It
+    /// compared `SEPARATION_MARGIN` against `SEPARATION_MARGIN / 8`, which is
+    /// a claim about the *shape* of the curve and not about the constant: cut
+    /// the constant to a quarter and the test still passed, because a quarter
+    /// still beats an eighth of a quarter. A mutation caught it. The literal
+    /// below is the point of the test — it pins the choice against a fixed
+    /// alternative rather than against itself.
+    #[test]
+    fn a_thousand_frames_of_context_is_not_enough() {
+        let short = deviation_with_margin(1024);
+        assert!(
+            short > 0.008,
+            "1024 frames of context deviated by only {short}, so the threshold \
+             in the test above no longer separates a good margin from a bad one"
+        );
+    }
+}

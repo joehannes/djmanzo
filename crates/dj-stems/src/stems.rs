@@ -109,6 +109,38 @@ impl Stems {
 /// whole-track: a separator that streamed would have to be realtime-safe, and
 /// none of them are — the pending state belongs to the application, which plays
 /// the mix until the stems arrive.
+/// Frames of surrounding audio a chunk needs on each side to separate as if it
+/// were part of the whole track.
+///
+/// # Why a chunk cannot be separated alone
+///
+/// Separation is a windowed transform, so the first and last windows of any
+/// buffer have no neighbours to overlap-add with and the reconstruction there
+/// is wrong — and the median filters that decide harmonic from percussive want
+/// context on both sides of every frame. Separating ten-second chunks
+/// independently and butting them together therefore put a **large** glitch at
+/// every seam, once every ten seconds, for the whole track.
+///
+/// # Where the number comes from
+///
+/// Measured, not guessed. `hpss::seam_tests` separates a passage with varying
+/// amounts of surrounding audio and compares its interior against separating
+/// the whole track:
+///
+/// | margin | worst deviation |
+/// |-------:|----------------:|
+/// | 0      | 3.77            |
+/// | 1024   | 0.014           |
+/// | 2048   | 0.0053          |
+/// | 4096+  | 0.0053          |
+///
+/// It converges at 2048 and does not improve after: what is left is the median
+/// filters' dependence on longer-range statistics, which is a real difference
+/// rather than an edge artefact, and at half a percent of full scale it is not
+/// audible. 4096 is that convergence point with a factor of two in hand, and on
+/// a ten-second chunk it costs under two percent more work.
+pub const SEPARATION_MARGIN: usize = 4096;
+
 pub trait Separator: Send + Sync + std::fmt::Debug {
     /// What to call this in a log and in the interface.
     fn name(&self) -> &'static str;
