@@ -17,6 +17,7 @@
    * took no round trip, which is true for most of what gets typed here.
    */
   import IconButton from "./controls/IconButton.svelte";
+  import Conduct from "./Conduct.svelte";
   import {
     ask,
     assistantState,
@@ -135,6 +136,15 @@
       {showSetup ? "Hide setup" : "Setup"}
     </button>
   </header>
+
+  <!--
+    How much it does, and taking it back. Above the conversation on purpose:
+    what the assistant is *allowed* to do is a decision you make before you ask
+    it anything, and the pair of takeover buttons should be the first thing your
+    hand finds when this panel is open.
+  -->
+  <Conduct {enabled} />
+
 
   {#if showSetup}
     <div class="setup-panel">

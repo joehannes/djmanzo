@@ -1173,6 +1173,55 @@ fn number(value: f64) -> String {
     }
 }
 
+impl Action {
+    /// The control this action moves, if it moves one.
+    ///
+    /// **What makes takeover real.** The assistant must step off a control the
+    /// moment a hand arrives on it, and the only way it can know a hand arrived
+    /// is that an action came in from a person. This is the translation: an
+    /// action in, the parameter it lands on out.
+    ///
+    /// `None` for actions that move no continuous control -- a hot cue, a loop,
+    /// an effect. Those are *events* rather than positions, and there is
+    /// nothing for the assistant to be in the middle of doing to them: a DJ
+    /// firing a cue has not taken the crossfader out of its hands.
+    ///
+    /// Transport *is* included. Pressing play or pause is taking the deck, and
+    /// an assistant that carried on cueing a deck the DJ had just stopped would
+    /// be fighting them over it.
+    #[must_use]
+    pub fn touches(&self) -> Option<crate::ParamId> {
+        use crate::ParamId;
+        use crate::param::{DeckParam, GlobalParam};
+        match self {
+            Action::Deck { deck, action } => {
+                let param = match action {
+                    DeckAction::SetVolume(_) => DeckParam::Volume,
+                    DeckAction::SetGainDb(_) => DeckParam::GainDb,
+                    DeckAction::SetFilter(_) => DeckParam::Filter,
+                    DeckAction::SetPitch(_) => DeckParam::Pitch,
+                    DeckAction::SetEqLow(_) => DeckParam::EqLow,
+                    DeckAction::SetEqMid(_) => DeckParam::EqMid,
+                    DeckAction::SetEqHigh(_) => DeckParam::EqHigh,
+                    DeckAction::Play
+                    | DeckAction::Pause
+                    | DeckAction::PlayPause
+                    | DeckAction::Cue
+                    | DeckAction::Seek(_)
+                    | DeckAction::BeatJump(_)
+                    | DeckAction::PhraseJump(_) => DeckParam::Position,
+                    _ => return None,
+                };
+                Some(ParamId::Deck(*deck, param))
+            }
+            Action::Mixer(MixerAction::Crossfader(_)) => {
+                Some(ParamId::Global(GlobalParam::Crossfader))
+            }
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for Action {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

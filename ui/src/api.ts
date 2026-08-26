@@ -1284,6 +1284,75 @@ export interface TransitionPlan {
  * grid, or the outgoing track already past its last usable phrase. A planner
  * that always answers is one that answers wrongly at the end of a record.
  */
+/** How the assistant is conducting itself right now. */
+export interface Conduct {
+  posture: string;
+  occasion: string;
+  /** Deck numbers with at least one control you have taken. */
+  decks_held: number[];
+  /** Whether anything at all is held. */
+  anything_held: boolean;
+  /** What it would do next — shown at every posture, including the ones that
+   *  will not act. Seeing what it *would* do is how you decide whether to let
+   *  it. */
+  next_step: string;
+  because: string;
+}
+
+/** A pack: both dials under one name. */
+export interface AssistantPack {
+  name: string;
+  posture: string;
+  occasion: string;
+  summary: string;
+}
+
+export const assistantPacks = () => invoke<AssistantPack[]>("assistant_packs");
+export const assistantConduct = () => invoke<Conduct>("assistant_conduct");
+export const assistantSetPosture = (posture: string) =>
+  invoke<void>("assistant_set_posture", { posture });
+export const assistantSetOccasion = (occasion: string) =>
+  invoke<void>("assistant_set_occasion", { occasion });
+export const assistantApplyPack = (name: string) =>
+  invoke<void>("assistant_apply_pack", { name });
+/** Take everything out of the assistant's hands, now. */
+export const assistantTakeOver = () => invoke<void>("assistant_take_over");
+/** Hand everything back, whatever was taken. */
+export const assistantHandBack = () => invoke<void>("assistant_hand_back");
+
+/** How much the assistant does, quietest first. */
+export const POSTURES = [
+  "off",
+  "watch",
+  "suggest",
+  "prepare",
+  "assist",
+  "autopilot",
+] as const;
+
+/** One line each, for the tooltip. What changes, not what it is called. */
+export const POSTURE_HELP: Record<string, string> = {
+  off: "Nothing at all.",
+  watch: "Records the set, says nothing. For practice you will review later.",
+  suggest: "Offers, with reasons. Never acts.",
+  prepare:
+    "Loads and cues the next record, gain-matched, and stops there. You still do the mixing.",
+  assist: "Does the small things, asks about the big ones.",
+  autopilot: "Mixes on its own. Touch anything to take over.",
+};
+
+export const OCCASIONS = [
+  "learning",
+  "practice",
+  "experimenting",
+  "warm_up",
+  "peak",
+  "close",
+  "background",
+  "requests",
+  "open",
+] as const;
+
 export const planTransition = (fromDeck: number, toDeck: number) =>
   invoke<TransitionPlan | null>("plan_transition", { fromDeck, toDeck });
 

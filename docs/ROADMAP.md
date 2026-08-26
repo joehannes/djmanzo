@@ -1458,6 +1458,31 @@ external system can drive it over the network without a private API.
   be reproduced at all — such a set replays as the actions the vinyl produced,
   which is a fair record of what was played and not a recording of the night.
 
+**Wired up — the assistant is reachable.** `Action::touches` says which control
+an action moves, so every action arriving from a person records a touch and the
+takeover is real rather than theoretical. `AppState::conduct` holds posture,
+occasion and takeover under one lock — read together on every tick, changed
+together when a pack is chosen — and seven commands drive it.
+
+The **Conduct panel** sits above the conversation in the Assistant, and its
+layout is the design rather than an arrangement:
+
+- **The two takeover buttons never move and are always present.** Not
+  shown-when-relevant: a control that appears and disappears is one you cannot
+  build muscle memory for, and muscle memory is what you have at 01:40. "Hand
+  back" is *disabled* when nothing is held rather than hidden, so its position
+  is learnable even on the nights you never need it.
+- **They are the largest controls in the panel**, because reaching for the right
+  one under pressure should not require reading. Take-over is marked urgent;
+  hand-back is deliberately calm, so it never looks like the thing to press in a
+  hurry.
+- **What it will do next is shown at every posture**, including the ones that
+  will not act. Seeing what it *would* do is how a DJ decides whether to let it.
+
+Still not wired: staging and the next record come from the setlist, so the
+autopilot currently reports honestly that nothing is chosen to play next rather
+than inventing one.
+
 - Still open from the original M8: lyrics/karaoke and video mixing.
 
 ### M8 extended — the assistant that mixes, adapts and teaches

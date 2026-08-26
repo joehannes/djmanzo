@@ -1011,6 +1011,12 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
 pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
     let parsed = Action::parse(action).map_err(|e| format!("{action:?}: {e}"))?;
 
+    // A hand arrived on a control. Recorded before the action is carried out,
+    // so an autopilot tick that lands between the two still sees the takeover
+    // -- the wrong order here would let the assistant move a fader in the
+    // moment between a DJ grabbing it and the engine hearing about it.
+    state.note_human_touch(&parsed);
+
     // Eject is the one action with consequences outside the engine: the deck's
     // name and its analysis live here, not there, and leaving them behind would
     // show a track that is no longer loaded.
@@ -2018,6 +2024,217 @@ pub struct FailedFileDto {
 
 fn library(state: &AppState) -> Result<Arc<dj_library::Library>, String> {
     state.library().get().map_err(|e| e.to_string())
+}
+
+/// How the assistant is conducting itself, for the panel.
+#[derive(Debug, Clone, Serialize)]
+pub struct ConductDto {
+    pub posture: String,
+    pub occasion: String,
+    /// Deck numbers with at least one control the human has taken.
+    pub decks_held: Vec<u8>,
+    /// Whether anything at all is held, so the panel knows to offer resume.
+    /// Offering it when nothing was taken is offering to undo nothing.
+    pub anything_held: bool,
+    /// What the assistant would do next, and why. Present at every posture,
+    /// including the ones that will not act -- seeing what it *would* do is how
+    /// a DJ decides whether to let it.
+    pub next_step: String,
+    pub because: String,
+}
+
+/// A pack: both dials under one name.
+#[derive(Debug, Clone, Serialize)]
+pub struct PackDto {
+    pub name: String,
+    pub posture: String,
+    pub occasion: String,
+    pub summary: String,
+}
+
+/// The packs on offer.
+#[tauri::command]
+#[must_use]
+pub fn assistant_packs() -> Vec<PackDto> {
+    dj_assistant::packs()
+        .iter()
+        .map(|p| PackDto {
+            name: p.name.to_owned(),
+            posture: p.posture.name().to_owned(),
+            occasion: p.occasion.name().to_owned(),
+            summary: p.summary.to_owned(),
+        })
+        .collect()
+}
+
+/// How the assistant is conducting itself, and what it would do next.
+#[tauri::command]
+pub fn assistant_conduct(state: State<'_, AppState>) -> Result<ConductDto, String> {
+    let conduct = state.conduct();
+    let guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    let decision = decide(&state, &guard);
+    Ok(ConductDto {
+        posture: guard.posture.name().to_owned(),
+        occasion: guard.occasion.name().to_owned(),
+        decks_held: guard
+            .takeover
+            .decks_held()
+            .iter()
+            .map(|d| d.human_number())
+            .collect(),
+        anything_held: guard.takeover.anything_held(),
+        next_step: describe_step(&decision.step),
+        because: decision.because,
+    })
+}
+
+/// Set how much the assistant does.
+#[tauri::command]
+pub fn assistant_set_posture(state: State<'_, AppState>, posture: String) -> Result<(), String> {
+    let wanted = dj_assistant::Posture::parse(&posture)
+        .ok_or_else(|| format!("{posture:?} is not a posture"))?;
+    let conduct = state.conduct();
+    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    guard.posture = wanted;
+    Ok(())
+}
+
+/// Set what the night is.
+#[tauri::command]
+pub fn assistant_set_occasion(state: State<'_, AppState>, occasion: String) -> Result<(), String> {
+    let wanted = dj_assistant::Occasion::parse(&occasion)
+        .ok_or_else(|| format!("{occasion:?} is not an occasion"))?;
+    let conduct = state.conduct();
+    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    guard.occasion = wanted;
+    Ok(())
+}
+
+/// Choose a pack, setting both dials at once.
+#[tauri::command]
+pub fn assistant_apply_pack(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let pack = dj_assistant::packs()
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name.trim()))
+        .ok_or_else(|| format!("no pack called {name:?}"))?;
+    let conduct = state.conduct();
+    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    guard.posture = pack.posture;
+    guard.occasion = pack.occasion;
+    Ok(())
+}
+
+/// Take everything out of the assistant's hands, now.
+///
+/// The panic gesture. Touching one control already takes that one; this is for
+/// a DJ who wants the machine off without hunting for eight of them.
+#[tauri::command]
+pub fn assistant_take_over(state: State<'_, AppState>) -> Result<(), String> {
+    let conduct = state.conduct();
+    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    guard.takeover.take_all();
+    Ok(())
+}
+
+/// Hand everything back.
+///
+/// One gesture, whatever was taken and however. A DJ resuming should not have
+/// to remember what they touched.
+#[tauri::command]
+pub fn assistant_hand_back(state: State<'_, AppState>) -> Result<(), String> {
+    let conduct = state.conduct();
+    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    guard.takeover.release_all();
+    Ok(())
+}
+
+/// What the assistant would do next, given everything.
+///
+/// Shared by the panel and (later) by the tick that acts on it, so what is
+/// shown and what is done cannot drift apart.
+fn decide(state: &AppState, conduct: &crate::state::Conduct) -> crate::autopilot::Decision {
+    let situation = read_situation(state, conduct);
+    crate::autopilot::next_step(&situation, &conduct.takeover)
+}
+
+/// Assemble what the autopilot needs from the live application.
+fn read_situation(
+    state: &AppState,
+    conduct: &crate::state::Conduct,
+) -> crate::autopilot::Situation {
+    let registry = state.registry();
+    let read = |deck: dj_core::DeckId, p| f64::from(registry.get(dj_core::ParamId::Deck(deck, p)));
+
+    // The live deck is the loaded one furthest through its track. With one
+    // deck playing that is simply it; with two mid-transition it is the one
+    // going out, which is the one the plan is about.
+    let decks: Vec<dj_core::DeckId> = (1..=state.deck_count())
+        .filter_map(|n| dj_core::DeckId::from_human(u8::try_from(n).ok()?))
+        .collect();
+    let live = decks
+        .iter()
+        .copied()
+        .filter(|d| read(*d, dj_core::param::DeckParam::Loaded) > 0.5)
+        .max_by(|a, b| {
+            read(*a, dj_core::param::DeckParam::Position)
+                .partial_cmp(&read(*b, dj_core::param::DeckParam::Position))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .or_else(|| decks.first().copied())
+        // A deck must exist for the rest to mean anything; deck 1 always does.
+        .unwrap_or_else(|| dj_core::DeckId::from_human(1).expect("deck 1 exists"));
+
+    let idle = decks
+        .iter()
+        .copied()
+        .find(|d| *d != live && read(*d, dj_core::param::DeckParam::Loaded) <= 0.5);
+
+    let grid = state.waveforms().grid(live.human_number());
+    let rate = grid.map_or(dj_core::SampleRate::DEFAULT, |g| g.sample_rate);
+
+    let outgoing = crate::plan::Outgoing {
+        position: read(live, dj_core::param::DeckParam::Position),
+        length: read(live, dj_core::param::DeckParam::LengthFrames),
+        bpm: grid.map_or(120.0, |g| g.grid.bpm.get()),
+        phrase: grid.and_then(|g| g.phrase),
+        key: None,
+        sample_rate: rate,
+        grid_anchor: grid.map_or(0.0, |g| g.grid.anchor.get()),
+    };
+
+    crate::autopilot::Situation {
+        posture: conduct.posture,
+        occasion: conduct.occasion,
+        live,
+        outgoing,
+        idle,
+        // Staging and the next record come from the setlist, which is the next
+        // slice. Until then the autopilot correctly reports that there is
+        // nothing chosen to play next, rather than inventing one.
+        staged: None,
+        next: None,
+        gain_offset_db: None,
+    }
+}
+
+/// One line naming what a step is, for the panel.
+fn describe_step(step: &crate::autopilot::Step) -> String {
+    use crate::autopilot::Step;
+    match step {
+        Step::Nothing => "nothing".to_owned(),
+        Step::Stage { deck, .. } => format!("load deck {}", deck.human_number()),
+        Step::Cue { deck, beat } => format!("cue deck {} to beat {beat}", deck.human_number()),
+        Step::MatchGain { deck, db } => {
+            format!("trim deck {} by {db:+.1} dB", deck.human_number())
+        }
+        Step::Mix {
+            from, to, beats, ..
+        } => format!(
+            "mix deck {} into deck {} over {beats} beats",
+            from.human_number(),
+            to.human_number()
+        ),
+    }
 }
 
 /// One track in an assembled set, with the reasoning that placed it.

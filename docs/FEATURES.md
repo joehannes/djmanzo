@@ -178,7 +178,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | **Deterministic replay / re-render** | **shipped** — a set file rendered back to audio, faster than real time, byte-identical run to run. Live inputs (mic, aux, DVS) cannot be reproduced and are stated as such |
 | **Genre families** | **shipped** — 31 families across Latin America, North America, Europe, Africa and beyond, encoding felt-vs-written tempo and rhythmic grammar. A working DJ's map, not a musicology; wrong at the edges by design and written down so it can be corrected |
 | **Automatic set assembly** | **shipped** — a whole set built from the library with an arc, taste as a tilt, no repeats, no two tracks by one artist in a row, and no blend across a rhythmic grammar |
-| **Assistant takeover** | **shipped** — per-control, instant, implicit; one gesture hands everything back; expires after ten minutes. Not yet wired to the interface's control events |
+| **Assistant takeover** | **shipped and wired** — per-control, instant, implicit on any human action; one gesture hands everything back; expires after ten minutes |
+| **Assistant posture / occasion** | **shipped** — six postures, nine occasions, seven packs, in the Conduct panel with the next step shown before it happens |
 | **Timecode vinyl / DVS** | **shipped** — speed, direction and absolute position drive a deck, in relative or absolute mode, with an input picker and a live calibration reading in Settings. djmanzo writes its own control signal to a WAV, so any turntable, CD deck or phone works without a licensed record. **Not yet run against a pressed record** |
 | Video mixing / VJ output | M8 |
 | Karaoke | K1 / K2 — see [KARAOKE.md](KARAOKE.md) |

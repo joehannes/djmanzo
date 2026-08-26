@@ -79,6 +79,17 @@ const STEMS_CACHE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 #[derive(Debug)]
 pub struct AppState {
     bus: Arc<ActionBus<Command>>,
+    /// How much the assistant is doing, what the night is, and which controls
+    /// the human has taken.
+    ///
+    /// Distinct from `assistant`, which is the *provider* choice -- which model
+    /// answers a question. This is what the assistant is allowed to do with the
+    /// answer, which is a different decision entirely.
+    ///
+    /// One lock rather than three: the three are read together on every
+    /// autopilot tick and changed together when a pack is chosen, and separate
+    /// locks would let a tick see a new posture against an old occasion.
+    conduct: Arc<Mutex<Conduct>>,
     registry: Arc<ParameterRegistry>,
     /// The network control server. Off until a DJ switches it on; see
     /// `crate::remote` for why that is not a preference.
@@ -258,6 +269,32 @@ pub struct LoadedTrackInfo {
     pub id: dj_core::TrackId,
 }
 
+/// How the assistant conducts itself: how much it does, what the night is, and
+/// what the human has taken out of its hands.
+///
+/// Deliberately small and `Clone`-free: it is read under a lock on every tick
+/// and the temptation to hang more on it should meet friction.
+#[derive(Debug)]
+pub struct Conduct {
+    pub posture: dj_assistant::Posture,
+    pub occasion: dj_assistant::Occasion,
+    pub takeover: dj_assistant::Takeover,
+}
+
+impl Default for Conduct {
+    fn default() -> Self {
+        Self {
+            // Suggest, not Off. A DJ who has never opened the panel should get
+            // the thing that is useful and cannot surprise them -- and one who
+            // wants silence has an Off to choose, whereas one who never
+            // discovers the feature never chooses anything.
+            posture: dj_assistant::Posture::Suggest,
+            occasion: dj_assistant::Occasion::Open,
+            takeover: dj_assistant::Takeover::new(),
+        }
+    }
+}
+
 impl AppState {
     #[must_use]
     pub fn new(use_null_backend: bool) -> Self {
@@ -339,6 +376,7 @@ impl AppState {
 
         Self {
             bus,
+            conduct: Arc::new(Mutex::new(Conduct::default())),
             registry,
             remote: Arc::new(crate::remote::Remote::default()),
             peers: Arc::new(crate::peersync::Peers::default()),
@@ -1177,7 +1215,30 @@ impl AppState {
         }
     }
 
+    /// How the assistant is conducting itself, and what the human holds.
+    ///
+    /// Handed out as the `Arc` rather than copied, because the takeover inside
+    /// it is mutated from wherever a human action arrives and read from the
+    /// autopilot tick -- two different threads, one truth.
     #[must_use]
+    pub fn conduct(&self) -> Arc<Mutex<Conduct>> {
+        Arc::clone(&self.conduct)
+    }
+
+    /// Note that a human moved a control.
+    ///
+    /// Called for every action that arrives from a person -- the interface, a
+    /// controller, the network -- and not for the assistant's own. That
+    /// asymmetry is the whole mechanism: see `dj_assistant::takeover`.
+    pub fn note_human_touch(&self, action: &dj_core::Action) {
+        let Some(param) = action.touches() else {
+            return;
+        };
+        if let Ok(mut conduct) = self.conduct.lock() {
+            conduct.takeover.touched(param);
+        }
+    }
+
     pub fn deck_tracks(&self) -> Arc<Mutex<HashMap<u8, LoadedTrackInfo>>> {
         Arc::clone(&self.deck_tracks)
     }
