@@ -2067,6 +2067,61 @@ pub fn session_open(path: String) -> Result<SessionSummaryDto, String> {
     })
 }
 
+/// Re-render a saved set to a WAV file.
+///
+/// Faster than real time, and with nothing dropped: a replay runs to no
+/// deadline, so an underrun cannot put a hole in it the way one can in a live
+/// recording. The same file and the same records produce byte-identical audio
+/// every time -- see `crate::replay`.
+///
+/// Every track the set loaded is decoded from the library. A set that
+/// references a record the library no longer has is refused by name rather than
+/// rendered with a silent deck, which would be quietly wrong.
+#[tauri::command]
+pub fn session_render(
+    state: State<'_, AppState>,
+    session_path: String,
+    out_path: String,
+    tail_seconds: f64,
+) -> Result<String, String> {
+    let db = library(&state)?;
+    let session = crate::session::Session::read(std::path::Path::new(&session_path))?;
+    let rate = dj_core::SampleRate::DEFAULT;
+
+    // Decoded once each and kept, rather than re-decoded per load: a set that
+    // brings a record back for a second play should not pay for it twice, and
+    // a DJ's crate is small enough that holding it is cheaper than the disk.
+    let mut decoded: std::collections::HashMap<dj_core::TrackId, Arc<dyn dj_decode::TrackSource>> =
+        std::collections::HashMap::new();
+    let mut resolve = |id: dj_core::TrackId| -> Option<Arc<dyn dj_decode::TrackSource>> {
+        if let Some(found) = decoded.get(&id) {
+            return Some(Arc::clone(found));
+        }
+        let track = db.track(id).ok().flatten()?;
+        let loaded = dj_decode::decode_file(&track.path).ok()?;
+        let source: Arc<dyn dj_decode::TrackSource> = Arc::new(loaded.buffer);
+        decoded.insert(id, Arc::clone(&source));
+        Some(source)
+    };
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let tail = (tail_seconds.max(0.0) * rate.as_f64()) as u64;
+    let rendered = crate::replay::render_to_wav(
+        &session,
+        rate,
+        state.deck_count(),
+        tail,
+        &mut resolve,
+        std::path::Path::new(&out_path),
+    )?;
+
+    Ok(format!(
+        "{:.0}s from {} events → {out_path}",
+        rendered.frames as f64 / rate.as_f64(),
+        rendered.events
+    ))
+}
+
 /// One difference between two takes of a set.
 #[derive(Debug, Clone, Serialize)]
 pub struct DivergenceLineDto {

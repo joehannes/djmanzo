@@ -1435,8 +1435,30 @@ external system can drive it over the network without a private API.
   timestamp calls every line changed. `session::diff` matches moves and reports
   which are missing and how far the rest drifted.
 
-- Still open in M8: driving the engine from a set file (live replay and offline
-  re-render), then lyrics/karaoke and video mixing.
+- **Deterministic replay and offline re-render — done.** `dj_app::replay` drives
+  the engine headless against a frame counter rather than a sound card, and
+  `session_render` writes a set back out as a WAV.
+
+  **The same file and the same records produce byte-identical audio, every
+  time.** That is not luck with floating point: the engine has no wall clock in
+  its signal path — envelopes, filters, the crossfader and the beat clock all
+  move per frame — so the same frames and commands in the same order give the
+  same samples. A gig mixed through a cheap interface can be re-rendered
+  afterwards at full quality with nothing dropped, because a replay runs to no
+  deadline and cannot underrun.
+
+  **Events land on their frame, not the block edge.** A 1024-frame block at
+  48 kHz is 21 ms, a third of a beat at 174 BPM; firing whatever is due at each
+  edge would quantise every move in the set to that grid — still deterministic,
+  and audibly not what was played. Blocks are split at each event instead.
+
+  Two things are refused rather than approximated: a **missing record** stops
+  the replay by name instead of rendering a silent deck into a file that is
+  quietly wrong, and a **live input** (microphone, aux, timecode vinyl) cannot
+  be reproduced at all — such a set replays as the actions the vinyl produced,
+  which is a fair record of what was played and not a recording of the night.
+
+- Still open in M8: lyrics/karaoke and video mixing.
 - AI transition planner — suggests where and how, with stated reasoning.
 - Next-track suggestions ranked by harmonic compatibility, energy trajectory and phrase fit.
 - **Deterministic set replay and offline re-render** from the action log; practice loops; take
