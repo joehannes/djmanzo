@@ -2253,6 +2253,149 @@ pub fn assistant_conduct(state: State<'_, AppState>) -> Result<ConductDto, Strin
     })
 }
 
+// -- the journal ---------------------------------------------------------
+//
+// See the `notes` migration in `dj-library` for why a note belongs to a moment
+// rather than to a track.
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NoteDtoJournal {
+    pub id: i64,
+    pub session_id: String,
+    /// Unix seconds, the same clock as a play.
+    pub at: i64,
+    pub body: String,
+    pub playing: String,
+    /// Marked but not yet written up.
+    pub bare: bool,
+}
+
+impl From<dj_library::Note> for NoteDtoJournal {
+    fn from(note: dj_library::Note) -> Self {
+        Self {
+            bare: note.is_bare(),
+            id: note.id,
+            session_id: note.session_id,
+            at: note.at,
+            body: note.body,
+            playing: note.playing,
+        }
+    }
+}
+
+/// What is on the decks, as one line, for a note to carry.
+///
+/// Every *playing* deck, in deck order, because a note taken mid-transition is
+/// about both records and picking one would be picking wrong half the time.
+/// Falls back to whatever is loaded when nothing is playing: a DJ marking the
+/// moment before they bring something in still means that record.
+fn now_playing(state: &AppState) -> String {
+    let registry = state.registry();
+    let tracks = state.deck_tracks();
+    let Ok(tracks) = tracks.lock() else {
+        return String::new();
+    };
+
+    let describe = |deck: u8| {
+        tracks.get(&deck).map(|info| match &info.artist {
+            Some(artist) if !artist.trim().is_empty() => format!("{artist} - {}", info.title),
+            _ => info.title.clone(),
+        })
+    };
+
+    let decks: Vec<u8> = (1..=state.deck_count())
+        .filter_map(|n| u8::try_from(n).ok())
+        .collect();
+
+    let playing: Vec<String> = decks
+        .iter()
+        .filter(|n| {
+            dj_core::DeckId::from_human(**n).is_some_and(|d| {
+                registry.get(dj_core::ParamId::Deck(
+                    d,
+                    dj_core::param::DeckParam::Playing,
+                )) > 0.5
+            })
+        })
+        .filter_map(|n| describe(*n))
+        .collect();
+
+    if playing.is_empty() {
+        decks
+            .iter()
+            .filter_map(|n| describe(*n))
+            .collect::<Vec<_>>()
+    } else {
+        playing
+    }
+    .join(" / ")
+}
+
+/// Mark this moment.
+///
+/// The body may be empty, and usually is. The moment is the part that cannot
+/// be recovered afterwards; the words are the part that can, so the gesture in
+/// a booth is mark now and write it up later. Returns the id so the interface
+/// can put a cursor in it without re-reading the night.
+#[tauri::command]
+pub fn note_add(state: State<'_, AppState>, body: String) -> Result<i64, String> {
+    let playing = now_playing(&state);
+    library(&state)?
+        .add_note(
+            &state.session_id(),
+            crate::library::now_seconds(),
+            body.trim(),
+            &playing,
+        )
+        .map_err(|e| e.to_string())
+}
+
+/// Write up a note that was marked earlier.
+#[tauri::command]
+pub fn note_write(state: State<'_, AppState>, id: i64, body: String) -> Result<(), String> {
+    library(&state)?
+        .write_note(id, body.trim())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn note_delete(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    library(&state)?.delete_note(id).map_err(|e| e.to_string())
+}
+
+/// One night's notes, oldest first.
+///
+/// Pass no session to read tonight's, which is what the panel wants while the
+/// set is running.
+#[tauri::command]
+pub fn notes(
+    state: State<'_, AppState>,
+    session: Option<String>,
+) -> Result<Vec<NoteDtoJournal>, String> {
+    let session = session.unwrap_or_else(|| state.session_id());
+    Ok(library(&state)?
+        .notes(&session)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(NoteDtoJournal::from)
+        .collect())
+}
+
+/// Which nights have notes, and how many.
+#[tauri::command]
+pub fn note_counts(state: State<'_, AppState>) -> Result<Vec<(String, i64)>, String> {
+    library(&state)?.note_counts().map_err(|e| e.to_string())
+}
+
+/// The session tonight's notes belong to.
+///
+/// The interface needs it to tell "this night" from the ones in the history
+/// list, and it is not otherwise reachable from the front end.
+#[tauri::command]
+pub fn current_session(state: State<'_, AppState>) -> String {
+    state.session_id()
+}
+
 // -- the coach ----------------------------------------------------------
 //
 // See `dj_assistant::coach` for why this reads the action log rather than the

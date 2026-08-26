@@ -55,6 +55,7 @@
     activeDevice,
     openDevice,
     assistantConduct,
+    noteAdd,
     sessionLog,
     sessionSave,
     sessionDiff,
@@ -112,6 +113,30 @@
    * stream that fires sixty times a second.
    */
   let conductCare = $state(false);
+
+  /**
+   * When the last mark was taken, for the button's brief acknowledgement.
+   *
+   * Something has to say it happened, or the DJ presses again and ends up with
+   * three marks for one moment. A second and a half: long enough to read at a
+   * glance across a booth, short enough that the button is ready again before
+   * the next thing worth marking.
+   */
+  let markedAt = $state(0);
+  const MARK_SHOWN_MS = 1500;
+
+  async function mark() {
+    try {
+      await noteAdd();
+      markedAt = Date.now();
+      setTimeout(() => (markedAt = 0), MARK_SHOWN_MS);
+    } catch (why) {
+      // Loud, unlike most failures here: the DJ believes a moment was captured
+      // and it was not, and they will not find out until they look for it
+      // after the set, when the moment is gone.
+      error = `Could not mark the moment: ${why}`;
+    }
+  }
   // Saving a set and comparing two takes. See the Session log panel below.
   let savePath = $state("");
   let saved = $state<SessionSummary | null>(null);
@@ -812,6 +837,25 @@
           </option>
         {/each}
       </select>
+      <!--
+        Marking a moment, beside REC for the same reason REC is here: it is a
+        control that has to be findable without hunting, while both hands are
+        busy and the music is playing.
+
+        It takes the moment and nothing else — the time, and what is on the
+        decks. Writing it up happens in the Journal afterwards, because a DJ
+        who has just watched the floor empty has about ninety seconds of
+        attention and composing a sentence loses the observation.
+      -->
+      <button
+        class="mark"
+        class:done={markedAt > 0}
+        disabled={!ready}
+        onclick={mark}
+        title="Mark this moment — write it up in the Journal later"
+      >
+        {markedAt > 0 ? "Marked" : "Mark"}
+      </button>
       <IconButton icon="fa-solid fa-file-lines" label="Log" title="What the session has done so far" onClick={toggleLog} />
     </nav>
   </header>
@@ -1088,6 +1132,17 @@
     padding: 0.9rem;
     height: 100vh;
     overflow: hidden;
+  }
+
+  /*
+    Same shape as REC beside it: both are controls a DJ reaches for mid-set
+    without looking. Neither carries a rule of its own beyond its lit state —
+    they inherit the button style, which is what makes them look like
+    siblings.
+  */
+  .mark.done {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   .topbar {

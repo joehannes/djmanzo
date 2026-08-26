@@ -1687,9 +1687,37 @@ is what makes the reflective statistics possible at all.
 
 ### Remembering
 
-- **Note-taking sidekick** — notes attached to a moment in the session, not to a
-  file. "This transition landed", "the floor emptied here", "the birthday girl
-  wanted this".
+- **Note-taking sidekick — done.** Notes attached to a moment in the session,
+  not to a file. "This transition landed", "the floor emptied here", "the
+  birthday girl wanted this".
+
+  Built around one gesture: **mark now, write afterwards.** A DJ who has just
+  watched the floor empty has both hands busy and about ninety seconds of
+  attention; asking them to compose a sentence loses the observation. So
+  **Mark** in the top bar — beside REC, for the same reason REC is there —
+  takes the moment and what is on the decks, and the words are added later in
+  the **Journal**, which sits beside History in the browser sidebar because the
+  two are halves of the same thing: what was played, and what was thought while
+  it played.
+
+  That makes a note with no words a complete row rather than a half-finished
+  one, and the interface shows it as one — a dashed border and a cursor ready,
+  not an error.
+
+  Three decisions worth naming:
+
+  - **A note belongs to a moment, not to a track.** The same record works at
+    midnight and clears the room at two; filed against the track it would say
+    the wrong thing on both nights.
+  - **What was playing is copied in, not joined.** A note is an observation made
+    at a time, like a caption under a photograph: it should not change when the
+    library does. Joining `history` by timestamp is fragile exactly where it
+    matters — forty seconds into a record, mid-transition with two up, or with
+    nothing playing. And a foreign key would be worse: removing a track would
+    cascade away the note about the night it was played, which has the ownership
+    backwards. There is a test for that.
+  - **Writing a note up cannot rewrite the moment.** Only the body is editable.
+    A journal you can rewrite is not one worth keeping.
 - **Webcam capture** — periodic stills or clips attached to the same timeline,
   so a set can be reviewed against what the room was actually doing.
 - **Reflective statistics.** The data stays local and stays the DJ's. What it

@@ -1556,6 +1556,45 @@ export const chooseLayout = (name: string) => invoke<void>("choose_layout", { na
 export const exportSession = (session: string, path: string) =>
   invoke<number>("export_session", { session, path });
 
+// -- the journal ------------------------------------------------------------
+
+/** One note taken during a set. It belongs to a moment, not to a track. */
+export interface JournalNote {
+  id: number;
+  session_id: string;
+  /** Unix seconds, the same clock as a play. */
+  at: number;
+  body: string;
+  /** What was playing when the moment was marked, as it read at the time. */
+  playing: string;
+  /** Marked, not yet written up. */
+  bare: boolean;
+}
+
+/**
+ * Mark this moment.
+ *
+ * The body is usually empty: the moment is what cannot be recovered later, and
+ * the words are what can. Returns the new note's id.
+ */
+export const noteAdd = (body = "") => invoke<number>("note_add", { body });
+
+/** Write up a note marked earlier. Only the body — the moment is fixed. */
+export const noteWrite = (id: number, body: string) =>
+  invoke<void>("note_write", { id, body });
+
+export const noteDelete = (id: number) => invoke<void>("note_delete", { id });
+
+/** One night's notes, oldest first. Omit the session for tonight's. */
+export const listNotes = (session?: string) =>
+  invoke<JournalNote[]>("notes", { session: session ?? null });
+
+/** Which nights have notes, and how many. */
+export const noteCounts = () => invoke<[string, number][]>("note_counts");
+
+/** The session tonight's notes belong to. */
+export const currentSession = () => invoke<string>("current_session");
+
 // -- the coach --------------------------------------------------------------
 
 /** A technique the coach recognised in the log. */

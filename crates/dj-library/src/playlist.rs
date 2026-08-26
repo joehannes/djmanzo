@@ -86,6 +86,34 @@ pub struct PlayRecord {
     pub session_id: Option<String>,
 }
 
+/// One note taken during a set.
+///
+/// See the `notes` migration for why it belongs to a moment rather than to a
+/// track, and why what was playing is copied in rather than joined.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Note {
+    pub id: i64,
+    pub session_id: String,
+    /// Unix seconds, on the same clock as [`PlayRecord::played_at`].
+    pub at: i64,
+    /// What the DJ typed. Empty for a moment marked and not yet written up.
+    pub body: String,
+    /// What was playing when the moment was marked, as it read at the time.
+    pub playing: String,
+}
+
+impl Note {
+    /// Whether this is a marker with nothing written on it yet.
+    ///
+    /// A complete row, not a half-finished one: in a booth the useful gesture
+    /// is mark now, write afterwards, and the moment is the part that cannot
+    /// be recovered later.
+    #[must_use]
+    pub fn is_bare(&self) -> bool {
+        self.body.trim().is_empty()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

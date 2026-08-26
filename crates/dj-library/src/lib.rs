@@ -35,7 +35,7 @@ pub mod store;
 pub mod suggest;
 pub mod tags;
 
-pub use playlist::{PlayRecord, Playlist, PlaylistKind};
+pub use playlist::{Note, PlayRecord, Playlist, PlaylistKind};
 pub use record::{
     EditableField, GridSource, LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop,
     Tags, TrackEdit,

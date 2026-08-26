@@ -1,7 +1,7 @@
 //! Reading and writing the library.
 
 use crate::import::ImportReport;
-use crate::playlist::{PlayRecord, Playlist, PlaylistKind};
+use crate::playlist::{Note, PlayRecord, Playlist, PlaylistKind};
 use crate::record::{
     EditableField, LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop, Tags, TrackEdit,
 };
@@ -1227,6 +1227,74 @@ impl Library {
         })
     }
 
+    // -- notes ---------------------------------------------------------------
+
+    /// Mark a moment, with or without words for it yet.
+    ///
+    /// Returns the new note's id, so the interface can put the cursor in it
+    /// without re-reading the list. A marker taken mid-mix is worth nothing if
+    /// writing it up means finding it again.
+    pub fn add_note(&self, session_id: &str, at: i64, body: &str, playing: &str) -> Result<i64> {
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO notes (session_id, at, body, playing) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![session_id, at, body, playing],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+    }
+
+    /// Write up a note that was marked earlier.
+    ///
+    /// Only the body. What was playing and when are what the note *is* — a
+    /// record of a moment — and letting them be edited would turn it into a
+    /// claim about a moment instead.
+    pub fn write_note(&self, id: i64, body: &str) -> Result<()> {
+        self.with(|conn| {
+            conn.execute(
+                "UPDATE notes SET body = ?2 WHERE id = ?1",
+                rusqlite::params![id, body],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn delete_note(&self, id: i64) -> Result<()> {
+        self.with(|conn| {
+            conn.execute("DELETE FROM notes WHERE id = ?1", [id])?;
+            Ok(())
+        })
+    }
+
+    /// One night's notes, oldest first.
+    ///
+    /// Forwards, like the set list: a night is read in the order it happened.
+    pub fn notes(&self, session_id: &str) -> Result<Vec<Note>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, session_id, at, body, playing
+                 FROM notes WHERE session_id = ?1
+                 ORDER BY at, id",
+            )?;
+            let rows = stmt.query_map([session_id], read_note)?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
+    /// How many notes each session has, so a chip can say so.
+    ///
+    /// One query rather than one per session: a DJ with two hundred nights in
+    /// the list would otherwise pay two hundred round trips to render a
+    /// number beside each.
+    pub fn note_counts(&self) -> Result<Vec<(String, i64)>> {
+        self.with(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT session_id, count(*) FROM notes GROUP BY session_id")?;
+            let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+    }
+
     // -- search ------------------------------------------------------------
 
     /// Free-text search across the tags.
@@ -1438,6 +1506,16 @@ fn set_analysis_if_absent_on(
 ///
 /// The title falls back to the filename exactly as the browser's does, so a
 /// history row and a browser row never disagree about what a track is called.
+fn read_note(row: &Row<'_>) -> rusqlite::Result<Note> {
+    Ok(Note {
+        id: row.get(0)?,
+        session_id: row.get(1)?,
+        at: row.get(2)?,
+        body: row.get(3)?,
+        playing: row.get(4)?,
+    })
+}
+
 fn read_play(row: &Row<'_>) -> rusqlite::Result<PlayRecord> {
     let title: Option<String> = row.get(1)?;
     let artist: Option<String> = row.get(2)?;
@@ -1860,6 +1938,164 @@ mod tests {
 
     fn library() -> Library {
         Library::in_memory().unwrap()
+    }
+
+    // -- notes ---------------------------------------------------------------
+
+    /// **A night reads forwards.**
+    ///
+    /// The same reason `session` is oldest-first: a set list runs in the order
+    /// it happened, and so does what the DJ thought while it did.
+    ///
+    /// Three notes, written in an order that matches neither their times
+    /// ascending nor descending. With two, insertion order and time order can
+    /// coincide by accident and an ordering that ignores `at` entirely still
+    /// passes — which is exactly what happened the first time this was
+    /// written.
+    #[test]
+    fn a_nights_notes_come_back_in_the_order_they_happened() {
+        let lib = library();
+        lib.add_note("friday", 200, "the floor filled", "Aventura - Obsesión")
+            .unwrap();
+        lib.add_note(
+            "friday",
+            100,
+            "slow start",
+            "Juan Luis Guerra - Bachata Rosa",
+        )
+        .unwrap();
+        lib.add_note("friday", 300, "peak", "El Gran Combo - Un Verano")
+            .unwrap();
+        let notes = lib.notes("friday").unwrap();
+        assert_eq!(
+            notes.iter().map(|n| n.at).collect::<Vec<_>>(),
+            vec![100, 200, 300]
+        );
+    }
+
+    /// **Two marks in the same second keep the order they were made in.**
+    ///
+    /// A DJ hitting mark twice as something happens is not a hypothetical, and
+    /// the timestamps are whole seconds. Without the tiebreaker their order is
+    /// whatever SQLite feels like.
+    #[test]
+    fn marks_in_the_same_second_stay_in_the_order_they_were_made() {
+        let lib = library();
+        lib.add_note("friday", 100, "first", "x").unwrap();
+        lib.add_note("friday", 100, "second", "x").unwrap();
+        lib.add_note("friday", 100, "third", "x").unwrap();
+        let bodies: Vec<_> = lib
+            .notes("friday")
+            .unwrap()
+            .into_iter()
+            .map(|n| n.body)
+            .collect();
+        assert_eq!(bodies, vec!["first", "second", "third"]);
+    }
+
+    /// **One night's notes are one night's.**
+    #[test]
+    fn notes_do_not_leak_between_nights() {
+        let lib = library();
+        lib.add_note("friday", 100, "here", "A - one").unwrap();
+        lib.add_note("saturday", 100, "there", "B - two").unwrap();
+        assert_eq!(lib.notes("friday").unwrap().len(), 1);
+        assert_eq!(lib.notes("saturday").unwrap()[0].body, "there");
+        assert!(lib.notes("sunday").unwrap().is_empty());
+    }
+
+    /// **A marker with no words is a complete note.**
+    ///
+    /// The gesture that matters in a booth is *mark now, write afterwards*.
+    /// The moment cannot be recovered later; the words can.
+    #[test]
+    fn a_moment_can_be_marked_before_there_are_words_for_it() {
+        let lib = library();
+        let id = lib
+            .add_note("friday", 100, "", "Aventura - Obsesión")
+            .unwrap();
+        let marked = &lib.notes("friday").unwrap()[0];
+        assert!(marked.is_bare());
+        assert_eq!(marked.playing, "Aventura - Obsesión");
+
+        lib.write_note(id, "that transition landed").unwrap();
+        let written = &lib.notes("friday").unwrap()[0];
+        assert!(!written.is_bare());
+        assert_eq!(written.body, "that transition landed");
+    }
+
+    /// **Writing up a note does not rewrite the moment.**
+    ///
+    /// What was playing and when are what the note *is*. Letting them be
+    /// edited would turn a record of a moment into a claim about one.
+    #[test]
+    fn writing_a_note_up_leaves_when_and_what_alone() {
+        let lib = library();
+        let id = lib
+            .add_note("friday", 100, "", "Aventura - Obsesión")
+            .unwrap();
+        lib.write_note(id, "the birthday girl asked for this")
+            .unwrap();
+        let note = &lib.notes("friday").unwrap()[0];
+        assert_eq!(note.at, 100);
+        assert_eq!(note.playing, "Aventura - Obsesión");
+    }
+
+    /// **A note outlives the record it was about.**
+    ///
+    /// The ownership question, and the reason `playing` is text rather than a
+    /// reference: removing a track must not cascade away the note about the
+    /// night it was played. The note is the DJ's, not the record's.
+    #[test]
+    fn removing_a_track_does_not_remove_the_note_about_that_night() {
+        let lib = library();
+        let gone = track(9, "Obsesión", "Aventura");
+        lib.upsert_track(&gone).unwrap();
+        lib.add_note(
+            "friday",
+            100,
+            "the floor emptied here",
+            "Aventura - Obsesión",
+        )
+        .unwrap();
+
+        // Straight to SQL, as the other cascade tests here do: what is being
+        // checked is what the schema does when a track goes, not the route it
+        // went by.
+        lib.with(|conn| {
+            conn.execute("DELETE FROM tracks WHERE id = ?1", [id(9).to_hex()])?;
+            Ok(())
+        })
+        .unwrap();
+
+        let notes = lib.notes("friday").unwrap();
+        assert_eq!(notes.len(), 1, "the note went with the record");
+        assert_eq!(notes[0].playing, "Aventura - Obsesión");
+    }
+
+    #[test]
+    fn a_note_can_be_thrown_away() {
+        let lib = library();
+        let id = lib
+            .add_note("friday", 100, "never mind", "A - one")
+            .unwrap();
+        lib.delete_note(id).unwrap();
+        assert!(lib.notes("friday").unwrap().is_empty());
+    }
+
+    /// **The counts are per night and cover every night that has any.**
+    #[test]
+    fn each_night_is_counted_once() {
+        let lib = library();
+        lib.add_note("friday", 100, "a", "x").unwrap();
+        lib.add_note("friday", 200, "b", "x").unwrap();
+        lib.add_note("saturday", 100, "c", "x").unwrap();
+        let mut counts = lib.note_counts().unwrap();
+        counts.sort();
+        assert_eq!(
+            counts,
+            vec![("friday".to_string(), 2), ("saturday".to_string(), 1)]
+        );
     }
 
     #[test]

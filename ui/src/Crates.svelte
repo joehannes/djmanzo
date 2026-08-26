@@ -24,6 +24,7 @@
   export type Selection =
     | { kind: "all" }
     | { kind: "history" }
+    | { kind: "notes" }
     | { kind: "duplicates" }
     | { kind: "playlist"; id: number; name: string }
     | { kind: "smart"; id: number; name: string; query: string };
@@ -205,6 +206,19 @@
     onclick={() => select({ kind: "history" })}
   >
     History
+  </button>
+  <!--
+    The journal sits beside History because it is the other half of the same
+    thing: History is what was played, this is what was thought while it
+    played. Both are views of nights rather than of the collection, so both
+    belong up here and not in the tree a DJ built.
+  -->
+  <button
+    class="entry"
+    class:active={selection.kind === "notes"}
+    onclick={() => select({ kind: "notes" })}
+  >
+    Journal
   </button>
   <!--
     Duplicates is a *view* of the collection rather than a crate, so it belongs

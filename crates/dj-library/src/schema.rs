@@ -79,6 +79,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 6,
         sql: MIGRATION_6,
     },
+    Migration {
+        version: 7,
+        sql: MIGRATION_7,
+    },
 ];
 
 /// The initial schema.
@@ -415,6 +419,60 @@ ALTER TABLE tracks ADD COLUMN phrase_anchor     INTEGER;
 ALTER TABLE tracks ADD COLUMN phrase_confidence REAL;
 "#;
 
+/// Notes taken during a set.
+///
+/// # Why a note belongs to a moment and not to a track
+///
+/// "The floor emptied here" is not a fact about a record. The same record works
+/// at midnight and clears the room at two, and a note filed against the track
+/// would say the wrong thing on both nights. What a DJ wants back is *the
+/// night*, in order, with what they thought at the time sitting between the
+/// records.
+///
+/// # Why what was playing is copied in rather than joined
+///
+/// A note is an observation made at a time, like a caption under a photograph:
+/// it should not change when the library does. Joining against `history` by
+/// timestamp would be fragile in exactly the cases that matter — a note written
+/// forty seconds into a record, or mid-transition with two of them up, or with
+/// nothing playing at all.
+///
+/// And a foreign key would be worse than fragile. Removing a track would
+/// cascade away the note about the night it was played, which has the ownership
+/// backwards: the note is the DJ's, not the record's.
+///
+/// # Why the body may be empty
+///
+/// Because the moment is the part that cannot be recovered later and the words
+/// are the part that can. In a booth the useful gesture is *mark this now,
+/// write it afterwards* — the same thing a field recorder's marker button does,
+/// for the same reason. A row with an empty body is a marker, and it is a
+/// complete row rather than a half-finished one.
+///
+/// # Why webcam stills and audience reactions are not in here
+///
+/// They were considered — ROADMAP's M9 groups them with this under one
+/// timeline. But neither fits a text body, and guessing now at what a still or
+/// a reaction needs would produce columns that are wrong when they arrive.
+/// They get their own tables and this one keeps its name.
+const MIGRATION_7: &str = r#"
+CREATE TABLE notes (
+    id         INTEGER PRIMARY KEY,
+    -- The run of the application this belongs to; the same value `history`
+    -- uses, so the two can be put on one timeline.
+    session_id TEXT    NOT NULL,
+    -- Unix seconds, on the same clock as history.played_at.
+    at         INTEGER NOT NULL,
+    -- What the DJ typed. Empty for a marker not yet written up.
+    body       TEXT    NOT NULL,
+    -- What was playing when the moment was marked, as it read at the time.
+    -- Deliberately not a reference; see above.
+    playing    TEXT    NOT NULL
+);
+
+CREATE INDEX notes_session ON notes(session_id, at);
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -499,6 +557,7 @@ mod tests {
             "pending_playlist_entries",
             "track_paths",
             "tracks_fts",
+            "notes",
         ] {
             let found: i64 = conn
                 .query_row(
