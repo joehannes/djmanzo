@@ -1389,8 +1389,32 @@ external system can drive it over the network without a private API.
   other, so the real risk is a track with no structure at all, which is what the
   phrase reason actually reports.
 
-- Next in M8: the transition planner — where and how, with stated reasoning —
-  then deterministic set replay.
+- **The transition planner — done.** `dj_app::plan` proposes where to start a
+  mix, how long to take, and which of the five styles to use, with typed reasons
+  like the suggester's. Reachable from the Automix panel.
+
+  It lives **beside** automix rather than inside it. Automix *runs* a transition
+  on a style chosen in advance; the planner *decides* one from what the two
+  records actually are. Keeping them apart means the planner can be asked for an
+  opinion without anything moving — and "Use this" sets the style and length but
+  does not start the mix, because a plan that acted on being agreed with would
+  be an instruction, not a proposal.
+
+  What it chooses, and why: the last phrase boundary that leaves room for the
+  whole transition plus a tail margin, because a human presses the button a beat
+  or two late. `Blend` when tempo and key both work, `Echo` when the keys fight
+  (tolerable for a moment, tiring for eight bars), `Cut` when the tempos do not
+  — nothing overlapping helps there, and `Cut` is the honest answer.
+
+  Two things it cannot know, stated in the code: **where the outgoing track's
+  outro actually is** — a phrase boundary near the end is the best structural
+  guess available and it is a guess, so the plan names the boundary it chose and
+  how much track is left, letting a DJ disagree with the specific thing rather
+  than the whole answer; and **whether the two records suit each other**, since
+  key and tempo are arithmetic and taste is not.
+
+- Next in M8: deterministic set replay and offline re-render from the action
+  log.
 - AI transition planner — suggests where and how, with stated reasoning.
 - Next-track suggestions ranked by harmonic compatibility, energy trajectory and phrase fit.
 - **Deterministic set replay and offline re-render** from the action log; practice loops; take

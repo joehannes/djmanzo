@@ -1220,6 +1220,28 @@ export interface Suggestion {
 export const suggestNext = (deck: number, trajectory: Trajectory, limit = 12) =>
   invoke<Suggestion[]>("suggest_next", { deck, trajectory, limit });
 
+/** A proposed transition: where to start it, how long, and which way. */
+export interface TransitionPlan {
+  /** Beat index in the outgoing track where the mix should begin. */
+  start_beat: number;
+  /** The same point in seconds, for a display that speaks in time. */
+  start_seconds: number;
+  length_beats: number;
+  style: string;
+  /** Short phrases, as the suggester's are. */
+  reasons: string[];
+}
+
+/**
+ * Plan the mix out of one deck and into another.
+ *
+ * `null` when there is nothing sensible to propose — either deck empty, no
+ * grid, or the outgoing track already past its last usable phrase. A planner
+ * that always answers is one that answers wrongly at the end of a record.
+ */
+export const planTransition = (fromDeck: number, toDeck: number) =>
+  invoke<TransitionPlan | null>("plan_transition", { fromDeck, toDeck });
+
 export const libraryAddFolder = (path: string) =>
   invoke<ScanReport>("library_add_folder", { path });
 

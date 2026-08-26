@@ -2010,6 +2010,101 @@ fn library(state: &AppState) -> Result<Arc<dj_library::Library>, String> {
     state.library().get().map_err(|e| e.to_string())
 }
 
+/// A proposed transition, flattened for the interface.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransitionPlanDto {
+    /// Beat index in the outgoing track where the mix should begin.
+    pub start_beat: i64,
+    /// Seconds into the outgoing track, for a display that speaks in time.
+    pub start_seconds: f64,
+    pub length_beats: u32,
+    /// The style's own name, as the automix panel already spells it.
+    pub style: String,
+    pub reasons: Vec<String>,
+}
+
+/// Plan the mix out of `from_deck` and into `to_deck`.
+///
+/// `None` -- an empty result -- when there is nothing sensible to propose:
+/// either deck empty, no grid, or the outgoing track already past its last
+/// usable phrase. A planner that always answers is one that answers wrongly at
+/// the end of a record, which is exactly when it is read.
+#[tauri::command]
+pub fn plan_transition(
+    state: State<'_, AppState>,
+    from_deck: u8,
+    to_deck: u8,
+) -> Result<Option<TransitionPlanDto>, String> {
+    let db = library(&state)?;
+    let from = dj_core::DeckId::from_human(from_deck).ok_or("no such deck")?;
+    let to = dj_core::DeckId::from_human(to_deck).ok_or("no such deck")?;
+
+    let Some(out_track) = current_track(&state, from).and_then(|id| db.track(id).ok().flatten())
+    else {
+        return Ok(None);
+    };
+    let Some(in_track) = current_track(&state, to).and_then(|id| db.track(id).ok().flatten())
+    else {
+        return Ok(None);
+    };
+    let Some(grid) = out_track.analysis.beatgrid() else {
+        return Ok(None);
+    };
+
+    // The live playhead, not the last snapshot: a plan is about where the track
+    // is *now*, and a snapshot can be up to 16 ms stale -- which at 174 BPM is
+    // most of a beat.
+    let registry = state.registry();
+    let read = |p| f64::from(registry.get(dj_core::ParamId::Deck(from, p)));
+    let position = read(dj_core::param::DeckParam::Position);
+    let length = read(dj_core::param::DeckParam::LengthFrames);
+
+    let outgoing = crate::plan::Outgoing {
+        position,
+        length,
+        bpm: grid.bpm.get(),
+        phrase: phrase_of(&out_track),
+        key: out_track.analysis.key(),
+        sample_rate: out_track.sample_rate,
+        grid_anchor: grid.anchor.get(),
+    };
+    let incoming = crate::plan::Incoming {
+        bpm: in_track.analysis.bpm.unwrap_or(grid.bpm.get()),
+        phrase: phrase_of(&in_track),
+        key: in_track.analysis.key(),
+    };
+
+    Ok(
+        crate::plan::plan(&outgoing, &incoming).map(|p| TransitionPlanDto {
+            start_beat: p.start_beat,
+            start_seconds: p.start_frame / out_track.sample_rate.as_f64(),
+            length_beats: p.length_beats,
+            style: p.style.as_str().to_owned(),
+            reasons: p.reasons.iter().map(describe_plan_reason).collect(),
+        }),
+    )
+}
+
+/// A track's phrase structure, when it has one stored.
+fn phrase_of(track: &dj_library::LibraryTrack) -> Option<dj_core::Phrase> {
+    dj_core::Phrase::new(track.analysis.phrase_beats?, track.analysis.phrase_anchor?)
+}
+
+/// Render one planner reason for the interface. Terse, like the suggester's.
+fn describe_plan_reason(reason: &crate::plan::Reason) -> String {
+    use crate::plan::Reason;
+    match reason {
+        Reason::LandsOnPhrase { beat } => format!("phrase start (beat {beat})"),
+        Reason::LandsOnBar { beat } => format!("bar line (beat {beat}) — no phrase structure"),
+        Reason::Remaining { beats } => format!("{beats:.0} beats left"),
+        Reason::TemposMatch { from, to } => format!("{from:.0} into {to:.0} BPM"),
+        Reason::TemposClash { from, to } => format!("{from:.0} against {to:.0} BPM — too far"),
+        Reason::KeysMatch => "keys sit together".to_owned(),
+        Reason::KeysClash => "keys fight — keep it short".to_owned(),
+        Reason::Rushed { beats_left } => format!("only {beats_left:.0} beats left"),
+    }
+}
+
 /// One suggested next track, with the reasoning that produced it.
 ///
 /// The reasons arrive as short strings rather than the typed `Reason` values,

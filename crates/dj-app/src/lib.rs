@@ -33,6 +33,7 @@ pub mod library;
 pub mod monitors;
 pub mod peersync;
 pub mod persist;
+pub mod plan;
 pub mod plugins;
 pub mod presets;
 pub mod rackcapture;
@@ -365,6 +366,7 @@ pub fn run() {
             commands::session_log,
             commands::library_status,
             commands::suggest_next,
+            commands::plan_transition,
             commands::library_add_folder,
             commands::library_remove_folder,
             commands::library_rescan,
