@@ -125,33 +125,118 @@ export const ExclusionBlend: EffectProcessor = (render, _state, perf) => {
 // -----------------------------------------------------------------------------
 // CURATED PACKAGES
 // -----------------------------------------------------------------------------
+//
+// Organised by the **room**, not by the aesthetic. A DJ picking a theme is not
+// shopping for a look; they are somewhere, and the light in that somewhere
+// decides what they can read. Three questions settle every choice below:
+//
+// - **How much light is in the room?** A screen tuned for a dark booth is
+//   invisible on a terrace at six, and one tuned for daylight destroys the
+//   night vision needed to find anything on the actual mixer.
+// - **How far away are the eyes?** At a desk, a metre. In a booth, leaning back
+//   with a hand on a platter, further -- so contrast matters more than density.
+// - **How much can move?** Motion costs frames, and it competes for attention
+//   with the one thing that must never be missed: which deck is playing.
+//
+// Every theme states its own answer in `when`, which the type requires, so a
+// theme cannot ship without saying what it is for.
+
+export const PkgDaylight: ThemePackage = {
+  id: "pkg-daylight",
+  name: "Daylight",
+  category: "minimalist",
+  setting: "daylight",
+  when: "Preparing a set by a window, or an afternoon set outdoors.",
+  geometry: GeometryCircle,
+  // Nothing reactive at all. In bright light the eye is already working hard,
+  // and a control that shimmers is one more thing competing with the sun.
+  behaviors: [],
+  effects: [],
+};
+
+export const PkgStudio: ThemePackage = {
+  id: "pkg-studio",
+  name: "Studio",
+  category: "organic",
+  setting: "home",
+  when: "Long evenings at a desk. Easy on the eyes for hours at a time.",
+  geometry: GeometryCircle,
+  // Motion, but only the slow kind. Over a four-hour session anything faster
+  // than a swell becomes something to look away from.
+  behaviors: [TimeReactivePulse],
+  effects: [],
+};
 
 export const PkgOrganic: ThemePackage = {
   id: "pkg-organic",
   name: "Organic Base",
   category: "organic",
+  setting: "home",
+  when: "The default. Calm, green, and readable in most rooms.",
   geometry: GeometryCircle,
   behaviors: [AudioReactiveStroke, TimeReactivePulse],
-  effects: [] // Clean and smooth
+  effects: [], // Clean and smooth
+};
+
+export const PkgBooth: ThemePackage = {
+  id: "pkg-booth",
+  name: "Booth",
+  category: "minimalist",
+  setting: "booth",
+  when: "Playing in the dark. Highest contrast, least motion, nothing to miss.",
+  geometry: GeometryCircle,
+  // Deliberately still. Mid-set the only question a screen has to answer at a
+  // glance is which deck is playing and where the playhead is; a control that
+  // pulses is a control that has to be looked at twice.
+  behaviors: [],
+  effects: [],
 };
 
 export const PkgIndustrial: ThemePackage = {
   id: "pkg-industrial",
   name: "Industrial Techno",
   category: "industrial",
+  setting: "venue",
+  when: "A dark room, hard music, and a screen that should look like the music.",
   geometry: GeometryPolygon(6), // Hexagons
   behaviors: [AudioReactiveStroke, AudioReactiveGlitch],
-  effects: [ExclusionBlend]
+  effects: [ExclusionBlend],
 };
 
 export const PkgCyber: ThemePackage = {
   id: "pkg-cyber",
   name: "Cyber Trance",
   category: "cyber",
+  setting: "venue",
+  when: "Peak time. Everything moves; needs the machine to have it to spare.",
   geometry: GeometryCircle,
   behaviors: [AudioReactiveStroke, TimeReactivePulse],
-  effects: [NeonGlow, ChromaticAberration]
+  effects: [NeonGlow, ChromaticAberration],
 };
 
-// The global registry of all installed packages
-export const themePackages = [PkgOrganic, PkgIndustrial, PkgCyber];
+export const PkgSunset: ThemePackage = {
+  id: "pkg-sunset",
+  name: "Sunset",
+  category: "organic",
+  setting: "venue",
+  when: "Golden hour on a terrace, when the room is neither light nor dark.",
+  geometry: GeometryCircle,
+  behaviors: [TimeReactivePulse],
+  effects: [],
+};
+
+/**
+ * Every installed theme, in the order the picker lists them.
+ *
+ * Grouped by setting rather than sorted, so the list reads as a walk through a
+ * day: desk, evening, booth, room.
+ */
+export const themePackages = [
+  PkgDaylight,
+  PkgStudio,
+  PkgOrganic,
+  PkgBooth,
+  PkgSunset,
+  PkgIndustrial,
+  PkgCyber,
+];

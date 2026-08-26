@@ -56,10 +56,31 @@ export type EffectProcessor = (
   perf: ResolvedPerformance
 ) => SvgRenderState;
 
+/**
+ * Where and when a theme is meant to be used.
+ *
+ * Separate from `category`, which says what a theme *looks* like, because a DJ
+ * choosing one is not shopping for an aesthetic — they are in a room, and the
+ * room decides. A screen tuned for a dark booth is unreadable on a terrace at
+ * six in the evening, and one tuned for daylight destroys night vision in a
+ * club. Naming the situation is what lets the picker answer the question
+ * actually being asked.
+ */
+export type ThemeSetting = "daylight" | "home" | "booth" | "venue";
+
 export interface ThemePackage {
   id: string;
   name: string;
   category: "industrial" | "organic" | "cyber" | "minimalist";
+  /** The room this is for. See [`ThemeSetting`]. */
+  setting: ThemeSetting;
+  /**
+   * One line on when to reach for it, shown in the picker.
+   *
+   * Held with the theme rather than in the picker's markup so that adding a
+   * theme cannot leave it unexplained -- the type requires it.
+   */
+  when: string;
   geometry: GeometryGenerator;
   behaviors: BehaviorModifier[];
   effects: EffectProcessor[];
