@@ -83,6 +83,9 @@ pub struct AppState {
     /// The network control server. Off until a DJ switches it on; see
     /// `crate::remote` for why that is not a preference.
     remote: Arc<crate::remote::Remote>,
+    /// Tempo sync with other djmanzo instances. Off until a DJ switches it
+    /// on; see `crate::peersync`.
+    peers: Arc<crate::peersync::Peers>,
     /// MIDI clock out, when djmanzo is the clock master.
     clock: Arc<crate::clock::MidiClock>,
     /// MIDI clock in, when something else is.
@@ -318,6 +321,7 @@ impl AppState {
             bus,
             registry,
             remote: Arc::new(crate::remote::Remote::default()),
+            peers: Arc::new(crate::peersync::Peers::default()),
             clock: Arc::new(crate::clock::MidiClock::default()),
             clock_follow: Arc::new(crate::clock::ClockFollow::default()),
             taps: crate::grid::TapTracker::new(),
@@ -884,6 +888,12 @@ impl AppState {
     #[must_use]
     pub fn clock(&self) -> &Arc<crate::clock::MidiClock> {
         &self.clock
+    }
+
+    /// Tempo sync with other djmanzo instances.
+    #[must_use]
+    pub fn peers(&self) -> &Arc<crate::peersync::Peers> {
+        &self.peers
     }
 
     /// The MIDI clock djmanzo is following, if any.

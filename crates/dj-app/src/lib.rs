@@ -31,6 +31,7 @@ pub mod host;
 pub mod layout;
 pub mod library;
 pub mod monitors;
+pub mod peersync;
 pub mod persist;
 pub mod plugins;
 pub mod presets;
@@ -314,6 +315,9 @@ pub fn run() {
             commands::list_plugins,
             commands::plugin_state,
             commands::stems_status,
+            commands::start_peer_sync,
+            commands::stop_peer_sync,
+            commands::peer_status,
             commands::stem_out,
             commands::set_stem_out,
             commands::set_deck_out,

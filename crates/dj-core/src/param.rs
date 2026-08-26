@@ -388,6 +388,20 @@ pub enum GlobalParam {
     /// a MIDI clock outside the audio thread needs it, and so does anything
     /// else that has to be in time with the music rather than with a deck.
     MasterBpm,
+    /// Where the room is in the beat, 0.0 on the downbeat, from the same deck
+    /// [`GlobalParam::MasterBpm`] comes from.
+    ///
+    /// **Negative when there is no grid to have a phase against**, because
+    /// zero is a real answer meaning "on the downbeat" and a follower cannot
+    /// tell those apart.
+    MasterPhase,
+    /// The fractional pitch nudge the network peers are asking for.
+    ///
+    /// Published rather than applied: a peer correction is a pitch change, and
+    /// letting a network thread move a deck's pitch without the DJ opting in
+    /// is not a decision a background thread gets to make. Zero when nothing
+    /// is being followed.
+    PeerNudge,
     /// The stem being swapped between decks, by [`crate::Stem::index`], or
     /// -1.0 when no swap is in force.
     ///
@@ -856,7 +870,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since.
-    pub const COUNT: usize = 132;
+    pub const COUNT: usize = 134;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -881,6 +895,8 @@ impl GlobalParam {
             LimiterEnabled,
             LimiterReductionDb,
             MasterBpm,
+            MasterPhase,
+            PeerNudge,
             StemSwapStem,
             StemSwapFrom,
             StemSwapTo,
@@ -1158,6 +1174,8 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::LimiterEnabled => "limiter_enabled",
         GlobalParam::LimiterReductionDb => "limiter_reduction_db",
         GlobalParam::MasterBpm => "master_bpm",
+        GlobalParam::MasterPhase => "master_phase",
+        GlobalParam::PeerNudge => "peer_nudge",
         GlobalParam::StemSwapStem => "stem_swap_stem",
         GlobalParam::StemSwapFrom => "stem_swap_from",
         GlobalParam::StemSwapTo => "stem_swap_to",

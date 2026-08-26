@@ -1233,20 +1233,39 @@ impl Engine {
     /// effect rack borrows by, and for the same reason: it is the deck the room
     /// is hearing, so it is the tempo a sample should stretch to.
     fn master_bpm(&self) -> Option<f64> {
-        let mut best: Option<(f32, f64)> = None;
+        self.master_deck().and_then(Deck::effective_bpm)
+    }
+
+    /// Where the room is in the beat, 0.0 on the downbeat.
+    ///
+    /// From the same deck [`Self::master_bpm`] takes its tempo from, because a
+    /// phase from one deck and a tempo from another would describe a beat
+    /// nobody is playing. `None` when that deck has no grid, which is exactly
+    /// when a phase would be a guess.
+    fn master_phase(&self) -> Option<f64> {
+        self.master_deck().and_then(Deck::beat_phase)
+    }
+
+    /// The deck the room is hearing: **the loudest one that is playing and has
+    /// a grid**.
+    ///
+    /// Loudest rather than lowest-numbered because that is the deck people are
+    /// dancing to, and during a transition it follows the incoming deck as it
+    /// comes up. Channel volume rather than the meter: the meter swings with
+    /// every kick, and a rule that changes its mind on every kick is not a
+    /// rule.
+    fn master_deck(&self) -> Option<&Deck> {
+        let mut best: Option<(f32, &Deck)> = None;
         for deck in &self.decks {
-            if !deck.is_playing() {
+            if !deck.is_playing() || deck.effective_bpm().is_none() {
                 continue;
             }
-            let Some(bpm) = deck.effective_bpm() else {
-                continue;
-            };
             let volume = deck.volume();
             if best.is_none_or(|(loudest, _)| volume > loudest) {
-                best = Some((volume, bpm));
+                best = Some((volume, deck));
             }
         }
-        best.map(|(_, bpm)| bpm)
+        best.map(|(_, deck)| deck)
     }
 
     /// Write one deck's separated parts to their own output pairs.
@@ -1694,6 +1713,15 @@ impl AudioCallback for Engine {
         self.registry.set(
             ParamId::Global(GlobalParam::MasterBpm),
             self.master_bpm().unwrap_or(0.0) as f32,
+        );
+        // And where in the beat it is, for anything syncing to the room rather
+        // than to a deck -- a second djmanzo across the network, a light desk,
+        // a visualiser. Negative for "no grid", because a phase of zero is a
+        // real answer meaning "on the downbeat".
+        #[allow(clippy::cast_possible_truncation)]
+        self.registry.set(
+            ParamId::Global(GlobalParam::MasterPhase),
+            self.master_phase().unwrap_or(-1.0) as f32,
         );
 
         // The swap, so the interface can show it and -- the part that matters

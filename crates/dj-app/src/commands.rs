@@ -375,6 +375,45 @@ pub fn set_stem_out(state: State<'_, AppState>, deck: Option<u8>) -> Result<Stem
     Ok(stem_out_view(&state))
 }
 
+/// Start syncing tempo with other djmanzo instances on the network.
+///
+/// `listen` is where this instance listens; `send_to` is where announcements
+/// go — a broadcast address for a LAN, or one peer's address for a direct link
+/// between two machines. Both default to loopback so that trying it out on one
+/// machine works before anything is plugged in.
+///
+/// # Errors
+/// When either address cannot be parsed, or the listening one cannot be bound.
+#[tauri::command]
+pub fn start_peer_sync(
+    state: State<'_, AppState>,
+    listen: Option<String>,
+    send_to: Option<String>,
+) -> Result<crate::peersync::PeerStatus, String> {
+    let listen: std::net::SocketAddr = listen
+        .unwrap_or_else(|| "127.0.0.1:7655".to_owned())
+        .parse()
+        .map_err(|e| format!("that is not an address to listen on: {e}"))?;
+    let send_to: std::net::SocketAddr = send_to
+        .unwrap_or_else(|| "127.0.0.1:7655".to_owned())
+        .parse()
+        .map_err(|e| format!("that is not an address to announce to: {e}"))?;
+    state.peers().start(listen, send_to, state.registry())
+}
+
+/// Stop syncing with the network.
+#[tauri::command]
+pub fn stop_peer_sync(state: State<'_, AppState>) -> crate::peersync::PeerStatus {
+    state.peers().stop();
+    state.peers().status()
+}
+
+/// Who is on the network, and what tempo they have settled on.
+#[tauri::command]
+pub fn peer_status(state: State<'_, AppState>) -> crate::peersync::PeerStatus {
+    state.peers().status()
+}
+
 /// What is on the insert right now.
 #[tauri::command]
 pub fn plugin_state(state: State<'_, AppState>) -> PluginStateDto {

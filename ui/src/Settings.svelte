@@ -36,6 +36,10 @@
     controlStatus,
     stemOut,
     setStemOut,
+    peerStatus,
+    startPeerSync,
+    stopPeerSync,
+    type PeerStatus,
     setDeckOut,
     type StemOut,
     type ClockStatus,
@@ -173,6 +177,28 @@
     }
   }
 
+  let network = $state<PeerStatus>({
+    running: false,
+    address: null,
+    sendTo: null,
+    peers: 0,
+    peerBpm: null,
+    error: null,
+  });
+  let peerListen = $state("127.0.0.1:7655");
+  let peerSendTo = $state("127.0.0.1:7655");
+
+  async function togglePeerSync() {
+    try {
+      network = network.running
+        ? await stopPeerSync()
+        : await startPeerSync(peerListen, peerSendTo);
+      error = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   async function chooseDeckOut(decks: number | null) {
     try {
       stems = await setDeckOut(decks);
@@ -224,16 +250,18 @@
         hasBrandLogo(),
         remoteStatus(),
       ]);
-      const [status, ports, control, parts] = await Promise.all([
+      const [status, ports, control, parts, net] = await Promise.all([
         clockStatus(),
         midiOutputs(),
         controlStatus(),
         stemOut(),
+        peerStatus(),
       ]);
       clock = status;
       outputs = ports;
       clockInputs = control.inputs;
       stems = parts;
+      network = net;
       if (!clockPort) clockPort = clock.port ?? outputs.ports[0] ?? null;
       if (!followPort) followPort = clock.following ?? clockInputs[0] ?? null;
       error = null;
@@ -525,6 +553,55 @@
   </div>
 
   <div class="block">
+    <h3>Network tempo sync</h3>
+    <p class="hint">
+      Keeps two djmanzo instances on one tempo and one downbeat — a second
+      laptop, or a DJ playing back to back with you. Every instance both
+      announces and listens; there is no master, so they converge on each other
+      and one appearing or leaving costs nothing.
+    </p>
+    <p class="hint">
+      <strong>This is not Ableton Link.</strong> Link is GPL-or-proprietary, so
+      djmanzo cannot link it (ADR-0002), and a reimplementation that claimed
+      Link compatibility without ever having been tested against Live or Serato
+      would be a claim nobody here could stand behind. It syncs djmanzo to
+      djmanzo, and says so.
+    </p>
+    <p class="hint">
+      There is no passphrase, and unlike the control server that is deliberate:
+      UDP has no handshake to carry one. What a stranger on the network can do
+      is bounded instead — a tempo more than six percent away is ignored, and
+      the nudge that reaches a deck is clamped to one percent.
+    </p>
+    <div class="row" style="gap: 0.5rem; flex-wrap: wrap;">
+      <label class="peer-field">
+        Listen on
+        <input bind:value={peerListen} disabled={network.running} spellcheck="false" />
+      </label>
+      <label class="peer-field">
+        Announce to
+        <input bind:value={peerSendTo} disabled={network.running} spellcheck="false" />
+      </label>
+      <button class:active={network.running} onclick={togglePeerSync}>
+        {network.running ? "Stop" : "Start"}
+      </button>
+    </div>
+    {#if network.error}
+      <p class="hint" role="status">{network.error}</p>
+    {:else if network.running}
+      <p class="hint" role="status">
+        Listening on {network.address}, announcing to {network.sendTo}.
+        {#if network.peers === 0}
+          No other instances yet.
+        {:else}
+          {network.peers}
+          {network.peers === 1 ? "instance" : "instances"} on the network{#if network.peerBpm}, at {network.peerBpm.toFixed(2)} BPM{:else}, none of them playing{/if}.
+        {/if}
+      </p>
+    {/if}
+  </div>
+
+  <div class="block">
     <h3>MIDI clock</h3>
     <p class="hint">
       Makes djmanzo the clock master: twenty-four pulses to the beat, at
@@ -791,6 +868,19 @@
 </section>
 
 <style>
+  .peer-field {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85em;
+    color: var(--text-dim);
+  }
+
+  .peer-field input {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    width: 12em;
+  }
+
   .settings {
     display: flex;
     flex-direction: column;

@@ -666,6 +666,35 @@ export type StemsStatus = {
  */
 export const stemsStatus = () => invoke<StemsStatus>("stems_status");
 
+/** Tempo sync with other djmanzo instances on the network. */
+export type PeerStatus = {
+  running: boolean;
+  /** Where this instance is listening, once it is. */
+  address: string | null;
+  /** Where announcements go — a broadcast address, or one peer. */
+  sendTo: string | null;
+  /** How many other instances are on the network. */
+  peers: number;
+  /** The tempo the peers have settled on, when one of them is playing. */
+  peerBpm: number | null;
+  error: string | null;
+};
+
+/** Who is on the network, and what tempo they have settled on. */
+export const peerStatus = () => invoke<PeerStatus>("peer_status");
+
+/**
+ * Start syncing tempo with other djmanzo instances.
+ *
+ * Both addresses default to loopback, so trying it out on one machine works
+ * before anything is plugged in. This is djmanzo-to-djmanzo — it is not
+ * Ableton Link, which is GPL-or-proprietary and cannot be linked here.
+ */
+export const startPeerSync = (listen?: string, sendTo?: string) =>
+  invoke<PeerStatus>("start_peer_sync", { listen, sendTo });
+
+export const stopPeerSync = () => invoke<PeerStatus>("stop_peer_sync");
+
 /** Whether a deck can be sent out in parts, and which one is. */
 export type StemOut = {
   /** The deck going out in parts, as the DJ numbers it. */

@@ -167,6 +167,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Feature | Milestone |
 |---|---|
 | Record the master to disk (WAV; FLAC/MP3 later) | M5 — **done** |
+| **Network tempo sync between djmanzo instances** | **shipped** — announce and follow over UDP, no master, bounded corrections. Not Ableton Link; see ROADMAP |
 | Broadcast to Icecast/Shoutcast | M5 |
 | **Per-stem outputs for external processing** | **shipped** — one deck as four stereo pairs (vocals 1–2, drums 3–4, bass 5–6, other 7–8), pre-EQ and pre-fader, on an interface with eight outputs |
 | **Per-deck outputs for external processing** | **shipped** — each deck on its own stereo pair, pre-fader, no master chain; exclusive with stem out |

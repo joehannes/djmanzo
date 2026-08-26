@@ -1151,8 +1151,36 @@ anything.
 - **Pro DJ Link** — join a Pioneer CDJ/XDJ network as a peer: device announcement, beat/tempo
   sync, on-air state, track metadata.
 - **StagelinQ** — Denon Prime discovery and state map.
-- Network tempo sync (Ableton Link, or a clean-room implementation — see
-  [RESEARCH.md](RESEARCH.md#2-open-source-prior-art) for the licensing decision).
+- **Network tempo sync between djmanzo instances — done.** The licensing
+  decision deferred in RESEARCH.md is settled by not needing to make it:
+  **this is not Ableton Link.** Link is GPLv2-or-proprietary and ADR-0002 rules
+  out the former; its protocol is documented well enough to reimplement, but a
+  reimplementation calling itself Link-compatible without ever having been
+  tested against Live, Serato or any real Link peer would be a claim nobody
+  here can stand behind. So djmanzo syncs to djmanzo and says so in the panel.
+  Link interop stays open, needing either the commercial licence or a machine
+  with a Link peer on it.
+  What it covers is the case a second laptop actually creates: two DJs back to
+  back, or a main rig and its backup. Every instance announces *and* listens —
+  a peer that only listened would be invisible to the peers it was following.
+  There is no election and no master: each follows the others through
+  `PhaseFollower`, which takes a fraction of the error each time, so two peers
+  converge on each other and one arriving or leaving costs nothing.
+  **`PhaseFollower` was the third piece of `dj-net` with no door.** Like
+  `ControlService` and the MIDI clock before it, it was written, tested and
+  exported, and nothing could reach it.
+  No passphrase, and unlike the control server that is defensible rather than
+  deferred: UDP has no handshake to carry one. What a hostile packet achieves
+  is bounded by the follower instead — a tempo more than six percent away is
+  ignored outright and the nudge is clamped to one percent, against a control
+  port that can load tracks and open devices.
+  The nudge is **published, not dispatched**: letting a network thread move a
+  deck's pitch without the DJ opting in is not a decision a background thread
+  gets to make.
+- **A master phase to sync to — done.** `master_bpm` had no companion, so there
+  was a tempo to follow and no downbeat. `master_phase` comes from the same
+  deck, by the same loudest-playing rule — a phase from one deck and a tempo
+  from another would describe a beat nobody is playing.
 - **MIDI clock in/out — done.** The oldest sync protocol there is, and still
   the one most likely to be on the other end of a cable in a small club.
   `dj-net` had the arithmetic and, like `ControlService`, nothing used it.
