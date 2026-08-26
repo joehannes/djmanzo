@@ -30,6 +30,7 @@ pub mod record;
 pub mod scan;
 pub mod schema;
 pub mod setlist;
+pub mod steer;
 pub mod store;
 pub mod suggest;
 pub mod tags;
