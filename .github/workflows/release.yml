@@ -14,7 +14,11 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      # `0` in the patch position, because that is what makes a tag a minor or
+      # major bump. `v*.*.*` was here instead, which matches every patch tag
+      # too -- so the rule the comment above states, and CHANGELOG.md repeats,
+      # was not the rule being enforced.
+      - 'v[0-9]+.[0-9]+.0'
   # So the build path can be exercised without cutting a real release — and so
   # an installable package can be had on demand. A dispatch run publishes
   # nothing: it uploads the bundles as workflow artifacts, downloadable from the

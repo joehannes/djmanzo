@@ -16,6 +16,45 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.8.0 — Timecode vinyl you can switch on, and controllers that work
+
+**Timecode vinyl became reachable.** `dj-dvs` could decode a control record and
+`Command::SetTimecode` could install one, and nothing in the application could
+send that command. Now there is an input picker, a relative/absolute switch and
+a live calibration reading in Settings, and `write_timecode_signal` renders
+djmanzo's own control signal to a WAV — burn it to a CD or play it off a phone
+and any turntable or CD deck drives a deck, without buying a record.
+
+The reading distinguishes three states from one number, and has to: negative is
+"not on a record", zero is "on one and hearing nothing" — a dead cartridge, a
+lifted needle, the wrong input — and above that is reading.
+
+**Real controller mappings**, transcribed from Pioneer's own MIDI message
+lists: DDJ-SR, CDJ-3000, DDJ-200, and a family file covering DDJ-400, DDJ-FLX4,
+DDJ-FLX2 and DDJ-SB3. None has been run against the hardware, and each says so
+in its first paragraph.
+
+Two things the mapping format could not previously express, both of which would
+have shipped inside those files:
+
+- **14-bit faders.** Every Pioneer, Denon and Native Instruments fader arrives
+  as two control changes. Binding the high byte alone put a pitch fader on 128
+  steps — 0.125% each, audible when beatmatching.
+- **Centred jog wheels.** A platter reports movement, not position. Read as a
+  fader, its centre landed a hair above zero and drove the deck forwards with
+  nobody touching it.
+
+**And the bug that hid all of it.** Mapping selection took the first file whose
+`device` appeared in the port name, and `generic-2-deck` claims `"MIDI"` —
+which is in nearly every ALSA port name. Every controller in the world was
+handed to the generic mapping.
+
+Also fixed: changing the audio output device left the microphone and every
+control record running into rings belonging to a discarded engine. The
+microphone went silently dead on a reconnect while still holding a sound card
+open. `NullBackend` gained an input device, which is why it could be tested at
+all.
+
 ## v0.1.0 — Beta: a playable instrument
 
 The first build worth downloading. M0 through M5 are substantially complete and
