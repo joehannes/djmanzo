@@ -105,6 +105,19 @@ min = -1.0
 max = 1.0
 
 [[binding]]
+on = "cc14 1 0x00"       # a fader sent as a *pair* of control changes
+move = "deck 2 pitch {value}"
+min = -1.0
+max = 1.0
+
+[[binding]]
+on = "cc 1 0x10"         # a jog wheel: movement, not position
+move = "deck 1 jog {value}"
+encoding = "offset"
+min = -0.02
+max = 0.02
+
+[[binding]]
 on = "cc 1 24"
 encoding = "signed"
 turn_up = "deck 1 beatjump 1"
@@ -117,6 +130,26 @@ spelling.
 
 Channel `0` means "any channel", for controllers that can be moved around.
 
+### Faders that arrive in two halves
+
+Most modern controllers -- every Pioneer, and Denon and Native Instruments
+besides -- send a fader as a **14-bit** value split across two control changes:
+a high byte, and a low byte 32 controllers above it. `cc14` names the high one
+and djmanzo pairs them.
+
+The low byte is not written, because MIDI fixes it: controllers 0–31 carry high
+bytes and 32–63 carry their partners, so the partner of `n` is always `n + 32`.
+A `cc14` naming anything from 32 up is refused when the file loads, because it
+names a pair that cannot exist.
+
+Binding the high byte alone with plain `cc` also works, and throws away half the
+resolution: 128 steps across a pitch fader is 0.125% a step, which is audible
+when beatmatching, and it is the same 128 steps across an EQ kill.
+
+A controller that sends **only** high bytes still reaches both ends of its
+travel — until a low byte arrives the control is simply read as the seven bits
+it is.
+
 ### Encoders: say which convention
 
 Three are in the wild and **the mapping has to declare which**, because the
@@ -127,6 +160,17 @@ same byte means opposite things in two of them:
 | `signed` (default) | `1..=63` that many clicks clockwise, `127..=65` anticlockwise, `0` and `64` still |
 | `offset` | `64` is still, above is clockwise, below is anticlockwise |
 | `absolute` | a position, not a delta — direction comes from the previous value |
+
+**`encoding` also applies to a `move` binding**, and a jog wheel needs it. A
+platter reports how far or how fast it just moved, centred on 64 — not where it
+is. Read as a position, 64 out of 127 is 0.504 of the way up a fader, which
+lands a hair above zero and drives the deck forwards with nobody touching the
+platter; over a set that is a track sliding out of time on its own. With an
+`encoding`, the centre is anchored exactly and each direction is scaled to its
+own end, so `min` and `max` may differ if one direction should be weightier.
+
+Writing an `encoding` on a fader would be a mistake in the other direction: a
+fader has a position, and there is nothing to centre.
 
 An earlier version of this code read the byte and fell back to comparing with
 the last value. That is not a shortcut, it is a bug: `30` is thirty clicks

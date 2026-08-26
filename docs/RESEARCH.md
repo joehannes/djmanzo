@@ -208,6 +208,8 @@ its own source, and none of them came from Mixxx.
 |---|---|---|
 | `pioneer-ddj-sr` | Pioneer's own *DDJ-SR List of MIDI Messages* | Vendor documentation, read as reference. Not redistributed. |
 | `pioneer-cdj-3000` | Pioneer's own *CDJ-3000X MIDI Message List* | As above. |
+| `pioneer-ddj-200` | The shared DDJ controls confirmed against Pioneer's DDJ-SR list; the filter and jog numbers from `laksateef/vdj-ddj200-linux` (MIT) | Two sources that agree. Attributed in the file. |
+| `pioneer-ddj-2deck` | The same two sources, for the family: DDJ-400, DDJ-FLX4, DDJ-FLX2, DDJ-SB3 and near relatives | The most widely sold controllers there are. The filter knob is left out because its placement is **not** a family constant — the DDJ-SR puts it on the global channel and the DDJ-200 on the deck's own. |
 | `generic-2-deck`, `generic-hid`, `motorised-platter`, `scripted-shift` | Written here from the conventions common to class-compliant controllers | Meant to be edited, and they say so. |
 
 **None of these have been run against the hardware.** Every number matches the
@@ -254,6 +256,37 @@ LICENSE file**, not taken from any summary:
 A permissive licence on a repository covers **that author's** work. Where one of
 these vendors a manufacturer's PDF, the PDF remains the manufacturer's and is
 treated as reference only. Nothing from `mixxxdj/mixxx` itself is used.
+
+### One tempting source that was refused
+
+A GitHub document titled *DDJ-400 MIDI map* gives a complete byte table for the
+DDJ-400 and DDJ-FLX4 — the two most popular controllers in the world — and it is
+tempting. It states its own source in its second paragraph: **the Mixxx DDJ-400
+mapping**, which is GPL-2.0. The repository carries no licence of its own. It was
+not used.
+
+It did serve one purpose, read and not copied: it independently describes the
+same family layout — decks on channels 1 and 2, mixer on 7, pads on 8 and 10,
+faders 14-bit with the low byte 32 controllers up — which djmanzo already had
+from Pioneer's own DDJ-SR list and from the MIT DDJ-200 repository. Two
+independent non-GPL sources agreeing is what `pioneer-ddj-2deck` rests on;
+nothing in it comes from that document.
+
+### Why there are no mappings for other brands yet
+
+Not for want of looking. For Denon, Numark, Hercules, Reloop and Roland, the
+only substantial compilation of MIDI numbers in public circulation is **Mixxx's
+own**, which is GPL-2.0 and therefore excluded — and every manufacturer's
+documentation host is blocked by the egress policy above.
+
+Native Instruments is a different case and worth stating separately: on a
+Traktor Kontrol the MIDI notes and control numbers are **not fixed**. They are
+whatever the owner has set in NI's Controller Editor, so there is no vendor
+table to ship and a bundled mapping would be guessing at one machine's
+settings. Those controllers want the mapping editor's learn mode, not a file.
+
+The way to add a brand is the way Pioneer was added: someone supplies the
+manufacturer's MIDI message list, and it gets transcribed.
 
 ---
 

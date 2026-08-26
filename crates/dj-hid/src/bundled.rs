@@ -34,6 +34,14 @@ pub const CONTROLLERS: &[(&str, &str)] = &[
         "pioneer-cdj-3000",
         include_str!("../mappings/pioneer-cdj-3000.toml"),
     ),
+    (
+        "pioneer-ddj-200",
+        include_str!("../mappings/pioneer-ddj-200.toml"),
+    ),
+    (
+        "pioneer-ddj-2deck",
+        include_str!("../mappings/pioneer-ddj-2deck.toml"),
+    ),
 ];
 
 /// The default keyboard mapping, parsed.

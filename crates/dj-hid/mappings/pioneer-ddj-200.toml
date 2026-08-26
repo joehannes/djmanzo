@@ -1,0 +1,269 @@
+# Pioneer DDJ-200 — the small two-deck controller.
+#
+# The cheapest way into djmanzo with real faders under your hands: two decks,
+# six pads each, a crossfader and a jog wheel, and **no built-in soundcard** —
+# the audio comes out of the laptop, which is why this is the mapping a DJ with
+# a MacBook and one bag actually uses.
+#
+# ## Where the numbers come from
+#
+# Two sources that agree with each other:
+#
+# - the controls the DDJ-200 shares with the rest of the DDJ family — play,
+#   cue, PFL, sync, shift, jog touch, the channel fader, the three EQs and the
+#   crossfader — are confirmed against **Pioneer's own DDJ-SR MIDI message
+#   list**, where they carry the same numbers;
+# - the ones particular to this box — the filter knob and the two jog control
+#   changes — come from `laksateef/vdj-ddj200-linux`, which is **MIT licensed**
+#   (see docs/RESEARCH.md, where the licence was verified by reading the
+#   repository's own LICENSE file). With thanks.
+#
+# **Not run against a DDJ-200 here.**
+#
+# ## Channels
+#
+# Deck 1 on MIDI channel 1 and deck 2 on channel 2, as usual for a DDJ. The
+# crossfader is global, on channel 7. The pads are on their own channels again,
+# and unusually **not consecutive**: deck 1's pads are on channel 8 and deck
+# 2's on channel 10. That is what the hardware sends.
+#
+# ## The faders are 14-bit
+#
+# As on every DDJ. `cc14` names the high byte and djmanzo pairs it with the low
+# one 32 controllers above. On a controller this size the pitch fader is short,
+# which makes the resolution matter more rather than less.
+
+name = "Pioneer DDJ-200"
+device = "DDJ-200"
+
+# ============================================================ DECK 1
+
+[[binding]]
+on = "note 1 0x0B"
+press = "deck 1 play_pause"
+
+[[binding]]
+on = "note 1 0x0C"
+press = "deck 1 cue"
+
+[[binding]]
+on = "note 1 0x58"
+press = "deck 1 sync"
+
+[[binding]]
+on = "note 1 0x54"
+press = "deck 1 cue_toggle"
+
+[[binding]]
+on = "note 1 0x36"
+press = "deck 1 jog_touch"
+release = "deck 1 jog_release"
+
+[[binding]]
+on = "cc14 1 0x00"
+move = "deck 1 pitch {value}"
+min = -1.0
+max = 1.0
+
+[[binding]]
+on = "cc14 1 0x13"
+move = "deck 1 volume {value}"
+
+[[binding]]
+on = "cc14 1 0x07"
+move = "deck 1 eq_high {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc14 1 0x0B"
+move = "deck 1 eq_mid {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc14 1 0x0F"
+move = "deck 1 eq_low {value}"
+min = 0.0
+max = 4.0
+
+# The filter knob sweeps low-pass one way and high-pass the other, with the
+# centre off -- so it is centred like a jog wheel and not like a fader, and 64
+# has to mean exactly nothing or the filter is never quite out of the way.
+[[binding]]
+on = "cc 1 0x1A"
+move = "deck 1 filter {value}"
+encoding = "offset"
+min = -1.0
+max = 1.0
+
+# The jog. 0x22 is the platter and 0x21 the touch ring, both counting away from
+# 64. `min`/`max` are how much of a revolution one message is worth, and they
+# are a feel setting rather than a measurement -- change them first if
+# scratching is sluggish or twitchy.
+[[binding]]
+on = "cc 1 0x22"
+move = "deck 1 jog {value}"
+encoding = "offset"
+min = -0.02
+max = 0.02
+
+[[binding]]
+on = "cc 1 0x21"
+move = "deck 1 jog {value}"
+encoding = "offset"
+min = -0.01
+max = 0.01
+
+# ============================================================ DECK 2
+
+[[binding]]
+on = "note 2 0x0B"
+press = "deck 2 play_pause"
+
+[[binding]]
+on = "note 2 0x0C"
+press = "deck 2 cue"
+
+[[binding]]
+on = "note 2 0x58"
+press = "deck 2 sync"
+
+[[binding]]
+on = "note 2 0x54"
+press = "deck 2 cue_toggle"
+
+[[binding]]
+on = "note 2 0x36"
+press = "deck 2 jog_touch"
+release = "deck 2 jog_release"
+
+[[binding]]
+on = "cc14 2 0x00"
+move = "deck 2 pitch {value}"
+min = -1.0
+max = 1.0
+
+[[binding]]
+on = "cc14 2 0x13"
+move = "deck 2 volume {value}"
+
+[[binding]]
+on = "cc14 2 0x07"
+move = "deck 2 eq_high {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc14 2 0x0B"
+move = "deck 2 eq_mid {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc14 2 0x0F"
+move = "deck 2 eq_low {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc 2 0x1A"
+move = "deck 2 filter {value}"
+encoding = "offset"
+min = -1.0
+max = 1.0
+
+[[binding]]
+on = "cc 2 0x22"
+move = "deck 2 jog {value}"
+encoding = "offset"
+min = -0.02
+max = 0.02
+
+[[binding]]
+on = "cc 2 0x21"
+move = "deck 2 jog {value}"
+encoding = "offset"
+min = -0.01
+max = 0.01
+
+# ============================================================ GLOBAL
+
+[[binding]]
+on = "cc14 7 0x1F"
+move = "crossfader {value}"
+
+# The browse encoder (cc 1 0x40) and its press (note 1 0x41) are unbound for
+# the reason they are on the DDJ-SR: djmanzo's action vocabulary has no verbs
+# for moving through the library yet, and inventing them here would mean
+# inventing them for every surface that shares it.
+
+# ============================================================ PADS
+# Six per deck, on channels 8 and 10. Hot cues, because on a controller with
+# six pads and no mode button that is what they are for.
+
+[[binding]]
+on = "note 8 0x00"
+press = "deck 1 hotcue 1"
+
+[[binding]]
+on = "note 8 0x01"
+press = "deck 1 hotcue 2"
+
+[[binding]]
+on = "note 8 0x02"
+press = "deck 1 hotcue 3"
+
+[[binding]]
+on = "note 8 0x03"
+press = "deck 1 hotcue 4"
+
+[[binding]]
+on = "note 8 0x04"
+press = "deck 1 hotcue 5"
+
+[[binding]]
+on = "note 8 0x05"
+press = "deck 1 hotcue 6"
+
+[[binding]]
+on = "note 10 0x00"
+press = "deck 2 hotcue 1"
+
+[[binding]]
+on = "note 10 0x01"
+press = "deck 2 hotcue 2"
+
+[[binding]]
+on = "note 10 0x02"
+press = "deck 2 hotcue 3"
+
+[[binding]]
+on = "note 10 0x03"
+press = "deck 2 hotcue 4"
+
+[[binding]]
+on = "note 10 0x04"
+press = "deck 2 hotcue 5"
+
+[[binding]]
+on = "note 10 0x05"
+press = "deck 2 hotcue 6"
+
+# ============================================================ FEEDBACK
+
+[[feedback]]
+when = "deck.1.playing"
+send = "note 1 0x0B"
+
+[[feedback]]
+when = "deck.2.playing"
+send = "note 2 0x0B"
+
+[[feedback]]
+when = "deck.1.cue_enabled"
+send = "note 1 0x54"
+
+[[feedback]]
+when = "deck.2.cue_enabled"
+send = "note 2 0x54"

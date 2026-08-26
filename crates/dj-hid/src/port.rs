@@ -383,7 +383,37 @@ pub fn open_with(
 /// the common case needs no configuration at all.
 #[must_use]
 pub fn mapping_for(port: &str, mappings: &[Mapping]) -> Option<usize> {
-    mappings.iter().position(|mapping| mapping.fits(port))
+    // The **most specific** match, not the first one in the list.
+    //
+    // Matching is a substring test, so several mappings can fit one port and
+    // the general ones fit the most: `generic-2-deck` says `device = "MIDI"`,
+    // and almost every ALSA port name has "MIDI" in it -- "DDJ-400:DDJ-400
+    // MIDI 1 24:0" among them. Taking the first fit therefore handed every
+    // controller in the world to the generic mapping and no DJ would ever see
+    // the one written for their hardware, however carefully.
+    //
+    // What ranks a match is **where** it lands, then how long it is. Every
+    // platform puts the device's own name first and its decoration after --
+    // "DDJ-400:DDJ-400 MIDI 1 24:0", "MIDI Mix:MIDI Mix MIDI 1 24:0" -- so a
+    // mapping matching at the front is naming the device, and one matching
+    // later is only appearing in the decoration. Length alone would get this
+    // exactly backwards: "MIDI" is longer than "DDJ".
+    //
+    // Ties keep list order, so two equally specific mappings behave as they
+    // always did.
+    let lower = port.to_lowercase();
+    mappings
+        .iter()
+        .enumerate()
+        .filter_map(|(index, mapping)| {
+            if !mapping.fits(port) {
+                return None;
+            }
+            let at = lower.find(&mapping.device.to_lowercase())?;
+            Some((index, usize::from(at == 0), mapping.device.len()))
+        })
+        .max_by_key(|(index, leading, length)| (*leading, *length, std::cmp::Reverse(*index)))
+        .map(|(index, _, _)| index)
 }
 
 #[cfg(test)]
@@ -432,5 +462,67 @@ mod tests {
         // What ALSA calls a device, suffix and all.
         assert!(mapping_for("MIDI Mix:MIDI Mix MIDI 1 24:0", &mappings).is_some());
         assert!(mapping_for("Built-in Output", &mappings).is_none());
+    }
+
+    /// **Specificity does not depend on the order the mappings are listed in.**
+    ///
+    /// The bundled list happens to put narrow mappings before broad ones, so
+    /// the length term below earns nothing there and a mutation removing it
+    /// survived. That is exactly the fragility worth pinning: whoever adds the
+    /// next mapping should not have to know it must go above the family one, or
+    /// find out from a DJ whose controller half works.
+    #[test]
+    fn the_narrower_claim_wins_whatever_order_the_list_is_in() {
+        let mapping = |name: &str, device: &str| {
+            Mapping::parse(&format!(
+                r#"
+                name = "{name}"
+                device = "{device}"
+                [[binding]]
+                on = "note 1 0x0B"
+                press = "deck 1 play_pause"
+                "#
+            ))
+            .expect("parses")
+        };
+        // The broad one listed *first*, which is the order that used to decide.
+        let mappings = [mapping("Family", "DDJ"), mapping("Exact", "DDJ-SR")];
+        let index = mapping_for("DDJ-SR:DDJ-SR MIDI 1 24:0", &mappings).expect("a match");
+        assert_eq!(
+            mappings[index].name, "Exact",
+            "the broader mapping won because it was listed first"
+        );
+    }
+
+    /// **The mapping written for the hardware wins over the generic one.**
+    ///
+    /// Every ALSA port name has "MIDI" in it, and `generic-2-deck` claims
+    /// exactly that -- so a first-fit search handed a DDJ-SR to the generic
+    /// mapping and its own file, sitting right there in the binary, was never
+    /// reachable. The narrower claim has to win.
+    #[test]
+    fn a_named_controller_beats_the_generic_mapping() {
+        let mappings = crate::bundled::controllers().unwrap();
+        let named = |port: &str| -> String {
+            let index =
+                mapping_for(port, &mappings).unwrap_or_else(|| panic!("nothing matched {port}"));
+            mappings[index].name.clone()
+        };
+        // The suffix ALSA adds is exactly where the word "MIDI" comes from.
+        assert_eq!(
+            named("DDJ-SR:DDJ-SR MIDI 1 24:0"),
+            "Pioneer DDJ-SR",
+            "a DDJ-SR was handed to a different mapping"
+        );
+        assert_eq!(named("DDJ-200:DDJ-200 MIDI 1 20:0"), "Pioneer DDJ-200");
+        // A model with no file of its own falls to the family mapping, not to
+        // the generic one.
+        assert_eq!(
+            named("DDJ-FLX4:DDJ-FLX4 MIDI 1 24:0"),
+            "Pioneer DDJ (2-deck family)"
+        );
+        assert_eq!(named("CDJ-3000:CDJ-3000 MIDI 1 20:0"), "Pioneer CDJ-3000");
+        // And something nobody wrote a file for still gets the generic one.
+        assert_eq!(named("Akai MPD218:MPD218 MIDI 1 28:0"), "Generic 2-deck");
     }
 }
