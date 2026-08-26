@@ -1,0 +1,294 @@
+# Pioneer CDJ-3000 / CDJ-3000X in MIDI mode — from Pioneer's own MIDI message
+# list.
+#
+# A CDJ is not a controller with a soundcard: it is a player that also speaks
+# MIDI. Switched into MIDI mode it sends the notes and control changes below,
+# and it is a class-compliant USB audio interface besides — which is why a pair
+# of CDJs and a laptop is a working djmanzo rig with **no Pro DJ Link and no
+# licensing partnership involved**. That path is not implemented and is honestly
+# gated in the roadmap; this one needs nothing but a USB cable.
+#
+# **Not run against a CDJ here.** The numbers match the vendor table line for
+# line and no hand has touched the hardware.
+#
+# ## One player, one channel
+#
+# Unlike a DDJ, a CDJ sends everything on a single MIDI channel, chosen in the
+# player's own Utility menu. This file assumes the usual pair: player 1 on
+# channel 1 and player 2 on channel 2. Set each player's channel to match the
+# number written on its front and the file works unedited.
+#
+# ## The jog is a speed, not a delta
+#
+# The platter reports 64 for stopped, above for forwards and below for
+# backwards — a *velocity*, sent over and over while the platter turns, not a
+# count of how far it moved. `min`/`max` below say how much of a revolution one
+# message at full deflection is worth, and that number is a feel setting: it is
+# the first thing to change if scratching is sluggish or twitchy.
+
+name = "Pioneer CDJ-3000"
+device = "CDJ"
+
+# ============================================================ PLAYER 1
+
+[[binding]]
+on = "note 1 0x00"
+press = "deck 1 play_pause"
+
+[[binding]]
+on = "note 1 0x01"
+press = "deck 1 cue"
+
+[[binding]]
+on = "note 1 0x16"
+press = "deck 1 sync"
+
+# MASTER on a CDJ nominates the sync leader. djmanzo picks its leader from what
+# is playing, so this is bound to sync rather than left dead: pressing it on
+# the deck you want followed is close enough to what the button says, and
+# closer than nothing happening.
+[[binding]]
+on = "note 1 0x15"
+press = "deck 1 sync"
+
+# MASTER TEMPO is Pioneer's name for keylock.
+[[binding]]
+on = "note 1 0x0B"
+press = "deck 1 keylock_toggle"
+
+[[binding]]
+on = "note 1 0x48"
+press = "deck 1 keylock_toggle"
+
+[[binding]]
+on = "note 1 0x07"
+press = "deck 1 slip_toggle"
+
+[[binding]]
+on = "note 1 0x19"
+press = "deck 1 reverse_toggle"
+
+# SLIP REVERSE plays backwards while held and drops the playhead where it would
+# have been -- which is slip and reverse together, so both go on and both come
+# off.
+[[binding]]
+on = "note 1 0x18"
+press = "deck 1 slip_on"
+release = "deck 1 slip_off"
+
+# JOG MODE switches the platter between vinyl and CDJ feel.
+[[binding]]
+on = "note 1 0x0C"
+press = "deck 1 jog_mode vinyl"
+
+# Search: held, and the deck moves while it is held.
+[[binding]]
+on = "note 1 0x02"
+press = "deck 1 beatjump 4"
+
+[[binding]]
+on = "note 1 0x03"
+press = "deck 1 beatjump -4"
+
+[[binding]]
+on = "note 1 0x36"
+press = "deck 1 beatjump 1"
+
+[[binding]]
+on = "note 1 0x37"
+press = "deck 1 beatjump -1"
+
+# Loops.
+[[binding]]
+on = "note 1 0x23"
+press = "deck 1 loop_in"
+
+[[binding]]
+on = "note 1 0x24"
+press = "deck 1 loop_out"
+
+[[binding]]
+on = "note 1 0x25"
+press = "deck 1 loop_off"
+
+# The cue/loop call buttons walk saved loops. Read here as halving and
+# doubling, which is what walking a list of loops feels like on a CDJ and is
+# the nearest thing djmanzo's vocabulary has.
+#
+# **CUE/LOOP MEMORY (note 0x0D) is left unbound.** `loop_save` needs to be told
+# which slot, and a button that silently overwrote slot 1 on every press would
+# lose the loop a DJ saved a minute ago. A "save to the next free slot" verb
+# would fix it; that is a change to the vocabulary every surface shares
+# (ADR-0003), not a line in a mapping file.
+[[binding]]
+on = "note 1 0x0E"
+press = "deck 1 loop_double"
+
+[[binding]]
+on = "note 1 0x0F"
+press = "deck 1 loop_halve"
+
+# The tempo slider. Written as a 14-bit control on purpose: where the player
+# sends a low byte djmanzo uses it, and where it does not the control is read
+# as the seven bits it is and still reaches both ends. Binding it as plain `cc`
+# would give up the resolution on every player that does send one.
+[[binding]]
+on = "cc14 1 0x1D"
+move = "deck 1 pitch {value}"
+min = -1.0
+max = 1.0
+
+[[binding]]
+on = "note 1 0x09"
+press = "deck 1 pitch 0"
+
+# Needle position: the strip down the side of the screen, an absolute place in
+# the track rather than a nudge.
+[[binding]]
+on = "cc14 1 0x1C"
+move = "deck 1 seek {value}"
+
+# The platter and its touch plate.
+[[binding]]
+on = "cc 1 0x10"
+move = "deck 1 jog {value}"
+encoding = "offset"
+min = -0.02
+max = 0.02
+
+[[binding]]
+on = "cc 1 0x30"
+move = "deck 1 jog {value}"
+encoding = "offset"
+min = -0.01
+max = 0.01
+
+[[binding]]
+on = "note 1 0x17"
+press = "deck 1 jog_touch"
+release = "deck 1 jog_release"
+
+# ============================================================ PLAYER 2
+
+[[binding]]
+on = "note 2 0x00"
+press = "deck 2 play_pause"
+
+[[binding]]
+on = "note 2 0x01"
+press = "deck 2 cue"
+
+[[binding]]
+on = "note 2 0x16"
+press = "deck 2 sync"
+
+[[binding]]
+on = "note 2 0x15"
+press = "deck 2 sync"
+
+[[binding]]
+on = "note 2 0x0B"
+press = "deck 2 keylock_toggle"
+
+[[binding]]
+on = "note 2 0x48"
+press = "deck 2 keylock_toggle"
+
+[[binding]]
+on = "note 2 0x07"
+press = "deck 2 slip_toggle"
+
+[[binding]]
+on = "note 2 0x19"
+press = "deck 2 reverse_toggle"
+
+[[binding]]
+on = "note 2 0x18"
+press = "deck 2 slip_on"
+release = "deck 2 slip_off"
+
+[[binding]]
+on = "note 2 0x0C"
+press = "deck 2 jog_mode vinyl"
+
+[[binding]]
+on = "note 2 0x02"
+press = "deck 2 beatjump 4"
+
+[[binding]]
+on = "note 2 0x03"
+press = "deck 2 beatjump -4"
+
+[[binding]]
+on = "note 2 0x36"
+press = "deck 2 beatjump 1"
+
+[[binding]]
+on = "note 2 0x37"
+press = "deck 2 beatjump -1"
+
+[[binding]]
+on = "note 2 0x23"
+press = "deck 2 loop_in"
+
+[[binding]]
+on = "note 2 0x24"
+press = "deck 2 loop_out"
+
+[[binding]]
+on = "note 2 0x25"
+press = "deck 2 loop_off"
+
+[[binding]]
+on = "note 2 0x0E"
+press = "deck 2 loop_double"
+
+[[binding]]
+on = "note 2 0x0F"
+press = "deck 2 loop_halve"
+
+[[binding]]
+on = "cc14 2 0x1D"
+move = "deck 2 pitch {value}"
+min = -1.0
+max = 1.0
+
+[[binding]]
+on = "note 2 0x09"
+press = "deck 2 pitch 0"
+
+[[binding]]
+on = "cc14 2 0x1C"
+move = "deck 2 seek {value}"
+
+[[binding]]
+on = "cc 2 0x10"
+move = "deck 2 jog {value}"
+encoding = "offset"
+min = -0.02
+max = 0.02
+
+[[binding]]
+on = "cc 2 0x30"
+move = "deck 2 jog {value}"
+encoding = "offset"
+min = -0.01
+max = 0.01
+
+[[binding]]
+on = "note 2 0x17"
+press = "deck 2 jog_touch"
+release = "deck 2 jog_release"
+
+# ============================================================ FEEDBACK
+# A CDJ lights its own play and cue buttons from its own transport, which in
+# MIDI mode is still the player's transport and not djmanzo's. Sending these
+# keeps the two agreeing.
+
+[[feedback]]
+when = "deck.1.playing"
+send = "note 1 0x00"
+
+[[feedback]]
+when = "deck.2.playing"
+send = "note 2 0x00"

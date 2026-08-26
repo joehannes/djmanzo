@@ -51,6 +51,20 @@ pub enum Trigger {
     Note { channel: u8, note: u8 },
     /// A knob, fader or encoder. `cc <channel> <controller>`.
     Control { channel: u8, controller: u8 },
+    /// A fader or knob sent as a **pair** of control changes, high byte then
+    /// low. `cc14 <channel> <controller>`.
+    ///
+    /// The low byte is not written because MIDI fixes it: controllers 0..=31
+    /// carry the high byte of a value and 32..=63 carry the matching low one,
+    /// so the partner of `n` is always `n + 32`. Every Pioneer, Denon and
+    /// Native Instruments table in circulation follows that, and letting a
+    /// mapping name a different partner would only let it name a wrong one.
+    ///
+    /// Worth having a trigger of its own rather than binding the high byte and
+    /// living with seven bits: 128 steps across a pitch fader's range is
+    /// 0.125% a step, which is audibly coarse when beatmatching, and it is the
+    /// same 128 steps across an EQ kill.
+    Control14 { channel: u8, msb: u8 },
     /// A high-resolution control that uses the pitch wheel. `bend <channel>`.
     Bend { channel: u8 },
     /// A field in a raw HID report. `hid <report> byte|word|word-le|bit <n>`.
@@ -61,6 +75,12 @@ pub enum Trigger {
     /// report is what matters rather than the value itself.
     Hid(crate::report::Field),
 }
+
+/// How far above its high byte a control change's low byte sits.
+///
+/// Fixed by MIDI, not by any one manufacturer: controllers 0..=31 are high
+/// bytes and 32..=63 are their partners.
+const LSB_OFFSET: u8 = 32;
 
 impl Trigger {
     /// Parse the `on = "..."` line.
@@ -88,6 +108,18 @@ impl Trigger {
                 channel: number(words.next())?,
                 controller: number(words.next())?,
             }),
+            "cc14" => {
+                let channel = number(words.next())?;
+                let msb = number(words.next())?;
+                // Refused here rather than at the first message, because a
+                // high byte at 32 or above has no partner to pair with: MIDI
+                // reserves only 0..=31 for them. A mapping that named one
+                // would sit there looking bound and never move anything.
+                if msb >= 32 {
+                    return Err(MappingError::BadTrigger(text.to_owned()));
+                }
+                Ok(Trigger::Control14 { channel, msb })
+            }
             "bend" => Ok(Trigger::Bend {
                 channel: number(words.next())?,
             }),
@@ -160,6 +192,12 @@ impl Trigger {
                     controller: got, ..
                 },
             ) => same_channel(channel) && controller == got,
+            (
+                Trigger::Control14 { channel, msb },
+                crate::Message::Control {
+                    controller: got, ..
+                },
+            ) => same_channel(channel) && (got == msb || got == msb + LSB_OFFSET),
             (Trigger::Bend { channel }, crate::Message::PitchBend { .. }) => same_channel(channel),
             _ => false,
         }
@@ -211,10 +249,17 @@ pub struct Binding {
     /// Sent anticlockwise.
     #[serde(default)]
     pub turn_down: Option<String>,
-    /// Which encoder convention this control uses. Only consulted when the
-    /// binding has `turn_up` or `turn_down`.
+    /// Which convention this control reports movement in, when it reports
+    /// movement rather than a position.
+    ///
+    /// An `Option` and not a defaulted value, because the *presence* of this
+    /// line is itself the fact: a fader has a position and no encoding, while
+    /// a jog wheel or an endless knob has a convention and no position. Given a
+    /// default, a jog wheel bound with `move` would be indistinguishable from a
+    /// fader and would be read as one -- which puts its centre a hair off zero
+    /// and creeps the deck. See [`centred`].
     #[serde(default)]
-    pub encoding: Encoding,
+    pub encoding: Option<Encoding>,
     /// Sent when a **motorised platter** reports its angle. Contains `{value}`,
     /// which is filled with the movement since the last report in revolutions.
     ///
@@ -290,6 +335,23 @@ pub struct Mapping {
     /// means anything against the previous one.
     #[serde(skip)]
     platters: HashMap<Trigger, crate::platter::AbsolutePlatter>,
+    /// The two halves of each 14-bit control, most recent of each.
+    ///
+    /// Kept because the halves arrive as separate messages and neither is the
+    /// value on its own. Acting on the high byte alone would quantise every
+    /// Pioneer fader back to the seven bits `cc14` exists to escape; waiting
+    /// for the low byte alone would leave a controller that sends only high
+    /// bytes -- some do, at rest -- entirely dead.
+    ///
+    /// The low byte is an `Option` and not a zero, because "not sent yet" and
+    /// "sent as zero" are different faders. Treated as zero, a controller that
+    /// sends only high bytes would top out at 16256/16383 and never quite
+    /// reach the end of its own travel -- a fader that cannot be pushed all
+    /// the way up. Absent, the control is read as the seven bits it actually
+    /// is, and it reaches both ends; the moment a low byte does arrive it
+    /// becomes fourteen.
+    #[serde(skip)]
+    highres: HashMap<Trigger, (u8, Option<u8>)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -492,7 +554,28 @@ impl Mapping {
                         out.push(action.clone());
                     }
                 }
-                crate::Message::Control { value, .. } => {
+                crate::Message::Control {
+                    value, controller, ..
+                } => {
+                    if let Trigger::Control14 { msb, .. } = trigger {
+                        let halves = self.highres.entry(trigger).or_insert((0, None));
+                        if controller == msb {
+                            halves.0 = value;
+                        } else {
+                            halves.1 = Some(value);
+                        }
+                        let fraction = match halves.1 {
+                            Some(low) => {
+                                let combined = (u16::from(halves.0) << 7) | u16::from(low & 0x7F);
+                                f32::from(combined) / 16_383.0
+                            }
+                            None => f32::from(halves.0) / 127.0,
+                        };
+                        if let Some(template) = &binding.moved {
+                            out.push(fill(template, scale(binding, fraction)));
+                        }
+                        continue;
+                    }
                     if let Some(template) = binding.platter.clone() {
                         // A 7-bit control is a coarse platter, but a real one:
                         // some devices send the angle's high byte only.
@@ -511,7 +594,16 @@ impl Mapping {
                             out.push(action);
                         }
                     } else if let Some(template) = &binding.moved {
-                        out.push(fill(template, scale(binding, f32::from(value) / 127.0)));
+                        // A control that reports *movement* is centred, not a
+                        // position; see `centred`. Which of the two it is, is
+                        // the same fact `encoding` already states for a
+                        // stepping encoder, so it is not asked twice.
+                        let number = if let Some(encoding) = binding.encoding {
+                            centred(binding, value, encoding)
+                        } else {
+                            scale(binding, f32::from(value) / 127.0)
+                        };
+                        out.push(fill(template, number));
                     }
                 }
                 crate::Message::PitchBend { value, .. } => {
@@ -700,7 +792,9 @@ impl Mapping {
 /// 30 produced *beat jump forward* — the wrong direction, silently, on real
 /// hardware. Controllers document which they send, so a mapping can say.
 fn turned(binding: &Binding, value: u8, previous: Option<u8>) -> Option<String> {
-    let up = match binding.encoding {
+    // A stepping encoder that did not say which convention it uses gets the
+    // common one, which is what it had before `encoding` became optional.
+    let up = match binding.encoding.unwrap_or_default() {
         // Two's complement: 1..=63 is that many clicks clockwise, 127 counts
         // back down from zero. 0 and 64 are no movement.
         Encoding::Signed => match value {
@@ -734,6 +828,53 @@ fn scale(binding: &Binding, position: f32) -> f32 {
     let min = binding.min.unwrap_or(0.0);
     let max = binding.max.unwrap_or(1.0);
     min + position * (max - min)
+}
+
+/// The centre of a control that reports movement rather than position.
+///
+/// Named because it is the number the whole convention turns on: 64 is
+/// standing still, and a jog wheel that thinks standing still is anything else
+/// creeps.
+const CENTRED: f32 = 64.0;
+
+/// Full deflection either side of [`CENTRED`].
+const DEFLECTION: f32 = 63.0;
+
+/// A jog wheel's reading as a signed fraction of full deflection.
+///
+/// A platter does not send a position; it sends how far, or how fast, it just
+/// moved, centred on a value that means "not moving". Feeding that through
+/// [`scale`] as if it were a fader position gets the ends right and the middle
+/// **wrong**: 64 out of 127 is 0.504 of the way up, which lands a hair off zero
+/// and drives the deck forwards while the DJ's hand is nowhere near the
+/// platter. Over a set that is a track sliding out of time on its own.
+///
+/// So the centre is anchored exactly and each half is scaled to its own end.
+/// That also lets a mapping give the two directions different weights, which
+/// asymmetric `min`/`max` on a fader could never mean.
+fn centred(binding: &Binding, value: u8, encoding: Encoding) -> f32 {
+    let raw = f32::from(value);
+    let offset = match encoding {
+        // 1..=63 one way, 127..=65 the other, with 0 and 64 both standing
+        // still. Two's complement in seven bits.
+        Encoding::Signed => {
+            if value == 0 || value == 64 {
+                0.0
+            } else if value < 64 {
+                raw
+            } else {
+                raw - 128.0
+            }
+        }
+        // Counting up from 65 and down from 63.
+        Encoding::Offset | Encoding::Absolute => raw - CENTRED,
+    };
+    let fraction = (offset / DEFLECTION).clamp(-1.0, 1.0);
+    if fraction >= 0.0 {
+        fraction * binding.max.unwrap_or(1.0)
+    } else {
+        -fraction * binding.min.unwrap_or(0.0)
+    }
 }
 
 /// Fill `{value}` in, rounded to three places.
@@ -854,6 +995,170 @@ mod tests {
                 value: 0
             }),
             vec!["deck 1 volume 0"]
+        );
+    }
+
+    /// **A 14-bit fader resolves what a 7-bit one cannot.**
+    ///
+    /// The point of `cc14`: every Pioneer, Denon and Native Instruments fader
+    /// arrives as a high byte and a low one, and reading only the high byte
+    /// puts a pitch fader back on 128 steps -- 0.125% each, audibly coarse
+    /// when beatmatching. Two positions one low-byte step apart have to give
+    /// two different numbers.
+    #[test]
+    fn a_fourteen_bit_pair_resolves_a_step_a_seven_bit_control_cannot() {
+        let mut map = mapping(
+            r#"
+            name = "Test"
+            [[binding]]
+            on = "cc14 1 0"
+            move = "deck 1 pitch {value}"
+            min = -1.0
+            max = 1.0
+            "#,
+        );
+        let mut at = |msb: u8, lsb: u8| {
+            map.translate(Message::Control {
+                channel: 0,
+                controller: 0,
+                value: msb,
+            });
+            map.translate(Message::Control {
+                channel: 0,
+                controller: 32,
+                value: lsb,
+            })
+            .join("")
+        };
+        let a = at(64, 0);
+        let b = at(64, 1);
+        assert_ne!(
+            a, b,
+            "two positions one low-byte step apart wrote the same number, so the fader is \
+             still seven bits"
+        );
+    }
+
+    /// **The pair spans its whole range.** Both bytes at zero is the bottom of
+    /// the fader and both at their maximum is the top; anything else means the
+    /// two halves are being combined wrongly and the fader would never reach
+    /// one end.
+    #[test]
+    fn a_fourteen_bit_pair_reaches_both_ends() {
+        let mut map = mapping(
+            r#"
+            name = "Test"
+            [[binding]]
+            on = "cc14 1 0x13"
+            move = "deck 1 volume {value}"
+            "#,
+        );
+        let mut at = |msb: u8, lsb: u8| {
+            map.translate(Message::Control {
+                channel: 0,
+                controller: 0x13,
+                value: msb,
+            });
+            map.translate(Message::Control {
+                channel: 0,
+                controller: 0x33,
+                value: lsb,
+            })
+        };
+        assert_eq!(at(0, 0), vec!["deck 1 volume 0"]);
+        assert_eq!(at(127, 127), vec!["deck 1 volume 1"]);
+        // And which byte is which. Both ends are symmetric under swapping the
+        // halves, so without an asymmetric point a mapping that read the low
+        // byte as the high one would pass everything above while putting every
+        // fader in the wrong place across its whole travel.
+        assert_eq!(
+            at(127, 0),
+            vec!["deck 1 volume 0.992248"],
+            "a full high byte with an empty low one is the top of the fader, not the bottom"
+        );
+        assert_eq!(
+            at(0, 127),
+            vec!["deck 1 volume 0.007752"],
+            "an empty high byte with a full low one is the bottom of the fader"
+        );
+    }
+
+    /// **A controller that sends only high bytes still works.**
+    ///
+    /// Some send the low byte only while a fader is actually moving and drop
+    /// it at rest, and some never send one at all. A mapping that waited for
+    /// both would leave those faders dead, which is worse than the coarseness
+    /// it was avoiding -- and one that assumed a missing low byte was zero
+    /// would leave the fader unable to reach its own top.
+    #[test]
+    fn a_high_byte_on_its_own_still_moves_the_control() {
+        let mut map = mapping(
+            r#"
+            name = "Test"
+            [[binding]]
+            on = "cc14 1 7"
+            move = "deck 1 volume {value}"
+            "#,
+        );
+        assert_eq!(
+            map.translate(Message::Control {
+                channel: 0,
+                controller: 7,
+                value: 127
+            }),
+            vec!["deck 1 volume 1"],
+            "a high byte alone did not reach the top of its own fader"
+        );
+    }
+
+    /// **A high byte with no partner is refused when the file loads.**
+    ///
+    /// MIDI reserves 0..=31 for high bytes and 32..=63 for their partners, so
+    /// `cc14` on 40 names a pair that cannot exist. Refusing at load means a
+    /// DJ finds out while editing the file rather than by pushing a fader that
+    /// does nothing.
+    #[test]
+    fn a_fourteen_bit_control_outside_the_high_byte_range_is_refused() {
+        assert!(Trigger::parse("cc14 1 40").is_err());
+        assert!(Trigger::parse("cc14 1 32").is_err());
+        assert!(Trigger::parse("cc14 1 31").is_ok());
+    }
+
+    /// The two halves of one fader must not be confused with a different
+    /// fader's. Deck 1's EQ high byte and deck 2's are the same controller on
+    /// different channels.
+    #[test]
+    fn two_channels_keep_their_own_halves() {
+        let mut map = mapping(
+            r#"
+            name = "Test"
+            [[binding]]
+            on = "cc14 1 7"
+            move = "deck 1 volume {value}"
+            [[binding]]
+            on = "cc14 2 7"
+            move = "deck 2 volume {value}"
+            "#,
+        );
+        map.translate(Message::Control {
+            channel: 0,
+            controller: 7,
+            value: 127,
+        });
+        map.translate(Message::Control {
+            channel: 0,
+            controller: 39,
+            value: 127,
+        });
+        // Deck 2 has been told nothing, so it must still read zero.
+        assert_eq!(
+            map.translate(Message::Control {
+                channel: 1,
+                controller: 39,
+                value: 0
+            }),
+            vec!["deck 2 volume 0"],
+            "deck 1's fader moved deck 2's"
         );
     }
 

@@ -196,6 +196,67 @@ seek simply re-primes the window. Details in [ARCHITECTURE.md § stem engine](AR
 
 ---
 
+## Controller mappings: where the numbers come from
+
+A mapping file is a table of facts about a piece of hardware — this button
+sends that note. The facts are not anybody's expression, but the *compilations*
+of them are, and the largest freely available compilation is Mixxx's, which is
+GPL-2.0 and therefore off limits under ADR-0002. So each bundled mapping records
+its own source, and none of them came from Mixxx.
+
+| Mapping | Source | Status |
+|---|---|---|
+| `pioneer-ddj-sr` | Pioneer's own *DDJ-SR List of MIDI Messages* | Vendor documentation, read as reference. Not redistributed. |
+| `pioneer-cdj-3000` | Pioneer's own *CDJ-3000X MIDI Message List* | As above. |
+| `generic-2-deck`, `generic-hid`, `motorised-platter`, `scripted-shift` | Written here from the conventions common to class-compliant controllers | Meant to be edited, and they say so. |
+
+**None of these have been run against the hardware.** Every number matches the
+vendor table line for line and no hand in this project has touched a DDJ-SR or a
+CDJ. That is a well-sourced starting point, not a tested one, and the files say
+so at the top rather than burying it here.
+
+### Two facts about Pioneer hardware worth knowing before reading a table
+
+- **One controller, seven MIDI channels.** Decks 1–4 on channels 1–4, effect
+  units on 5–6, browser and crossfader on 7, and the performance pads on 8–11 —
+  so a deck's play button and its own pads are on *different channels*.
+- **Faders arrive in two halves.** Every fader and knob is 14-bit, split across a
+  high-byte control change and a low-byte one 32 controllers above it. This is
+  ordinary MIDI, not a Pioneer invention: controllers 0–31 are high bytes and
+  32–63 are their partners, and Denon and Native Instruments do the same.
+  djmanzo's `cc14` names the high byte and pairs them; binding the high byte
+  alone with `cc` would work and would throw away half the resolution.
+
+### What was checked, and what could not be
+
+The vendor PDFs are hosted on `pioneerdj.com` and `support.alphatheta.com`, and
+**both are blocked by this project's network egress policy** — the gateway
+answers 403 to the CONNECT, as it does for every other manufacturer's
+documentation host tried (Native Instruments, Denon, Novation, Akai, Numark,
+Reloop, Hercules, and the Internet Archive). GitHub and the package registries
+are reachable; nothing else is. Where a table below was obtained, it was because
+the document had been vendored into a repository that *is* reachable, or
+supplied directly.
+
+### Permissively licensed mapping repositories
+
+Licences below were **verified by cloning each repository and reading its own
+LICENSE file**, not taken from any summary:
+
+| Repository | Licence | Verified |
+|---|---|---|
+| `flesniak/python-prodj-link` | Apache-2.0 | Yes — Apache License 2.0 text |
+| `pestrela/dj_maps` | MIT | Yes — "Copyright (c) 2020 Pedro Estrela" |
+| `rbax/mixxx-mappings` | MIT | Yes — "Copyright (c) 2021 Ryan Baxter" |
+| `laksateef/vdj-ddj200-linux` | MIT | Yes — MIT |
+| `marcan/Mixxx-Pioneer-DDJ-SX2` | MIT | Yes — "Copyright (c) 2014 Hilton Rudham" |
+
+A permissive licence on a repository covers **that author's** work. Where one of
+these vendors a manufacturer's PDF, the PDF remains the manufacturer's and is
+treated as reference only. Nothing from `mixxxdj/mixxx` itself is used.
+
+---
+
 ## Sources
 
 - [VirtualDJ](https://virtualdj.com/) — product, manual, hardware list, skin SDK

@@ -26,6 +26,14 @@ pub const CONTROLLERS: &[(&str, &str)] = &[
         "scripted-shift",
         include_str!("../mappings/scripted-shift.toml"),
     ),
+    (
+        "pioneer-ddj-sr",
+        include_str!("../mappings/pioneer-ddj-sr.toml"),
+    ),
+    (
+        "pioneer-cdj-3000",
+        include_str!("../mappings/pioneer-cdj-3000.toml"),
+    ),
 ];
 
 /// The default keyboard mapping, parsed.
@@ -208,6 +216,110 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// One bundled mapping by name, for the tests that drive a specific one.
+    fn bundled(stem: &str) -> Mapping {
+        let (_, text) = CONTROLLERS
+            .iter()
+            .find(|(name, _)| *name == stem)
+            .unwrap_or_else(|| panic!("no bundled mapping called {stem}"));
+        Mapping::parse(text).expect("the bundled file parses")
+    }
+
+    /// **The DDJ-SR's faders arrive in two halves and are read as one.**
+    ///
+    /// Every fader and knob on this controller is a 14-bit pair, and the whole
+    /// reason `cc14` exists is that binding the high byte alone would put the
+    /// pitch fader back on 128 steps. A mapping that quietly bound only the
+    /// high byte would still work -- which is why this drives the actual pair
+    /// and checks that the low byte changes the answer.
+    #[test]
+    fn the_ddj_sr_pitch_fader_reads_all_fourteen_bits() {
+        let mut map = bundled("pioneer-ddj-sr");
+        let mut at = |msb: u8, lsb: u8| {
+            map.translate(crate::Message::Control {
+                channel: 0,
+                controller: 0x00,
+                value: msb,
+            });
+            map.translate(crate::Message::Control {
+                channel: 0,
+                controller: 0x20,
+                value: lsb,
+            })
+            .join("")
+        };
+        let coarse = at(64, 0);
+        let fine = at(64, 1);
+        assert!(!coarse.is_empty(), "the pitch fader is not bound at all");
+        assert_ne!(
+            coarse, fine,
+            "one low-byte step moved the pitch fader nowhere, so it is still seven bits"
+        );
+    }
+
+    /// **A deck's controls are on the channel the vendor puts them on.**
+    ///
+    /// Pioneer splits one controller across seven MIDI channels and puts a
+    /// deck's pads on a *different* channel from its transport. Getting that
+    /// wrong is the easiest mistake to make transcribing the table, and it
+    /// would show up as deck 2 answering deck 1's pads.
+    #[test]
+    fn the_ddj_sr_keeps_its_two_decks_apart() {
+        let mut map = bundled("pioneer-ddj-sr");
+        // Play on channel 1 is deck 1; the same note on channel 2 is deck 2.
+        let play = |channel| crate::Message::NoteOn {
+            channel,
+            note: 0x0B,
+            velocity: 127,
+        };
+        assert_eq!(map.translate(play(0)), vec!["deck 1 play_pause"]);
+        assert_eq!(map.translate(play(1)), vec!["deck 2 play_pause"]);
+        // The pads live on channels 8 and 9, not 1 and 2.
+        let pad = |channel| crate::Message::NoteOn {
+            channel,
+            note: 0x00,
+            velocity: 127,
+        };
+        assert_eq!(map.translate(pad(7)), vec!["deck 1 hotcue 1"]);
+        assert_eq!(map.translate(pad(8)), vec!["deck 2 hotcue 1"]);
+    }
+
+    /// **A CDJ's platter is a speed around 64, and both directions work.**
+    ///
+    /// The platter does not send a delta: it sends how fast it is turning,
+    /// with 64 for stopped. Read as an unsigned fader it would drive the deck
+    /// forwards at half speed while standing still, which is the failure that
+    /// looks like the software is possessed.
+    #[test]
+    fn the_cdj_platter_turns_both_ways_around_a_still_centre() {
+        let mut map = bundled("pioneer-cdj-3000");
+        let jog = |value| crate::Message::Control {
+            channel: 0,
+            controller: 0x10,
+            value,
+        };
+        let number = |actions: Vec<String>| -> f32 {
+            actions
+                .first()
+                .and_then(|a| a.rsplit(' ').next())
+                .and_then(|n| n.parse().ok())
+                .unwrap_or_else(|| panic!("the platter produced no movement"))
+        };
+        let still = number(map.translate(jog(64)));
+        let forward = number(map.translate(jog(127)));
+        let backward = number(map.translate(jog(0)));
+        // Exactly nothing, not nearly nothing. Read as a fader position, 64
+        // out of 127 lands a hair above zero and the deck creeps forwards
+        // under a hand that is not touching it -- which over a set is a track
+        // sliding out of time on its own, and is the reason `centred` exists.
+        assert_eq!(
+            still, 0.0,
+            "a stopped platter moved the deck by {still} of a turn"
+        );
+        assert!(forward > 0.0, "forwards moved the deck by {forward}");
+        assert!(backward < 0.0, "backwards moved the deck by {backward}");
     }
 
     /// The two hands are meant to mirror each other. If deck 1 gains a move

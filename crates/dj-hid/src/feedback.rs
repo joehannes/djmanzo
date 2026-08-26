@@ -102,13 +102,18 @@ impl Light {
                 controller & 0x7F,
                 value,
             ]),
-            // Neither can carry a MIDI light. A pitch bend is a fourteen-bit
-            // *input*; a HID field is a location in an inbound report, and
-            // lighting a HID device means writing an output report of its own
-            // shape -- a different thing entirely, and not something a
-            // `[[feedback]]` line can express. Saying so beats sending three
-            // bytes a HID device would read as something else.
-            Trigger::Bend { .. } | Trigger::Hid(_) => None,
+            // None of these can carry a MIDI light. A pitch bend and a
+            // fourteen-bit control change are both high-resolution *inputs* --
+            // a fader's position, not a lamp -- and a `[[feedback]]` line
+            // carries one seven-bit value, so there is no honest way to
+            // address either. Sending the high byte alone would look like it
+            // worked and leave the low byte stale, which is the shape of thing
+            // this project keeps refusing to ship. A HID field is a location
+            // in an *inbound* report; lighting a HID device means writing an
+            // output report of its own shape, which is a different thing
+            // entirely. Saying so beats sending three bytes a device would
+            // read as something else.
+            Trigger::Bend { .. } | Trigger::Control14 { .. } | Trigger::Hid(_) => None,
         }
     }
 }

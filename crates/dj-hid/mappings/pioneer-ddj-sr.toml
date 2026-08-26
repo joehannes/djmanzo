@@ -1,0 +1,646 @@
+# Pioneer DDJ-SR — from Pioneer's own List of MIDI Messages.
+#
+# The numbers here are transcribed from the manufacturer's published MIDI
+# message list: which button sends which note, which knob sends which pair of
+# control changes. Those are facts about a piece of hardware, and they are
+# written out in full rather than generated so that anyone with the same
+# document can check them line by line.
+#
+# Nothing was copied from another DJ program's mapping. Where djmanzo does
+# something the DDJ-SR's own software does differently, the comment says so.
+#
+# **This has not been run against a DDJ-SR.** Every number matches the vendor
+# table, and no hand has touched the hardware here. Treat it as a well-sourced
+# starting point: if a control does nothing, the mapping editor will learn it
+# in a few seconds and the file is meant to be edited.
+#
+# ## Channels, which are not what you would guess
+#
+# Pioneer splits one controller across seven MIDI channels:
+#
+#   1-4   the four decks
+#   5,6   effect units 1 and 2
+#   7     browser, crossfader and everything global
+#   8-11  the performance pads, one channel per deck
+#
+# So a deck's play button and its own pads are on *different channels*. That is
+# the vendor's arrangement, not a mistake here.
+#
+# ## Faders arrive in two halves
+#
+# Every fader and knob on this controller is a 14-bit value split across two
+# control changes: a high byte, and a low byte 32 controllers above it. `cc14`
+# names the high one and djmanzo pairs them. Binding the high byte alone with
+# `cc` would work and would throw away half the resolution — 128 steps across
+# the pitch fader is 0.125% a step, which is audible when beatmatching.
+
+name = "Pioneer DDJ-SR"
+device = "DDJ-SR"
+
+# ------------------------------------------------------------ audio outputs
+#
+# Not stated. The DDJ-SR has a built-in soundcard, and which socket carries
+# which bus is exactly the sort of thing this section exists for -- but it is
+# not in the MIDI message list, which is the only document consulted here.
+# Guessing would put the master in the headphones. Uncomment and correct once
+# you have checked, and see `generic-2-deck.toml` for the shape.
+
+# ============================================================ DECK 1
+# Channel 1. Notes and control changes both.
+
+[[binding]]
+on = "note 1 0x0B"
+press = "deck 1 play_pause"
+
+[[binding]]
+on = "note 1 0x0C"
+press = "deck 1 cue"
+
+[[binding]]
+on = "note 1 0x58"
+press = "deck 1 sync"
+
+[[binding]]
+on = "note 1 0x1A"
+press = "deck 1 keylock_toggle"
+
+[[binding]]
+on = "note 1 0x40"
+press = "deck 1 slip_toggle"
+
+# VINYL switches the jog between scratching and pitch bending, which is a mode
+# on the deck and not a mode in the mapping: the two jog control changes below
+# are what the controller actually sends in each mode.
+[[binding]]
+on = "note 1 0x17"
+press = "deck 1 jog_mode vinyl"
+
+# The tempo fader. Fourteen bits, and the vendor table says the "-" end is 0
+# and the "+" end is 16383 -- so it runs low to high with no inversion.
+[[binding]]
+on = "cc14 1 0x00"
+move = "deck 1 pitch {value}"
+min = -1.0
+max = 1.0
+
+# The platter, in each of its two modes. Both send a *difference* from the last
+# reading, counting up from 65 clockwise and down from 63 anticlockwise, which
+# is `offset` encoding with 64 as standing still.
+#
+# One turn of the jog is one turn of the record: `jog` is in revolutions, and
+# `min`/`max` are what one message's worth of movement is worth. The number
+# below is a starting point, not a measurement -- how much a DDJ-SR sends per
+# message is something only the hardware can settle, and it is the first thing
+# to change if scratching feels slow or twitchy.
+[[binding]]
+on = "cc 1 0x22"
+move = "deck 1 jog {value}"
+encoding = "offset"
+min = -0.02
+max = 0.02
+
+[[binding]]
+on = "cc 1 0x23"
+move = "deck 1 jog {value}"
+encoding = "offset"
+min = -0.02
+max = 0.02
+
+# The wheel's outer ring: pitch bend rather than scratch, on both modes.
+[[binding]]
+on = "cc 1 0x21"
+move = "deck 1 jog {value}"
+encoding = "offset"
+min = -0.01
+max = 0.01
+
+# Touching the platter. Two different notes because the controller says which
+# mode it was in when the hand landed; djmanzo wants the same thing either way.
+[[binding]]
+on = "note 1 0x36"
+press = "deck 1 jog_touch"
+release = "deck 1 jog_release"
+
+[[binding]]
+on = "note 1 0x35"
+press = "deck 1 jog_touch"
+release = "deck 1 jog_release"
+
+# Loops.
+[[binding]]
+on = "note 1 0x14"
+press = "deck 1 loop 4"
+
+[[binding]]
+on = "note 1 0x12"
+press = "deck 1 loop_halve"
+
+[[binding]]
+on = "note 1 0x13"
+press = "deck 1 loop_double"
+
+# ------------------------------------------------------------ DECK 1 mixer
+# Also channel 1: Pioneer keeps a deck's channel strip on the deck's channel.
+
+[[binding]]
+on = "cc14 1 0x13"
+move = "deck 1 volume {value}"
+
+[[binding]]
+on = "cc14 1 0x04"
+move = "deck 1 gain {value}"
+min = 0.0
+max = 2.0
+
+[[binding]]
+on = "cc14 1 0x07"
+move = "deck 1 eq_high {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc14 1 0x0B"
+move = "deck 1 eq_mid {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc14 1 0x0F"
+move = "deck 1 eq_low {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "note 1 0x54"
+press = "deck 1 cue_toggle"
+
+# ============================================================ DECK 2
+# Identical to deck 1 on channel 2. Written out rather than generated, so the
+# file can be checked against the vendor table without running anything.
+
+[[binding]]
+on = "note 2 0x0B"
+press = "deck 2 play_pause"
+
+[[binding]]
+on = "note 2 0x0C"
+press = "deck 2 cue"
+
+[[binding]]
+on = "note 2 0x58"
+press = "deck 2 sync"
+
+[[binding]]
+on = "note 2 0x1A"
+press = "deck 2 keylock_toggle"
+
+[[binding]]
+on = "note 2 0x40"
+press = "deck 2 slip_toggle"
+
+[[binding]]
+on = "note 2 0x17"
+press = "deck 2 jog_mode vinyl"
+
+[[binding]]
+on = "cc14 2 0x00"
+move = "deck 2 pitch {value}"
+min = -1.0
+max = 1.0
+
+[[binding]]
+on = "cc 2 0x22"
+move = "deck 2 jog {value}"
+encoding = "offset"
+min = -0.02
+max = 0.02
+
+[[binding]]
+on = "cc 2 0x23"
+move = "deck 2 jog {value}"
+encoding = "offset"
+min = -0.02
+max = 0.02
+
+[[binding]]
+on = "cc 2 0x21"
+move = "deck 2 jog {value}"
+encoding = "offset"
+min = -0.01
+max = 0.01
+
+[[binding]]
+on = "note 2 0x36"
+press = "deck 2 jog_touch"
+release = "deck 2 jog_release"
+
+[[binding]]
+on = "note 2 0x35"
+press = "deck 2 jog_touch"
+release = "deck 2 jog_release"
+
+[[binding]]
+on = "note 2 0x14"
+press = "deck 2 loop 4"
+
+[[binding]]
+on = "note 2 0x12"
+press = "deck 2 loop_halve"
+
+[[binding]]
+on = "note 2 0x13"
+press = "deck 2 loop_double"
+
+[[binding]]
+on = "cc14 2 0x13"
+move = "deck 2 volume {value}"
+
+[[binding]]
+on = "cc14 2 0x04"
+move = "deck 2 gain {value}"
+min = 0.0
+max = 2.0
+
+[[binding]]
+on = "cc14 2 0x07"
+move = "deck 2 eq_high {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc14 2 0x0B"
+move = "deck 2 eq_mid {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "cc14 2 0x0F"
+move = "deck 2 eq_low {value}"
+min = 0.0
+max = 4.0
+
+[[binding]]
+on = "note 2 0x54"
+press = "deck 2 cue_toggle"
+
+# ============================================================ GLOBAL
+# Channel 7: the crossfader, the browser, and the effect assignment.
+
+[[binding]]
+on = "cc14 7 0x1F"
+move = "crossfader {value}"
+
+# The rotary selector, the LOAD buttons and BACK are **deliberately unbound**.
+#
+# Not an oversight and not laziness: djmanzo's action vocabulary has no verbs
+# for moving through the library, so there is nothing to bind them to. Every
+# other surface -- the interface, scripts, the network, the assistant -- speaks
+# that one vocabulary (ADR-0003), so inventing browser verbs here would mean
+# inventing them for all of them, which is a piece of work and not a line in a
+# mapping file. The numbers, for whoever does it:
+#
+#   rotary turn   cc 7 0x40, a difference count: 1..30 clockwise,
+#                 127 down to 98 anticlockwise, so `encoding = "signed"`
+#   rotary press  note 7 0x41
+#   BACK          note 7 0x65
+
+# ============================================================ EFFECT UNITS
+# Channels 5 and 6. Three knobs and three buttons each, plus a beats knob.
+#
+# Mapped onto the master effect rack's first three slots for unit 1. Unit 2's knobs are
+# left for the mapping editor rather than doubled onto the same three slots,
+# which would give two knobs fighting over one effect.
+
+[[binding]]
+on = "cc14 5 0x02"
+move = "master fx 1 amount {value}"
+
+[[binding]]
+on = "cc14 5 0x04"
+move = "master fx 2 amount {value}"
+
+[[binding]]
+on = "cc14 5 0x06"
+move = "master fx 3 amount {value}"
+
+[[binding]]
+on = "note 5 0x47"
+press = "master fx 1 toggle"
+
+[[binding]]
+on = "note 5 0x48"
+press = "master fx 2 toggle"
+
+[[binding]]
+on = "note 5 0x49"
+press = "master fx 3 toggle"
+
+# ============================================================ PERFORMANCE PADS
+# Channels 8 and 9 for decks 1 and 2. The pad's *note* says which mode the
+# controller is in: hot cue at 0x00, roll at 0x10, slicer at 0x20, sampler at
+# 0x30, eight pads from each base. The mode button is on the controller and
+# changes nothing here — djmanzo simply binds all four rows.
+
+# Hot cues, deck 1.
+[[binding]]
+on = "note 8 0x00"
+press = "deck 1 hotcue 1"
+
+[[binding]]
+on = "note 8 0x01"
+press = "deck 1 hotcue 2"
+
+[[binding]]
+on = "note 8 0x02"
+press = "deck 1 hotcue 3"
+
+[[binding]]
+on = "note 8 0x03"
+press = "deck 1 hotcue 4"
+
+[[binding]]
+on = "note 8 0x04"
+press = "deck 1 hotcue 5"
+
+[[binding]]
+on = "note 8 0x05"
+press = "deck 1 hotcue 6"
+
+[[binding]]
+on = "note 8 0x06"
+press = "deck 1 hotcue 7"
+
+[[binding]]
+on = "note 8 0x07"
+press = "deck 1 hotcue 8"
+
+# Roll, deck 1. A roll is held, not latched: the release is what puts the
+# playhead back where it would have been, so both halves are bound.
+[[binding]]
+on = "note 8 0x10"
+press = "deck 1 roll 0.0625"
+release = "deck 1 roll_off"
+
+[[binding]]
+on = "note 8 0x11"
+press = "deck 1 roll 0.125"
+release = "deck 1 roll_off"
+
+[[binding]]
+on = "note 8 0x12"
+press = "deck 1 roll 0.25"
+release = "deck 1 roll_off"
+
+[[binding]]
+on = "note 8 0x13"
+press = "deck 1 roll 0.5"
+release = "deck 1 roll_off"
+
+[[binding]]
+on = "note 8 0x14"
+press = "deck 1 roll 1"
+release = "deck 1 roll_off"
+
+[[binding]]
+on = "note 8 0x15"
+press = "deck 1 roll 2"
+release = "deck 1 roll_off"
+
+[[binding]]
+on = "note 8 0x16"
+press = "deck 1 roll 4"
+release = "deck 1 roll_off"
+
+[[binding]]
+on = "note 8 0x17"
+press = "deck 1 roll 8"
+release = "deck 1 roll_off"
+
+# Slicer, deck 1.
+[[binding]]
+on = "note 8 0x20"
+press = "deck 1 slice 1"
+
+[[binding]]
+on = "note 8 0x21"
+press = "deck 1 slice 2"
+
+[[binding]]
+on = "note 8 0x22"
+press = "deck 1 slice 3"
+
+[[binding]]
+on = "note 8 0x23"
+press = "deck 1 slice 4"
+
+[[binding]]
+on = "note 8 0x24"
+press = "deck 1 slice 5"
+
+[[binding]]
+on = "note 8 0x25"
+press = "deck 1 slice 6"
+
+[[binding]]
+on = "note 8 0x26"
+press = "deck 1 slice 7"
+
+[[binding]]
+on = "note 8 0x27"
+press = "deck 1 slice 8"
+
+# Sampler, deck 1. The sampler is one bank shared by the whole application, so
+# both decks' pads reach the same eight slots -- which is what a DJ expects
+# from a sampler and not what they would expect from a hot cue.
+[[binding]]
+on = "note 8 0x30"
+press = "sampler 1 trigger"
+
+[[binding]]
+on = "note 8 0x31"
+press = "sampler 2 trigger"
+
+[[binding]]
+on = "note 8 0x32"
+press = "sampler 3 trigger"
+
+[[binding]]
+on = "note 8 0x33"
+press = "sampler 4 trigger"
+
+[[binding]]
+on = "note 8 0x34"
+press = "sampler 5 trigger"
+
+[[binding]]
+on = "note 8 0x35"
+press = "sampler 6 trigger"
+
+[[binding]]
+on = "note 8 0x36"
+press = "sampler 7 trigger"
+
+[[binding]]
+on = "note 8 0x37"
+press = "sampler 8 trigger"
+
+# Hot cues, deck 2.
+[[binding]]
+on = "note 9 0x00"
+press = "deck 2 hotcue 1"
+
+[[binding]]
+on = "note 9 0x01"
+press = "deck 2 hotcue 2"
+
+[[binding]]
+on = "note 9 0x02"
+press = "deck 2 hotcue 3"
+
+[[binding]]
+on = "note 9 0x03"
+press = "deck 2 hotcue 4"
+
+[[binding]]
+on = "note 9 0x04"
+press = "deck 2 hotcue 5"
+
+[[binding]]
+on = "note 9 0x05"
+press = "deck 2 hotcue 6"
+
+[[binding]]
+on = "note 9 0x06"
+press = "deck 2 hotcue 7"
+
+[[binding]]
+on = "note 9 0x07"
+press = "deck 2 hotcue 8"
+
+# Roll, deck 2.
+[[binding]]
+on = "note 9 0x10"
+press = "deck 2 roll 0.0625"
+release = "deck 2 roll_off"
+
+[[binding]]
+on = "note 9 0x11"
+press = "deck 2 roll 0.125"
+release = "deck 2 roll_off"
+
+[[binding]]
+on = "note 9 0x12"
+press = "deck 2 roll 0.25"
+release = "deck 2 roll_off"
+
+[[binding]]
+on = "note 9 0x13"
+press = "deck 2 roll 0.5"
+release = "deck 2 roll_off"
+
+[[binding]]
+on = "note 9 0x14"
+press = "deck 2 roll 1"
+release = "deck 2 roll_off"
+
+[[binding]]
+on = "note 9 0x15"
+press = "deck 2 roll 2"
+release = "deck 2 roll_off"
+
+[[binding]]
+on = "note 9 0x16"
+press = "deck 2 roll 4"
+release = "deck 2 roll_off"
+
+[[binding]]
+on = "note 9 0x17"
+press = "deck 2 roll 8"
+release = "deck 2 roll_off"
+
+# Slicer, deck 2.
+[[binding]]
+on = "note 9 0x20"
+press = "deck 2 slice 1"
+
+[[binding]]
+on = "note 9 0x21"
+press = "deck 2 slice 2"
+
+[[binding]]
+on = "note 9 0x22"
+press = "deck 2 slice 3"
+
+[[binding]]
+on = "note 9 0x23"
+press = "deck 2 slice 4"
+
+[[binding]]
+on = "note 9 0x24"
+press = "deck 2 slice 5"
+
+[[binding]]
+on = "note 9 0x25"
+press = "deck 2 slice 6"
+
+[[binding]]
+on = "note 9 0x26"
+press = "deck 2 slice 7"
+
+[[binding]]
+on = "note 9 0x27"
+press = "deck 2 slice 8"
+
+# Sampler, deck 2 -- the same eight slots, deliberately. See deck 1.
+[[binding]]
+on = "note 9 0x30"
+press = "sampler 1 trigger"
+
+[[binding]]
+on = "note 9 0x31"
+press = "sampler 2 trigger"
+
+[[binding]]
+on = "note 9 0x32"
+press = "sampler 3 trigger"
+
+[[binding]]
+on = "note 9 0x33"
+press = "sampler 4 trigger"
+
+[[binding]]
+on = "note 9 0x34"
+press = "sampler 5 trigger"
+
+[[binding]]
+on = "note 9 0x35"
+press = "sampler 6 trigger"
+
+[[binding]]
+on = "note 9 0x36"
+press = "sampler 7 trigger"
+
+[[binding]]
+on = "note 9 0x37"
+press = "sampler 8 trigger"
+
+# ============================================================ FEEDBACK
+# The controller lights its own buttons back from what djmanzo does. Same note
+# numbers as the inputs, which is what "Same as MIDI-IN" means in the vendor
+# table.
+
+[[feedback]]
+when = "deck.1.playing"
+send = "note 1 0x0B"
+
+[[feedback]]
+when = "deck.2.playing"
+send = "note 2 0x0B"
+
+[[feedback]]
+when = "deck.1.cue_enabled"
+send = "note 1 0x54"
+
+[[feedback]]
+when = "deck.2.cue_enabled"
+send = "note 2 0x54"

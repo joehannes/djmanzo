@@ -92,7 +92,7 @@ impl Role {
             moved: None,
             turn_up: None,
             turn_down: None,
-            encoding: Encoding::default(),
+            encoding: None,
             platter: None,
             resolution: None,
             min: None,
@@ -112,7 +112,7 @@ impl Role {
             Role::Encoder { up, down, encoding } => {
                 binding.turn_up = Some(up.clone());
                 binding.turn_down = Some(down.clone());
-                binding.encoding = *encoding;
+                binding.encoding = Some(*encoding);
             }
             Role::Platter { action, resolution } => {
                 binding.platter = Some(action.clone());
