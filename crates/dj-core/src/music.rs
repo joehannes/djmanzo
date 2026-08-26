@@ -100,6 +100,18 @@ pub struct Beatgrid {
     pub confidence: Confidence,
 }
 
+/// Where the DJ wants the next track to take the room.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Trajectory {
+    /// Harder than what is playing. The peak-hour default.
+    Lift,
+    /// About the same. Holding a plateau, which is most of a set.
+    #[default]
+    Hold,
+    /// Softer. A come-down, or making room before a bigger record.
+    Ease,
+}
+
 /// A track's phrase structure: how long a phrase is, and which beat starts one.
 ///
 /// Dance music is built in phrases -- usually 16 or 32 beats -- and a DJ mixes

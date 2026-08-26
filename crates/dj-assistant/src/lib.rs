@@ -35,6 +35,7 @@ pub mod http;
 pub mod intent;
 pub mod native;
 pub mod openai_compat;
+pub mod posture;
 pub mod provider;
 
 pub use assistant::{Assistant, Plan, Source, extract_actions, system_prompt};
@@ -43,6 +44,7 @@ pub use catalog::{ProviderInfo, catalog, info};
 pub use http::{HttpJson, ReqwestJson};
 pub use native::{AnthropicProvider, GoogleProvider};
 pub use openai_compat::OpenAiCompatProvider;
+pub use posture::{Occasion, Pack, Posture, packs};
 pub use provider::{
     AssistantError, Completion, LlmProvider, Model, ProviderId, ProviderStatus, Role, Turn, Usage,
 };

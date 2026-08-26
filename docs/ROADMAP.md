@@ -1458,7 +1458,38 @@ external system can drive it over the network without a private API.
   be reproduced at all — such a set replays as the actions the vinyl produced,
   which is a fair record of what was played and not a recording of the night.
 
-- Still open in M8: lyrics/karaoke and video mixing.
+- Still open from the original M8: lyrics/karaoke and video mixing.
+
+### M8 extended — the assistant that mixes, adapts and teaches
+
+Added after the first five slices landed. The AI plumbing is already done (six
+providers, keys, model choice, and ADR-0005's rule that the assistant may only
+emit actions); this is what it should *do*.
+
+Designed in full in [ASSISTANT.md](ASSISTANT.md) part two. In short, two dials:
+
+- **Posture** — Off, Watch, Suggest, **Prepare**, Assist, Autopilot. Prepare is
+  the one most software skips and the one most working DJs would leave it on: a
+  DJ two minutes from the end wants the next record already loaded, cued to the
+  phrase and gain-matched, so the only remaining act is theirs.
+- **Occasion** — Learning, Practice, Experimenting, Warm-up, Peak, Close,
+  Background, Requests. Changes the *weights*, not the vocabulary, and comes as
+  named packs that can be chosen by hand or moved between by the assistant,
+  visibly and undoably.
+
+Plus: **touching a control takes over** — not a mode button, the fader itself —
+and handing back is one gesture in one place that never moves. The interface
+changes density with the occasion for exactly one reason: to make the right
+thing quick and the destructive thing hard, because a booth is dark and loud and
+a mis-click at 01:40 is heard by everyone.
+
+And the knowledge it needs: **regional genre families** (Latin America, North
+America, Europe, Africa and beyond) encoding that felt tempo is not written
+tempo and that dembow and four-on-the-floor are different rhythmic grammars;
+**DJ technique** including the laptop-only ones like stem swaps; and **a
+learning module** that names what the hand just did, catches the specific error
+rather than saying "that was off", and explains through the same nature language
+the interface already speaks.
 - AI transition planner — suggests where and how, with stated reasoning.
 - Next-track suggestions ranked by harmonic compatibility, energy trajectory and phrase fit.
 - **Deterministic set replay and offline re-render** from the action log; practice loops; take

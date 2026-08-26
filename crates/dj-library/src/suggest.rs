@@ -35,6 +35,12 @@
 use crate::LibraryTrack;
 use dj_core::{MusicalKey, TrackId};
 
+// `Trajectory` lives in `dj_core` rather than here: where a set is going is a
+// fact about the night, not about the collection, and the assistant reasons
+// about it without wanting a dependency on the whole library crate. Re-exported
+// so callers that used to find it here still do.
+pub use dj_core::Trajectory;
+
 /// What is playing, and what the DJ wants to happen next.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Playing {
@@ -44,18 +50,6 @@ pub struct Playing {
     /// is not called energy.
     pub lufs: Option<f64>,
     pub phrase_beats: Option<u32>,
-}
-
-/// Where the DJ wants the next track to take the room.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Trajectory {
-    /// Harder than what is playing. The peak-hour default.
-    Lift,
-    /// About the same. Holding a plateau, which is most of a set.
-    #[default]
-    Hold,
-    /// Softer. A come-down, or making room before a bigger record.
-    Ease,
 }
 
 /// How far the deck can stretch a tempo before it stops sounding like itself.
