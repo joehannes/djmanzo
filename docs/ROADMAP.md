@@ -1124,6 +1124,52 @@ change in audio latency, and instantly on the next load.
 
 ---
 
+## H — Hardware djmanzo can be built for without owning it
+
+- **Timecode vinyl (DVS) — decoder done, not yet wired.** `dj-dvs` turns a
+  control signal into a speed, a direction and an absolute position. It is the
+  rare hardware feature that can be *finished and proved* without the hardware,
+  because the signal can be generated: `Synth` writes a timecode and `Decoder`
+  reads it back, so the encoding, the shift register, the quadrature and the
+  position lookup are all pinned by round-trip tests over synthetic audio.
+  **`xwax` was not read.** It is GPL-2.0, ADR-0002 forbids linking or copying
+  it, and that includes reading it closely enough to reproduce. This is written
+  from the prose descriptions RESEARCH.md records as safe input.
+  Three things it does that a first attempt would not:
+  - **Direction comes from the edge, not the sign.** The trailing channel's
+    sign alternates every half cycle whichever way the record turns; read as
+    the direction on its own it makes normal play average out to a fifth of
+    normal speed. What carries the direction is the sign *paired with* whether
+    the crossing was rising or falling.
+  - **Speed and position arrive at different times, and are reported
+    separately.** Speed is available within a couple of cycles; an absolute
+    position needs a whole register's worth of bits, about twenty milliseconds.
+    A DJ dropping the needle gets sound at once and the playhead a moment later,
+    which is what dropping a needle feels like.
+  - **A lifted needle drops its window.** Half a position from before the lift
+    spliced onto half from after is a position on neither.
+  **Not verified against a pressed record**, and the interface will say so. The
+  bit ordering, the register's direction of travel and the sense of the
+  quadrature are conventions, and a convention agreed with oneself is agreed
+  with nobody. See RESEARCH.md on why the published Serato parameters are not
+  shipped.
+  Still to do: wire it to a deck through an audio input, and a calibration
+  screen.
+- **Pro DJ Link** and **StagelinQ** — not started, and honestly gated. Neither
+  vendor publishes an SDK; Pioneer's official route is a certification and
+  licensing partnership, and both protocols are reverse-engineered by the
+  community. The parsing and state machines could be built and tested against a
+  simulated peer, but whether a real CDJ emits what the documents say is not
+  something a container can answer.
+- **CDJs are usable today without either of those.** A CDJ in MIDI mode is a
+  MIDI controller, and CDJs are class-compliant USB audio interfaces — so they
+  work now, with a mapping. What Pro DJ Link adds is the network layer: link
+  sync between players, the players' screens showing your library, on-air from
+  the mixer. HID mode, which is what gives Serato its jog resolution, needs the
+  device in hand — `dj_hid::report::changed_field` exists to learn one.
+
+---
+
 ## M7 — Network
 
 **Foundation landed, and now reachable.** `dj-net` gives every future transport

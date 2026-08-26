@@ -20,6 +20,7 @@ members = [
     "crates/dj-app",
     "crates/dj-stems",
     "crates/dj-net",
+    "crates/dj-dvs",
 ]
 
 [workspace.package]
@@ -49,6 +50,7 @@ dj-library = { path = "crates/dj-library" }
 dj-hid = { path = "crates/dj-hid" }
 dj-stems = { path = "crates/dj-stems" }
 dj-net = { path = "crates/dj-net" }
+dj-dvs = { path = "crates/dj-dvs" }
 
 cpal = "0.15"
 symphonia = { version = "0.5", features = ["all-codecs", "all-formats"] }

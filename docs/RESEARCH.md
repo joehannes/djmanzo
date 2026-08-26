@@ -84,8 +84,27 @@ understand the problem shape, then write our own in Rust.
 
 | Project | Language / license | What it teaches us |
 |---|---|---|
-| [xwax](https://xwax.org/) | C, GPL-2.0 | Timecode/DVS decoding. Mixxx embeds its decoder. Deferred for djmanzo, but the design constraints matter. |
-| Mixxx's DVS write-ups ([pt1](https://mixxx.org/news/2021-11-21-dvs-internals-pt1/), [pt2](https://mixxx.org/news/2021-12-22-dvs-internals-pt2/), [pt3](https://mixxx.org/news/2025-08-27-dvs-internals-pt3/)) | Articles | How timecode vinyl actually works: Serato 1 kHz / Final Scratch 1.2 kHz / Traktor MK2 2 kHz carriers, zero-crossing pitch detection, Nyquist-bounded max scratch speed (~22× for Serato, ~11× for Traktor MK2). **Prose, not code — safe to learn from.** |
+| [xwax](https://xwax.org/) | C, GPL-2.0 | Timecode/DVS decoding. Mixxx embeds its decoder. ⚠️ **GPL — not read, not linked, not transcribed.** `dj-dvs` is written from the prose descriptions below. |
+| Mixxx's DVS write-ups ([pt1](https://mixxx.org/news/2021-11-21-dvs-internals-pt1/), [pt2](https://mixxx.org/news/2021-12-22-dvs-internals-pt2/), [pt3](https://mixxx.org/news/2025-08-27-dvs-internals-pt3/)) | Articles | How timecode vinyl actually works: Serato 1 kHz / Final Scratch 1.2 kHz / Traktor MK2 2 kHz carriers, zero-crossing pitch detection, Nyquist-bounded max scratch speed (~22× for Serato, ~11× for Traktor MK2). **Prose, not code — safe to learn from.** This is what `dj-dvs` was built from. |
+
+### A note on the published timecode parameters
+
+The tap value that circulates in prose for the Serato record — a 20-bit
+register with seed `0x59017` and taps `0x361e4` — **could not be reproduced as
+a working register here.** Walked in Galois, Fibonacci-right, Fibonacci-left
+and reversed-tap conventions, it cycles after 43,307 states rather than the
+1,048,575 a maximal 20-bit register gives. At a 1 kHz carrier that is a
+position that repeats every forty-three seconds.
+
+Either the figure is garbled in transmission or the convention behind it is one
+this project has not reproduced. Without a real record and a turntable there is
+no way to tell, so djmanzo **does not ship it**: `TimecodeFormat::is_usable`
+walks a candidate register and refuses one that is not maximal, and a test pins
+that these particular numbers are refused so nobody pastes them back in.
+
+What djmanzo ships instead is its own timecode, whose parameters are verified
+maximal — and a synthesiser, so a DJ can generate the signal and use any
+turntable or CD deck without buying a licensed record.
 | [Deep-Symmetry/dysentery](https://github.com/Deep-Symmetry/dysentery) + [beat-link](https://github.com/Deep-Symmetry/beat-link) | Java | Pro DJ Link: how CDJs announce themselves, share beat/tempo/on-air state and track metadata over Ethernet. Deep Symmetry publishes a protocol analysis document — that document is our input, not their Java. |
 | [icedream/go-stagelinq](https://github.com/icedream/go-stagelinq), [Jaxc/PyStageLinQ](https://github.com/Jaxc/PyStageLinQ) | Go / Python | Denon Prime StagelinQ: discovery handshake and the device state map. Also community-reverse-engineered, also documented in prose. |
 | [Holzhaus/rekordcrate](https://github.com/Holzhaus/rekordcrate) | Rust, **MPL-2.0** | rekordbox device exports: the `export.pdb` database and ANLZ analysis files (beat grids, cues, waveforms). MPL-2.0 is file-level copyleft — **we can depend on this crate directly** and keep djmanzo permissive. |

@@ -1,0 +1,19 @@
+[package]
+name = "dj-dvs"
+description = "Timecode vinyl decoding for djmanzo: turn a control record into a position and a speed."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+dj-core = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+toml = { workspace = true }
+
+[lints]
+workspace = true
