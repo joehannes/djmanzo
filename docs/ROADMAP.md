@@ -1312,7 +1312,30 @@ external system can drive it over the network without a private API.
 
 ## M8 — Beyond VirtualDJ
 
-- Structure/phrase detection; phrase markers on the waveform; phrase-locked loops and jumps.
+- **Phrase detection — done in `dj-analysis::structure`.** Finds how long a
+  phrase is (8, 16 or 32 beats) and which beat starts one, from beat-synchronous
+  novelty over four frequency bands. Phrase markers on the waveform and
+  phrase-locked loops and jumps are the next slice; they need this first, and
+  now have it.
+
+  Three things it does that a first attempt would not, each found by a test:
+
+  - **A z-score is not an effect size.** On a track whose beats are nearly
+    identical, a periodic ripple of a few percent is wildly unlikely to be
+    chance — and inaudible. Scored on significance alone, a metronome came back
+    with a sixteen-beat phrase at thirteen z. A boundary now also has to be big.
+  - **A 16-beat track satisfies a 32-beat test**, because every boundary of a 32
+    is also a boundary of a 16. Length cannot be decided by boundary strength;
+    what separates them is whether the *midpoint* between boundaries is quiet.
+  - **Hop quantisation invents phrases.** A beat is 43.07 hops at 120 BPM, so
+    beat spans drift against the hop grid with a period of about sixteen beats
+    — exactly the range being searched. Beat features are energy *densities* and
+    novelty is *relative*, so neither span length nor absolute level can leak in.
+
+  Honest note on the tests: three fixtures had to be rewritten because each was
+  manufacturing the structure it was meant to disprove. A `MIN_LIFT` gate was
+  removed rather than kept, because no test could be built that it passed and
+  the remaining gates failed.
 - AI transition planner — suggests where and how, with stated reasoning.
 - Next-track suggestions ranked by harmonic compatibility, energy trajectory and phrase fit.
 - **Deterministic set replay and offline re-render** from the action log; practice loops; take

@@ -33,11 +33,13 @@ pub mod key;
 pub mod loudness;
 pub mod onset;
 pub mod regression;
+pub mod structure;
 pub mod tempo;
 
 pub use key::KeyAnalysis;
 pub use loudness::{Lufs, integrated};
 pub use onset::{OnsetEnvelope, detect};
+pub use structure::{PhraseAnalysis, phrases};
 pub use tempo::TempoAnalysis;
 
 use dj_core::SampleRate;

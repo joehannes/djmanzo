@@ -59,16 +59,66 @@ impl OnsetEnvelope {
     }
 }
 
+/// How many frequency bands [`detect_bands`] splits the flux into.
+pub const BANDS: usize = 4;
+
+/// The onset curve, kept in bands rather than summed across the spectrum.
+///
+/// Same computation as [`detect`] — it is the *same loop*, and `detect` sums
+/// what this keeps. Worth keeping for structure analysis, where the question is
+/// not "did something happen" but "did something *different* happen": a filter
+/// opening and a snare entering are both onsets and are not the same event, and
+/// once the spectrum is summed away nothing can tell them apart.
+#[derive(Debug, Clone)]
+pub struct BandedOnset {
+    /// One vector per hop, low band first.
+    pub values: Vec<[f32; BANDS]>,
+    /// Hops per second.
+    pub rate: f64,
+}
+
+/// Band edges in hertz, low to high.
+///
+/// Roughly kick, body, snare and upper percussion, air. Chosen by what carries
+/// phrase information in dance music rather than by an equal division of
+/// anything: the interesting distinction is between a track with its kick in
+/// and one without, and equal-width bands would put that boundary in the middle
+/// of a band.
+const EDGES: [f32; BANDS - 1] = [150.0, 800.0, 4000.0];
+
+/// The onset curve in bands. See [`BandedOnset`].
+#[must_use]
+pub fn detect_bands(samples: &[f32], sample_rate: u32) -> BandedOnset {
+    let (_, banded) = analyse(samples, sample_rate);
+    banded
+}
+
 /// Compute the onset envelope of interleaved stereo audio.
 #[must_use]
 pub fn detect(samples: &[f32], sample_rate: u32) -> OnsetEnvelope {
+    let (summed, _) = analyse(samples, sample_rate);
+    summed
+}
+
+/// One pass over the audio, producing both shapes.
+///
+/// Together rather than twice: the FFT is the expensive part, and computing it
+/// once for the tempo curve and again for the banded one would double the cost
+/// of analysing a track to produce two views of the same numbers.
+fn analyse(samples: &[f32], sample_rate: u32) -> (OnsetEnvelope, BandedOnset) {
     let frames = samples.len() / 2;
     let rate = f64::from(sample_rate) / HOP as f64;
     if frames < WINDOW || sample_rate == 0 {
-        return OnsetEnvelope {
-            values: Vec::new(),
-            rate,
-        };
+        return (
+            OnsetEnvelope {
+                values: Vec::new(),
+                rate,
+            },
+            BandedOnset {
+                values: Vec::new(),
+                rate,
+            },
+        );
     }
 
     // Mono for analysis. A DJ's stereo image is not information about tempo,
@@ -85,6 +135,15 @@ pub fn detect(samples: &[f32], sample_rate: u32) -> OnsetEnvelope {
     let mut previous = vec![0.0f32; bins];
     let mut scratch = vec![Complex32::new(0.0, 0.0); WINDOW];
     let mut values = Vec::with_capacity(mono.len() / HOP);
+    let mut banded: Vec<[f32; BANDS]> = Vec::with_capacity(mono.len() / HOP);
+    // Bin index of each band edge, worked out once.
+    let hz_per_bin = f64::from(sample_rate) / WINDOW as f64;
+    let edge_bins: [usize; BANDS - 1] = std::array::from_fn(|i| {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        {
+            ((f64::from(EDGES[i]) / hz_per_bin) as usize).min(bins)
+        }
+    });
 
     let mut start = 0;
     while start + WINDOW <= mono.len() {
@@ -94,6 +153,7 @@ pub fn detect(samples: &[f32], sample_rate: u32) -> OnsetEnvelope {
         fft.process(&mut scratch);
 
         let mut flux = 0.0f32;
+        let mut per_band = [0.0f32; BANDS];
         for bin in 0..bins {
             // Log magnitude: a kick and a hi-hat are tens of dB apart, and on a
             // linear scale the hi-hats disappear entirely.
@@ -103,15 +163,29 @@ pub fn detect(samples: &[f32], sample_rate: u32) -> OnsetEnvelope {
             // counting it would put a second bump after every hit.
             if rise > 0.0 {
                 flux += rise;
+                let band = edge_bins.iter().filter(|edge| bin >= **edge).count();
+                per_band[band] += rise;
             }
             previous[bin] = magnitude;
         }
         values.push(flux);
+        banded.push(per_band);
         start += HOP;
     }
 
     normalise(&mut values);
-    OnsetEnvelope { values, rate }
+    // The banded curve is deliberately **not** normalised. `normalise` centres
+    // on zero, which is right for the autocorrelation the tempo search does and
+    // wrong here: structure analysis compares one beat's bands against
+    // another's, and a band that has gone negative because the track got
+    // quieter overall is not a band with less energy in it.
+    (
+        OnsetEnvelope { values, rate },
+        BandedOnset {
+            values: banded,
+            rate,
+        },
+    )
 }
 
 /// Centre on zero and scale to unit deviation.

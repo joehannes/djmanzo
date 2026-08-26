@@ -171,6 +171,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Broadcast to Icecast/Shoutcast | M5 |
 | **Per-stem outputs for external processing** | **shipped** — one deck as four stereo pairs (vocals 1–2, drums 3–4, bass 5–6, other 7–8), pre-EQ and pre-fader, on an interface with eight outputs |
 | **Per-deck outputs for external processing** | **shipped** — each deck on its own stereo pair, pre-fader, no master chain; exclusive with stem out |
+| **Phrase detection** | **shipped** — phrase length and phrase anchor, from beat-synchronous novelty in four bands. Markers on the waveform and phrase-locked jumps are next. Verified against synthetic tracks whose structure is arithmetic; **not measured against a corpus of real records** |
 | **Timecode vinyl / DVS** | **shipped** — speed, direction and absolute position drive a deck, in relative or absolute mode, with an input picker and a live calibration reading in Settings. djmanzo writes its own control signal to a WAV, so any turntable, CD deck or phone works without a licensed record. **Not yet run against a pressed record** |
 | Video mixing / VJ output | M8 |
 | Karaoke | K1 / K2 — see [KARAOKE.md](KARAOKE.md) |
