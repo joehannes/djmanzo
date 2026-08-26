@@ -279,6 +279,19 @@ pub struct Conduct {
     pub posture: dj_assistant::Posture,
     pub occasion: dj_assistant::Occasion,
     pub takeover: dj_assistant::Takeover,
+    /// The set the assistant is working through, if one was built.
+    ///
+    /// Track ids rather than the full slots: the assistant needs to know what
+    /// comes next, and the reasoning that placed each one has already been
+    /// read by whoever accepted the set. Keeping the whole thing here would be
+    /// a second copy of the library's opinion that could drift from it.
+    pub setlist: Vec<dj_core::TrackId>,
+    /// How far through `setlist` the night has got.
+    ///
+    /// Advanced when a record from the list actually reaches a deck, not when
+    /// one is chosen — a staged track that the DJ ejects was never played, and
+    /// counting it would silently skip a record.
+    pub played: usize,
 }
 
 impl Default for Conduct {
@@ -291,6 +304,8 @@ impl Default for Conduct {
             posture: dj_assistant::Posture::Suggest,
             occasion: dj_assistant::Occasion::Open,
             takeover: dj_assistant::Takeover::new(),
+            setlist: Vec::new(),
+            played: 0,
         }
     }
 }

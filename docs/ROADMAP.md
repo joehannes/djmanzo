@@ -1479,9 +1479,24 @@ layout is the design rather than an arrangement:
 - **What it will do next is shown at every posture**, including the ones that
   will not act. Seeing what it *would* do is how a DJ decides whether to let it.
 
-Still not wired: staging and the next record come from the setlist, so the
-autopilot currently reports honestly that nothing is chosen to play next rather
-than inventing one.
+**The set feeds the autopilot, and it acts on its own.** `Conduct` holds the
+setlist and how far through it the night has got — advanced when a record
+actually reaches a deck, not when one is chosen, because a staged track the DJ
+ejects was never played and counting it would silently skip a record.
+
+A tick looks every half second: fast enough that a mix point cannot pass between
+two looks, and slow enough to cost nothing. It exits immediately at Off, Watch
+and Suggest, where most sessions will leave it.
+
+The tick calls **exactly the same `decide` and `perform_step` a manual press
+does**, so what the assistant does on its own and what it does when asked cannot
+drift apart. All the gating lives in `autopilot::next_step`; the loop is only
+obedience, and a second posture check inside it would be a second thing to keep
+in step with the first.
+
+Staging routes through the same `put_on_deck` a hand-load uses, so a staged
+record arrives with its cues, grid and analysis exactly as a manually loaded one
+does.
 
 - Still open from the original M8: lyrics/karaoke and video mixing.
 

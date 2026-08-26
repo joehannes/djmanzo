@@ -182,6 +182,11 @@ pub fn run() {
         })
         .manage(state)
         .setup(move |app| {
+            // The assistant's own loop. Started here because it needs the
+            // handle to reach the managed state, and it must outlive this
+            // closure.
+            commands::start_assistant_tick(app.handle().clone());
+
             let handle = app.handle().clone();
             if let Ok(path) = std::env::var(BENCH_ENV) {
                 let handle = app.handle().clone();
@@ -383,6 +388,8 @@ pub fn run() {
             commands::assistant_apply_pack,
             commands::assistant_take_over,
             commands::assistant_hand_back,
+            commands::assistant_set_setlist,
+            commands::assistant_step,
             commands::library_add_folder,
             commands::library_remove_folder,
             commands::library_rescan,

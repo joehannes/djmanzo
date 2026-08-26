@@ -2026,6 +2026,161 @@ fn library(state: &AppState) -> Result<Arc<dj_library::Library>, String> {
     state.library().get().map_err(|e| e.to_string())
 }
 
+/// How often the assistant looks at the set and decides whether to act.
+///
+/// Half a second. The decisions it makes are on the scale of a record ending,
+/// so faster buys nothing; slower would mean a mix point could pass between two
+/// looks. The tick does no work at all when the posture is Off, Watch or
+/// Suggest, which is where most sessions will leave it.
+const TICK: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Start the assistant's own loop.
+///
+/// It calls exactly the same `decide` and `perform_step` a manual press does,
+/// so what the assistant does on its own and what it does when asked cannot
+/// drift apart. All the gating -- posture, takeover, whether there is anything
+/// worth doing -- lives in `autopilot::next_step`; this loop is only obedience.
+///
+/// Not on the audio thread and not on the interface's: it decodes files and
+/// takes a lock, and belongs on neither.
+pub fn start_assistant_tick(handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(TICK);
+
+            // Fetched each tick rather than held: the state is owned by Tauri,
+            // and borrowing it for the life of the thread would be borrowing it
+            // for the life of the application.
+            // `try_state` rather than `state`: the latter panics if called
+            // before the state is managed, and a background thread racing
+            // start-up is exactly the case that would hit it.
+            use tauri::Manager as _;
+            let Some(state) = handle.try_state::<AppState>() else {
+                continue;
+            };
+            let state: &AppState = &state;
+
+            let decision = {
+                let conduct = state.conduct();
+                let Ok(guard) = conduct.lock() else { continue };
+                // Cheapest possible early exit: at the quiet postures there is
+                // nothing to compute, and computing it would read the library
+                // twice a second for an answer that is always "nothing".
+                if !guard.posture.may_stage() {
+                    continue;
+                }
+                decide(state, &guard)
+            };
+
+            if matches!(decision.step, crate::autopilot::Step::Nothing) {
+                continue;
+            }
+            if let Err(error) = perform_step(state, &decision.step) {
+                // Logged rather than retried. A step that failed once will
+                // usually fail again immediately, and a loop that retried twice
+                // a second would fill the log and change nothing.
+                tracing::warn!(%error, "the assistant could not carry out its step");
+            }
+        }
+    });
+}
+
+/// Hand the assistant a set to work through.
+///
+/// Built by `setlist_build`; this is what makes the autopilot able to answer
+/// "what next" with something other than nothing. Replacing a set resets the
+/// position, because a new set is a new night.
+#[tauri::command]
+pub fn assistant_set_setlist(
+    state: State<'_, AppState>,
+    tracks: Vec<String>,
+) -> Result<usize, String> {
+    let ids: Vec<dj_core::TrackId> = tracks
+        .iter()
+        .filter_map(|hex| dj_core::TrackId::from_hex(hex))
+        .collect();
+    let conduct = state.conduct();
+    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    guard.setlist = ids;
+    guard.played = 0;
+    Ok(guard.setlist.len())
+}
+
+/// Do the one thing the assistant would do next, once.
+///
+/// Explicit rather than only automatic, for two reasons. A DJ at Suggest can
+/// press it to accept a suggestion without changing posture -- which is the
+/// commonest thing they will want and would otherwise mean turning the
+/// assistant up and down again. And the automatic tick calls exactly this, so
+/// what a press does and what the tick does cannot drift apart.
+///
+/// Returns what was done, in words, or `None` if there was nothing to do.
+#[tauri::command]
+pub fn assistant_step(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let conduct = state.conduct();
+    let decision = {
+        let guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+        decide(&state, &guard)
+    };
+    perform_step(&state, &decision.step)
+}
+
+/// Carry out one step.
+///
+/// Separated from the deciding so that the gating lives in exactly one place
+/// (`autopilot::next_step`) and this function is only obedience. A second
+/// posture check here would be a second thing to keep in step with the first.
+fn perform_step(state: &AppState, step: &crate::autopilot::Step) -> Result<Option<String>, String> {
+    use crate::autopilot::Step;
+    match step {
+        Step::Nothing => Ok(None),
+        Step::Stage { deck, track } => {
+            let db = library(state)?;
+            let found = db
+                .track(*track)
+                .map_err(|e| e.to_string())?
+                .ok_or("the set names a track the library no longer has")?;
+            // Decoded on this thread: the tick runs off the interface and off
+            // the audio thread, so blocking here costs nobody anything, and
+            // routing it through `put_on_deck` means a staged track gets the
+            // same cues, grid and analysis a hand-loaded one does.
+            let decoded = decode_file(&found.path).map_err(|e| e.to_string())?;
+            put_on_deck(state, *deck, decoded)?;
+            // Advance the set only now, when the record has actually reached a
+            // deck. A track chosen and then ejected was never played.
+            if let Ok(mut guard) = state.conduct().lock()
+                && guard.setlist.get(guard.played) == Some(track)
+            {
+                guard.played += 1;
+            }
+            Ok(Some(format!("loaded deck {}", deck.human_number())))
+        }
+        Step::Cue { deck, beat } => {
+            perform(
+                state,
+                &format!("deck {} seek_beat {beat}", deck.human_number()),
+            )?;
+            Ok(Some(format!("cued deck {}", deck.human_number())))
+        }
+        Step::MatchGain { deck, db } => {
+            perform(state, &format!("deck {} gain {db:.2}", deck.human_number()))?;
+            Ok(Some(format!(
+                "trimmed deck {} by {db:+.1} dB",
+                deck.human_number()
+            )))
+        }
+        Step::Mix { beats, style, .. } => {
+            // Through the automix, which already knows how to run a transition
+            // of a given style and length. Re-implementing it here would be a
+            // second transition engine to keep in agreement with the first.
+            perform(state, &format!("automix style {}", style.as_str()))?;
+            perform(state, &format!("automix beats {beats}"))?;
+            perform(state, "automix now")?;
+            Ok(Some(format!("mixing over {beats} beats")))
+        }
+    }
+}
+
 /// How the assistant is conducting itself, for the panel.
 #[derive(Debug, Clone, Serialize)]
 pub struct ConductDto {
@@ -2202,18 +2357,63 @@ fn read_situation(
         grid_anchor: grid.map_or(0.0, |g| g.grid.anchor.get()),
     };
 
+    // What is on the idle deck, if anything, and what it is. Read from the
+    // library rather than from the snapshot so the incoming record is described
+    // by the same numbers the outgoing one is -- comparing like with like
+    // matters more than saving a lookup.
+    let staged = idle
+        .and_then(|deck| {
+            let tracks = state.deck_tracks();
+            let map = tracks.lock().ok()?;
+            map.get(&deck.human_number()).map(|t| t.id)
+        })
+        .and_then(|id| {
+            let db = state.library().get().ok()?;
+            let track = db.track(id).ok()??;
+            Some((
+                id,
+                crate::plan::Incoming {
+                    bpm: track.analysis.bpm.unwrap_or(outgoing.bpm),
+                    phrase: dj_core::Phrase::new(
+                        track.analysis.phrase_beats?,
+                        track.analysis.phrase_anchor?,
+                    ),
+                    key: track.analysis.key(),
+                },
+            ))
+        });
+
+    // The next record from the set, skipping anything already on a deck.
+    let next = conduct
+        .setlist
+        .iter()
+        .skip(conduct.played)
+        .find(|id| Some(**id) != staged.as_ref().map(|(id, _)| *id))
+        .copied();
+
+    // How much trim would match the staged record to the playing one. Both
+    // loudnesses or nothing: half of a comparison is not a comparison.
+    let gain_offset_db = staged.as_ref().and_then(|(id, _)| {
+        let db = state.library().get().ok()?;
+        let live_track = {
+            let tracks = state.deck_tracks();
+            let map = tracks.lock().ok()?;
+            map.get(&live.human_number()).map(|t| t.id)
+        }?;
+        let a = db.track(live_track).ok()??.analysis.loudness_lufs?;
+        let b = db.track(*id).ok()??.analysis.loudness_lufs?;
+        Some(a - b)
+    });
+
     crate::autopilot::Situation {
         posture: conduct.posture,
         occasion: conduct.occasion,
         live,
         outgoing,
         idle,
-        // Staging and the next record come from the setlist, which is the next
-        // slice. Until then the autopilot correctly reports that there is
-        // nothing chosen to play next, rather than inventing one.
-        staged: None,
-        next: None,
-        gain_offset_db: None,
+        staged,
+        next,
+        gain_offset_db,
     }
 }
 
