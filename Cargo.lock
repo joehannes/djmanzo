@@ -1288,6 +1288,7 @@ dependencies = [
  "dj-core",
  "dj-decode",
  "dj-dsp",
+ "dj-dvs",
  "dj-engine",
  "dj-hid",
  "dj-library",

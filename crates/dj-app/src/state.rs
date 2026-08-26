@@ -222,6 +222,26 @@ pub struct AppState {
     /// interface would silently drop the DJ back to a normal mix while the
     /// panel still claimed the stems were going out.
     stem_out: Mutex<Option<dj_core::DeckId>>,
+    /// What each deck's control record is, for the decks on one.
+    ///
+    /// The host owns the input stream; this owns the words for it. Held here
+    /// rather than asked of the host because what the interface needs to say --
+    /// which record, and whether the deck is in absolute mode -- is not
+    /// recoverable from an open device.
+    timecode: Mutex<[Option<TimecodeSetup>; dj_core::MAX_DECKS]>,
+}
+
+/// One deck's control-record setup, as the interface needs to describe it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimecodeSetup {
+    /// The record djmanzo is reading.
+    pub format: dj_dvs::TimecodeFormat,
+    /// The input the turntable is arriving on.
+    pub device: String,
+    /// True for absolute mode, where where the needle sits on the record is
+    /// where the playhead sits in the track. False for relative, where only
+    /// the movement is followed and a lift-and-drop changes nothing.
+    pub absolute: bool,
 }
 
 /// What is loaded on a deck, as far as the interface is concerned.
@@ -359,6 +379,7 @@ impl AppState {
             stems_backend,
             stem_out: Mutex::new(None),
             deck_out: Mutex::new(None),
+            timecode: Mutex::new([const { None }; dj_core::MAX_DECKS]),
             stems_reason,
         }
     }
@@ -951,6 +972,45 @@ impl AppState {
     pub fn apply_deck_out(&self) {
         let decks = self.deck_out();
         let _ = self.bus().send_command(Command::SetDeckOut { decks });
+    }
+
+    /// What is on one deck's timecode input, if anything.
+    #[must_use]
+    pub fn timecode(&self, deck: dj_core::DeckId) -> Option<TimecodeSetup> {
+        self.timecode.lock().unwrap_or_else(|e| e.into_inner())[deck.index()].clone()
+    }
+
+    /// Every deck's timecode setup, in deck order.
+    #[must_use]
+    pub fn timecode_all(&self) -> Vec<Option<TimecodeSetup>> {
+        self.timecode
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .to_vec()
+    }
+
+    /// Record that a deck is on a control record, or is no longer on one.
+    ///
+    /// Bookkeeping only: the input is opened and closed by the host, and this
+    /// is called after that has succeeded. Calling it without opening anything
+    /// would leave the panel claiming a deck follows a record that nothing is
+    /// feeding.
+    pub fn set_timecode(&self, deck: dj_core::DeckId, setup: Option<TimecodeSetup>) {
+        self.timecode.lock().unwrap_or_else(|e| e.into_inner())[deck.index()] = setup;
+    }
+
+    /// Forget every deck's control record.
+    ///
+    /// Called after a device change, because opening an output builds a fresh
+    /// engine and the host closes every input along with the old one. Unlike
+    /// the stem routing, this is *not* re-applied afterwards: re-opening an
+    /// input device without being asked would start a turntable driving a deck
+    /// at a moment the DJ was setting up their sound card, and a deck that
+    /// starts moving on its own is worse than one that has to be switched back
+    /// on.
+    pub fn clear_timecode(&self) {
+        *self.timecode.lock().unwrap_or_else(|e| e.into_inner()) =
+            [const { None }; dj_core::MAX_DECKS];
     }
 
     /// Which deck is being sent out in parts, if any.

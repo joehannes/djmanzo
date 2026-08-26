@@ -9,7 +9,7 @@
    * refuses.
    */
   import Screens from "./Screens.svelte";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import {
     addMusicFolder,
     clearBrandLogo,
@@ -41,6 +41,13 @@
     stopPeerSync,
     type PeerStatus,
     setDeckOut,
+    listInputs,
+    timecodeStatus,
+    startTimecode,
+    stopTimecode,
+    writeTimecodeSignal,
+    type Device,
+    type TimecodeStatus,
     type StemOut,
     type ClockStatus,
     type MidiOutputs,
@@ -177,6 +184,91 @@
     }
   }
 
+  /**
+   * Timecode vinyl.
+   *
+   * Polled while this panel is open rather than carried on the 60 Hz snapshot:
+   * quality and speed move at audio rate, but nobody watches them except while
+   * setting a turntable up, and a deck's own display has no room for them.
+   */
+  let vinyl = $state<TimecodeStatus>({
+    decks: [],
+    formats: [],
+    engineRunning: false,
+    caveat: "",
+  });
+  let inputs = $state<Device[]>([]);
+  let vinylDevice = $state<string | null>(null);
+  let vinylFormat = $state<string | null>(null);
+  let vinylAbsolute = $state(false);
+  let vinylError = $state<string | null>(null);
+  let written = $state<string | null>(null);
+
+  /**
+   * Poll only while a deck is on a record.
+   *
+   * A calibration reading that nobody is producing is not worth a timer, and
+   * this panel is open for minutes at a time while a DJ fills in credentials.
+   */
+  $effect(() => {
+    if (!vinyl.decks.some((d) => d.running)) return;
+    const timer = setInterval(() => void refreshVinyl(), 250);
+    return () => clearInterval(timer);
+  });
+
+  async function refreshVinyl() {
+    try {
+      vinyl = await timecodeStatus();
+    } catch {
+      // Left as it was; a failed poll is not evidence the needle lifted.
+    }
+  }
+
+  async function toggleVinyl(deck: number, running: boolean) {
+    try {
+      vinyl = running
+        ? await stopTimecode(deck)
+        : await startTimecode(deck, vinylDevice, vinylFormat, vinylAbsolute);
+      vinylError = null;
+    } catch (e) {
+      vinylError = String(e);
+    }
+  }
+
+  async function makeControlSignal() {
+    const path = await saveDialog({
+      title: "Write a control signal",
+      defaultPath: "djmanzo-timecode.wav",
+      filters: [{ name: "WAV", extensions: ["wav"] }],
+    });
+    if (typeof path !== "string") return;
+    busy = true;
+    try {
+      const made = await writeTimecodeSignal(path, vinylFormat, null, 44100);
+      written = `Wrote ${made.seconds.toFixed(1)}s of ${made.format} to ${made.path}`;
+      vinylError = null;
+    } catch (e) {
+      vinylError = String(e);
+      written = null;
+    } finally {
+      busy = false;
+    }
+  }
+
+  /**
+   * How to draw one deck's reading.
+   *
+   * Three states from one number, and they must not collapse: negative is not
+   * on a record, zero is on one and hearing nothing — a dead cartridge, a
+   * lifted needle, the wrong input picked — and above that is reading.
+   */
+  function vinylReading(quality: number, speed: number): string {
+    if (quality < 0) return "not on a record";
+    if (quality < 0.05) return "connected, hearing nothing — check the input and the cartridge";
+    if (quality < 0.5) return `struggling (${Math.round(quality * 100)}%) at ${speed.toFixed(2)}×`;
+    return `reading (${Math.round(quality * 100)}%) at ${speed.toFixed(2)}×`;
+  }
+
   let network = $state<PeerStatus>({
     running: false,
     address: null,
@@ -250,18 +342,24 @@
         hasBrandLogo(),
         remoteStatus(),
       ]);
-      const [status, ports, control, parts, net] = await Promise.all([
+      const [status, ports, control, parts, net, vin, ins] = await Promise.all([
         clockStatus(),
         midiOutputs(),
         controlStatus(),
         stemOut(),
         peerStatus(),
+        timecodeStatus(),
+        listInputs(),
       ]);
       clock = status;
       outputs = ports;
       clockInputs = control.inputs;
       stems = parts;
       network = net;
+      vinyl = vin;
+      inputs = ins;
+      if (!vinylFormat) vinylFormat = vinyl.formats[0]?.name ?? null;
+      if (!vinylDevice) vinylDevice = inputs.find((d) => d.is_default)?.id ?? inputs[0]?.id ?? null;
       if (!clockPort) clockPort = clock.port ?? outputs.ports[0] ?? null;
       if (!followPort) followPort = clock.following ?? clockInputs[0] ?? null;
       error = null;
@@ -549,6 +647,107 @@
         crossfader, master gain, microphone and limiter are out of the path —
         the mixing is happening on the other end of the cables.
       </p>
+    {/if}
+  </div>
+
+  <div class="block">
+    <h3>Timecode vinyl</h3>
+    <p class="hint">
+      A control record on a real turntable drives a deck: the platter's speed
+      becomes the track's speed, and scratching the record scratches the track.
+      What the needle picks up is not music but a signal, and djmanzo reads it
+      back into a position and a speed.
+    </p>
+    <p class="hint">
+      <strong>Read this before buying a record.</strong> {vinyl.caveat}
+    </p>
+
+    <h4>Make a control signal</h4>
+    <p class="hint">
+      Writes djmanzo's own timecode to a WAV. Burn it to a CD, put it on a USB
+      stick or play it off a phone — any turntable, CD deck or media player then
+      controls a deck, without buying anything. On a turntable this needs a
+      record; on a CD deck or a phone it does not.
+    </p>
+    <div class="row" style="gap: 0.5rem; flex-wrap: wrap;">
+      <select class="grow" bind:value={vinylFormat}>
+        {#each vinyl.formats as format (format.name)}
+          <option value={format.name} disabled={!format.usable}>
+            {format.name} — {Math.round(format.carrierHz)} Hz, good for
+            {Math.round(format.unambiguousSeconds / 60)} min
+          </option>
+        {/each}
+      </select>
+      <button onclick={makeControlSignal} disabled={busy || !vinylFormat}>
+        Write a WAV
+      </button>
+    </div>
+    {#if written}
+      <p class="hint" role="status">{written}</p>
+    {/if}
+
+    <h4>Put a deck on a record</h4>
+    {#if !vinyl.engineRunning}
+      <p class="hint">
+        No audio device is open. A control record is an input attached to a
+        running engine, and there is no engine until an output is connected.
+      </p>
+    {:else if inputs.length === 0}
+      <p class="hint">
+        Nothing on this machine can capture. A turntable needs a phono stage and
+        an interface between it and the computer.
+      </p>
+    {:else}
+      <div class="row" style="gap: 0.5rem; flex-wrap: wrap;">
+        <select class="grow" bind:value={vinylDevice}>
+          {#each inputs as device (device.id)}
+            <option value={device.id}>{device.name}</option>
+          {/each}
+        </select>
+        <button
+          class:active={vinylAbsolute}
+          title={vinylAbsolute
+            ? "Where the needle sits on the record is where the playhead sits in the track"
+            : "Only the movement is followed; lifting and re-dropping changes nothing"}
+          onclick={() => (vinylAbsolute = !vinylAbsolute)}
+        >
+          {vinylAbsolute ? "Absolute" : "Relative"}
+        </button>
+      </div>
+      <p class="hint">
+        {#if vinylAbsolute}
+          <strong>Absolute.</strong> Dropping the needle two minutes into the
+          record starts the track two minutes in. Needs a clean record: a skip
+          moves the playhead.
+        {:else}
+          <strong>Relative.</strong> Only the movement is followed, so nudging
+          the record to beatmatch does not undo itself and a lift-and-drop
+          changes nothing. What most DJs want most of the time.
+        {/if}
+      </p>
+      <div class="vinyl-decks">
+        {#each vinyl.decks as deck (deck.deck)}
+          <div class="vinyl-deck">
+            <button
+              class:active={deck.running}
+              onclick={() => toggleVinyl(deck.deck, deck.running)}
+            >
+              Deck {deck.deck}
+            </button>
+            <span class="hint">
+              {#if deck.running}
+                {vinylReading(deck.quality, deck.speed)} · {deck.format} ·
+                {deck.absolute ? "absolute" : "relative"} · {deck.device}
+              {:else}
+                on its own transport
+              {/if}
+            </span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+    {#if vinylError}
+      <p class="hint" role="status">{vinylError}</p>
     {/if}
   </div>
 
@@ -868,6 +1067,28 @@
 </section>
 
 <style>
+  .vinyl-decks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+  }
+
+  .vinyl-deck {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  /* The reading is the thing being watched while a needle is set up, so it
+     gets a fixed-width face: a number that changes width as it changes value
+     makes the line jitter, and jitter reads as instability in the signal. */
+  .vinyl-deck .hint {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 0.8em;
+    font-variant-numeric: tabular-nums;
+  }
+
   .peer-field {
     display: flex;
     align-items: center;

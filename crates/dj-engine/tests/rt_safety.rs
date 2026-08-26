@@ -2507,6 +2507,90 @@ fn a_slower_record_plays_the_deck_slower() {
     );
 }
 
+/// **A deck not on vinyl says so, and it does not say zero.**
+///
+/// The calibration panel has three states to draw and only one number to draw
+/// them from: not on a record at all, on a record and hearing nothing, and
+/// reading. The middle one is a dead cartridge or the wrong input picked, and a
+/// DJ staring at a deck that will not move has to be able to tell it from the
+/// first. Zero for both would collapse the two.
+#[test]
+fn a_deck_with_no_control_record_reports_a_negative_quality() {
+    let mut rig = rig(2, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.renderer.render_block();
+    let quality = rig
+        .registry
+        .get(ParamId::Deck(deck(1), DeckParam::TimecodeQuality));
+    assert!(
+        quality < 0.0,
+        "a deck on no record reported quality {quality}, which the panel would draw as a \
+         connected input hearing nothing"
+    );
+}
+
+/// **The published speed is the speed the record is asking for**, not the
+/// deck's rate after everything else has had its say.
+///
+/// Two numbers side by side is the whole point of a calibration screen: the
+/// record says one thing, the deck does another, and the gap is what a DJ is
+/// diagnosing. Publishing the deck's rate under a name that promises the
+/// record's would make the screen agree with itself no matter what was wrong.
+#[test]
+fn the_published_speed_follows_the_record() {
+    let (mut rig, mut producer, synth) = timecode_rig(false);
+    let signal = stream(&synth, 10_000, 0.5, 40 * 256);
+    for block in 0..40 {
+        play_block(&mut rig, &mut producer, &signal, block, 256);
+    }
+    let speed = rig
+        .registry
+        .get(ParamId::Deck(deck(1), DeckParam::TimecodeSpeed));
+    assert!(
+        (speed - 0.5).abs() < 0.15,
+        "a record at half speed published a speed of {speed}"
+    );
+    let quality = rig
+        .registry
+        .get(ParamId::Deck(deck(1), DeckParam::TimecodeQuality));
+    assert!(
+        quality > 0.5,
+        "a clean synthetic record read at quality {quality}, so the panel would tell a DJ \
+         with a perfect signal that their needle is dirty"
+    );
+}
+
+/// **Silence on the input is not the same as no input.**
+///
+/// This is the state a DJ hits when they pick the wrong capture device, and it
+/// is the one the interface most needs to name. Feeding real silence has to
+/// leave the quality at zero or above -- never back at the "no record"
+/// sentinel, which would send them looking for a setting they already set.
+#[test]
+fn a_connected_input_carrying_silence_reports_zero_not_absent() {
+    let (mut rig, mut producer, _synth) = timecode_rig(false);
+    for _ in 0..40 {
+        for _ in 0..256 * 2 {
+            let _ = producer.push(0.0);
+        }
+        rig.renderer.render_block();
+        while rig.retired.pop().is_ok() {}
+    }
+    let quality = rig
+        .registry
+        .get(ParamId::Deck(deck(1), DeckParam::TimecodeQuality));
+    assert!(
+        quality >= 0.0,
+        "a connected input carrying silence reported {quality}, which the panel would draw as \
+         no control record at all"
+    );
+    assert!(
+        quality < 0.5,
+        "silence read as quality {quality}, so a disconnected turntable would look like a \
+         working one"
+    );
+}
+
 /// **Backwards is backwards.** Half of scratching, and the thing a decoder that
 /// lost the quadrature sign would get exactly wrong.
 #[test]

@@ -39,6 +39,7 @@ dj-audio = { workspace = true }
 dj-decode = { workspace = true }
 dj-library = { workspace = true }
 dj-engine = { workspace = true }
+dj-dvs = { workspace = true }
 dj-control = { workspace = true }
 dj-dsp = { workspace = true }
 dj-render = { workspace = true }

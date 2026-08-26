@@ -13,7 +13,24 @@ use crate::device::{ActiveConfig, DeviceId, DeviceInfo, StreamConfig};
 use crate::{AudioBackend, AudioCallback, AudioError, AudioStream, RenderContext};
 use dj_core::SampleRate;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+/// How many null capture streams are open right now.
+///
+/// Test-visible state in shipping code, which needs justifying: the bug this
+/// exists to catch is a *stream that is never closed*, and nothing else about
+/// an unclosed stream is observable from outside. It went unnoticed on the
+/// microphone path for exactly that reason. The counter is confined to the
+/// backend that has no hardware behind it and whose stated purpose is making
+/// the realtime path testable, and it costs one relaxed increment per device
+/// open.
+static LIVE_INPUTS: AtomicUsize = AtomicUsize::new(0);
+
+/// Null capture streams currently open. See [`LIVE_INPUTS`].
+#[must_use]
+pub fn live_input_streams() -> usize {
+    LIVE_INPUTS.load(Ordering::Relaxed)
+}
 
 /// A backend with no hardware behind it.
 #[derive(Debug, Default)]
@@ -68,6 +85,33 @@ impl NullBackend {
             max_output_channels: 8,
             default_sample_rate: SampleRate::DEFAULT,
             is_default: false,
+        }
+    }
+
+    /// A virtual capture device.
+    ///
+    /// Same argument as the wide output above, one layer along: until this
+    /// existed, *every* input path -- the microphone, and a deck following a
+    /// control record -- could only be reached on a machine with a sound card,
+    /// which is to say never in CI and never here. The consequence was not
+    /// hypothetical: opening a different output device left the microphone's
+    /// stream running into a ring belonging to an engine that had been dropped,
+    /// silently, and no test could see it.
+    ///
+    /// What it captures is silence, and that is the honest null: a card with
+    /// nothing plugged into it. Silence is also a state the interface has to
+    /// tell apart from having no input at all, so it is worth being able to
+    /// produce on purpose.
+    fn input_device_info() -> DeviceInfo {
+        DeviceInfo {
+            id: DeviceId::new("null-input"),
+            name: "Null input (no hardware)".to_owned(),
+            // Named for outputs, meaning "channels" on either side of the
+            // trait. Two, because a control record needs a stereo pair and a
+            // mono virtual microphone could not carry one.
+            max_output_channels: 2,
+            default_sample_rate: SampleRate::DEFAULT,
+            is_default: true,
         }
     }
 
@@ -152,6 +196,74 @@ impl AudioBackend for NullBackend {
             running,
             alive,
             thread: Some(thread),
+            counted: false,
+        }))
+    }
+
+    fn input_devices(&self) -> Result<Vec<DeviceInfo>, AudioError> {
+        Ok(vec![Self::input_device_info()])
+    }
+
+    fn open_input(
+        &self,
+        config: &StreamConfig,
+        mut sink: rtrb::Producer<f32>,
+    ) -> Result<Box<dyn AudioStream>, AudioError> {
+        let active = ActiveConfig {
+            device_name: Self::input_device_info().name,
+            sample_rate: config.sample_rate,
+            buffer_frames: config.buffer_frames,
+            channels: config.channels,
+        };
+
+        let running = Arc::new(AtomicBool::new(false));
+        let alive = Arc::new(AtomicBool::new(true));
+
+        let thread = {
+            let running = Arc::clone(&running);
+            let alive = Arc::clone(&alive);
+            let active = active.clone();
+            std::thread::Builder::new()
+                .name("dj-null-input".to_owned())
+                .spawn(move || {
+                    let frames = active.buffer_frames as usize;
+                    let channels = active.channels as usize;
+                    let period = std::time::Duration::from_secs_f64(
+                        frames as f64 / active.sample_rate.as_f64(),
+                    );
+                    let mut next = std::time::Instant::now();
+                    while alive.load(Ordering::Relaxed) {
+                        if running.load(Ordering::Relaxed) {
+                            // Whatever will fit and no more. A real capture
+                            // callback drops what the ring will not take rather
+                            // than blocking, and so does this one -- a reader
+                            // that has stopped draining must not stall the
+                            // device thread.
+                            for _ in 0..frames * channels {
+                                if sink.push(0.0).is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                        next += period;
+                        let now = std::time::Instant::now();
+                        if next > now {
+                            std::thread::sleep(next - now);
+                        } else {
+                            next = now;
+                        }
+                    }
+                })
+                .map_err(|e| AudioError::OpenStream(e.to_string()))?
+        };
+
+        LIVE_INPUTS.fetch_add(1, Ordering::Relaxed);
+        Ok(Box::new(NullStream {
+            active,
+            running,
+            alive,
+            thread: Some(thread),
+            counted: true,
         }))
     }
 }
@@ -162,6 +274,8 @@ struct NullStream {
     running: Arc<AtomicBool>,
     alive: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
+    /// Whether this stream is one of the ones [`LIVE_INPUTS`] counts.
+    counted: bool,
 }
 
 impl AudioStream for NullStream {
@@ -185,6 +299,9 @@ impl Drop for NullStream {
         self.alive.store(false, Ordering::Relaxed);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
+        }
+        if self.counted {
+            LIVE_INPUTS.fetch_sub(1, Ordering::Relaxed);
         }
     }
 }

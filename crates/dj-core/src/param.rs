@@ -190,6 +190,18 @@ pub enum DeckParam {
     /// latching "Acapella" button needs this to know which way the button
     /// goes; a controller with a lit pad needs it to light the pad.
     StemSoloing,
+    /// How much of the control record's signal looked like timecode, 0..=1.
+    ///
+    /// **Negative when this deck is not on vinyl at all**, because zero is a
+    /// real answer meaning "the input is connected and carrying nothing" — a
+    /// dead cartridge, a lifted needle, the wrong input picked — and a DJ
+    /// staring at a deck that will not move needs those told apart.
+    TimecodeQuality,
+    /// The speed the control record is reporting, negative for backwards.
+    ///
+    /// Published as well as applied, so the calibration screen can show what
+    /// the record says beside what the deck is doing.
+    TimecodeSpeed,
     /// Per-stem tone: three EQ bands and a filter sweep for each of the four
     /// stems.
     ///
@@ -248,7 +260,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 89;
+    pub const COUNT: usize = 91;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -332,6 +344,8 @@ impl DeckParam {
             StemBassVolume,
             StemOtherVolume,
             StemSoloing,
+            TimecodeQuality,
+            TimecodeSpeed,
             StemVocalEqLow,
             StemVocalEqMid,
             StemVocalEqHigh,
@@ -1131,6 +1145,8 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::HotCue8 => "hot_cue_8",
         DeckParam::CrossfaderAssign => "crossfader_assign",
         DeckParam::StemSoloing => "stem_soloing",
+        DeckParam::TimecodeQuality => "timecode_quality",
+        DeckParam::TimecodeSpeed => "timecode_speed",
         DeckParam::StemVocalMute => "stem_vocal_mute",
         DeckParam::StemDrumsMute => "stem_drums_mute",
         DeckParam::StemBassMute => "stem_bass_mute",

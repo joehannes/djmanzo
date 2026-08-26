@@ -1309,7 +1309,18 @@ impl Engine {
     /// quieter one should not interrupt.
     fn apply_timecode(&mut self, frames: usize) {
         for index in 0..self.decks.len() {
+            let Some(id) = DeckId::new(index as u8) else {
+                continue;
+            };
             let Some(input) = self.timecode[index].as_mut() else {
+                // Negative rather than zero: zero means "connected, carrying
+                // nothing" -- a dead cartridge, a lifted needle, the wrong
+                // input picked -- and a DJ staring at a deck that will not move
+                // needs that told apart from "this deck is not on vinyl".
+                self.registry
+                    .set(ParamId::Deck(id, DeckParam::TimecodeQuality), -1.0);
+                self.registry
+                    .set(ParamId::Deck(id, DeckParam::TimecodeSpeed), 0.0);
                 continue;
             };
 
@@ -1332,6 +1343,19 @@ impl Engine {
             let reading = input
                 .decoder
                 .feed(&self.timecode_scratch[..read - (read % 2)]);
+            // Published as well as applied, so the calibration screen can show
+            // what the record says beside what the deck is doing.
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                self.registry.set(
+                    ParamId::Deck(id, DeckParam::TimecodeQuality),
+                    reading.quality as f32,
+                );
+                self.registry.set(
+                    ParamId::Deck(id, DeckParam::TimecodeSpeed),
+                    reading.speed as f32,
+                );
+            }
 
             let Some(deck) = self.decks.get_mut(index) else {
                 continue;

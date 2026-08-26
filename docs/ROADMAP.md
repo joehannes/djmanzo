@@ -1169,7 +1169,28 @@ change in audio latency, and instantly on the next load.
   The decoder's four-megabyte table is built on the host thread and handed
   over, and comes back through the retirement queue rather than being freed on
   the audio thread. Proved allocation-free by `rt_safety`.
-  Still to do: an input-device picker and a calibration screen.
+  **Reachable from the application.** `timecode_status`, `start_timecode`,
+  `stop_timecode` and `timecode_formats` are the door `dj-dvs` did not have:
+  until they existed, `Command::SetTimecode` could be sent by nothing. The
+  settings panel carries an input picker, the relative/absolute switch, a
+  per-deck on/off, and a live reading that distinguishes **three** states from
+  one number -- not on a record, on one and hearing nothing, and reading -- so a
+  DJ whose deck will not move is told whether to check the cable or the
+  cartridge.
+  **`write_timecode_signal` writes the control signal to a WAV.** This is what
+  makes "djmanzo ships no vendor format" a choice rather than a dead end: render
+  it, burn it to a CD or put it on a phone, and any turntable, CD deck or media
+  player drives a deck without buying a record. Proved by writing 16-bit PCM to
+  disk and decoding the file back -- write level, clamp, integer conversion and
+  chunk seams all in the path.
+  **A device change used to leave every input dangling.** Opening an output
+  builds a fresh engine, and each input is half of a ring whose other half
+  belonged to the engine being dropped -- so the microphone went silently dead
+  on a reconnect while still holding a sound card open, and no test could see
+  it, because until the null backend could *capture*, no input path was
+  reachable without hardware. Both are fixed: `NullBackend` has an input device,
+  and the count of open captures is asserted across a reconnect.
+  Still to do: run it against a pressed record on a real turntable.
 - **Pro DJ Link** and **StagelinQ** — not started, and honestly gated. Neither
   vendor publishes an SDK; Pioneer's official route is a certification and
   licensing partnership, and both protocols are reverse-engineered by the

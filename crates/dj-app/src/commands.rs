@@ -558,7 +558,7 @@ pub fn open_device(
 /// Extracted rather than duplicated because the interesting part of opening a
 /// device is not the open: it is everything that has to be said again
 /// afterwards to an engine that did not exist a moment ago.
-fn open_device_for(
+pub(crate) fn open_device_for(
     state: &AppState,
     device_id: Option<String>,
     cue_device_id: Option<String>,
@@ -598,6 +598,12 @@ fn open_device_for(
     state.apply_controller_routing();
     state.apply_stem_out();
     state.apply_deck_out();
+    // Not re-applied, unlike the routing above: the host closed every input
+    // along with the old engine, and re-opening a turntable's input without
+    // being asked would start a deck moving while the DJ is still choosing a
+    // sound card. Forgetting is the honest state -- the panel then shows
+    // nothing on vinyl, which is true.
+    state.clear_timecode();
     Ok(dto)
 }
 

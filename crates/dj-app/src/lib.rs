@@ -41,6 +41,7 @@ pub mod setrec;
 pub mod snapshot;
 pub mod sources;
 pub mod state;
+pub mod timecode;
 pub mod wav;
 pub mod waveform;
 pub mod world;
@@ -410,6 +411,11 @@ pub fn run() {
             sources::music_library,
             sources::search_sources,
             sources::resolve_source_track,
+            timecode::timecode_formats,
+            timecode::timecode_status,
+            timecode::start_timecode,
+            timecode::stop_timecode,
+            timecode::write_timecode_signal,
             brand::set_brand_logo,
             brand::clear_brand_logo,
             brand::has_brand_logo,

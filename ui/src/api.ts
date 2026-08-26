@@ -739,6 +739,104 @@ export const setStemOut = (deck: number | null) =>
 export const setDeckOut = (decks: number | null) =>
   invoke<StemOut>("set_deck_out", { decks });
 
+// -- timecode vinyl ---------------------------------------------------------
+
+/** A control record djmanzo knows how to read. */
+export type TimecodeFormat = {
+  name: string;
+  carrierHz: number;
+  bits: number;
+  /**
+   * How long the record runs before a position could be mistaken for another.
+   * The one number that decides whether a format suits a set.
+   */
+  unambiguousSeconds: number;
+  /** Whether the numbers describe a record that could work at all. */
+  usable: boolean;
+};
+
+/** One deck's relationship with a turntable. */
+export type TimecodeDeck = {
+  /** 1-based, as it is printed on the hardware. */
+  deck: number;
+  running: boolean;
+  format: string | null;
+  device: string | null;
+  absolute: boolean;
+  /**
+   * How much of what is arriving looks like timecode, 0..1 — and **negative
+   * when the deck is not on vinyl at all**. Zero means connected and hearing
+   * nothing, which is a different problem with a different fix, so the panel
+   * must not collapse the two.
+   */
+  quality: number;
+  /** What the record is asking for; 1 is normal play, negative is backwards. */
+  speed: number;
+};
+
+export type TimecodeStatus = {
+  decks: TimecodeDeck[];
+  formats: TimecodeFormat[];
+  /** Nothing can be attached before an output is open. */
+  engineRunning: boolean;
+  /** The compatibility caveat, in the words the panel should print. */
+  caveat: string;
+};
+
+/** Which decks are on vinyl, and how well it is going. */
+export const timecodeStatus = () => invoke<TimecodeStatus>("timecode_status");
+
+/**
+ * Put a deck on a control record.
+ *
+ * `absolute` decides what the record means: in absolute mode the needle's place
+ * on the record is the playhead's place in the track, so dropping the needle
+ * two minutes in starts the track two minutes in. In relative mode only the
+ * movement is followed, which is what most DJs want most of the time.
+ */
+export const startTimecode = (
+  deck: number,
+  deviceId: string | null,
+  format: string | null,
+  absolute: boolean,
+) =>
+  invoke<TimecodeStatus>("start_timecode", {
+    deck,
+    deviceId,
+    format,
+    absolute,
+  });
+
+/** Take a deck off vinyl and give it its transport back. */
+export const stopTimecode = (deck: number) =>
+  invoke<TimecodeStatus>("stop_timecode", { deck });
+
+export type WrittenSignal = {
+  path: string;
+  seconds: number;
+  sampleRate: number;
+  format: string;
+};
+
+/**
+ * Write djmanzo's control signal to a WAV file.
+ *
+ * The answer to "djmanzo ships no Serato format": burn this to a CD or put it
+ * on a phone and any turntable, CD deck or media player becomes a controller.
+ */
+export const writeTimecodeSignal = (
+  path: string,
+  format: string | null,
+  seconds: number | null,
+  sampleRate: number | null,
+) =>
+  invoke<WrittenSignal>("write_timecode_signal", {
+    path,
+    format,
+    seconds,
+    sampleRate,
+  });
+
 // -- the mapping editor -----------------------------------------------------
 
 /** What a control should do. */

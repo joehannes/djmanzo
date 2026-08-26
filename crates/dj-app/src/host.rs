@@ -59,6 +59,17 @@ enum HostCommand {
         reply: SyncSender<Result<ActiveConfig, HostError>>,
     },
     CloseMic(SyncSender<Result<(), HostError>>),
+    OpenTimecode {
+        deck: dj_core::DeckId,
+        device: Option<DeviceId>,
+        format: dj_dvs::TimecodeFormat,
+        absolute: bool,
+        reply: SyncSender<Result<ActiveConfig, HostError>>,
+    },
+    CloseTimecode {
+        deck: dj_core::DeckId,
+        reply: SyncSender<Result<(), HostError>>,
+    },
     Play(SyncSender<Result<(), HostError>>),
     Pause(SyncSender<Result<(), HostError>>),
     Shutdown,
@@ -71,6 +82,18 @@ enum HostCommand {
 /// large would not add latency, only delay the point at which a genuinely
 /// stalled input starts dropping instead of piling up.
 const MIC_RING_SECONDS: f64 = 0.5;
+
+/// How much control signal the ring between the two callbacks can hold.
+///
+/// Shorter than the microphone's, deliberately. A backlog of *voice* is
+/// annoying; a backlog of *timecode* is a deck following where the record was
+/// a quarter of a second ago, which is unusable — better to drop the oldest
+/// samples and stay current than to play catch-up with a DJ's hand.
+const TIMECODE_RING_SECONDS: f64 = 0.1;
+
+/// A control record is stereo, and it has to be: the two channels a quarter
+/// cycle apart are the only thing that says which way the platter is turning.
+const TIMECODE_CHANNELS: u16 = 2;
 
 /// The widest output djmanzo opens, however many sockets an interface has.
 ///
@@ -175,6 +198,39 @@ impl AudioHost {
         self.request(HostCommand::CloseMic)
     }
 
+    /// Point a deck at a control record on `device`.
+    ///
+    /// The decoder is built **here**, on the host thread: its position table is
+    /// a million steps of a shift register and four megabytes of `Vec`, and
+    /// neither belongs anywhere near the audio callback.
+    ///
+    /// # Errors
+    /// When no output is open, when the input device cannot be opened, or when
+    /// the format could not describe a working record.
+    pub fn open_timecode(
+        &self,
+        deck: dj_core::DeckId,
+        device: Option<DeviceId>,
+        format: dj_dvs::TimecodeFormat,
+        absolute: bool,
+    ) -> Result<ActiveConfig, HostError> {
+        self.request(|reply| HostCommand::OpenTimecode {
+            deck,
+            device,
+            format,
+            absolute,
+            reply,
+        })
+    }
+
+    /// Take a deck off vinyl.
+    ///
+    /// # Errors
+    /// When the host thread has gone.
+    pub fn close_timecode(&self, deck: dj_core::DeckId) -> Result<(), HostError> {
+        self.request(|reply| HostCommand::CloseTimecode { deck, reply })
+    }
+
     /// Open the output.
     ///
     /// `cue_device` selects a *second* device for the headphone cue. Passing it
@@ -237,6 +293,10 @@ fn run_host(
     // Held for its lifetime like the cue stream: dropping it closes the input
     // device and stops the callback that fills the engine's ring.
     let mut mic_stream: Option<Box<dyn AudioStream>> = None;
+    // One input stream per deck on vinyl. A DJ with two turntables has two
+    // cartridges on two inputs, and they are opened and closed independently.
+    let mut timecode_streams: [Option<Box<dyn AudioStream>>; dj_core::MAX_DECKS] =
+        [const { None }; dj_core::MAX_DECKS];
 
     loop {
         // Wake regularly even with no commands, so retired buffers are freed
@@ -257,6 +317,17 @@ fn run_host(
                 buffer_frames,
                 reply,
             }) => {
+                // Every input attached to the outgoing engine goes with it.
+                //
+                // The engine is about to be replaced, and each input is half of
+                // a ring whose other half belongs to the engine being dropped.
+                // Left open, the device callback keeps running and keeps
+                // writing into a ring nobody drains: the microphone and any
+                // control record go silently dead while still holding a sound
+                // card open and still looking connected. Closing them here
+                // makes the failure visible -- the panel shows nothing
+                // attached, which is the truth -- instead of inaudible.
+                drop_inputs(&mut mic_stream, &mut timecode_streams);
                 let result = open_device(
                     backend.as_ref(),
                     &bus,
@@ -292,6 +363,35 @@ fn run_host(
                 close_mic(&bus, &mut mic_stream);
                 let _ = reply.send(Ok(()));
             }
+            Ok(HostCommand::OpenTimecode {
+                deck,
+                device,
+                format,
+                absolute,
+                reply,
+            }) => {
+                // Same reasoning as the microphone: the engine only exists once
+                // an output is open, and a decoder attached to nothing is a
+                // ring that fills and never drains.
+                let result = match stream.as_ref().map(|s| s.config().clone()) {
+                    Some(master) => open_timecode(
+                        backend.as_ref(),
+                        &bus,
+                        deck,
+                        device,
+                        &format,
+                        absolute,
+                        &master,
+                        &mut timecode_streams,
+                    ),
+                    None => Err(HostError::NoDevice),
+                };
+                let _ = reply.send(result);
+            }
+            Ok(HostCommand::CloseTimecode { deck, reply }) => {
+                close_timecode(&bus, deck, &mut timecode_streams);
+                let _ = reply.send(Ok(()));
+            }
             Ok(HostCommand::Play(reply)) => {
                 let result = match &stream {
                     Some(s) => s.play().map_err(|e| HostError::Audio(e.to_string())),
@@ -322,6 +422,29 @@ fn run_host(
                     other => drop(other),
                 }
             }
+        }
+    }
+}
+
+/// Close every input stream, without telling the engine.
+///
+/// Used when the engine itself is going away: there is no point sending
+/// `MicInput`/`SetTimecode` to a graph that is about to be dropped, and the
+/// command queue those would travel on is replaced moments later. What matters
+/// is that the *device callbacks* stop, because those outlive the engine and
+/// would otherwise keep a card open for nobody.
+fn drop_inputs(
+    mic: &mut Option<Box<dyn AudioStream>>,
+    timecode: &mut [Option<Box<dyn AudioStream>>],
+) {
+    if let Some(previous) = mic.take() {
+        let _ = previous.pause();
+        drop(previous);
+    }
+    for slot in timecode.iter_mut() {
+        if let Some(previous) = slot.take() {
+            let _ = previous.pause();
+            drop(previous);
         }
     }
 }
@@ -382,6 +505,98 @@ fn open_mic(
     let active = stream.config().clone();
     *slot = Some(stream);
     Ok(active)
+}
+
+/// Open an input for one deck's control record, and attach a decoder to it.
+///
+/// The decoder is built here rather than in the engine because filling its
+/// position table walks a shift register a million times. Doing that inside a
+/// callback would drop a buffer; doing it here costs a few milliseconds on the
+/// host thread while a DJ is reaching for a record anyway.
+#[allow(clippy::too_many_arguments)]
+fn open_timecode(
+    backend: &dyn AudioBackend,
+    bus: &Arc<ActionBus<Command>>,
+    deck: dj_core::DeckId,
+    device: Option<DeviceId>,
+    format: &dj_dvs::TimecodeFormat,
+    absolute: bool,
+    master: &ActiveConfig,
+    slots: &mut [Option<Box<dyn AudioStream>>],
+) -> Result<ActiveConfig, HostError> {
+    // Whatever was on this deck goes first, or two callbacks fill two rings and
+    // the engine reads one of them.
+    close_timecode(bus, deck, slots);
+
+    // At the master's rate, for the reason the microphone is: a control record
+    // read at the wrong rate reports the wrong speed, and a turntable at 33rpm
+    // that djmanzo thinks is running 8% fast is a beatmatch that never lands.
+    let sample_rate = master.sample_rate;
+    let capacity =
+        (sample_rate.as_f64() * TIMECODE_RING_SECONDS) as usize * TIMECODE_CHANNELS as usize;
+    let (producer, consumer) = rtrb::RingBuffer::new(capacity);
+
+    // Built before the device is opened: if the format is nonsense there is no
+    // point opening anything, and `Decoder::new` is where that is decided.
+    let decoder = dj_dvs::Decoder::new(format.clone(), sample_rate.as_f64()).ok_or_else(|| {
+        HostError::Audio(format!(
+            "{} does not describe a control record djmanzo can read",
+            format.name
+        ))
+    })?;
+
+    let config = dj_audio::StreamConfig {
+        device,
+        sample_rate,
+        buffer_frames: master.buffer_frames,
+        channels: TIMECODE_CHANNELS,
+    };
+    let stream = backend
+        .open_input(&config, producer)
+        .map_err(|e| HostError::Audio(e.to_string()))?;
+
+    // Only once the device is actually open, so a failed open leaves the deck
+    // on its own transport rather than following a ring nobody fills.
+    if bus
+        .send_command(Command::SetTimecode {
+            deck,
+            input: Some(Box::new(dj_engine::command::TimecodeInput {
+                decoder,
+                source: consumer,
+                absolute,
+            })),
+        })
+        .is_err()
+    {
+        return Err(HostError::Audio(
+            "command queue full; the control record could not be attached".to_owned(),
+        ));
+    }
+
+    stream.play().map_err(|e| HostError::Audio(e.to_string()))?;
+    let active = stream.config().clone();
+    slots[deck.index()] = Some(stream);
+    Ok(active)
+}
+
+/// Take a deck off vinyl and tell the engine to let go of its end.
+fn close_timecode(
+    bus: &Arc<ActionBus<Command>>,
+    deck: dj_core::DeckId,
+    slots: &mut [Option<Box<dyn AudioStream>>],
+) {
+    if let Some(previous) = slots.get_mut(deck.index()).and_then(Option::take) {
+        // The producer goes first, so the callback has stopped writing before
+        // the engine is told to stop reading.
+        let _ = previous.pause();
+        drop(previous);
+    }
+    if bus
+        .send_command(Command::SetTimecode { deck, input: None })
+        .is_err()
+    {
+        tracing::warn!("command queue full; the control record stays attached in the engine");
+    }
 }
 
 /// Detach the input device and tell the engine to let go of its end.
