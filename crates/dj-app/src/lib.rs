@@ -364,6 +364,7 @@ pub fn run() {
             commands::report_bench,
             commands::session_log,
             commands::library_status,
+            commands::suggest_next,
             commands::library_add_folder,
             commands::library_remove_folder,
             commands::library_rescan,

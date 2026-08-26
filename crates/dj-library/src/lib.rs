@@ -30,6 +30,7 @@ pub mod record;
 pub mod scan;
 pub mod schema;
 pub mod store;
+pub mod suggest;
 pub mod tags;
 
 pub use playlist::{PlayRecord, Playlist, PlaylistKind};

@@ -1196,6 +1196,30 @@ export interface ScanReport {
 
 export const libraryStatus = () => invoke<LibraryStatus>("library_status");
 
+/** Where the DJ wants the next record to take the room. */
+export type Trajectory = "lift" | "hold" | "ease";
+
+/** One suggested next track, with the reasoning that produced it. */
+export interface Suggestion {
+  track: LibraryTrack;
+  score: number;
+  /**
+   * Short phrases, strongest first — "same key (8A)", "128 BPM fits", "+3 dB".
+   * Rendered as chips beside the row. They come from typed reasons in
+   * `dj_library::suggest`; the ranking can be argued with there, not here.
+   */
+  reasons: string[];
+}
+
+/**
+ * What to play after whatever is on `deck`.
+ *
+ * Deterministic and local: no model, no network. A DJ deciding what to drop at
+ * 01:40 needs an answer in the time it takes to look down.
+ */
+export const suggestNext = (deck: number, trajectory: Trajectory, limit = 12) =>
+  invoke<Suggestion[]>("suggest_next", { deck, trajectory, limit });
+
 export const libraryAddFolder = (path: string) =>
   invoke<ScanReport>("library_add_folder", { path });
 

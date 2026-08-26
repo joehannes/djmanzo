@@ -172,6 +172,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | **Per-stem outputs for external processing** | **shipped** — one deck as four stereo pairs (vocals 1–2, drums 3–4, bass 5–6, other 7–8), pre-EQ and pre-fader, on an interface with eight outputs |
 | **Per-deck outputs for external processing** | **shipped** — each deck on its own stereo pair, pre-fader, no master chain; exclusive with stem out |
 | **Phrase detection** | **shipped** — phrase length and phrase anchor, from beat-synchronous novelty in four bands; markers on the waveform, `phrasejump` and `loop_phrase` on the keyboard and the deck panel, persisted across restarts. Verified against synthetic tracks whose structure is arithmetic; **not measured against a corpus of real records** |
+| **Next-track suggestions** | **shipped** — harmonic, tempo, loudness and phrase, ranked with typed reasons shown as chips; lift/hold/ease. Deterministic and local. **Energy is approximated by loudness**, which is a proxy and not the same thing |
 | **Timecode vinyl / DVS** | **shipped** — speed, direction and absolute position drive a deck, in relative or absolute mode, with an input picker and a live calibration reading in Settings. djmanzo writes its own control signal to a WAV, so any turntable, CD deck or phone works without a licensed record. **Not yet run against a pressed record** |
 | Video mixing / VJ output | M8 |
 | Karaoke | K1 / K2 — see [KARAOKE.md](KARAOKE.md) |

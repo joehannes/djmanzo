@@ -1364,8 +1364,33 @@ external system can drive it over the network without a private API.
   Fractional lengths keep the alignment, so half a phrase is still phrase-start
   aligned.
 
-- Next in M8: the transition planner and next-track suggestions, which both need
-  "where does the phrase end" and now have it. Then deterministic set replay.
+- **Next-track suggestions — done.** `dj_library::suggest` ranks the library
+  against what is playing, and the **Next** tab in SideView shows the result:
+  the panel about the next twenty minutes, which is what a suggestion is for.
+
+  Deterministic and local — no model, no network, no learned weights. That is a
+  floor rather than a placeholder: a DJ deciding what to drop at 01:40 needs an
+  answer in the time it takes to look down, and needs to see why it was given.
+
+  **Reasons are typed data, not prose.** `Reason::KeyClash { from, to }` can be
+  shown as a chip, sorted on, and disagreed with; a rendered sentence cannot.
+  Same principle as [ADR-0005](adr/0005-assistant-speaks-only-actions.md), one
+  layer down. The interface shows every reason including the bad ones — a DJ who
+  can see "key clash" is a DJ who can decide to do it anyway.
+
+  **Trajectory** (lift, hold, ease) is the one input the ranking cannot infer,
+  because the same two records are the right and the wrong answer depending on
+  where the night is going.
+
+  Two things it does not claim to know, stated in the code: **energy is
+  approximated by loudness** and they are not the same thing — a sparse, tense
+  record can be quieter than a wall-of-sound filler and carry a room better; and
+  **phrase compatibility is nearly free**, since 8, 16 and 32 all divide each
+  other, so the real risk is a track with no structure at all, which is what the
+  phrase reason actually reports.
+
+- Next in M8: the transition planner — where and how, with stated reasoning —
+  then deterministic set replay.
 - AI transition planner — suggests where and how, with stated reasoning.
 - Next-track suggestions ranked by harmonic compatibility, energy trajectory and phrase fit.
 - **Deterministic set replay and offline re-render** from the action log; practice loops; take

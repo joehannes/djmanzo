@@ -2010,6 +2010,121 @@ fn library(state: &AppState) -> Result<Arc<dj_library::Library>, String> {
     state.library().get().map_err(|e| e.to_string())
 }
 
+/// One suggested next track, with the reasoning that produced it.
+///
+/// The reasons arrive as short strings rather than the typed `Reason` values,
+/// because the interface renders them as chips and nothing on that side wants
+/// to re-derive a sentence from an enum. The typing that matters happens in
+/// `dj_library::suggest`, where the ranking can be argued with; this is the
+/// last mile.
+#[derive(Debug, Clone, Serialize)]
+pub struct SuggestionDto {
+    pub track: LibraryTrackDto,
+    pub score: f64,
+    /// Human-readable, ordered strongest first. Each is one `Reason`.
+    pub reasons: Vec<String>,
+}
+
+/// What to play after whatever is on `deck`.
+///
+/// `trajectory` is `lift`, `hold` or `ease`; anything else is treated as
+/// `hold`, which is the default a set spends most of its time in and the safe
+/// answer for a typo.
+#[tauri::command]
+pub fn suggest_next(
+    state: State<'_, AppState>,
+    deck: u8,
+    trajectory: String,
+    limit: usize,
+) -> Result<Vec<SuggestionDto>, String> {
+    use dj_library::suggest::{Playing, Trajectory};
+
+    let db = library(&state)?;
+    let deck_id = dj_core::DeckId::from_human(deck).ok_or("no such deck")?;
+
+    // What is playing, read from the library rather than the snapshot: the
+    // snapshot carries the analysis for display, but the library row is the
+    // same numbers the candidates are being scored against, and comparing like
+    // with like matters more than saving a query.
+    let now = current_track(&state, deck_id)
+        .and_then(|id| db.track(id).ok().flatten())
+        .map_or(
+            Playing {
+                key: None,
+                bpm: None,
+                lufs: None,
+                phrase_beats: None,
+            },
+            |t| Playing {
+                key: t.analysis.key(),
+                bpm: t.analysis.bpm,
+                lufs: t.analysis.loudness_lufs,
+                phrase_beats: t.analysis.phrase_beats,
+            },
+        );
+
+    let trajectory = match trajectory.as_str() {
+        "lift" => Trajectory::Lift,
+        "ease" => Trajectory::Ease,
+        _ => Trajectory::Hold,
+    };
+
+    // A generous pool, then ranked and cut. Ranking is cheap arithmetic per
+    // track; reading the rows is the part that costs, so the limit is applied
+    // after scoring rather than before -- cutting first would rank an arbitrary
+    // slice of the library.
+    let pool = db.all_tracks(5_000).map_err(|e| e.to_string())?;
+    let playing_now = current_track(&state, deck_id);
+
+    Ok(dj_library::suggest::rank(&now, trajectory, &pool)
+        .into_iter()
+        // Never suggest what is already on the deck.
+        .filter(|s| Some(s.track) != playing_now)
+        .take(limit.clamp(1, 100))
+        .filter_map(|s| {
+            let track = pool.iter().find(|t| t.id == s.track)?;
+            Some(SuggestionDto {
+                track: LibraryTrackDto::from(track.clone()),
+                score: s.score,
+                reasons: s.reasons.iter().map(describe_reason).collect(),
+            })
+        })
+        .collect())
+}
+
+/// Which track is on a deck, if any.
+fn current_track(state: &AppState, deck: dj_core::DeckId) -> Option<dj_core::TrackId> {
+    let tracks = state.deck_tracks();
+    let map = tracks.lock().ok()?;
+    map.get(&deck.human_number()).map(|t| t.id)
+}
+
+/// Render one reason for the interface.
+///
+/// Deliberately terse: these are chips beside a table row, not prose. A DJ
+/// scanning the list wants "same key" and "+3 dB", not a sentence.
+fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
+    use dj_library::suggest::Reason;
+    match reason {
+        Reason::SameKey(k) => format!("same key ({})", k.camelot()),
+        Reason::Harmonic { to, .. } => format!("harmonic ({})", to.camelot()),
+        Reason::KeyClash { to, .. } => format!("key clash ({})", to.camelot()),
+        Reason::TempoFits { to, .. } => format!("{to:.0} BPM fits"),
+        Reason::TempoHalfOrDouble { to, .. } => format!("{to:.0} BPM at half/double"),
+        Reason::TempoFar { to, .. } => format!("{to:.0} BPM is a stretch"),
+        Reason::Loudness { delta_db } => {
+            if delta_db.abs() < 0.5 {
+                "same level".to_owned()
+            } else {
+                format!("{delta_db:+.0} dB")
+            }
+        }
+        Reason::PhraseKnown { beats } => format!("{beats}-beat phrases"),
+        Reason::PhraseUnknown => "no phrase structure".to_owned(),
+        Reason::Unanalysed => "not analysed yet".to_owned(),
+    }
+}
+
 #[tauri::command]
 pub fn library_status(state: State<'_, AppState>) -> Result<LibraryStatusDto, String> {
     let db = library(&state)?;
