@@ -3,19 +3,98 @@
 //! One ordered path from every input source into the engine. See
 //! `docs/adr/0003-action-bus-and-parameter-registry.md`.
 
-use dj_core::Action;
+use dj_core::{Action, DeckId, TrackId};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// An action together with when it happened.
+/// Something the session record has to remember.
+///
+/// Almost everything is an [`Action`] -- the vocabulary controllers, scripts and
+/// the assistant all speak. The exception is loading, and it matters:
+/// [ADR-0003](../../../docs/adr/0003-action-bus-and-parameter-registry.md)
+/// keeps loading out of the action vocabulary because it carries an `Arc` and
+/// nothing external should be inventing one.
+///
+/// But **a set is not reproducible from its actions alone.** Replaying "deck 1
+/// play" against an empty deck reproduces silence, perfectly deterministically.
+/// So the log is wider than the vocabulary: it records what was *put on* the
+/// decks as well as what was done to them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SessionEvent {
+    Action(Action),
+    /// A track went on a deck.
+    ///
+    /// **Loading is the only thing the log needs beyond the vocabulary.**
+    /// Ejecting looked like a second one and is not: `deck 1 eject` is an
+    /// ordinary action and is already recorded as one. A separate variant for
+    /// it would have given the same event two spellings, and two takes recorded
+    /// through different paths would then diff as different sets.
+    Load {
+        deck: DeckId,
+        track: TrackId,
+    },
+}
+
+/// An event together with when it happened.
 ///
 /// The timestamp is what makes the log replayable: it is not decoration, it is
 /// the schedule a replay runs to.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TimedAction {
-    pub action: Action,
+pub struct TimedEvent {
+    pub event: SessionEvent,
     /// Time since the session started.
     pub at: Duration,
+}
+
+impl SessionEvent {
+    /// One line of a session file.
+    ///
+    /// Text, and specifically *the same text an action is written in
+    /// everywhere else* -- the mapping files, the assistant's output, the
+    /// `Display` impl. A session file is therefore readable, hand-editable, and
+    /// **diffable**, which is what makes take-diffing a `diff` rather than a
+    /// feature.
+    #[must_use]
+    pub fn to_line(self) -> String {
+        match self {
+            Self::Action(action) => action.to_string(),
+            Self::Load { deck, track } => {
+                format!("load deck {} {}", deck.human_number(), track.to_hex())
+            }
+        }
+    }
+
+    /// Read back what [`to_line`](Self::to_line) wrote.
+    ///
+    /// # Errors
+    /// When the line is not an event: an unknown verb, a deck that does not
+    /// exist, or a malformed track id. Refused rather than skipped, so a
+    /// corrupt session file is reported at the line that is wrong instead of
+    /// replaying most of a set and silently missing a track.
+    pub fn parse_line(line: &str) -> Result<Self, String> {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("load deck ") {
+            let (deck, track) = rest
+                .split_once(char::is_whitespace)
+                .ok_or_else(|| format!("a load needs a deck and a track: {line:?}"))?;
+            return Ok(Self::Load {
+                deck: parse_deck(deck)?,
+                track: TrackId::from_hex(track.trim())
+                    .ok_or_else(|| format!("not a track id: {:?}", track.trim()))?,
+            });
+        }
+        Action::parse(line)
+            .map(Self::Action)
+            .map_err(|e| format!("{e}"))
+    }
+}
+
+fn parse_deck(text: &str) -> Result<DeckId, String> {
+    text.trim()
+        .parse::<u8>()
+        .ok()
+        .and_then(DeckId::from_human)
+        .ok_or_else(|| format!("not a deck: {:?}", text.trim()))
 }
 
 /// Sends actions to the engine and records them.
@@ -59,14 +138,37 @@ where
     pub fn dispatch(&self, action: Action) -> Result<(), BusFull> {
         let at = self.started.elapsed();
         if let Ok(mut log) = self.log.lock() {
-            log.record(TimedAction { action, at });
+            log.record(TimedEvent {
+                event: SessionEvent::Action(action),
+                at,
+            });
         }
         self.send_command(C::from(action))
     }
 
+    /// Note what went on a deck.
+    ///
+    /// The load itself travels as a [`Command`](crate::ActionBus::send_command)
+    /// carrying an `Arc`, which is why it is not an [`Action`] -- see
+    /// [`SessionEvent`]. This records the *fact* of it, which is what a replay
+    /// needs: the id, not the buffer.
+    ///
+    /// Called by whoever performs the load, rather than inferred from the
+    /// command, because the bus deliberately does not know what a `C` contains.
+    pub fn record_load(&self, deck: DeckId, track: TrackId) {
+        let at = self.started.elapsed();
+        if let Ok(mut log) = self.log.lock() {
+            log.record(TimedEvent {
+                event: SessionEvent::Load { deck, track },
+                at,
+            });
+        }
+    }
+
     /// Submit a command that is not a plain action -- a track load carrying a
-    /// buffer, for instance. Not recorded in the action log; commands that
-    /// should be replayable must go through [`dispatch`](Self::dispatch).
+    /// buffer, for instance. Not recorded here; a load's *fact* is recorded by
+    /// [`record_load`](Self::record_load), and anything else that should be
+    /// replayable must go through [`dispatch`](Self::dispatch).
     pub fn send_command(&self, command: C) -> Result<(), BusFull> {
         let mut producer = self.producer.lock().map_err(|_| BusFull)?;
         producer.push(command).map_err(|_| BusFull)
@@ -86,7 +188,7 @@ where
 
     /// Everything dispatched so far, in order.
     #[must_use]
-    pub fn log(&self) -> Vec<TimedAction> {
+    pub fn log(&self) -> Vec<TimedEvent> {
         self.log
             .lock()
             .map(|log| log.entries().to_vec())
@@ -115,7 +217,7 @@ pub struct BusFull;
 /// has to hold from the start or the feature is not reachable later.
 #[derive(Debug, Default)]
 pub struct SessionLog {
-    entries: Vec<TimedAction>,
+    entries: Vec<TimedEvent>,
 }
 
 impl SessionLog {
@@ -124,12 +226,12 @@ impl SessionLog {
         Self::default()
     }
 
-    pub fn record(&mut self, entry: TimedAction) {
+    pub fn record(&mut self, entry: TimedEvent) {
         self.entries.push(entry);
     }
 
     #[must_use]
-    pub fn entries(&self) -> &[TimedAction] {
+    pub fn entries(&self) -> &[TimedEvent] {
         &self.entries
     }
 
@@ -147,9 +249,9 @@ impl SessionLog {
         self.entries.clear();
     }
 
-    /// Actions falling in `[from, to)`, for replaying a section of a set.
+    /// Events falling in `[from, to)`, for replaying a section of a set.
     #[must_use]
-    pub fn between(&self, from: Duration, to: Duration) -> &[TimedAction] {
+    pub fn between(&self, from: Duration, to: Duration) -> &[TimedEvent] {
         let start = self.entries.partition_point(|e| e.at < from);
         let end = self.entries.partition_point(|e| e.at < to);
         &self.entries[start..end]
@@ -158,6 +260,92 @@ impl SessionLog {
 
 #[cfg(test)]
 mod tests {
+
+    // -- the session file format ------------------------------------------
+
+    /// **Every event survives a round trip through text.**
+    ///
+    /// The session file is the substrate for replay, re-render and take
+    /// diffing, and all three are worthless if a line means something
+    /// different on the way back in. Written as a round trip rather than as
+    /// expected strings so it cannot pass by agreeing with itself about a
+    /// format that is wrong.
+    #[test]
+    fn every_event_survives_the_round_trip() {
+        let deck = DeckId::from_human(2).unwrap();
+        let track = TrackId::from_bytes([0xab; 32]);
+        let events = [
+            SessionEvent::Action(Action::Deck {
+                deck,
+                action: DeckAction::Play,
+            }),
+            SessionEvent::Action(Action::Deck {
+                deck,
+                action: DeckAction::BeatJump(-4),
+            }),
+            SessionEvent::Action(Action::Deck {
+                deck,
+                action: DeckAction::PhraseJump(1),
+            }),
+            SessionEvent::Action(Action::Deck {
+                deck,
+                action: DeckAction::LoopPhrases(0.5),
+            }),
+            SessionEvent::Load { deck, track },
+        ];
+
+        for event in events {
+            let line = event.to_line();
+            let back = SessionEvent::parse_line(&line)
+                .unwrap_or_else(|e| panic!("{line:?} did not parse back: {e}"));
+            assert_eq!(back, event, "{line:?} came back as something else");
+        }
+    }
+
+    /// **A load line carries the track, not the file path.**
+    ///
+    /// Paths move; ids do not. A session recorded on one machine and replayed
+    /// after the music folder was reorganised should still find its records,
+    /// and a path would not.
+    #[test]
+    fn a_load_line_carries_the_track_id() {
+        let event = SessionEvent::Load {
+            deck: DeckId::from_human(1).unwrap(),
+            track: TrackId::from_bytes([0x01; 32]),
+        };
+        let line = event.to_line();
+        assert!(
+            line.contains(&"01".repeat(32)),
+            "the id is not in the line: {line:?}"
+        );
+    }
+
+    /// **A corrupt line is refused, not skipped.**
+    ///
+    /// Skipping would replay most of a set and silently miss a track, which
+    /// looks like a bug in the engine rather than a damaged file.
+    #[test]
+    fn a_corrupt_line_is_refused() {
+        for bad in [
+            "load deck 1 nothex",
+            "load deck 99 aa",
+            "load deck 1",
+            "deck 1 fly",
+        ] {
+            assert!(
+                SessionEvent::parse_line(bad).is_err(),
+                "{bad:?} was accepted as an event"
+            );
+        }
+    }
+
+    /// A load must not be mistaken for the `load` verb of anything else, and a
+    /// track id must be exactly the right length.
+    #[test]
+    fn a_short_track_id_is_not_padded_into_a_valid_one() {
+        let short = format!("load deck 1 {}", "ab".repeat(20));
+        assert!(SessionEvent::parse_line(&short).is_err());
+    }
     use super::*;
     use dj_core::action::DeckAction;
     use dj_core::deck::DeckId;
@@ -214,8 +402,8 @@ mod tests {
         bus.dispatch(play(2)).unwrap();
         let log = bus.log();
         assert_eq!(log.len(), 2);
-        assert_eq!(log[0].action, play(1));
-        assert_eq!(log[1].action, play(2));
+        assert_eq!(log[0].event, SessionEvent::Action(play(1)));
+        assert_eq!(log[1].event, SessionEvent::Action(play(2)));
     }
 
     /// Intent is recorded even when the engine cannot accept it, so a replay of
@@ -281,8 +469,8 @@ mod tests {
     fn session_log_slices_by_time() {
         let mut log = SessionLog::new();
         for ms in [0u64, 10, 20, 30, 40] {
-            log.record(TimedAction {
-                action: play(1),
+            log.record(TimedEvent {
+                event: SessionEvent::Action(play(1)),
                 at: Duration::from_millis(ms),
             });
         }

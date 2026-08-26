@@ -38,6 +38,7 @@ pub mod plugins;
 pub mod presets;
 pub mod rackcapture;
 pub mod remote;
+pub mod session;
 pub mod setrec;
 pub mod snapshot;
 pub mod sources;
@@ -367,6 +368,9 @@ pub fn run() {
             commands::library_status,
             commands::suggest_next,
             commands::plan_transition,
+            commands::session_save,
+            commands::session_open,
+            commands::session_diff,
             commands::library_add_folder,
             commands::library_remove_folder,
             commands::library_rescan,

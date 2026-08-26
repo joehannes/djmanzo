@@ -974,6 +974,51 @@ export const dispatch = (action: string) => invoke<void>("dispatch", { action })
 
 export const sessionLog = () => invoke<string[]>("session_log");
 
+/** What a saved set contains. */
+export interface SessionSummary {
+  path: string;
+  events: number;
+  seconds: number;
+  /** Distinct tracks that went on a deck. */
+  tracks: number;
+}
+
+/**
+ * Write the set so far to a file.
+ *
+ * Text, one event per line, in the same words an action is written in
+ * everywhere else — so it can be read, annotated, and diffed.
+ */
+export const sessionSave = (path: string) =>
+  invoke<SessionSummary>("session_save", { path });
+
+/**
+ * Read a saved set and say what is in it.
+ *
+ * Deliberately does *not* replay it. Opening a file and having a set start
+ * playing would be the worst possible behaviour in a booth.
+ */
+export const sessionOpen = (path: string) =>
+  invoke<SessionSummary>("session_open", { path });
+
+/** One difference between two takes of a set. */
+export interface DivergenceLine {
+  kind: "only_in_first" | "only_in_second" | "drift";
+  event: string;
+  /** Seconds. For a drift, how much later the second take was. */
+  seconds: number;
+}
+
+/**
+ * Compare two takes of the same set.
+ *
+ * Not a text diff: two takes are the same decisions at different times, and a
+ * line comparison of a file whose first column is a timestamp calls every line
+ * changed. This reports which moves differ and how far they drifted.
+ */
+export const sessionDiff = (first: string, second: string) =>
+  invoke<DivergenceLine[]>("session_diff", { first, second });
+
 export interface WaveformInfo {
   deck: number;
   ready: boolean;

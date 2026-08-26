@@ -1576,15 +1576,13 @@ fn read_track_from(row: &Row<'_>, base: usize) -> rusqlite::Result<Result<Librar
     }))
 }
 
+/// Read a hex track id.
+///
+/// Thin now: the same decode lives in `dj_core` as `TrackId::from_hex`, because
+/// the session log needs it too and two implementations of an id parser is two
+/// chances to disagree about what a valid id is.
 fn track_id_from_hex(hex: &str) -> Option<TrackId> {
-    if hex.len() != 64 {
-        return None;
-    }
-    let mut bytes = [0u8; 32];
-    for (i, byte) in bytes.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
-    }
-    Some(TrackId::from_bytes(bytes))
+    TrackId::from_hex(hex)
 }
 
 /// Stored as a word rather than a number so the file is readable with the

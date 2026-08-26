@@ -1413,8 +1413,30 @@ external system can drive it over the network without a private API.
   than the whole answer; and **whether the two records suit each other**, since
   key and tempo are arithmetic and taste is not.
 
-- Next in M8: deterministic set replay and offline re-render from the action
-  log.
+- **Set files, and take diffing — done.** A set is already a recording, because
+  every action goes through one bus with a timestamp (ADR-0003). `dj_app::session`
+  turns that into a file, and the Session log panel saves and compares them.
+
+  **The file is text**, one event per line, in the same words an action is
+  written in everywhere else — mapping files, the assistant's output, `Display`.
+  So a set is readable, hand-editable and diffable, and comments and blank lines
+  survive a round trip because annotating a set by hand is the point.
+
+  **A set is not reproducible from its actions alone.** Loading is deliberately
+  outside the action vocabulary — it carries an `Arc` and nothing external should
+  invent one — so replaying "deck 1 play" against an empty deck reproduces
+  silence, perfectly deterministically. The log is therefore wider than the
+  vocabulary: `SessionEvent::Load` records what went *on* the decks. That is the
+  only addition needed; ejecting looked like a second one and is not, since
+  `deck 1 eject` is already an ordinary action.
+
+  **Take diffing is not `diff`.** Two takes of one mix are the same decisions at
+  different times, and a line comparison of a file whose first column is a
+  timestamp calls every line changed. `session::diff` matches moves and reports
+  which are missing and how far the rest drifted.
+
+- Still open in M8: driving the engine from a set file (live replay and offline
+  re-render), then lyrics/karaoke and video mixing.
 - AI transition planner — suggests where and how, with stated reasoning.
 - Next-track suggestions ranked by harmonic compatibility, energy trajectory and phrase fit.
 - **Deterministic set replay and offline re-render** from the action log; practice loops; take

@@ -802,6 +802,12 @@ pub fn put_on_deck(
         })
         .map_err(|_| "engine is not accepting commands; is a device open?".to_owned())?;
 
+    // Note it in the session record. The load itself travelled as a command
+    // carrying an `Arc`, which is why it is not an action -- but a set is not
+    // reproducible from its actions alone, so the *fact* of the load is
+    // recorded here. See `dj_control::SessionEvent`.
+    state.bus().record_load(deck_id, track_id);
+
     // What this track had last time it was played: cues in the slots they were
     // in, and the grid as it was left -- corrected by hand, if it was. Sent
     // after the load so the engine applies them to the new track rather than to
@@ -1421,7 +1427,7 @@ pub fn session_log(state: State<'_, AppState>) -> Vec<String> {
         .bus()
         .log()
         .into_iter()
-        .map(|entry| format!("{:>8.3}  {}", entry.at.as_secs_f64(), entry.action))
+        .map(|entry| format!("{:>8.3}  {}", entry.at.as_secs_f64(), entry.event.to_line()))
         .collect()
 }
 
@@ -1471,7 +1477,11 @@ mod tests {
 
         let log = state.bus().log();
         assert_eq!(log.len(), 1);
-        let rendered = format!("{:>8.3}  {}", log[0].at.as_secs_f64(), log[0].action);
+        let rendered = format!(
+            "{:>8.3}  {}",
+            log[0].at.as_secs_f64(),
+            log[0].event.to_line()
+        );
         assert!(rendered.contains("deck 1 play"), "got {rendered:?}");
     }
 }
@@ -1830,7 +1840,7 @@ mod grid_edit_tests {
         dispatch_for_test(&state, "deck 1 grid_nudge 10").unwrap();
         let log = state.bus().log();
         assert_eq!(log.len(), 1);
-        assert_eq!(log[0].action.to_string(), "deck 1 grid_nudge 10");
+        assert_eq!(log[0].event.to_line(), "deck 1 grid_nudge 10");
     }
 
     /// The other half: an edit that was refused must not appear to have
@@ -2008,6 +2018,99 @@ pub struct FailedFileDto {
 
 fn library(state: &AppState) -> Result<Arc<dj_library::Library>, String> {
     state.library().get().map_err(|e| e.to_string())
+}
+
+/// What a saved set contains, without reading the whole thing back.
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionSummaryDto {
+    pub path: String,
+    pub events: usize,
+    pub seconds: f64,
+    /// Distinct tracks that went on a deck.
+    pub tracks: usize,
+}
+
+/// Write the set so far to a file.
+///
+/// The file is text, one event per line, in the same words an action is written
+/// in everywhere else -- so it can be read, annotated and diffed. See
+/// `crate::session`.
+#[tauri::command]
+pub fn session_save(state: State<'_, AppState>, path: String) -> Result<SessionSummaryDto, String> {
+    let session = crate::session::Session {
+        events: state.bus().log(),
+    };
+    let path = std::path::PathBuf::from(path);
+    session.write(&path).map_err(|e| e.to_string())?;
+    Ok(SessionSummaryDto {
+        path: path.to_string_lossy().into_owned(),
+        events: session.events.len(),
+        seconds: session.duration().as_secs_f64(),
+        tracks: session.tracks().len(),
+    })
+}
+
+/// Read a saved set and say what is in it.
+///
+/// Deliberately does *not* replay it. Opening a file and having a set start
+/// playing would be the worst possible behaviour in a booth; the DJ looks
+/// first.
+#[tauri::command]
+pub fn session_open(path: String) -> Result<SessionSummaryDto, String> {
+    let path = std::path::PathBuf::from(path);
+    let session = crate::session::Session::read(&path)?;
+    Ok(SessionSummaryDto {
+        path: path.to_string_lossy().into_owned(),
+        events: session.events.len(),
+        seconds: session.duration().as_secs_f64(),
+        tracks: session.tracks().len(),
+    })
+}
+
+/// One difference between two takes of a set.
+#[derive(Debug, Clone, Serialize)]
+pub struct DivergenceLineDto {
+    /// `only_in_first`, `only_in_second` or `drift`.
+    pub kind: String,
+    pub event: String,
+    /// Seconds. For a drift, how much later the second take was.
+    pub seconds: f64,
+}
+
+/// Compare two takes of the same set.
+///
+/// Not a text diff: two takes are the same decisions at different times, and a
+/// line comparison of a file whose first column is a timestamp calls every line
+/// changed. This reports which moves differ and how far they drifted.
+#[tauri::command]
+pub fn session_diff(first: String, second: String) -> Result<Vec<DivergenceLineDto>, String> {
+    let a = crate::session::Session::read(std::path::Path::new(&first))?;
+    let b = crate::session::Session::read(std::path::Path::new(&second))?;
+    let d = crate::session::diff(&a, &b);
+
+    let mut out = Vec::new();
+    for entry in d.only_in_first {
+        out.push(DivergenceLineDto {
+            kind: "only_in_first".to_owned(),
+            event: entry.event.to_line(),
+            seconds: entry.at.as_secs_f64(),
+        });
+    }
+    for entry in d.only_in_second {
+        out.push(DivergenceLineDto {
+            kind: "only_in_second".to_owned(),
+            event: entry.event.to_line(),
+            seconds: entry.at.as_secs_f64(),
+        });
+    }
+    for (event, delta) in d.drifted {
+        out.push(DivergenceLineDto {
+            kind: "drift".to_owned(),
+            event: event.to_line(),
+            seconds: delta,
+        });
+    }
+    Ok(out)
 }
 
 /// A proposed transition, flattened for the interface.

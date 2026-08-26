@@ -23,6 +23,29 @@ impl TrackId {
         &self.0
     }
 
+    /// Read back what [`to_hex`](Self::to_hex) wrote.
+    ///
+    /// `None` for anything that is not exactly 64 hex digits. Strict rather
+    /// than lenient: a short or malformed id is a corrupt record, and quietly
+    /// zero-padding it would produce a *valid-looking* id pointing at the
+    /// wrong track -- or at nothing, which is worse to debug.
+    #[must_use]
+    pub fn from_hex(hex: &str) -> Option<Self> {
+        if hex.len() != 64 {
+            return None;
+        }
+        let mut bytes = [0u8; 32];
+        for (slot, pair) in bytes.iter_mut().zip(hex.as_bytes().chunks_exact(2)) {
+            let hi = char::from(pair[0]).to_digit(16)?;
+            let lo = char::from(pair[1]).to_digit(16)?;
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                *slot = ((hi << 4) | lo) as u8;
+            }
+        }
+        Some(Self(bytes))
+    }
+
     /// Lowercase hex, for cache filenames and database keys.
     #[must_use]
     pub fn to_hex(self) -> String {
