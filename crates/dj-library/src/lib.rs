@@ -29,6 +29,7 @@ pub mod playlist;
 pub mod record;
 pub mod scan;
 pub mod schema;
+pub mod setlist;
 pub mod store;
 pub mod suggest;
 pub mod tags;

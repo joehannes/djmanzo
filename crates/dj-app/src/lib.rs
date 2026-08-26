@@ -373,6 +373,8 @@ pub fn run() {
             commands::session_open,
             commands::session_diff,
             commands::session_render,
+            commands::setlist_build,
+            commands::genre_families,
             commands::library_add_folder,
             commands::library_remove_folder,
             commands::library_rescan,

@@ -13,6 +13,7 @@
 pub mod action;
 pub mod context;
 pub mod deck;
+pub mod genre;
 pub mod jog;
 
 pub mod fx;
@@ -30,6 +31,7 @@ pub use context::{
 };
 pub use deck::{CrossfaderAssign, DeckId, MAX_DECKS};
 pub use fx::{EffectKind, FX_SLOTS, FxChange, Placement};
+pub use genre::{Blendability, Family, Feel, Grammar, Region, families, family_for};
 pub use hotcue::{HOT_CUE_SLOTS, LoopLimits, LoopRegion};
 pub use jog::JogMode;
 pub use music::{Beatgrid, Bpm, Confidence, Mode, MusicalKey, Phrase, Trajectory};

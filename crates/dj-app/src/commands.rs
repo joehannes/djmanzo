@@ -2020,6 +2020,96 @@ fn library(state: &AppState) -> Result<Arc<dj_library::Library>, String> {
     state.library().get().map_err(|e| e.to_string())
 }
 
+/// One track in an assembled set, with the reasoning that placed it.
+#[derive(Debug, Clone, Serialize)]
+pub struct SetlistSlotDto {
+    pub track: LibraryTrackDto,
+    /// Where in the set it falls, 0..=1.
+    pub through: f32,
+    /// `lift`, `hold` or `ease` -- what the arc wanted at this point.
+    pub trajectory: String,
+    pub reasons: Vec<String>,
+}
+
+/// Build a whole set before playing any of it.
+///
+/// The suggester answers "what next"; this answers "what is the whole night".
+/// It asks the suggester repeatedly, each answer becoming the next question,
+/// and shapes the result with an **arc** -- without one every step is locally
+/// optimal and the set is an hour at a single energy.
+///
+/// `arc` is `rising`, `journey`, `flat` or `descent`. `favours` and `avoids`
+/// are genre names or aliases: favours tilt the ranking, avoids are honoured
+/// strictly. An avoided genre is not a preference to be balanced.
+#[tauri::command]
+pub fn setlist_build(
+    state: State<'_, AppState>,
+    arc: String,
+    minutes: f64,
+    favours: Vec<String>,
+    avoids: Vec<String>,
+) -> Result<Vec<SetlistSlotDto>, String> {
+    use dj_library::setlist::{Arc as SetArc, Taste, assemble};
+
+    let db = library(&state)?;
+    let arc = match arc.as_str() {
+        "rising" => SetArc::Rising,
+        "flat" => SetArc::Flat,
+        "descent" => SetArc::Descent,
+        _ => SetArc::Journey,
+    };
+    let taste = Taste { favours, avoids };
+
+    // The whole analysed library is the pool. Ranking is cheap arithmetic per
+    // track; reading the rows is what costs, so the limit is generous and the
+    // shaping happens afterwards.
+    let pool = db.all_tracks(5_000).map_err(|e| e.to_string())?;
+
+    Ok(assemble(&pool, arc, &taste, minutes, None)
+        .into_iter()
+        .filter_map(|slot| {
+            let track = pool.iter().find(|t| t.id == slot.track)?;
+            Some(SetlistSlotDto {
+                track: LibraryTrackDto::from(track.clone()),
+                through: slot.through,
+                trajectory: match slot.trajectory {
+                    dj_core::Trajectory::Lift => "lift",
+                    dj_core::Trajectory::Ease => "ease",
+                    dj_core::Trajectory::Hold => "hold",
+                }
+                .to_owned(),
+                reasons: slot.reasons.iter().map(describe_reason).collect(),
+            })
+        })
+        .collect())
+}
+
+/// The genre families djmanzo knows, for an interface offering them.
+#[derive(Debug, Clone, Serialize)]
+pub struct GenreFamilyDto {
+    pub name: String,
+    pub region: String,
+    /// The tempo a body moves at, which is not always the written one.
+    pub felt_bpm: (f32, f32),
+    pub grammar: String,
+}
+
+/// Every genre family, so the taste picker offers real names rather than a
+/// free-text box nobody can spell into.
+#[tauri::command]
+#[must_use]
+pub fn genre_families() -> Vec<GenreFamilyDto> {
+    dj_core::genre::families()
+        .iter()
+        .map(|f| GenreFamilyDto {
+            name: f.name.to_owned(),
+            region: format!("{:?}", f.region),
+            felt_bpm: f.felt_bpm(),
+            grammar: format!("{:?}", f.grammar),
+        })
+        .collect()
+}
+
 /// What a saved set contains, without reading the whole thing back.
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionSummaryDto {

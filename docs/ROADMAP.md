@@ -1483,7 +1483,27 @@ changes density with the occasion for exactly one reason: to make the right
 thing quick and the destructive thing hard, because a booth is dark and loud and
 a mis-click at 01:40 is heard by everyone.
 
-And the knowledge it needs: **regional genre families** (Latin America, North
+**Genre families and set assembly — done.** `dj_core::genre` holds the families;
+`dj_library::setlist` builds a whole set from them.
+
+The table encodes three facts, not a list of names. **Felt tempo is not written
+tempo** — trap is written at 140 and danced at 70, so it mixes with hip-hop and
+not with house, and a comparison on the written number gets that exactly
+backwards. **Rhythmic grammar decides whether a blend is possible** — dembow and
+four-on-the-floor put their kicks in different places, so holding them together
+is a mistake however well the tempos match. **Families cross unevenly** —
+amapiano into afro house is nothing, salsa into techno is a statement.
+
+The assembler asks the suggester repeatedly, each answer becoming the next
+question, and shapes the result with an **arc**: without one every step is
+locally optimal and the set is an hour at a single energy. A Journey climbs,
+plateaus, then descends — the plateau matters, because a set that peaks and
+immediately drops feels like an accident. Taste **tilts** rather than filters: a
+set that never leaves the DJ's four favourite families is the set they would
+have built by hand. Avoided genres are strict, because "no country at my
+wedding" is not a preference to be balanced.
+
+And the knowledge it still needs: **regional genre families** (Latin America, North
 America, Europe, Africa and beyond) encoding that felt tempo is not written
 tempo and that dembow and four-on-the-floor are different rhythmic grammars;
 **DJ technique** including the laptop-only ones like stem swaps; and **a
