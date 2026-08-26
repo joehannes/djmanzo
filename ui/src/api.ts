@@ -1297,6 +1297,16 @@ export interface Conduct {
    *  it. */
   next_step: string;
   because: string;
+  /**
+   * Whether a mistake right now is expensive.
+   *
+   * What the interface reads to decide how hard the destructive controls
+   * should be to hit. Sent by the backend rather than derived here, so the
+   * occasion table has one home and cannot disagree with itself.
+   */
+  mistakes_are_costly: boolean;
+  /** How much explanation to offer, 0..=2. */
+  verbosity: number;
 }
 
 /** A pack: both dials under one name. */

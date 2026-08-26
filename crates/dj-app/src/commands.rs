@@ -2196,6 +2196,14 @@ pub struct ConductDto {
     /// a DJ decides whether to let it.
     pub next_step: String,
     pub because: String,
+    /// Whether a mistake right now is expensive.
+    ///
+    /// What the interface reads to decide how hard the destructive controls
+    /// should be to hit. Sent rather than derived in the interface, so the
+    /// occasion table has one home and cannot disagree with itself.
+    pub mistakes_are_costly: bool,
+    /// How much explanation to offer, 0..=2.
+    pub verbosity: u8,
 }
 
 /// A pack: both dials under one name.
@@ -2240,6 +2248,8 @@ pub fn assistant_conduct(state: State<'_, AppState>) -> Result<ConductDto, Strin
         anything_held: guard.takeover.anything_held(),
         next_step: describe_step(&decision.step),
         because: decision.because,
+        mistakes_are_costly: guard.occasion.mistakes_are_costly(),
+        verbosity: guard.occasion.verbosity(),
     })
 }
 

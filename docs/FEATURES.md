@@ -180,6 +180,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | **Automatic set assembly** | **shipped** — a whole set built from the library with an arc, taste as a tilt, no repeats, no two tracks by one artist in a row, and no blend across a rhythmic grammar |
 | **Assistant takeover** | **shipped and wired** — per-control, instant, implicit on any human action; one gesture hands everything back; expires after ten minutes |
 | **Assistant posture / occasion** | **shipped** — six postures, nine occasions, seven packs, in the Conduct panel with the next step shown before it happens |
+| **Occasion-aware density** | **shipped** — a control that cannot be undone by pressing it again becomes a 600 ms hold when the occasion says mistakes are costly, and stays a plain click when it does not. The pad itself holds; no second widget. Reversible controls are never made harder |
 | **Autopilot** | **shipped** — a half-second tick that stages, levels and mixes according to posture, from an assembled setlist. Never verified against real audio: there is no output device here |
 | **Timecode vinyl / DVS** | **shipped** — speed, direction and absolute position drive a deck, in relative or absolute mode, with an input picker and a live calibration reading in Settings. djmanzo writes its own control signal to a WAV, so any turntable, CD deck or phone works without a licensed record. **Not yet run against a pressed record** |
 | Video mixing / VJ output | M8 |

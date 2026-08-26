@@ -1532,10 +1532,37 @@ beats, under two minutes at any danceable tempo) and short enough that a nudge
 at the start of a set is not still being honoured at the end.
 
 Plus: **touching a control takes over** — not a mode button, the fader itself —
-and handing back is one gesture in one place that never moves. The interface
-changes density with the occasion for exactly one reason: to make the right
-thing quick and the destructive thing hard, because a booth is dark and loud and
-a mis-click at 01:40 is heard by everyone.
+and handing back is one gesture in one place that never moves.
+
+**Occasion-aware density — done.** The interface changes with the occasion for
+exactly one reason: to make the right thing quick and the destructive thing
+hard, because a booth is dark and loud and a mis-click at 01:40 is heard by
+everyone.
+
+It is deliberately one narrow rule rather than a second layout. A control that
+**cannot be undone by pressing it again** — ejecting a playing deck is the first
+of them — becomes a 600 ms hold when the occasion says mistakes are costly, and
+stays a plain click when it does not. Everything reversible stays a click
+always: making ordinary controls harder would tax a DJ on every action to guard
+against a few, which is a worse trade than the accident it prevents.
+
+Three decisions are worth naming, because each is a place this normally goes
+wrong:
+
+- **The occasion table has one home.** `mistakes_are_costly` is computed in Rust
+  beside the occasions themselves and sent to the interface. A second copy in
+  TypeScript could disagree with the first, and the disagreement would surface
+  as a control that is hard to press on a night it should not be.
+- **The pad learned to hold; no new widget was introduced.**
+  [ADR-0008](adr/0008-one-widget-vocabulary.md) says there is one vocabulary,
+  and a bespoke hold-button next to a row of pads would read as a different kind
+  of thing rather than the same thing being careful. The progress fills the pad
+  itself, and the label says `hold`, because a button that needs holding and
+  does not say so reads as broken — and the first press is in front of people.
+- **A missing hold is an inconvenience; an unexpected one is a broken control.**
+  So when the interface cannot reach the backend it falls back to *no* hold
+  rather than guessing, and a keypress fires immediately either way: reaching
+  for Enter is already deliberate in a way that brushing a touchscreen is not.
 
 **Genre families and set assembly — done.** `dj_core::genre` holds the families;
 `dj_library::setlist` builds a whole set from them.

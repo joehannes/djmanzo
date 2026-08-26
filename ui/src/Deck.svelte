@@ -33,6 +33,7 @@
     layout = null,
     stemSwap = null,
     deckCount = 2,
+    careful = false,
   }: {
     deck: DeckState;
     sampler: SamplerState;
@@ -42,6 +43,16 @@
     stemSwap?: StemSwap | null;
     /** How many decks there are, so a swap can name a real one. */
     deckCount?: number;
+    /**
+     * Whether a mistake right now is expensive.
+     *
+     * From the assistant's occasion. When it is, the controls that cannot be
+     * undone by pressing them again -- ejecting a playing deck -- need a
+     * deliberate hold instead of a click. At a rehearsal or alone at home they
+     * stay ordinary presses, because slowing every action down to guard
+     * against a few is a worse trade than the accident it prevents.
+     */
+    careful?: boolean;
     /**
      * The layout in force, or null before one has been chosen.
      *
@@ -518,8 +529,14 @@
       disabled={!enabled || !deck.can_sync}
       onclick={() => send(`deck ${deck.number} ${deck.synced ? "sync_off" : "sync"}`)}
     />
+    <!--
+      Eject is the one control on this panel that cannot be undone by pressing
+      it again: the track, its cues and its analysis all go. So it is the one
+      that holds when the night is expensive.
+    -->
     <SvgPad
       label="EJECT"
+      hold={careful && deck.playing}
       disabled={!enabled || !deck.loaded}
       onclick={() => send(`deck ${deck.number} eject`)}
     />

@@ -54,6 +54,7 @@
     onSnapshot,
     activeDevice,
     openDevice,
+    assistantConduct,
     sessionLog,
     sessionSave,
     sessionDiff,
@@ -97,6 +98,20 @@
   let snapshot = $state<Snapshot | null>(null);
   let log = $state<string[]>([]);
   let showLog = $state(false);
+
+  /**
+   * Whether a mistake right now is expensive, from the assistant's occasion.
+   *
+   * Read here and passed down rather than fetched by every deck: it changes
+   * when the DJ changes the occasion, which is a handful of times a night, and
+   * four decks polling for the same boolean would be four times the work for
+   * one answer.
+   *
+   * Polled slowly on purpose. The alternative -- pushing it through the
+   * snapshot -- would put a value that changes a few times a night into a
+   * stream that fires sixty times a second.
+   */
+  let conductCare = $state(false);
   // Saving a set and comparing two takes. See the Session log panel below.
   let savePath = $state("");
   let saved = $state<SessionSummary | null>(null);
@@ -141,6 +156,32 @@
   // looking at their own work rather than at this list.
   $effect(() => {
     void controlMappings_load();
+  });
+
+  /**
+   * Keep the care level current.
+   *
+   * Every four seconds. The occasion changes a handful of times a night, so
+   * this is already far faster than it needs to be -- and pushing it through
+   * the snapshot instead would put a value that barely moves into a stream
+   * that fires sixty times a second.
+   */
+  $effect(() => {
+    const read = async () => {
+      try {
+        conductCare = (await assistantConduct()).mistakes_are_costly;
+      } catch {
+        // Not fatal, and deliberately silent: if the assistant cannot be
+        // reached the controls simply stay ordinary presses, which is the
+        // safe direction to fail in -- a hold that is missing is an
+        // inconvenience, one that appears unexpectedly is a control that
+        // looks broken.
+        conductCare = false;
+      }
+    };
+    void read();
+    const timer = setInterval(() => void read(), 4000);
+    return () => clearInterval(timer);
   });
 
   async function controlMappings_load() {
@@ -860,6 +901,7 @@
           stemSwap={snapshot.master.stem_swap}
           {deckCount}
           {layout}
+          careful={conductCare}
         />
       {/each}
     </div>
