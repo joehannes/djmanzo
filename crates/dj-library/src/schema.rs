@@ -75,6 +75,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 5,
         sql: MIGRATION_5,
     },
+    Migration {
+        version: 6,
+        sql: MIGRATION_6,
+    },
 ];
 
 /// The initial schema.
@@ -397,6 +401,18 @@ const MIGRATION_5: &str = r#"
 ALTER TABLE playlists ADD COLUMN system TEXT;
 
 CREATE INDEX playlists_system ON playlists(system);
+"#;
+
+const MIGRATION_6: &str = r#"
+-- Phrase structure: how many beats a phrase is, and which beat starts one.
+--
+-- Both or neither. A length without the beat it starts on is not half an
+-- answer, it is a marker in an unknown place. Null throughout for a track with
+-- no phrase structure, which is a real answer and not a missing one -- plenty
+-- of live and ambient records have none.
+ALTER TABLE tracks ADD COLUMN phrase_beats      INTEGER;
+ALTER TABLE tracks ADD COLUMN phrase_anchor     INTEGER;
+ALTER TABLE tracks ADD COLUMN phrase_confidence REAL;
 "#;
 
 #[cfg(test)]

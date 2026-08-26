@@ -6,7 +6,7 @@ use crate::rack::Rack;
 use crate::record::Recorder;
 use dj_core::{
     Beatgrid, CrossfaderAssign, FramePos, HOT_CUE_SLOTS, JogMode, LoopLimits, LoopRegion, PADS,
-    Rate, SampleRate, db_to_linear,
+    Phrase, Rate, SampleRate, db_to_linear,
 };
 use dj_decode::{AudioBuffer, TrackSource};
 use dj_dsp::fx::FxContext;
@@ -160,6 +160,11 @@ pub struct Deck {
     /// callback. A `Beatgrid` is four numbers and `Copy`, so it crosses the
     /// queue without allocating.
     grid: Option<Beatgrid>,
+    /// Phrase length in beats and the beat one starts on, from the analyser.
+    ///
+    /// Kept beside the grid because it is meaningless without one -- a phrase
+    /// is measured in beats -- and cleared with it for the same reason.
+    phrase: Option<Phrase>,
     /// Stems state: true if muted
     pub stem_mutes: [bool; 4],
     /// Mutes as they were before a held stem solo.
@@ -254,6 +259,7 @@ impl Deck {
             needs_prime: true,
             scratch: vec![0.0; SCRATCH_FRAMES * CHANNELS],
             grid: None,
+            phrase: None,
             stem_mutes: [false; 4],
             stem_mutes_before_solo: None,
             synced: false,
@@ -748,7 +754,77 @@ impl Deck {
         self.grid = grid;
         if grid.is_none() {
             self.synced = false;
+            // A phrase is a count of beats from the grid's anchor. With no
+            // grid there is no anchor, so the count points nowhere.
+            self.phrase = None;
         }
+    }
+
+    /// Attach the analyser's phrase structure, or clear it.
+    ///
+    /// Separate from [`set_grid`](Self::set_grid) because the two arrive at
+    /// different times: the grid may come from an import or a tap while the
+    /// phrases are still being computed in the background.
+    pub fn set_phrase(&mut self, phrase: Option<Phrase>) {
+        self.phrase = phrase;
+    }
+
+    #[must_use]
+    pub fn phrase(&self) -> Option<Phrase> {
+        self.phrase
+    }
+
+    /// Where the playhead is within the current phrase, in beats.
+    ///
+    /// `None` without a grid or a phrase structure. Zero on a phrase boundary,
+    /// which is what a DJ waits for before dropping the next track.
+    #[must_use]
+    pub fn phrase_beat(&self) -> Option<u32> {
+        let grid = self.grid?;
+        let phrase = self.phrase?;
+        let beat = grid.beat_index_at(self.position, self.source.sample_rate());
+        Some(phrase.beat_within(beat))
+    }
+
+    /// Move the playhead by whole phrases, landing on a phrase boundary.
+    ///
+    /// Not a beat jump of `phrase.beats` beats. A beat jump keeps whatever
+    /// offset the playhead had; this lands *on* the boundary, because the
+    /// reason to jump a phrase is to arrive where the next one starts. Jumping
+    /// from three beats into a phrase therefore moves by rather less than a
+    /// whole phrase, which is the point.
+    pub fn phrase_jump(&mut self, phrases: i32) -> bool {
+        let (Some(grid), Some(phrase)) = (self.grid, self.phrase) else {
+            return false;
+        };
+        let rate = self.source.sample_rate();
+        let Some(beat_frames) = self.beat_frames() else {
+            return false;
+        };
+        let current = grid.beat_index_at(self.position, rate);
+        let within = i64::from(phrase.beat_within(current));
+        let boundary = current - within;
+        let beats = i64::from(phrase.beats);
+        // **Backwards is asymmetric on purpose.** From three beats into a
+        // phrase, "back one" means the start of *this* phrase, not the start of
+        // the previous one -- the same behaviour as a track's back button,
+        // which restarts before it skips. Forwards has no such case: the next
+        // boundary is the next boundary wherever you are inside the phrase.
+        let target_beat = if phrases < 0 && within > 0 {
+            boundary + (i64::from(phrases) + 1) * beats
+        } else {
+            boundary + i64::from(phrases) * beats
+        };
+
+        #[allow(clippy::cast_precision_loss)]
+        let target = grid.beat_position(target_beat, rate).get();
+        // Guard against a grid whose beat length is not a real number, which
+        // would send the playhead somewhere unrecoverable.
+        if !target.is_finite() || !beat_frames.is_finite() {
+            return false;
+        }
+        self.seek(FramePos::new(target));
+        true
     }
 
     #[must_use]
@@ -3451,6 +3527,44 @@ mod slicer_tests {
             Confidence::new(0.9),
         )));
         deck
+    }
+
+    /// **Clearing the grid clears the phrase, at the deck itself.**
+    ///
+    /// Tested here rather than through `Command::SetGrid`, which carries both
+    /// and so clears the phrase whatever the deck does -- a test at that level
+    /// passes even with this guard removed, and did.
+    ///
+    /// The guard matters because a phrase counts beats from the grid's anchor.
+    /// Left behind after the grid goes, it is a count from nothing, and the
+    /// next grid to arrive would silently inherit a phrase measured against a
+    /// different one.
+    #[test]
+    fn a_deck_drops_its_phrase_when_its_grid_goes() {
+        let mut deck = deck();
+        deck.set_phrase(dj_core::Phrase::new(16, 0));
+        assert!(deck.phrase().is_some());
+
+        deck.set_grid(None);
+        assert!(
+            deck.phrase().is_none(),
+            "the phrase outlived the grid whose anchor it counts from"
+        );
+    }
+
+    /// Where the playhead sits inside a phrase, which is the number a DJ
+    /// watches before dropping the next track.
+    #[test]
+    fn a_deck_reports_where_it_is_in_the_phrase() {
+        let mut deck = deck();
+        deck.set_phrase(dj_core::Phrase::new(16, 0));
+        assert_eq!(deck.phrase_beat(), Some(0));
+
+        deck.seek(FramePos::new(BEAT * 3.0));
+        assert_eq!(deck.phrase_beat(), Some(3));
+
+        deck.seek(FramePos::new(BEAT * 16.0));
+        assert_eq!(deck.phrase_beat(), Some(0), "beat 16 starts a new phrase");
     }
 
     /// Eight pads over eight beats is one beat each, which is the default

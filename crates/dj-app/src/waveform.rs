@@ -341,6 +341,7 @@ mod tests {
                     Confidence::CERTAIN,
                 ),
                 sample_rate: SampleRate::DEFAULT,
+                phrase: None,
             })
         };
 
@@ -371,6 +372,7 @@ mod tests {
                 Confidence::new(0.3),
             ),
             sample_rate: SampleRate::DEFAULT,
+            phrase: None,
         };
         store.set_analysed_grid(deck, Some(original));
 
@@ -572,6 +574,7 @@ mod tests {
                     dj_core::Confidence::new(1.0),
                 ),
                 sample_rate: SampleRate::DEFAULT,
+                phrase: None,
             }),
         );
 
@@ -597,6 +600,7 @@ mod tests {
                 dj_core::Confidence::new(1.0),
             ),
             sample_rate: SampleRate::DEFAULT,
+            phrase: None,
         };
 
         store.set_grid(deck, Some(overlay));
@@ -627,6 +631,7 @@ mod tests {
                     dj_core::Confidence::new(1.0),
                 ),
                 sample_rate: SampleRate::DEFAULT,
+                phrase: None,
             }),
         );
         assert!(store.grid(1).is_some());

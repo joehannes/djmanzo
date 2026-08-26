@@ -42,7 +42,7 @@ use std::sync::{Arc, Mutex};
 /// A cached record from an older version is discarded and recomputed rather
 /// than read, which is why this number exists: reading an old record with new
 /// code is how a library ends up full of confidently wrong BPMs.
-const CACHE_VERSION: u32 = 1;
+const CACHE_VERSION: u32 = 2;
 
 /// What the analyser found, in a form that survives a restart.
 ///
@@ -66,6 +66,12 @@ struct CachedAnalysis {
     /// `None` for a silent track, where loudness is negative infinity and JSON
     /// has no way to say so.
     lufs: Option<f64>,
+    /// Phrase length in beats, and the beat a phrase starts on. `None` for a
+    /// track with no phrase structure, which is a real answer -- see
+    /// `dj_analysis::structure`.
+    phrase_beats: Option<u32>,
+    phrase_anchor: Option<u32>,
+    phrase_confidence: Option<f32>,
 }
 
 impl CachedAnalysis {
@@ -93,6 +99,9 @@ impl CachedAnalysis {
                 .get()
                 .is_finite()
                 .then(|| analysis.loudness.get()),
+            phrase_beats: analysis.phrases.map(|p| p.beats),
+            phrase_anchor: analysis.phrases.map(|p| p.anchor),
+            phrase_confidence: analysis.phrases.map(|p| p.confidence),
         }
     }
 
@@ -130,10 +139,22 @@ impl CachedAnalysis {
             _ => None,
         };
 
+        // All three or none. A phrase length without the beat it starts on is
+        // not half an answer, it is a marker in an unknown place.
+        let phrases = match (self.phrase_beats, self.phrase_anchor) {
+            (Some(beats), Some(anchor)) => Some(dj_analysis::PhraseAnalysis {
+                beats,
+                anchor,
+                confidence: self.phrase_confidence.unwrap_or(0.0),
+            }),
+            _ => None,
+        };
+
         Some(Analysis {
             tempo,
             key,
             loudness: self.lufs.map_or(Lufs::SILENCE, Lufs::new),
+            phrases,
         })
     }
 }
@@ -341,6 +362,7 @@ mod tests {
                 alternative: MusicalKey::new(8, Mode::Minor),
             }),
             loudness: Lufs::new(-9.3),
+            phrases: None,
         }
     }
 
@@ -389,6 +411,7 @@ mod tests {
             tempo: None,
             key: None,
             loudness: Lufs::SILENCE,
+            phrases: None,
         };
         let restored = CachedAnalysis::from_analysis(&silent)
             .to_analysis()
@@ -493,6 +516,7 @@ mod tests {
 
         let quiet = Analysis {
             loudness: Lufs::new(-20.0),
+            phrases: None,
             ..analysis()
         };
         assert_eq!(
@@ -502,6 +526,7 @@ mod tests {
 
         let loud = Analysis {
             loudness: Lufs::new(-8.0),
+            phrases: None,
             ..analysis()
         };
         assert_eq!(
@@ -517,6 +542,7 @@ mod tests {
         let deck = DeckId::from_human(1).unwrap();
         let already = Analysis {
             loudness: Lufs::new(-14.2),
+            phrases: None,
             ..analysis()
         };
         assert_eq!(auto_gain_action(deck, &already), None);
@@ -529,6 +555,7 @@ mod tests {
         let deck = DeckId::from_human(1).unwrap();
         let silent = Analysis {
             loudness: Lufs::SILENCE,
+            phrases: None,
             ..analysis()
         };
         assert_eq!(auto_gain_action(deck, &silent), None);
@@ -541,6 +568,7 @@ mod tests {
         let deck = DeckId::from_human(2).unwrap();
         let quiet = Analysis {
             loudness: Lufs::new(-19.0),
+            phrases: None,
             ..analysis()
         };
         let action = auto_gain_action(deck, &quiet).unwrap();
@@ -562,6 +590,7 @@ mod tests {
         let deck = DeckId::from_human(1).unwrap();
         let nearly_silent = Analysis {
             loudness: Lufs::new(-90.0),
+            phrases: None,
             ..analysis()
         };
         let action = auto_gain_action(deck, &nearly_silent).unwrap();

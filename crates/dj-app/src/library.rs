@@ -295,6 +295,11 @@ pub fn stored_analysis(analysis: &dj_analysis::Analysis) -> dj_library::StoredAn
     if let Some(key) = &analysis.key {
         stored = stored.with_key(key.key, key.correlation);
     }
+    if let Some(phrases) = analysis.phrases {
+        stored.phrase_beats = Some(phrases.beats);
+        stored.phrase_anchor = Some(phrases.anchor);
+        stored.phrase_confidence = Some(f64::from(phrases.confidence));
+    }
     stored
 }
 
@@ -546,6 +551,7 @@ mod tests {
             tempo: None,
             key: None,
             loudness: dj_analysis::Lufs::SILENCE,
+            phrases: None,
         };
         let stored = stored_analysis(&analysis);
         assert_eq!(stored.loudness_lufs, None);
@@ -558,6 +564,7 @@ mod tests {
             tempo: None,
             key: None,
             loudness: dj_analysis::Lufs::new(-9.5),
+            phrases: None,
         };
         assert_eq!(stored_analysis(&analysis).loudness_lufs, Some(-9.5));
     }
@@ -571,6 +578,7 @@ mod tests {
             tempo: None,
             key: None,
             loudness: dj_analysis::Lufs::new(-12.0),
+            phrases: None,
         });
         assert_eq!(stored.bpm, None);
         assert_eq!(stored.beatgrid(), None);

@@ -1,6 +1,6 @@
 //! What crosses into the audio thread.
 
-use dj_core::{Action, Beatgrid, DeckId, FramePos, HOT_CUE_SLOTS, LoopRegion};
+use dj_core::{Action, Beatgrid, DeckId, FramePos, HOT_CUE_SLOTS, LoopRegion, Phrase};
 use dj_decode::TrackSource;
 use std::sync::Arc;
 
@@ -45,6 +45,14 @@ pub enum Command {
     SetGrid {
         deck: DeckId,
         grid: Option<Beatgrid>,
+        /// The phrase structure measured against `grid`.
+        ///
+        /// Carried in the *same* command rather than its own, because a phrase
+        /// is a count of beats from the grid's anchor: pair it with a different
+        /// grid and every marker points at the wrong beat. Sending them
+        /// together makes that pairing unrepresentable rather than merely
+        /// discouraged.
+        phrase: Option<Phrase>,
     },
     /// Put a track's stored hot cues back on a deck.
     ///
@@ -291,6 +299,7 @@ mod tests {
                 Bpm::new(128.0).unwrap(),
                 Confidence::new(0.9),
             )),
+            phrase: None,
         };
         // `Copy` is the property that matters; if `Beatgrid` ever grew a `Vec`
         // this would stop compiling, which is the point.

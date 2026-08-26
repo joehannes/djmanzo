@@ -280,6 +280,13 @@ pub enum DeckAction {
     SyncToggle,
     /// Move the playhead by whole beats. Negative goes back.
     BeatJump(i32),
+    /// Move by whole phrases, landing **on** a phrase boundary.
+    ///
+    /// Not the same as a beat jump of one phrase's length: that keeps whatever
+    /// offset the playhead had, and the reason to jump a phrase is to arrive
+    /// where the next one starts. Does nothing on a track with no phrase
+    /// structure, which is a real state and not a failure.
+    PhraseJump(i32),
 
     /// One-button hot cue, 1-based: jump to it if set, set it here if not.
     ///
@@ -929,6 +936,7 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "sync_off" => bare(DeckAction::SyncOff),
         "sync_toggle" => bare(DeckAction::SyncToggle),
         "beatjump" => Ok(DeckAction::BeatJump(parse_i32(argument)?)),
+        "phrasejump" => Ok(DeckAction::PhraseJump(parse_i32(argument)?)),
         "hotcue" => Ok(DeckAction::HotCue(parse_slot(argument)?)),
         "hotcue_set" => Ok(DeckAction::HotCueSet(parse_slot(argument)?)),
         "hotcue_clear" => Ok(DeckAction::HotCueClear(parse_slot(argument)?)),
@@ -1267,6 +1275,7 @@ impl fmt::Display for Action {
                 DeckAction::SyncOff => write!(f, "deck {deck} sync_off"),
                 DeckAction::SyncToggle => write!(f, "deck {deck} sync_toggle"),
                 DeckAction::BeatJump(n) => write!(f, "deck {deck} beatjump {n}"),
+                DeckAction::PhraseJump(n) => write!(f, "deck {deck} phrasejump {n}"),
                 DeckAction::HotCue(n) => write!(f, "deck {deck} hotcue {n}"),
                 DeckAction::HotCueSet(n) => write!(f, "deck {deck} hotcue_set {n}"),
                 DeckAction::HotCueClear(n) => write!(f, "deck {deck} hotcue_clear {n}"),

@@ -165,7 +165,8 @@ impl Library {
                 "UPDATE tracks SET
                      bpm = ?2, grid_anchor = ?3, grid_beats_per_bar = ?4,
                      grid_confidence = ?5, key_hour = ?6, key_mode = ?7,
-                     key_confidence = ?8, loudness_lufs = ?9, grid_source = ?10
+                     key_confidence = ?8, loudness_lufs = ?9, grid_source = ?10,
+                     phrase_beats = ?11, phrase_anchor = ?12, phrase_confidence = ?13
                  WHERE id = ?1",
                 params![
                     id.to_hex(),
@@ -178,6 +179,9 @@ impl Library {
                     analysis.key_confidence,
                     analysis.loudness_lufs,
                     analysis.grid_source.map(crate::GridSource::as_sql),
+                    analysis.phrase_beats,
+                    analysis.phrase_anchor,
+                    analysis.phrase_confidence,
                 ],
             )?;
             Ok(())
@@ -1401,7 +1405,15 @@ fn set_analysis_if_absent_on(
              key_mode = COALESCE(?7, key_mode),
              key_confidence = COALESCE(?8, key_confidence),
              loudness_lufs = COALESCE(?9, loudness_lufs),
-             grid_source = ?10
+             grid_source = ?10,
+             -- Phrases move with the grid rather than being COALESCEd beside
+             -- it: they are measured in beats *from* the grid anchor, so a
+             -- phrase kept across a grid change points at the wrong beat. An
+             -- importer that brings a grid and no phrases clears them, and the
+             -- analyser finds them again.
+             phrase_beats = ?11,
+             phrase_anchor = ?12,
+             phrase_confidence = ?13
          WHERE id = ?1",
         params![
             id.to_hex(),
@@ -1414,6 +1426,9 @@ fn set_analysis_if_absent_on(
             analysis.key_confidence,
             analysis.loudness_lufs,
             analysis.grid_source.map(crate::GridSource::as_sql),
+            analysis.phrase_beats,
+            analysis.phrase_anchor,
+            analysis.phrase_confidence,
         ],
     )?;
     Ok(written > 0)
@@ -1464,7 +1479,8 @@ const TRACK_COLUMNS: &str = "id, path, title, artist, album, album_artist, genre
      year, track_number, duration_frames, sample_rate, channels, file_size, \
      file_modified, added_at, bpm, grid_anchor, grid_beats_per_bar, \
      grid_confidence, key_hour, key_mode, key_confidence, loudness_lufs, \
-     play_count, last_played, rating, grid_source, colour";
+     play_count, last_played, rating, grid_source, colour, \
+     phrase_beats, phrase_anchor, phrase_confidence";
 
 /// The same list, qualified — needed wherever the query joins another table
 /// that has columns of the same name.
@@ -1475,7 +1491,8 @@ const TRACK_COLUMNS_QUALIFIED: &str = "tracks.id, tracks.path, tracks.title, tra
      tracks.bpm, tracks.grid_anchor, tracks.grid_beats_per_bar, \
      tracks.grid_confidence, tracks.key_hour, tracks.key_mode, tracks.key_confidence, \
      tracks.loudness_lufs, tracks.play_count, tracks.last_played, tracks.rating, \
-     tracks.grid_source, tracks.colour";
+     tracks.grid_source, tracks.colour, \
+     tracks.phrase_beats, tracks.phrase_anchor, tracks.phrase_confidence";
 
 /// Read one row.
 ///
@@ -1546,6 +1563,9 @@ fn read_track_from(row: &Row<'_>, base: usize) -> rusqlite::Result<Result<Librar
                 .get::<_, Option<String>>(at(28))?
                 .as_deref()
                 .and_then(crate::GridSource::from_sql),
+            phrase_beats: row.get(at(30))?,
+            phrase_anchor: row.get(at(31))?,
+            phrase_confidence: row.get(at(32))?,
         },
         stats: PlayStats {
             play_count: row.get(at(25))?,

@@ -404,9 +404,12 @@ impl Engine {
             };
             match command {
                 Command::Action(action) => self.apply(action),
-                Command::SetGrid { deck, grid } => {
+                Command::SetGrid { deck, grid, phrase } => {
                     if let Some(target) = self.deck_mut(deck) {
                         target.set_grid(grid);
+                        // After `set_grid`, which clears the phrase when the
+                        // grid goes: setting it first would be undone.
+                        target.set_phrase(phrase);
                     }
                 }
                 Command::SetHotCues { deck, cues } => {
@@ -647,6 +650,14 @@ impl Engine {
                     }
                     DeckAction::BeatJump(beats) => {
                         target.beat_jump(beats, quantize);
+                    }
+                    DeckAction::PhraseJump(phrases) => {
+                        // No `quantize` argument: a phrase jump always lands on
+                        // a boundary, which is the whole reason it is not a
+                        // beat jump. Quantise-off means "let me play against
+                        // the grid", and there is no against-the-grid way to
+                        // arrive at the start of a phrase.
+                        target.phrase_jump(phrases);
                     }
                     DeckAction::HotCue(slot) => {
                         target.hot_cue_pressed(slot, quantize);
@@ -2955,6 +2966,7 @@ mod sync_tests {
             self.send(Command::SetGrid {
                 deck: deck(n),
                 grid: Some(grid(bpm, anchor, confidence)),
+                phrase: None,
             });
             if playing {
                 self.deck_act(n, DeckAction::Play);
@@ -3568,6 +3580,167 @@ mod sync_tests {
         );
     }
 
+    /// Attach a grid and a phrase structure to a prepared deck.
+    fn prepare_phrased(rig: &mut Rig, n: u8, bpm: f64, beats: u32, anchor: u32) {
+        rig.send(Command::Load {
+            deck: deck(n),
+            source: tone(48_000 * 300),
+        });
+        rig.send(Command::SetGrid {
+            deck: deck(n),
+            grid: Some(grid(bpm, 0.0, 0.9)),
+            phrase: dj_core::Phrase::new(beats, anchor),
+        });
+    }
+
+    /// **A phrase jump lands on a phrase boundary, not a phrase away.**
+    ///
+    /// The difference between this and `BeatJump(16)`, and the whole reason it
+    /// is a separate verb. Jumping forward from three beats into a phrase moves
+    /// by thirteen beats, not sixteen -- because the reason to jump a phrase is
+    /// to arrive where the next one starts, and a jump that preserved the
+    /// offset would arrive three beats into it, which is exactly the mistake
+    /// phrase detection exists to prevent.
+    #[test]
+    fn a_phrase_jump_lands_on_the_boundary_rather_than_a_phrase_away() {
+        let mut rig = new_rig();
+        prepare_phrased(&mut rig, 1, 120.0, 16, 0);
+        rig.render(256);
+
+        // 120 BPM at 48 kHz is 24 000 frames per beat. Put the playhead three
+        // beats into the first phrase.
+        rig.deck_act(1, DeckAction::BeatJump(3));
+        rig.render(256);
+        let before = rig.engine_deck(1).position().get();
+        assert!((before - 72_000.0).abs() < 1.0, "setup landed at {before}");
+
+        rig.deck_act(1, DeckAction::PhraseJump(1));
+        rig.render(256);
+        let after = rig.engine_deck(1).position().get();
+
+        // Beat 16, not beat 19.
+        assert!(
+            (after - 384_000.0).abs() < 1.0,
+            "landed at {after}, expected beat 16 at 384 000 -- a phrase jump \
+             that keeps its offset is just a beat jump"
+        );
+    }
+
+    /// **Jumping back from inside a phrase returns to its start.**
+    ///
+    /// The same reason a track's back button restarts it before skipping: from
+    /// three beats in, "back a phrase" means the beginning of this one.
+    #[test]
+    fn jumping_back_from_inside_a_phrase_goes_to_its_start() {
+        let mut rig = new_rig();
+        prepare_phrased(&mut rig, 1, 120.0, 16, 0);
+        rig.render(256);
+        rig.deck_act(1, DeckAction::BeatJump(19));
+        rig.render(256);
+
+        rig.deck_act(1, DeckAction::PhraseJump(-1));
+        rig.render(256);
+        let after = rig.engine_deck(1).position().get();
+        assert!(
+            (after - 384_000.0).abs() < 1.0,
+            "landed at {after}, expected the start of the phrase at 384 000"
+        );
+    }
+
+    /// **From exactly on a boundary, back one goes a whole phrase.**
+    ///
+    /// The other half of the asymmetry above, and what stops "restart first"
+    /// from becoming "never actually go back": once the playhead is on a
+    /// boundary there is nothing to restart, so the press moves a phrase.
+    #[test]
+    fn jumping_back_from_a_boundary_goes_a_whole_phrase() {
+        let mut rig = new_rig();
+        prepare_phrased(&mut rig, 1, 120.0, 16, 0);
+        rig.render(256);
+        rig.deck_act(1, DeckAction::BeatJump(32));
+        rig.render(256);
+
+        rig.deck_act(1, DeckAction::PhraseJump(-1));
+        rig.render(256);
+        let after = rig.engine_deck(1).position().get();
+        assert!(
+            (after - 384_000.0).abs() < 1.0,
+            "landed at {after}, expected beat 16 at 384 000 -- from a boundary, \
+             back one should move a whole phrase"
+        );
+    }
+
+    /// **A phrase that does not start on beat zero is respected.**
+    ///
+    /// Plenty of records open with a four- or eight-beat pickup. A jump that
+    /// assumed phrases start at the grid anchor would land every one of them
+    /// on the wrong beat -- and it would look right, because it would still be
+    /// on *a* beat.
+    #[test]
+    fn a_phrase_jump_respects_an_offset_phrase_start() {
+        let mut rig = new_rig();
+        prepare_phrased(&mut rig, 1, 120.0, 16, 5);
+        rig.render(256);
+
+        rig.deck_act(1, DeckAction::PhraseJump(1));
+        rig.render(256);
+        let after = rig.engine_deck(1).position().get();
+
+        // From beat 0: the phrase containing it starts at beat -11, so one
+        // phrase on is beat 5 -- the first real phrase start in the track.
+        assert!(
+            (after - 120_000.0).abs() < 1.0,
+            "landed at {after}, expected beat 5 at 120 000"
+        );
+    }
+
+    /// **Without a phrase structure the verb does nothing at all.**
+    ///
+    /// Rather than falling back to a beat jump or a guess of sixteen. A track
+    /// with no phrases is a real state -- live and ambient records have none --
+    /// and moving the playhead somewhere arbitrary would be worse than not
+    /// moving it.
+    #[test]
+    fn a_phrase_jump_without_phrases_does_nothing() {
+        let mut rig = new_rig();
+        rig.prepare(1, 120.0, 0.0, 0.9, false);
+        rig.render(256);
+        rig.deck_act(1, DeckAction::BeatJump(3));
+        rig.render(256);
+        let before = rig.engine_deck(1).position().get();
+
+        rig.deck_act(1, DeckAction::PhraseJump(1));
+        rig.render(256);
+        assert!(
+            (rig.engine_deck(1).position().get() - before).abs() < 1.0,
+            "a deck with no phrase structure moved anyway"
+        );
+    }
+
+    /// **Clearing the grid clears the phrase with it.**
+    ///
+    /// A phrase counts beats from the grid's anchor. Left behind after the grid
+    /// goes, it would be a count from nothing -- and the next grid to arrive
+    /// would silently inherit a phrase measured against a different one.
+    #[test]
+    fn clearing_the_grid_clears_the_phrase() {
+        let mut rig = new_rig();
+        prepare_phrased(&mut rig, 1, 120.0, 16, 0);
+        rig.render(256);
+        assert!(rig.engine_deck(1).phrase().is_some());
+
+        rig.send(Command::SetGrid {
+            deck: deck(1),
+            grid: None,
+            phrase: None,
+        });
+        rig.render(256);
+        assert!(
+            rig.engine_deck(1).phrase().is_none(),
+            "the phrase outlived the grid it was measured against"
+        );
+    }
+
     /// Beat jump moves by exactly whole beats, which is the only thing that
     /// makes it different from a seek.
     #[test]
@@ -3671,6 +3844,7 @@ mod sync_tests {
         rig.send(Command::SetGrid {
             deck: deck(1),
             grid: None,
+            phrase: None,
         });
         rig.render(256);
         assert!(rig.engine_deck(1).grid().is_none());
@@ -3773,6 +3947,7 @@ mod loop_tests {
                     Bpm::new(120.0).unwrap(),
                     Confidence::new(0.9),
                 )),
+                phrase: None,
             });
             if playing {
                 self.act(n, DeckAction::Play);

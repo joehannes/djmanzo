@@ -237,6 +237,23 @@ press = "deck 1 beatjump 4"
 label = "Jump forward a bar"
 group = "Deck 1"
 
+# Phrase jump completes the progression on the same two keys: a beat, then a
+# bar, then a phrase. Unlike the two above it lands *on* the boundary rather
+# than moving by a fixed distance -- which is the point, since the reason to
+# jump a phrase is to arrive where the next one starts. Silent on a track with
+# no phrase structure.
+[[key]]
+on = "alt+shift+KeyQ"
+press = "deck 1 phrasejump -1"
+label = "Jump back a phrase"
+group = "Deck 1"
+
+[[key]]
+on = "alt+shift+KeyW"
+press = "deck 1 phrasejump 1"
+label = "Jump forward a phrase"
+group = "Deck 1"
+
 [[key]]
 on = "KeyE"
 press = "deck 1 loop 4"
@@ -283,6 +300,19 @@ group = "Deck 2"
 on = "shift+KeyI"
 press = "deck 2 beatjump 4"
 label = "Jump forward a bar"
+group = "Deck 2"
+
+# The mirror of deck 1's phrase jump, on the same two keys of the right hand.
+[[key]]
+on = "alt+shift+KeyU"
+press = "deck 2 phrasejump -1"
+label = "Jump back a phrase"
+group = "Deck 2"
+
+[[key]]
+on = "alt+shift+KeyI"
+press = "deck 2 phrasejump 1"
+label = "Jump forward a phrase"
 group = "Deck 2"
 
 [[key]]

@@ -32,7 +32,7 @@ pub use deck::{CrossfaderAssign, DeckId, MAX_DECKS};
 pub use fx::{EffectKind, FX_SLOTS, FxChange, Placement};
 pub use hotcue::{HOT_CUE_SLOTS, LoopLimits, LoopRegion};
 pub use jog::JogMode;
-pub use music::{Beatgrid, Bpm, Confidence, Mode, MusicalKey};
+pub use music::{Beatgrid, Bpm, Confidence, Mode, MusicalKey, Phrase};
 pub use pads::{Lit, PADS, Pad, PadAction, PadLabel, PadPage};
 pub use param::{DeckParam, GlobalParam, ParamId};
 pub use sampler::{

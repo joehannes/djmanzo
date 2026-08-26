@@ -935,6 +935,9 @@ pub fn put_on_deck(
             analysis.tempo.as_ref().map(|tempo| dj_render::GridOverlay {
                 grid: tempo.grid,
                 sample_rate,
+                phrase: analysis
+                    .phrases
+                    .and_then(|p| dj_core::Phrase::new(p.beats, p.anchor)),
             }),
         );
 
@@ -950,13 +953,16 @@ pub fn put_on_deck(
             tracing::warn!(%error, "could not store the analysis");
         }
 
-        // And to the engine, which needs it for sync, quantize and beat jump.
-        // Two destinations for one finding rather than one shared home,
-        // because the engine's copy has to cross a lock-free queue into the
-        // audio thread and the renderer's cannot.
+        // And to the engine, which needs it for sync, quantize, beat jump and
+        // phrase jump. Two destinations for one finding rather than one shared
+        // home, because the engine's copy has to cross a lock-free queue into
+        // the audio thread and the renderer's cannot.
         let _ = bus.send_command(dj_engine::Command::SetGrid {
             deck: deck_id,
             grid: analysis.tempo.as_ref().map(|tempo| tempo.grid),
+            phrase: analysis
+                .phrases
+                .and_then(|p| dj_core::Phrase::new(p.beats, p.anchor)),
         });
 
         // Auto-gain goes through the action bus rather than straight to the
@@ -1171,7 +1177,14 @@ fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(),
         let original = waveforms.analysed_grid(deck.human_number());
         waveforms.set_grid(deck, original);
         save_grid(state, deck, original.map(|o| o.grid));
-        return publish_grid(state, deck, original.map(|o| o.grid));
+        // Reset means "give me back what the analyser found", so the phrase
+        // comes back with the grid it was measured against.
+        return publish_grid(
+            state,
+            deck,
+            original.map(|o| o.grid),
+            analysed_phrase(state, deck),
+        );
     }
 
     // The playhead, read live rather than from the last snapshot: a tap is
@@ -1235,10 +1248,35 @@ fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(),
         Some(dj_render::GridOverlay {
             grid: edited,
             sample_rate: rate,
+            // Measured against the old anchor, so it no longer describes this
+            // grid. Cleared here for the same reason it is cleared on the deck.
+            phrase: None,
         }),
     );
     save_grid(state, deck, Some(edited));
-    publish_grid(state, deck, Some(edited))
+    // No phrase: it counts beats from the *old* anchor, so against an edited
+    // grid every marker would point at the wrong beat. Cleared rather than
+    // recomputed here -- recomputing needs the audio, which is the background
+    // analyser's job, not a keypress's.
+    publish_grid(state, deck, Some(edited), None)
+}
+
+/// The phrase structure the analyser found for whatever is on this deck.
+///
+/// Read back from the library rather than kept in a second place: the deck
+/// already knows its track, and a cached copy beside the grid is one more thing
+/// that can disagree with the database after an edit.
+fn analysed_phrase(state: &AppState, deck: DeckId) -> Option<dj_core::Phrase> {
+    let track = {
+        let tracks = state.deck_tracks();
+        let map = tracks.lock().ok()?;
+        map.get(&deck.human_number())?.id
+    };
+    let stored = state.library().get().ok()?.track(track).ok()??;
+    dj_core::Phrase::new(
+        stored.analysis.phrase_beats?,
+        stored.analysis.phrase_anchor?,
+    )
 }
 
 /// Keep a grid edit, so the correction is still there next time this track is
@@ -1293,15 +1331,22 @@ fn save_grid(state: &AppState, deck: DeckId, grid: Option<dj_core::Beatgrid>) {
     }
 }
 
-/// Send a grid to the engine, which needs it for sync, quantize and beat jump.
+/// Send a grid and its phrase structure to the engine, which needs them for
+/// sync, quantize, beat jump and phrase jump.
+///
+/// Both together: a phrase counts beats from the grid's anchor, so a phrase
+/// sent beside a different grid points at the wrong beat. Editing a grid
+/// therefore passes `None` for the phrase -- the old measurement no longer
+/// describes the new grid, and the analyser will find it again.
 fn publish_grid(
     state: &AppState,
     deck: DeckId,
     grid: Option<dj_core::Beatgrid>,
+    phrase: Option<dj_core::Phrase>,
 ) -> Result<(), String> {
     state
         .bus()
-        .send_command(dj_engine::Command::SetGrid { deck, grid })
+        .send_command(dj_engine::Command::SetGrid { deck, grid, phrase })
         .map_err(|_| "engine is not accepting commands; is a device open?".to_owned())
 }
 
@@ -1706,6 +1751,7 @@ mod grid_edit_tests {
                     Confidence::new(0.2),
                 ),
                 sample_rate: SR,
+                phrase: None,
             }),
         );
         state
@@ -2155,17 +2201,26 @@ fn restore_deck_state(
     // only publishes a grid for a deck that has none stored.
     match db.track(track) {
         Ok(Some(found)) => {
+            // Read once and used for both destinations, so the tiles and the
+            // engine cannot end up with different ideas of where a phrase
+            // starts.
+            let stored_phrase = match (found.analysis.phrase_beats, found.analysis.phrase_anchor) {
+                (Some(beats), Some(anchor)) => dj_core::Phrase::new(beats, anchor),
+                _ => None,
+            };
             if let Some(grid) = found.analysis.beatgrid() {
                 state.waveforms().set_analysed_grid(
                     deck,
                     Some(dj_render::GridOverlay {
                         grid,
                         sample_rate: rate,
+                        phrase: stored_phrase,
                     }),
                 );
                 let _ = state.bus().send_command(dj_engine::Command::SetGrid {
                     deck,
                     grid: Some(grid),
+                    phrase: stored_phrase,
                 });
             }
         }
@@ -2297,6 +2352,7 @@ mod persistence_tests {
             Some(dj_render::GridOverlay {
                 grid,
                 sample_rate: SR,
+                phrase: None,
             }),
         );
     }

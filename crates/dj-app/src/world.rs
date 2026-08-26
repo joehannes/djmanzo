@@ -390,6 +390,9 @@ mod tests {
                 key_alternative: None,
                 lufs: Some(-9.0),
                 auto_gain_db: 0.0,
+                phrase_beats: None,
+                phrase_anchor: None,
+                phrase_confidence: None,
             });
         }
         assert_eq!(of_calm(&with(vec![a, b])).confluence, Confluence::Same);

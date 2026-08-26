@@ -25,7 +25,7 @@
 //! implementation drops in behind the same signature.
 
 use crate::summary::{Bucket, WaveformSummary};
-use dj_core::{Beatgrid, SampleRate};
+use dj_core::{Beatgrid, Phrase, SampleRate};
 use serde::{Deserialize, Serialize};
 
 /// Bytes per pixel. RGBA8, which is what every image path expects.
@@ -84,6 +84,13 @@ pub struct Palette {
     pub beat: [u8; 4],
     /// Every fourth beat, so the eye can count bars without counting beats.
     pub downbeat: [u8; 4],
+    /// The start of a phrase -- the 16 or 32 beat group the music is actually
+    /// built from, and the only line on the waveform a DJ can safely mix on.
+    ///
+    /// Brighter than a downbeat because it is the one being looked for, and
+    /// drawn even when the beat and bar lines are too dense to show: at
+    /// overview zoom the phrase markers *are* the structure.
+    pub phrase: [u8; 4],
 }
 
 impl Default for Palette {
@@ -149,6 +156,10 @@ impl Palette {
             rms_tint: [255, 255, 255, 60],
             beat: [255, 255, 255, 70],
             downbeat: [255, 255, 255, 150],
+            // Warm rather than brighter white: a third tier of the same hue
+            // reads as "even more emphasis" and gets lost among the downbeats
+            // at a glance, which is the moment it is needed.
+            phrase: [251, 191, 36, 210],
         }
     }
 
@@ -170,6 +181,7 @@ impl Palette {
             rms_tint: [0, 0, 0, 52],
             beat: [0, 0, 0, 60],
             downbeat: [0, 0, 0, 130],
+            phrase: [180, 83, 9, 220],
         }
     }
     /// Blend the band colours by their energies.
@@ -237,6 +249,11 @@ impl Tile {
 pub struct GridOverlay {
     pub grid: Beatgrid,
     pub sample_rate: SampleRate,
+    /// The phrase structure, when the analyser found one.
+    ///
+    /// Counted in beats from `grid.anchor`, so it travels with the grid it was
+    /// measured against and never alone.
+    pub phrase: Option<Phrase>,
 }
 
 /// Closest two grid lines may be before they stop being lines and start being a
@@ -281,11 +298,19 @@ fn draw_grid(pixels: &mut [u8], spec: &TileSpec, overlay: &GridOverlay, palette:
     let emphasis_px = beat_px * BEATS_PER_EMPHASIS as f64;
 
     // Too dense even for the emphasised lines: draw nothing rather than a band
-    // of grey over the waveform.
-    if emphasis_px < MIN_LINE_SPACING_PX {
+    // of grey over the waveform -- unless there are phrase lines, which are
+    // sixteen or thirty-two beats apart and still legible where bars are not.
+    let phrase_px = overlay.phrase.map_or(0.0, |p| beat_px * f64::from(p.beats));
+    if emphasis_px < MIN_LINE_SPACING_PX && phrase_px < MIN_LINE_SPACING_PX {
         return;
     }
     let draw_every_beat = beat_px >= MIN_LINE_SPACING_PX;
+    // Bars have their own density test, separate from the early return above.
+    // Without it, a track *with* phrases keeps the early return open -- phrase
+    // lines are far enough apart to draw -- and the bar lines it was meant to
+    // suppress come back with it. Which is how a 12-pixel picket fence appeared
+    // on the overview the moment phrase detection started working.
+    let draw_bars = emphasis_px >= MIN_LINE_SPACING_PX;
 
     let confidence = overlay.grid.confidence.get().clamp(0.0, 1.0);
     let strength = UNSURE_ALPHA + (1.0 - UNSURE_ALPHA) * confidence;
@@ -302,7 +327,15 @@ fn draw_grid(pixels: &mut [u8], spec: &TileSpec, overlay: &GridOverlay, palette:
         // the track, so indices before it are negative, and `%` would emphasise
         // the wrong ones on that side.
         let emphasised = index.rem_euclid(BEATS_PER_EMPHASIS) == 0;
-        if !emphasised && !draw_every_beat {
+        let starts_phrase = overlay.phrase.is_some_and(|p| p.starts_at(index));
+        // A phrase line survives density that hides the others. At overview
+        // zoom every beat and bar line is suppressed, and the phrase markers
+        // are then the only structure left -- which is the zoom level where
+        // knowing where the phrases are matters most.
+        // Read as: this line is worth drawing if it starts a phrase, or every
+        // beat is being drawn, or it is a bar line at a zoom where bars fit.
+        let worth_drawing = starts_phrase || draw_every_beat || (emphasised && draw_bars);
+        if !worth_drawing {
             continue;
         }
 
@@ -313,7 +346,9 @@ fn draw_grid(pixels: &mut [u8], spec: &TileSpec, overlay: &GridOverlay, palette:
         }
         let x = x as u32;
 
-        let base = if emphasised {
+        let base = if starts_phrase {
+            palette.phrase
+        } else if emphasised {
             palette.downbeat
         } else {
             palette.beat
@@ -786,6 +821,15 @@ mod tests {
                 Confidence::new(confidence),
             ),
             sample_rate: SR,
+            phrase: None,
+        }
+    }
+
+    /// The same, with a phrase structure hung on it.
+    fn phrased(bpm: f64, anchor: f64, beats: u32, phrase_anchor: u32) -> GridOverlay {
+        GridOverlay {
+            phrase: Phrase::new(beats, phrase_anchor),
+            ..overlay(bpm, anchor, 1.0)
         }
     }
 
@@ -794,6 +838,84 @@ mod tests {
         (0..tile.spec.width)
             .filter(|&x| (0..tile.spec.height).any(|y| tile.pixel(x, y) != without.pixel(x, y)))
             .collect()
+    }
+
+    /// **A phrase marker is a different colour from a downbeat.**
+    ///
+    /// Not merely brighter. A third tier of the same white reads as "a bit more
+    /// emphasis" at a glance, and a glance is all a phrase marker ever gets --
+    /// it is looked at while a track is running and a hand is on the fader.
+    #[test]
+    fn a_phrase_start_is_drawn_in_its_own_colour() {
+        let summary = WaveformSummary::analyse(&sine(48_000 * 20, 440.0, 0.8), SR);
+        // 120 BPM: 24 000 frames per beat, 100 frames per pixel -> 240 px per
+        // beat, so a 16-beat phrase starts every 3 840 px. Column 0 is one.
+        let spec = spec(1_024, 64, 100.0);
+        let palette = Palette::default();
+        let bars =
+            render_tile_with_grid(&summary, &spec, &palette, Some(&overlay(120.0, 0.0, 1.0)));
+        let phrases =
+            render_tile_with_grid(&summary, &spec, &palette, Some(&phrased(120.0, 0.0, 16, 0)));
+
+        // Column 0 is a downbeat in both, and a phrase start in only one.
+        assert_ne!(
+            bars.pixel(0, 32),
+            phrases.pixel(0, 32),
+            "the phrase start was drawn the same as an ordinary downbeat"
+        );
+        // Column 240 is beat 1: a plain beat in both, so it must not have moved.
+        assert_eq!(
+            bars.pixel(240, 32),
+            phrases.pixel(240, 32),
+            "adding phrases changed a line that is not a phrase start"
+        );
+    }
+
+    /// **Phrase markers survive a zoom that hides every other line.**
+    ///
+    /// At overview zoom the beat and bar lines are suppressed as too dense --
+    /// correctly, they would be a grey wash. The phrase markers are sixteen
+    /// times further apart and still legible, and at that zoom they are the
+    /// only structure on the strip. Suppressing them with the rest would empty
+    /// the overview of exactly what it exists to show.
+    #[test]
+    fn phrase_markers_are_drawn_where_bars_are_too_dense() {
+        let summary = WaveformSummary::analyse(&sine(48_000 * 200, 440.0, 0.8), SR);
+        // 8 000 frames per pixel: a beat is 3 px and a bar 12 px, under the
+        // 14 px floor, so both are suppressed. A 32-beat phrase is 96 px.
+        let spec = spec(1_024, 64, 8_000.0);
+        let palette = Palette::default();
+        let plain = render_tile(&summary, &spec, &palette);
+
+        let bars_only =
+            render_tile_with_grid(&summary, &spec, &palette, Some(&overlay(120.0, 0.0, 1.0)));
+        assert!(
+            grid_columns(&bars_only, &plain).is_empty(),
+            "bars should be suppressed at this zoom; the test is not measuring what it claims"
+        );
+
+        let with_phrases =
+            render_tile_with_grid(&summary, &spec, &palette, Some(&phrased(120.0, 0.0, 32, 0)));
+        let columns = grid_columns(&with_phrases, &plain);
+        assert_eq!(
+            columns,
+            vec![0, 96, 192, 288, 384, 480, 576, 672, 768, 864, 960],
+            "phrase markers were suppressed along with the bars"
+        );
+    }
+
+    /// A phrase that does not start on beat zero moves every marker with it.
+    #[test]
+    fn an_offset_phrase_start_moves_the_markers() {
+        let summary = WaveformSummary::analyse(&sine(48_000 * 200, 440.0, 0.8), SR);
+        let spec = spec(1_024, 64, 8_000.0);
+        let palette = Palette::default();
+        let plain = render_tile(&summary, &spec, &palette);
+        // Beat 4 of a 32-beat phrase: 4 beats is 12 px at this zoom.
+        let with_phrases =
+            render_tile_with_grid(&summary, &spec, &palette, Some(&phrased(120.0, 0.0, 32, 4)));
+        let columns = grid_columns(&with_phrases, &plain);
+        assert_eq!(columns.first(), Some(&12), "the offset was ignored");
     }
 
     /// **The measurement that says the grid is in the right place.** Lines must

@@ -296,6 +296,16 @@ pub struct TrackAnalysisSnapshot {
     pub lufs: Option<f32>,
     /// Trim that would bring this track to the reference loudness.
     pub auto_gain_db: f32,
+    /// Phrase length in beats -- 8, 16 or 32 -- when the track has a phrase
+    /// structure. `None` is a real answer: a live or ambient record may have
+    /// none, and drawing markers anyway would give a DJ something to mix on
+    /// that means nothing.
+    pub phrase_beats: Option<u32>,
+    /// Which beat, counted from the grid anchor, starts a phrase. Always less
+    /// than `phrase_beats`. Not always zero: plenty of records open with a
+    /// four- or eight-beat pickup before the first full phrase.
+    pub phrase_anchor: Option<u32>,
+    pub phrase_confidence: Option<f32>,
 }
 
 impl TrackAnalysisSnapshot {
@@ -317,6 +327,9 @@ impl TrackAnalysisSnapshot {
                 .is_finite()
                 .then(|| analysis.loudness.get() as f32),
             auto_gain_db: analysis.auto_gain_db() as f32,
+            phrase_beats: analysis.phrases.map(|p| p.beats),
+            phrase_anchor: analysis.phrases.map(|p| p.anchor),
+            phrase_confidence: analysis.phrases.map(|p| p.confidence),
         }
     }
 }
@@ -1174,6 +1187,7 @@ mod tests {
                     alternative: MusicalKey::new(8, Mode::Major),
                 }),
                 loudness: Lufs::new(-11.0),
+                phrases: None,
             },
         );
 
@@ -1226,6 +1240,7 @@ mod tests {
                 }),
                 key: None,
                 loudness: Lufs::new(-14.0),
+                phrases: None,
             },
         );
 

@@ -55,6 +55,12 @@ pub struct Analysis {
     pub tempo: Option<TempoAnalysis>,
     pub key: Option<KeyAnalysis>,
     pub loudness: Lufs,
+    /// The phrase structure, when the track has one.
+    ///
+    /// `None` for a track with no grid to hang it on, and `None` for a live
+    /// recording or an ambient piece that genuinely has no phrases -- see
+    /// [`structure::phrases`]. Absent is a real answer, not a failure.
+    pub phrases: Option<PhraseAnalysis>,
 }
 
 impl Analysis {
@@ -83,12 +89,24 @@ impl Analysis {
 #[must_use]
 pub fn analyse(samples: &[f32], sample_rate: SampleRate) -> Analysis {
     let rate = sample_rate.get();
-    let envelope = onset::detect(samples, rate);
+    // One pass for both curves: the FFT is the expensive part, and tempo and
+    // structure read the same one.
+    let (envelope, banded) = onset::detect_all(samples, rate);
+    let tempo = tempo::analyse(&envelope, sample_rate);
+
+    // Phrases are measured in beats, so there is nothing to find without a
+    // grid to count them against.
+    #[allow(clippy::cast_possible_truncation)]
+    let frames = (samples.len() / 2) as u64;
+    let phrases = tempo
+        .as_ref()
+        .and_then(|t| structure::phrases(&banded, &t.grid, sample_rate, frames));
 
     Analysis {
-        tempo: tempo::analyse(&envelope, sample_rate),
+        tempo,
         key: key::detect(samples, rate),
         loudness: loudness::integrated(samples, rate),
+        phrases,
     }
 }
 

@@ -100,6 +100,65 @@ pub struct Beatgrid {
     pub confidence: Confidence,
 }
 
+/// A track's phrase structure: how long a phrase is, and which beat starts one.
+///
+/// Dance music is built in phrases -- usually 16 or 32 beats -- and a DJ mixes
+/// on their boundaries. A beat grid alone cannot say where those are: dropping
+/// a track on beat 37 of a 32-beat phrase lands it three beats into the next
+/// one, and the result is two records whose drums agree and whose music does
+/// not.
+///
+/// Beats are counted from the grid's anchor, so this is meaningless without the
+/// grid it was measured against -- which is why a deck clears it when the grid
+/// goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Phrase {
+    /// Phrase length in beats. 8, 16 or 32 in practice.
+    pub beats: u32,
+    /// The beat, counted from the grid anchor, on which a phrase starts.
+    /// Always less than `beats`.
+    ///
+    /// Not always zero: plenty of records open with a four- or eight-beat
+    /// pickup before the first full phrase.
+    pub anchor: u32,
+}
+
+impl Phrase {
+    /// A phrase structure, or `None` if the numbers do not describe one.
+    ///
+    /// Rejects a zero length -- which would divide by zero on every use -- and
+    /// normalises the anchor into range rather than refusing it, since "the
+    /// phrase starts on beat 20 of a 16-beat phrase" is unambiguous.
+    #[must_use]
+    pub fn new(beats: u32, anchor: u32) -> Option<Self> {
+        (beats > 0).then(|| Self {
+            beats,
+            anchor: anchor % beats,
+        })
+    }
+
+    /// How far into a phrase the given beat index is, in beats.
+    ///
+    /// Zero on a phrase boundary. Handles negative beat indices, which are
+    /// ordinary: the grid extends backwards from its anchor, and a track whose
+    /// first downbeat is not its first beat has audio at negative indices.
+    #[must_use]
+    pub fn beat_within(self, beat: i64) -> u32 {
+        let length = i64::from(self.beats);
+        // `rem_euclid` rather than `%`: the sign of `%` follows the dividend in
+        // Rust, so a beat three before the anchor would answer -3 and every
+        // caller would have to remember to correct it.
+        let offset = (beat - i64::from(self.anchor)).rem_euclid(length);
+        u32::try_from(offset).unwrap_or(0)
+    }
+
+    /// Whether the given beat index starts a phrase.
+    #[must_use]
+    pub fn starts_at(self, beat: i64) -> bool {
+        self.beat_within(beat) == 0
+    }
+}
+
 impl Beatgrid {
     #[must_use]
     pub fn new(anchor: FramePos, bpm: Bpm, confidence: Confidence) -> Self {
@@ -366,5 +425,51 @@ mod beat_seconds_tests {
         );
         assert_eq!(Bpm::new(f64::MAX), None, "an absurd tempo is not a tempo");
         assert_eq!(Bpm::new(0.0), None);
+    }
+}
+
+#[cfg(test)]
+mod phrase_tests {
+    use super::*;
+
+    /// A phrase length of zero would divide by zero on every use.
+    #[test]
+    fn a_phrase_needs_a_length() {
+        assert!(Phrase::new(0, 0).is_none());
+        assert!(Phrase::new(16, 0).is_some());
+    }
+
+    /// An anchor past the phrase length is normalised rather than refused:
+    /// "starts on beat 20 of a 16-beat phrase" is unambiguous.
+    #[test]
+    fn an_anchor_beyond_the_phrase_wraps_into_it() {
+        assert_eq!(Phrase::new(16, 20).unwrap().anchor, 4);
+        assert_eq!(Phrase::new(16, 16).unwrap().anchor, 0);
+    }
+
+    /// **Beats before the anchor count correctly.**
+    ///
+    /// The grid extends backwards from its anchor, so negative beat indices are
+    /// ordinary -- a track whose first downbeat is not its first beat has audio
+    /// at them. Rust's `%` takes the sign of the dividend, so a plain remainder
+    /// would answer -3 here and every caller would have to remember to correct
+    /// it. One that forgot would draw a phrase marker in the wrong place at the
+    /// start of every such track.
+    #[test]
+    fn a_beat_before_the_anchor_counts_forwards_not_backwards() {
+        let phrase = Phrase::new(16, 0).unwrap();
+        assert_eq!(phrase.beat_within(-1), 15);
+        assert_eq!(phrase.beat_within(-16), 0);
+        assert_eq!(phrase.beat_within(-17), 15);
+    }
+
+    #[test]
+    fn a_phrase_starts_where_the_anchor_says() {
+        let phrase = Phrase::new(16, 5).unwrap();
+        assert!(phrase.starts_at(5));
+        assert!(phrase.starts_at(21));
+        assert!(!phrase.starts_at(0));
+        assert_eq!(phrase.beat_within(6), 1);
+        assert_eq!(phrase.beat_within(4), 15);
     }
 }

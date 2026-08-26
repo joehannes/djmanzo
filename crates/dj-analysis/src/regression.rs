@@ -368,6 +368,7 @@ mod tests {
             }),
             key: None,
             loudness: crate::loudness::Lufs::SILENCE,
+            phrases: None,
         }
     }
 
@@ -448,6 +449,7 @@ mod tests {
             tempo: None,
             key: None,
             loudness: crate::loudness::Lufs::SILENCE,
+            phrases: None,
         };
         let scored = score(&label(128.0, 0.0), &none, SR, Tolerance::default());
         assert_eq!(scored.found_bpm, None);
@@ -615,6 +617,7 @@ mod tests {
             tempo: None,
             key: None,
             loudness: crate::loudness::Lufs::SILENCE,
+            phrases: None,
         };
         let mut report = report_of(&[(128.0, 128.0, 0.8), (120.0, 97.0, 0.3)]);
         let with_declines = {

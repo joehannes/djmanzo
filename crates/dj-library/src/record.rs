@@ -67,6 +67,14 @@ pub struct StoredAnalysis {
     pub key_mode: Option<Mode>,
     pub key_confidence: Option<f64>,
     pub loudness_lufs: Option<f64>,
+    /// Phrase length in beats, and the beat within it that starts a phrase.
+    ///
+    /// Both or neither: a length without its starting beat is a marker in an
+    /// unknown place. `None` for a track with no phrase structure, which is a
+    /// real answer -- see `dj_analysis::structure`.
+    pub phrase_beats: Option<u32>,
+    pub phrase_anchor: Option<u32>,
+    pub phrase_confidence: Option<f64>,
 }
 
 impl StoredAnalysis {

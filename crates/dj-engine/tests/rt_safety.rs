@@ -565,6 +565,7 @@ fn sync_toggle_engages_and_then_releases() {
                 Bpm::new(if n == 1 { 128.0 } else { 120.0 }).unwrap(),
                 Confidence::new(0.9),
             )),
+            phrase: None,
         });
     }
     rig.warm_up(32);
@@ -607,6 +608,7 @@ fn sync_and_beat_jump_never_allocate() {
                 Bpm::new(if n == 1 { 128.0 } else { 120.0 }).unwrap(),
                 Confidence::new(0.9),
             )),
+            phrase: None,
         });
     }
     rig.warm_up(32);
@@ -655,6 +657,7 @@ fn loops_and_hot_cues_never_allocate() {
             Bpm::new(128.0).unwrap(),
             Confidence::new(0.9),
         )),
+        phrase: None,
     });
     rig.act(Action::Deck {
         deck: deck(1),
@@ -716,6 +719,7 @@ fn braking_and_backspinning_never_allocate() {
             dj_core::Bpm::new(128.0).unwrap(),
             dj_core::Confidence::new(0.9),
         )),
+        phrase: None,
     });
     rig.send(Command::SetGrid {
         deck: deck(2),
@@ -724,6 +728,7 @@ fn braking_and_backspinning_never_allocate() {
             dj_core::Bpm::new(128.0).unwrap(),
             dj_core::Confidence::new(0.9),
         )),
+        phrase: None,
     });
     rig.warm_up(32);
 
@@ -1028,6 +1033,7 @@ fn a_keylocked_loop_never_allocates() {
             Bpm::new(128.0).unwrap(),
             Confidence::new(0.9),
         )),
+        phrase: None,
     });
     for action in [
         DeckAction::SetKeylock(true),
@@ -1325,6 +1331,7 @@ fn slicing_never_allocates() {
                 dj_core::Bpm::new(128.0).unwrap(),
                 dj_core::Confidence::new(0.9),
             )),
+            phrase: None,
         })
         .ok();
     rig.warm_up(32);

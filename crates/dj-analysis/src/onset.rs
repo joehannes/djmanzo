@@ -93,6 +93,17 @@ pub fn detect_bands(samples: &[f32], sample_rate: u32) -> BandedOnset {
     banded
 }
 
+/// Both shapes from one pass over the audio.
+///
+/// What a full track analysis wants: tempo needs the summed curve, structure
+/// needs the banded one, and they are the same FFT. Calling [`detect`] and
+/// [`detect_bands`] separately doubles the most expensive part of analysing a
+/// track to get two views of identical numbers.
+#[must_use]
+pub fn detect_all(samples: &[f32], sample_rate: u32) -> (OnsetEnvelope, BandedOnset) {
+    analyse(samples, sample_rate)
+}
+
 /// Compute the onset envelope of interleaved stereo audio.
 #[must_use]
 pub fn detect(samples: &[f32], sample_rate: u32) -> OnsetEnvelope {

@@ -1336,6 +1336,28 @@ external system can drive it over the network without a private API.
   manufacturing the structure it was meant to disprove. A `MIN_LIFT` gate was
   removed rather than kept, because no test could be built that it passed and
   the remaining gates failed.
+
+- **Phrases are reachable — done.** The analyser's finding now survives a
+  restart (a cache version and a library migration), reaches the engine paired
+  with the grid it was measured against, and is drawn and played:
+
+  - **`phrasejump`** in the action vocabulary, on `alt+shift+Q/W` and `U/I` —
+    completing the beat → bar → phrase progression already on those keys. It
+    lands **on** a boundary rather than moving a fixed distance, which is the
+    whole reason it is not `beatjump 16`.
+  - **Phrase markers on the waveform**, drawn in the same Rust pass as the beat
+    grid so the two cannot disagree by a pixel, in their own colour rather than
+    a third shade of the same white — and drawn at overview zoom where the beat
+    and bar lines are correctly suppressed, because there the markers *are* the
+    structure.
+
+  A phrase counts beats from the grid's anchor, so the two travel together in
+  one command: pairing a phrase with a different grid is unrepresentable rather
+  than merely discouraged. Editing a grid clears the phrase; resetting one
+  restores it.
+
+- Next in M8: phrase-locked loops, then the transition planner and next-track
+  suggestions, which both need "where does the phrase end" and now have it.
 - AI transition planner — suggests where and how, with stated reasoning.
 - Next-track suggestions ranked by harmonic compatibility, energy trajectory and phrase fit.
 - **Deterministic set replay and offline re-render** from the action log; practice loops; take
