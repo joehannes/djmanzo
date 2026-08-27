@@ -387,6 +387,8 @@ pub fn run() {
             commands::genre_families,
             commands::assistant_packs,
             commands::assistant_conduct,
+            commands::setlist_steer,
+            commands::setlist_save,
             commands::similar_to,
             commands::learned_taste,
             commands::coach_report,

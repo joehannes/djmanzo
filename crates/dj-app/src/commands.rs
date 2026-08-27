@@ -2835,6 +2835,162 @@ pub fn setlist_build(
         .collect())
 }
 
+/// One slot of a plan, as the interface holds it.
+///
+/// The plan lives in the interface and is handed back for each change, rather
+/// than being kept here. A plan being edited is not application state — it is
+/// a draft, and a draft the backend remembered would be one more thing to get
+/// out of step with what is on screen.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlanSlotIn {
+    pub track: String,
+    pub through: f32,
+    /// `lift`, `hold` or `ease`.
+    pub trajectory: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SteeredDto {
+    pub plan: Vec<SetlistSlotDto>,
+    /// One line saying what just happened to the set.
+    pub summary: String,
+    /// How many upcoming slots actually changed. Zero is a real answer:
+    /// "nothing needed to change" is different from "done".
+    pub changed: usize,
+}
+
+fn trajectory_from(name: &str) -> dj_core::Trajectory {
+    match name {
+        "lift" => dj_core::Trajectory::Lift,
+        "ease" => dj_core::Trajectory::Ease,
+        _ => dj_core::Trajectory::Hold,
+    }
+}
+
+fn trajectory_name(t: dj_core::Trajectory) -> &'static str {
+    match t {
+        dj_core::Trajectory::Lift => "lift",
+        dj_core::Trajectory::Ease => "ease",
+        dj_core::Trajectory::Hold => "hold",
+    }
+}
+
+/// Adjust a plan without throwing it away.
+///
+/// The difference from rebuilding: a DJ who says "take it up from here" has
+/// not asked for a different night. Everything already played stays, the next
+/// record stays — it may be cued, staged or have a hand on its fader — and the
+/// rest is rechosen.
+///
+/// `instruction` is `lift`, `ease`, `hold`, `favour`, `avoid`, `next`, `later`
+/// or `drop`. `argument` is a genre name for favour and avoid, and a track id
+/// for the last three.
+#[tauri::command]
+pub fn setlist_steer(
+    state: State<'_, AppState>,
+    plan: Vec<PlanSlotIn>,
+    played: usize,
+    instruction: String,
+    argument: Option<String>,
+) -> Result<SteeredDto, String> {
+    use dj_library::steer::{Steer, steer};
+
+    let db = library(&state)?;
+    let pool = db.all_tracks(5_000).map_err(|e| e.to_string())?;
+
+    let slots: Vec<dj_library::setlist::Slot> = plan
+        .iter()
+        .map(|s| {
+            Ok(dj_library::setlist::Slot {
+                track: parse_track_id(&s.track)?,
+                through: s.through,
+                trajectory: trajectory_from(&s.trajectory),
+                // The reasons belong to the choice that was made, and steering
+                // makes new choices. Carrying the old ones through would put a
+                // stale explanation under a replaced record.
+                reasons: Vec::new(),
+            })
+        })
+        .collect::<Result<_, String>>()?;
+
+    let needs_genre = || {
+        argument
+            .clone()
+            .filter(|a| !a.trim().is_empty())
+            .ok_or_else(|| format!("{instruction} needs a genre"))
+    };
+    let needs_track = || {
+        argument
+            .as_deref()
+            .ok_or_else(|| format!("{instruction} needs a track"))
+            .and_then(parse_track_id)
+    };
+
+    let wanted = match instruction.as_str() {
+        "lift" => Steer::Lift,
+        "ease" => Steer::Ease,
+        "hold" => Steer::Hold,
+        "favour" => Steer::Favour(needs_genre()?),
+        "avoid" => Steer::Avoid(needs_genre()?),
+        "next" => Steer::Next(needs_track()?),
+        "later" => Steer::Later(needs_track()?),
+        "drop" => Steer::Drop(needs_track()?),
+        other => return Err(format!("{other:?} is not a way to steer a set")),
+    };
+
+    let out = steer(&slots, played, &wanted, &pool);
+    Ok(SteeredDto {
+        plan: out
+            .plan
+            .iter()
+            .filter_map(|slot| {
+                let track = pool.iter().find(|t| t.id == slot.track)?;
+                Some(SetlistSlotDto {
+                    track: LibraryTrackDto::from(track.clone()),
+                    through: slot.through,
+                    trajectory: trajectory_name(slot.trajectory).to_owned(),
+                    reasons: slot.reasons.iter().map(describe_reason).collect(),
+                })
+            })
+            .collect(),
+        summary: out.summary,
+        changed: out.changed,
+    })
+}
+
+/// Turn a plan into a playlist that outlives the panel.
+///
+/// One call rather than a create followed by twenty adds: a plan half-written
+/// because the twelfth call failed is worse than one not written at all, and
+/// the interface has no way to finish the job from there.
+#[tauri::command]
+pub fn setlist_save(
+    state: State<'_, AppState>,
+    name: String,
+    tracks: Vec<String>,
+) -> Result<i64, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("a set needs a name to be found again".into());
+    }
+    let ids = parse_track_ids(&tracks)?;
+    let db = library(&state)?;
+    let playlist = db
+        .create_playlist(
+            name,
+            None,
+            dj_library::PlaylistKind::List,
+            None,
+            crate::library::now_seconds(),
+        )
+        .map_err(|e| e.to_string())?;
+    for id in ids {
+        db.add_to_playlist(playlist, id)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(playlist)
+}
+
 /// The genre families djmanzo knows, for an interface offering them.
 #[derive(Debug, Clone, Serialize)]
 pub struct GenreFamilyDto {

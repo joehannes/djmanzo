@@ -1716,6 +1716,22 @@ is what makes the reflective statistics possible at all.
   Still to come: seeding from the session so far and from the current phase
   rather than from one track.
 
+- **Assembling a set — the commands, not yet the workspace.** `setlist_build`
+  already builds a whole night from an arc and a taste; `setlist_steer` now
+  adjusts one without throwing it away (lift, ease, hold, favour, avoid, and
+  per-record next, later, drop), and `setlist_save` turns a plan into a
+  playlist in a single call rather than a create followed by twenty adds — a
+  plan half-written because the twelfth call failed is worse than one not
+  written at all.
+
+  The plan deliberately lives in the interface and is handed back for each
+  change. A draft the backend remembered would be one more thing to fall out of
+  step with what is on screen.
+
+  **The workspace itself is not built yet** — arc picker, the shape of the night
+  as one strip, per-slot steering, save or hand to the assistant. The API it
+  will drive is in place and reachable.
+
 ### Remembering
 
 - **Note-taking sidekick — done.** Notes attached to a moment in the session,
