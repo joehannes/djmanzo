@@ -1556,6 +1556,37 @@ export const chooseLayout = (name: string) => invoke<void>("choose_layout", { na
 export const exportSession = (session: string, path: string) =>
   invoke<number>("export_session", { session, path });
 
+// -- more like this ---------------------------------------------------------
+
+/**
+ * Records like a given one, tilted by what this DJ actually plays.
+ *
+ * Differs from {@link suggestNext} in seed and tilt: that answers "what next"
+ * from a deck, this answers "more like this" from any track in the browser.
+ * Taste is added to the score and bounded well below the gap between a key
+ * clash and a match, so it reorders records that all work and never promotes
+ * one that does not.
+ */
+export const similarTo = (track: string, limit = 20) =>
+  invoke<Suggestion[]>("similar_to", { track, limit });
+
+/** What the history says this DJ reaches for. */
+export interface LearnedTaste {
+  /** Families played more often than owning them would predict. */
+  favourites: string[];
+  plays: number;
+  /** Whether there is enough history for the rest to mean anything. */
+  confident: boolean;
+}
+
+/**
+ * What djmanzo has worked out about this DJ's taste.
+ *
+ * Shown rather than hidden: it steers suggestions, so a DJ should be able to
+ * see — and disagree with — what it thinks of them.
+ */
+export const learnedTaste = () => invoke<LearnedTaste>("learned_taste");
+
 // -- the journal ------------------------------------------------------------
 
 /** One note taken during a set. It belongs to a moment, not to a track. */

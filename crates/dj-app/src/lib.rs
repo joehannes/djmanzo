@@ -387,6 +387,8 @@ pub fn run() {
             commands::genre_families,
             commands::assistant_packs,
             commands::assistant_conduct,
+            commands::similar_to,
+            commands::learned_taste,
             commands::coach_report,
             commands::note_add,
             commands::note_write,

@@ -1681,9 +1681,40 @@ is what makes the reflective statistics possible at all.
   out, close. A phase is a named set of constraints (tempo band, energy, genre
   weighting, transition style) rather than a playlist, so it steers rather than
   dictates.
-- **Similar-music proposer**, configurable, considering the event, the previous
-  and next tracks, the session so far, and the current phase. Suggestions state
-  their reasoning, per [ADR-0005](adr/0005-assistant-speaks-only-actions.md).
+- **Similar-music proposer — first half done.** "More like this" from any track
+  in the browser: the table becomes the ranked answer, each row carrying the
+  reasons it is there, with every affordance the browser already has — sorting,
+  set-aside, load to a deck — applying to it. A second, lesser list beside the
+  table would have had fewer of them.
+
+  What makes it more than a re-run of the suggester is **taste learned from
+  what the DJ actually plays**, in `dj_library::learned`. The insight the module
+  is built on: counting plays per family learns the shape of the *collection*,
+  not the DJ. Somebody whose library is nine-tenths bachata plays mostly
+  bachata whatever they think of it. So a leaning is a **ratio** — how often a
+  family is played against how often owning it would predict — and one means no
+  information. Plays are weighted by a 180-day half-life, because taste drifts
+  and a phase two years gone should stop steering.
+
+  Three rules it will not break:
+
+  - **Taste is added to a score, never multiplied.** The score is signed — a key
+    clash is negative — and multiplying a negative by a number above one makes
+    it *better*, promoting exactly the records taste should push down.
+  - **It is bounded to ±0.75, against a scale where a same-key match is +3 and a
+    clash −2.5.** So it can reorder records that would all work, and can never
+    lift one that would not. Taste breaks ties; it does not overrule the mixing.
+  - **It never learns an avoidance.** A family owned and never played is one the
+    DJ has not got round to as easily as one they dislike, and from here the two
+    are indistinguishable. Avoiding stays explicit, because it is honoured
+    strictly and a wrong guess silently removes music from a night.
+
+  It says nothing at all until about a night's worth of plays, and what it has
+  concluded is shown in the Conduct panel — it steers every suggestion, so a DJ
+  should be able to see, and disagree with, what it thinks of them.
+
+  Still to come: seeding from the session so far and from the current phase
+  rather than from one track.
 
 ### Remembering
 

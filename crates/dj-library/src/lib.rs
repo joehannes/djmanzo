@@ -25,6 +25,7 @@
 
 pub mod filter;
 pub mod import;
+pub mod learned;
 pub mod playlist;
 pub mod record;
 pub mod scan;

@@ -1227,6 +1227,46 @@ impl Library {
         })
     }
 
+    // -- what the DJ actually plays -------------------------------------------
+
+    /// How far back to learn from.
+    ///
+    /// Two years. Older than that is discounted almost to nothing by the
+    /// half-life anyway (see [`crate::learned`]), so reading it would be a
+    /// larger query for a smaller effect.
+    const LEARN_FROM_DAYS: i64 = 730;
+
+    /// What the history says about which families this DJ reaches for.
+    ///
+    /// Both halves in one place because the answer is a comparison: plays
+    /// alone would learn the shape of the collection rather than the DJ. See
+    /// [`crate::learned`].
+    pub fn learn_taste(&self, now: i64) -> Result<crate::learned::Learned> {
+        let since = now - Self::LEARN_FROM_DAYS * 86_400;
+        self.with(|conn| {
+            let mut plays = conn.prepare(
+                "SELECT tracks.genre, history.played_at
+                 FROM history JOIN tracks ON tracks.id = history.track_id
+                 WHERE history.played_at >= ?1",
+            )?;
+            let played: Vec<crate::learned::Played> = plays
+                .query_map([since], |row| {
+                    Ok(crate::learned::Played {
+                        genre: row.get(0)?,
+                        at: row.get(1)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+
+            let mut all = conn.prepare("SELECT genre FROM tracks")?;
+            let owned: Vec<Option<String>> = all
+                .query_map([], |row| row.get(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+
+            Ok(crate::learned::learn(&played, &owned, now))
+        })
+    }
+
     // -- notes ---------------------------------------------------------------
 
     /// Mark a moment, with or without words for it yet.
@@ -1938,6 +1978,54 @@ mod tests {
 
     fn library() -> Library {
         Library::in_memory().unwrap()
+    }
+
+    // -- learned taste ---------------------------------------------------------
+
+    /// **The query reads both halves, or it learns the collection.**
+    ///
+    /// The one thing this method can get wrong that the pure function cannot:
+    /// forgetting to pass what is owned. Then every leaning is a raw play
+    /// count and the suggester recommends whatever the DJ has most of.
+    #[test]
+    fn taste_is_learned_against_the_collection_not_from_plays_alone() {
+        let lib = library();
+        let now = 1_800_000_000;
+
+        // A collection that is mostly bachata, played evenly with techno.
+        for i in 0..90u8 {
+            let mut t = track(i, &format!("b{i}"), "artist");
+            t.tags.genre = Some("bachata".into());
+            lib.upsert_track(&t).unwrap();
+        }
+        for i in 90..100u8 {
+            let mut t = track(i, &format!("t{i}"), "artist");
+            t.tags.genre = Some("techno".into());
+            lib.upsert_track(&t).unwrap();
+        }
+        for i in 0..15u8 {
+            lib.record_play(id(i), now - i64::from(i) * 3600, None)
+                .unwrap();
+            lib.record_play(id(90 + (i % 10)), now - i64::from(i) * 3600, None)
+                .unwrap();
+        }
+
+        let learned = lib.learn_taste(now).unwrap();
+        assert!(learned.is_confident(), "{} plays", learned.plays);
+        assert!(
+            learned.leaning["techno"] > learned.leaning["bachata"],
+            "techno {} bachata {} -- the collection was learned, not the DJ",
+            learned.leaning["techno"],
+            learned.leaning["bachata"]
+        );
+    }
+
+    /// **An empty library has no opinion rather than an error.**
+    #[test]
+    fn a_fresh_library_has_nothing_to_say_about_taste() {
+        let learned = library().learn_taste(1_800_000_000).unwrap();
+        assert!(!learned.is_confident());
+        assert!(learned.favourites(3).is_empty());
     }
 
     // -- notes ---------------------------------------------------------------

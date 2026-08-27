@@ -3186,6 +3186,107 @@ pub fn suggest_next(
         .collect())
 }
 
+/// Records like a given one, tilted by what this DJ actually plays.
+///
+/// The difference from [`suggest_next`] is the seed and the tilt. That answers
+/// "what next" from a deck; this answers "more like this" from any track in
+/// the browser, which is the question a DJ asks when they have found something
+/// that works and want three more of it.
+///
+/// Taste is added to the score, never multiplied, and is bounded well below
+/// the gap between a key clash and a match — see [`dj_library::learned`]. It
+/// reorders records that would all work; it cannot promote one that would not.
+#[tauri::command]
+pub fn similar_to(
+    state: State<'_, AppState>,
+    track: String,
+    limit: usize,
+) -> Result<Vec<SuggestionDto>, String> {
+    use dj_library::suggest::{Playing, Trajectory};
+
+    let db = library(&state)?;
+    let seed_id = parse_track_id(&track)?;
+    let seed = db
+        .track(seed_id)
+        .map_err(|e| e.to_string())?
+        .ok_or("that track is not in the library")?;
+
+    let now = Playing {
+        key: seed.analysis.key(),
+        bpm: seed.analysis.bpm,
+        lufs: seed.analysis.loudness_lufs,
+        phrase_beats: seed.analysis.phrase_beats,
+    };
+
+    let pool = db.all_tracks(5_000).map_err(|e| e.to_string())?;
+    // Failing to learn is not failing to suggest: an empty taste tilts by
+    // nothing, which is the same answer as a DJ with no history.
+    let taste = db
+        .learn_taste(crate::library::now_seconds())
+        .unwrap_or_default();
+
+    let mut ranked: Vec<_> = dj_library::suggest::rank(&now, Trajectory::Hold, &pool)
+        .into_iter()
+        // "More like this" that includes this is not a suggestion.
+        .filter(|s| s.track != seed_id)
+        .filter_map(|s| {
+            let track = pool.iter().find(|t| t.id == s.track)?;
+            Some((s, track))
+        })
+        .map(|(s, track)| {
+            let tilted = s.score + taste.tilt_for(track);
+            (tilted, s, track)
+        })
+        .collect();
+
+    // Re-sorted, because the tilt has moved things. Ties break on id so the
+    // same library gives the same answer every time -- a "more like this" that
+    // shuffled on each press would be impossible to trust.
+    ranked.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.1.track.cmp(&b.1.track))
+    });
+
+    Ok(ranked
+        .into_iter()
+        .take(limit.clamp(1, 100))
+        .map(|(score, s, track)| SuggestionDto {
+            track: LibraryTrackDto::from(track.clone()),
+            score,
+            reasons: s.reasons.iter().map(describe_reason).collect(),
+        })
+        .collect())
+}
+
+/// What the history says this DJ reaches for.
+#[derive(Debug, Clone, Serialize)]
+pub struct TasteDto {
+    /// Families played more often than owning them would predict, strongest
+    /// first. Empty until there is enough history to mean anything.
+    pub favourites: Vec<String>,
+    /// How many plays this was drawn from.
+    pub plays: usize,
+    /// Whether there is enough history to act on.
+    pub confident: bool,
+}
+
+/// What djmanzo has worked out about this DJ's taste.
+///
+/// Surfaced rather than kept hidden, because it steers suggestions and a DJ
+/// should be able to see — and disagree with — what it thinks of them.
+#[tauri::command]
+pub fn learned_taste(state: State<'_, AppState>) -> Result<TasteDto, String> {
+    let learned = library(&state)?
+        .learn_taste(crate::library::now_seconds())
+        .map_err(|e| e.to_string())?;
+    Ok(TasteDto {
+        favourites: learned.favourites(6),
+        plays: learned.plays,
+        confident: learned.is_confident(),
+    })
+}
+
 /// Which track is on a deck, if any.
 fn current_track(state: &AppState, deck: dj_core::DeckId) -> Option<dj_core::TrackId> {
     let tracks = state.deck_tracks();

@@ -25,6 +25,7 @@
    */
   import {
     assistantApplyPack,
+    learnedTaste,
     assistantConduct,
     assistantHandBack,
     assistantPacks,
@@ -35,6 +36,7 @@
     POSTURES,
     POSTURE_HELP,
     type AssistantPack,
+    type LearnedTaste,
     type Conduct,
   } from "./api";
   import { onMount } from "svelte";
@@ -45,6 +47,14 @@
   let conduct = $state<Conduct | null>(null);
   let packs = $state<AssistantPack[]>([]);
   let error = $state<string | null>(null);
+  /**
+   * What the history says this DJ reaches for.
+   *
+   * Read once. A taste learned from two years of plays does not move while a
+   * panel is open, and polling it would be a query every few seconds for a
+   * number that changes about as often as a season.
+   */
+  let taste = $state<LearnedTaste | null>(null);
 
   /**
    * How often the panel re-reads what the assistant would do.
@@ -71,6 +81,13 @@
         packs = await assistantPacks();
       } catch {
         packs = [];
+      }
+      try {
+        taste = await learnedTaste();
+      } catch {
+        // Silent: a DJ with no history yet is the normal case, not a fault,
+        // and the panel simply has one fewer thing to say.
+        taste = null;
       }
     })();
     void refresh();
@@ -189,6 +206,24 @@
   -->
   <Coach {enabled} verbosity={conduct?.verbosity ?? 0} />
 
+  <!--
+    What djmanzo has worked out about this DJ, shown rather than hidden.
+
+    It tilts every suggestion, so a DJ who disagrees with it should be able to
+    see what it is doing rather than wonder why the same three genres keep
+    coming up. And "from 40 plays" is the difference between a claim and a
+    guess.
+  -->
+  {#if taste && taste.favourites.length > 0}
+    <h3>What you reach for</h3>
+    <p class="taste">
+      {#each taste.favourites as family (family)}
+        <span class="family">{family}</span>
+      {/each}
+      <span class="from">from {taste.plays} plays</span>
+    </p>
+  {/if}
+
   {#if error}
     <p class="error">{error}</p>
   {/if}
@@ -300,6 +335,28 @@
      never accidental. */
   .ladder button.acting.active {
     border-color: var(--warn, #d97706);
+  }
+
+  .taste {
+    margin: 0 0 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.3rem;
+    font-size: 0.8em;
+  }
+
+  .family {
+    padding: 0.05rem 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--accent);
+  }
+
+  /* The count is the difference between a claim and a guess. */
+  .from {
+    color: var(--text-dim);
+    font-size: 0.9em;
   }
 
   .packs {

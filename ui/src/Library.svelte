@@ -37,6 +37,8 @@
     forgetTrackPath,
     formatTime,
     importLibrary,
+    similarTo,
+    type Suggestion,
     listSessions,
     libraryAddFolder,
     libraryRemoveFolder,
@@ -98,6 +100,36 @@
    * row still works.
    */
   let toSideView = $state<string | null>(null);
+  /**
+   * The track "more like this" is currently answering for, if any.
+   *
+   * The results replace the table rather than opening a list of their own.
+   * A second list would need its own sorting, its own deck buttons and its
+   * own set-aside, and would have fewer of them than the table it sat beside —
+   * a worse version of the thing already on screen.
+   */
+  let likeThis = $state<string | null>(null);
+  let likeThisTitle = $state("");
+  let alike = $state<Suggestion[]>([]);
+  /** Reasons per track id, so a row can say why it is here. */
+  let alikeWhy = $state<Record<string, string[]>>({});
+
+  async function showAlike(id: string) {
+    if (likeThis === id) {
+      likeThis = null;
+      return;
+    }
+    try {
+      const found = await similarTo(id);
+      alike = found;
+      alikeWhy = Object.fromEntries(found.map((s) => [s.track.id, s.reasons]));
+      likeThisTitle = tracks.find((t) => t.id === id)?.title ?? "that track";
+      likeThis = id;
+      error = "";
+    } catch (e) {
+      error = String(e);
+    }
+  }
 
   /**
    * Left-to-right mark. Prefixed to any path shown in a `.path` box — see the
@@ -513,6 +545,11 @@
   }
 
   const sorted = $derived.by(() => {
+    // "More like this" is already ranked, and re-sorting it by BPM would throw
+    // away the ranking that is the whole answer. The column headers still
+    // work — a DJ who sorts is asking to see it a different way — but the
+    // order it arrives in is the suggester's.
+    if (likeThis) return alike.map((s) => s.track);
     const rows = [...tracks];
     const direction = ascending ? 1 : -1;
     rows.sort((a, b) => {
@@ -856,6 +893,17 @@
       {/if}
     </p>
   {:else}
+    {#if likeThis}
+      <!--
+        Says what is being shown and how to leave. Without it the table has
+        silently become a different list, which is the worst thing a browser
+        can do to somebody who looked away for a moment.
+      -->
+      <p class="alike-banner">
+        Records like <strong>{likeThisTitle}</strong>
+        <button onclick={() => (likeThis = null)}>show everything</button>
+      </p>
+    {/if}
     <div class="table-scroll">
       <table>
         <thead>
@@ -899,7 +947,17 @@
                 -->
                 {#if track.colour}
                   <span class="swatch" style="background: {track.colour}"></span>
-                {/if}{track.title}</td
+                {/if}{track.title}<!--
+                  Why this record is here, under its name and only while the
+                  question is being asked. In the ordinary collection view
+                  these would be noise on every row; in an answer they are the
+                  answer. Under the title rather than in a column of their own
+                  so the header and the cells cannot drift apart.
+                -->{#if likeThis && alikeWhy[track.id]?.length}<span class="why"
+                  >{#each alikeWhy[track.id].slice(0, 2) as reason (reason)}<span
+                    class="reason">{reason}</span
+                  >{/each}</span
+                >{/if}</td
               >
               <td>{track.artist}</td>
               <td>{track.album ?? ""}</td>
@@ -948,6 +1006,19 @@
                   title="Set aside in the Sidelist"
                   aria-label="Set aside {track.title}"
                 >→</button>
+                <!--
+                  "More like this" sits beside "set aside" because both are
+                  things you do *with* a track rather than *to* a deck, and the
+                  deck buttons at the end of the row should stay a block a hand
+                  can find without reading.
+                -->
+                <button
+                  class="alike"
+                  class:on={likeThis === track.id}
+                  onclick={() => showAlike(track.id)}
+                  title="Find records like {track.title}"
+                  aria-label="Find records like {track.title}"
+                >≈</button>
                 {#if selection.kind === "playlist" && "position" in track}
                   <button
                     class="drop"
@@ -1014,6 +1085,39 @@
   .batch .count {
     color: var(--text-dim);
     white-space: nowrap;
+  }
+
+  /* Reads as a statement about the table, not a control bar above it. */
+  .alike-banner {
+    margin: 0 0 0.4rem;
+    font-size: 0.82em;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-dim);
+  }
+
+  .alike-banner button {
+    font-size: 0.9em;
+    padding: 0.1rem 0.45rem;
+  }
+
+  .alike.on {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .why {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.72em;
+    font-weight: 400;
+    color: var(--text-dim);
+  }
+
+  /* Chips, not prose: read at a glance beside a name, never a sentence. */
+  .reason + .reason::before {
+    content: " · ";
   }
 
   .sessions {
