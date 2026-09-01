@@ -950,7 +950,21 @@
       {/each}
     </div>
 
-    <section class="mixer">
+    <!--
+      The crossfader, directly under the decks.
+
+      It used to sit at the top of the strip below, which put it about 1,500 px
+      down at djmanzo's own default window size -- two screens under the
+      waveforms it is used against, on a machine where a DJ has one hand free
+      and no time to scroll. It is the most-used control in the application and
+      it was the least reachable one.
+
+      Under the decks rather than between them: between is what hardware does,
+      but a third column at the 900 px minimum width leaves three columns too
+      narrow to aim at. Under keeps the eye's path -- deck, crossfader, deck --
+      and survives the narrow case.
+    -->
+    <section class="bridge">
       <MasterMixer
         master={snapshot.master}
         {ready}
@@ -959,12 +973,13 @@
         {limiterOn}
         {send}
       />
+    </section>
 
+    <section class="mixer">
       <!--
-        The microphone, automix, plugin insert and master FX keep their existing
-        component implementations for now. The booth-critical master controls
-        above are SVG-native so the workstation's primary spatial model stays
-        inside the same vector surface as the decks and meters.
+        What is left below: the things set up once a night rather than reached
+        for during a mix. The microphone, the automix, a plugin insert and the
+        master effects.
       -->
       <Mic mic={snapshot.master.mic} enabled={ready} {send} />
       <Automix automix={snapshot.master.automix} enabled={ready} {send} />
@@ -1372,9 +1387,20 @@
     grid-auto-rows: min-content;
   }
 
+  /*
+    The crossfader's own row. Full width and centred, so it reads as the thing
+    the two decks meet in rather than as the first cell of the strip below.
+  */
+  .bridge {
+    /* No panel of its own: the master strip draws its own shell, and a border
+       around a border is a box inside a box. */
+    display: flex;
+    justify-content: center;
+  }
+
   .mixer {
     display: grid;
-    grid-template-columns: 2fr 1fr 1.2fr auto auto;
+    grid-template-columns: 1fr 1.2fr auto auto;
     gap: 1.2rem;
     align-items: center;
     background: var(--panel);

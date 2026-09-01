@@ -80,6 +80,27 @@
   const LENGTHS = [0.0625, 0.125, 0.25, 0.5, 1, 2, 4];
 </script>
 
+<!--
+  Folded until something is in it.
+
+  Measured: three empty slots are three dropdowns reading "—" beside three
+  sliders that do nothing, and they cost about 90 px of a deck column
+  permanently, whether or not the DJ has ever used an effect. That is space
+  taken from the waveform above by a control in its resting state. Unfolded the
+  rack is exactly what it was; folded it is one line that says what it is and
+  opens on a click.
+
+  `open` starts true when anything is loaded, so a rack in use is never hidden
+  from the DJ who set it up -- including after a restart, because the slots come
+  from the engine's snapshot.
+-->
+<details class="rack-fold" open={anyLoaded}>
+  <summary>
+    Effects
+    {#if anyLoaded}
+      <span class="loaded">{slots.filter((s) => s.kind !== "none").length}</span>
+    {/if}
+  </summary>
 <div class="rack">
   {#each slots as slot (slot.slot)}
     {@const loaded = slot.kind !== "none"}
@@ -225,6 +246,7 @@
     <p class="chain-error">{error}</p>
   {/if}
 </div>
+</details>
 
 <style>
   .keep {
@@ -330,5 +352,27 @@
     font-size: 0.8em;
     letter-spacing: 0.03em;
     color: var(--text-dim);
+  }
+
+  /*
+    The fold. Deliberately quiet: it is a label, not a control, and it is
+    reached for once while setting up rather than during a mix.
+  */
+  .rack-fold summary {
+    font-size: 0.78em;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 0.15rem 0;
+  }
+
+  .rack-fold[open] summary {
+    margin-bottom: 0.35rem;
+  }
+
+  .loaded {
+    margin-left: 0.35rem;
+    color: var(--accent);
   }
 </style>

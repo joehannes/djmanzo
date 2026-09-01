@@ -151,7 +151,11 @@
   }
 
   .platter {
-    --size: 7.5rem;
+    /* Sized by whoever places it: a deck's channel strip wants a nudge
+       target, and a detached window wants a platter. The default is the
+       platter, because a component with no context should be the larger,
+       more legible thing. */
+    --size: var(--jog-size, 7.5rem);
     position: relative;
     width: var(--size);
     height: var(--size);

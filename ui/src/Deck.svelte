@@ -542,10 +542,33 @@
     />
   </div>
 
+
+
+  <!--
+    The channel strip, side by side rather than stacked.
+
+    Measured, at djmanzo's own default 1280x800: stacked, the EQ, filter,
+    volume and pitch took about 530 px of a deck column, which put the
+    crossfader roughly 1,500 px down — two screens below the waveform it is
+    used against. No shipped preset fixed it, including the one whose
+    description is "everything you need and nothing else". Side by side the
+    same four controls take about 190 px and keep every one of them in the
+    orientation a DJ's hands already know: knobs for tone, vertical faders for
+    level and pitch.
+
+    Ordered as a hardware channel is, left to right: tone, then colour, then
+    level, then tempo.
+  -->
+  <div class="channel">
   <!--
     The platter. Drag the middle to scratch, the rim to bend, and wind it to
     search a paused deck -- the same three things the hardware does, and the
     same actions a controller mapping sends.
+
+    In the strip rather than on a row of its own. On a laptop it is a nudge
+    target and a position display, and the waveform above already answers
+    position better than a circle does; a full row for it cost about 155 px,
+    which is more than the waveform got in three of the four shipped presets.
   -->
   <div class="jog-row">
     <JogWheel
@@ -556,26 +579,6 @@
       enabled={enabled && deck.loaded}
     />
   </div>
-
-  <!--
-    Pre-fader listen. Deliberately explains itself when unavailable rather than
-    just sitting greyed out: a 2-channel laptop output has nowhere to send a
-    cue, and "why is this dead" is a bad thing to wonder mid-set.
-  -->
-  <button
-    class="cue"
-    class:on={deck.cue_enabled}
-    disabled={!enabled || !cueAvailable}
-    onclick={() => send(`deck ${deck.number} cue_toggle`)}
-    title={cueAvailable
-      ? "Pre-fader listen — hear this deck in the headphones"
-      : "Needs a 4-channel output device"}
-  >
-    <span>CUE</span>
-    <span class="pfl-meter" aria-hidden="true">
-      <span class="pfl-fill" style:scale="{fill(deck.pre_fader_level)} 1"></span>
-    </span>
-  </button>
 
   <!--
     Isolator EQ: each knob runs from a true kill at 0 to +12 dB. Double-click
@@ -783,7 +786,35 @@
     />
     {/if}
   </div>
+  </div>
 
+  <!--
+    The foot of the channel: what this deck sends where.
+
+    Pre-fader listen and the crossfader assignment on one line, because they
+    are the same question asked twice -- which outputs hear this deck -- and
+    because two rows of one control each is how a deck column grows until the
+    crossfader is off the screen.
+
+    Pre-fader listen deliberately explains itself when unavailable rather than
+    just sitting greyed out: a 2-channel laptop output has nowhere to send a
+    cue, and "why is this dead" is a bad thing to wonder mid-set.
+  -->
+  <div class="channel-foot">
+  <button
+    class="cue"
+    class:on={deck.cue_enabled}
+    disabled={!enabled || !cueAvailable}
+    onclick={() => send(`deck ${deck.number} cue_toggle`)}
+    title={cueAvailable
+      ? "Pre-fader listen — hear this deck in the headphones"
+      : "Needs a 4-channel output device"}
+  >
+    <span>CUE</span>
+    <span class="pfl-meter" aria-hidden="true">
+      <span class="pfl-fill" style:scale="{fill(deck.pre_fader_level)} 1"></span>
+    </span>
+  </button>
   <!--
     Crossfader assignment. A hardware mixer puts this switch on every channel,
     and once four decks are on screen it stops being optional: without it the
@@ -803,6 +834,7 @@
         {option.text}
       </IconButton>
     {/each}
+  </div>
   </div>
 
   <div class="meter" aria-label="deck level">
@@ -857,6 +889,64 @@
     padding: 0.4rem 0;
   }
 
+  /*
+    The channel strip. Bottom-aligned so the faders' zero ends line up with the
+    knobs' baselines, which is what makes it read as one strip rather than four
+    controls that happen to be adjacent.
+
+    Allowed to wrap: at the 900 px minimum window width a deck column is about
+    415 px inside its padding, and a strip that overflowed would put a control
+    off the edge rather than onto a second line.
+  */
+  .channel {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.6rem 0.9rem;
+  }
+
+  /*
+    The three EQ knobs stay a row of their own inside the strip, because they
+    are one control in three parts and separating them would invite reading
+    them as three. `justify-content` is overridden because the standalone rule
+    spreads them across the whole deck; inside the strip they are as wide as
+    the knobs and no wider.
+  */
+  .channel .eq {
+    justify-content: flex-start;
+    gap: 0.55rem;
+  }
+
+  /*
+    The foot of the channel. The cue bar takes the room, because it carries a
+    level meter and a meter needs width; the assignment is three small buttons
+    and needs none.
+  */
+  .channel-foot {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .channel-foot .cue {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .channel-foot .xfader-assign {
+    flex: none;
+  }
+
+  /* The jog is a position display the waveform above already gives in a form
+     easier to read, and a nudge target a mouse can use. It stays, at a size
+     that reflects what it adds rather than what it is. */
+  .jog-row {
+    --jog-size: 5rem;
+    padding: 0;
+    align-items: flex-end;
+  }
+
   .deck {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -867,7 +957,13 @@
     padding: 0.9rem;
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    /*
+      Tightened from 0.65rem. With seven or eight children the gap alone was
+      about 70 px of a column that has to end above the crossfader, and the
+      groups inside now carry their own separation -- the channel strip reads
+      as one thing whether or not there is a wide gap above it.
+    */
+    gap: 0.45rem;
     min-width: 0;
   }
 

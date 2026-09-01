@@ -48,33 +48,37 @@
   }
 </script>
 
-<svg class="master-mixer" viewBox="0 0 900 238" role="group" aria-label="Master mixer controls">
+<svg class="master-mixer" viewBox="0 0 900 210" role="group" aria-label="Master mixer controls">
   <defs><linearGradient id="meter-hot" x1="0" x2="1"><stop offset="0" stop-color="var(--accent-2)" /><stop offset="0.76" stop-color="var(--accent-2)" /><stop offset="1" stop-color="var(--warn)" /></linearGradient></defs>
-  <rect class="shell" x="1" y="1" width="898" height="236" rx="18" />
-  <text class="title" x="24" y="34">MASTER MIXER</text><text class="readout" x="738" y="34">{master.gain_db.toFixed(1)} dB</text>
-
-  <g class="slider" role="slider" aria-label="Crossfader" aria-valuemin="-1" aria-valuemax="1" aria-valuenow={master.crossfader} tabindex={ready ? 0 : -1} onpointerdown={(e) => drag(e, -1, 1, (v) => `crossfader ${v}`)}>
-    <text x="48" y="76">Crossfader</text><rect class="track" x="48" y="88" width="300" height="14" rx="7" /><rect class="split" x="196" y="84" width="4" height="22" rx="2" /><circle class="thumb" cx={48 + cross * 300} cy="95" r="17" /><text class="ends" x="48" y="128">1</text><text class="ends" x="338" y="128">2</text>
+  <rect class="shell" x="1" y="1" width="898" height="208" rx="18" />
+    <g class="slider" role="slider" aria-label="Crossfader" aria-valuemin="-1" aria-valuemax="1" aria-valuenow={master.crossfader} tabindex={ready ? 0 : -1} onpointerdown={(e) => drag(e, -1, 1, (v) => `crossfader ${v}`)}>
+    <text x="48" y="48">Crossfader</text><rect class="track" x="48" y="60" width="300" height="14" rx="7" /><rect class="split" x="196" y="56" width="4" height="22" rx="2" /><circle class="thumb" cx={48 + cross * 300} cy="67" r="17" /><text class="ends" x="48" y="100">1</text><text class="ends" x="338" y="100">2</text>
   </g>
 
   <g class="slider" role="slider" aria-label="Master gain" aria-valuemin="-24" aria-valuemax="6" aria-valuenow={master.gain_db} tabindex={ready ? 0 : -1} onpointerdown={(e) => drag(e, -24, 6, (v) => `master gain ${v}`)}>
-    <text x="48" y="164">Master gain</text><rect class="track" x="48" y="176" width="300" height="14" rx="7" /><rect class="fill" x="48" y="176" width={gain * 300} height="14" rx="7" /><circle class="thumb accent" cx={48 + gain * 300} cy="183" r="17" />
+    <text x="48" y="136">Master gain</text><text class="readout" x="176" y="136">{master.gain_db.toFixed(1)} dB</text><rect class="track" x="48" y="148" width="300" height="14" rx="7" /><rect class="fill" x="48" y="148" width={gain * 300} height="14" rx="7" /><circle class="thumb accent" cx={48 + gain * 300} cy="155" r="17" />
   </g>
 
-  <g class:disabled={!master.cue_available} class="cue"><text x="398" y="76">Headphones</text>{#if master.cue_available}<g class="slider" role="slider" aria-label="Headphone cue mix" aria-valuemin="0" aria-valuemax="1" aria-valuenow={master.cue_mix} tabindex={ready && !master.cue_split ? 0 : -1} onpointerdown={(e) => !master.cue_split && drag(e, 0, 1, (v) => `cue mix ${v}`)}><rect class="track" x="398" y="88" width="250" height="14" rx="7" /><rect class="fill teal" x="398" y="88" width={cue * 250} height="14" rx="7" /><circle class="thumb teal" cx={398 + cue * 250} cy="95" r="16" /><text class="ends" x="398" y="128">cue</text><text class="ends" x="606" y="128">master</text></g><g class="svg-button" class:active={master.cue_split} role="button" aria-label="Toggle split cue" tabindex={ready ? 0 : -1} onclick={() => act(`cue ${cueSplit ? "split_off" : "split_on"}`)} onkeydown={(e) => activate(e, () => act(`cue ${cueSplit ? "split_off" : "split_on"}`))}><rect x="666" y="72" width="94" height="48" rx="12" /><text x="713" y="102">SPLIT</text></g>{:else}<text class="muted" x="398" y="103">No four-channel cue output</text>{/if}</g>
+  <g class:disabled={!master.cue_available} class="cue"><text x="398" y="48">Headphones</text>{#if master.cue_available}<g class="slider" role="slider" aria-label="Headphone cue mix" aria-valuemin="0" aria-valuemax="1" aria-valuenow={master.cue_mix} tabindex={ready && !master.cue_split ? 0 : -1} onpointerdown={(e) => !master.cue_split && drag(e, 0, 1, (v) => `cue mix ${v}`)}><rect class="track" x="398" y="60" width="250" height="14" rx="7" /><rect class="fill teal" x="398" y="60" width={cue * 250} height="14" rx="7" /><circle class="thumb teal" cx={398 + cue * 250} cy="67" r="16" /><text class="ends" x="398" y="100">cue</text><text class="ends" x="606" y="100">master</text></g><g class="svg-button" class:active={master.cue_split} role="button" aria-label="Toggle split cue" tabindex={ready ? 0 : -1} onclick={() => act(`cue ${cueSplit ? "split_off" : "split_on"}`)} onkeydown={(e) => activate(e, () => act(`cue ${cueSplit ? "split_off" : "split_on"}`))}><rect x="666" y="44" width="94" height="48" rx="12" /><text x="713" y="74">SPLIT</text></g>{:else}<text class="muted" x="398" y="75">No four-channel cue output</text>{/if}</g>
 
-  <g class="svg-button" class:active={master.quantize} role="button" aria-label="Toggle quantize" tabindex={ready ? 0 : -1} onclick={() => act(`quantize ${master.quantize ? "off" : "on"}`)} onkeydown={(e) => activate(e, () => act(`quantize ${master.quantize ? "off" : "on"}`))}><rect x="398" y="154" width="148" height="52" rx="14" /><text x="472" y="186">QUANTIZE</text></g>
-  <g class="svg-button" class:active={ready && limiterOn} role="button" aria-label="Toggle limiter" tabindex={ready ? 0 : -1} onclick={() => act(`limiter ${limiterOn ? "off" : "on"}`)} onkeydown={(e) => activate(e, () => act(`limiter ${limiterOn ? "off" : "on"}`))}><rect x="566" y="154" width="132" height="52" rx="14" /><text x="632" y="186">LIMITER</text></g>
+  <g class="svg-button" class:active={master.quantize} role="button" aria-label="Toggle quantize" tabindex={ready ? 0 : -1} onclick={() => act(`quantize ${master.quantize ? "off" : "on"}`)} onkeydown={(e) => activate(e, () => act(`quantize ${master.quantize ? "off" : "on"}`))}><rect x="398" y="126" width="148" height="52" rx="14" /><text x="472" y="158">QUANTIZE</text></g>
+  <g class="svg-button" class:active={ready && limiterOn} role="button" aria-label="Toggle limiter" tabindex={ready ? 0 : -1} onclick={() => act(`limiter ${limiterOn ? "off" : "on"}`)} onkeydown={(e) => activate(e, () => act(`limiter ${limiterOn ? "off" : "on"}`))}><rect x="566" y="126" width="132" height="52" rx="14" /><text x="632" y="158">LIMITER</text></g>
 
-  <g class="meters"><text x="740" y="76">Output</text><rect class="meter-bg" x="740" y="88" width="120" height="12" rx="6" /><rect class="meter-fill" x="740" y="88" width={fill(master.peak_left) * 120} height="12" rx="6" /><rect class="meter-bg" x="740" y="110" width="120" height="12" rx="6" /><rect class="meter-fill" x="740" y="110" width={fill(master.peak_right) * 120} height="12" rx="6" /><text class="muted" x="740" y="154">Reduction</text><rect class="meter-bg" x="740" y="166" width="120" height="12" rx="6" /><rect class="reduction" x={860 - reduction * 120} y="166" width={reduction * 120} height="12" rx="6" /><text class="readout" x="740" y="202">{master.limiter_reduction_db < 0.1 ? "—" : `-${master.limiter_reduction_db.toFixed(1)} dB`}</text>{#if split}<text class:bad={!split.healthy} class="muted" x="740" y="222">{split.drift_ppm >= 0 ? "+" : ""}{split.drift_ppm.toFixed(0)} ppm</text>{/if}</g>
+  <g class="meters"><text x="740" y="48">Output</text><rect class="meter-bg" x="740" y="60" width="120" height="12" rx="6" /><rect class="meter-fill" x="740" y="60" width={fill(master.peak_left) * 120} height="12" rx="6" /><rect class="meter-bg" x="740" y="82" width="120" height="12" rx="6" /><rect class="meter-fill" x="740" y="82" width={fill(master.peak_right) * 120} height="12" rx="6" /><text class="muted" x="740" y="126">Reduction</text><rect class="meter-bg" x="740" y="138" width="120" height="12" rx="6" /><rect class="reduction" x={860 - reduction * 120} y="138" width={reduction * 120} height="12" rx="6" /><text class="readout" x="740" y="174">{master.limiter_reduction_db < 0.1 ? "—" : `-${master.limiter_reduction_db.toFixed(1)} dB`}</text>{#if split}<text class:bad={!split.healthy} class="muted" x="740" y="194">{split.drift_ppm >= 0 ? "+" : ""}{split.drift_ppm.toFixed(0)} ppm</text>{/if}</g>
 </svg>
 
 <style>
-  .master-mixer { width: 100%; min-height: 12rem; touch-action: none; }
+  /*
+    Capped at its own viewBox width. Stretched wider than 900 the whole thing
+    scales up with it -- a 16 px label becomes 22 px and a 17 px thumb becomes
+    23 -- so on a wide window the master strip grew louder than the decks it
+    serves. Below 900 it still scales down, which is what the viewBox is for.
+  */
+  .master-mixer { width: 100%; max-width: 900px; min-height: 12rem; touch-action: none; }
   .shell { fill: var(--panel); stroke: var(--border); stroke-width: 2; }
   text { fill: var(--text); font: 600 16px system-ui, sans-serif; pointer-events: none; }
-  .title, .readout, .ends, .muted { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
-  .title, .muted, .ends { fill: var(--text-dim); } .readout { fill: var(--accent-2); }
+  .readout, .ends, .muted { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
+  .muted, .ends { fill: var(--text-dim); } .readout { fill: var(--accent-2); }
   .track, .meter-bg { fill: var(--panel-raised); stroke: var(--border); } .split { fill: var(--border-strong); }
   .fill { fill: var(--accent); } .fill.teal { fill: var(--accent-2); }
   .thumb { fill: var(--panel-hover); stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 5px 10px rgb(0 0 0 / 0.35)); } .thumb.teal { stroke: var(--accent-2); }
