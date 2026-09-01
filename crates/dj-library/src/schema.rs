@@ -83,6 +83,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 7,
         sql: MIGRATION_7,
     },
+    Migration {
+        version: 8,
+        sql: MIGRATION_8,
+    },
 ];
 
 /// The initial schema.
@@ -471,6 +475,57 @@ CREATE TABLE notes (
 );
 
 CREATE INDEX notes_session ON notes(session_id, at);
+"#;
+
+/// Words, so a half-remembered line can find a record.
+///
+/// # Why the words are stored twice
+///
+/// Once as they are, for reading, and once folded — lowercase, unaccented,
+/// punctuation gone, whitespace collapsed — for searching. A DJ types "no
+/// puedo dormir" and the record says "Y no puedo dormir," with a comma and a
+/// capital; a search that does not fold finds nothing and looks broken. The
+/// folded copy is roughly the same size as the original, which is a few
+/// kilobytes per track, and it is the difference between the feature working
+/// and not.
+///
+/// # Why a miss is a row
+///
+/// `found` is false for a record the database has no words for. Without it,
+/// every sweep of the collection asks about the same instrumentals and the
+/// same obscure edits again, forever. A row that says "asked, nothing there"
+/// costs a few bytes and saves a request a night.
+///
+/// # Why there is no full-text index
+///
+/// SQLite's FTS5 would need a feature flag on `rusqlite` and a second copy of
+/// the text in its own tables. A `LIKE` over a folded column reads a few
+/// megabytes for a large personal collection, which is milliseconds, and the
+/// question being asked — "which of my records contains this phrase" — is one
+/// a scan answers exactly. If a collection ever gets large enough for that to
+/// hurt, the index goes in then, against a measurement.
+const MIGRATION_8: &str = r#"
+CREATE TABLE lyrics (
+    track_id   TEXT    PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    -- The words as the database gave them. Empty when `found` is 0.
+    plain      TEXT    NOT NULL,
+    -- The same words, folded for searching. See above.
+    folded     TEXT    NOT NULL,
+    -- With timestamps, when the database had them. NULL otherwise.
+    synced     TEXT,
+    -- 1 when the database answered with words, 0 when it answered "nothing
+    -- here". Both are answers; only a failure to reach it leaves no row.
+    found      INTEGER NOT NULL DEFAULT 0,
+    -- 1 when the database says this recording has no words at all.
+    instrumental INTEGER NOT NULL DEFAULT 0,
+    -- Where they came from, so a later source can be told apart.
+    source     TEXT    NOT NULL,
+    -- Unix seconds, so a sweep can re-ask about old misses without re-asking
+    -- about recent ones.
+    fetched_at INTEGER NOT NULL
+);
+
+CREATE INDEX lyrics_found ON lyrics(found);
 "#;
 
 #[cfg(test)]

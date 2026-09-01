@@ -29,6 +29,7 @@ pub mod catalog;
 pub mod free;
 pub mod http;
 pub mod local;
+pub mod lyrics;
 pub mod partner;
 pub mod provider;
 pub mod registry;
@@ -38,6 +39,7 @@ pub mod youtube;
 pub use catalog::{SourceInfo, catalog, info};
 pub use http::{HttpClient, ReqwestClient};
 pub use local::{LocalLibrary, LocalTrack};
+pub use lyrics::{Lyrics, LyricsError, LyricsSource};
 pub use provider::{
     AudioAccess, Capabilities, Playable, ProviderId, ProviderStatus, Query, SourceError,
     SourceProvider, TrackRef,
