@@ -542,6 +542,96 @@
     />
   </div>
 
+  <!--
+    The rest of the transport.
+
+    Slip, reverse, censor, brake and backspin are all one idea — something
+    diverting the audible playhead while the track carries on underneath — and
+    they are transport, not channel: none of them touches tone, colour, level
+    or tempo. They spent their life in the tempo block, wrapping it onto a
+    second and third row, and they were *nested inside the keylock condition*
+    there, so a layout that hid keylock silently took slip, reverse, censor,
+    brake and backspin with it. `showSlip` and `showKeylock` are independent
+    layout flags and now behave like it.
+
+    Its own row rather than more columns in the one above: CUE and PLAY are
+    the two biggest targets on the deck and a DJ aims at them without looking.
+    Nine controls sharing four columns' worth of width would have shrunk those
+    two to pay for five that are pressed a hundredth as often.
+  -->
+  {#if showSlip}
+    <div class="perform" role="group" aria-label="Playhead">
+      <IconButton
+        title={deck.slip
+          ? "Slip on — loop, reverse or censor, and the track carries on underneath"
+          : "Slip off — the playhead stays wherever a loop or a censor leaves it"}
+        active={deck.slip}
+        disabled={!enabled}
+        onClick={() => send(`deck ${deck.number} slip_toggle`)}
+        aria-label="Slip"
+      >
+        SLIP
+      </IconButton>
+      <IconButton
+        icon="fa-solid fa-backward"
+        title="Play backwards"
+        active={deck.reversed}
+        disabled={!enabled || !deck.loaded}
+        onClick={() => send(`deck ${deck.number} reverse_toggle`)}
+        aria-label="Reverse"
+      />
+      <!--
+        Held rather than clicked, and on pointer events rather than mouse ones
+        so it works from a touchscreen. `pointerleave` releases too: dragging
+        off the pad mid-censor must not leave the deck stuck in reverse.
+      -->
+      <IconButton
+        icon="fa-solid fa-hand-paper"
+        title="Hold to reverse over a word, and land back on the beat"
+        disabled={!enabled || !deck.loaded}
+        onpointerdown={() => send(`deck ${deck.number} censor_on`)}
+        onpointerup={() => send(`deck ${deck.number} censor_off`)}
+        onpointerleave={() => send(`deck ${deck.number} censor_off`)}
+        aria-label="Censor"
+      />
+
+      <!--
+        Brake and backspin. Held rather than clicked, and momentary in an
+        unusual way: the press *starts* a coast that runs on its own, and the
+        release puts the motor back on wherever the record got to. Letting one
+        run to the end leaves the deck stopped, which is the point.
+
+        Only with a grid, because a coast is measured in beats — the engine
+        refuses one it cannot measure, and a control that silently does nothing
+        reads as broken.
+      -->
+      {#if analysis?.bpm != null}
+        <IconButton
+          title="Cut the motor and coast to a stop over two beats. Let go to put it back on."
+          active={deck.spinning}
+          disabled={!enabled || !deck.playing}
+          onpointerdown={() => send(`deck ${deck.number} brake 2`)}
+          onpointerup={() => send(`deck ${deck.number} brake_off`)}
+          onpointercancel={() => send(`deck ${deck.number} brake_off`)}
+          aria-label="Brake"
+        >
+          BRAKE
+        </IconButton>
+        <IconButton
+          title="Throw the record backwards and let friction take it down over a beat"
+          active={deck.spinning}
+          disabled={!enabled || !deck.playing}
+          onpointerdown={() => send(`deck ${deck.number} backspin 1`)}
+          onpointerup={() => send(`deck ${deck.number} backspin_off`)}
+          onpointercancel={() => send(`deck ${deck.number} backspin_off`)}
+          aria-label="Spin"
+        >
+          SPIN
+        </IconButton>
+      {/if}
+    </div>
+  {/if}
+
 
 
   <!--
@@ -558,6 +648,15 @@
 
     Ordered as a hardware channel is, left to right: tone, then colour, then
     level, then tempo.
+
+    And on **one line**, which took a second pass to actually achieve. Pitch
+    was nominally in the strip and in practice was not: it lived in a grid of
+    its own carrying eight controls in three columns, so it wrapped the strip
+    onto a second row and then a third. Measured again at 1280x800 with the
+    grid flattened and the playhead controls moved up to the transport where
+    they belong, the deck goes from 695 px to 539 px -- and the crossfader's
+    thumb from 117 px below the fold to 758 px down a screen 800 px tall.
+    Reachable at djmanzo's own default window size, for the first time.
   -->
   <div class="channel">
   <!--
@@ -651,12 +750,22 @@
   </label>
 
   <!--
-    Pitch and keylock belong together: keylock only means anything once the
-    fader has moved, and the two are always reached for in the same breath.
-    Double-click the fader to snap back to zero — hitting exactly 0.0% with a
-    mouse is not something anyone can do mid-mix.
+    Tempo, and the two things that qualify it.
+
+    Keylock only means anything once the fader has moved, and the semitone
+    shift is the same idea a step further, so all three are one block. Double-
+    click the fader to snap back to zero — hitting exactly 0.0% with a mouse is
+    not something anyone can do mid-mix.
+
+    A flat run of children rather than a grid. It used to be
+    `grid-template-columns: 1fr auto auto` holding eight controls, which is
+    three implicit rows: the pitch fader stood 140 px tall in the first one and
+    everything else stacked beside and below it, so the tempo block alone was
+    about 185 px and forced the whole strip onto a second line. Measured at
+    djmanzo's own default window, that was most of what put the crossfader
+    below the fold.
   -->
-  <div class="pitch-row">
+  <div class="tempo">
     <label class="control fader-wrap">
       <SvgFader
         value={deck.pitch}
@@ -679,111 +788,37 @@
       one that wants semitone transposition either.
     -->
     {#if showKeylock}
-      <div class="keyshift">
-      <IconButton
-        icon="fa-solid fa-minus"
-        title="Down a semitone"
-        disabled={!enabled}
-        onClick={() => send(`deck ${deck.number} key ${deck.key_shift - 1}`)}
-        aria-label="Down a semitone"
-      />
-      <span class="mono" class:shifted={deck.key_shift !== 0}>
-        {deck.key_shift > 0 ? `+${deck.key_shift}` : deck.key_shift}
-      </span>
-      <IconButton
-        icon="fa-solid fa-plus"
-        title="Up a semitone"
-        disabled={!enabled}
-        onClick={() => send(`deck ${deck.number} key ${deck.key_shift + 1}`)}
-        aria-label="Up a semitone"
-      />
-    </div>
-    <!--
-      Slip, reverse and censor. One row because they are one idea: a shadow
-      playhead that keeps running at the natural rate while something diverts
-      the audible one. Censor is momentary — held, not toggled — because a
-      toggled censor is just reverse with extra steps.
-    -->
-    {#if showSlip}
-      <IconButton
-        title={deck.slip
-          ? "Slip on — loop, reverse or censor, and the track carries on underneath"
-          : "Slip off — the playhead stays wherever a loop or a censor leaves it"}
-        active={deck.slip}
-        disabled={!enabled}
-        onClick={() => send(`deck ${deck.number} slip_toggle`)}
-        aria-label="Slip"
-      >
-        SLIP
-      </IconButton>
-      <IconButton
-        icon="fa-solid fa-backward"
-        title="Play backwards"
-        active={deck.reversed}
-        disabled={!enabled || !deck.loaded}
-        onClick={() => send(`deck ${deck.number} reverse_toggle`)}
-        aria-label="Reverse"
-      />
-      <!--
-        Held rather than clicked, and on pointer events rather than mouse ones
-        so it works from a touchscreen. `pointerleave` releases too: dragging
-        off the pad mid-censor must not leave the deck stuck in reverse.
-      -->
-      <IconButton
-        icon="fa-solid fa-hand-paper"
-        title="Hold to reverse over a word, and land back on the beat"
-        disabled={!enabled || !deck.loaded}
-        onpointerdown={() => send(`deck ${deck.number} censor_on`)}
-        onpointerup={() => send(`deck ${deck.number} censor_off`)}
-        onpointerleave={() => send(`deck ${deck.number} censor_off`)}
-        aria-label="Censor"
-      />
-
-      <!--
-        Brake and backspin. Held rather than clicked, and momentary in an
-        unusual way: the press *starts* a coast that runs on its own, and the
-        release puts the motor back on wherever the record got to. Letting one
-        run to the end leaves the deck stopped, which is the point.
-
-        Only with a grid, because a coast is measured in beats — the engine
-        refuses one it cannot measure, and a control that silently does nothing
-        reads as broken.
-      -->
-      {#if analysis?.bpm != null}
+      <div class="tempo-extras">
+        <div class="keyshift">
+          <IconButton
+            icon="fa-solid fa-minus"
+            title="Down a semitone"
+            disabled={!enabled}
+            onClick={() => send(`deck ${deck.number} key ${deck.key_shift - 1}`)}
+            aria-label="Down a semitone"
+          />
+          <span class="mono" class:shifted={deck.key_shift !== 0}>
+            {deck.key_shift > 0 ? `+${deck.key_shift}` : deck.key_shift}
+          </span>
+          <IconButton
+            icon="fa-solid fa-plus"
+            title="Up a semitone"
+            disabled={!enabled}
+            onClick={() => send(`deck ${deck.number} key ${deck.key_shift + 1}`)}
+            aria-label="Up a semitone"
+          />
+        </div>
         <IconButton
-          title="Cut the motor and coast to a stop over two beats. Let go to put it back on."
-          active={deck.spinning}
-          disabled={!enabled || !deck.playing}
-          onpointerdown={() => send(`deck ${deck.number} brake 2`)}
-          onpointerup={() => send(`deck ${deck.number} brake_off`)}
-          onpointercancel={() => send(`deck ${deck.number} brake_off`)}
-          aria-label="Brake"
-        >
-          BRAKE
-        </IconButton>
-        <IconButton
-          title="Throw the record backwards and let friction take it down over a beat"
-          active={deck.spinning}
-          disabled={!enabled || !deck.playing}
-          onpointerdown={() => send(`deck ${deck.number} backspin 1`)}
-          onpointerup={() => send(`deck ${deck.number} backspin_off`)}
-          onpointercancel={() => send(`deck ${deck.number} backspin_off`)}
-          aria-label="Spin"
-        >
-          SPIN
-        </IconButton>
-      {/if}
-    {/if}
-    <IconButton
-      icon="fa-solid fa-lock"
-      title={deck.keylock
-        ? `Keylock on — tempo changes without changing key (adds ${deck.keylock_latency_ms.toFixed(0)} ms, compensated)`
-        : "Keylock off — the pitch fader moves tempo and key together"}
-      active={deck.keylock}
-      disabled={!enabled}
-      onClick={() => send(`deck ${deck.number} keylock_toggle`)}
-      aria-label="Keylock"
-    />
+          icon="fa-solid fa-lock"
+          title={deck.keylock
+            ? `Keylock on — tempo changes without changing key (adds ${deck.keylock_latency_ms.toFixed(0)} ms, compensated)`
+            : "Keylock off — the pitch fader moves tempo and key together"}
+          active={deck.keylock}
+          disabled={!enabled}
+          onClick={() => send(`deck ${deck.number} keylock_toggle`)}
+          aria-label="Keylock"
+        />
+      </div>
     {/if}
   </div>
   </div>
@@ -1164,11 +1199,43 @@
     font-weight: 600;
   }
 
-  .pitch-row {
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    align-items: end;
+  /*
+    Flex rather than the grid this used to be. A grid gives every child a cell,
+    so eight controls in three columns became three rows and the block stood
+    185 px tall; flex lets the three that are left sit on one line at the
+    height of the tallest, which is the fader.
+  */
+  .tempo {
+    display: flex;
+    align-items: flex-end;
     gap: 0.5rem;
+  }
+
+  /*
+    Keylock and the semitone shift, as one parcel.
+
+    Grouped so that when the strip runs out of width they wrap *together*,
+    onto a line of their own about 44 px tall, instead of one of them going
+    over alone and leaving the other stranded beside the fader.
+  */
+  .tempo-extras {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  /*
+    The playhead row. Small, uniform and dense, under the four big pads: these
+    are held rather than aimed at, and a censor is a gesture rather than a
+    target.
+  */
+  .perform {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-top: 0.4rem;
   }
   /* Momentary, so it must not look like something that stays pressed. */
   .cue {
