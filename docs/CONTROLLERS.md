@@ -334,6 +334,32 @@ otherwise. If the Controllers panel lists your device but refuses to open it,
 that is why, and it is fixed with a rule rather than by running djmanzo as
 root.
 
+### One thread, on macOS especially
+
+Everything HID happens on a single thread that djmanzo starts the first time a
+controller is asked about and never stops. This is not tidiness. `hid_init()`
+on macOS ends with
+
+```
+IOHIDManagerScheduleWithRunLoop(hid_mgr, CFRunLoopGetCurrent(), ...)
+```
+
+so the IOKit manager belongs to whichever thread asked first; `hidapi` never
+de-initialises, so that thread's CoreFoundation run loop has to outlive every
+use of HID; and each later enumeration runs the run loop of whichever thread
+happens to be asking. The library assumes one thread does all of it, and
+punishes a program that disagrees at process exit rather than at the call —
+CoreFoundation finalises a run loop with a live source on it and traps, long
+after and far away from the code that asked about a controller.
+
+djmanzo hit this as a `SIGTRAP` on CI's macOS runner, in a test binary where
+every test had already reported `ok`. The same trap was waiting for the
+application. So: `dj_hid::usb::on_hid` is the only door, and anything new that
+touches `hidapi` goes through it.
+
+Linux is a `hidraw` file descriptor with no run loop to lose, so none of this
+is visible there — which is exactly why it took a macOS runner to find it.
+
 ## Lua, where a table cannot describe a control
 
 Every mapping here is a table: this control does that action. That covers
