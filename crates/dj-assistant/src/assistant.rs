@@ -165,6 +165,33 @@ impl Assistant {
         &self.model
     }
 
+    /// Guess which record a description might be.
+    ///
+    /// Never touches the local matcher: the local matcher recognises commands,
+    /// and "that bachata with the piano" is not one. Always a model call, so
+    /// it is always checked against the budget first.
+    ///
+    /// # Errors
+    /// When no budget is left, or the provider fails.
+    pub async fn guess_song(&self, description: &str) -> Result<Vec<Guess>, AssistantError> {
+        if !self.budget.allows_another() {
+            return Err(AssistantError::BudgetExhausted {
+                cap: self.budget.cap_usd(),
+                spent: self.budget.spent_usd(),
+            });
+        }
+
+        let turns = [Turn::system(guess_prompt()), Turn::user(description)];
+        let completion = self.provider.complete(&self.model, &turns).await?;
+        let cost = self.pricing.map(|(input, output)| {
+            (f64::from(completion.usage.prompt_tokens) * input
+                + f64::from(completion.usage.completion_tokens) * output)
+                / 1_000_000.0
+        });
+        self.budget.record(cost);
+        Ok(parse_guesses(&completion.text))
+    }
+
     /// Understand `text`, and return what should happen.
     ///
     /// Tries the local matcher first. Only reaches the model when that fails,
@@ -220,6 +247,115 @@ impl Assistant {
             cost_usd: cost,
         })
     }
+}
+
+// -- guessing a record from a description ----------------------------------
+//
+// A different question from the one the rest of this module answers. Everything
+// above turns a sentence into *actions*, and is bounded by ADR-0005 because an
+// action touches the decks. This turns a sentence into *names to look up*, and
+// nothing it returns can do anything on its own -- it is a search box that the
+// DJ then reads. So the validation here is about shape rather than about
+// safety: what comes back has to be rows, or it is thrown away.
+
+/// One record the assistant thinks the description might be.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Guess {
+    pub artist: String,
+    pub title: String,
+    /// Why it thinks so, in a few words. Shown, because a guess without a
+    /// reason is indistinguishable from a hallucination and the DJ is the one
+    /// who can tell them apart.
+    pub why: Option<String>,
+}
+
+/// The most guesses that will be taken from one answer.
+///
+/// Eight. A DJ scanning a list of maybes in a booth reads the first few; a
+/// longer list is a model that did not narrow anything down, presented as
+/// though it had.
+pub const MOST_GUESSES: usize = 8;
+
+/// What the assistant is told when it is asked to place a record.
+///
+/// Strict about the format for a practical reason rather than a stylistic one:
+/// a model that answers in prose produces something that cannot be looked up,
+/// and one line per guess with a fixed separator is the shape that survives
+/// every model djmanzo can be pointed at.
+#[must_use]
+pub fn guess_prompt() -> String {
+    "You are helping a DJ find a record they half remember.\n\
+     Answer with nothing but rows, one per line, at most eight:\n\
+     ARTIST | TITLE | a few words on why\n\
+     No numbering, no preamble, no closing remark, no markdown.\n\
+     If nothing fits, answer with the single word NOTHING.\n\
+     Prefer records that actually exist over plausible-sounding inventions; \
+     a short list you are sure of is worth more than a long one you are not."
+        .to_owned()
+}
+
+/// Read rows out of whatever the model said.
+///
+/// Deliberately forgiving about surroundings and strict about rows: a model
+/// that adds "Here are some ideas:" costs nothing, because that line has no
+/// separator and is dropped. A model that answers entirely in prose produces
+/// no rows, which is the honest outcome -- better an empty list than a
+/// sentence dressed up as a result.
+#[must_use]
+pub fn parse_guesses(text: &str) -> Vec<Guess> {
+    text.lines()
+        .filter_map(|line| {
+            let mut parts = line.split('|').map(str::trim);
+            let artist = tidy(parts.next()?);
+            let title = tidy(parts.next()?);
+            if artist.is_empty() || title.is_empty() {
+                return None;
+            }
+            let why = parts.next().map(tidy).filter(|w| !w.is_empty());
+            Some(Guess { artist, title, why })
+        })
+        .take(MOST_GUESSES)
+        .collect()
+}
+
+/// Strip the decoration a model adds when it half-follows a format.
+///
+/// Applied until nothing changes, because the decorations nest: `1. **Name**`
+/// needs the numbering off before the emphasis is even at the start of the
+/// string, and one pass leaves `**Name`.
+///
+/// A bullet is only stripped when a separator follows it, so that `-M-` and
+/// `3 Doors Down` survive being artists.
+fn tidy(field: &str) -> String {
+    let mut text = field.trim();
+    loop {
+        let before = text;
+        text = text.trim();
+        text = strip_bullet(text);
+        text = text.trim_matches(|c| c == '*' || c == '`' || c == '"');
+        if text == before {
+            break;
+        }
+    }
+    text.to_owned()
+}
+
+/// Take a list marker off the front, if that is what it is.
+fn strip_bullet(text: &str) -> &str {
+    if let Some(rest) = text.strip_prefix("- ").or_else(|| text.strip_prefix("* ")) {
+        return rest;
+    }
+    let digits = text.trim_start_matches(|c: char| c.is_ascii_digit());
+    // Only a number *followed by a marker* is a list number. Bare digits are
+    // the beginning of a name -- "50 Cent", "2 Live Crew".
+    if digits.len() < text.len()
+        && let Some(rest) = digits
+            .strip_prefix(". ")
+            .or_else(|| digits.strip_prefix(") "))
+    {
+        return rest;
+    }
+    text
 }
 
 #[cfg(test)]
@@ -285,6 +421,119 @@ mod tests {
     }
 
     // -- the rule ----------------------------------------------------------
+
+    // -- guessing a record ------------------------------------------------
+
+    /// **Rows come back as rows.**
+    #[test]
+    fn a_well_formed_answer_becomes_guesses() {
+        let guesses = parse_guesses(
+            "Aventura | Obsesión | bachata with a piano hook\n\
+             Frankie Ruiz | Tú Con Él | salsa, similar era",
+        );
+        assert_eq!(guesses.len(), 2);
+        assert_eq!(guesses[0].artist, "Aventura");
+        assert_eq!(guesses[0].title, "Obsesión");
+        assert_eq!(guesses[0].why.as_deref(), Some("bachata with a piano hook"));
+        assert_eq!(guesses[1].artist, "Frankie Ruiz");
+    }
+
+    /// **A model that adds prose around the rows costs nothing.**
+    ///
+    /// They all do it. A line with no separator is not a row, so the preamble
+    /// and the sign-off fall out without a special case for either.
+    #[test]
+    fn chatter_around_the_rows_is_dropped() {
+        let guesses = parse_guesses(
+            "Sure! Here are some ideas:\n\n\
+             1. **Aventura** | Obsesión | the piano one\n\
+             Let me know if you want more.",
+        );
+        assert_eq!(guesses.len(), 1);
+        assert_eq!(guesses[0].artist, "Aventura", "decoration survived");
+        assert_eq!(guesses[0].title, "Obsesión");
+    }
+
+    /// **A model that answers entirely in prose returns nothing.**
+    ///
+    /// Better an empty list than a sentence dressed up as a result: the DJ
+    /// then knows the assistant had no idea, rather than reading a paragraph
+    /// as though it were a shortlist.
+    #[test]
+    fn prose_is_not_a_shortlist() {
+        assert!(parse_guesses("I am not sure what that could be.").is_empty());
+        assert!(parse_guesses("NOTHING").is_empty());
+        assert!(parse_guesses("").is_empty());
+    }
+
+    /// **A name that starts with a number is a name.**
+    ///
+    /// "50 Cent" and "2 Live Crew" are artists, and a numbering-stripper that
+    /// does not check for the dot after the number silently renames them.
+    #[test]
+    fn a_number_in_a_name_survives() {
+        let guesses = parse_guesses("50 Cent | In Da Club | the obvious one");
+        assert_eq!(guesses[0].artist, "50 Cent");
+        let bullets = parse_guesses("2) 2 Live Crew | Me So Horny | ");
+        assert_eq!(bullets[0].artist, "2 Live Crew");
+    }
+
+    /// **A row missing half of itself is not a row.**
+    #[test]
+    fn half_a_row_is_refused() {
+        assert!(parse_guesses("Aventura |").is_empty());
+        assert!(parse_guesses("| Obsesión").is_empty());
+        assert!(parse_guesses(" | | why").is_empty());
+    }
+
+    /// **A reason is optional, and an empty one is not shown.**
+    #[test]
+    fn a_guess_without_a_reason_is_still_a_guess() {
+        let guesses = parse_guesses("Aventura | Obsesión\nRomeo | Propuesta | ");
+        assert_eq!(guesses.len(), 2);
+        assert_eq!(guesses[0].why, None);
+        assert_eq!(guesses[1].why, None);
+    }
+
+    /// **A model that ignores the limit is cut off.**
+    #[test]
+    fn a_long_answer_is_trimmed_to_something_readable() {
+        let many = (0..40)
+            .map(|n| format!("Artist {n} | Title {n} | because"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(parse_guesses(&many).len(), MOST_GUESSES);
+    }
+
+    /// **Asking costs budget, and an exhausted budget refuses before calling.**
+    #[tokio::test]
+    async fn guessing_is_a_model_call_and_is_capped() {
+        let provider = Arc::new(Scripted::new("Aventura | Obsesión | the piano one"));
+        let budget = Arc::new(Budget::new(0.0));
+        let assistant = Assistant::new(
+            Arc::clone(&provider) as Arc<dyn LlmProvider>,
+            "scripted",
+            Arc::clone(&budget),
+        );
+        assert!(matches!(
+            assistant.guess_song("that bachata").await,
+            Err(AssistantError::BudgetExhausted { .. })
+        ));
+        assert_eq!(provider.calls(), 0, "it called the model anyway");
+    }
+
+    /// **A description reaches the model and comes back as rows.**
+    #[tokio::test]
+    async fn a_description_becomes_names_to_look_up() {
+        let (assistant, provider) = assistant("Aventura | Obsesión | the piano one");
+        let guesses = assistant
+            .guess_song("that bachata with the piano, sounds like Aventura")
+            .await
+            .expect("guesses");
+        assert_eq!(provider.calls(), 1);
+        assert_eq!(guesses.len(), 1);
+        assert_eq!(guesses[0].title, "Obsesión");
+    }
 
     /// **The test ADR-0005 exists for.** Whatever a model says, only valid
     /// action text gets out.

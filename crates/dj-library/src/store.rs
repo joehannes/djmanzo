@@ -1236,6 +1236,89 @@ impl Library {
     /// larger query for a smaller effect.
     const LEARN_FROM_DAYS: i64 = 730;
 
+    // -- words -------------------------------------------------------------
+    //
+    // See [`crate::lyrics`] for why the words are stored twice and why a miss
+    // is a row.
+
+    /// Records whose words contain `phrase`, most likely first.
+    ///
+    /// Each hit carries the whole track, because the answer to "which record
+    /// is this line from" is a record the DJ then wants to load, sort and set
+    /// aside like any other.
+    ///
+    /// # Errors
+    /// When the query fails.
+    pub fn tracks_with_words(
+        &self,
+        phrase: &str,
+    ) -> Result<Vec<(LibraryTrack, crate::lyrics::Hit)>> {
+        self.with(|conn| {
+            let hits = crate::lyrics::search(conn, phrase)?;
+            let mut found = Vec::with_capacity(hits.len());
+            for hit in hits {
+                // A hit whose track has since left the collection is skipped
+                // rather than reported: the row is stale, not the search.
+                if let Some(track) = one_track(conn, hit.track)? {
+                    found.push((track, hit));
+                }
+            }
+            Ok(found)
+        })
+    }
+
+    /// Remember what the lyrics database said about one record.
+    ///
+    /// # Errors
+    /// When the row cannot be written.
+    pub fn remember_words(
+        &self,
+        track: TrackId,
+        plain: &str,
+        synced: Option<&str>,
+        instrumental: bool,
+        source: &str,
+        at: i64,
+    ) -> Result<()> {
+        self.with(|conn| {
+            crate::lyrics::remember(conn, &track, plain, synced, instrumental, source, at)?;
+            Ok(())
+        })
+    }
+
+    /// Records djmanzo has never asked the lyrics database about.
+    ///
+    /// # Errors
+    /// When the query fails.
+    pub fn without_words(&self, most: usize) -> Result<Vec<LibraryTrack>> {
+        self.with(|conn| {
+            let ids = crate::lyrics::without_words(conn, most)?;
+            let mut tracks = Vec::with_capacity(ids.len());
+            for id in ids {
+                if let Some(track) = one_track(conn, id)? {
+                    tracks.push(track);
+                }
+            }
+            Ok(tracks)
+        })
+    }
+
+    /// How many records have words, have been asked about, and exist.
+    ///
+    /// # Errors
+    /// When the query fails.
+    pub fn words_progress(&self) -> Result<(usize, usize, usize)> {
+        self.with(|conn| Ok(crate::lyrics::progress(conn)?))
+    }
+
+    /// The stored words for one record, if any.
+    ///
+    /// # Errors
+    /// When the query fails.
+    pub fn words_for(&self, track: TrackId) -> Result<Option<crate::lyrics::Stored>> {
+        self.with(|conn| Ok(crate::lyrics::stored(conn, &track)?))
+    }
+
     /// What the history says about which families this DJ reaches for.
     ///
     /// Both halves in one place because the answer is a comparison: plays
@@ -1618,6 +1701,21 @@ const TRACK_COLUMNS_QUALIFIED: &str = "tracks.id, tracks.path, tracks.title, tra
 /// could not be read at all — and the inner is ours: the row was read and does
 /// not describe a track. Collapsing them would mean reporting a corrupt hex id
 /// as a database error, which sends whoever is debugging it to the wrong place.
+/// One track by id, inside a borrow that already holds the connection.
+///
+/// The same query [`Library::track`] runs, without taking the lock a second
+/// time -- which the callers that walk a list of ids would otherwise do once
+/// per row, inside a lock they are already holding.
+fn one_track(conn: &Connection, id: TrackId) -> Result<Option<LibraryTrack>> {
+    conn.query_row(
+        &format!("SELECT {TRACK_COLUMNS} FROM tracks WHERE id = ?1"),
+        [id.to_hex()],
+        read_track,
+    )
+    .optional()?
+    .transpose()
+}
+
 fn read_track(row: &Row<'_>) -> rusqlite::Result<Result<LibraryTrack>> {
     read_track_from(row, 0)
 }

@@ -47,6 +47,15 @@ pub struct ProviderState {
 pub struct SourceRegistry {
     local: Arc<LocalLibrary>,
     providers: Vec<Arc<dyn SourceProvider>>,
+    /// The client every provider here shares, when there is one.
+    ///
+    /// Kept so that anything else in the application needing to make a request
+    /// — the lyrics database, which is not a source of *audio* and so is not a
+    /// provider — uses the same connection pool and the same TLS setup rather
+    /// than building a second one. `None` on a machine where the client could
+    /// not be constructed, which is the same condition that leaves this
+    /// registry local-only.
+    http: Option<Arc<dyn HttpClient>>,
 }
 
 impl SourceRegistry {
@@ -93,7 +102,17 @@ impl SourceRegistry {
         for partner in PartnerProvider::all(&secrets) {
             providers.push(Arc::new(partner));
         }
-        Self { local, providers }
+        Self {
+            local,
+            providers,
+            http: Some(http),
+        }
+    }
+
+    /// The shared HTTP client, when this registry has one.
+    #[must_use]
+    pub fn http(&self) -> Option<Arc<dyn HttpClient>> {
+        self.http.clone()
     }
 
     #[must_use]
@@ -102,6 +121,7 @@ impl SourceRegistry {
         Self {
             providers: vec![Arc::clone(&local) as Arc<dyn SourceProvider>],
             local,
+            http: None,
         }
     }
 

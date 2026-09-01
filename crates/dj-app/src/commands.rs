@@ -5809,3 +5809,304 @@ pub fn room_forget(state: State<'_, AppState>) -> Result<(), String> {
     *room = dj_assistant::room::Room::new();
     Ok(())
 }
+
+// -- finding a record from what you remember --------------------------------
+//
+// See `crate::memory` for why the hum narrows rather than identifies, and
+// `dj_library::lyrics` for why the words are folded on both sides.
+
+/// One record whose words contain the phrase.
+#[derive(Debug, Clone, Serialize)]
+pub struct WordHitDto {
+    pub track: LibraryTrackDto,
+    /// The line it was found in, as the record has it.
+    pub line: String,
+    pub line_number: usize,
+}
+
+/// Records whose words contain `phrase`.
+#[tauri::command]
+pub fn words_search(state: State<'_, AppState>, phrase: String) -> Result<Vec<WordHitDto>, String> {
+    let found = library(&state)?
+        .tracks_with_words(&phrase)
+        .map_err(|e| e.to_string())?;
+    Ok(found
+        .into_iter()
+        .map(|(track, hit)| WordHitDto {
+            track: LibraryTrackDto::from(track),
+            line: hit.line,
+            line_number: hit.line_number,
+        })
+        .collect())
+}
+
+/// How much of the collection has been asked about.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct WordsProgressDto {
+    /// Records with words stored.
+    pub with_words: usize,
+    /// Records asked about at all, including the ones with nothing to find.
+    pub asked: usize,
+    pub tracks: usize,
+}
+
+#[tauri::command]
+pub fn words_progress(state: State<'_, AppState>) -> Result<WordsProgressDto, String> {
+    let (with_words, asked, tracks) = library(&state)?
+        .words_progress()
+        .map_err(|e| e.to_string())?;
+    Ok(WordsProgressDto {
+        with_words,
+        asked,
+        tracks,
+    })
+}
+
+/// How many records one sweep asks about.
+///
+/// Twenty-five. A sweep is a series of bounded pieces of work rather than one
+/// long one, so the interface can show it moving, the DJ can stop it between
+/// batches, and a collection of ten thousand does not become a single request
+/// that either finishes or fails.
+const SWEEP: usize = 25;
+
+/// What one sweep did.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct SweepDto {
+    pub asked: usize,
+    pub found: usize,
+    /// Records still never asked about, after this batch.
+    pub left: usize,
+    /// True when the network refused, so the interface stops rather than
+    /// grinding through the whole collection recording failures.
+    pub gave_up: bool,
+}
+
+/// Fetch words for records that have none, a batch at a time.
+///
+/// # Errors
+/// When the library cannot be read.
+#[tauri::command]
+pub async fn words_fetch(state: State<'_, AppState>) -> Result<SweepDto, String> {
+    use dj_sources::lyrics::{LyricsError, LyricsSource};
+
+    let library = library(&state)?;
+    let todo = library.without_words(SWEEP).map_err(|e| e.to_string())?;
+    let http = state
+        .sources()
+        .http()
+        .ok_or_else(|| "this machine has no HTTP client, so nothing can be fetched".to_owned())?;
+    let source = LyricsSource::new(http);
+    let now = crate::library::now_seconds();
+
+    let mut asked = 0;
+    let mut found = 0;
+    let mut gave_up = false;
+
+    for track in todo {
+        let Some(artist) = track
+            .tags
+            .artist
+            .as_deref()
+            .filter(|a| !a.trim().is_empty())
+        else {
+            // Nothing to look up with. Recorded as asked so the sweep moves
+            // past it -- an untagged file is a job for the tag editor, not
+            // something to retry against a database keyed by artist.
+            record_words(&library, &track, "", None, false, "untagged", now);
+            asked += 1;
+            continue;
+        };
+        let Some(title) = track.tags.title.as_deref().filter(|t| !t.trim().is_empty()) else {
+            record_words(&library, &track, "", None, false, "untagged", now);
+            asked += 1;
+            continue;
+        };
+
+        let seconds = seconds_of(&track);
+        match source
+            .words_for(artist, title, track.tags.album.as_deref(), seconds)
+            .await
+        {
+            Ok(words) => {
+                record_words(
+                    &library,
+                    &track,
+                    &words.plain,
+                    words.synced.as_deref(),
+                    words.instrumental,
+                    "lrclib",
+                    now,
+                );
+                asked += 1;
+                if !words.is_empty() {
+                    found += 1;
+                }
+            }
+            // A miss is an answer worth keeping, so the next sweep moves on.
+            Err(LyricsError::NotFound) => {
+                record_words(&library, &track, "", None, false, "lrclib", now);
+                asked += 1;
+            }
+            // A failure is not. Nothing is written, and the sweep stops:
+            // grinding through ten thousand records against a dead network
+            // just fills the log.
+            Err(why) => {
+                tracing::warn!(%why, "the lyrics database could not be reached");
+                gave_up = true;
+                break;
+            }
+        }
+    }
+
+    let left = library
+        .without_words(usize::MAX)
+        .map(|rest| rest.len())
+        .unwrap_or(0);
+    Ok(SweepDto {
+        asked,
+        found,
+        left,
+        gave_up,
+    })
+}
+
+fn record_words(
+    library: &Arc<dj_library::Library>,
+    track: &dj_library::LibraryTrack,
+    plain: &str,
+    synced: Option<&str>,
+    instrumental: bool,
+    source: &str,
+    at: i64,
+) {
+    if let Err(why) = library.remember_words(track.id, plain, synced, instrumental, source, at) {
+        tracing::warn!(%why, "could not store lyrics");
+    }
+}
+
+/// A track's length in whole seconds, which is what the lyrics database
+/// matches recordings on.
+fn seconds_of(track: &dj_library::LibraryTrack) -> u32 {
+    let frames = track.duration_frames;
+    let rate = u64::from(track.sample_rate.get());
+    u32::try_from(frames / rate.max(1)).unwrap_or(0)
+}
+
+/// One record the assistant thinks a description might be.
+#[derive(Debug, Clone, Serialize)]
+pub struct GuessDto {
+    pub artist: String,
+    pub title: String,
+    pub why: Option<String>,
+    /// The matching record in the collection, when there is one. This is the
+    /// difference between a name and something the DJ can play.
+    pub owned: Option<LibraryTrackDto>,
+}
+
+/// Ask the assistant which record a description might be.
+///
+/// Each guess is then looked for in the collection, because a name the DJ
+/// already owns is an answer and a name they do not is a shopping list.
+///
+/// # Errors
+/// When no assistant is configured, the budget is spent, or the model fails.
+#[tauri::command]
+pub async fn guess_from_description(
+    state: State<'_, AppState>,
+    description: String,
+) -> Result<Vec<GuessDto>, String> {
+    use dj_assistant::Assistant;
+
+    let selection = state
+        .assistant_selection()
+        .ok_or_else(|| "no assistant provider is available".to_owned())?;
+    let assistant = Assistant::new(
+        selection.provider,
+        selection.model,
+        Arc::clone(state.budget()),
+    )
+    .with_pricing(selection.input_price, selection.output_price);
+
+    let guesses = assistant
+        .guess_song(&description)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let library = library(&state)?;
+    Ok(guesses
+        .into_iter()
+        .map(|guess| {
+            let owned = library
+                .search(&format!("{} {}", guess.artist, guess.title), 1)
+                .ok()
+                .and_then(|mut found| found.pop())
+                .map(LibraryTrackDto::from);
+            GuessDto {
+                artist: guess.artist,
+                title: guess.title,
+                why: guess.why,
+                owned,
+            }
+        })
+        .collect())
+}
+
+/// What djmanzo made of a hum, and what it narrows the collection to.
+#[derive(Debug, Clone, Serialize)]
+pub struct HummedDto {
+    /// The key, when there was enough pitch to tell.
+    pub key: Option<String>,
+    pub tempo: Option<f64>,
+    pub seconds: f32,
+    /// Records near that key and tempo, most recently added first.
+    pub near: Vec<LibraryTrackDto>,
+}
+
+/// Read a hum and narrow the collection with it.
+///
+/// `samples` are mono at `rate`. **This does not identify the song** — see
+/// `crate::memory` for why, and say so in the interface.
+///
+/// # Errors
+/// When the clip is too short or silent, or the library cannot be read.
+#[tauri::command]
+pub fn hum(state: State<'_, AppState>, samples: Vec<f32>, rate: u32) -> Result<HummedDto, String> {
+    let rate = dj_core::SampleRate::new(rate).ok_or_else(|| format!("{rate} Hz is not a rate"))?;
+    let heard = crate::memory::listen(&samples, rate).map_err(|e| e.to_string())?;
+
+    let near = match heard.tempo {
+        Some(tempo) => library(&state)
+            .and_then(|library| library.search("", 5_000).map_err(|e| e.to_string()))
+            .map(|tracks| {
+                tracks
+                    .into_iter()
+                    .filter(|track| {
+                        // Tempo narrows; key only narrows when both are known,
+                        // so a collection that has not been analysed for key
+                        // is filtered by what is actually known about it.
+                        let tempo_fits = track
+                            .analysis
+                            .bpm
+                            .is_some_and(|known| crate::memory::near_tempo(tempo, known));
+                        let key_fits = match (heard.key, track.analysis.key()) {
+                            (Some(hummed), Some(known)) => hummed == known,
+                            _ => true,
+                        };
+                        tempo_fits && key_fits
+                    })
+                    .take(50)
+                    .map(LibraryTrackDto::from)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        None => Vec::new(),
+    };
+
+    Ok(HummedDto {
+        key: heard.key.map(dj_core::MusicalKey::camelot),
+        tempo: heard.tempo,
+        seconds: heard.seconds,
+        near,
+    })
+}

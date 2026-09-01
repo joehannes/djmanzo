@@ -25,6 +25,7 @@
   import Journal from "./Journal.svelte";
   import Plan from "./Plan.svelte";
   import Requests from "./Requests.svelte";
+  import Memory from "./Memory.svelte";
   import ShareSet from "./ShareSet.svelte";
   import Crates, { type Selection } from "./Crates.svelte";
   import SideView from "./SideView.svelte";
@@ -595,7 +596,7 @@
       is a different question — "when did I last play this" — and a box that
       silently does nothing is worse than one that is not there.
     -->
-    {#if selection.kind !== "history" && selection.kind !== "duplicates" && selection.kind !== "notes" && selection.kind !== "plan" && selection.kind !== "requests"}
+    {#if selection.kind !== "history" && selection.kind !== "duplicates" && selection.kind !== "notes" && selection.kind !== "plan" && selection.kind !== "requests" && selection.kind !== "memory"}
       <input
         type="search"
         placeholder={selection.kind === "playlist" || selection.kind === "smart"
@@ -613,6 +614,8 @@
       <span class="viewing">A whole night, before you play any of it.</span>
     {:else if selection.kind === "requests"}
       <span class="viewing">What the room is asking for.</span>
+    {:else if selection.kind === "memory"}
+      <span class="viewing">A record from half of what you remember.</span>
       <!--
         Named rather than left to the tail: a catch-all here describes whatever
         view is newest as "duplicates", which is how the Requests panel opened
@@ -689,7 +692,7 @@
       it is one more thing between the DJ and what they wrote, in a panel that
       is short to begin with.
     -->
-    {#if status.folders.length > 0 && selection.kind !== "notes" && selection.kind !== "plan" && selection.kind !== "requests"}
+    {#if status.folders.length > 0 && selection.kind !== "notes" && selection.kind !== "plan" && selection.kind !== "requests" && selection.kind !== "memory"}
       <div class="folders">
         {#each status.folders as folder (folder)}
           <span class="folder">
@@ -836,6 +839,15 @@
         // Setting the box is not searching it: the query only runs from the
         // input's own handler, so a request handed over this way filled the
         // field and left the table showing everything.
+        void refresh();
+      }}
+    />
+  {:else if selection.kind === "memory"}
+    <Memory
+      {enabled}
+      onFind={(text) => {
+        query = text;
+        selection = { kind: "all" };
         void refresh();
       }}
     />

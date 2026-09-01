@@ -1820,6 +1820,33 @@ pins rustls 0.20 and an unmaintained ring 0.16 — onto a port facing a club's
 wifi. The trade was examined and refused; see `docs/RESEARCH.md`. A `tiny_http`
 release on a current rustls unblocks it, and nothing else in the design
 changes.
+**Finding a record from what you remember is built.** Browser → *From
+memory*, and it is three ways in feeding one list, because people do not
+remember a record one way:
+
+- **A line.** Searched against lyrics fetched for the collection from LRCLIB
+  (free, no key, and the only service that permits storing what it returns —
+  which searching requires). Folded on both sides so a capital, a comma and a
+  missing accent do not stop a match. A record the database has nothing for is
+  remembered as asked, so a sweep never asks about the same instrumental twice.
+- **A description.** The one way in that can name a record the DJ does not own,
+  because it is the assistant. It answers in rows or it answers nothing: a line
+  without a separator is dropped, so a model that replies in prose returns an
+  empty list rather than a paragraph presented as a shortlist. Every guess
+  carries its reason and whether the record is already in the collection.
+- **A hum.** Read through djmanzo's own key and tempo detection — the same
+  analysis every track has already been through — and used to narrow the
+  collection, counting half and double time because people hum the vocal rather
+  than the kick.
+
+**The hum narrows; it does not identify**, and the panel says so beside the
+button. Recognising a recording from a hum needs a licensed fingerprint service
+with millions of reference melodies. Matching against the DJ's *own* library is
+buildable — an f0 contour per track, normalised for key and tempo, compared
+with DTW — and is a separate piece of work: the contour has to be extracted for
+every record first, which is an analysis pass on the scale of the existing one.
+What is shipped does not imply what is not.
+
 - **Reflective statistics.** The data stays local and stays the DJ's. What it
   can answer: which transitions you reach for and which actually work, how your
   energy curve compares across nights, which tracks you always play and which

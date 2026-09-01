@@ -32,6 +32,7 @@ pub mod grid;
 pub mod host;
 pub mod layout;
 pub mod library;
+pub mod memory;
 pub mod monitors;
 pub mod peersync;
 pub mod persist;
@@ -384,6 +385,11 @@ pub fn run() {
             commands::room_saw,
             commands::room_read,
             commands::room_forget,
+            commands::words_search,
+            commands::words_progress,
+            commands::words_fetch,
+            commands::guess_from_description,
+            commands::hum,
             commands::start_remote,
             commands::stop_remote,
             commands::start_osc,

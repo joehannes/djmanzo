@@ -27,6 +27,7 @@
     | { kind: "notes" }
     | { kind: "plan" }
     | { kind: "requests" }
+    | { kind: "memory" }
     | { kind: "duplicates" }
     | { kind: "playlist"; id: number; name: string }
     | { kind: "smart"; id: number; name: string; query: string };
@@ -244,6 +245,18 @@
     onclick={() => select({ kind: "requests" })}
   >
     Requests
+  </button>
+  <!--
+    "From memory" is a way *into* the collection rather than a view of it, so
+    it sits with the searches and not with the nights: it answers "which record
+    is this" rather than "what happened".
+  -->
+  <button
+    class="entry"
+    class:active={selection.kind === "memory"}
+    onclick={() => select({ kind: "memory" })}
+  >
+    From memory
   </button>
   <!--
     Duplicates is a *view* of the collection rather than a crate, so it belongs

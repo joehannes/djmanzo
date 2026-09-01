@@ -2184,3 +2184,61 @@ export const roomSaw = (reading: {
   });
 export const roomRead = () => invoke<RoomRead>("room_read");
 export const roomForget = () => invoke<void>("room_forget");
+
+/* -- finding a record from what you remember ------------------------------- */
+
+/** One record whose words contain the phrase. */
+export interface WordHit {
+  track: LibraryTrack;
+  /** The line it was found in, as the record has it. */
+  line: string;
+  line_number: number;
+}
+
+/** How much of the collection has been asked about. */
+export interface WordsProgress {
+  with_words: number;
+  /** Asked at all, including the records with nothing to find. */
+  asked: number;
+  tracks: number;
+}
+
+/** What one fetch batch did. */
+export interface Sweep {
+  asked: number;
+  found: number;
+  left: number;
+  /** The network refused; stop rather than grinding through the collection. */
+  gave_up: boolean;
+}
+
+/** One record the assistant thinks a description might be. */
+export interface Guess {
+  artist: string;
+  title: string;
+  why: string | null;
+  /** The matching record in your collection, when there is one. */
+  owned: LibraryTrack | null;
+}
+
+/**
+ * What djmanzo made of a hum.
+ *
+ * It narrows; it does not identify. See `dj_app::memory` for why.
+ */
+export interface Hummed {
+  /** Camelot, when there was enough pitch to tell. */
+  key: string | null;
+  tempo: number | null;
+  seconds: number;
+  near: LibraryTrack[];
+}
+
+export const wordsSearch = (phrase: string) =>
+  invoke<WordHit[]>("words_search", { phrase });
+export const wordsProgress = () => invoke<WordsProgress>("words_progress");
+export const wordsFetch = () => invoke<Sweep>("words_fetch");
+export const guessFromDescription = (description: string) =>
+  invoke<Guess[]>("guess_from_description", { description });
+export const hum = (samples: number[], rate: number) =>
+  invoke<Hummed>("hum", { samples, rate });
