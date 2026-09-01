@@ -25,6 +25,7 @@
     | { kind: "all" }
     | { kind: "history" }
     | { kind: "notes" }
+    | { kind: "plan" }
     | { kind: "duplicates" }
     | { kind: "playlist"; id: number; name: string }
     | { kind: "smart"; id: number; name: string; query: string };
@@ -219,6 +220,18 @@
     onclick={() => select({ kind: "notes" })}
   >
     Journal
+  </button>
+  <!--
+    Planning a night belongs beside History and the Journal: all three are
+    about nights rather than about the collection. This is the one that looks
+    forwards.
+  -->
+  <button
+    class="entry"
+    class:active={selection.kind === "plan"}
+    onclick={() => select({ kind: "plan" })}
+  >
+    Plan
   </button>
   <!--
     Duplicates is a *view* of the collection rather than a crate, so it belongs

@@ -23,6 +23,7 @@
   import { SvelteSet } from "svelte/reactivity";
   import { open } from "@tauri-apps/plugin-dialog";
   import Journal from "./Journal.svelte";
+  import Plan from "./Plan.svelte";
   import ShareSet from "./ShareSet.svelte";
   import Crates, { type Selection } from "./Crates.svelte";
   import SideView from "./SideView.svelte";
@@ -593,7 +594,7 @@
       is a different question — "when did I last play this" — and a box that
       silently does nothing is worse than one that is not there.
     -->
-    {#if selection.kind !== "history" && selection.kind !== "duplicates" && selection.kind !== "notes"}
+    {#if selection.kind !== "history" && selection.kind !== "duplicates" && selection.kind !== "notes" && selection.kind !== "plan"}
       <input
         type="search"
         placeholder={selection.kind === "playlist" || selection.kind === "smart"
@@ -607,6 +608,8 @@
       <span class="viewing">Everything played, most recent first.</span>
     {:else if selection.kind === "notes"}
       <span class="viewing">What you thought while it was playing.</span>
+    {:else if selection.kind === "plan"}
+      <span class="viewing">A whole night, before you play any of it.</span>
     {:else}
       <span class="viewing">Tracks whose audio is in more than one place.</span>
     {/if}
@@ -678,7 +681,7 @@
       it is one more thing between the DJ and what they wrote, in a panel that
       is short to begin with.
     -->
-    {#if status.folders.length > 0 && selection.kind !== "notes"}
+    {#if status.folders.length > 0 && selection.kind !== "notes" && selection.kind !== "plan"}
       <div class="folders">
         {#each status.folders as folder (folder)}
           <span class="folder">
@@ -809,6 +812,8 @@
     {/if}
   {:else if selection.kind === "notes"}
     <Journal {enabled} />
+  {:else if selection.kind === "plan"}
+    <Plan {enabled} />
   {:else if selection.kind === "history"}
     {#if sessions.length > 0}
       <div class="sessions">

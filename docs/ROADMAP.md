@@ -1728,9 +1728,30 @@ is what makes the reflective statistics possible at all.
   change. A draft the backend remembered would be one more thing to fall out of
   step with what is on screen.
 
-  **The workspace itself is not built yet** — arc picker, the shape of the night
-  as one strip, per-slot steering, save or hand to the assistant. The API it
-  will drive is in place and reachable.
+  **The workspace — done.** In the browser sidebar beside History and the
+  Journal, because all three are about nights rather than about the collection;
+  this is the one that looks forwards.
+
+  The **arc is the first control and the shape is the first thing shown.** A set
+  built one locally-best answer at a time is an hour at a single energy; the arc
+  is what makes it a night. Twenty-five rows of text lose exactly the property
+  the DJ came for, so a strip draws the running trajectory — and a Journey
+  visibly climbs, plateaus and descends, plateau included.
+
+  Steering rather than rebuilding: "take it up", "hold it", "bring it down", and
+  per record "not yet" and "take it out". The opener is protected, which is
+  visible in the interface — steer a built set downwards and slot one keeps its
+  lift while everything after it turns. A DJ adjusting the shape has not asked
+  for a different first record.
+
+  Taste from `learned` is **offered, not imposed**: one checkbox turns it off,
+  because a DJ building a set for somebody else's party should not have to
+  wonder why their own habits keep surfacing.
+
+  A plan is not written to the library until it is asked for — a draft is not a
+  playlist, and every abandoned build would otherwise fill the crate tree. When
+  it is asked for it goes two ways: a playlist that outlives the panel, or the
+  assistant, which will play it.
 
 ### Remembering
 

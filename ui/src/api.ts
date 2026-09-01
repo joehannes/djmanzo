@@ -1556,6 +1556,84 @@ export const chooseLayout = (name: string) => invoke<void>("choose_layout", { na
 export const exportSession = (session: string, path: string) =>
   invoke<number>("export_session", { session, path });
 
+// -- planning a set ---------------------------------------------------------
+
+/** One record in a plan, and why it is there. */
+export interface SetlistSlot {
+  track: LibraryTrack;
+  /** Where in the set it falls, 0 at the start and 1 at the end. */
+  through: number;
+  /** What the arc wanted here: "lift", "hold" or "ease". */
+  trajectory: string;
+  reasons: string[];
+}
+
+/** The shape of a night. */
+export const ARCS = ["rising", "journey", "flat", "descent"] as const;
+export type Arc = (typeof ARCS)[number];
+
+/** What each arc is for, in the words a DJ would use to pick one. */
+export const ARC_HELP: Record<Arc, string> = {
+  rising: "Up, and stay up. A support slot before the headliner.",
+  journey: "Up, peak, and down. A whole night in one set.",
+  flat: "Level throughout. A bar, a room where the music is not the point.",
+  descent: "Down. The last hour.",
+};
+
+/**
+ * Build a whole set before playing any of it.
+ *
+ * The suggester answers "what next"; this answers "what is the whole night".
+ * `avoids` is honoured strictly — an avoided genre is not a preference to be
+ * balanced against other factors.
+ */
+export const setlistBuild = (
+  arc: Arc,
+  minutes: number,
+  favours: string[],
+  avoids: string[],
+) => invoke<SetlistSlot[]>("setlist_build", { arc, minutes, favours, avoids });
+
+/** How the plan changed, and whether anything needed to. */
+export interface Steered {
+  plan: SetlistSlot[];
+  summary: string;
+  /** Zero is a real answer: "nothing needed to change" is not "done". */
+  changed: number;
+}
+
+/**
+ * Adjust a plan without throwing it away.
+ *
+ * Everything already played stays, and so does the next record — it may be
+ * cued, staged or have a hand on its fader. `argument` is a genre name for
+ * favour and avoid, and a track id for next, later and drop.
+ */
+export const setlistSteer = (
+  plan: SetlistSlot[],
+  played: number,
+  instruction: string,
+  argument?: string,
+) =>
+  invoke<Steered>("setlist_steer", {
+    plan: plan.map((s) => ({
+      track: s.track.id,
+      through: s.through,
+      trajectory: s.trajectory,
+    })),
+    played,
+    instruction,
+    argument: argument ?? null,
+  });
+
+/** Write a plan out as a playlist that outlives the panel. */
+export const setlistSave = (name: string, tracks: string[]) =>
+  invoke<number>("setlist_save", { name, tracks });
+
+/** Hand a plan to the assistant, so autopilot plays it. */
+export const assistantSetSetlist = (tracks: string[]) =>
+  invoke<number>("assistant_set_setlist", { tracks });
+
 // -- more like this ---------------------------------------------------------
 
 /**
