@@ -111,6 +111,12 @@ reqwest = { version = "0.12", default-features = false, features = [
 rustfft = "6"
 async-trait = "0.1"
 urlencoding = "2"
+# An embedded HTTP/1.1 server for the pages djmanzo serves to phones in the
+# room. Synchronous and thread-per-connection, which matches `dj-net`'s
+# existing control server; an async runtime would be a large dependency for
+# three routes. See ADR-0010.
+tiny_http = "0.12"
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 base64 = "0.22"
 tokio = { version = "1", default-features = false }
 
