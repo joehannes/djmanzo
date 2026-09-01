@@ -47,11 +47,17 @@
     // length, and analysis finishing changes the grid drawn into the tile.
     deck.length_frames;
     deck.analysis;
-    void waveformInfo(deck.number).then((info) => {
-      ready = info.ready;
-      totalFrames = info.total_frames;
-      epoch = info.epoch;
-    });
+    void waveformInfo(deck.number)
+      .then((info) => {
+        ready = info.ready;
+        totalFrames = info.total_frames;
+        epoch = info.epoch;
+      })
+      // `ready` stays false, which is the "no tiles yet" state this component
+      // already draws and already explains. Deliberately quiet: this re-runs
+      // on every load and every analysis, and a deck that failed once is
+      // asked again a moment later.
+      .catch(() => {});
   });
 
   $effect(() => {

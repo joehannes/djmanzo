@@ -21,9 +21,35 @@
   let error = $state<string | null>(null);
   let expanded = $state<Record<string, boolean>>({});
 
+  /**
+   * Whether the first ask has come back yet.
+   *
+   * Without it there is no way to tell "no packs" from "not asked yet", and
+   * the panel showed the same nothing for both.
+   */
+  let asked = $state(false);
+
   $effect(() => {
-    void listPresets().then((p) => (packs = p));
-    void presetFolder().then((f) => (folder = f));
+    void listPresets()
+      .then((p) => {
+        packs = p;
+      })
+      // A bare `.then` was swallowing this. The panel then showed a header and
+      // an empty space with no packs, no message and nothing to press -- the
+      // exact dead end the polish pass exists to remove, and unreadable as a
+      // failure because it looks identical to having no packs.
+      .catch((problem) => {
+        error = `could not read the presets: ${problem}`;
+      })
+      .finally(() => {
+        asked = true;
+      });
+    void presetFolder()
+      .then((f) => (folder = f))
+      .catch(() => {
+        // Where user packs go is a nicety; failing to learn it is not worth a
+        // second error line under the first one.
+      });
   });
 
   async function run(preset: PresetItem) {
@@ -101,6 +127,14 @@
         </div>
       </article>
     {/each}
+    {#if asked && packs.length === 0 && !error}
+      <!--
+        Reachable in principle: every built-in pack is compiled in, so this
+        only shows if a future build ships none. It says so rather than
+        showing an empty panel, because an empty panel reads as broken.
+      -->
+      <p class="hint">No preset packs. Even the built-in ones are missing, which is a bug rather than a setting.</p>
+    {/if}
   </div>
 
   {#if folder}

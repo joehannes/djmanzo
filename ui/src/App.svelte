@@ -304,9 +304,16 @@
     // Paint immediately rather than waiting for the engine to change something.
     // The stream only emits on change, so a quiet startup would otherwise leave
     // the interface blank.
-    void getSnapshot().then((initial) => {
-      snapshot ??= initial;
-    });
+    void getSnapshot()
+      .then((initial) => {
+        snapshot ??= initial;
+      })
+      // The one failure that leaves nothing on screen at all: the stream only
+      // emits on change, so without this first read a quiet engine means a
+      // blank interface with no explanation of why.
+      .catch((problem) => {
+        error = `the engine did not answer: ${problem}`;
+      });
     return () => {
       void unlisten.then((fn) => fn());
     };
@@ -330,9 +337,14 @@
    */
   $effect(() => {
     if (ready && active == null) {
-      void activeDevice().then((device) => {
-        active ??= device;
-      });
+      void activeDevice()
+        .then((device) => {
+          active ??= device;
+        })
+        // Left as "No device" rather than as an error line. This only fills in
+        // a name for something that is demonstrably open -- `ready` is true --
+        // so the worst case is a caption that says less than it could.
+        .catch(() => {});
     }
   });
 
@@ -452,9 +464,13 @@
   const tier = $derived(tierFor(slowFrames, reducedMotion));
 
   $effect(() => {
-    void hasBrandLogo().then((present) => {
-      logo = present;
-    });
+    void hasBrandLogo()
+      .then((present) => {
+        logo = present;
+      })
+      // Falls back to the wordmark, which is a complete interface. Not worth
+      // an error line on startup.
+      .catch(() => {});
   });
 
   async function refreshLogo() {

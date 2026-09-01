@@ -112,9 +112,15 @@
    */
   let padPageList = $state<PadPageDto[]>([]);
   $effect(() => {
-    void padPages(deck.number).then((pages) => {
-      padPageList = pages;
-    });
+    void padPages(deck.number)
+      .then((pages) => {
+        padPageList = pages;
+      })
+      // An empty list draws no pad zone, which is a deck missing its whole
+      // performance surface with nothing saying so.
+      .catch((problem) => {
+        error = `could not read the pad pages: ${problem}`;
+      });
   });
 
   /**

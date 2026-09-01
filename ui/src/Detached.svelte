@@ -34,9 +34,15 @@
     });
     // The stream only emits on change, so a quiet startup would leave this
     // blank until the DJ touched something.
-    void getSnapshot().then((initial) => {
-      snapshot ??= initial;
-    });
+    void getSnapshot()
+      .then((initial) => {
+        snapshot ??= initial;
+      })
+      // A detached window with no first snapshot is a blank second screen,
+      // and the DJ is looking at it precisely because it is not the first.
+      .catch((problem) => {
+        error = `the engine did not answer: ${problem}`;
+      });
     return () => {
       void unlisten.then((fn) => fn());
     };
