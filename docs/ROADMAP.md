@@ -1788,6 +1788,38 @@ is what makes the reflective statistics possible at all.
     A journal you can rewrite is not one worth keeping.
 - **Webcam capture** — periodic stills or clips attached to the same timeline,
   so a set can be reviewed against what the room was actually doing.
+
+**Reading the room is built** — without keeping a single frame. Assistant →
+*The room*. A camera and a microphone are sampled every two seconds into three
+numbers — brightness, how much of the picture changed, and loudness — and the
+frame is discarded. Nothing is recorded, written or sent; the preview is there
+so the lens can be aimed and can be switched off while the measuring carries
+on.
+
+Three decisions worth stating:
+
+- **Every reading is relative to tonight.** Two lenses pointed at the same wall
+  report different numbers, and a microphone's level depends on where it was
+  put down, so an absolute threshold is a number that means something in one
+  venue on one device. "Stiller than it has been all night" is a true sentence
+  about a number nobody calibrated; "the floor is quiet" is not.
+- **It never names a mood.** A camera measures how much of the frame changed.
+  It cannot tell dancing from leaving, and a module reporting "the crowd loves
+  this" from a difference of pixels is lying with statistics. The one
+  interpretation offered is a *disagreement* — the floor is doing something
+  other than the occasion the DJ set — which is a comparison of two things
+  djmanzo actually knows.
+- **Weather is not here.** It is not a sensor reading; it is a location plus
+  somebody else's forecast. The hour is here, because a clock is a real
+  instrument.
+
+The eye is djmanzo's own window rather than a phone on a speaker stack, which
+is what it should be. A browser will not open a camera on a page served over
+plain HTTP, and serving HTTPS would mean shipping `tiny_http`'s TLS — which
+pins rustls 0.20 and an unmaintained ring 0.16 — onto a port facing a club's
+wifi. The trade was examined and refused; see `docs/RESEARCH.md`. A `tiny_http`
+release on a current rustls unblocks it, and nothing else in the design
+changes.
 - **Reflective statistics.** The data stays local and stays the DJ's. What it
   can answer: which transitions you reach for and which actually work, how your
   energy curve compares across nights, which tracks you always play and which

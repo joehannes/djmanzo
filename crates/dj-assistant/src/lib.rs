@@ -38,6 +38,7 @@ pub mod native;
 pub mod openai_compat;
 pub mod posture;
 pub mod provider;
+pub mod room;
 pub mod takeover;
 pub mod technique;
 

@@ -41,6 +41,7 @@
   } from "./api";
   import { onMount } from "svelte";
   import Coach from "./Coach.svelte";
+  import RoomSense from "./RoomSense.svelte";
 
   let { enabled }: { enabled: boolean } = $props();
 
@@ -205,6 +206,17 @@
     fetched again, so the two never disagree mid-change.
   -->
   <Coach {enabled} verbosity={conduct?.verbosity ?? 0} />
+
+  <!--
+    The room sits under the occasion because its whole output is a comparison
+    with it: the one thing djmanzo will say about a camera is that the floor is
+    doing something other than the night you set up. Reading that two panels
+    apart from the control it contradicts would make it a curiosity.
+  -->
+  <details class="room-fold">
+    <summary>The room</summary>
+    <RoomSense {enabled} />
+  </details>
 
   <!--
     What djmanzo has worked out about this DJ, shown rather than hidden.
@@ -375,5 +387,21 @@
     margin: 0;
     font-size: 0.78rem;
     color: var(--danger, #dc2626);
+  }
+
+  /*
+    Folded by default: it needs a camera permission and half a minute before it
+    says anything, so it is something a DJ opens deliberately at the start of a
+    night rather than a panel that greets them with a prompt.
+  */
+  .room-fold {
+    border-top: 1px solid var(--border);
+    padding-top: 0.4rem;
+  }
+
+  .room-fold summary {
+    font-size: 0.8em;
+    color: var(--text-dim);
+    cursor: pointer;
   }
 </style>

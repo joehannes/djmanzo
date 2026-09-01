@@ -2151,3 +2151,36 @@ export const audienceSettle = (id: number, standing: string) =>
  */
 export const audienceSheet = (kind: string, path: string, copies?: number) =>
   invoke<boolean>("audience_sheet", { kind, path, copies: copies ?? null });
+
+/* -- what the room is doing ------------------------------------------------ */
+
+/** What the sensors have made of the room. See `dj_assistant::room`. */
+export interface RoomRead {
+  /** Whether a reading arrived recently enough to call this live. */
+  watching: boolean;
+  recent: number;
+  /** Whether there is enough to say anything at all. */
+  enough: boolean;
+  /** Worth saying, most important first. Empty means the room is carrying on. */
+  notes: string[];
+  /** Where the room disagrees with the night you set up. */
+  disagreement: string | null;
+  /** From the clock, not from a sensor. */
+  hour: number | null;
+  light: number | null;
+  movement: number | null;
+  loudness: number | null;
+}
+
+export const roomSaw = (reading: {
+  light?: number;
+  movement?: number;
+  loudness?: number;
+}) =>
+  invoke<void>("room_saw", {
+    light: reading.light ?? null,
+    movement: reading.movement ?? null,
+    loudness: reading.loudness ?? null,
+  });
+export const roomRead = () => invoke<RoomRead>("room_read");
+export const roomForget = () => invoke<void>("room_forget");

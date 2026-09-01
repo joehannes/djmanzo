@@ -5691,3 +5691,121 @@ pub fn audience_sheet(
     // against -- unlike `open_signup_link`, where the URL comes from a catalog.
     Ok(app.opener().open_path(&path, None::<&str>).is_ok())
 }
+
+// -- what the room is doing ------------------------------------------------
+//
+// See `dj_assistant::room` for why every reading is relative to tonight and
+// why nothing here ever names a mood.
+
+/// What the sensors have made of the room.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RoomDto {
+    /// Whether a reading arrived recently enough to call this live.
+    pub watching: bool,
+    /// How many readings are in the near window.
+    pub recent: usize,
+    /// Whether there is enough to say anything at all.
+    pub enough: bool,
+    /// Everything worth saying, most important first. Empty is the normal
+    /// state of a room carrying on.
+    pub notes: Vec<String>,
+    /// Where the room disagrees with the night the DJ set up.
+    pub disagreement: Option<String>,
+    /// The hour, from the clock rather than from a sensor.
+    pub hour: Option<u8>,
+    /// The middle of the near window, for a meter rather than a sentence.
+    pub light: Option<f32>,
+    pub movement: Option<f32>,
+    pub loudness: Option<f32>,
+}
+
+/// How recently a reading has to have arrived for the panel to say "watching".
+///
+/// Ten seconds, against a cadence of one every two: a browser tab that has
+/// been backgrounded stops sending, and a panel still claiming to watch the
+/// room is the panel lying about the one thing it is for.
+const STILL_WATCHING: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Take one reading of the room.
+///
+/// Sent by whatever is looking — today djmanzo's own window, which is a secure
+/// context and so may open a camera and a microphone. Every field is optional
+/// because a source may have one permission and not the other.
+#[tauri::command]
+pub fn room_saw(
+    state: State<'_, AppState>,
+    light: Option<f32>,
+    movement: Option<f32>,
+    loudness: Option<f32>,
+) -> Result<(), String> {
+    use dj_assistant::room::{Reading, Sense};
+
+    let mut reading = Reading::at(std::time::SystemTime::now());
+    for (sense, value) in [
+        (Sense::Light, light),
+        (Sense::Movement, movement),
+        (Sense::Loudness, loudness),
+    ] {
+        if let Some(value) = value {
+            reading = reading.with(sense, value);
+        }
+    }
+
+    state
+        .room()
+        .lock()
+        .map_err(|_| "the room's readings are poisoned")?
+        .saw(reading);
+    Ok(())
+}
+
+/// What the room has been doing, and whether it matches the night.
+#[tauri::command]
+pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
+    use dj_assistant::room::{Sense, hour_of};
+
+    let room = state.room();
+    let room = room
+        .lock()
+        .map_err(|_| "the room's readings are poisoned")?;
+
+    let occasion = state
+        .conduct()
+        .lock()
+        .map(|guard| guard.occasion)
+        .unwrap_or_default();
+
+    Ok(RoomDto {
+        // Derived from the readings themselves rather than from a flag the
+        // interface sets: a window that closed without saying so cannot leave
+        // this stuck on.
+        watching: room.last_seen().is_some_and(|at| {
+            std::time::SystemTime::now()
+                .duration_since(at)
+                .is_ok_and(|since| since < STILL_WATCHING)
+        }),
+        recent: room.recent(),
+        enough: room.has_looked_enough(),
+        notes: room.notes(),
+        disagreement: room.disagrees_with(occasion),
+        hour: hour_of(std::time::SystemTime::now()),
+        light: room.lately(Sense::Light),
+        movement: room.lately(Sense::Movement),
+        loudness: room.lately(Sense::Loudness),
+    })
+}
+
+/// Forget the night's readings.
+///
+/// Every reading is judged against the rest of the night, so moving the camera
+/// to a different corner makes the whole night's distribution a comparison
+/// with somewhere else. This is how a DJ says "start again from here".
+#[tauri::command]
+pub fn room_forget(state: State<'_, AppState>) -> Result<(), String> {
+    let mut room = state
+        .room()
+        .lock()
+        .map_err(|_| "the room's readings are poisoned")?;
+    *room = dj_assistant::room::Room::new();
+    Ok(())
+}

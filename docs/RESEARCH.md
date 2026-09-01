@@ -169,6 +169,46 @@ Chosen to keep djmanzo MIT-OR-Apache-2.0. See
 | Answering to a name | `mdns-sd` | Apache-2.0 OR MIT | Multicast DNS, so `http://djmanzo.local:7331/` resolves on the venue's network and a sticker can be printed before anybody knows what the venue's router hands out. Pure Rust, its own thread, nothing near the audio path. Brings `flume` (Apache-2.0/MIT), `if-addrs` (MIT OR BSD-3-Clause), `socket-pktinfo` (MIT) and `spin` (MIT). Chosen over doing without because the alternative is a sticker carrying an address that is only true in one building. **It does not make every phone resolve the name** — Apple devices always, Android since 12 and not on every build — which is why `dj_net::sticker` offers the plain address beside it and prints the caveat instead of hiding it. |
 | URL escaping | `urlencoding` | MIT | Percent-encoding, for the source APIs in `dj-sources` and the shared tracklist in `dj-app::share`. Small enough to have written by hand and exactly the kind of thing that is wrong when written by hand — the failure is a set list truncated at the first `&` in an artist name. |
 
+### The phone as a room sensor, and why it is not one yet
+
+A phone can sit on a speaker stack facing the floor while the laptop faces the
+DJ, which makes it the obviously right instrument for measuring what a room is
+doing. It is not the instrument djmanzo uses, and the reason is worth writing
+down so it is not rediscovered.
+
+**`getUserMedia` requires a secure context.** Chrome, Firefox and Safari all
+refuse camera and microphone access on an `http://` origin that is not
+`localhost` — and `DeviceMotion` on iOS 13+ needs both a secure context and a
+gesture-initiated `requestPermission()`. `AmbientLightSensor` is Chrome-only
+behind a flag, so light has to come from the camera anyway. A page served over
+plain HTTP from a laptop on a venue's wifi can therefore measure **nothing**.
+
+So the sensor page needs HTTPS, and djmanzo would have to serve it. The obvious
+route is `tiny_http`'s `ssl-rustls` feature. It was tried and **refused**:
+
+| What it pulls | Version resolved | Why that is a problem |
+|---|---|---|
+| `rustls` | **0.20.9** | Pinned by `tiny_http` 0.12, which is its latest release (2023). |
+| `ring` | **0.16.20** | Forced by that rustls. Unmaintained. |
+
+Nineteen packages, and the two that matter are a 2021-era TLS stack and an
+unmaintained cryptography crate, on a socket facing a club's wifi with a
+self-signed certificate that every phone would warn about anyway. That is not a
+trade worth making for a convenience, so it was not made — and the whole point
+of ADR-0002's dependency discipline is that this decision gets recorded rather
+than quietly taken.
+
+**What djmanzo does instead:** its own window is a secure context, because a
+Tauri webview is served from `localhost`. So the camera and microphone are
+opened there, in `ui/src/RoomSense.svelte`, and the same three numbers reach
+`dj_assistant::room`. A USB webcam on a long cable puts the lens where a phone
+would have gone.
+
+**What would unblock the phone:** a `tiny_http` release on a current `rustls`,
+or a different embedded server with one. Nothing else about the design changes —
+the page, the readings and the model are all in place and none of them care
+where the numbers came from.
+
 ### The analysis gap
 
 Every mature beat/key detection library is copyleft: `aubio` (GPL), `libKeyFinder` (GPL),
