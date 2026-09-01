@@ -620,9 +620,26 @@ mod tests {
     ///
     /// Chunked encoding lets a client keep sending until it says stop, and a
     /// client that never says stop is one `Transfer-Encoding` header away.
-    /// Refusing after reading would mean holding every byte first; this holds
-    /// at most the cap, and the proof is that an answer arrives at all while
-    /// the sender is still sending.
+    /// Refusing after reading would mean holding every byte first, and a
+    /// connection nobody can close is a denial of service on the room's own
+    /// request page.
+    ///
+    /// **The proof is that the sending stops, not that the refusal arrives.**
+    /// This used to assert that a 413 could be read while the client was still
+    /// writing, and that assertion is not portable: on Windows a close from
+    /// the peer while this side is still sending is an RST, and an RST
+    /// discards whatever the receive buffer was holding -- including the
+    /// refusal. It passed on Linux and macOS and failed on Windows about half
+    /// the time, which is the worst kind of test. `tiny_http` owns the socket
+    /// after `respond`, so a lingering close -- what Apache and nginx do for
+    /// exactly this reason -- is not ours to add.
+    ///
+    /// What is portable, and is the property that matters, is that the writes
+    /// eventually fail. A server that read forever would keep accepting: the
+    /// loop below would run to its bound with every write succeeding. That the
+    /// 413 does arrive when it can is covered by
+    /// [`a_chunked_body_past_the_cap_is_refused`], which stops writing before
+    /// it reads and so never provokes the reset.
     #[test]
     fn an_endless_body_is_refused_rather_than_read_forever() {
         let server = serving(|_: &Incoming| Reply::text(200, "should not happen"));
@@ -639,20 +656,31 @@ mod tests {
             )
             .expect("write headers");
 
-        // Several times the cap, in chunks, and never a terminating one.
+        // Sixty-four times the cap, in chunks, and never a terminating one.
+        // Far past any socket buffer, so a write failure means the far end
+        // really has gone rather than that the kernel is still swallowing.
         let chunk = format!("{:x}\r\n{}\r\n", 4096, "x".repeat(4096));
-        for _ in 0..(MOST_BODY / 4096 * 4) {
-            // Stops early once the server has answered and hung up.
+        let mut sent = 0usize;
+        let mut hung_up = false;
+        for _ in 0..(MOST_BODY / 4096 * 64) {
             if stream.write_all(chunk.as_bytes()).is_err() {
+                hung_up = true;
                 break;
             }
+            sent += chunk.len();
         }
+        assert!(
+            hung_up,
+            "the server was still taking body after {sent} bytes, against a cap of {MOST_BODY}"
+        );
 
+        // Whatever survived the close has to be the refusal, never a 200: the
+        // handler must not have run. Empty is allowed, and on Windows likely.
         let mut got = String::new();
         let _ = stream.read_to_string(&mut got);
         assert!(
-            got.starts_with("HTTP/1.1 413"),
-            "expected a refusal while still sending, got {got:?}"
+            got.is_empty() || got.starts_with("HTTP/1.1 413"),
+            "the server answered something other than a refusal: {got:?}"
         );
     }
 
