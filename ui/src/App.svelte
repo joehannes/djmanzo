@@ -747,117 +747,161 @@
       So the destinations are named, and they are their own row: a readout is
       something you glance at, a destination is something you press, and putting
       the two in one line meant neither read as what it was.
-    -->
-    <nav class="go" aria-label="Panels">
-      <IconButton icon="fa-solid fa-folder-open" label="Browse" title="Find and load tracks" active={panel === "browse"} onClick={() => (panel = panel === "browse" ? "none" : "browse")} />
-      <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={panel === "presets"} onClick={() => (panel = panel === "presets" ? "none" : "presets")} />
-      <!--
-        The panel is for setting the sampler up — loading, modes, routing. The
-        playing is done from the pads, which is why this is a thing you open
-        rather than something taking room on a deck all night.
-      -->
-      <IconButton icon="fa-solid fa-th" label="Sampler" title="Load and route the sample banks" active={panel === "sampler"} onClick={() => (panel = panel === "sampler" ? "none" : "sampler")} />
-      <IconButton icon="fa-solid fa-robot" label="Assistant" title="Ask for a next track, or a transition" active={panel === "assistant"} onClick={() => (panel = panel === "assistant" ? "none" : "assistant")} />
-      <IconButton icon="fa-solid fa-cog" label="Settings" title="Audio, sources, controllers, timecode" active={panel === "settings"} onClick={() => (panel = panel === "settings" ? "none" : "settings")} />
-      <IconButton icon="fa-solid fa-keyboard" label="Keys" title={keyboard.enabled ? "Keyboard shortcuts — enabled" : "Keyboard shortcuts — disabled"} active={panel === "keyboard"} onClick={() => (panel = panel === "keyboard" ? "none" : "keyboard")} />
-      <IconButton icon="fa-solid fa-water" title={living ? `Hide the watershed${backend ? ` (drawing with ${backend})` : ""}` : "Show the watershed"} active={living} onClick={() => (living = !living)} />
-      <!--
-        Recording the set. Beside the panel toggles rather than inside one,
-        because it is the control a DJ has to be able to find at the start of a
-        night without hunting for it — and the one whose state has to be
-        readable from across a booth once it is running.
-      -->
-      {#if setRecording}
-        <button
-          class="record"
-          class:on={setRecording.active}
-          disabled={!ready}
-          onclick={() => send(setRecording.active ? "record off" : "record on")}
-          title={setRecording.active
-            ? "Stop recording and finish the file"
-            : "Record the master to disk, beside the settings"}
-        >
-          {#if setRecording.active}
-            ● {formatTime(setRecording.seconds)}
-          {:else}
-            REC
-          {/if}
-        </button>
-        {#if setRecording.dropped > 0}
-          <!--
-            A gap in the file, said now rather than discovered on playback. The
-            audio thread never waits for a disk, so this is the honest cost of
-            that and not something to hide.
-          -->
-          <span
-            class="warn-chip"
-            title="The disk could not keep up, so the recording has a gap in it"
-          >
-            {setRecording.dropped} lost
-          </span>
-        {/if}
-        {#if setRecording.failed}
-          <span
-            class="warn-chip"
-            title="The recording stopped on its own — the disk is probably full"
-          >
-            write failed
-          </span>
-        {/if}
-      {/if}
-      <!--
-        Two, four or six. The engine builds six whatever this says: an idle deck
-        is a branch per block that returns immediately, so there is nothing to
-        save by building fewer, and a count the engine and the interface could
-        disagree about is worse than an unused deck.
-      -->
-      <button
-        onclick={() => (deckCount = deckCount === 2 ? 4 : deckCount === 4 ? 6 : 2)}
-        title="Show {deckCount === 2 ? 'four' : deckCount === 4 ? 'six' : 'two'} decks. The engine runs six either way."
-      >
-        {deckCount} decks
-      </button>
-      <!--
-        The layout picker. A layout is data — it can hide the FX rack, it
-        cannot change what a control does — so choosing one is safe even when
-        somebody else wrote it. See `dj_app::layout`.
-      -->
-      <select
-        class="layout"
-        aria-label="Layout"
-        onchange={(event) => {
-          const chosen = layouts.find((l) => l.name === event.currentTarget.value);
-          if (chosen) applyLayout(chosen);
-        }}
-      >
-        <option value="">Layout…</option>
-        {#each layouts as option (option.name)}
-          <option value={option.name} selected={layout?.name === option.name}>
-            {option.name}
-          </option>
-        {/each}
-      </select>
-      <!--
-        Marking a moment, beside REC for the same reason REC is here: it is a
-        control that has to be findable without hunting, while both hands are
-        busy and the music is playing.
 
-        It takes the moment and nothing else — the time, and what is on the
-        decks. Writing it up happens in the Journal afterwards, because a DJ
-        who has just watched the floor empty has about ninety seconds of
-        attention and composing a sentence loses the observation.
+      Naming them left the row twelve controls long, holding three unlike things
+      at one weight: seven panels you open, three controls over what the stage
+      shows, and two acts on the night that carry live state. `aria-label`
+      said "Panels", which described the first seven and misdescribed the rest.
+      So the row is three named groups, and the names are real -- a screen
+      reader hears the same three groups the eye is being shown.
+
+      Grouped, not hidden. The standing complaint about the products this
+      competes with is menus you cannot find; every control that was one press
+      away is still one press away, in the same reading order, and the
+      watershed is named like its neighbours instead of remaining the last
+      unlabelled square in the row this comment opens by complaining about.
+    -->
+    <div class="go">
+      <nav class="go-group" aria-label="Panels">
+        <IconButton icon="fa-solid fa-folder-open" label="Browse" title="Find and load tracks" active={panel === "browse"} onClick={() => (panel = panel === "browse" ? "none" : "browse")} />
+        <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={panel === "presets"} onClick={() => (panel = panel === "presets" ? "none" : "presets")} />
+        <!--
+          The panel is for setting the sampler up — loading, modes, routing. The
+          playing is done from the pads, which is why this is a thing you open
+          rather than something taking room on a deck all night.
+        -->
+        <IconButton icon="fa-solid fa-th" label="Sampler" title="Load and route the sample banks" active={panel === "sampler"} onClick={() => (panel = panel === "sampler" ? "none" : "sampler")} />
+        <IconButton icon="fa-solid fa-robot" label="Assistant" title="Ask for a next track, or a transition" active={panel === "assistant"} onClick={() => (panel = panel === "assistant" ? "none" : "assistant")} />
+        <IconButton icon="fa-solid fa-cog" label="Settings" title="Audio, sources, controllers, timecode" active={panel === "settings"} onClick={() => (panel = panel === "settings" ? "none" : "settings")} />
+        <IconButton icon="fa-solid fa-keyboard" label="Keys" title={keyboard.enabled ? "Keyboard shortcuts — enabled" : "Keyboard shortcuts — disabled"} active={panel === "keyboard"} onClick={() => (panel = panel === "keyboard" ? "none" : "keyboard")} />
+        <IconButton icon="fa-solid fa-file-lines" label="Log" title="What the session has done so far" onClick={toggleLog} />
+      </nav>
+
+      <!--
+        What the stage shows. Not one of these opens anything: they change the
+        picture already in front of you, which is a different promise from the
+        panels beside them and the reason they are no longer mixed in with them.
       -->
-      <button
-        class="mark"
-        class:done={markedAt > 0}
-        disabled={!ready}
-        onclick={mark}
-        title="Mark this moment — write it up in the Journal later"
-      >
-        {markedAt > 0 ? "Marked" : "Mark"}
-      </button>
-      <IconButton icon="fa-solid fa-file-lines" label="Log" title="What the session has done so far" onClick={toggleLog} />
-    </nav>
+      <div class="go-group" role="group" aria-label="Stage">
+        <!--
+          Two, four or six. The engine builds six whatever this says: an idle deck
+          is a branch per block that returns immediately, so there is nothing to
+          save by building fewer, and a count the engine and the interface could
+          disagree about is worse than an unused deck.
+        -->
+        <button
+          onclick={() => (deckCount = deckCount === 2 ? 4 : deckCount === 4 ? 6 : 2)}
+          title="Show {deckCount === 2 ? 'four' : deckCount === 4 ? 'six' : 'two'} decks. The engine runs six either way."
+        >
+          {deckCount} decks
+        </button>
+        <!--
+          The layout picker. A layout is data — it can hide the FX rack, it
+          cannot change what a control does — so choosing one is safe even when
+          somebody else wrote it. See `dj_app::layout`.
+        -->
+        <select
+          class="layout"
+          aria-label="Layout"
+          onchange={(event) => {
+            const chosen = layouts.find((l) => l.name === event.currentTarget.value);
+            if (chosen) applyLayout(chosen);
+          }}
+        >
+          <option value="">Layout…</option>
+          {#each layouts as option (option.name)}
+            <option value={option.name} selected={layout?.name === option.name}>
+              {option.name}
+            </option>
+          {/each}
+        </select>
+        <IconButton
+          icon="fa-solid fa-water"
+          label="Watershed"
+          title={living
+            ? `Hide the watershed${backend ? ` (drawing with ${backend})` : ""}`
+            : "Show the watershed — the mix drawn as moving water"}
+          active={living}
+          onClick={() => (living = !living)}
+        />
+      </div>
+
+      <!--
+        The night itself, rather than the application.
+
+        Recording and marking are the two controls a DJ has to be able to find
+        at the start of a set without hunting, and the only two in this row
+        whose state has to be readable from across a booth once they are
+        running. They sit together, at the end, where nothing shifts under
+        them: the groups before them can gain a panel or a layout without
+        moving these two.
+      -->
+      <div class="go-group set" role="group" aria-label="This set">
+        {#if setRecording}
+          <button
+            class="record"
+            class:on={setRecording.active}
+            disabled={!ready}
+            onclick={() => send(setRecording.active ? "record off" : "record on")}
+            title={setRecording.active
+              ? "Stop recording and finish the file"
+              : "Record the master to disk, beside the settings"}
+          >
+            {#if setRecording.active}
+              <span class="dot" aria-hidden="true">●</span>
+              {formatTime(setRecording.seconds)}
+            {:else}
+              REC
+            {/if}
+          </button>
+          {#if setRecording.dropped > 0}
+            <!--
+              A gap in the file, said now rather than discovered on playback. The
+              audio thread never waits for a disk, so this is the honest cost of
+              that and not something to hide.
+            -->
+            <span
+              class="warn-chip"
+              title="The disk could not keep up, so the recording has a gap in it"
+            >
+              {setRecording.dropped} lost
+            </span>
+          {/if}
+          {#if setRecording.failed}
+            <!--
+              A recording that has stopped writing. Louder than the gap above
+              because a gap costs you a bar and this costs you the rest of the
+              night.
+            -->
+            <span
+              class="warn-chip bad"
+              title="The recording stopped on its own — the disk is probably full"
+            >
+              write failed
+            </span>
+          {/if}
+        {/if}
+        <!--
+          Marking a moment, beside REC for the same reason REC is here: it is a
+          control that has to be findable without hunting, while both hands are
+          busy and the music is playing.
+
+          It takes the moment and nothing else — the time, and what is on the
+          decks. Writing it up happens in the Journal afterwards, because a DJ
+          who has just watched the floor empty has about ninety seconds of
+          attention and composing a sentence loses the observation.
+        -->
+        <button
+          class="mark"
+          class:done={markedAt > 0}
+          disabled={!ready}
+          onclick={mark}
+          title="Mark this moment — write it up in the Journal later"
+        >
+          {markedAt > 0 ? "Marked" : "Mark"}
+        </button>
+      </div>
+    </div>
   </header>
 
   {#if error}
@@ -1281,12 +1325,96 @@
   .go {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    /*
+      Three times the gap inside a group, which is the whole of the grouping.
+
+      A hairline rule between groups would read more strongly and it has to be
+      an element in the flow, so when this row wraps -- and it wraps, on any
+      laptop screen -- the rule lands at the start of a line as a stray mark
+      belonging to nothing. Space is what wrapping is made of, so space is the
+      separator that survives it.
+
+      Measured at 840 px, which is narrower than the application's own default
+      window: the row now breaks *at a group boundary* -- the seven panels hold
+      one line and the stage and set groups drop to the next together -- because
+      a group is one flex child and a flex child is not split. It used to break
+      wherever the twelfth control happened to land.
+    */
+    gap: 1.3rem;
     flex-wrap: wrap;
     /* Sits under the readouts and above the decks, so the eye meets "how it is
        going" and then "where to go" in that order -- which is the order a DJ
        asks them in. */
     padding-top: 0.35rem;
+  }
+
+  .go-group {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  /*
+    Recording, said as a state instead of as a reading.
+
+    `class:on` has been on this button since the recorder shipped and matched
+    no rule anywhere in the application, so a running recording looked exactly
+    like a stopped one: the only difference was the text changing from "REC" to
+    a timer, which is a thing you have to walk over and read, from the one
+    control in the row whose entire job is to be legible from the other side of
+    a booth.
+  */
+  .record.on {
+    border-color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 20%, transparent);
+    color: var(--danger);
+    /* So the timer does not jitter its own width once a second. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+    A booth tally light: slow, and on the dot rather than on the button, so the
+    thing a DJ aims at never changes size or position while they are aiming at
+    it. Colour carries the state on its own -- this only says "right now".
+  */
+  .record .dot {
+    animation: rec-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes rec-pulse {
+    50% {
+      opacity: 0.2;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .record .dot {
+      animation: none;
+    }
+  }
+
+  /*
+    A recording with a hole in it, and a recording that has stopped writing.
+    Both of these were plain body text sitting beside the timer -- the one
+    place in the interface where "the file you are trusting is damaged" was
+    said in the same voice as everything else.
+  */
+  .warn-chip {
+    padding: 0.2rem 0.45rem;
+    border: 1px solid var(--warn);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
+    color: var(--warn);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  /* A gap costs you a bar; this costs you the rest of the night. */
+  .warn-chip.bad {
+    border-color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 16%, transparent);
+    color: var(--danger);
   }
 
   .status {
