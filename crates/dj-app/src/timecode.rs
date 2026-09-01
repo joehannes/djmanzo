@@ -428,7 +428,9 @@ mod tests {
         assert_eq!(channels, 2, "a control record has to be stereo");
         let data = &bytes[44..];
         let samples = data
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| f32::from(i16::from_le_bytes([pair[0], pair[1]])) / f32::from(i16::MAX))
             .collect();
         (rate, samples)

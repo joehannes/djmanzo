@@ -3518,8 +3518,16 @@ mod keylock_tests {
         let mut out = vec![0.0; 32_768];
         let _ = deck.process(&mut out, &layout, None, None);
 
-        let master = out.chunks_exact(4).fold(0.0f32, |a, f| a.max(f[0].abs()));
-        let cue = out.chunks_exact(4).fold(0.0f32, |a, f| a.max(f[2].abs()));
+        let master = out
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .fold(0.0f32, |a, f| a.max(f[0].abs()));
+        let cue = out
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .fold(0.0f32, |a, f| a.max(f[2].abs()));
         assert!(master < 1e-6, "a closed fader still reached the master");
         assert!(cue > 0.05, "keylocked audio never reached the cue bus");
     }

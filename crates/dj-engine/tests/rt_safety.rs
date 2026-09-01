@@ -1870,7 +1870,12 @@ fn the_stem_tap_advances_one_frame_per_frame() {
     rig.warm_up(8);
 
     let block = rig.renderer.render_block();
-    let frames: Vec<f32> = block.chunks_exact(8).map(|frame| frame[0]).collect();
+    let frames: Vec<f32> = block
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|frame| frame[0])
+        .collect();
     assert_eq!(
         frames.len(),
         256,
@@ -1919,7 +1924,9 @@ fn each_deck_lands_on_its_own_output_pair() {
     let peaks: Vec<f32> = (0..4)
         .map(|pair| {
             block
-                .chunks_exact(8)
+                .as_chunks::<8>()
+                .0
+                .iter()
                 .map(|frame| frame[pair * 2].abs())
                 .fold(0.0_f32, f32::max)
         })
@@ -1953,11 +1960,15 @@ fn a_deck_sent_out_separately_is_not_also_mixed() {
 
     let block = rig.renderer.render_block();
     let on_own_pair = block
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|frame| frame[2].abs())
         .fold(0.0_f32, f32::max);
     let on_the_master = block
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|frame| frame[0].abs())
         .fold(0.0_f32, f32::max);
 
@@ -1983,7 +1994,9 @@ fn the_deck_socket_is_pre_fader() {
     let open = rig
         .renderer
         .render_block()
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|frame| frame[0].abs())
         .fold(0.0_f32, f32::max);
 
@@ -1996,7 +2009,9 @@ fn the_deck_socket_is_pre_fader() {
     let closed = rig
         .renderer
         .render_block()
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|frame| frame[0].abs())
         .fold(0.0_f32, f32::max);
 
@@ -2020,7 +2035,9 @@ fn a_device_too_narrow_for_every_deck_keeps_its_mix() {
 
     let block = rig.renderer.render_block();
     let main = block
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|frame| frame[0].abs())
         .fold(0.0_f32, f32::max);
     assert!(
@@ -2069,7 +2086,9 @@ fn clearing_deck_out_restores_the_master() {
     assert_eq!(
         rig.renderer
             .render_block()
-            .chunks_exact(8)
+            .as_chunks::<8>()
+            .0
+            .iter()
             .map(|frame| frame[0].abs())
             .fold(0.0_f32, f32::max),
         0.0,
@@ -2082,7 +2101,9 @@ fn clearing_deck_out_restores_the_master() {
     let main = rig
         .renderer
         .render_block()
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|frame| frame[0].abs())
         .fold(0.0_f32, f32::max);
     assert!(main > 0.001, "the master did not come back");
@@ -2193,7 +2214,9 @@ fn a_per_stem_eq_kill_changes_that_stem_and_no_other() {
     fn level(rig: &mut Rig) -> f32 {
         rig.renderer
             .render_block()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|frame| frame[0].abs())
             .fold(0.0_f32, f32::max)
     }
@@ -2272,7 +2295,9 @@ fn an_untouched_stem_still_follows_the_deck_eq() {
     fn level(rig: &mut Rig) -> f32 {
         rig.renderer
             .render_block()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|frame| frame[0].abs())
             .fold(0.0_f32, f32::max)
     }
@@ -2336,7 +2361,9 @@ fn a_per_stem_filter_sweep_changes_that_stem_and_no_other() {
     fn level(rig: &mut Rig) -> f32 {
         rig.renderer
             .render_block()
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|frame| frame[0].abs())
             .fold(0.0_f32, f32::max)
     }

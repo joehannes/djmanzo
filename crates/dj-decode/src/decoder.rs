@@ -209,8 +209,14 @@ fn hash_audio(samples: &[f32]) -> TrackId {
     const CHUNK: usize = 8192;
     let mut buffer = [0u8; CHUNK * 4];
     for block in samples.chunks(CHUNK) {
-        for (slot, &sample) in buffer.chunks_exact_mut(4).zip(block) {
-            slot.copy_from_slice(&sample.to_bits().to_le_bytes());
+        // `as_chunks_mut` rather than `chunks_exact_mut`: a slot comes back as
+        // `&mut [u8; 4]`, which is the exact type `to_le_bytes` returns, so the
+        // write is an assignment instead of a `copy_from_slice` that has to
+        // check two lengths agree. The remainder is empty -- the buffer is
+        // `CHUNK * 4` bytes long.
+        let (slots, _) = buffer.as_chunks_mut::<4>();
+        for (slot, &sample) in slots.iter_mut().zip(block) {
+            *slot = sample.to_bits().to_le_bytes();
         }
         hasher.update(&buffer[..block.len() * 4]);
     }

@@ -130,7 +130,7 @@ fn separate_stereo(mix: &[f32], sample_rate: u32) -> Stems {
     // left and right separately would answer a different question in each ear.
     let mut mid = Vec::with_capacity(frames);
     let mut side = Vec::with_capacity(frames);
-    for frame in mix.chunks_exact(2) {
+    for frame in mix.as_chunks::<2>().0 {
         mid.push((frame[0] + frame[1]) * 0.5);
         side.push((frame[0] - frame[1]) * 0.5);
     }

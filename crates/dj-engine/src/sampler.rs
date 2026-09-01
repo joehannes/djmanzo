@@ -527,14 +527,16 @@ mod tests {
         let _ = sampler.process(&mut out, &layout, None);
 
         let (main_l, main_r) = layout.main;
-        let master: f32 = out.chunks_exact(4).fold(0.0f32, |peak, f| {
+        let master: f32 = out.as_chunks::<4>().0.iter().fold(0.0f32, |peak, f| {
             peak.max(f[main_l].abs()).max(f[main_r].abs())
         });
         assert_eq!(master, 0.0, "a cued sample leaked into the master");
 
         let (cue_l, _) = layout.cue.expect("four channels means a cue bus");
         let cue: f32 = out
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .fold(0.0f32, |peak, f| peak.max(f[cue_l].abs()));
         assert!(cue > 0.0, "and it should be audible in the headphones");
     }

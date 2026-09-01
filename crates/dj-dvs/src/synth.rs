@@ -82,7 +82,7 @@ impl Synth {
         let period = f64::from(self.format.period());
         let cycles_per_sample = self.format.carrier_hz * speed / self.sample_rate;
 
-        for (index, frame) in out.chunks_exact_mut(2).enumerate() {
+        for (index, frame) in out.as_chunks_mut::<2>().0.iter_mut().enumerate() {
             // How far into the bitstream this sample sits. One cycle of
             // carrier is one bit, so the cycle count *is* the bit position.
             #[allow(clippy::cast_precision_loss)]
@@ -157,8 +157,8 @@ mod tests {
         let synth = Synth::new(format(), 48_000.0).unwrap();
         let audio = synth.render(0, 1.0, 480);
 
-        let left: Vec<f32> = audio.chunks_exact(2).map(|f| f[0]).collect();
-        let right: Vec<f32> = audio.chunks_exact(2).map(|f| f[1]).collect();
+        let left: Vec<f32> = audio.as_chunks::<2>().0.iter().map(|f| f[0]).collect();
+        let right: Vec<f32> = audio.as_chunks::<2>().0.iter().map(|f| f[1]).collect();
         assert_ne!(left, right, "both channels carried the same signal");
 
         // A quarter of a 1 kHz cycle at 48 kHz is twelve samples. Shifting the
@@ -186,8 +186,8 @@ mod tests {
         // trailing -- so the *forward* alignment should no longer hold.
         let shift = 12;
         let lead = |audio: &[f32]| {
-            let left: Vec<f32> = audio.chunks_exact(2).map(|f| f[0]).collect();
-            let right: Vec<f32> = audio.chunks_exact(2).map(|f| f[1]).collect();
+            let left: Vec<f32> = audio.as_chunks::<2>().0.iter().map(|f| f[0]).collect();
+            let right: Vec<f32> = audio.as_chunks::<2>().0.iter().map(|f| f[1]).collect();
             let mut worst = 0.0f32;
             for index in shift..left.len() {
                 worst = worst.max((left[index - shift] - right[index]).abs());
@@ -214,7 +214,9 @@ mod tests {
         let left_peak = |from: u32| {
             synth
                 .render(from, 1.0, 48)
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|frame| frame[0].abs())
                 .fold(0.0f32, f32::max)
         };

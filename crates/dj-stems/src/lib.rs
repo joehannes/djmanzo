@@ -68,7 +68,7 @@ impl StemsEngine {
         // De-interleave into [channels, samples]
         let mut left = Vec::with_capacity(frames);
         let mut right = Vec::with_capacity(frames);
-        for frame in input.chunks_exact(2) {
+        for frame in input.as_chunks::<2>().0 {
             left.push(frame[0]);
             right.push(frame[1]);
         }

@@ -401,7 +401,7 @@ pub fn render_tile_with_grid(
     let mut pixels = vec![0u8; spec.byte_len()];
     // Fill the background first if it is not transparent.
     if palette.background[3] > 0 {
-        for chunk in pixels.chunks_exact_mut(BYTES_PER_PIXEL) {
+        for chunk in pixels.as_chunks_mut::<BYTES_PER_PIXEL>().0 {
             chunk.copy_from_slice(&palette.background);
         }
     }

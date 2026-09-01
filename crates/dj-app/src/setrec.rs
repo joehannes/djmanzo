@@ -296,7 +296,9 @@ mod tests {
     fn samples_of(path: &Path) -> Vec<i16> {
         let raw = std::fs::read(path).expect("the recording should exist");
         raw[44..]
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|b| i16::from_le_bytes([b[0], b[1]]))
             .collect()
     }

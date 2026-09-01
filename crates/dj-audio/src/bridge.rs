@@ -256,7 +256,7 @@ impl CueConsumer {
             self.primed = true;
         }
 
-        for frame in out.chunks_exact_mut(CHANNELS) {
+        for frame in out.as_chunks_mut::<CHANNELS>().0 {
             // Advance first: `phase` counts how far past the current input
             // frame we are, and each whole step shifts a new frame in.
             self.phase += self.ratio;
@@ -461,14 +461,14 @@ impl AudioCallback for SplitPrimary {
 
         // Master to this device, cue to the other one. Interleaved in both
         // cases, so this is a strided copy rather than anything clever.
-        for (index, source) in block.chunks_exact(SPLIT_CHANNELS).enumerate() {
+        for (index, source) in block.as_chunks::<SPLIT_CHANNELS>().0.iter().enumerate() {
             let target = &mut out[index * channels..];
             target[0] = source[0];
             if channels > 1 {
                 target[1] = source[1];
             }
         }
-        for source in block.chunks_exact(SPLIT_CHANNELS) {
+        for source in block.as_chunks::<SPLIT_CHANNELS>().0 {
             self.producer.push(&source[2..4]);
         }
 
@@ -728,7 +728,7 @@ mod tests {
         let peak = out.iter().fold(0.0f32, |a, s| a.max(s.abs()));
         assert!((peak - 0.5).abs() < 0.05, "a 0.5 sine came out at {peak}");
         // Both channels carry the same signal here, so they must match.
-        for frame in out.chunks_exact(CHANNELS) {
+        for frame in out.as_chunks::<CHANNELS>().0 {
             assert!(
                 (frame[0] - frame[1]).abs() < 1e-6,
                 "the two channels diverged: {} vs {}",

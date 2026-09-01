@@ -880,7 +880,7 @@ impl Engine {
         let scratch = &mut self.clap_scratch[..frames * CLAP_CHANNELS];
         for (frame, slot) in out
             .chunks_exact(channels)
-            .zip(scratch.chunks_exact_mut(CLAP_CHANNELS))
+            .zip(scratch.as_chunks_mut::<CLAP_CHANNELS>().0.iter_mut())
         {
             slot[0] = frame[main_l];
             // A mono layout has one master channel, and a plugin expecting
@@ -897,7 +897,7 @@ impl Engine {
 
         for (frame, slot) in out
             .chunks_exact_mut(channels)
-            .zip(scratch.chunks_exact(CLAP_CHANNELS))
+            .zip(scratch.as_chunks::<CLAP_CHANNELS>().0)
         {
             frame[main_l] = slot[0];
             if !layout.is_mono() {
@@ -2441,10 +2441,14 @@ mod cue_routing_tests {
         let (cue_l, cue_r) = layout(4).cue.unwrap();
 
         let left = out
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .fold(0.0f32, |a, f| a.max(f[cue_l].abs()));
         let right = out
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .fold(0.0f32, |a, f| a.max(f[cue_r].abs()));
 
         assert!(left > 0.4, "left ear should carry the cue, got {left}");
@@ -4069,7 +4073,9 @@ mod loop_tests {
         // A ramp that never loops is monotonically increasing. Looping means it
         // must fall at least once.
         let fell = out
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|f| f[0])
             .collect::<Vec<_>>()
             .windows(2)
@@ -5433,8 +5439,18 @@ mod clap_tests {
                 sample_rate: SR,
             },
         );
-        let left = out.chunks_exact(2).map(|f| f[0]).fold(0.0f32, f32::max);
-        let right = out.chunks_exact(2).map(|f| f[1]).fold(0.0f32, f32::min);
+        let left = out
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|f| f[0])
+            .fold(0.0f32, f32::max);
+        let right = out
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|f| f[1])
+            .fold(0.0f32, f32::min);
 
         // A single deck reaches the master through the constant-power
         // crossfader law, so 0.4 arrives as 0.4/√2 — and then through the
@@ -5555,7 +5571,12 @@ mod clap_tests {
                 sample_rate: SR,
             },
         );
-        let peak = out.chunks_exact(2).map(|f| f[0]).fold(0.0f32, f32::max);
+        let peak = out
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|f| f[0])
+            .fold(0.0f32, f32::max);
         // Full level: through the crossfader law but *not* through the
         // plugin's half gain.
         let expected = 0.4 / std::f32::consts::SQRT_2;
@@ -5638,8 +5659,18 @@ mod clap_tests {
         );
         // Left and right carry the two different values the source had, so a
         // pass that had collapsed the channels would show up here.
-        let left = out.chunks_exact(2).map(|f| f[0]).fold(0.0f32, f32::max);
-        let right = out.chunks_exact(2).map(|f| f[1]).fold(0.0f32, f32::min);
+        let left = out
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|f| f[0])
+            .fold(0.0f32, f32::max);
+        let right = out
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|f| f[1])
+            .fold(0.0f32, f32::min);
         assert!(left > 0.2, "the left channel went quiet: {left}");
         assert!(right < -0.2, "the right channel went quiet: {right}");
     }

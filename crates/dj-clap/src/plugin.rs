@@ -359,7 +359,13 @@ impl Processor {
             return;
         }
 
-        for (frame, samples) in buffer.chunks_exact(CHANNELS).take(frames).enumerate() {
+        for (frame, samples) in buffer
+            .as_chunks::<CHANNELS>()
+            .0
+            .iter()
+            .take(frames)
+            .enumerate()
+        {
             for (scratch, sample) in self.scratch_in.iter_mut().zip(samples) {
                 scratch[frame] = *sample;
             }
@@ -420,7 +426,13 @@ impl Processor {
             }
         }
 
-        for (frame, samples) in buffer.chunks_exact_mut(CHANNELS).take(frames).enumerate() {
+        for (frame, samples) in buffer
+            .as_chunks_mut::<CHANNELS>()
+            .0
+            .iter_mut()
+            .take(frames)
+            .enumerate()
+        {
             for (scratch, sample) in self.scratch_out.iter().zip(samples) {
                 *sample = scratch[frame];
             }

@@ -35,7 +35,12 @@ impl TrackId {
             return None;
         }
         let mut bytes = [0u8; 32];
-        for (slot, pair) in bytes.iter_mut().zip(hex.as_bytes().chunks_exact(2)) {
+        // `as_chunks` rather than `chunks_exact`: the pair comes back as
+        // `&[u8; 2]`, so reading both halves is two array accesses the compiler
+        // knows are in range instead of two slice accesses it has to check. The
+        // remainder is empty here because the length is already exactly 64.
+        let (pairs, _) = hex.as_bytes().as_chunks::<2>();
+        for (slot, pair) in bytes.iter_mut().zip(pairs) {
             let hi = char::from(pair[0]).to_digit(16)?;
             let lo = char::from(pair[1]).to_digit(16)?;
             #[allow(clippy::cast_possible_truncation)]

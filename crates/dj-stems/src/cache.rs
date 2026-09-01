@@ -225,7 +225,7 @@ impl StemCache {
 
         // Oldest touch first. `get` bumps mtime, so this is least-recently-used
         // and not least-recently-written.
-        files.sort_by(|a, b| a.1.cmp(&b.1));
+        files.sort_by_key(|a| a.1);
 
         for (path, _, size) in files {
             if total <= self.max_size_bytes {

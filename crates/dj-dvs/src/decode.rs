@@ -219,7 +219,7 @@ impl Decoder {
     /// behind a queue, which matters because a scratch that arrived a buffer
     /// late would feel like a scratch through treacle.
     pub fn feed(&mut self, input: &[f32]) -> Reading {
-        for frame in input.chunks_exact(2) {
+        for frame in input.as_chunks::<2>().0 {
             self.feed_frame(frame[0], frame[1]);
         }
         self.reading()

@@ -325,10 +325,10 @@ impl PeerSync {
 
         let mut buffer = [0u8; 1024];
         let mut nudge = 0.0f64;
-        loop {
-            let Ok((read, _from)) = self.socket.recv_from(&mut buffer) else {
-                break; // nothing waiting, or a packet that vanished
-            };
+        // The socket is non-blocking, so an error here means the queue is
+        // empty -- or that a packet vanished between the readiness and the
+        // read, which is the same thing as far as this drain is concerned.
+        while let Ok((read, _from)) = self.socket.recv_from(&mut buffer) {
             let Ok(announcement) = decode(&buffer[..read]) else {
                 continue;
             };

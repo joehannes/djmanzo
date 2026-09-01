@@ -167,7 +167,14 @@ impl Limiter {
     ///
     /// Realtime-safe: no allocation, no locking, no I/O.
     pub fn process(&mut self, buffer: &mut [f32]) {
-        for frame in buffer.chunks_exact_mut(CHANNELS) {
+        // `as_chunks_mut` rather than `chunks_exact_mut`: a frame comes back
+        // as `&mut [f32; CHANNELS]`, so reading and writing the pair is four
+        // array accesses the compiler already knows are in range instead of
+        // four slice accesses it has to bounds-check. The remainder is any
+        // trailing partial frame, dropped exactly as `chunks_exact_mut`
+        // dropped it.
+        let (frames, _) = buffer.as_chunks_mut::<CHANNELS>();
+        for frame in frames {
             let (left, right) = self.process_frame(frame[0], frame[1]);
             frame[0] = left;
             frame[1] = right;
@@ -528,7 +535,9 @@ mod tests {
         limiter.process(&mut after);
 
         let biggest_step = after
-            .chunks_exact(CHANNELS)
+            .as_chunks::<CHANNELS>()
+            .0
+            .iter()
             .map(|f| f[0])
             .collect::<Vec<_>>()
             .windows(2)
