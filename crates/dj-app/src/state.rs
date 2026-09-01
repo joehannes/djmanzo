@@ -94,6 +94,8 @@ pub struct AppState {
     /// The network control server. Off until a DJ switches it on; see
     /// `crate::remote` for why that is not a preference.
     remote: Arc<crate::remote::Remote>,
+    /// The room's own page, running or not. See `crate::audience`.
+    audience: Arc<crate::audience::Audience>,
     /// Tempo sync with other djmanzo instances. Off until a DJ switches it
     /// on; see `crate::peersync`.
     peers: Arc<crate::peersync::Peers>,
@@ -394,6 +396,7 @@ impl AppState {
             conduct: Arc::new(Mutex::new(Conduct::default())),
             registry,
             remote: Arc::new(crate::remote::Remote::default()),
+            audience: Arc::new(crate::audience::Audience::default()),
             peers: Arc::new(crate::peersync::Peers::default()),
             clock: Arc::new(crate::clock::MidiClock::default()),
             clock_follow: Arc::new(crate::clock::ClockFollow::default()),
@@ -956,6 +959,12 @@ impl AppState {
     #[must_use]
     pub fn remote(&self) -> &Arc<crate::remote::Remote> {
         &self.remote
+    }
+
+    /// The page the room sees, running or not.
+    #[must_use]
+    pub fn audience(&self) -> &Arc<crate::audience::Audience> {
+        &self.audience
     }
 
     /// The MIDI clock, sending or not.

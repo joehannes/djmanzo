@@ -7,6 +7,7 @@
 
 pub mod announce;
 pub mod control;
+pub mod front;
 pub mod midi_clock;
 pub mod osc;
 pub mod page;

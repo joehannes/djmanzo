@@ -26,6 +26,7 @@
     | { kind: "history" }
     | { kind: "notes" }
     | { kind: "plan" }
+    | { kind: "requests" }
     | { kind: "duplicates" }
     | { kind: "playlist"; id: number; name: string }
     | { kind: "smart"; id: number; name: string; query: string };
@@ -232,6 +233,17 @@
     onclick={() => select({ kind: "plan" })}
   >
     Plan
+  </button>
+  <!--
+    Requests belongs with the other three: it is about the night, and it is the
+    only one of the four that is about the night while it is still happening.
+  -->
+  <button
+    class="entry"
+    class:active={selection.kind === "requests"}
+    onclick={() => select({ kind: "requests" })}
+  >
+    Requests
   </button>
   <!--
     Duplicates is a *view* of the collection rather than a crate, so it belongs

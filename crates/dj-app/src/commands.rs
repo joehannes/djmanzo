@@ -2296,12 +2296,9 @@ fn now_playing(state: &AppState) -> String {
         return String::new();
     };
 
-    let describe = |deck: u8| {
-        tracks.get(&deck).map(|info| match &info.artist {
-            Some(artist) if !artist.trim().is_empty() => format!("{artist} - {}", info.title),
-            _ => info.title.clone(),
-        })
-    };
+    // The same naming the request book is matched against, so what the room
+    // reads and what a played request is ticked off by cannot drift apart.
+    let describe = |deck: u8| tracks.get(&deck).map(crate::track_name);
 
     let decks: Vec<u8> = (1..=state.deck_count())
         .filter_map(|n| u8::try_from(n).ok())
@@ -5574,4 +5571,123 @@ pub fn close_controller(state: State<'_, AppState>) {
     // Back to guessing from the channel count, which is right for the built-in
     // output the DJ has just fallen back to.
     state.apply_controller_routing();
+}
+
+// -- The room's own page ---------------------------------------------------
+
+/// Open the page the room can reach, and start answering to the local name.
+///
+/// A port of 0 asks the operating system for a free one, which is useful for a
+/// test and useless for a sticker; the interface passes the real default.
+#[tauri::command]
+pub fn audience_start(
+    state: State<'_, AppState>,
+    port: Option<u16>,
+) -> Result<crate::audience::AudienceStatus, String> {
+    state
+        .audience()
+        .start(port.unwrap_or(dj_net::sticker::DEFAULT_PORT))
+}
+
+/// Close the port. What was asked for is kept.
+#[tauri::command]
+pub fn audience_stop(state: State<'_, AppState>) -> crate::audience::AudienceStatus {
+    state.audience().stop();
+    state.audience().status()
+}
+
+#[tauri::command]
+pub fn audience_status(state: State<'_, AppState>) -> crate::audience::AudienceStatus {
+    let audience = state.audience();
+    // What the page shows as playing, from the poll the interface makes
+    // anyway. Blank rather than stale when nothing is loaded.
+    let playing = now_playing(&state);
+    audience
+        .front()
+        .set_playing((!playing.is_empty()).then_some(playing));
+    audience.status()
+}
+
+/// Stop taking requests without taking the page away.
+#[tauri::command]
+pub fn audience_open(state: State<'_, AppState>, open: bool) -> crate::audience::AudienceStatus {
+    state.audience().front().set_open(open);
+    state.audience().status()
+}
+
+/// The heading, the language, and whether the room is told what is playing.
+#[tauri::command]
+pub fn audience_settings(
+    state: State<'_, AppState>,
+    heading: Option<String>,
+    language: Option<String>,
+    show_playing: Option<bool>,
+) -> crate::audience::AudienceStatus {
+    let audience = state.audience();
+    let front = audience.front();
+    if let Some(heading) = heading {
+        front.set_heading(&heading);
+    }
+    if let Some(language) = language {
+        front.set_language(&language);
+    }
+    if let Some(show) = show_playing {
+        front.set_show_playing(show);
+    }
+    audience.status()
+}
+
+/// The languages the page is written in.
+#[tauri::command]
+pub fn audience_languages() -> Vec<(String, String)> {
+    crate::audience::Audience::languages()
+}
+
+/// Everything still waiting, most-wanted first.
+#[tauri::command]
+pub fn audience_waiting(state: State<'_, AppState>) -> Vec<crate::audience::AskDto> {
+    state.audience().waiting()
+}
+
+/// Everything, settled and not, in the order it was asked.
+#[tauri::command]
+pub fn audience_all(state: State<'_, AppState>) -> Vec<crate::audience::AskDto> {
+    state.audience().everything()
+}
+
+/// Say what became of a request — `played`, `passed`, or back to `waiting`.
+#[tauri::command]
+pub fn audience_settle(state: State<'_, AppState>, id: u64, standing: String) -> bool {
+    state.audience().settle(id, &standing)
+}
+
+/// Write a printable sheet of stickers, and open it.
+///
+/// A file the DJ chose the place for, rather than a window djmanzo opens.
+/// `window.open` from inside the webview is inert here -- it returns something
+/// and no window appears, which is the same silent failure `target="_blank"`
+/// had -- so the sheet is written where it was asked for and handed to the
+/// operating system, which knows how to print an HTML page.
+///
+/// Opening is best-effort and reported separately: a machine with no browser
+/// still has the file, and a sentence saying where it is beats a button that
+/// looks like it did nothing.
+///
+/// # Errors
+/// When there is no such way in, or the file cannot be written.
+#[tauri::command]
+pub fn audience_sheet(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    kind: String,
+    copies: Option<usize>,
+    path: String,
+) -> Result<bool, String> {
+    use tauri_plugin_opener::OpenerExt as _;
+
+    let html = state.audience().sheet(&kind, copies.unwrap_or(12))?;
+    std::fs::write(&path, html).map_err(|e| format!("could not write {path}: {e}"))?;
+    // A path djmanzo just wrote itself, so there is nothing to check it
+    // against -- unlike `open_signup_link`, where the URL comes from a catalog.
+    Ok(app.opener().open_path(&path, None::<&str>).is_ok())
 }

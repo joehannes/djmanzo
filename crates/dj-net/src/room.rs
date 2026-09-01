@@ -35,6 +35,14 @@ pub const LONGEST_ASK: usize = 120;
 /// person with a grudge has hundreds.
 pub const ASKS_PER_PHONE: usize = 3;
 
+/// How much of a name has to be there before a partial match counts.
+///
+/// Six folded characters. Below that the request is a word rather than a
+/// title: "si", "amor" and "baila" are each inside a hundred songs, and a
+/// request auto-marked as played because the deck happens to hold one of them
+/// is a request the room asked for and never got.
+pub const SPECIFIC_ENOUGH: usize = 6;
+
 /// The window the per-phone limit is measured over.
 pub const WINDOW: Duration = Duration::from_secs(15 * 60);
 
@@ -228,13 +236,26 @@ impl RequestBook {
     ///
     /// How a track starting to play finds its own request without the DJ
     /// having to notice that it had one.
+    ///
+    /// Deliberately not an equality test. Nobody types what a file is called:
+    /// the room asks for "Obsesión" and the deck loads "Aventura - Obsesión
+    /// (Album Version) [128kbps]". So one folded key containing the other
+    /// counts — which is why [`SPECIFIC_ENOUGH`] exists, because "si" is
+    /// inside half a Latin catalogue. The longest match wins, so an ask for
+    /// the artist does not beat an ask for the song.
     #[must_use]
     pub fn matching(&self, text: &str) -> Option<&Ask> {
         let key = fold(&tidy(text));
         if key.is_empty() {
             return None;
         }
-        self.asks.iter().find(|a| a.key == key)
+        self.asks
+            .iter()
+            .filter(|a| {
+                a.key.chars().count() >= SPECIFIC_ENOUGH
+                    && (key.contains(&a.key) || a.key.contains(&key))
+            })
+            .max_by_key(|a| a.key.chars().count())
     }
 
     #[must_use]
@@ -523,12 +544,50 @@ mod tests {
     }
 
     /// **A track starting to play finds its own request.**
+    ///
+    /// Including the case that actually happens: somebody typed the song, and
+    /// the file on disk carries the artist, the edition and the bitrate.
     #[test]
     fn a_playing_track_matches_the_ask_that_wanted_it() {
         let mut book = RequestBook::new();
         book.ask("a", "Obsesión", at(0));
         assert!(book.matching("obsesion").is_some());
+        assert!(
+            book.matching("Aventura - Obsesión (Album Version) [128kbps]")
+                .is_some(),
+            "a request never carries the whole filename"
+        );
         assert!(book.matching("something else").is_none());
         assert!(book.matching("   ").is_none());
+    }
+
+    /// **A word is not a title.**
+    ///
+    /// Left as plain containment, an ask for "amor" is marked played by the
+    /// next song with "amor" in it — and the room's actual request quietly
+    /// leaves the list without anybody hearing it.
+    #[test]
+    fn a_short_request_does_not_match_everything() {
+        let mut book = RequestBook::new();
+        book.ask("a", "si", at(0));
+        book.ask("b", "amor", at(0));
+        assert!(book.matching("Sí Señor - Amor de Verano").is_none());
+    }
+
+    /// **The most specific ask wins.**
+    #[test]
+    fn the_longest_match_is_the_one_marked() {
+        let mut book = RequestBook::new();
+        let Outcome::Added(artist) = book.ask("a", "Aventura", at(0)) else {
+            panic!("not added");
+        };
+        let Outcome::Added(song) = book.ask("b", "Aventura - Obsesión", at(1)) else {
+            panic!("not added");
+        };
+        let found = book
+            .matching("Aventura - Obsesión (Album Version)")
+            .expect("a match");
+        assert_eq!(found.id, song, "the artist's ask beat the song's");
+        assert_ne!(found.id, artist);
     }
 }

@@ -21,6 +21,7 @@
 
 pub mod analysis;
 pub mod assistant;
+pub mod audience;
 pub mod automix;
 pub mod autopilot;
 pub mod brand;
@@ -125,6 +126,7 @@ pub fn run() {
     let play_watcher = state.play_watcher();
     let session_id = state.session_id();
     let library_writer = state.library_writer();
+    let pump_audience = Arc::clone(state.audience());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -293,6 +295,7 @@ pub fn run() {
                         &play_watcher,
                         &session_id,
                         &library_writer,
+                        &pump_audience,
                     );
                     if let Err(error) = handle.emit("snapshot", &snapshot) {
                         tracing::warn!(%error, "failed to emit snapshot");
@@ -368,6 +371,16 @@ pub fn run() {
             commands::follow_clock,
             commands::unfollow_clock,
             commands::remote_status,
+            commands::audience_start,
+            commands::audience_stop,
+            commands::audience_status,
+            commands::audience_open,
+            commands::audience_settings,
+            commands::audience_languages,
+            commands::audience_waiting,
+            commands::audience_all,
+            commands::audience_settle,
+            commands::audience_sheet,
             commands::start_remote,
             commands::stop_remote,
             commands::start_osc,
@@ -519,6 +532,7 @@ fn record_plays(
     watcher: &std::sync::Mutex<persist::PlayWatcher>,
     session: &str,
     writer: &persist::LibraryWriter,
+    audience: &Arc<audience::Audience>,
 ) {
     let Ok(mut watcher) = watcher.lock() else {
         return;
@@ -553,6 +567,34 @@ fn record_plays(
                 at: library::now_seconds(),
                 session: Some(session.to_owned()),
             });
+            // The moment a track counts as played is the moment to tick off
+            // the request that wanted it. Doing this here rather than in the
+            // panel means a DJ who never opens the panel still hands the room
+            // a list that is true: a song asked for and played does not sit at
+            // the top of the waiting list all night.
+            let name = names
+                .as_ref()
+                .and_then(|map| map.get(&deck.number))
+                .map(track_name);
+            if let Some(id) = name
+                .as_deref()
+                .and_then(|name| audience.front().played(name))
+            {
+                tracing::debug!(id, ?name, "a request was played");
+            }
         }
+    }
+}
+
+/// How a loaded track is named when it is matched against what the room asked
+/// for.
+///
+/// Artist and title, in the order somebody types them into a request box. The
+/// matching folds this to nothing but letters and digits anyway, so the
+/// separator is for reading rather than for matching.
+pub(crate) fn track_name(loaded: &state::LoadedTrackInfo) -> String {
+    match &loaded.artist {
+        Some(artist) if !artist.trim().is_empty() => format!("{artist} - {}", loaded.title),
+        _ => loaded.title.clone(),
     }
 }

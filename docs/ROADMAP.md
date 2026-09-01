@@ -1804,6 +1804,30 @@ is what makes the reflective statistics possible at all.
   the room, surfaced as bubbles that open a sidebar, so a request can be
   answered on the mic and played.
 
+**Requests are built.** djmanzo carries its own HTTP server (`dj_net::web`),
+its own request page (`dj_net::page`, English and Spanish, no script and no
+fetch so it works on venue wifi with no route out), the book that folds six
+spellings of one song into one tally (`dj_net::room`), and the QR code and
+printable sticker sheet that get a phone there (`dj_net::sticker`). Browser →
+**Requests**.
+
+Two things worth stating plainly about it:
+
+- **The printed sticker problem is solved by answering to a name.**
+  `http://djmanzo.local:7331/` is the same at every venue, which is what makes
+  a sticker printable in advance; djmanzo answers for that name over multicast
+  DNS (`dj_net::announce`). Apple devices resolve `.local` reliably, Android
+  has since 12 and not on every build, and a few browsers never will — so the
+  plain address is offered beside it with that caveat printed, not hidden, and
+  a sheet can be printed for either.
+- **The server faces the network on purpose, and is safe for a different
+  reason than the control server.** `dj_net::server` is safe because it is off,
+  on loopback, and behind a token. None of that is available to a page a
+  stranger opens from a sticker, so the safety is structural instead:
+  `dj_net::front::Doorman` holds a request book and nothing else — no action
+  bus, no registry, no deck. A request from the room cannot reach the audio
+  path because there is no path, not because something checks.
+
 > **Feasibility, stated up front.** Instagram and Facebook posting requires a
 > Business or Creator account plus Meta app review before it works for anyone
 > but the developer. TikTok's Content Posting API requires an audit before posts

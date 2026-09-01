@@ -2080,3 +2080,74 @@ export const stopRemote = () => invoke<RemoteStatus>("stop_remote");
 export const startOsc = (address: string) =>
   invoke<RemoteStatus>("start_osc", { address });
 export const stopOsc = () => invoke<RemoteStatus>("stop_osc");
+
+/* -- The room's own page --------------------------------------------------- */
+
+/** One way a phone gets to the request page, and what it is good for. */
+export interface WayIn {
+  /** `"name"` — the same every venue. `"lan"` — certain, and only here. */
+  kind: string;
+  url: string;
+  /** The honest sentence about which phones will manage it. */
+  caveat: string;
+  /** The QR code, as an inline SVG. */
+  qr: string | null;
+}
+
+export interface AudienceStatus {
+  running: boolean;
+  /** Whether requests are being taken. A closed door still shows the list. */
+  open: boolean;
+  port: number;
+  heading: string;
+  language: string;
+  show_playing: boolean;
+  /** Most portable first, so the order is the recommendation. */
+  ways_in: WayIn[];
+  announcing: boolean;
+  /** Why the local name is not being answered for. Usually blocked multicast. */
+  announce_error: string | null;
+  error: string | null;
+  waiting: number;
+}
+
+/** One song the room asked for, however many people asked for it. */
+export interface Ask {
+  id: number;
+  text: string;
+  voices: number;
+  first_asked: number;
+  last_asked: number;
+  standing: string;
+}
+
+export const audienceStatus = () => invoke<AudienceStatus>("audience_status");
+export const audienceStart = (port?: number) =>
+  invoke<AudienceStatus>("audience_start", { port: port ?? null });
+export const audienceStop = () => invoke<AudienceStatus>("audience_stop");
+export const audienceOpen = (open: boolean) =>
+  invoke<AudienceStatus>("audience_open", { open });
+export const audienceSettings = (settings: {
+  heading?: string;
+  language?: string;
+  showPlaying?: boolean;
+}) =>
+  invoke<AudienceStatus>("audience_settings", {
+    heading: settings.heading ?? null,
+    language: settings.language ?? null,
+    showPlaying: settings.showPlaying ?? null,
+  });
+export const audienceLanguages = () =>
+  invoke<[string, string][]>("audience_languages");
+export const audienceWaiting = () => invoke<Ask[]>("audience_waiting");
+export const audienceAll = () => invoke<Ask[]>("audience_all");
+export const audienceSettle = (id: number, standing: string) =>
+  invoke<boolean>("audience_settle", { id, standing });
+/**
+ * Write a sheet of stickers to `path` and hand it to the operating system.
+ *
+ * Resolves to whether it opened. Written rather than shown in a new window:
+ * `window.open` inside the webview returns something and opens nothing.
+ */
+export const audienceSheet = (kind: string, path: string, copies?: number) =>
+  invoke<boolean>("audience_sheet", { kind, path, copies: copies ?? null });

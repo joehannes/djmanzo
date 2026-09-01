@@ -24,6 +24,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import Journal from "./Journal.svelte";
   import Plan from "./Plan.svelte";
+  import Requests from "./Requests.svelte";
   import ShareSet from "./ShareSet.svelte";
   import Crates, { type Selection } from "./Crates.svelte";
   import SideView from "./SideView.svelte";
@@ -594,7 +595,7 @@
       is a different question — "when did I last play this" — and a box that
       silently does nothing is worse than one that is not there.
     -->
-    {#if selection.kind !== "history" && selection.kind !== "duplicates" && selection.kind !== "notes" && selection.kind !== "plan"}
+    {#if selection.kind !== "history" && selection.kind !== "duplicates" && selection.kind !== "notes" && selection.kind !== "plan" && selection.kind !== "requests"}
       <input
         type="search"
         placeholder={selection.kind === "playlist" || selection.kind === "smart"
@@ -610,7 +611,14 @@
       <span class="viewing">What you thought while it was playing.</span>
     {:else if selection.kind === "plan"}
       <span class="viewing">A whole night, before you play any of it.</span>
-    {:else}
+    {:else if selection.kind === "requests"}
+      <span class="viewing">What the room is asking for.</span>
+      <!--
+        Named rather than left to the tail: a catch-all here describes whatever
+        view is newest as "duplicates", which is how the Requests panel opened
+        under a sentence about audio files being in two places.
+      -->
+    {:else if selection.kind === "duplicates"}
       <span class="viewing">Tracks whose audio is in more than one place.</span>
     {/if}
     <IconButton icon="fa-solid fa-folder-plus" title="Add folder…" onClick={addFolder} disabled={busy} />
@@ -681,7 +689,7 @@
       it is one more thing between the DJ and what they wrote, in a panel that
       is short to begin with.
     -->
-    {#if status.folders.length > 0 && selection.kind !== "notes" && selection.kind !== "plan"}
+    {#if status.folders.length > 0 && selection.kind !== "notes" && selection.kind !== "plan" && selection.kind !== "requests"}
       <div class="folders">
         {#each status.folders as folder (folder)}
           <span class="folder">
@@ -814,6 +822,23 @@
     <Journal {enabled} />
   {:else if selection.kind === "plan"}
     <Plan {enabled} />
+  {:else if selection.kind === "requests"}
+    <!--
+      A request handed to the search box, and the view switched to the
+      collection: the whole point of "Find it" is that the next thing the DJ
+      does is look at records, not at the list they just read.
+    -->
+    <Requests
+      {enabled}
+      onFind={(text) => {
+        query = text;
+        selection = { kind: "all" };
+        // Setting the box is not searching it: the query only runs from the
+        // input's own handler, so a request handed over this way filled the
+        // field and left the table showing everything.
+        void refresh();
+      }}
+    />
   {:else if selection.kind === "history"}
     {#if sessions.length > 0}
       <div class="sessions">
