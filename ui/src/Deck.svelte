@@ -339,11 +339,6 @@
     <IconButton icon="fa-solid fa-folder-open" title={loading ? "Loading…" : "Load"} onClick={pickTrack} disabled={!enabled || loading} />
   </header>
 
-  {#if deck.loaded}
-    <!-- M6.1 STEMS UI MODULE -->
-    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} eqState={deck.stem_eq} filterState={deck.stem_filters} soloing={deck.stem_soloing} swap={stemSwap} deckCount={deckCount} />
-  {/if}
-
   <!--
     Tiles come from the Rust renderer and are scrolled by a CSS transform;
     nothing here draws. See docs/adr/0004-waveform-rendering-strategy.md.
@@ -362,6 +357,16 @@
   <div class="progress" role="progressbar" aria-valuenow={progress * 100}>
     <div class="fill" style:scale="{fill(progress)} 1"></div>
   </div>
+
+  {#if deck.loaded}
+    <!--
+      Below the waveform, not above it. Mounted above, this pushed the one
+      thing a DJ actually watches down by its own height the instant a track
+      loaded -- and it is the biggest block on the deck. It folds now (see
+      `Stems.svelte`), so it costs a row when nothing is using it.
+    -->
+    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} eqState={deck.stem_eq} filterState={deck.stem_filters} soloing={deck.stem_soloing} swap={stemSwap} deckCount={deckCount} />
+  {/if}
 
   <div class="times mono">
     <span>{formatTime(deck.position_seconds)}</span>

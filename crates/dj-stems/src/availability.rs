@@ -54,18 +54,24 @@ pub enum Unavailable {
     },
 }
 
+/// Each message names the cause and stops there.
+///
+/// It used to end "so stems are unavailable", which was true when this was the
+/// only outcome and stopped being true the day a built-in harmonic/percussive
+/// separator was added as the fallback. The interface then read
+/// "Using the built-in separator — ONNX Runtime could not be loaded, so stems
+/// are unavailable", which contradicts itself in one sentence. The consequence
+/// belongs to whoever knows whether there is a fallback, and that is the
+/// caller, never this enum.
 impl std::fmt::Display for Unavailable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Runtime { library, reason } => write!(
-                f,
-                "ONNX Runtime ({library}) could not be loaded, so stems are unavailable: {reason}"
-            ),
-            Self::Model { path } => write!(
-                f,
-                "no separation model at {}, so stems are unavailable",
-                path.display()
-            ),
+            Self::Runtime { library, reason } => {
+                write!(f, "ONNX Runtime ({library}) could not be loaded: {reason}")
+            }
+            Self::Model { path } => {
+                write!(f, "there is no separation model at {}", path.display())
+            }
             Self::Session { reason } => {
                 write!(f, "the separation model would not load: {reason}")
             }
@@ -277,5 +283,38 @@ mod tests {
             reason: "opset 18 unsupported".to_owned(),
         };
         assert!(session.to_string().contains("opset 18 unsupported"));
+    }
+
+    /// **A cause, never a consequence.**
+    ///
+    /// These sentences are shown in two places that mean opposite things: one
+    /// where separation really is off, and one where the built-in separator
+    /// took over and the controls all work. A message that decides the
+    /// consequence for itself is wrong in one of them, and it was: the
+    /// fallback line read "Using the built-in separator — ONNX Runtime could
+    /// not be loaded, so stems are unavailable".
+    #[test]
+    fn no_message_claims_stems_are_unavailable() {
+        let messages = [
+            Unavailable::Runtime {
+                library: "libonnxruntime.so".to_owned(),
+                reason: "no such file".to_owned(),
+            }
+            .to_string(),
+            Unavailable::Model {
+                path: PathBuf::from("/models/htdemucs.onnx"),
+            }
+            .to_string(),
+            Unavailable::Session {
+                reason: "opset 18 unsupported".to_owned(),
+            }
+            .to_string(),
+        ];
+        for message in messages {
+            assert!(
+                !message.contains("unavailable"),
+                "the cause decided the consequence: {message}"
+            );
+        }
     }
 }

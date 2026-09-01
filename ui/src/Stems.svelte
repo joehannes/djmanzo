@@ -126,6 +126,28 @@
     );
   }
 
+  /**
+   * Whether anything here is actually doing something to the sound.
+   *
+   * The rule the FX rack already follows: a block that is not in use folds
+   * away and opens itself the moment it matters. Four stems at unity, unmuted
+   * and unswapped are four defaults, and they were costing about 370 px above
+   * the waveform on every loaded deck -- more than three times what the
+   * waveform itself got.
+   *
+   * A swap counts only when it lands on this deck. `swap` is the one swap in
+   * force anywhere, so testing it for null alone would fling every deck's
+   * stems open because somebody borrowed a vocal on deck 3.
+   */
+  const inUse = $derived(
+    soloing ||
+      swap?.from === deckNumber ||
+      swap?.to === deckNumber ||
+      muteState.some((muted) => muted) ||
+      volumeState.some((level) => Math.abs(level - 1) > 0.001) ||
+      [0, 1, 2, 3].some((index) => toneTouched(index)),
+  );
+
   function changeVolume(index: number, value: string) {
     const vol = parseFloat(value);
     dispatch(`deck ${deckNumber} stem_volume ${STEM_KEYS[index]}:${vol.toFixed(3)}`);
@@ -221,16 +243,34 @@
   }
 </script>
 
+<!--
+  Folded, like the effect rack, and for the same reason written larger: this is
+  the biggest block on a deck and it was mounted open on every loaded track.
+  The summary always says the word, so the block is one press away rather than
+  hidden -- which is the standing complaint about the products this competes
+  with, and not a trade worth making to save a row.
+-->
+<details class="stem-fold" open={inUse}>
+  <summary>
+    Stems
+    {#if inUse}
+      <span class="live">on</span>
+    {:else if !status.available}
+      <span class="off">unavailable</span>
+    {/if}
+  </summary>
 <div class="stems-module" class:unavailable={!status.available}>
   {#if !status.available}
     <p class="stems-reason" role="status">
-      {status.reason ?? "stem separation is unavailable"}
+      Stem separation is unavailable{status.reason ? ` — ${status.reason}` : ""}
     </p>
   {:else if status.reason}
     <!--
       Separating, but with the fallback. Worth saying: the controls work, and
       a downloaded model would work better. Not an error, so it does not read
-      as one.
+      as one -- which the sentence used to fail at, because `Unavailable`'s own
+      Display ended "so stems are unavailable" and this line begins "Using the
+      built-in separator". The consequence now belongs to whoever knows it.
     -->
     <p class="stems-reason" role="status">
       Using the {status.backend ?? "built-in"} separator — {status.reason}
@@ -369,8 +409,33 @@
     />
   </div>
 </div>
+</details>
 
 <style>
+  /* Same shape as the effect rack's fold, because they are the same idea. */
+  .stem-fold summary {
+    font-size: 0.78em;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 0.15rem 0;
+  }
+
+  .stem-fold[open] summary {
+    margin-bottom: 0.35rem;
+  }
+
+  .live {
+    margin-left: 0.35rem;
+    color: var(--accent);
+  }
+
+  .off {
+    margin-left: 0.35rem;
+    color: var(--text-dim);
+  }
+
   /* The tone row sits under each stem's fader, in that stem's colour, so a
      glance says which column a knob belongs to without reading a label. */
   .stem-tone {
