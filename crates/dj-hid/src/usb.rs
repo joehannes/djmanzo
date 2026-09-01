@@ -23,9 +23,9 @@
 //! the numbers are what tell them apart.
 
 use crate::mapping::Mapping;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// How long a read waits before letting the thread check whether it should
 /// stop. Twenty wake-ups a second on an idle device.
@@ -90,8 +90,95 @@ impl DeviceInfo {
 /// When HID itself cannot be reached -- no permission to enumerate, or no
 /// device layer at all, which is the normal state inside a container.
 pub fn devices() -> Result<Vec<DeviceInfo>, HidError> {
-    let api = hidapi::HidApi::new().map_err(|e| HidError::Unavailable(e.to_string()))?;
-    Ok(api.device_list().map(describe).collect())
+    on_hid(|api| api.device_list().map(describe).collect())
+}
+
+/// Something to do with the HID library, run where the HID library lives.
+type Job = Box<dyn FnOnce(&hidapi::HidApi) + Send>;
+
+/// Run `work` on the one thread that is allowed to touch HID, and wait for it.
+///
+/// # Why there is a thread for this at all
+///
+/// On macOS `hid_init()` does this:
+///
+/// ```text
+/// IOHIDManagerScheduleWithRunLoop(hid_mgr, CFRunLoopGetCurrent(), ...);
+/// ```
+///
+/// The IOKit manager is attached to the **calling thread's** CoreFoundation
+/// run loop, `hidapi` never de-initialises, and every later enumeration calls
+/// `process_pending_events()`, which runs the run loop of whichever thread
+/// asked. So the library quietly assumes one thread does all of it: if the
+/// thread that happened to ask first exits, CoreFoundation tears down a run
+/// loop with a live source on it and traps -- long after, and far away from,
+/// the code that asked about a controller.
+///
+/// That is what CI's macOS runner had been dying of. Every `dj-hid` test
+/// reported `ok` and the process then aborted with `SIGTRAP`, because the test
+/// harness runs each test on its own thread and those threads end. The same
+/// trap was waiting for the application, where the first ask comes from
+/// whichever worker thread served the command.
+///
+/// So there is one thread, it is the only thread that ever holds a `HidApi`,
+/// and it never exits. Enumeration happens there too rather than only
+/// initialisation: pinning `hid_init` alone would leave the manager scheduled
+/// on a run loop that nothing ever runs, which risks the quieter failure of
+/// enumerating nothing at all.
+///
+/// **Verified on macOS only through CI**, which is the only macOS this project
+/// can reach. On Linux it is a `hidraw` file descriptor with no run loop to
+/// lose, and this is a refactor with no behaviour in it.
+///
+/// # Errors
+/// When the thread cannot be started, or HID itself cannot be reached.
+fn on_hid<T: Send + 'static>(
+    work: impl FnOnce(&hidapi::HidApi) -> T + Send + 'static,
+) -> Result<T, HidError> {
+    static HOME: OnceLock<Result<Mutex<Sender<Job>>, String>> = OnceLock::new();
+
+    let home = HOME.get_or_init(|| {
+        let (post, take) = std::sync::mpsc::channel::<Job>();
+        let (ready, started) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("djmanzo-hid".into())
+            .spawn(move || {
+                let api = match hidapi::HidApi::new() {
+                    Ok(api) => {
+                        let _ = ready.send(Ok(()));
+                        api
+                    }
+                    Err(problem) => {
+                        let _ = ready.send(Err(problem.to_string()));
+                        return;
+                    }
+                };
+                // Ends only when the sender is dropped, which is never: it
+                // lives in a `OnceLock` for the life of the process.
+                while let Ok(job) = take.recv() {
+                    job(&api);
+                }
+            })
+            .map_err(|problem| format!("no thread for HID: {problem}"))?;
+
+        started
+            .recv()
+            .unwrap_or_else(|_| Err("the HID thread stopped before it answered".to_owned()))?;
+        Ok(Mutex::new(post))
+    });
+
+    let post = home
+        .as_ref()
+        .map_err(|why| HidError::Unavailable(why.clone()))?;
+    let (tell, hear) = std::sync::mpsc::channel();
+    let gone = || HidError::Unavailable("the HID thread went away".to_owned());
+    post.lock()
+        .map_err(|_| gone())?
+        .send(Box::new(move |api| {
+            let _ = tell.send(work(api));
+        }))
+        .map_err(|_| gone())?;
+    hear.recv().map_err(|_| gone())
 }
 
 fn describe(device: &hidapi::DeviceInfo) -> DeviceInfo {
@@ -239,18 +326,21 @@ pub fn open(
     out: Sender<String>,
     listener: Listener,
 ) -> Result<Connection, HidError> {
-    let api = hidapi::HidApi::new().map_err(|e| HidError::Unavailable(e.to_string()))?;
-    let found = api
-        .device_list()
-        .map(describe)
-        .find(|device| device.answers_to(wanted))
-        .ok_or_else(|| HidError::NoSuchDevice(wanted.to_owned()))?;
+    let asked_for = wanted.to_owned();
+    let found = on_hid(move |api| {
+        api.device_list()
+            .map(describe)
+            .find(|device| device.answers_to(&asked_for))
+    })?
+    .ok_or_else(|| HidError::NoSuchDevice(wanted.to_owned()))?;
 
     let path = std::ffi::CString::new(found.path.clone())
         .map_err(|e| HidError::Refused(found.name.clone(), e.to_string()))?;
-    let device = api
-        .open_path(&path)
-        .map_err(|e| HidError::Refused(found.name.clone(), e.to_string()))?;
+    // Opened on the HID thread and then moved here: `hidapi` marks `HidDevice`
+    // `Send`, and on macOS an open device runs its own run loop on its own
+    // thread, so only the manager is thread-bound.
+    let device = on_hid(move |api| api.open_path(&path).map_err(|e| e.to_string()))?
+        .map_err(|e| HidError::Refused(found.name.clone(), e))?;
 
     let stop = Arc::new(AtomicBool::new(false));
     let name = found.name.clone();
