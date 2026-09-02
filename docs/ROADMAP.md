@@ -2013,9 +2013,14 @@ it a bug of its own — the split-cue button drawn on top of the output meters o
 any machine with a four-channel cue device. The strip is now one row instead of
 two and both are fixed.
 
-**What it found that is not fixed.** With two records loaded, a deck column is
-675 px, and the crossfader's centre lands at y 877 — 77 px past the window. That
-is the third instance of the same regression. Closing it means finding about
+**What it found that is not fixed.** With two records loaded, a deck column
+measures 675 px and the crossfader's centre lands at y 877 — 77 px past the
+window. That is the third instance of the same regression, and 77 px is a
+*floor*: the harness does not draw the pad zone the real deck has, so the true
+gap is larger by roughly two hundred pixels. The cause is recorded in
+`ui/e2e/budget.spec.ts` and is not the obvious one — the pad pages are asked for
+and answered correctly, and the component draws them in the real webview and not
+under the stub. Closing it means finding about
 150 px in the deck column and there are several defensible places to find it, so
 it is recorded as a running test marked `test.fail()`: the failure is asserted,
 and whoever fixes the height gets a red test telling them to delete the marker.

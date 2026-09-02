@@ -112,6 +112,48 @@ fn the_browser_fixture_has_the_shape_the_application_sends() {
     }
 }
 
+/// The pad pages the interface asks for, as a golden file.
+///
+/// Generated rather than captured, unlike the snapshot: `pad_pages` is a pure
+/// function of `dj_core::PadPage::ALL`, so it *can* be re-derived here and a
+/// golden file is the stronger guard -- it fails on any change to the pages, not
+/// merely on a change to their shape.
+///
+/// It exists because a browser stub that answers this command with `null` draws
+/// **no pad zone at all**, and `Deck.svelte` says exactly what that means where
+/// it handles the empty case: "a deck missing its whole performance surface with
+/// nothing saying so". The layout budget spent three runs measuring that deck.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_pad_pages_the_interface_asks_for() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/pad-pages.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::pad_pages(1))
+        .expect("the pad pages serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the pad pages");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    assert_eq!(
+        stored.trim(),
+        fresh.trim(),
+        "\nThe pad pages have changed, so the browser's layout budget is drawing a \
+         performance surface djmanzo no longer has.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// The fixture has to describe a screen worth measuring.
 ///
 /// Both of these were false in an earlier version of the fixture, and both

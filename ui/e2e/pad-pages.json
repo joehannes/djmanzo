@@ -1,0 +1,606 @@
+[
+  {
+    "name": "cues",
+    "needs_grid": false,
+    "pads": [
+      {
+        "label": "1",
+        "press": "deck 1 hotcue 1",
+        "release": null,
+        "clear": "deck 1 hotcue_clear 1",
+        "lit": {
+          "HotCueSet": 1
+        }
+      },
+      {
+        "label": "2",
+        "press": "deck 1 hotcue 2",
+        "release": null,
+        "clear": "deck 1 hotcue_clear 2",
+        "lit": {
+          "HotCueSet": 2
+        }
+      },
+      {
+        "label": "3",
+        "press": "deck 1 hotcue 3",
+        "release": null,
+        "clear": "deck 1 hotcue_clear 3",
+        "lit": {
+          "HotCueSet": 3
+        }
+      },
+      {
+        "label": "4",
+        "press": "deck 1 hotcue 4",
+        "release": null,
+        "clear": "deck 1 hotcue_clear 4",
+        "lit": {
+          "HotCueSet": 4
+        }
+      },
+      {
+        "label": "5",
+        "press": "deck 1 hotcue 5",
+        "release": null,
+        "clear": "deck 1 hotcue_clear 5",
+        "lit": {
+          "HotCueSet": 5
+        }
+      },
+      {
+        "label": "6",
+        "press": "deck 1 hotcue 6",
+        "release": null,
+        "clear": "deck 1 hotcue_clear 6",
+        "lit": {
+          "HotCueSet": 6
+        }
+      },
+      {
+        "label": "7",
+        "press": "deck 1 hotcue 7",
+        "release": null,
+        "clear": "deck 1 hotcue_clear 7",
+        "lit": {
+          "HotCueSet": 7
+        }
+      },
+      {
+        "label": "8",
+        "press": "deck 1 hotcue 8",
+        "release": null,
+        "clear": "deck 1 hotcue_clear 8",
+        "lit": {
+          "HotCueSet": 8
+        }
+      }
+    ]
+  },
+  {
+    "name": "loops",
+    "needs_grid": true,
+    "pads": [
+      {
+        "label": "1/16",
+        "press": "deck 1 loop 0.0625",
+        "release": null,
+        "clear": "deck 1 loop_off",
+        "lit": {
+          "LoopBeats": 0.0625
+        }
+      },
+      {
+        "label": "1/8",
+        "press": "deck 1 loop 0.125",
+        "release": null,
+        "clear": "deck 1 loop_off",
+        "lit": {
+          "LoopBeats": 0.125
+        }
+      },
+      {
+        "label": "1/4",
+        "press": "deck 1 loop 0.25",
+        "release": null,
+        "clear": "deck 1 loop_off",
+        "lit": {
+          "LoopBeats": 0.25
+        }
+      },
+      {
+        "label": "1/2",
+        "press": "deck 1 loop 0.5",
+        "release": null,
+        "clear": "deck 1 loop_off",
+        "lit": {
+          "LoopBeats": 0.5
+        }
+      },
+      {
+        "label": "1",
+        "press": "deck 1 loop 1",
+        "release": null,
+        "clear": "deck 1 loop_off",
+        "lit": {
+          "LoopBeats": 1.0
+        }
+      },
+      {
+        "label": "2",
+        "press": "deck 1 loop 2",
+        "release": null,
+        "clear": "deck 1 loop_off",
+        "lit": {
+          "LoopBeats": 2.0
+        }
+      },
+      {
+        "label": "4",
+        "press": "deck 1 loop 4",
+        "release": null,
+        "clear": "deck 1 loop_off",
+        "lit": {
+          "LoopBeats": 4.0
+        }
+      },
+      {
+        "label": "8",
+        "press": "deck 1 loop 8",
+        "release": null,
+        "clear": "deck 1 loop_off",
+        "lit": {
+          "LoopBeats": 8.0
+        }
+      }
+    ]
+  },
+  {
+    "name": "roll",
+    "needs_grid": true,
+    "pads": [
+      {
+        "label": "1/16",
+        "press": "deck 1 roll 0.0625",
+        "release": "deck 1 roll_off",
+        "clear": null,
+        "lit": {
+          "RollBeats": 0.0625
+        }
+      },
+      {
+        "label": "1/8",
+        "press": "deck 1 roll 0.125",
+        "release": "deck 1 roll_off",
+        "clear": null,
+        "lit": {
+          "RollBeats": 0.125
+        }
+      },
+      {
+        "label": "1/4",
+        "press": "deck 1 roll 0.25",
+        "release": "deck 1 roll_off",
+        "clear": null,
+        "lit": {
+          "RollBeats": 0.25
+        }
+      },
+      {
+        "label": "1/2",
+        "press": "deck 1 roll 0.5",
+        "release": "deck 1 roll_off",
+        "clear": null,
+        "lit": {
+          "RollBeats": 0.5
+        }
+      },
+      {
+        "label": "1",
+        "press": "deck 1 roll 1",
+        "release": "deck 1 roll_off",
+        "clear": null,
+        "lit": {
+          "RollBeats": 1.0
+        }
+      },
+      {
+        "label": "2",
+        "press": "deck 1 roll 2",
+        "release": "deck 1 roll_off",
+        "clear": null,
+        "lit": {
+          "RollBeats": 2.0
+        }
+      },
+      {
+        "label": "4",
+        "press": "deck 1 roll 4",
+        "release": "deck 1 roll_off",
+        "clear": null,
+        "lit": {
+          "RollBeats": 4.0
+        }
+      },
+      {
+        "label": "8",
+        "press": "deck 1 roll 8",
+        "release": "deck 1 roll_off",
+        "clear": null,
+        "lit": {
+          "RollBeats": 8.0
+        }
+      }
+    ]
+  },
+  {
+    "name": "slicer",
+    "needs_grid": true,
+    "pads": [
+      {
+        "label": "1",
+        "press": "deck 1 slice 1",
+        "release": "deck 1 slice_off",
+        "clear": null,
+        "lit": {
+          "SliceAt": 1
+        }
+      },
+      {
+        "label": "2",
+        "press": "deck 1 slice 2",
+        "release": "deck 1 slice_off",
+        "clear": null,
+        "lit": {
+          "SliceAt": 2
+        }
+      },
+      {
+        "label": "3",
+        "press": "deck 1 slice 3",
+        "release": "deck 1 slice_off",
+        "clear": null,
+        "lit": {
+          "SliceAt": 3
+        }
+      },
+      {
+        "label": "4",
+        "press": "deck 1 slice 4",
+        "release": "deck 1 slice_off",
+        "clear": null,
+        "lit": {
+          "SliceAt": 4
+        }
+      },
+      {
+        "label": "5",
+        "press": "deck 1 slice 5",
+        "release": "deck 1 slice_off",
+        "clear": null,
+        "lit": {
+          "SliceAt": 5
+        }
+      },
+      {
+        "label": "6",
+        "press": "deck 1 slice 6",
+        "release": "deck 1 slice_off",
+        "clear": null,
+        "lit": {
+          "SliceAt": 6
+        }
+      },
+      {
+        "label": "7",
+        "press": "deck 1 slice 7",
+        "release": "deck 1 slice_off",
+        "clear": null,
+        "lit": {
+          "SliceAt": 7
+        }
+      },
+      {
+        "label": "8",
+        "press": "deck 1 slice 8",
+        "release": "deck 1 slice_off",
+        "clear": null,
+        "lit": {
+          "SliceAt": 8
+        }
+      }
+    ]
+  },
+  {
+    "name": "saved",
+    "needs_grid": false,
+    "pads": [
+      {
+        "label": "1",
+        "press": "deck 1 loop_recall 1",
+        "release": null,
+        "clear": "deck 1 loop_save 1",
+        "lit": "Never"
+      },
+      {
+        "label": "2",
+        "press": "deck 1 loop_recall 2",
+        "release": null,
+        "clear": "deck 1 loop_save 2",
+        "lit": "Never"
+      },
+      {
+        "label": "3",
+        "press": "deck 1 loop_recall 3",
+        "release": null,
+        "clear": "deck 1 loop_save 3",
+        "lit": "Never"
+      },
+      {
+        "label": "4",
+        "press": "deck 1 loop_recall 4",
+        "release": null,
+        "clear": "deck 1 loop_save 4",
+        "lit": "Never"
+      },
+      {
+        "label": "5",
+        "press": "deck 1 loop_recall 5",
+        "release": null,
+        "clear": "deck 1 loop_save 5",
+        "lit": "Never"
+      },
+      {
+        "label": "6",
+        "press": "deck 1 loop_recall 6",
+        "release": null,
+        "clear": "deck 1 loop_save 6",
+        "lit": "Never"
+      },
+      {
+        "label": "7",
+        "press": "deck 1 loop_recall 7",
+        "release": null,
+        "clear": "deck 1 loop_save 7",
+        "lit": "Never"
+      },
+      {
+        "label": "8",
+        "press": "deck 1 loop_recall 8",
+        "release": null,
+        "clear": "deck 1 loop_save 8",
+        "lit": "Never"
+      }
+    ]
+  },
+  {
+    "name": "sampler",
+    "needs_grid": false,
+    "pads": [
+      {
+        "label": "1",
+        "press": "sampler 1 trigger",
+        "release": "sampler 1 release",
+        "clear": "sampler 1 stop",
+        "lit": {
+          "SamplePlaying": 1
+        }
+      },
+      {
+        "label": "2",
+        "press": "sampler 2 trigger",
+        "release": "sampler 2 release",
+        "clear": "sampler 2 stop",
+        "lit": {
+          "SamplePlaying": 2
+        }
+      },
+      {
+        "label": "3",
+        "press": "sampler 3 trigger",
+        "release": "sampler 3 release",
+        "clear": "sampler 3 stop",
+        "lit": {
+          "SamplePlaying": 3
+        }
+      },
+      {
+        "label": "4",
+        "press": "sampler 4 trigger",
+        "release": "sampler 4 release",
+        "clear": "sampler 4 stop",
+        "lit": {
+          "SamplePlaying": 4
+        }
+      },
+      {
+        "label": "5",
+        "press": "sampler 5 trigger",
+        "release": "sampler 5 release",
+        "clear": "sampler 5 stop",
+        "lit": {
+          "SamplePlaying": 5
+        }
+      },
+      {
+        "label": "6",
+        "press": "sampler 6 trigger",
+        "release": "sampler 6 release",
+        "clear": "sampler 6 stop",
+        "lit": {
+          "SamplePlaying": 6
+        }
+      },
+      {
+        "label": "7",
+        "press": "sampler 7 trigger",
+        "release": "sampler 7 release",
+        "clear": "sampler 7 stop",
+        "lit": {
+          "SamplePlaying": 7
+        }
+      },
+      {
+        "label": "8",
+        "press": "sampler 8 trigger",
+        "release": "sampler 8 release",
+        "clear": "sampler 8 stop",
+        "lit": {
+          "SamplePlaying": 8
+        }
+      }
+    ]
+  },
+  {
+    "name": "stems",
+    "needs_grid": false,
+    "pads": [
+      {
+        "label": "vocal mute",
+        "press": "deck 1 stem_mute vocal",
+        "release": null,
+        "clear": null,
+        "lit": {
+          "StemMuted": "Vocal"
+        }
+      },
+      {
+        "label": "drums mute",
+        "press": "deck 1 stem_mute drums",
+        "release": null,
+        "clear": null,
+        "lit": {
+          "StemMuted": "Drums"
+        }
+      },
+      {
+        "label": "bass mute",
+        "press": "deck 1 stem_mute bass",
+        "release": null,
+        "clear": null,
+        "lit": {
+          "StemMuted": "Bass"
+        }
+      },
+      {
+        "label": "other mute",
+        "press": "deck 1 stem_mute other",
+        "release": null,
+        "clear": null,
+        "lit": {
+          "StemMuted": "Other"
+        }
+      },
+      {
+        "label": "vocal solo",
+        "press": "deck 1 stem_solo_on vocal",
+        "release": "deck 1 stem_solo_off vocal",
+        "clear": null,
+        "lit": {
+          "StemSolo": "Vocal"
+        }
+      },
+      {
+        "label": "drums solo",
+        "press": "deck 1 stem_solo_on drums",
+        "release": "deck 1 stem_solo_off drums",
+        "clear": null,
+        "lit": {
+          "StemSolo": "Drums"
+        }
+      },
+      {
+        "label": "bass solo",
+        "press": "deck 1 stem_solo_on bass",
+        "release": "deck 1 stem_solo_off bass",
+        "clear": null,
+        "lit": {
+          "StemSolo": "Bass"
+        }
+      },
+      {
+        "label": "other solo",
+        "press": "deck 1 stem_solo_on other",
+        "release": "deck 1 stem_solo_off other",
+        "clear": null,
+        "lit": {
+          "StemSolo": "Other"
+        }
+      }
+    ]
+  },
+  {
+    "name": "fx",
+    "needs_grid": false,
+    "pads": [
+      {
+        "label": "FX1",
+        "press": "deck 1 fx 1 toggle",
+        "release": null,
+        "clear": "deck 1 fx 1 none",
+        "lit": {
+          "FxSlotOn": 1
+        }
+      },
+      {
+        "label": "FX2",
+        "press": "deck 1 fx 2 toggle",
+        "release": null,
+        "clear": "deck 1 fx 2 none",
+        "lit": {
+          "FxSlotOn": 2
+        }
+      },
+      {
+        "label": "FX3",
+        "press": "deck 1 fx 3 toggle",
+        "release": null,
+        "clear": "deck 1 fx 3 none",
+        "lit": {
+          "FxSlotOn": 3
+        }
+      },
+      {
+        "label": "1 post",
+        "press": "deck 1 fx 1 post",
+        "release": null,
+        "clear": "deck 1 fx 1 pre",
+        "lit": {
+          "FxSlotPost": 1
+        }
+      },
+      {
+        "label": "2 post",
+        "press": "deck 1 fx 2 post",
+        "release": null,
+        "clear": "deck 1 fx 2 pre",
+        "lit": {
+          "FxSlotPost": 2
+        }
+      },
+      {
+        "label": "3 post",
+        "press": "deck 1 fx 3 post",
+        "release": null,
+        "clear": "deck 1 fx 3 pre",
+        "lit": {
+          "FxSlotPost": 3
+        }
+      },
+      {
+        "label": "",
+        "press": null,
+        "release": null,
+        "clear": null,
+        "lit": "Never"
+      },
+      {
+        "label": "",
+        "press": null,
+        "release": null,
+        "clear": null,
+        "lit": "Never"
+      }
+    ]
+  }
+]

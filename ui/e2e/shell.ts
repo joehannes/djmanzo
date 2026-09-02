@@ -47,6 +47,16 @@ export const SLACK = 16;
  * green, still telling you nothing. The Rust test fails when they diverge.
  */
 import snapshot from "./snapshot.json" with { type: "json" };
+/**
+ * The pad pages, generated from `dj_core::PadPage::ALL` by the same Rust test.
+ *
+ * Answering this command with `null` -- which is what an unlisted command gets
+ * -- draws **no pad zone at all**, and `Deck.svelte` says what that means where
+ * it handles the empty case: "a deck missing its whole performance surface with
+ * nothing saying so". The budget measured that deck three times before anyone
+ * compared it with a screenshot of the running application.
+ */
+import padPages from "./pad-pages.json" with { type: "json" };
 
 /**
  * Answers for the commands the shell asks on start-up.
@@ -57,6 +67,7 @@ import snapshot from "./snapshot.json" with { type: "json" };
  * reason with nothing to do with geometry.
  */
 const ANSWERS: Record<string, unknown> = {
+  pad_pages: padPages,
   list_layouts: [],
   chosen_layout: null,
   layout_folder: null,
@@ -115,6 +126,9 @@ export async function openShell(
 
       win.__TAURI_INTERNALS__ = {
         invoke: (cmd: string, args: Record<string, unknown>) => {
+          // A record of what the interface asked for, so a stub that answers
+          // the wrong shape can be told apart from one never asked at all.
+          ((win.__asked ??= []) as string[]).push(cmd);
           if (cmd === "plugin:event|listen") {
             handlers.set(String(args.event), args.handler as number);
             // After the promise settles, so the shell has finished wiring up.
