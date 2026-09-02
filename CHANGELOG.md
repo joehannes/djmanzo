@@ -16,6 +16,31 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.11.0 — The interface is audited, and its vocabulary written down
+
+Nothing a DJ touches has changed since v0.10.0, and that is deliberate. This
+release is the two steps that have to come before an interface is rearranged:
+finding out what is actually there, and agreeing what the pieces are called.
+
+**The interface is audited** (`docs/GUI-OVERHAUL.md`). Thirty-seven components
+and 17,614 lines, 148 commands, 448 parameters, counted rather than remembered,
+with the state each component owns and where it comes from. The finding that
+matters is structural: the browser and the assistant are *siblings under one
+panel slot*, so exactly one of them can be open. A DJ cannot see the room and
+the library at the same time — not because anyone decided that, but because the
+component tree was shaped that way three years of features ago.
+
+**The vocabulary the cockpit is assembled from** (`crates/dj-app/src/cockpit.rs`).
+Fourteen semantic colour roles, five densities, four motion levels, seventeen
+surfaces, and the docks and workspaces they arrange into — types with tests and
+no renderer, so the redesign has names to argue about before any `.svelte` file
+is opened. Attention states are here too, including the one that governs the
+rest: while performing, the interface may not reflow.
+
+The rule the whole redesign is built on is recorded in both files. Presentation
+priority may change; **semantic control identity may not**. A fader is a fader
+wherever it is drawn. Muscle memory is not a thing to be improved.
+
 ## v0.10.0 — Find a record by humming it, and a layout that is measured
 
 **Find a record from what you remember** is finished. The hum is now compared
