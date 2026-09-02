@@ -299,6 +299,19 @@ pub fn run() {
                         &library_writer,
                         &pump_audience,
                     );
+                    // A fixture for the interface's layout budget, captured
+                    // from the running application rather than rebuilt from a
+                    // bare parameter registry.
+                    //
+                    // The difference is not academic. A fresh `ParameterRegistry`
+                    // is all zeros, and the engine seeds it as it starts: stem
+                    // volumes go to one, a deck's gain to its unity point, and
+                    // so on. A snapshot built from the bare registry therefore
+                    // describes every stem as muted, which the interface reads
+                    // as "the DJ is using stems" and unfolds a 359 px module
+                    // nobody opened. It looks like a snapshot and it is not one
+                    // this application ever sends.
+                    dump_snapshot(&snapshot);
                     if let Err(error) = handle.emit("snapshot", &snapshot) {
                         tracing::warn!(%error, "failed to emit snapshot");
                     }
@@ -612,4 +625,42 @@ pub(crate) fn track_name(loaded: &state::LoadedTrackInfo) -> String {
         Some(artist) if !artist.trim().is_empty() => format!("{artist} - {}", loaded.title),
         _ => loaded.title.clone(),
     }
+}
+
+/// Write one snapshot to the path in `DJMANZO_SNAPSHOT_OUT`, then never again.
+///
+/// Development only, and off unless the variable is set. It exists so
+/// `ui/e2e/`'s layout budget can be measured against a state the application
+/// actually produced -- see `crates/dj-app/tests/e2e_fixture.rs`, which checks
+/// the committed file still fits the current `Snapshot` type.
+///
+/// Written once rather than every frame: this runs on the pump's thread at
+/// 60 Hz, and a file write there sixty times a second would be a benchmark of
+/// the disk.
+fn dump_snapshot(snapshot: &snapshot::Snapshot) {
+    use std::sync::Once;
+    static DONE: Once = Once::new();
+
+    let Some(path) = std::env::var_os("DJMANZO_SNAPSHOT_OUT") else {
+        return;
+    };
+    // Wait for a state worth capturing. The first frame of a run has a zero
+    // sample rate and empty decks -- it is the "Waiting for the engine…"
+    // screen, which has no crossfader on it, and a budget measured against it
+    // would pass while every control was off the bottom of the window.
+    if snapshot.master.sample_rate <= 0.0
+        || snapshot.decks.iter().filter(|deck| deck.loaded).count() < 2
+    {
+        return;
+    }
+    DONE.call_once(|| match serde_json::to_string_pretty(snapshot) {
+        Ok(text) => {
+            if let Err(error) = std::fs::write(&path, format!("{text}\n")) {
+                tracing::warn!(%error, ?path, "could not write the snapshot fixture");
+            } else {
+                tracing::info!(?path, "wrote a snapshot fixture");
+            }
+        }
+        Err(error) => tracing::warn!(%error, "could not serialise the snapshot fixture"),
+    });
 }

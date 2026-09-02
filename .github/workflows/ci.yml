@@ -70,6 +70,23 @@ jobs:
         working-directory: ui
         run: npm test
 
+      # Where the controls land at djmanzo's own default window size. Three
+      # times a control a DJ performs with has ended up below the fold, and
+      # every time it was found by a human taking a screenshot. This measures
+      # rendered geometry in a real browser, because a template assertion
+      # passes while the crossfader is 900 px off the screen.
+      #
+      # Chromium only: one engine is enough to catch a control moving hundreds
+      # of pixels, and it is not the engine djmanzo ships on -- see
+      # `ui/e2e/shell.ts` for why every assertion carries slack.
+      - name: Install Chromium for the layout budget
+        working-directory: ui
+        run: npx playwright install --with-deps chromium
+
+      - name: The first screen is for mixing
+        working-directory: ui
+        run: npm run budget
+
       - run: cargo clippy --workspace --all-targets
 
   test:

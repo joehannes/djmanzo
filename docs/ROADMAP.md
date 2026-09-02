@@ -1984,6 +1984,45 @@ the night the network is down.
 
 ---
 
+## The first screen, and the test that now guards it
+
+Three times a control a DJ performs a mix with has ended up below the fold at
+djmanzo's own default window size, and three times a human found it by taking a
+screenshot. There is now a browser test (`ui/e2e/`) that opens the interface at
+1280×800 and measures where the crossfader, master gain, channel volume and
+filter actually land — rendered geometry, in a real Chromium, because a
+template assertion passes while the crossfader is 900 px off the screen and
+jsdom does no layout at all.
+
+Two design decisions in it are worth keeping:
+
+**The snapshot it draws is generated from Rust.** `dj_app::snapshot::Snapshot`
+owns the shape, so a fixture hand-written in TypeScript would be a guess at it
+and would go stale in silence — a field added in Rust would leave the browser
+measuring a state djmanzo no longer produces, still green. A Rust test
+regenerates the file and fails when they diverge.
+
+**The engine it runs on is not the one djmanzo ships on.** Chromium is not
+WebKitGTK; fonts and flexbox rounding differ by a few pixels. Every assertion
+therefore carries 16 px of slack and is a budget, not a pixel equality: it
+catches a control moving hundreds of pixels, which is the failure that has
+actually happened, and deliberately does not try to catch one moving five.
+
+**What it found.** The master strip's second row was below the fold, and with
+it a bug of its own — the split-cue button drawn on top of the output meters on
+any machine with a four-channel cue device. The strip is now one row instead of
+two and both are fixed.
+
+**What it found that is not fixed.** With two records loaded, a deck column is
+675 px, and the crossfader's centre lands at y 877 — 77 px past the window. That
+is the third instance of the same regression. Closing it means finding about
+150 px in the deck column and there are several defensible places to find it, so
+it is recorded as a running test marked `test.fail()`: the failure is asserted,
+and whoever fixes the height gets a red test telling them to delete the marker.
+A second test ratchets the deck at 690 px so it cannot grow further meanwhile.
+
+---
+
 ## The interface layer
 
 M3 shipped layouts and skins as a flat set of feature flags, which can show, hide, resize and

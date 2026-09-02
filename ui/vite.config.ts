@@ -15,4 +15,10 @@ export default defineConfig({
     target: "es2021",
     sourcemap: true,
   },
+  test: {
+    // `e2e/` is Playwright's, and its specs import `@playwright/test` -- which
+    // vitest cannot run. Two runners in one project need one line saying which
+    // files are whose, or the first one to see a file claims it.
+    exclude: ["node_modules/**", "e2e/**"],
+  },
 });

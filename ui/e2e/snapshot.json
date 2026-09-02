@@ -1,0 +1,1031 @@
+{
+  "context": {
+    "audio": {
+      "loudness": 0.114079006,
+      "bands": [
+        0.09970603,
+        0.05543218,
+        0.000009592639,
+        0.000004299607
+      ]
+    },
+    "session": null
+  },
+  "decks": [
+    {
+      "number": 1,
+      "title": "tune_rising",
+      "artist": null,
+      "playing": true,
+      "loaded": true,
+      "position_frames": 2352.0,
+      "length_frames": 1058400.0,
+      "position_seconds": 0.049,
+      "length_seconds": 22.05,
+      "rate": 1.0,
+      "pitch": 0.0,
+      "volume": 1.0,
+      "gain_db": -2.2,
+      "peak": 0.21054134,
+      "eq_low": 1.0,
+      "eq_mid": 1.0,
+      "eq_high": 1.0,
+      "filter": 0.0,
+      "cue_enabled": false,
+      "pre_fader_level": 0.2970645,
+      "keylock": false,
+      "jog_touched": false,
+      "jog_mode": "vinyl",
+      "jog_bend": 0.0,
+      "keylock_latency_ms": 0.0,
+      "key_shift": 0,
+      "crossfader_assign": "left",
+      "stem_mutes": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "stem_volumes": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "stem_eq": [
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ]
+      ],
+      "stem_filters": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stem_soloing": false,
+      "analysis": {
+        "bpm": 120.04792,
+        "bpm_confidence": 1.0,
+        "bpm_alternative": 60.02396,
+        "sync_worthy": true,
+        "key_camelot": "8A",
+        "key_standard": "Am",
+        "key_confidence": 0.6466106,
+        "key_alternative": "9B",
+        "lufs": -11.753663,
+        "auto_gain_db": -2.2463372,
+        "phrase_beats": 8,
+        "phrase_anchor": 4,
+        "phrase_confidence": 4.429595
+      },
+      "synced": false,
+      "effective_bpm": 120.04792,
+      "can_sync": true,
+      "grid_confidence": 1.0,
+      "beat_phase": 0.20076938,
+      "slip": false,
+      "reversed": false,
+      "spinning": false,
+      "rolling": false,
+      "slice": {
+        "beats": 8.0,
+        "at": 8,
+        "holding": false
+      },
+      "slip_position": null,
+      "active_loop": null,
+      "fx": [
+        {
+          "slot": 1,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 2,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 3,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        }
+      ],
+      "hot_cues": [
+        532257.6,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "number": 2,
+      "title": "tune_leaps",
+      "artist": null,
+      "playing": false,
+      "loaded": true,
+      "position_frames": 0.0,
+      "length_frames": 1058400.0,
+      "position_seconds": 0.0,
+      "length_seconds": 22.05,
+      "rate": 1.0,
+      "pitch": 0.0,
+      "volume": 1.0,
+      "gain_db": 0.0,
+      "peak": 0.0,
+      "eq_low": 1.0,
+      "eq_mid": 1.0,
+      "eq_high": 1.0,
+      "filter": 0.0,
+      "cue_enabled": false,
+      "pre_fader_level": 0.0,
+      "keylock": false,
+      "jog_touched": false,
+      "jog_mode": "vinyl",
+      "jog_bend": 0.0,
+      "keylock_latency_ms": 0.0,
+      "key_shift": 0,
+      "crossfader_assign": "right",
+      "stem_mutes": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "stem_volumes": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "stem_eq": [
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ]
+      ],
+      "stem_filters": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stem_soloing": false,
+      "analysis": {
+        "bpm": 120.04751,
+        "bpm_confidence": 1.0,
+        "bpm_alternative": 60.023754,
+        "sync_worthy": true,
+        "key_camelot": "9B",
+        "key_standard": "G",
+        "key_confidence": 0.8658608,
+        "key_alternative": "6A",
+        "lufs": -11.741264,
+        "auto_gain_db": -2.2587361,
+        "phrase_beats": 8,
+        "phrase_anchor": 3,
+        "phrase_confidence": 3.8245502
+      },
+      "synced": false,
+      "effective_bpm": 120.04751,
+      "can_sync": true,
+      "grid_confidence": 1.0,
+      "beat_phase": 0.09406324,
+      "slip": false,
+      "reversed": false,
+      "spinning": false,
+      "rolling": false,
+      "slice": {
+        "beats": 8.0,
+        "at": 8,
+        "holding": false
+      },
+      "slip_position": null,
+      "active_loop": null,
+      "fx": [
+        {
+          "slot": 1,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 2,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 3,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        }
+      ],
+      "hot_cues": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "number": 3,
+      "title": null,
+      "artist": null,
+      "playing": false,
+      "loaded": false,
+      "position_frames": 0.0,
+      "length_frames": 0.0,
+      "position_seconds": 0.0,
+      "length_seconds": 0.0,
+      "rate": 1.0,
+      "pitch": 0.0,
+      "volume": 1.0,
+      "gain_db": 0.0,
+      "peak": 0.0,
+      "eq_low": 1.0,
+      "eq_mid": 1.0,
+      "eq_high": 1.0,
+      "filter": 0.0,
+      "cue_enabled": false,
+      "pre_fader_level": 0.0,
+      "keylock": false,
+      "jog_touched": false,
+      "jog_mode": "vinyl",
+      "jog_bend": 0.0,
+      "keylock_latency_ms": 0.0,
+      "key_shift": 0,
+      "crossfader_assign": "thru",
+      "stem_mutes": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "stem_volumes": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "stem_eq": [
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ]
+      ],
+      "stem_filters": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stem_soloing": false,
+      "analysis": null,
+      "synced": false,
+      "effective_bpm": null,
+      "can_sync": false,
+      "grid_confidence": 0.0,
+      "beat_phase": 0.0,
+      "slip": false,
+      "reversed": false,
+      "spinning": false,
+      "rolling": false,
+      "slice": {
+        "beats": 8.0,
+        "at": null,
+        "holding": false
+      },
+      "slip_position": null,
+      "active_loop": null,
+      "fx": [
+        {
+          "slot": 1,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 2,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 3,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        }
+      ],
+      "hot_cues": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "number": 4,
+      "title": null,
+      "artist": null,
+      "playing": false,
+      "loaded": false,
+      "position_frames": 0.0,
+      "length_frames": 0.0,
+      "position_seconds": 0.0,
+      "length_seconds": 0.0,
+      "rate": 1.0,
+      "pitch": 0.0,
+      "volume": 1.0,
+      "gain_db": 0.0,
+      "peak": 0.0,
+      "eq_low": 1.0,
+      "eq_mid": 1.0,
+      "eq_high": 1.0,
+      "filter": 0.0,
+      "cue_enabled": false,
+      "pre_fader_level": 0.0,
+      "keylock": false,
+      "jog_touched": false,
+      "jog_mode": "vinyl",
+      "jog_bend": 0.0,
+      "keylock_latency_ms": 0.0,
+      "key_shift": 0,
+      "crossfader_assign": "thru",
+      "stem_mutes": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "stem_volumes": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "stem_eq": [
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ]
+      ],
+      "stem_filters": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stem_soloing": false,
+      "analysis": null,
+      "synced": false,
+      "effective_bpm": null,
+      "can_sync": false,
+      "grid_confidence": 0.0,
+      "beat_phase": 0.0,
+      "slip": false,
+      "reversed": false,
+      "spinning": false,
+      "rolling": false,
+      "slice": {
+        "beats": 8.0,
+        "at": null,
+        "holding": false
+      },
+      "slip_position": null,
+      "active_loop": null,
+      "fx": [
+        {
+          "slot": 1,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 2,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 3,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        }
+      ],
+      "hot_cues": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "number": 5,
+      "title": null,
+      "artist": null,
+      "playing": false,
+      "loaded": false,
+      "position_frames": 0.0,
+      "length_frames": 0.0,
+      "position_seconds": 0.0,
+      "length_seconds": 0.0,
+      "rate": 1.0,
+      "pitch": 0.0,
+      "volume": 1.0,
+      "gain_db": 0.0,
+      "peak": 0.0,
+      "eq_low": 1.0,
+      "eq_mid": 1.0,
+      "eq_high": 1.0,
+      "filter": 0.0,
+      "cue_enabled": false,
+      "pre_fader_level": 0.0,
+      "keylock": false,
+      "jog_touched": false,
+      "jog_mode": "vinyl",
+      "jog_bend": 0.0,
+      "keylock_latency_ms": 0.0,
+      "key_shift": 0,
+      "crossfader_assign": "thru",
+      "stem_mutes": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "stem_volumes": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "stem_eq": [
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ]
+      ],
+      "stem_filters": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stem_soloing": false,
+      "analysis": null,
+      "synced": false,
+      "effective_bpm": null,
+      "can_sync": false,
+      "grid_confidence": 0.0,
+      "beat_phase": 0.0,
+      "slip": false,
+      "reversed": false,
+      "spinning": false,
+      "rolling": false,
+      "slice": {
+        "beats": 8.0,
+        "at": null,
+        "holding": false
+      },
+      "slip_position": null,
+      "active_loop": null,
+      "fx": [
+        {
+          "slot": 1,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 2,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 3,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        }
+      ],
+      "hot_cues": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "number": 6,
+      "title": null,
+      "artist": null,
+      "playing": false,
+      "loaded": false,
+      "position_frames": 0.0,
+      "length_frames": 0.0,
+      "position_seconds": 0.0,
+      "length_seconds": 0.0,
+      "rate": 1.0,
+      "pitch": 0.0,
+      "volume": 1.0,
+      "gain_db": 0.0,
+      "peak": 0.0,
+      "eq_low": 1.0,
+      "eq_mid": 1.0,
+      "eq_high": 1.0,
+      "filter": 0.0,
+      "cue_enabled": false,
+      "pre_fader_level": 0.0,
+      "keylock": false,
+      "jog_touched": false,
+      "jog_mode": "vinyl",
+      "jog_bend": 0.0,
+      "keylock_latency_ms": 0.0,
+      "key_shift": 0,
+      "crossfader_assign": "thru",
+      "stem_mutes": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "stem_volumes": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "stem_eq": [
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0,
+          1.0
+        ]
+      ],
+      "stem_filters": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stem_soloing": false,
+      "analysis": null,
+      "synced": false,
+      "effective_bpm": null,
+      "can_sync": false,
+      "grid_confidence": 0.0,
+      "beat_phase": 0.0,
+      "slip": false,
+      "reversed": false,
+      "spinning": false,
+      "rolling": false,
+      "slice": {
+        "beats": 8.0,
+        "at": null,
+        "holding": false
+      },
+      "slip_position": null,
+      "active_loop": null,
+      "fx": [
+        {
+          "slot": 1,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 2,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        },
+        {
+          "slot": 3,
+          "kind": "none",
+          "enabled": false,
+          "wet": 0.0,
+          "beats": 0.5,
+          "amount": 0.5,
+          "amount_label": "",
+          "timed": false,
+          "post_fader": false
+        }
+      ],
+      "hot_cues": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "master": {
+    "sampler": {
+      "bank": 1,
+      "volume": 1.0,
+      "peak": 0.0,
+      "slots": [
+        {
+          "slot": 1,
+          "name": null,
+          "loaded": false,
+          "playing": false,
+          "mode": "one_shot",
+          "volume": 1.0,
+          "progress": 0.0,
+          "cue": false,
+          "synced": false,
+          "bpm": null
+        },
+        {
+          "slot": 2,
+          "name": null,
+          "loaded": false,
+          "playing": false,
+          "mode": "one_shot",
+          "volume": 1.0,
+          "progress": 0.0,
+          "cue": false,
+          "synced": false,
+          "bpm": null
+        },
+        {
+          "slot": 3,
+          "name": null,
+          "loaded": false,
+          "playing": false,
+          "mode": "one_shot",
+          "volume": 1.0,
+          "progress": 0.0,
+          "cue": false,
+          "synced": false,
+          "bpm": null
+        },
+        {
+          "slot": 4,
+          "name": null,
+          "loaded": false,
+          "playing": false,
+          "mode": "one_shot",
+          "volume": 1.0,
+          "progress": 0.0,
+          "cue": false,
+          "synced": false,
+          "bpm": null
+        },
+        {
+          "slot": 5,
+          "name": null,
+          "loaded": false,
+          "playing": false,
+          "mode": "one_shot",
+          "volume": 1.0,
+          "progress": 0.0,
+          "cue": false,
+          "synced": false,
+          "bpm": null
+        },
+        {
+          "slot": 6,
+          "name": null,
+          "loaded": false,
+          "playing": false,
+          "mode": "one_shot",
+          "volume": 1.0,
+          "progress": 0.0,
+          "cue": false,
+          "synced": false,
+          "bpm": null
+        },
+        {
+          "slot": 7,
+          "name": null,
+          "loaded": false,
+          "playing": false,
+          "mode": "one_shot",
+          "volume": 1.0,
+          "progress": 0.0,
+          "cue": false,
+          "synced": false,
+          "bpm": null
+        },
+        {
+          "slot": 8,
+          "name": null,
+          "loaded": false,
+          "playing": false,
+          "mode": "one_shot",
+          "volume": 1.0,
+          "progress": 0.0,
+          "cue": false,
+          "synced": false,
+          "bpm": null
+        }
+      ],
+      "record": {
+        "ready": true,
+        "recording": false,
+        "slot": null,
+        "seconds": 0.0,
+        "max_seconds": 30.0,
+        "source": null
+      }
+    },
+    "recording": {
+      "active": false,
+      "seconds": 0.0,
+      "dropped": 0,
+      "failed": false
+    },
+    "fx": [
+      {
+        "slot": 1,
+        "kind": "none",
+        "enabled": false,
+        "wet": 0.0,
+        "beats": 0.5,
+        "amount": 0.5,
+        "amount_label": "",
+        "timed": false,
+        "post_fader": false
+      },
+      {
+        "slot": 2,
+        "kind": "none",
+        "enabled": false,
+        "wet": 0.0,
+        "beats": 0.5,
+        "amount": 0.5,
+        "amount_label": "",
+        "timed": false,
+        "post_fader": false
+      },
+      {
+        "slot": 3,
+        "kind": "none",
+        "enabled": false,
+        "wet": 0.0,
+        "beats": 0.5,
+        "amount": 0.5,
+        "amount_label": "",
+        "timed": false,
+        "post_fader": false
+      }
+    ],
+    "crossfader": 0.0,
+    "gain_db": 0.0,
+    "peak_left": 0.25994623,
+    "peak_right": 0.25994623,
+    "sample_rate": 48000.0,
+    "xruns": 0.0,
+    "cpu_load": 0.021342563,
+    "cue_mix": 0.0,
+    "cue_split": false,
+    "booth_gain_db": 0.0,
+    "cue_available": true,
+    "stem_swap": null,
+    "limiter_enabled": true,
+    "limiter_reduction_db": 0.0,
+    "output_latency_ms": 5.0,
+    "split_output": null,
+    "quantize": false,
+    "mic": {
+      "present": false,
+      "open": false,
+      "gain_db": 0.0,
+      "level": 0.0,
+      "cue": false,
+      "talkover": true,
+      "ducking_db": -0.0,
+      "duck_db": 12.0,
+      "threshold_db": -30.0,
+      "attack_ms": 15.0,
+      "release_ms": 400.0,
+      "starved_frames": 0.0
+    },
+    "automix": {
+      "enabled": false,
+      "mixing": false,
+      "beats": 16.0,
+      "style": "blend"
+    },
+    "clap": {
+      "loaded": false,
+      "bypassed": false
+    }
+  }
+}

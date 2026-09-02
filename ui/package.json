@@ -10,13 +10,15 @@
     "build:fast": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "budget": "playwright test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@sveltejs/vite-plugin-svelte": "^5",
     "@types/node": "^26.3.0",
     "svelte": "^5",

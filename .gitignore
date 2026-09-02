@@ -19,3 +19,9 @@ crates/dj-app/gen/schemas/
 /fixtures/*.wav
 /fixtures/*.flac
 /fixtures/*.mp3
+
+# Playwright's own output from the interface's layout budget. The report and
+# the traces are diagnosis for a failing run, not something to keep.
+ui/test-results/
+ui/playwright-report/
+ui/blob-report/
