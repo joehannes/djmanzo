@@ -33,6 +33,7 @@
     setWatershed,
     watershedShowing,
     type Layout,
+    type Placed,
   } from "./api";
   import Watershed from "./Watershed.svelte";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
@@ -303,11 +304,39 @@
         document.documentElement.style.setProperty(`--${name}`, value);
       }
       layoutNotes = tree.notes;
+      layoutSlots = tree.slots;
     } catch {
       // A layout that cannot be read leaves the interface as it is, which is
       // the same posture `loadLayouts` already takes.
       layoutNotes = [];
+      layoutSlots = {};
     }
+  }
+
+  /**
+   * The resolved tree, by slot.
+   *
+   * Empty until it arrives and empty again if it cannot be read, which every
+   * reader below treats as "you decide" rather than as "draw nothing" -- see
+   * `Deck.svelte`, which falls back to the full deck.
+   */
+  let layoutSlots = $state<Record<string, Placed[]>>({});
+
+  /**
+   * What one deck should draw, from the tree.
+   *
+   * Matched on the `number` prop rather than on position, because a layout may
+   * place decks in any order or place only some of them, and a deck drawing
+   * another deck's widget list is the kind of bug that looks like a rendering
+   * glitch and is actually a layout being read wrong.
+   */
+  function deckZones(number: number): Placed[] | null {
+    const stage = layoutSlots["stage"];
+    if (!stage) return null;
+    const deck = stage.find(
+      (placed) => placed.widget === "deck" && placed.props.number === number,
+    );
+    return deck?.children?.deck ?? null;
   }
   let logo = $state(false);
   /** Bumped when the logo changes, to defeat the webview's image cache. */
@@ -1051,7 +1080,7 @@
           cueAvailable={snapshot.master.cue_available}
           stemSwap={snapshot.master.stem_swap}
           {deckCount}
-          {layout}
+          zones={deckZones(deck.number)}
           careful={conductCare}
         />
       {/each}

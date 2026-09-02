@@ -22,10 +22,15 @@ Two limits on this audit, stated up front:
 - **Nothing here has been heard.** There is no audio device, microphone, camera
   or phone in the machine this was written on. Claims about sound are absent
   rather than optimistic.
-- **Layout measurements come from a browser harness that is known to
-  under-measure.** `ui/e2e/` does not draw the deck's pad zone (see
-  `ui/e2e/budget.spec.ts` and task #100), so every pixel figure below is a
-  **floor**. Where a number matters, it says so.
+- **The layout figures in this document were floors when it was written, and
+  are not any more.** `ui/e2e/` was not drawing the deck's pad zone, because
+  the browser stub answered one command with `null` and the resulting throw
+  ended the render pass early. Fixed in the same phase that made the deck
+  render from the widget tree, which is how it was found. A deck measures
+  **878 px**, not the 675 quoted below and in `ROADMAP.md`; the pad zone is
+  197 of the difference. Where a figure in Part One still reads 675, it is the
+  old measurement and the shape of the argument is unchanged -- the deck is
+  too tall, by more than was thought.
 
 ---
 
@@ -185,7 +190,7 @@ you are going to ship it.** It applies to every visual proposal in Part Two.
 | Blue outlines read as focus rings | visible on transport, knobs and faders |
 | Settings is 1,331 lines | one panel for every preference in the app |
 | No command surface | no palette; everything is a click path |
-| The harness under-measures | pad zone absent (#100) |
+| ~~The harness under-measures~~ | fixed: pad zone absent (#100), a `null` answer in the stub |
 
 Three of these have already recurred: a performing control has gone below the
 fold **three times**, and each time it was found by a human with a screenshot.
@@ -592,8 +597,11 @@ Extending what exists (2,331 Rust tests, 82 vitest, 5 Playwright):
   keyboard, network and drag-drop must produce identical UI state.
 - **Deterministic adaptation** — given a context change, the layout response
   must be reproducible. Adaptive must not mean random.
-- **Geometry** — the existing budget, extended per workspace, **after #100 is
-  fixed** so it stops under-measuring.
+- **Geometry** — the existing budget, extended per workspace. #100 is fixed,
+  so it measures the deck djmanzo draws.
+- **Nothing may throw while being measured** — the guard that would have caught
+  #100 on its first run. Geometry cannot notice a missing zone; a shorter deck
+  is not a taller one.
 - **Visual regression** — the ten workspace configurations named in §89.
 - **Sizes** — 1280×720 through 4K, and constrained height especially.
 
@@ -620,8 +628,8 @@ The order is fixed and non-negotiable: **audio > control > visual effects.**
    thing adaptation may change.
 4. The AI is never the largest thing on screen.
 5. Human touch wins instantly, at parameter granularity.
-6. Every pixel claim comes with the harness limitation attached until #100 is
-   fixed.
+6. Every pixel claim comes with the harness limitation attached. #100 is
+   fixed, and the numbers moved 203 px when it was.
 7. Nothing is reported as verified that has not been run.
 
 ## Sources

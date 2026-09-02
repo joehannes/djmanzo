@@ -2013,17 +2013,24 @@ it a bug of its own — the split-cue button drawn on top of the output meters o
 any machine with a four-channel cue device. The strip is now one row instead of
 two and both are fixed.
 
-**What it found that is not fixed.** With two records loaded, a deck column
-measures 675 px and the crossfader's centre lands at y 877 — 77 px past the
-window. That is the third instance of the same regression, and 77 px is a
-*floor*: the harness does not draw the pad zone the real deck has, so the true
-gap is larger by roughly two hundred pixels. The cause is recorded in
-`ui/e2e/budget.spec.ts` and is not the obvious one — the pad pages are asked for
-and answered correctly, and the component draws them in the real webview and not
-under the stub. Closing it means finding about
-150 px in the deck column and there are several defensible places to find it, so
-it is recorded as a running test marked `test.fail()`: the failure is asserted,
-and whoever fixes the height gets a red test telling them to delete the marker.
+**What it found that is not fixed.** With two records loaded a deck column
+measures 878 px, and the crossfader's centre lands roughly 280 px past a window
+800 px tall — the third instance of the same regression. Worse, so do two
+controls *on the deck*: the channel fader at y 873 and the filter at y 915.
+
+Those figures read 675 and 77 until the harness stopped losing the pad zone.
+The cause was one missing entry in the browser stub: it answers an unknown
+command with `null`, `stems_status` was not in its list, and `Stems.svelte`
+reads a field straight off that answer because the application's own type
+cannot be null there. The deck's subtree threw, Svelte abandoned the render,
+the pad zone never appeared — and every assertion stayed green, because a
+shorter deck is not a taller one. `openShell` now collects what the page threw
+and a test refuses it, which is the general form of the lesson.
+
+Closing the height means finding about 350 px in the deck column and there are
+several defensible places to find it, so it is recorded as running tests marked
+`test.fail()`: the failures are asserted, and whoever fixes the height gets a
+red test telling them to delete the markers.
 A second test ratchets the deck at 740 px so it cannot grow further meanwhile --
 slack on purpose, because the regressions on record were +156 and +117 px, and
 because CI installs a Chromium build with the runner's own font stack that none

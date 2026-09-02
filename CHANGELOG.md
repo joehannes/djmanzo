@@ -16,6 +16,31 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The deck is drawn from the layout tree** (ADR-0008, W3). `Deck.svelte` no
+longer holds the deck's shape in its own markup: it renders a list of named
+widgets in the order the resolved tree gives, and the flat layout upconverts
+into exactly the deck djmanzo already drew — asserted as a golden order, so a
+control cannot move underneath a DJ as a side effect of a format change. Six
+widgets the vocabulary was missing are in it: the jog, the channel fader, the
+cue, the crossfader assignment, the progress bar and the times.
+
+**Two bugs it surfaced.** A DJ who had never opened the layout picker was being
+handed the *Starter* preset by `layout_tree` — no pads, no loops, no effect
+rack, no beat jump, no filter, no keylock. It had been answering that way for
+releases and nothing noticed, because the interface read only the tokens out of
+that answer and drew the deck from its own markup. Nothing chosen now means the
+full deck.
+
+And the layout budget had been measuring a deck with **no pad zone** for three
+runs. The browser stub answers an unknown command with `null`, `stems_status`
+was not in its list, and a component read a field off that answer — so the
+deck's subtree threw, Svelte abandoned the render pass, and 197 px of pad zone
+was simply absent while every geometry assertion stayed green. A deck measures
+878 px, not 675. The crossfader is about 280 px below the fold, not 77, and a
+deck's own volume fader and filter are below it too. All three are recorded as
+failing tests rather than fixed problems; the numbers are now the ones a DJ
+meets.
+
 ## v0.11.0 — The interface is audited, and its vocabulary written down
 
 Nothing a DJ touches has changed since v0.10.0, and that is deliberate. This

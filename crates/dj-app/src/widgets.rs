@@ -295,6 +295,61 @@ pub fn catalog() -> &'static [Widget] {
             props: NO_PROPS,
             needs: &["decks.level"],
         },
+        // The four the vocabulary was missing.
+        //
+        // Not an oversight to be tidied away quietly: the deck draws all four,
+        // so a layout tree that omits them cannot describe the deck djmanzo
+        // has -- which is exactly the thing W3 needs it to do. They are added
+        // here rather than special-cased in the renderer, because a control
+        // the tree cannot name is a control a skin cannot move.
+        Widget {
+            name: "deck.jog",
+            about: "The jog wheel -- position, and a nudge a mouse can reach.",
+            slots: DECK_SLOT,
+            offers: &[],
+            props: NO_PROPS,
+            needs: &["decks.position"],
+        },
+        Widget {
+            name: "deck.volume",
+            about: "The channel fader.",
+            slots: DECK_SLOT,
+            offers: &[],
+            props: NO_PROPS,
+            needs: &["decks.volume"],
+        },
+        Widget {
+            name: "deck.cue",
+            about: "Send this deck to the headphones.",
+            slots: DECK_SLOT,
+            offers: &[],
+            props: NO_PROPS,
+            needs: &["decks.cue"],
+        },
+        Widget {
+            name: "deck.xfader",
+            about: "Which side of the crossfader this deck answers to.",
+            slots: DECK_SLOT,
+            offers: &[],
+            props: NO_PROPS,
+            needs: &["decks.xfader"],
+        },
+        Widget {
+            name: "deck.progress",
+            about: "How far through the track the playhead is, as a bar.",
+            slots: DECK_SLOT,
+            offers: &[],
+            props: NO_PROPS,
+            needs: &["decks.position"],
+        },
+        Widget {
+            name: "deck.times",
+            about: "Elapsed and remaining.",
+            slots: DECK_SLOT,
+            offers: &[],
+            props: NO_PROPS,
+            needs: &["decks.position"],
+        },
         Widget {
             name: "deck.stems",
             about: "The four stems, with their mutes and volumes.",
@@ -833,35 +888,60 @@ fn settle(
 pub fn from_layout(layout: &Layout) -> Tree {
     let layout = layout.clone().sane();
 
+    // The order is the order the deck draws in, and that is not incidental.
+    //
+    // The first version of this listed the zones in the order the flat
+    // `Layout` happens to declare its fields, which put the transport above
+    // the pads and the EQ below the effects. Nothing noticed while the tree
+    // was only inspected; the moment the deck renders *from* it, that ordering
+    // is what a DJ sees -- and rearranging a deck under someone as a side
+    // effect of a format migration is exactly the thing this redesign is not
+    // allowed to do. An upconversion has one job: produce the interface that
+    // already exists.
     let mut inside =
         vec![Placement::of("deck.waveform").with("height", i64::from(layout.waveform_height))];
     if layout.overview {
         inside.push(Placement::of("deck.overview"));
     }
-    inside.push(Placement::of("deck.transport"));
-    inside.push(Placement::of("deck.perform"));
+    inside.push(Placement::of("deck.progress"));
+    inside.push(Placement::of("deck.stems"));
+    inside.push(Placement::of("deck.times"));
     if layout.pads {
         inside.push(Placement::of("deck.pads"));
-    }
-    if layout.loops {
-        inside.push(Placement::of("deck.loops"));
     }
     if layout.beat_jump {
         inside.push(Placement::of("deck.beat_jump"));
     }
+    if layout.loops {
+        inside.push(Placement::of("deck.loops"));
+    }
+    if layout.fx {
+        inside.push(Placement::of("deck.fx"));
+    }
+    inside.push(Placement::of("deck.grid"));
+    inside.push(Placement::of("deck.transport"));
+    // Slip, reverse and censor travel with the loops: slip is what makes a
+    // loop something you can leave. The flat form never had a flag of their
+    // own and took the loop one, and that is preserved rather than corrected,
+    // because correcting it here would change what an existing layout draws.
+    if layout.loops {
+        inside.push(Placement::of("deck.perform"));
+    }
+    inside.push(Placement::of("deck.jog"));
     if layout.eq {
         inside.push(Placement::of("deck.eq"));
     }
     if layout.filter {
         inside.push(Placement::of("deck.filter"));
     }
+    inside.push(Placement::of("deck.volume"));
     inside.push(Placement::of("deck.pitch"));
     if layout.keylock {
         inside.push(Placement::of("deck.keylock"));
     }
-    if layout.fx {
-        inside.push(Placement::of("deck.fx"));
-    }
+    inside.push(Placement::of("deck.cue"));
+    inside.push(Placement::of("deck.xfader"));
+    inside.push(Placement::of("deck.meter"));
 
     let stage = (1..=i64::from(layout.decks))
         .map(|number| {
@@ -1337,6 +1417,102 @@ mod tests {
         assert!(!inside.contains(&"deck.eq"));
         assert!(!inside.contains(&"deck.fx"));
         assert!(inside.contains(&"deck.waveform"));
+    }
+
+    /// The upconversion produces the deck djmanzo already draws, in order.
+    ///
+    /// Once `Deck.svelte` renders *from* this list, the list **is** the deck:
+    /// a widget missing here is a control that disappears, and two swapped
+    /// here are two controls that trade places under a DJ mid-set. The first
+    /// version of `from_layout` had both problems -- no stems, no grid, no
+    /// jog, no channel fader, no cue, no crossfader assignment and no meter,
+    /// and the transport above the pads -- and nothing caught it, because
+    /// nothing was rendering from it yet.
+    ///
+    /// Written out in full rather than checked for a few members. A golden
+    /// order is the only form of this test that fails when something moves,
+    /// and moving is the failure that matters.
+    #[test]
+    fn the_default_layout_upconverts_to_the_deck_the_interface_draws() {
+        let out = resolve(&from_layout(&Layout::default()));
+        let inside: Vec<_> = out.slots["stage"][0].children["deck"]
+            .iter()
+            .map(|placed| placed.widget.as_str())
+            .collect();
+
+        assert_eq!(
+            inside,
+            [
+                "deck.waveform",
+                "deck.overview",
+                "deck.progress",
+                "deck.stems",
+                "deck.times",
+                "deck.pads",
+                "deck.beat_jump",
+                "deck.loops",
+                "deck.fx",
+                "deck.grid",
+                "deck.transport",
+                "deck.perform",
+                "deck.jog",
+                "deck.eq",
+                "deck.filter",
+                "deck.volume",
+                "deck.pitch",
+                "deck.keylock",
+                "deck.cue",
+                "deck.xfader",
+                "deck.meter",
+            ],
+            "the order a deck is drawn in has changed. If that was deliberate, \
+             change `Deck.svelte` to match and say so in the commit; if it was \
+             not, this is a control moving underneath a DJ."
+        );
+    }
+
+    /// The first shipped preset is not what "nothing chosen" means.
+    ///
+    /// `layout_tree` used to answer with `builtin().first()` when the DJ had
+    /// never picked a layout, and that preset is "Starter" -- no pads, no
+    /// loops, no effect rack, no beat jump, no filter, no keylock. It went
+    /// unnoticed for as long as the interface read only the tokens out of that
+    /// answer and drew the deck from its own markup. The moment the deck
+    /// rendered from the tree, six controls vanished from a screenshot.
+    ///
+    /// The assertion is not that Starter is wrong -- it is a good preset, and
+    /// it is *supposed* to be a reduction. It is that a reduction is a choice,
+    /// and a command answering a question nobody asked must not make it.
+    #[test]
+    fn the_first_shipped_preset_is_a_reduction_and_so_cannot_be_the_default_answer() {
+        let starter = crate::layout::builtin()
+            .into_iter()
+            .next()
+            .expect("djmanzo ships presets");
+        let unconfigured = resolve(&from_layout(&Layout::default()));
+        let chosen = resolve(&from_layout(&starter));
+
+        let names = |out: &Resolved| -> Vec<String> {
+            out.slots["stage"][0].children["deck"]
+                .iter()
+                .map(|placed| placed.widget.clone())
+                .collect()
+        };
+        let full = names(&unconfigured);
+        let reduced = names(&chosen);
+
+        for widget in ["deck.pads", "deck.loops", "deck.fx", "deck.beat_jump"] {
+            assert!(
+                full.contains(&widget.to_owned()),
+                "an unconfigured djmanzo must draw `{widget}`"
+            );
+            assert!(
+                !reduced.contains(&widget.to_owned()),
+                "`{}` was expected to leave `{widget}` out -- if it no longer does, \
+                 this test is asserting the wrong preset rather than passing",
+                starter.name
+            );
+        }
     }
 
     #[test]

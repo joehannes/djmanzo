@@ -5231,12 +5231,21 @@ pub fn layout_tree(state: State<'_, AppState>) -> crate::widgets::Resolved {
         return crate::widgets::resolve(&tree);
     }
 
-    let layout = chosen_layout(state).unwrap_or_else(|| {
-        crate::layout::builtin()
-            .into_iter()
-            .next()
-            .unwrap_or_default()
-    });
+    // `Layout::default()` rather than the first shipped preset, and the
+    // difference is not cosmetic.
+    //
+    // This used to answer with `builtin().first()` -- "Starter", which hides
+    // the pads, the loops, the effect rack, the beat jump, the filter and
+    // keylock. So a DJ who had never opened the layout picker was being handed
+    // a stripped deck by a command that had been asked no question. It went
+    // unnoticed for as long as the interface only read the tokens out of this
+    // answer and drew the deck from its own markup; the moment the deck
+    // rendered from the tree, half of it disappeared.
+    //
+    // Nothing chosen means the application has not been told otherwise, which
+    // is the full deck -- the same posture `chosen_layout` above already takes
+    // when it refuses to invent a name for a layout that is not there.
+    let layout = chosen_layout(state).unwrap_or_default();
     crate::widgets::resolve(&crate::widgets::from_layout(&layout))
 }
 

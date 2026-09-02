@@ -12,27 +12,30 @@
  * `docs/ROADMAP.md` draws the conclusion itself: *"a layout budget with no test
  * drifts back, and nothing here measures it."* This is the measurement.
  *
- * # A limit this harness is known to have
+ * # A limitation this harness used to have, and what it cost
  *
- * **The deck it measures is missing its pad zone.** The real application draws
- * a page strip (CUES, LOOPS, ROLL, SLICER, SAVED, SAMPLER, STEMS, FX) and an
- * eight-pad grid between the times row and the beat-jump row; under this stub
- * it does not, and a screenshot of the two side by side is how that was found
- * rather than any assertion here.
+ * For three runs the deck measured here **had no pad zone** -- no page strip,
+ * no eight-pad grid -- and the numbers below were quoted with a note admitting
+ * they were floors rather than values. It was found by a human comparing a
+ * screenshot with the running application, not by anything here.
  *
- * It is not the obvious cause. `pad_pages` *is* asked for, it *is* answered
- * with the eight pages the application generates (`pad-pages.json`, a golden
- * file from the same Rust source), and `Deck.svelte` logs both decks resolving
- * eight of them. `deck.loaded` and the layout's `pads` flag are both true. Why
- * the component then draws nothing under the stub and everything in the real
- * webview is unexplained, and it is written down here rather than left as a
- * surprise for the next person.
+ * The cause turned out to be one line in `shell.ts`. The stub answers a
+ * command it does not know with `null`, deliberately; `stems_status` was not
+ * in its list; `Stems.svelte` reads `status.available` straight off the answer,
+ * because the application's own type is not optional and cannot be null there.
+ * So the deck's subtree threw, Svelte abandoned the rest of that render pass,
+ * and the pad zone never appeared -- while every assertion in this file stayed
+ * green, because a shorter deck is not a taller one.
  *
- * **What that means for every number below: they are floors, not values.** The
- * deck is at least as tall as this measures and the controls beneath it are at
- * least as far down. A regression will still be caught -- the missing zone is a
- * constant, so growth elsewhere still shows -- but no figure here should be
- * quoted as the height a DJ actually sees.
+ * Two things came out of it. The stub answers `stems_status`, and `openShell`
+ * now collects what the page threw so a test can refuse it: a thrown error is
+ * the one signal that separates "this layout is fine" from "this layout did
+ * not finish".
+ *
+ * **The numbers moved a long way when it was fixed.** A deck went from 675 px
+ * to 878, the pad zone being 197 of that, which is close to the two hundred
+ * that had been guessed from a screenshot. Everything below is measured
+ * against the deck djmanzo actually draws.
  *
  * # Why geometry and not the template
  *
@@ -43,7 +46,7 @@
  */
 import { type Page, expect, test } from "@playwright/test";
 
-import { SLACK, WINDOW, centreOf, openShell } from "./shell";
+import { SLACK, WINDOW, centreOf, errorsThrown, openShell } from "./shell";
 
 /**
  * The controls a DJ actually touches to perform a mix.
@@ -89,9 +92,65 @@ async function survey(page: Page, controls: Control[]) {
 }
 
 test.describe("the first screen", () => {
-  test("every control on a deck is on it", async ({ page }, info) => {
+  test("every control this budget names is in the interface", async ({ page }) => {
     await openShell(page, "/");
-    const { offscreen, missing, measured } = await survey(page, ON_THE_DECK);
+    const { missing } = await survey(page, [...ON_THE_DECK, ...ON_THE_MASTER]);
+
+    expect(
+      missing,
+      "a control this test names is not in the interface at all -- either it was " +
+        "renamed, in which case rename it here too, or it stopped being rendered",
+    ).toEqual([]);
+  });
+
+  /**
+   * Nothing the interface draws may throw while it is being measured.
+   *
+   * The general form of the bug that hid the pad zone for three runs: a
+   * component threw during its render, Svelte abandoned the pass, a whole zone
+   * of the deck was absent, and every geometry assertion here stayed green
+   * because a shorter deck is not a taller one. Geometry cannot catch a
+   * missing thing. This can.
+   */
+  test("the interface finishes rendering without throwing", async ({ page }) => {
+    await openShell(page, "/");
+    await expect(page.locator(".deck").first()).toBeVisible();
+
+    expect(
+      errorsThrown(page),
+      "the interface threw while it was being measured, so some part of it did " +
+        "not finish rendering and every figure below is measuring a screen " +
+        "djmanzo does not draw",
+    ).toEqual([]);
+  });
+
+  /**
+   * **A measured failure, recorded rather than hidden.**
+   *
+   * With the pad zone drawn -- which it now is -- a deck's own Volume fader
+   * sits at y 873 and the Filter knob at y 915, on a window djmanzo opens at
+   * 800 px tall. Not the crossfader below the decks: the channel controls *on*
+   * the deck.
+   *
+   * This was invisible until the harness stopped losing 197 px of pad zone,
+   * and it is worse than the crossfader problem it was hiding, because these
+   * two are reached for continuously rather than at a transition.
+   *
+   * `test.fail()` rather than a skip, for the same reason as the master strip
+   * below: whoever fixes the deck's height gets a red test telling them to
+   * delete this line, instead of a green suite that quietly forgot.
+   */
+  test("every control on a deck is on the first screen", async ({ page }, info) => {
+    // Skipped on CI for the reason given on the master strip test below: this
+    // is a both-ways pixel assertion and CI runs a renderer and font stack it
+    // has never been measured on.
+    test.skip(
+      !!process.env.CI,
+      "a both-ways pixel assertion, and the runner's renderer is not the one it was measured on",
+    );
+    test.fail();
+    await openShell(page, "/");
+    const { offscreen, measured } = await survey(page, ON_THE_DECK);
 
     // Attached whether or not it failed, so a run that passes still records
     // how much room was left -- which is what tells you a change ate the
@@ -102,11 +161,6 @@ test.describe("the first screen", () => {
     });
 
     expect(
-      missing,
-      "a control this test names is not in the interface at all -- either it was " +
-        "renamed, in which case rename it here too, or it stopped being rendered",
-    ).toEqual([]);
-    expect(
       offscreen,
       `the window djmanzo opens at is ${WINDOW.width}x${WINDOW.height}, and these ` +
         "controls are past it",
@@ -116,15 +170,15 @@ test.describe("the first screen", () => {
   /**
    * **A known, measured failure, recorded rather than hidden.**
    *
-   * With two records loaded a deck column measures 675 px here, the top bar
-   * takes 138 and the master strip 110, so the strip starts at about 839 and
-   * the crossfader's centre lands at y 877 -- seventy-seven pixels below the
-   * window djmanzo opens itself at, with master gain beside it.
+   * With two records loaded a deck column measures 878 px, the top bar takes
+   * 138 and the master strip 110, so the crossfader's centre lands roughly
+   * 280 px below the window djmanzo opens itself at, with master gain beside
+   * it.
    *
-   * **Seventy-seven is a floor.** This harness does not draw the pad zone (see
-   * the note at the top of the file), and the real deck has one, so the real
-   * gap is larger by whatever that zone costs -- on the order of two hundred
-   * pixels, judging by a screenshot of the running application.
+   * The figure used to read seventy-seven, and was published with a note
+   * saying it was a floor because the harness was not drawing the pad zone.
+   * The harness draws it now, and the floor turned out to be about a quarter
+   * of the real gap.
    *
    * This is the third time a performing control has ended up below the fold,
    * and the first two were found by a human with a screenshot. It is here as a
@@ -244,21 +298,28 @@ test.describe("the first screen", () => {
     await info.attach("deck height", { body: `${height}px`, contentType: "text/plain" });
     // To the console as well as the report: on CI the report is an artifact
     // nobody downloads, and this number is the whole point of the run.
-    console.log(`deck column height: ${height}px (budget 740, target ~527)`);
+    console.log(`deck column height: ${height}px (budget 940, target ~527)`);
 
-    // 740 against the 675 it measures here -- a ratchet, not a target, and
-    // deliberately slack. Two reasons for the 65 px of room: the number that
+    // 940 against the 878 it measures here -- a ratchet, not a target, and
+    // deliberately slack. Two reasons for the 62 px of room: the number that
     // matters is a *regression*, and the two on record were +156 and +117, not
     // +20; and CI runs a different Chromium build with a different font stack,
     // on which this has never been measured. The height is printed above on
     // every run, so the runner's own figure is in the log and this can be
     // tightened on evidence rather than on a guess.
     //
-    // The number that would put the crossfader back on screen is about 527.
+    // **This number went up from 740 without the deck growing by a pixel.**
+    // The harness was losing the 197 px pad zone; fixing it did not make the
+    // deck taller, it made the measurement true. Raising a ratchet is normally
+    // the wrong move and it is the right one exactly here, where the old
+    // figure was measuring a screen no DJ meets.
+    //
+    // The number that would put the crossfader back on screen is about 527,
+    // so this is expected to come down rather than hold.
     expect(
       height,
       "the deck column has grown past where it already was, which is how the " +
         "crossfader ended up below the fold all three times",
-    ).toBeLessThanOrEqual(740);
+    ).toBeLessThanOrEqual(940);
   });
 });

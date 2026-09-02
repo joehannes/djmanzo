@@ -5,7 +5,7 @@
     loadTrack,
     padPages,
     type DeckState,
-    type Layout,
+    type Placed,
     type PadPageDto,
     type SamplerState,
     type StemSwap,
@@ -30,7 +30,7 @@
     sampler,
     enabled,
     cueAvailable = false,
-    layout = null,
+    zones = null,
     stemSwap = null,
     deckCount = 2,
     careful = false,
@@ -54,28 +54,114 @@
      */
     careful?: boolean;
     /**
-     * The layout in force, or null before one has been chosen.
+     * What to draw and in what order, from the resolved layout tree.
      *
-     * Null is not "hide everything" — it is "the application has not been told
-     * otherwise", so every flag falls back to shown. A DJ who never opens the
-     * layout picker gets the full deck, which is the interface that existed
-     * before layouts did.
+     * Null until the tree arrives, and null again if it cannot be read. That
+     * is not "draw nothing" -- it falls back to [`FULL`] below, which is the
+     * deck djmanzo has always drawn. A DJ whose layout file is unreadable
+     * gets the interface, not an empty column.
      */
-    layout?: Layout | null;
+    zones?: Placed[] | null;
   } = $props();
 
-  // Read once here rather than at each use, so the fallback lives in one place.
-  const showPads = $derived(layout?.pads ?? true);
-  const showLoops = $derived(layout?.loops ?? true);
-  const showJump = $derived(layout?.beat_jump ?? true);
-  const showEq = $derived(layout?.eq ?? true);
-  const showFilter = $derived(layout?.filter ?? true);
-  const showKeylock = $derived(layout?.keylock ?? true);
-  // Shown with the loops: slip is what makes a loop something you can leave.
-  const showSlip = $derived(layout?.loops ?? true);
-  const showFx = $derived(layout?.fx ?? true);
-  const showOverview = $derived(layout?.overview ?? true);
-  const waveHeight = $derived(layout?.waveform_height ?? 96);
+  /**
+   * The deck to draw when nothing has said otherwise.
+   *
+   * The same order `dj_app::widgets::from_layout` produces for the default
+   * layout, and there is a Rust test asserting that list against the order
+   * this component draws in. Duplicated deliberately rather than awaited: the
+   * tree arrives over a command, and a deck that is blank for one frame at
+   * startup -- or for the whole session if the command fails -- would be a
+   * worse failure than a list that has to be kept in step with a test that
+   * fails when it is not.
+   */
+  const FULL: Placed[] = [
+    "deck.waveform",
+    "deck.overview",
+    "deck.progress",
+    "deck.stems",
+    "deck.times",
+    "deck.pads",
+    "deck.beat_jump",
+    "deck.loops",
+    "deck.fx",
+    "deck.grid",
+    "deck.transport",
+    "deck.perform",
+    "deck.jog",
+    "deck.eq",
+    "deck.filter",
+    "deck.volume",
+    "deck.pitch",
+    "deck.keylock",
+    "deck.cue",
+    "deck.xfader",
+    "deck.meter",
+  ].map((widget) => ({ widget, props: {}, children: {} }));
+
+  const placed = $derived(zones && zones.length > 0 ? zones : FULL);
+
+  /**
+   * Keylock is drawn inside the tempo block, not beside it.
+   *
+   * It qualifies the pitch fader -- it only means anything once the fader has
+   * moved -- so it belongs in that control the way a units switch belongs on
+   * the instrument it labels. The tree can therefore say *whether* keylock is
+   * shown but not *where*, which is a real limitation of this phase and is
+   * written down here rather than discovered later.
+   */
+  const keylock = $derived(placed.some((zone) => zone.widget === "deck.keylock"));
+
+  /** A prop the tree set, if it set one and it is a number. */
+  function height(props: Record<string, unknown>, fallback: number): number {
+    const value = props?.height;
+    return typeof value === "number" ? value : fallback;
+  }
+
+  /**
+   * The two runs of widgets that are drawn as one row rather than as a stack.
+   *
+   * The deck is a flex column and almost every widget is a row in it. Two
+   * groups are not: the channel strip puts tone, colour, level and tempo side
+   * by side, and its foot puts the cue and the crossfader assignment on one
+   * line. Both are the reason the crossfader is reachable at all -- stacked,
+   * the strip alone took about 530 px of a column that has to end above it.
+   *
+   * Grouping happens here, in the renderer, rather than as nesting in the
+   * layout format. CSS cannot say "wrap a run of siblings", and making the
+   * strip a container widget would push a presentational detail into a file
+   * format that ADR-0008 deliberately keeps free of geometry. Order and
+   * presence still come entirely from the tree; only the box around a run of
+   * them is decided here.
+   */
+  const STRIP = ["deck.jog", "deck.eq", "deck.filter", "deck.volume", "deck.pitch"];
+  const FOOT = ["deck.cue", "deck.xfader"];
+
+  type Row = {
+    kind: "strip" | "foot" | "one";
+    key: string;
+    zones: { key: string; placed: Placed }[];
+  };
+
+  const rows = $derived.by(() => {
+    const out: Row[] = [];
+    placed.forEach((zone, index) => {
+      // Drawn by the tempo block above, so it is not a row of its own.
+      if (zone.widget === "deck.keylock") return;
+      const kind: Row["kind"] = STRIP.includes(zone.widget)
+        ? "strip"
+        : FOOT.includes(zone.widget)
+          ? "foot"
+          : "one";
+      // Indexed, because a layout may place the same widget twice and a key
+      // that is only the name would then collide.
+      const entry = { key: `${zone.widget}-${index}`, placed: zone };
+      const last = out[out.length - 1];
+      if (kind !== "one" && last?.kind === kind) last.zones.push(entry);
+      else out.push({ kind, key: entry.key, zones: [entry] });
+    });
+    return out;
+  });
 
   let error = $state<string | null>(null);
   let loading = $state(false);
@@ -223,7 +309,6 @@
     }
   };
 </script>
-
 <section
   class="deck"
   class:playing={deck.playing}
@@ -346,24 +431,34 @@
   </header>
 
   <!--
+    One snippet per named widget, then one loop that draws them in the order
+    the layout tree gives. Everything below is markup that was already here;
+    what changed is that its *order and presence* now come from data instead of
+    from the file. See docs/adr/0008-one-widget-vocabulary.md.
+  -->
+  {#snippet zoneWaveform(props: Record<string, unknown>)}
+  <!--
     Tiles come from the Rust renderer and are scrolled by a CSS transform;
     nothing here draws. See docs/adr/0004-waveform-rendering-strategy.md.
   -->
-  <Waveform {deck} height={waveHeight} />
-
+  <Waveform {deck} height={height(props, 96)} />
+  {/snippet}
+  {#snippet zoneOverview()}
   <!--
     The whole track under the scrolling lane. Two views answering different
     questions: the lane says what is about to happen, this says where in the
     track you are and where the breakdown is.
   -->
-  {#if deck.loaded && showOverview}
+  {#if deck.loaded}
     <Overview {deck} height={30} />
   {/if}
-
+  {/snippet}
+  {#snippet zoneProgress()}
   <div class="progress" role="progressbar" aria-valuenow={progress * 100}>
     <div class="fill" style:scale="{fill(progress)} 1"></div>
   </div>
-
+  {/snippet}
+  {#snippet zoneStems()}
   {#if deck.loaded}
     <!--
       Below the waveform, not above it. Mounted above, this pushed the one
@@ -373,14 +468,16 @@
     -->
     <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} eqState={deck.stem_eq} filterState={deck.stem_filters} soloing={deck.stem_soloing} swap={stemSwap} deckCount={deckCount} />
   {/if}
-
+  {/snippet}
+  {#snippet zoneTimes()}
   <div class="times mono">
     <span>{formatTime(deck.position_seconds)}</span>
     <span class="remaining">
       -{formatTime(Math.max(0, deck.length_seconds - deck.position_seconds))}
     </span>
   </div>
-
+  {/snippet}
+  {#snippet zonePads()}
   <!--
     The pad zone. One grid of eight with a page selector, the way hardware
     works — and the way it has to work if a controller's pads are ever to mean
@@ -392,19 +489,19 @@
     and none of which a controller could have mapped onto without the mapping
     being written a second time.
   -->
-  {#if deck.loaded && showPads}
+  {#if deck.loaded}
     <Pads pages={padPageList} {deck} {sampler} {enabled} {send} />
   {/if}
-
+  {/snippet}
+  {#snippet zoneBeatJump()}
   <!--
     Beat jump and auto loops. Only shown when there is a grid to measure them
     against: without one the buttons would be present and inert, which reads as
     broken rather than as "this track has no beats yet". Manual looping still
     works — see the in/out pair below, which needs no grid at all.
   -->
-  {#if analysis?.bpm != null && (showJump || showLoops)}
+  {#if analysis?.bpm != null}
     <div class="beatjump">
-      {#if showJump}
       <span class="label">Jump</span>
       {#each [-4, -1, 1, 4] as beats (beats)}
         <IconButton
@@ -416,12 +513,12 @@
           {beats > 0 ? `+${beats}` : beats}
         </IconButton>
       {/each}
-      {/if}
 
     </div>
   {/if}
-
-  {#if deck.loaded && showLoops}
+  {/snippet}
+  {#snippet zoneLoops()}
+  {#if deck.loaded}
     <div class="beatjump loop-row">
       <IconButton
         icon="fa-solid fa-flag"
@@ -483,15 +580,16 @@
     </div>
 
   {/if}
-
+  {/snippet}
+  {#snippet zoneFx()}
   <!--
     The effect rack. Below the loops because that is the order a DJ builds in:
     find the section, loop it, then colour it.
   -->
-  {#if showFx}
     <Fx slots={deck.fx} {enabled} target="deck {deck.number}" {send} />
-  {/if}
 
+  {/snippet}
+  {#snippet zoneGrid()}
   <!--
     Grid editing. Hidden behind a toggle rather than always on: it is the
     control a DJ reaches for once per track at most, and never during a mix,
@@ -521,7 +619,8 @@
       <IconButton icon="fa-solid fa-rotate-left" title="Reset grid edits" onClick={() => send(`deck ${deck.number} grid_reset`)} disabled={!enabled} />
     </div>
   {/if}
-
+  {/snippet}
+  {#snippet zoneTransport()}
   <div class="transport">
     <SvgPad
       label="CUE"
@@ -552,7 +651,8 @@
       onclick={() => send(`deck ${deck.number} eject`)}
     />
   </div>
-
+  {/snippet}
+  {#snippet zonePerform()}
   <!--
     The rest of the transport.
 
@@ -570,7 +670,6 @@
     Nine controls sharing four columns' worth of width would have shrunk those
     two to pay for five that are pressed a hundredth as often.
   -->
-  {#if showSlip}
     <div class="perform" role="group" aria-label="Playhead">
       <IconButton
         title={deck.slip
@@ -641,35 +740,9 @@
         </IconButton>
       {/if}
     </div>
-  {/if}
 
-
-
-  <!--
-    The channel strip, side by side rather than stacked.
-
-    Measured, at djmanzo's own default 1280x800: stacked, the EQ, filter,
-    volume and pitch took about 530 px of a deck column, which put the
-    crossfader roughly 1,500 px down — two screens below the waveform it is
-    used against. No shipped preset fixed it, including the one whose
-    description is "everything you need and nothing else". Side by side the
-    same four controls take about 190 px and keep every one of them in the
-    orientation a DJ's hands already know: knobs for tone, vertical faders for
-    level and pitch.
-
-    Ordered as a hardware channel is, left to right: tone, then colour, then
-    level, then tempo.
-
-    And on **one line**, which took a second pass to actually achieve. Pitch
-    was nominally in the strip and in practice was not: it lived in a grid of
-    its own carrying eight controls in three columns, so it wrapped the strip
-    onto a second row and then a third. Measured again at 1280x800 with the
-    grid flattened and the playhead controls moved up to the transport where
-    they belong, the deck goes from 695 px to 539 px -- and the crossfader's
-    thumb from 117 px below the fold to 758 px down a screen 800 px tall.
-    Reachable at djmanzo's own default window size, for the first time.
-  -->
-  <div class="channel">
+  {/snippet}
+  {#snippet zoneJog()}
   <!--
     The platter. Drag the middle to scratch, the rim to bend, and wind it to
     search a paused deck -- the same three things the hardware does, and the
@@ -689,13 +762,13 @@
       enabled={enabled && deck.loaded}
     />
   </div>
-
+  {/snippet}
+  {#snippet zoneEq()}
   <!--
     Isolator EQ: each knob runs from a true kill at 0 to +12 dB. Double-click
     resets to unity, because reaching for exactly 1.00 with a mouse mid-mix is
     not a thing anyone can do.
   -->
-  {#if showEq}
   <div class="eq">
     {#each [{ id: "eq_high", label: "HI", value: deck.eq_high }, { id: "eq_mid", label: "MID", value: deck.eq_mid }, { id: "eq_low", label: "LOW", value: deck.eq_low }] as band (band.id)}
       <label class="band" class:killed={band.value < 0.001}>
@@ -722,9 +795,9 @@
       </label>
     {/each}
   </div>
-  {/if}
 
-  {#if showFilter}
+  {/snippet}
+  {#snippet zoneFilter()}
   <label class="control">
     <SvgKnob
       value={deck.filter}
@@ -743,8 +816,9 @@
       ondblclick={() => send(`deck ${deck.number} filter 0`)}
     />
   </label>
-  {/if}
 
+  {/snippet}
+  {#snippet zoneVolume()}
   <label class="control fader-wrap">
     <SvgFader
       value={deck.volume}
@@ -759,7 +833,8 @@
       oninput={(val) => send(`deck ${deck.number} volume ${val}`)}
     />
   </label>
-
+  {/snippet}
+  {#snippet zonePitch()}
   <!--
     Tempo, and the two things that qualify it.
 
@@ -798,7 +873,7 @@
       with it, because a layout that judges keylock too advanced to show is not
       one that wants semitone transposition either.
     -->
-    {#if showKeylock}
+    {#if keylock}
       <div class="tempo-extras">
         <div class="keyshift">
           <IconButton
@@ -832,21 +907,8 @@
       </div>
     {/if}
   </div>
-  </div>
-
-  <!--
-    The foot of the channel: what this deck sends where.
-
-    Pre-fader listen and the crossfader assignment on one line, because they
-    are the same question asked twice -- which outputs hear this deck -- and
-    because two rows of one control each is how a deck column grows until the
-    crossfader is off the screen.
-
-    Pre-fader listen deliberately explains itself when unavailable rather than
-    just sitting greyed out: a 2-channel laptop output has nowhere to send a
-    cue, and "why is this dead" is a bad thing to wonder mid-set.
-  -->
-  <div class="channel-foot">
+  {/snippet}
+  {#snippet zoneCue()}
   <button
     class="cue"
     class:on={deck.cue_enabled}
@@ -861,6 +923,8 @@
       <span class="pfl-fill" style:scale="{fill(deck.pre_fader_level)} 1"></span>
     </span>
   </button>
+  {/snippet}
+  {#snippet zoneXfader()}
   <!--
     Crossfader assignment. A hardware mixer puts this switch on every channel,
     and once four decks are on screen it stops being optional: without it the
@@ -881,11 +945,92 @@
       </IconButton>
     {/each}
   </div>
-  </div>
-
+  {/snippet}
+  {#snippet zoneMeter()}
   <div class="meter" aria-label="deck level">
     <div class="meter-fill" style:scale="{fill(deck.peak)} 1"></div>
   </div>
+  {/snippet}
+
+  <!--
+    Name to markup. A chain of comparisons rather than a lookup table because
+    Svelte's snippets are markup constructs, not values that survive a trip
+    through an object -- and because an unknown name falling through to nothing
+    is the behaviour ADR-0008's third rule asks for anyway.
+  -->
+  {#snippet zone(placed: Placed)}
+    {#if placed.widget === "deck.waveform"}{@render zoneWaveform(placed.props)}
+    {:else if placed.widget === "deck.overview"}{@render zoneOverview()}
+    {:else if placed.widget === "deck.progress"}{@render zoneProgress()}
+    {:else if placed.widget === "deck.stems"}{@render zoneStems()}
+    {:else if placed.widget === "deck.times"}{@render zoneTimes()}
+    {:else if placed.widget === "deck.pads"}{@render zonePads()}
+    {:else if placed.widget === "deck.beat_jump"}{@render zoneBeatJump()}
+    {:else if placed.widget === "deck.loops"}{@render zoneLoops()}
+    {:else if placed.widget === "deck.fx"}{@render zoneFx()}
+    {:else if placed.widget === "deck.grid"}{@render zoneGrid()}
+    {:else if placed.widget === "deck.transport"}{@render zoneTransport()}
+    {:else if placed.widget === "deck.perform"}{@render zonePerform()}
+    {:else if placed.widget === "deck.jog"}{@render zoneJog()}
+    {:else if placed.widget === "deck.eq"}{@render zoneEq()}
+    {:else if placed.widget === "deck.filter"}{@render zoneFilter()}
+    {:else if placed.widget === "deck.volume"}{@render zoneVolume()}
+    {:else if placed.widget === "deck.pitch"}{@render zonePitch()}
+    {:else if placed.widget === "deck.cue"}{@render zoneCue()}
+    {:else if placed.widget === "deck.xfader"}{@render zoneXfader()}
+    {:else if placed.widget === "deck.meter"}{@render zoneMeter()}
+    {/if}
+  {/snippet}
+
+  {#each rows as row (row.key)}
+    {#if row.kind === "strip"}
+  <!--
+    The channel strip, side by side rather than stacked.
+
+    Measured, at djmanzo's own default 1280x800: stacked, the EQ, filter,
+    volume and pitch took about 530 px of a deck column, which put the
+    crossfader roughly 1,500 px down — two screens below the waveform it is
+    used against. No shipped preset fixed it, including the one whose
+    description is "everything you need and nothing else". Side by side the
+    same four controls take about 190 px and keep every one of them in the
+    orientation a DJ's hands already know: knobs for tone, vertical faders for
+    level and pitch.
+
+    Ordered as a hardware channel is, left to right: tone, then colour, then
+    level, then tempo.
+
+    And on **one line**, which took a second pass to actually achieve. Pitch
+    was nominally in the strip and in practice was not: it lived in a grid of
+    its own carrying eight controls in three columns, so it wrapped the strip
+    onto a second row and then a third. Measured again at 1280x800 with the
+    grid flattened and the playhead controls moved up to the transport where
+    they belong, the deck goes from 695 px to 539 px -- and the crossfader's
+    thumb from 117 px below the fold to 758 px down a screen 800 px tall.
+    Reachable at djmanzo's own default window size, for the first time.
+  -->
+      <div class="channel">
+        {#each row.zones as entry (entry.key)}{@render zone(entry.placed)}{/each}
+      </div>
+    {:else if row.kind === "foot"}
+  <!--
+    The foot of the channel: what this deck sends where.
+
+    Pre-fader listen and the crossfader assignment on one line, because they
+    are the same question asked twice -- which outputs hear this deck -- and
+    because two rows of one control each is how a deck column grows until the
+    crossfader is off the screen.
+
+    Pre-fader listen deliberately explains itself when unavailable rather than
+    just sitting greyed out: a 2-channel laptop output has nowhere to send a
+    cue, and "why is this dead" is a bad thing to wonder mid-set.
+  -->
+      <div class="channel-foot">
+        {#each row.zones as entry (entry.key)}{@render zone(entry.placed)}{/each}
+      </div>
+    {:else}
+      {@render zone(row.zones[0].placed)}
+    {/if}
+  {/each}
 
   {#if error}
     <p class="error">{error}</p>

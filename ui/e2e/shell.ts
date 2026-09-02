@@ -78,6 +78,16 @@ const ANSWERS: Record<string, unknown> = {
   list_devices: [],
   has_logo: false,
   demo_folder: null,
+  // Answered, and this one is not decoration: it is why the deck this budget
+  // measured had no pad zone for three runs. `Stems.svelte` reads
+  // `status.available` straight out of the answer, the application's own type
+  // is not optional so it can never be null there, and a `null` from this stub
+  // therefore threw inside the deck's own subtree -- taking the pads down with
+  // it, silently, while every assertion below stayed green.
+  //
+  // The `pageErrors` guard added to `openShell` is the general form of that
+  // lesson. This entry is the specific one.
+  stems_status: { available: true, backend: null, reason: null },
 };
 
 /**
@@ -101,6 +111,9 @@ export async function openShell(
   master: Record<string, unknown> = {},
 ) {
   const state = { ...snapshot, master: { ...snapshot.master, ...master } };
+  const thrown: string[] = [];
+  pageErrors.set(page, thrown);
+  page.on("pageerror", (error) => thrown.push(error.message));
   await page.setViewportSize(WINDOW);
   await page.addInitScript(
     ([answers, state]: [Record<string, unknown>, unknown]) => {
@@ -154,6 +167,35 @@ export async function openShell(
   // Waiting for the crossfader is waiting for the thing being measured, rather
   // than for a network idle that says nothing about whether it rendered.
   await page.getByRole("slider", { name: "Crossfader" }).waitFor();
+}
+
+/**
+ * What each page threw while it was being measured.
+ *
+ * Kept per page rather than in a module variable because Playwright runs the
+ * tests in parallel, and a shared list would attribute one test's error to
+ * another's assertion.
+ */
+const pageErrors = new WeakMap<Page, string[]>();
+
+/**
+ * Errors the interface threw, for a test to refuse.
+ *
+ * This exists because of a specific failure worth not repeating. The stub
+ * answers a command it does not know with `null`, deliberately -- rejecting
+ * would make this a test of *which* commands the shell happens to call. But
+ * `null` is a shape the application never sends, so a component that reads a
+ * field off the answer throws; Svelte then abandons the rest of that render
+ * pass, and a whole zone of the deck is simply absent. Every geometry
+ * assertion still passes, because a shorter deck is not a taller one.
+ *
+ * That cost three runs of measuring a deck with no pad zone and a note in the
+ * documentation admitting the figures were floors. A thrown error is the one
+ * signal that distinguishes "this layout is fine" from "this layout did not
+ * finish", so it is now a failure rather than a line in the console.
+ */
+export function errorsThrown(page: Page): string[] {
+  return pageErrors.get(page) ?? [];
 }
 
 /**
