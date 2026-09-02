@@ -26,6 +26,7 @@ pub mod automix;
 pub mod autopilot;
 pub mod brand;
 pub mod clock;
+pub mod cockpit;
 pub mod commands;
 pub mod control;
 pub mod grid;
