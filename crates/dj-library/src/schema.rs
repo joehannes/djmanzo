@@ -87,6 +87,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 8,
         sql: MIGRATION_8,
     },
+    Migration {
+        version: 9,
+        sql: MIGRATION_9,
+    },
 ];
 
 /// The initial schema.
@@ -526,6 +530,41 @@ CREATE TABLE lyrics (
 );
 
 CREATE INDEX lyrics_found ON lyrics(found);
+"#;
+
+/// Pitch contours, so a hum can be compared against the collection.
+///
+/// # Why a blob and not a table of points
+///
+/// A contour is three thousand numbers for a five-minute record and nothing
+/// ever asks about one of them. The only two questions are "does this record
+/// have a contour" and "give me the whole of it", and both are answered by a
+/// single row. A row per point would be ten million rows for a modest
+/// collection, to serve a query that always wants all of them.
+///
+/// The encoding is a byte a point, which is `dj_library::melody`'s business
+/// rather than the schema's -- what the schema promises is a blob and a length
+/// nobody but that module interprets.
+///
+/// # Why no index
+///
+/// Two melodies are close under dynamic time warping, which is not a metric,
+/// so there is no ordering to index on and no pruning to be had from one. The
+/// search is a scan and is meant to be. `voiced` is stored anyway because a
+/// record that is nine-tenths drums has nothing to match against and a caller
+/// may want to say so rather than rank it.
+const MIGRATION_9: &str = r#"
+CREATE TABLE melodies (
+    track_id TEXT    PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    -- A byte a point, a point every hundred milliseconds. See
+    -- `dj_library::melody::pack`.
+    points   BLOB    NOT NULL,
+    -- How much of the record was pitched at all, zero to one.
+    voiced   REAL    NOT NULL,
+    -- Unix seconds. A contour made by an older analysis can be spotted and
+    -- redone without redoing the ones that are current.
+    made_at  INTEGER NOT NULL
+);
 "#;
 
 #[cfg(test)]
