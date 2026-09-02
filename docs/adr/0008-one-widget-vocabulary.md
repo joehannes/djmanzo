@@ -1,6 +1,6 @@
 # ADR-0008 — One widget vocabulary
 
-- **Status**: accepted — not yet implemented
+- **Status**: accepted — registry, format and loader built; the interface still renders from its own markup rather than from the tree
 - **Date**: 2026-08-18
 
 ## Context

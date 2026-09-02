@@ -51,6 +51,7 @@ pub mod state;
 pub mod timecode;
 pub mod wav;
 pub mod waveform;
+pub mod widgets;
 pub mod world;
 
 pub use host::{AudioHost, HostError};
@@ -469,6 +470,9 @@ pub fn run() {
             commands::set_watershed,
             commands::chosen_layout,
             commands::choose_layout,
+            commands::widget_catalog,
+            commands::layout_vocabulary,
+            commands::layout_tree,
             sources::list_sources,
             sources::set_secret,
             sources::clear_secret,

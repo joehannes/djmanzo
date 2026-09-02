@@ -5130,6 +5130,14 @@ pub fn list_layouts(state: State<'_, AppState>) -> Vec<crate::layout::Layout> {
     let mut layouts = crate::layout::builtin();
     if let Some(dir) = state.layout_dir() {
         layouts.extend(crate::layout::load_dir(&dir));
+        // Tree-format files appear in the same picker, summarised down to what
+        // the picker shows. Choosing one stores its name, and `layout_tree`
+        // then finds the tree itself rather than this summary of it.
+        layouts.extend(
+            crate::widgets::load_dir(&dir)
+                .iter()
+                .map(crate::widgets::as_layout),
+        );
     }
     layouts
 }
@@ -5166,6 +5174,70 @@ pub fn chosen_layout(state: State<'_, AppState>) -> Option<crate::layout::Layout
 #[tauri::command]
 pub fn choose_layout(state: State<'_, AppState>, name: String) {
     state.set_chosen_layout(&name);
+}
+
+/// Every widget djmanzo can draw, with its slots, its settings and their
+/// ranges.
+///
+/// The vocabulary itself, so a layout editor -- or the assistant composing a
+/// layout -- can be written against what exists rather than against a list
+/// somebody typed twice.
+#[tauri::command]
+#[must_use]
+pub fn widget_catalog() -> &'static [crate::widgets::Widget] {
+    crate::widgets::catalog()
+}
+
+/// The slots and design tokens a layout may name.
+#[derive(Debug, Clone, Serialize)]
+pub struct VocabularyDto {
+    pub slots: &'static [&'static str],
+    /// Each token with the shape its value must take, so an editor can offer a
+    /// colour picker for a colour and refuse a colour for a length.
+    pub tokens: Vec<(&'static str, crate::widgets::TokenShape)>,
+}
+
+/// What a layout is allowed to say.
+#[tauri::command]
+#[must_use]
+pub fn layout_vocabulary() -> VocabularyDto {
+    VocabularyDto {
+        slots: crate::widgets::SLOTS,
+        tokens: crate::widgets::TOKENS.to_vec(),
+    }
+}
+
+/// The chosen layout as a resolved widget tree.
+///
+/// The flat layout is upconverted rather than replaced, which is the migration
+/// [ADR-0008](../../../docs/adr/0008-one-widget-vocabulary.md) asks for: an
+/// existing layout file and the choice beside it become a tree on load, and
+/// nobody's file breaks.
+///
+/// Anything a layout got wrong is in `notes` rather than in an error, so the
+/// interface can show what did not load without refusing to open.
+#[tauri::command]
+#[must_use]
+pub fn layout_tree(state: State<'_, AppState>) -> crate::widgets::Resolved {
+    let chosen = state.chosen_layout();
+
+    // A tree-format file wins over a flat one of the same name: it is the
+    // newer thing the DJ wrote, and it can say strictly more.
+    if let (Some(name), Some(dir)) = (chosen.as_deref(), state.layout_dir())
+        && let Some(tree) = crate::widgets::load_dir(&dir)
+            .into_iter()
+            .find(|tree| tree.name == name)
+    {
+        return crate::widgets::resolve(&tree);
+    }
+
+    let layout = chosen_layout(state).unwrap_or_else(|| {
+        crate::layout::builtin()
+            .into_iter()
+            .next()
+            .unwrap_or_default()
+    });
+    crate::widgets::resolve(&crate::widgets::from_layout(&layout))
 }
 
 // ---------------------------------------------------------------- controllers

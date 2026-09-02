@@ -1553,6 +1553,67 @@ export const setWatershed = (showing: boolean) =>
 /** Remember the chosen layout across restarts. */
 export const chooseLayout = (name: string) => invoke<void>("choose_layout", { name });
 
+/**
+ * The widget vocabulary (ADR-0008).
+ *
+ * The interface is not the owner of this list -- Rust is -- so these types
+ * describe what arrives rather than what the interface believes. A name the UI
+ * has no renderer for is a widget the UI skips, the same way the resolver skips
+ * a name it does not know.
+ */
+export type PropKind =
+  | { kind: "flag"; default: boolean }
+  | { kind: "count"; default: number; least: number; most: number }
+  | { kind: "amount"; default: number; least: number; most: number }
+  | { kind: "choice"; default: string; options: string[] };
+
+export interface WidgetProp {
+  name: string;
+  about: string;
+  kind: PropKind;
+}
+
+export interface Widget {
+  name: string;
+  about: string;
+  /** Slots this may be placed in. */
+  slots: string[];
+  /** Slots this offers its own children. */
+  offers: string[];
+  props: WidgetProp[];
+  /** What it reads from the snapshot. */
+  needs: string[];
+}
+
+/** A widget instance that has been checked against the registry. */
+export interface Placed {
+  widget: string;
+  props: Record<string, unknown>;
+  children: Record<string, Placed[]>;
+}
+
+/** A layout the interface can render without checking anything itself. */
+export interface ResolvedLayout {
+  name: string;
+  about: string;
+  tokens: Record<string, string>;
+  slots: Record<string, Placed[]>;
+  /** What was dropped and why. Shown, not swallowed. */
+  notes: string[];
+}
+
+export type TokenShape = "Colour" | "Length" | "Scale";
+
+export interface LayoutVocabulary {
+  slots: string[];
+  tokens: [string, TokenShape][];
+}
+
+export const widgetCatalog = () => invoke<Widget[]>("widget_catalog");
+export const layoutVocabulary = () => invoke<LayoutVocabulary>("layout_vocabulary");
+/** The chosen layout, upconverted and checked. */
+export const layoutTree = () => invoke<ResolvedLayout>("layout_tree");
+
 export const exportSession = (session: string, path: string) =>
   invoke<number>("export_session", { session, path });
 

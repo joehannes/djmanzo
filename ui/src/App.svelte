@@ -27,6 +27,7 @@
   import {
     chooseLayout,
     chosenLayout,
+    layoutTree,
     listLayouts,
     formatTime,
     setWatershed,
@@ -243,6 +244,16 @@
    */
   let layout = $state<Layout | null>(null);
   let layouts = $state<Layout[]>([]);
+  /**
+   * What the chosen layout asked for that djmanzo could not give it.
+   *
+   * ADR-0008's third rule is that an unknown widget, slot or token is skipped
+   * rather than fatal, so a layout written for a newer djmanzo still opens.
+   * That rule is only honest if the DJ can find out *which* parts were
+   * skipped — a layout that half-loaded in silence is worse than one that
+   * refused, because the missing half looks like a bug in the application.
+   */
+  let layoutNotes = $state<string[]>([]);
 
   async function loadLayouts() {
     try {
@@ -251,6 +262,7 @@
       // they wanted should not have to do it again before every set.
       const previous = await chosenLayout();
       if (previous) applyLayout(previous, false);
+      else void resolveLayout();
     } catch {
       // Only the DJ's own are missing; the interface has its defaults.
     }
@@ -272,6 +284,30 @@
     // read — harmless, but it makes the file's timestamp a lie about when the
     // DJ last chose anything.
     if (remember) void chooseLayout(next.name).catch(() => {});
+    void resolveLayout();
+  }
+
+  /**
+   * Read the chosen layout back as a checked widget tree.
+   *
+   * The tokens come from here rather than from the flat layout because this is
+   * the path a DJ's own layout file will take: Rust owns the vocabulary,
+   * validates every token against its declared shape, and hands back only
+   * values that are safe to put on the document. The interface never decides
+   * what a token may contain — see `dj_app::widgets::token`.
+   */
+  async function resolveLayout() {
+    try {
+      const tree = await layoutTree();
+      for (const [name, value] of Object.entries(tree.tokens)) {
+        document.documentElement.style.setProperty(`--${name}`, value);
+      }
+      layoutNotes = tree.notes;
+    } catch {
+      // A layout that cannot be read leaves the interface as it is, which is
+      // the same posture `loadLayouts` already takes.
+      layoutNotes = [];
+    }
   }
   let logo = $state(false);
   /** Bumped when the logo changes, to defeat the webview's image cache. */
@@ -831,6 +867,17 @@
             </option>
           {/each}
         </select>
+        <!--
+          What the layout asked for and did not get. Skipping the unknown parts
+          is the rule; saying nothing about it is not — a DJ whose layout half
+          loaded should be able to see which half, and the title carries the
+          whole list because the chip has room for a count and not for reasons.
+        -->
+        {#if layoutNotes.length > 0}
+          <span class="warn-chip" title={layoutNotes.join("\n")}>
+            {layoutNotes.length} not shown
+          </span>
+        {/if}
         <IconButton
           icon="fa-solid fa-water"
           label="Watershed"

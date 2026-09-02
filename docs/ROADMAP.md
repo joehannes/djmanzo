@@ -2000,10 +2000,25 @@ nothing else can reach.
 
 | Step | What |
 |---|---|
-| **W1** | The registry in `dj-app`: names, slots, prop types with ranges and defaults, validation. Rust, not TypeScript — the network API and the assistant need it without a webview running. |
-| **W2** | The layout tree format, the upconverter from today's flat `Layout`, and the token set a skin may restyle within. Nobody's existing file breaks. |
-| **W3** | `Deck.svelte` and `App.svelte` stop being layouts and become renderers over the tree. This is the expensive step and the reason the ADR came first. |
+| **W1** | **Built.** The registry in `dj-app`: 33 names, the slots each may sit in and offer, and every setting with a type, a range and a default. Rust, not TypeScript — the network API and the assistant need it without a webview running. |
+| **W2** | **Built.** The tree format, the upconverter from the flat `Layout`, the loader that reads both out of one directory, and the 23-token set a skin may restyle within. Nobody's existing file breaks. |
+| **W3** | **Not started.** `Deck.svelte` and `App.svelte` stop being layouts and become renderers over the tree. This is the expensive step and the reason the ADR came first. |
 | **W4** | What it unlocks: detachable panels and multi-monitor (M5) as a subtree with a window; widget addressing over the network API; assistant-composed layouts as proposals, per [ADR-0005](adr/0005-assistant-speaks-only-actions.md). |
+
+Two things W1 and W2 settled that the ADR left as intentions.
+
+**The restyling boundary is a whitelist of three shapes, not a list of refusals.** A colour is a
+hash and 3, 4, 6 or 8 hex digits; a length is a number and one of `px`, `rem`, `em`; a scale is a
+bare number. `url()`, `@import`, a comment, a closing brace and a CSS escape spelling `url(` are
+all refused by falling off the end rather than by being named. That distinction earned its keep
+immediately: deleting the hex-digit check broke nothing in the first version of the test, because
+`#0;url(xy` is exactly eight characters and passed the length check alone.
+
+**Two formats sharing one directory need each reader to leave the other's files alone.** A tree
+parses cleanly as a flat `Layout` — every field there has a default — so the flat reader was
+offering a tree file back as a fiction: the file's name attached to this struct's idea of
+everything else, listed twice in the picker. Both readers now sniff for a non-empty `slots`, one
+keeping those files and one skipping them.
 
 Sequenced before the richer control rendering below, because a component that has no name is a
 component a skin cannot place — and building the visual layer twice is the thing to avoid.

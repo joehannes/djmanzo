@@ -172,6 +172,13 @@ pub fn load_dir(dir: &std::path::Path) -> Vec<Layout> {
             continue;
         }
         match std::fs::read_to_string(&path).map(|text| serde_json::from_str::<Layout>(&text)) {
+            // A *tree* layout also parses as a `Layout`, because every field
+            // here has a default -- and what comes out is a fiction: the file's
+            // name and description attached to this struct's idea of
+            // everything else. `crate::widgets::load_dir` owns those files, and
+            // the two readers share a directory during the release where both
+            // formats work, so each has to leave the other's files alone.
+            Ok(Ok(_)) if is_tree(&path) => {}
             Ok(Ok(layout)) => out.push(layout.sane()),
             Ok(Err(error)) => tracing::warn!(?path, %error, "skipping a malformed layout"),
             Err(error) => tracing::warn!(?path, %error, "could not read a layout"),
@@ -181,9 +188,58 @@ pub fn load_dir(dir: &std::path::Path) -> Vec<Layout> {
     out
 }
 
+/// Whether a file is a tree layout rather than a flat one.
+///
+/// By content, because both formats are JSON in the same directory with the
+/// same extension: a `slots` object with something in it is the thing a tree
+/// has and a flat layout cannot.
+fn is_tree(path: &std::path::Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|value| value.get("slots").cloned())
+        .and_then(|slots| slots.as_object().map(|map| !map.is_empty()))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The two formats share a directory, so each reader has to leave the
+    /// other's files alone -- and the failure this forbids is not a duplicate
+    /// entry, it is a *fiction*: a tree parses cleanly as a `Layout` with every
+    /// field defaulted, so without this the picker offers "Booth" as two decks
+    /// with pads and an EQ when the file said nothing of the sort.
+    #[test]
+    fn a_tree_layout_is_left_for_the_reader_that_owns_it() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("booth.json"),
+            r#"{ "name": "Booth", "slots": { "mixer": [ { "widget": "mixer.master" } ] } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("plain.json"),
+            r#"{ "name": "Plain", "decks": 4 }"#,
+        )
+        .unwrap();
+        // An empty `slots` is not a tree -- there is nothing in it to draw.
+        std::fs::write(
+            dir.path().join("hollow.json"),
+            r#"{ "name": "Hollow", "slots": {} }"#,
+        )
+        .unwrap();
+
+        let names: Vec<String> = load_dir(dir.path()).into_iter().map(|l| l.name).collect();
+        assert_eq!(
+            names,
+            ["Hollow", "Plain"],
+            "a tree was read as a flat layout"
+        );
+    }
 
     #[test]
     fn the_four_presets_ship_and_are_all_drawable() {
