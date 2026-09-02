@@ -48,9 +48,20 @@ export default defineConfig({
   webServer: {
     // The built bundle, not the dev server: what is measured should be what
     // ships, and Vite's dev transform can change how stylesheets land.
-    command: "npm run preview -- --port 4173 --strictPort",
+    //
+    // `--host 127.0.0.1` is not decoration. Vite's preview binds `localhost`,
+    // and on a machine where that resolves to `::1` first it listens on IPv6
+    // while Playwright polls the IPv4 address below -- which presents as the
+    // server simply never coming up, sixty seconds of nothing and a timeout
+    // that names no cause. It cost a red CI run to find. Binding and polling
+    // the same literal address removes the question.
+    command: "npm run preview -- --host 127.0.0.1 --port 4173 --strictPort",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
+    // Piped rather than swallowed, so the next failure of this kind says what
+    // the server thought it was doing.
+    stdout: "pipe",
+    stderr: "pipe",
     timeout: 60_000,
   },
 });
