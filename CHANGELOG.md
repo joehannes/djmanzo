@@ -16,6 +16,30 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.10.0 — Find a record by humming it, and a layout that is measured
+
+**Find a record from what you remember** is finished. The hum is now compared
+*as a melody* against a stored pitch contour for every record, not only read for
+its key and tempo: ten pitch points a second found with YIN, matched on
+octave-folded intervals so the key it was hummed in does not matter, and located
+with subsequence DTW so the answer is *where in the record*. It still does not
+name a record you do not own, and the panel says so beside the button.
+
+**A layout is a tree of named widgets** (ADR-0008, W1 and W2). Thirty-three
+named widgets with their slots, settings and ranges; a layout is a tree of them
+in JSON; existing flat layouts upconvert on load. A skin may set twenty-three
+design tokens and each value is checked against the shape that token takes, so
+a layout stays data and cannot become a program.
+
+**The first screen is measured, not remembered.** A browser test opens the
+interface at djmanzo's own 1280x800 and reads where the controls actually land,
+against a snapshot captured from the running application. It found the master
+strip's second row below the fold — now one row instead of two — and a split-cue
+button drawn on top of the output meters. It also found that the crossfader is
+still below the fold with records loaded, which is recorded as a failing test
+rather than a fixed problem.
+
+
 ## v0.8.0 — Timecode vinyl you can switch on, and controllers that work
 
 **Timecode vinyl became reachable.** `dj-dvs` could decode a control record and
