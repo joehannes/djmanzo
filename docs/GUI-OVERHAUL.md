@@ -563,6 +563,59 @@ TransitionPlan object
 **Everything downstream of the dock manager is blocked on ADR-0008 W3.** That
 makes W3 (#98) the critical path, not an optional tidy-up.
 
+## 20a. Where a deck's 878 pixels go, and why density does not move them
+
+Measured in the browser harness at 1280x800 with two records loaded, after
+#100 was fixed. This section exists because Phase 3's gate is a height and the
+decision needs numbers rather than impressions.
+
+| Block | px | Block | px |
+|---|---|---|---|
+| pad zone (tabs 37 + grid 155) | **197** | transport | 40 |
+| channel strip (fader 154) | **154** | header | 36 |
+| waveform lane | **96** | jump row | 36 |
+| overview | 30 | loop row | 36 |
+| stems fold | 16 | playhead row | 36 |
+| effects fold | 16 | channel foot | 36 |
+| times | 14 | meter | 4 |
+| progress | 8 | | |
+
+755 in children, 88 in the fourteen gaps between them, 25 in padding.
+
+**The density control barely touches it.** Driving `--density` from 1 to its
+floor of 0.8 moves the deck from 878 px to 810 -- 68 px, against the 280 that
+would put the crossfader back on screen:
+
+| `--density` | deck |
+|---|---|
+| 1.0 | 878 px |
+| 0.9 | 844 px |
+| 0.8 | 810 px |
+
+The reason is that the three largest blocks do not answer to it:
+
+- **The waveform lane is a pixel height from the layout** (96 by default),
+  passed to the renderer as a number.
+- **The faders and knobs are pixel sizes in `Deck.svelte`** -- `height={140}`
+  twice, `size={46}` and `size={56}` -- handed to an SVG that is then drawn at
+  exactly that many device pixels.
+- **The pad grid's height is set by the deck's *width*.** A pad is an SVG with
+  a fixed aspect ratio stretched to its grid cell, so two rows of four are tall
+  because the deck is wide. `min-block-size: 3.1rem` is a floor it never
+  reaches. This also means the pad zone shrinks when four decks are on screen
+  and grows when two are, which is the opposite of what a DJ wants from a
+  performance surface.
+
+So `--density` scales the type and the padding and leaves the furniture where
+it is, which is why the interface "getting denser" has never bought the room it
+looked like it should. **Any Phase 3 plan that assumes density is the lever is
+planning against a number that is not there.**
+
+What actually has to change, in descending order of what it is worth: the pad
+grid's sizing rule, the fader and knob dimensions, and whether the master strip
+stays in the vertical stack at all. The third is the one with several
+defensible answers and it is recorded in §21 as the owner's call.
+
 ## 21. Migration plan
 
 Vertical slices, each shippable, each green before the next:
