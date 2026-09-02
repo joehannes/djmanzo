@@ -2019,7 +2019,11 @@ is the third instance of the same regression. Closing it means finding about
 150 px in the deck column and there are several defensible places to find it, so
 it is recorded as a running test marked `test.fail()`: the failure is asserted,
 and whoever fixes the height gets a red test telling them to delete the marker.
-A second test ratchets the deck at 690 px so it cannot grow further meanwhile.
+A second test ratchets the deck at 740 px so it cannot grow further meanwhile --
+slack on purpose, because the regressions on record were +156 and +117 px, and
+because CI installs a Chromium build with the runner's own font stack that none
+of this has been measured on. It prints the runner's figure on every run, so the
+number can be tightened on evidence.
 
 ---
 
