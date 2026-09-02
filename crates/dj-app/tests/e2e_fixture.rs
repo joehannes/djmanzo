@@ -145,9 +145,18 @@ fn the_browser_fixture_has_the_pad_pages_the_interface_asks_for() {
             path.display()
         )
     });
+    // Compared as JSON rather than as text. A Windows runner checks the file
+    // out with CRLF line endings, and a string comparison would then fail on
+    // every line for a reason that has nothing to do with the pad pages --
+    // `trim` only touches the ends. Parsing also makes the check indifferent to
+    // how the file happens to be formatted, which is what a golden file should
+    // be about.
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored pad pages are JSON");
+    let fresh: serde_json::Value =
+        serde_json::from_str(&fresh).expect("the fresh pad pages are JSON");
     assert_eq!(
-        stored.trim(),
-        fresh.trim(),
+        stored, fresh,
         "\nThe pad pages have changed, so the browser's layout budget is drawing a \
          performance surface djmanzo no longer has.\n\nRegenerate with:\n    \
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
