@@ -6052,6 +6052,16 @@ pub async fn guess_from_description(
         .collect())
 }
 
+/// A record whose melody matched the hum, and where in it.
+#[derive(Debug, Clone, Serialize)]
+pub struct MelodyHitDto {
+    pub track: LibraryTrackDto,
+    /// Mean semitone error per point of the hum. Lower is better.
+    pub cost: f32,
+    /// Seconds into the record where the matching passage starts.
+    pub at_seconds: f64,
+}
+
 /// What djmanzo made of a hum, and what it narrows the collection to.
 #[derive(Debug, Clone, Serialize)]
 pub struct HummedDto {
@@ -6061,6 +6071,19 @@ pub struct HummedDto {
     pub seconds: f32,
     /// Records near that key and tempo, most recently added first.
     pub near: Vec<LibraryTrackDto>,
+    /// Records whose **melody** matches, best first.
+    ///
+    /// Separate from `near` because they answer different questions and fail
+    /// differently: `near` is every record it could be, and this is the ones
+    /// that sound like the tune. A collection with no contours yet has an
+    /// empty list here and a full one there, which is exactly what should be
+    /// shown.
+    pub melody: Vec<MelodyHitDto>,
+    /// How much of the hum had a pitch in it at all, zero to one.
+    ///
+    /// Reported so the interface can say "that was mostly breath" rather than
+    /// showing an empty shortlist and letting the DJ guess why.
+    pub voiced: f32,
 }
 
 /// Read a hum and narrow the collection with it.
@@ -6103,10 +6126,149 @@ pub fn hum(state: State<'_, AppState>, samples: Vec<f32>, rate: u32) -> Result<H
         None => Vec::new(),
     };
 
+    // The melody search is separate from the narrowing above and can be empty
+    // while it is full: a collection whose contours have not been made yet
+    // knows the key and the tempo of every record and the tune of none.
+    let shape = dj_analysis::melody::contour(&samples, rate.get());
+    let melody = match library(&state) {
+        Ok(library) => {
+            let hits = library
+                .search_melody(&shape, MELODY_SHORTLIST)
+                .unwrap_or_default();
+            let mut out = Vec::with_capacity(hits.len());
+            for hit in hits {
+                // A record whose row went away between the search and here is
+                // skipped rather than shown as a blank line.
+                if let Ok(Some(track)) = library.track(hit.track) {
+                    out.push(MelodyHitDto {
+                        track: LibraryTrackDto::from(track),
+                        cost: hit.cost,
+                        at_seconds: hit.at_seconds,
+                    });
+                }
+            }
+            out
+        }
+        Err(_) => Vec::new(),
+    };
+
     Ok(HummedDto {
         key: heard.key.map(dj_core::MusicalKey::camelot),
         tempo: heard.tempo,
         seconds: heard.seconds,
         near,
+        melody,
+        voiced: shape.voiced(),
     })
 }
+
+/// How many melody matches a hum comes back with.
+///
+/// Ten. Long enough that the right record is in it when the search is working
+/// and short enough to read at a glance; a longer list is not a better answer,
+/// it is the same answer with more noise after it.
+const MELODY_SHORTLIST: usize = 10;
+
+/// Make pitch contours for records that have none, a batch at a time.
+///
+/// The same shape as the lyrics sweep, and for the same reason: this is
+/// expensive once per record and free forever after, so it is a job the
+/// interface can start, watch and stop rather than something that happens at
+/// an unpredictable moment.
+///
+/// **Decodes the whole file.** That is the cost, it is why the batch is small,
+/// and it is why a record that will not decode is recorded as attempted rather
+/// than retried on every sweep -- with an empty contour, which matches nothing
+/// and is skipped by the search.
+///
+/// # Errors
+/// When the library cannot be read.
+#[tauri::command]
+pub async fn melody_sweep(state: State<'_, AppState>) -> Result<SweepDto, String> {
+    let library = library(&state)?;
+    let todo = library
+        .without_melody(MELODY_SWEEP)
+        .map_err(|e| e.to_string())?;
+
+    let mut asked = 0;
+    let mut found = 0;
+
+    for track in todo {
+        asked += 1;
+        let contour = match dj_decode::decode_file(&track.path) {
+            Ok(decoded) => {
+                // Folded to mono first. `as_interleaved` is stereo, and a
+                // contour taken straight off it is twice as long as the
+                // record, which puts every reported timestamp at half the
+                // truth without failing anything -- see `melody::mono`.
+                let shape = dj_analysis::melody::contour(
+                    &dj_analysis::melody::mono(
+                        decoded.buffer.as_interleaved(),
+                        dj_decode::CHANNELS,
+                    ),
+                    decoded.buffer.sample_rate().get(),
+                );
+                if shape.voiced() > 0.0 {
+                    found += 1;
+                }
+                shape
+            }
+            Err(problem) => {
+                // A file that will not decode is a file that will not decode
+                // next time either. An empty contour matches nothing and stops
+                // the sweep offering it again for the rest of the night.
+                tracing::debug!(%problem, path = %track.path.display(), "no contour: could not decode");
+                dj_analysis::melody::Contour {
+                    semitones: Vec::new(),
+                    rate: dj_analysis::melody::RATE,
+                }
+            }
+        };
+        library
+            .remember_melody(&track.id, &contour)
+            .map_err(|e| e.to_string())?;
+    }
+
+    let (have, all) = library.melody_progress().map_err(|e| e.to_string())?;
+    Ok(SweepDto {
+        asked,
+        found,
+        left: all.saturating_sub(have),
+        gave_up: false,
+    })
+}
+
+/// How many records have a pitch contour, and how many there are.
+///
+/// Its own command rather than a field on the hum result, because the panel
+/// needs the number *before* anybody hums: a contour index that is empty makes
+/// the melody search return nothing, and a DJ finding that out by humming
+/// first has already wasted the one thing this feature asks of them.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct MelodyProgressDto {
+    /// Records with a contour stored, including the ones that would not decode.
+    pub with_melody: usize,
+    pub tracks: usize,
+}
+
+/// How much of the collection can be searched by tune.
+///
+/// # Errors
+/// When the library cannot be read.
+#[tauri::command]
+pub fn melody_progress(state: State<'_, AppState>) -> Result<MelodyProgressDto, String> {
+    let (with_melody, tracks) = library(&state)?
+        .melody_progress()
+        .map_err(|e| e.to_string())?;
+    Ok(MelodyProgressDto {
+        with_melody,
+        tracks,
+    })
+}
+
+/// How many records one press of the sweep works through.
+///
+/// Twenty. Each one is a full decode plus a pitch pass, so this is seconds of
+/// work rather than milliseconds, and a batch that returns is one the
+/// interface can report on and the DJ can stop.
+const MELODY_SWEEP: usize = 20;

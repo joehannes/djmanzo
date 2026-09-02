@@ -390,6 +390,8 @@ pub fn run() {
             commands::words_fetch,
             commands::guess_from_description,
             commands::hum,
+            commands::melody_sweep,
+            commands::melody_progress,
             commands::start_remote,
             commands::stop_remote,
             commands::start_osc,

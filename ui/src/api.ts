@@ -2226,18 +2226,40 @@ export interface Guess {
  *
  * It narrows; it does not identify. See `dj_app::memory` for why.
  */
+/** A record whose melody matched a hum, and where in it. */
+export interface MelodyHit {
+  track: LibraryTrack;
+  /** Mean semitone error per point of the hum. Lower is better. */
+  cost: number;
+  /** Seconds into the record where the matching passage starts. */
+  at_seconds: number;
+}
+
 export interface Hummed {
   /** Camelot, when there was enough pitch to tell. */
   key: string | null;
   tempo: number | null;
   seconds: number;
   near: LibraryTrack[];
+  /** Records whose melody matches, best first. */
+  melody: MelodyHit[];
+  /** How much of the hum had a pitch in it, zero to one. */
+  voiced: number;
 }
 
 export const wordsSearch = (phrase: string) =>
   invoke<WordHit[]>("words_search", { phrase });
 export const wordsProgress = () => invoke<WordsProgress>("words_progress");
 export const wordsFetch = () => invoke<Sweep>("words_fetch");
+/** How many records can be searched by tune, and how many there are. */
+export interface MelodyProgress {
+  with_melody: number;
+  tracks: number;
+}
+
+/** Make pitch contours for records that have none, a batch at a time. */
+export const melodySweep = () => invoke<Sweep>("melody_sweep");
+export const melodyProgress = () => invoke<MelodyProgress>("melody_progress");
 export const guessFromDescription = (description: string) =>
   invoke<Guess[]>("guess_from_description", { description });
 export const hum = (samples: number[], rate: number) =>

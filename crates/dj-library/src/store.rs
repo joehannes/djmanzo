@@ -1303,6 +1303,59 @@ impl Library {
         })
     }
 
+    /// Records that have no pitch contour yet, oldest first.
+    ///
+    /// The same shape as [`Self::without_words`] because it is the same job:
+    /// something expensive has to be done once per record, and a sweep works
+    /// through what is left a batch at a time.
+    ///
+    /// # Errors
+    /// When the query fails.
+    pub fn without_melody(&self, most: usize) -> Result<Vec<LibraryTrack>> {
+        self.with(|conn| {
+            let ids = crate::melody::without_melody(conn, most)?;
+            let mut tracks = Vec::with_capacity(ids.len());
+            for id in ids {
+                if let Some(track) = one_track(conn, id)? {
+                    tracks.push(track);
+                }
+            }
+            Ok(tracks)
+        })
+    }
+
+    /// Keep a record's pitch contour.
+    ///
+    /// # Errors
+    /// When the write fails.
+    pub fn remember_melody(
+        &self,
+        track: &TrackId,
+        contour: &dj_analysis::melody::Contour,
+    ) -> Result<()> {
+        self.with(|conn| Ok(crate::melody::remember(conn, track, contour)?))
+    }
+
+    /// How many records have a contour, and how many there are.
+    ///
+    /// # Errors
+    /// When the query fails.
+    pub fn melody_progress(&self) -> Result<(usize, usize)> {
+        self.with(|conn| Ok(crate::melody::progress(conn)?))
+    }
+
+    /// Which records a hum is in, best first.
+    ///
+    /// # Errors
+    /// When the query fails.
+    pub fn search_melody(
+        &self,
+        hum: &dj_analysis::melody::Contour,
+        most: usize,
+    ) -> Result<Vec<crate::melody::Hit>> {
+        self.with(|conn| Ok(crate::melody::search(conn, hum, most)?))
+    }
+
     /// How many records have words, have been asked about, and exist.
     ///
     /// # Errors

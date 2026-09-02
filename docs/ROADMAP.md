@@ -1834,18 +1834,54 @@ remember a record one way:
   without a separator is dropped, so a model that replies in prose returns an
   empty list rather than a paragraph presented as a shortlist. Every guess
   carries its reason and whether the record is already in the collection.
-- **A hum.** Read through djmanzo's own key and tempo detection — the same
-  analysis every track has already been through — and used to narrow the
-  collection, counting half and double time because people hum the vocal rather
-  than the kick.
+- **A hum.** Two searches off one recording. It is read through djmanzo's own
+  key and tempo detection — the same analysis every track has already been
+  through — to narrow the collection, counting half and double time because
+  people hum the vocal rather than the kick; and it is compared *as a melody*
+  against the pitch contour of every record that has one.
 
-**The hum narrows; it does not identify**, and the panel says so beside the
-button. Recognising a recording from a hum needs a licensed fingerprint service
-with millions of reference melodies. Matching against the DJ's *own* library is
-buildable — an f0 contour per track, normalised for key and tempo, compared
-with DTW — and is a separate piece of work: the contour has to be extracted for
-every record first, which is an analysis pass on the scale of the existing one.
-What is shipped does not imply what is not.
+**Matching the tune itself is built** (`dj_analysis::melody`). A pitch contour
+is ten points a second of whatever is the strongest periodic thing in a melodic
+band, found with YIN rather than plain autocorrelation because autocorrelation
+peaks at the octave below about as readily as at the fundamental and an octave
+error is a semitone error of twelve. Three measurements shaped the rest of it:
+
+- **Match on the intervals, not the pitches.** Centring each contour on its own
+  median does not make the search blind to key, and a failing test is what
+  showed why: the hum's median is the median of eight seconds and the record's
+  is the median of five minutes, so they are never the same number. The phrase
+  sat nine semitones from where the hum thought it was and the search returned
+  the intro. Differencing consecutive points cancels any constant offset
+  exactly, with no key detection to go wrong.
+- **Fold those intervals into an octave.** Three octave slips in one hum flipped
+  the ranking — the right record scored 2.13 against the wrong one's 1.42.
+  Clamping the outliers barely moved it (0.67 against 0.69). Folding took the
+  right record to 0.000.
+- **Gate on in-band energy.** A nine-kilohertz tone read as fully voiced,
+  because YIN is scale-invariant and so attenuating a band it cannot hear does
+  nothing. Voicing now requires the energy actually to be in the melodic band.
+
+The search is subsequence DTW — free start and end in the record — so the
+answer is *where in this record*, and the warping is itself what makes it
+tempo-independent. A fourth correction came from running the thing rather than
+compiling it: the sweep fed the matcher an interleaved stereo buffer, which
+does not fail — it makes a contour twice as long as the record, so every
+reported timestamp was half the truth while the match itself still landed,
+because the intervals are unchanged and the warping absorbs a constant rate.
+Contour *length* is now asserted, which is the only place that error is
+visible. Contours are stored a quarter-semitone to the byte
+(`melodies`, schema 9), about 3 kB for a five-minute record, and are filled in
+a sweep at a time from the panel rather than by a background pass that would
+compete with analysis for the disk. The panel says how many records have one,
+because a shortlist drawn from a third of a collection should say so.
+
+**It still does not identify a record you do not own**, and the panel says so
+beside the button. That needs a licensed fingerprint service with tens of
+millions of reference melodies. Within the collection it is honest but not
+magic: what a contour holds is the loudest periodicity, which is the vocal much
+of the time and the bassline some of it, so a hummed vocal will not find a
+record whose strongest line is the bass. That is why the result is a shortlist
+with key and tempo still ranked beside it, and not an answer.
 
 - **Reflective statistics.** The data stays local and stays the DJ's. What it
   can answer: which transitions you reach for and which actually work, how your

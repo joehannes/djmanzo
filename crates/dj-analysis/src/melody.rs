@@ -67,7 +67,7 @@ pub const RATE: f64 = 10.0;
 
 /// The rate the audio is resampled to before any of this.
 ///
-/// Eight kilohydraulic is four times [`HIGHEST_HZ`] with room to spare, and
+/// Eight kilohertz is four times [`HIGHEST_HZ`] with room to spare, and
 /// dropping to it first makes every lag in the search four to six times
 /// cheaper than it would be at 44.1 or 48.
 pub const WORK_RATE: u32 = 8_000;
@@ -237,11 +237,45 @@ pub struct Match {
     pub at_seconds: f64,
 }
 
+/// Fold interleaved channels down to one.
+///
+/// Its own function because the alternative is a bug that does not look like
+/// one. A decoded track is interleaved stereo, and handing that straight to
+/// [`contour`] does not fail or panic -- it produces a contour that is *twice
+/// as long as the record*, because two channels of a five-minute track are ten
+/// minutes of numbers. Everything downstream then quietly halves: a passage
+/// seventy-four seconds in is reported at thirty-seven. The match itself
+/// survives, since the intervals are unchanged and the warping absorbs the
+/// rate, which is exactly why nothing shouts.
+///
+/// It also moves the pitch. With the two channels near enough alike, the
+/// interleaved stream is the mono signal with every sample doubled, so a
+/// period of `p` becomes `2p` and YIN reports an octave below the truth --
+/// harmless for a search on octave-folded intervals, and not harmless for the
+/// [`LOWEST_HZ`] gate, which then drops any bass line under 140 Hz.
+///
+/// `channels` of zero returns nothing rather than dividing by it.
+#[must_use]
+pub fn mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
+    if channels == 0 {
+        return Vec::new();
+    }
+    if channels == 1 {
+        return interleaved.to_vec();
+    }
+    let scale = 1.0 / channels as f32;
+    interleaved
+        .chunks_exact(channels)
+        .map(|frame| frame.iter().sum::<f32>() * scale)
+        .collect()
+}
+
 /// The pitch contour of some audio.
 ///
-/// Mono, resampled, and read frame by frame with YIN. Everything above about
-/// [`HIGHEST_HZ`] is thrown away by the resampling, which is the point: the
-/// question is what the melody is doing, and a cymbal is not a melody.
+/// **Mono**, resampled, and read frame by frame with YIN -- see [`mono`], which
+/// is not optional for anything that came out of a decoder. Everything above
+/// about [`HIGHEST_HZ`] is thrown away by the resampling, which is the point:
+/// the question is what the melody is doing, and a cymbal is not a melody.
 #[must_use]
 pub fn contour(samples: &[f32], sample_rate: u32) -> Contour {
     let work = resample(samples, sample_rate);
@@ -558,6 +592,65 @@ mod tests {
                 ((seed >> 40) as f32 / 8_388_608.0) - 1.0
             })
             .collect()
+    }
+
+    /// Interleave one mono signal into `channels` identical channels.
+    fn spread(samples: &[f32], channels: usize) -> Vec<f32> {
+        let mut out = Vec::with_capacity(samples.len() * channels);
+        for sample in samples {
+            out.extend(std::iter::repeat_n(*sample, channels));
+        }
+        out
+    }
+
+    /// **A contour is as long as the record, not as long as its samples.**
+    ///
+    /// This is the test that would have caught the wiring bug: the sweep
+    /// handed [`contour`] an interleaved stereo buffer, which produced a
+    /// contour of twice as many points covering the same twelve seconds. Every
+    /// [`Match::at_seconds`] downstream was then half of the truth, and
+    /// nothing failed -- the search still found the passage, because folding
+    /// into intervals leaves them unchanged and the warping absorbs a constant
+    /// rate. A number being quietly halved is exactly the kind of wrong that
+    /// only a test on the *length* can see.
+    #[test]
+    fn a_stereo_buffer_folded_to_mono_gives_a_contour_of_the_right_length() {
+        let seconds = 12.0;
+        let signal = melody(&[0, 4, 7, 4], seconds / 4.0);
+        let expected = (f64::from(seconds) * RATE) as usize;
+
+        let straight = contour(&signal, SR);
+        assert!(
+            straight.semitones.len().abs_diff(expected) <= 2,
+            "mono: {} points for {seconds}s, expected about {expected}",
+            straight.semitones.len(),
+        );
+
+        let folded = contour(&mono(&spread(&signal, 2), 2), SR);
+        assert!(
+            folded.semitones.len().abs_diff(expected) <= 2,
+            "stereo folded: {} points for {seconds}s, expected about {expected}",
+            folded.semitones.len(),
+        );
+
+        // And the trap itself, stated as a fact rather than left implied: the
+        // unfolded buffer is the failure this test exists to forbid.
+        let unfolded = contour(&spread(&signal, 2), SR);
+        assert!(
+            unfolded.semitones.len() > expected * 3 / 2,
+            "an interleaved buffer read as mono should have been about twice \
+             as long, so this test no longer proves what it claims",
+        );
+    }
+
+    /// Folding averages the channels rather than picking one or summing them.
+    #[test]
+    fn mono_averages_the_channels() {
+        assert_eq!(mono(&[1.0, 0.0, 0.5, 0.5], 2), vec![0.5, 0.5]);
+        assert_eq!(mono(&[1.0, 2.0, 3.0], 1), vec![1.0, 2.0, 3.0]);
+        // A ragged tail is dropped rather than read as a short frame.
+        assert_eq!(mono(&[1.0, 1.0, 9.0], 2), vec![1.0]);
+        assert!(mono(&[1.0, 2.0], 0).is_empty());
     }
 
     /// **The fundamental, even when the fundamental is not there.**

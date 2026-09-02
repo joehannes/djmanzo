@@ -28,11 +28,14 @@
   import {
     guessFromDescription,
     hum as sendHum,
+    melodyProgress,
+    melodySweep,
     wordsFetch,
     wordsProgress,
     wordsSearch,
     type Guess,
     type Hummed,
+    type MelodyProgress,
     type WordHit,
     type WordsProgress,
   } from "./api";
@@ -69,6 +72,19 @@
   let guessing = $state(false);
 
   let humming = $state(false);
+  /** Whether a batch of contours is being made right now. */
+  let sweeping = $state(false);
+  /** What the last batch did, so pressing it again is an informed choice. */
+  let sweptNote = $state("");
+  /**
+   * How much of the collection can be searched by tune.
+   *
+   * Read when the panel opens rather than taken from a hum result, because it
+   * is the thing to know *before* humming: an empty contour index makes the
+   * melody search return nothing, and finding that out by humming first wastes
+   * the one gesture this feature asks for.
+   */
+  let tunes = $state<MelodyProgress | null>(null);
   let heard = $state<Hummed | null>(null);
   let humNote = $state("");
 
@@ -82,8 +98,19 @@
     }
   }
 
+  async function refreshTunes() {
+    try {
+      tunes = await melodyProgress();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   onMount(() => {
-    if (enabled) void refreshProgress();
+    if (enabled) {
+      void refreshProgress();
+      void refreshTunes();
+    }
   });
 
   async function search() {
@@ -135,6 +162,30 @@
       error = String(e);
     } finally {
       guessing = false;
+    }
+  }
+
+  /**
+   * Make pitch contours for a batch of records that have none.
+   *
+   * Started by hand rather than on a timer: it decodes every file it touches,
+   * which is not something to have happening in the background at a gig
+   * without being asked for.
+   */
+  async function sweep() {
+    sweeping = true;
+    sweptNote = "";
+    try {
+      const done = await melodySweep();
+      await refreshTunes();
+      sweptNote =
+        done.left > 0
+          ? `Read ${done.asked}, ${done.left} to go. Press again to carry on.`
+          : `Read ${done.asked}. Every record has a contour now.`;
+    } catch (problem) {
+      sweptNote = `Could not read them: ${problem}`;
+    } finally {
+      sweeping = false;
     }
   }
 
@@ -302,6 +353,27 @@
   <!-- A hum --------------------------------------------------------------- -->
   <section>
     <h3>Hum it</h3>
+    <!--
+      The contour count comes first, because it is the precondition. Humming
+      at an empty index returns nothing and looks like a broken feature; the
+      same mistake the lyrics section avoids by putting its progress and its
+      fetch button above the search rather than below it.
+    -->
+    {#if tunes}
+      <div class="row">
+        <button onclick={sweep} disabled={sweeping}>
+          {sweeping ? "Reading…" : "Read more melodies"}
+        </button>
+        <span class="note">
+          {tunes.with_melody} of {tunes.tracks} records have a pitch contour.
+          {#if tunes.with_melody < tunes.tracks}
+            Only those can be matched by tune.
+          {/if}
+        </span>
+      </div>
+      {#if sweptNote}<p class="note">{sweptNote}</p>{/if}
+    {/if}
+
     <div class="row">
       <button onclick={listen} disabled={humming}>
         {humming ? `Listening for ${HUM_SECONDS}s…` : "Hum it"}
@@ -311,8 +383,9 @@
         exactly where somebody forms the wrong expectation.
       -->
       <span class="note">
-        This narrows your collection by key and tempo. It does not name the
-        song — that needs a licensed fingerprint service djmanzo does not have.
+        This searches your own collection — by the tune, and by key and tempo.
+        It does not name a record you do not own: that needs a licensed
+        fingerprint service djmanzo does not have.
       </span>
     </div>
     {#if heard}
@@ -320,8 +393,59 @@
         Heard {heard.seconds.toFixed(1)}s:
         {heard.key ?? "no clear key"} ·
         {heard.tempo ? `${heard.tempo.toFixed(1)} BPM` : "no steady tempo"}
+        {#if heard.voiced < 0.3}
+          · <span class="warn">mostly breath — hum a note rather than
+          whispering it</span>
+        {/if}
       </p>
+
+      <!--
+        The tune first, because it is the answer to the question actually
+        asked. The key-and-tempo list below is every record it *could* be; this
+        is the ones that sound like it.
+      -->
+      {#if heard.melody.length > 0}
+        <h4>Sounds like the tune</h4>
+        <ul class="hits">
+          {#each heard.melody as hit (hit.track.id)}
+            <li>
+              <span class="what">{name(hit.track)}</span>
+              <!--
+                Where in the record, because a match halfway through a six
+                minute track is a thing you want to go and hear rather than
+                hunt for.
+              -->
+              <span class="note mono">
+                {Math.floor(hit.at_seconds / 60)}:{String(
+                  Math.floor(hit.at_seconds % 60),
+                ).padStart(2, "0")}
+              </span>
+              <button class="find" onclick={() => onFind?.(name(hit.track))}>
+                Find it
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {:else if tunes && tunes.with_melody === 0}
+        <!--
+          The difference between "nothing matched" and "nothing was searched"
+          is the whole of whether this feature works, so it is said rather
+          than left to be inferred from an empty list.
+        -->
+        <p class="note">
+          No record has a pitch contour yet, so there was nothing to compare
+          the tune against. Reading them takes a decode each and is not
+          something to start in the middle of a set.
+        </p>
+      {:else}
+        <p class="note">
+          Nothing in the {tunes?.with_melody ?? 0} records with a contour sounds
+          like that.
+        </p>
+      {/if}
+
       {#if heard.near.length > 0}
+        <h4>Near that key and tempo</h4>
         <ul class="hits">
           {#each heard.near as track (track.id)}
             <li>
@@ -339,6 +463,21 @@
 </div>
 
 <style>
+  /* A heading inside a section, for the two lists a hum comes back with. The
+     tune and the key-and-tempo shortlist are different answers, and an
+     unlabelled second list reads as more of the first one. */
+  h4 {
+    margin: 0.6rem 0 0.2rem;
+    font-size: 0.78em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+  }
+
+  .warn {
+    color: var(--warn);
+  }
+
   .memory {
     display: flex;
     flex-direction: column;
