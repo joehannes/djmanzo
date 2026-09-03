@@ -1365,8 +1365,11 @@ external system can drive it over the network without a private API.
   aligned.
 
 - **Next-track suggestions — done.** `dj_library::suggest` ranks the library
-  against what is playing, and the **Next** tab in SideView shows the result:
-  the panel about the next twenty minutes, which is what a suggestion is for.
+  against what is playing, and the **Next** surface shows the result as a rail:
+  up to eight candidates, each on one line of deltas, following whichever deck
+  is playing. It was a tab inside Prepare and is a surface of its own now — a
+  rail is glanced at while a transition is happening, and a tab is something
+  you go and find.
 
   Deterministic and local — no model, no network, no learned weights. That is a
   floor rather than a placeholder: a DJ deciding what to drop at 01:40 needs an
@@ -2093,6 +2096,26 @@ stored as a `cockpit::Workspace` that is resolved in Rust and survives a restart
 `ui/e2e/docks.spec.ts` is the gate: every panel button must still open its
 surface, and the library and the assistant must be visible together over the
 decks.
+
+**Prepare and Next became surfaces, and the deck learned what pinning costs.**
+Prepare was mounted by the browser, so it could only exist where the browser
+did; the next-track suggestions were a tab inside Prepare, so they could be
+looked at instead of the sidelist rather than beside it. Both are surfaces now,
+with the thing they replaced removed rather than duplicated — two places that
+suggest the next record are two places that will disagree. The rail follows
+whichever deck is playing and shows up to eight candidates, each on one line of
+deltas: `+3 BPM · 8A→9A · +1 dB`, with a confidence bar drawn from the range
+`dj_library::suggest`'s own weights can reach.
+
+Docking more than one surface is also what exposed the cost of pinning. A
+pinned region is `flex: none`, which in a column with less room than it wants
+does not scroll — it overflows. Four decks with a surface docked left the first
+deck 22 px tall and its 300 px channel strip painted across the master strip.
+Every deck row is `minmax(0, 1fr)` now (`.decks.four` and `.decks.six` had
+overridden it with `min-content`, which handed the free space to whichever row
+was not), and a deck pins its strip only when it has room for the strip *and*
+a waveform. `budget.spec.ts` measures all six shapes the top bar offers rather
+than the opening screenshot alone.
 
 Two things W1 and W2 settled that the ADR left as intentions.
 
