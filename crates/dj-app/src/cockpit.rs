@@ -414,14 +414,38 @@ pub enum Category {
 
 /// The window heights each density band starts at, tallest first.
 ///
+/// **Every number is derived, not chosen.** A deck column with two records
+/// loaded was measured at each density, and the band starts at the window
+/// height where that deck plus the chrome around it -- a 101 px top bar and the
+/// 110 px master strip, both pinned -- actually fits:
+///
+/// | density | deck | needs |
+/// |---|---|---|
+/// | Relaxed 1.15 | 1088 px | 1330 |
+/// | Standard 1.00 | 807 | 1050 |
+/// | Compact 0.92 | 758 | 1020 |
+/// | Pro Dense 0.86 | 721 | 980 |
+/// | Ultra Dense 0.80 | 685 | 916 |
+///
+/// The first version of this table was guessed round numbers, and the guesses
+/// were wrong in both directions: a 1,200 px window was given Relaxed, whose
+/// deck needs 1,330, and a 900 px window was given Pro Dense, which needs 980.
+/// Both clipped the deck's channel strip -- the exact failure the bands exist
+/// to prevent -- and a screenshot of the running application is what showed it.
+///
+/// **Below about 916 px nothing fits**, and the last band is the floor rather
+/// than a solution: at djmanzo's own default 800 the deck's channel strip is
+/// still in the part of the stage that scrolls. That is recorded as a failing
+/// test rather than papered over here.
+///
 /// Published rather than kept private, so the interface can apply the rule
 /// without asking on every resize -- one call at start-up, then arithmetic.
 /// Rust still owns the policy; the browser owns the pixels it is measured in.
 pub const BANDS: &[(u16, Density)] = &[
-    (1200, Density::Relaxed),
-    (1080, Density::Standard),
-    (980, Density::Compact),
-    (860, Density::ProDense),
+    (1330, Density::Relaxed),
+    (1050, Density::Standard),
+    (1020, Density::Compact),
+    (980, Density::ProDense),
     (0, Density::UltraDense),
 ];
 
@@ -1113,10 +1137,19 @@ mod tests {
     #[test]
     fn a_short_window_gets_a_denser_interface() {
         assert_eq!(Density::fitting(800), Density::UltraDense);
-        assert_eq!(Density::fitting(900), Density::ProDense);
-        assert_eq!(Density::fitting(1000), Density::Compact);
+        assert_eq!(Density::fitting(900), Density::UltraDense);
+        assert_eq!(Density::fitting(1000), Density::ProDense);
+        assert_eq!(Density::fitting(1020), Density::Compact);
         assert_eq!(Density::fitting(1100), Density::Standard);
+        assert_eq!(Density::fitting(1200), Density::Standard);
         assert_eq!(Density::fitting(1440), Density::Relaxed);
+
+        // The band a window gets must be one whose deck actually fits in it.
+        // Both of these were wrong in the guessed first version of the table:
+        // 1,200 got Relaxed, whose deck is 1,088 px against about 990 of room,
+        // and 900 got Pro Dense, which needs 980.
+        assert_ne!(Density::fitting(1200), Density::Relaxed);
+        assert_ne!(Density::fitting(900), Density::ProDense);
         // Below every band's floor, and not a panic.
         assert_eq!(Density::fitting(0), Density::UltraDense);
     }

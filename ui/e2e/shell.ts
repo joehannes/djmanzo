@@ -204,10 +204,10 @@ const ANSWERS: Record<string, unknown> = {
   // The real bands, so the harness measures the interface a DJ gets at this
   // window size rather than one at a density nothing chooses.
   density_bands: [
-    [1200, "Relaxed", 1.15],
-    [1080, "Standard", 1.0],
-    [980, "Compact", 0.92],
-    [860, "Pro Dense", 0.86],
+    [1330, "Relaxed", 1.15],
+    [1050, "Standard", 1.0],
+    [1020, "Compact", 0.92],
+    [980, "Pro Dense", 0.86],
     [0, "Ultra Dense", 0.8],
   ],
     cockpit_surfaces: surfaces,

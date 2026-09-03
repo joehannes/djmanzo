@@ -16,6 +16,43 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.12.0 — Two things at once, and every master control on screen
+
+The cockpit redesign's first three phases, and they are the first ones a DJ can
+see.
+
+**More than one panel can be open.** The shell held a single variable naming
+one of eight panels, so opening the assistant closed the browser — which is why
+the room and the library could never be looked at together. Surfaces dock now:
+beside the decks and along the bottom, several at once, each in a titled frame
+that closes from its own header, arranged by their own preferred size rather
+than by a table of special cases. The arrangement is checked in Rust and
+survives a restart.
+
+**Every master control is on screen at 1280×800**, for the first time. The
+crossfader has gone below the fold three times in three different forms; most
+recently about 280 px past the bottom. The pad grid stopped taking its height
+from the deck's *width*, the faders and knobs started answering to the density
+setting they had been ignoring, djmanzo picks a density band from the window it
+was given, and the master strip came out of the part of the stage that scrolls.
+A deck went from 878 px to 685.
+
+**The deck is drawn from a layout tree** rather than from its own markup
+(ADR-0008 W3), with a golden order asserting the tree still produces the deck
+djmanzo draws.
+
+Three bugs surfaced on the way and are fixed: an unconfigured djmanzo was being
+handed the stripped-down *Starter* preset by a command nobody had asked; the
+layout budget had been measuring a deck with no pad zone for three runs; and a
+`dj-net` test raced its own port about one run in three.
+
+**What is still wrong, and said plainly.** The deck's own volume fader and
+filter sit behind the pinned master strip, in the part of the stage that
+scrolls. The stage has 559 px and a deck wants 685, and scaling cannot close
+that — something on the deck has to fold or pin. It is recorded as a failing
+test with the real reason rather than a passing one against a page coordinate.
+
+
 **Every master control is on screen at djmanzo's own default window size**, for
 the first time. The crossfader has ended up below the fold three times in three
 different forms; most recently it was about 280 px past the bottom of an 800 px

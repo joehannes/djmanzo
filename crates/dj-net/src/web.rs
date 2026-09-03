@@ -390,14 +390,27 @@ mod tests {
     /// what is being tested is that a browser's bytes become a handler call
     /// and a handler's answer becomes bytes, and a direct call tests neither.
     fn talk(address: SocketAddr, request: &str) -> String {
-        let mut stream = TcpStream::connect(address).expect("connect");
+        try_talk(address, request).expect("connect")
+    }
+
+    /// The same, but a refused connection is an answer rather than a panic.
+    ///
+    /// For the one test whose expected outcome *is* a refusal. That test used
+    /// to probe with its own `TcpStream::connect` and then call `talk`, which
+    /// connects a second time -- so between the probe succeeding and the real
+    /// attempt the port could go away, which is precisely the thing being
+    /// tested, and `talk` would panic on it. It failed about one run in three
+    /// under a loaded workspace test run and passed every time on its own,
+    /// which is the shape of every port race.
+    fn try_talk(address: SocketAddr, request: &str) -> Option<String> {
+        let mut stream = TcpStream::connect(address).ok()?;
         stream.write_all(request.as_bytes()).expect("write");
         stream.flush().expect("flush");
         let mut got = String::new();
         // The server closes the connection after answering, so read-to-end
         // terminates.
         let _ = stream.read_to_string(&mut got);
-        got
+        Some(got)
     }
 
     fn serving(handler: impl Handler) -> WebServer {
@@ -565,14 +578,13 @@ mod tests {
         };
 
         // Refused is the expected answer; anything else on this port is now
-        // somebody else's server, and either way it is not ours.
-        let after = match TcpStream::connect(address) {
-            Ok(_) => talk(
-                address,
-                "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
-            ),
-            Err(_) => String::new(),
-        };
+        // somebody else's server, and either way it is not ours. One attempt,
+        // not a probe followed by a second connection -- see `try_talk`.
+        let after = try_talk(
+            address,
+            "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+        )
+        .unwrap_or_default();
         assert!(
             !after.contains(ONLY_THIS_SERVER_SAYS),
             "it answered after being dropped: {after}"
