@@ -195,6 +195,60 @@ const ANSWERS: Record<string, unknown> = {
   ],
   sidelist: [],
   sidelist_add: null,
+  // Two candidates, so the rail has a ranking and not just a row.
+  //
+  // The shape `suggest_next` and `similar_to` both return, including the
+  // `summary` line the rail actually renders -- a fixture that carried only
+  // `reasons` would have let the rail ship showing nothing and passed.
+  suggest_next: [
+    {
+      track: {
+        id: "b".repeat(64),
+        path: "/music/ojala-que-llueva-cafe.flac",
+        title: "Ojal\u00e1 Que Llueva Caf\u00e9",
+        artist: "Juan Luis Guerra",
+        album: null,
+        genre: "Merengue",
+        year: 1989,
+        duration_seconds: 262,
+        bpm: 127,
+        key: "9A",
+        loudness_lufs: -7.2,
+        analysed: true,
+        play_count: 0,
+        rating: null,
+        colour: null,
+      },
+      score: 7.9,
+      reasons: ["harmonic (9A)", "127 BPM fits", "+1 dB"],
+      summary: "+3 BPM \u00b7 8A\u21929A \u00b7 +1 dB",
+      confidence: 0.94,
+    },
+    {
+      track: {
+        id: "c".repeat(64),
+        path: "/music/burbujas-de-amor.flac",
+        title: "Burbujas de Amor",
+        artist: "Juan Luis Guerra",
+        album: null,
+        genre: "Bachata",
+        year: 1990,
+        duration_seconds: 279,
+        bpm: 118,
+        key: "3B",
+        loudness_lufs: -11.0,
+        analysed: true,
+        play_count: 0,
+        rating: null,
+        colour: null,
+      },
+      score: 1.2,
+      reasons: ["key clash (3B)", "118 BPM fits", "-3 dB"],
+      summary: "-6 BPM \u00b7 8A\u21923B clash \u00b7 -3 dB",
+      confidence: 0.55,
+    },
+  ],
+  similar_to: [],
   // One record, so a test can press a gesture *on* something.
   //
   // An empty library is the state in which every row-level gesture is

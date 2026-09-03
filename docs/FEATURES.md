@@ -123,6 +123,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Folder tree + song list, VirtualDJ layout | M3 |
 | **Prepare**, its own dockable surface: Sidelist · Next · Clone · Sampler · Automix | M3 (Karaoke K1) |
 | One gesture sets a track aside — `→` on a browser row, and it is in Prepare | Cockpit §21 |
+| **Next**, a rail of up to eight candidates for what follows the playing deck, each on one line of deltas with a confidence bar | Cockpit §22 |
 | Search across the whole library, instant | M3 |
 | Playlists / crates / smart folders | M3 |
 | Columns: BPM, key, energy, rating, play count, last played, comment | M3 |

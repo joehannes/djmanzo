@@ -47,7 +47,7 @@ rather than taken.
 | 19 | No random UI reorganisation | ⚖️ | Enforced by a golden-order test: the deck's control order is asserted in full and fails if anything moves |
 | 20 | Playlist / library overhaul | 🟡 | Function tags and their filtering ship. The four views — table, cards, **Set Flow**, pair — do not. Set Flow is the strongest competitor gap |
 | 21 | "Prepare" must be first class | ✅ | Its own dockable surface beside the browser, not a strip inside it. One gesture — `→` on a browser row — hands a track over; `prepare.svelte.ts` is the only path between them, so there is no second, differently-behaved way to set a track aside |
-| 22 | Next-track rail | 🟡 | Suggestions exist inside the sidelist; there is no rail with deltas and reasons |
+| 22 | Next-track rail | 🟡 | The rail ships as its own dockable surface, following whichever deck is playing: up to eight candidates, each with one line of deltas (`+3 BPM · 8A→9A · +1 dB`), a confidence bar, and load / set aside / more-like-this / pin / pass. Two of the fifteen things §22 lists are not there — **audition**, which needs a preview player djmanzo does not have, and the **estimated transition type**, which means running the M8 planner per candidate |
 | 23 | Track function tagging | ✅ | Ten functions, closed vocabulary, migration 10, browser picker, and `for is opener` in smart folders |
 | 24 | Pairs and relationships | ⬜ | Needs new storage with confidence decay |
 | 25 | Waveform overhaul | ⬜ | |

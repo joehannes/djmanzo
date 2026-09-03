@@ -186,12 +186,7 @@ pub fn assemble(
         let through = (seconds / target) as f32;
         let trajectory = arc.trajectory_at(through);
 
-        let now = Playing {
-            key: current.analysis.key(),
-            bpm: current.analysis.bpm,
-            lufs: current.analysis.loudness_lufs,
-            phrase_beats: current.analysis.phrase_beats,
-        };
+        let now = Playing::of(current);
 
         let candidates: Vec<LibraryTrack> = allowed
             .iter()

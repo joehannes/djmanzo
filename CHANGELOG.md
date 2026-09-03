@@ -16,6 +16,33 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The next-track rail** — the directive's §22, and a surface of its own rather
+than a tab inside Prepare. It follows whichever deck is playing without being
+told, and shows up to eight candidates, each on **one line of deltas**:
+`+3 BPM · 8A→9A · +1 dB`. Deltas rather than values, because `127 BPM` needs
+the DJ to remember what is playing before it means anything and `+3` does not.
+A key clash is on the line, not hidden behind the score — a suggestion that
+conceals its worst feature is one you learn not to trust after being caught by
+it once. A phrase structure that *was* found is not mentioned, because phrase
+lengths divide each other in practice and eight rows of "nothing to worry
+about" is not information.
+
+Each row carries a confidence bar, derived in `dj_library::suggest` from the
+range its own weights can reach, and five gestures: load to a deck, set aside
+into Prepare, more like this, pin to the top, pass. Pin and pass are about the
+next few minutes and are not written down — "not that one" while a record is
+playing is not "never suggest this again", and a rail that quietly learned the
+first as the second would hide a collection from its owner.
+
+The ranking now also reports **where the genre goes** and scores it at zero.
+Crossing families is a technique, not a mistake — a bachata after a merengue
+is most of what a Dominican set is — so djmanzo says the change is happening
+and declines to have an opinion about it. A penalty would quietly rank a set
+into one genre, which is the opposite of what the rail is for.
+
+The Next tab is gone from Prepare rather than duplicated: two places that
+suggest the next record are two places that will disagree.
+
 
 ## v0.14.0 — Prepare is a surface, and a deck knows what pinning costs
 

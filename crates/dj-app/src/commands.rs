@@ -1441,6 +1441,127 @@ pub fn session_log(state: State<'_, AppState>) -> Vec<String> {
 mod tests {
     use super::*;
 
+    mod rail {
+        use super::super::{bpm_delta, summarise_reasons};
+        use dj_core::{Mode, MusicalKey};
+        use dj_library::suggest::Reason;
+
+        fn key(hour: u8, mode: Mode) -> MusicalKey {
+            MusicalKey::new(hour, mode).unwrap()
+        }
+
+        /// **The rail's line is deltas, in the directive's own shape.**
+        ///
+        /// §22 gives the example verbatim: `+3 BPM · 8A→9A · energy +1`. A
+        /// suggester that answered `131 BPM · harmonic (9A) · -6 dB` is
+        /// answering a different question -- one that needs the DJ to remember
+        /// what is playing before any of it means anything.
+        #[test]
+        fn the_line_says_what_changes() {
+            let line = summarise_reasons(&[
+                Reason::TempoFits {
+                    from: 128.0,
+                    to: 131.0,
+                },
+                Reason::Harmonic {
+                    from: key(8, Mode::Minor),
+                    to: key(9, Mode::Minor),
+                },
+                Reason::Loudness { delta_db: 1.4 },
+                Reason::PhraseKnown { beats: 16 },
+            ]);
+            assert_eq!(line, "+3 BPM \u{b7} 8A\u{2192}9A \u{b7} +1 dB");
+        }
+
+        /// **A phrase structure that was found is not worth a word.**
+        ///
+        /// Eight rows of "16-beat phrases" is eight repetitions of "nothing to
+        /// worry about". Its absence is the risk, so that is what gets said.
+        #[test]
+        fn the_common_case_is_silent_and_the_risk_is_not() {
+            assert!(
+                !summarise_reasons(&[Reason::PhraseKnown { beats: 32 }]).contains("phrase"),
+                "a known phrase structure took up room on the line",
+            );
+            assert_eq!(summarise_reasons(&[Reason::PhraseUnknown]), "no phrase");
+        }
+
+        /// **The worst feature is on the line, not hidden behind the score.**
+        ///
+        /// A suggestion that concealed its key clash would be one a DJ learns
+        /// not to trust after being caught by it once.
+        #[test]
+        fn a_clash_says_so() {
+            let line = summarise_reasons(&[
+                Reason::KeyClash {
+                    from: key(8, Mode::Minor),
+                    to: key(3, Mode::Major),
+                },
+                Reason::TempoFar {
+                    from: 128.0,
+                    to: 174.0,
+                },
+            ]);
+            assert_eq!(line, "8A\u{2192}3B clash \u{b7} +46 BPM stretch");
+        }
+
+        /// **Half and double time are named, not turned into a huge delta.**
+        ///
+        /// `+70 BPM` for a 140 over a 70 describes the arithmetic and not the
+        /// move, which is an ordinary one.
+        #[test]
+        fn the_octave_is_named() {
+            assert_eq!(
+                summarise_reasons(&[Reason::TempoHalfOrDouble {
+                    from: 70.0,
+                    to: 140.0
+                }]),
+                "double-time",
+            );
+            assert_eq!(
+                summarise_reasons(&[Reason::TempoHalfOrDouble {
+                    from: 140.0,
+                    to: 70.0
+                }]),
+                "half-time",
+            );
+        }
+
+        /// **The same tempo still says something.**
+        ///
+        /// Dropping a zero delta would leave a gap that reads as a missing
+        /// value, when it is in fact the strongest thing a tempo can report.
+        #[test]
+        fn no_change_is_still_an_answer() {
+            assert_eq!(bpm_delta(128.0, 128.0, ""), "+0 BPM");
+        }
+
+        /// **With nothing playing, an absolute is the only honest answer.**
+        ///
+        /// A delta against no tempo is a delta against nothing.
+        #[test]
+        fn with_no_tempo_to_compare_against_the_value_is_given() {
+            assert_eq!(bpm_delta(0.0, 128.0, ""), "128 BPM");
+            assert_eq!(bpm_delta(f64::NAN, 128.0, ""), "128 BPM");
+        }
+
+        /// **A genre change is announced; staying put is named.**
+        #[test]
+        fn the_line_reports_where_the_genre_goes() {
+            assert_eq!(
+                summarise_reasons(&[Reason::SameFamily("bachata")]),
+                "bachata"
+            );
+            assert_eq!(
+                summarise_reasons(&[Reason::OtherFamily {
+                    from: "merengue",
+                    to: "bachata"
+                }]),
+                "\u{2192}bachata",
+            );
+        }
+    }
+
     /// The command layer's real contract is that it speaks action text. Verify
     /// the parse-and-dispatch path against the bus directly, since spinning up
     /// Tauri's `State` in a unit test is not worth the machinery.
@@ -3270,6 +3391,18 @@ pub struct SuggestionDto {
     pub score: f64,
     /// Human-readable, ordered strongest first. Each is one `Reason`.
     pub reasons: Vec<String>,
+    /// The same reasons as one line of deltas: `+3 BPM · 8A→9A · +1 dB`.
+    ///
+    /// The rail is a rail -- eight candidates in a column narrow enough to sit
+    /// beside the decks -- and a wrapped pile of chips per row is not something
+    /// that can be read at a glance mid-transition. Deltas rather than
+    /// absolutes, because what a DJ needs to know is what *changes*: 128 BPM
+    /// means nothing without remembering what is playing, and `+3` means it
+    /// immediately.
+    pub summary: String,
+    /// How much of the achievable score this got, 0 to 1. See
+    /// `dj_library::suggest::Suggestion::confidence`.
+    pub confidence: f64,
 }
 
 /// What to play after whatever is on `deck`.
@@ -3295,20 +3428,7 @@ pub fn suggest_next(
     // with like matters more than saving a query.
     let now = current_track(&state, deck_id)
         .and_then(|id| db.track(id).ok().flatten())
-        .map_or(
-            Playing {
-                key: None,
-                bpm: None,
-                lufs: None,
-                phrase_beats: None,
-            },
-            |t| Playing {
-                key: t.analysis.key(),
-                bpm: t.analysis.bpm,
-                lufs: t.analysis.loudness_lufs,
-                phrase_beats: t.analysis.phrase_beats,
-            },
-        );
+        .map_or_else(Playing::nothing, |t| Playing::of(&t));
 
     let trajectory = match trajectory.as_str() {
         "lift" => Trajectory::Lift,
@@ -3334,6 +3454,8 @@ pub fn suggest_next(
                 track: LibraryTrackDto::from(track.clone()),
                 score: s.score,
                 reasons: s.reasons.iter().map(describe_reason).collect(),
+                summary: summarise_reasons(&s.reasons),
+                confidence: s.confidence(),
             })
         })
         .collect())
@@ -3364,12 +3486,7 @@ pub fn similar_to(
         .map_err(|e| e.to_string())?
         .ok_or("that track is not in the library")?;
 
-    let now = Playing {
-        key: seed.analysis.key(),
-        bpm: seed.analysis.bpm,
-        lufs: seed.analysis.loudness_lufs,
-        phrase_beats: seed.analysis.phrase_beats,
-    };
+    let now = Playing::of(&seed);
 
     let pool = db.all_tracks(5_000).map_err(|e| e.to_string())?;
     // Failing to learn is not failing to suggest: an empty taste tilts by
@@ -3408,6 +3525,10 @@ pub fn similar_to(
             track: LibraryTrackDto::from(track.clone()),
             score,
             reasons: s.reasons.iter().map(describe_reason).collect(),
+            summary: summarise_reasons(&s.reasons),
+            // The score here is "like the seed", not "follows what is playing",
+            // so the ranking's own confidence is the one that means something.
+            confidence: s.confidence(),
         })
         .collect())
 }
@@ -3469,8 +3590,83 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
         }
         Reason::PhraseKnown { beats } => format!("{beats}-beat phrases"),
         Reason::PhraseUnknown => "no phrase structure".to_owned(),
+        Reason::SameFamily(name) => format!("same family ({name})"),
+        Reason::OtherFamily { from, to } => format!("{from} to {to}"),
         Reason::Unanalysed => "not analysed yet".to_owned(),
     }
+}
+
+/// The reasons as one line of deltas, strongest first.
+///
+/// # Why deltas and not the values
+///
+/// `128 BPM fits` requires remembering what is playing before it means
+/// anything; `+3 BPM` means it on sight. The directive's own example is
+/// `+3 BPM · 8A→9A · energy +1`, and that is the shape: what changes, not what
+/// is.
+///
+/// # What is left out, and why
+///
+/// A phrase structure that *was* found is not mentioned. Phrase lengths in
+/// practice are 8, 16 and 32, each dividing the next, so two records that both
+/// have one will align -- saying so on every row of every rail would be eight
+/// repetitions of "nothing to worry about". The absence is worth a word, so
+/// `no phrase` is said.
+///
+/// Loudness is reported in decibels rather than as an energy number. The
+/// analyser measures integrated LUFS; a 1-to-10 energy scale would be a
+/// invented unit dressed as a measurement. See the module docs of
+/// `dj_library::suggest`.
+fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
+    use dj_library::suggest::Reason;
+    reasons
+        .iter()
+        .filter_map(|reason| match reason {
+            Reason::SameKey(k) => Some(k.camelot()),
+            Reason::Harmonic { from, to } | Reason::KeyClash { from, to } => {
+                let arrow = format!("{}\u{2192}{}", from.camelot(), to.camelot());
+                Some(if matches!(reason, Reason::KeyClash { .. }) {
+                    format!("{arrow} clash")
+                } else {
+                    arrow
+                })
+            }
+            Reason::TempoFits { from, to } => Some(bpm_delta(*from, *to, "")),
+            Reason::TempoHalfOrDouble { from, to } => Some(
+                if *to > *from {
+                    "double-time"
+                } else {
+                    "half-time"
+                }
+                .to_owned(),
+            ),
+            Reason::TempoFar { from, to } => Some(bpm_delta(*from, *to, " stretch")),
+            Reason::Loudness { delta_db } => Some(if delta_db.abs() < 0.5 {
+                "level".to_owned()
+            } else {
+                format!("{delta_db:+.0} dB")
+            }),
+            // Present is the common case and nearly free; absent is the risk.
+            Reason::PhraseKnown { .. } => None,
+            Reason::PhraseUnknown => Some("no phrase".to_owned()),
+            Reason::SameFamily(name) => Some((*name).to_owned()),
+            Reason::OtherFamily { to, .. } => Some(format!("\u{2192}{to}")),
+            Reason::Unanalysed => Some("not analysed".to_owned()),
+        })
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
+}
+
+/// `+3 BPM`, or `128 BPM` when there is nothing to compare against.
+///
+/// A zero delta still reads as `+0 BPM` rather than being dropped: "the same
+/// tempo" is the strongest thing a tempo can say, and silence would look like
+/// a missing value.
+fn bpm_delta(from: f64, to: f64, suffix: &str) -> String {
+    if !from.is_finite() || from <= 0.0 {
+        return format!("{to:.0} BPM{suffix}");
+    }
+    format!("{:+.0} BPM{suffix}", to - from)
 }
 
 // -- what a record is for ---------------------------------------------------

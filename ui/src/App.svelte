@@ -43,6 +43,7 @@
     type SurfacePlacement,
     type Workspace,
   } from "./api";
+  import Next from "./Next.svelte";
   import SideView from "./SideView.svelte";
   import Watershed from "./Watershed.svelte";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
@@ -194,6 +195,7 @@
   const DRAWN = [
     "library",
     "prepare",
+    "next",
     "booth",
     "presets",
     "sampler",
@@ -236,6 +238,7 @@
   const HOME: Record<Drawn, Dock> = {
     library: "bottom",
     prepare: "right",
+    next: "right",
     booth: "bottom",
     log: "bottom",
     presets: "right",
@@ -1063,7 +1066,13 @@
           -- the library can be along the bottom and this beside the decks, or
           this alone while a set is planned.
         -->
-        <IconButton icon="fa-solid fa-layer-group" label="Prepare" title="Tracks set aside, and what comes next" active={isOpen("prepare")} onClick={() => toggleSurface("prepare")} />
+        <IconButton icon="fa-solid fa-layer-group" label="Prepare" title="Tracks set aside, before they are on a deck" active={isOpen("prepare")} onClick={() => toggleSurface("prepare")} />
+        <!--
+          The rail: what could come next, and why. Beside Prepare rather than
+          inside it, because a rail is glanced at while a transition is
+          happening and a tab is something you go and find.
+        -->
+        <IconButton icon="fa-solid fa-forward" label="Next" title="What could come next, and why" active={isOpen("next")} onClick={() => toggleSurface("next")} />
         <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={isOpen("presets")} onClick={() => toggleSurface("presets")} />
         <!--
           The booth: microphone, automix, a plugin insert and the master
@@ -1294,6 +1303,10 @@
     <SideView enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
   {/snippet}
 
+  {#snippet surfaceNext()}
+    <Next enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
+  {/snippet}
+
   {#snippet surfaceBooth()}
     {#if snapshot}
       <div class="mixer">
@@ -1471,6 +1484,7 @@
       <div class="surface-body">
         {#if placement.surface === "library"}{@render surfaceLibrary()}
         {:else if placement.surface === "prepare"}{@render surfacePrepare()}
+        {:else if placement.surface === "next"}{@render surfaceNext()}
         {:else if placement.surface === "booth"}{@render surfaceBooth()}
         {:else if placement.surface === "presets"}{@render surfacePresets()}
         {:else if placement.surface === "assistant"}{@render surfaceAssistant()}

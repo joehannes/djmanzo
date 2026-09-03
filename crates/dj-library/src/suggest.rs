@@ -50,6 +50,55 @@ pub struct Playing {
     /// is not called energy.
     pub lufs: Option<f64>,
     pub phrase_beats: Option<u32>,
+    /// The genre *family* of what is playing, already resolved.
+    ///
+    /// The family rather than the tag, and resolved by the caller rather than
+    /// here, because "Drum & Bass", "drum and bass" and "DNB" are the same
+    /// music and `dj_core::genre::family_for` is what knows that. Keeping the
+    /// resolved name means this stays `Copy` and the comparison below is a
+    /// pointer-width equality rather than a normalising string compare per
+    /// candidate.
+    pub family: Option<&'static str>,
+}
+
+impl Playing {
+    /// What is playing, read off the record itself.
+    ///
+    /// Every caller was assembling this by hand from the same four fields, and
+    /// a fifth (the genre family) is one the caller should not have to know how
+    /// to resolve. One constructor means a sixth cannot be forgotten in three
+    /// places at once.
+    #[must_use]
+    pub fn of(track: &LibraryTrack) -> Self {
+        Self {
+            key: track.analysis.key(),
+            bpm: track.analysis.bpm,
+            lufs: track.analysis.loudness_lufs,
+            phrase_beats: track.analysis.phrase_beats,
+            family: track
+                .tags
+                .genre
+                .as_deref()
+                .and_then(dj_core::genre::family_for)
+                .map(|f| f.name),
+        }
+    }
+
+    /// Nothing playing: every field unknown.
+    ///
+    /// Named rather than `Default`, because "no track" is a real state a
+    /// suggester is asked about -- the first record of the night -- and
+    /// deriving `Default` would let it arrive by accident.
+    #[must_use]
+    pub const fn nothing() -> Self {
+        Self {
+            key: None,
+            bpm: None,
+            lufs: None,
+            phrase_beats: None,
+            family: None,
+        }
+    }
 }
 
 /// How far the deck can stretch a tempo before it stops sounding like itself.
@@ -87,6 +136,19 @@ pub enum Reason {
     PhraseKnown { beats: u32 },
     /// No phrase structure was found -- mix by ear.
     PhraseUnknown,
+    /// Both records name a genre and they are the same family.
+    SameFamily(&'static str),
+    /// Both name a genre and the families differ.
+    ///
+    /// Carried and shown, scored at zero. Crossing families is a technique, not
+    /// a mistake -- a bachata after a merengue is most of what a Dominican set
+    /// *is* -- so djmanzo says the change is happening and declines to have an
+    /// opinion about it. A penalty here would quietly rank a set into one
+    /// genre, which is the opposite of what a DJ wants from a suggester.
+    OtherFamily {
+        from: &'static str,
+        to: &'static str,
+    },
     /// Not analysed enough to judge. Ranked last rather than dropped, because a
     /// library that is still analysing should not look empty.
     Unanalysed,
@@ -117,6 +179,8 @@ impl Reason {
             Self::Loudness { .. } => 0.0,
             Self::PhraseKnown { .. } => 0.5,
             Self::PhraseUnknown => 0.0,
+            // Both zero on purpose; see `OtherFamily`.
+            Self::SameFamily(_) | Self::OtherFamily { .. } => 0.0,
             Self::Unanalysed => -10.0,
         }
     }
@@ -128,6 +192,32 @@ pub struct Suggestion {
     pub track: TrackId,
     pub score: f64,
     pub reasons: Vec<Reason>,
+}
+
+impl Suggestion {
+    /// How much of the achievable score this candidate got, from 0 to 1.
+    ///
+    /// A number the interface can draw a bar from, derived here rather than in
+    /// the interface because the range it is normalised against is a fact about
+    /// [`Reason::weight`] and belongs beside it.
+    ///
+    /// The extremes come from the weights themselves. The best a candidate can
+    /// do is the same key (3.0), a tempo inside the deck's range (3.0), a
+    /// loudness move in exactly the direction asked for (2.0, the saturation of
+    /// the `tanh`) and a known phrase structure (0.5): **8.5**. The worst that
+    /// is still a judgement is a key clash (−2.5), a tempo needing more stretch
+    /// than the deck has (−3.0), a loudness move in the wrong direction (−2.0)
+    /// and no phrase structure (0.0): **−7.5**.
+    ///
+    /// `Unanalysed` scores −10 and so clamps to zero, which is the right answer
+    /// for it: djmanzo has no confidence at all in a suggestion it made without
+    /// having listened to the record.
+    #[must_use]
+    pub fn confidence(&self) -> f64 {
+        const BEST: f64 = 8.5;
+        const WORST: f64 = -7.5;
+        ((self.score - WORST) / (BEST - WORST)).clamp(0.0, 1.0)
+    }
 }
 
 /// Rank `candidates` for playing after `now`.
@@ -197,6 +287,25 @@ pub fn score(now: &Playing, trajectory: Trajectory, candidate: &LibraryTrack) ->
         None => Reason::PhraseUnknown,
     });
     total += reasons.last().map_or(0.0, |r| r.weight());
+
+    // Only when both sides name one. A record with no genre tag gets no reason
+    // rather than a "different genre" against it, because an empty tag is a
+    // gap in the metadata, not a fact about the music.
+    if let (Some(from), Some(to)) = (
+        now.family,
+        candidate
+            .tags
+            .genre
+            .as_deref()
+            .and_then(dj_core::genre::family_for)
+            .map(|f| f.name),
+    ) {
+        reasons.push(if from == to {
+            Reason::SameFamily(to)
+        } else {
+            Reason::OtherFamily { from, to }
+        });
+    }
 
     Suggestion {
         track: candidate.id,
@@ -297,11 +406,143 @@ mod tests {
             bpm: Some(128.0),
             lufs: Some(-8.0),
             phrase_beats: Some(16),
+            family: None,
         }
     }
 
     fn reasons_of(s: &Suggestion) -> Vec<Reason> {
         s.reasons.clone()
+    }
+
+    /// The same candidate, wearing a genre tag.
+    fn tagged(byte: u8, genre: &str) -> LibraryTrack {
+        let mut t = track(byte, Some(128.0), Some(key(8, Mode::Minor)), Some(-8.0));
+        t.tags.genre = Some(genre.to_owned());
+        t
+    }
+
+    /// **A genre tag written by a person still resolves to a family.**
+    ///
+    /// The reason the family is compared rather than the tag: nobody types the
+    /// same genre the same way twice, and a suggester that treated "Drum &
+    /// Bass" and "dnb" as different music would be wrong about most libraries.
+    #[test]
+    fn the_same_music_under_two_spellings_is_the_same_family() {
+        let now = Playing {
+            family: dj_core::genre::family_for("dnb").map(|f| f.name),
+            ..playing()
+        };
+        for spelling in ["Drum & Bass", "drum and bass", "DNB", "dnb"] {
+            let s = score(&now, Trajectory::Hold, &tagged(1, spelling));
+            assert!(
+                reasons_of(&s)
+                    .iter()
+                    .any(|r| matches!(r, Reason::SameFamily(_))),
+                "{spelling:?} was not read as the family that is playing",
+            );
+        }
+    }
+
+    /// **Crossing families is reported and not punished.**
+    ///
+    /// A bachata after a merengue is most of what a Dominican set is. The
+    /// suggester says the change is happening; it does not have an opinion
+    /// about whether it should.
+    #[test]
+    fn a_change_of_family_is_said_out_loud_and_costs_nothing() {
+        let across = score(
+            &Playing {
+                family: dj_core::genre::family_for("merengue").map(|f| f.name),
+                ..playing()
+            },
+            Trajectory::Hold,
+            &tagged(1, "Bachata"),
+        );
+        let within = score(
+            &Playing {
+                family: dj_core::genre::family_for("bachata").map(|f| f.name),
+                ..playing()
+            },
+            Trajectory::Hold,
+            &tagged(1, "Bachata"),
+        );
+
+        assert!(
+            reasons_of(&across)
+                .iter()
+                .any(|r| matches!(r, Reason::OtherFamily { .. })),
+            "the genre change was not reported at all",
+        );
+        assert!(
+            (across.score - within.score).abs() < f64::EPSILON,
+            "crossing families cost {:.3}; it must cost nothing",
+            within.score - across.score,
+        );
+    }
+
+    /// **An untagged record is not held to have a different genre.**
+    ///
+    /// An empty tag is a gap in the metadata, not a fact about the music, and
+    /// a reason invented from it would be a claim djmanzo cannot support.
+    #[test]
+    fn no_genre_tag_produces_no_genre_reason() {
+        let s = score(
+            &Playing {
+                family: dj_core::genre::family_for("bachata").map(|f| f.name),
+                ..playing()
+            },
+            Trajectory::Hold,
+            &track(1, Some(128.0), Some(key(8, Mode::Minor)), Some(-8.0)),
+        );
+        assert!(
+            !reasons_of(&s)
+                .iter()
+                .any(|r| matches!(r, Reason::SameFamily(_) | Reason::OtherFamily { .. })),
+            "an untagged record was given a genre reason: {:?}",
+            reasons_of(&s),
+        );
+    }
+
+    /// **Confidence spans its range and puts the unanalysed at the bottom.**
+    ///
+    /// The interface draws a bar from this, so a number that never left the
+    /// middle would be a bar that never moved -- decoration rather than
+    /// information.
+    #[test]
+    fn confidence_runs_from_nothing_known_to_everything_agreeing() {
+        let best = score(
+            &playing(),
+            Trajectory::Hold,
+            &track(1, Some(128.0), Some(key(8, Mode::Minor)), Some(-8.0)),
+        );
+        let clash = score(
+            &playing(),
+            Trajectory::Hold,
+            &track(2, Some(174.0), Some(key(3, Mode::Major)), Some(-2.0)),
+        );
+        let blind = score(&playing(), Trajectory::Hold, &track(3, None, None, None));
+
+        assert!(
+            best.confidence() > 0.85,
+            "the best possible match reported only {:.2} confidence",
+            best.confidence(),
+        );
+        assert!(
+            clash.confidence() < best.confidence(),
+            "a key clash at an unmixable tempo was as confident as a perfect match",
+        );
+        assert!(
+            (blind.confidence() - 0.0).abs() < f64::EPSILON,
+            "an unanalysed record reported {:.2} confidence; it must report none",
+            blind.confidence(),
+        );
+        for s in [&best, &clash, &blind] {
+            assert!(
+                (0.0..=1.0).contains(&s.confidence()),
+                "confidence left 0..1: {:.3}",
+                s.confidence(),
+            );
+        }
     }
 
     /// **The same key at the same tempo wins.**

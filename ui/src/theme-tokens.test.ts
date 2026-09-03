@@ -35,10 +35,18 @@ function svelteFiles(dir: string): string[] {
 
 /** Strip what is allowed to contain a literal: comments and token fallbacks. */
 function stripAllowed(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "")
-    .replace(/var\(\s*--[a-zA-Z0-9-]+\s*,[^)]*\)/g, "");
+  return (
+    source
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/var\(\s*--[a-zA-Z0-9-]+\s*,[^)]*\)/g, "")
+      // Numeric HTML entities. `&#9679;` is a filled circle, and it is not a
+      // colour -- but `#9679` matches the hex pattern below exactly, so a
+      // component drawing a glyph that way was reported as ignoring the
+      // palette. A false positive on a rule this blunt costs whoever hits it
+      // an hour finding out the test is wrong rather than the code.
+      .replace(/&#x?[0-9a-fA-F]+;/g, "")
+  );
 }
 
 describe("colour tokens", () => {

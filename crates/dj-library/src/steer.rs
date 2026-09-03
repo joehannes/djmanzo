@@ -261,20 +261,7 @@ fn rechoose(
     let mut out = Vec::new();
 
     for slot in plan.iter().skip(first) {
-        let now = current.map_or(
-            Playing {
-                key: None,
-                bpm: None,
-                lufs: None,
-                phrase_beats: None,
-            },
-            |t| Playing {
-                key: t.analysis.key(),
-                bpm: t.analysis.bpm,
-                lufs: t.analysis.loudness_lufs,
-                phrase_beats: t.analysis.phrase_beats,
-            },
-        );
+        let now = current.map_or_else(Playing::nothing, Playing::of);
 
         let candidates: Vec<LibraryTrack> = pool
             .iter()

@@ -1282,6 +1282,15 @@ export interface Suggestion {
    * `dj_library::suggest`; the ranking can be argued with there, not here.
    */
   reasons: string[];
+  /**
+   * The same reasons on one line, as deltas: `+3 BPM · 8A→9A · +1 dB`.
+   *
+   * What the rail shows. Composed in Rust beside the typed reasons rather than
+   * assembled here, so the assistant and the network API say the same thing.
+   */
+  summary: string;
+  /** 0 to 1 — how much of the achievable score this candidate got. */
+  confidence: number;
 }
 
 /**

@@ -28,6 +28,9 @@ export const ICONS: Record<string, IconGlyph> = {
   "book": { d: "M6 3h11a1 1 0 0 1 1 1v14H8a2 2 0 0 0 -2 2V3zM6 20a2 2 0 0 1 2 -2h10" },
   "check": { d: "M4 12.5l5 5L20 6" },
   "circle": { d: "M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0 -16z" },
+  // `backward` mirrored about the vertical centre line: the same two
+  // triangles pointing the other way, so the pair reads as one control.
+  "forward": { d: "M4 6v12l8-6-8-6zM13 6v12l8-6-8-6z", fill: true },
   "circle-question": { d: "M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0 -16zM9.7 9.6a2.4 2.4 0 0 1 4.6 .9c0 1.6-2.3 2-2.3 3.5M12 17.2h.01" },
   "cloud": { d: "M7 18h10a4 4 0 0 0 0 -8 6 6 0 0 0 -11.7 1.7A3.5 3.5 0 0 0 7 18z" },
   "cog": { d: "M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0 -6zM12 5.4a6.6 6.6 0 1 0 0 13.2a6.6 6.6 0 1 0 0 -13.2zM18.6 12.0L21.0 12.0M16.7 16.7L18.4 18.4M12.0 18.6L12.0 21.0M7.3 16.7L5.6 18.4M5.4 12.0L3.0 12.0M7.3 7.3L5.6 5.6M12.0 5.4L12.0 3.0M16.7 7.3L18.4 5.6" },
