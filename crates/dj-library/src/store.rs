@@ -2660,6 +2660,86 @@ mod tests {
         assert_eq!(found[0].id, id(1));
     }
 
+    /// A smart folder can ask what a record is *for*.
+    ///
+    /// The end-to-end claim, run against real rows rather than against the
+    /// compiled SQL: the string a DJ types in a smart folder has to come back
+    /// with the right records, and a test of the `WHERE` clause would pass
+    /// while the subquery joined to the wrong column.
+    #[test]
+    fn a_smart_folder_can_filter_on_what_a_record_is_for() {
+        let lib = library();
+        lib.upsert_track(&track(1, "Opening Number", "artist"))
+            .unwrap();
+        lib.upsert_track(&track(2, "Big One", "artist")).unwrap();
+        lib.upsert_track(&track(3, "Untagged", "artist")).unwrap();
+        lib.set_functions(&[id(1)], &[Function::Opener]).unwrap();
+        lib.set_functions(&[id(2)], &[Function::Peak, Function::Risky])
+            .unwrap();
+
+        let titles = |query: &str| -> Vec<String> {
+            let mut found: Vec<String> = lib
+                .smart_tracks(query, 20)
+                .unwrap()
+                .into_iter()
+                .map(|t| t.tags.title.unwrap_or_default())
+                .collect();
+            found.sort();
+            found
+        };
+
+        assert_eq!(titles("for is opener"), vec!["Opening Number".to_owned()]);
+        assert_eq!(titles("function is peak"), vec!["Big One".to_owned()]);
+        // A record carrying two functions comes back once, not twice -- an
+        // EXISTS rather than a join. A duplicate here reads as a
+        // duplicate-detection bug rather than a filter one.
+        assert_eq!(
+            titles("for is peak or for is risky"),
+            vec!["Big One".to_owned()]
+        );
+        assert!(titles("for is emergency").is_empty());
+    }
+
+    /// An absent function is a value, not an unknown.
+    ///
+    /// The other side of the line `Filter::negate` draws. A record nobody has
+    /// tagged genuinely is not an opener, so `not for:opener` must find it --
+    /// which is the opposite of an absent *tempo*, where a filter must not
+    /// assert anything.
+    #[test]
+    fn a_record_with_no_functions_is_not_an_opener() {
+        let lib = library();
+        lib.upsert_track(&track(1, "Opening Number", "artist"))
+            .unwrap();
+        lib.upsert_track(&track(2, "Untagged", "artist")).unwrap();
+        lib.set_functions(&[id(1)], &[Function::Opener]).unwrap();
+
+        let mut found: Vec<String> = lib
+            .smart_tracks("not for is opener", 20)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.tags.title.unwrap_or_default())
+            .collect();
+        found.sort();
+        assert_eq!(found, vec!["Untagged".to_owned()]);
+    }
+
+    /// A guess at the vocabulary finds nothing rather than failing.
+    ///
+    /// `for:warmup` is a DJ reaching for a word djmanzo does not have, and an
+    /// empty result says "not a thing" more usefully than an error typed into
+    /// a smart folder that then will not save.
+    #[test]
+    fn a_function_that_is_not_in_the_vocabulary_matches_nothing() {
+        let lib = library();
+        lib.upsert_track(&track(1, "Opening Number", "artist"))
+            .unwrap();
+        lib.set_functions(&[id(1)], &[Function::Opener]).unwrap();
+
+        assert!(lib.smart_tracks("for is warmup", 20).unwrap().is_empty());
+        assert_eq!(lib.smart_tracks("not for is warmup", 20).unwrap().len(), 1);
+    }
+
     #[test]
     fn search_matches_across_fields_and_narrows_with_each_word() {
         let lib = library();

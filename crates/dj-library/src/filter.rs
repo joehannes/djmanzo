@@ -21,9 +21,18 @@
 //!
 //! Every field here is one a DJ sorts or filters by in front of a crowd. The
 //! grammar is what fits in a single line of a text box, because that is where
-//! it is typed. There is no date arithmetic, no subqueries and no arbitrary
-//! nesting of fields — those are report-writing features, and a DJ building a
-//! crate is not writing a report.
+//! it is typed. There is no date arithmetic and no arbitrary nesting of fields
+//! — those are report-writing features, and a DJ building a crate is not
+//! writing a report.
+//!
+//! This used to say "no subqueries" as well, and `for` broke that. The rule
+//! it was reaching for is still intact and worth restating precisely: **the
+//! *grammar* has no subqueries.** A DJ types one flat term and the compiler
+//! decides how to answer it. `for is opener` is a subquery underneath because a
+//! function is a row in another table rather than a column on `tracks`, and
+//! hiding that from the person typing is the point of having a compiler at
+//! all. What is still refused is a grammar in which the *user* nests one
+//! query inside another.
 
 use dj_core::{Mode, MusicalKey};
 use std::fmt;
@@ -52,6 +61,10 @@ pub enum Field {
     Genre,
     Label,
     Comment,
+    /// What a record is *for* -- see [`crate::functions`]. Not a column: a row
+    /// in `track_functions`, which is why it does not go through the generic
+    /// path below.
+    Function,
 }
 
 impl Field {
@@ -69,6 +82,10 @@ impl Field {
             "genre" | "style" => Self::Genre,
             "label" => Self::Label,
             "comment" | "comments" => Self::Comment,
+            // `for` first because it is what a DJ says out loud -- "what is
+            // this for" -- and `function` because it is what the vocabulary is
+            // called everywhere else.
+            "for" | "function" => Self::Function,
             _ => return None,
         })
     }
@@ -89,13 +106,25 @@ impl Field {
             Self::Comment => "tracks.comment",
             // Two columns; never reached, because `Key` is compiled specially.
             Self::Key => "tracks.key_hour",
+            // No column at all -- a row in `track_functions`. Never reached,
+            // for the same reason `Key` is not.
+            Self::Function => "tracks.id",
         }
     }
 
     fn is_text(self) -> bool {
         matches!(
             self,
-            Self::Title | Self::Artist | Self::Album | Self::Genre | Self::Label | Self::Comment
+            Self::Title
+                | Self::Artist
+                | Self::Album
+                | Self::Genre
+                | Self::Label
+                | Self::Comment
+                // A function is typed as a word and compared as one, so the
+                // parser reads its value the same way. What it *compiles* to
+                // is a subquery -- see `function_sql`.
+                | Self::Function
         )
     }
 }
@@ -182,7 +211,7 @@ impl fmt::Display for FilterError {
             Self::UnknownField(word) => write!(
                 f,
                 "{word:?} is not something to filter on. Try bpm, key, artist, \
-                 title, album, genre, label, year, rating or plays."
+                 title, album, genre, label, year, rating, plays or for."
             ),
             Self::UnknownOperator(word) => write!(f, "{word:?} is not a comparison"),
             Self::WrongKindOfComparison { field, op } => {
@@ -316,6 +345,10 @@ fn compare_sql(field: Field, op: Op, value: &Value, params: &mut Vec<Param>) -> 
     if field == Field::Key {
         return key_sql(op, value, params);
     }
+    // A function is a row in another table, so neither.
+    if field == Field::Function {
+        return function_sql(op, value, params);
+    }
 
     let column = field.column();
     match (op, value) {
@@ -361,6 +394,45 @@ fn like(column: &str, op: Op, pattern: String, params: &mut Vec<Param>) -> Strin
     let negated = matches!(op, Op::NotContains | Op::NotStartsWith | Op::NotEndsWith);
     let keyword = if negated { "NOT LIKE" } else { "LIKE" };
     format!("COALESCE({column}, '') {keyword} {bound} ESCAPE '\\'")
+}
+
+/// `for is opener` -- does this track carry that function.
+///
+/// An `EXISTS` rather than a join, so a track carrying three functions still
+/// appears once. A join would multiply rows and `for:opener or for:peak` would
+/// list a record twice, which is the sort of thing that looks like a
+/// duplicate-detection bug rather than a filter bug.
+///
+/// **Negation is `NOT EXISTS`, not an inverted comparison**, and that is the
+/// right side of the line `Filter::negate` draws. An absent function is a
+/// *value*, like an absent genre: a record nobody has tagged genuinely is not
+/// an opener, and `not for:opener` should find it. That is the opposite of an
+/// absent tempo, which is an unknown a filter must not assert anything about.
+///
+/// The slug is bound as a parameter and never interpolated, like every other
+/// value here. An unknown slug simply matches nothing rather than being
+/// refused -- `for is warmup` is a DJ guessing at the vocabulary, and an empty
+/// result says "not a thing" more usefully than an error does.
+fn function_sql(op: Op, value: &Value, params: &mut Vec<Param>) -> String {
+    let Value::Text(slug) = value else {
+        return "0".to_owned();
+    };
+    let bound = placeholder(params, Param::Text(slug.clone()));
+    let exists = format!(
+        "EXISTS (SELECT 1 FROM track_functions
+                 WHERE track_functions.track_id = tracks.id
+                   AND track_functions.function = {bound} COLLATE NOCASE)"
+    );
+    match op {
+        // The negated forms `Filter::negate` produces, plus `!=` typed
+        // directly. Everything else -- a `>` on a function, say -- is
+        // meaningless rather than wrong, and matches nothing.
+        Op::Ne | Op::NotContains | Op::NotStartsWith | Op::NotEndsWith | Op::NotCompatible => {
+            format!("NOT {exists}")
+        }
+        Op::Eq | Op::Contains | Op::StartsWith | Op::EndsWith => exists,
+        _ => "0".to_owned(),
+    }
 }
 
 fn key_sql(op: Op, value: &Value, params: &mut Vec<Param>) -> String {
@@ -675,6 +747,7 @@ fn text_field_name(field: Field) -> &'static str {
         Field::Album => "album",
         Field::Genre => "genre",
         Field::Label => "label",
+        Field::Function => "for",
         _ => "comment",
     }
 }

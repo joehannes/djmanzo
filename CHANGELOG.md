@@ -36,9 +36,14 @@ play it, and folding them together would mean colouring eight tracks silently
 replaced their functions. Every function is offered even at zero, with a count,
 because a picker that hides what you have never used never suggests using it.
 
-**Not yet in the smart-folder filter language.** A function is a subquery
-rather than a column, which is a different shape from every field the filter
-has, and it is its own change.
+**Smart folders can filter on them** — `for is opener`, `function is peak`,
+`not for is risky and bpm > 120`. A function is a row in another table rather
+than a column, so it compiles to an `EXISTS` rather than a join: a record
+carrying three functions still appears once, where a join would list it three
+times and look like a duplicate-detection bug. Negation is `NOT EXISTS`,
+because an absent function is a *value* — a record nobody has tagged genuinely
+is not an opener — unlike an absent tempo, which is an unknown a filter must
+not assert anything about.
 
 
 ## v0.13.0 — Everything a DJ touches, on one screen
