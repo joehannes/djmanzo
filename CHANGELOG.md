@@ -16,6 +16,9 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+
+## v0.14.0 — Prepare and Next are surfaces, and a deck knows what pinning costs
+
 **The next-track rail** — the directive's §22, and a surface of its own rather
 than a tab inside Prepare. It follows whichever deck is playing without being
 told, and shows up to eight candidates, each on **one line of deltas**:
@@ -43,8 +46,6 @@ into one genre, which is the opposite of what the rail is for.
 The Next tab is gone from Prepare rather than duplicated: two places that
 suggest the next record are two places that will disagree.
 
-
-## v0.14.0 — Prepare is a surface, and a deck knows what pinning costs
 
 **Function tags** — what a record is *for*, which is not what it is. Genre says
 a record is bachata; it does not say whether it opens a room, lifts one that is
