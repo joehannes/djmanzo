@@ -634,6 +634,34 @@ child cannot pin itself inside a parent that grows to fit it. And the booth
 panel that sat under the decks became a dock surface, which is what it always
 was.
 
+**And then pinning had to learn a price.** The paragraph above is true of two
+decks with nothing docked, which is the shape it was measured in and the only
+shape it held for. `minmax(0, 1fr)` was on the deck grid's *first* row;
+`.decks.four` and `.decks.six` overrode the rest with `grid-auto-rows:
+min-content`, meaning "let the extra rows be as tall as they need and scroll" --
+except nothing scrolls them, because the stage does not, by design, one
+paragraph up. So the free space went to whichever row was not `min-content`:
+four decks at 1280x800 gave row one **115 px** and row two 433. And a pinned
+region is `flex: none`, which in a column with less room than it wants does not
+scroll -- it **overflows**. Row one's channel strip ran a hundred pixels down
+into the deck below it; with a surface docked as well, the deck was 22 px tall
+and its 300 px strip ran straight across the master strip.
+
+That is §99 and §103 arriving from the other direction: not a control below the
+fold, but a control drawn on top of another one. It was found by driving the
+application, which is the third time that has been the finder.
+
+The fix is in two halves. Every deck row is `minmax(0, 1fr)`, so rows of the
+same thing are the same size. And a deck pins its channel strip only when it
+can afford to -- measured, because the strip is `flex-wrap: wrap` and so has
+exactly two heights: 168 px on one line above about 530 px of deck width, 300
+px wrapped below it. A deck needs that, plus its own chrome, plus 140 px of
+waveform, overview and progress bar, before pinning is a gain rather than a
+trade. Under that it goes back to one scrolling column -- everything reachable,
+in the same order, nothing painted over anything. `ui/e2e/budget.spec.ts` now
+measures all six shapes the top bar can be put into rather than the opening
+screenshot alone.
+
 What actually has to change, in descending order of what it is worth: the pad
 grid's sizing rule, the fader and knob dimensions, and whether the master strip
 stays in the vertical stack at all. The third is the one with several

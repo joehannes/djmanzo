@@ -189,13 +189,89 @@
     return out;
   });
 
+  /**
+   * The deck's own box, measured, because pinning is only affordable above a
+   * size.
+   *
+   * Both are inputs rather than outputs: `.decks` sizes every row
+   * `minmax(0, 1fr)` and every column `1fr`, so a deck's height and width come
+   * from the stage and the deck count, not from what is inside it. That is
+   * what makes the decision below safe to take -- a threshold read off a box
+   * that the decision itself changes would oscillate.
+   */
+  let deckWidth = $state(0);
+  let deckHeight = $state(0);
+
+  /**
+   * What the pinned foot costs, at the two sizes it actually has.
+   *
+   * Measured in Chromium at 900 px tall, sweeping the window from 1100 to
+   * 1920 with a surface docked, and it is a step rather than a curve: the
+   * channel strip is `flex-wrap: wrap`, so it is either on one line or it is
+   * not.
+   *
+   * | deck width | channel | foot |
+   * |---|---|---|
+   * | 543 px and up | 125 px | **168 px** |
+   * | 515 px and down | 257 px | **300 px** |
+   *
+   * The step is between 515 and 543; 530 is the middle of it.
+   */
+  const WRAPS_BELOW = 530;
+  const FOOT_ON_ONE_LINE = 168;
+  const FOOT_WRAPPED = 300;
+
+  /**
+   * What is left of the deck has to be worth having.
+   *
+   * The waveform lane is 96 px at Relaxed and 77 at the density this ships
+   * at, the overview 30 and the progress bar 8. 140 px is those three plus
+   * the gaps between them: the least that still answers *what is about to
+   * happen*, which is the question the deck is looked at to answer.
+   */
+  const BODY_FLOOR = 140;
+  /** The header, and the gaps the deck's own column puts between its rows. */
+  const DECK_CHROME = 61;
+
+  /**
+   * Whether this deck is tall enough to pin its channel strip.
+   *
+   * # Why this is a question at all
+   *
+   * Pinning the strip was the fix for §103 -- the volume fader and the filter
+   * are touched continuously, so they are the wrong things to put below the
+   * fold. That reasoning is sound and it is unconditional, which is the bug.
+   * A pinned region is `flex: none`; a `flex: none` region in a column with
+   * less room than it wants does not scroll, it **overflows**, and paints
+   * over whatever is drawn below it.
+   *
+   * Measured with four decks and a surface docked at 1280x800: the deck was
+   * 22 px tall, its body 0, and its 300 px foot ran 328 px past the bottom of
+   * the card and across the master strip. Two decks and a dock at 1280x680
+   * left the body 110 px of a 471 px deck -- the waveform, the overview, the
+   * pads, the loops, the FX rack and the transport sharing less than a
+   * quarter of the deck so that the strip could have three quarters.
+   *
+   * So pinning is a luxury, and this is the price of it. Below the price the
+   * deck goes back to being one scrolling column: everything is still
+   * reachable, in the same order, and nothing is drawn on top of anything.
+   *
+   * Zero means not yet measured -- the first render, before the binding has
+   * a box -- and pins, because the default at djmanzo's own window is to pin.
+   */
+  const pinning = $derived.by(() => {
+    if (deckHeight === 0) return true;
+    const foot = deckWidth > 0 && deckWidth < WRAPS_BELOW ? FOOT_WRAPPED : FOOT_ON_ONE_LINE;
+    return deckHeight >= foot + DECK_CHROME + BODY_FLOOR;
+  });
+
   /** Everything above the strip: it scrolls when there is not room for it. */
   const scrolling = $derived(
-    rows.filter((row) => !PINNED.includes(row.zones[0].placed.widget)),
+    pinning ? rows.filter((row) => !PINNED.includes(row.zones[0].placed.widget)) : rows,
   );
-  /** The strip and what travels with it: always on screen. */
+  /** The strip and what travels with it: always on screen, when it fits. */
   const pinned = $derived(
-    rows.filter((row) => PINNED.includes(row.zones[0].placed.widget)),
+    pinning ? rows.filter((row) => PINNED.includes(row.zones[0].placed.widget)) : [],
   );
 
   let error = $state<string | null>(null);
@@ -349,6 +425,8 @@
   class:playing={deck.playing}
   class:drop-target={isOver(dropZone)}
   bind:this={dropZone}
+  bind:clientWidth={deckWidth}
+  bind:clientHeight={deckHeight}
 >
   <header>
     <span class="number">{deck.number}</span>
@@ -1245,6 +1323,16 @@
   .deck {
     /* Fills the row it is given and no more; the body inside it scrolls. */
     min-height: 0;
+    /*
+      And nothing inside it is ever drawn outside it.
+
+      The pinning rule above is what keeps the foot from wanting more room
+      than the deck has. This is what happens if that rule is ever wrong: a
+      clipped control is a bug that is visible, an overflowing one is a bug
+      that paints across the master strip and looks like a rendering glitch.
+      Given the choice, fail where it can be seen.
+    */
+    overflow: hidden;
     background: var(--panel);
     border: 1px solid var(--border);
     /* Border colour only: a deck that resized or moved when it started playing

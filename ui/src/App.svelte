@@ -2107,20 +2107,34 @@
   */
   .decks.four {
     grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: min-content;
   }
 
   /*
     Six decks are three rows of two, not two rows of three, for the same reason
     four are two rows of two: the width of a deck is what decides whether its
-    pads are readable, and thirds of a screen are not enough. Three rows is
-    taller than a screen, which is correct — six decks is a scrolling rig, and
-    pretending otherwise would shrink all six to fit.
+    pads are readable, and thirds of a screen are not enough.
   */
   .decks.six {
     grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: min-content;
   }
+
+  /*
+    Neither of those sets `grid-auto-rows`, and that is deliberate.
+
+    Both used to say `min-content`, which was written meaning "let the extra
+    rows be as tall as they need and scroll". Nothing scrolls them -- the
+    stage does not scroll, by design, three comments up -- so what it actually
+    did was hand the free space to whichever row was not `min-content`.
+    Measured with four decks at 1280x800: row one got **115 px** and row two
+    got 433, and row one's 168 px channel strip ran a hundred pixels down into
+    the deck below it. With a surface docked it was 22 px against 565.
+
+    Inheriting `minmax(0, 1fr)` from `.decks` gives every row an equal share
+    of the stage, whether there are one, two or three of them. Six decks then
+    means genuinely short decks, which is honest: each one scrolls inside
+    itself, and `Deck.svelte` stops pinning its channel strip when there is
+    not room for the strip and the waveform both.
+  */
 
   /*
     The crossfader's own row. Full width and centred, so it reads as the thing

@@ -305,3 +305,186 @@ test.describe("the first screen", () => {
     ).toBeLessThanOrEqual(760);
   });
 });
+
+
+/**
+ * The same budget, in the shapes the window is actually put into.
+ *
+ * # Why this block exists
+ *
+ * Everything above measures one configuration: two decks, nothing docked, at
+ * the window djmanzo opens at. That is the right default to hold and it is
+ * not the whole claim. The deck-count button offers four and six; the dock
+ * manager exists so a DJ can keep the browser along the bottom and Prepare
+ * beside the decks *while mixing*. A budget that only holds for the opening
+ * screenshot is a budget for the screenshot.
+ *
+ * It was found the way the last three were -- by driving the running
+ * application, not by anything in this file. Two faults, one visible:
+ *
+ * - `.decks.four` and `.decks.six` set `grid-auto-rows: min-content`, meaning
+ *   "let the extra rows be as tall as they need and scroll". Nothing scrolls
+ *   them: the stage does not scroll, by design, because that is what lets a
+ *   deck pin anything. So the free space went to whichever row was *not*
+ *   `min-content`. Four decks at 1280x800 gave row one **115 px** and row two
+ *   433. With a surface docked, 22 px against 565.
+ * - The pinned channel strip is `flex: none`, and a `flex: none` region in a
+ *   column with less room than it wants does not scroll -- it overflows. Row
+ *   one's 168 px foot ran a hundred pixels down into the deck below it, and
+ *   with four decks and a dock the 300 px foot ran 328 px past the card and
+ *   straight across the master strip.
+ *
+ * Both are the §99/§103 failure in a third shape. Pinning a region guarantees
+ * that region is on screen; on its own it guarantees nothing about what the
+ * guarantee costs the regions around it. What follows measures the cost.
+ */
+type Shape = { decks: 2 | 4 | 6; docked: boolean; height: number };
+
+/** The configurations a DJ can reach from the top bar in one or two presses. */
+const SHAPES: Shape[] = [
+  { decks: 2, docked: false, height: 800 },
+  { decks: 2, docked: true, height: 800 },
+  { decks: 2, docked: true, height: 680 },
+  { decks: 4, docked: false, height: 800 },
+  { decks: 4, docked: true, height: 800 },
+  { decks: 6, docked: true, height: 800 },
+];
+
+const describes = ({ decks, docked, height }: Shape) =>
+  `${decks} decks, ${docked ? "a surface docked" : "nothing docked"}, ${WINDOW.width}x${height}`;
+
+/** Put the shell into `shape` and let the layout settle. */
+async function shaped(page: Page, { decks, docked, height }: Shape) {
+  await openShell(page, "/");
+  await page.setViewportSize({ width: WINDOW.width, height });
+  if (docked) await page.getByRole("button", { name: "Prepare", exact: true }).click();
+  // The button cycles 2 -> 4 -> 6 and names the count it is showing.
+  for (let n = 2; n < decks; n += 2) {
+    await page.getByRole("button", { name: /decks$/ }).click();
+  }
+  // Two frames: one for the change to mount, one for everything else to
+  // reflow into what is left. Measuring after the first measures a layout
+  // half way through moving.
+  await page.evaluate(
+    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+  );
+}
+
+/** Every deck's box, every foot's box, and the master strip's, in one round trip. */
+async function frames(page: Page) {
+  return page.evaluate(() => {
+    const box = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return { top: Math.round(r.y), height: Math.round(r.height), bottom: Math.round(r.bottom) };
+    };
+    const bridge = document.querySelector(".bridge");
+    return {
+      decks: [...document.querySelectorAll(".deck")].map((deck) => ({
+        deck: box(deck),
+        body: box(deck.querySelector(".deck-body")!),
+        foot: box(deck.querySelector(".deck-foot")!),
+        pinned: deck.querySelector(".deck-foot")!.children.length > 0,
+      })),
+      bridge: bridge ? box(bridge) : null,
+    };
+  });
+}
+
+test.describe("the layout budget, in every shape the top bar offers", () => {
+  for (const shape of SHAPES) {
+    test(`nothing on a deck is drawn outside it: ${describes(shape)}`, async ({ page }) => {
+      await shaped(page, shape);
+      const { decks } = await frames(page);
+      expect(decks.length, "the decks did not render").toBe(shape.decks);
+
+      for (const [index, { deck, foot }] of decks.entries()) {
+        expect(
+          foot.bottom,
+          `deck ${index + 1}'s pinned strip ends ${foot.bottom - deck.bottom} px below ` +
+            "the bottom of the deck it is pinned to. A region that cannot shrink, " +
+            "in a column with less room than it wants, does not scroll -- it " +
+            "overflows, and paints over whatever is drawn below it",
+        ).toBeLessThanOrEqual(deck.bottom + SLACK);
+      }
+    });
+
+    test(`no deck paints over the master strip: ${describes(shape)}`, async ({ page }) => {
+      await shaped(page, shape);
+      const { decks, bridge } = await frames(page);
+      expect(bridge, "the master strip is not on the page").not.toBeNull();
+
+      for (const [index, { deck, foot }] of decks.entries()) {
+        expect(
+          Math.max(deck.bottom, foot.bottom),
+          `deck ${index + 1} reaches into the master strip. This is the failure ` +
+            "that put the crossfader below the fold twice, arriving from the " +
+            "other direction: not off the screen, but on top of something else",
+        ).toBeLessThanOrEqual(bridge!.top + SLACK);
+      }
+    });
+
+    /**
+     * Every deck gets the same room, whatever the row it landed in.
+     *
+     * The measurement that caught `grid-auto-rows: min-content`: two rows of
+     * the same thing came out 115 px and 433 px, which is not a layout anyone
+     * chose. `1fr` rows cannot do that, so this fails the moment one comes
+     * back.
+     */
+    test(`the deck rows share the stage evenly: ${describes(shape)}`, async ({ page }) => {
+      await shaped(page, shape);
+      const { decks } = await frames(page);
+      const heights = decks.map(({ deck }) => deck.height);
+
+      expect(
+        Math.max(...heights) - Math.min(...heights),
+        `the decks came out ${heights.join(", ")} px tall. Rows of the same ` +
+          "thing should be the same size; a row that is starved is one whose " +
+          "height came from its content rather than from the stage",
+      ).toBeLessThanOrEqual(SLACK);
+    });
+
+    /**
+     * A deck either pins its channel strip and keeps a usable waveform, or it
+     * pins nothing and scrolls as one column. There is no third state where
+     * the strip has three quarters of the deck.
+     */
+    test(`what scrolls is worth scrolling: ${describes(shape)}`, async ({ page }) => {
+      await shaped(page, shape);
+      const { decks } = await frames(page);
+
+      for (const [index, { deck, body, pinned }] of decks.entries()) {
+        if (!pinned) continue;
+        expect(
+          body.height,
+          `deck ${index + 1} pinned its channel strip and left ${body.height} px ` +
+            `of ${deck.height} for everything else. The waveform, the overview, ` +
+            "the pads, the loops, the FX rack and the transport do not fit in " +
+            "that, and the waveform is the one that pays",
+        ).toBeGreaterThanOrEqual(140 - SLACK);
+      }
+    });
+  }
+
+  /**
+   * The default is still the default.
+   *
+   * The rule above turns pinning off when a deck is too short for it, and a
+   * rule that turned it off everywhere would pass every assertion in this
+   * block while quietly undoing §103. This is the one shape where the strip
+   * must actually be pinned.
+   */
+  test("two decks at the opening window still pin the channel strip", async ({ page }) => {
+    await shaped(page, { decks: 2, docked: false, height: WINDOW.height });
+    const { decks } = await frames(page);
+
+    for (const [index, { pinned }] of decks.entries()) {
+      expect(
+        pinned,
+        `deck ${index + 1} is not pinning its channel strip at djmanzo's own ` +
+          "window with nothing docked. The volume fader and the filter are " +
+          "back below the fold, which is what §103 was",
+      ).toBe(true);
+    }
+  });
+});
