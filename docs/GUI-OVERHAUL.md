@@ -622,9 +622,9 @@ Vertical slices, each shippable, each green before the next:
 
 | Phase | Deliverable | Gate |
 |---|---|---|
-| **0** | this document | — |
-| **1** | semantic tokens, density, motion, surface/workspace schemas | types + tests, no visual change |
-| **2** | ADR-0008 W3 + dock manager. *New shell, old functionality.* | every surface still reachable |
+| ~~**0**~~ | this document | **done** |
+| ~~**1**~~ | semantic tokens, density, motion, surface/workspace schemas | **done** — `crates/dj-app/src/cockpit.rs` |
+| ~~**2**~~ | ADR-0008 W3 + dock manager. *New shell, old functionality.* | **done** — the deck renders from the widget tree; surfaces dock; `ui/e2e/docks.spec.ts` enforces reachability |
 | **3** | performance cockpit: decks, waveform, mixer, rail, mission bar | crossfader on screen at 1280×800 |
 | **4** | library: table, cards, set flow, pair view, prepare, rail | one gesture Library→Prepare→Deck |
 | **5** | intelligence: context engine, transactions, takeover, promotion | posture matrix enforced by test |

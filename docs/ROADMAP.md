@@ -2057,8 +2057,36 @@ nothing else can reach.
 |---|---|
 | **W1** | **Built.** The registry in `dj-app`: 33 names, the slots each may sit in and offer, and every setting with a type, a range and a default. Rust, not TypeScript — the network API and the assistant need it without a webview running. |
 | **W2** | **Built.** The tree format, the upconverter from the flat `Layout`, the loader that reads both out of one directory, and the 23-token set a skin may restyle within. Nobody's existing file breaks. |
-| **W3** | **Not started.** `Deck.svelte` and `App.svelte` stop being layouts and become renderers over the tree. This is the expensive step and the reason the ADR came first. |
+| **W3** | **Built.** `Deck.svelte` is a renderer: one snippet per named widget, and one loop drawing them in the order the resolved tree gives. Six widgets the vocabulary was missing — the jog, the channel fader, the cue, the crossfader assignment, the progress bar and the times — are in it, because a tree that cannot name them cannot describe the deck djmanzo has. A golden order in `widgets.rs` asserts the upconversion still produces the deck the interface draws. |
 | **W4** | What it unlocks: detachable panels and multi-monitor (M5) as a subtree with a window; widget addressing over the network API; assistant-composed layouts as proposals, per [ADR-0005](adr/0005-assistant-speaks-only-actions.md). |
+
+**What W3 found on the way.** Two bugs, neither visible before the deck rendered
+from the tree.
+
+The upconverter listed zones in the order the flat `Layout` happens to declare
+its fields — transport above the pads, EQ below the effects — and omitted the
+stems, the grid and the meter entirely. Nothing noticed while the tree was only
+inspected; the moment a deck is drawn from it, that ordering is what a DJ sees.
+An upconversion has one job, which is to produce the interface that already
+exists, and it is now asserted as a golden order written out in full.
+
+And `layout_tree` answered with `builtin().first()` when the DJ had never opened
+the layout picker — which is "Starter", a preset with no pads, no loops, no
+effect rack, no beat jump, no filter and no keylock. It had answered that way
+for releases. Nobody saw it because the interface read only the tokens out of
+that answer and drew the deck from its own markup; six controls vanished from a
+screenshot the first time the two were joined up. Nothing chosen now means the
+full deck, which is what "the application has not been told otherwise" means.
+
+**The dock manager, built on W3.** `App.svelte` held a single `panel` variable
+containing one of eight names, so one panel could be open at a time and the room
+and the library could never be looked at together. Surfaces now dock — beside the
+decks and along the bottom, several at once, each framed and closable on its own
+— placed by their own preferred size rather than by a table of special cases,
+stored as a `cockpit::Workspace` that is resolved in Rust and survives a restart.
+`ui/e2e/docks.spec.ts` is the gate: every panel button must still open its
+surface, and the library and the assistant must be visible together over the
+decks.
 
 Two things W1 and W2 settled that the ADR left as intentions.
 
