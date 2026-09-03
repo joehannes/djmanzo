@@ -93,7 +93,7 @@
   {/if}
 
   {#if panel === "browser"}
-    <Browse enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
+    <Browse enabled={ready} {deckCount} />
   {:else if panel === "assistant"}
     <Assistant enabled={ready} />
   {:else if snapshot}

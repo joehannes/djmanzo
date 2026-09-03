@@ -1,7 +1,14 @@
 <script lang="ts">
   /**
-   * The panel beside the song list: what you have set aside, and what is on
-   * the decks.
+   * The Prepare space: what you have set aside, and what is on the decks.
+   *
+   * A dock surface of its own rather than a child of the browser, which is
+   * what the directive's §21 means by *first class*. It used to be mounted
+   * inside the library panel and handed a track by a prop, so it could only
+   * exist where the library was and only when the library was open. Now the
+   * library can be along the bottom and Prepare beside the decks, or Prepare
+   * alone while a set is planned, and the gesture that fills it means the same
+   * thing either way.
    *
    * # Why the Sidelist is here and not another crate
    *
@@ -34,21 +41,17 @@
     type Suggestion,
     type Trajectory,
   } from "./api";
+  import { consumed, pendingTrack } from "./prepare.svelte";
 
   let {
     enabled,
     deckCount = 2,
     decks = [],
-    pending = null,
-    onconsumed,
   }: {
     enabled: boolean;
     deckCount?: number;
     /** Live deck state, for Clone. */
     decks?: DeckState[];
-    /** A track id the browser has asked to add. */
-    pending?: string | null;
-    onconsumed?: () => void;
   } = $props();
 
   type Tab = "sidelist" | "next" | "clone" | "sampler" | "automix";
@@ -123,15 +126,22 @@
   }
 
   /**
-   * Take whatever the browser handed over.
+   * Take whatever the browser pointed at.
    *
-   * The parent clears `pending` through `onconsumed` rather than this
-   * component reaching back into it, so adding the same track twice in a row
-   * still works — which it must, because a DJ playing a track twice in a night
-   * is normal.
+   * Read from the module rune rather than from a prop, because the browser is
+   * a sibling surface now rather than this component's parent. The rune is
+   * cleared here, after the add, so pointing at the same track twice in a row
+   * still works — which it must, since a DJ playing a record twice in a night
+   * is normal, and a value that stayed set would make the second press do
+   * nothing.
+   *
+   * It is also why the browser sets the rune whether or not this surface is
+   * open: nothing consumes it until one is, so pressing → and *then* opening
+   * Prepare finds the track waiting. A press that silently does nothing
+   * because a panel was closed is exactly the inconsistency §21 names.
    */
   $effect(() => {
-    const id = pending;
+    const id = pendingTrack();
     if (id == null) return;
     void (async () => {
       try {
@@ -141,7 +151,7 @@
       } catch (e) {
         error = String(e);
       } finally {
-        onconsumed?.();
+        consumed();
       }
     })();
   });

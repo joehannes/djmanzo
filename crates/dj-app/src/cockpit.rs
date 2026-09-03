@@ -421,11 +421,19 @@ pub enum Category {
 ///
 /// | density | deck | needs |
 /// |---|---|---|
-/// | Relaxed 1.15 | 1088 px | 1330 |
-/// | Standard 1.00 | 807 | 1050 |
+/// | Relaxed 1.15 | 1088 px | 1460 |
+/// | Standard 1.00 | 807 | 1090 |
 /// | Compact 0.92 | 758 | 1020 |
 /// | Pro Dense 0.86 | 721 | 980 |
 /// | Ultra Dense 0.80 | 685 | 916 |
+///
+/// The Relaxed and Standard floors moved up -- 1,330 to 1,460 and 1,050 to
+/// 1,090 -- when the deck's channel strip was pinned. The deck was measured
+/// whole before, and a pinned foot changes the sum: the scrolling body now
+/// competes with a foot that will not shrink, so a band needs more window than
+/// the deck's own height suggests. The browser sweep in `density.spec.ts` is
+/// what caught it, and both numbers are the height at which the sweep stops
+/// reporting a shortfall rather than a guess with a margin.
 ///
 /// The first version of this table was guessed round numbers, and the guesses
 /// were wrong in both directions: a 1,200 px window was given Relaxed, whose
@@ -442,8 +450,8 @@ pub enum Category {
 /// without asking on every resize -- one call at start-up, then arithmetic.
 /// Rust still owns the policy; the browser owns the pixels it is measured in.
 pub const BANDS: &[(u16, Density)] = &[
-    (1330, Density::Relaxed),
-    (1050, Density::Standard),
+    (1460, Density::Relaxed),
+    (1090, Density::Standard),
     (1020, Density::Compact),
     (980, Density::ProDense),
     (0, Density::UltraDense),
@@ -1157,13 +1165,16 @@ mod tests {
         assert_eq!(Density::fitting(1020), Density::Compact);
         assert_eq!(Density::fitting(1100), Density::Standard);
         assert_eq!(Density::fitting(1200), Density::Standard);
-        assert_eq!(Density::fitting(1440), Density::Relaxed);
+        assert_eq!(Density::fitting(1440), Density::Standard);
+        assert_eq!(Density::fitting(1500), Density::Relaxed);
 
         // The band a window gets must be one whose deck actually fits in it.
         // Both of these were wrong in the guessed first version of the table:
         // 1,200 got Relaxed, whose deck is 1,088 px against about 990 of room,
-        // and 900 got Pro Dense, which needs 980.
+        // and 900 got Pro Dense, which needs 980. A later pass moved Relaxed
+        // again, to 1,460, when pinning the channel strip changed the sum.
         assert_ne!(Density::fitting(1200), Density::Relaxed);
+        assert_ne!(Density::fitting(1400), Density::Relaxed);
         assert_ne!(Density::fitting(900), Density::ProDense);
         // Below every band's floor, and not a panic.
         assert_eq!(Density::fitting(0), Density::UltraDense);

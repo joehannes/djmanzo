@@ -121,7 +121,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Feature | Milestone |
 |---|---|
 | Folder tree + song list, VirtualDJ layout | M3 |
-| **SideView**: Sidelist · Sampler · Automix · Karaoke · Clone panels | M3 (Karaoke K1) |
+| **Prepare**, its own dockable surface: Sidelist · Next · Clone · Sampler · Automix | M3 (Karaoke K1) |
+| One gesture sets a track aside — `→` on a browser row, and it is in Prepare | Cockpit §21 |
 | Search across the whole library, instant | M3 |
 | Playlists / crates / smart folders | M3 |
 | Columns: BPM, key, energy, rating, play count, last played, comment | M3 |
@@ -408,13 +409,14 @@ our own code.
 │            Stems · FX          8 pads per deck, colour-coded              │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ FX ZONE    slots · beat-synced timing · routing · presets                 │
-├───────────────────┬──────────────────────────────────────────────────────┤
-│ FOLDER TREE       │ SONG LIST                         │ SIDEVIEW         │
-│  local library    │  sortable columns, instant search │  Sidelist        │
-│  playlists/crates │  BPM · key · energy · rating      │  Sampler         │
-│  smart folders    │  colour-coded, drag to deck       │  Automix         │
-│  imported sources │                                   │  Karaoke         │
-│                   │                                   │  Clone           │
+├───────────────────┬───────────────────────────────────┬──────────────────┤
+│ FOLDER TREE       │ SONG LIST                         │ PREPARE          │
+│  local library    │  sortable columns, instant search │  a surface of its│
+│  playlists/crates │  BPM · key · energy · rating      │  own, docked     │
+│  smart folders    │  colour-coded, drag to deck       │  beside or below │
+│  imported sources │  `→` sets a track aside ─────────▶│  Sidelist · Next │
+│                   │                                   │  Clone · Sampler │
+│                   │                                   │  Automix         │
 └───────────────────┴───────────────────────────────────┴──────────────────┘
 ```
 

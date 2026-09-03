@@ -28,8 +28,8 @@
   import Memory from "./Memory.svelte";
   import ShareSet from "./ShareSet.svelte";
   import Crates, { type Selection } from "./Crates.svelte";
-  import SideView from "./SideView.svelte";
   import IconButton from "./controls/IconButton.svelte";
+  import { setAside } from "./prepare.svelte";
   import {
     addToPlaylist,
     checkFilter,
@@ -55,7 +55,6 @@
     removeFromPlaylist,
     setPlaylistQuery,
     smartPlaylistTracks,
-    type DeckState,
     type Duplicate,
     type LibraryStatus,
     type LibraryTrack,
@@ -70,8 +69,7 @@
   let {
     enabled,
     deckCount = 2,
-    decks = [],
-  }: { enabled: boolean; deckCount?: number; decks?: DeckState[] } = $props();
+  }: { enabled: boolean; deckCount?: number } = $props();
 
   /**
    * The drag payload for tracks.
@@ -98,14 +96,11 @@
   }
 
   /**
-   * A track the DJ has asked to set aside, handed to SideView.
-   *
-   * Passed down rather than SideView reading the selection, because the two
-   * panels are siblings and the browser is where the gesture happens. SideView
-   * clears it through `onconsumed`, so setting the same track aside twice in a
-   * row still works.
+   * Setting a track aside now goes through a module rune rather than down a
+   * prop, because Prepare is no longer a child of this panel -- it is a dock
+   * surface of its own, which is what §21's "first class" asks for. See
+   * `prepare.svelte.ts` for why that is a rune and not a context or an event.
    */
-  let toSideView = $state<string | null>(null);
   /**
    * The track "more like this" is currently answering for, if any.
    *
@@ -1132,7 +1127,7 @@
                 {/if}
                 <button
                   class="aside"
-                  onclick={() => (toSideView = track.id)}
+                  onclick={() => setAside(track.id)}
                   title="Set aside in the Sidelist"
                   aria-label="Set aside {track.title}"
                 >→</button>
@@ -1175,13 +1170,6 @@
   {/if}
 </div>
 
-<SideView
-  {enabled}
-  {deckCount}
-  {decks}
-  pending={toSideView}
-  onconsumed={() => (toSideView = null)}
-/>
 </div>
 
 <style>

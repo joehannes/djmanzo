@@ -46,7 +46,7 @@ rather than taken.
 | 18 | Attention budget | 🟡 | `cockpit::Attention` exists with the rule that matters — while performing, the interface may not reflow — but nothing consults it yet |
 | 19 | No random UI reorganisation | ⚖️ | Enforced by a golden-order test: the deck's control order is asserted in full and fails if anything moves |
 | 20 | Playlist / library overhaul | 🟡 | Function tags and their filtering ship. The four views — table, cards, **Set Flow**, pair — do not. Set Flow is the strongest competitor gap |
-| 21 | "Prepare" must be first class | 🟡 | The gesture works today (Library → sidelist → deck, one press each). It is not yet a top-level surface |
+| 21 | "Prepare" must be first class | ✅ | Its own dockable surface beside the browser, not a strip inside it. One gesture — `→` on a browser row — hands a track over; `prepare.svelte.ts` is the only path between them, so there is no second, differently-behaved way to set a track aside |
 | 22 | Next-track rail | 🟡 | Suggestions exist inside the sidelist; there is no rail with deltas and reasons |
 | 23 | Track function tagging | ✅ | Ten functions, closed vocabulary, migration 10, browser picker, and `for is opener` in smart folders |
 | 24 | Pairs and relationships | ⬜ | Needs new storage with confidence decay |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **29 done, 33 part, 24 open, 19 standing rules.**
+Of the 105 sections: **30 done, 32 part, 24 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**29 of 86 deliverable sections are complete and 33 more are partly there.**
+**30 of 86 deliverable sections are complete and 32 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 29 whole plus 33 halves over 86 is 53%, and the phase view is stricter
+way: 30 whole plus 32 halves over 86 is 53%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

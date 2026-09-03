@@ -43,6 +43,7 @@
     type SurfacePlacement,
     type Workspace,
   } from "./api";
+  import SideView from "./SideView.svelte";
   import Watershed from "./Watershed.svelte";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
   import IconButton from "./controls/IconButton.svelte";
@@ -192,6 +193,7 @@
    */
   const DRAWN = [
     "library",
+    "prepare",
     "booth",
     "presets",
     "sampler",
@@ -233,6 +235,7 @@
    */
   const HOME: Record<Drawn, Dock> = {
     library: "bottom",
+    prepare: "right",
     booth: "bottom",
     log: "bottom",
     presets: "right",
@@ -1053,6 +1056,14 @@
     <div class="go">
       <nav class="go-group" aria-label="Panels">
         <IconButton icon="fa-solid fa-folder-open" label="Browse" title="Find and load tracks" active={isOpen("library")} onClick={() => toggleSurface("library")} />
+        <!--
+          Prepare: what you have set aside for the next twenty minutes, and
+          what follows from the decks. Its own surface rather than a corner of
+          the browser, which is what the directive's §21 means by first class
+          -- the library can be along the bottom and this beside the decks, or
+          this alone while a set is planned.
+        -->
+        <IconButton icon="fa-solid fa-layer-group" label="Prepare" title="Tracks set aside, and what comes next" active={isOpen("prepare")} onClick={() => toggleSurface("prepare")} />
         <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={isOpen("presets")} onClick={() => toggleSurface("presets")} />
         <!--
           The booth: microphone, automix, a plugin insert and the master
@@ -1277,8 +1288,12 @@
     a decision; it is what one variable does.
   -->
   {#snippet surfaceLibrary()}
-    <Browse enabled={ready} deckCount={deckCount} decks={snapshot?.decks ?? []} />
+    <Browse enabled={ready} deckCount={deckCount} />
   {/snippet}
+  {#snippet surfacePrepare()}
+    <SideView enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
+  {/snippet}
+
   {#snippet surfaceBooth()}
     {#if snapshot}
       <div class="mixer">
@@ -1455,6 +1470,7 @@
       </header>
       <div class="surface-body">
         {#if placement.surface === "library"}{@render surfaceLibrary()}
+        {:else if placement.surface === "prepare"}{@render surfacePrepare()}
         {:else if placement.surface === "booth"}{@render surfaceBooth()}
         {:else if placement.surface === "presets"}{@render surfacePresets()}
         {:else if placement.surface === "assistant"}{@render surfaceAssistant()}

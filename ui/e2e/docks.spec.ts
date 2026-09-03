@@ -24,6 +24,7 @@ import { errorsThrown, openShell } from "./shell";
  */
 const PANELS: { button: string; surface: string }[] = [
   { button: "Browse", surface: "library" },
+  { button: "Prepare", surface: "prepare" },
   { button: "Presets", surface: "presets" },
   { button: "Booth", surface: "booth" },
   { button: "Sampler", surface: "sampler" },
@@ -108,6 +109,90 @@ test.describe("the dock manager", () => {
       assistant!.x,
       "the assistant is not to the right of the decks, so it is not in the side dock",
     ).toBeGreaterThan(deck!.x + deck!.width - 1);
+  });
+
+  /**
+   * The directive's §21: Prepare is first class, and the gesture still works.
+   *
+   * Prepare used to be a child of the browser -- mounted inside the library
+   * panel and handed a track by a prop, so it could only exist where the
+   * library was and only while the library was open. Making it a surface of
+   * its own is what "first class" means, and the risk of the move is exactly
+   * what §21 warns about: an inconsistent Prepare gesture, which is the thing
+   * Engine DJ users complain about.
+   *
+   * Two halves could break. They must open together over the decks, which is
+   * the point of moving it; and the handoff must survive the two being
+   * siblings rather than parent and child, which is what
+   * `prepare.svelte.ts` carries.
+   */
+  test("the library and Prepare are separate surfaces that open together", async ({
+    page,
+  }) => {
+    await openShell(page, "/");
+    await page.getByRole("button", { name: "Browse", exact: true }).click();
+    await page.getByRole("button", { name: "Prepare", exact: true }).click();
+
+    await expect(page.locator('.surface[data-surface="library"]')).toBeVisible();
+    await expect(page.locator('.surface[data-surface="prepare"]')).toBeVisible();
+    await expect(
+      page.locator(".deck").first(),
+      "the decks went away when the library and Prepare were both opened",
+    ).toBeVisible();
+  });
+
+  /**
+   * **The gesture itself**, which is what §21 is actually about.
+   *
+   * The two tests around this one prove the surfaces open. They do not prove
+   * that pressing → in the browser reaches Prepare, and the difference is not
+   * academic: replacing the browser's handler with an empty function broke
+   * nothing, because the fixture had no rows to press. A workflow test needs
+   * something to act on, so `shell.ts` now answers `library_search` with one
+   * record.
+   *
+   * What is asserted is the command, not a rendered list: the sidelist's
+   * contents come from Rust and this harness answers with an empty one, so the
+   * honest claim is that the press crossed from the browser to the Prepare
+   * space and asked for the right track.
+   */
+  test("setting a track aside from the browser reaches Prepare", async ({ page }) => {
+    await openShell(page, "/");
+    await page.getByRole("button", { name: "Browse", exact: true }).click();
+    await page.getByRole("button", { name: "Prepare", exact: true }).click();
+
+    await page.evaluate(() => ((window as unknown as Record<string, unknown>).__asked = []));
+    await page.getByRole("button", { name: "Set aside Bachata Rosa" }).click();
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () => (window as unknown as { __asked: string[] }).__asked,
+          ),
+        {
+          message:
+            "pressing the browser's set-aside button did not reach the Prepare " +
+            "space -- the two are sibling surfaces now, and the handoff between " +
+            "them is `prepare.svelte.ts`",
+        },
+      )
+      .toContain("sidelist_add");
+  });
+
+  /**
+   * Prepare opens on its own, with no library in sight.
+   *
+   * The thing that was impossible before, and the whole of §21: planning a set
+   * is a different activity from browsing, and it should not require the
+   * browser to be on screen.
+   */
+  test("Prepare opens without the library", async ({ page }) => {
+    await openShell(page, "/");
+    await page.getByRole("button", { name: "Prepare", exact: true }).click();
+
+    await expect(page.locator('.surface[data-surface="prepare"]')).toBeVisible();
+    await expect(page.locator('.surface[data-surface="library"]')).toHaveCount(0);
   });
 
   /** A surface closes from its own header, not only from the top bar. */

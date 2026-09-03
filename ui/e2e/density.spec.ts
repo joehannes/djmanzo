@@ -16,7 +16,7 @@
  * a height gets; only a browser can say whether the deck that band produces
  * actually fits, and that is the claim that was wrong.
  */
-import { expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 
 import { openShell } from "./shell";
 
@@ -31,6 +31,35 @@ import { openShell } from "./shell";
  */
 const FITS_FROM = 1000;
 
+/**
+ * Wait until the layout has stopped moving.
+ *
+ * Two animation frames is not enough, and the failure is instructive: changing
+ * the density band rewrites the root font size, every `rem` in the interface
+ * reflows, and a measurement taken in the middle of that reads a deck body
+ * that needs 591 px inside a stage that has 534 -- neither the old layout nor
+ * the new one. The test was green at first and went red on an unrelated
+ * change, which is what a race looks like.
+ *
+ * So this waits for the number to stop changing rather than for a fixed count
+ * of frames. Bounded, so a genuinely oscillating layout fails the test rather
+ * than hanging it.
+ */
+async function settle(page: Page) {
+  await page.evaluate(async () => {
+    const frame = () => new Promise((done) => requestAnimationFrame(done));
+    const height = () =>
+      (document.querySelector(".deck .deck-body") as HTMLElement).clientHeight;
+    let previous = -1;
+    for (let tries = 0; tries < 30; tries += 1) {
+      await frame();
+      const now = height();
+      if (now === previous) return;
+      previous = now;
+    }
+  });
+}
+
 test.describe("the interface adapts to the window", () => {
   test("a deck shows all of itself at every window tall enough for one", async ({
     page,
@@ -39,15 +68,9 @@ test.describe("the interface adapts to the window", () => {
     const measured: string[] = [];
     const scrolling: string[] = [];
 
-    for (const height of [1000, 1100, 1200, 1400, 1600]) {
+    for (const height of [1000, 1020, 1100, 1200, 1300, 1500, 1600, 1700]) {
       await page.setViewportSize({ width: 1280, height });
-      // Two frames, so the resize listener has run and layout has settled.
-      await page.evaluate(
-        () =>
-          new Promise((done) =>
-            requestAnimationFrame(() => requestAnimationFrame(done)),
-          ),
-      );
+      await settle(page);
       // The deck's *content* against the room it has, not the deck against the
       // stage -- the deck is bounded by the stage now, so that comparison is
       // true by construction and would assert nothing. What can still be

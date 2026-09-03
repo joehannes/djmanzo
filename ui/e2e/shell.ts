@@ -194,7 +194,32 @@ const ANSWERS: Record<string, unknown> = {
     { slug: "peak", label: "Peak", about: "The top of an arc -- spent, not saved.", count: 0 },
   ],
   sidelist: [],
-  library_search: [],
+  sidelist_add: null,
+  // One record, so a test can press a gesture *on* something.
+  //
+  // An empty library is the state in which every row-level gesture is
+  // trivially fine, which is why breaking the browser's "set aside" button
+  // failed nothing: there was no row to press it on. A fixture with one track
+  // is the difference between testing the panel and testing the workflow.
+  library_search: [
+    {
+      id: "a".repeat(64),
+      path: "/music/bachata-rosa.flac",
+      title: "Bachata Rosa",
+      artist: "Juan Luis Guerra",
+      album: null,
+      genre: "Bachata",
+      year: 1990,
+      duration_seconds: 244,
+      bpm: 124,
+      key: "8A",
+      loudness_lufs: null,
+      analysed: true,
+      play_count: 0,
+      rating: null,
+      colour: null,
+    },
+  ],
   default_music_folder: null,
   library_status: {
     tracks: 0,
@@ -208,8 +233,8 @@ const ANSWERS: Record<string, unknown> = {
   // The real bands, so the harness measures the interface a DJ gets at this
   // window size rather than one at a density nothing chooses.
   density_bands: [
-    [1330, "Relaxed", 1.15],
-    [1050, "Standard", 1.0],
+    [1460, "Relaxed", 1.15],
+    [1090, "Standard", 1.0],
     [1020, "Compact", 0.92],
     [980, "Pro Dense", 0.86],
     [0, "Ultra Dense", 0.8],
