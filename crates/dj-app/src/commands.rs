@@ -5249,6 +5249,57 @@ pub fn layout_tree(state: State<'_, AppState>) -> crate::widgets::Resolved {
     crate::widgets::resolve(&crate::widgets::from_layout(&layout))
 }
 
+// -- the cockpit ------------------------------------------------------------
+
+/// Every surface the cockpit can place, with where it may go and what it costs.
+///
+/// The counterpart of `widget_catalog` for panels rather than for the things
+/// inside a deck, and the same reasoning applies: a dock manager -- or the
+/// assistant proposing an arrangement -- should be written against what exists
+/// rather than against a list somebody typed twice.
+#[tauri::command]
+#[must_use]
+pub fn cockpit_surfaces() -> &'static [crate::cockpit::Surface] {
+    crate::cockpit::surfaces()
+}
+
+/// The arrangements that ship, for the picker.
+#[tauri::command]
+#[must_use]
+pub fn cockpit_workspaces() -> Vec<crate::cockpit::Workspace> {
+    crate::cockpit::workspaces()
+}
+
+/// How the cockpit is arranged, checked against what can actually be drawn.
+///
+/// Resolved rather than returned raw, so the interface never has to decide
+/// whether a stored placement is legal -- the same division `layout_tree`
+/// already draws between Rust owning the vocabulary and the interface owning
+/// the pixels.
+#[tauri::command]
+#[must_use]
+pub fn cockpit_workspace(state: State<'_, AppState>) -> crate::cockpit::Resolved {
+    let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
+    crate::cockpit::resolve(&stored)
+}
+
+/// Remember how the cockpit is arranged, and hand back what was kept.
+///
+/// The round trip matters: a placement the resolver corrected -- a surface
+/// opened below the width it needs, a dock it cannot go in -- comes back
+/// corrected, so what is stored and what is drawn are the same thing. Storing
+/// the raw request and drawing the resolved one is how the two drift.
+#[tauri::command]
+#[must_use]
+pub fn set_cockpit_workspace(
+    state: State<'_, AppState>,
+    workspace: crate::cockpit::Workspace,
+) -> crate::cockpit::Resolved {
+    let resolved = crate::cockpit::resolve(&workspace);
+    state.set_workspace(&resolved.workspace);
+    resolved
+}
+
 // ---------------------------------------------------------------- controllers
 
 /// What is plugged in and what is listening to it.

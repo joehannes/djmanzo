@@ -837,6 +837,49 @@ impl AppState {
         }
     }
 
+    /// The file the cockpit's arrangement is written to.
+    ///
+    /// The whole workspace rather than a name, unlike the layout choice above,
+    /// and for the opposite reason: a workspace is not a file the DJ keeps and
+    /// edits, it is the shape they last dragged the application into. Storing
+    /// a name would mean every rearrangement had to be saved under one before
+    /// it survived a restart, which is a dialog in the middle of setting up.
+    fn workspace_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("workspace.json"))
+    }
+
+    /// How the cockpit was arranged when djmanzo last closed.
+    ///
+    /// `None` when there is nothing stored or what is stored cannot be read.
+    /// A corrupt file is a warning and a fresh start rather than a failure to
+    /// open: the arrangement of the panels is not worth refusing to launch
+    /// over, least of all in the ten minutes before a set.
+    #[must_use]
+    pub fn workspace(&self) -> Option<crate::cockpit::Workspace> {
+        let path = self.workspace_path()?;
+        let text = std::fs::read_to_string(&path).ok()?;
+        match serde_json::from_str(&text) {
+            Ok(workspace) => Some(workspace),
+            Err(error) => {
+                tracing::warn!(%error, ?path, "starting from the default cockpit");
+                None
+            }
+        }
+    }
+
+    /// Remember how the cockpit is arranged.
+    pub fn set_workspace(&self, workspace: &crate::cockpit::Workspace) {
+        let Some(path) = self.workspace_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(workspace) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "the cockpit arrangement will not survive a restart");
+        }
+    }
+
     /// How the background identifier is getting on.
     #[must_use]
     pub fn identify_progress(&self) -> Option<Arc<crate::library::IdentifyProgress>> {

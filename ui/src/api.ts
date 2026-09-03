@@ -1614,6 +1614,84 @@ export const layoutVocabulary = () => invoke<LayoutVocabulary>("layout_vocabular
 /** The chosen layout, upconverted and checked. */
 export const layoutTree = () => invoke<ResolvedLayout>("layout_tree");
 
+// -- the cockpit ------------------------------------------------------------
+
+/** Where a surface can be put. */
+export type Dock = "left" | "right" | "bottom" | "overlay" | "detached";
+
+export type SurfaceCategory =
+  | "performance"
+  | "library"
+  | "planning"
+  | "assistant"
+  | "utility";
+
+/**
+ * A panel the cockpit can show, as Rust describes it.
+ *
+ * The same shape as a `Widget`, deliberately -- a name, what it is, where it
+ * may go and what it costs -- because the two are checked by the same rules.
+ */
+export interface Surface {
+  name: string;
+  title: string;
+  about: string;
+  category: SurfaceCategory;
+  /** Smallest size at which this is still usable, in CSS pixels. */
+  least: [number, number];
+  prefer: [number, number];
+  priority: number;
+  performance_critical: boolean;
+  detachable: boolean;
+  stackable: boolean;
+  collapsible: boolean;
+  contextual: boolean;
+  docks: Dock[];
+}
+
+/** A surface, placed. */
+export interface SurfacePlacement {
+  surface: string;
+  dock: Dock;
+  order: number;
+  size?: number | null;
+  collapsed: boolean;
+  pinned: boolean;
+}
+
+export type Density = "relaxed" | "standard" | "compact" | "pro-dense" | "ultra-dense";
+export type Focus = "performing" | "preparing" | "planning" | "learning" | "supervising";
+
+/** A saved arrangement of the cockpit. */
+export interface Workspace {
+  name: string;
+  about: string;
+  surfaces: SurfacePlacement[];
+  density: Density;
+  focus: Focus;
+  theme: string;
+  decks: number;
+  frozen: boolean;
+}
+
+export interface ResolvedWorkspace {
+  workspace: Workspace;
+  /** What was corrected or skipped, and why. Shown, not swallowed. */
+  notes: string[];
+}
+
+export const cockpitSurfaces = () => invoke<Surface[]>("cockpit_surfaces");
+export const cockpitWorkspaces = () => invoke<Workspace[]>("cockpit_workspaces");
+export const cockpitWorkspace = () => invoke<ResolvedWorkspace>("cockpit_workspace");
+/**
+ * Store an arrangement and take back what was kept.
+ *
+ * The round trip is the point: a placement Rust corrected comes back
+ * corrected, so what is stored and what is drawn cannot drift apart.
+ */
+export const setCockpitWorkspace = (workspace: Workspace) =>
+  invoke<ResolvedWorkspace>("set_cockpit_workspace", { workspace });
+
 export const exportSession = (session: string, path: string) =>
   invoke<number>("export_session", { session, path });
 

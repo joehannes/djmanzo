@@ -32,8 +32,14 @@
     formatTime,
     setWatershed,
     watershedShowing,
+    cockpitSurfaces,
+    cockpitWorkspace,
+    setCockpitWorkspace,
+    type Dock,
     type Layout,
     type Placed,
+    type SurfacePlacement,
+    type Workspace,
   } from "./api";
   import Watershed from "./Watershed.svelte";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
@@ -100,7 +106,6 @@
   let error = $state<string | null>(null);
   let snapshot = $state<Snapshot | null>(null);
   let log = $state<string[]>([]);
-  let showLog = $state(false);
 
   /**
    * Whether a mistake right now is expensive, from the assistant's occasion.
@@ -147,17 +152,165 @@
   let divergence = $state<DivergenceLine[] | null>(null);
   let logError = $state<string | null>(null);
   let slowFrames = $state<number | null>(null);
-  /** Which side panel is open, if any. Only one at a time: the decks matter more. */
-  let panel = $state<
-    | "none"
-    | "browse"
-    | "assistant"
-    | "presets"
-    | "sampler"
-    | "settings"
-    | "keyboard"
-    | "mapping"
-  >("none");
+  /**
+   * How the cockpit is arranged: which surfaces are open, and where.
+   *
+   * This replaced a single `panel` variable that held one of eight names, so
+   * exactly one panel could be open. The audit's headline finding was that
+   * the consequence of that one variable is that **a DJ cannot see the room
+   * and the library at the same time** -- not because anybody decided it, but
+   * because the shell was shaped that way years of features ago.
+   *
+   * The arrangement lives in Rust (`dj_app::cockpit`), is checked there
+   * against what can actually be drawn, and is stored between sessions.
+   */
+  let workspace = $state<Workspace | null>(null);
+
+  /**
+   * What the resolver corrected or skipped.
+   *
+   * Same posture as the layout notes above: a workspace that half-loaded in
+   * silence is worse than one that says which half.
+   */
+  let workspaceNotes = $state<string[]>([]);
+
+  /**
+   * The surfaces this build can actually draw, and what each is called.
+   *
+   * `cockpit_surfaces()` lists twenty; these eight are the ones that were
+   * already top-level panels, so this migration adds docking without moving
+   * any feature. The rest are components nested inside these -- the room
+   * sensor inside the assistant, the journal inside the browser -- and
+   * promoting them means removing them from their parent, which is its own
+   * change rather than a side effect of this one.
+   *
+   * A stored workspace naming a surface not in this list is skipped with a
+   * note. That is the same rule the widget registry follows, and it is what
+   * lets a workspace written by a later djmanzo open on this one.
+   */
+  const DRAWN = [
+    "library",
+    "presets",
+    "sampler",
+    "assistant",
+    "settings",
+    "keys",
+    "controllers",
+    "log",
+  ] as const;
+  type Drawn = (typeof DRAWN)[number];
+
+  /** The surfaces that are open, in dock order. */
+  const placements = $derived(
+    (workspace?.surfaces ?? []).filter((p) =>
+      (DRAWN as readonly string[]).includes(p.surface),
+    ),
+  );
+
+  const inDock = (dock: Dock) =>
+    placements.filter((p) => p.dock === dock).sort((a, b) => a.order - b.order);
+
+  const rightDock = $derived(inDock("right"));
+  const bottomDock = $derived(inDock("bottom"));
+  const leftDock = $derived(inDock("left"));
+  /** True when any dock has something in it, so the stage yields room. */
+  const docked = $derived(placements.length > 0);
+
+  const isOpen = (name: Drawn) => placements.some((p) => p.surface === name);
+
+  /**
+   * Where a surface goes when it is opened by its toolbar button.
+   *
+   * From the surface's own preferred size rather than from a table here:
+   * something wider than it is tall wants the bottom, and something taller
+   * than it is wide wants the side. The library prefers 900x380 and lands
+   * along the bottom; settings prefers 620x560 and lands beside the decks.
+   * A rule beats a list of special cases, and this one is derived from a
+   * number Rust already publishes.
+   */
+  const HOME: Record<Drawn, Dock> = {
+    library: "bottom",
+    log: "bottom",
+    presets: "right",
+    sampler: "right",
+    assistant: "right",
+    settings: "right",
+    keys: "right",
+    controllers: "right",
+  };
+
+  /**
+   * Open or close a surface, and remember it.
+   *
+   * The write goes through Rust and the answer replaces the local state, so a
+   * placement the resolver corrected is the one drawn. Storing the request and
+   * drawing the answer is how the two drift apart.
+   */
+  async function toggleSurface(name: Drawn) {
+    const current = workspace ?? {
+      name: "Custom",
+      about: "",
+      surfaces: [],
+      density: "standard" as const,
+      focus: "performing" as const,
+      theme: "",
+      decks: deckCount,
+      frozen: false,
+    };
+    const already = current.surfaces.some((p) => p.surface === name);
+    const surfaces: SurfacePlacement[] = already
+      ? current.surfaces.filter((p) => p.surface !== name)
+      : [
+          ...current.surfaces,
+          {
+            surface: name,
+            dock: HOME[name],
+            // Newest last within its dock, which is where the eye expects the
+            // thing it just opened.
+            order: current.surfaces.length,
+            size: null,
+            collapsed: false,
+            pinned: false,
+          },
+        ];
+
+    // Optimistic, then corrected. The panel appears on the press rather than
+    // after a round trip to the filesystem, which at a laptop's worst moment
+    // is not instant.
+    workspace = { ...current, surfaces };
+    if (name === "log" && !already) log = await sessionLog().catch(() => log);
+    try {
+      const resolved = await setCockpitWorkspace(workspace);
+      workspace = resolved.workspace;
+      workspaceNotes = resolved.notes;
+    } catch {
+      // Keeping the optimistic state: the DJ pressed a button and the panel
+      // opened, and failing to write a preferences file is not a reason to
+      // close it again under them.
+    }
+  }
+
+  /** What a surface is called, from Rust rather than from a list here. */
+  let surfaceTitles = $state<Record<string, string>>({});
+  const titleOf = (name: string) => surfaceTitles[name] ?? name;
+
+  async function loadWorkspace() {
+    try {
+      const known = await cockpitSurfaces();
+      surfaceTitles = Object.fromEntries(known.map((s) => [s.name, s.title]));
+    } catch {
+      // A surface with no title falls back to its name, which is still a word
+      // a DJ can read -- worse than "Session log", better than an empty header.
+    }
+    try {
+      const resolved = await cockpitWorkspace();
+      workspace = resolved.workspace;
+      workspaceNotes = resolved.notes;
+    } catch {
+      workspace = null;
+      workspaceNotes = [];
+    }
+  }
 
   /**
    * Mappings the editor can start a draft from.
@@ -280,7 +433,7 @@
     layout = next;
     deckCount = next.decks;
     document.documentElement.style.setProperty("--density", String(next.density));
-    if (next.browser && panel === "none") panel = "browse";
+    if (next.browser && !isOpen("library")) void toggleSurface("library");
     // Not when restoring, or every start-up would rewrite the file it just
     // read — harmless, but it makes the file's timestamp a lie about when the
     // DJ last chose anything.
@@ -415,6 +568,10 @@
 
   $effect(() => {
     void loadLayouts();
+  });
+
+  $effect(() => {
+    void loadWorkspace();
   });
 
   $effect(() => {
@@ -644,7 +801,7 @@
       error = String(e);
       active = null;
       // Show settings so the user can correct the audio configuration.
-      panel = "settings";
+      if (!isOpen("settings")) void toggleSurface("settings");
     }
   }
 
@@ -675,11 +832,6 @@
     } catch (e) {
       error = String(e);
     }
-  }
-
-  async function toggleLog() {
-    showLog = !showLog;
-    if (showLog) log = await sessionLog();
   }
 
   const load = $derived(snapshot?.master.cpu_load ?? 0);
@@ -728,7 +880,7 @@
     </div>
 
     <div class="device">
-      {#if panel === "settings"}
+      {#if isOpen("settings")}
         <select bind:value={selectedDevice} disabled={devices.length === 0}>
           {#each devices as device (device.id)}
             <option value={device.id}>
@@ -774,15 +926,15 @@
         <button
           class="device-brief"
           title={active ? `Playing out of ${active.name}. Press to change it.` : "Nothing is open. Press to choose a sound card."}
-          onclick={() => (panel = "settings")}
+          onclick={() => toggleSurface("settings")}
         >
           {active ? active.name : "No device"}
         </button>
         <IconButton
           icon="fa-solid fa-hand-pointer"
           title="Map a controller"
-          active={panel === "mapping"}
-          onClick={() => (panel = panel === "mapping" ? "none" : "mapping")}
+          active={isOpen("controllers")}
+          onClick={() => toggleSurface("controllers")}
         />
       {/if}
     </div>
@@ -844,18 +996,18 @@
     -->
     <div class="go">
       <nav class="go-group" aria-label="Panels">
-        <IconButton icon="fa-solid fa-folder-open" label="Browse" title="Find and load tracks" active={panel === "browse"} onClick={() => (panel = panel === "browse" ? "none" : "browse")} />
-        <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={panel === "presets"} onClick={() => (panel = panel === "presets" ? "none" : "presets")} />
+        <IconButton icon="fa-solid fa-folder-open" label="Browse" title="Find and load tracks" active={isOpen("library")} onClick={() => toggleSurface("library")} />
+        <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={isOpen("presets")} onClick={() => toggleSurface("presets")} />
         <!--
           The panel is for setting the sampler up — loading, modes, routing. The
           playing is done from the pads, which is why this is a thing you open
           rather than something taking room on a deck all night.
         -->
-        <IconButton icon="fa-solid fa-th" label="Sampler" title="Load and route the sample banks" active={panel === "sampler"} onClick={() => (panel = panel === "sampler" ? "none" : "sampler")} />
-        <IconButton icon="fa-solid fa-robot" label="Assistant" title="Ask for a next track, or a transition" active={panel === "assistant"} onClick={() => (panel = panel === "assistant" ? "none" : "assistant")} />
-        <IconButton icon="fa-solid fa-cog" label="Settings" title="Audio, sources, controllers, timecode" active={panel === "settings"} onClick={() => (panel = panel === "settings" ? "none" : "settings")} />
-        <IconButton icon="fa-solid fa-keyboard" label="Keys" title={keyboard.enabled ? "Keyboard shortcuts — enabled" : "Keyboard shortcuts — disabled"} active={panel === "keyboard"} onClick={() => (panel = panel === "keyboard" ? "none" : "keyboard")} />
-        <IconButton icon="fa-solid fa-file-lines" label="Log" title="What the session has done so far" onClick={toggleLog} />
+        <IconButton icon="fa-solid fa-th" label="Sampler" title="Load and route the sample banks" active={isOpen("sampler")} onClick={() => toggleSurface("sampler")} />
+        <IconButton icon="fa-solid fa-robot" label="Assistant" title="Ask for a next track, or a transition" active={isOpen("assistant")} onClick={() => toggleSurface("assistant")} />
+        <IconButton icon="fa-solid fa-cog" label="Settings" title="Audio, sources, controllers, timecode" active={isOpen("settings")} onClick={() => toggleSurface("settings")} />
+        <IconButton icon="fa-solid fa-keyboard" label="Keys" title={keyboard.enabled ? "Keyboard shortcuts — enabled" : "Keyboard shortcuts — disabled"} active={isOpen("keys")} onClick={() => toggleSurface("keys")} />
+        <IconButton icon="fa-solid fa-file-lines" label="Log" title="What the session has done so far" active={isOpen("log")} onClick={() => toggleSurface("log")} />
       </nav>
 
       <!--
@@ -1051,7 +1203,182 @@
     you search for the next track while the current one is playing, so both
     have to be on screen at once.
   -->
-  <div class="stage" class:shared={panel !== "none"}>
+  <!--
+    One snippet per surface, then the docks that draw them.
+
+    This is the shape the audit asked for. What was here was a single `panel`
+    variable holding one of eight names and one `<div class="panel">` rendering
+    whichever it held -- so opening the assistant closed the browser, and a DJ
+    could not look at the room and the library at once. Nothing about that was
+    a decision; it is what one variable does.
+  -->
+  {#snippet surfaceLibrary()}
+    <Browse enabled={ready} deckCount={deckCount} decks={snapshot?.decks ?? []} />
+  {/snippet}
+  {#snippet surfacePresets()}
+    <Presets enabled={ready} deckCount={2} />
+  {/snippet}
+  {#snippet surfaceAssistant()}
+    <Assistant enabled={ready} />
+  {/snippet}
+  {#snippet surfaceKeys()}
+    <Shortcuts {keyboard} onclose={() => toggleSurface("keys")} />
+  {/snippet}
+  {#snippet surfaceControllers()}
+    <!-- Two panels in the space of one: what is connected, then what it does. -->
+    <div class="stack">
+      <Controllers mappings={controlMappings} />
+      <MappingEditor mappings={controlMappings} />
+    </div>
+  {/snippet}
+  {#snippet surfaceSampler()}
+    {#if snapshot}
+      <Sampler sampler={snapshot.master.sampler} enabled={ready} {send} />
+    {/if}
+  {/snippet}
+  {#snippet surfaceSettings()}
+    <Settings onLogoChange={refreshLogo} deviceChannels={active?.channels ?? null} />
+  {/snippet}
+  {#snippet surfaceLog()}
+    <div class="log">
+      <p class="hint">
+        Every action, in order, with its timestamp. This log is what makes a set
+        replayable — see ADR-0003.
+      </p>
+      <pre class="mono">{log.length ? log.join("\n") : "(nothing yet)"}</pre>
+
+      <!--
+        Saving and comparing. The path is typed rather than picked from a
+        dialog: this panel is a developer and practice tool, and a file picker
+        here would be more ceremony than the thing is worth.
+      -->
+      <div class="log-tools">
+        <label>
+          Save as
+          <input
+            type="text"
+            bind:value={savePath}
+            placeholder="/home/you/sets/friday.djset"
+            spellcheck="false"
+          />
+        </label>
+        <button
+          disabled={!savePath || log.length === 0}
+          onclick={async () => {
+            try {
+              saved = await sessionSave(savePath);
+              logError = null;
+            } catch (e) {
+              logError = String(e);
+            }
+          }}>Save</button
+        >
+      </div>
+
+      {#if saved}
+        <p class="hint">
+          {saved.events} events over {saved.seconds.toFixed(0)}s, {saved.tracks}
+          {saved.tracks === 1 ? "track" : "tracks"} → <span class="mono">{saved.path}</span>
+        </p>
+      {/if}
+
+      <div class="log-tools">
+        <label>
+          Compare
+          <input type="text" bind:value={diffA} placeholder="take one" spellcheck="false" />
+        </label>
+        <label>
+          against
+          <input type="text" bind:value={diffB} placeholder="take two" spellcheck="false" />
+        </label>
+        <button
+          disabled={!diffA || !diffB}
+          onclick={async () => {
+            try {
+              divergence = await sessionDiff(diffA, diffB);
+              logError = null;
+            } catch (e) {
+              logError = String(e);
+              divergence = null;
+            }
+          }}>Diff</button
+        >
+      </div>
+
+      {#if logError}
+        <p class="hint error">{logError}</p>
+      {/if}
+
+      {#if divergence}
+        {#if divergence.length === 0}
+          <p class="hint">The two takes are the same set, move for move.</p>
+        {:else}
+          <ul class="divergence">
+            {#each divergence as line, i (line.kind + line.event + i)}
+              <li class={line.kind}>
+                <span class="mono">{line.event}</span>
+                <span class="delta">
+                  {#if line.kind === "drift"}
+                    {line.seconds > 0 ? "+" : ""}{line.seconds.toFixed(2)}s
+                  {:else if line.kind === "only_in_first"}
+                    only in the first
+                  {:else}
+                    only in the second
+                  {/if}
+                </span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      {/if}
+    </div>
+  {/snippet}
+
+  {#snippet surface(placement: SurfacePlacement)}
+    <!--
+      A titled, closable frame around every surface.
+      
+      The old single panel had no chrome at all, because there was only ever one
+      of it and the toolbar button that opened it was the label. With two or
+      three docked together, each needs to say what it is and offer the way out
+      -- otherwise "close the assistant" means finding the right toolbar button
+      again, which is a trip to the other end of the window mid-set.
+    -->
+    <section class="surface" data-surface={placement.surface}>
+      <header class="surface-head">
+        <h2>{titleOf(placement.surface)}</h2>
+        <button
+          class="shut"
+          title="Close {titleOf(placement.surface)}"
+          aria-label="Close {titleOf(placement.surface)}"
+          onclick={() => toggleSurface(placement.surface as Drawn)}
+        >&times;</button>
+      </header>
+      <div class="surface-body">
+        {#if placement.surface === "library"}{@render surfaceLibrary()}
+        {:else if placement.surface === "presets"}{@render surfacePresets()}
+        {:else if placement.surface === "assistant"}{@render surfaceAssistant()}
+        {:else if placement.surface === "keys"}{@render surfaceKeys()}
+        {:else if placement.surface === "controllers"}{@render surfaceControllers()}
+        {:else if placement.surface === "sampler"}{@render surfaceSampler()}
+        {:else if placement.surface === "settings"}{@render surfaceSettings()}
+        {:else if placement.surface === "log"}{@render surfaceLog()}
+        {/if}
+      </div>
+    </section>
+  {/snippet}
+
+  <div class="cockpit">
+  {#if leftDock.length > 0}
+    <div class="dock side left">
+      {#each leftDock as placement (placement.surface)}
+        {@render surface(placement)}
+      {/each}
+    </div>
+  {/if}
+
+  <div class="middle">
+  <div class="stage" class:shared={docked}>
   {#if snapshot}
     <!--
       The watershed. Above the decks rather than replacing them: it answers
@@ -1146,125 +1473,33 @@
   {/if}
   </div>
 
-  {#if panel !== "none"}
-    <div class="panel">
-      {#if panel === "browse"}
-        <Browse enabled={ready} deckCount={deckCount} decks={snapshot?.decks ?? []} />
-      {:else if panel === "presets"}
-        <Presets enabled={ready} deckCount={2} />
-      {:else if panel === "assistant"}
-        <Assistant enabled={ready} />
-      {:else if panel === "keyboard"}
-        <Shortcuts {keyboard} onclose={() => (panel = "none")} />
-      {:else if panel === "mapping"}
-        <div class="stack">
-          <Controllers mappings={controlMappings} />
-          <MappingEditor mappings={controlMappings} />
-        </div>
-      {:else if panel === "sampler"}
-        {#if snapshot}
-          <Sampler sampler={snapshot.master.sampler} enabled={ready} {send} />
-        {/if}
-      {:else}
-        <Settings onLogoChange={refreshLogo} deviceChannels={active?.channels ?? null} />
-      {/if}
+  {#if bottomDock.length > 0}
+    <div class="dock bottom">
+      {#each bottomDock as placement (placement.surface)}
+        {@render surface(placement)}
+      {/each}
     </div>
   {/if}
+  </div>
 
-  {#if showLog}
-    <section class="log">
-      <h2>Session log</h2>
-      <p class="hint">
-        Every action, in order, with its timestamp. This log is what makes a set
-        replayable — see ADR-0003.
-      </p>
-      <pre class="mono">{log.length ? log.join("\n") : "(nothing yet)"}</pre>
+  {#if rightDock.length > 0}
+    <div class="dock side right">
+      {#each rightDock as placement (placement.surface)}
+        {@render surface(placement)}
+      {/each}
+    </div>
+  {/if}
+  </div>
 
-      <!--
-        Saving and comparing. The path is typed rather than picked from a
-        dialog: this panel is a developer and practice tool, and a file picker
-        here would be more ceremony than the thing is worth.
-      -->
-      <div class="log-tools">
-        <label>
-          Save as
-          <input
-            type="text"
-            bind:value={savePath}
-            placeholder="/home/you/sets/friday.djset"
-            spellcheck="false"
-          />
-        </label>
-        <button
-          disabled={!savePath || log.length === 0}
-          onclick={async () => {
-            try {
-              saved = await sessionSave(savePath);
-              logError = null;
-            } catch (e) {
-              logError = String(e);
-            }
-          }}>Save</button
-        >
-      </div>
-
-      {#if saved}
-        <p class="hint">
-          {saved.events} events over {saved.seconds.toFixed(0)}s, {saved.tracks}
-          {saved.tracks === 1 ? "track" : "tracks"} → <span class="mono">{saved.path}</span>
-        </p>
-      {/if}
-
-      <div class="log-tools">
-        <label>
-          Compare
-          <input type="text" bind:value={diffA} placeholder="take one" spellcheck="false" />
-        </label>
-        <label>
-          against
-          <input type="text" bind:value={diffB} placeholder="take two" spellcheck="false" />
-        </label>
-        <button
-          disabled={!diffA || !diffB}
-          onclick={async () => {
-            try {
-              divergence = await sessionDiff(diffA, diffB);
-              logError = null;
-            } catch (e) {
-              logError = String(e);
-              divergence = null;
-            }
-          }}>Diff</button
-        >
-      </div>
-
-      {#if logError}
-        <p class="hint error">{logError}</p>
-      {/if}
-
-      {#if divergence}
-        {#if divergence.length === 0}
-          <p class="hint">The two takes are the same set, move for move.</p>
-        {:else}
-          <ul class="divergence">
-            {#each divergence as line, i (line.kind + line.event + i)}
-              <li class={line.kind}>
-                <span class="mono">{line.event}</span>
-                <span class="delta">
-                  {#if line.kind === "drift"}
-                    {line.seconds > 0 ? "+" : ""}{line.seconds.toFixed(2)}s
-                  {:else if line.kind === "only_in_first"}
-                    only in the first
-                  {:else}
-                    only in the second
-                  {/if}
-                </span>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      {/if}
-    </section>
+  <!--
+    What the arrangement asked for and did not get. Same posture as the layout
+    notes in the bar above: skipping what cannot be drawn is the rule, saying
+    nothing about it is not.
+  -->
+  {#if workspaceNotes.length > 0}
+    <p class="warn-chip notes" title={workspaceNotes.join("\n")}>
+      {workspaceNotes.length} of the saved arrangement could not be drawn
+    </p>
   {/if}
 </main>
 
@@ -1530,13 +1765,157 @@
     color: var(--warn);
   }
 
+  /*
+    The cockpit: a middle column with docks around it.
+
+    A row rather than the column this used to be. The old shell stacked one
+    panel *under* the decks, which is why only one could be open -- two stacked
+    panels on an 800 px window leave nothing for the thing they are both about.
+    Side by side, the library can run along the bottom while the assistant
+    stands beside the decks, which is the arrangement every DJ application
+    converges on and the one the audit found djmanzo structurally could not
+    reach.
+  */
+  .cockpit {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0.9rem;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .middle {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  /*
+    A dock is a stack of surfaces, and it scrolls as one.
+
+    `min-width: 0` and `min-height: 0` on every level of this, because a flex
+    child's default `min-*: auto` refuses to shrink below its content -- which
+    is exactly how the browser panel came to be clipped at djmanzo's own
+    default window size, twice.
+  */
+  .dock {
+    display: flex;
+    gap: 0.6rem;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+  }
+
+  .dock.side {
+    flex-direction: column;
+    /* A share of the width rather than a fixed one, with a floor: a side dock
+       squeezed under about 320 px stops being a panel and becomes a column of
+       ellipses. */
+    flex: 0 1 clamp(320px, 30%, 520px);
+  }
+
+  .dock.bottom {
+    flex-direction: row;
+    flex-wrap: wrap;
+    /* The same floor the old single panel had, and for the same reason: a
+       short window should leave the panel usable rather than a sliver. */
+    min-height: 220px;
+    flex: 1 1 45%;
+  }
+
+  .dock.bottom > .surface {
+    flex: 1 1 420px;
+    min-width: 0;
+  }
+
+  .surface {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  /*
+    Every surface says what it is and how to close it.
+
+    The single panel needed neither: there was one of it, and the toolbar
+    button that opened it was the label. With two or three docked at once,
+    a DJ closing the assistant should not have to find the right button at the
+    other end of the window to do it.
+  */
+  .surface-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-hover);
+    flex: none;
+  }
+
+  .surface-head h2 {
+    margin: 0;
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .surface-head .shut {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.1em;
+    line-height: 1;
+    padding: 0 0.3rem;
+    cursor: pointer;
+  }
+
+  .surface-head .shut:hover {
+    color: var(--text);
+  }
+
+  .surface-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    /*
+      The ceiling that is actually enforced. `.stage` has scrolled since it was
+      written; the old panel did not, so content running past the bottom of the
+      window was cut off by `main`'s hidden overflow -- the last rows of every
+      library table, and any control below them. About eighty pixels at
+      djmanzo's own default size. Surfaces that size themselves correctly are
+      unaffected; the ones that do not are reachable instead of invisible.
+    */
+    overflow: auto;
+    padding: 0.6rem;
+  }
+
+  .warn-chip.notes {
+    margin: 0.4rem 0 0;
+    flex: none;
+  }
+
   .stage {
     display: flex;
     flex-direction: column;
     gap: 0.9rem;
     min-height: 0;
-    /* Takes everything when alone; yields to the panel when one is open, and
-       scrolls rather than clipping if the window is short. */
+    /* Takes everything when alone; yields to the docks when something is open,
+       and scrolls rather than clipping if the window is short. */
     flex: 1;
     overflow: auto;
   }
@@ -1646,7 +2025,7 @@
     min-height: 0;
   }
 
-  .log h2 {
+  .surface[data-surface="log"] h2 {
     margin: 0 0 0.3rem;
     font-size: 0.95rem;
   }

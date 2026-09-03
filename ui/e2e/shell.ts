@@ -57,6 +57,7 @@ import snapshot from "./snapshot.json" with { type: "json" };
  * compared it with a screenshot of the running application.
  */
 import padPages from "./pad-pages.json" with { type: "json" };
+import surfaces from "./surfaces.json" with { type: "json" };
 
 /**
  * Answers for the commands the shell asks on start-up.
@@ -88,6 +89,132 @@ const ANSWERS: Record<string, unknown> = {
   // The `pageErrors` guard added to `openShell` is the general form of that
   // lesson. This entry is the specific one.
   stems_status: { available: true, backend: null, reason: null },
+  // The cockpit opens with nothing docked, which is what "Perform" means and
+  // what a fresh install gets. `set_cockpit_workspace` is answered by the
+  // handler below rather than from this table, because its answer depends on
+  // what was asked.
+  // What the assistant surface asks for.
+  assistant_packs: [],
+  list_llm_providers: [],
+  learned_taste: { favourites: [], plays: 0, confident: false },
+  assistant_state: {
+    provider: "",
+    model: "",
+    spent_usd: 0,
+    cap_usd: 0,
+    unpriced_calls: 0,
+  },
+  assistant_conduct: {
+    posture: "suggest",
+    occasion: "open",
+    decks_held: [],
+    anything_held: false,
+    next_step: "",
+    because: "",
+    mistakes_are_costly: false,
+    verbosity: 1,
+  },
+  room_read: {
+    watching: false,
+    recent: 0,
+    enough: false,
+    notes: [],
+    disagreement: null,
+    hour: null,
+    light: null,
+    movement: null,
+    loudness: null,
+  },
+    // What the presets and settings surfaces ask for.
+  //
+  // The list is long because `Settings.svelte` is one panel over every
+  // preference in the application, and each section asks its own subsystem
+  // whether it is there. All of them answer with a struct or a `Vec` in Rust
+  // and none can be null, so the stub's `null` default is a throw waiting for
+  // whoever first opens the panel under it -- which nothing did until the dock
+  // tests started opening every surface in turn.
+  list_presets: [],
+  preset_folder: null,
+  list_panels: [],
+  list_sources: [],
+  list_inputs: [],
+  secrets_persist: true,
+  music_library: { folders: [], tracks: 0 },
+  stem_out: { deck: null, decks: null, deckCapacity: 6, channels: null },
+  remote_status: {
+    running: false,
+    address: null,
+    token_set: false,
+    error: null,
+    osc: null,
+  },
+  clock_status: {
+    running: false,
+    port: null,
+    error: null,
+    following: null,
+    external_bpm: null,
+  },
+  midi_outputs: { ports: [], unavailable: null },
+  control_status: {
+    inputs: [],
+    open_port: null,
+    open_mapping: null,
+    unavailable: null,
+    keyboard: true,
+    keyboard_name: "",
+  },
+  peer_status: {
+    running: false,
+    address: null,
+    sendTo: null,
+    peers: 0,
+    peerBpm: null,
+    error: null,
+  },
+  timecode_status: {
+    decks: [],
+    formats: [],
+    engineRunning: false,
+    caveat: "",
+  },
+    // The two the keyboard and log surfaces need. Both are `Vec` in Rust.
+  keyboard_keys: [],
+  session_log: [],
+    // What the library surface asks for the moment it opens.
+  //
+  // Answered with the *shape* the application sends, empty. `null` is not a
+  // shape djmanzo ever produces for any of these -- the Rust types are `Vec`
+  // and a struct -- and a component that spreads or maps the answer throws on
+  // it, which ends the render pass and takes the rest of the surface with it.
+  // That is the `stems_status` bug again, and it is why `errorsThrown` exists.
+  list_playlists: [],
+  sidelist: [],
+  library_search: [],
+  default_music_folder: null,
+  library_status: {
+    tracks: 0,
+    pending: 0,
+    failed: [],
+    folders: [],
+    identified: 0,
+    working: false,
+    path: null,
+  },
+  cockpit_surfaces: surfaces,
+  cockpit_workspace: {
+    workspace: {
+      name: "Perform",
+      about: "",
+      surfaces: [],
+      density: "standard",
+      focus: "performing",
+      theme: "",
+      decks: 2,
+      frozen: false,
+    },
+    notes: [],
+  },
 };
 
 /**
@@ -149,6 +276,14 @@ export async function openShell(
             return Promise.resolve(1);
           }
           if (cmd === "plugin:event|unlisten") return Promise.resolve(null);
+          // Echoed rather than tabulated: the application stores what this
+          // hands back and draws that, so a stub returning a fixed answer
+          // would make every dock test measure the fixture instead of the
+          // press. Rust's resolver is tested in Rust; what matters here is
+          // that the round trip carries the arrangement.
+          if (cmd === "set_cockpit_workspace") {
+            return Promise.resolve({ workspace: args.workspace, notes: [] });
+          }
           return Promise.resolve(answers[cmd] ?? null);
         },
         transformCallback: (callback: unknown) => {

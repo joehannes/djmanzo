@@ -692,6 +692,55 @@ pub fn surfaces() -> &'static [Surface] {
             contextual: false,
             docks: SIDE,
         },
+        // The three the audit's list did not have, added when the dock manager
+        // was built and the shell's panels were counted against it. A panel
+        // the model cannot name is a panel the dock manager cannot place, and
+        // Phase 2's gate is that no feature becomes unreachable.
+        Surface {
+            name: "presets",
+            title: "Presets",
+            about: "Effect chains and mix settings, saved and recalled.",
+            category: Category::Performance,
+            least: (320, 200),
+            prefer: (520, 420),
+            priority: 35,
+            performance_critical: false,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            contextual: false,
+            docks: SIDE_OR_BOTTOM,
+        },
+        Surface {
+            name: "keys",
+            title: "Keys",
+            about: "The keyboard shortcuts, and whether they are listening.",
+            category: Category::Utility,
+            least: (320, 240),
+            prefer: (480, 460),
+            priority: 5,
+            performance_critical: false,
+            detachable: false,
+            stackable: false,
+            collapsible: false,
+            contextual: false,
+            docks: SIDE,
+        },
+        Surface {
+            name: "log",
+            title: "Session log",
+            about: "Every action, in order, with its timestamp -- the thing that makes a set replayable.",
+            category: Category::Utility,
+            least: (420, 160),
+            prefer: (900, 300),
+            priority: 5,
+            performance_critical: false,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            contextual: false,
+            docks: SIDE_OR_BOTTOM,
+        },
         Surface {
             name: "settings",
             title: "Settings",
@@ -785,6 +834,105 @@ pub struct Workspace {
     /// not rearrange.
     #[serde(default)]
     pub frozen: bool,
+}
+
+/// The arrangements that ship.
+///
+/// Three, not seventeen. A DJ arrives with a way of working, not with a
+/// vocabulary of workspace names, so these are the three postures the audit
+/// found in the way people actually use the application -- playing, choosing,
+/// and setting the night up -- and everything else is a rearrangement they make
+/// themselves and keep.
+///
+/// **The first one is empty on purpose.** Performing means the decks and
+/// nothing else; a surface that opens itself while somebody is mixing is the
+/// failure mode this whole redesign exists to avoid.
+#[must_use]
+pub fn workspaces() -> Vec<Workspace> {
+    vec![
+        Workspace {
+            name: "Perform".to_owned(),
+            about: "The decks and nothing else.".to_owned(),
+            surfaces: Vec::new(),
+            density: Density::Standard,
+            focus: Focus::Performing,
+            theme: String::new(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Prepare".to_owned(),
+            about: "The library beside the decks, with what is coming next.".to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "library".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "next".to_owned(),
+                    dock: Dock::Right,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Compact,
+            focus: Focus::Preparing,
+            theme: String::new(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Read the room".to_owned(),
+            about: "The library and the assistant at the same time -- the thing the old shell could not do."
+                .to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "library".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "assistant".to_owned(),
+                    dock: Dock::Right,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "room".to_owned(),
+                    dock: Dock::Right,
+                    order: 1,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Compact,
+            focus: Focus::Preparing,
+            theme: String::new(),
+            decks: 2,
+            frozen: false,
+        },
+    ]
+}
+
+/// The one djmanzo opens with when nothing has been stored.
+#[must_use]
+pub fn opening() -> Workspace {
+    workspaces()
+        .into_iter()
+        .next()
+        .expect("djmanzo ships workspaces")
 }
 
 /// What was wrong with a workspace, and what was done about it.

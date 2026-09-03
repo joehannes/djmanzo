@@ -16,6 +16,28 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The dock manager** (cockpit Phase 2). The shell held one `panel` variable
+containing one of eight names, so exactly one panel could be open — and the
+consequence, which the audit named as its headline finding, is that a DJ could
+not look at the room and the library at the same time. Not a decision anybody
+made; just what one variable does.
+
+Surfaces are now placed in docks: a side dock beside the decks and one along
+the bottom, several at once, each in a titled frame that closes from its own
+header. Where a surface goes comes from its own preferred size rather than a
+table of special cases — wider than tall goes below, taller than wide goes
+beside — so the library runs along the bottom while the assistant stands next
+to the decks, with the decks still there. The arrangement lives in Rust,
+is checked there against what can be drawn, and survives a restart.
+
+**Nine more `null` answers in the browser harness**, all the same bug as the
+one that hid the pad zone: the stub answers an unknown command with `null`, no
+Rust type is ever null, and a component that reads a field off the answer
+throws and ends the render pass. They were invisible because nothing had ever
+opened those panels under the harness. The dock tests open every one of them
+and refuse a page error, so this class is now loud instead of silent.
+
+
 **The deck is drawn from the layout tree** (ADR-0008, W3). `Deck.svelte` no
 longer holds the deck's shape in its own markup: it renders a list of named
 widgets in the order the resolved tree gives, and the flat layout upconverts

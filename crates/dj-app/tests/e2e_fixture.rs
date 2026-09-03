@@ -163,6 +163,52 @@ fn the_browser_fixture_has_the_pad_pages_the_interface_asks_for() {
     );
 }
 
+/// The surfaces the cockpit can place, as a golden file.
+///
+/// Generated rather than captured, for the same reason as the pad pages:
+/// `cockpit::surfaces()` is a constant table, so it can be re-derived here and
+/// a golden file fails on any change to it rather than merely on a change to
+/// its shape.
+///
+/// The browser reads it to know what each surface is called. A surface added in
+/// Rust and not blessed here leaves the dock tests measuring a cockpit djmanzo
+/// no longer has.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_surfaces_the_cockpit_can_place() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/surfaces.json");
+    let fresh =
+        serde_json::to_string_pretty(&dj_app::cockpit::surfaces()).expect("the surfaces serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the surfaces");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    // Compared as JSON, not as text, so a Windows checkout's CRLF endings do
+    // not fail every line for a reason with nothing to do with the surfaces.
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored surfaces are JSON");
+    let fresh: serde_json::Value =
+        serde_json::from_str(&fresh).expect("the fresh surfaces are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe cockpit's surfaces have changed, so the browser's dock tests are \
+         measuring a cockpit djmanzo no longer has.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// The fixture has to describe a screen worth measuring.
 ///
 /// Both of these were false in an earlier version of the fixture, and both

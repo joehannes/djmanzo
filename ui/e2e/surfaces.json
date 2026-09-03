@@ -1,0 +1,513 @@
+[
+  {
+    "name": "library",
+    "title": "Library",
+    "about": "The collection, searchable and sortable.",
+    "category": "library",
+    "least": [
+      420,
+      200
+    ],
+    "prefer": [
+      900,
+      380
+    ],
+    "priority": 60,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
+    "name": "prepare",
+    "title": "Prepare",
+    "about": "Records on their way to a deck, before they are on one.",
+    "category": "library",
+    "least": [
+      260,
+      160
+    ],
+    "prefer": [
+      360,
+      380
+    ],
+    "priority": 65,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "next",
+    "title": "Next",
+    "about": "What could come next, and why.",
+    "category": "assistant",
+    "least": [
+      260,
+      90
+    ],
+    "prefer": [
+      360,
+      220
+    ],
+    "priority": 80,
+    "performance_critical": false,
+    "detachable": false,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "plan",
+    "title": "Set plan",
+    "about": "The shape of the night, as a sequence.",
+    "category": "planning",
+    "least": [
+      420,
+      200
+    ],
+    "prefer": [
+      760,
+      320
+    ],
+    "priority": 40,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
+    "name": "room",
+    "title": "Room",
+    "about": "What the floor is doing, against its own earlier state.",
+    "category": "assistant",
+    "least": [
+      200,
+      80
+    ],
+    "prefer": [
+      300,
+      200
+    ],
+    "priority": 75,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "overlay",
+      "detached"
+    ]
+  },
+  {
+    "name": "requests",
+    "title": "Requests",
+    "about": "What the room has asked for.",
+    "category": "assistant",
+    "least": [
+      240,
+      120
+    ],
+    "prefer": [
+      340,
+      300
+    ],
+    "priority": 55,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "assistant",
+    "title": "Assistant",
+    "about": "The second DJ, when spoken to directly.",
+    "category": "assistant",
+    "least": [
+      320,
+      200
+    ],
+    "prefer": [
+      420,
+      420
+    ],
+    "priority": 45,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "stems",
+    "title": "Stems",
+    "about": "The four parts of a record, as performance controls.",
+    "category": "performance",
+    "least": [
+      280,
+      120
+    ],
+    "prefer": [
+      380,
+      220
+    ],
+    "priority": 85,
+    "performance_critical": true,
+    "detachable": false,
+    "stackable": false,
+    "collapsible": true,
+    "contextual": true,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
+    "name": "fx",
+    "title": "Effects",
+    "about": "The rack, its slots and their timing.",
+    "category": "performance",
+    "least": [
+      280,
+      100
+    ],
+    "prefer": [
+      380,
+      180
+    ],
+    "priority": 82,
+    "performance_critical": true,
+    "detachable": false,
+    "stackable": false,
+    "collapsible": true,
+    "contextual": true,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
+    "name": "sampler",
+    "title": "Sampler",
+    "about": "Banks, pads and what is loaded on them.",
+    "category": "performance",
+    "least": [
+      300,
+      160
+    ],
+    "prefer": [
+      420,
+      280
+    ],
+    "priority": 70,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
+    "name": "practice",
+    "title": "Practice",
+    "about": "Two records as a laboratory, without touching the master.",
+    "category": "planning",
+    "least": [
+      520,
+      300
+    ],
+    "prefer": [
+      900,
+      520
+    ],
+    "priority": 30,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": false,
+    "collapsible": false,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
+    "name": "transition",
+    "title": "Transition",
+    "about": "One transition, examined: where, how long, and what happens.",
+    "category": "planning",
+    "least": [
+      420,
+      240
+    ],
+    "prefer": [
+      760,
+      400
+    ],
+    "priority": 50,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
+    "name": "journal",
+    "title": "Journal",
+    "about": "Notes attached to a moment.",
+    "category": "planning",
+    "least": [
+      240,
+      140
+    ],
+    "prefer": [
+      340,
+      320
+    ],
+    "priority": 25,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "history",
+    "title": "History",
+    "about": "What has been played tonight.",
+    "category": "library",
+    "least": [
+      240,
+      140
+    ],
+    "prefer": [
+      340,
+      320
+    ],
+    "priority": 35,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "memory",
+    "title": "From memory",
+    "about": "Find a record from a line, a description or a hum.",
+    "category": "library",
+    "least": [
+      320,
+      200
+    ],
+    "prefer": [
+      420,
+      420
+    ],
+    "priority": 20,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "controllers",
+    "title": "Controllers",
+    "about": "What is plugged in and what is listening to it.",
+    "category": "utility",
+    "least": [
+      320,
+      200
+    ],
+    "prefer": [
+      460,
+      400
+    ],
+    "priority": 15,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "presets",
+    "title": "Presets",
+    "about": "Effect chains and mix settings, saved and recalled.",
+    "category": "performance",
+    "least": [
+      320,
+      200
+    ],
+    "prefer": [
+      520,
+      420
+    ],
+    "priority": 35,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
+    "name": "keys",
+    "title": "Keys",
+    "about": "The keyboard shortcuts, and whether they are listening.",
+    "category": "utility",
+    "least": [
+      320,
+      240
+    ],
+    "prefer": [
+      480,
+      460
+    ],
+    "priority": 5,
+    "performance_critical": false,
+    "detachable": false,
+    "stackable": false,
+    "collapsible": false,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "log",
+    "title": "Session log",
+    "about": "Every action, in order, with its timestamp -- the thing that makes a set replayable.",
+    "category": "utility",
+    "least": [
+      420,
+      160
+    ],
+    "prefer": [
+      900,
+      300
+    ],
+    "priority": 5,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
+    "name": "settings",
+    "title": "Settings",
+    "about": "Everything that is a preference rather than a performance.",
+    "category": "utility",
+    "least": [
+      420,
+      300
+    ],
+    "prefer": [
+      620,
+      560
+    ],
+    "priority": 10,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": false,
+    "collapsible": false,
+    "contextual": false,
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  }
+]
