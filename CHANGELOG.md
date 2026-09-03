@@ -16,6 +16,9 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+
+## v0.14.0 — Prepare and Next are surfaces, and a deck knows what pinning costs
+
 **Set Flow** — §20's third view. The set plan is a dockable surface now rather
 than a page inside the browser's folder tree, and it draws what a plan is
 actually made of: not a list of tracks but a list of **transitions**. Between
@@ -38,9 +41,6 @@ floors are re-derived from that measurement rather than guessed, and a Rust
 test now reads `ui/e2e/shell.ts` and fails when the harness's copy of the table
 drifts from the real one, which is how the sweep came to be measuring an
 application that no longer existed.
-
-
-## v0.14.0 — Prepare and Next are surfaces, and a deck knows what pinning costs
 
 **The next-track rail** — the directive's §22, and a surface of its own rather
 than a tab inside Prepare. It follows whichever deck is playing without being
