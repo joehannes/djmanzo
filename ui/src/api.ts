@@ -1680,6 +1680,15 @@ export interface ResolvedWorkspace {
   notes: string[];
 }
 
+/**
+ * The window heights each density band starts at, tallest first.
+ *
+ * `[least, name, scale]`. Fetched once and applied in the browser rather than
+ * asked on every resize: Rust owns the rule, the interface owns the pixels.
+ */
+export type DensityBand = [number, string, number];
+export const densityBands = () => invoke<DensityBand[]>("density_bands");
+
 export const cockpitSurfaces = () => invoke<Surface[]>("cockpit_surfaces");
 export const cockpitWorkspaces = () => invoke<Workspace[]>("cockpit_workspaces");
 export const cockpitWorkspace = () => invoke<ResolvedWorkspace>("cockpit_workspace");

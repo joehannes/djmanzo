@@ -606,10 +606,23 @@ The reason is that the three largest blocks do not answer to it:
   and grows when two are, which is the opposite of what a DJ wants from a
   performance surface.
 
-So `--density` scales the type and the padding and leaves the furniture where
-it is, which is why the interface "getting denser" has never bought the room it
-looked like it should. **Any Phase 3 plan that assumes density is the lever is
-planning against a number that is not there.**
+So `--density` scaled the type and the padding and left the furniture where it
+was, which is why the interface "getting denser" never bought the room it
+looked like it should.
+
+**All three are fixed.** The pad grid takes a row height in `rem` instead of
+its cell's width; the SVG controls multiply their pixel dimensions by
+`--density`; and djmanzo picks a density band from the window it was given
+(`cockpit::BANDS`, applied unless a layout or workspace names one). Density now
+moves a deck 122 px across its range instead of 68, and a deck at djmanzo's own
+default window is **685 px, down from 878**.
+
+That is not enough on its own and the arithmetic says so: the stage has 559 px,
+so a deck would need about a 0.64 scale against a 0.80 floor. What closed the
+crossfader gap was taking the master strip *out of the scrolling stage* — it had
+been inside it, under decks taller than the stage, so it scrolled away with
+them. The deck's own channel strip is still in the scrolled part, and that is
+the open half of Phase 3.
 
 What actually has to change, in descending order of what it is worth: the pad
 grid's sizing rule, the fader and knob dimensions, and whether the master strip
@@ -625,7 +638,7 @@ Vertical slices, each shippable, each green before the next:
 | ~~**0**~~ | this document | **done** |
 | ~~**1**~~ | semantic tokens, density, motion, surface/workspace schemas | **done** — `crates/dj-app/src/cockpit.rs` |
 | ~~**2**~~ | ADR-0008 W3 + dock manager. *New shell, old functionality.* | **done** — the deck renders from the widget tree; surfaces dock; `ui/e2e/docks.spec.ts` enforces reachability |
-| **3** | performance cockpit: decks, waveform, mixer, rail, mission bar | crossfader on screen at 1280×800 |
+| **3** | performance cockpit: decks, waveform, mixer, rail, mission bar | **the crossfader gate is met** — every master control is on screen and pinned at 1280×800. The deck's own channel strip is not: the stage has 559 px and a deck wants 685, and scaling cannot close that. The rail and the mission bar are still to come. |
 | **4** | library: table, cards, set flow, pair view, prepare, rail | one gesture Library→Prepare→Deck |
 | **5** | intelligence: context engine, transactions, takeover, promotion | posture matrix enforced by test |
 | **6** | room: baseline, causal, Room HUD | HUD visible while browsing |

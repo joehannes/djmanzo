@@ -34,6 +34,8 @@
     watershedShowing,
     cockpitSurfaces,
     cockpitWorkspace,
+    densityBands,
+    type DensityBand,
     setCockpitWorkspace,
     type Dock,
     type Layout,
@@ -290,6 +292,43 @@
     }
   }
 
+  /**
+   * How dense the interface is, when nobody has said.
+   *
+   * The central idea of the redesign, and the first place it does anything:
+   * *the system adapts the presentation to the DJ, rather than forcing the DJ
+   * to adapt to the application.* A window too short for the interface at its
+   * normal size gets a denser one, in bands so it settles rather than sliding
+   * about while a window edge is dragged.
+   *
+   * **An explicit density wins.** A layout or a workspace that names one is a
+   * DJ who has decided, and adapting over a decision is the failure mode this
+   * whole redesign is written to avoid. `chosen` below is that flag.
+   */
+  let bands = $state<DensityBand[]>([]);
+  let chosenDensity = $state<number | null>(null);
+
+  function fitDensity() {
+    if (chosenDensity !== null || bands.length === 0) return;
+    const height = window.innerHeight;
+    const band = bands.find(([least]) => height >= least) ?? bands[bands.length - 1];
+    document.documentElement.style.setProperty("--density", String(band[2]));
+  }
+
+  $effect(() => {
+    void densityBands()
+      .then((got) => {
+        bands = got;
+        fitDensity();
+      })
+      .catch(() => {});
+    // Rare and user-driven, so unthrottled is honest: a DJ drags a window edge
+    // a handful of times a night, and debouncing this would only delay the
+    // moment the interface settles.
+    window.addEventListener("resize", fitDensity);
+    return () => window.removeEventListener("resize", fitDensity);
+  });
+
   /** What a surface is called, from Rust rather than from a list here. */
   let surfaceTitles = $state<Record<string, string>>({});
   const titleOf = (name: string) => surfaceTitles[name] ?? name;
@@ -432,6 +471,9 @@
   function applyLayout(next: Layout, remember = true) {
     layout = next;
     deckCount = next.decks;
+    // A layout that names a density is a DJ who has decided, so the
+    // window-fitting above stands down rather than arguing with it.
+    chosenDensity = next.density;
     document.documentElement.style.setProperty("--density", String(next.density));
     if (next.browser && !isOpen("library")) void toggleSurface("library");
     // Not when restoring, or every start-up would rewrite the file it just
@@ -1413,30 +1455,6 @@
       {/each}
     </div>
 
-    <!--
-      The crossfader, directly under the decks.
-
-      It used to sit at the top of the strip below, which put it about 1,500 px
-      down at djmanzo's own default window size -- two screens under the
-      waveforms it is used against, on a machine where a DJ has one hand free
-      and no time to scroll. It is the most-used control in the application and
-      it was the least reachable one.
-
-      Under the decks rather than between them: between is what hardware does,
-      but a third column at the 900 px minimum width leaves three columns too
-      narrow to aim at. Under keeps the eye's path -- deck, crossfader, deck --
-      and survives the narrow case.
-    -->
-    <section class="bridge">
-      <MasterMixer
-        master={snapshot.master}
-        {ready}
-        {split}
-        {cueSplit}
-        {limiterOn}
-        {send}
-      />
-    </section>
 
     <section class="mixer">
       <!--
@@ -1472,6 +1490,47 @@
     <p class="waiting">Waiting for the engine…</p>
   {/if}
   </div>
+
+  <!--
+    Outside the scrolling stage, and that is the whole point of moving it.
+
+    It sat inside, under the decks, and it scrolled away with them: at
+    djmanzo's own default window the decks are taller than the room the stage
+    has, so the crossfader was 56 px past the bottom edge with nothing but a
+    scroll to bring it back. A DJ mid-transition has one hand free and no time
+    to scroll, which is the same failure this control has had three times now
+    in three different forms.
+
+    Nothing moved in the reading order -- deck, crossfader, deck, exactly where
+    it was. It is simply no longer part of what scrolls, the way every DJ
+    application treats its mixer. `flex: none` is what says so.
+  -->
+  {#if snapshot}
+    <!--
+    The crossfader, directly under the decks.
+
+    It used to sit at the top of the strip below, which put it about 1,500 px
+    down at djmanzo's own default window size -- two screens under the
+    waveforms it is used against, on a machine where a DJ has one hand free
+    and no time to scroll. It is the most-used control in the application and
+    it was the least reachable one.
+
+    Under the decks rather than between them: between is what hardware does,
+    but a third column at the 900 px minimum width leaves three columns too
+    narrow to aim at. Under keeps the eye's path -- deck, crossfader, deck --
+    and survives the narrow case.
+  -->
+  <section class="bridge">
+    <MasterMixer
+      master={snapshot.master}
+      {ready}
+      {split}
+      {cueSplit}
+      {limiterOn}
+      {send}
+    />
+  </section>
+  {/if}
 
   {#if bottomDock.length > 0}
     <div class="dock bottom">
@@ -1991,6 +2050,8 @@
     the two decks meet in rather than as the first cell of the strip below.
   */
   .bridge {
+    /* Never scrolls out of reach. See the comment where it is rendered. */
+    flex: none;
     /* No panel of its own: the master strip draws its own shell, and a border
        around a border is a box inside a box. */
     display: flex;

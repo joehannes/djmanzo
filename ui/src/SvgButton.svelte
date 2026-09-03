@@ -119,10 +119,25 @@
     pointer-events: none;
   }
 
+  /*
+    The pad fills the cell it is given.
+
+    `min-block-size: 3.1rem` was here, and it was a floor the pad never reached
+    -- its height came from its own 100x52 aspect ratio stretched to a grid cell
+    as wide as the deck, which made a two-row pad zone 155 px on a two-deck
+    layout and less on a four-deck one. The grid sets the row height now (see
+    `Pads.svelte`), so this stops competing with it.
+  */
   .pad {
-    min-block-size: 3.1rem;
+    block-size: 100%;
+    min-block-size: 2.2rem;
     font-size: 0.82em;
     font-weight: 700;
+  }
+
+  .pad svg {
+    block-size: 100%;
+    inline-size: 100%;
   }
 
   .tab {

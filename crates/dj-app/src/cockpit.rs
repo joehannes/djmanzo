@@ -238,6 +238,30 @@ impl Density {
     /// The range is the one the flat `Layout` already clamps to (0.8..=1.4), so
     /// a density profile cannot ask for something the interface has never been
     /// drawn at. Monotonically decreasing: denser means smaller.
+    /// The densest band that still fits a window this tall, in CSS pixels.
+    ///
+    /// **The numbers come from a measurement, not from taste.** At Standard, a
+    /// deck column with two records loaded is 807 px; the top bar takes 138 and
+    /// the master strip 110, so the whole first screen is about 1,075. A window
+    /// shorter than that cannot show it, and the only honest options are to
+    /// scale it down or to let a performing control fall off the bottom -- and
+    /// djmanzo has let a performing control fall off the bottom three times.
+    ///
+    /// Bands rather than a continuous ratio, because a layout that resizes by a
+    /// few pixels on every window drag is a layout a DJ cannot learn. Each step
+    /// is a place the interface settles.
+    ///
+    /// This is only what djmanzo picks when nobody has said otherwise. A
+    /// density named by a layout or a workspace wins: the interface adapts to
+    /// the DJ, which means it stops adapting the moment the DJ decides.
+    #[must_use]
+    pub fn fitting(height: u16) -> Self {
+        BANDS
+            .iter()
+            .find(|(least, _)| height >= *least)
+            .map_or(Density::UltraDense, |(_, density)| *density)
+    }
+
     #[must_use]
     pub const fn scale(self) -> f32 {
         match self {
@@ -387,6 +411,19 @@ pub enum Category {
     Assistant,
     Utility,
 }
+
+/// The window heights each density band starts at, tallest first.
+///
+/// Published rather than kept private, so the interface can apply the rule
+/// without asking on every resize -- one call at start-up, then arithmetic.
+/// Rust still owns the policy; the browser owns the pixels it is measured in.
+pub const BANDS: &[(u16, Density)] = &[
+    (1200, Density::Relaxed),
+    (1080, Density::Standard),
+    (980, Density::Compact),
+    (860, Density::ProDense),
+    (0, Density::UltraDense),
+];
 
 /// Where a surface can be put.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1044,6 +1081,45 @@ pub fn semantic_tokens() -> Vec<(&'static str, TokenShape)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The bands have to be usable as a lookup: ordered, and total.
+    #[test]
+    fn the_density_bands_descend_and_cover_every_window() {
+        let mut previous = u16::MAX;
+        for (least, _) in BANDS {
+            assert!(*least < previous, "the bands are not in descending order");
+            previous = *least;
+        }
+        assert_eq!(
+            BANDS.last().map(|(least, _)| *least),
+            Some(0),
+            "the last band must start at zero, or a short window matches nothing"
+        );
+    }
+
+    /// The rule djmanzo actually applies, at the sizes it actually opens at.
+    ///
+    /// The boundaries are a measurement, not a round number picked for looking
+    /// tidy: at Standard a deck column with two records loaded is 807 px, the
+    /// top bar takes 138 and the master strip 110, so the first screen is about
+    /// 1,075. A window shorter than that has to be denser or something falls
+    /// off the bottom, which has shipped three times.
+    ///
+    /// **djmanzo's own default window gets the densest band there is**, and
+    /// even that is not enough to bring the master strip back on screen -- 800
+    /// would need about a 0.70 scale and the floor is 0.80. It fits the deck's
+    /// own controls and no more. That is recorded here rather than papered
+    /// over: the rest is a layout decision, not a scaling one.
+    #[test]
+    fn a_short_window_gets_a_denser_interface() {
+        assert_eq!(Density::fitting(800), Density::UltraDense);
+        assert_eq!(Density::fitting(900), Density::ProDense);
+        assert_eq!(Density::fitting(1000), Density::Compact);
+        assert_eq!(Density::fitting(1100), Density::Standard);
+        assert_eq!(Density::fitting(1440), Density::Relaxed);
+        // Below every band's floor, and not a panic.
+        assert_eq!(Density::fitting(0), Density::UltraDense);
+    }
 
     // -- roles -------------------------------------------------------------
 

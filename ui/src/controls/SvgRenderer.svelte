@@ -9,6 +9,15 @@
    * the transport pads came out the wrong shape. The viewBox stays 0–100 in
    * both axes, so geometry is written in one coordinate space and stretched to
    * whatever the caller asked for.
+   *
+   * **Both are multiplied by `--density`**, which is the one number a layout's
+   * density moves. Without that these were a fixed count of device pixels and
+   * the setting simply did not reach them -- and since the faders and knobs are
+   * the second largest block on a deck, driving density to its floor of 0.8
+   * moved a deck from 878 px to 810. Sixty-eight against the two hundred and
+   * eighty that would put the crossfader back on screen, which is why the
+   * interface "getting denser" never bought the room it looked like it should.
+   * Measured in `docs/GUI-OVERHAUL.md` section 20a.
    */
   let {
     renderState,
@@ -32,7 +41,9 @@
 
 <div
   class="renderer"
-  style="width: {fill ? '100%' : `${width}px`}; height: {height}px; {renderState.containerStyle}"
+  style="width: {fill
+    ? '100%'
+    : `calc(${width}px * var(--density, 1))`}; height: calc({height}px * var(--density, 1)); {renderState.containerStyle}"
 >
   <svg
     viewBox="0 0 100 100"

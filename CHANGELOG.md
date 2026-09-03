@@ -16,6 +16,39 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Every master control is on screen at djmanzo's own default window size**, for
+the first time. The crossfader has ended up below the fold three times in three
+different forms; most recently it was about 280 px past the bottom of an 800 px
+window, with master gain, the headphone cue, the split button and the limiter
+beside it.
+
+Three things fixed it. The pad grid stopped taking its height from the deck's
+*width* — a pad is a fixed-aspect SVG stretched to its grid cell, so two rows
+were 197 px tall because a two-deck column is wide, and the pad zone shrank when
+four decks were on screen and the DJ had more to hit. The SVG faders and knobs
+now answer to `--density` instead of being a fixed count of device pixels; they
+simply ignored the setting before, which is why "denser" never bought the room
+it looked like it should. And djmanzo picks a density band from the window it
+was given, unless a layout or workspace names one — the interface adapting to
+the DJ, and standing down the moment the DJ decides. A deck is 685 px, down
+from 878.
+
+That still was not enough, and the arithmetic says why: the stage has 559 px, so
+a deck would need about a 0.64 scale against a 0.80 floor. What closed the gap
+was taking the master strip out of the scrolling stage. It had been inside it,
+under decks taller than the stage, so it scrolled away with them. Nothing moved
+in the reading order — deck, crossfader, deck — it simply stopped being part of
+what scrolls, which is what every DJ application does with its mixer.
+
+**The deck's own volume and filter are still not reachable**, and the harness
+now says so instead of passing. It measured a page coordinate, which went green
+the moment the numbers dropped under 800 — while in the running application both
+sat behind the pinned strip in the part of the stage that scrolls. A screenshot
+showed it; the assertion could not. It asks whether a control is inside the box
+that clips it now, and that is recorded as a failing test rather than a fixed
+problem.
+
+
 **The dock manager** (cockpit Phase 2). The shell held one `panel` variable
 containing one of eight names, so exactly one panel could be open — and the
 consequence, which the audit named as its headline finding, is that a DJ could

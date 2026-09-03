@@ -46,7 +46,7 @@
  */
 import { type Page, expect, test } from "@playwright/test";
 
-import { SLACK, WINDOW, centreOf, errorsThrown, openShell } from "./shell";
+import { SLACK, WINDOW, centreOf, errorsThrown, openShell, within } from "./shell";
 
 /**
  * The controls a DJ actually touches to perform a mix.
@@ -125,36 +125,38 @@ test.describe("the first screen", () => {
   });
 
   /**
-   * **A measured failure, recorded rather than hidden.**
+   * **Still failing, and now failing for the right reason.**
    *
-   * With the pad zone drawn -- which it now is -- a deck's own Volume fader
-   * sits at y 873 and the Filter knob at y 915, on a window djmanzo opens at
-   * 800 px tall. Not the crossfader below the decks: the channel controls *on*
-   * the deck.
+   * These two were at y 873 and y 915 and are at 679 and 713 -- the pad grid
+   * stopped taking its height from the deck's *width*, the SVG controls
+   * started answering to `--density`, and djmanzo picks a density that fits
+   * the window. A deck went from 878 px to 685.
    *
-   * This was invisible until the harness stopped losing 197 px of pad zone,
-   * and it is worse than the crossfader problem it was hiding, because these
-   * two are reached for continuously rather than at a transition.
+   * They are still not reachable, and this test says so because it was
+   * rewritten to ask the right question. It measured a page coordinate, which
+   * passed the moment the numbers dropped under 800 -- while in the running
+   * application both sat *behind the pinned master strip*, in the part of the
+   * stage that scrolls. A screenshot showed it; the assertion could not. It
+   * now asks whether the control is inside the box that clips it.
    *
-   * `test.fail()` rather than a skip, for the same reason as the master strip
-   * below: whoever fixes the deck's height gets a red test telling them to
-   * delete this line, instead of a green suite that quietly forgot.
+   * The stage has 559 px and a deck wants 685. Scaling cannot close that --
+   * it would need about a 0.64 density against a 0.80 floor -- so something
+   * has to fold or be pinned, the way the master strip now is. That is a
+   * design decision with several defensible answers and it is the owner's;
+   * the measurement is here.
    */
   test("every control on a deck is on the first screen", async ({ page }, info) => {
-    // Skipped on CI for the reason given on the master strip test below: this
-    // is a both-ways pixel assertion and CI runs a renderer and font stack it
-    // has never been measured on.
-    test.skip(
-      !!process.env.CI,
-      "a both-ways pixel assertion, and the runner's renderer is not the one it was measured on",
-    );
     test.fail();
     await openShell(page, "/");
-    const { offscreen, measured } = await survey(page, ON_THE_DECK);
 
-    // Attached whether or not it failed, so a run that passes still records
-    // how much room was left -- which is what tells you a change ate the
-    // margin before the next one goes over it.
+    const offscreen: string[] = [];
+    const measured: string[] = [];
+    for (const { role, name } of ON_THE_DECK) {
+      const centre = await centreOf(page, role, name);
+      const inside = await within(page, ".stage", role, name);
+      measured.push(`${name}: y ${centre ? Math.round(centre.y) : "?"}, ${inside ? "reachable" : "clipped"}`);
+      if (!inside) offscreen.push(name);
+    }
     await info.attach("where the deck controls landed", {
       body: measured.join("\n"),
       contentType: "text/plain",
@@ -162,62 +164,46 @@ test.describe("the first screen", () => {
 
     expect(
       offscreen,
-      `the window djmanzo opens at is ${WINDOW.width}x${WINDOW.height}, and these ` +
-        "controls are past it",
+      "these controls are outside the part of the stage a DJ can see, so " +
+        "reaching them means scrolling mid-mix",
     ).toEqual([]);
   });
 
   /**
-   * **A known, measured failure, recorded rather than hidden.**
+   * **Fixed, and this is what holds it fixed.**
    *
-   * With two records loaded a deck column measures 878 px, the top bar takes
-   * 138 and the master strip 110, so the crossfader's centre lands roughly
-   * 280 px below the window djmanzo opens itself at, with master gain beside
-   * it.
+   * The crossfader has ended up below the fold three times in three different
+   * forms, and the first two were found by a human with a screenshot. Most
+   * recently it was about 280 px past the bottom -- a figure that read
+   * seventy-seven until the harness stopped losing the deck's pad zone.
    *
-   * The figure used to read seventy-seven, and was published with a note
-   * saying it was a floor because the harness was not drawing the pad zone.
-   * The harness draws it now, and the floor turned out to be about a quarter
-   * of the real gap.
+   * Two changes brought it back. The deck shrank, because density finally
+   * reaches it. And the master strip came *out of the scrolling stage*: it sat
+   * inside, under decks taller than the room the stage has, so it scrolled
+   * away with them. Nothing moved in the reading order -- deck, crossfader,
+   * deck -- it simply stopped being part of what scrolls, which is what every
+   * DJ application does with its mixer.
    *
-   * This is the third time a performing control has ended up below the fold,
-   * and the first two were found by a human with a screenshot. It is here as a
-   * running test rather than a line in a document because a document does not
-   * notice when it stops being true.
-   *
-   * `test.fail()` rather than a skip: this asserts the failure is *still*
-   * there, so whoever fixes the deck's height gets a red test telling them to
-   * delete this line -- instead of a green suite that quietly forgot.
-   *
-   * Fixing it means finding at least 150 px in the deck column, and probably
-   * far more. That is a design decision with several defensible answers --
-   * merging the beat-jump and loop rows, folding the overview the way the stems
-   * module folds, or the one the established applications all reached for,
-   * which is to put the mixer *between* the decks as a centre column instead of
-   * a strip underneath, where it costs no vertical room at all. The measurement
-   * is here; the choice is the owner's, and it should be made against a harness
-   * that draws the pad zone.
+   * Measured against the window rather than against a container, because being
+   * pinned is exactly the claim: wherever the decks are scrolled to, these are
+   * where a DJ left them.
    */
   test("the master strip is on it too", async ({ page }, info) => {
-    // Skipped on CI, and the reason is not squeamishness. This is a *both
-    // ways* assertion -- it fails if the strip is on screen and fails if it is
-    // off by a different amount -- and CI runs a Chromium build, and a font
-    // stack, that this measurement has never been taken on. A pixel assertion
-    // on an unverified renderer is a red build that says nothing about
-    // djmanzo. The ratchet below reports the runner's own numbers; once those
-    // are known this can run there too.
-    test.skip(
-      !!process.env.CI,
-      "a both-ways pixel assertion, and the runner's renderer is not the one it was measured on",
-    );
-    test.fail();
     await openShell(page, "/");
-    const { offscreen, measured } = await survey(page, ON_THE_MASTER);
 
+    const offscreen: string[] = [];
+    const measured: string[] = [];
+    for (const { role, name } of ON_THE_MASTER) {
+      const centre = await centreOf(page, role, name);
+      const inside = await within(page, "window", role, name);
+      measured.push(`${name}: y ${centre ? Math.round(centre.y) : "?"}, ${inside ? "reachable" : "off the window"}`);
+      if (!inside) offscreen.push(name);
+    }
     await info.attach("where the master controls landed", {
       body: measured.join("\n"),
       contentType: "text/plain",
     });
+
     expect(
       offscreen,
       `the window djmanzo opens at is ${WINDOW.width}x${WINDOW.height}, and these ` +
@@ -298,28 +284,26 @@ test.describe("the first screen", () => {
     await info.attach("deck height", { body: `${height}px`, contentType: "text/plain" });
     // To the console as well as the report: on CI the report is an artifact
     // nobody downloads, and this number is the whole point of the run.
-    console.log(`deck column height: ${height}px (budget 940, target ~527)`);
+    console.log(`deck column height: ${height}px (budget 760)`);
 
-    // 940 against the 878 it measures here -- a ratchet, not a target, and
-    // deliberately slack. Two reasons for the 62 px of room: the number that
+    // 760 against the 685 it measures here -- a ratchet, not a target, and
+    // deliberately slack. Two reasons for the 75 px of room: the number that
     // matters is a *regression*, and the two on record were +156 and +117, not
     // +20; and CI runs a different Chromium build with a different font stack,
     // on which this has never been measured. The height is printed above on
     // every run, so the runner's own figure is in the log and this can be
     // tightened on evidence rather than on a guess.
     //
-    // **This number went up from 740 without the deck growing by a pixel.**
-    // The harness was losing the 197 px pad zone; fixing it did not make the
-    // deck taller, it made the measurement true. Raising a ratchet is normally
-    // the wrong move and it is the right one exactly here, where the old
-    // figure was measuring a screen no DJ meets.
-    //
-    // The number that would put the crossfader back on screen is about 527,
-    // so this is expected to come down rather than hold.
+    // This number has been 740, then 940, and is now 760, and only the last
+    // move was the deck itself changing. 740 was measured against a deck the
+    // harness drew without its pad zone; 940 was that same deck measured
+    // honestly; 760 is the deck after the pad grid stopped taking its height
+    // from the deck's width and the SVG controls started answering to
+    // `--density`. Every performing control is on screen at 1280x800 here.
     expect(
       height,
       "the deck column has grown past where it already was, which is how the " +
         "crossfader ended up below the fold all three times",
-    ).toBeLessThanOrEqual(940);
+    ).toBeLessThanOrEqual(760);
   });
 });

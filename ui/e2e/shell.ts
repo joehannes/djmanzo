@@ -201,7 +201,16 @@ const ANSWERS: Record<string, unknown> = {
     working: false,
     path: null,
   },
-  cockpit_surfaces: surfaces,
+  // The real bands, so the harness measures the interface a DJ gets at this
+  // window size rather than one at a density nothing chooses.
+  density_bands: [
+    [1200, "Relaxed", 1.15],
+    [1080, "Standard", 1.0],
+    [980, "Compact", 0.92],
+    [860, "Pro Dense", 0.86],
+    [0, "Ultra Dense", 0.8],
+  ],
+    cockpit_surfaces: surfaces,
   cockpit_workspace: {
     workspace: {
       name: "Perform",
@@ -334,10 +343,57 @@ export function errorsThrown(page: Page): string[] {
 }
 
 /**
+ * Whether a control is inside the region a DJ can actually see and touch.
+ *
+ * **A page coordinate is not reachability, and the difference cost a green
+ * suite against a broken screen.** The master strip was pinned to the bottom
+ * of the window and the decks kept scrolling behind it, so a deck's own Volume
+ * fader reported y 679 on an 800 px window and passed -- while in the running
+ * application it was underneath the pinned strip, unreachable. A screenshot
+ * showed it; the assertion could not.
+ *
+ * Geometry against the scroll container rather than hit-testing, and that is
+ * deliberate. `elementFromPoint` sounds like the right tool and is not: these
+ * controls are an `<input type="range">` for the keyboard and a screen reader
+ * with an SVG drawn over it, so the point hits the SVG and the input is
+ * "covered" by its own picture. Two attempts at a hit-test predicate each
+ * reported a different pair of these four controls as unreachable, and neither
+ * agreed with the screenshot.
+ *
+ * What is asked instead is whether the control's box lies inside the box of
+ * the thing that clips it: the window for something pinned, and the scrolling
+ * stage for anything on a deck.
+ */
+export async function within(
+  page: Page,
+  container: string,
+  role: "slider" | "button" | "group",
+  name: string,
+): Promise<boolean> {
+  const found = page.getByRole(role, { name, exact: true }).first();
+  if ((await found.count()) === 0) return false;
+  const box = await found.boundingBox();
+  if (!box) return false;
+  const clip =
+    container === "window"
+      ? { x: 0, y: 0, width: WINDOW.width, height: WINDOW.height }
+      : await page.locator(container).first().boundingBox();
+  if (!clip) return false;
+  return (
+    box.y + box.height <= clip.y + clip.height + SLACK &&
+    box.y >= clip.y - SLACK &&
+    box.x + box.width <= clip.x + clip.width + SLACK
+  );
+}
+
+/**
  * The centre of a control, or null when it is not on the page at all.
  *
  * The *centre* rather than the top edge: a fader whose top is on screen and
  * whose thumb is not is a fader a DJ cannot use, and the top edge would pass.
+ *
+ * **A page coordinate, not a claim about reachability.** Use `reachable`
+ * above for that; see the note there for what this alone failed to catch.
  */
 export async function centreOf(
   page: Page,

@@ -5263,6 +5263,20 @@ pub fn cockpit_surfaces() -> &'static [crate::cockpit::Surface] {
     crate::cockpit::surfaces()
 }
 
+/// The window heights each density band starts at, and what each one scales to.
+///
+/// Handed over once at start-up rather than asked on every resize: Rust owns
+/// the policy, the browser owns the pixels, and a command round trip per drag
+/// of a window edge would be latency in exchange for nothing.
+#[tauri::command]
+#[must_use]
+pub fn density_bands() -> Vec<(u16, &'static str, f32)> {
+    crate::cockpit::BANDS
+        .iter()
+        .map(|(least, density)| (*least, density.name(), density.scale()))
+        .collect()
+}
+
 /// The arrangements that ship, for the picker.
 #[tauri::command]
 #[must_use]

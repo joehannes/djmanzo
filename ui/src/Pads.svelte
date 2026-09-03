@@ -190,9 +190,25 @@
     gap: 0.2rem;
   }
 
+  /*
+    A pad's height comes from this rule, not from how wide the deck is.
+
+    It used to come from the deck's width, and not by anyone's decision: a pad
+    is an SVG with a fixed 100x52 aspect ratio stretched to its grid cell, so
+    two rows of four were 155 px tall *because a two-deck column is wide*. Its
+    `min-block-size` floor was never reached. The consequence is backwards for
+    a performance surface -- the pads shrank when four decks were on screen and
+    the DJ had more to hit, and grew when there were two -- and it was 197 px
+    of the 878 a deck measured, the single largest block on it.
+
+    `grid-auto-rows` in `rem` fixes the height and lets it answer to
+    `--density`, which is what every other size in the interface does. The SVG
+    stretches to the cell instead of setting it.
+  */
   .grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 2.9rem;
     gap: 0.25rem;
   }
 
