@@ -758,6 +758,21 @@ pub fn surfaces() -> &'static [Surface] {
         // the model cannot name is a panel the dock manager cannot place, and
         // Phase 2's gate is that no feature becomes unreachable.
         Surface {
+            name: "booth",
+            title: "Booth",
+            about: "The microphone, the automix, a plugin insert and the master effects -- the things set up once a night rather than reached for during a mix.",
+            category: Category::Utility,
+            least: (420, 200),
+            prefer: (900, 320),
+            priority: 30,
+            performance_critical: false,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            contextual: false,
+            docks: SIDE_OR_BOTTOM,
+        },
+        Surface {
             name: "presets",
             title: "Presets",
             about: "Effect chains and mix settings, saved and recalled.",

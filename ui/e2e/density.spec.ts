@@ -32,12 +32,12 @@ import { openShell } from "./shell";
 const FITS_FROM = 1000;
 
 test.describe("the interface adapts to the window", () => {
-  test("a deck fits the stage at every window tall enough for one", async ({
+  test("a deck shows all of itself at every window tall enough for one", async ({
     page,
   }, info) => {
     await openShell(page, "/");
     const measured: string[] = [];
-    const tooTall: string[] = [];
+    const scrolling: string[] = [];
 
     for (const height of [1000, 1100, 1200, 1400, 1600]) {
       await page.setViewportSize({ width: 1280, height });
@@ -48,20 +48,29 @@ test.describe("the interface adapts to the window", () => {
             requestAnimationFrame(() => requestAnimationFrame(done)),
           ),
       );
-      const seen = await page.evaluate(() => ({
-        density: getComputedStyle(document.documentElement)
-          .getPropertyValue("--density")
-          .trim(),
-        deck: document.querySelector(".deck")!.getBoundingClientRect().height,
-        stage: document.querySelector(".stage")!.getBoundingClientRect().height,
-      }));
+      // The deck's *content* against the room it has, not the deck against the
+      // stage -- the deck is bounded by the stage now, so that comparison is
+      // true by construction and would assert nothing. What can still be
+      // wrong is a band whose deck does not fit inside itself.
+      const seen = await page.evaluate(() => {
+        const body = document.querySelector(".deck .deck-body") as HTMLElement;
+        return {
+          density: getComputedStyle(document.documentElement)
+            .getPropertyValue("--density")
+            .trim(),
+          content: body.scrollHeight,
+          room: body.clientHeight,
+        };
+      });
       measured.push(
-        `${height}: density ${seen.density}, deck ${Math.round(seen.deck)}, ` +
-          `stage ${Math.round(seen.stage)}`,
+        `${height}: density ${seen.density}, deck body needs ${seen.content}, ` +
+          `has ${seen.room}`,
       );
       // A pixel of slack for a fractional layout, not for a band being wrong.
-      if (seen.deck > seen.stage + 2) {
-        tooTall.push(`${height}px window: deck ${Math.round(seen.deck)} in a stage of ${Math.round(seen.stage)}`);
+      if (seen.content > seen.room + 2) {
+        scrolling.push(
+          `${height}px window: the deck needs ${seen.content} and has ${seen.room}`,
+        );
       }
     }
 
@@ -70,10 +79,11 @@ test.describe("the interface adapts to the window", () => {
       contentType: "text/plain",
     });
     expect(
-      tooTall,
-      `at these heights djmanzo chose a density whose deck does not fit, so the ` +
-        `channel strip is clipped -- which is the failure the bands exist to ` +
-        `prevent. Windows below ${FITS_FROM}px are a separate, recorded problem.`,
+      scrolling,
+      `at these heights djmanzo chose a density whose deck still does not fit, ` +
+        `so the waveform or the pads are below the fold -- which is the failure ` +
+        `the bands exist to prevent. Windows below ${FITS_FROM}px are a ` +
+        `separate, recorded problem.`,
     ).toEqual([]);
   });
 

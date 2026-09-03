@@ -30,6 +30,7 @@
     sampler,
     enabled,
     cueAvailable = false,
+    density = 1,
     zones = null,
     stemSwap = null,
     deckCount = 2,
@@ -61,6 +62,15 @@
      * deck djmanzo has always drawn. A DJ whose layout file is unreadable
      * gets the interface, not an empty column.
      */
+    /**
+     * The interface scale, as a number.
+     *
+     * Every other size on a deck reads `--density` off the document, but the
+     * waveform lane cannot: it is drawn by Rust at a pixel height, so scaling
+     * it in CSS would stretch tiles rendered for a different size. It is
+     * multiplied into the number asked for instead.
+     */
+    density?: number;
     zones?: Placed[] | null;
   } = $props();
 
@@ -115,7 +125,7 @@
   /** A prop the tree set, if it set one and it is a number. */
   function height(props: Record<string, unknown>, fallback: number): number {
     const value = props?.height;
-    return typeof value === "number" ? value : fallback;
+    return Math.round((typeof value === "number" ? value : fallback) * density);
   }
 
   /**
@@ -143,6 +153,22 @@
     zones: { key: string; placed: Placed }[];
   };
 
+  /**
+   * The rows that stay put when the rest of the deck scrolls.
+   *
+   * The same move the master strip made, one level down. A deck at djmanzo's
+   * own default window is 685 px in a stage that has 559, so something has to
+   * be below the fold -- and letting it be the channel strip means the volume
+   * fader and the filter, which are touched continuously, are the two controls
+   * a DJ has to scroll to find. The waveform and the pads scroll instead; the
+   * strip, its foot and the level meter are always where they were left.
+   *
+   * Presentation, not identity: nothing moved in the reading order, and a
+   * control that was the fourth thing down the deck is still the fourth thing
+   * down the deck.
+   */
+  const PINNED = ["deck.jog", "deck.eq", "deck.filter", "deck.volume", "deck.pitch", "deck.cue", "deck.xfader", "deck.meter"];
+
   const rows = $derived.by(() => {
     const out: Row[] = [];
     placed.forEach((zone, index) => {
@@ -162,6 +188,15 @@
     });
     return out;
   });
+
+  /** Everything above the strip: it scrolls when there is not room for it. */
+  const scrolling = $derived(
+    rows.filter((row) => !PINNED.includes(row.zones[0].placed.widget)),
+  );
+  /** The strip and what travels with it: always on screen. */
+  const pinned = $derived(
+    rows.filter((row) => PINNED.includes(row.zones[0].placed.widget)),
+  );
 
   let error = $state<string | null>(null);
   let loading = $state(false);
@@ -982,55 +1017,81 @@
     {/if}
   {/snippet}
 
-  {#each rows as row (row.key)}
-    {#if row.kind === "strip"}
   <!--
-    The channel strip, side by side rather than stacked.
+    One loop, rendered twice: once for what scrolls and once for what does not.
 
-    Measured, at djmanzo's own default 1280x800: stacked, the EQ, filter,
-    volume and pitch took about 530 px of a deck column, which put the
-    crossfader roughly 1,500 px down — two screens below the waveform it is
-    used against. No shipped preset fixed it, including the one whose
-    description is "everything you need and nothing else". Side by side the
-    same four controls take about 190 px and keep every one of them in the
-    orientation a DJ's hands already know: knobs for tone, vertical faders for
-    level and pitch.
-
-    Ordered as a hardware channel is, left to right: tone, then colour, then
-    level, then tempo.
-
-    And on **one line**, which took a second pass to actually achieve. Pitch
-    was nominally in the strip and in practice was not: it lived in a grid of
-    its own carrying eight controls in three columns, so it wrapped the strip
-    onto a second row and then a third. Measured again at 1280x800 with the
-    grid flattened and the playhead controls moved up to the transport where
-    they belong, the deck goes from 695 px to 539 px -- and the crossfader's
-    thumb from 117 px below the fold to 758 px down a screen 800 px tall.
-    Reachable at djmanzo's own default window size, for the first time.
+    A snippet taking the list rather than two copies of the markup, because two
+    copies of a fourteen-branch dispatch is two places to forget a widget.
   -->
-      <div class="channel">
-        {#each row.zones as entry (entry.key)}{@render zone(entry.placed)}{/each}
-      </div>
-    {:else if row.kind === "foot"}
+  {#snippet band(which: Row[])}
+    {#each which as row (row.key)}
+      {#if row.kind === "strip"}
+    <!--
+      The channel strip, side by side rather than stacked.
+
+      Measured, at djmanzo's own default 1280x800: stacked, the EQ, filter,
+      volume and pitch took about 530 px of a deck column, which put the
+      crossfader roughly 1,500 px down — two screens below the waveform it is
+      used against. No shipped preset fixed it, including the one whose
+      description is "everything you need and nothing else". Side by side the
+      same four controls take about 190 px and keep every one of them in the
+      orientation a DJ's hands already know: knobs for tone, vertical faders for
+      level and pitch.
+
+      Ordered as a hardware channel is, left to right: tone, then colour, then
+      level, then tempo.
+
+      And on **one line**, which took a second pass to actually achieve. Pitch
+      was nominally in the strip and in practice was not: it lived in a grid of
+      its own carrying eight controls in three columns, so it wrapped the strip
+      onto a second row and then a third. Measured again at 1280x800 with the
+      grid flattened and the playhead controls moved up to the transport where
+      they belong, the deck goes from 695 px to 539 px -- and the crossfader's
+      thumb from 117 px below the fold to 758 px down a screen 800 px tall.
+      Reachable at djmanzo's own default window size, for the first time.
+    -->
+        <div class="channel">
+          {#each row.zones as entry (entry.key)}{@render zone(entry.placed)}{/each}
+        </div>
+      {:else if row.kind === "foot"}
+    <!--
+      The foot of the channel: what this deck sends where.
+
+      Pre-fader listen and the crossfader assignment on one line, because they
+      are the same question asked twice -- which outputs hear this deck -- and
+      because two rows of one control each is how a deck column grows until the
+      crossfader is off the screen.
+
+      Pre-fader listen deliberately explains itself when unavailable rather than
+      just sitting greyed out: a 2-channel laptop output has nowhere to send a
+      cue, and "why is this dead" is a bad thing to wonder mid-set.
+    -->
+        <div class="channel-foot">
+          {#each row.zones as entry (entry.key)}{@render zone(entry.placed)}{/each}
+        </div>
+      {:else}
+        {@render zone(row.zones[0].placed)}
+      {/if}
+    {/each}
+  {/snippet}
+
   <!--
-    The foot of the channel: what this deck sends where.
+    The part of the deck that scrolls when the window is too short for all of
+    it, and the part that never does.
 
-    Pre-fader listen and the crossfader assignment on one line, because they
-    are the same question asked twice -- which outputs hear this deck -- and
-    because two rows of one control each is how a deck column grows until the
-    crossfader is off the screen.
-
-    Pre-fader listen deliberately explains itself when unavailable rather than
-    just sitting greyed out: a 2-channel laptop output has nowhere to send a
-    cue, and "why is this dead" is a bad thing to wonder mid-set.
+    A deck at djmanzo's own default window is 685 px in a stage with 559, so
+    something is below the fold either way. Letting it be the channel strip
+    means the volume fader and the filter -- touched continuously, not once a
+    transition -- are what a DJ has to scroll to find. The waveform and the
+    pads go instead. Same move the master strip made one level up, same
+    reason.
   -->
-      <div class="channel-foot">
-        {#each row.zones as entry (entry.key)}{@render zone(entry.placed)}{/each}
-      </div>
-    {:else}
-      {@render zone(row.zones[0].placed)}
-    {/if}
-  {/each}
+  <div class="deck-body">
+    {@render band(scrolling)}
+  </div>
+  <div class="deck-foot">
+    {@render band(pinned)}
+  </div>
 
   {#if error}
     <p class="error">{error}</p>
@@ -1138,7 +1199,52 @@
     align-items: flex-end;
   }
 
+  /*
+    The deck is exactly as tall as it is given, and its body scrolls inside it.
+
+    `min-height: 0` on both, because a flex child defaults to `min-height:
+    auto` and refuses to shrink below its content -- which is how a "scrolling"
+    region ends up not scrolling and pushing its siblings off the bottom
+    instead. That is the same default that clipped the browser panel twice.
+  */
+  .deck-body {
+    display: flex;
+    flex-direction: column;
+    gap: inherit;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /*
+    Every zone keeps the height it asked for, and the body scrolls instead.
+
+    Without this the waveform vanished. A flex child's `flex-shrink` is 1, so
+    in a column with less room than its contents the browser shrinks them all
+    rather than overflowing -- and the waveform lane, being a fixed pixel
+    height with nothing inside holding it open, went to zero. The screenshot
+    showed a deck whose first visible row was the stems fold: no waveform, no
+    overview, no progress bar, and no scrollbar either, because nothing
+    overflowed. It is the same class of mistake as the `min-height: auto` that
+    clipped the browser panel twice, arriving from the opposite direction.
+
+    `flex: none` makes them refuse to shrink, which is what turns the body
+    into something that scrolls.
+  */
+  .deck-body > :global(*) {
+    flex: none;
+  }
+
+  .deck-foot {
+    display: flex;
+    flex-direction: column;
+    gap: inherit;
+    flex: none;
+  }
+
   .deck {
+    /* Fills the row it is given and no more; the body inside it scrolls. */
+    min-height: 0;
     background: var(--panel);
     border: 1px solid var(--border);
     /* Border colour only: a deck that resized or moved when it started playing

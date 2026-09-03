@@ -25,6 +25,7 @@ import { errorsThrown, openShell } from "./shell";
 const PANELS: { button: string; surface: string }[] = [
   { button: "Browse", surface: "library" },
   { button: "Presets", surface: "presets" },
+  { button: "Booth", surface: "booth" },
   { button: "Sampler", surface: "sampler" },
   { button: "Assistant", surface: "assistant" },
   { button: "Settings", surface: "settings" },

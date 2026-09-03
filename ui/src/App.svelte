@@ -192,6 +192,7 @@
    */
   const DRAWN = [
     "library",
+    "booth",
     "presets",
     "sampler",
     "assistant",
@@ -232,6 +233,7 @@
    */
   const HOME: Record<Drawn, Dock> = {
     library: "bottom",
+    booth: "bottom",
     log: "bottom",
     presets: "right",
     sampler: "right",
@@ -308,10 +310,21 @@
   let bands = $state<DensityBand[]>([]);
   let chosenDensity = $state<number | null>(null);
 
+  /**
+   * The scale in force, as a number.
+   *
+   * Kept as well as set on the document because the waveform needs it as an
+   * argument rather than as a style: its lane is drawn by Rust at a pixel
+   * height, so scaling it in CSS would stretch tiles rendered for a different
+   * size. Everything else on a deck reads `--density` off the document.
+   */
+  let density = $state(1);
+
   function fitDensity() {
     if (chosenDensity !== null || bands.length === 0) return;
     const height = window.innerHeight;
     const band = bands.find(([least]) => height >= least) ?? bands[bands.length - 1];
+    density = band[2];
     document.documentElement.style.setProperty("--density", String(band[2]));
   }
 
@@ -474,6 +487,7 @@
     // A layout that names a density is a DJ who has decided, so the
     // window-fitting above stands down rather than arguing with it.
     chosenDensity = next.density;
+    density = next.density;
     document.documentElement.style.setProperty("--density", String(next.density));
     if (next.browser && !isOpen("library")) void toggleSurface("library");
     // Not when restoring, or every start-up would rewrite the file it just
@@ -1041,6 +1055,14 @@
         <IconButton icon="fa-solid fa-folder-open" label="Browse" title="Find and load tracks" active={isOpen("library")} onClick={() => toggleSurface("library")} />
         <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={isOpen("presets")} onClick={() => toggleSurface("presets")} />
         <!--
+          The booth: microphone, automix, a plugin insert and the master
+          effects. These used to sit in a slab under the decks, always drawn
+          and always taking room, which is what stopped a deck from ever being
+          bounded -- and they are the things set up once a night rather than
+          reached for during a mix, which is exactly what a dock is for.
+        -->
+        <IconButton icon="fa-solid fa-sliders" label="Booth" title="Microphone, automix, plugin insert and master effects" active={isOpen("booth")} onClick={() => toggleSurface("booth")} />
+        <!--
           The panel is for setting the sampler up — loading, modes, routing. The
           playing is done from the pads, which is why this is a thing you open
           rather than something taking room on a deck all night.
@@ -1257,6 +1279,41 @@
   {#snippet surfaceLibrary()}
     <Browse enabled={ready} deckCount={deckCount} decks={snapshot?.decks ?? []} />
   {/snippet}
+  {#snippet surfaceBooth()}
+    {#if snapshot}
+      <div class="mixer">
+      <!--
+        What is left below: the things set up once a night rather than reached
+        for during a mix. The microphone, the automix, a plugin insert and the
+        master effects.
+      -->
+      <Mic mic={snapshot.master.mic} enabled={ready} {send} />
+      <Automix automix={snapshot.master.automix} enabled={ready} {send} />
+      <Plugin clap={snapshot.master.clap} enabled={ready} {send} />
+
+      {#if layout?.fx ?? true}
+        <div class="master-fx">
+          <span class="label">Master FX</span>
+          <Fx slots={snapshot.master.fx} enabled={ready} target="master" {send} />
+        </div>
+      {/if}
+
+      {#if snapshot.master.output_latency_ms > 0}
+        <p class="latency-note">
+          Output delayed {snapshot.master.output_latency_ms.toFixed(1)} ms by
+          the limiter's look-ahead. The headphone cue is delayed to match, so
+          beatmatching stays true.
+          {#if split}
+            The second sound card adds {split.queue_ms.toFixed(1)} ms more, and
+            its clock is being corrected by {Math.abs(split.drift_ppm).toFixed(0)}
+            ppm.
+          {/if}
+        </p>
+      {/if}
+      </div>
+    {/if}
+  {/snippet}
+
   {#snippet surfacePresets()}
     <Presets enabled={ready} deckCount={2} />
   {/snippet}
@@ -1398,6 +1455,7 @@
       </header>
       <div class="surface-body">
         {#if placement.surface === "library"}{@render surfaceLibrary()}
+        {:else if placement.surface === "booth"}{@render surfaceBooth()}
         {:else if placement.surface === "presets"}{@render surfacePresets()}
         {:else if placement.surface === "assistant"}{@render surfaceAssistant()}
         {:else if placement.surface === "keys"}{@render surfaceKeys()}
@@ -1450,42 +1508,13 @@
           stemSwap={snapshot.master.stem_swap}
           {deckCount}
           zones={deckZones(deck.number)}
+          {density}
           careful={conductCare}
         />
       {/each}
     </div>
 
 
-    <section class="mixer">
-      <!--
-        What is left below: the things set up once a night rather than reached
-        for during a mix. The microphone, the automix, a plugin insert and the
-        master effects.
-      -->
-      <Mic mic={snapshot.master.mic} enabled={ready} {send} />
-      <Automix automix={snapshot.master.automix} enabled={ready} {send} />
-      <Plugin clap={snapshot.master.clap} enabled={ready} {send} />
-
-      {#if layout?.fx ?? true}
-        <div class="master-fx">
-          <span class="label">Master FX</span>
-          <Fx slots={snapshot.master.fx} enabled={ready} target="master" {send} />
-        </div>
-      {/if}
-
-      {#if snapshot.master.output_latency_ms > 0}
-        <p class="latency-note">
-          Output delayed {snapshot.master.output_latency_ms.toFixed(1)} ms by
-          the limiter's look-ahead. The headphone cue is delayed to match, so
-          beatmatching stays true.
-          {#if split}
-            The second sound card adds {split.queue_ms.toFixed(1)} ms more, and
-            its clock is being corrected by {Math.abs(split.drift_ppm).toFixed(0)}
-            ppm.
-          {/if}
-        </p>
-      {/if}
-    </section>
   {:else}
     <p class="waiting">Waiting for the engine…</p>
   {/if}
@@ -1968,15 +1997,32 @@
     flex: none;
   }
 
+  /*
+    The stage does not scroll, and that is what lets a deck pin anything.
+
+    It used to, which meant a deck's height was whatever its content came to
+    and the bottom of it -- the channel strip, the cue, the crossfader
+    assignment -- was simply below the fold with a scrollbar as the only way
+    back. A child cannot pin itself inside a parent that grows to fit it.
+
+    So the stage now hands its room to `.decks`, each deck is exactly as tall
+    as it is given, and the scrolling moved *inside* the deck where it can
+    leave the controls that matter behind. The booth panel that used to sit
+    under the decks here -- microphone, automix, plugin, master effects -- is a
+    dock surface now, which is what it always was: the things set up once a
+    night rather than reached for during a mix.
+  */
   .stage {
     display: flex;
     flex-direction: column;
     gap: 0.9rem;
     min-height: 0;
-    /* Takes everything when alone; yields to the docks when something is open,
-       and scrolls rather than clipping if the window is short. */
     flex: 1;
-    overflow: auto;
+  }
+
+  .stage .decks {
+    flex: 1;
+    min-height: 0;
   }
 
   .stage.shared {
@@ -2020,6 +2066,21 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.9rem;
+    /*
+      The grid takes the stage's room and hands it to the decks rather than
+      growing to fit them.
+
+      `minmax(0, 1fr)` rather than the default `auto`, and that is the whole
+      trick: a grid row's default height is its content's, so a deck could
+      never be shorter than what is inside it and could never pin anything --
+      the first attempt at this set `max-height: 100%` on the deck and moved
+      nothing, because 100% of an `auto` row is the content again. The `0`
+      minimum is the part that matters; `min-content` is what `1fr` alone
+      would floor at.
+    */
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
   }
 
   /*
@@ -2058,15 +2119,20 @@
     justify-content: center;
   }
 
+  /*
+    The booth, now that it lives in a dock rather than under the decks.
+
+    The panel and the border are gone because the surface frame around it
+    draws both, and a box inside a box reads as two things rather than one.
+    The columns wrap rather than being fixed at four: a bottom dock is as wide
+    as the window and a side dock is 320 px, and four fixed columns in 320 px
+    is four things too narrow to read.
+  */
   .mixer {
     display: grid;
-    grid-template-columns: 1fr 1.2fr auto auto;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 1.2rem;
-    align-items: center;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.9rem;
+    align-items: start;
   }
 
   .latency-note {

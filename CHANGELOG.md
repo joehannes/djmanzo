@@ -16,6 +16,31 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Every control a DJ touches is on one screen at 1280×800.** The deck's own
+volume fader and filter were the last two below the fold, behind the pinned
+master strip. The deck now does what the master strip does one level up: its
+body scrolls and its channel strip is pinned, so the waveform and the pads go
+below the fold on a short window instead of the controls touched continuously.
+Nothing moved in the reading order.
+
+Three things had to change for a deck to be able to pin anything. A grid row's
+height is its content's, so the deck grid's rows are `minmax(0, 1fr)` — an
+earlier attempt set `max-height: 100%` on the deck and moved nothing, because
+100% of an `auto` row is the content again. The stage stopped scrolling, since
+a child cannot pin itself inside a parent that grows to fit it. And the booth
+controls — microphone, automix, plugin insert, master effects — became a dock
+surface, which is what they always were: the things set up once a night rather
+than reached for during a mix.
+
+Two bugs found by running it rather than by testing it. The waveform vanished
+entirely on the first attempt: a flex child's `flex-shrink` is 1, so a lane
+with a fixed pixel height and nothing inside holding it open went to zero, and
+no scrollbar appeared because nothing overflowed. And the waveform lane was
+the last block still ignoring the density setting — it is drawn by Rust at a
+pixel height, so it takes the scale as a number rather than in CSS, which
+would have stretched tiles rendered for a different size.
+
+
 ## v0.12.0 — Two things at once, and every master control on screen
 
 The cockpit redesign's first three phases, and they are the first ones a DJ can

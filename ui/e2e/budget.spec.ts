@@ -125,28 +125,26 @@ test.describe("the first screen", () => {
   });
 
   /**
-   * **Still failing, and now failing for the right reason.**
+   * **Fixed, and this is what holds it fixed.**
    *
-   * These two were at y 873 and y 915 and are at 679 and 713 -- the pad grid
+   * These two were at y 873 and y 915 on a window djmanzo opens 800 px tall --
+   * not the crossfader below the decks, the channel controls *on* the deck,
+   * which are reached for continuously rather than at a transition.
+   *
+   * Three things brought the deck down from 878 px to 685: the pad grid
    * stopped taking its height from the deck's *width*, the SVG controls
    * started answering to `--density`, and djmanzo picks a density that fits
-   * the window. A deck went from 878 px to 685.
+   * the window. That was not enough -- the stage has 559 -- so the deck now
+   * does what the master strip does one level up: **its body scrolls and its
+   * channel strip is pinned.** The waveform and the pads go below the fold on
+   * a short window instead of the volume fader and the filter.
    *
-   * They are still not reachable, and this test says so because it was
-   * rewritten to ask the right question. It measured a page coordinate, which
-   * passed the moment the numbers dropped under 800 -- while in the running
-   * application both sat *behind the pinned master strip*, in the part of the
-   * stage that scrolls. A screenshot showed it; the assertion could not. It
-   * now asks whether the control is inside the box that clips it.
-   *
-   * The stage has 559 px and a deck wants 685. Scaling cannot close that --
-   * it would need about a 0.64 density against a 0.80 floor -- so something
-   * has to fold or be pinned, the way the master strip now is. That is a
-   * design decision with several defensible answers and it is the owner's;
-   * the measurement is here.
+   * Measured against `.stage` rather than the window, because that is the box
+   * that clips a deck. An earlier version of this test asked for a page
+   * coordinate under 800 and passed while both controls sat behind the pinned
+   * master strip; a screenshot showed it and the assertion could not.
    */
   test("every control on a deck is on the first screen", async ({ page }, info) => {
-    test.fail();
     await openShell(page, "/");
 
     const offscreen: string[] = [];
