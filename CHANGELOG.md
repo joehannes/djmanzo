@@ -16,6 +16,9 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+
+## v0.14.0 — Prepare is a surface, and a deck knows what pinning costs
+
 **Function tags** — what a record is *for*, which is not what it is. Genre says
 a record is bachata; it does not say whether it opens a room, lifts one that is
 already moving, or is what you reach for when the floor has emptied and you
@@ -44,6 +47,39 @@ times and look like a duplicate-detection bug. Negation is `NOT EXISTS`,
 because an absent function is a *value* — a record nobody has tagged genuinely
 is not an opener — unlike an absent tempo, which is an unknown a filter must
 not assert anything about.
+
+**Prepare is its own surface.** It was mounted by the browser, so it could only
+exist where the browser existed and only at the size the browser left it. It
+docks like anything else now: its own frame, header, close button and place in
+the persisted workspace, open beside the decks with the browser along the
+bottom or open on its own. One gesture reaches it — `→` on a browser row — and
+`prepare.svelte.ts` is the only path between the two, because a second way to
+set a track aside is how a gesture starts behaving differently depending on
+where you made it.
+
+**A deck pins its channel strip only when it can afford to.** Pinning was the
+fix for the deck's volume fader and filter sitting behind the master strip, and
+it was unconditional, which is what was wrong: a pinned region is `flex: none`,
+and a `flex: none` region in a column with less room than it wants does not
+scroll — it overflows. Four decks with a surface docked at 1280×800 put the
+first deck at 22 px tall with its 300 px strip drawn straight across the master
+strip. Two faults behind it. `.decks.four` and `.decks.six` set
+`grid-auto-rows: min-content` meaning "let the extra rows scroll", except
+nothing scrolls them, so the free space went to whichever row was not
+`min-content` — 115 px against 433. And pinning had no price. Now every deck
+row is `minmax(0, 1fr)`, and a deck pins only when it has room for the strip
+*and* a waveform: measured, 168 px of strip on one line above about 530 px of
+deck width and 300 px wrapped below it, plus 140 px for the waveform, overview
+and progress bar. Under that the deck is one scrolling column — everything
+reachable, in the same order, nothing painted over anything.
+
+The layout budget grew with it: `ui/e2e/budget.spec.ts` measures all six shapes
+the top bar can be put into — two, four and six decks, docked and not — rather
+than the opening screenshot alone. 42 tests, from 17.
+
+**`docs/DIRECTIVE-STATUS.md`** answers "where are we in the 105 sections" from a
+file rather than from memory, with a script that counts the table so the
+number can be checked rather than taken.
 
 
 ## v0.13.0 — Everything a DJ touches, on one screen
