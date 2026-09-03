@@ -23,7 +23,6 @@
   import { SvelteSet } from "svelte/reactivity";
   import { open } from "@tauri-apps/plugin-dialog";
   import Journal from "./Journal.svelte";
-  import Plan from "./Plan.svelte";
   import Requests from "./Requests.svelte";
   import Memory from "./Memory.svelte";
   import ShareSet from "./ShareSet.svelte";
@@ -640,7 +639,7 @@
       is a different question — "when did I last play this" — and a box that
       silently does nothing is worse than one that is not there.
     -->
-    {#if selection.kind !== "history" && selection.kind !== "duplicates" && selection.kind !== "notes" && selection.kind !== "plan" && selection.kind !== "requests" && selection.kind !== "memory"}
+    {#if selection.kind !== "history" && selection.kind !== "duplicates" && selection.kind !== "notes" && selection.kind !== "requests" && selection.kind !== "memory"}
       <input
         type="search"
         placeholder={selection.kind === "playlist" || selection.kind === "smart"
@@ -654,8 +653,6 @@
       <span class="viewing">Everything played, most recent first.</span>
     {:else if selection.kind === "notes"}
       <span class="viewing">What you thought while it was playing.</span>
-    {:else if selection.kind === "plan"}
-      <span class="viewing">A whole night, before you play any of it.</span>
     {:else if selection.kind === "requests"}
       <span class="viewing">What the room is asking for.</span>
     {:else if selection.kind === "memory"}
@@ -736,7 +733,7 @@
       it is one more thing between the DJ and what they wrote, in a panel that
       is short to begin with.
     -->
-    {#if status.folders.length > 0 && selection.kind !== "notes" && selection.kind !== "plan" && selection.kind !== "requests" && selection.kind !== "memory"}
+    {#if status.folders.length > 0 && selection.kind !== "notes" && selection.kind !== "requests" && selection.kind !== "memory"}
       <div class="folders">
         {#each status.folders as folder (folder)}
           <span class="folder">
@@ -906,8 +903,6 @@
     {/if}
   {:else if selection.kind === "notes"}
     <Journal {enabled} />
-  {:else if selection.kind === "plan"}
-    <Plan {enabled} />
   {:else if selection.kind === "requests"}
     <!--
       A request handed to the search box, and the view switched to the

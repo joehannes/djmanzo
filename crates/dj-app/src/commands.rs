@@ -1450,6 +1450,37 @@ mod tests {
             MusicalKey::new(hour, mode).unwrap()
         }
 
+        /// A record with just enough filled in to be judged.
+        fn fixture(
+            byte: u8,
+            bpm: Option<f64>,
+            k: Option<MusicalKey>,
+            lufs: Option<f64>,
+        ) -> dj_library::LibraryTrack {
+            dj_library::LibraryTrack {
+                id: dj_core::TrackId::from_bytes([byte; 32]),
+                path: std::path::PathBuf::from(format!("/music/{byte}.wav")),
+                tags: dj_library::Tags::default(),
+                duration_frames: 44_100 * 300,
+                sample_rate: dj_core::SampleRate::DEFAULT,
+                channels: 2,
+                file_size: None,
+                file_modified: None,
+                added_at: 0,
+                analysis: dj_library::StoredAnalysis {
+                    bpm,
+                    key_hour: k.map(MusicalKey::hour),
+                    key_mode: k.map(MusicalKey::mode),
+                    loudness_lufs: lufs,
+                    phrase_beats: Some(16),
+                    phrase_anchor: Some(0),
+                    ..dj_library::StoredAnalysis::default()
+                },
+                stats: dj_library::PlayStats::default(),
+                colour: None,
+            }
+        }
+
         /// **The rail's line is deltas, in the directive's own shape.**
         ///
         /// §22 gives the example verbatim: `+3 BPM · 8A→9A · energy +1`. A
@@ -1502,7 +1533,7 @@ mod tests {
                     to: 174.0,
                 },
             ]);
-            assert_eq!(line, "8A\u{2192}3B clash \u{b7} +46 BPM stretch");
+            assert_eq!(line, "+46 BPM stretch \u{b7} 8A\u{2192}3B clash");
         }
 
         /// **Half and double time are named, not turned into a huge delta.**
@@ -1534,6 +1565,10 @@ mod tests {
         #[test]
         fn no_change_is_still_an_answer() {
             assert_eq!(bpm_delta(128.0, 128.0, ""), "+0 BPM");
+            // The one that reached a screenshot: two records a fraction of a
+            // beat apart rendered `-0 BPM`, which reads as a fault.
+            assert_eq!(bpm_delta(120.4, 120.0, ""), "+0 BPM");
+            assert_eq!(bpm_delta(120.0, 120.4, ""), "+0 BPM");
         }
 
         /// **With nothing playing, an absolute is the only honest answer.**
@@ -1543,6 +1578,99 @@ mod tests {
         fn with_no_tempo_to_compare_against_the_value_is_given() {
             assert_eq!(bpm_delta(0.0, 128.0, ""), "128 BPM");
             assert_eq!(bpm_delta(f64::NAN, 128.0, ""), "128 BPM");
+        }
+
+        /// **A seam is described by the same words a candidate is.**
+        ///
+        /// The plan's links and the rail's rows are the same judgement about
+        /// the same pair of records, so they must not be two rankings that can
+        /// disagree. This pins that they share the summariser.
+        #[test]
+        fn a_seam_reads_like_a_candidate() {
+            use super::super::link_between;
+            let a = fixture(1, Some(128.0), Some(key(8, Mode::Minor)), None);
+            let b = fixture(2, Some(131.0), Some(key(9, Mode::Minor)), None);
+            let link = link_between(&a, &b);
+            assert_eq!(link.summary, "+3 BPM \u{b7} 8A\u{2192}9A");
+            assert!(
+                !link.risky,
+                "a harmonic move inside the pitch range is not a risk"
+            );
+            assert!(
+                link.confidence > 0.8,
+                "confidence was {:.2}",
+                link.confidence
+            );
+        }
+
+        /// **A key clash is a risk, and so is a tempo the deck cannot reach.**
+        ///
+        /// Marked rather than avoided. A set with no difficult seams never went
+        /// anywhere; what the DJ must not do is meet one for the first time at
+        /// 01:40.
+        #[test]
+        fn the_difficult_seams_are_marked() {
+            use super::super::link_between;
+            let playing = fixture(1, Some(128.0), Some(key(8, Mode::Minor)), None);
+            let clash = fixture(2, Some(128.0), Some(key(3, Mode::Major)), None);
+            let far = fixture(3, Some(174.0), Some(key(8, Mode::Minor)), None);
+
+            assert!(
+                link_between(&playing, &clash).risky,
+                "a key clash was not marked"
+            );
+            assert!(
+                link_between(&playing, &far).risky,
+                "an unreachable tempo was not marked"
+            );
+        }
+
+        /// **A change of rhythmic grammar is a risk the scorer cannot see.**
+        ///
+        /// Dembow into four-on-the-floor is a cut however well the tempos
+        /// match, and the scorer ranks candidates rather than deciding whether
+        /// a blend is possible. `dj_core::genre` is what knows.
+        #[test]
+        fn crossing_a_grammar_is_a_risk_even_when_everything_else_agrees() {
+            use super::super::link_between;
+            let mut a = fixture(1, Some(128.0), Some(key(8, Mode::Minor)), None);
+            let mut b = fixture(2, Some(128.0), Some(key(8, Mode::Minor)), None);
+            a.tags.genre = Some("dembow".to_owned());
+            b.tags.genre = Some("techno".to_owned());
+
+            let link = link_between(&a, &b);
+            assert!(
+                link.risky,
+                "same key, same tempo, different grammar -- and it was not marked: {}",
+                link.summary,
+            );
+        }
+
+        /// **The first record has no seam before it.**
+        #[test]
+        fn a_plan_starts_without_a_link() {
+            use super::super::slots_with_links;
+            use dj_library::setlist::Slot;
+            let pool = vec![
+                fixture(1, Some(128.0), Some(key(8, Mode::Minor)), None),
+                fixture(2, Some(131.0), Some(key(9, Mode::Minor)), None),
+            ];
+            let slots: Vec<Slot> = pool
+                .iter()
+                .enumerate()
+                .map(|(i, t)| Slot {
+                    track: t.id,
+                    #[allow(clippy::cast_precision_loss)]
+                    through: i as f32,
+                    trajectory: dj_core::Trajectory::Hold,
+                    reasons: Vec::new(),
+                })
+                .collect();
+
+            let out = slots_with_links(&slots, &pool);
+            assert_eq!(out.len(), 2);
+            assert!(out[0].link.is_none(), "the opening record was given a seam");
+            assert!(out[1].link.is_some(), "the second record was given none");
         }
 
         /// **A genre change is announced; staying put is named.**
@@ -2889,6 +3017,79 @@ fn describe_step(step: &crate::autopilot::Step) -> String {
     }
 }
 
+/// How one record joins the one before it, or `None` for the first.
+///
+/// Built from the same scorer the rail uses, so a seam inside a plan and a
+/// candidate in the rail are judged by one set of weights and described in one
+/// vocabulary. Two rankings that disagree about the same pair of records is the
+/// bug this avoids.
+fn link_between(before: &dj_library::LibraryTrack, after: &dj_library::LibraryTrack) -> LinkDto {
+    use dj_core::{Blendability, genre};
+    use dj_library::suggest::{Playing, Reason, Trajectory, score};
+
+    // `Hold` rather than the arc's own trajectory: this describes the seam, not
+    // whether it takes the room where the arc wanted. A loudness jump is worth
+    // the same warning whichever direction the set was going in.
+    let scored = score(&Playing::of(before), Trajectory::Hold, after);
+
+    // A grammar change is not in the scorer, because the scorer ranks
+    // candidates and the assembler is what places a cut deliberately. It is a
+    // risk here for the same reason it is a rule there: dembow into
+    // four-on-the-floor is a cut however well the tempos match.
+    let family = |t: &dj_library::LibraryTrack| t.tags.genre.as_deref().and_then(genre::family_for);
+    let cut = match (family(before), family(after)) {
+        (Some(a), Some(b)) => a.blends_with(b) == Blendability::Cut,
+        _ => false,
+    };
+
+    let risky = cut
+        || scored.reasons.iter().any(|r| {
+            matches!(
+                r,
+                Reason::KeyClash { .. } | Reason::TempoFar { .. } | Reason::Unanalysed
+            )
+        });
+
+    LinkDto {
+        summary: summarise_reasons(&scored.reasons),
+        confidence: scored.confidence(),
+        risky,
+    }
+}
+
+/// Turn a plan into its interface shape, filling in the seam between each pair.
+///
+/// One pass to resolve the records, then a second to describe the joins. The
+/// link belongs between *adjacent slots in the output*, and the first pass can
+/// drop a slot whose record has left the library, so the two cannot be one
+/// pass without occasionally describing a seam that is not in the plan.
+fn slots_with_links(
+    slots: &[dj_library::setlist::Slot],
+    pool: &[dj_library::LibraryTrack],
+) -> Vec<SetlistSlotDto> {
+    let resolved: Vec<_> = slots
+        .iter()
+        .filter_map(|slot| {
+            let track = pool.iter().find(|t| t.id == slot.track)?;
+            Some((track, slot))
+        })
+        .collect();
+
+    resolved
+        .iter()
+        .enumerate()
+        .map(|(index, (track, slot))| SetlistSlotDto {
+            track: LibraryTrackDto::from((*track).clone()),
+            through: slot.through,
+            trajectory: trajectory_name(slot.trajectory).to_owned(),
+            reasons: slot.reasons.iter().map(describe_reason).collect(),
+            link: index
+                .checked_sub(1)
+                .map(|before| link_between(resolved[before].0, track)),
+        })
+        .collect()
+}
+
 /// One track in an assembled set, with the reasoning that placed it.
 #[derive(Debug, Clone, Serialize)]
 pub struct SetlistSlotDto {
@@ -2898,6 +3099,31 @@ pub struct SetlistSlotDto {
     /// `lift`, `hold` or `ease` -- what the arc wanted at this point.
     pub trajectory: String,
     pub reasons: Vec<String>,
+    /// The join **from the record before this one**, empty for the first.
+    ///
+    /// A plan is a list of tracks and a set is a list of *transitions*; the
+    /// two are not the same list. What a DJ reading a plan wants to know is
+    /// where it is going to be difficult, and that is a property of the seam
+    /// rather than of either record. §20's Set Flow calls these the transition
+    /// links and the risk markers, and this is both of them.
+    pub link: Option<LinkDto>,
+}
+
+/// How one record joins the one before it.
+#[derive(Debug, Clone, Serialize)]
+pub struct LinkDto {
+    /// The deltas across the seam, on one line: `+3 BPM \u{b7} 8A\u{2192}9A`.
+    pub summary: String,
+    /// How well the two go together, 0 to 1. The same scale the rail draws.
+    pub confidence: f64,
+    /// True when this seam needs a decision rather than a blend: a key clash,
+    /// a tempo outside the deck's range, or a change of rhythmic grammar.
+    ///
+    /// Marked rather than avoided. A set with no difficult seams is a set that
+    /// never went anywhere, and the assembler is allowed to place one where it
+    /// judges the room can take it -- what it must not do is let the DJ meet it
+    /// for the first time at 01:40.
+    pub risky: bool,
 }
 
 /// Build a whole set before playing any of it.
@@ -2934,23 +3160,10 @@ pub fn setlist_build(
     // shaping happens afterwards.
     let pool = db.all_tracks(5_000).map_err(|e| e.to_string())?;
 
-    Ok(assemble(&pool, arc, &taste, minutes, None)
-        .into_iter()
-        .filter_map(|slot| {
-            let track = pool.iter().find(|t| t.id == slot.track)?;
-            Some(SetlistSlotDto {
-                track: LibraryTrackDto::from(track.clone()),
-                through: slot.through,
-                trajectory: match slot.trajectory {
-                    dj_core::Trajectory::Lift => "lift",
-                    dj_core::Trajectory::Ease => "ease",
-                    dj_core::Trajectory::Hold => "hold",
-                }
-                .to_owned(),
-                reasons: slot.reasons.iter().map(describe_reason).collect(),
-            })
-        })
-        .collect())
+    Ok(slots_with_links(
+        &assemble(&pool, arc, &taste, minutes, None),
+        &pool,
+    ))
 }
 
 /// One slot of a plan, as the interface holds it.
@@ -3058,19 +3271,7 @@ pub fn setlist_steer(
 
     let out = steer(&slots, played, &wanted, &pool);
     Ok(SteeredDto {
-        plan: out
-            .plan
-            .iter()
-            .filter_map(|slot| {
-                let track = pool.iter().find(|t| t.id == slot.track)?;
-                Some(SetlistSlotDto {
-                    track: LibraryTrackDto::from(track.clone()),
-                    through: slot.through,
-                    trajectory: trajectory_name(slot.trajectory).to_owned(),
-                    reasons: slot.reasons.iter().map(describe_reason).collect(),
-                })
-            })
-            .collect(),
+        plan: slots_with_links(&out.plan, &pool),
         summary: out.summary,
         changed: out.changed,
     })
@@ -3389,7 +3590,9 @@ fn describe_plan_reason(reason: &crate::plan::Reason) -> String {
 pub struct SuggestionDto {
     pub track: LibraryTrackDto,
     pub score: f64,
-    /// Human-readable, ordered strongest first. Each is one `Reason`.
+    /// Human-readable, in the order the scorer produced them. Each is one
+    /// `Reason`. The one-line `summary` below reorders them for reading; this
+    /// keeps the scorer's order so the two can be compared.
     pub reasons: Vec<String>,
     /// The same reasons as one line of deltas: `+3 BPM · 8A→9A · +1 dB`.
     ///
@@ -3619,8 +3822,32 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
 /// `dj_library::suggest`.
 fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
     use dj_library::suggest::Reason;
-    reasons
-        .iter()
+
+    /// Where each reason sits on the line, regardless of the order the scorer
+    /// happened to produce them in.
+    ///
+    /// Tempo first because it is the first gate -- a record the deck cannot
+    /// reach is not a candidate whatever its key -- then the key, then the
+    /// level, then where the genre goes, then whatever is missing. The scorer
+    /// pushes key before tempo because that is the order it computes in, which
+    /// is an implementation detail and not something a DJ should read.
+    const fn place(reason: &Reason) -> u8 {
+        match reason {
+            Reason::TempoFits { .. }
+            | Reason::TempoHalfOrDouble { .. }
+            | Reason::TempoFar { .. } => 0,
+            Reason::SameKey(_) | Reason::Harmonic { .. } | Reason::KeyClash { .. } => 1,
+            Reason::Loudness { .. } => 2,
+            Reason::SameFamily(_) | Reason::OtherFamily { .. } => 3,
+            Reason::PhraseKnown { .. } | Reason::PhraseUnknown | Reason::Unanalysed => 4,
+        }
+    }
+
+    let mut ordered: Vec<&Reason> = reasons.iter().collect();
+    ordered.sort_by_key(|r| place(r));
+
+    ordered
+        .into_iter()
         .filter_map(|reason| match reason {
             Reason::SameKey(k) => Some(k.camelot()),
             Reason::Harmonic { from, to } | Reason::KeyClash { from, to } => {
@@ -3666,7 +3893,12 @@ fn bpm_delta(from: f64, to: f64, suffix: &str) -> String {
     if !from.is_finite() || from <= 0.0 {
         return format!("{to:.0} BPM{suffix}");
     }
-    format!("{:+.0} BPM{suffix}", to - from)
+    // Rounded first, and a rounded zero normalised to a positive one.
+    // `{:+.0}` of -0.4 is `-0`, which appeared on a real seam between two 120
+    // BPM records and reads as a fault rather than as "no change".
+    let delta = to - from;
+    let rounded = if delta.abs() < 0.5 { 0.0 } else { delta };
+    format!("{rounded:+.0} BPM{suffix}")
 }
 
 // -- what a record is for ---------------------------------------------------

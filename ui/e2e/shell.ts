@@ -249,6 +249,83 @@ const ANSWERS: Record<string, unknown> = {
     },
   ],
   similar_to: [],
+  learned_taste: { favourites: [], plays: 0 },
+  // A three-record plan whose middle seam needs a cut.
+  //
+  // Two easy joins and one difficult one, because a fixture in which every
+  // seam is fine cannot tell a Set Flow that draws risk from one that draws
+  // nothing.
+  setlist_build: [
+    {
+      track: {
+        id: "d".repeat(64),
+        path: "/music/opener.flac",
+        title: "A Pedir Su Mano",
+        artist: "Juan Luis Guerra",
+        album: null,
+        genre: "Merengue",
+        year: 1989,
+        duration_seconds: 240,
+        bpm: 124,
+        key: "8A",
+        loudness_lufs: -10.0,
+        analysed: true,
+        play_count: 0,
+        rating: null,
+        colour: null,
+      },
+      through: 0,
+      trajectory: "lift",
+      reasons: [],
+      link: null,
+    },
+    {
+      track: {
+        id: "e".repeat(64),
+        path: "/music/middle.flac",
+        title: "La Bilirrubina",
+        artist: "Juan Luis Guerra",
+        album: null,
+        genre: "Merengue",
+        year: 1990,
+        duration_seconds: 250,
+        bpm: 127,
+        key: "9A",
+        loudness_lufs: -8.0,
+        analysed: true,
+        play_count: 0,
+        rating: null,
+        colour: null,
+      },
+      through: 0.5,
+      trajectory: "lift",
+      reasons: ["harmonic (9A)"],
+      link: { summary: "+3 BPM \u00b7 8A\u21929A \u00b7 +2 dB", confidence: 0.91, risky: false },
+    },
+    {
+      track: {
+        id: "f".repeat(64),
+        path: "/music/closer.flac",
+        title: "Visa Para Un Sue\u00f1o",
+        artist: "Juan Luis Guerra",
+        album: null,
+        genre: "Techno",
+        year: 1990,
+        duration_seconds: 230,
+        bpm: 174,
+        key: "3B",
+        loudness_lufs: -6.0,
+        analysed: true,
+        play_count: 0,
+        rating: null,
+        colour: null,
+      },
+      through: 1,
+      trajectory: "hold",
+      reasons: ["key clash (3B)"],
+      link: { summary: "+47 BPM stretch \u00b7 9A\u21923B clash", confidence: 0.18, risky: true },
+    },
+  ],
   // One record, so a test can press a gesture *on* something.
   //
   // An empty library is the state in which every row-level gesture is
@@ -286,11 +363,15 @@ const ANSWERS: Record<string, unknown> = {
   },
   // The real bands, so the harness measures the interface a DJ gets at this
   // window size rather than one at a density nothing chooses.
+  // Copied from `dj_app::cockpit::BANDS`, and kept honest by a Rust test that
+  // reads this file: `the_harness_and_rust_agree_about_the_bands`. A stub that
+  // answers with numbers Rust no longer holds is a harness measuring an
+  // application that does not exist, and this table has moved twice.
   density_bands: [
-    [1460, "Relaxed", 1.15],
-    [1090, "Standard", 1.0],
-    [1020, "Compact", 0.92],
-    [980, "Pro Dense", 0.86],
+    [1500, "Relaxed", 1.15],
+    [1130, "Standard", 1.0],
+    [1060, "Compact", 0.92],
+    [1020, "Pro Dense", 0.86],
     [0, "Ultra Dense", 0.8],
   ],
     cockpit_surfaces: surfaces,

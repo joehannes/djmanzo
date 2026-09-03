@@ -16,6 +16,29 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Set Flow** — §20's third view. The set plan is a dockable surface now rather
+than a page inside the browser's folder tree, and it draws what a plan is
+actually made of: not a list of tracks but a list of **transitions**. Between
+every pair of records is the seam that joins them — `+3 BPM · 8A→9A · +2 dB` —
+and a seam that needs a cut rather than a blend says so, in the one colour on
+the panel that interrupts a scan. The number of difficult joins is stated above
+the list, because twenty-five rows is more than anyone reads before deciding
+whether to keep a plan: two is a plan to play, eleven is a plan to rebuild.
+
+A seam is judged by the same scorer the Next rail uses, so a pair of records
+gets one answer rather than two that can disagree. Grammar is the exception the
+scorer cannot see: dembow into four-on-the-floor is a cut however well the
+tempos match, and `dj_core::genre` is what knows that.
+
+**Every density band's floor moved up 40 px.** Adding one destination to the
+top bar pushed that row onto another wrapped line, and the top bar is pinned —
+so forty pixels came out of every stage at every window height, and a 1,100 px
+window went back to a deck that did not fit. The browser sweep caught it. The
+floors are re-derived from that measurement rather than guessed, and a Rust
+test now reads `ui/e2e/shell.ts` and fails when the harness's copy of the table
+drifts from the real one, which is how the sweep came to be measuring an
+application that no longer existed.
+
 
 ## v0.14.0 — Prepare and Next are surfaces, and a deck knows what pinning costs
 

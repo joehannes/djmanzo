@@ -25,7 +25,6 @@
     | { kind: "all" }
     | { kind: "history" }
     | { kind: "notes" }
-    | { kind: "plan" }
     | { kind: "requests" }
     | { kind: "memory" }
     | { kind: "duplicates" }
@@ -222,18 +221,6 @@
     onclick={() => select({ kind: "notes" })}
   >
     Journal
-  </button>
-  <!--
-    Planning a night belongs beside History and the Journal: all three are
-    about nights rather than about the collection. This is the one that looks
-    forwards.
-  -->
-  <button
-    class="entry"
-    class:active={selection.kind === "plan"}
-    onclick={() => select({ kind: "plan" })}
-  >
-    Plan
   </button>
   <!--
     Requests belongs with the other three: it is about the night, and it is the

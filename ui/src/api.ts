@@ -1744,6 +1744,23 @@ export const exportSession = (session: string, path: string) =>
 // -- planning a set ---------------------------------------------------------
 
 /** One record in a plan, and why it is there. */
+/** How one record in a plan joins the one before it. */
+export interface Link {
+  /** The deltas across the seam, on one line: `+3 BPM · 8A→9A`. */
+  summary: string;
+  /** 0 to 1 — the same confidence scale the Next rail draws. */
+  confidence: number;
+  /**
+   * True when the seam needs a decision rather than a blend.
+   *
+   * A key clash, a tempo outside the deck's range, or a change of rhythmic
+   * grammar. Marked rather than avoided: a set with no difficult seams never
+   * went anywhere, and what the DJ must not do is meet one for the first time
+   * at 01:40.
+   */
+  risky: boolean;
+}
+
 export interface SetlistSlot {
   track: LibraryTrack;
   /** Where in the set it falls, 0 at the start and 1 at the end. */
@@ -1751,6 +1768,15 @@ export interface SetlistSlot {
   /** What the arc wanted here: "lift", "hold" or "ease". */
   trajectory: string;
   reasons: string[];
+  /**
+   * The seam from the record before this one, absent for the first.
+   *
+   * A plan is a list of tracks and a set is a list of *transitions*, and the
+   * two are not the same list. What a DJ reading a plan wants to know is where
+   * it is going to be difficult, which is a property of the join rather than
+   * of either record.
+   */
+  link: Link | null;
 }
 
 /** The shape of a night. */

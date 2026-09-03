@@ -421,19 +421,35 @@ pub enum Category {
 ///
 /// | density | deck | needs |
 /// |---|---|---|
-/// | Relaxed 1.15 | 1088 px | 1460 |
-/// | Standard 1.00 | 807 | 1090 |
-/// | Compact 0.92 | 758 | 1020 |
-/// | Pro Dense 0.86 | 721 | 980 |
-/// | Ultra Dense 0.80 | 685 | 916 |
+/// | Relaxed 1.15 | 1088 px | 1500 |
+/// | Standard 1.00 | 807 | 1130 |
+/// | Compact 0.92 | 758 | 1060 |
+/// | Pro Dense 0.86 | 721 | 1020 |
+/// | Ultra Dense 0.80 | 685 | 956 |
 ///
-/// The Relaxed and Standard floors moved up -- 1,330 to 1,460 and 1,050 to
-/// 1,090 -- when the deck's channel strip was pinned. The deck was measured
-/// whole before, and a pinned foot changes the sum: the scrolling body now
+/// The Relaxed and Standard floors moved up once already -- 1,330 to 1,460 and
+/// 1,050 to 1,090 -- when the deck's channel strip was pinned. The deck was
+/// measured whole before, and a pinned foot changes the sum: the scrolling body
 /// competes with a foot that will not shrink, so a band needs more window than
-/// the deck's own height suggests. The browser sweep in `density.spec.ts` is
-/// what caught it, and both numbers are the height at which the sweep stops
-/// reporting a shortfall rather than a guess with a margin.
+/// the deck's own height suggests.
+///
+/// **Then every floor moved again, by exactly 40.** Adding one destination to
+/// the top bar -- the set plan -- pushed that row onto one more wrapped line,
+/// and the top bar is pinned, so the forty pixels came straight out of every
+/// stage at every window height. It is worth saying plainly what that means:
+/// *the number in this table is a fact about the top bar as much as about the
+/// deck*, and the top bar grows every time a surface is added. Do not guess the
+/// correction. `density.spec.ts` sweeps window heights and reports, for each,
+/// how much the deck needs and how much it has; the floor is the height where
+/// that shortfall reaches zero, and it takes one run to read it off.
+///
+/// The alternative -- capping the destinations to one scrolling line so the top
+/// bar's height stops depending on how many surfaces exist -- was considered and
+/// not taken. That row wraps *by design*: it breaks at a group boundary so the
+/// seven panels hold one line, and the products this competes with are the ones
+/// whose standing complaint is menus you cannot find. A table that needs
+/// re-measuring occasionally is a smaller cost than a destination behind a
+/// scroll.
 ///
 /// The first version of this table was guessed round numbers, and the guesses
 /// were wrong in both directions: a 1,200 px window was given Relaxed, whose
@@ -441,7 +457,7 @@ pub enum Category {
 /// Both clipped the deck's channel strip -- the exact failure the bands exist
 /// to prevent -- and a screenshot of the running application is what showed it.
 ///
-/// **Below about 916 px nothing fits**, and the last band is the floor rather
+/// **Below about 956 px nothing fits**, and the last band is the floor rather
 /// than a solution: at djmanzo's own default 800 the deck's channel strip is
 /// still in the part of the stage that scrolls. That is recorded as a failing
 /// test rather than papered over here.
@@ -450,10 +466,10 @@ pub enum Category {
 /// without asking on every resize -- one call at start-up, then arithmetic.
 /// Rust still owns the policy; the browser owns the pixels it is measured in.
 pub const BANDS: &[(u16, Density)] = &[
-    (1460, Density::Relaxed),
-    (1090, Density::Standard),
-    (1020, Density::Compact),
-    (980, Density::ProDense),
+    (1500, Density::Relaxed),
+    (1130, Density::Standard),
+    (1060, Density::Compact),
+    (1020, Density::ProDense),
     (0, Density::UltraDense),
 ];
 
@@ -1161,9 +1177,10 @@ mod tests {
     fn a_short_window_gets_a_denser_interface() {
         assert_eq!(Density::fitting(800), Density::UltraDense);
         assert_eq!(Density::fitting(900), Density::UltraDense);
-        assert_eq!(Density::fitting(1000), Density::ProDense);
-        assert_eq!(Density::fitting(1020), Density::Compact);
-        assert_eq!(Density::fitting(1100), Density::Standard);
+        assert_eq!(Density::fitting(1000), Density::UltraDense);
+        assert_eq!(Density::fitting(1020), Density::ProDense);
+        assert_eq!(Density::fitting(1060), Density::Compact);
+        assert_eq!(Density::fitting(1130), Density::Standard);
         assert_eq!(Density::fitting(1200), Density::Standard);
         assert_eq!(Density::fitting(1440), Density::Standard);
         assert_eq!(Density::fitting(1500), Density::Relaxed);
@@ -1176,8 +1193,60 @@ mod tests {
         assert_ne!(Density::fitting(1200), Density::Relaxed);
         assert_ne!(Density::fitting(1400), Density::Relaxed);
         assert_ne!(Density::fitting(900), Density::ProDense);
+        // And the one the browser sweep caught when the top bar grew a line:
+        // 1,100 was Standard, whose deck then needed 524 px of a stage that
+        // had 494.
+        assert_ne!(Density::fitting(1100), Density::Standard);
         // Below every band's floor, and not a panic.
         assert_eq!(Density::fitting(0), Density::UltraDense);
+    }
+
+    /// **The browser harness and this table say the same thing.**
+    ///
+    /// `ui/e2e/shell.ts` answers `density_bands` with its own copy, because a
+    /// Playwright stub cannot call into Rust. A copy is a second source of
+    /// truth, and this one has now drifted once: the floors moved here and the
+    /// harness went on measuring the application as it used to be, so the
+    /// sweep that exists to catch a clipped deck reported a clipped deck that
+    /// had already been fixed.
+    ///
+    /// Rust reads the file rather than the other way round because this is
+    /// where the policy lives. If the parse below stops matching the harness's
+    /// formatting the test fails loudly, which is the right failure -- a guard
+    /// that silently stops guarding is worse than none.
+    #[test]
+    fn the_harness_and_rust_agree_about_the_bands() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/e2e/shell.ts");
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("could not read the browser harness at {path}: {e}"));
+
+        // The outer array closes on a line of its own; every inner one closes
+        // mid-line. Splitting on the first `],` would stop after one row.
+        let table = source
+            .split_once("density_bands: [")
+            .and_then(|(_, rest)| rest.split_once("\n  ],"))
+            .map(|(inside, _)| inside)
+            .expect(
+                "`density_bands: [` ... `\n  ],` is no longer how the harness writes the table",
+            );
+
+        let floors: Vec<u16> = table
+            .lines()
+            .filter_map(|line| {
+                let start = line.find('[')? + 1;
+                let end = line[start..].find(',')? + start;
+                line[start..end].trim().parse().ok()
+            })
+            .collect();
+
+        let ours: Vec<u16> = BANDS.iter().map(|(least, _)| *least).collect();
+        assert_eq!(
+            floors, ours,
+            "the browser harness answers with band floors this table does not \
+             hold. It measures the interface against what it is told the bands \
+             are, so a stale copy is a sweep measuring an application that does \
+             not exist -- update `density_bands` in ui/e2e/shell.ts",
+        );
     }
 
     // -- roles -------------------------------------------------------------

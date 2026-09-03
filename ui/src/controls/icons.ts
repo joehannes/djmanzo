@@ -61,6 +61,9 @@ export const ICONS: Record<string, IconGlyph> = {
   "layer-group": { d: "M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5M3 17l9 5 9-5" },
   "leaf": { d: "M5 19c0-8 5-13 15-14 1 10-4 15-11 15a4 4 0 0 1 -4 -1zM7 19c3-4 6-6 9-7" },
   "list": { d: "M4 6h16M4 12h16M4 18h16" },
+  // An ordered list: the same three rules with a bullet against each, so
+  // the plain list and the sequence read as a pair.
+  "list-ol": { d: "M9 6h11M9 12h11M9 18h11M4.5 6h0.01M4.5 12h0.01M4.5 18h0.01" },
   "location-dot": { d: "M12 21s7-6.3 7-11a7 7 0 1 0 -14 0c0 4.7 7 11 7 11zM12 7.5a2.5 2.5 0 1 0 0 5.0a2.5 2.5 0 1 0 0 -5.0z" },
   "lock": { d: "M7 11h10v9H7zM9 11V8a3 3 0 0 1 6 0v3" },
   "magnifying-glass": { d: "M11 5a6 6 0 1 0 0 12a6 6 0 1 0 0 -12zM15.5 15.5L21 21" },

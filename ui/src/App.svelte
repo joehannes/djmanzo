@@ -44,6 +44,7 @@
     type Workspace,
   } from "./api";
   import Next from "./Next.svelte";
+  import Plan from "./Plan.svelte";
   import SideView from "./SideView.svelte";
   import Watershed from "./Watershed.svelte";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
@@ -196,6 +197,7 @@
     "library",
     "prepare",
     "next",
+    "plan",
     "booth",
     "presets",
     "sampler",
@@ -239,6 +241,7 @@
     library: "bottom",
     prepare: "right",
     next: "right",
+    plan: "bottom",
     booth: "bottom",
     log: "bottom",
     presets: "right",
@@ -1073,6 +1076,12 @@
           happening and a tab is something you go and find.
         -->
         <IconButton icon="fa-solid fa-forward" label="Next" title="What could come next, and why" active={isOpen("next")} onClick={() => toggleSurface("next")} />
+        <!--
+          The set plan: the shape of the whole night rather than the next
+          record. Along the bottom, because a sequence is read across and a
+          side dock is 360 px wide.
+        -->
+        <IconButton icon="fa-solid fa-list-ol" label="Plan" title="The shape of the night, as a sequence" active={isOpen("plan")} onClick={() => toggleSurface("plan")} />
         <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={isOpen("presets")} onClick={() => toggleSurface("presets")} />
         <!--
           The booth: microphone, automix, a plugin insert and the master
@@ -1307,6 +1316,10 @@
     <Next enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
   {/snippet}
 
+  {#snippet surfacePlan()}
+    <Plan enabled={ready} />
+  {/snippet}
+
   {#snippet surfaceBooth()}
     {#if snapshot}
       <div class="mixer">
@@ -1485,6 +1498,7 @@
         {#if placement.surface === "library"}{@render surfaceLibrary()}
         {:else if placement.surface === "prepare"}{@render surfacePrepare()}
         {:else if placement.surface === "next"}{@render surfaceNext()}
+        {:else if placement.surface === "plan"}{@render surfacePlan()}
         {:else if placement.surface === "booth"}{@render surfaceBooth()}
         {:else if placement.surface === "presets"}{@render surfacePresets()}
         {:else if placement.surface === "assistant"}{@render surfaceAssistant()}

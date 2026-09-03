@@ -184,6 +184,15 @@
       .join(" ");
   });
 
+  /**
+   * How many seams in the plan need a decision rather than a blend.
+   *
+   * Counted and stated, because the number is the thing a DJ wants before
+   * reading twenty-five rows: a plan with two difficult joins is a plan to
+   * play, and one with eleven is one to rebuild.
+   */
+  let risky = $derived(plan.filter((slot) => slot.link?.risky).length);
+
   function minutesOf(seconds: number): string {
     return `${Math.round(seconds / 60)}`;
   }
@@ -274,7 +283,9 @@
     </svg>
     <p class="totals">
       <strong>{plan.length}</strong> records · about
-      <strong>{totalMinutes}</strong> minutes
+      <strong>{totalMinutes}</strong> minutes{#if risky > 0} ·
+        <strong class="warn">{risky}</strong>
+        {risky === 1 ? "seam needs" : "seams need"} a cut{/if}
     </p>
 
     <div class="steer">
@@ -290,7 +301,25 @@
 
     <ol class="slots">
       {#each plan as slot, i (slot.track.id + ":" + i)}
-        <li>
+        <!--
+          The seam, drawn between the two records it joins rather than on
+          either of them.
+
+          §20's Set Flow asks for transition links and risk markers, and this
+          is both: what changes across the join, and whether the join needs a
+          decision instead of a blend. It sits between the rows because that
+          is where it *is* -- putting it on the second record's line would read
+          as a fact about that record, which it is not.
+        -->
+        {#if slot.link}
+          <li class="seam" class:risky={slot.link.risky}>
+            <span class="thread" aria-hidden="true"></span>
+            <span class="seam-text">
+              {slot.link.summary}{#if slot.link.risky} · <strong>needs a cut</strong>{/if}
+            </span>
+          </li>
+        {/if}
+        <li class:odd={i % 2 === 0}>
           <span class="mono position">{i + 1}</span>
           <span class="arrow" title={slot.trajectory}>
             {slot.trajectory === "lift" ? "↗" : slot.trajectory === "ease" ? "↘" : "→"}
@@ -483,7 +512,15 @@
     font-size: 0.82em;
   }
 
-  .slots li:nth-child(odd) {
+  /*
+    Striped by the record's own position, not by `:nth-child`.
+
+    The seams are list items too, so a positional selector counts them and the
+    stripe stops tracking the records -- which is the one thing a stripe is
+    for. The index is already in the template; using it is one class and no
+    guessing.
+  */
+  .slots li.odd {
     background: color-mix(in srgb, var(--text) 4%, transparent);
   }
 
@@ -536,5 +573,46 @@
   .keep input {
     flex: 1;
     min-width: 8rem;
+  }
+
+  /*
+    A seam is a thread between two records, not a row of its own.
+
+    Deliberately quieter than the records it joins: it is context for them,
+    and a join drawn as loudly as a title would make a plan read as fifty
+    things rather than twenty-five.
+  */
+  .seam {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0 0.35rem 0 1.1rem;
+    font-size: 0.7em;
+    color: var(--text-dim);
+    background: none;
+  }
+
+  .seam .thread {
+    width: 1px;
+    height: 0.85em;
+    background: currentColor;
+    opacity: 0.5;
+    flex: none;
+  }
+
+  .seam-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A seam that needs a cut is the one thing on this panel worth interrupting
+     a scan for, so it is the only thing that changes colour. */
+  .seam.risky {
+    color: var(--danger, #dc2626);
+  }
+
+  .warn {
+    color: var(--danger, #dc2626);
   }
 </style>
