@@ -1441,6 +1441,123 @@ pub fn session_log(state: State<'_, AppState>) -> Vec<String> {
 mod tests {
     use super::*;
 
+    mod command_palette {
+        use super::super::{PALETTE_LIMIT, matches, palette};
+
+        /// **The palette can only offer what djmanzo actually has.**
+        ///
+        /// The whole point of generating it from `dj_core::vocabulary` and
+        /// `cockpit::surfaces()` rather than writing a list: every entry that
+        /// says it sends an action must send one the parser accepts. A
+        /// hand-written palette drifts the first time a verb is renamed, and
+        /// the failure is a DJ pressing something mid-set and getting an
+        /// error.
+        #[test]
+        fn every_action_it_offers_parses() {
+            for entry in palette(String::new(), 4) {
+                if entry.kind != "action" {
+                    continue;
+                }
+                assert!(
+                    dj_core::Action::parse(&entry.run).is_ok(),
+                    "the palette offers {:?} ({}), which the parser refuses",
+                    entry.run,
+                    entry.label,
+                );
+            }
+        }
+
+        /// **And every surface it offers is a surface that exists.**
+        #[test]
+        fn every_surface_it_offers_is_real() {
+            let known: Vec<&str> = crate::cockpit::surfaces().iter().map(|s| s.name).collect();
+            for entry in palette("show".to_owned(), 2) {
+                if entry.kind != "surface" {
+                    continue;
+                }
+                assert!(
+                    known.contains(&entry.run.as_str()),
+                    "the palette offers a surface called {:?}, which is not one",
+                    entry.run,
+                );
+            }
+        }
+
+        /// **What you typed comes first, when it is a real action.**
+        ///
+        /// This is the tier that makes the palette the semantic interface §51
+        /// asks for rather than a menu: the verbs that take an argument -- a
+        /// loop length, a key shift, a pitch -- can only be reached by typing
+        /// them, because a list of buttons would have to invent the number.
+        #[test]
+        fn a_typed_action_is_the_first_answer() {
+            let out = palette("deck 2 loop 8".to_owned(), 2);
+            assert!(!out.is_empty(), "typing a real action offered nothing");
+            assert_eq!(out[0].run, "deck 2 loop 8");
+            assert_eq!(out[0].kind, "action");
+        }
+
+        /// **Nonsense offers nothing rather than something wrong.**
+        #[test]
+        fn a_query_that_is_not_an_action_is_not_offered_as_one() {
+            let out = palette("deck 9 explode".to_owned(), 2);
+            assert!(
+                !out.iter().any(|e| e.run == "deck 9 explode"),
+                "the palette offered to run something the parser refuses",
+            );
+        }
+
+        /// **Only the decks in use.**
+        ///
+        /// A two-deck rig should not be offered deck 5. The count is the rig's,
+        /// not the maximum the engine supports.
+        #[test]
+        fn it_offers_the_decks_the_dj_actually_has() {
+            let two = palette("play".to_owned(), 2);
+            assert!(
+                two.iter().any(|e| e.run == "deck 2 play"),
+                "deck 2 was not offered to a two-deck rig",
+            );
+            assert!(
+                !two.iter().any(|e| e.run.starts_with("deck 3")),
+                "a two-deck rig was offered a third deck",
+            );
+        }
+
+        /// **A palette is read, not scrolled.**
+        #[test]
+        fn it_stops_at_a_readable_number() {
+            assert!(palette(String::new(), 6).len() <= PALETTE_LIMIT);
+        }
+
+        /// **`d2p` finds `Deck 2 · play`.**
+        ///
+        /// The gesture a palette exists for. A substring test would refuse it,
+        /// which is why the matcher is a subsequence.
+        #[test]
+        fn initials_find_the_thing() {
+            assert!(matches("d2p", "Deck 2 \u{b7} play"));
+            assert!(matches("dck", "Deck 2 \u{b7} play"));
+            assert!(!matches("d3p", "Deck 2 \u{b7} play"));
+            // In order, not merely present.
+            assert!(!matches("pd2", "Deck 2 \u{b7} play"));
+        }
+
+        /// **An empty query opens on something, not on nothing.**
+        ///
+        /// A palette that showed an empty list until you typed would make the
+        /// first press useless, and the first press is the one made in a hurry.
+        #[test]
+        fn it_opens_with_suggestions() {
+            let out = palette(String::new(), 2);
+            assert!(!out.is_empty(), "the palette opened empty");
+            assert!(
+                out.iter().any(|e| e.run.starts_with("deck 1")),
+                "an empty query did not offer the first deck's transport",
+            );
+        }
+    }
+
     mod rail {
         use super::super::{bpm_delta, summarise_reasons};
         use dj_core::{Mode, MusicalKey};
@@ -3899,6 +4016,156 @@ fn bpm_delta(from: f64, to: f64, suffix: &str) -> String {
     let delta = to - from;
     let rounded = if delta.abs() < 0.5 { 0.0 } else { delta };
     format!("{rounded:+.0} BPM{suffix}")
+}
+
+// -- the command palette ----------------------------------------------------
+
+/// One thing the palette can do.
+///
+/// # Why this is assembled in Rust
+///
+/// §51 asks for a command surface on `Ctrl/Cmd + K`, and closes by saying it
+/// "can also become the semantic interface exposed to voice/AI". That sentence
+/// decides the design: the palette must not be a hand-written list of pretty
+/// labels, because a hand-written list is a second vocabulary that drifts from
+/// the real one -- exactly what `dj_core::vocabulary` exists to prevent for the
+/// assistant (ADR-0005).
+///
+/// So every entry is generated from something that already exists: a verb the
+/// parser accepts, or a surface `cockpit::surfaces()` publishes. The palette
+/// cannot offer a command djmanzo does not have, and a verb added to the
+/// vocabulary appears in it without anyone remembering to add it.
+#[derive(Debug, Clone, Serialize)]
+pub struct PaletteEntryDto {
+    /// What the DJ reads: `Deck 1 · play`, `Show Prepare`.
+    pub label: String,
+    /// One line, in the imperative, from the vocabulary's own help.
+    pub about: String,
+    /// `action` or `surface` -- how the interface should carry it out.
+    pub kind: &'static str,
+    /// The action text, or the surface name.
+    pub run: String,
+}
+
+/// How many entries one query may return.
+///
+/// A palette is read, not scrolled: past a dozen the list stops being a list
+/// and becomes a search result, and the DJ is better served by typing another
+/// letter. The cap is applied after ranking, so the twelve are the best twelve.
+const PALETTE_LIMIT: usize = 12;
+
+/// What the palette should offer for `query`, best first.
+///
+/// # Ranking, and why it is here rather than in the interface
+///
+/// Three tiers, and the first is the one that makes this more than a menu:
+///
+/// 1. **What you typed, if it is a real action.** `deck 2 loop 8` parses, so
+///    the top entry runs it verbatim. This is what turns the palette into the
+///    semantic interface §51 asks for -- the whole 82-verb vocabulary is
+///    reachable by typing it, including every verb that takes an argument,
+///    which a list of buttons could never offer without inventing numbers.
+/// 2. **Verbs that need no argument**, one per deck in use. `play`, `cue`,
+///    `sync`, `eject` -- the things a palette is actually reached for.
+/// 3. **Surfaces**, so "show prepare" and "show plan" work as words.
+///
+/// Matching is a subsequence test rather than a substring one, because that is
+/// what a palette user expects: `d2p` finds `Deck 2 · play`. Within a tier the
+/// order is the vocabulary's own, which is grouped by what the verbs do, so an
+/// empty query opens on transport rather than on whatever sorts first
+/// alphabetically.
+#[tauri::command]
+#[must_use]
+pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
+    use dj_core::vocabulary::{Target, vocabulary};
+
+    let needle = query.trim();
+    let mut out = Vec::new();
+
+    // Tier 1: the query itself, when the parser accepts it.
+    if !needle.is_empty() && dj_core::Action::parse(needle).is_ok() {
+        out.push(PaletteEntryDto {
+            label: format!("Run: {needle}"),
+            about: "The vocabulary accepts this exactly as typed.".to_owned(),
+            kind: "action",
+            run: needle.to_owned(),
+        });
+    }
+
+    let decks = decks.clamp(1, 6);
+    for spec in vocabulary() {
+        // A verb needing an argument cannot be offered as a press: the palette
+        // would have to invent the number. Tier 1 is how those are reached.
+        if spec.argument.takes_argument() {
+            continue;
+        }
+        match spec.target {
+            Target::Deck => {
+                for deck in 1..=decks {
+                    let run = format!("deck {deck} {}", spec.verb);
+                    let label = format!("Deck {deck} \u{b7} {}", spec.verb);
+                    if matches(needle, &label) || matches(needle, &run) {
+                        out.push(PaletteEntryDto {
+                            label,
+                            about: spec.help.to_owned(),
+                            kind: "action",
+                            run,
+                        });
+                    }
+                }
+            }
+            Target::Mixer => {
+                let label = spec.verb.to_owned();
+                if matches(needle, &label) || matches(needle, spec.example) {
+                    out.push(PaletteEntryDto {
+                        label,
+                        about: spec.help.to_owned(),
+                        kind: "action",
+                        run: spec.example.to_owned(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Tier 3: the surfaces, by the words a DJ would reach for them with.
+    for surface in crate::cockpit::surfaces() {
+        let label = format!("Show {}", surface.title);
+        if matches(needle, &label) || matches(needle, surface.name) {
+            out.push(PaletteEntryDto {
+                label,
+                about: surface.about.to_owned(),
+                kind: "surface",
+                run: surface.name.to_owned(),
+            });
+        }
+    }
+
+    out.truncate(PALETTE_LIMIT);
+    out
+}
+
+/// Whether `haystack` contains every character of `needle`, in order.
+///
+/// A subsequence rather than a substring, because `d2p` should find
+/// `Deck 2 · play` -- that is the gesture a palette exists for, and a substring
+/// test would refuse it. Case-insensitive over ASCII; the labels are the
+/// vocabulary's own verbs and the cockpit's own titles, which are ASCII.
+fn matches(needle: &str, haystack: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    let mut wanted = needle.chars().filter(|c| !c.is_whitespace()).peekable();
+    for c in haystack.chars() {
+        match wanted.peek() {
+            None => return true,
+            Some(next) if next.eq_ignore_ascii_case(&c) => {
+                wanted.next();
+            }
+            Some(_) => {}
+        }
+    }
+    wanted.peek().is_none()
 }
 
 // -- what a record is for ---------------------------------------------------

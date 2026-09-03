@@ -416,6 +416,7 @@ pub fn run() {
             commands::report_bench,
             commands::session_log,
             commands::library_status,
+            commands::palette,
             commands::track_functions,
             commands::functions_of,
             commands::set_track_functions,

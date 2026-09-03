@@ -16,6 +16,26 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The command palette** — `Ctrl/Cmd + K`, the directive's §51. Every entry is
+generated in Rust from `dj_core::vocabulary` — the same 82 verbs the parser
+accepts, the assistant is told about and a MIDI mapping produces — or from a
+surface the cockpit publishes. It therefore cannot offer a command djmanzo does
+not have, and a verb added to the vocabulary appears in it without anyone
+remembering to add it.
+
+**What you type is itself an entry.** `deck 2 loop 8` parses, so the top row
+runs it verbatim. That is the only way the verbs taking an argument — a loop
+length, a key shift, a pitch — can be reached at all, because a list of buttons
+would have to invent the number, and it is what §51 means by closing with "this
+can also become the semantic interface exposed to voice/AI".
+
+Matching is a subsequence rather than a substring, so `d2p` finds
+`Deck 2 · play`; it lives in Rust with the ranking, because a matcher in the
+interface would be a second opinion about which command you meant. Only the
+decks the rig actually has are offered. `Ctrl/Cmd + K` is the one key djmanzo
+takes globally — a plain `k` typed into the browser's search box is still a
+`k`, which is asserted by test.
+
 
 ## v0.14.0 — Prepare, Next and the set plan become surfaces of their own
 

@@ -249,6 +249,29 @@ const ANSWERS: Record<string, unknown> = {
     },
   ],
   similar_to: [],
+  // The palette's answer, which Rust ranks. Two actions and one surface, so a
+  // test can prove each kind runs the right way -- and the first entry is the
+  // typed-action tier, which is what makes the palette more than a menu.
+  palette: [
+    {
+      label: "Run: deck 2 loop 8",
+      about: "The vocabulary accepts this exactly as typed.",
+      kind: "action",
+      run: "deck 2 loop 8",
+    },
+    {
+      label: "Deck 1 \u00b7 play",
+      about: "start playback",
+      kind: "action",
+      run: "deck 1 play",
+    },
+    {
+      label: "Show Prepare",
+      about: "Records on their way to a deck, before they are on one.",
+      kind: "surface",
+      run: "prepare",
+    },
+  ],
   learned_taste: { favourites: [], plays: 0 },
   // A three-record plan whose middle seam needs a cut.
   //

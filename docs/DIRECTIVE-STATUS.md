@@ -76,7 +76,7 @@ rather than taken.
 | 48 | Performance / laptop mode | 🟡 | The interface measures its own frame rate and says what a low one means. Density adapts |
 | 49 | Professional workflow principle | ⚖️ | |
 | 50 | Don't over-modalize | ✅ | The dock manager is this section: panels stopped taking turns |
-| 51 | Command palette | ⬜ | 148 commands are ready for one |
+| 51 | Command palette | ✅ | `Ctrl/Cmd + K`, assembled in Rust from `dj_core::vocabulary` and the cockpit's own surfaces rather than a written list, so it cannot offer a command djmanzo does not have. **What you type is an entry**: `deck 2 loop 8` parses, so the top row runs it — which is the only way the verbs taking an argument are reachable, and what §51 means by "the semantic interface exposed to voice/AI" |
 | 52 | Hardware-first thinking | ⚖️ | The pad zone is a page strip and eight pads because that is what hardware has |
 | 53 | Controller-aware GUI | 🟡 | Mappings ship; the interface does not reflect what is plugged in |
 | 54 | Professional functional presets | 🟡 | Four layout presets ship; they are not the functional ones this asks for |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **30 done, 32 part, 24 open, 19 standing rules.**
+Of the 105 sections: **31 done, 32 part, 23 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**30 of 86 deliverable sections are complete and 32 more are partly there.**
+**31 of 86 deliverable sections are complete and 32 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 30 whole plus 32 halves over 86 is 53%, and the phase view is stricter
+way: 31 whole plus 32 halves over 86 is 55%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

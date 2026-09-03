@@ -44,6 +44,7 @@
     type Workspace,
   } from "./api";
   import Next from "./Next.svelte";
+  import Palette from "./Palette.svelte";
   import Plan from "./Plan.svelte";
   import SideView from "./SideView.svelte";
   import Watershed from "./Watershed.svelte";
@@ -1511,6 +1512,22 @@
       </div>
     </section>
   {/snippet}
+
+  <!--
+    The command palette. Mounted outside the docks because it is not a surface:
+    it is a way of reaching everything, including the surfaces themselves, and
+    a thing that opens over the whole window has no dock to belong to.
+  -->
+  <Palette
+    enabled={ready}
+    {deckCount}
+    onAction={(action) => void send(action)}
+    onSurface={(surface) => {
+      if ((DRAWN as readonly string[]).includes(surface)) {
+        void toggleSurface(surface as Drawn);
+      }
+    }}
+  />
 
   <div class="cockpit">
   {#if leftDock.length > 0}

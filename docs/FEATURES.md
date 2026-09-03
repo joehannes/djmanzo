@@ -125,6 +125,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | One gesture sets a track aside — `→` on a browser row, and it is in Prepare | Cockpit §21 |
 | **Next**, a rail of up to eight candidates for what follows the playing deck, each on one line of deltas with a confidence bar | Cockpit §22 |
 | **Set plan**, its own surface: the night as a sequence, with the seam between each pair of records and a count of the joins that need a cut | Cockpit §20 |
+| **Command palette** on `Ctrl/Cmd + K` — every verb the parser accepts, every surface, and anything you type that parses | Cockpit §51 |
 | Search across the whole library, instant | M3 |
 | Playlists / crates / smart folders | M3 |
 | Columns: BPM, key, energy, rating, play count, last played, comment | M3 |

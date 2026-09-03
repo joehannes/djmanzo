@@ -1269,6 +1269,30 @@ export const functionsOf = (track: string) =>
 export const setTrackFunctions = (tracks: string[], functions: string[]) =>
   invoke<number>("set_track_functions", { tracks, functions });
 
+/** One thing the command palette can do. */
+export interface PaletteEntry {
+  /** What the DJ reads: `Deck 1 · play`, `Show Prepare`. */
+  label: string;
+  /** One line, from the vocabulary's own help. */
+  about: string;
+  /** `"action"` to send it through the bus, `"surface"` to open a panel. */
+  kind: "action" | "surface";
+  /** The action text, or the surface name. */
+  run: string;
+}
+
+/**
+ * What the palette should offer for `query`, best first.
+ *
+ * Assembled and ranked in Rust from `dj_core::vocabulary` and the cockpit's own
+ * surfaces, so it cannot offer a command djmanzo does not have and a new verb
+ * appears without anyone remembering to add it here. The matching is there too,
+ * for the same reason the suggester's is: a ranking that lives in two places is
+ * two rankings.
+ */
+export const palette = (query: string, decks: number) =>
+  invoke<PaletteEntry[]>("palette", { query, decks });
+
 /** Where the DJ wants the next record to take the room. */
 export type Trajectory = "lift" | "hold" | "ease";
 
