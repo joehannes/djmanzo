@@ -3,16 +3,24 @@
 A VirtualDJ-class DJ application for **macOS** and **Linux/Xubuntu** — built to match
 VirtualDJ's feature set, appearance, workflow and handling, and then go past it.
 
-> **Status: beta (v0.1.0).** Two to six decks, mixer, headphone cue, isolator EQ,
-> filter, keylock, hot cues, loops, an FX rack, a sampler, an SQLite collection
-> with importers, and a Rust-rendered scrolling waveform — on a realtime engine
-> proven allocation-free by test. The controller layer has arrived, which is
-> what turns a set of panels into something a DJ can play: the keyboard is a
-> first-class controller, so a laptop with nothing plugged into it is a playable
-> instrument.
+> **Status: beta (v0.14.0).** Two to six decks, mixer, headphone cue, isolator
+> EQ, filter, keylock, hot cues, loops, an FX rack, a sampler, stems, timecode
+> vinyl, CLAP plugins, an SQLite collection with importers, and a Rust-rendered
+> scrolling waveform — on a realtime engine proven allocation-free by test. The
+> keyboard is a first-class controller, so a laptop with nothing plugged into it
+> is a playable instrument.
+>
+> The interface is a cockpit of dockable surfaces: the browser, Prepare, the
+> next-track rail, the set plan, the booth and the assistant can be open
+> together and are placed by their own preferred size. `Ctrl/Cmd + K` opens a
+> command palette generated from the action vocabulary itself.
 >
 > Start at [QUICKSTART.md](docs/QUICKSTART.md). Nothing here has been through a
 > real gig yet — that is what a beta is.
+>
+> **Continuing the work?** Read [docs/HANDOFF.md](docs/HANDOFF.md) first. It is
+> written for someone arriving with no context: what to read, how the project is
+> worked on, and the traps that have each cost a session.
 
 ---
 
