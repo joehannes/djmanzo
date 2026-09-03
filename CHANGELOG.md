@@ -16,6 +16,31 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Function tags** — what a record is *for*, which is not what it is. Genre says
+a record is bachata; it does not say whether it opens a room, lifts one that is
+already moving, or is what you reach for when the floor has emptied and you
+need it back inside ninety seconds. Ten of them: opener, builder, peak, floor
+reset, singalong, closer, transition tool, safe, risky, emergency.
+
+A closed vocabulary rather than free text, because the whole value of the tag
+is that it means the same thing on every record and can therefore be searched
+and counted — free text gives you `opener`, `Opener`, `open`, `warmup` and
+`warm-up` in the same collection inside a month, which is five columns and no
+answers. Ten and no more, because a vocabulary a DJ cannot hold in their head
+is one they will not use consistently, and inconsistent tags are worse than
+none: they look like data.
+
+Set on a selection in the browser, in its own row rather than beside genre and
+colour — those write what a record *is*, this writes a judgement about when to
+play it, and folding them together would mean colouring eight tracks silently
+replaced their functions. Every function is offered even at zero, with a count,
+because a picker that hides what you have never used never suggests using it.
+
+**Not yet in the smart-folder filter language.** A function is a subquery
+rather than a column, which is a different shape from every field the filter
+has, and it is its own change.
+
+
 ## v0.13.0 — Everything a DJ touches, on one screen
 
 The first screen is for mixing, and for the first time it actually is.

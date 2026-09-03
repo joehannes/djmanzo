@@ -91,6 +91,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 9,
         sql: MIGRATION_9,
     },
+    Migration {
+        version: 10,
+        sql: MIGRATION_10,
+    },
 ];
 
 /// The initial schema.
@@ -565,6 +569,38 @@ CREATE TABLE melodies (
     -- redone without redoing the ones that are current.
     made_at  INTEGER NOT NULL
 );
+"#;
+
+const MIGRATION_10: &str = r#"
+-- What a record is *for*, which is not what it is.
+--
+-- Genre says a record is bachata. It does not say whether it opens a room,
+-- lifts one that is already moving, or is the thing you reach for when the
+-- floor has emptied and you need it back in ninety seconds. Those are the
+-- questions a DJ actually asks of their collection, and no metadata field
+-- anywhere answers them -- see `docs/GUI-OVERHAUL.md` section 15.
+--
+-- A row per (track, function) rather than a column of comma-separated labels,
+-- because a record is usually two or three of these at once and "peak" must
+-- not match "peak-adjacent" in a LIKE. The primary key makes setting the same
+-- function twice a no-op rather than a duplicate.
+--
+-- `function` is checked against the vocabulary in Rust before it is written,
+-- not by a CHECK constraint: the constraint would have to be migrated every
+-- time the list grows, and a database that outlives a rename is better off
+-- holding a label this build does not know than refusing to open.
+CREATE TABLE track_functions (
+    track_id TEXT    NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    function TEXT    NOT NULL,
+    -- Unix seconds, so a sweep can tell what a DJ set by hand from what was
+    -- inferred, and when.
+    set_at   INTEGER NOT NULL,
+    PRIMARY KEY (track_id, function)
+);
+
+-- The query that matters is "show me the openers", which is this index read
+-- backwards from the one the primary key gives.
+CREATE INDEX track_functions_by_function ON track_functions(function, track_id);
 "#;
 
 #[cfg(test)]

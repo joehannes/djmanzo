@@ -189,6 +189,10 @@ const ANSWERS: Record<string, unknown> = {
   // it, which ends the render pass and takes the rest of the surface with it.
   // That is the `stems_status` bug again, and it is why `errorsThrown` exists.
   list_playlists: [],
+  track_functions: [
+    { slug: "opener", label: "Opener", about: "Sets the room going from nothing.", count: 0 },
+    { slug: "peak", label: "Peak", about: "The top of an arc -- spent, not saved.", count: 0 },
+  ],
   sidelist: [],
   library_search: [],
   default_music_folder: null,

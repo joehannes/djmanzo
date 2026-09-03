@@ -3473,6 +3473,80 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
     }
 }
 
+// -- what a record is for ---------------------------------------------------
+
+/// One function, with the words the interface shows beside it.
+///
+/// The label and the sentence come from Rust rather than being typed into the
+/// interface, because the assistant and the network API need the same words. A
+/// vocabulary explained in one place and re-explained in another is one that
+/// drifts.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FunctionDto {
+    pub slug: &'static str,
+    pub label: &'static str,
+    pub about: &'static str,
+    /// How many tracks carry it. Zero is reported, not omitted -- a picker
+    /// that hides what you have never used never suggests using it.
+    pub count: usize,
+}
+
+/// Every function a record can be for, with how many carry each.
+#[tauri::command]
+pub fn track_functions(state: State<'_, AppState>) -> Result<Vec<FunctionDto>, String> {
+    let db = library(&state)?;
+    Ok(db
+        .function_counts()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|(function, count)| FunctionDto {
+            slug: function.slug(),
+            label: function.label(),
+            about: function.about(),
+            count,
+        })
+        .collect())
+}
+
+/// What one track is for.
+#[tauri::command]
+pub fn functions_of(state: State<'_, AppState>, track: String) -> Result<Vec<String>, String> {
+    let Some(id) = dj_core::TrackId::from_hex(&track) else {
+        return Ok(Vec::new());
+    };
+    let db = library(&state)?;
+    Ok(db
+        .functions_for(id)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(|f| f.slug().to_owned())
+        .collect())
+}
+
+/// Set what some tracks are for, replacing whatever was there.
+///
+/// The whole answer, not a change to it: the picker shows every function with
+/// the ones in force lit, so what it hands back is the state. An unknown slug
+/// is dropped rather than refused -- the same rule the widget registry follows
+/// -- so an interface from a later build cannot make this fail.
+#[tauri::command]
+pub fn set_track_functions(
+    state: State<'_, AppState>,
+    tracks: Vec<String>,
+    functions: Vec<String>,
+) -> Result<usize, String> {
+    let ids: Vec<dj_core::TrackId> = tracks
+        .iter()
+        .filter_map(|hex| dj_core::TrackId::from_hex(hex))
+        .collect();
+    let chosen: Vec<dj_library::functions::Function> = functions
+        .iter()
+        .filter_map(|slug| dj_library::functions::Function::from_slug(slug))
+        .collect();
+    let db = library(&state)?;
+    db.set_functions(&ids, &chosen).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn library_status(state: State<'_, AppState>) -> Result<LibraryStatusDto, String> {
     let db = library(&state)?;

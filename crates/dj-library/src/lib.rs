@@ -24,6 +24,7 @@
 //! queue like everything else.
 
 pub mod filter;
+pub mod functions;
 pub mod import;
 pub mod learned;
 pub mod lyrics;

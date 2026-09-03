@@ -1,5 +1,6 @@
 //! Reading and writing the library.
 
+use crate::functions::Function;
 use crate::import::ImportReport;
 use crate::playlist::{Note, PlayRecord, Playlist, PlaylistKind};
 use crate::record::{
@@ -1090,6 +1091,129 @@ impl Library {
         }
         tx.commit()?;
         Ok(changed)
+    }
+
+    // -- what a record is for ----------------------------------------------
+
+    /// The functions set on a track, in the order a night uses them.
+    ///
+    /// Ordered by the vocabulary rather than by the database, so a record
+    /// tagged opener and peak always reads "Opener, Peak" and never "Peak,
+    /// Opener" -- a list whose order changes between reads is one a DJ has to
+    /// parse each time instead of recognising.
+    ///
+    /// A stored label this build does not know is skipped. A database may
+    /// outlive a rename, and a tag from a newer djmanzo should cost that tag
+    /// rather than the library.
+    pub fn functions_for(&self, id: TrackId) -> Result<Vec<Function>> {
+        self.with(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT function FROM track_functions WHERE track_id = ?1")?;
+            let rows = stmt.query_map([id.to_hex()], |row| row.get::<_, String>(0))?;
+            let mut found = Vec::new();
+            for slug in rows {
+                if let Some(function) = Function::from_slug(&slug?) {
+                    found.push(function);
+                }
+            }
+            Ok(Function::ALL
+                .into_iter()
+                .filter(|f| found.contains(f))
+                .collect())
+        })
+    }
+
+    /// Set the functions on one or more tracks, replacing what was there.
+    ///
+    /// Replace rather than merge, and that is the whole interface: the picker
+    /// a DJ uses shows every function with the ones in force lit, so what they
+    /// hand back *is* the answer. A merging call would need a second one to
+    /// remove anything, and two calls to express one gesture is how a batch
+    /// edit ends up half applied.
+    ///
+    /// Returns how many tracks were touched.
+    pub fn set_functions(&self, ids: &[TrackId], functions: &[Function]) -> Result<usize> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64);
+        let mut conn = self.conn.lock().map_err(|_| LibraryError::Poisoned)?;
+        let tx = conn.transaction()?;
+        for id in ids {
+            let hex = id.to_hex();
+            tx.execute("DELETE FROM track_functions WHERE track_id = ?1", [&hex])?;
+            for function in functions {
+                tx.execute(
+                    "INSERT OR REPLACE INTO track_functions (track_id, function, set_at)
+                     VALUES (?1, ?2, ?3)",
+                    rusqlite::params![&hex, function.slug(), now],
+                )?;
+            }
+        }
+        tx.commit()?;
+        Ok(ids.len())
+    }
+
+    /// Every track carrying a function, newest tagging first.
+    ///
+    /// The query the index exists for -- "show me the openers" -- and the one
+    /// a smart folder runs. Ordered by when the DJ said so rather than by
+    /// title, because a function is a judgement and the most recent judgement
+    /// is the one they still agree with.
+    pub fn tracks_with_function(&self, function: Function, most: usize) -> Result<Vec<TrackId>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT track_id FROM track_functions
+                 WHERE function = ?1 ORDER BY set_at DESC, track_id LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![function.slug(), most as i64], |row| {
+                row.get::<_, String>(0)
+            })?;
+            let mut out = Vec::new();
+            for hex in rows {
+                if let Some(id) = TrackId::from_hex(&hex?) {
+                    out.push(id);
+                }
+            }
+            Ok(out)
+        })
+    }
+
+    /// How many tracks carry each function.
+    ///
+    /// For the browser's sidebar: a count beside a function is what tells a DJ
+    /// their collection has four openers and eighty peaks, which is the sort
+    /// of thing nobody notices until it is counted.
+    pub fn function_counts(&self) -> Result<Vec<(Function, usize)>> {
+        self.with(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT function, COUNT(*) FROM track_functions GROUP BY function")?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            let mut counted: Vec<(Function, usize)> = Vec::new();
+            for row in rows {
+                let (slug, count) = row?;
+                if let Some(function) = Function::from_slug(&slug) {
+                    counted.push((function, count.max(0) as usize));
+                }
+            }
+            // The vocabulary's order again, and every function present even at
+            // zero: a picker that hides the ones you have never used is one
+            // that never suggests using them.
+            Ok(Function::ALL
+                .into_iter()
+                .map(|function| {
+                    let count = counted
+                        .iter()
+                        .find(|(f, _)| *f == function)
+                        .map_or(0, |(_, c)| *c);
+                    (function, count)
+                })
+                .collect())
+        })
     }
 
     // -- duplicates --------------------------------------------------------
@@ -2551,6 +2675,149 @@ mod tests {
     /// The FTS index is external-content and kept in step by triggers. Without
     /// them an edited track silently stops matching, which looks exactly like
     /// "search is broken" and would not show up in a test that inserts once.
+    /// The gesture the picker makes: hand back the whole answer.
+    ///
+    /// Replace rather than merge, so a DJ who unticks "risky" gets a record
+    /// that is no longer risky. A merging call would leave it set and need a
+    /// second call to clear it, and two calls for one gesture is how a batch
+    /// edit ends up half applied.
+    #[test]
+    fn setting_functions_replaces_what_was_there() {
+        let lib = library();
+        lib.upsert_track(&track(1, "Burbujas de Amor", "Juan Luis Guerra"))
+            .unwrap();
+
+        lib.set_functions(&[id(1)], &[Function::Peak, Function::Risky])
+            .unwrap();
+        assert_eq!(
+            lib.functions_for(id(1)).unwrap(),
+            vec![Function::Peak, Function::Risky]
+        );
+
+        lib.set_functions(&[id(1)], &[Function::Safe]).unwrap();
+        assert_eq!(
+            lib.functions_for(id(1)).unwrap(),
+            vec![Function::Safe],
+            "the old functions must go, or unticking one does nothing"
+        );
+
+        lib.set_functions(&[id(1)], &[]).unwrap();
+        assert!(lib.functions_for(id(1)).unwrap().is_empty());
+    }
+
+    /// The order is the vocabulary's, not the database's.
+    ///
+    /// A list whose order changes between reads is one a DJ has to parse each
+    /// time instead of recognising. Set in the reverse of the canonical order
+    /// here, so a implementation that simply returns rows fails.
+    #[test]
+    fn functions_read_back_in_the_order_a_night_uses_them() {
+        let lib = library();
+        lib.upsert_track(&track(1, "Ojala", "Silvio")).unwrap();
+        lib.set_functions(
+            &[id(1)],
+            &[Function::Closer, Function::Peak, Function::Opener],
+        )
+        .unwrap();
+
+        assert_eq!(
+            lib.functions_for(id(1)).unwrap(),
+            vec![Function::Opener, Function::Peak, Function::Closer]
+        );
+    }
+
+    /// One gesture, many records -- what the browser's batch edit sends.
+    #[test]
+    fn a_batch_sets_every_track_it_names() {
+        let lib = library();
+        for byte in 1..=3 {
+            lib.upsert_track(&track(byte, &format!("t{byte}"), "artist"))
+                .unwrap();
+        }
+        assert_eq!(
+            lib.set_functions(&[id(1), id(2), id(3)], &[Function::Opener])
+                .unwrap(),
+            3
+        );
+        for byte in 1..=3 {
+            assert_eq!(lib.functions_for(id(byte)).unwrap(), vec![Function::Opener]);
+        }
+    }
+
+    /// "Show me the openers", which is the query the index exists for.
+    #[test]
+    fn tracks_can_be_found_by_what_they_are_for() {
+        let lib = library();
+        lib.upsert_track(&track(1, "one", "artist")).unwrap();
+        lib.upsert_track(&track(2, "two", "artist")).unwrap();
+        lib.set_functions(&[id(1)], &[Function::Opener]).unwrap();
+        lib.set_functions(&[id(2)], &[Function::Peak]).unwrap();
+
+        assert_eq!(
+            lib.tracks_with_function(Function::Opener, 20).unwrap(),
+            vec![id(1)]
+        );
+        assert!(
+            lib.tracks_with_function(Function::Emergency, 20)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    /// Every function is counted, including the ones at zero.
+    ///
+    /// A picker that hides what you have never used is one that never suggests
+    /// using it -- and "you have four openers and eighty peaks" is exactly the
+    /// thing nobody notices until it is counted.
+    #[test]
+    fn counting_reports_every_function_even_the_unused_ones() {
+        let lib = library();
+        lib.upsert_track(&track(1, "one", "artist")).unwrap();
+        lib.set_functions(&[id(1)], &[Function::Peak]).unwrap();
+
+        let counts = lib.function_counts().unwrap();
+        assert_eq!(counts.len(), Function::ALL.len());
+        assert_eq!(
+            counts.iter().map(|(f, _)| *f).collect::<Vec<_>>(),
+            Function::ALL.to_vec()
+        );
+        assert_eq!(
+            counts.iter().find(|(f, _)| *f == Function::Peak),
+            Some(&(Function::Peak, 1))
+        );
+        assert_eq!(
+            counts.iter().find(|(f, _)| *f == Function::Opener),
+            Some(&(Function::Opener, 0))
+        );
+    }
+
+    /// A label written by a newer djmanzo costs that label, not the library.
+    #[test]
+    fn a_function_this_build_does_not_know_is_skipped_rather_than_fatal() {
+        let lib = library();
+        lib.upsert_track(&track(1, "one", "artist")).unwrap();
+        lib.set_functions(&[id(1)], &[Function::Peak]).unwrap();
+        lib.with(|conn| {
+            conn.execute(
+                "INSERT INTO track_functions (track_id, function, set_at) VALUES (?1, ?2, 0)",
+                rusqlite::params![id(1).to_hex(), "invented-by-a-later-version"],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(lib.functions_for(id(1)).unwrap(), vec![Function::Peak]);
+        assert_eq!(
+            lib.function_counts()
+                .unwrap()
+                .iter()
+                .map(|(_, c)| *c)
+                .sum::<usize>(),
+            1,
+            "the unknown label must not be counted as one of ours"
+        );
+    }
+
     #[test]
     fn search_follows_an_edited_tag() {
         let lib = library();

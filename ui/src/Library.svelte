@@ -62,6 +62,9 @@
     type PlayRecord,
     type Playlist,
     type Session,
+    setTrackFunctions,
+    trackFunctions,
+    type TrackFunction,
   } from "./api";
 
   let {
@@ -167,6 +170,52 @@
     colour: "",
     rating: "",
   });
+  /**
+   * What a record is *for*, which is not what it is.
+   *
+   * Genre says a record is bachata; it does not say whether it opens a room or
+   * rescues an empty floor. The vocabulary is ten words fixed in Rust, and the
+   * labels come from there so the assistant and this panel cannot describe the
+   * same thing differently. See `dj_library::functions`.
+   */
+  let functions = $state<TrackFunction[]>([]);
+  /** The functions being applied to the selection, by slug. */
+  let chosenFunctions = $state<Set<string>>(new SvelteSet());
+
+  $effect(() => {
+    void trackFunctions()
+      .then((got) => {
+        functions = got;
+      })
+      // A library that is not open yet answers with an error, and the picker
+      // simply is not offered until it is.
+      .catch(() => {});
+  });
+
+  /**
+   * Apply what is ticked to everything selected.
+   *
+   * The whole answer rather than a change to it: Rust replaces the set, so
+   * unticking a function removes it. Separate from the genre/colour/rating
+   * apply because it is a different kind of edit -- those write a field, this
+   * writes a judgement -- and because folding it in would mean a DJ colouring
+   * eight tracks silently cleared their functions.
+   */
+  async function applyFunctions() {
+    if (selected.size === 0) return;
+    busy = true;
+    try {
+      await setTrackFunctions([...selected], [...chosenFunctions]);
+      functions = await trackFunctions();
+      await refresh();
+      error = null;
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
   let status = $state<LibraryStatus | null>(null);
   let query = $state("");
   let error = $state<string | null>(null);
@@ -775,6 +824,45 @@
       <IconButton icon="fa-solid fa-palette" title="Clear colour" onClick={() => clearField("colour")} />
       <IconButton icon="fa-solid fa-ban" title="Deselect" onClick={() => selected.clear()} />
     </div>
+
+    <!--
+      What these records are *for*.
+
+      Its own row rather than another field in the one above, because it is a
+      different kind of edit: the row above writes what a record *is* -- genre,
+      colour, a rating -- and this writes a judgement about when to play it.
+      Folding them together would also mean a DJ colouring eight tracks
+      silently replaced their functions, since this call sends the whole set.
+
+      Every function is offered even at zero, with its count: a picker that
+      hides what you have never used never suggests using it, and "four openers
+      and eighty peaks" is the sort of thing nobody notices until it is
+      counted.
+    -->
+    {#if functions.length > 0}
+      <div class="batch functions" role="group" aria-label="What these records are for">
+        <span class="count">For</span>
+        {#each functions as fn (fn.slug)}
+          <IconButton
+            active={chosenFunctions.has(fn.slug)}
+            title="{fn.label} — {fn.about} ({fn.count} in your collection)"
+            aria-pressed={chosenFunctions.has(fn.slug)}
+            onClick={() => {
+              if (chosenFunctions.has(fn.slug)) chosenFunctions.delete(fn.slug);
+              else chosenFunctions.add(fn.slug);
+            }}
+          >
+            {fn.label}
+          </IconButton>
+        {/each}
+        <IconButton
+          icon="fa-solid fa-check"
+          title="Set these {selected.size} records to exactly what is lit. Unticking one removes it."
+          onClick={applyFunctions}
+          disabled={busy}
+        />
+      </div>
+    {/if}
   {/if}
 
   {#if error}

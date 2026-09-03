@@ -1241,6 +1241,34 @@ export interface ScanReport {
 
 export const libraryStatus = () => invoke<LibraryStatus>("library_status");
 
+// -- what a record is for ---------------------------------------------------
+
+/**
+ * One function a record can be for, with the words to show beside it.
+ *
+ * The label and the sentence come from Rust: the assistant and the network API
+ * need the same words, and a vocabulary explained in two places drifts.
+ */
+export interface TrackFunction {
+  slug: string;
+  label: string;
+  about: string;
+  /** How many tracks carry it. Zero is reported, not omitted. */
+  count: number;
+}
+
+export const trackFunctions = () => invoke<TrackFunction[]>("track_functions");
+export const functionsOf = (track: string) =>
+  invoke<string[]>("functions_of", { track });
+/**
+ * Set what some tracks are for, replacing what was there.
+ *
+ * The whole answer rather than a change to it — the picker shows every
+ * function with the ones in force lit, so what it hands back is the state.
+ */
+export const setTrackFunctions = (tracks: string[], functions: string[]) =>
+  invoke<number>("set_track_functions", { tracks, functions });
+
 /** Where the DJ wants the next record to take the room. */
 export type Trajectory = "lift" | "hold" | "ease";
 
