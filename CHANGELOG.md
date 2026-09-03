@@ -16,6 +16,30 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.13.0 — Everything a DJ touches, on one screen
+
+The first screen is for mixing, and for the first time it actually is.
+
+At djmanzo's own default 1280×800 with two records loaded, the waveform, the
+pad grid, the deck's channel strip, the cue, the crossfader assignment, the
+crossfader, master gain, the headphone cue, split and the limiter are all
+there without scrolling. The crossfader had ended up below the fold three
+times in three different forms; most recently about 280 px past the bottom,
+with a deck's own volume fader and filter down there with it.
+
+Scaling got the deck from 878 px to 685 — the pad grid stopped taking its
+height from the deck's *width*, the faders and knobs started answering to the
+density setting they had been ignoring, and djmanzo picks a density band from
+the window it was given. Scaling could not finish it, so the rest is **pinning,
+twice**: the master strip came out of the scrolling stage, and each deck's body
+scrolls with its channel strip pinned. What goes below the fold on a short
+window is the waveform's tail and the loop rows.
+
+The booth — microphone, automix, plugin insert, master effects — is a dock
+surface now rather than a slab under the decks, which is what it always was by
+its own description.
+
+
 **Every control a DJ touches is on one screen at 1280×800.** The deck's own
 volume fader and filter were the last two below the fold, behind the pinned
 master strip. The deck now does what the master strip does one level up: its

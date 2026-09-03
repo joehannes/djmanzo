@@ -618,11 +618,21 @@ moves a deck 122 px across its range instead of 68, and a deck at djmanzo's own
 default window is **685 px, down from 878**.
 
 That is not enough on its own and the arithmetic says so: the stage has 559 px,
-so a deck would need about a 0.64 scale against a 0.80 floor. What closed the
-crossfader gap was taking the master strip *out of the scrolling stage* — it had
-been inside it, under decks taller than the stage, so it scrolled away with
-them. The deck's own channel strip is still in the scrolled part, and that is
-the open half of Phase 3.
+so a deck would need about a 0.64 scale against a 0.80 floor. Scaling was never
+going to close it, and what did was **pinning, twice**. The master strip came
+out of the scrolling stage — it had been inside it, under decks taller than the
+stage, so it scrolled away with them. Then the deck did the same one level
+down: its body scrolls and its channel strip is pinned, so what goes below the
+fold on a short window is the waveform's tail and the loop rows rather than the
+volume fader and the filter.
+
+Three things had to change before a deck could pin anything at all. A grid
+row's height is its content's, so the deck grid's rows are `minmax(0, 1fr)` —
+setting `max-height: 100%` on the deck moved it by zero pixels, because 100% of
+an `auto` row is the content again. The stage stopped scrolling, because a
+child cannot pin itself inside a parent that grows to fit it. And the booth
+panel that sat under the decks became a dock surface, which is what it always
+was.
 
 What actually has to change, in descending order of what it is worth: the pad
 grid's sizing rule, the fader and knob dimensions, and whether the master strip
@@ -638,7 +648,7 @@ Vertical slices, each shippable, each green before the next:
 | ~~**0**~~ | this document | **done** |
 | ~~**1**~~ | semantic tokens, density, motion, surface/workspace schemas | **done** — `crates/dj-app/src/cockpit.rs` |
 | ~~**2**~~ | ADR-0008 W3 + dock manager. *New shell, old functionality.* | **done** — the deck renders from the widget tree; surfaces dock; `ui/e2e/docks.spec.ts` enforces reachability |
-| **3** | performance cockpit: decks, waveform, mixer, rail, mission bar | **the crossfader gate is met** — every master control is on screen and pinned at 1280×800. The deck's own channel strip is not: the stage has 559 px and a deck wants 685, and scaling cannot close that. The rail and the mission bar are still to come. |
+| 🟡 **3** | performance cockpit: decks, waveform, mixer, rail, mission bar | **the gate is met** — every performing control is on screen at 1280×800, master strip and deck channel strip both pinned, enforced by `ui/e2e/budget.spec.ts` with no `test.fail()` left. The context rail and the mission bar are still to come. |
 | **4** | library: table, cards, set flow, pair view, prepare, rail | one gesture Library→Prepare→Deck |
 | **5** | intelligence: context engine, transactions, takeover, promotion | posture matrix enforced by test |
 | **6** | room: baseline, causal, Room HUD | HUD visible while browsing |
