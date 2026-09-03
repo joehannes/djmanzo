@@ -17,7 +17,7 @@ Versioning follows semver, with one project-specific convention:
 ## Unreleased
 
 
-## v0.14.0 — Prepare and Next are surfaces, and a deck knows what pinning costs
+## v0.14.0 — Prepare, Next and the set plan become surfaces of their own
 
 **Set Flow** — §20's third view. The set plan is a dockable surface now rather
 than a page inside the browser's folder tree, and it draws what a plan is
