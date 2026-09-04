@@ -16,6 +16,41 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The performance table has the columns §20 asks for, and a way to choose
+them.** That section lists twenty recommended columns and *instant custom
+column configuration*; the browser drew six and there was no way to change
+them. It offers fourteen now — title, artist, album, genre, year, BPM, Camelot,
+the key by name, energy, time, rating, plays, last played and phrase length —
+from a picker that applies as it is pressed and is remembered.
+
+Four of those were missing only from the wire: a browser cannot offer a column
+for a field it is never sent, and working the key's name out from its Camelot
+number in the interface would be a second implementation of the wheel. So the
+record now carries its last play, its phrase length and both spellings of its
+key.
+
+**Headings and cells come from one list.** They were two — a hand-written row
+of `<th>`s and a hand-written row of `<td>`s — which is fine while both are six
+long and is a table whose header says BPM over a column of keys the first time
+one of them changes. A browser test turns every column on and checks each
+heading sits over its own values.
+
+Small decisions worth naming:
+
+- **Empty means "not known", never zero.** An unanalysed record has no BPM and
+  an unplayed one has no last play; a plausible-looking 0.0 is read at a glance
+  and believed. Sorting reads the raw field, so those records collect at one
+  end whichever way the column is sorted.
+- **§20 calls one column "energy"; this shows loudness in LU.** An integrated
+  LUFS is a number an instrument took. An energy rating out of ten is one
+  somebody invented, and the Pair view already labels the same measurement the
+  same way.
+- **The last column cannot be turned off**, because a table of nothing but
+  checkboxes and load buttons is a state to refuse rather than to store.
+- **The order is not configurable**, deliberately: a DJ who can drag columns
+  can also lose the title off the left-hand edge, and that is not worth the
+  drag-and-drop yet.
+
 **Hot cues are dragged where they are drawn.** §26 asks for it in one line —
 *"The DJ should be able to physically grab the thing they are thinking about"*
 — and lists the cue marker first. A cue could only ever be set at the playhead,

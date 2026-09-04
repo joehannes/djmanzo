@@ -2190,6 +2190,84 @@ mod grid_edit_tests {
 
     const SR: SampleRate = SampleRate::DEFAULT;
 
+    /// **Every column §20 asks for that this library has, reaches the browser.**
+    ///
+    /// The table drew six of the twenty columns that section recommends, and
+    /// four of the missing ones were only missing from the DTO: the record's
+    /// last play, its phrase length, its key in notation as well as in
+    /// Camelot, and its loudness. A browser cannot offer a column for a field
+    /// it is never sent, and the interface working them out itself would be a
+    /// second opinion about the key wheel.
+    #[test]
+    fn a_record_reaches_the_browser_with_the_columns_20_asks_for() {
+        let mut track = dj_library::LibraryTrack {
+            id: dj_core::TrackId::from_bytes([3u8; 32]),
+            path: std::path::PathBuf::from("/music/bachata-rosa.flac"),
+            tags: dj_library::Tags {
+                title: Some("Bachata Rosa".into()),
+                artist: Some("Juan Luis Guerra".into()),
+                genre: Some("Bachata".into()),
+                year: Some(1990),
+                ..dj_library::Tags::default()
+            },
+            duration_frames: 244 * 44_100,
+            sample_rate: SR,
+            channels: 2,
+            file_size: None,
+            file_modified: None,
+            added_at: 0,
+            analysis: dj_library::StoredAnalysis::default(),
+            stats: dj_library::PlayStats {
+                play_count: 3,
+                last_played: Some(1_700_000_000),
+                rating: Some(4),
+            },
+            colour: None,
+        };
+        track.analysis.key_hour = Some(8);
+        track.analysis.key_mode = Some(dj_core::Mode::Minor);
+        track.analysis.loudness_lufs = Some(-9.4);
+        track.analysis.phrase_beats = Some(32);
+        track.analysis.phrase_anchor = Some(0);
+
+        let dto = LibraryTrackDto::from(track);
+        assert_eq!(dto.key.as_deref(), Some("8A"), "Camelot");
+        assert_eq!(dto.key_name.as_deref(), Some("Am"), "the same key by name");
+        assert_eq!(dto.loudness_lufs, Some(-9.4));
+        assert_eq!(dto.last_played, Some(1_700_000_000));
+        assert_eq!(dto.phrase_beats, Some(32));
+        assert_eq!(dto.play_count, 3);
+        assert_eq!(dto.rating, Some(4));
+    }
+
+    /// A record nothing has played and nothing has analysed carries `None`
+    /// rather than zero. "Never played" and "played at the epoch" are
+    /// different facts, and a browser sorting by the column puts them at
+    /// opposite ends.
+    #[test]
+    fn an_unplayed_unanalysed_record_says_so_rather_than_zero() {
+        let track = dj_library::LibraryTrack {
+            id: dj_core::TrackId::from_bytes([4u8; 32]),
+            path: std::path::PathBuf::from("/music/unknown.flac"),
+            tags: dj_library::Tags::default(),
+            duration_frames: 0,
+            sample_rate: SR,
+            channels: 2,
+            file_size: None,
+            file_modified: None,
+            added_at: 0,
+            analysis: dj_library::StoredAnalysis::default(),
+            stats: dj_library::PlayStats::default(),
+            colour: None,
+        };
+
+        let dto = LibraryTrackDto::from(track);
+        assert_eq!(dto.last_played, None);
+        assert_eq!(dto.phrase_beats, None);
+        assert_eq!(dto.key_name, None);
+        assert_eq!(dto.loudness_lufs, None);
+    }
+
     /// **A breakdown reaches the interface in frames, on the grid it was
     /// counted against.**
     ///
@@ -2622,6 +2700,13 @@ pub struct LibraryTrackDto {
     pub bpm: Option<f64>,
     /// Camelot notation, which is what a DJ mixes by.
     pub key: Option<String>,
+    /// The same key in standard notation -- `Am`, `C`.
+    ///
+    /// Both, because §20 lists both and they are read by different people:
+    /// Camelot is what harmonic mixing counts in, and a musician reading a
+    /// browser wants the name of the key. One field derived from the other in
+    /// the interface would be a second implementation of the wheel.
+    pub key_name: Option<String>,
     pub loudness_lufs: Option<f64>,
     /// True once the track has everything sync and harmonic mixing need.
     pub analysed: bool,
@@ -2630,6 +2715,17 @@ pub struct LibraryTrackDto {
     pub rating: Option<u8>,
     /// `#rrggbb`, when the DJ has coloured it.
     pub colour: Option<String>,
+    /// Unix seconds of the last time this record was actually played.
+    ///
+    /// `None` for one that never has been, which is a different fact from
+    /// "played a long time ago" and has to stay tellable apart from it -- a
+    /// browser sorting by this puts the never-played at one end deliberately.
+    pub last_played: Option<i64>,
+    /// Phrase length in beats, when the analyser found one.
+    ///
+    /// The column §20 calls "phrase structure". A record with none is a real
+    /// answer rather than an unanalysed one -- see `dj_analysis::structure`.
+    pub phrase_beats: Option<u32>,
 }
 
 impl From<dj_library::LibraryTrack> for LibraryTrackDto {
@@ -2645,11 +2741,14 @@ impl From<dj_library::LibraryTrack> for LibraryTrackDto {
             duration_seconds: track.duration_seconds(),
             bpm: track.analysis.bpm,
             key: track.analysis.key().map(|k| k.camelot()),
+            key_name: track.analysis.key().map(|k| k.standard().to_owned()),
             loudness_lufs: track.analysis.loudness_lufs,
             analysed: track.analysis.is_complete(),
             play_count: track.stats.play_count,
             rating: track.stats.rating,
             colour: track.colour.clone(),
+            last_played: track.stats.last_played,
+            phrase_beats: track.analysis.phrase_beats,
         }
     }
 }

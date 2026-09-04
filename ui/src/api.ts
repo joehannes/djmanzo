@@ -1254,6 +1254,8 @@ export interface LibraryTrack {
   bpm: number | null;
   /** Camelot notation, which is what a DJ mixes by. */
   key: string | null;
+  /** The same key in standard notation — `Am`, `C`. */
+  key_name: string | null;
   loudness_lufs: number | null;
   /** True once the track has everything sync and harmonic mixing need. */
   analysed: boolean;
@@ -1262,6 +1264,10 @@ export interface LibraryTrack {
   rating: number | null;
   /** `#rrggbb`, when the DJ has coloured it. */
   colour: string | null;
+  /** Unix seconds, or null for a record that has never been played. */
+  last_played: number | null;
+  /** Phrase length in beats, when the analyser found one. */
+  phrase_beats: number | null;
 }
 
 export interface FailedFile {

@@ -220,26 +220,151 @@
   /** Path of the row being loaded, so it can say so. */
   let loading = $state<string | null>(null);
 
-  type Column = "title" | "artist" | "album" | "bpm" | "key" | "duration_seconds";
+  type Column =
+    | "title"
+    | "artist"
+    | "album"
+    | "genre"
+    | "year"
+    | "bpm"
+    | "key"
+    | "key_name"
+    | "loudness_lufs"
+    | "duration_seconds"
+    | "rating"
+    | "play_count"
+    | "last_played"
+    | "phrase_beats";
+
   /**
-   * The sortable columns, and what to call them.
+   * The columns, what to call them, and how to read one off a record.
    *
-   * One list, read by the table's headings and by the card view's sort
-   * control. Two lists would eventually offer different columns in the two
-   * views, and a DJ who sorted by BPM in the table and could not in cards
-   * would conclude the cards were the lesser browser -- which is exactly what
-   * §20 is asking us not to build.
+   * One list, read by the table's headings, its cells, the card view's sort
+   * control and the column picker. Two lists would eventually offer different
+   * columns in different places, and a DJ who sorted by BPM in the table and
+   * could not in cards would conclude the cards were the lesser browser —
+   * which is exactly what §20 is asking us not to build.
+   *
+   * `show` returns the string to draw, and **empty means "not known"** rather
+   * than zero: an unanalysed record has no BPM, and a plausible-looking 0.0 is
+   * read at a glance and believed. Sorting reads the raw field, so nulls go to
+   * the end however the column is sorted, whatever `show` does with them.
+   *
+   * `numeric` is about alignment and nothing else — a column of tabular
+   * figures is scannable and a column of proportional ones is not.
    */
-  const COLUMNS: [Column, string][] = [
-    ["title", "Title"],
-    ["artist", "Artist"],
-    ["album", "Album"],
-    ["bpm", "BPM"],
-    ["key", "Key"],
-    ["duration_seconds", "Time"],
+  type ColumnSpec = {
+    key: Column;
+    heading: string;
+    show: (track: LibraryTrack) => string;
+    numeric?: boolean;
+    /** Shown unless the DJ says otherwise. Six, which is what fits. */
+    byDefault?: boolean;
+  };
+
+  const COLUMNS: ColumnSpec[] = [
+    { key: "title", heading: "Title", show: (t) => t.title, byDefault: true },
+    { key: "artist", heading: "Artist", show: (t) => t.artist, byDefault: true },
+    { key: "album", heading: "Album", show: (t) => t.album ?? "", byDefault: true },
+    { key: "genre", heading: "Genre", show: (t) => t.genre ?? "" },
+    { key: "year", heading: "Year", show: (t) => (t.year != null ? String(t.year) : ""), numeric: true },
+    {
+      key: "bpm",
+      heading: "BPM",
+      show: (t) => (t.bpm != null ? t.bpm.toFixed(1) : ""),
+      numeric: true,
+      byDefault: true,
+    },
+    { key: "key", heading: "Camelot", show: (t) => t.key ?? "", numeric: true, byDefault: true },
+    { key: "key_name", heading: "Key", show: (t) => t.key_name ?? "", numeric: true },
+    {
+      // §20 calls this column "energy". This library measures loudness, which
+      // is the honest thing it has: an integrated LUFS is a number an
+      // instrument took, and an energy rating out of ten is one somebody
+      // invented. The Pair view already labels it the same way.
+      key: "loudness_lufs",
+      heading: "Energy",
+      show: (t) => (t.loudness_lufs != null ? `${t.loudness_lufs.toFixed(1)} LU` : ""),
+      numeric: true,
+    },
+    {
+      key: "duration_seconds",
+      heading: "Time",
+      show: (t) => formatTime(t.duration_seconds),
+      numeric: true,
+      byDefault: true,
+    },
+    {
+      key: "rating",
+      heading: "Rating",
+      show: (t) => (t.rating != null ? "\u2605".repeat(t.rating) : ""),
+    },
+    { key: "play_count", heading: "Plays", show: (t) => String(t.play_count), numeric: true },
+    {
+      key: "last_played",
+      heading: "Last played",
+      // Never played is blank rather than "never": the column is full of dates
+      // and a word among them reads as a date nobody recognises.
+      show: (t) => (t.last_played != null ? whenPlayed(t.last_played) : ""),
+    },
+    {
+      key: "phrase_beats",
+      heading: "Phrase",
+      show: (t) => (t.phrase_beats != null ? `${t.phrase_beats}` : ""),
+      numeric: true,
+    },
   ];
   let sortBy = $state<Column>("artist");
   let ascending = $state(true);
+
+  /**
+   * Which columns are on, in the order [`COLUMNS`] declares them.
+   *
+   * §20 asks for *instant custom column configuration*, and this is it: a
+   * checkbox each, applied as it is pressed, remembered. Order is not
+   * configurable and that is deliberate for now — a DJ who can reorder columns
+   * can also lose the title off the left-hand edge, and the value of that is
+   * not obvious enough to spend the drag-and-drop on.
+   *
+   * Stored as a list of names rather than a set of booleans, so a column added
+   * later is off for people who have already chosen and on for people who
+   * have not — which is the right way round. A stored name that no longer
+   * exists is dropped on the way in.
+   */
+  const CHOSEN_KEY = "djmanzo.library.columns";
+
+  function rememberedColumns(): Set<Column> {
+    const stored = safeStorage()?.getItem(CHOSEN_KEY);
+    if (stored) {
+      const names = new Set(stored.split(","));
+      const kept = COLUMNS.filter((c) => names.has(c.key)).map((c) => c.key);
+      // An empty choice would be a table of nothing but checkboxes and load
+      // buttons, which is a state to refuse rather than to store.
+      if (kept.length > 0) return new SvelteSet(kept);
+    }
+    return new SvelteSet(COLUMNS.filter((c) => c.byDefault).map((c) => c.key));
+  }
+
+  let chosenColumns = $state<Set<Column>>(rememberedColumns());
+  /** The chosen columns, in the declared order. */
+  const shown = $derived(COLUMNS.filter((c) => chosenColumns.has(c.key)));
+  let pickingColumns = $state(false);
+
+  function toggleColumn(column: Column) {
+    if (chosenColumns.has(column)) {
+      // Never all of them off. The last one stays, for the reason above.
+      if (chosenColumns.size === 1) return;
+      chosenColumns.delete(column);
+    } else {
+      chosenColumns.add(column);
+    }
+    try {
+      safeStorage()?.setItem(CHOSEN_KEY, [...chosenColumns].join(","));
+    } catch {
+      // Storage denied. The choice still applies; it is forgotten by the next
+      // launch, which is not worth a message.
+    }
+  }
 
   /**
    * How often the panel re-reads the identifier's progress.
@@ -914,8 +1039,8 @@
           onchange={(event) => (sortBy = event.currentTarget.value as Column)}
           aria-label="Sort the collection by"
         >
-          {#each COLUMNS as [column, heading] (column)}
-            <option value={column}>{heading}</option>
+          {#each COLUMNS as column (column.key)}
+            <option value={column.key}>{column.heading}</option>
           {/each}
         </select>
         <button
@@ -925,6 +1050,36 @@
           aria-label="Reverse the order"
         >{ascending ? "\u25b2" : "\u25bc"}</button>
       </label>
+    {/if}
+    <!--
+      §20's "instant custom column configuration". Only in the table: a card
+      has a shape rather than columns, and offering the control where it does
+      nothing is worse than not offering it.
+    -->
+    {#if layout === "table"}
+      <div class="columns-picker">
+        <IconButton
+          icon="fa-solid fa-table-cells"
+          title="Which columns to show"
+          aria-label="Which columns to show"
+          active={pickingColumns}
+          onClick={() => (pickingColumns = !pickingColumns)}
+        />
+        {#if pickingColumns}
+          <div class="chooser" role="group" aria-label="Columns">
+            {#each COLUMNS as column (column.key)}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={chosenColumns.has(column.key)}
+                  onchange={() => toggleColumn(column.key)}
+                />
+                {column.heading}
+              </label>
+            {/each}
+          </div>
+        {/if}
+      </div>
     {/if}
     <div class="views" role="group" aria-label="How to show the collection">
       <IconButton
@@ -1375,14 +1530,14 @@
           <thead>
             <tr>
               <th class="pick"></th>
-              {#each COLUMNS as [column, heading] (column)}
-                <th>
+              {#each shown as column (column.key)}
+                <th class:mono={column.numeric}>
                   <button
                     class="sort"
-                    class:active={sortBy === column}
-                    onclick={() => sort(column)}
+                    class:active={sortBy === column.key}
+                    onclick={() => sort(column.key)}
                   >
-                    {heading}{#if sortBy === column}<span class="arrow">{ascending ? "▲" : "▼"}</span>{/if}
+                    {column.heading}{#if sortBy === column.key}<span class="arrow">{ascending ? "▲" : "▼"}</span>{/if}
                   </button>
                 </th>
               {/each}
@@ -1405,36 +1560,39 @@
                     aria-label="Select {track.title}"
                   />
                 </td>
-                <td class="title" title={track.path}>
-                  <!--
-                    The colour is a stripe rather than a filled row: a DJ colours
-                    tracks to find them at a glance, and a table of six saturated
-                    rows is harder to read than one with six marks down its edge.
-                  -->
-                  {#if track.colour}
-                    <span class="swatch" style="background: {track.colour}"></span>
-                  {/if}{track.title}<!--
-                    Why this record is here, under its name and only while the
-                    question is being asked. In the ordinary collection view
-                    these would be noise on every row; in an answer they are the
-                    answer. Under the title rather than in a column of their own
-                    so the header and the cells cannot drift apart.
-                  -->{#if likeThis && alikeWhy[track.id]?.length}<span class="why"
-                    >{#each alikeWhy[track.id].slice(0, 2) as reason (reason)}<span
-                      class="reason">{reason}</span
-                    >{/each}</span
-                  >{/if}</td
-                >
-                <td>{track.artist}</td>
-                <td>{track.album ?? ""}</td>
                 <!--
-                  A blank rather than a zero when the analyser has not run. A
-                  plausible-looking 0.0 is worse than an obvious gap, because a
-                  DJ reads these at a glance and will not stop to wonder.
+                  One cell per chosen column, drawn from the same list the
+                  headings come from, so a header and its cells cannot drift
+                  apart — which is what happens the moment they are two lists.
                 -->
-                <td class="mono">{track.bpm != null ? track.bpm.toFixed(1) : ""}</td>
-                <td class="mono">{track.key ?? ""}</td>
-                <td class="mono">{formatTime(track.duration_seconds)}</td>
+                {#each shown as column (column.key)}
+                  <td
+                    class:title={column.key === "title"}
+                    class:mono={column.numeric}
+                    title={column.key === "title" ? track.path : undefined}
+                  >
+                    {#if column.key === "title"}
+                      <!--
+                        The colour is a stripe rather than a filled row: a DJ
+                        colours tracks to find them at a glance, and a table of
+                        six saturated rows is harder to read than one with six
+                        marks down its edge.
+                      -->
+                      {#if track.colour}
+                        <span class="swatch" style="background: {track.colour}"></span>
+                      {/if}{track.title}<!--
+                        Why this record is here, under its name and only while
+                        the question is being asked. In the ordinary collection
+                        view these would be noise on every row; in an answer
+                        they are the answer.
+                      -->{#if likeThis && alikeWhy[track.id]?.length}<span class="why"
+                        >{#each alikeWhy[track.id].slice(0, 2) as reason (reason)}<span
+                          class="reason">{reason}</span
+                        >{/each}</span
+                      >{/if}
+                    {:else}{column.show(track)}{/if}
+                  </td>
+                {/each}
                 <td class="load">
                   {@render actions(track)}
                 </td>
@@ -1590,6 +1748,40 @@
     display: flex;
     gap: 0.2rem;
     flex-shrink: 0;
+  }
+
+  .columns-picker {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  /*
+    Over the rows rather than pushing them down. A control bar that changed
+    height when opened would move the table under a hand reaching for it,
+    which is the reflow §18 exists to prevent.
+  */
+  .chooser {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    right: 0;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(6.5rem, 1fr));
+    gap: 0.1rem 0.6rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--panel-raised);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
+  }
+
+  .chooser label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85em;
+    cursor: pointer;
   }
 
   /* Beside the view buttons, and no wider than it needs to be. */

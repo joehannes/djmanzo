@@ -223,15 +223,17 @@ The largest open sections, in the order they are worth doing:
    transition from the action log rather than from the object. Its stem, EQ and
    FX plans are absent because nothing yet decides them; a field that is always
    empty is a promise.
-4. **§20's remaining half.** Three of the four views ship — the performance
-   table, Set Flow, the pair view and now the compact cards, with the sleeve
-   read out of the file's own tags and served over a `cover://` scheme. What is
-   left is the table's wider column set (§20 lists twenty columns and offers
-   instant custom configuration; the browser draws six and cannot be
-   reconfigured), and the two card actions nothing behind them exists for:
-   **preview** needs somewhere to listen that is not a deck, and **queue**
-   needs a play queue this application does not have — the Sidelist is a
-   different statement. Both are features, not wiring.
+4. **§20's remaining half.** All four views ship, and the performance table
+   now has fourteen columns and a picker that is applied as it is pressed and
+   remembered. What is left of §20 has **no data behind it rather than no
+   column**: vocal and stem availability need the separator's output kept
+   rather than only played; transition suitability and AI confidence are
+   relative to a track nothing has named; request count is not joined to the
+   library; function tags are stored per record and would need a bulk read to
+   put in a column. Same for the two card actions — **preview** needs somewhere
+   to listen that is not a deck, and **queue** needs a play queue this
+   application does not have; the Sidelist is a different statement. All of
+   them are features, not wiring.
 5. **§74, the contextual rail.**
 
 Three older items are open and are not part of the 105:

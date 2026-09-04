@@ -136,7 +136,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | **Command palette** on `Ctrl/Cmd + K` — every verb the parser accepts, every surface, and anything you type that parses | Cockpit §51 |
 | Search across the whole library, instant | M3 |
 | Playlists / crates / smart folders | M3 |
-| Columns: BPM, key, energy, rating, play count, last played, comment | M3 |
+| Columns: title, artist, album, genre, year, BPM, Camelot, key, energy, time, rating, plays, last played, phrase — chosen from a picker and remembered | M3 |
 | Sort, filter, colour-coding | M3 |
 | Track info editor, batch tag editing | M3 |
 | Import: rekordbox, Serato, Traktor, iTunes, folders | M3 |
