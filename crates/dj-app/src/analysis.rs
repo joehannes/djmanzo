@@ -42,7 +42,7 @@ use std::sync::{Arc, Mutex};
 /// A cached record from an older version is discarded and recomputed rather
 /// than read, which is why this number exists: reading an old record with new
 /// code is how a library ends up full of confidently wrong BPMs.
-const CACHE_VERSION: u32 = 3;
+const CACHE_VERSION: u32 = 4;
 
 /// What the analyser found, in a form that survives a restart.
 ///
@@ -84,6 +84,17 @@ struct CachedAnalysis {
     breakdowns: Vec<(i64, i64)>,
     #[serde(default)]
     drops: Vec<i64>,
+    /// §25's energy trajectory: how hard the drums drive, beat by beat, with
+    /// 1.0 the record's own normal. Rounded to three decimals — see
+    /// `from_analysis`.
+    ///
+    /// Empty means nothing has looked at this record's drums, which is not the
+    /// same as looking and finding no breakdowns.
+    #[serde(default)]
+    drive: Vec<f32>,
+    /// The grid beat index `drive[0]` describes.
+    #[serde(default)]
+    drive_first_beat: i64,
 }
 
 impl CachedAnalysis {
@@ -121,6 +132,19 @@ impl CachedAnalysis {
                 .energy
                 .as_ref()
                 .map_or_else(Vec::new, |e| e.drops.clone()),
+            // Rounded to three decimals on the way in. A level is a ratio
+            // around 1.0 drawn about thirty pixels tall, so the fourth decimal
+            // is a thousandth of a pixel -- and written out in full it nearly
+            // doubles the size of a file that is otherwise a couple of dozen
+            // numbers. Readable is worth something here: these files are meant
+            // to be openable.
+            drive: analysis.energy.as_ref().map_or_else(Vec::new, |e| {
+                e.drive
+                    .iter()
+                    .map(|level| (level * 1000.0).round() / 1000.0)
+                    .collect()
+            }),
+            drive_first_beat: analysis.energy.as_ref().map_or(0, |e| e.first_beat),
         }
     }
 
@@ -169,16 +193,20 @@ impl CachedAnalysis {
             _ => None,
         };
 
-        // Empty is absent, not "an answer with nothing in it": `energy::read`
-        // returns `None` rather than an empty list precisely so a record with
-        // no breakdowns is told apart from one nothing has looked at.
-        let energy = (!self.breakdowns.is_empty()).then(|| dj_analysis::energy::EnergyAnalysis {
+        // The *trajectory* is what says whether the analyser looked at this
+        // record's drums, not the breakdown list: `energy::read` reports an
+        // empty list for a record that runs straight through, and used to
+        // throw the whole answer away for it. An empty drive means nothing
+        // looked; empty breakdowns mean it looked and found none.
+        let energy = (!self.drive.is_empty()).then(|| dj_analysis::energy::EnergyAnalysis {
             breakdowns: self
                 .breakdowns
                 .iter()
                 .map(|&(start, end)| dj_analysis::energy::Section { start, end })
                 .collect(),
             drops: self.drops.clone(),
+            drive: self.drive.clone(),
+            first_beat: self.drive_first_beat,
         });
 
         Some(Analysis {

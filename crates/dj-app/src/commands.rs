@@ -1574,6 +1574,18 @@ pub struct WaveformInfo {
     /// Empty for a record with no phrase structure, and for one nothing has
     /// analysed. Both are real answers, and neither has a boundary to move.
     pub phrases: Vec<f64>,
+    /// §25's energy trajectory: how hard the drums drive, beat by beat, with
+    /// 1.0 the record's own normal.
+    ///
+    /// The same measurement `breakdowns` is thresholded from, so a curve and a
+    /// band cannot disagree about where the drums are — the marks read as
+    /// derived from the line rather than asserted beside it. Empty for a record
+    /// nothing has analysed.
+    pub drive: Vec<f32>,
+    /// The frame `drive[0]` describes, and the frames between one level and the
+    /// next. Two numbers rather than a frame per level; see `drive_in_frames`.
+    pub drive_from_frame: f64,
+    pub drive_beat_frames: f64,
 }
 
 /// The breakdowns the analyser found in whatever this deck is playing.
@@ -1624,6 +1636,35 @@ fn energy_in_frames(state: &AppState, deck: u8) -> (Vec<FrameSpan>, Vec<f64>) {
             .collect(),
         energy.drops.iter().map(|&beat| at(beat)).collect(),
     )
+}
+
+/// The record's energy trajectory, and where on the record it starts. §25.
+///
+/// A level per beat, with the frame of the first and the frames between them,
+/// rather than a frame beside every level. The mapping is a straight line and
+/// the interface cannot get it wrong; a list of pairs would be three times the
+/// bytes on a wire this crosses on every load, for a curve whose whole point is
+/// that it is smooth.
+///
+/// Against the *analysed* grid, like the breakdowns and for the same reason:
+/// the levels were measured per beat of that grid, so reading them against a
+/// grid the DJ has since corrected would slide the curve by the correction.
+fn drive_in_frames(state: &AppState, deck: u8) -> (Vec<f32>, f64, f64) {
+    let Some(overlay) = state.waveforms().analysed_grid(deck) else {
+        return (Vec::new(), 0.0, 0.0);
+    };
+    let Some(analysis) = state.analysis().for_deck(deck) else {
+        return (Vec::new(), 0.0, 0.0);
+    };
+    let Some(energy) = analysis.energy.as_ref() else {
+        return (Vec::new(), 0.0, 0.0);
+    };
+    let beat_frames = overlay.grid.bpm.beat_frames(overlay.sample_rate);
+    let first = overlay
+        .grid
+        .beat_position(energy.first_beat, overlay.sample_rate)
+        .get();
+    (energy.drive.clone(), first, beat_frames)
 }
 
 /// Every phrase boundary in the record, in frames.
@@ -1679,6 +1720,7 @@ fn phrases_in_frames(state: &AppState, deck: u8) -> Vec<f64> {
 #[tauri::command]
 pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
     let (breakdowns, drops) = energy_in_frames(&state, deck);
+    let (drive, drive_from_frame, drive_beat_frames) = drive_in_frames(&state, deck);
     WaveformInfo {
         deck,
         ready: state.waveforms().has_summary(deck),
@@ -1687,6 +1729,9 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         breakdowns,
         drops,
         phrases: phrases_in_frames(&state, deck),
+        drive,
+        drive_from_frame,
+        drive_beat_frames,
     }
 }
 
@@ -2701,6 +2746,7 @@ mod grid_edit_tests {
                 energy: Some(dj_analysis::energy::EnergyAnalysis {
                     breakdowns: vec![dj_analysis::energy::Section { start: 64, end: 96 }],
                     drops: vec![96],
+                    ..Default::default()
                 }),
             },
         );
@@ -2718,6 +2764,53 @@ mod grid_edit_tests {
             breakdowns[0].end_frame
         );
         assert_eq!(drops, vec![breakdowns[0].end_frame], "the drop is the end");
+    }
+
+    /// **The trajectory arrives with a place to put it.** §25's energy curve
+    /// is a level per beat; without the frame of the first and the frames
+    /// between them, the interface has a shape and nowhere to draw it.
+    #[test]
+    fn the_energy_trajectory_reaches_the_lane_with_its_geometry() {
+        let state = app_with_grid(120.0, 0.0);
+        let track = dj_core::TrackId::from_bytes([7u8; 32]);
+        state.analysis().record(
+            deck(),
+            track,
+            dj_analysis::Analysis {
+                tempo: None,
+                key: None,
+                loudness: dj_analysis::Lufs::SILENCE,
+                phrases: None,
+                energy: Some(dj_analysis::energy::EnergyAnalysis {
+                    drive: vec![1.0, 0.2, 0.2, 1.0],
+                    first_beat: 8,
+                    ..Default::default()
+                }),
+            },
+        );
+
+        let (drive, from, beat) = drive_in_frames(&state, 1);
+        assert_eq!(drive, vec![1.0, 0.2, 0.2, 1.0]);
+        // 120 BPM at 48 kHz is 24 000 frames a beat, and the fixture's grid is
+        // anchored at frame zero, so beat 8 is frame 192 000.
+        assert!(
+            (from - 8.0 * 24_000.0).abs() < 1.0,
+            "the curve starts at {from}"
+        );
+        assert!(
+            (beat - 24_000.0).abs() < 1.0,
+            "a beat came out as {beat} frames"
+        );
+    }
+
+    /// A record nothing has analysed has no curve, rather than a flat one at
+    /// zero — which would draw a line along the bottom of the lane claiming the
+    /// drums never come in.
+    #[test]
+    fn a_record_nobody_has_analysed_has_no_trajectory() {
+        let state = app_with_grid(120.0, 0.0);
+        let (drive, _, _) = drive_in_frames(&state, 1);
+        assert!(drive.is_empty());
     }
 
     /// **An edited grid does not move the breakdown**, because the audio did
@@ -2748,6 +2841,7 @@ mod grid_edit_tests {
                 energy: Some(dj_analysis::energy::EnergyAnalysis {
                     breakdowns: vec![dj_analysis::energy::Section { start: 64, end: 96 }],
                     drops: vec![96],
+                    ..Default::default()
                 }),
             },
         );

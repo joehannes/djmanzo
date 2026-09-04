@@ -128,6 +128,12 @@ test.describe("breakdowns and drops", () => {
         epoch: 1,
         breakdowns: [],
         drops: [],
+        // The rest of the shape, empty. A partial answer here is a stub the
+        // application would not recognise, and the component reads every field.
+        phrases: [],
+        drive: [],
+        drive_from_frame: 0,
+        drive_beat_frames: 0,
       },
     });
 

@@ -133,7 +133,33 @@ fn analysis_survives_a_restart() {
     // that comes back must have come off the disk.
     let after = analyse_or_cached(&restarted, deck(1), id, &[], SR);
 
-    assert_eq!(&*before, &*after, "the analysis did not survive a restart");
+    // Everything but the energy trajectory, which the cache rounds to three
+    // decimals on the way out -- see `CachedAnalysis::from_analysis`. It is a
+    // ratio around 1.0 drawn about thirty pixels tall, so the fourth decimal is
+    // a thousandth of a pixel and writing it out nearly doubles the file. What
+    // has to survive a restart is the *answer*, and it does.
+    assert_eq!(
+        before.tempo, after.tempo,
+        "the grid did not survive a restart"
+    );
+    assert_eq!(before.key, after.key, "the key did not survive a restart");
+    assert_eq!(before.loudness, after.loudness);
+    assert_eq!(before.phrases, after.phrases);
+    let (was, is) = (
+        before.energy.as_ref().expect("a trajectory"),
+        after.energy.as_ref().expect("a trajectory survives too"),
+    );
+    assert_eq!(was.breakdowns, is.breakdowns);
+    assert_eq!(was.drops, is.drops);
+    assert_eq!(was.first_beat, is.first_beat);
+    assert_eq!(was.drive.len(), is.drive.len(), "the trajectory lost beats");
+    for (left, right) in was.drive.iter().zip(&is.drive) {
+        assert!(
+            (left - right).abs() <= 0.0005,
+            "a level came back as {right} rather than {left}, which is more than \
+             the rounding the cache does"
+        );
+    }
     assert!(after.tempo.is_some());
 
     let _ = std::fs::remove_dir_all(&dir);

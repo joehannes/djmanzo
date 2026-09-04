@@ -33,6 +33,17 @@
    */
   let breakdowns = $state<{ start_frame: number; end_frame: number }[]>([]);
   let drops = $state<number[]>([]);
+  /**
+   * §25's energy trajectory: how hard the drums drive, beat by beat, with 1.0
+   * the record's own normal, and where on the record it starts.
+   *
+   * This view rather than the scrolling lane, deliberately. At the lane's zoom
+   * about ten beats are visible, over which a trajectory is a straight line;
+   * the arc of a record is a thing you see whole or not at all.
+   */
+  let drive = $state<number[]>([]);
+  let driveFrom = $state(0);
+  let driveBeatFrames = $state(0);
 
   // Interpolation state, as in the scrolling lane: snapshots arrive at 60 Hz
   // but a frame landing between two of them must still move.
@@ -63,6 +74,9 @@
         epoch = info.epoch;
         breakdowns = info.breakdowns;
         drops = info.drops;
+        drive = info.drive;
+        driveFrom = info.drive_from_frame;
+        driveBeatFrames = info.drive_beat_frames;
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -116,6 +130,33 @@
   );
 
   const dropMarks = $derived(drops.map((frame) => ({ frame, left: fraction(frame) * 100 })));
+
+  /**
+   * The trajectory as a polyline over the box, in percent of width and height.
+   *
+   * Drawn here rather than rasterised into the tile, unlike the beat grid. The
+   * grid is in the tile because a beat line a pixel off the transient it marks
+   * is worse than no line; a trajectory is a smooth quantity over tens of beats
+   * and a pixel means nothing to it. Every other layer this component draws —
+   * the breakdown band, the drops, the loop, the cues — is already DOM for the
+   * same reason.
+   *
+   * Clipped at twice the record's normal. A single beat far above the
+   * ninetieth percentile would otherwise flatten everything else against the
+   * bottom of a thirty-pixel box, and what this is for is the *shape*.
+   */
+  const CEILING = 2;
+
+  const trajectory = $derived.by(() => {
+    if (drive.length < 2 || totalFrames <= 0 || driveBeatFrames <= 0) return null;
+    return drive
+      .map((level, index) => {
+        const x = fraction(driveFrom + index * driveBeatFrames) * 100;
+        const y = (1 - Math.min(1, Math.max(0, level / CEILING))) * 100;
+        return `${x.toFixed(3)},${y.toFixed(2)}`;
+      })
+      .join(" ");
+  });
 
   const loopBand = $derived.by(() => {
     const region = deck.active_loop;
@@ -199,6 +240,25 @@
     {#each dropMarks as drop (drop.frame)}
       <div class="drop" style:left="{drop.left}%" title="The drums come back here"></div>
     {/each}
+    <!--
+      §25's energy trajectory. A curve is a shape nothing else on this view
+      has, which is what lets it be neutral: the bands, the drops and the
+      loop each already carry a meaning in their colour, and a sixth hue is one
+      nobody could learn — §57. It is the same measurement the breakdown band
+      is thresholded from, so the band reads as a part of the line rather than
+      as a second opinion beside it.
+    -->
+    {#if trajectory}
+      <svg
+        class="drive"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <polyline points={trajectory} vector-effect="non-scaling-stroke" />
+      </svg>
+    {/if}
     <div class="playhead" bind:this={playhead}></div>
   {:else}
     <div class="empty"></div>
@@ -225,6 +285,34 @@
   .empty {
     width: 100%;
     height: 100%;
+  }
+
+  /*
+    The trajectory. Stretched to the box with `preserveAspectRatio: none` so the
+    curve's coordinates can be percentages — the same coordinate space every
+    other mark on this view uses — and `non-scaling-stroke` so the line stays a
+    line rather than being stretched with it.
+
+    Over the waveform rather than at an edge, unlike the breakdown band, and
+    that is not the inconsistency it looks like: a band over the audio is a
+    *tint*, which changes the colour the waveform is using to say something
+    else, and a one-pixel line is not. §57 is about a colour carrying two
+    meanings, not about ink.
+  */
+  .drive {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    pointer-events: none;
+  }
+
+  .drive polyline {
+    fill: none;
+    stroke: var(--text);
+    stroke-width: 1;
+    stroke-opacity: 0.5;
+    stroke-linejoin: round;
   }
 
   .playhead {

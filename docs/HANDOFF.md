@@ -203,19 +203,21 @@ The largest open sections, in the order they are worth doing:
    health are still six separate types nobody assembles, so §9, §12, §14 and
    §17 still each reach for their own. Phase 5 of `GUI-OVERHAUL.md`.
 2. **§25–§27, the waveform as instrumentation.** The transition is drawn on
-   the outgoing lane and can be **dragged** there — §26's first two examples —
-   **breakdowns and drops** draw on both the lane and the overview, and
-   **saved loops** are drawn and played from there, so thirteen of §25's twenty
-   layers ship. What is left of §25 is vocal and stem presence (both need the
-   separator's output kept, not just played), the energy trajectory as a curve
-   rather than as two markers, AI recommendations, crowd-response markers,
-   confidence, and the runway to the end of the record. §26's named examples
-   are done: the
-   transition's ends, the cue markers, both loop edges and the phrase
-   boundary, which is a grid edit rather than a marker move and is the one
-   that leaves the beats alone, and the saved loops. What §26 still lists are
-   beat jumps, stem regions and AI suggestions, each of which needs the thing
-   itself before it needs a handle.
+   the outgoing lane and can be **dragged** there — §26's first two examples
+   — **breakdowns and drops** draw on both the lane and the overview,
+   **saved loops** are drawn and played from there, and the **energy
+   trajectory** is a curve over the overview, so fifteen of §25's twenty
+   layers ship. The fifteenth is confidence, which this list said was
+   missing and which `dj_render` has drawn since `UNSURE_ALPHA` was written
+   — a grid the analyser doubts is drawn faintly, with a test for it. What
+   is left of §25 is vocal and stem presence (both need the separator's
+   output kept, not just played), AI recommendations, crowd-response
+   markers, and the runway to the end of the record. §26's named examples
+   are done: the transition's ends, the cue markers, both loop edges, the
+   phrase boundary — a grid edit rather than a marker move, and the one that
+   leaves the beats alone — and the saved loops. What §26 still lists are
+   beat jumps, stem regions and AI suggestions, each of which needs the
+   thing itself before it needs a handle.
 
    **§27's ghost draws.** The incoming record is laid over the outgoing lane
    in the pair view, from the mix point, beatmatched — no second player and no

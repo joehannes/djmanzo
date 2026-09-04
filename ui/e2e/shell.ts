@@ -370,6 +370,15 @@ const ANSWERS: Record<string, unknown> = {
     // on the same pixel and the cue would win the pointer — correctly, since a
     // cue is the DJ's own mark, but it makes the fixture ambiguous.
     phrases: [60_000, 560_000, 1_060_000, 1_560_000],
+    // §25's energy trajectory: sixteen beats of a record that drops out and
+    // comes back, so the curve has a shape rather than a slope. A beat is
+    // 20 000 frames here -- 132 BPM at 44.1 kHz, near enough -- and the levels
+    // are ratios against the record's own normal.
+    drive: [
+      1.0, 1.05, 0.98, 1.02, 1.0, 0.2, 0.15, 0.12, 0.1, 0.12, 0.18, 0.9, 1.1, 1.05, 1.0, 0.98,
+    ],
+    drive_from_frame: 0,
+    drive_beat_frames: 20_000,
   },
   session_read: {
     phase: "peak",

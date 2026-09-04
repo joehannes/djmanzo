@@ -71,7 +71,10 @@ impl Section {
 }
 
 /// What the record does with its drums.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+///
+/// `PartialEq` but not `Eq`: the trajectory is a series of `f32` levels, and
+/// there is no total order on those to promise.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct EnergyAnalysis {
     /// Stretches with the drums out, in the order they happen.
     pub breakdowns: Vec<Section>,
@@ -83,6 +86,23 @@ pub struct EnergyAnalysis {
     /// the two are used by different code and reading a list of drops should
     /// not mean filtering a list of something else.
     pub drops: Vec<i64>,
+    /// How hard the record is driving, beat by beat, with 1.0 being its own
+    /// normal. §25's energy trajectory.
+    ///
+    /// **The same measurement the breakdowns are read from**, divided by the
+    /// same reference. That is the point of reporting it rather than computing
+    /// a second "energy" somewhere else: a curve and a band that disagreed
+    /// about where the drums are would be two answers about one record, and
+    /// this way the marks are visibly *derived from* the line rather than
+    /// asserted beside it.
+    ///
+    /// Low band only — under 150 Hz, the kick and nothing else — so it is the
+    /// drums' trajectory and not the record's loudness. A breakdown is often
+    /// the loudest part of a record.
+    pub drive: Vec<f32>,
+    /// The grid beat index `drive[0]` describes. Beats before the grid's anchor
+    /// are negative, so this is not always zero.
+    pub first_beat: i64,
 }
 
 /// Below this fraction of the record's own drive, the drums are out.
@@ -172,7 +192,18 @@ pub fn read(
         });
     }
 
-    (!breakdowns.is_empty()).then_some(EnergyAnalysis { breakdowns, drops })
+    // Some even with no breakdowns, which is not the same as nothing to say.
+    // It used to be `None` here, so a record that never loses its drums threw
+    // away the per-beat drive along with the empty list -- and that drive is
+    // §25's energy trajectory, which is exactly as real for a record that runs
+    // straight through. Callers already read an empty `breakdowns` as "none
+    // found": see `plan::Outgoing::breakdowns`.
+    Some(EnergyAnalysis {
+        breakdowns,
+        drops,
+        drive: drive.iter().map(|level| level / reference).collect(),
+        first_beat: first,
+    })
 }
 
 /// The value `fraction` of the way up a sorted copy of `values`.
@@ -277,15 +308,41 @@ mod tests {
     #[test]
     fn a_two_beat_gap_is_not_a_breakdown() {
         let onset = curve(128, |beat| if (48..50).contains(&beat) { 0.0 } else { 1.0 });
-        assert_eq!(read(&onset, &grid(), RATE, frames(128)), None);
+        let read = read(&onset, &grid(), RATE, frames(128)).expect("a record with a drive");
+        assert!(read.breakdowns.is_empty());
+        assert!(read.drops.is_empty());
     }
 
     /// **A record that is loud all the way through has no breakdown**, and
     /// saying so is the answer rather than a failure to find one.
+    ///
+    /// It still has a *trajectory*, and it used to lose that too: the whole
+    /// analysis was thrown away when the breakdown list came back empty, so
+    /// §25's energy curve was missing on exactly the records that run straight
+    /// through. Empty is the answer about breakdowns, not about the record.
     #[test]
-    fn a_record_that_never_drops_its_drums_reports_nothing() {
-        let onset = curve(128, |_| 1.0);
-        assert_eq!(read(&onset, &grid(), RATE, frames(128)), None);
+    fn a_record_that_never_drops_its_drums_still_has_a_trajectory() {
+        let read = read(&curve(128, |_| 1.0), &grid(), RATE, frames(128))
+            .expect("a record with drums has a drive");
+        assert!(
+            read.breakdowns.is_empty(),
+            "found a breakdown in a flat record"
+        );
+        assert!(read.drops.is_empty());
+        assert_eq!(read.drive.len(), 128, "one level per beat");
+        // Within an eighth, not exactly one: a beat's feature is an energy
+        // density over a whole number of hops, so where a beat falls between
+        // hops leaves a ripple of a few percent even on a perfectly flat
+        // record. See the module documentation. What matters is that it stays
+        // nowhere near `QUIET`.
+        assert!(
+            read.drive.iter().all(|level| (level - 1.0).abs() < 0.125),
+            "a record at one level should read as its own normal throughout: {:?}",
+            read.drive
+                .iter()
+                .copied()
+                .fold(0.0_f32, |worst, level| worst.max((level - 1.0).abs()))
+        );
     }
 
     /// A record with no low end at all -- an a cappella, a field recording --
@@ -348,7 +405,22 @@ mod tests {
 
         let a = read(&quiet, &grid(), RATE, frames(128)).expect("a quiet record still has a shape");
         let b = read(&loud, &grid(), RATE, frames(128)).expect("so does a loud one");
-        assert_eq!(a, b, "the same shape at two levels read differently");
+        assert_eq!(
+            a.breakdowns, b.breakdowns,
+            "the same shape read differently"
+        );
+        assert_eq!(a.drops, b.drops);
+        // The trajectory to a tolerance rather than bit for bit: it is a
+        // *ratio* against a reference two hundred times apart in these two
+        // records, and the last bit of an f32 division is not the claim. The
+        // claim is that the shape is the same.
+        assert_eq!(a.drive.len(), b.drive.len());
+        for (left, right) in a.drive.iter().zip(&b.drive) {
+            assert!(
+                (left - right).abs() < 1e-4,
+                "the trajectory differs with the level: {left} against {right}"
+            );
+        }
     }
 
     /// **A record that is mostly breakdown still has one**, which is what the

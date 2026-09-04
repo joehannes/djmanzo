@@ -1094,6 +1094,26 @@ export interface WaveformInfo {
    * of the same boundaries is not two answers about where beat 96 is.
    */
   phrases: number[];
+  /**
+   * §25's energy trajectory: how hard the drums drive, beat by beat, with 1.0
+   * the record's own normal.
+   *
+   * The same measurement `breakdowns` is thresholded from, so a curve and a
+   * band cannot disagree about where the drums are. Empty for a record nothing
+   * has analysed — which is not a flat line at zero, and must not be drawn as
+   * one.
+   */
+  drive: number[];
+  /**
+   * The frame `drive[0]` describes, and the frames between one level and the
+   * next.
+   *
+   * Two numbers rather than a frame beside every level: the mapping is a
+   * straight line, and a list of pairs would be three times the bytes on a wire
+   * this crosses on every load.
+   */
+  drive_from_frame: number;
+  drive_beat_frames: number;
 }
 
 /** A stretch of a record, in frames. */

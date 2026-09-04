@@ -16,6 +16,41 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The energy trajectory, as a curve.** §25 asks for it that way rather than as
+two markers — and the two markers it already had, the breakdown band and the
+drop tick, are *thresholds over exactly this measurement*. So the line they
+came from is drawn on the overview, and the marks above it read as consequences
+of it rather than as assertions beside it.
+
+It is the drums' trajectory and not the record's loudness: the low band under
+150 Hz, divided by the record's own ninetieth percentile. A breakdown is often
+the loudest part of a record, and a fixed reference would call a minimal techno
+record one long breakdown and never find one in a big-room house record.
+
+Reporting the same series the thresholds run on is the point. A second "energy"
+worked out somewhere else would be a curve and a band that could disagree about
+where the drums are, on one lane, about one record.
+
+**A record that never loses its drums has a trajectory too**, and used to lose
+it: `energy::read` returned nothing at all when the breakdown list came back
+empty, so the curve was missing on exactly the records that run straight
+through. Empty is the answer about breakdowns, not about the record.
+
+On the overview and not the scrolling lane. At 256 frames per pixel about ten
+beats are visible, over which a trajectory is a straight line; the arc of a
+record is a thing you see whole or not at all. And drawn in the interface
+rather than rasterised into the tiles, unlike the beat grid — a beat line a
+pixel off the transient it marks is worse than no line, and a smooth curve over
+tens of beats does not care about a pixel.
+
+The analysis cache stores it rounded to three decimals, which nearly halves what
+that addition costs a file: a level is a ratio around 1.0 drawn thirty pixels
+tall, so the fourth decimal is a thousandth of a pixel.
+
+**The status file also said confidence was not drawn.** It is: a grid the
+analyser doubts has been drawn faintly since `UNSURE_ALPHA` was written, with a
+test for it. That row is corrected.
+
 **The contextual control rail.** §74 calls it "the core idea of adaptive UI": a
 compact strip carrying whichever four to eight controls the moment calls for.
 Every loaded deck has one now, and it holds six.
