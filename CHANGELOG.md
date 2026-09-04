@@ -40,6 +40,11 @@ exactly as the lane's is, so tinting one of them to tell them apart would make
 a hue mean two things — §57. What separates them is solid against not, the same
 distinction the saved loops draw.
 
+The ghost carries the incoming record's own **breakdown and drop**, drawn
+inside it so they fade with it: where the new record's drums leave and come
+back is exactly the thing a DJ cannot see from the lane that is playing, and it
+is part of the preview rather than a fact about the audio now.
+
 **The transition object gained the half it was missing.** §68's own field list
 has `startPosition` and `endPosition`, both of which are places on the
 *outgoing* record: where a mix begins, and nothing about what arrives there.

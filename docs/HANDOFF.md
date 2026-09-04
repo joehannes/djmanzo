@@ -221,9 +221,9 @@ The largest open sections, in the order they are worth doing:
    in the pair view, from the mix point, beatmatched — no second player and no
    second decode, because the incoming deck's own tiles already exist. This
    list previously said it "needs a player djmanzo does not have", which was
-   true of *playing* a preview and not of drawing one. What is left of §27 is
-   where the vocal enters (the separator again) and where the incoming
-   record's own drop is.
+   true of *playing* a preview and not of drawing one. It carries the incoming
+   record's own breakdown and drop as well. What is left of §27 is where the
+   vocal enters — the separator again.
 
    Two defects in the phrase drag were invisible to every gate and obvious
    within a minute of driving it: a drop snapped to the beat it was *inside*

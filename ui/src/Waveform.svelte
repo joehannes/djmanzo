@@ -303,6 +303,15 @@
   let ghostReady = $state(false);
   let ghostEpoch = $state(0);
   let ghostTotal = $state(0);
+  /**
+   * The incoming record's own structure — §27's "where the drop occurs".
+   *
+   * It arrives in the same answer the tiles' generation does, so asking for it
+   * costs nothing: the fetch was already being made to find out whether the
+   * ghost could be drawn at all.
+   */
+  let ghostBreakdowns = $state<{ start_frame: number; end_frame: number }[]>([]);
+  let ghostDrops = $state<number[]>([]);
 
   $effect(() => {
     const number = ghost?.deck.number;
@@ -319,6 +328,8 @@
         ghostReady = info.ready;
         ghostEpoch = info.epoch;
         ghostTotal = info.total_frames;
+        ghostBreakdowns = info.breakdowns;
+        ghostDrops = info.drops;
       })
       .catch(() => {
         ghostReady = false;
@@ -666,6 +677,31 @@
               {height}
               style:left="{(tile.startFrame - ghost.from) / ghost.framesPerPixel}px"
             />
+          {/each}
+          <!--
+            §27's "where the drop occurs", about the record coming in. The same
+            two marks the lane draws for its own record, in the ghost's
+            coordinates and inside its box, so they fade with it: what the new
+            record does is part of the preview, not a fact about the audio
+            playing now.
+          -->
+          {#each ghostBreakdowns as band (band.start_frame)}
+            <div
+              class="breakdown"
+              style:left="{(band.start_frame - ghost.from) / ghost.framesPerPixel}px"
+              style:width="{Math.max(
+                (band.end_frame - band.start_frame) / ghost.framesPerPixel,
+                2,
+              )}px"
+              title="The drums are out here in the record coming in"
+            ></div>
+          {/each}
+          {#each ghostDrops as frame (frame)}
+            <div
+              class="drop"
+              style:left="{(frame - ghost.from) / ghost.framesPerPixel}px"
+              title="The drums come back here in the record coming in"
+            ></div>
           {/each}
         </div>
       {/if}

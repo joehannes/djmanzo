@@ -135,6 +135,37 @@ test.describe("the ghost track", () => {
     expect(Math.abs(ratio - 124 / 127), `zoom ratio was ${ratio}`).toBeLessThan(0.002);
   });
 
+  /**
+   * §27's "where the drop occurs" — about the record coming in, which is the
+   * one whose structure a DJ cannot see from the lane that is playing. The
+   * marks sit inside the ghost's box, so they fade with it: what the new
+   * record does is part of the preview, not a fact about the audio now.
+   */
+  test("it carries the incoming record's own breakdown and drop", async ({
+    page,
+  }) => {
+    await compared(page);
+
+    const ghost = `${OUT} .ghost`;
+    await expect(page.locator(`${ghost} .breakdown`)).toHaveCount(1);
+    await expect(page.locator(`${ghost} .drop`)).toHaveCount(1);
+
+    // Inside the ghost, not loose on the lane beside the outgoing record's own
+    // marks: the fixture gives both records the same structure, so a mark that
+    // escaped its box would be indistinguishable from the lane's own.
+    const inside = await page.evaluate(() => {
+      const box = document.querySelector(
+        '.surface[data-surface="pair"] .side:first-of-type .lane .ghost',
+      );
+      const drop = box?.querySelector(".drop");
+      if (!box || !drop) return null;
+      const b = box.getBoundingClientRect();
+      const d = drop.getBoundingClientRect();
+      return d.x >= b.x - 1 && d.x <= b.x + b.width + 1;
+    });
+    expect(inside, "the ghost's drop was drawn outside the ghost").toBe(true);
+  });
+
   test("drawing a ghost throws nothing", async ({ page }) => {
     await compared(page);
     expect(errorsThrown(page)).toEqual([]);
