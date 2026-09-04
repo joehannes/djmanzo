@@ -1044,6 +1044,30 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    /// Wait for something the pump does on its own thread.
+    ///
+    /// **A fixed sleep is not a wait.** These tests used to give the pump
+    /// 80 ms and assume it had been scheduled in that window; on a loaded
+    /// macOS runner it was not, and CI went red on a machine where nothing
+    /// was wrong. A red build that means nothing is worse than no build,
+    /// because the next real one is read as noise too.
+    ///
+    /// The assertion is unchanged — the pump still has to do the thing — and
+    /// the deadline is long enough that only its absence trips it. Nothing
+    /// here asserts anything about *how promptly* an operating system
+    /// schedules a thread, which is the one thing a test cannot control and
+    /// this suite does not care about.
+    fn wait_for(what: &str, mut ready: impl FnMut() -> bool) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            if ready() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("{what}");
+    }
+
     #[test]
     fn capture_reads_the_registry() {
         let registry = ParameterRegistry::new();
@@ -1128,26 +1152,40 @@ mod tests {
         let registry = Arc::new(ParameterRegistry::new());
         let seen = Arc::new(Mutex::new(Vec::new()));
 
+        // **The heartbeat is pushed out of the way**, so the only thing that
+        // can produce a second snapshot is the change this test makes.
+        //
+        // With the default one-second heartbeat and a wait long enough to be
+        // robust on a slow machine, the heartbeat satisfies the assertion by
+        // itself and the test passes with the change detection ripped out --
+        // which is what a mutation run showed the moment the fixed 80 ms sleep
+        // became a real wait. Waiting longer and asserting the same thing is
+        // not free: it widens the window for something else to pass the test
+        // for you.
         let pump = {
             let seen = Arc::clone(&seen);
-            SnapshotPump::start(Arc::clone(&registry), 2, move |snapshot| {
-                seen.lock().unwrap().push(snapshot);
-            })
+            SnapshotPump::with_heartbeat(
+                Arc::clone(&registry),
+                2,
+                Duration::from_secs(60),
+                move |snapshot| {
+                    seen.lock().unwrap().push(snapshot);
+                },
+            )
         };
 
-        std::thread::sleep(Duration::from_millis(50));
+        wait_for("the pump never emitted an initial snapshot", || {
+            !seen.lock().unwrap().is_empty()
+        });
         let baseline = seen.lock().unwrap().len();
-        assert!(baseline >= 1, "should emit an initial snapshot");
 
         registry.set(
             ParamId::Deck(DeckId::from_human(1).unwrap(), DeckParam::Playing),
             1.0,
         );
-        std::thread::sleep(Duration::from_millis(80));
-        assert!(
-            seen.lock().unwrap().len() > baseline,
-            "a state change should produce a new snapshot"
-        );
+        wait_for("a state change should produce a new snapshot", || {
+            seen.lock().unwrap().len() > baseline
+        });
         drop(pump);
     }
 
@@ -1171,6 +1209,12 @@ mod tests {
             )
         };
 
+        // The first snapshot has to have happened before the silence after it
+        // can be measured; without this the test could read zero and call a
+        // pump that had not started yet a pump that was behaving.
+        wait_for("the pump never emitted its initial snapshot", || {
+            count.load(Ordering::Relaxed) >= 1
+        });
         std::thread::sleep(Duration::from_millis(200));
         drop(pump);
 
@@ -1202,15 +1246,14 @@ mod tests {
             )
         };
 
-        // Several heartbeat intervals, with nothing changing at all. Generous
-        // margin because sleep only guarantees a minimum.
-        std::thread::sleep(Duration::from_millis(600));
-        drop(pump);
-
-        assert!(
-            count.load(Ordering::Relaxed) >= 2,
-            "expected at least one heartbeat beyond the initial snapshot"
+        // Nothing changes at all, so anything beyond the initial snapshot is a
+        // heartbeat. Waited for rather than slept through: the interval is
+        // 100 ms and the machine decides when the thread runs.
+        wait_for(
+            "expected at least one heartbeat beyond the initial snapshot",
+            || count.load(Ordering::Relaxed) >= 2,
         );
+        drop(pump);
     }
 
     #[test]
