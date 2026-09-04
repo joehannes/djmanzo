@@ -22,6 +22,7 @@
     framesPerPixel = 256,
     marks = [],
     onMarkMoved,
+    onCueMoved,
   }: {
     deck: DeckState;
     height?: number;
@@ -47,6 +48,20 @@
      * belongs to djmanzo, which has the grid.
      */
     onMarkMoved?: (label: string, frame: number) => void;
+    /**
+     * Called when one of the deck's own hot cues is dragged, with its slot and
+     * the frame it was dropped on.
+     *
+     * A separate prop from {@link onMarkMoved} rather than one list of
+     * draggable things, because they are not the same thing: a mark is
+     * djmanzo's proposal and belongs to whoever put it there, and a cue is the
+     * DJ's own and belongs to the deck. A lane can honestly offer one and not
+     * the other — the pair view's outgoing lane draws a mix point and has no
+     * business moving cues.
+     *
+     * Its presence is what makes the cues draggable, on the same terms.
+     */
+    onCueMoved?: (slot: number, frame: number) => void;
   } = $props();
 
   /** Tile width in pixels. Wide enough that a lane needs few of them. */
@@ -138,8 +153,12 @@
    * declared on it, which is the pattern the crossfader and the jog wheel
    * already use in this interface. One way of doing a drag, not two.
    */
-  function grab(event: PointerEvent, label: string, frame: number) {
-    if (!onMarkMoved) return;
+  function grab(
+    event: PointerEvent,
+    label: string,
+    frame: number,
+    dropped: (frame: number) => void,
+  ) {
     const handle = event.currentTarget as HTMLElement;
     handle.setPointerCapture(event.pointerId);
     dragging = { label, frame };
@@ -157,7 +176,7 @@
       handle.removeEventListener("pointerup", done);
       handle.removeEventListener("pointercancel", cancel);
       dragging = null;
-      onMarkMoved?.(label, frameAt(next.clientX));
+      dropped(frameAt(next.clientX));
     };
     const cancel = () => {
       handle.removeEventListener("pointermove", move);
@@ -225,7 +244,9 @@
     deck.hot_cues
       .map((frame, index) => ({ slot: index + 1, frame }))
       .filter((c): c is { slot: number; frame: number } => c.frame != null)
-      .map((c) => ({ slot: c.slot, left: c.frame / framesPerPixel })),
+      // The frame as well as the pixel: a dragged marker is drawn from the
+      // hand's own position until djmanzo answers, and that is a frame.
+      .map((c) => ({ slot: c.slot, frame: c.frame, left: c.frame / framesPerPixel })),
   );
 
   /**
@@ -324,7 +345,28 @@
         ></div>
       {/if}
       {#each markers as marker (marker.slot)}
-        <div class="cue-marker" style:left="{marker.left}px">
+        <!--
+          §26's first example: "Cue marker — drag to move." Grabbable only
+          where a lane was given somewhere to send it; elsewhere this is the
+          same read-only marker it has always been. Not focusable, for the same
+          reason the mix point is not: the keyboard path to a cue is its pad,
+          which sets it at the playhead, and a slider role here would promise
+          arrow-key nudging of a pixel rather than of a beat.
+        -->
+        <div
+          class="cue-marker"
+          class:grabbable={!!onCueMoved}
+          class:held={dragging?.label === `cue ${marker.slot}`}
+          role={onCueMoved ? "separator" : undefined}
+          aria-label={onCueMoved ? `Cue ${marker.slot}` : undefined}
+          title={onCueMoved ? `Cue ${marker.slot} — drag to move it` : undefined}
+          style:left="{(dragging?.label === `cue ${marker.slot}`
+            ? dragging.frame
+            : marker.frame) / framesPerPixel}px"
+          onpointerdown={(e) =>
+            onCueMoved &&
+            grab(e, `cue ${marker.slot}`, marker.frame, (f) => onCueMoved(marker.slot, f))}
+        >
           <span class="cue-flag">{marker.slot}</span>
         </div>
       {/each}
@@ -346,7 +388,8 @@
           style:left="{(dragging?.label === mark.label ? dragging.frame : mark.frame) /
             framesPerPixel}px"
           title={onMarkMoved ? `${mark.label} — drag to move it` : mark.label}
-          onpointerdown={(e) => grab(e, mark.label, mark.frame)}
+          onpointerdown={(e) =>
+            onMarkMoved && grab(e, mark.label, mark.frame, (f) => onMarkMoved(mark.label, f))}
         >
           <span class="mark-flag">{mark.label}</span>
         </div>
@@ -445,6 +488,38 @@
     z-index: 2;
   }
 
+  .cue-marker.grabbable {
+    pointer-events: auto;
+    cursor: ew-resize;
+    touch-action: none;
+  }
+
+  /* Brighter while it is under a hand, so the one being moved is obvious in a
+     row of eight. */
+  .cue-marker.held {
+    background: var(--text);
+  }
+
+  /*
+    The part that answers to a pointer, wider than the part that is drawn.
+    A two-pixel line is a hard thing to hit with a mouse and an impossible one
+    on a trackpad in a dark booth.
+
+    **A pseudo-element, not padding and a negative margin.** That pair was what
+    the mix point used, and it moved the line: padding widens the box and a
+    negative margin shifts it, so a grabbable mark was *drawn* six pixels
+    earlier than djmanzo said it was — the one thing this lane exists to get
+    right, given up for a hit target. A pseudo-element has no effect on the
+    element's own geometry at all, and pointers hit-test it as the element.
+  */
+  .mark.grabbable::after,
+  .cue-marker.grabbable::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline: -6px;
+  }
+
   .cue-flag {
     position: absolute;
     top: 0;
@@ -470,15 +545,11 @@
     z-index: 2;
   }
 
-  /* Only a lane that can do something about it invites the grab. */
+  /* Only a lane that can do something about it invites the grab. The wider
+     hit area is below, shared with the cue markers. */
   .mark.grabbable {
     pointer-events: auto;
     cursor: ew-resize;
-    /* A two-pixel line is a hard thing to hit with a mouse and an impossible
-       one on a trackpad in a dark booth. The line stays two pixels; what
-       widens is the part that answers to a pointer. */
-    padding-inline: 6px;
-    margin-inline: -6px;
     touch-action: none;
   }
 

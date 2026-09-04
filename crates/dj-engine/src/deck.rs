@@ -1489,6 +1489,41 @@ impl Deck {
         true
     }
 
+    /// Move a hot cue that is already set.
+    ///
+    /// Three rules, and each of them is a decision rather than an accident:
+    ///
+    /// - **An empty slot does nothing.** Setting is "here, where I am"; moving
+    ///   is "that one, over there", and there is no *that one* in an empty
+    ///   slot. Creating a cue at the frame would put a marker somewhere the DJ
+    ///   never pressed anything, from a gesture that missed.
+    /// - **Quantise decides whether it snaps**, exactly as it does for setting
+    ///   one. A pointer knows a place in a record and not a beat, so the DJ's
+    ///   own answer to "should things land on the grid" is the right one to
+    ///   ask -- rather than a second rule that this gesture invents.
+    /// - **Clamped into the record.** A drag that ends past the end is a hand
+    ///   that overshot, and a cue outside the audio is one that can never be
+    ///   pressed.
+    ///
+    /// Returns whether anything moved, so the caller can tell a missed gesture
+    /// from a performed one.
+    pub fn move_hot_cue(&mut self, slot: u8, to: FramePos, quantize: bool) -> bool {
+        let Some(index) = slot.checked_sub(1).map(usize::from) else {
+            return false;
+        };
+        if self.hot_cues.get(index).copied().flatten().is_none() {
+            return false;
+        }
+        let landing = self.snapped(to.clamped(self.len_frames() as f64), quantize);
+        match self.hot_cues.get_mut(index) {
+            Some(cell) => {
+                *cell = Some(landing);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Replace every hot cue at once.
     ///
     /// Wholesale rather than slot by slot, because that is what a restore is:

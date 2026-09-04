@@ -584,6 +584,12 @@ export async function openShell(
           // A record of what the interface asked for, so a stub that answers
           // the wrong shape can be told apart from one never asked at all.
           ((win.__asked ??= []) as string[]).push(cmd);
+          // Arguments too, for the handful of commands where *what* was sent
+          // is the whole claim -- a cue drag that reached djmanzo with the
+          // wrong slot has still "reached djmanzo".
+          if (cmd === "move_hot_cue") {
+            ((win.__cueArgs ??= []) as unknown[]).push(args);
+          }
           if (cmd === "plugin:event|listen") {
             handlers.set(String(args.event), args.handler as number);
             // After the promise settles, so the shell has finished wiring up.

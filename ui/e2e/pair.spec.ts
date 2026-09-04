@@ -160,6 +160,51 @@ test.describe("the pair view", () => {
   });
 
   /**
+   * **Making a mark grabbable must not move it.**
+   *
+   * It did. The wider hit target was a `padding-inline` and a matching
+   * negative `margin-inline`, and a negative margin shifts the box — so the
+   * dashed line was *drawn* six pixels earlier than djmanzo said the mix
+   * point was, but only once the transition was armed. Six pixels is about
+   * thirty-five milliseconds at this lane's zoom, and it was in the one thing
+   * this surface exists to place accurately.
+   *
+   * The same transition either way — the harness answers `transition_arm`
+   * with exactly what `plan_transition` said — so the mark belongs at the same
+   * pixel. Measured against the strip's own left edge rather than the
+   * viewport's, because the lane scrolls with the record and the two readings
+   * are seconds apart.
+   */
+  test("arming a transition does not move where its mark is drawn", async ({
+    page,
+  }) => {
+    const offset = () =>
+      page.evaluate(() => {
+        const pair = document.querySelector('.surface[data-surface="pair"]');
+        const strip = pair?.querySelector(".strip");
+        const mark = pair?.querySelector(".mark");
+        if (!strip || !mark) return null;
+        return mark.getBoundingClientRect().x - strip.getBoundingClientRect().x;
+      });
+
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await expect(page.locator(`${PAIR} .mark`).first()).toBeVisible();
+    const proposed = await offset();
+
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+    await expect(page.locator(`${PAIR} .mark.grabbable`).first()).toBeVisible();
+    const armed = await offset();
+
+    expect(proposed).not.toBeNull();
+    expect(
+      armed!,
+      "the mark moved when it became grabbable, so the line is no longer where " +
+        "djmanzo put the mix point",
+    ).toBeCloseTo(proposed!, 1);
+  });
+
+  /**
    * An opinion is not something to grab, for the same reason it is not
    * something to adjust: nothing is holding it.
    */

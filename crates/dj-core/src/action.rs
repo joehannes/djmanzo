@@ -296,6 +296,18 @@ pub enum DeckAction {
     HotCue(u8),
     /// Set (or overwrite) a hot cue at the playhead.
     HotCueSet(u8),
+    /// Move a hot cue that is already set to somewhere else in the record.
+    ///
+    /// Distinct from [`DeckAction::HotCueSet`] on purpose, and not just for the
+    /// frame: setting is "here, where I am", and a slot with nothing in it is
+    /// a fine target for it. Moving is "that one, over there", and a slot with
+    /// nothing in it has no *that one* — so it does nothing rather than
+    /// creating a cue somewhere the DJ never pressed. §26 asks for the gesture;
+    /// this is the verb behind it.
+    HotCueMove {
+        slot: u8,
+        frame: FramePos,
+    },
     /// Forget a hot cue.
     HotCueClear(u8),
 
@@ -641,6 +653,17 @@ impl Action {
                     Ok(Action::Deck {
                         deck,
                         action: DeckAction::Fx { slot, change },
+                    })
+                } else if verb == "hotcue_move" {
+                    // The other two-word deck verb, for the same reason `fx`
+                    // is: a slot and a place are two facts, and squeezing them
+                    // into one word would make the log unreadable and the
+                    // parser cleverer than it needs to be.
+                    let slot = parse_slot(words.next())?;
+                    let frame = FramePos::new(parse_frames(words.next())?);
+                    Ok(Action::Deck {
+                        deck,
+                        action: DeckAction::HotCueMove { slot, frame },
                     })
                 } else {
                     let action = parse_deck_verb(verb, words.next())?;
@@ -1137,6 +1160,23 @@ fn parse_slot(word: Option<&str>) -> Result<u8, ParseError> {
     }
 }
 
+/// A frame position, parsed at full precision.
+///
+/// `f64` rather than [`parse_f32`], which every other number here uses. A frame
+/// index is not a knob: `f32` has 24 bits of mantissa, so it stops being able
+/// to name individual frames a little past sixteen million — about six minutes
+/// at 48 kHz. Every other value in this vocabulary is a fader, a gain or a beat
+/// count, and none of them get near that.
+fn parse_frames(word: Option<&str>) -> Result<f64, ParseError> {
+    let word = word.ok_or(ParseError::MissingArgument)?;
+    let value: f64 = word.parse().map_err(|_| ParseError::BadArgument)?;
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(ParseError::BadArgument)
+    }
+}
+
 fn parse_f32(word: Option<&str>) -> Result<f32, ParseError> {
     let word = word.ok_or(ParseError::MissingArgument)?;
     let value: f32 = word.parse().map_err(|_| ParseError::BadArgument)?;
@@ -1336,6 +1376,9 @@ impl fmt::Display for Action {
                 DeckAction::PhraseJump(n) => write!(f, "deck {deck} phrasejump {n}"),
                 DeckAction::HotCue(n) => write!(f, "deck {deck} hotcue {n}"),
                 DeckAction::HotCueSet(n) => write!(f, "deck {deck} hotcue_set {n}"),
+                DeckAction::HotCueMove { slot, frame } => {
+                    write!(f, "deck {deck} hotcue_move {slot} {}", frame.get())
+                }
                 DeckAction::HotCueClear(n) => write!(f, "deck {deck} hotcue_clear {n}"),
                 DeckAction::LoopBeats(n) => write!(f, "deck {deck} loop {n}"),
                 DeckAction::LoopPhrases(n) => write!(f, "deck {deck} loop_phrase {n}"),
@@ -1843,12 +1886,49 @@ mod tests {
             "deck 1 gain -12.25",
             "deck 1 filter -0.333333",
             "deck 1 seek 1234567",
+            // A frame index past what `f32` can name one by one. Sixteen
+            // million is where its mantissa runs out, which is about six
+            // minutes at 48 kHz -- well inside a normal record.
+            "deck 1 hotcue_move 3 20000001",
             "cue mix 0.123456",
         ] {
             let action = Action::parse(input).unwrap();
             let reparsed = Action::parse(&action.to_string()).unwrap();
             assert_eq!(reparsed, action, "`{input}` did not survive formatting");
         }
+    }
+
+    /// **A hot cue can be moved, and the verb says where to.**
+    ///
+    /// §26's first example: the DJ grabs the thing they are thinking about
+    /// rather than typing a number into a panel. The gesture is the interface's;
+    /// this is the vocabulary behind it, and it has to survive the session log
+    /// like every other action.
+    #[test]
+    fn moving_a_hot_cue_round_trips_through_its_text_form() {
+        let action = Action::Deck {
+            deck: DeckId::from_human(2).unwrap(),
+            action: DeckAction::HotCueMove {
+                slot: 5,
+                frame: FramePos::new(4_410_000.0),
+            },
+        };
+        let text = action.to_string();
+        assert_eq!(text, "deck 2 hotcue_move 5 4410000");
+        assert_eq!(Action::parse(&text), Ok(action));
+    }
+
+    /// A slot outside the pads is refused rather than clamped, exactly as it is
+    /// for setting one: a controller mapped to the wrong range should be heard
+    /// about, not quietly redirected onto slot 1 in front of a room.
+    #[test]
+    fn moving_a_cue_in_a_slot_that_does_not_exist_is_refused() {
+        assert!(Action::parse("deck 1 hotcue_move 0 100").is_err());
+        assert!(Action::parse("deck 1 hotcue_move 9 100").is_err());
+        assert!(Action::parse("deck 1 hotcue_move 3 nowhere").is_err());
+        assert!(Action::parse("deck 1 hotcue_move 3").is_err());
+        // And nothing may follow a complete action.
+        assert!(Action::parse("deck 1 hotcue_move 3 100 please").is_err());
     }
 
     /// Every first-slice stem action, through text and back. The stem engine is

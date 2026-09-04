@@ -665,6 +665,9 @@ impl Engine {
                     DeckAction::HotCueSet(slot) => {
                         target.set_hot_cue(slot, quantize);
                     }
+                    DeckAction::HotCueMove { slot, frame } => {
+                        target.move_hot_cue(slot, frame, quantize);
+                    }
                     DeckAction::HotCueClear(slot) => {
                         target.clear_hot_cue(slot);
                     }
@@ -4381,6 +4384,118 @@ mod loop_tests {
         assert!(
             (stored - BEAT * 4.0).abs() < 2.0,
             "quantised cue landed at {stored}, not on the beat"
+        );
+    }
+
+    /// **A cue can be moved to somewhere the playhead is not.**
+    ///
+    /// §26's first example, and the whole of what separates it from
+    /// `HotCueSet`: the DJ points at a place in the record rather than driving
+    /// the playhead there first. Quantise is off here, so the frame is taken
+    /// as given.
+    #[test]
+    fn a_hot_cue_moves_to_where_it_is_put() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::Seek(FramePos::new(BEAT * 2.0)));
+        rig.act(1, DeckAction::HotCueSet(1));
+        rig.render(256);
+
+        rig.act(
+            1,
+            DeckAction::HotCueMove {
+                slot: 1,
+                frame: FramePos::new(BEAT * 40.0),
+            },
+        );
+        rig.render(256);
+
+        let stored = f64::from(rig.param(1, DeckParam::HotCue1));
+        assert!(
+            (stored - BEAT * 40.0).abs() < 2.0,
+            "the cue is at {stored}, not where it was moved to"
+        );
+    }
+
+    /// **Moving an empty slot does nothing**, rather than creating a cue there.
+    ///
+    /// A gesture that missed must not leave a marker somewhere the DJ never
+    /// pressed anything. This is the difference between moving and setting, and
+    /// without it the two verbs would be one.
+    #[test]
+    fn moving_an_empty_slot_creates_nothing() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.render(256);
+        // Whatever an empty slot publishes -- it is a sentinel rather than a
+        // frame, and this test is about it not changing, not about its value.
+        let empty = rig.param(1, DeckParam::HotCue2);
+
+        rig.act(
+            1,
+            DeckAction::HotCueMove {
+                slot: 2,
+                frame: FramePos::new(BEAT * 8.0),
+            },
+        );
+        rig.render(256);
+
+        assert_eq!(
+            rig.param(1, DeckParam::HotCue2),
+            empty,
+            "a slot with nothing in it grew a cue from a drag"
+        );
+    }
+
+    /// Quantise decides whether a dragged cue snaps, exactly as it decides for
+    /// one set at the playhead. A pointer knows a place and not a beat, so the
+    /// DJ's own answer to "should things land on the grid" is the one to ask.
+    #[test]
+    fn quantize_snaps_a_moved_cue_onto_the_beat() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::HotCueSet(1));
+        rig.send(Command::Action(Action::Mixer(MixerAction::SetQuantize(
+            true,
+        ))));
+        rig.act(
+            1,
+            DeckAction::HotCueMove {
+                slot: 1,
+                frame: FramePos::new(BEAT * 12.0 + 3_000.0),
+            },
+        );
+        rig.render(256);
+
+        let stored = f64::from(rig.param(1, DeckParam::HotCue1));
+        assert!(
+            (stored - BEAT * 12.0).abs() < 2.0,
+            "a dragged cue landed at {stored}, not on the beat"
+        );
+    }
+
+    /// A hand that overshoots the end of the record must not leave a cue
+    /// outside the audio, where nothing could ever press it.
+    #[test]
+    fn a_cue_dragged_past_the_end_lands_inside_the_record() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::HotCueSet(1));
+        rig.render(256);
+
+        rig.act(
+            1,
+            DeckAction::HotCueMove {
+                slot: 1,
+                frame: FramePos::new(1e12),
+            },
+        );
+        rig.render(256);
+
+        let stored = f64::from(rig.param(1, DeckParam::HotCue1));
+        assert!(
+            stored <= 48_000.0 * 300.0 + 1.0,
+            "the cue landed at {stored}, past the end of a 300-second record"
         );
     }
 

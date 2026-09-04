@@ -16,6 +16,40 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Hot cues are dragged where they are drawn.** §26 asks for it in one line —
+*"The DJ should be able to physically grab the thing they are thinking about"*
+— and lists the cue marker first. A cue could only ever be set at the playhead,
+so *moving* one meant driving the record there and pressing the pad again. That
+is the numerical-property-in-a-panel the section is complaining about, wearing a
+transport control's clothes.
+
+Three rules, and each one is a decision:
+
+- **Quantise decides whether it snaps**, exactly as it does for a cue set at
+  the playhead. A pointer knows a place in a record and not a beat, so the DJ's
+  own answer to "should things land on the grid" is the right one to ask,
+  rather than a second rule this gesture invents.
+- **An empty slot does nothing.** Setting is "here, where I am"; moving is
+  "that one, over there", and there is no *that one* in an empty slot. A
+  gesture that missed must not leave a marker somewhere nobody pressed.
+- **Clamped into the record**, because a cue outside the audio can never be
+  pressed.
+
+It travels as `deck 1 hotcue_move 3 4410000` through the same path a
+controller's pad takes, so it lands in the session log and the pump's cue
+watcher writes it to the library — a dragged cue is remembered next time the
+record is played, by the code that already remembers a pressed one. The frame
+parses at full precision rather than through `f32`, which stops being able to
+name individual frames about six minutes into a record at 48 kHz.
+
+**Fixed: a mix point was drawn six pixels early once it could be grabbed.** The
+wider hit target was a `padding-inline` with a matching negative
+`margin-inline`, and a negative margin moves the box — so the dashed line
+shifted left the moment the transition was armed, in the one thing that surface
+exists to place accurately. The hit area is a pseudo-element now, which widens
+nothing that is drawn, and a browser test measures the mark's position against
+the strip in both states so it cannot come back.
+
 **A mix now says what it is running over.** The breakdown layer was drawn but
 nothing read it: `dj_app::plan` scored a transition on tempo, key and phrase and
 would put one in the middle of a breakdown without a word. A plan says

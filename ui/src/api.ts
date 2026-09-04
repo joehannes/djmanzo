@@ -1101,6 +1101,21 @@ export function tileUrl(
  * with no sleeve falls back to its lettering — see `Library.svelte`. Nothing
  * here can tell in advance which records have one, so the request is the test.
  */
+/**
+ * Move a hot cue to somewhere in the record.
+ *
+ * §26's first example — the DJ grabs the marker rather than driving the record
+ * to it and pressing the pad again. The frame is what the pointer knew;
+ * whether it snaps to a beat is djmanzo's business and the DJ's quantise
+ * setting, because working out which beat a pixel is would need the grid, the
+ * tempo and the record's own sample rate.
+ *
+ * Moving a slot with nothing in it does nothing, deliberately: see
+ * `DeckAction::HotCueMove`.
+ */
+export const moveHotCue = (deck: number, slot: number, frame: number) =>
+  invoke<void>("move_hot_cue", { deck, slot, frame });
+
 export function coverUrl(track: string): string {
   // Same per-platform rewriting as `tileUrl`; see the comment there.
   return navigator.userAgent.includes("Windows")

@@ -4299,6 +4299,42 @@ pub fn transition_drag(
     }
 }
 
+/// Move a hot cue to somewhere the DJ pointed at.
+///
+/// §26: *"The DJ should be able to physically grab the thing they are thinking
+/// about."* A cue was previously only settable at the playhead, so moving one
+/// meant driving the record there and pressing the pad again — which is the
+/// numerical-property-in-a-panel this section is complaining about, wearing a
+/// transport control's clothes.
+///
+/// Through the action bus rather than straight at the engine, like every other
+/// change to what the decks are doing: it lands in the session log, and the
+/// pump's cue watcher sees the engine's own published position and writes it
+/// to the library. So a dragged cue is remembered next time the record is
+/// played, by the path that already remembers a pressed one.
+///
+/// **The frame is what the pointer knew, and nothing more.** Whether it snaps
+/// to a beat is the engine's business and the DJ's quantise setting -- see
+/// `Deck::move_hot_cue`. An interface that snapped first would be a second
+/// opinion about where a beat is, formed without the grid.
+///
+/// # Errors
+/// If the deck number, the slot or the frame is not one the vocabulary accepts.
+#[tauri::command]
+pub fn move_hot_cue(
+    state: State<'_, AppState>,
+    deck: u8,
+    slot: u8,
+    frame: f64,
+) -> Result<(), String> {
+    // Through `perform`, as text, which is the path a controller's pad already
+    // takes. Building the action here instead would be a second way into the
+    // engine that skips the parser, the log and the interception `perform`
+    // does -- and the first thing to go wrong with a second way in is that it
+    // stops matching the first.
+    perform(&state, &format!("deck {deck} hotcue_move {slot} {frame}"))
+}
+
 /// Throw the adjustments away and ask the planner again.
 ///
 /// Only ever on request. A transition that replanned itself would undo a DJ's

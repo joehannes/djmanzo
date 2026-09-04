@@ -3,6 +3,7 @@
     dispatch,
     formatTime,
     loadTrack,
+    moveHotCue,
     padPages,
     type DeckState,
     type Placed,
@@ -554,7 +555,16 @@
     Tiles come from the Rust renderer and are scrolled by a CSS transform;
     nothing here draws. See docs/adr/0004-waveform-rendering-strategy.md.
   -->
-  <Waveform {deck} height={height(props, 96)} />
+  <!--
+    The cues are draggable here and nowhere else. This is the DJ's own deck;
+    the pair view's lanes draw the same record and have no business moving its
+    cues from a panel about a transition.
+  -->
+  <Waveform
+    {deck}
+    height={height(props, 96)}
+    onCueMoved={(slot, frame) => void moveHotCue(deck.number, slot, frame)}
+  />
   {/snippet}
   {#snippet zoneOverview()}
   <!--
