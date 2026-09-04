@@ -212,10 +212,12 @@ The largest open sections, in the order they are worth doing:
    grabbable (cue markers, phrase markers, loops), and §27's ghost track, which
    needs a second render of a track that is not loaded.
 
-   The obvious next thing is not a layer at all: **the planner does not know
-   about breakdowns yet.** `dj_app::plan` scores a mix on tempo, key and phrase
-   and will happily land one in the middle of one — which is the mistake the
-   layer exists to stop a human making. `Section::contains` is there for it.
+   The planner reads the layer: a transition says how many of its beats have
+   no drums under them, and the autopilot says it out loud. It deliberately
+   does **not** move a mix off a breakdown — mixing in over the outgoing
+   record's breakdown is a technique and mixing out into one is a mistake, and
+   nothing here can tell which the DJ meant. Changing that needs a DJ to say
+   so, not a rule invented here.
 3. **§68's last reader.** The object ships; the pair view draws it, the automix
    performs it and the autopilot defers to it. Replay still reconstructs a
    transition from the action log rather than from the object. Its stem, EQ and

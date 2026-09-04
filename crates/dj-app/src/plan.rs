@@ -32,7 +32,11 @@
 use dj_core::{KeyRelation, MusicalKey, Phrase, SampleRate, action::TransitionStyle};
 
 /// The track going out, as the planner needs it.
-#[derive(Debug, Clone, Copy, PartialEq)]
+///
+/// `Clone` rather than `Copy` since it started carrying the breakdowns, which
+/// are a list. Every field here is a fact about the *record*; nothing about
+/// what the deck is doing beyond where the playhead is.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Outgoing {
     /// Where the playhead is now, in frames.
     pub position: f64,
@@ -44,6 +48,14 @@ pub struct Outgoing {
     pub sample_rate: SampleRate,
     /// Frame position of a beat, from which every other beat follows.
     pub grid_anchor: f64,
+    /// Stretches of this record with the drums out, in its own beat indices.
+    ///
+    /// Empty means *not known* as well as *none*, and the planner treats the
+    /// two the same on purpose: it has nothing to say either way, and a plan
+    /// that behaved differently for an unanalysed record than for one with no
+    /// breakdowns would be reporting the state of the analyser as a fact about
+    /// the music. See [`dj_analysis::energy`].
+    pub breakdowns: Vec<dj_analysis::energy::Section>,
 }
 
 /// The track coming in.
@@ -75,6 +87,17 @@ pub enum Reason {
     /// Not enough track left *after* the transition ends for the mix to be
     /// late into, which is the margin a human pressing a button needs.
     Rushed { beats_after: f64 },
+    /// How many beats of the transition have no drums under them, because the
+    /// outgoing record is in a breakdown there.
+    ///
+    /// **Reported, never acted on.** Mixing a new record in over the outgoing
+    /// one's breakdown is a technique — the drums arrive alone and the room
+    /// hears it — and mixing out into a breakdown is how you kill the energy
+    /// by accident. Which of the two this is depends on what the DJ meant, and
+    /// nothing here can tell. So the planner does not move a mix off a
+    /// breakdown; it says how much of it is over one, and the person with the
+    /// hand on the fader decides.
+    OverBreakdown { beats: i64 },
 }
 
 /// A proposed transition.
@@ -247,6 +270,14 @@ pub fn evaluate(
         Some(p) if p.starts_at(start_beat) => Reason::LandsOnPhrase { beat: start_beat },
         _ => Reason::LandsOnBar { beat: start_beat },
     });
+    // How much of the mix has no drums under it. Summed across breakdowns
+    // rather than reported per breakdown: a transition long enough to span two
+    // is long enough that the total is the number a DJ acts on, and three
+    // clauses about the same mix is a sentence nobody reads mid-set.
+    let over = beats_over_breakdowns(&out.breakdowns, start_beat, length_beats);
+    if over > 0 {
+        reasons.push(Reason::OverBreakdown { beats: over });
+    }
     reasons.push(Reason::Remaining {
         beats: (out.length - start_frame) / beat_frames,
     });
@@ -261,6 +292,25 @@ pub fn evaluate(
         key_relation,
         reasons,
     })
+}
+
+/// Beats of `[start, start + length)` that fall inside a breakdown.
+///
+/// Half-open on both sides, matching [`dj_analysis::energy::Section`]: a mix
+/// that starts on the drop is not over the breakdown that ended there, which
+/// is the boundary case that matters — landing on the drop is the good version
+/// of this.
+#[must_use]
+pub fn beats_over_breakdowns(
+    breakdowns: &[dj_analysis::energy::Section],
+    start: i64,
+    length: u32,
+) -> i64 {
+    let end = start + i64::from(length);
+    breakdowns
+        .iter()
+        .map(|section| (section.end.min(end) - section.start.max(start)).max(0))
+        .sum()
 }
 
 /// How the two keys stand to each other, when both are known.
@@ -335,7 +385,14 @@ mod tests {
             key: Some(key(8, Mode::Minor)),
             sample_rate: SR,
             grid_anchor: 0.0,
+            breakdowns: Vec::new(),
         }
+    }
+
+    /// The same outgoing track, with the drums out over `beats`.
+    fn with_breakdown(mut out: Outgoing, start: i64, end: i64) -> Outgoing {
+        out.breakdowns = vec![dj_analysis::energy::Section { start, end }];
+        out
     }
 
     fn incoming(bpm: f64, k: Option<MusicalKey>) -> Incoming {
@@ -605,5 +662,114 @@ mod tests {
             "a bar-line start was not distinguished from a phrase start: {:?}",
             plan.reasons
         );
+    }
+    // ------------------------------------------------------- breakdowns
+
+    /// **A mix that runs over a breakdown says how much of it does.**
+    ///
+    /// This is the fact §25's layer exists to produce and the one a DJ acts
+    /// on: for those beats there are no drums under the mix.
+    #[test]
+    fn a_transition_over_a_breakdown_says_how_many_beats() {
+        let out = outgoing(100.0, 400.0);
+        // A 32-beat mix from beat 128, and the drums are out for its second
+        // half.
+        let out = with_breakdown(out, 144, 200);
+        let plan = evaluate(&out, &incoming(BPM, None), 128, 32, TransitionStyle::Blend)
+            .expect("a tempo is a tempo");
+
+        assert!(
+            plan.reasons.contains(&Reason::OverBreakdown { beats: 16 }),
+            "expected sixteen beats over the breakdown, got {:?}",
+            plan.reasons
+        );
+    }
+
+    /// **A mix clear of the breakdowns says nothing about them.** A reason
+    /// reading "0 beats over a breakdown" on every record is noise, and this
+    /// panel's whole discipline is that a reason is a thing that happened.
+    #[test]
+    fn a_transition_clear_of_a_breakdown_says_nothing() {
+        let out = with_breakdown(outgoing(100.0, 400.0), 200, 260);
+        let plan = evaluate(&out, &incoming(BPM, None), 128, 32, TransitionStyle::Blend).unwrap();
+
+        assert!(
+            !plan
+                .reasons
+                .iter()
+                .any(|r| matches!(r, Reason::OverBreakdown { .. })),
+            "{:?}",
+            plan.reasons
+        );
+    }
+
+    /// **Landing on the drop is not landing in the breakdown.**
+    ///
+    /// The boundary case that matters, and the good version of this: a mix
+    /// starting exactly where the drums come back is over nothing. Both ends
+    /// are half-open, so this is a property of the arithmetic rather than a
+    /// special case in it.
+    #[test]
+    fn a_mix_starting_on_the_drop_is_not_over_the_breakdown() {
+        let out = with_breakdown(outgoing(100.0, 400.0), 96, 128);
+        let plan = evaluate(&out, &incoming(BPM, None), 128, 32, TransitionStyle::Blend).unwrap();
+
+        assert!(
+            !plan
+                .reasons
+                .iter()
+                .any(|r| matches!(r, Reason::OverBreakdown { .. })),
+            "a mix starting on the drop was reported as over the breakdown: {:?}",
+            plan.reasons
+        );
+    }
+
+    /// A record nothing has analysed has an empty list, and an empty list is
+    /// silence rather than "no breakdowns" -- see `Outgoing::breakdowns`.
+    #[test]
+    fn a_record_with_no_breakdowns_known_says_nothing() {
+        let plan = evaluate(
+            &outgoing(100.0, 400.0),
+            &incoming(BPM, None),
+            128,
+            32,
+            TransitionStyle::Blend,
+        )
+        .unwrap();
+
+        assert!(
+            !plan
+                .reasons
+                .iter()
+                .any(|r| matches!(r, Reason::OverBreakdown { .. }))
+        );
+    }
+
+    /// **The planner does not move the mix off a breakdown.** Mixing in over
+    /// the outgoing record's breakdown is a technique; mixing out into one is
+    /// a mistake; which this is depends on what the DJ meant. So the plan is
+    /// the same plan either way and the reasons carry the difference.
+    #[test]
+    fn knowing_about_a_breakdown_does_not_change_where_the_mix_goes() {
+        let clear = outgoing(100.0, 400.0);
+        let over = with_breakdown(clear.clone(), 300, 380);
+
+        let a = plan(&clear, &incoming(BPM, None)).expect("a plan");
+        let b = plan(&over, &incoming(BPM, None)).expect("a plan");
+
+        assert_eq!(a.start_beat, b.start_beat, "the breakdown moved the mix");
+        assert_eq!(a.length_beats, b.length_beats);
+        assert_eq!(a.style, b.style);
+    }
+
+    #[test]
+    fn beats_over_two_breakdowns_are_summed() {
+        let sections = [
+            dj_analysis::energy::Section { start: 0, end: 8 },
+            dj_analysis::energy::Section { start: 16, end: 20 },
+        ];
+        assert_eq!(beats_over_breakdowns(&sections, 0, 32), 12);
+        assert_eq!(beats_over_breakdowns(&sections, 4, 4), 4);
+        assert_eq!(beats_over_breakdowns(&sections, 8, 8), 0);
     }
 }

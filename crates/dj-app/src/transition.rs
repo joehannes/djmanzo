@@ -313,6 +313,7 @@ mod tests {
             key: key(8, Mode::Minor),
             sample_rate: SR,
             grid_anchor: 0.0,
+            breakdowns: Vec::new(),
         };
         let incoming = Incoming {
             bpm: BPM,
@@ -456,6 +457,7 @@ mod tests {
             key: key(8, Mode::Minor),
             sample_rate: SR,
             grid_anchor: 0.0,
+            breakdowns: Vec::new(),
         };
         // 145 against 120 is well outside the deck's pitch range: the planner
         // cuts.

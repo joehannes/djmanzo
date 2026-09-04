@@ -1420,6 +1420,20 @@ pub struct WaveformInfo {
     pub drops: Vec<f64>,
 }
 
+/// The breakdowns the analyser found in whatever this deck is playing.
+///
+/// From the in-memory analysis store rather than the library, because that is
+/// where a freshly loaded record's analysis lands and the library's stored copy
+/// does not carry them. Empty for a deck nothing has analysed yet, which the
+/// planner reads as "nothing to say" -- see `plan::Outgoing::breakdowns`.
+fn breakdowns_of(state: &AppState, deck: dj_core::DeckId) -> Vec<dj_analysis::energy::Section> {
+    state
+        .analysis()
+        .for_deck(deck.human_number())
+        .and_then(|a| a.energy.as_ref().map(|e| e.breakdowns.clone()))
+        .unwrap_or_default()
+}
+
 /// Turn the analyser's beat indices into frames, using the grid they were
 /// counted against.
 ///
@@ -2430,6 +2444,7 @@ mod grid_edit_tests {
                     key: None,
                     sample_rate: SR,
                     grid_anchor: 0.0,
+                    breakdowns: Vec::new(),
                 },
                 &crate::plan::Incoming {
                     bpm: 124.0,
@@ -3340,6 +3355,7 @@ fn read_situation(
         key: None,
         sample_rate: rate,
         grid_anchor: grid.map_or(0.0, |g| g.grid.anchor.get()),
+        breakdowns: breakdowns_of(state, live),
     };
 
     // What is on the idle deck, if anything, and what it is. Read from the
@@ -4043,6 +4059,7 @@ fn outgoing_of(
         key: track.analysis.key(),
         sample_rate: track.sample_rate,
         grid_anchor: grid.anchor.get(),
+        breakdowns: breakdowns_of(state, deck),
     })
 }
 
@@ -4323,6 +4340,10 @@ fn describe_plan_reason(reason: &crate::plan::Reason) -> String {
         Reason::Rushed { beats_after } => {
             format!("only {beats_after:.0} beats after it ends")
         }
+        // Not phrased as a warning. It is a fact about what the mix runs over,
+        // and whether it is a mistake depends on what the DJ meant -- see
+        // `Reason::OverBreakdown`.
+        Reason::OverBreakdown { beats } => format!("{beats} beats over a breakdown"),
     }
 }
 

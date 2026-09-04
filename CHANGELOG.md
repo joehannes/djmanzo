@@ -16,6 +16,28 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**A mix now says what it is running over.** The breakdown layer was drawn but
+nothing read it: `dj_app::plan` scored a transition on tempo, key and phrase and
+would put one in the middle of a breakdown without a word. A plan says
+`21 beats over a breakdown` now, in the pair view's reasons, and the assistant
+says it out loud when the autopilot proposes the mix — `Blend over 32 beats —
+21 of them over a breakdown`. That is the fact a DJ would have read off the
+waveform themselves, and the assistant is standing in for their eyes.
+
+**It is a fact and not a veto.** Nothing moves a mix off a breakdown. Bringing a
+new record in over the outgoing one's breakdown is a technique — the drums
+arrive alone and the room hears it — and mixing *out* into a breakdown kills the
+energy by accident. Which of the two a given mix is depends on what the DJ
+meant, and nothing here can tell. A planner that quietly slid the mix point
+would be guessing, and it would be guessing about the thing this project is
+most careful never to guess about. So the plan is the same plan either way and
+the reasons carry the difference — asserted by a test, so a later change that
+starts moving mixes fails rather than merely surprising somebody.
+
+Half-open at both ends, which makes the good case fall out of the arithmetic
+rather than being special-cased: a mix that starts exactly on the drop is over
+nothing.
+
 **djmanzo sees the breakdown coming.** §25 asks the waveform to answer *what is
 about to happen*, and in dance music the answer is nearly always a breakdown or
 a drop. Those are the two moments a mix is planned around: you do not land a

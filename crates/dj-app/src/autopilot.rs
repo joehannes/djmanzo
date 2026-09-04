@@ -251,6 +251,22 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
         return Decision::nothing(&format!("mixing in {until:.0} beats"));
     }
 
+    // What the mix runs over. The assistant announcing "Blend over 32 beats"
+    // when sixteen of them have no drums under them is announcing half the
+    // fact -- and this is the one the DJ would have spotted on the waveform,
+    // which is precisely what the assistant is standing in for while their
+    // eyes are elsewhere. It does not change the decision: see
+    // `plan::Reason::OverBreakdown` for why nothing here moves a mix off a
+    // breakdown.
+    #[allow(clippy::cast_possible_truncation)]
+    let start_beat = ((start - situation.outgoing.grid_anchor) / beat_frames).round() as i64;
+    let over = plan::beats_over_breakdowns(&situation.outgoing.breakdowns, start_beat, beats);
+    let caveat = if over > 0 {
+        format!(" — {over} of them over a breakdown")
+    } else {
+        String::new()
+    };
+
     Decision {
         step: Step::Mix {
             from: situation.live,
@@ -259,9 +275,9 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
             beats,
         },
         because: if mine {
-            format!("{style:?} over {beats} beats")
+            format!("{style:?} over {beats} beats{caveat}")
         } else {
-            format!("the {style} you set up, over {beats} beats")
+            format!("the {style} you set up, over {beats} beats{caveat}")
         },
     }
 }
@@ -302,6 +318,7 @@ mod tests {
             key: key(),
             sample_rate: SR,
             grid_anchor: 0.0,
+            breakdowns: Vec::new(),
         }
     }
 
@@ -409,6 +426,51 @@ mod tests {
             "it did not say whose mix it was performing: {}",
             theirs.because
         );
+    }
+
+    /// **The assistant says when the mix it is proposing runs over a
+    /// breakdown.**
+    ///
+    /// This is the thing the DJ would have seen on the waveform, and the
+    /// assistant is standing in for their eyes. It is a caveat, not a veto:
+    /// the step is the same step. See `plan::Reason::OverBreakdown`.
+    #[test]
+    fn a_mix_over_a_breakdown_is_announced_as_one() {
+        let base = ready_to_mix(Posture::Autopilot);
+        let clear = next_step(&base, &Takeover::default());
+        let Step::Mix { beats, .. } = clear.step else {
+            panic!("expected a mix, got {:?}", clear.step);
+        };
+
+        // Put the drums out across the whole of the mix it just chose.
+        let start_beat = ((clear_start(&base) - base.outgoing.grid_anchor)
+            / (SR.as_f64() * 60.0 / BPM))
+            .round() as i64;
+        let mut over = base.clone();
+        over.outgoing.breakdowns = vec![dj_analysis::energy::Section {
+            start: start_beat,
+            end: start_beat + i64::from(beats),
+        }];
+        let said = next_step(&over, &Takeover::default());
+
+        assert_eq!(said.step, clear.step, "the breakdown changed the mix");
+        assert!(
+            said.because.contains("over a breakdown"),
+            "it did not mention the breakdown: {}",
+            said.because
+        );
+        assert!(
+            !clear.because.contains("breakdown"),
+            "it mentioned a breakdown on a record with none: {}",
+            clear.because
+        );
+    }
+
+    /// Where the mix the autopilot chooses actually starts, in frames.
+    fn clear_start(base: &Situation) -> f64 {
+        crate::plan::plan(&base.outgoing, &incoming())
+            .expect("the fixture has a plan")
+            .start_frame
     }
 
     /// **A human's length is not trimmed by the occasion.**
