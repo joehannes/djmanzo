@@ -2171,6 +2171,110 @@ mod grid_edit_tests {
         apply_grid_edit(state, deck, edit)
     }
 
+    /// **A deck with a record cued on it is somewhere to mix into.**
+    ///
+    /// `idle` used to mean *empty*, and `staged` is what is on the idle deck —
+    /// so the two could never both be populated and the autopilot's mixing
+    /// branch was unreachable in the running application. It staged a record,
+    /// the deck became loaded, and it then said "nothing staged to mix into"
+    /// for the rest of the night.
+    ///
+    /// The unit tests upstairs did not catch it because their fixture has an
+    /// idle deck *with* a record on it — a situation `read_situation` could
+    /// not produce. This asserts the thing the fixture assumes, against the
+    /// function that has to produce it.
+    #[test]
+    fn a_loaded_but_stopped_deck_is_where_the_autopilot_mixes_to() {
+        let state = app_with_grid(128.0, 0.0);
+        let registry = state.registry();
+        let set = |deck: u8, param, value: f32| {
+            let id = dj_core::DeckId::from_human(deck).expect("a deck");
+            registry.set(dj_core::ParamId::Deck(id, param), value);
+        };
+        // Deck 1 playing, deck 2 holding a cued record.
+        set(1, dj_core::param::DeckParam::Loaded, 1.0);
+        set(1, dj_core::param::DeckParam::Playing, 1.0);
+        set(1, dj_core::param::DeckParam::Position, 100_000.0);
+        set(1, dj_core::param::DeckParam::LengthFrames, 1_000_000.0);
+        set(2, dj_core::param::DeckParam::Loaded, 1.0);
+        set(2, dj_core::param::DeckParam::Playing, 0.0);
+
+        let situation = read_situation(&state, &crate::state::Conduct::default());
+
+        assert_eq!(
+            situation.live,
+            dj_core::DeckId::from_human(1).expect("deck 1"),
+            "the playing deck is the one the room is hearing"
+        );
+        assert_eq!(
+            situation.idle,
+            dj_core::DeckId::from_human(2),
+            "a stopped deck with a record on it was not offered as somewhere \
+             to mix into, so the autopilot can never mix"
+        );
+    }
+
+    /// **A record with no phrase structure is still a record.**
+    ///
+    /// `Incoming::phrase` is an `Option` because plenty of records have none —
+    /// the analyser says so, and the planner answers "bar line, no phrase
+    /// structure" rather than refusing. `read_situation` used to build it with
+    /// `?` on the phrase fields, so such a record was not staged *at all*: the
+    /// autopilot reported "nothing chosen to play next" about a track cued on
+    /// the deck in front of it.
+    ///
+    /// Asserted through `phrase_of`, which is the one place that rule lives.
+    #[test]
+    fn a_record_with_no_phrase_structure_still_has_a_reading() {
+        let track = dj_library::LibraryTrack {
+            id: dj_core::TrackId::from_bytes([7; 32]),
+            path: std::path::PathBuf::from("/music/live-set.flac"),
+            tags: dj_library::Tags::default(),
+            duration_frames: 48_000 * 200,
+            sample_rate: SR,
+            channels: 2,
+            file_size: None,
+            file_modified: None,
+            added_at: 0,
+            // Analysed, tempo and all -- with no phrase structure, which is a
+            // real answer for a live recording or an ambient record.
+            analysis: dj_library::StoredAnalysis {
+                bpm: Some(124.0),
+                phrase_beats: None,
+                phrase_anchor: None,
+                ..dj_library::StoredAnalysis::default()
+            },
+            stats: dj_library::PlayStats::default(),
+            colour: None,
+        };
+
+        assert!(
+            phrase_of(&track).is_none(),
+            "the fixture has a phrase, so it cannot test a record without one"
+        );
+        assert!(
+            crate::plan::plan(
+                &crate::plan::Outgoing {
+                    position: 0.0,
+                    length: 400.0 * 22_050.0,
+                    bpm: 124.0,
+                    phrase: None,
+                    key: None,
+                    sample_rate: SR,
+                    grid_anchor: 0.0,
+                },
+                &crate::plan::Incoming {
+                    bpm: 124.0,
+                    phrase: phrase_of(&track),
+                    key: None,
+                },
+            )
+            .is_some(),
+            "the planner refused a record with no phrase structure, which it \
+             is supposed to handle by saying so"
+        );
+    }
+
     #[test]
     fn every_grid_verb_the_interface_sends_parses_and_is_recognised_as_an_edit() {
         for text in [
@@ -3039,10 +3143,23 @@ fn read_situation(
         // A deck must exist for the rest to mean anything; deck 1 always does.
         .unwrap_or_else(|| dj_core::DeckId::from_human(1).expect("deck 1 exists"));
 
+    // A deck that is **not playing** -- not one that is empty.
+    //
+    // This read `Loaded <= 0.5` and so could only ever name an empty deck,
+    // which made `staged` below -- what is *on* the idle deck -- permanently
+    // `None`, and the autopilot's whole mixing branch unreachable: it staged a
+    // record, the deck became loaded, `idle` went to `None`, and it said
+    // "nothing staged to mix into" for the rest of the night. The unit tests
+    // never caught it because their fixture has an idle deck *with* a record
+    // on it, which is the situation this function could not produce.
+    //
+    // Not playing is also the automix's own definition of somewhere to go
+    // (`automix::free_deck`), which is the answer both of them want: a deck
+    // holding a cued record is exactly what a mix needs.
     let idle = decks
         .iter()
         .copied()
-        .find(|d| *d != live && read(*d, dj_core::param::DeckParam::Loaded) <= 0.5);
+        .find(|d| *d != live && read(*d, dj_core::param::DeckParam::Playing) <= 0.5);
 
     let grid = state.waveforms().grid(live.human_number());
     let rate = grid.map_or(dj_core::SampleRate::DEFAULT, |g| g.sample_rate);
@@ -3074,10 +3191,16 @@ fn read_situation(
                 id,
                 crate::plan::Incoming {
                     bpm: track.analysis.bpm.unwrap_or(outgoing.bpm),
-                    phrase: dj_core::Phrase::new(
-                        track.analysis.phrase_beats?,
-                        track.analysis.phrase_anchor?,
-                    ),
+                    // `phrase_of`, which answers `None` for a record with no
+                    // phrase structure. This used to be two `?`s on the phrase
+                    // fields *inside* the closure, so a record the analyser
+                    // found no phrases in did not merely lack a phrase -- it
+                    // was not staged at all, and the autopilot said "nothing
+                    // chosen to play next" about a record sitting cued on the
+                    // deck. `Incoming::phrase` is an `Option` precisely
+                    // because plenty of records have none, and the planner
+                    // already says so rather than refusing.
+                    phrase: phrase_of(&track),
                     key: track.analysis.key(),
                 },
             ))
@@ -3113,6 +3236,9 @@ fn read_situation(
         idle,
         staged,
         next,
+        // The same held transition the automix is following, read the same
+        // way. One question, one answer -- see `automix_setup`.
+        set_up: automix_setup(state),
         gain_offset_db,
     }
 }

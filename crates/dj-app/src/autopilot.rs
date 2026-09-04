@@ -54,6 +54,13 @@ pub struct Situation {
     pub next: Option<TrackId>,
     /// Trim needed to bring the staged track to the live one's level, in dB.
     pub gain_offset_db: Option<f64>,
+    /// The transition a human has set up, if one is being held.
+    ///
+    /// [`crate::automix::Setup`] rather than a third shape for the same thing.
+    /// §68's whole complaint is that a transition was several separate ideas
+    /// in several modules; the automix and the autopilot answering the same
+    /// question from the same struct is the point of having the object at all.
+    pub set_up: Option<crate::automix::Setup>,
 }
 
 /// One thing to do.
@@ -201,15 +208,41 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
         return Decision::nothing("you have the crossfader");
     }
 
-    let Some(planned) = plan::plan(&situation.outgoing, incoming) else {
-        return Decision::nothing("no sensible place left to mix");
+    // A transition the DJ set up is the answer to this question, and the
+    // planner is what djmanzo does when nobody has decided. Two things
+    // deciding the same mix differently is what §68 exists to stop -- and the
+    // automix already performs the held one, so an autopilot planning its own
+    // would be announcing a mix other than the one about to happen.
+    let held = situation
+        .set_up
+        .filter(|s| s.outgoing == situation.live && s.incoming == idle);
+
+    let (start, style, beats, mine) = match held {
+        // Their length, not the occasion's. A human who chose thirty-two beats
+        // has chosen; §45's rule does not stop at the controls.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        Some(set_up) => (
+            set_up.start,
+            set_up.style,
+            set_up.beats.max(1.0) as u32,
+            false,
+        ),
+        None => {
+            let Some(planned) = plan::plan(&situation.outgoing, incoming) else {
+                return Decision::nothing("no sensible place left to mix");
+            };
+            // The plan says where; the occasion says how long. The planner
+            // works from the two records, the occasion from the room, and
+            // neither knows what the other knows.
+            (
+                planned.start_frame,
+                planned.style,
+                occasion.transition_beats().min(planned.length_beats),
+                true,
+            )
+        }
     };
 
-    // The plan says where; the occasion says how long. The planner works from
-    // the two records, the occasion from the room, and neither knows what the
-    // other knows.
-    let beats = occasion.transition_beats().min(planned.length_beats);
-    let start = planned.start_frame;
     let position = situation.outgoing.position;
     let beat_frames = situation.outgoing.sample_rate.as_f64() * 60.0 / situation.outgoing.bpm;
     let until = (start - position) / beat_frames;
@@ -222,10 +255,14 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
         step: Step::Mix {
             from: situation.live,
             to: idle,
-            style: planned.style,
+            style,
             beats,
         },
-        because: format!("{:?} over {beats} beats", planned.style),
+        because: if mine {
+            format!("{style:?} over {beats} beats")
+        } else {
+            format!("the {style} you set up, over {beats} beats")
+        },
     }
 }
 
@@ -308,7 +345,114 @@ mod tests {
             staged: None,
             next: Some(TrackId::from_bytes([9; 32])),
             gain_offset_db: None,
+            set_up: None,
         }
+    }
+
+    /// A transition set up out of deck 1 into deck 2, at a moment and a length
+    /// the planner would not have chosen.
+    ///
+    /// Sixty-four beats where the occasion allows far fewer, and a cut where
+    /// two matched records would get a blend: a fixture that agreed with the
+    /// planner would pass whether or not any of this existed.
+    fn set_up_at(start: f64) -> crate::automix::Setup {
+        crate::automix::Setup {
+            outgoing: deck(1),
+            incoming: deck(2),
+            start,
+            beats: 64.0,
+            style: TransitionStyle::Cut,
+        }
+    }
+
+    /// **A transition the DJ set up is the one the autopilot performs.**
+    ///
+    /// The automix already runs the held transition, so an autopilot planning
+    /// its own would be announcing one mix while another was about to happen —
+    /// two answers to the same question, which is the whole of what §68 is
+    /// complaining about. The fixture's set-up transition is a *cut over 64
+    /// beats*, which is neither what the planner would choose for two matched
+    /// records nor what the occasion would allow.
+    #[test]
+    fn it_performs_the_transition_that_was_set_up() {
+        let base = ready_to_mix(Posture::Autopilot);
+        let mine = next_step(&base, &Takeover::default());
+        let Step::Mix { style, beats, .. } = mine.step else {
+            panic!("the fixture is not at a mix point: {mine:?}");
+        };
+        assert_ne!(
+            (style, beats),
+            (TransitionStyle::Cut, 64),
+            "the planner already chose what the set-up transition says, so \
+             this fixture cannot tell the two apart"
+        );
+
+        let theirs = next_step(
+            &Situation {
+                set_up: Some(set_up_at(base.outgoing.position)),
+                ..base
+            },
+            &Takeover::default(),
+        );
+        assert_eq!(
+            theirs.step,
+            Step::Mix {
+                from: deck(1),
+                to: deck(2),
+                style: TransitionStyle::Cut,
+                beats: 64,
+            },
+            "it planned its own mix over the one the DJ set up"
+        );
+        assert!(
+            theirs.because.contains("you set up"),
+            "it did not say whose mix it was performing: {}",
+            theirs.because
+        );
+    }
+
+    /// **A human's length is not trimmed by the occasion.**
+    ///
+    /// The occasion caps djmanzo's *own* transitions, which is reasoning about
+    /// a room. A DJ who set up sixty-four beats has decided, and §45's rule
+    /// does not stop at the controls.
+    #[test]
+    fn the_occasion_does_not_shorten_a_transition_a_human_set_up() {
+        let base = ready_to_mix(Posture::Autopilot);
+        let cautious = Situation {
+            // Learning wants eight-beat mixes it can watch happen; the set-up
+            // one is sixty-four.
+            occasion: Occasion::Learning,
+            set_up: Some(set_up_at(base.outgoing.position)),
+            ..base
+        };
+        let Step::Mix { beats, .. } = next_step(&cautious, &Takeover::default()).step else {
+            panic!("it did not mix");
+        };
+        assert_eq!(beats, 64, "the occasion trimmed a length a human chose");
+    }
+
+    /// A transition set up between two *other* decks is not this mix, and the
+    /// autopilot goes on planning its own.
+    #[test]
+    fn a_transition_for_other_decks_is_not_this_one() {
+        let base = ready_to_mix(Posture::Autopilot);
+        let elsewhere = Situation {
+            set_up: Some(crate::automix::Setup {
+                incoming: deck(3),
+                ..set_up_at(base.outgoing.position)
+            }),
+            ..base
+        };
+        let Step::Mix { style, beats, .. } = next_step(&elsewhere, &Takeover::default()).step
+        else {
+            panic!("it did not mix");
+        };
+        assert_ne!(
+            (style, beats),
+            (TransitionStyle::Cut, 64),
+            "it performed a transition set up between two other decks"
+        );
     }
 
     /// **Off and Watch do nothing at all.**

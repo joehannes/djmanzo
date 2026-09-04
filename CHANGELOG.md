@@ -16,6 +16,38 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Fixed: the autopilot could never mix.** Its idea of a deck to mix *into* was
+one with nothing loaded, while the record it would mix is read off that same
+deck — so the two could never both be there. It staged a track, the deck became
+loaded, and from then on it said "nothing staged to mix into" for the rest of
+the night. Its own unit tests could not see it: their fixture has an idle deck
+*with* a record on it, which is a situation the function feeding them could not
+produce. A deck that is **not playing** is somewhere to mix into, which is the
+definition the automix has always used.
+
+**Fixed: a record with no phrase structure was not staged at all.** The same
+function built the incoming track's description with `?` on the phrase fields,
+so a live recording or an ambient record — anything the analyser finds no
+phrases in — was dropped rather than described. `Incoming::phrase` is an
+`Option` precisely because plenty of records have none, and the planner already
+answers "bar line, no phrase structure" rather than refusing. It now uses
+`phrase_of`, which is the one place that rule lives.
+
+Both were found by driving the autopilot rather than by reading it: with a
+transition set up and the posture on Autopilot, the assistant said "nothing
+chosen to play next" about a record cued on the deck in front of it.
+
+**The autopilot defers to the transition you set up.** It was still planning its
+own while the automix performed the held one — two things deciding the same mix
+differently, which is the whole of what §68 is complaining about, and an
+assistant announcing one mix while another was about to happen. It now proposes
+the held transition when there is one, says whose mix it is ("the blend you set
+up, over 32 beats"), and does not let the occasion trim a length a human chose:
+§45's rule that human input wins does not stop at the controls.
+
+Both read it through the same `automix::Setup`, rather than each growing a
+shape of its own for the same thing.
+
 **The mix point is dragged on the waveform** — §26, which says it plainly:
 *"The DJ should be able to physically grab the thing they are thinking about.
 Do not force them to edit a numerical property in a settings panel."* The pair

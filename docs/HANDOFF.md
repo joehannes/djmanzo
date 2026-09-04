@@ -119,6 +119,13 @@ the way out — so anything turning them into seconds divides by
 44.1 kHz as 2:17 on a 48 kHz device, for as long as the snapshot has existed.
 Nothing could see it: every test used one rate for both.
 
+**A fixture the application cannot produce tests nothing.** The autopilot's
+mixing tests were green for months against a `Situation` with an idle deck and
+a staged record — a pair the function that assembles it could not return, so
+the autopilot had never mixed in the running application. When a test builds
+its own input, check that the thing which builds it in production can produce
+that shape.
+
 **Driving a gesture: measure and act in one motion.** A waveform lane scrolls
 while the record plays, so a mark's screen position is stale seconds after the
 screenshot it was measured in. Two drags "failed" that way before the cause was
@@ -186,11 +193,11 @@ The largest open sections, in the order they are worth doing:
    breakdowns, drops, the energy trajectory), the other things §26 wants
    grabbable (cue markers, phrase markers, loops), and §27's ghost track, which
    needs a second render of a track that is not loaded.
-3. **§68's remaining readers.** The object ships, the pair view reads it and
-   the **automix performs it**. The autopilot and replay still plan their own,
-   which is the rest of the unification §68 asks for. Its stem, EQ and FX plans
-   are absent because nothing yet decides them; a field that is always empty is
-   a promise.
+3. **§68's last reader.** The object ships; the pair view draws it, the automix
+   performs it and the autopilot defers to it. Replay still reconstructs a
+   transition from the action log rather than from the object. Its stem, EQ and
+   FX plans are absent because nothing yet decides them; a field that is always
+   empty is a promise.
 4. **§20's last view** — the compact cards. Set Flow and the pair view ship;
    the performance table is the browser at fewer columns than §20 lists.
 5. **§74, the contextual rail.**

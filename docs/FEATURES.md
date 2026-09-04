@@ -128,7 +128,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | **Pair**, its own surface: two records side by side and the seam between them — the deltas, the key relation, where the mix starts and ends, and the reasons | Cockpit §20 |
 | **The transition is an object**: djmanzo holds the mix you set up, you move it, shorten it or change its style, and the reasons are re-derived over what you changed | Cockpit §68 |
 | **Drag the mix point on the waveform** — the transition's start and end are grabbed where they are drawn, not typed into a panel | Cockpit §26 |
-| The automix **performs the transition you set up** — where you put it, into the deck you named, at your length and in your style — instead of mixing out of the end of the file | Cockpit §68 |
+| The automix **performs the transition you set up** — where you put it, into the deck you named, at your length and in your style — instead of mixing out of the end of the file, and the autopilot proposes that mix rather than one of its own | Cockpit §68 |
 | **djmanzo reads the night**: the phase and energy of the set, from the records actually played, with how sure it is and why — and nothing at all until three analysed records make a shape | Cockpit §11 |
 | **Command palette** on `Ctrl/Cmd + K` — every verb the parser accepts, every surface, and anything you type that parses | Cockpit §51 |
 | Search across the whole library, instant | M3 |
