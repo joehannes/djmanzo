@@ -361,6 +361,21 @@ mod tests {
                 }
             }
         }
+
+        // The verbs with a sub-grammar of their own do not reach the match
+        // above: they are handled in `Action::parse`'s `deck` branch, as
+        // `verb == "..."`, because they take more than one word. Scraping only
+        // the match left this guard silently not guarding them -- `fx` has
+        // been invisible to it since it was written, and `hotcue_move` since it
+        // was added. A guard that stops guarding is worse than none.
+        for line in source.lines() {
+            let Some(rest) = line.split_once("verb == \"") else {
+                continue;
+            };
+            if let Some((verb, _)) = rest.1.split_once('"') {
+                verbs.push(verb.to_owned());
+            }
+        }
         assert!(
             verbs.len() > 40,
             "only {} verbs were read out of the parser, so the extraction broke rather than \
@@ -425,6 +440,24 @@ mod tests {
         ("grid_scale", "continuous: a tempo multiplier"),
         ("grid_bpm", "continuous: a tempo, typed rather than pressed"),
         ("loop_move", "continuous: a distance"),
+        (
+            "loop_in_at",
+            "continuous: a place in the record, which is a pointer's gesture.              The keyboard path to a loop is loop_in, loop_out and the halve              and double keys -- see §26",
+        ),
+        (
+            "loop_out_at",
+            "continuous: a place in the record, as loop_in_at",
+        ),
+        (
+            "hotcue_move",
+            "continuous: a place in the record. The keyboard sets a cue at the \
+             playhead with the pad keys; moving one is a pointer's gesture",
+        ),
+        (
+            "fx",
+            "a sub-grammar of its own: a slot, a parameter and a value, which \
+             is a rack rather than a key",
+        ),
         ("slice_domain", "continuous: a length"),
         ("play", "covered by play_pause"),
         ("pause", "covered by play_pause"),

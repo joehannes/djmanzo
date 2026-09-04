@@ -454,6 +454,7 @@ pub fn run() {
             commands::transition_adjust,
             commands::transition_drag,
             commands::move_hot_cue,
+            commands::move_loop_edge,
             commands::transition_replan,
             commands::transition_clear,
             commands::session_read,

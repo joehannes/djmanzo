@@ -1113,6 +1113,16 @@ export function tileUrl(
  * Moving a slot with nothing in it does nothing, deliberately: see
  * `DeckAction::HotCueMove`.
  */
+/**
+ * Move one edge of the active loop.
+ *
+ * §26's "Loop — resize". The frame is the pointer's; whether it snaps, whether
+ * the loop would be too short, and whether there is a loop to resize at all
+ * are djmanzo's — see `Deck::move_loop_edge`.
+ */
+export const moveLoopEdge = (deck: number, edge: "start" | "end", frame: number) =>
+  invoke<void>("move_loop_edge", { deck, edge, frame });
+
 export const moveHotCue = (deck: number, slot: number, frame: number) =>
   invoke<void>("move_hot_cue", { deck, slot, frame });
 

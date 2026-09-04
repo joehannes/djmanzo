@@ -4434,6 +4434,34 @@ pub fn move_hot_cue(
     perform(&state, &format!("deck {deck} hotcue_move {slot} {frame}"))
 }
 
+/// Move one edge of the active loop to somewhere the DJ pointed at.
+///
+/// §26 lists "Loop — resize" beside the cue marker, and for the same reason:
+/// the loop's length was a set of buttons that halve and double it, which is
+/// fine for the lengths that are powers of two and nothing else.
+///
+/// Through `perform`, as text, like the cue drag — one way into the engine.
+/// The engine decides what the frame means: whether it snaps, whether the loop
+/// would be too short, and whether there is a loop to resize at all. See
+/// `Deck::move_loop_edge`.
+///
+/// # Errors
+/// If the deck number or the frame is not one the vocabulary accepts.
+#[tauri::command]
+pub fn move_loop_edge(
+    state: State<'_, AppState>,
+    deck: u8,
+    edge: String,
+    frame: f64,
+) -> Result<(), String> {
+    let verb = match edge.as_str() {
+        "start" => "loop_in_at",
+        "end" => "loop_out_at",
+        other => return Err(format!("no loop edge called {other}")),
+    };
+    perform(&state, &format!("deck {deck} {verb} {frame}"))
+}
+
 /// Throw the adjustments away and ask the planner again.
 ///
 /// Only ever on request. A transition that replanned itself would undo a DJ's

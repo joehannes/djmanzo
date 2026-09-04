@@ -16,6 +16,38 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**A loop is resized by its edges.** §26 lists "Loop — resize" beside the cue
+marker, and a loop's length was a pair of buttons that halve and double it —
+which covers every length that is a power of two and no other. Both edges are
+drawn on the lane and dragged now, on the same terms as a cue: quantise decides
+whether the frame snaps, it is clamped into the record, it will not turn the
+loop inside out, and a drag where no loop is running conjures nothing rather
+than starting one where the hand landed.
+
+**Fixed: the loop band was tinting the audio inside it.** It was a
+sixteen-per-cent wash of `--accent-2` across the whole lane height, and the
+waveform's colour *is* its spectral balance — so the audio inside a loop read
+as slightly more mid-range than it is. In `pkg-industrial` the wash was exactly
+the mid band. §57 forbids one colour carrying two meanings, and a filter over
+the content is the strongest form of that. The band is a bar along the bottom
+edge now, the way the breakdown layer already works: a mark at an edge, over
+nothing.
+
+That came out of **measuring every palette against the waveform's colours**
+rather than arguing about them. All seven themes, light and dark: every one has
+its `--accent` and its `--warn` inside the space the waveform can occupy. Those
+are the cue markers and the transition marks. Both are left alone, and that is
+a decision rather than an oversight — each carries §57's own escape clause, a
+numbered flag and a dashed line, and recolouring them would mean inventing
+twenty-eight colours to fix something shape already answers. The measurement is
+in `DIRECTIVE-STATUS.md` so the next person does not have to take it on trust.
+
+**Fixed: a guard had stopped guarding.** `every_deck_verb_is_on_a_key_or_says_why_not`
+scrapes the deck verbs out of the parser, and it only read the match arms — so
+the two verbs with a sub-grammar of their own were invisible to it. `fx` has
+been unseen since the test was written and `hotcue_move` since it was added an
+hour ago. Both are excused now, with reasons, and the scrape reads them.
+
 **The performance table has the columns §20 asks for, and a way to choose
 them.** That section lists twenty recommended columns and *instant custom
 column configuration*; the browser drew six and there was no way to change

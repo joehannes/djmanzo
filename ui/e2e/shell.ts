@@ -593,6 +593,9 @@ export async function openShell(
           if (cmd === "move_hot_cue") {
             ((win.__cueArgs ??= []) as unknown[]).push(args);
           }
+          if (cmd === "move_loop_edge") {
+            ((win.__loopArgs ??= []) as unknown[]).push(args);
+          }
           if (cmd === "plugin:event|listen") {
             handlers.set(String(args.event), args.handler as number);
             // After the promise settles, so the shell has finished wiring up.

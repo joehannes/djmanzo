@@ -311,6 +311,17 @@ pub enum DeckAction {
     /// Forget a hot cue.
     HotCueClear(u8),
 
+    /// Move an active loop's start to somewhere in the record.
+    ///
+    /// Distinct from [`DeckAction::LoopIn`] for the same reason moving a hot
+    /// cue is distinct from setting one: `LoopIn` means "here, where I am" and
+    /// begins a loop, while this means "that edge, over there" and needs a loop
+    /// to already have one. §26 asks for a loop to be *resized*, and an edge is
+    /// the thing a hand reaches for.
+    LoopInAt(FramePos),
+    /// Move an active loop's end to somewhere in the record.
+    LoopOutAt(FramePos),
+
     /// Loop the next `n` beats from here, and start looping.
     ///
     /// Zero or negative turns looping off, so a controller encoder that can
@@ -971,6 +982,11 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "hotcue" => Ok(DeckAction::HotCue(parse_slot(argument)?)),
         "hotcue_set" => Ok(DeckAction::HotCueSet(parse_slot(argument)?)),
         "hotcue_clear" => Ok(DeckAction::HotCueClear(parse_slot(argument)?)),
+        // Frames, so `parse_frames` rather than `parse_f32` -- see its note.
+        "loop_in_at" => Ok(DeckAction::LoopInAt(FramePos::new(parse_frames(argument)?))),
+        "loop_out_at" => Ok(DeckAction::LoopOutAt(FramePos::new(parse_frames(
+            argument,
+        )?))),
         "loop" => Ok(DeckAction::LoopBeats(parse_beats(argument)?)),
         "loop_phrase" => Ok(DeckAction::LoopPhrases(parse_beats(argument)?)),
         "loop_off" => bare(DeckAction::LoopOff),
@@ -1380,6 +1396,12 @@ impl fmt::Display for Action {
                     write!(f, "deck {deck} hotcue_move {slot} {}", frame.get())
                 }
                 DeckAction::HotCueClear(n) => write!(f, "deck {deck} hotcue_clear {n}"),
+                DeckAction::LoopInAt(at) => {
+                    write!(f, "deck {deck} loop_in_at {}", at.get())
+                }
+                DeckAction::LoopOutAt(at) => {
+                    write!(f, "deck {deck} loop_out_at {}", at.get())
+                }
                 DeckAction::LoopBeats(n) => write!(f, "deck {deck} loop {n}"),
                 DeckAction::LoopPhrases(n) => write!(f, "deck {deck} loop_phrase {n}"),
                 DeckAction::LoopOff => write!(f, "deck {deck} loop_off"),
@@ -1916,6 +1938,34 @@ mod tests {
         let text = action.to_string();
         assert_eq!(text, "deck 2 hotcue_move 5 4410000");
         assert_eq!(Action::parse(&text), Ok(action));
+    }
+
+    /// **A loop edge can be moved, and the verb says which edge and where to.**
+    ///
+    /// §26's "Loop — resize", as a vocabulary rather than as a gesture. Two
+    /// verbs rather than one with a side argument, because each takes exactly
+    /// one place and a single-argument verb needs no sub-grammar.
+    #[test]
+    fn moving_a_loop_edge_round_trips_through_its_text_form() {
+        for (action, text) in [
+            (
+                DeckAction::LoopInAt(FramePos::new(441_000.0)),
+                "deck 1 loop_in_at 441000",
+            ),
+            (
+                DeckAction::LoopOutAt(FramePos::new(882_000.0)),
+                "deck 1 loop_out_at 882000",
+            ),
+        ] {
+            let whole = Action::Deck {
+                deck: DeckId::from_human(1).unwrap(),
+                action,
+            };
+            assert_eq!(whole.to_string(), text);
+            assert_eq!(Action::parse(text), Ok(whole));
+        }
+        assert!(Action::parse("deck 1 loop_in_at").is_err());
+        assert!(Action::parse("deck 1 loop_out_at nowhere").is_err());
     }
 
     /// A slot outside the pads is refused rather than clamped, exactly as it is

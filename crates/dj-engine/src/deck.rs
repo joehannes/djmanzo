@@ -1398,6 +1398,44 @@ impl Deck {
         self.enter_loop(region)
     }
 
+    /// Move one edge of the *active* loop to somewhere in the record.
+    ///
+    /// §26's "Loop — resize", as a hand on the edge rather than a halve/double
+    /// button. The rules are the ones moving a hot cue already follows, plus
+    /// one this shape needs:
+    ///
+    /// - **No active loop, nothing happens.** `LoopIn` and `LoopOut` are how a
+    ///   loop is *made*, from the playhead; this moves an edge of one that
+    ///   exists. A drag on empty lane must not conjure a loop.
+    /// - **Quantise decides whether it snaps**, as everywhere else a place
+    ///   arrives from a pointer.
+    /// - **Clamped into the record**, and refused if it would turn the loop
+    ///   inside out or shorter than [`LoopLimits`] allows. Dragging the start
+    ///   past the end is a hand that overshot, and the honest answer is to
+    ///   leave the loop where it was rather than to invent a reversed one.
+    ///
+    /// The playhead is carried into the new region by [`Self::enter_loop`], so
+    /// a loop resized around a running deck keeps playing rather than jumping.
+    pub fn move_loop_edge(&mut self, start: bool, to: FramePos, quantize: bool) -> bool {
+        let Some(region) = self.active_loop else {
+            return false;
+        };
+        let landing = self.snapped(to.clamped(self.len_frames() as f64), quantize);
+        let moved = if start {
+            LoopRegion::new(landing, region.end)
+        } else {
+            LoopRegion::new(region.start, landing)
+        };
+        let Some(moved) = moved else {
+            return false;
+        };
+        let limits = self.loop_limits();
+        if moved.len_frames() < limits.min_frames || moved.len_frames() > limits.max_frames {
+            return false;
+        }
+        self.enter_loop(moved)
+    }
+
     /// Halve or double the loop, keeping its start.
     pub fn scale_loop(&mut self, factor: f64) -> bool {
         let Some(region) = self.active_loop else {

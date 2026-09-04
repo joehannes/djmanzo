@@ -23,6 +23,7 @@
     marks = [],
     onMarkMoved,
     onCueMoved,
+    onLoopEdgeMoved,
   }: {
     deck: DeckState;
     height?: number;
@@ -62,6 +63,15 @@
      * Its presence is what makes the cues draggable, on the same terms.
      */
     onCueMoved?: (slot: number, frame: number) => void;
+    /**
+     * Called when one edge of the active loop is dragged, with which edge and
+     * the frame it was dropped on.
+     *
+     * Its presence is what makes the edges grabbable, on the same terms as the
+     * cues: a lane that cannot do anything about a loop draws it and leaves it
+     * alone.
+     */
+    onLoopEdgeMoved?: (edge: "start" | "end", frame: number) => void;
   } = $props();
 
   /** Tile width in pixels. Wide enough that a lane needs few of them. */
@@ -273,12 +283,17 @@
   const loopBand = $derived.by(() => {
     const region = deck.active_loop;
     if (!region) return null;
-    const left = region.start_frames / framesPerPixel;
-    const width = (region.end_frames - region.start_frames) / framesPerPixel;
+    // While an edge is under a hand, the band follows the hand — the one thing
+    // that does not need confirming is where the finger is. djmanzo hears
+    // about it once, on release, like every other drag on this lane.
+    const start = dragging?.label === "loop start" ? dragging.frame : region.start_frames;
+    const end = dragging?.label === "loop end" ? dragging.frame : region.end_frames;
+    const left = start / framesPerPixel;
+    const width = (end - start) / framesPerPixel;
     // Sub-pixel loops exist — a sixteenth of a beat zoomed out is well under
     // one — and a zero-width band is invisible rather than wrong. Floor it to a
     // hairline so the loop is still locatable.
-    return { left, width: Math.max(width, 2) };
+    return { left, width: Math.max(width, 2), start, end };
   });
 
   onMount(() => {
@@ -343,6 +358,25 @@
           style:left="{loopBand.left}px"
           style:width="{loopBand.width}px"
         ></div>
+        <!--
+          The edges, drawn and grabbable. §26 lists "Loop — resize" beside the
+          cue marker: the length was a pair of halve/double buttons, which is
+          every length that is a power of two and no other.
+        -->
+        {#each [["start", loopBand.start], ["end", loopBand.end]] as const as [edge, frame] (edge)}
+          <div
+            class="loop-edge"
+            class:grabbable={!!onLoopEdgeMoved}
+            class:held={dragging?.label === `loop ${edge}`}
+            role={onLoopEdgeMoved ? "separator" : undefined}
+            aria-label={onLoopEdgeMoved ? `Loop ${edge}` : undefined}
+            title={onLoopEdgeMoved ? `Loop ${edge} — drag to resize` : undefined}
+            style:left="{frame / framesPerPixel}px"
+            onpointerdown={(e) =>
+              onLoopEdgeMoved &&
+              grab(e, `loop ${edge}`, frame, (f) => onLoopEdgeMoved(edge, f))}
+          ></div>
+        {/each}
       {/if}
       {#each markers as marker (marker.slot)}
         <!--
@@ -434,13 +468,51 @@
     Under the tiles, so the waveform stays readable through it. A loop band
     that covered the audio would hide exactly the part you are looping.
   */
+  /*
+    The loop, as a band along the *bottom* edge with a line at each end.
+
+    It used to be a sixteen-per-cent wash of `--accent-2` over the whole
+    height, and that is the thing §57 forbids wearing a different hat: the
+    waveform's colour is its spectral balance, and a tint over it makes the
+    audio inside a loop read as slightly more mid-range than it is. In
+    `pkg-industrial` the wash was *exactly* the mid band. The breakdown layer
+    already learnt this — see `.breakdown` — so the loop reads the same way:
+    a mark at an edge, over nothing.
+  */
   .loop-band {
+    position: absolute;
+    bottom: 0;
+    height: 3px;
+    background: var(--accent-2);
+    pointer-events: none;
+  }
+
+  /*
+    The edges. Full height because a loop's ends are where a hand goes and
+    where the eye checks the length, and because they sit *over* the waveform
+    rather than tinting it. Two pixels of a colour is a mark; sixteen per cent
+    of one across a region is a filter.
+  */
+  .loop-edge {
     position: absolute;
     top: 0;
     bottom: 0;
+    width: 2px;
     background: var(--accent-2);
-    opacity: 0.16;
+    opacity: 0.7;
     pointer-events: none;
+    z-index: 2;
+  }
+
+  .loop-edge.grabbable {
+    pointer-events: auto;
+    cursor: ew-resize;
+    touch-action: none;
+  }
+
+  .loop-edge.held {
+    opacity: 1;
+    background: var(--text);
   }
 
   /*
@@ -513,6 +585,7 @@
     element's own geometry at all, and pointers hit-test it as the element.
   */
   .mark.grabbable::after,
+  .loop-edge.grabbable::after,
   .cue-marker.grabbable::after {
     content: "";
     position: absolute;

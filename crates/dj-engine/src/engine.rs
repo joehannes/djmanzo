@@ -671,6 +671,12 @@ impl Engine {
                     DeckAction::HotCueClear(slot) => {
                         target.clear_hot_cue(slot);
                     }
+                    DeckAction::LoopInAt(at) => {
+                        target.move_loop_edge(true, at, quantize);
+                    }
+                    DeckAction::LoopOutAt(at) => {
+                        target.move_loop_edge(false, at, quantize);
+                    }
                     DeckAction::LoopPhrases(phrases) => {
                         target.set_loop_phrases(f64::from(phrases));
                     }
@@ -4497,6 +4503,72 @@ mod loop_tests {
             stored <= 48_000.0 * 300.0 + 1.0,
             "the cue landed at {stored}, past the end of a 300-second record"
         );
+    }
+
+    /// **A loop's edge can be dragged to somewhere the playhead is not.**
+    ///
+    /// §26's "Loop — resize". `LoopIn` and `LoopOut` make a loop from the
+    /// playhead; this moves an edge of one that already exists.
+    #[test]
+    fn a_loop_edge_moves_to_where_it_is_put() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::LoopBeats(4.0));
+        rig.render(256);
+        let before = f64::from(rig.param(1, DeckParam::LoopEnd));
+
+        rig.act(1, DeckAction::LoopOutAt(FramePos::new(BEAT * 8.0)));
+        rig.render(256);
+
+        let after = f64::from(rig.param(1, DeckParam::LoopEnd));
+        assert_ne!(after, before, "the loop did not move");
+        assert!(
+            (after - BEAT * 8.0).abs() < 2.0,
+            "the loop ends at {after}, not where the edge was put"
+        );
+    }
+
+    /// **Dragging an edge with no loop running conjures nothing.** A loop is
+    /// made from the playhead with in and out; a hand on an empty lane must
+    /// not create one where it happened to land.
+    #[test]
+    fn moving_an_edge_with_no_loop_does_nothing() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.render(256);
+        assert_eq!(
+            rig.param(1, DeckParam::LoopActive),
+            0.0,
+            "the fixture loops"
+        );
+
+        rig.act(1, DeckAction::LoopOutAt(FramePos::new(BEAT * 8.0)));
+        rig.render(256);
+
+        assert_eq!(
+            rig.param(1, DeckParam::LoopActive),
+            0.0,
+            "a drag on a deck with no loop started one"
+        );
+    }
+
+    /// **A loop cannot be turned inside out.** Dragging the start past the end
+    /// is a hand that overshot, and the honest answer is to leave the loop
+    /// where it was rather than to invent a reversed one.
+    #[test]
+    fn dragging_the_start_past_the_end_leaves_the_loop_alone() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::LoopBeats(4.0));
+        rig.render(256);
+        let start = f64::from(rig.param(1, DeckParam::LoopStart));
+        let end = f64::from(rig.param(1, DeckParam::LoopEnd));
+
+        rig.act(1, DeckAction::LoopInAt(FramePos::new(end + BEAT)));
+        rig.render(256);
+
+        assert_eq!(f64::from(rig.param(1, DeckParam::LoopStart)), start);
+        assert_eq!(f64::from(rig.param(1, DeckParam::LoopEnd)), end);
     }
 
     /// Ejecting must take the cues and the loop with the track, or the next one

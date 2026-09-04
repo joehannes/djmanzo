@@ -257,7 +257,11 @@
     "holding": false
    },
    "slip_position": null,
-   "active_loop": null,
+   "active_loop": {
+    "start_frames": 10000.0,
+    "end_frames": 40000.0,
+    "beats": 4.0
+   },
    "fx": [
     {
      "slot": 1,

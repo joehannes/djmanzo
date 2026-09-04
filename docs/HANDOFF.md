@@ -208,9 +208,10 @@ The largest open sections, in the order they are worth doing:
    twelve of §25's twenty layers ship. What is left of §25 is vocal and stem
    presence (both need the separator's output kept, not just played), the
    energy trajectory as a curve rather than as two markers, saved loops, and
-   the runway to the end of the record. Cue markers are grabbable now;
-   what §26 still wants grabbable is phrase markers and loops. Then §27's ghost
-   track, which needs a second render of a track that is not loaded.
+   the runway to the end of the record. Cue markers and loop edges are
+   grabbable now; what §26 still wants grabbable is the phrase markers, which
+   are a grid edit rather than a marker move. Then §27's ghost track, which
+   needs a second render of a track that is not loaded.
 
    The planner reads the layer: a transition says how many of its beats have
    no drums under them, and the autopilot says it out loud. It deliberately
