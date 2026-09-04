@@ -156,10 +156,17 @@ impl Palette {
             rms_tint: [255, 255, 255, 60],
             beat: [255, 255, 255, 70],
             downbeat: [255, 255, 255, 150],
-            // Warm rather than brighter white: a third tier of the same hue
-            // reads as "even more emphasis" and gets lost among the downbeats
-            // at a glance, which is the moment it is needed.
-            phrase: [251, 191, 36, 210],
+            // Not a third tier of the same white -- that reads as "even more
+            // emphasis" and gets lost among the downbeats at a glance, which is
+            // the moment it is needed. And not amber: this line was amber for
+            // as long as it has existed, which is *exactly* the high band's
+            // colour, so a phrase marker vanished into any bar with hi-hats in
+            // it. That is the overload §57 forbids by name, and
+            // `the_phrase_line_is_not_a_colour_the_waveform_can_be` now fails
+            // if it comes back. Pink is chosen because no mixture of indigo,
+            // teal and amber can reach it: every blend has a green channel of
+            // at least 140, and this one is 72.
+            phrase: [236, 72, 153, 220],
         }
     }
 
@@ -181,9 +188,61 @@ impl Palette {
             rms_tint: [0, 0, 0, 52],
             beat: [0, 0, 0, 60],
             downbeat: [0, 0, 0, 130],
-            phrase: [180, 83, 9, 220],
+            // The same rule as the dark palette's, several steps darker: no
+            // blend of these three bands has a green channel under 83, and this
+            // one is 24.
+            phrase: [190, 24, 93, 230],
         }
     }
+    /// Two colours closer than this, on the same lane, read as one.
+    ///
+    /// Euclidean distance in sRGB, which is crude -- it is not a perceptual
+    /// metric and 60 is not a just-noticeable difference. It does not need to
+    /// be: the question here is "is this marker the same colour as the
+    /// waveform", asked of colours chosen a hue apart, not "can these be told
+    /// apart under studio lighting". A cheap measure that answers the actual
+    /// question beats a correct one nobody can read.
+    pub const CONFUSABLE: f32 = 60.0;
+
+    /// How far `colour` is from the nearest colour the *waveform itself* can be.
+    ///
+    /// §57: **never overload the same colour with multiple meanings.** On this
+    /// lane that rule is not about two swatches, it is about a swatch and a
+    /// continuum -- the waveform is every mixture of the three bands, with and
+    /// without the RMS veil over it, so a marker drawn in any of those colours
+    /// has no colour of its own. It may still be legible by shape; it is no
+    /// longer legible by hue, and hue is what a glance uses.
+    ///
+    /// Sampled rather than solved. The achievable set is a filled triangle in
+    /// RGB plus its lightened copy, and 1/32 of the simplex is far finer than
+    /// the distance being asked about.
+    #[must_use]
+    pub fn distance_from_the_waveform(&self, colour: [u8; 3]) -> f32 {
+        const STEPS: u32 = 32;
+        let mut nearest = f32::MAX;
+        for l in 0..=STEPS {
+            for m in 0..=(STEPS - l) {
+                let h = STEPS - l - m;
+                #[allow(clippy::cast_precision_loss)]
+                let band = self.colour_for(&Bucket {
+                    low: l as f32,
+                    mid: m as f32,
+                    high: h as f32,
+                    ..Bucket::default()
+                });
+                for over in [false, true] {
+                    let drawn = if over {
+                        veiled(band, self.rms_tint)
+                    } else {
+                        band
+                    };
+                    nearest = nearest.min(separation(colour, [drawn[0], drawn[1], drawn[2]]));
+                }
+            }
+        }
+        nearest
+    }
+
     /// Blend the band colours by their energies.
     #[must_use]
     fn colour_for(&self, bucket: &Bucket) -> [u8; 4] {
@@ -476,6 +535,25 @@ fn paint(pixels: &mut [u8], spec: &TileSpec, x: u32, y: u32, colour: [u8; 4]) {
     if let Some(offset) = offset_of(spec, x, y) {
         pixels[offset..offset + BYTES_PER_PIXEL].copy_from_slice(&colour);
     }
+}
+
+/// Straight-line distance between two colours in sRGB. See [`Palette::CONFUSABLE`].
+#[must_use]
+fn separation(a: [u8; 3], b: [u8; 3]) -> f32 {
+    let d = |i: usize| f32::from(a[i]) - f32::from(b[i]);
+    (d(0) * d(0) + d(1) * d(1) + d(2) * d(2)).sqrt()
+}
+
+/// `tint` composited over `base`, the way [`blend`] does it to a pixel.
+///
+/// Separate from `blend` because that one works on a buffer and this one has to
+/// answer the same question about a colour nothing has drawn yet.
+#[must_use]
+fn veiled(base: [u8; 4], tint: [u8; 4]) -> [u8; 4] {
+    let alpha = f32::from(tint[3]) / 255.0;
+    let mix =
+        |i: usize| (f32::from(base[i]) * (1.0 - alpha) + f32::from(tint[i]) * alpha).round() as u8;
+    [mix(0), mix(1), mix(2), base[3].max(tint[3])]
 }
 
 /// Source-over alpha blend, for the RMS tint.
@@ -869,6 +947,54 @@ mod tests {
             phrases.pixel(240, 32),
             "adding phrases changed a line that is not a phrase start"
         );
+    }
+
+    /// **§57, checked rather than intended: a marker may not wear the
+    /// waveform's colour.**
+    ///
+    /// The phrase line was `[251, 191, 36]` in the dark palette and `[180, 83,
+    /// 9]` in the light one — which are, exactly, those palettes' *high band*.
+    /// A phrase marker over a bar with hi-hats in it was therefore drawn in the
+    /// colour of the thing it was drawn on, and the two tests above could not
+    /// see it: both compare a phrase line to a *downbeat*, which is white, and
+    /// both pass on a pure 440 Hz tone that is entirely mid.
+    ///
+    /// This asks the question §57 actually asks — is there *any* content that
+    /// makes this marker disappear — and it asks it of both palettes, because a
+    /// theme is where this kind of collision is reintroduced.
+    #[test]
+    fn the_phrase_line_is_not_a_colour_the_waveform_can_be() {
+        for (name, palette) in [("dark", Palette::dark()), ("light", Palette::light())] {
+            let phrase = [palette.phrase[0], palette.phrase[1], palette.phrase[2]];
+            let distance = palette.distance_from_the_waveform(phrase);
+            assert!(
+                distance > Palette::CONFUSABLE,
+                "the {name} palette draws phrase markers {distance:.0} from a colour the \
+                 waveform itself can be, which is under the {} that reads as the same \
+                 colour. §57: never overload the same colour with multiple meanings",
+                Palette::CONFUSABLE
+            );
+        }
+    }
+
+    /// The bands are the one place on this lane where colour *is* the whole
+    /// message, so they have to differ from each other by more than a shade.
+    #[test]
+    fn the_three_bands_are_three_colours() {
+        for (name, palette) in [("dark", Palette::dark()), ("light", Palette::light())] {
+            let rgb = |c: [u8; 4]| [c[0], c[1], c[2]];
+            for (a, b, pair) in [
+                (palette.low, palette.mid, "low and mid"),
+                (palette.mid, palette.high, "mid and high"),
+                (palette.low, palette.high, "low and high"),
+            ] {
+                let distance = separation(rgb(a), rgb(b));
+                assert!(
+                    distance > Palette::CONFUSABLE,
+                    "the {name} palette's {pair} are {distance:.0} apart"
+                );
+            }
+        }
     }
 
     /// **Phrase markers survive a zoom that hides every other line.**

@@ -16,6 +16,40 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Fixed: the phrase marker was drawn in the waveform's own colour.** §57 says
+it in one line — *never overload the same colour with multiple meanings* — and
+the lane broke it from the day phrase detection started working: the marker was
+`#fbbf24` and so is the **high band**, the colour every hi-hat and every open
+filter is drawn in. A phrase marker over a bright passage was drawn in the
+colour of the thing it was drawn on, and phrase markers are what a DJ looks for
+at overview zoom, where the beat and bar lines are suppressed and the markers
+are the only structure left.
+
+Two tests already claimed to cover this and could not see it. Both compare a
+phrase line to a **downbeat**, which is white, and both run on a 440 Hz tone
+that is entirely mid band. Neither ever put the marker next to the band it was
+a copy of.
+
+So the check is now the question §57 actually asks: **is there any content that
+makes this marker disappear?** `Palette::distance_from_the_waveform` measures a
+colour against every mixture of the three bands, with and without the RMS veil
+over it — the lane is a continuum, not three swatches, and a marker has no
+colour of its own if it lands anywhere inside that continuum. Against the old
+amber it returns 0. Both palettes are checked, because a theme is where this
+kind of collision comes back.
+
+The marker is pink now: `#ec4899` on the dark palette, `#be185d` on the light
+one. Not an arbitrary choice — every blend of indigo, teal and amber has a
+green channel of at least 140, and pink's is 72, so no waveform can be this
+colour. The bands are checked against each other in the same test.
+
+**The status file was wrong about what the waveform draws,** which is the one
+thing a status file must not be. It said one of §25's twenty layers shipped and
+listed spectral balance among the missing; ten ship, and spectral colouring has
+been there, tested, since the summary was written. Audited against the code and
+corrected, along with the scorecard row that read "the waveform still draws
+amplitude only". §57 moves from open to part for the same reason.
+
 **The browser has a second view: cards, with the sleeves.** §20 asks for
 several representations of the same collection and calls it one of the highest
 priorities; the browser had one. There is now a table and a grid of cards, on

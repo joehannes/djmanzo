@@ -104,10 +104,6 @@ webview is the second. `xdotool windowsize <second id> 1560 1150` on a
 1600×1200 screen gives the dock room to be read. Do not conclude a surface is
 broken because it is cut off at 800 px; check what the window actually is.
 
-**`pkill -f` matches the shell running it.** `pkill -f "target/debug/djmanzo"`
-kills your own tool call, because the pattern is in that process's command
-line. Bracket a character — `pkill -f "[d]ebug/djmanzo"` — or kill by pid.
-
 **Playwright's browser.** CI installs its own. A container that pre-installs
 one is pointed at it with `DJMANZO_CHROMIUM=/opt/pw-browsers/chromium`,
 otherwise every test fails with "Executable doesn't exist".
@@ -150,7 +146,13 @@ Find the target and grab it in the same script.
 target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 
 **`pkill -f "something"` matches its own shell.** It kills the command that
-ran it. Use `pkill -x <name>`.
+ran it. **Bracketing the pattern does not save you**, because what it matches
+is the *rest of the same command*: killing the application and relaunching it
+in one line puts `./target/debug/djmanzo` in that shell's own command line,
+`pkill` finds it there, and the whole thing dies before the launch — silently,
+leaving no application and an empty log. This cost two rounds after the
+bracket trick was assumed to have fixed it. Use `pkill -x djmanzo`, which
+matches the process *name* and nothing else.
 
 ## What this container cannot prove
 

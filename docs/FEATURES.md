@@ -71,7 +71,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Session export as a set list | M3 |
 | Spectral colouring (bass/mid/high energy) | M2 |
 | Loop region and hot cue overlays | M2 |
-| Phrase / structure markers | M8 |
+| Phrase / structure markers, in a colour no waveform can be | M8 |
 | Waveform zoom, per-deck and global | M2 |
 | Lyrics on the waveform | M8 |
 
