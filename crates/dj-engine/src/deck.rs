@@ -1710,6 +1710,17 @@ impl Deck {
         self.source.len_frames()
     }
 
+    /// The sample rate of the record on this deck, which is not the device's.
+    ///
+    /// [`Self::position`] and [`Self::len_frames`] are counted in the source's
+    /// own frames — see [`Self::forward_step_per_output_frame`], which is
+    /// where the two rates meet. Anything turning those frames into seconds
+    /// has to divide by this.
+    #[must_use]
+    pub fn source_rate(&self) -> SampleRate {
+        self.source.sample_rate()
+    }
+
     /// Read a frame at the given position. If stems are available, applies
     /// per-stem EQ, Filter, Volume, and Mute, then mixes them down.
     /// If stems are not available, returns the raw track frame.

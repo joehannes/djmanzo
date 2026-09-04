@@ -546,12 +546,29 @@ impl Snapshot {
         let sample_rate = registry.get(ParamId::Global(GlobalParam::SampleRate));
         // Before a device is open the rate is zero; dividing by it would put
         // infinities on screen.
+        //
+        // This is the **device's** rate, and it is the right one for latency
+        // and for the bridge's queue -- both of which are counted in output
+        // frames. It is the wrong one for a deck's playhead; see below.
         let to_seconds = |frames: f32| {
             if sample_rate > 0.0 {
                 frames / sample_rate
             } else {
                 0.0
             }
+        };
+        // **A deck's clock runs on the record's rate, not the device's.**
+        //
+        // A deck's playhead and length are counted in the *file's* frames --
+        // the engine resamples on the way out, which is why the waveform tiles
+        // line up with the playhead at all. Dividing those by the device rate
+        // reads a 44.1 kHz record on a 48 kHz device as 8.8% shorter than it
+        // is: two and a half minutes shown as 2:17, and a remaining time wrong
+        // by thirteen seconds at the moment a DJ is deciding when to mix. That
+        // was on screen for as long as this function has existed, and it took
+        // driving the application with a 44.1 kHz file to see it.
+        let seconds_at = |rate: f32, frames: f32| {
+            if rate > 0.0 { frames / rate } else { 0.0 }
         };
 
         let decks = (0..deck_count)
@@ -560,6 +577,16 @@ impl Snapshot {
                 let get = |param| registry.get(ParamId::Deck(id, param));
                 let position = get(DeckParam::Position);
                 let length = get(DeckParam::LengthFrames);
+                // The deck's own record, falling back to the device only when
+                // nothing is loaded -- where both readings are zero anyway.
+                let source_rate = {
+                    let published = get(DeckParam::SourceRate);
+                    if published > 0.0 {
+                        published
+                    } else {
+                        sample_rate
+                    }
+                };
                 DeckSnapshot {
                     number: id.human_number(),
                     title: names
@@ -574,8 +601,8 @@ impl Snapshot {
                     loaded: get(DeckParam::Loaded) >= 0.5,
                     position_frames: position,
                     length_frames: length,
-                    position_seconds: to_seconds(position),
-                    length_seconds: to_seconds(length),
+                    position_seconds: seconds_at(source_rate, position),
+                    length_seconds: seconds_at(source_rate, length),
                     rate: get(DeckParam::Rate),
                     pitch: get(DeckParam::Pitch),
                     volume: get(DeckParam::Volume),
@@ -1033,6 +1060,57 @@ mod tests {
         assert!((snapshot.decks[0].position_seconds - 2.0).abs() < 1e-6);
         assert!((snapshot.decks[0].length_seconds - 10.0).abs() < 1e-6);
         assert!(!snapshot.decks[1].playing);
+    }
+
+    /// **A record's clock runs at the record's rate.**
+    ///
+    /// The bug this pins was on screen for months and nothing could see it: a
+    /// two-and-a-half-minute 44.1 kHz record on a 48 kHz device showed 2:17,
+    /// because the playhead is counted in the *file's* frames and was being
+    /// divided by the *device's* rate. Every number a DJ mixes by — elapsed,
+    /// remaining, and therefore when to start the next record — was out by the
+    /// ratio between the two rates. 44.1 into 48 is the commonest pairing
+    /// there is.
+    ///
+    /// Found by driving the application with a synthesised 44.1 kHz file and
+    /// noticing the deck disagreed with the length in the library.
+    #[test]
+    fn a_deck_reports_its_own_records_length_not_the_devices() {
+        let registry = ParameterRegistry::new();
+        let deck = DeckId::from_human(1).unwrap();
+        registry.set(ParamId::Global(GlobalParam::SampleRate), 48_000.0);
+        registry.set(ParamId::Deck(deck, DeckParam::Loaded), 1.0);
+        registry.set(ParamId::Deck(deck, DeckParam::SourceRate), 44_100.0);
+        // Two and a half minutes of 44.1 kHz audio, and one minute in.
+        registry.set(ParamId::Deck(deck, DeckParam::Position), 60.0 * 44_100.0);
+        registry.set(
+            ParamId::Deck(deck, DeckParam::LengthFrames),
+            150.0 * 44_100.0,
+        );
+
+        let snapshot = Snapshot::capture(&registry, 2);
+        assert!(
+            (snapshot.decks[0].length_seconds - 150.0).abs() < 0.01,
+            "a 2:30 record reported {:.1} seconds",
+            snapshot.decks[0].length_seconds
+        );
+        assert!(
+            (snapshot.decks[0].position_seconds - 60.0).abs() < 0.01,
+            "a minute in reported {:.1} seconds",
+            snapshot.decks[0].position_seconds
+        );
+    }
+
+    /// An empty deck has no record and no rate, and still has to divide by
+    /// something. The device's rate is the answer, and both readings are zero
+    /// there anyway — what must not happen is an infinity.
+    #[test]
+    fn an_empty_deck_falls_back_to_the_device_rate() {
+        let registry = ParameterRegistry::new();
+        registry.set(ParamId::Global(GlobalParam::SampleRate), 48_000.0);
+        let snapshot = Snapshot::capture(&registry, 2);
+        assert_eq!(snapshot.decks[0].position_seconds, 0.0);
+        assert!(snapshot.decks[0].length_seconds.is_finite());
     }
 
     /// Before a device is open the sample rate is zero. Naive division would

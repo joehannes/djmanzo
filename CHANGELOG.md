@@ -16,6 +16,24 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Fixed: a deck's clock was wrong for any record not at the device's sample
+rate.** A deck's playhead and length are counted in the *file's* frames — the
+engine resamples on the way out, which is why the waveform lines up with the
+playhead at all — and the snapshot was dividing them by the *device's* rate. A
+two-and-a-half-minute 44.1 kHz record on a 48 kHz device read 2:17, and the
+remaining time a DJ mixes by was out by thirteen seconds. 44.1 into 48 is the
+commonest pairing there is.
+
+The engine now publishes `DeckParam::SourceRate` beside the frames it is
+counted in, and the deck's clock and the automix's transition length both use
+it. Latency and the two-card bridge keep the device's rate, which is what they
+are actually measured in. The waveform's between-snapshot interpolation was
+running 8.8% fast for the same reason and is right now too.
+
+Found by driving the application with a synthesised 44.1 kHz record and
+noticing the deck disagreed with the length in the library — no test could see
+it, because every fixture used one rate for both.
+
 **The transition is an object** — the directive's §68. `dj_app::transition`
 holds one mix: the two decks, where it starts and ends in both frames and
 seconds, how long it runs, which way, what the tempo and the key do across it,

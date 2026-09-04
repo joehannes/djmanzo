@@ -954,6 +954,19 @@ impl Engine {
             set(DeckParam::GainDb, deck.gain_db());
             set(DeckParam::Loaded, if deck.is_loaded() { 1.0 } else { 0.0 });
             set(DeckParam::LengthFrames, deck.len_frames() as f32);
+            // The record's own rate, beside the frames it is counted in.
+            // Without it every reader of Position and LengthFrames has to
+            // guess, and the obvious guess -- the device's rate -- is wrong
+            // for the commonest case there is, a 44.1 kHz record on a 48 kHz
+            // device.
+            set(
+                DeckParam::SourceRate,
+                if deck.is_loaded() {
+                    deck.source_rate().as_f64() as f32
+                } else {
+                    0.0
+                },
+            );
             set(DeckParam::EqLow, deck.eq_low());
             set(DeckParam::EqMid, deck.eq_mid());
             set(DeckParam::EqHigh, deck.eq_high());

@@ -229,6 +229,20 @@ pub enum DeckParam {
     StemOtherEqMid,
     StemOtherEqHigh,
     StemOtherFilter,
+    /// Sample rate of the **loaded record**, which is not the device's.
+    ///
+    /// [`DeckParam::Position`] and [`DeckParam::LengthFrames`] are counted in
+    /// the file's own frames — the engine resamples on the way out, so the
+    /// playhead advances at the record's rate and the waveform tiles line up
+    /// with it. Anything turning those frames into *seconds* therefore has to
+    /// divide by this and not by [`GlobalParam::SampleRate`]: a 44.1 kHz
+    /// record on a 48 kHz device is 8.8% of its own length out, which is a
+    /// two-and-a-half-minute track showing 2:17 and a remaining time a DJ
+    /// mixes by.
+    ///
+    /// 0.0 when nothing is loaded, which is the same "no answer" the device
+    /// rate gives before a device is open.
+    SourceRate,
 }
 
 /// What a hot cue parameter reads when the slot is empty.
@@ -260,7 +274,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 91;
+    pub const COUNT: usize = 92;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -362,6 +376,7 @@ impl DeckParam {
             StemOtherEqMid,
             StemOtherEqHigh,
             StemOtherFilter,
+            SourceRate,
         ]
     }
 }
@@ -1171,6 +1186,7 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::StemOtherEqMid => "stem_other_eq_mid",
         DeckParam::StemOtherEqHigh => "stem_other_eq_high",
         DeckParam::StemOtherFilter => "stem_other_filter",
+        DeckParam::SourceRate => "source_rate",
     }
 }
 

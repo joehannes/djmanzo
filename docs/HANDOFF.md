@@ -112,6 +112,13 @@ took 40 px out of every stage at every window height. Do not guess the
 correction: `ui/e2e/density.spec.ts` prints, for each window height, how much
 the deck needs and how much it has, and the floor is where that reaches zero.
 
+**A deck's frames are the record's, not the device's.** `DeckParam::Position`
+and `LengthFrames` are counted in the *file's* frames — the engine resamples on
+the way out — so anything turning them into seconds divides by
+`DeckParam::SourceRate`. Dividing by the device rate showed a 2:30 record at
+44.1 kHz as 2:17 on a 48 kHz device, for as long as the snapshot has existed.
+Nothing could see it: every test used one rate for both.
+
 **Disk.** The writable allowance is fixed, and `df` misleads. `rm -rf
 target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 

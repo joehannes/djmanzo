@@ -5811,7 +5811,12 @@ mod editing_command_tests {
 pub fn automix_view(state: &AppState) -> Vec<crate::automix::DeckView> {
     use dj_core::param::{DeckParam, GlobalParam};
     let registry = state.registry();
-    let sample_rate = f64::from(
+    // The device's rate, used only for a deck with nothing on it. A deck's own
+    // frames are counted at the *record's* rate -- see `DeckParam::SourceRate`
+    // -- and a transition measured against the wrong one is the wrong length
+    // by the ratio between them: eight percent, or most of a beat over four
+    // bars.
+    let device_rate = f64::from(
         registry
             .get(dj_core::ParamId::Global(GlobalParam::SampleRate))
             .max(1.0),
@@ -5821,6 +5826,7 @@ pub fn automix_view(state: &AppState) -> Vec<crate::automix::DeckView> {
         .map(|id| {
             let get = |p| registry.get(dj_core::ParamId::Deck(id, p));
             let bpm = f64::from(get(DeckParam::EffectiveBpm));
+            let source_rate = f64::from(get(DeckParam::SourceRate));
             crate::automix::DeckView {
                 id,
                 loaded: get(DeckParam::Loaded) >= 0.5,
@@ -5828,7 +5834,11 @@ pub fn automix_view(state: &AppState) -> Vec<crate::automix::DeckView> {
                 position: f64::from(get(DeckParam::Position)),
                 length: f64::from(get(DeckParam::LengthFrames)),
                 bpm: (bpm > 1.0).then_some(bpm),
-                sample_rate,
+                sample_rate: if source_rate > 0.0 {
+                    source_rate
+                } else {
+                    device_rate
+                },
             }
         })
         .collect()
