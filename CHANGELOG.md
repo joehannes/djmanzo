@@ -16,6 +16,24 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The mix point is dragged on the waveform** — §26, which says it plainly:
+*"The DJ should be able to physically grab the thing they are thinking about.
+Do not force them to edit a numerical property in a settings panel."* The pair
+view shipped with ±16 buttons, which is exactly the panel that section is
+complaining about. The buttons stay as the keyboard path; the transition's
+start and its end are now grabbed where they are drawn.
+
+What crosses to djmanzo is the **frame under the hand** — a place in the record,
+which is all a pointer honestly knows. Which beat that is stays Rust's
+arithmetic: it has the grid, the tempo and the record's own sample rate, and an
+interface working it out would be a second opinion about where beat 275 is. The
+drag is snapped to the nearest beat and clamped into the record, and the panel
+draws what comes back rather than where the finger went.
+
+The lane's marks are dashed rather than solid for the same reason they always
+were: a cue is somewhere the DJ put, and these are somewhere djmanzo is
+proposing.
+
 **djmanzo reads the night** — the directive's §11, first half. `dj_app::context`
 works out what the set is doing from the records that have actually been played:
 their loudness and their tempo, compared against the night's own range rather

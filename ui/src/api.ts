@@ -1537,6 +1537,17 @@ export const transitionAdjust = (change: {
   style?: string;
 }) => invoke<Transition | null>("transition_adjust", change);
 
+/**
+ * Move the held transition to a place in the record.
+ *
+ * Frames, because this is what a hand on the waveform produces — §26's
+ * "grab the thing you are thinking about". Which beat that is stays djmanzo's
+ * arithmetic: it has the grid, the tempo and the record's own sample rate,
+ * and this side has a pointer.
+ */
+export const transitionDrag = (which: "start" | "end", frame: number) =>
+  invoke<Transition | null>("transition_drag", { which, frame });
+
 /** Throw the adjustments away and ask the planner again. */
 export const transitionReplan = () =>
   invoke<Transition | null>("transition_replan");

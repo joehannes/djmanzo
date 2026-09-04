@@ -50,8 +50,8 @@ rather than taken.
 | 22 | Next-track rail | 🟡 | The rail ships as its own dockable surface, following whichever deck is playing: up to eight candidates, each with one line of deltas (`+3 BPM · 8A→9A · +1 dB`), a confidence bar, and load / set aside / more-like-this / pin / pass. Two of the fifteen things §22 lists are not there — **audition**, which needs a preview player djmanzo does not have, and the **estimated transition type**, which means running the M8 planner per candidate |
 | 23 | Track function tagging | ✅ | Ten functions, closed vocabulary, migration 10, browser picker, and `for is opener` in smart folders |
 | 24 | Pairs and relationships | ⬜ | Needs new storage with confidence decay |
-| 25 | Waveform overhaul | ⬜ | |
-| 26 | Direct manipulation on the waveform | ⬜ | |
+| 25 | Waveform overhaul | 🟡 | One of the twenty layers ships: the **transition region**, drawn on the outgoing lane as a mix-in and an out, dashed to say they are proposed rather than placed. The rest of the semantic layers — spectral balance, vocal and stem presence, breakdowns, drops, the energy trajectory — are not drawn |
+| 26 | Direct manipulation on the waveform | 🟡 | The **transition start and end are dragged on the waveform** — §26's own first two examples. The frame under the hand goes to djmanzo, which snaps it to a beat and clamps it into the record; the panel draws what comes back. The other seven — cue markers, phrase markers, loops, stem regions — are still numbers in panels |
 | 27 | Preview / ghost track | ⬜ | The object it waited on ships — see §68. What is missing is the preview itself: a second render of the outgoing track, which needs a player djmanzo does not have |
 | 28 | Stem-aware UI | ✅ | The stems module ships, folding so it costs a row when unused |
 | 29 | Intelligent control handles | ⬜ | |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **31 done, 34 part, 21 open, 19 standing rules.**
+Of the 105 sections: **31 done, 36 part, 19 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**31 of 86 deliverable sections are complete and 34 more are partly there.**
+**31 of 86 deliverable sections are complete and 36 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 31 whole plus 34 halves over 86 is 56%, and the phase view is stricter
+way: 31 whole plus 36 halves over 86 is 57%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

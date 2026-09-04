@@ -46,6 +46,7 @@
     transitionArm,
     transitionClear,
     transitionCurrent,
+    transitionDrag,
     transitionReplan,
     TRANSITION_STYLES,
     TRANSITION_HELP,
@@ -151,6 +152,19 @@
   const move = (beats: number) => ask(() => transitionAdjust({ moveBeats: beats }));
   const lengthen = (beats: number) => ask(() => transitionAdjust({ lengthBeats: beats }));
   const restyle = (style: string) => ask(() => transitionAdjust({ style }));
+
+  /**
+   * A mark was dragged along the outgoing record.
+   *
+   * The labels are the contract between this and the lane, which knows about
+   * frames and nothing about transitions. Only a held transition can be
+   * dragged — the same rule the buttons follow, for the same reason: an
+   * opinion is not something djmanzo is keeping.
+   */
+  function dragged(label: string, frame: number) {
+    if (!pair?.armed) return;
+    void ask(() => transitionDrag(label === "out" ? "end" : "start", frame));
+  }
 
   async function forget() {
     await transitionClear().catch(() => {});
@@ -258,6 +272,7 @@
                   { frame: mix.end_frame, label: "out" },
                 ]
               : []}
+            onMarkMoved={index === 0 && mix.armed ? dragged : undefined}
           />
         </div>
       {/if}

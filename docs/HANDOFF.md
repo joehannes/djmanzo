@@ -119,6 +119,13 @@ the way out — so anything turning them into seconds divides by
 44.1 kHz as 2:17 on a 48 kHz device, for as long as the snapshot has existed.
 Nothing could see it: every test used one rate for both.
 
+**Driving a gesture: measure and act in one motion.** A waveform lane scrolls
+while the record plays, so a mark's screen position is stale seconds after the
+screenshot it was measured in. Two drags "failed" that way before the cause was
+found — and the first guess was a WebKitGTK bug in Svelte's event delegation,
+which would have been a wrong fix written into a comment for the next reader.
+Find the target and grab it in the same script.
+
 **Disk.** The writable allowance is fixed, and `df` misleads. `rm -rf
 target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 
@@ -173,10 +180,12 @@ The largest open sections, in the order they are worth doing:
    audience, the DJ's own behaviour, the attention budget and the performance
    health are still six separate types nobody assembles, so §9, §12, §14 and
    §17 still each reach for their own. Phase 5 of `GUI-OVERHAUL.md`.
-2. **§25–§27, the waveform as instrumentation** — direct manipulation, the
-   ghost track, and answering "what will happen if I do it". The transition
-   object §27 was waiting on now exists, and the pair view already draws a mix
-   point on a waveform lane; what is missing is manipulating it there.
+2. **§25–§27, the waveform as instrumentation.** The transition is drawn on
+   the outgoing lane and can be **dragged** there — §26's first two examples.
+   What is left is the rest of §25's semantic layers (vocal and stem presence,
+   breakdowns, drops, the energy trajectory), the other things §26 wants
+   grabbable (cue markers, phrase markers, loops), and §27's ghost track, which
+   needs a second render of a track that is not loaded.
 3. **§68's remaining readers.** The object ships, the pair view reads it and
    the **automix performs it**. The autopilot and replay still plan their own,
    which is the rest of the unification §68 asks for. Its stem, EQ and FX plans

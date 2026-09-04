@@ -143,6 +143,57 @@ impl Transition {
         self.set_geometry(target, self.plan.length_beats, self.plan.style);
     }
 
+    /// Move the start to wherever in the record a hand pointed.
+    ///
+    /// Frames rather than beats because that is what a hand knows: §26 asks
+    /// for the mix point to be *grabbed* on the waveform rather than typed
+    /// into a panel, and a pointer lands on a place in the record, not on a
+    /// beat index. Which beat that is, is djmanzo's arithmetic and stays here
+    /// — an interface that worked it out would need the grid, the tempo and
+    /// the record's sample rate, and would be a second opinion about where
+    /// beat 275 is.
+    ///
+    /// Snapped to the nearest beat. A mix starts on a beat, and a drag that
+    /// left it 40 ms off would be a worse answer than the one the DJ was
+    /// trying to give.
+    pub fn move_to_frame(&mut self, frame: f64) {
+        let Some(beat) = self.beat_at(frame) else {
+            return;
+        };
+        self.set_geometry(beat, self.plan.length_beats, self.plan.style);
+    }
+
+    /// Move the *end* to wherever a hand pointed, which is to say set the
+    /// length by dragging its other edge.
+    ///
+    /// Clamped to [`LENGTH_RANGE`] like any other length. Dragging the end
+    /// back past the start does not turn the transition inside out; it makes
+    /// it the shortest thing this object will hold.
+    pub fn end_at_frame(&mut self, frame: f64) {
+        let Some(end) = self.beat_at(frame) else {
+            return;
+        };
+        let beats = (end - self.plan.start_beat).max(0);
+        let beats = u32::try_from(beats).unwrap_or(LENGTH_RANGE.1);
+        self.set_length(beats);
+    }
+
+    /// Which beat of the outgoing record a frame falls on, nearest.
+    ///
+    /// `None` only for a frame that is not a number, which a pointer cannot
+    /// produce but a caller could.
+    fn beat_at(&self, frame: f64) -> Option<i64> {
+        if !frame.is_finite() {
+            return None;
+        }
+        let beats = (frame - self.outgoing.grid_anchor) / self.beat_frames();
+        if !beats.is_finite() {
+            return None;
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        Some(beats.round() as i64)
+    }
+
     /// Set the length in beats, clamped to [`LENGTH_RANGE`].
     pub fn set_length(&mut self, beats: u32) {
         let beats = beats.clamp(LENGTH_RANGE.0, LENGTH_RANGE.1);
@@ -458,6 +509,68 @@ mod tests {
         assert!(transition.describes(Some(track(1)), Some(track(2))));
         assert!(!transition.describes(Some(track(1)), Some(track(9))));
         assert!(!transition.describes(None, Some(track(2))));
+    }
+
+    /// **A hand on the waveform lands on a beat.**
+    ///
+    /// §26's whole point: the DJ grabs the mix point rather than typing a
+    /// number. What a pointer produces is a place in the record, and the beat
+    /// it falls on is djmanzo's arithmetic — a drag that left the mix 40 ms
+    /// off the grid would be a worse answer than the one the hand was giving.
+    #[test]
+    fn dragging_the_start_lands_on_the_nearest_beat() {
+        let mut transition = armed();
+        // Two thirds of the way through beat 200: nearer 200 than 201.
+        transition.move_to_frame(200.4 * beat());
+        assert_eq!(transition.plan.start_beat, 200);
+        // And past the halfway point it rounds up rather than truncating,
+        // which would put every drag a beat early.
+        transition.move_to_frame(200.7 * beat());
+        assert_eq!(transition.plan.start_beat, 201);
+    }
+
+    /// The clamps hold for a hand as they do for a button: a mix cannot be
+    /// dragged into the past.
+    #[test]
+    fn dragging_the_start_behind_the_playhead_stops_at_it() {
+        let mut transition = armed();
+        transition.move_to_frame(0.0);
+        assert!(
+            transition.plan.start_beat >= 100,
+            "a drag put the mix at beat {}, behind the playhead at 100",
+            transition.plan.start_beat
+        );
+    }
+
+    /// Dragging the far edge sets the length, and leaves the start alone.
+    #[test]
+    fn dragging_the_end_sets_the_length() {
+        let mut transition = armed();
+        let start = transition.plan.start_beat;
+        transition.end_at_frame((start as f64 + 16.0) * beat());
+        assert_eq!(transition.plan.length_beats, 16);
+        assert_eq!(transition.plan.start_beat, start, "the start moved with it");
+    }
+
+    /// Dragging the end back past the start does not turn the transition
+    /// inside out.
+    #[test]
+    fn dragging_the_end_past_the_start_clamps_rather_than_inverting() {
+        let mut transition = armed();
+        transition.end_at_frame(0.0);
+        assert_eq!(transition.plan.length_beats, LENGTH_RANGE.0);
+        assert!(transition.plan.end_frame > transition.plan.start_frame);
+    }
+
+    /// A frame that is not a number leaves the transition alone rather than
+    /// moving it somewhere unrepresentable.
+    #[test]
+    fn a_nonsense_frame_moves_nothing() {
+        let mut transition = armed();
+        let before = transition.plan.clone();
+        transition.move_to_frame(f64::NAN);
+        transition.end_at_frame(f64::INFINITY);
+        assert_eq!(transition.plan, before);
     }
 
     /// Confidence is the pair's, so editing where the mix happens leaves it

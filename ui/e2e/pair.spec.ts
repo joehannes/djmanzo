@@ -122,6 +122,56 @@ test.describe("the pair view", () => {
   });
 
   /**
+   * **The mix point is a thing you can grab.**
+   *
+   * §26 in one sentence: *"The DJ should be able to physically grab the thing
+   * they are thinking about. Do not force them to edit a numerical property in
+   * a settings panel."* The ±16 buttons are the keyboard path and stay; this is
+   * the one a hand takes.
+   *
+   * What a browser can prove is the gesture: that the mark answers a pointer,
+   * that the frame it was dropped on reaches djmanzo, and that the panel then
+   * draws the answer rather than the drag. Which beat that frame is belongs to
+   * Rust, which has the grid, and is tested there.
+   */
+  test("the mix point can be dragged along the waveform", async ({ page }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+    await expect(page.locator(`${PAIR} .when`)).toContainText("2:34");
+
+    const mark = page.locator(`${PAIR} .mark.grabbable`).first();
+    await expect(mark).toBeVisible();
+    const box = (await mark.boundingBox())!;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x - 60, y, { steps: 8 });
+    await page.mouse.up();
+
+    await expect(
+      page.locator(`${PAIR} .when`),
+      "the mix point did not move, so the drag reached nothing",
+    ).not.toContainText("2:34");
+    await expect(
+      page.locator(`${PAIR} .edited`),
+      "the panel moved the mark itself rather than drawing djmanzo's answer",
+    ).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * An opinion is not something to grab, for the same reason it is not
+   * something to adjust: nothing is holding it.
+   */
+  test("a transition that is only proposed cannot be dragged", async ({ page }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+
+    await expect(page.locator(`${PAIR} .mark`)).toHaveCount(2);
+    await expect(page.locator(`${PAIR} .mark.grabbable`)).toHaveCount(0);
+  });
+
+  /**
    * **Pressing a length changes the transition that is drawn.**
    *
    * The round trip: the press goes to djmanzo, the answer comes back, and the

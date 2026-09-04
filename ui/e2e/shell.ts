@@ -326,6 +326,19 @@ const ANSWERS: Record<string, unknown> = {
   // because a reading with its reasons is the thing the panel exists to draw
   // -- a fixture with an empty `because` would let the panel ship showing a
   // phase and no argument for it.
+  // The waveform's own question, answered as a deck with tiles ready.
+  //
+  // Answering `null` -- which is what an unlisted command gets -- puts every
+  // lane in the interface into its "analysing..." state, so a browser test
+  // could measure the deck all day and never see a waveform, a cue marker or
+  // a transition mark. The tiles themselves 404 in a browser, which is fine:
+  // what is being measured is the strip, its markers and what a pointer can
+  // do to them, not the pixels the Rust renderer draws.
+  //
+  // The length matches the pair fixture's transition, which sits at 6.83M
+  // frames -- a mark outside the record would be dropped by the lane's own
+  // filter and the drag test would have nothing to grab.
+  waveform_info: { deck: 1, ready: true, total_frames: 8_000_000, epoch: 1 },
   session_read: {
     phase: "peak",
     energy: 0.82,
@@ -585,6 +598,7 @@ export async function openShell(
           if (
             cmd === "transition_arm" ||
             cmd === "transition_adjust" ||
+            cmd === "transition_drag" ||
             cmd === "transition_current" ||
             cmd === "transition_replan" ||
             cmd === "transition_clear"
@@ -599,6 +613,24 @@ export async function openShell(
                 : null;
             } else if (cmd === "transition_clear") {
               win.__transition = null;
+            } else if (cmd === "transition_drag" && win.__transition) {
+              // The frame the hand landed on, kept as given. Rust snaps it to
+              // a beat and clamps it into the record; what a browser can prove
+              // is that the gesture arrives with a place in it and the panel
+              // draws whatever comes back.
+              const held = win.__transition as Held;
+              const frame = Number(args.frame ?? 0);
+              const seconds = frame / 44_100;
+              win.__transition =
+                args.which === "end"
+                  ? { ...held, end_frame: frame, end_seconds: seconds, edited: true }
+                  : {
+                      ...held,
+                      start_frame: frame,
+                      start_seconds: seconds,
+                      start_beat: Math.round(seconds * 2),
+                      edited: true,
+                    };
             } else if (cmd === "transition_adjust" && win.__transition) {
               const held = win.__transition as Held;
               win.__transition = {

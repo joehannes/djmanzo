@@ -21,6 +21,7 @@
     height = 96,
     framesPerPixel = 256,
     marks = [],
+    onMarkMoved,
   }: {
     deck: DeckState;
     height?: number;
@@ -35,6 +36,17 @@
      * property of the record and this component knows nothing about records.
      */
     marks?: { frame: number; label: string }[];
+    /**
+     * Called when one of those marks is dragged somewhere else, with the frame
+     * it was dropped on.
+     *
+     * Its presence is what makes the marks draggable: a lane with no listener
+     * draws them and leaves them alone. §26 asks for the mix point to be
+     * *grabbed* rather than typed into a panel, and the frame under a pointer
+     * is the whole of what this side can honestly report — which beat that is
+     * belongs to djmanzo, which has the grid.
+     */
+    onMarkMoved?: (label: string, frame: number) => void;
   } = $props();
 
   /** Tile width in pixels. Wide enough that a lane needs few of them. */
@@ -80,6 +92,70 @@
     anchorTime = performance.now();
     framesPerSecond = playbackFramesPerSecond(deck);
   });
+
+  /**
+   * The mark being dragged, and where it has got to.
+   *
+   * Held here rather than pushed to Rust on every pointer move: a drag is
+   * sixty events a second and the transition is re-scored on each change, so
+   * the line follows the finger locally and djmanzo hears about it once, on
+   * release. What is drawn in between is the DJ's own hand, which is the one
+   * thing that does not need confirming.
+   */
+  let dragging = $state<{ label: string; frame: number } | null>(null);
+
+  /**
+   * Which frame of the record is under a screen position.
+   *
+   * From the strip's own left edge rather than from the playhead, so the mark
+   * stays under the finger while the record keeps playing beneath it. A DJ
+   * dragging a mix point is pointing at a place in the music, not at a place
+   * on the screen.
+   */
+  function frameAt(clientX: number): number {
+    if (!strip) return 0;
+    const left = strip.getBoundingClientRect().left;
+    return Math.max(0, (clientX - left) * framesPerPixel);
+  }
+
+  /**
+   * Start a drag.
+   *
+   * The move and release listeners are added to the element rather than
+   * declared on it, which is the pattern the crossfader and the jog wheel
+   * already use in this interface. One way of doing a drag, not two.
+   */
+  function grab(event: PointerEvent, label: string, frame: number) {
+    if (!onMarkMoved) return;
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture(event.pointerId);
+    dragging = { label, frame };
+    // The lane sits in a scrolling dock; a drag that also scrolled it would
+    // move the thing being dragged.
+    event.preventDefault();
+    event.stopPropagation();
+
+    const move = (next: PointerEvent) => {
+      dragging = { label, frame: frameAt(next.clientX) };
+    };
+    const done = (next: PointerEvent) => {
+      handle.releasePointerCapture(next.pointerId);
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", done);
+      handle.removeEventListener("pointercancel", cancel);
+      dragging = null;
+      onMarkMoved?.(label, frameAt(next.clientX));
+    };
+    const cancel = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", done);
+      handle.removeEventListener("pointercancel", cancel);
+      dragging = null;
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", done);
+    handle.addEventListener("pointercancel", cancel);
+  }
 
   const tileSpanFrames = $derived(TILE_WIDTH * framesPerPixel);
 
@@ -203,10 +279,24 @@
         </div>
       {/each}
       {#each marks as mark (mark.label)}
+        <!--
+          A separator rather than a slider, and deliberately not focusable.
+          The keyboard path to this is the pair view's own move and length
+          controls, which is the right one: a mix point is a beat, and beats
+          are what those buttons step through. A slider role here would
+          promise arrow-key nudging of a pixel position, which is not the
+          same thing and not what §26 asks for.
+        -->
         <div
           class="mark"
-          style:left="{mark.frame / framesPerPixel}px"
-          title={mark.label}
+          class:grabbable={!!onMarkMoved}
+          class:held={dragging?.label === mark.label}
+          role="separator"
+          aria-label={mark.label}
+          style:left="{(dragging?.label === mark.label ? dragging.frame : mark.frame) /
+            framesPerPixel}px"
+          title={onMarkMoved ? `${mark.label} — drag to move it` : mark.label}
+          onpointerdown={(e) => grab(e, mark.label, mark.frame)}
         >
           <span class="mark-flag">{mark.label}</span>
         </div>
@@ -293,6 +383,22 @@
     border-left: 2px dashed var(--warn);
     pointer-events: none;
     z-index: 2;
+  }
+
+  /* Only a lane that can do something about it invites the grab. */
+  .mark.grabbable {
+    pointer-events: auto;
+    cursor: ew-resize;
+    /* A two-pixel line is a hard thing to hit with a mouse and an impossible
+       one on a trackpad in a dark booth. The line stays two pixels; what
+       widens is the part that answers to a pointer. */
+    padding-inline: 6px;
+    margin-inline: -6px;
+    touch-action: none;
+  }
+
+  .mark.held {
+    border-left-style: solid;
   }
 
   .mark-flag {

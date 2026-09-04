@@ -3957,6 +3957,37 @@ pub fn transition_adjust(
     }
 }
 
+/// Move the held transition to a place in the record.
+///
+/// Frames, because this is what a hand on the waveform produces: §26 asks for
+/// the mix point to be grabbed rather than typed, and a pointer lands on a
+/// place in a record rather than on a beat index. Which beat that is stays
+/// djmanzo's arithmetic — see [`crate::transition::Transition::move_to_frame`].
+///
+/// `which` is `start` or `end`. One command rather than two because the two
+/// differ by a single line and the interface calls them from the same gesture;
+/// an unknown value is refused rather than guessed at.
+#[tauri::command]
+pub fn transition_drag(
+    state: State<'_, AppState>,
+    which: String,
+    frame: f64,
+) -> Result<Option<TransitionDto>, String> {
+    let dragged = state.edit_transition(|transition| {
+        match which.as_str() {
+            "start" => transition.move_to_frame(frame),
+            "end" => transition.end_at_frame(frame),
+            _ => return None,
+        }
+        Some(transition.clone())
+    });
+    match dragged.flatten() {
+        Some(transition) => describe_transition(&state, &transition, true),
+        None if which != "start" && which != "end" => Err(format!("no {which} to drag")),
+        None => Ok(None),
+    }
+}
+
 /// Throw the adjustments away and ask the planner again.
 ///
 /// Only ever on request. A transition that replanned itself would undo a DJ's

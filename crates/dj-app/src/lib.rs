@@ -442,6 +442,7 @@ pub fn run() {
             commands::transition_arm,
             commands::transition_current,
             commands::transition_adjust,
+            commands::transition_drag,
             commands::transition_replan,
             commands::transition_clear,
             commands::session_read,
