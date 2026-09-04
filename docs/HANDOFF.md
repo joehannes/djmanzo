@@ -215,8 +215,15 @@ The largest open sections, in the order they are worth doing:
    boundary, which is a grid edit rather than a marker move and is the one
    that leaves the beats alone, and the saved loops. What §26 still lists are
    beat jumps, stem regions and AI suggestions, each of which needs the thing
-   itself before it needs a handle. Then §27's ghost track, which needs a
-   second render of a track that is not loaded.
+   itself before it needs a handle.
+
+   **§27's ghost draws.** The incoming record is laid over the outgoing lane
+   in the pair view, from the mix point, beatmatched — no second player and no
+   second decode, because the incoming deck's own tiles already exist. This
+   list previously said it "needs a player djmanzo does not have", which was
+   true of *playing* a preview and not of drawing one. What is left of §27 is
+   where the vocal enters (the separator again) and where the incoming
+   record's own drop is.
 
    Two defects in the phrase drag were invisible to every gate and obvious
    within a minute of driving it: a drop snapped to the beat it was *inside*
@@ -232,8 +239,11 @@ The largest open sections, in the order they are worth doing:
    nothing here can tell which the DJ meant. Changing that needs a DJ to say
    so, not a rule invented here.
 3. **§68's last reader.** The object ships; the pair view draws it, the automix
-   performs it and the autopilot defers to it. Replay still reconstructs a
-   transition from the action log rather than from the object. Its stem, EQ and
+   performs it, the autopilot defers to it, and §27's preview reads the entry
+   point it now carries — where the incoming record comes in, which §68's own
+   field list left out. Replay still reconstructs a transition from the action
+   log rather than from the object, and it is worth deciding whether that is
+   wrong: the log is what *happened*, and the object is what was set up. Its stem, EQ and
    FX plans are absent because nothing yet decides them; a field that is always
    empty is a promise.
 4. **§20's remaining half.** All four views ship, and the performance table

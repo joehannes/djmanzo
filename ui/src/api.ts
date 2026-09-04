@@ -1505,6 +1505,21 @@ export interface Transition {
    */
   start_frame: number;
   end_frame: number;
+  /**
+   * Where the incoming record starts playing, in **its own** frames.
+   *
+   * The other half of the geometry: `start_frame` says where on the outgoing
+   * record the mix begins, this says what arrives there. `null` when the
+   * incoming record has no phrase structure to enter on, which is a real
+   * answer about plenty of records rather than a failure.
+   */
+  incoming_frame: number | null;
+  /**
+   * How many frames of the incoming record fill one frame of the outgoing one,
+   * beat for beat — so a preview can draw it beatmatched rather than drifting.
+   * 1 when either tempo is not a tempo.
+   */
+  incoming_frame_scale: number;
   length_beats: number;
   style: string;
   /** Incoming tempo minus outgoing, signed. */

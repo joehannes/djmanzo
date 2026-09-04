@@ -2934,9 +2934,13 @@ mod grid_edit_tests {
                     breakdowns: Vec::new(),
                 },
                 &crate::plan::Incoming {
+                    position: 0.0,
+                    length: 10.0 * f64::from(SR.get()),
                     bpm: 124.0,
                     phrase: phrase_of(&track),
                     key: None,
+                    sample_rate: SR,
+                    grid_anchor: 0.0,
                 },
             )
             .is_some(),
@@ -3874,28 +3878,21 @@ fn read_situation(
         .and_then(|deck| {
             let tracks = state.deck_tracks();
             let map = tracks.lock().ok()?;
-            map.get(&deck.human_number()).map(|t| t.id)
+            map.get(&deck.human_number()).map(|t| (deck, t.id))
         })
-        .and_then(|id| {
+        .and_then(|(deck, id)| {
             let db = state.library().get().ok()?;
             let track = db.track(id).ok()??;
-            Some((
-                id,
-                crate::plan::Incoming {
-                    bpm: track.analysis.bpm.unwrap_or(outgoing.bpm),
-                    // `phrase_of`, which answers `None` for a record with no
-                    // phrase structure. This used to be two `?`s on the phrase
-                    // fields *inside* the closure, so a record the analyser
-                    // found no phrases in did not merely lack a phrase -- it
-                    // was not staged at all, and the autopilot said "nothing
-                    // chosen to play next" about a record sitting cued on the
-                    // deck. `Incoming::phrase` is an `Option` precisely
-                    // because plenty of records have none, and the planner
-                    // already says so rather than refusing.
-                    phrase: phrase_of(&track),
-                    key: track.analysis.key(),
-                },
-            ))
+            // Through `incoming_of`, which answers `None` for the phrase of a
+            // record with no phrase structure. That used to be two `?`s on the
+            // phrase fields *inside* this closure, so a record the analyser
+            // found no phrases in did not merely lack a phrase -- it was not
+            // staged at all, and the autopilot said "nothing chosen to play
+            // next" about a record sitting cued on the deck.
+            // `Incoming::phrase` is an `Option` precisely because plenty of
+            // records have none, and the planner already says so rather than
+            // refusing.
+            Some((id, incoming_of(state, deck, &track, outgoing.bpm)))
         });
 
     // The next record from the set, skipping anything already on a deck.
@@ -4526,6 +4523,20 @@ pub struct TransitionDto {
     /// roundings and a division by zero waiting for an empty deck.
     pub start_frame: f64,
     pub end_frame: f64,
+    /// Where the incoming record starts playing, in **its own** frames.
+    ///
+    /// The other half of the geometry: `start_frame` says where on the
+    /// outgoing record the mix begins, and this says what arrives there. It is
+    /// what lets the preview draw the incoming record over the outgoing lane
+    /// at the place it would actually land — §27.
+    ///
+    /// `None` when the incoming record has no phrase structure to enter on,
+    /// which is a real answer about plenty of records rather than a failure.
+    pub incoming_frame: Option<f64>,
+    /// How many frames of the incoming record fill one frame of the outgoing
+    /// one, beat for beat, so a preview can draw it beatmatched rather than
+    /// drifting. 1.0 when either tempo is not a tempo.
+    pub incoming_frame_scale: f64,
     pub length_beats: u32,
     /// The style's own name, as the automix panel already spells it.
     pub style: String,
@@ -4571,6 +4582,38 @@ fn outgoing_of(
     })
 }
 
+/// What is on a deck, as the track coming in.
+///
+/// The mirror of [`outgoing_of`], and it exists for the same reason: two
+/// callers building the same description of the same deck by hand is two
+/// chances to describe it differently. Unlike the outgoing side this answers
+/// even without a beat grid — a record the analyser could not read can still
+/// be mixed into, and the planner already says so rather than refusing.
+fn incoming_of(
+    state: &AppState,
+    deck: dj_core::DeckId,
+    track: &dj_library::LibraryTrack,
+    fallback_bpm: f64,
+) -> crate::plan::Incoming {
+    let grid = track.analysis.beatgrid();
+    let registry = state.registry();
+    let read = |p| f64::from(registry.get(dj_core::ParamId::Deck(deck, p)));
+    crate::plan::Incoming {
+        position: read(dj_core::param::DeckParam::Position),
+        length: read(dj_core::param::DeckParam::LengthFrames),
+        bpm: track.analysis.bpm.unwrap_or(fallback_bpm),
+        // `phrase_of` answers `None` for a record with no phrase structure,
+        // which plenty have. Gated on the grid because a phrase is counted in
+        // beats *from the grid's anchor*: without one there is nothing to
+        // count it against, and a boundary measured from an anchor that does
+        // not exist is a number presented as a fact.
+        phrase: grid.and(phrase_of(track)),
+        key: track.analysis.key(),
+        sample_rate: track.sample_rate,
+        grid_anchor: grid.map_or(0.0, |g| g.anchor.get()),
+    }
+}
+
 /// Plan the mix between two decks, without holding the result.
 ///
 /// The confidence comes from `dj_library::suggest` -- the scorer the Next rail
@@ -4595,11 +4638,7 @@ fn transition_between(
     let Some(outgoing) = outgoing_of(state, from, &out_track) else {
         return Ok(None);
     };
-    let incoming = crate::plan::Incoming {
-        bpm: in_track.analysis.bpm.unwrap_or(outgoing.bpm),
-        phrase: phrase_of(&in_track),
-        key: in_track.analysis.key(),
-    };
+    let incoming = incoming_of(state, to, &in_track, outgoing.bpm);
     let confidence = score(&Playing::of(&out_track), Trajectory::Hold, &in_track).confidence();
 
     Ok(crate::transition::Transition::plan(
@@ -4651,6 +4690,8 @@ fn describe_transition(
         end_seconds: transition.end_seconds(),
         start_frame: transition.plan.start_frame,
         end_frame: transition.plan.end_frame,
+        incoming_frame: transition.plan.incoming_frame,
+        incoming_frame_scale: transition.plan.incoming_frame_scale,
         length_beats: transition.plan.length_beats,
         style: transition.plan.style.as_str().to_owned(),
         bpm_delta: transition.plan.bpm_delta,

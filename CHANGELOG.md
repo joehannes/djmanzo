@@ -16,6 +16,43 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The ghost track: the record you are about to bring in, over the one that is
+playing.** §27 asks for the future to be made visible — *if I bring this in
+here, this is what happens* — before loading or committing. The pair view drew
+two records side by side, which answers what they are and not what they do
+together. So the incoming record is now laid over the outgoing lane, from the
+point the mix begins.
+
+Beatmatched, which is the part that makes it instrumentation rather than
+decoration: the ghost is drawn at a zoom that puts one of its beats on one of
+the outgoing's, so its transients land where they will actually land. Drawn at
+its own frame rate it would drift visibly against a lane it is supposed to be
+matched to. The ratio comes from Rust, which knows both tempos and both sample
+rates; deriving it in the panel from two lengths in seconds would be the
+interface disagreeing with djmanzo about a mix by a rounding.
+
+No second player and no second decode. These are the incoming deck's own tiles,
+which already exist — the status file said this section "needs a player djmanzo
+does not have", which was true of *playing* a preview and not of drawing one.
+
+See-through, and not recoloured. A ghost's colour is its own spectral balance
+exactly as the lane's is, so tinting one of them to tell them apart would make
+a hue mean two things — §57. What separates them is solid against not, the same
+distinction the saved loops draw.
+
+**The transition object gained the half it was missing.** §68's own field list
+has `startPosition` and `endPosition`, both of which are places on the
+*outgoing* record: where a mix begins, and nothing about what arrives there.
+The object now carries where the incoming record comes in, in its own frames —
+the first phrase boundary at or after where that deck is cued, which is what a
+DJ cues to. Absent for a record with no phrase structure, which plenty have,
+rather than frame zero: a ghost at the top of a record claims the mix brings in
+a beginning it does not.
+
+It is constant across an edit, deliberately. Pushing the mix a phrase later
+changes where on the outgoing record it happens and not which part of the new
+record arrives, because that is where the DJ put it.
+
 **A saved loop can be seen, and played from where it is drawn.** §25's
 saved-loop layer, and §26's answer to the same item. A loop kept with a record
 was invisible in both of the places it should not have been. The lane did not

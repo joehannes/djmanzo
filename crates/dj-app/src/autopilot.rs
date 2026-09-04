@@ -324,9 +324,13 @@ mod tests {
 
     fn incoming() -> Incoming {
         Incoming {
+            position: 0.0,
+            length: 300.0 * SR.as_f64(),
             bpm: BPM,
             phrase: Phrase::new(16, 0),
             key: key(),
+            sample_rate: SR,
+            grid_anchor: 0.0,
         }
     }
 

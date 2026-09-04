@@ -26,6 +26,7 @@
     onLoopEdgeMoved,
     onPhraseMoved,
     onSavedLoopRecalled,
+    ghost = null,
   }: {
     deck: DeckState;
     height?: number;
@@ -92,6 +93,29 @@
      * every other handle here.
      */
     onSavedLoopRecalled?: (slot: number) => void;
+    /**
+     * A second record drawn over this one, arriving at a place on this lane.
+     *
+     * §27's ghost: *if I bring this in here, this is what happens*. Not a
+     * second lane and not a preview player — the same tiles the incoming
+     * deck's own lane draws, laid over this one from the point the mix begins,
+     * so a DJ can see the two records against each other before committing to
+     * either.
+     *
+     * The caller does the music theory. This component knows nothing about
+     * records, which is why the ghost's zoom arrives already beat-matched
+     * rather than being worked out from two tempos here.
+     */
+    ghost?: {
+      /** The deck whose record is coming in. */
+      deck: DeckState;
+      /** Where on *this* lane it begins, in this record's frames. */
+      at: number;
+      /** Where in its own record it begins, in its frames. */
+      from: number;
+      /** Its zoom, beat-matched to this lane's by whoever passed it. */
+      framesPerPixel: number;
+    } | null;
   } = $props();
 
   /** Tile width in pixels. Wide enough that a lane needs few of them. */
@@ -266,6 +290,93 @@
         ),
       };
     }).filter((t) => t.startFrame + tileSpanFrames > 0 && t.startFrame < totalFrames);
+  });
+
+  /**
+   * The ghost's own readiness, from the incoming deck.
+   *
+   * A second fetch rather than a second prop, for the reason the first one is
+   * a fetch: the tile generation is djmanzo's to say, and a caller passing a
+   * stale one would hand the webview a cache key for tiles that no longer
+   * describe the record.
+   */
+  let ghostReady = $state(false);
+  let ghostEpoch = $state(0);
+  let ghostTotal = $state(0);
+
+  $effect(() => {
+    const number = ghost?.deck.number;
+    if (number === undefined) {
+      ghostReady = false;
+      return;
+    }
+    // The same two touches the outgoing side makes: a new record changes the
+    // length, and analysis finishing changes the tiles without touching it.
+    ghost?.deck.length_frames;
+    ghost?.deck.analysis;
+    void waveformInfo(number)
+      .then((info) => {
+        ghostReady = info.ready;
+        ghostEpoch = info.epoch;
+        ghostTotal = info.total_frames;
+      })
+      .catch(() => {
+        ghostReady = false;
+      });
+  });
+
+  /**
+   * The incoming record's tiles, over this lane, from where the mix begins.
+   *
+   * Windowed the same way the outgoing tiles are, in the ghost's own frames:
+   * the lane shows a span of *this* record, and the ghost's frame under any
+   * point of it follows from the beat-matched zoom. Drawing the whole incoming
+   * record and letting the browser clip it would mount hundreds of tiles for a
+   * five-minute track.
+   */
+  const ghostTiles = $derived.by(() => {
+    if (!ghost || !ghostReady || ghostTotal === 0) return [];
+
+    const span = TILE_WIDTH * ghost.framesPerPixel;
+    // How many of the ghost's frames pass for one of this lane's.
+    const scale = ghost.framesPerPixel / framesPerPixel;
+    const leftFrame = deck.position_frames - (laneWidth * framesPerPixel) / 2;
+    const firstGhostFrame = ghost.from + (leftFrame - ghost.at) * scale;
+    const first = Math.floor(firstGhostFrame / span) - OVERSCAN;
+
+    const count = Math.ceil(laneWidth / TILE_WIDTH) + OVERSCAN * 2 + 1;
+    return Array.from({ length: count }, (_, i) => {
+      const index = first + i;
+      const startFrame = index * span;
+      return {
+        key: index,
+        startFrame,
+        url: tileUrl(
+          ghost.deck.number,
+          TILE_WIDTH,
+          height,
+          startFrame,
+          ghost.framesPerPixel,
+          theme.resolved,
+          ghostEpoch,
+        ),
+      };
+    }).filter((t) => t.startFrame + span > ghost.from && t.startFrame < ghostTotal);
+  });
+
+  /**
+   * Where the ghost sits on this lane, and how far it runs.
+   *
+   * From the mix point to the end of the incoming record: what arrives is the
+   * rest of that record, and stopping the drawing at the end of the transition
+   * would say the new track ends when the blend does.
+   */
+  const ghostBox = $derived.by(() => {
+    if (!ghost || !ghostReady || ghostTotal <= ghost.from) return null;
+    return {
+      left: ghost.at / framesPerPixel,
+      width: (ghostTotal - ghost.from) / ghost.framesPerPixel,
+    };
   });
 
   /**
@@ -531,6 +642,33 @@
           style:left="{tile.startFrame / framesPerPixel}px"
         />
       {/each}
+      <!--
+        §27's ghost: the incoming record over this one, from the point the mix
+        begins. The same tiles its own lane draws, at a zoom that makes one of
+        its beats one of these — laid over rather than beside, because the
+        question is what the two records do *together*.
+      -->
+      {#if ghost && ghostBox}
+        <div
+          class="ghost"
+          style:left="{ghostBox.left}px"
+          style:width="{ghostBox.width}px"
+          aria-hidden="true"
+        >
+          {#each ghostTiles as tile (tile.key)}
+            <img
+              class="tile"
+              src={tile.url}
+              alt=""
+              decoding="async"
+              loading="eager"
+              width={TILE_WIDTH}
+              {height}
+              style:left="{(tile.startFrame - ghost.from) / ghost.framesPerPixel}px"
+            />
+          {/each}
+        </div>
+      {/if}
     </div>
   {:else if deck.loaded}
     <p class="pending">analysing…</p>
@@ -604,6 +742,29 @@
   .loop-edge.held {
     opacity: 1;
     background: var(--text);
+  }
+
+  /*
+    The ghost, §27. Over the outgoing waveform rather than beside it, because
+    the question is what the two records do together — and see-through, because
+    a record that has not come in yet is not a fact about the audio playing.
+
+    No recolouring. The ghost's colour is its own spectral balance, exactly as
+    the lane's is, and tinting one of them to tell them apart would make a hue
+    mean two things — §57. What separates them is that one is solid and one is
+    not, which is the same distinction the saved loops draw.
+
+    Clipped to its own box, so the incoming record starts where the mix starts
+    and not at the left-hand edge of the lane.
+  */
+  .ghost {
+    position: absolute;
+    inset-block: 0;
+    overflow: hidden;
+    opacity: 0.42;
+    border-left: 1px solid var(--text-dim);
+    pointer-events: none;
+    z-index: 1;
   }
 
   /*

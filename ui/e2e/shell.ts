@@ -308,6 +308,12 @@ const ANSWERS: Record<string, unknown> = {
     end_seconds: 170.3,
     start_frame: 6_830_000,
     end_frame: 7_513_000,
+    // Where the incoming record comes in, in *its* frames: five seconds in, on
+    // a phrase boundary of its own. §27's ghost is drawn from here.
+    incoming_frame: 220_500,
+    // 124 into 127 BPM, so the incoming record's beats are slightly shorter
+    // and slightly fewer of its frames fill one of the outgoing lane's.
+    incoming_frame_scale: 124 / 127,
     length_beats: 32,
     style: "blend",
     bpm_delta: 3,

@@ -316,9 +316,13 @@ mod tests {
             breakdowns: Vec::new(),
         };
         let incoming = Incoming {
+            position: 0.0,
+            length: 300.0 * SR.as_f64(),
             bpm: BPM,
             phrase: Phrase::new(16, 0),
             key: key(9, Mode::Minor),
+            sample_rate: SR,
+            grid_anchor: 0.0,
         };
         Transition::plan(
             (deck(1), deck(2)),
@@ -462,9 +466,13 @@ mod tests {
         // 145 against 120 is well outside the deck's pitch range: the planner
         // cuts.
         let incoming = Incoming {
+            position: 0.0,
+            length: 300.0 * SR.as_f64(),
             bpm: 145.0,
             phrase: Phrase::new(16, 0),
             key: key(8, Mode::Minor),
+            sample_rate: SR,
+            grid_anchor: 0.0,
         };
         let mut transition = Transition::plan(
             (deck(1), deck(2)),

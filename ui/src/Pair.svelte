@@ -126,6 +126,32 @@
   }
 
   /**
+   * §27's ghost: the incoming record, over the outgoing lane, from the mix
+   * point.
+   *
+   * `null` when there is nothing honest to draw — an incoming deck that is
+   * not loaded, or a record with no phrase structure to enter on, which is
+   * what `incoming_frame` being absent means. A ghost placed at the top of a
+   * record instead would say the mix brings in a beginning it does not.
+   *
+   * The zoom is the outgoing lane's, scaled so one of the incoming record's
+   * beats is one of the outgoing's. That ratio is Rust's — it knows both
+   * tempos and both sample rates — and re-deriving it here from two lengths in
+   * seconds would be this panel disagreeing with djmanzo about a mix by a
+   * rounding.
+   */
+  function ghostOf(mix: Transition) {
+    const deck = deckOf(mix.incoming.deck);
+    if (!deck?.loaded || mix.incoming_frame === null) return null;
+    return {
+      deck,
+      at: mix.start_frame,
+      from: mix.incoming_frame,
+      framesPerPixel: laneZoom(mix.outgoing, 0, mix) * mix.incoming_frame_scale,
+    };
+  }
+
+  /**
    * What is on the decks, so a reload can be noticed.
    *
    * Rust drops a held transition whose records have been replaced, but only
@@ -273,6 +299,7 @@
                 ]
               : []}
             onMarkMoved={index === 0 && mix.armed ? dragged : undefined}
+            ghost={index === 0 ? ghostOf(mix) : null}
           />
         </div>
       {/if}

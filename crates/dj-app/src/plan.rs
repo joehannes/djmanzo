@@ -59,11 +59,64 @@ pub struct Outgoing {
 }
 
 /// The track coming in.
+///
+/// The same shape as [`Outgoing`] minus its breakdowns, and it grew that way
+/// for §27: a preview has to say *where in this record* the mix begins, and
+/// that is a question about its playhead, its grid and its phrases. A tempo
+/// and a key alone can say whether two records go together and not where the
+/// needle would drop.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Incoming {
+    /// Where this deck is cued, in frames. Read once, like `Outgoing::position`
+    /// and for the same reason: the entry point is a decision about the
+    /// record, and re-reading the playhead would let it creep while a DJ is
+    /// looking at it.
+    pub position: f64,
+    /// Total length in frames, so an entry point past the end of the record can
+    /// be recognised as no entry point at all.
+    pub length: f64,
     pub bpm: f64,
     pub phrase: Option<Phrase>,
     pub key: Option<MusicalKey>,
+    pub sample_rate: SampleRate,
+    /// Frame position of a beat, from which every other beat follows.
+    pub grid_anchor: f64,
+}
+
+impl Incoming {
+    /// Where this record starts playing when the mix begins.
+    ///
+    /// The first phrase boundary at or after where the deck is cued: what a DJ
+    /// cues to, and what §27 means by "where its first strong phrase would
+    /// align". The mix point on the outgoing lane is one of these two facts;
+    /// this is the other, and without it a preview can draw a record arriving
+    /// but not *which part of it* arrives.
+    ///
+    /// `None` when the record has no phrase structure, when its tempo is not a
+    /// tempo, or when the next boundary is past the end of the file. Absent
+    /// rather than frame zero: a ghost drawn at the top of a record claims the
+    /// mix starts somewhere it does not, and this project's rule is that no
+    /// evidence is reported as none.
+    #[must_use]
+    pub fn entry_frame(&self) -> Option<f64> {
+        let phrase = self.phrase?;
+        let beat_frames = beat_frames(self.bpm, self.sample_rate)?;
+        let beats = i64::from(phrase.beats);
+
+        // Ceil, not floor: the boundary wanted is the next one *coming*, and a
+        // playhead a hair past a boundary has already missed it.
+        let beat = ((self.position - self.grid_anchor) / beat_frames).ceil();
+        if !beat.is_finite() {
+            return None;
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        let beat = beat as i64;
+        let boundary = beat + (i64::from(phrase.anchor) - beat).rem_euclid(beats);
+
+        #[allow(clippy::cast_precision_loss)]
+        let frame = self.grid_anchor + boundary as f64 * beat_frames;
+        (frame.is_finite() && frame < self.length).then_some(frame)
+    }
 }
 
 /// Why the planner chose what it chose.
@@ -125,6 +178,31 @@ pub struct Plan {
     /// How the two keys stand to each other, or `None` when either is
     /// unanalysed. Unknown is not a clash -- see below.
     pub key_relation: Option<KeyRelation>,
+    /// Where the incoming record starts playing, in *its* frames.
+    ///
+    /// The second half of the geometry, and the one §68's field list left out:
+    /// `startPosition` says where on the outgoing record the mix begins, and
+    /// this says what arrives there. `None` when the incoming record has no
+    /// phrase structure to enter on — see [`Incoming::entry_frame`].
+    ///
+    /// Constant across an edit, deliberately. Moving the mix point a phrase
+    /// later changes where on the *outgoing* record it happens; it does not
+    /// change which part of the incoming record comes in, because that is
+    /// where the DJ has cued it.
+    pub incoming_frame: Option<f64>,
+    /// How many frames of the incoming record fill one frame of the outgoing
+    /// one, beat for beat.
+    ///
+    /// A preview drawn at the incoming record's own frame rate would show its
+    /// transients drifting against the outgoing's, which is the opposite of
+    /// what a beatmatched mix does: one beat is one beat, whatever the two
+    /// tempos and sample rates are. A ratio rather than two tempos because the
+    /// ratio is what a reader needs, and working it out twice is two chances
+    /// to invert it.
+    ///
+    /// 1.0 when either tempo is not a tempo — the same records for which there
+    /// is nothing better to say.
+    pub incoming_frame_scale: f64,
     pub reasons: Vec<Reason>,
 }
 
@@ -290,6 +368,9 @@ pub fn evaluate(
         style,
         bpm_delta: into.bpm - out.bpm,
         key_relation,
+        incoming_frame: into.entry_frame(),
+        incoming_frame_scale: self::beat_frames(into.bpm, into.sample_rate)
+            .map_or(1.0, |into_beat| into_beat / beat_frames),
         reasons,
     })
 }
@@ -395,11 +476,129 @@ mod tests {
         out
     }
 
+    /// **The incoming record comes in on a phrase boundary, the next one.**
+    ///
+    /// §27's "where its first strong phrase would align". The mix point on the
+    /// outgoing lane says *when*; this says *what* — and without it a preview
+    /// can draw a record arriving and not which part of it arrives.
+    ///
+    /// Boundaries here are every sixteen beats from frame zero, and the deck is
+    /// cued *half a beat past* the one at beat 16 — the case that separates the
+    /// next boundary from the one the playhead has already gone by. Taking the
+    /// beat the playhead is inside instead would answer beat 16, which is
+    /// behind it: a mix that enters a record before where it is cued.
+    #[test]
+    fn the_incoming_record_enters_on_its_next_phrase_boundary() {
+        let mut into = incoming(BPM, None);
+        into.position = 16.5 * beat();
+
+        let entry = into.entry_frame().expect("a record with phrases has one");
+
+        assert!(
+            (entry - 32.0 * beat()).abs() < 1.0,
+            "expected beat 32 at {}, got {entry}",
+            32.0 * beat()
+        );
+        assert!(
+            entry >= into.position,
+            "the mix cannot enter a record behind where it is cued"
+        );
+    }
+
+    /// A playhead sitting exactly on a boundary is already there; the next
+    /// boundary is the one it is on, not the one after. A DJ who has cued to
+    /// the drop does not want the mix a phrase late.
+    #[test]
+    fn a_deck_cued_exactly_on_a_boundary_enters_there() {
+        let mut into = incoming(BPM, None);
+        into.position = 16.0 * beat();
+
+        let entry = into.entry_frame().expect("a record with phrases has one");
+        assert!((entry - 16.0 * beat()).abs() < 1.0, "got {entry}");
+    }
+
+    /// **No phrase structure is no entry point**, not frame zero. Plenty of
+    /// records have none, and a preview drawn at the top of one would claim
+    /// the mix begins somewhere it does not.
+    #[test]
+    fn a_record_with_no_phrases_has_no_entry_point() {
+        let mut into = incoming(BPM, None);
+        into.phrase = None;
+        assert_eq!(into.entry_frame(), None);
+
+        // And the plan carries the absence rather than a number.
+        let plan = plan(&outgoing(0.0, 400.0), &into).expect("a plan");
+        assert_eq!(plan.incoming_frame, None);
+    }
+
+    /// Nor is a boundary past the end of the file an entry point. A record
+    /// cued near its own end has nothing left to bring in.
+    #[test]
+    fn a_boundary_past_the_end_of_the_record_is_not_an_entry_point() {
+        let mut into = incoming(BPM, None);
+        into.length = 20.0 * beat();
+        into.position = 17.0 * beat();
+        assert_eq!(
+            into.entry_frame(),
+            None,
+            "the next boundary is beat 32, which is past a twenty-beat record"
+        );
+    }
+
+    /// **One beat is one beat.** A preview drawn at the incoming record's own
+    /// frame rate would show its transients drifting against the outgoing's,
+    /// which is exactly what a beatmatched mix does not do. A record at twice
+    /// the tempo fits two of its beats into one of the outgoing's, so half as
+    /// many of its frames fill one of the lane's.
+    #[test]
+    fn the_preview_scale_matches_a_beat_to_a_beat() {
+        let out = outgoing(0.0, 400.0);
+
+        let same = plan(&out, &incoming(BPM, None)).expect("a plan");
+        assert!(
+            (same.incoming_frame_scale - 1.0).abs() < 1e-9,
+            "two records at one tempo need no scaling, got {}",
+            same.incoming_frame_scale
+        );
+
+        let double = plan(&out, &incoming(BPM * 2.0, None)).expect("a plan");
+        assert!(
+            (double.incoming_frame_scale - 0.5).abs() < 1e-9,
+            "expected 0.5, got {}",
+            double.incoming_frame_scale
+        );
+    }
+
+    /// The entry point belongs to the incoming record, so moving the mix
+    /// around the *outgoing* one must not change it. An edit that shifted
+    /// which part of the new record arrives would be an edit doing two things.
+    #[test]
+    fn moving_the_mix_point_does_not_change_what_arrives() {
+        let out = outgoing(0.0, 400.0);
+        let into = incoming(BPM, None);
+        let planned = plan(&out, &into).expect("a plan");
+        let moved = evaluate(
+            &out,
+            &into,
+            planned.start_beat + 16,
+            planned.length_beats,
+            planned.style,
+        )
+        .expect("a re-evaluation");
+
+        assert_eq!(planned.incoming_frame, moved.incoming_frame);
+        assert!(planned.incoming_frame.is_some(), "the fixture has phrases");
+    }
+
     fn incoming(bpm: f64, k: Option<MusicalKey>) -> Incoming {
         Incoming {
+            position: 0.0,
+            length: 300.0 * SR.as_f64(),
             bpm,
             phrase: Phrase::new(16, 0),
             key: k,
+            sample_rate: SR,
+            grid_anchor: 0.0,
         }
     }
 
