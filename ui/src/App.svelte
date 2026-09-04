@@ -1331,7 +1331,12 @@
   {/snippet}
 
   {#snippet surfacePair()}
-    <Pair enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
+    <Pair
+      enabled={ready}
+      {deckCount}
+      decks={snapshot?.decks ?? []}
+      automix={snapshot?.master.automix}
+    />
   {/snippet}
 
   {#snippet surfaceBooth()}

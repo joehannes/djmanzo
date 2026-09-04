@@ -16,6 +16,41 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The automix performs the transition you set up.** Setting one up in the pair
+view used to mean djmanzo *knew* about a mix nothing would ever run: the
+automix went on mixing out of the end of the file, into whichever deck happened
+to be free, at its own length and style. Now, with a transition held, it mixes
+where the planner chose and the DJ approved, into the deck they named, and
+takes on that length and style visibly rather than running something its own
+controls do not describe.
+
+Without one it behaves exactly as before — this is an addition, and the
+module's honest description of its own limit ("mixes out of the end of the
+file, because it cannot hear where the outro is") is now the *fallback* rather
+than the whole story.
+
+**Setting one up still does not hand the mix over.** The pair view says which
+it is: `Automix will run this at 2:10` when the mix has been handed over, and
+`Held, and nothing will run it: automix is off` when it has not. An interface
+that let "set up" imply "will happen" would be lying at the one moment a DJ is
+deciding whether to keep their hands free.
+
+A transition is performed once. After it finishes the playhead is *past* its
+start point for the rest of the record, so a rule that only asks "are we there
+yet" answers yes on every tick from then on — the automix would re-mix into the
+same deck for ever. Adjusting the transition makes it a new intention and it
+can run again, because a DJ who moves a mix point after djmanzo has already
+mixed there is asking for a different mix.
+
+**Fixed: pump tests that asserted the operating system was prompt.** Three
+snapshot-pump tests slept a fixed 50–600 ms and assumed a thread had been
+scheduled in the window. On a loaded macOS runner one had not, and CI went red
+on a machine where nothing was wrong. They wait for the thing to happen now,
+with a deadline long enough that only its absence trips it — and the one that
+failed has its heartbeat pushed out to a minute, because a mutation run showed
+that a generous wait let the *heartbeat* satisfy an assertion about *change
+detection*. A red build that means nothing is worse than no build.
+
 **Fixed: a deck's clock was wrong for any record not at the device's sample
 rate.** A deck's playhead and length are counted in the *file's* frames — the
 engine resamples on the way out, which is why the waveform lines up with the

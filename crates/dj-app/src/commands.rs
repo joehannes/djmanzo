@@ -5844,6 +5844,37 @@ pub fn automix_view(state: &AppState) -> Vec<crate::automix::DeckView> {
         .collect()
 }
 
+/// The transition djmanzo is holding, as the automix needs it.
+///
+/// `None` unless one is held *and* it still describes the records on those
+/// decks — the same check [`transition_current`] makes, for the same reason
+/// and with more at stake: a stale plan drawn on a panel is misleading, and a
+/// stale plan performed is a mix into the wrong record.
+///
+/// Read on every tick rather than pushed when it changes. The transition is
+/// edited from the interface and dropped when a deck is reloaded, and a
+/// pushed copy would be one more thing that can be out of date at the moment
+/// it is acted on.
+#[must_use]
+pub fn automix_setup(state: &AppState) -> Option<crate::automix::Setup> {
+    let held = state.transition()?;
+    if !held.describes(
+        current_track(state, held.outgoing_deck),
+        current_track(state, held.incoming_deck),
+    ) {
+        return None;
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let beats = held.plan.length_beats as f32;
+    Some(crate::automix::Setup {
+        outgoing: held.outgoing_deck,
+        incoming: held.incoming_deck,
+        start: held.plan.start_frame,
+        beats,
+        style: held.plan.style,
+    })
+}
+
 /// Put the automix's own state where the interface can read it.
 ///
 /// Through the parameter registry rather than a command of its own, so it

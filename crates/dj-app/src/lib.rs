@@ -282,6 +282,11 @@ pub fn run() {
                     {
                         let state: tauri::State<'_, AppState> = handle.state();
                         let plan = state.automix().lock().ok().map(|mut mix| {
+                            // The mix a DJ set up, if there is one. Handed in
+                            // on every tick so an adjustment made in the pair
+                            // view is in force on the next frame -- see
+                            // `automix::Automix::follow`.
+                            mix.follow(crate::commands::automix_setup(&state));
                             let plan = mix.tick(&crate::commands::automix_view(&state));
                             crate::commands::publish_automix(&state, &mix);
                             plan

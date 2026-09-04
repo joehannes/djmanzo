@@ -86,7 +86,39 @@ test.describe("the pair view", () => {
 
     await page.getByRole("button", { name: "Set up", exact: true }).click();
     await expect(move.getByRole("button", { name: "+4" })).toBeEnabled();
-    await expect(page.locator(`${PAIR} .hint`)).toHaveCount(0);
+  });
+
+  /**
+   * **Setting a transition up does not hand the mix over.**
+   *
+   * Holding one and performing one are different things, and the panel has to
+   * say which. With the automix off nothing will run it — an interface that
+   * let "set up" imply "will happen" would be lying at the one moment a DJ is
+   * deciding whether to keep their hands free.
+   */
+  test("it says nothing will run the transition while automix is off", async ({
+    page,
+  }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+
+    await expect(page.locator(`${PAIR} .hint`)).toContainText("automix is off");
+  });
+
+  /** And when the mix *has* been handed over, it says what will happen. */
+  test("with automix on it says when it will run", async ({ page }) => {
+    await openShell(page, "/", {
+      automix: { enabled: true, mixing: false, beats: 16.0, style: "blend" },
+    });
+    await page.getByRole("button", { name: "Pair", exact: true }).click();
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+
+    const hint = page.locator(`${PAIR} .hint`);
+    await expect(hint).toContainText("Automix will run this at");
+    await expect(
+      hint,
+      "it does not say when, which is the whole of what a DJ needs from the line",
+    ).toContainText("2:34");
   });
 
   /**

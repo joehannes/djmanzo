@@ -49,6 +49,7 @@
     transitionReplan,
     TRANSITION_STYLES,
     TRANSITION_HELP,
+    type AutomixState,
     type DeckState,
     type PairSide,
     type Transition,
@@ -58,11 +59,17 @@
     enabled,
     deckCount = 2,
     decks = [],
+    automix,
   }: {
     enabled: boolean;
     deckCount?: number;
     /** Live deck state, so the pair can follow whatever is playing. */
     decks?: DeckState[];
+    /**
+     * The automix, because whether anything *performs* a set-up transition
+     * depends on it. Setting one up holds it; it does not hand the mix over.
+     */
+    automix?: AutomixState;
   } = $props();
 
   const deckNumbers = $derived(Array.from({ length: deckCount }, (_, i) => i + 1));
@@ -388,8 +395,26 @@
             {/each}
           </div>
         </div>
+        <!--
+          What happens next, said plainly.
+
+          Setting a transition up holds it; it does not hand the mix over. If
+          the automix is off, nothing will perform it and this has to say so —
+          an interface that let "set up" imply "will happen" would be lying at
+          the one moment a DJ is deciding whether to keep their hands free.
+        -->
         {#if !pair.armed}
           <p class="hint">Set it up to adjust it. Until then this is an opinion, and nothing is held.</p>
+        {:else if automix?.enabled}
+          <p class="hint on">
+            Automix will run this at {formatTime(pair.start_seconds)} — {pair.style} over
+            {pair.length_beats} beats.
+          </p>
+        {:else}
+          <p class="hint">
+            Held, and nothing will run it: automix is off. Yours to perform, or
+            hand the mix over in the booth.
+          </p>
         {/if}
       </section>
       {@render record(pair.incoming, 1, pair)}
@@ -649,6 +674,11 @@
   .group button:disabled {
     opacity: 0.45;
     cursor: default;
+  }
+
+  /* The one line that says what djmanzo is about to do on its own. */
+  .hint.on {
+    color: var(--accent);
   }
 
   .empty,

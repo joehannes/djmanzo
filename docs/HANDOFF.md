@@ -172,11 +172,11 @@ The largest open sections, in the order they are worth doing:
    ghost track, and answering "what will happen if I do it". The transition
    object §27 was waiting on now exists, and the pair view already draws a mix
    point on a waveform lane; what is missing is manipulating it there.
-3. **§68's remaining half.** The object ships and the pair view reads it — but
-   the automix, the autopilot and replay each still plan their own transition
-   rather than performing the one djmanzo is holding, which is the unification
-   §68 is actually asking for. Its stem, EQ and FX plans are absent because
-   nothing yet decides them; a field that is always empty is a promise.
+3. **§68's remaining readers.** The object ships, the pair view reads it and
+   the **automix performs it**. The autopilot and replay still plan their own,
+   which is the rest of the unification §68 asks for. Its stem, EQ and FX plans
+   are absent because nothing yet decides them; a field that is always empty is
+   a promise.
 4. **§20's last view** — the compact cards. Set Flow and the pair view ship;
    the performance table is the browser at fewer columns than §20 lists.
 5. **§74, the contextual rail.**

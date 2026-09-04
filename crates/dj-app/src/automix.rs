@@ -95,6 +95,33 @@ impl DeckView {
     }
 }
 
+/// A transition a person set up, for the automix to perform.
+///
+/// The flat form of [`crate::transition::Transition`] — §68's transition
+/// object — carrying only what a transition needs to be *run*. The object
+/// itself knows why it is where it is; this is the part the state machine
+/// acts on, and it is a plain `Copy` struct so the automix never reaches back
+/// into application state from inside a tick.
+///
+/// # What it changes
+///
+/// Without one the automix mixes out of the **end of the file**, which is the
+/// honest thing it can do knowing nothing: it cannot hear where the outro is.
+/// With one it mixes where the planner said — a phrase boundary with a tail
+/// margin, or wherever the DJ moved it to — into the deck the DJ named, for
+/// the length and in the style they chose. The mix djmanzo performs becomes
+/// the mix on screen.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Setup {
+    pub outgoing: DeckId,
+    pub incoming: DeckId,
+    /// Where the mix begins in the outgoing record, in **its own** frames --
+    /// the same frames [`DeckView::position`] is counted in.
+    pub start: f64,
+    pub beats: f32,
+    pub style: TransitionStyle,
+}
+
 /// What the automix wants to happen.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Plan {
@@ -143,6 +170,18 @@ pub struct Automix {
     phase: Phase,
     /// Set by `automix now`, consumed on the next tick.
     forced: bool,
+    /// The transition a person has set up, if there is one. Handed in on every
+    /// tick rather than stored by the caller, so it follows what the DJ is
+    /// adjusting without this having to be told twice.
+    setup: Option<Setup>,
+    /// The setup already performed.
+    ///
+    /// Without this a transition would run for ever: after it finishes, the
+    /// playhead is *past* its start point, and a rule that only asks "are we
+    /// there yet" says yes on every tick for the rest of the record. Cleared
+    /// as soon as a different setup arrives, because an adjusted transition is
+    /// a new intention.
+    spent: Option<Setup>,
     /// The last fader value written to each deck, so a tick that would change
     /// nothing sends nothing. A transition at 60 Hz is otherwise several
     /// hundred actions through the queue for no audible benefit.
@@ -164,6 +203,8 @@ impl Automix {
             beats: DEFAULT_BEATS,
             phase: Phase::Watching,
             forced: false,
+            setup: None,
+            spent: None,
             written: [None; dj_core::MAX_DECKS],
         }
     }
@@ -187,6 +228,25 @@ impl Automix {
     #[must_use]
     pub fn is_mixing(&self) -> bool {
         matches!(self.phase, Phase::Mixing { .. })
+    }
+
+    /// Hand in the transition a person has set up, or `None` for none.
+    ///
+    /// Called on every tick with whatever djmanzo is currently holding. Doing
+    /// it that way rather than storing a copy means an adjustment made in the
+    /// pair view is in force on the next frame, and a transition dropped
+    /// because a deck was reloaded stops being followed on the same one.
+    pub fn follow(&mut self, setup: Option<Setup>) {
+        if self.spent.is_some() && self.spent != setup {
+            self.spent = None;
+        }
+        self.setup = setup;
+    }
+
+    /// The transition still waiting to be performed out of `outgoing`.
+    fn pending_from(&self, outgoing: DeckId) -> Option<Setup> {
+        self.setup
+            .filter(|s| Some(*s) != self.spent && s.outgoing == outgoing)
     }
 
     /// Apply a change from the action vocabulary.
@@ -250,14 +310,29 @@ impl Automix {
         };
         let span = self.span_frames(&outgoing);
         let lead = PRELOAD_SECONDS * outgoing.sample_rate;
+        let setup = self.pending_from(outgoing.id);
 
+        // A transition someone set up names its own moment. Without one the
+        // handover point is the end of the file, which is all this can know by
+        // itself -- see the module note about not knowing where the outro is.
+        let near = match setup {
+            Some(s) => outgoing.position + lead >= s.start,
+            None => outgoing.remaining() <= span + lead,
+        };
         // `forced` skips the wait but not the load: there still has to be a
         // track to mix into.
-        if !self.forced && outgoing.remaining() > span + lead {
+        if !self.forced && !near {
             return;
         }
 
-        let Some(incoming) = free_deck(decks, outgoing.id) else {
+        // And it names the deck. `free_deck` picks the lowest idle one, which
+        // on a four-deck rig is not necessarily the deck the DJ was looking at
+        // when they set the mix up.
+        let destination = match setup {
+            Some(s) => Some(s.incoming),
+            None => free_deck(decks, outgoing.id),
+        };
+        let Some(incoming) = destination else {
             // Nowhere to go. Not an error — a two-deck rig with both decks
             // playing is a DJ who is already mixing.
             self.forced = false;
@@ -300,7 +375,14 @@ impl Automix {
             // happen without automix too.
             return;
         }
-        if self.forced || out.remaining() <= self.span_frames(&out) {
+        let due = match self
+            .pending_from(outgoing)
+            .filter(|s| s.incoming == incoming)
+        {
+            Some(s) => out.position >= s.start,
+            None => out.remaining() <= self.span_frames(&out),
+        };
+        if self.forced || due {
             self.begin(out, incoming, decks, plan);
         }
     }
@@ -308,6 +390,23 @@ impl Automix {
     /// Open the transition.
     fn begin(&mut self, outgoing: DeckView, incoming: DeckId, decks: &[DeckView], plan: &mut Plan) {
         self.forced = false;
+
+        // Performing a set-up transition *becomes* the automix's style and
+        // length rather than overriding them for one mix. Visibly: the automix
+        // panel shows what is about to happen, which is the point -- a machine
+        // quietly running something other than what its own controls say is
+        // how a DJ learns to stop reading them. And `mix` and `finish` read
+        // `self.style` as the transition runs, so a per-mix override would
+        // have to be threaded through both anyway.
+        if let Some(s) = self
+            .pending_from(outgoing.id)
+            .filter(|s| s.incoming == incoming)
+        {
+            self.style = s.style;
+            self.beats = s.beats.clamp(MIN_BEATS, MAX_BEATS);
+            self.spent = Some(s);
+        }
+
         let span = self.span_frames(&outgoing);
 
         // Take the crossfader out of the question — see the module note.
@@ -581,6 +680,165 @@ mod tests {
 
     fn has(plan: &Plan, needle: &str) -> bool {
         text(plan).iter().any(|a| a == needle)
+    }
+
+    /// A transition set up out of deck 1 into deck 2, starting 30 seconds in.
+    ///
+    /// Half a minute into a one-minute record: nowhere near the end of the
+    /// file, which is the only moment the automix would have chosen by itself.
+    /// That gap is the whole point of the fixture — a test whose set-up point
+    /// happened to be where the automix was going anyway would pass without
+    /// any of this code existing.
+    fn setup(style: TransitionStyle, beats: f32) -> Setup {
+        Setup {
+            outgoing: deck(1),
+            incoming: deck(2),
+            start: 30.0 * SR,
+            beats,
+            style,
+        }
+    }
+
+    /// **The mix happens where the DJ set it up, not at the end of the file.**
+    ///
+    /// The load-bearing test of the whole feature. Without a setup the automix
+    /// begins when the outgoing record has a transition's worth left, because
+    /// that is all it can know by itself. With one it begins at the point the
+    /// planner chose and the DJ approved — which is the difference between a
+    /// machine that fills gaps and one that performs the mix on screen.
+    #[test]
+    fn it_mixes_where_the_transition_was_set_up() {
+        let mut mix = on(TransitionStyle::Fade);
+        mix.follow(Some(setup(TransitionStyle::Fade, 16.0)));
+
+        // Twenty seconds in: past the preload lead, before the mix point.
+        let early = mix.tick(&[playing(1, 20.0), loaded_idle(2)]);
+        assert!(
+            !mix.is_mixing(),
+            "it started ten seconds before the point it was given: {:?}",
+            text(&early)
+        );
+
+        let due = mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+        assert!(
+            mix.is_mixing(),
+            "it did not start at the set-up point: {:?}",
+            text(&due)
+        );
+        assert!(has(&due, "deck 2 play"));
+    }
+
+    /// The style and the length come from the transition, and the automix
+    /// takes them on rather than running something else quietly.
+    #[test]
+    fn performing_a_transition_adopts_its_style_and_length() {
+        let mut mix = on(TransitionStyle::Fade);
+        mix.apply(AutomixChange::Beats(16.0), &[]);
+        mix.follow(Some(setup(TransitionStyle::Blend, 32.0)));
+
+        mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+
+        assert_eq!(mix.style(), TransitionStyle::Blend);
+        assert!((mix.beats() - 32.0).abs() < f32::EPSILON);
+    }
+
+    /// **A transition is performed once.**
+    ///
+    /// After it finishes, the playhead is *past* the start point for the rest
+    /// of the record, so a rule that only asks "are we there yet" answers yes
+    /// on every tick from then on — the automix would re-mix into the same
+    /// deck for ever. Found by reasoning about the shape rather than by
+    /// running it, and then pinned here.
+    #[test]
+    fn a_transition_that_has_run_does_not_run_again() {
+        let mut mix = on(TransitionStyle::Fade);
+        let held = setup(TransitionStyle::Fade, 16.0);
+        mix.follow(Some(held));
+
+        mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+        assert!(mix.is_mixing());
+        // Run it out. Sixteen beats at 120 BPM is eight seconds.
+        for tenths in 300..=400 {
+            let seconds = f64::from(tenths) / 10.0;
+            mix.follow(Some(held));
+            mix.tick(&[playing(1, seconds), playing(2, seconds - 30.0)]);
+        }
+        assert!(!mix.is_mixing(), "the transition never finished");
+
+        // Well past the start point, still holding the same transition.
+        mix.follow(Some(held));
+        let after = mix.tick(&[playing(1, 45.0), loaded_idle(2)]);
+        assert!(
+            !mix.is_mixing(),
+            "it performed the same transition twice: {:?}",
+            text(&after)
+        );
+    }
+
+    /// Adjusting the transition makes it a new intention, so it can run again.
+    /// A DJ who moves a mix point after djmanzo has already mixed there is
+    /// asking for a different mix, not repeating themselves.
+    #[test]
+    fn an_adjusted_transition_can_run_again() {
+        let mut mix = on(TransitionStyle::Fade);
+        mix.follow(Some(setup(TransitionStyle::Fade, 16.0)));
+        mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+        assert!(mix.is_mixing());
+        for tenths in 300..=400 {
+            let seconds = f64::from(tenths) / 10.0;
+            mix.tick(&[playing(1, seconds), playing(2, seconds - 30.0)]);
+        }
+
+        // The same records, a later mix point.
+        let moved = Setup {
+            start: 45.0 * SR,
+            ..setup(TransitionStyle::Fade, 16.0)
+        };
+        mix.follow(Some(moved));
+        mix.tick(&[playing(1, 45.0), loaded_idle(2)]);
+        assert!(mix.is_mixing(), "a moved transition was treated as spent");
+    }
+
+    /// **It mixes into the deck the transition names.**
+    ///
+    /// With four decks up, the lowest idle one is not necessarily the one the
+    /// DJ was looking at when they set the mix up. Left alone the automix
+    /// would take deck 2 here; the transition says deck 4.
+    #[test]
+    fn it_mixes_into_the_deck_the_transition_names() {
+        let mut mix = on(TransitionStyle::Fade);
+        mix.follow(Some(Setup {
+            incoming: deck(4),
+            ..setup(TransitionStyle::Fade, 16.0)
+        }));
+
+        let plan = mix.tick(&[
+            playing(1, 30.0),
+            loaded_idle(2),
+            loaded_idle(3),
+            loaded_idle(4),
+        ]);
+
+        assert!(
+            has(&plan, "deck 4 play"),
+            "it mixed into some other deck: {:?}",
+            text(&plan)
+        );
+    }
+
+    /// With nothing set up it behaves exactly as it did: mixing out of the end
+    /// of the file. The feature is an addition, not a replacement.
+    #[test]
+    fn without_a_transition_it_still_mixes_out_of_the_end() {
+        let mut mix = on(TransitionStyle::Fade);
+        mix.follow(None);
+        mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+        assert!(
+            !mix.is_mixing(),
+            "it started mid-record with no transition set up"
+        );
+        mix.tick(&[playing(1, 52.0), loaded_idle(2)]);
+        assert!(mix.is_mixing(), "it no longer mixes out of the end");
     }
 
     #[test]
