@@ -37,7 +37,9 @@
     POSTURE_HELP,
     type AssistantPack,
     type LearnedTaste,
+    sessionRead,
     type Conduct,
+    type Night,
   } from "./api";
   import { onMount } from "svelte";
   import Coach from "./Coach.svelte";
@@ -46,8 +48,35 @@
   let { enabled }: { enabled: boolean } = $props();
 
   let conduct = $state<Conduct | null>(null);
+  /**
+   * What djmanzo makes of the night, from the records that have been played.
+   *
+   * `null` until the night has a shape — three analysed records — and the
+   * panel says that rather than drawing an empty phase.
+   */
+  let night = $state<Night | null>(null);
   let packs = $state<AssistantPack[]>([]);
   let error = $state<string | null>(null);
+
+  /**
+   * How often the night is re-read.
+   *
+   * Every fifteen seconds. The reading only changes when a record has been
+   * played to the room — thirty seconds into it, which is when it counts —
+   * so anything faster asks the same question of the same evidence, and
+   * anything slower means the panel is stale in a way a DJ would notice at
+   * exactly the moment the set turns.
+   */
+  const NIGHT_EVERY_MS = 15_000;
+
+  /** What each phase is called, in the words a DJ would use for it. */
+  const PHASE_LABEL: Record<string, string> = {
+    warm_up: "Warming up",
+    heat: "Building",
+    peak: "Peak",
+    cooldown: "Coming down",
+    chill_out: "Chill-out",
+  };
   /**
    * What the history says this DJ reaches for.
    *
@@ -92,9 +121,32 @@
       }
     })();
     void refresh();
+    void readNight();
     const timer = setInterval(() => void refresh(), REFRESH_MS);
-    return () => clearInterval(timer);
+    // Its own timer rather than a ride on the conduct refresh: the two ask
+    // different questions of different things, at rates set by how often each
+    // can actually change.
+    const nightly = setInterval(() => void readNight(), NIGHT_EVERY_MS);
+    return () => {
+      clearInterval(timer);
+      clearInterval(nightly);
+    };
   });
+
+  /**
+   * Ask what the night is doing.
+   *
+   * A failure leaves the last reading rather than blanking it: the night did
+   * not stop having a shape because one call did not come back, and a panel
+   * that flickers to "not enough yet" and back is worse than one that lags.
+   */
+  async function readNight() {
+    try {
+      night = await sessionRead();
+    } catch {
+      // Deliberately quiet, and deliberately not clearing `night`.
+    }
+  }
 
   async function choose(action: () => Promise<void>) {
     try {
@@ -183,6 +235,42 @@
     {/each}
   </select>
 
+  <!--
+    What the night *is* is a decision the DJ makes; what it is *doing* is a
+    reading of the records that have been played. They sit together because
+    the interesting statement is the pair of them: a room set up as a warm-up
+    whose last three records are at the night's own ceiling is worth noticing,
+    and neither line says it alone.
+  -->
+  <h3>What it is doing</h3>
+  {#if night}
+    <div class="night">
+      <div class="night-line">
+        <span class="phase">{PHASE_LABEL[night.phase] ?? night.phase}</span>
+        <span
+          class="energy"
+          title="{Math.round(night.energy * 100)}% — the energy of the last few records, against the night's own range"
+          aria-label="Energy {Math.round(night.energy * 100)} percent"
+        >
+          <span class="fill" style:scale="{night.energy.toFixed(3)} 1"></span>
+        </span>
+        <span class="how-sure">
+          {night.records} records · {Math.round(night.confidence * 100)}% sure
+        </span>
+      </div>
+      <ul class="why">
+        {#each night.because as reason (reason)}
+          <li>{reason}</li>
+        {/each}
+      </ul>
+    </div>
+  {:else}
+    <p class="hint">
+      Not enough of the night yet. Three analysed records in, djmanzo will say
+      what it makes of the shape — and until then it is not going to guess.
+    </p>
+  {/if}
+
   {#if packs.length}
     <h3>Or start from one of these</h3>
     <div class="packs">
@@ -242,6 +330,63 @@
 </section>
 
 <style>
+  .night {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .night-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .phase {
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .energy {
+    flex: 1;
+    min-width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--control);
+    overflow: hidden;
+  }
+
+  .energy .fill {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: var(--accent);
+    transform-origin: left center;
+  }
+
+  .how-sure {
+    font-size: 0.68rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .why {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .why li {
+    font-size: 0.68rem;
+    color: var(--muted);
+    background: var(--control);
+    border-radius: 3px;
+    padding: 0 0.3rem;
+  }
+
   .conduct {
     display: flex;
     flex-direction: column;

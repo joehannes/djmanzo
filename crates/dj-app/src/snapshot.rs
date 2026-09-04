@@ -522,7 +522,7 @@ impl Snapshot {
             bridge,
             analysis,
             Names::default(),
-            None,
+            Live::default(),
         )
     }
 
@@ -534,8 +534,9 @@ impl Snapshot {
         bridge: Option<&dj_audio::BridgeStats>,
         analysis: Option<&crate::analysis::AnalysisStore>,
         titles: Names<'_>,
-        recording: Option<&crate::setrec::RecordingState>,
+        live: Live<'_>,
     ) -> Self {
+        let recording = live.recording;
         let names = titles.decks.and_then(|t| t.lock().ok());
         let sample_names = titles.samples.and_then(|t| t.lock().ok());
         // Read once, before the slots: the names are keyed by bank, and reading
@@ -725,12 +726,19 @@ impl Snapshot {
                 }
             })
             .collect();
-        // Measured, and only measured. `session` stays `None` until M9 has
-        // something that actually reads the room -- see `dj_core::context`.
+        // Two different kinds of fact, and the split is the point. The audio is
+        // measured off the master bus every frame and is always true. The
+        // session read is the context engine's judgement about the *night*, and
+        // it is `None` until enough records have been played for the night to
+        // have a shape -- see `crate::context`, which will not guess.
         let bands = GlobalParam::BANDS.map(|param| registry.get(ParamId::Global(param)));
         let context = SessionContext {
             audio: dj_core::AudioMetrics::from_bands(bands),
-            session: None,
+            session: live.night.and_then(|night| {
+                night.read(u32::from(
+                    dj_assistant::room::hour_of(std::time::SystemTime::now()).unwrap_or(0),
+                ))
+            }),
         };
 
         Self {
@@ -908,6 +916,21 @@ pub struct Names<'a> {
     pub samples: Option<&'a SampleNames>,
 }
 
+/// The application's own live state, for the parts of a snapshot the parameter
+/// registry cannot answer.
+///
+/// Grouped for the reason [`Names`] is: `capture_all` had six arguments and
+/// three of them were `Option`s, which is where a caller passes two in the
+/// wrong order and the compiler cannot help. Both of these are read every
+/// frame and neither is behind a lock, so a snapshot costs the same as it did.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Live<'a> {
+    /// The set recording's counters. See [`crate::setrec::RecordingState`].
+    pub recording: Option<&'a crate::setrec::RecordingState>,
+    /// What the context engine has made of the night. See [`crate::context`].
+    pub night: Option<&'a crate::context::NightState>,
+}
+
 /// Everything the pump reads besides the registry.
 ///
 /// One struct rather than four parameters: `run` had grown to eight arguments,
@@ -921,6 +944,8 @@ pub struct Sources {
     pub samples: Option<Arc<SampleNames>>,
     /// The set recording's counters. See [`crate::setrec::RecordingState`].
     pub recording: Option<Arc<crate::setrec::RecordingState>>,
+    /// What the context engine has made of the night. See [`crate::context`].
+    pub night: Option<Arc<crate::context::NightState>>,
 }
 
 /// A running snapshot pump. Stops when dropped.
@@ -980,6 +1005,7 @@ impl SnapshotPump {
             tracks,
             samples,
             recording,
+            night,
         } = sources;
         let alive = Arc::new(AtomicBool::new(true));
         let thread = {
@@ -1003,7 +1029,10 @@ impl SnapshotPump {
                                 decks: tracks.as_deref(),
                                 samples: samples.as_deref(),
                             },
-                            recording.as_deref(),
+                            Live {
+                                recording: recording.as_deref(),
+                                night: night.as_deref(),
+                            },
                         );
                         let changed = previous.as_ref() != Some(&snapshot);
 
@@ -1400,7 +1429,7 @@ mod tests {
                 samples: Some(&samples),
                 ..Default::default()
             },
-            None,
+            Live::default(),
         );
         let slots = &snapshot.master.sampler.slots;
         assert_eq!(snapshot.master.sampler.bank, 2);
@@ -1439,7 +1468,7 @@ mod tests {
                 decks: Some(&tracks),
                 ..Default::default()
             },
-            None,
+            Live::default(),
         );
         assert_eq!(snapshot.decks[0].title.as_deref(), Some("Suavemente"));
         assert_eq!(snapshot.decks[0].artist.as_deref(), Some("Elvis Crespo"));
@@ -1475,7 +1504,7 @@ mod tests {
                 decks: Some(&tracks),
                 ..Default::default()
             },
-            None,
+            Live::default(),
         );
         assert_eq!(snapshot.decks[0].title.as_deref(), Some("untitled.wav"));
         assert!(snapshot.decks[0].artist.is_none());

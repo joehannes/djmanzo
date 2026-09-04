@@ -28,6 +28,7 @@ pub mod brand;
 pub mod clock;
 pub mod cockpit;
 pub mod commands;
+pub mod context;
 pub mod control;
 pub mod grid;
 pub mod host;
@@ -121,6 +122,9 @@ pub fn run() {
     let deck_tracks = state.deck_tracks();
     let sample_names = state.sample_names();
     let recording_state = state.recording_state();
+    // What the context engine has made of the night, read by the pump on every
+    // frame and written once a record. See `crate::context`.
+    let night = Arc::clone(state.night());
     // The snapshot pump is where a hot cue change becomes visible to the host:
     // the engine sets cues at a playhead quantize may have moved, so the only
     // reliable reading is the one the audio thread publishes. See
@@ -272,6 +276,7 @@ pub fn run() {
                     tracks: Some(deck_tracks),
                     samples: Some(sample_names),
                     recording: Some(recording_state),
+                    night: Some(night),
                 },
                 move |snapshot| {
                     use tauri::Emitter;
@@ -298,14 +303,20 @@ pub fn run() {
                         }
                     }
                     save_changed_cues(&snapshot, &watched_tracks, &cue_watcher, &library_writer);
-                    record_plays(
+                    // The night's evidence arrives one record at a time, which
+                    // is also the only moment its shape can change -- see
+                    // `AppState::record_played`.
+                    for record in record_plays(
                         &snapshot,
                         &watched_tracks,
                         &play_watcher,
                         &session_id,
                         &library_writer,
                         &pump_audience,
-                    );
+                    ) {
+                        let state: tauri::State<'_, AppState> = handle.state();
+                        state.record_played(record);
+                    }
                     // A fixture for the interface's layout budget, captured
                     // from the running application rather than rebuilt from a
                     // bare parameter registry.
@@ -433,6 +444,7 @@ pub fn run() {
             commands::transition_adjust,
             commands::transition_replan,
             commands::transition_clear,
+            commands::session_read,
             commands::session_save,
             commands::session_open,
             commands::session_diff,
@@ -582,9 +594,10 @@ fn record_plays(
     session: &str,
     writer: &persist::LibraryWriter,
     audience: &Arc<audience::Audience>,
-) {
+) -> Vec<context::Played> {
+    let mut played_now = Vec::new();
     let Ok(mut watcher) = watcher.lock() else {
-        return;
+        return played_now;
     };
     // One reading for the whole pass, so every deck measures the same instant
     // and two decks cannot disagree about how long a frame took. Monotonic, so
@@ -631,8 +644,17 @@ fn record_plays(
             {
                 tracing::debug!(id, ?name, "a request was played");
             }
+            // And the moment it becomes evidence about the night. What the
+            // analyser found about this record is already on the snapshot, so
+            // the context engine is fed from the same reading the interface is
+            // drawing rather than from a second trip to the library.
+            played_now.push(context::Played {
+                bpm: deck.analysis.as_ref().and_then(|a| a.bpm).map(f64::from),
+                lufs: deck.analysis.as_ref().and_then(|a| a.lufs).map(f64::from),
+            });
         }
     }
+    played_now
 }
 
 /// How a loaded track is named when it is matched against what the room asked

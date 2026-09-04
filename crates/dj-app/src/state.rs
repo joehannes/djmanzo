@@ -122,6 +122,13 @@ pub struct AppState {
     /// subdirectory to find where you started is the sort of implicit
     /// coupling that breaks silently the first time either path moves.
     config_dir: Mutex<Option<std::path::PathBuf>>,
+    /// What the night is doing, and what it is doing it from.
+    ///
+    /// Two halves on purpose. The engine holds the evidence and is written
+    /// once a record, behind a lock; `night` is what it concluded, read by the
+    /// snapshot pump sixty times a second without one. See [`crate::context`].
+    context: Arc<Mutex<crate::context::Engine>>,
+    night: Arc<crate::context::NightState>,
     /// The mix that is set up, if one is. See [`crate::transition`].
     ///
     /// One at a time, and here rather than in the interface for the same
@@ -415,6 +422,8 @@ impl AppState {
             layout_dir: Mutex::new(None),
             mapping_draft: Mutex::new(dj_hid::editor::Draft::new("My mapping", String::new())),
             config_dir: Mutex::new(None),
+            context: Arc::new(Mutex::new(crate::context::Engine::new())),
+            night: Arc::new(crate::context::NightState::new()),
             transition: Mutex::new(None),
             recording: Mutex::new(None),
             recording_state: Arc::new(crate::setrec::RecordingState::default()),
@@ -662,6 +671,39 @@ impl AppState {
     #[must_use]
     pub fn layout_dir(&self) -> Option<std::path::PathBuf> {
         self.layout_dir.lock().ok()?.clone()
+    }
+
+    // -- the night ---------------------------------------------------------
+
+    /// What the context engine has concluded, for the snapshot to publish.
+    #[must_use]
+    pub fn night(&self) -> &Arc<crate::context::NightState> {
+        &self.night
+    }
+
+    /// Note a record played to the room, and re-read the night.
+    ///
+    /// The read happens here rather than on the pump because this is the only
+    /// moment the answer can change: a night's shape is made of records, and
+    /// nothing between one record and the next adds evidence. Sixty reads a
+    /// second of an answer that changes once a track would be the same answer
+    /// arrived at 10,000 times.
+    pub fn record_played(&self, record: crate::context::Played) {
+        let Ok(mut engine) = self.context.lock() else {
+            return;
+        };
+        engine.played(record);
+        let hour =
+            u32::from(dj_assistant::room::hour_of(std::time::SystemTime::now()).unwrap_or(0));
+        self.night.publish(engine.read(hour).as_ref());
+    }
+
+    /// The night's reading with its reasoning, for a panel that explains it.
+    #[must_use]
+    pub fn read_night(&self) -> Option<crate::context::Reading> {
+        let hour =
+            u32::from(dj_assistant::room::hour_of(std::time::SystemTime::now()).unwrap_or(0));
+        self.context.lock().ok()?.read(hour)
     }
 
     // -- the mix that is set up --------------------------------------------

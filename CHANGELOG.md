@@ -16,6 +16,35 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**djmanzo reads the night** — the directive's §11, first half. `dj_app::context`
+works out what the set is doing from the records that have actually been played:
+their loudness and their tempo, compared against the night's own range rather
+than against a table of genres. It publishes a phase, an energy, a confidence
+and its typed reasons on every snapshot, and the assistant panel draws them
+beside the occasion — so what the DJ declared the night is, and what the records
+say it is doing, sit together.
+
+`SessionContext.session` had been the literal value `None` since it was
+written, with a comment saying it would stay that way until something actually
+read the room. It is read now, and the living interface's energy comes from the
+night rather than from the master meter — the meter says what the mixer is
+doing, and pulling the bass out for eight bars is not the room cooling down.
+
+**It will not guess.** Under three analysed records the answer is still `None`,
+because a night with two records in it has no shape: they can only rise or
+fall, and either reading would be one record's mastering away from the
+opposite. The panel says so in those terms. This is the same field that was
+once defaulted to *Peak at 0.95*, so the interface announced peak time thirty
+seconds into a warm-up.
+
+**And it does not twitch.** An ambiguous stretch keeps the phase it had rather
+than falling back to a default — the interface morphs to this, and a phase
+flickering between *Heat* and *Peak* while a DJ was looking at it would be
+worse than one that lags. The density bands settle for the same reason.
+
+Verified in the running application: three records into a flat demo set the
+panel read *Warming up · holding at 22% · 3 records · 25% sure*.
+
 **The automix performs the transition you set up.** Setting one up in the pair
 view used to mean djmanzo *knew* about a mix nothing would ever run: the
 automix went on mixing out of the end of the file, into whichever deck happened

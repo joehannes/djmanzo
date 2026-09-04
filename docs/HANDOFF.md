@@ -166,8 +166,13 @@ eventually disagree.
 
 The largest open sections, in the order they are worth doing:
 
-1. **§11, the context engine** — the room, the night, the phase. Phase 5 of
-   `GUI-OVERHAUL.md`, and what §9, §12, §14 and §17 all wait on.
+1. **§11, the context engine.** The night half ships: `dj_app::context` reads
+   the phase and the energy off the records that have been played, publishes
+   them on every snapshot, and says how sure it is and why. What remains is the
+   *unification* §11 is really asking for — the occasion, the hardware, the
+   audience, the DJ's own behaviour, the attention budget and the performance
+   health are still six separate types nobody assembles, so §9, §12, §14 and
+   §17 still each reach for their own. Phase 5 of `GUI-OVERHAUL.md`.
 2. **§25–§27, the waveform as instrumentation** — direct manipulation, the
    ghost track, and answering "what will happen if I do it". The transition
    object §27 was waiting on now exists, and the pair view already draws a mix

@@ -1382,7 +1382,10 @@ pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
             decks: Some(&tracks),
             samples: Some(&samples),
         },
-        Some(&recording),
+        crate::snapshot::Live {
+            recording: Some(&recording),
+            night: Some(state.night()),
+        },
     )
 }
 
@@ -3599,6 +3602,63 @@ pub fn session_diff(first: String, second: String) -> Result<Vec<DivergenceLineD
         });
     }
     Ok(out)
+}
+
+/// What the night is doing, and why.
+///
+/// `None` from [`session_read`] while the night has no shape yet — which is a
+/// real answer and not an error. See [`crate::context`].
+#[derive(Debug, Clone, Serialize)]
+pub struct NightDto {
+    /// `warm_up`, `heat`, `peak`, `cooldown` or `chill_out`.
+    pub phase: String,
+    /// 0..=1, the energy of the recent stretch.
+    pub energy: f32,
+    /// 0..=1. How much evidence is behind the reading, not how strongly it is
+    /// held. A DJ reading "peak" off three records should be told it is three.
+    pub confidence: f64,
+    /// How many measured records it is drawn from.
+    pub records: usize,
+    /// Short phrases, as the planner's and the suggester's are.
+    pub because: Vec<String>,
+}
+
+/// What the context engine makes of the night.
+///
+/// Asked for rather than pushed: the reading changes once a record, and the
+/// panel that draws it is not always open. The *result* rides the snapshot —
+/// `context.session` — because the living interface morphs to it on every
+/// frame; this is the same reading with its reasoning attached, for the panel
+/// that has to explain it.
+#[tauri::command]
+pub fn session_read(state: State<'_, AppState>) -> Option<NightDto> {
+    let reading = state.read_night()?;
+    Some(NightDto {
+        phase: reading.read.phase.name().to_owned(),
+        energy: reading.read.energy,
+        confidence: reading.confidence,
+        records: reading.records,
+        because: reading.because.iter().map(describe_night_reason).collect(),
+    })
+}
+
+/// Render one reason for the interface. Terse, like the planner's.
+///
+/// Energies as percentages rather than as `0.42`: the number is a judgement on
+/// a scale nobody has seen, and a percentage at least says which way is up.
+fn describe_night_reason(reason: &crate::context::Because) -> String {
+    use crate::context::Because;
+    let pct = |value: f64| format!("{:.0}%", value * 100.0);
+    match reason {
+        Because::Rising { from, to } => format!("rising · {} → {}", pct(*from), pct(*to)),
+        Because::Falling { from, to } => format!("easing · {} → {}", pct(*from), pct(*to)),
+        Because::Holding { at } => format!("holding at {}", pct(*at)),
+        Because::NearThePeak { energy } => {
+            format!("at the night's own ceiling ({})", pct(*energy))
+        }
+        Because::TempoRising { from, to } => format!("tempo {from:.0} → {to:.0} BPM"),
+        Because::TempoFalling { from, to } => format!("tempo {from:.0} → {to:.0} BPM"),
+    }
 }
 
 /// One record of a pair, as the pair view draws it.

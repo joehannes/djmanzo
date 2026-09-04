@@ -678,7 +678,7 @@ Vertical slices, each shippable, each green before the next:
 | ~~**2**~~ | ADR-0008 W3 + dock manager. *New shell, old functionality.* | **done** — the deck renders from the widget tree; surfaces dock; `ui/e2e/docks.spec.ts` enforces reachability |
 | 🟡 **3** | performance cockpit: decks, waveform, mixer, rail, mission bar | **the gate is met** — every performing control is on screen at 1280×800, master strip and deck channel strip both pinned, enforced by `ui/e2e/budget.spec.ts` with no `test.fail()` left. The context rail and the mission bar are still to come. |
 | 🟡 **4** | library: table, cards, set flow, pair view, prepare, rail | one gesture Library→Prepare→Deck. Prepare, the rail, Set Flow and the **pair view** ship as surfaces of their own; the compact cards and the wider performance table do not. The pair view reads §68's transition object, so the seam a DJ adjusts there is the one djmanzo holds |
-| **5** | intelligence: context engine, transactions, takeover, promotion | posture matrix enforced by test |
+| 🟡 **5** | intelligence: context engine, transactions, takeover, promotion | posture matrix enforced by test. The **context engine** reads the night — phase, energy, confidence and reasons, from the records played — and publishes it on every snapshot; takeover ships (§45). Transactions and promotion do not, and the engine reads the night rather than assembling the whole `DJContext` |
 | **6** | room: baseline, causal, Room HUD | HUD visible while browsing |
 | **7** | theming: packs, adaptation, Watershed as a world | no flicker; hysteresis tested |
 | **8** | specialist workspaces | each opens and is usable |

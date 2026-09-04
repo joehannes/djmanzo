@@ -322,6 +322,17 @@ const ANSWERS: Record<string, unknown> = {
       "88 beats left",
     ],
   },
+  // What the context engine makes of the night. A peak read off five records,
+  // because a reading with its reasons is the thing the panel exists to draw
+  // -- a fixture with an empty `because` would let the panel ship showing a
+  // phase and no argument for it.
+  session_read: {
+    phase: "peak",
+    energy: 0.82,
+    confidence: 0.42,
+    records: 5,
+    because: ["at the night's own ceiling (82%)", "tempo 121 \u2192 128 BPM"],
+  },
   transition_current: null,
   transition_clear: null,
   // The palette's answer, which Rust ranks. Two actions and one surface, so a
@@ -507,6 +518,15 @@ export async function openShell(
    * application never sends.
    */
   master: Record<string, unknown> = {},
+  /**
+   * Answers to change for this test.
+   *
+   * For the branches that depend on what Rust says rather than on what the
+   * engine is doing -- a night with no shape yet, an empty library. Merged
+   * over {@link ANSWERS}, so a test says only what it cares about; passing a
+   * shape the application never sends is still on the test.
+   */
+  answers: Record<string, unknown> = {},
 ) {
   const state = { ...snapshot, master: { ...snapshot.master, ...master } };
   const thrown: string[] = [];
@@ -603,7 +623,7 @@ export async function openShell(
         convertFileSrc: (path: string) => path,
       };
     },
-    [ANSWERS, state] as [Record<string, unknown>, unknown],
+    [{ ...ANSWERS, ...answers }, state] as [Record<string, unknown>, unknown],
   );
 
   await page.goto(url);

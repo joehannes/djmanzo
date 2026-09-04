@@ -1326,6 +1326,33 @@ export interface Suggestion {
 export const suggestNext = (deck: number, trajectory: Trajectory, limit = 12) =>
   invoke<Suggestion[]>("suggest_next", { deck, trajectory, limit });
 
+/**
+ * What the context engine makes of the night.
+ *
+ * `null` while the night has no shape yet — fewer than three analysed records
+ * — which is a real answer rather than an error. djmanzo will not guess at a
+ * phase: it announced "peak" thirty seconds into a warm-up once, which is a
+ * claim nothing had made and nothing could check.
+ */
+export interface Night {
+  /** `warm_up`, `heat`, `peak`, `cooldown` or `chill_out`. */
+  phase: string;
+  /** 0..=1, the energy of the recent stretch. */
+  energy: number;
+  /**
+   * 0..=1. How much evidence is behind the reading, not how strongly it is
+   * held — a DJ reading "peak" off three records should be told it is three.
+   */
+  confidence: number;
+  /** How many measured records it is drawn from. */
+  records: number;
+  /** Short phrases, as the planner's are. */
+  because: string[];
+}
+
+/** What the night is doing, and why. */
+export const sessionRead = () => invoke<Night | null>("session_read");
+
 /** One record of a pair, as the pair view draws it. */
 export interface PairSide {
   /** 1-based deck number. */
