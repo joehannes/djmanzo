@@ -249,6 +249,81 @@ const ANSWERS: Record<string, unknown> = {
     },
   ],
   similar_to: [],
+  // What the pair view is handed: two records and the seam between them.
+  //
+  // §68's transition object, in the shape `dj_app::commands::TransitionDto`
+  // serialises. Nothing is held at start-up -- `transition_current` answers
+  // null until something is set up -- because that is the state a DJ opening
+  // the panel is actually in, and it is the state in which the empty message
+  // has to be right.
+  plan_transition: {
+    outgoing: {
+      deck: 1,
+      track: {
+        id: "a".repeat(64),
+        path: "/music/bachata-rosa.flac",
+        title: "Bachata Rosa",
+        artist: "Juan Luis Guerra",
+        album: null,
+        genre: "Bachata",
+        year: 1990,
+        duration_seconds: 244,
+        bpm: 124,
+        key: "8A",
+        loudness_lufs: -9.4,
+        analysed: true,
+        play_count: 0,
+        rating: null,
+        colour: null,
+      },
+      phrase_beats: 16,
+      key_standard: "Am",
+      functions: ["opener"],
+    },
+    incoming: {
+      deck: 2,
+      track: {
+        id: "b".repeat(64),
+        path: "/music/ojala-que-llueva-cafe.flac",
+        title: "Ojal\u00e1 Que Llueva Caf\u00e9",
+        artist: "Juan Luis Guerra",
+        album: null,
+        genre: "Merengue",
+        year: 1989,
+        duration_seconds: 262,
+        bpm: 127,
+        key: "9A",
+        loudness_lufs: -7.2,
+        analysed: true,
+        play_count: 0,
+        rating: null,
+        colour: null,
+      },
+      phrase_beats: 16,
+      key_standard: "Em",
+      functions: [],
+    },
+    start_beat: 320,
+    start_seconds: 154.8,
+    end_seconds: 170.3,
+    start_frame: 6_830_000,
+    end_frame: 7_513_000,
+    length_beats: 32,
+    style: "blend",
+    bpm_delta: 3,
+    key_relation: "neighbour",
+    confidence: 0.82,
+    edited: false,
+    armed: false,
+    reasons: [
+      "phrase start (beat 320)",
+      "124 into 127 BPM",
+      "keys sit together",
+      "88 beats left",
+    ],
+  },
+  transition_current: null,
+  transition_clear: null,
   // The palette's answer, which Rust ranks. Two actions and one surface, so a
   // test can prove each kind runs the right way -- and the first entry is the
   // typed-action tier, which is what makes the palette more than a menu.
@@ -479,6 +554,43 @@ export async function openShell(
           // that the round trip carries the arrangement.
           if (cmd === "set_cockpit_workspace") {
             return Promise.resolve({ workspace: args.workspace, notes: [] });
+          }
+          // The transition object, held between calls the way djmanzo holds
+          // it. Answered here rather than from the table above for the same
+          // reason the workspace is: the panel draws what comes back, so a
+          // fixed answer would make a press that changes the mix look
+          // identical to one that does nothing, and the wiring is the whole of
+          // what a browser test can prove. The arithmetic is Rust's, and is
+          // tested there.
+          if (
+            cmd === "transition_arm" ||
+            cmd === "transition_adjust" ||
+            cmd === "transition_current" ||
+            cmd === "transition_replan" ||
+            cmd === "transition_clear"
+          ) {
+            type Held = Record<string, unknown>;
+            const planned = answers.plan_transition as Held;
+            if (cmd === "transition_arm") {
+              win.__transition = { ...planned, armed: true };
+            } else if (cmd === "transition_replan") {
+              win.__transition = win.__transition
+                ? { ...planned, armed: true }
+                : null;
+            } else if (cmd === "transition_clear") {
+              win.__transition = null;
+            } else if (cmd === "transition_adjust" && win.__transition) {
+              const held = win.__transition as Held;
+              win.__transition = {
+                ...held,
+                length_beats: args.lengthBeats ?? held.length_beats,
+                style: args.style ?? held.style,
+                start_beat:
+                  (held.start_beat as number) + Number(args.moveBeats ?? 0),
+                edited: true,
+              };
+            }
+            return Promise.resolve(win.__transition ?? null);
           }
           return Promise.resolve(answers[cmd] ?? null);
         },

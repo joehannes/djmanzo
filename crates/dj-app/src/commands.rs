@@ -3601,20 +3601,197 @@ pub fn session_diff(first: String, second: String) -> Result<Vec<DivergenceLineD
     Ok(out)
 }
 
-/// A proposed transition, flattened for the interface.
+/// One record of a pair, as the pair view draws it.
+///
+/// The library row plus the two things a DJ comparing two records asks for
+/// that a row does not carry: what its phrase structure is, and what it is
+/// *for*. Both come from the same database read, so asking for a pair is one
+/// query rather than three.
 #[derive(Debug, Clone, Serialize)]
-pub struct TransitionPlanDto {
+pub struct PairSideDto {
+    /// 1-based deck number, as the interface counts them.
+    pub deck: u8,
+    pub track: LibraryTrackDto,
+    /// Phrase length in beats, when the analyser found a structure. `None` is
+    /// a real answer -- plenty of records have none -- and the difference
+    /// matters here, because a mix planned onto a bar line is a weaker
+    /// proposition than one planned onto a phrase.
+    pub phrase_beats: Option<u32>,
+    /// Standard notation for the key, beside the Camelot the row already
+    /// carries. A DJ reading two records side by side wants both: Camelot to
+    /// do the arithmetic, `Am` to know what it sounds like.
+    pub key_standard: Option<String>,
+    /// What the record is for, as function slugs.
+    pub functions: Vec<String>,
+}
+
+/// A transition, flattened for the interface.
+///
+/// The interface shape of [`crate::transition::Transition`], which is §68's
+/// transition object. Everything here is either the object's own or looked up
+/// from the two records it names; nothing is re-derived on this side, so a
+/// panel cannot disagree with the object about where the mix starts.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransitionDto {
+    pub outgoing: PairSideDto,
+    pub incoming: PairSideDto,
     /// Beat index in the outgoing track where the mix should begin.
     pub start_beat: i64,
     /// Seconds into the outgoing track, for a display that speaks in time.
     pub start_seconds: f64,
+    /// Where it finishes, in the same terms.
+    pub end_seconds: f64,
+    /// The same two points in frames, which is what the waveform is drawn in.
+    ///
+    /// Carried rather than converted on the other side: seconds times a sample
+    /// rate the interface would have to infer from a deck's length is two
+    /// roundings and a division by zero waiting for an empty deck.
+    pub start_frame: f64,
+    pub end_frame: f64,
     pub length_beats: u32,
     /// The style's own name, as the automix panel already spells it.
     pub style: String,
+    /// Incoming tempo minus outgoing, signed.
+    pub bpm_delta: f64,
+    /// `same key`, `neighbour`, `relative major/minor`, `tritone` or
+    /// `distant`. `None` when either record is unanalysed, which is not the
+    /// same as a clash.
+    pub key_relation: Option<String>,
+    /// How well the two records go together, 0 to 1 -- the same number the
+    /// Next rail draws, from the same scorer.
+    pub confidence: f64,
+    /// True once a human has moved, shortened or restyled it.
+    pub edited: bool,
+    /// True when this is the transition djmanzo is holding, rather than one it
+    /// was just asked about.
+    pub armed: bool,
     pub reasons: Vec<String>,
 }
 
-/// Plan the mix out of `from_deck` and into `to_deck`.
+/// Everything the planner needs about one deck, read from the live registry.
+///
+/// The live playhead, not the last snapshot: a plan is about where the track
+/// is *now*, and a snapshot can be up to 16 ms stale -- which at 174 BPM is
+/// most of a beat.
+fn outgoing_of(
+    state: &AppState,
+    deck: dj_core::DeckId,
+    track: &dj_library::LibraryTrack,
+) -> Option<crate::plan::Outgoing> {
+    let grid = track.analysis.beatgrid()?;
+    let registry = state.registry();
+    let read = |p| f64::from(registry.get(dj_core::ParamId::Deck(deck, p)));
+    Some(crate::plan::Outgoing {
+        position: read(dj_core::param::DeckParam::Position),
+        length: read(dj_core::param::DeckParam::LengthFrames),
+        bpm: grid.bpm.get(),
+        phrase: phrase_of(track),
+        key: track.analysis.key(),
+        sample_rate: track.sample_rate,
+        grid_anchor: grid.anchor.get(),
+    })
+}
+
+/// Plan the mix between two decks, without holding the result.
+///
+/// The confidence comes from `dj_library::suggest` -- the scorer the Next rail
+/// and Set Flow's seams already use -- rather than from anything here. Two
+/// numbers on one screen that both claim to say how well two records go
+/// together, and disagree, is the failure that avoids.
+fn transition_between(
+    state: &AppState,
+    from: dj_core::DeckId,
+    to: dj_core::DeckId,
+) -> Result<Option<crate::transition::Transition>, String> {
+    use dj_library::suggest::{Playing, Trajectory, score};
+
+    let db = library(state)?;
+    let Some(out_track) = current_track(state, from).and_then(|id| db.track(id).ok().flatten())
+    else {
+        return Ok(None);
+    };
+    let Some(in_track) = current_track(state, to).and_then(|id| db.track(id).ok().flatten()) else {
+        return Ok(None);
+    };
+    let Some(outgoing) = outgoing_of(state, from, &out_track) else {
+        return Ok(None);
+    };
+    let incoming = crate::plan::Incoming {
+        bpm: in_track.analysis.bpm.unwrap_or(outgoing.bpm),
+        phrase: phrase_of(&in_track),
+        key: in_track.analysis.key(),
+    };
+    let confidence = score(&Playing::of(&out_track), Trajectory::Hold, &in_track).confidence();
+
+    Ok(crate::transition::Transition::plan(
+        (from, to),
+        (out_track.id, in_track.id),
+        outgoing,
+        incoming,
+        confidence,
+    ))
+}
+
+/// Turn a transition into what the interface draws.
+///
+/// `None` when either record has left the library since it was planned, which
+/// is rare and is still not a reason to draw half a pair.
+fn describe_transition(
+    state: &AppState,
+    transition: &crate::transition::Transition,
+    armed: bool,
+) -> Result<Option<TransitionDto>, String> {
+    let db = library(state)?;
+    let side = |deck: dj_core::DeckId, id: dj_core::TrackId| -> Option<PairSideDto> {
+        let track = db.track(id).ok().flatten()?;
+        Some(PairSideDto {
+            deck: deck.human_number(),
+            phrase_beats: track.analysis.phrase_beats,
+            key_standard: track.analysis.key().map(|k| k.standard().to_owned()),
+            functions: db
+                .functions_for(id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|f| f.slug().to_owned())
+                .collect(),
+            track: LibraryTrackDto::from(track),
+        })
+    };
+    let (Some(outgoing), Some(incoming)) = (
+        side(transition.outgoing_deck, transition.outgoing_track),
+        side(transition.incoming_deck, transition.incoming_track),
+    ) else {
+        return Ok(None);
+    };
+
+    Ok(Some(TransitionDto {
+        outgoing,
+        incoming,
+        start_beat: transition.plan.start_beat,
+        start_seconds: transition.start_seconds(),
+        end_seconds: transition.end_seconds(),
+        start_frame: transition.plan.start_frame,
+        end_frame: transition.plan.end_frame,
+        length_beats: transition.plan.length_beats,
+        style: transition.plan.style.as_str().to_owned(),
+        bpm_delta: transition.plan.bpm_delta,
+        key_relation: transition.key_relation().map(|r| r.as_str().to_owned()),
+        confidence: transition.confidence,
+        edited: transition.edited,
+        armed,
+        reasons: transition
+            .plan
+            .reasons
+            .iter()
+            .map(describe_plan_reason)
+            .collect(),
+    }))
+}
+
+/// Plan the mix out of `from_deck` and into `to_deck`, without holding it.
+///
+/// An opinion, not an instruction: asking for it moves nothing and remembers
+/// nothing. [`transition_arm`] is the one that holds the answer.
 ///
 /// `None` -- an empty result -- when there is nothing sensible to propose:
 /// either deck empty, no grid, or the outgoing track already past its last
@@ -3625,55 +3802,121 @@ pub fn plan_transition(
     state: State<'_, AppState>,
     from_deck: u8,
     to_deck: u8,
-) -> Result<Option<TransitionPlanDto>, String> {
-    let db = library(&state)?;
+) -> Result<Option<TransitionDto>, String> {
     let from = dj_core::DeckId::from_human(from_deck).ok_or("no such deck")?;
     let to = dj_core::DeckId::from_human(to_deck).ok_or("no such deck")?;
+    match transition_between(&state, from, to)? {
+        Some(transition) => describe_transition(&state, &transition, false),
+        None => Ok(None),
+    }
+}
 
-    let Some(out_track) = current_track(&state, from).and_then(|id| db.track(id).ok().flatten())
-    else {
+/// Plan the mix between two decks and **hold** it.
+///
+/// The difference from [`plan_transition`] is the whole of §68: an answer that
+/// is held can be adjusted, drawn by something other than the panel that asked
+/// for it, and still be there when that panel is closed and reopened.
+///
+/// Arming replaces whatever was held. One mix at a time -- two set-up
+/// transitions would be two answers to "what happens next", and the interface
+/// drawing them would have to choose.
+#[tauri::command]
+pub fn transition_arm(
+    state: State<'_, AppState>,
+    from_deck: u8,
+    to_deck: u8,
+) -> Result<Option<TransitionDto>, String> {
+    let from = dj_core::DeckId::from_human(from_deck).ok_or("no such deck")?;
+    let to = dj_core::DeckId::from_human(to_deck).ok_or("no such deck")?;
+    let Some(transition) = transition_between(&state, from, to)? else {
         return Ok(None);
     };
-    let Some(in_track) = current_track(&state, to).and_then(|id| db.track(id).ok().flatten())
-    else {
+    state.arm_transition(transition.clone());
+    describe_transition(&state, &transition, true)
+}
+
+/// The transition djmanzo is holding, if it still describes what is loaded.
+///
+/// A held transition whose records have been replaced is **dropped rather than
+/// drawn**. It is the one failure mode of holding a plan at all: a panel
+/// showing a confident mix point for a record that left the deck four minutes
+/// ago looks exactly like a current answer.
+#[tauri::command]
+pub fn transition_current(state: State<'_, AppState>) -> Result<Option<TransitionDto>, String> {
+    let Some(transition) = state.transition() else {
         return Ok(None);
     };
-    let Some(grid) = out_track.analysis.beatgrid() else {
+    let loaded = |deck| current_track(&state, deck);
+    if !transition.describes(
+        loaded(transition.outgoing_deck),
+        loaded(transition.incoming_deck),
+    ) {
+        state.clear_transition();
         return Ok(None);
-    };
+    }
+    describe_transition(&state, &transition, true)
+}
 
-    // The live playhead, not the last snapshot: a plan is about where the track
-    // is *now*, and a snapshot can be up to 16 ms stale -- which at 174 BPM is
-    // most of a beat.
-    let registry = state.registry();
-    let read = |p| f64::from(registry.get(dj_core::ParamId::Deck(from, p)));
-    let position = read(dj_core::param::DeckParam::Position);
-    let length = read(dj_core::param::DeckParam::LengthFrames);
-
-    let outgoing = crate::plan::Outgoing {
-        position,
-        length,
-        bpm: grid.bpm.get(),
-        phrase: phrase_of(&out_track),
-        key: out_track.analysis.key(),
-        sample_rate: out_track.sample_rate,
-        grid_anchor: grid.anchor.get(),
+/// Adjust the held transition: move it, shorten it, or change how it is done.
+///
+/// Every argument is optional and they compose, so one press that both
+/// shortens and restyles is one call and one answer. `None` for all three is a
+/// read, which is what the interface does after a deck moves.
+///
+/// The reasons come back **re-derived over the new geometry** — see
+/// [`crate::transition`]. A transition moved off its phrase boundary says so.
+#[tauri::command]
+pub fn transition_adjust(
+    state: State<'_, AppState>,
+    move_beats: Option<i64>,
+    length_beats: Option<u32>,
+    style: Option<String>,
+) -> Result<Option<TransitionDto>, String> {
+    let style = match style.as_deref() {
+        Some(word) => Some(
+            dj_core::action::TransitionStyle::parse(word)
+                .ok_or_else(|| format!("no {word} style"))?,
+        ),
+        None => None,
     };
-    let incoming = crate::plan::Incoming {
-        bpm: in_track.analysis.bpm.unwrap_or(grid.bpm.get()),
-        phrase: phrase_of(&in_track),
-        key: in_track.analysis.key(),
-    };
+    let adjusted = state.edit_transition(|transition| {
+        if let Some(beats) = move_beats {
+            transition.move_start(beats);
+        }
+        if let Some(beats) = length_beats {
+            transition.set_length(beats);
+        }
+        if let Some(style) = style {
+            transition.set_style(style);
+        }
+        transition.clone()
+    });
+    match adjusted {
+        Some(transition) => describe_transition(&state, &transition, true),
+        None => Ok(None),
+    }
+}
 
-    Ok(
-        crate::plan::plan(&outgoing, &incoming).map(|p| TransitionPlanDto {
-            start_beat: p.start_beat,
-            start_seconds: p.start_frame / out_track.sample_rate.as_f64(),
-            length_beats: p.length_beats,
-            style: p.style.as_str().to_owned(),
-            reasons: p.reasons.iter().map(describe_plan_reason).collect(),
-        }),
-    )
+/// Throw the adjustments away and ask the planner again.
+///
+/// Only ever on request. A transition that replanned itself would undo a DJ's
+/// adjustment at whatever moment it next recalculated.
+#[tauri::command]
+pub fn transition_replan(state: State<'_, AppState>) -> Result<Option<TransitionDto>, String> {
+    let replanned = state.edit_transition(|transition| {
+        transition.replan();
+        transition.clone()
+    });
+    match replanned {
+        Some(transition) => describe_transition(&state, &transition, true),
+        None => Ok(None),
+    }
+}
+
+/// Stop holding it.
+#[tauri::command]
+pub fn transition_clear(state: State<'_, AppState>) {
+    state.clear_transition();
 }
 
 /// A track's phrase structure, when it has one stored.
@@ -3692,7 +3935,9 @@ fn describe_plan_reason(reason: &crate::plan::Reason) -> String {
         Reason::TemposClash { from, to } => format!("{from:.0} against {to:.0} BPM — too far"),
         Reason::KeysMatch => "keys sit together".to_owned(),
         Reason::KeysClash => "keys fight — keep it short".to_owned(),
-        Reason::Rushed { beats_left } => format!("only {beats_left:.0} beats left"),
+        Reason::Rushed { beats_after } => {
+            format!("only {beats_after:.0} beats after it ends")
+        }
     }
 }
 

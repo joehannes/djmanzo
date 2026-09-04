@@ -102,6 +102,32 @@
     ]
   },
   {
+    "name": "pair",
+    "title": "Pair",
+    "about": "Two records side by side, and the seam between them.",
+    "category": "planning",
+    "least": [
+      420,
+      240
+    ],
+    "prefer": [
+      820,
+      360
+    ],
+    "priority": 45,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
     "name": "room",
     "title": "Room",
     "about": "What the floor is doing, against its own earlier state.",

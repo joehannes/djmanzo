@@ -16,6 +16,37 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The transition is an object** — the directive's §68. `dj_app::transition`
+holds one mix: the two decks, where it starts and ends in both frames and
+seconds, how long it runs, which way, what the tempo and the key do across it,
+how well the two records go together, and the typed reasons for all of it.
+djmanzo holds the one you set up, so it survives closing the panel you set it
+up in, and it is dropped rather than drawn stale when either record leaves its
+deck.
+
+**It can be moved, shortened and restyled — and an edit re-derives the
+reasons.** `plan::evaluate` is split out of the planner for exactly this: a
+transition nudged off its phrase boundary stops claiming to land on one. Keeping
+the sentence the planner wrote would be a confident lie about the one fact the
+panel exists to report. A style the planner would not have chosen is still
+allowed, and the reasons go on saying the tempos clash: this reports, it does
+not veto.
+
+**Pair, a surface of its own** — §20's fourth view. The two records side by
+side with the seam between them: BPM, key in Camelot and in notation, energy,
+phrase structure, function tags, and each record's waveform with **the mix
+point drawn on the outgoing one**. Its confidence is the number the Next rail
+draws, from the same scorer, because two figures on one screen that both claim
+to say how well two records go together and disagree is worse than one.
+
+Found by driving it rather than by type-checking it: the seam was underneath
+the two records and fell below the fold of the docked panel, so it is between
+them now; the outgoing lane zooms out in octave steps until the mix point is on
+screen, because a lane centred on the playhead cannot show a mix two minutes
+ahead; and the "rushed" warning now counts the beats left *after* the mix ends,
+which is what its condition tests — it read "only 277 beats left · 32 beats
+left" before.
+
 **The command palette** — `Ctrl/Cmd + K`, the directive's §51. Every entry is
 generated in Rust from `dj_core::vocabulary` — the same 82 verbs the parser
 accepts, the assistant is told about and a MIDI mapping produces — or from a

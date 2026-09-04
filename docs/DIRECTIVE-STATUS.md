@@ -45,14 +45,14 @@ rather than taken.
 | 17 | GUI adapts to session phase | 🟡 | Occasion-aware density ships; phase-driven layout does not |
 | 18 | Attention budget | 🟡 | `cockpit::Attention` exists with the rule that matters — while performing, the interface may not reflow — but nothing consults it yet |
 | 19 | No random UI reorganisation | ⚖️ | Enforced by a golden-order test: the deck's control order is asserted in full and fails if anything moves |
-| 20 | Playlist / library overhaul | 🟡 | Function tags and their filtering ship, and **Set Flow** does: a dockable surface drawing the plan as a sequence with the seam between each pair — its deltas, its confidence, and whether it needs a cut rather than a blend — plus the count of difficult joins above the list. The performance table is the browser today, at fewer columns than §20 lists; cards and the pair view do not exist |
+| 20 | Playlist / library overhaul | 🟡 | Function tags and their filtering ship, and two of the four views do. **Set Flow**: a dockable surface drawing the plan as a sequence with the seam between each pair — its deltas, its confidence, and whether it needs a cut rather than a blend. **Pair**: its own surface, the two records side by side with the seam between them, each with its waveform, and the mix point drawn *on* the outgoing one. The performance table is the browser today, at fewer columns than §20 lists; the compact cards do not exist |
 | 21 | "Prepare" must be first class | ✅ | Its own dockable surface beside the browser, not a strip inside it. One gesture — `→` on a browser row — hands a track over; `prepare.svelte.ts` is the only path between them, so there is no second, differently-behaved way to set a track aside |
 | 22 | Next-track rail | 🟡 | The rail ships as its own dockable surface, following whichever deck is playing: up to eight candidates, each with one line of deltas (`+3 BPM · 8A→9A · +1 dB`), a confidence bar, and load / set aside / more-like-this / pin / pass. Two of the fifteen things §22 lists are not there — **audition**, which needs a preview player djmanzo does not have, and the **estimated transition type**, which means running the M8 planner per candidate |
 | 23 | Track function tagging | ✅ | Ten functions, closed vocabulary, migration 10, browser picker, and `for is opener` in smart folders |
 | 24 | Pairs and relationships | ⬜ | Needs new storage with confidence decay |
 | 25 | Waveform overhaul | ⬜ | |
 | 26 | Direct manipulation on the waveform | ⬜ | |
-| 27 | Preview / ghost track | ⬜ | Needs `TransitionPlan` as a first-class object |
+| 27 | Preview / ghost track | ⬜ | The object it waited on ships — see §68. What is missing is the preview itself: a second render of the outgoing track, which needs a player djmanzo does not have |
 | 28 | Stem-aware UI | ✅ | The stems module ships, folding so it costs a row when unused |
 | 29 | Intelligent control handles | ⬜ | |
 | 30 | Colour system named for meaning | 🟡 | Fourteen semantic roles exist as types with tests; the stylesheet still uses the appearance tokens |
@@ -93,7 +93,7 @@ rather than taken.
 | 65 | Community research principle | ✅ | DJ forums are blocked at the egress gateway; web search was used instead and that limitation is written down |
 | 66 | DJ workflow knowledge | ✅ | The workflow model is audit §9 |
 | 67 | The session is a loop, not a screen | 🟡 | |
-| 68 | Transition object | ⬜ | The planner exists; the object does not |
+| 68 | Transition object | 🟡 | `dj_app::transition::Transition` ships: the two decks, where the mix starts and ends in frames and seconds, its length, style, tempo delta, key relation, the pair's confidence on the rail's scale, and the typed reasons. djmanzo **holds** one, it can be moved, shortened and restyled, and an edit **re-derives the reasons over the new geometry** rather than keeping the planner's. The Pair surface reads it. What §68 lists and it does not carry: the stem, EQ and FX plans, because nothing in djmanzo decides those yet. What does not read it yet: the automix, the autopilot and replay, each of which still plans its own |
 | 69 | Practice lab | ⬜ | |
 | 70 | Learning mode | ✅ | The coach ships |
 | 71 | "What should I do next?" | ✅ | The assistant's next step is shown before it happens |
@@ -143,13 +143,13 @@ rather than taken.
 | Predictability — adaptation never feels random | ✅ | Bands rather than a continuous ratio, so the interface settles; asserted by test |
 | AI subtlety — everywhere useful, dominant nowhere | ✅ | |
 | Instant takeover — human input always wins | ✅ | |
-| Library quality — finding a track as strong as mixing it | ⬜ | Function tags are a start; the four views are the answer |
+| Library quality — finding a track as strong as mixing it | 🟡 | Function tags, Set Flow and the pair view ship; two of §20's four views and the wider column set do not |
 | Visual utility — visualisations carry actionable information | ⬜ | The waveform still draws amplitude only |
 | Theme semantics — colour communicates | 🟡 | The roles exist; the stylesheet does not use them yet |
 
 ## The count
 
-Of the 105 sections: **31 done, 32 part, 23 open, 19 standing rules.**
+Of the 105 sections: **31 done, 33 part, 22 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**31 of 86 deliverable sections are complete and 32 more are partly there.**
+**31 of 86 deliverable sections are complete and 33 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 31 whole plus 32 halves over 86 is 55%, and the phase view is stricter
+way: 31 whole plus 33 halves over 86 is 55%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

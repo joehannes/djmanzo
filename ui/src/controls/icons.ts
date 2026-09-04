@@ -33,6 +33,11 @@ export const ICONS: Record<string, IconGlyph> = {
   "forward": { d: "M4 6v12l8-6-8-6zM13 6v12l8-6-8-6z", fill: true },
   "circle-question": { d: "M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0 -16zM9.7 9.6a2.4 2.4 0 0 1 4.6 .9c0 1.6-2.3 2-2.3 3.5M12 17.2h.01" },
   "cloud": { d: "M7 18h10a4 4 0 0 0 0 -8 6 6 0 0 0 -11.7 1.7A3.5 3.5 0 0 0 7 18z" },
+  // Two records side by side and the seam between them: the pair view, drawn
+  // as what it is rather than as a diff. The join is dashed for the same
+  // reason the transition marks on the waveform are -- it is a proposal, not
+  // somewhere the DJ has put anything.
+  "code-compare": { d: "M3 6h7v12H3zM14 6h7v12h-7zM12 4v3M12 9.5v3M12 16v4" },
   "cog": { d: "M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0 -6zM12 5.4a6.6 6.6 0 1 0 0 13.2a6.6 6.6 0 1 0 0 -13.2zM18.6 12.0L21.0 12.0M16.7 16.7L18.4 18.4M12.0 18.6L12.0 21.0M7.3 16.7L5.6 18.4M5.4 12.0L3.0 12.0M7.3 7.3L5.6 5.6M12.0 5.4L12.0 3.0M16.7 7.3L18.4 5.6" },
   "compact-disc": { d: "M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0 -16zM12 9.5a2.5 2.5 0 1 0 0 5.0a2.5 2.5 0 1 0 0 -5.0z" },
   "compress": { d: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" },

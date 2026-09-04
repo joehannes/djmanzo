@@ -1326,14 +1326,64 @@ export interface Suggestion {
 export const suggestNext = (deck: number, trajectory: Trajectory, limit = 12) =>
   invoke<Suggestion[]>("suggest_next", { deck, trajectory, limit });
 
-/** A proposed transition: where to start it, how long, and which way. */
-export interface TransitionPlan {
+/** One record of a pair, as the pair view draws it. */
+export interface PairSide {
+  /** 1-based deck number. */
+  deck: number;
+  track: LibraryTrack;
+  /**
+   * Phrase length in beats, when the analyser found a structure. `null` is a
+   * real answer — plenty of records have none — and it is why a mix onto a bar
+   * line is a weaker proposition than one onto a phrase.
+   */
+  phrase_beats: number | null;
+  /** Standard notation for the key, beside the Camelot the row carries. */
+  key_standard: string | null;
+  /** What the record is for, as function slugs. */
+  functions: string[];
+}
+
+/**
+ * A transition, as an object rather than as an answer.
+ *
+ * §68's transition object: where the mix starts and ends, how long it runs,
+ * which way, what the tempo and key do across it, how well the two records go
+ * together, and why. Every field is Rust's — nothing here re-derives a mix
+ * point, so a panel cannot disagree with djmanzo about where the mix is.
+ */
+export interface Transition {
+  outgoing: PairSide;
+  incoming: PairSide;
   /** Beat index in the outgoing track where the mix should begin. */
   start_beat: number;
   /** The same point in seconds, for a display that speaks in time. */
   start_seconds: number;
+  /** Where it finishes, in the same terms. */
+  end_seconds: number;
+  /**
+   * The same two points in frames, which is what the waveform is drawn in.
+   *
+   * From Rust rather than converted here: seconds times a sample rate this
+   * side would have to infer from a deck's length is two roundings and a
+   * division by zero waiting for an empty deck.
+   */
+  start_frame: number;
+  end_frame: number;
   length_beats: number;
   style: string;
+  /** Incoming tempo minus outgoing, signed. */
+  bpm_delta: number;
+  /**
+   * `same key`, `neighbour`, `relative major/minor`, `tritone` or `distant`.
+   * `null` when either record is unanalysed, which is not a clash.
+   */
+  key_relation: string | null;
+  /** 0 to 1 — the same number the Next rail draws, from the same scorer. */
+  confidence: number;
+  /** True once a human has moved, shortened or restyled it. */
+  edited: boolean;
+  /** True when djmanzo is holding this one, rather than merely proposing it. */
+  armed: boolean;
   /** Short phrases, as the suggester's are. */
   reasons: string[];
 }
@@ -1425,7 +1475,47 @@ export const OCCASIONS = [
 ] as const;
 
 export const planTransition = (fromDeck: number, toDeck: number) =>
-  invoke<TransitionPlan | null>("plan_transition", { fromDeck, toDeck });
+  invoke<Transition | null>("plan_transition", { fromDeck, toDeck });
+
+/**
+ * Plan the mix between two decks and hold it.
+ *
+ * The difference from {@link planTransition} is the whole of §68: an answer
+ * djmanzo holds can be adjusted, read by something other than the panel that
+ * asked for it, and still be there when that panel is closed and reopened.
+ */
+export const transitionArm = (fromDeck: number, toDeck: number) =>
+  invoke<Transition | null>("transition_arm", { fromDeck, toDeck });
+
+/**
+ * What djmanzo is holding, if it still describes what is on the decks.
+ *
+ * A held transition whose records have been replaced comes back as `null`
+ * rather than as a stale answer: a confident mix point for a record that left
+ * the deck four minutes ago looks exactly like a current one.
+ */
+export const transitionCurrent = () =>
+  invoke<Transition | null>("transition_current");
+
+/**
+ * Move the held transition, shorten it, or change how it is done.
+ *
+ * The three compose, so one press that both shortens and restyles is one call.
+ * The reasons come back re-derived over the new geometry — a mix moved off its
+ * phrase boundary says so rather than keeping the sentence the planner wrote.
+ */
+export const transitionAdjust = (change: {
+  moveBeats?: number;
+  lengthBeats?: number;
+  style?: string;
+}) => invoke<Transition | null>("transition_adjust", change);
+
+/** Throw the adjustments away and ask the planner again. */
+export const transitionReplan = () =>
+  invoke<Transition | null>("transition_replan");
+
+/** Stop holding it. */
+export const transitionClear = () => invoke<void>("transition_clear");
 
 export const libraryAddFolder = (path: string) =>
   invoke<ScanReport>("library_add_folder", { path });

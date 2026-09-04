@@ -20,7 +20,22 @@
     deck,
     height = 96,
     framesPerPixel = 256,
-  }: { deck: DeckState; height?: number; framesPerPixel?: number } = $props();
+    marks = [],
+  }: {
+    deck: DeckState;
+    height?: number;
+    framesPerPixel?: number;
+    /**
+     * Places in the *file* worth drawing a line at, beyond the deck's own cues.
+     *
+     * What the pair view puts here is where a transition starts and ends, so
+     * the mix point is on the waveform rather than only in a number beside it.
+     * Frames, like everything else in this component — a caller holding
+     * seconds converts before it gets here, because the sample rate is a
+     * property of the record and this component knows nothing about records.
+     */
+    marks?: { frame: number; label: string }[];
+  } = $props();
 
   /** Tile width in pixels. Wide enough that a lane needs few of them. */
   const TILE_WIDTH = 512;
@@ -187,6 +202,15 @@
           <span class="cue-flag">{marker.slot}</span>
         </div>
       {/each}
+      {#each marks as mark (mark.label)}
+        <div
+          class="mark"
+          style:left="{mark.frame / framesPerPixel}px"
+          title={mark.label}
+        >
+          <span class="mark-flag">{mark.label}</span>
+        </div>
+      {/each}
       {#each visibleTiles as tile (tile.key)}
         <img
           class="tile"
@@ -257,6 +281,31 @@
     color: var(--on-accent);
     background: var(--accent);
     border-radius: 0 3px 3px 0;
+  }
+
+  /* Distinct from a cue marker on purpose: a cue is a place the DJ put, and
+     these are places djmanzo is proposing. Dashed, and labelled with a word
+     rather than a number. */
+  .mark {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 2px dashed var(--warn);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .mark-flag {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    padding: 0 0.25rem;
+    font-size: 0.6rem;
+    line-height: 1.3;
+    color: var(--warn);
+    background: var(--panel);
+    border-radius: 0 3px 3px 0;
+    white-space: nowrap;
   }
 
   .tile {
