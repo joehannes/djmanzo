@@ -320,56 +320,72 @@
         "press": "deck 1 loop_recall 1",
         "release": null,
         "clear": "deck 1 loop_save 1",
-        "lit": "Never"
+        "lit": {
+          "SavedLoopSet": 1
+        }
       },
       {
         "label": "2",
         "press": "deck 1 loop_recall 2",
         "release": null,
         "clear": "deck 1 loop_save 2",
-        "lit": "Never"
+        "lit": {
+          "SavedLoopSet": 2
+        }
       },
       {
         "label": "3",
         "press": "deck 1 loop_recall 3",
         "release": null,
         "clear": "deck 1 loop_save 3",
-        "lit": "Never"
+        "lit": {
+          "SavedLoopSet": 3
+        }
       },
       {
         "label": "4",
         "press": "deck 1 loop_recall 4",
         "release": null,
         "clear": "deck 1 loop_save 4",
-        "lit": "Never"
+        "lit": {
+          "SavedLoopSet": 4
+        }
       },
       {
         "label": "5",
         "press": "deck 1 loop_recall 5",
         "release": null,
         "clear": "deck 1 loop_save 5",
-        "lit": "Never"
+        "lit": {
+          "SavedLoopSet": 5
+        }
       },
       {
         "label": "6",
         "press": "deck 1 loop_recall 6",
         "release": null,
         "clear": "deck 1 loop_save 6",
-        "lit": "Never"
+        "lit": {
+          "SavedLoopSet": 6
+        }
       },
       {
         "label": "7",
         "press": "deck 1 loop_recall 7",
         "release": null,
         "clear": "deck 1 loop_save 7",
-        "lit": "Never"
+        "lit": {
+          "SavedLoopSet": 7
+        }
       },
       {
         "label": "8",
         "press": "deck 1 loop_recall 8",
         "release": null,
         "clear": "deck 1 loop_save 8",
-        "lit": "Never"
+        "lit": {
+          "SavedLoopSet": 8
+        }
       }
     ]
   },

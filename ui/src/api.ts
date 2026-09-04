@@ -194,6 +194,21 @@ export interface DeckState {
    * perfectly ordinary place to put one.
    */
   hot_cues: (number | null)[];
+  /**
+   * The loops saved against this record, by slot.
+   *
+   * Sparse rather than eight nullable entries like `hot_cues`: a loop is a
+   * pair of frames, so an empty slot would be an object full of nothing.
+   * Empty for a record nobody has saved a loop against, which is most of them.
+   */
+  saved_loops: SavedLoop[];
+}
+
+/** A loop kept with the record, drawn on the lane and recalled by its slot. */
+export interface SavedLoop {
+  slot: number;
+  start_frames: number;
+  end_frames: number;
 }
 
 /**
@@ -230,6 +245,7 @@ export interface FxSlot {
 export type Lit =
   | "Never"
   | { HotCueSet: number }
+  | { SavedLoopSet: number }
   | { LoopBeats: number }
   | { RollBeats: number }
   | { FxSlotOn: number }

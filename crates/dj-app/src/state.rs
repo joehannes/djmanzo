@@ -275,7 +275,10 @@ pub struct TimecodeSetup {
 }
 
 /// What is loaded on a deck, as far as the interface is concerned.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `PartialEq` but not `Eq`: a saved loop's bounds are frames as `f64`, and
+/// there is no total order on those to promise.
+#[derive(Debug, Clone, PartialEq)]
 pub struct LoadedTrackInfo {
     pub title: String,
     pub artist: Option<String>,
@@ -286,6 +289,18 @@ pub struct LoadedTrackInfo {
     /// onto the same deck in that time, and without this check the first
     /// track's beat grid would be applied to the second.
     pub id: dj_core::TrackId,
+    /// The loops saved against this record, as the library holds them.
+    ///
+    /// Here for the reason the title is here: the engine has samples and a
+    /// playhead, and a saved loop is neither — it is a region the library
+    /// keeps, recalled onto the deck rather than held by it. The durable copy
+    /// is the library's row; this is the set in force on this deck, so the
+    /// pads can say which slots hold something and the lane can draw them
+    /// without either reaching into the database sixty times a second.
+    ///
+    /// Refreshed at the two moments it can change: the load that reads it, and
+    /// the save that writes one.
+    pub saved_loops: Vec<dj_library::StoredLoop>,
 }
 
 /// How the assistant conducts itself: how much it does, what the night is, and
@@ -1363,6 +1378,33 @@ impl AppState {
         if let Ok(mut map) = self.deck_tracks.lock() {
             map.insert(deck.human_number(), info);
         }
+    }
+
+    /// Replace the saved loops the deck reports for whatever is on it.
+    ///
+    /// A no-op when the deck is empty, which is what makes it safe to call
+    /// from the load path without ordering it against `set_deck_track`: a set
+    /// of loops for a record that is no longer there is worse than none.
+    pub fn set_deck_saved_loops(&self, deck: dj_core::DeckId, loops: Vec<dj_library::StoredLoop>) {
+        if let Ok(mut map) = self.deck_tracks.lock()
+            && let Some(info) = map.get_mut(&deck.human_number())
+        {
+            info.saved_loops = loops;
+        }
+    }
+
+    /// The loops saved against whatever is on a deck.
+    ///
+    /// Empty for a deck with nothing on it, and for a record nobody has saved
+    /// a loop against — which are the same answer to the interface and should
+    /// be: neither has a region to draw.
+    #[must_use]
+    pub fn deck_saved_loops(&self, deck: dj_core::DeckId) -> Vec<dj_library::StoredLoop> {
+        self.deck_tracks
+            .lock()
+            .ok()
+            .and_then(|map| map.get(&deck.human_number()).map(|t| t.saved_loops.clone()))
+            .unwrap_or_default()
     }
 
     /// The content hash of what is on a deck, if anything.

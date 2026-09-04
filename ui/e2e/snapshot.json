@@ -156,7 +156,8 @@
     null,
     null,
     null
-   ]
+   ],
+   "saved_loops": []
   },
   {
    "number": 2,
@@ -306,6 +307,18 @@
     null,
     null,
     null
+   ],
+   "saved_loops": [
+    {
+     "slot": 3,
+     "start_frames": 48000.0,
+     "end_frames": 60000.0
+    },
+    {
+     "slot": 6,
+     "start_frames": 64000.0,
+     "end_frames": 76000.0
+    }
    ]
   },
   {
@@ -438,7 +451,8 @@
     null,
     null,
     null
-   ]
+   ],
+   "saved_loops": []
   },
   {
    "number": 4,
@@ -570,7 +584,8 @@
     null,
     null,
     null
-   ]
+   ],
+   "saved_loops": []
   },
   {
    "number": 5,
@@ -702,7 +717,8 @@
     null,
     null,
     null
-   ]
+   ],
+   "saved_loops": []
   },
   {
    "number": 6,
@@ -834,7 +850,8 @@
     null,
     null,
     null
-   ]
+   ],
+   "saved_loops": []
   }
  ],
  "master": {

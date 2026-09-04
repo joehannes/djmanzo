@@ -775,6 +775,11 @@ pub fn put_on_deck(
             title: dto.title.clone(),
             artist: dto.artist.clone(),
             id: decoded.id,
+            // Filled by `restore_deck_state` a moment later, which is where
+            // the library is read. Empty until then rather than stale: the
+            // previous record's loops drawn over this one would be worse than
+            // a lane that catches up.
+            saved_loops: Vec::new(),
         },
     );
 
@@ -5661,6 +5666,16 @@ fn restore_deck_state(
         Err(error) => tracing::warn!(%error, "could not read stored cues"),
     }
 
+    // The saved loops go to the deck rather than to the engine: nothing plays
+    // until one is recalled, and until then they are something to *see* — the
+    // regions on the lane and the lit slots on the pad page. Read here, with
+    // the cues, because this is the one place that knows a record has just
+    // arrived on a deck.
+    match db.loops(track) {
+        Ok(loops) => state.set_deck_saved_loops(deck, loops),
+        Err(error) => tracing::warn!(%error, "could not read the saved loops"),
+    }
+
     // A stored grid wins over the analyser's, which has not run yet anyway --
     // and which, when it does, will not overwrite this: `analyse_or_cached`
     // only publishes a grid for a deck that has none stored.
@@ -5723,7 +5738,12 @@ fn save_loop(state: &AppState, deck: DeckId, slot: u8) -> Result<(), String> {
     });
     loops.sort_by_key(|region| region.slot);
 
-    db.set_loops(track, &loops).map_err(|e| e.to_string())
+    db.set_loops(track, &loops).map_err(|e| e.to_string())?;
+    // And onto the deck, so the pad lights and the region appears on the lane
+    // at the moment it is saved rather than at the next load. The library is
+    // still the durable copy; this is the same set, in force.
+    state.set_deck_saved_loops(deck, loops);
+    Ok(())
 }
 
 /// Put a saved loop back on the deck.
@@ -5806,6 +5826,7 @@ mod persistence_tests {
                 title: "A".to_owned(),
                 artist: None,
                 id: id(1),
+                saved_loops: Vec::new(),
             },
         );
         state
@@ -5896,6 +5917,7 @@ mod persistence_tests {
                 title: "A".to_owned(),
                 artist: None,
                 id: id(9),
+                saved_loops: Vec::new(),
             },
         );
         grid_on_deck(
@@ -5936,6 +5958,32 @@ mod persistence_tests {
 
         // And it comes back.
         recall_loop(&state, deck(), 1).unwrap();
+    }
+
+    /// **A saved loop is visible the moment it is saved**, not at the next
+    /// load.
+    ///
+    /// The library is the durable copy and the deck carries the set in force —
+    /// which is what the lane draws and what lights the saved pad page. A save
+    /// that wrote only the row would leave a DJ pressing a dark pad to find
+    /// out whether the loop they just kept is there, which is the state this
+    /// page was in before it could report anything at all.
+    #[test]
+    fn a_saved_loop_is_on_the_deck_as_soon_as_it_is_saved() {
+        let state = app_with_track();
+        set_loop(&state, 96_000.0, 192_000.0);
+
+        save_loop(&state, deck(), 4).unwrap();
+
+        let reported = state.deck_saved_loops(deck());
+        assert_eq!(
+            reported.len(),
+            1,
+            "the deck still reports no saved loops, so nothing draws one"
+        );
+        assert_eq!(reported[0].slot, 4);
+        assert_eq!(reported[0].start_frame, 96_000.0);
+        assert_eq!(reported[0].end_frame, 192_000.0);
     }
 
     #[test]

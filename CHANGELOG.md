@@ -16,6 +16,27 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**A saved loop can be seen, and played from where it is drawn.** §25's
+saved-loop layer, and §26's answer to the same item. A loop kept with a record
+was invisible in both of the places it should not have been. The lane did not
+draw it, so a region cut out of the audio could not be looked at against that
+audio. And the pad page that recalls them named `Lit::Never` for all eight
+slots — so eight identical dark squares said nothing about which of them held
+anything, and the only way to find out was to press one in front of a room.
+
+Both came from the same fact: a saved loop is the library's. The engine has
+samples and a playhead and has never heard of one, so nothing carried them to
+the interface. The deck now remembers the set that arrived with its record —
+for the same reason it already remembers the title — and it travels on the
+snapshot beside the hot cues, refreshed at the two moments it can change: the
+load that reads it and the save that writes one.
+
+On the lane a saved loop is a **bracket** along the bottom edge, with its slot
+above the left end. Hollow where the running loop is solid: they are the same
+idea in two states, and inventing a second colour for the second state is the
+overload §57 forbids — this lane has already spent five hues. Pressing the slot
+plays it, which is what a DJ does with a region they can see.
+
 **The phrase marker is dragged to where the phrase starts.** §26's last named
 example. The analyser can be right about how long a phrase is and wrong about
 which beat starts one — a record opening on a four-beat pickup is the usual

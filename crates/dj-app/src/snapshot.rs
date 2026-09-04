@@ -138,6 +138,14 @@ pub struct DeckSnapshot {
     /// Hot cue positions in frames, slot 1 first. `None` for an empty slot —
     /// which is not the same as a cue at frame zero.
     pub hot_cues: Vec<Option<f32>>,
+    /// The loops saved against this record, by slot.
+    ///
+    /// Sparse rather than eight nullable entries like `hot_cues`, because a
+    /// loop is a pair of frames and a slot: an empty slot would be an object
+    /// full of nothing rather than a `null`. Empty for a deck with no record
+    /// on it, and for a record nobody has saved a loop against — which is most
+    /// of them.
+    pub saved_loops: Vec<SavedLoopSnapshot>,
 }
 
 /// Read one slot's six values, whichever rack they came from.
@@ -266,6 +274,19 @@ pub struct LoopSnapshot {
     /// Length in beats, for a label. `None` without a grid to measure against —
     /// the loop is still real, it just cannot be named in beats.
     pub beats: Option<f32>,
+}
+
+/// A saved loop, as the interface draws it.
+///
+/// Frames rather than beats, unlike [`LoopSnapshot`]: a saved loop is a region
+/// of the record and is drawn on the lane, where frames are the coordinate.
+/// The slot travels with it because it is what the DJ recalls it by, and what
+/// the marker on the lane is labelled with.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SavedLoopSnapshot {
+    pub slot: u8,
+    pub start_frames: f32,
+    pub end_frames: f32,
 }
 
 /// Tempo, key and loudness, as the interface needs them.
@@ -720,6 +741,24 @@ impl Snapshot {
                             (value >= 0.0).then_some(value)
                         })
                         .collect(),
+                    // From the remembered track rather than from the registry,
+                    // because the engine does not hold these: a saved loop is
+                    // the library's, and what the deck has is whichever set
+                    // arrived with the record on it.
+                    saved_loops: names
+                        .as_ref()
+                        .and_then(|m| m.get(&id.human_number()))
+                        .map(|t| {
+                            t.saved_loops
+                                .iter()
+                                .map(|region| SavedLoopSnapshot {
+                                    slot: region.slot,
+                                    start_frames: region.start_frame as f32,
+                                    end_frames: region.end_frame as f32,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
                     analysis: analysis
                         .and_then(|store| store.for_deck(id.human_number()))
                         .map(|found| TrackAnalysisSnapshot::from_analysis(&found)),
@@ -1458,6 +1497,7 @@ mod tests {
                 title: "Suavemente".to_owned(),
                 artist: Some("Elvis Crespo".to_owned()),
                 id: dj_core::TrackId::from_bytes([1; 32]),
+                saved_loops: Vec::new(),
             },
         )]));
 
@@ -1480,6 +1520,68 @@ mod tests {
         assert!(snapshot.decks[1].artist.is_none());
     }
 
+    /// **The saved loops travel with the deck**, because nothing else can
+    /// carry them: they are the library's, the engine has never heard of them,
+    /// and the registry the rest of this snapshot is built from holds only
+    /// what the engine publishes. Without this the lane could not draw §25's
+    /// saved-loop layer and the pad page could not light a single slot.
+    #[test]
+    fn the_saved_loops_travel_in_the_snapshot() {
+        use crate::state::LoadedTrackInfo;
+        use std::collections::HashMap;
+
+        let registry = ParameterRegistry::new();
+        let tracks: DeckTracks = std::sync::Mutex::new(HashMap::from([(
+            1u8,
+            LoadedTrackInfo {
+                title: "Suavemente".to_owned(),
+                artist: None,
+                id: dj_core::TrackId::from_bytes([1; 32]),
+                saved_loops: vec![
+                    dj_library::StoredLoop {
+                        slot: 2,
+                        start_frame: 96_000.0,
+                        end_frame: 144_000.0,
+                        label: None,
+                    },
+                    dj_library::StoredLoop {
+                        slot: 5,
+                        start_frame: 480_000.0,
+                        end_frame: 528_000.0,
+                        label: None,
+                    },
+                ],
+            },
+        )]));
+
+        let snapshot = Snapshot::capture_all(
+            &registry,
+            2,
+            None,
+            None,
+            Names {
+                decks: Some(&tracks),
+                ..Default::default()
+            },
+            Live::default(),
+        );
+
+        let saved = &snapshot.decks[0].saved_loops;
+        assert_eq!(
+            saved.len(),
+            2,
+            "both saved loops should reach the interface"
+        );
+        assert_eq!(saved[0].slot, 2);
+        assert!((saved[0].start_frames - 96_000.0).abs() < 1.0);
+        assert!((saved[0].end_frames - 144_000.0).abs() < 1.0);
+        assert_eq!(saved[1].slot, 5, "the slot is what a DJ recalls it by");
+
+        // A deck with no record on it has no loops rather than its
+        // neighbour's, which is the same rule the title already follows.
+        assert!(snapshot.decks[1].saved_loops.is_empty());
+    }
+
     /// A track with no artist tag is normal and must not become the string
     /// "None" or an empty artist line pretending to be one.
     #[test]
@@ -1494,6 +1596,7 @@ mod tests {
                 title: "untitled.wav".to_owned(),
                 artist: None,
                 id: dj_core::TrackId::from_bytes([2; 32]),
+                saved_loops: Vec::new(),
             },
         )]));
 

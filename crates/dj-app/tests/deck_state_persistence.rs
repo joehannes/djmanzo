@@ -95,6 +95,7 @@ fn load(state: &AppState, id: TrackId) {
             title: "A".to_owned(),
             artist: None,
             id,
+            saved_loops: Vec::new(),
         },
     );
     assert!(

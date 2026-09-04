@@ -25,6 +25,7 @@
     onCueMoved,
     onLoopEdgeMoved,
     onPhraseMoved,
+    onSavedLoopRecalled,
   }: {
     deck: DeckState;
     height?: number;
@@ -81,6 +82,16 @@
      * of them moves all of them. Its presence is what makes them grabbable.
      */
     onPhraseMoved?: (frame: number) => void;
+    /**
+     * Called when a saved loop drawn on the lane is asked for, with its slot.
+     *
+     * §25's saved-loop layer and §26's answer to it in one: the regions are
+     * there to be seen, and the thing to do with the one you can see is play
+     * it. Its presence is what makes them clickable — a lane that cannot
+     * recall a loop draws them and leaves them alone, on the same terms as
+     * every other handle here.
+     */
+    onSavedLoopRecalled?: (slot: number) => void;
   } = $props();
 
   /** Tile width in pixels. Wide enough that a lane needs few of them. */
@@ -314,6 +325,24 @@
     return { left, width: Math.max(width, 2), start, end };
   });
 
+  /**
+   * The loops kept with this record, as spans on the lane. §25's layer 8.
+   *
+   * From the deck's snapshot rather than from a fetch of its own: a saved loop
+   * changes when one is saved, which is a thing that happens mid-set, and the
+   * snapshot is the path that already carries a mid-set change.
+   */
+  const savedLoops = $derived(
+    deck.saved_loops.map((region) => ({
+      slot: region.slot,
+      left: region.start_frames / framesPerPixel,
+      // A hairline for a loop shorter than a pixel, the same floor the active
+      // loop's band takes: invisible is wrong, and a sixteenth of a beat zoomed
+      // out is well under one pixel.
+      width: Math.max((region.end_frames - region.start_frames) / framesPerPixel, 2),
+    })),
+  );
+
   onMount(() => {
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) laneWidth = entry.contentRect.width;
@@ -391,6 +420,28 @@
       {/if}
       {#each dropMarks as drop (drop.frame)}
         <div class="drop" style:left="{drop.left}px" title="The drums come back here"></div>
+      {/each}
+      <!--
+        §25's saved-loop layer: the regions kept with the record, drawn as a
+        bracket rather than as a band. The running loop is a solid bar in the
+        same colour; hollow against solid is what says "marked out" against
+        "playing", which is a difference of *shape* — a second colour for the
+        same idea is what §57 forbids.
+      -->
+      {#each savedLoops as region (region.slot)}
+        <div class="saved-loop" style:left="{region.left}px" style:width="{region.width}px">
+          {#if onSavedLoopRecalled}
+            <button
+              type="button"
+              class="saved-loop-flag"
+              title="Saved loop {region.slot} — click to play it"
+              aria-label="Recall saved loop {region.slot}"
+              onclick={() => onSavedLoopRecalled(region.slot)}>{region.slot}</button
+            >
+          {:else}
+            <span class="saved-loop-flag">{region.slot}</span>
+          {/if}
+        </div>
       {/each}
       {#if loopBand}
         <div
@@ -553,6 +604,62 @@
   .loop-edge.held {
     opacity: 1;
     background: var(--text);
+  }
+
+  /*
+    §25's saved-loop layer. A three-sided bracket along the bottom edge: the
+    span between two uprights, open at the top.
+
+    The same hue as the running loop, deliberately, because it is the same
+    idea — this *is* a loop, it is simply not the one playing. What separates
+    them is shape: the running loop is a solid bar, a saved one is an outline.
+    Inventing a second colour for the second state is exactly the overload §57
+    forbids, and this lane has already spent five hues.
+
+    Under the full-height marks rather than over them: a cue and a phrase
+    boundary are single places, and a place has to stay findable through a
+    region that happens to contain it.
+  */
+  .saved-loop {
+    position: absolute;
+    bottom: 0;
+    height: 7px;
+    /* Faded in the colour rather than with `opacity`, which would group the
+       element with its label: the bracket wants to be quiet and the number is
+       a control, and a control a DJ has to squint at is not one. */
+    border: 1px solid color-mix(in srgb, var(--accent-2) 60%, transparent);
+    border-top: none;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /*
+    The slot, which is what a DJ recalls the loop by -- and, where the lane can
+    do something about it, the thing to press. Above the bracket rather than
+    inside it: seven pixels cannot hold a digit, and the number belongs to the
+    left end the way a cue's flag belongs to its line.
+  */
+  .saved-loop-flag {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    padding: 0 0.25rem;
+    border: none;
+    background: transparent;
+    color: var(--accent-2);
+    font-size: 0.65rem;
+    line-height: 1.2;
+    font-family: inherit;
+  }
+
+  button.saved-loop-flag {
+    pointer-events: auto;
+    cursor: pointer;
+  }
+
+  button.saved-loop-flag:hover,
+  button.saved-loop-flag:focus-visible {
+    color: var(--text);
   }
 
   /*

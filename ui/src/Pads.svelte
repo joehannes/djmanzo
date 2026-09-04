@@ -83,6 +83,13 @@
     if ("HotCueSet" in condition) {
       return deck.hot_cues[condition.HotCueSet - 1] != null;
     }
+    if ("SavedLoopSet" in condition) {
+      // From the record's own saved set rather than from what this page has
+      // been pressed on: a loop saved from a controller, a script or the
+      // browser is as real as one saved here, and a page that only knew its
+      // own presses would go dark on the next load.
+      return deck.saved_loops.some((region) => region.slot === condition.SavedLoopSet);
+    }
     if ("LoopBeats" in condition) {
       // A roll is a loop too, so a roll would light the loop page's pad as
       // well. It is the same eddy — but the roll page is where it belongs.

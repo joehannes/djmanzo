@@ -568,6 +568,7 @@
     onCueMoved={(slot, frame) => void moveHotCue(deck.number, slot, frame)}
     onLoopEdgeMoved={(edge, frame) => void moveLoopEdge(deck.number, edge, frame)}
     onPhraseMoved={(frame) => void movePhrase(deck.number, frame)}
+    onSavedLoopRecalled={(slot) => void send(`deck ${deck.number} loop_recall ${slot}`)}
   />
   {/snippet}
   {#snippet zoneOverview()}

@@ -169,7 +169,11 @@ impl PadPage {
                     // Saving is the destructive gesture, so it is the modified
                     // one — the same arrangement the browser uses.
                     clear: d(DeckAction::LoopSave(slot)),
-                    lit: Lit::Never,
+                    // Which slots hold something, which this page could not say
+                    // at all until the saved loops reached the snapshot. Eight
+                    // identical unlit squares is a page you have to remember
+                    // rather than read.
+                    lit: Lit::SavedLoopSet(slot),
                 }
             }),
             // The one page whose pads address the mixer rather than the deck.
@@ -360,11 +364,17 @@ pub enum PadLabel {
 /// and a page being code in two places.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Lit {
-    /// Never lights. A pad whose state cannot be known — a saved loop slot the
-    /// engine does not report, a blank.
+    /// Never lights. A pad whose state cannot be known, or a blank.
     Never,
     /// This hot cue has been set.
     HotCueSet(u8),
+    /// This saved loop slot holds a loop.
+    ///
+    /// The engine does not know about saved loops — they are the library's,
+    /// recalled onto the deck rather than held by it — so this reads the set
+    /// the deck's record came with, which the application remembers for the
+    /// same reason it remembers the title.
+    SavedLoopSet(u8),
     /// A loop of this length is running.
     LoopBeats(f32),
     /// A roll of this length is being held.
@@ -476,6 +486,29 @@ mod tests {
                     page.name()
                 );
             }
+        }
+    }
+
+    /// **The saved page says which slots hold something.**
+    ///
+    /// It could not, until the saved loops reached the snapshot: every pad
+    /// named [`Lit::Never`], so eight identical squares were a page a DJ had
+    /// to remember rather than read, and the only way to find out whether slot
+    /// 5 held anything was to press it in front of a room.
+    #[test]
+    fn the_saved_page_lights_the_slots_that_hold_a_loop() {
+        for (index, pad) in PadPage::Saved.pads().iter().enumerate() {
+            let slot = index as u8 + 1;
+            assert_eq!(
+                pad.lit,
+                Lit::SavedLoopSet(slot),
+                "saved pad {slot} cannot say whether it holds a loop"
+            );
+            // And it is still the slot it recalls, not a neighbour's.
+            assert_eq!(
+                pad.press,
+                Some(PadAction::Deck(DeckAction::LoopRecall(slot)))
+            );
         }
     }
 

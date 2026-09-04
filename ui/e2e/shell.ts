@@ -612,6 +612,12 @@ export async function openShell(
           if (cmd === "move_phrase") {
             ((win.__phraseArgs ??= []) as unknown[]).push(args);
           }
+          // Every action string, for the presses whose whole claim is *which*
+          // action they send -- recalling saved loop 6 by pressing loop 3's
+          // marker has still "reached djmanzo".
+          if (cmd === "dispatch") {
+            ((win.__dispatched ??= []) as unknown[]).push(args.action);
+          }
           if (cmd === "plugin:event|listen") {
             handlers.set(String(args.event), args.handler as number);
             // After the promise settles, so the shell has finished wiring up.
