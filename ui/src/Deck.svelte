@@ -5,6 +5,7 @@
     loadTrack,
     moveHotCue,
     moveLoopEdge,
+    movePhrase,
     padPages,
     type DeckState,
     type Placed,
@@ -566,6 +567,7 @@
     height={height(props, 96)}
     onCueMoved={(slot, frame) => void moveHotCue(deck.number, slot, frame)}
     onLoopEdgeMoved={(edge, frame) => void moveLoopEdge(deck.number, edge, frame)}
+    onPhraseMoved={(frame) => void movePhrase(deck.number, frame)}
   />
   {/snippet}
   {#snippet zoneOverview()}

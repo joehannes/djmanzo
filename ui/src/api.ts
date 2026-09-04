@@ -1046,6 +1046,15 @@ export interface WaveformInfo {
    * is most of them.
    */
   drops: number[];
+  /**
+   * Where each phrase starts, in frames.
+   *
+   * The lines are drawn into the tiles, where they align with the audio
+   * pixel-exactly. These are the same places again so the lane can put a
+   * *grab target* on each one — nothing here is drawn, which is why two lists
+   * of the same boundaries is not two answers about where beat 96 is.
+   */
+  phrases: number[];
 }
 
 /** A stretch of a record, in frames. */
@@ -1120,6 +1129,19 @@ export function tileUrl(
  * the loop would be too short, and whether there is a loop to resize at all
  * are djmanzo's — see `Deck::move_loop_edge`.
  */
+/**
+ * Say that a phrase starts at this frame.
+ *
+ * §26's "Phrase marker — drag to adjust". The analyser can be right about how
+ * long a phrase is and wrong about which beat starts one; nothing could
+ * correct that before, and every mix djmanzo plans is placed on it.
+ *
+ * Moves the anchor of the phrase the record has. A record with no phrase
+ * structure has no boundary to move, and says so.
+ */
+export const movePhrase = (deck: number, frame: number) =>
+  invoke<void>("move_phrase", { deck, frame });
+
 export const moveLoopEdge = (deck: number, edge: "start" | "end", frame: number) =>
   invoke<void>("move_loop_edge", { deck, edge, frame });
 

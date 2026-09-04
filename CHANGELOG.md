@@ -16,6 +16,39 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The phrase marker is dragged to where the phrase starts.** §26's last named
+example. The analyser can be right about how long a phrase is and wrong about
+which beat starts one — a record opening on a four-beat pickup is the usual
+cause — and until now nothing could correct it. A wrong anchor is not cosmetic:
+the planner, the automix, the autopilot and Set Flow all mix on it. The
+boundary is grabbed on the deck's own lane and dropped on a beat, through the
+same action a controller would send, so it lands in the session log and is
+remembered with the record. Only the anchor moves. That makes it the one grid
+edit that leaves the beats alone, which is why it does not go down the path
+every other one takes — compute a new grid, then clear the phrase, because a
+phrase counted from the old anchor no longer describes it.
+
+Two things in it came out of *driving* it rather than out of a test, and both
+had shipped-looking code and a passing suite:
+
+**Fixed: a drop landed on the beat it was inside rather than the nearest one.**
+`beat_index_at` floors, which is the right answer for a playhead and the wrong
+one for a finger. In the lane that asymmetry was plain: a nudge of a few pixels
+to the *left* moved the boundary a whole beat backwards, while a drag of nearly
+a whole beat to the *right* moved it nothing at all. `Beatgrid` grew
+`nearest_beat_index` — the index behind the snap `nearest_beat` already does —
+and the drop uses it.
+
+**Fixed: a moved boundary reverted on the next restart.** The deck was already
+guarded against the analyser landing a second after the load and overwriting a
+restored correction. The library row was not: it still said the phrase came
+from `analysis`, so the next load's analyser was entitled to write its own
+answer over it, and the load after that restored *that*. Measured, not
+inferred: move a boundary to beat 12, restart, and it came back at 15 with the
+analyser's confidence on it. A phrase edit now marks the row the DJ's own, the
+way a grid edit already did. Same run afterwards: 12, and still 12 after a
+restart.
+
 **A loop is resized by its edges.** §26 lists "Loop — resize" beside the cue
 marker, and a loop's length was a pair of buttons that halve and double it —
 which covers every length that is a power of two and no other. Both edges are

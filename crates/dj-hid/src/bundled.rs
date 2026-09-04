@@ -449,6 +449,18 @@ mod tests {
             "continuous: a place in the record, as loop_in_at",
         ),
         (
+            "phrase_at",
+            "continuous: a place in the record. A phrase boundary is dragged \
+             where it is drawn; there is no keyboard gesture for that line, \
+             over there",
+        ),
+        (
+            "phrase_at",
+            "continuous: a place in the record. A phrase boundary is dragged \
+             where it is drawn; there is no keyboard gesture for \"that line, \
+             over there\"",
+        ),
+        (
             "hotcue_move",
             "continuous: a place in the record. The keyboard sets a cue at the \
              playhead with the pad keys; moving one is a pointer's gesture",

@@ -197,12 +197,23 @@ impl Beatgrid {
         FramePos::new(self.anchor.get() + (index as f64) * beat)
     }
 
+    /// Index of the beat *nearest* `pos`, in either direction.
+    ///
+    /// The counterpart to [`Self::beat_index_at`], and the one a hand wants:
+    /// [`Self::beat_index_at`] answers "which beat am I inside", which is
+    /// right for a playhead and wrong for a dropped finger, because a
+    /// boundary a hair to the left of a beat is aiming at that beat and not
+    /// at the one before it.
+    #[must_use]
+    pub fn nearest_beat_index(&self, pos: FramePos, rate: SampleRate) -> i64 {
+        let beat = self.bpm.beat_frames(rate);
+        ((pos.get() - self.anchor.get()) / beat).round() as i64
+    }
+
     /// Nearest beat to `pos` in either direction -- what quantize snaps to.
     #[must_use]
     pub fn nearest_beat(&self, pos: FramePos, rate: SampleRate) -> FramePos {
-        let beat = self.bpm.beat_frames(rate);
-        let index = ((pos.get() - self.anchor.get()) / beat).round() as i64;
-        self.beat_position(index, rate)
+        self.beat_position(self.nearest_beat_index(pos, rate), rate)
     }
 }
 
@@ -436,6 +447,29 @@ mod tests {
         assert_eq!(
             grid.nearest_beat(FramePos::new(11_000.0), rate()).get(),
             0.0
+        );
+    }
+
+    /// The index behind that snap, which callers who need a *number* -- which
+    /// beat of a phrase this is -- ask for directly. It rounds where
+    /// `beat_index_at` floors, and the two disagree by one for exactly the
+    /// second half of every beat.
+    #[test]
+    fn the_nearest_beat_index_rounds_where_the_containing_one_floors() {
+        let grid = Beatgrid::new(
+            FramePos::ZERO,
+            Bpm::new(120.0).unwrap(),
+            Confidence::CERTAIN,
+        );
+        assert_eq!(grid.nearest_beat_index(FramePos::new(13_000.0), rate()), 1);
+        assert_eq!(grid.beat_index_at(FramePos::new(13_000.0), rate()), 0);
+        assert_eq!(grid.nearest_beat_index(FramePos::new(11_000.0), rate()), 0);
+        // Just short of a beat is that beat, not the one it is still inside.
+        assert_eq!(grid.nearest_beat_index(FramePos::new(23_900.0), rate()), 1);
+        // Before the anchor it goes negative, like the containing index.
+        assert_eq!(
+            grid.nearest_beat_index(FramePos::new(-13_000.0), rate()),
+            -1
         );
     }
 

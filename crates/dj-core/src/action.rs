@@ -322,6 +322,19 @@ pub enum DeckAction {
     /// Move an active loop's end to somewhere in the record.
     LoopOutAt(FramePos),
 
+    /// Say that a phrase starts here.
+    ///
+    /// The analyser finds the phrase length and which beat starts one, and it
+    /// can be wrong about the second while right about the first — a record
+    /// that opens on a four-beat pickup is the common case. Nothing could
+    /// correct it until now, and a wrong phrase anchor is not cosmetic: the
+    /// planner, the automix, the autopilot and Set Flow all mix on it.
+    ///
+    /// Moves the anchor of the phrase the record already has. It does not
+    /// invent a phrase structure for a record with none — see
+    /// `dj_analysis::structure` for why absent is a real answer.
+    PhraseAt(FramePos),
+
     /// Loop the next `n` beats from here, and start looping.
     ///
     /// Zero or negative turns looping off, so a controller encoder that can
@@ -987,6 +1000,7 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "loop_out_at" => Ok(DeckAction::LoopOutAt(FramePos::new(parse_frames(
             argument,
         )?))),
+        "phrase_at" => Ok(DeckAction::PhraseAt(FramePos::new(parse_frames(argument)?))),
         "loop" => Ok(DeckAction::LoopBeats(parse_beats(argument)?)),
         "loop_phrase" => Ok(DeckAction::LoopPhrases(parse_beats(argument)?)),
         "loop_off" => bare(DeckAction::LoopOff),
@@ -1402,6 +1416,7 @@ impl fmt::Display for Action {
                 DeckAction::LoopOutAt(at) => {
                     write!(f, "deck {deck} loop_out_at {}", at.get())
                 }
+                DeckAction::PhraseAt(at) => write!(f, "deck {deck} phrase_at {}", at.get()),
                 DeckAction::LoopBeats(n) => write!(f, "deck {deck} loop {n}"),
                 DeckAction::LoopPhrases(n) => write!(f, "deck {deck} loop_phrase {n}"),
                 DeckAction::LoopOff => write!(f, "deck {deck} loop_off"),
@@ -1966,6 +1981,19 @@ mod tests {
         }
         assert!(Action::parse("deck 1 loop_in_at").is_err());
         assert!(Action::parse("deck 1 loop_out_at nowhere").is_err());
+    }
+
+    /// **A phrase boundary can be moved, and the verb says where to.**
+    #[test]
+    fn moving_a_phrase_boundary_round_trips_through_its_text_form() {
+        let action = Action::Deck {
+            deck: DeckId::from_human(2).unwrap(),
+            action: DeckAction::PhraseAt(FramePos::new(1_234_567.0)),
+        };
+        assert_eq!(action.to_string(), "deck 2 phrase_at 1234567");
+        assert_eq!(Action::parse("deck 2 phrase_at 1234567"), Ok(action));
+        assert!(Action::parse("deck 2 phrase_at").is_err());
+        assert!(Action::parse("deck 2 phrase_at somewhere").is_err());
     }
 
     /// A slot outside the pads is refused rather than clamped, exactly as it is

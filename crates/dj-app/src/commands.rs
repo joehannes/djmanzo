@@ -933,19 +933,39 @@ pub fn put_on_deck(
             return;
         }
 
+        // **Only if the deck has no grid yet.**
+        //
+        // `restore_cues_and_grid` runs during the load and puts the *stored*
+        // grid and phrase on the deck — including a correction the DJ made
+        // last time. This block runs a moment later, on a worker, and used to
+        // overwrite both unconditionally. The comment below claimed the
+        // `if_absent` protected them; it protects the library row, and nothing
+        // protected the copies actually in force.
+        //
+        // So a corrected grid was restored on load and silently replaced a
+        // second later, on every load, for as long as the correction existed —
+        // and the same would have happened to a moved phrase boundary the
+        // moment one could be moved. Which is how this was found.
+        //
+        // A stored grid the DJ never touched is the analyser's own answer
+        // anyway, so skipping costs nothing in the ordinary case.
+        let already = !analyser_may_publish(&waveforms, deck_id.human_number());
+
         // The grid goes to the waveform store, which draws it into the tiles
         // themselves. Drawing it in the interface instead would be two
         // coordinate systems agreeing only by luck -- see `dj_render::GridOverlay`.
-        waveforms.set_analysed_grid(
-            deck_id,
-            analysis.tempo.as_ref().map(|tempo| dj_render::GridOverlay {
-                grid: tempo.grid,
-                sample_rate,
-                phrase: analysis
-                    .phrases
-                    .and_then(|p| dj_core::Phrase::new(p.beats, p.anchor)),
-            }),
-        );
+        if !already {
+            waveforms.set_analysed_grid(
+                deck_id,
+                analysis.tempo.as_ref().map(|tempo| dj_render::GridOverlay {
+                    grid: tempo.grid,
+                    sample_rate,
+                    phrase: analysis
+                        .phrases
+                        .and_then(|p| dj_core::Phrase::new(p.beats, p.anchor)),
+                }),
+            );
+        }
 
         // And into the library, so a track loaded straight from disk gets a BPM
         // and a key the browser can sort by without waiting for a scan to reach
@@ -963,13 +983,15 @@ pub fn put_on_deck(
         // phrase jump. Two destinations for one finding rather than one shared
         // home, because the engine's copy has to cross a lock-free queue into
         // the audio thread and the renderer's cannot.
-        let _ = bus.send_command(dj_engine::Command::SetGrid {
-            deck: deck_id,
-            grid: analysis.tempo.as_ref().map(|tempo| tempo.grid),
-            phrase: analysis
-                .phrases
-                .and_then(|p| dj_core::Phrase::new(p.beats, p.anchor)),
-        });
+        if !already {
+            let _ = bus.send_command(dj_engine::Command::SetGrid {
+                deck: deck_id,
+                grid: analysis.tempo.as_ref().map(|tempo| tempo.grid),
+                phrase: analysis
+                    .phrases
+                    .and_then(|p| dj_core::Phrase::new(p.beats, p.anchor)),
+            });
+        }
 
         // Auto-gain goes through the action bus rather than straight to the
         // engine, so it lands in the session log like any other trim change and
@@ -1162,6 +1184,8 @@ enum GridEdit {
     SetBpm(f64),
     Tap,
     Reset,
+    /// A phrase starts at this frame. See [`DeckAction::PhraseAt`].
+    PhraseAt(dj_core::FramePos),
 }
 
 fn grid_edit(action: dj_core::DeckAction) -> Option<GridEdit> {
@@ -1173,6 +1197,7 @@ fn grid_edit(action: dj_core::DeckAction) -> Option<GridEdit> {
         A::GridSetBpm(b) => GridEdit::SetBpm(b),
         A::GridTap => GridEdit::Tap,
         A::GridReset => GridEdit::Reset,
+        A::PhraseAt(at) => GridEdit::PhraseAt(at),
         _ => return None,
     })
 }
@@ -1197,6 +1222,42 @@ fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(),
             original.map(|o| o.grid),
             analysed_phrase(state, deck),
         );
+    }
+
+    // Moving a phrase boundary is the one edit that leaves the grid alone, so
+    // it does not go through the "compute a new grid, then clear the phrase"
+    // path below. It is the opposite operation: the beats stay exactly where
+    // they are and only which of them starts a phrase changes.
+    if let GridEdit::PhraseAt(at) = edit {
+        let overlay = waveforms
+            .grid(deck.human_number())
+            .ok_or("no beat grid on this deck yet; wait for analysis or tap one in")?;
+        let phrase = overlay
+            .phrase
+            .ok_or("this record has no phrase structure to move")?;
+        // Which beat the hand landed on, and which beat *within a phrase* that
+        // makes it. The length is untouched: the DJ is saying where a phrase
+        // starts, not how long one is.
+        //
+        // Nearest, not the beat the drop is inside: dropping a hair short of a
+        // beat means that beat. Driving this with the floor, a nudge left of a
+        // few pixels moved the boundary a whole beat while a nudge right of
+        // most of a beat moved it nothing.
+        let beat = overlay.grid.nearest_beat_index(at, overlay.sample_rate);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let anchor = beat.rem_euclid(i64::from(phrase.beats)) as u32;
+        let moved =
+            dj_core::Phrase::new(phrase.beats, anchor).ok_or("that is not a phrase boundary")?;
+
+        waveforms.set_grid(
+            deck,
+            Some(dj_render::GridOverlay {
+                phrase: Some(moved),
+                ..overlay
+            }),
+        );
+        save_phrase(state, deck, Some(moved));
+        return publish_grid(state, deck, Some(overlay.grid), Some(moved));
     }
 
     // The playhead, read live rather than from the last snapshot: a tap is
@@ -1250,7 +1311,9 @@ fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(),
                         .ok_or("that would leave the playable tempo range")?,
                     GridEdit::SetBpm(b) => grid::set_bpm(current, b)
                         .ok_or("that tempo is outside the playable range")?,
-                    GridEdit::Tap | GridEdit::Reset => unreachable!("handled above"),
+                    GridEdit::Tap | GridEdit::Reset | GridEdit::PhraseAt(_) => {
+                        unreachable!("handled above")
+                    }
                 }
             }
         };
@@ -1273,6 +1336,22 @@ fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(),
     publish_grid(state, deck, Some(edited), None)
 }
 
+/// Whether the analyser's own grid may go onto this deck.
+///
+/// Only when nothing has put one there. `restore_cues_and_grid` runs during a
+/// load and puts the *stored* grid and phrase on — which may be a correction
+/// the DJ made last time — and the analyser finishes a moment later on a
+/// worker. It used to overwrite both unconditionally, so a corrected grid was
+/// restored and then silently replaced, on every load, for as long as the
+/// correction existed.
+///
+/// A stored grid nobody has touched is the analyser's own answer anyway, so
+/// standing down costs nothing in the ordinary case and is the difference
+/// between a correction that sticks and one that flickers.
+fn analyser_may_publish(waveforms: &crate::WaveformStore, deck: u8) -> bool {
+    waveforms.grid(deck).is_none()
+}
+
 /// The phrase structure the analyser found for whatever is on this deck.
 ///
 /// Read back from the library rather than kept in a second place: the deck
@@ -1289,6 +1368,67 @@ fn analysed_phrase(state: &AppState, deck: DeckId) -> Option<dj_core::Phrase> {
         stored.analysis.phrase_beats?,
         stored.analysis.phrase_anchor?,
     )
+}
+
+/// Keep a moved phrase boundary, so the correction survives the track leaving
+/// the deck.
+///
+/// The same shape as [`save_grid`] and for the same reason: this is what the
+/// DJ said, and it outranks what the analyser found. A phrase the DJ moved is
+/// worth more than one an FFT guessed at, and re-analysis must not quietly
+/// undo it -- which is what would happen if the correction lived only in the
+/// waveform store.
+fn save_phrase(state: &AppState, deck: DeckId, phrase: Option<dj_core::Phrase>) {
+    let Some(track) = state.deck_track_id(deck) else {
+        return;
+    };
+    let Ok(db) = state.library().get() else {
+        return;
+    };
+    let stored = match db.track(track) {
+        Ok(Some(found)) => found.analysis,
+        Ok(None) => return,
+        Err(error) => {
+            tracing::warn!(%error, "could not read the track to save its phrase");
+            return;
+        }
+    };
+    if let Err(error) = db.set_analysis(track, &phrase_edit(stored, phrase)) {
+        tracing::warn!(%error, "could not save the phrase edit");
+    }
+}
+
+/// The library row a moved boundary leaves behind.
+///
+/// Separate from [`save_phrase`] so the answer can be read without a database,
+/// a deck and a loaded track: what goes in the row is the part that was wrong,
+/// and the part worth a test.
+fn phrase_edit(
+    stored: dj_library::StoredAnalysis,
+    phrase: Option<dj_core::Phrase>,
+) -> dj_library::StoredAnalysis {
+    dj_library::StoredAnalysis {
+        phrase_beats: phrase.map(|p| p.beats),
+        phrase_anchor: phrase.map(|p| p.anchor),
+        // The analyser's own confidence no longer describes this answer: a
+        // human moved it. Cleared rather than kept, because a z-score about
+        // somebody else's guess is not evidence for this one.
+        phrase_confidence: None,
+        ..stored
+    }
+    // **Marked as the DJ's own, exactly as `save_grid` does.**
+    //
+    // Without this the row kept saying `analysis`, and the next load's
+    // analyser wrote its own boundary straight back over the correction --
+    // found by moving a boundary, restarting the application, and watching it
+    // revert. The deck was already protected (see `analyser_may_publish`); the
+    // library row was not, and the row is what the *next* load restores from.
+    //
+    // One source covers the grid and the phrase together because a phrase is
+    // counted in beats from the grid's anchor: they are one answer about one
+    // record, and this file already keeps the key and the loudness under the
+    // same mark for the same reason.
+    .from_source(dj_library::GridSource::Manual)
 }
 
 /// Keep a grid edit, so the correction is still there next time this track is
@@ -1418,6 +1558,17 @@ pub struct WaveformInfo {
     /// Where the drums come back. Empty when a record fades out rather than
     /// dropping, which is most of them.
     pub drops: Vec<f64>,
+    /// Where each phrase starts, in frames.
+    ///
+    /// The lines themselves are drawn into the tiles, where they can align
+    /// with the audio pixel-exactly; these are the same places again so the
+    /// lane can put a *grab target* on each one. Two things drawing the same
+    /// line would be two answers about where beat 96 is — nothing here is
+    /// drawn, only made grabbable.
+    ///
+    /// Empty for a record with no phrase structure, and for one nothing has
+    /// analysed. Both are real answers, and neither has a boundary to move.
+    pub phrases: Vec<f64>,
 }
 
 /// The breakdowns the analyser found in whatever this deck is playing.
@@ -1470,6 +1621,56 @@ fn energy_in_frames(state: &AppState, deck: u8) -> (Vec<FrameSpan>, Vec<f64>) {
     )
 }
 
+/// Every phrase boundary in the record, in frames.
+///
+/// From the *working* grid, not the analysed one — the opposite of the
+/// breakdowns, and for the opposite reason. A breakdown's beat indices were
+/// counted against the analyser's grid and mean nothing against another one.
+/// A phrase boundary is a statement about the grid that is in force: if the DJ
+/// has corrected the tempo, the phrases are where the corrected grid says.
+///
+/// Capped, because the list crosses IPC on every load: a ten-minute record at
+/// eight-beat phrases is over two hundred boundaries, and a lane can only ever
+/// grab the handful under the window.
+fn phrases_in_frames(state: &AppState, deck: u8) -> Vec<f64> {
+    const MOST: usize = 512;
+    let Some(overlay) = state.waveforms().grid(deck) else {
+        return Vec::new();
+    };
+    let Some(phrase) = overlay.phrase else {
+        return Vec::new();
+    };
+    let Some(total) = state.waveforms().total_frames(deck) else {
+        return Vec::new();
+    };
+    #[allow(clippy::cast_precision_loss)]
+    let end = total as f64;
+    let first = overlay
+        .grid
+        .beat_index_at(dj_core::FramePos::new(0.0), overlay.sample_rate);
+    let mut out = Vec::new();
+    let mut beat = first;
+    // Walk forward to the first boundary at or after the start of the record,
+    // then every phrase length after it.
+    while !phrase.starts_at(beat) {
+        beat += 1;
+        if beat > first + i64::from(phrase.beats) {
+            return Vec::new();
+        }
+    }
+    while out.len() < MOST {
+        let frame = overlay.grid.beat_position(beat, overlay.sample_rate).get();
+        if frame > end {
+            break;
+        }
+        if frame >= 0.0 {
+            out.push(frame);
+        }
+        beat += i64::from(phrase.beats);
+    }
+    out
+}
+
 #[tauri::command]
 pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
     let (breakdowns, drops) = energy_in_frames(&state, deck);
@@ -1480,6 +1681,7 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         epoch: state.waveforms().epoch(deck),
         breakdowns,
         drops,
+        phrases: phrases_in_frames(&state, deck),
     }
 }
 
@@ -2266,6 +2468,208 @@ mod grid_edit_tests {
         assert_eq!(dto.phrase_beats, None);
         assert_eq!(dto.key_name, None);
         assert_eq!(dto.loudness_lufs, None);
+    }
+
+    /// A deck whose grid carries a phrase, for the phrase tests below.
+    fn app_with_phrase(beats: u32, anchor: u32) -> AppState {
+        let state = app_with_grid(120.0, 0.0);
+        let overlay = state.waveforms().grid(1).expect("the fixture has a grid");
+        state.waveforms().set_analysed_grid(
+            deck(),
+            Some(dj_render::GridOverlay {
+                phrase: dj_core::Phrase::new(beats, anchor),
+                ..overlay
+            }),
+        );
+        state
+    }
+
+    /// **The analyser stands down when the deck already has a grid.**
+    ///
+    /// The load path restores the stored grid and phrase, and the analyser
+    /// lands a moment later on a worker. It used to overwrite them both
+    /// unconditionally — so a correction the DJ made was put back on load and
+    /// replaced a second later, every time. Found while adding phrase editing,
+    /// which the same bug would have swallowed whole.
+    #[test]
+    fn the_analyser_does_not_replace_a_grid_that_is_already_there() {
+        let state = AppState::new(true);
+        assert!(
+            analyser_may_publish(state.waveforms(), 1),
+            "a deck with nothing on it should take the analyser's grid"
+        );
+
+        let restored = app_with_phrase(16, 4);
+        assert!(
+            !analyser_may_publish(restored.waveforms(), 1),
+            "the analyser would overwrite a grid the load path had already \
+             restored, which is how a correction gets undone a second after it \
+             is made"
+        );
+    }
+
+    /// **A phrase boundary can be moved, and only its anchor changes.**
+    ///
+    /// The analyser can be right about the length and wrong about which beat
+    /// starts one — a record opening on a four-beat pickup is the usual cause.
+    /// Nothing could correct that until now, and a wrong anchor is not
+    /// cosmetic: the planner, the automix, the autopilot and Set Flow all mix
+    /// on it.
+    #[test]
+    fn a_phrase_boundary_moves_to_the_beat_it_was_dropped_on() {
+        let state = app_with_phrase(16, 0);
+        // 120 BPM at 48 kHz is 24 000 frames a beat. Beat 20 is beat 4 of a
+        // sixteen-beat phrase.
+        let frame = 20.0 * 24_000.0;
+        perform(&state, &format!("deck 1 phrase_at {frame}")).expect("a phrase to move");
+
+        let moved = state
+            .waveforms()
+            .grid(1)
+            .and_then(|o| o.phrase)
+            .expect("the phrase survived");
+        assert_eq!(moved.anchor, 4, "the anchor is not where the hand landed");
+        assert_eq!(
+            moved.beats, 16,
+            "the length changed; only the anchor should"
+        );
+    }
+
+    /// **A moved boundary outranks the analyser, in the library row too.**
+    ///
+    /// Found by driving: move a boundary, restart, and it was back where the
+    /// analyser had put it. The deck was guarded — see
+    /// `the_analyser_does_not_replace_a_grid_that_is_already_there` — but the
+    /// row said `analysis`, so the next load's analyser was entitled to write
+    /// its own answer over the correction, and the load after that restored
+    /// *that*. A correction that survives until the next launch and no longer
+    /// is worse than none: the DJ has no reason to look again.
+    #[test]
+    fn a_moved_boundary_is_stored_as_the_djs_own_answer() {
+        let analysed = dj_library::StoredAnalysis {
+            phrase_beats: Some(16),
+            phrase_anchor: Some(0),
+            phrase_confidence: Some(5.2),
+            grid_source: Some(dj_library::GridSource::Analysis),
+            ..Default::default()
+        };
+
+        let edited = phrase_edit(analysed, dj_core::Phrase::new(16, 4));
+
+        assert_eq!(edited.phrase_anchor, Some(4), "the move was not stored");
+        assert_eq!(
+            edited.phrase_confidence, None,
+            "the analyser's confidence was kept for somebody else's answer"
+        );
+        assert!(
+            !dj_library::GridSource::Analysis.may_replace(edited.grid_source),
+            "a later analysis may overwrite this, which is the revert"
+        );
+    }
+
+    /// **A drop that lands just short of a beat means that beat.** A hand on a
+    /// lane is not accurate to the frame, and the boundary it is aiming at is
+    /// the line under the finger, not the one before it. Written after driving
+    /// the interface: with the beat *containing* the drop, a nudge of a few
+    /// pixels to the left moved the boundary a whole beat backwards while a
+    /// nudge of nearly a whole beat to the right moved it nothing.
+    #[test]
+    fn a_boundary_dropped_a_hair_short_of_a_beat_lands_on_it() {
+        let state = app_with_phrase(16, 0);
+        // 120 BPM at 48 kHz is 24 000 frames a beat. A hundred frames before
+        // beat 20 -- two milliseconds, well inside a fingertip.
+        let frame = 20.0 * 24_000.0 - 100.0;
+        perform(&state, &format!("deck 1 phrase_at {frame}")).expect("a phrase to move");
+
+        let moved = state
+            .waveforms()
+            .grid(1)
+            .and_then(|o| o.phrase)
+            .expect("the phrase survived");
+        assert_eq!(
+            moved.anchor, 4,
+            "a drop just short of a beat fell back to the beat before it"
+        );
+    }
+
+    /// **Moving a boundary leaves the beats alone.** Every other grid edit
+    /// produces a new tempo or anchor and clears the phrase because it no
+    /// longer describes the grid. This one is the opposite operation and must
+    /// not go down that path.
+    #[test]
+    fn moving_a_phrase_does_not_move_the_grid() {
+        let state = app_with_phrase(16, 0);
+        let before = state.waveforms().grid(1).expect("a grid").grid;
+
+        perform(&state, "deck 1 phrase_at 480000").expect("a phrase to move");
+
+        let after = state.waveforms().grid(1).expect("a grid").grid;
+        assert_eq!(after.bpm.get(), before.bpm.get(), "the tempo moved");
+        assert_eq!(after.anchor.get(), before.anchor.get(), "the grid moved");
+    }
+
+    /// **A record with no phrase structure has no boundary to move**, and says
+    /// so rather than inventing one. Absent is a real answer — see
+    /// `dj_analysis::structure`.
+    #[test]
+    fn a_record_with_no_phrases_refuses_the_move_rather_than_inventing_one() {
+        let state = app_with_grid(120.0, 0.0);
+        let error = perform(&state, "deck 1 phrase_at 480000").expect_err("nothing to move");
+        assert!(
+            error.contains("no phrase structure"),
+            "the refusal does not say why: {error}"
+        );
+        assert!(state.waveforms().grid(1).and_then(|o| o.phrase).is_none());
+    }
+
+    /// The boundaries the lane puts grab targets on: frames, from the working
+    /// grid, one phrase length apart, stopping at the end of the record.
+    ///
+    /// The lines themselves are drawn into the tiles. These are the same
+    /// places again so a pointer has something to catch — nothing here draws,
+    /// which is why two lists of the same boundaries is not two answers.
+    #[test]
+    fn every_phrase_boundary_reaches_the_lane_as_a_frame() {
+        let state = app_with_phrase(16, 0);
+        // Ten seconds of silence, which is a real summary with a real length.
+        // 120 BPM at 48 kHz is 24 000 frames a beat, so a sixteen-beat phrase
+        // is 384 000 and only two boundaries fit.
+        state.waveforms().set_summary(
+            deck(),
+            dj_render::WaveformSummary::analyse(&vec![0.0f32; 480_000 * 2], SR),
+        );
+
+        let boundaries = phrases_in_frames(&state, 1);
+        assert_eq!(boundaries.len(), 2, "{boundaries:?}");
+        assert!((boundaries[0] - 0.0).abs() < 1.0);
+        assert!((boundaries[1] - 384_000.0).abs() < 1.0);
+    }
+
+    /// A deck with nothing on it has no boundaries rather than an endless list.
+    #[test]
+    fn a_deck_with_no_record_on_it_has_no_phrase_boundaries() {
+        assert!(phrases_in_frames(&app_with_phrase(16, 0), 1).is_empty());
+    }
+
+    /// **The anchor is honoured, not assumed to be zero.** A record opening on
+    /// a four-beat pickup is the case this whole gesture exists for, and a
+    /// list of boundaries starting at frame 0 regardless would put every grab
+    /// target on the wrong line.
+    #[test]
+    fn the_boundaries_start_where_the_anchor_says() {
+        let state = app_with_phrase(16, 4);
+        state.waveforms().set_summary(
+            deck(),
+            dj_render::WaveformSummary::analyse(&vec![0.0f32; 480_000 * 2], SR),
+        );
+
+        let boundaries = phrases_in_frames(&state, 1);
+        assert!(!boundaries.is_empty());
+        assert!(
+            (boundaries[0] - 4.0 * 24_000.0).abs() < 1.0,
+            "the first boundary is at {}, not on beat 4",
+            boundaries[0]
+        );
     }
 
     /// **A breakdown reaches the interface in frames, on the grid it was
@@ -4460,6 +4864,21 @@ pub fn move_loop_edge(
         other => return Err(format!("no loop edge called {other}")),
     };
     perform(&state, &format!("deck {deck} {verb} {frame}"))
+}
+
+/// Say that a phrase starts where the DJ pointed.
+///
+/// §26's "Phrase marker — drag to adjust", and the last of that section's
+/// examples this application had no answer to. It goes through `perform` like
+/// the cue and loop drags, so it lands in the session log and takes the same
+/// path a controller would — and from there through `apply_grid_edit`, which
+/// is where the phrase length lives.
+///
+/// # Errors
+/// If the deck has no grid, no phrase structure, or the frame is not a frame.
+#[tauri::command]
+pub fn move_phrase(state: State<'_, AppState>, deck: u8, frame: f64) -> Result<(), String> {
+    perform(&state, &format!("deck {deck} phrase_at {frame}"))
 }
 
 /// Throw the adjustments away and ask the planner again.

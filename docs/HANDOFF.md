@@ -208,10 +208,20 @@ The largest open sections, in the order they are worth doing:
    twelve of §25's twenty layers ship. What is left of §25 is vocal and stem
    presence (both need the separator's output kept, not just played), the
    energy trajectory as a curve rather than as two markers, saved loops, and
-   the runway to the end of the record. Cue markers and loop edges are
-   grabbable now; what §26 still wants grabbable is the phrase markers, which
-   are a grid edit rather than a marker move. Then §27's ghost track, which
-   needs a second render of a track that is not loaded.
+   the runway to the end of the record. §26's named examples are done: the
+   transition's ends, the cue markers, both loop edges and the phrase
+   boundary, which is a grid edit rather than a marker move and is the one
+   that leaves the beats alone. What §26 still lists are saved loops, beat
+   jumps, stem regions and AI suggestions, each of which needs the thing
+   itself before it needs a handle. Then §27's ghost track, which needs a
+   second render of a track that is not loaded.
+
+   Two defects in the phrase drag were invisible to every gate and obvious
+   within a minute of driving it: a drop snapped to the beat it was *inside*
+   rather than the nearest one, and a moved boundary was written back over by
+   the analyser on the next load, because only the deck was guarded and not
+   the library row the next load restores from. Both are fixed; both are the
+   argument for the section below on running the interface.
 
    The planner reads the layer: a transition says how many of its beats have
    no drums under them, and the autopilot says it out loud. It deliberately

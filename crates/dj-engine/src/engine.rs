@@ -677,6 +677,12 @@ impl Engine {
                     DeckAction::LoopOutAt(at) => {
                         target.move_loop_edge(false, at, quantize);
                     }
+                    // The host works this one out and sends the result back as
+                    // `SetGrid`, exactly as it does for every other grid edit:
+                    // it needs the phrase length the *library* holds, which is
+                    // not something the audio thread can reach. See
+                    // `dj_app::commands::apply_grid_edit`.
+                    DeckAction::PhraseAt(_) => {}
                     DeckAction::LoopPhrases(phrases) => {
                         target.set_loop_phrases(f64::from(phrases));
                     }

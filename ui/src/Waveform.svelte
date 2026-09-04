@@ -24,6 +24,7 @@
     onMarkMoved,
     onCueMoved,
     onLoopEdgeMoved,
+    onPhraseMoved,
   }: {
     deck: DeckState;
     height?: number;
@@ -72,6 +73,14 @@
      * alone.
      */
     onLoopEdgeMoved?: (edge: "start" | "end", frame: number) => void;
+    /**
+     * Called when a phrase boundary is dragged, with the frame it was dropped
+     * on.
+     *
+     * There is only one anchor, so every boundary is the same statement: any
+     * of them moves all of them. Its presence is what makes them grabbable.
+     */
+    onPhraseMoved?: (frame: number) => void;
   } = $props();
 
   /** Tile width in pixels. Wide enough that a lane needs few of them. */
@@ -97,6 +106,14 @@
    */
   let breakdowns = $state<{ start_frame: number; end_frame: number }[]>([]);
   let drops = $state<number[]>([]);
+  /**
+   * Where each phrase starts, from Rust.
+   *
+   * The lines are drawn into the tiles; these are grab targets over them, and
+   * nothing here paints. Two things drawing the same line would be two answers
+   * about where beat 96 is — see `phrases_in_frames`.
+   */
+  let phrases = $state<number[]>([]);
 
   // Interpolation state. Updated from snapshots, read every animation frame.
   let anchorFrame = 0;
@@ -116,6 +133,7 @@
         epoch = info.epoch;
         breakdowns = info.breakdowns;
         drops = info.drops;
+        phrases = info.phrases;
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -349,6 +367,28 @@
           title="The drums are out here"
         ></div>
       {/each}
+      <!--
+        The phrase boundaries: a grab target over each line the tiles already
+        draw. Transparent on purpose — the line belongs to the renderer, which
+        is the only thing that can put it on the same pixel as the audio. What
+        the DOM adds is somewhere for a hand to land, and a visible line only
+        while one is dragging, because a tile cannot re-render under a finger.
+      -->
+      {#if onPhraseMoved}
+        {#each phrases as frame (frame)}
+          <div
+            class="phrase-grab"
+            class:held={dragging?.label === `phrase ${frame}`}
+            role="separator"
+            aria-label="Phrase boundary"
+            title="Phrase boundary — drag to say where a phrase starts"
+            style:left="{(dragging?.label === `phrase ${frame}` ? dragging.frame : frame) /
+              framesPerPixel}px"
+            onpointerdown={(e) =>
+              grab(e, `phrase ${frame}`, frame, (f) => onPhraseMoved(f))}
+          ></div>
+        {/each}
+      {/if}
       {#each dropMarks as drop (drop.frame)}
         <div class="drop" style:left="{drop.left}px" title="The drums come back here"></div>
       {/each}
@@ -584,8 +624,32 @@
     right, given up for a hit target. A pseudo-element has no effect on the
     element's own geometry at all, and pointers hit-test it as the element.
   */
+  /*
+    A phrase boundary's grab target. Two pixels wide and invisible: the line it
+    sits on is rasterised into the tile, where it can share a pixel with the
+    audio, and drawing a second one here would be a second opinion about where
+    that beat is. While it is held it *does* draw, because the tiles cannot
+    re-render under a moving finger and a boundary that vanished mid-drag would
+    be the one moment it is needed.
+  */
+  .phrase-grab {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: transparent;
+    cursor: ew-resize;
+    touch-action: none;
+    z-index: 2;
+  }
+
+  .phrase-grab.held {
+    background: var(--text);
+  }
+
   .mark.grabbable::after,
   .loop-edge.grabbable::after,
+  .phrase-grab::after,
   .cue-marker.grabbable::after {
     content: "";
     position: absolute;

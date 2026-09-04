@@ -349,6 +349,19 @@ const ANSWERS: Record<string, unknown> = {
     epoch: 1,
     breakdowns: [{ start_frame: 2_000_000, end_frame: 3_000_000 }],
     drops: [3_000_000],
+    // Phrase boundaries, evenly spaced, so the lane has grab targets to put a
+    // pointer on. The lines themselves come from the Rust renderer, which does
+    // not run in a browser — these are only the places.
+    //
+    // The first is near the stopped deck's playhead on purpose: the lane
+    // centres the playhead, so a boundary half a million frames in is nearly
+    // two thousand pixels off the right-hand edge — drawn, real, and outside
+    // the window, which Playwright still calls visible. Same trap as the cue
+    // fixture.
+    // Not 20 000, which is where the stopped deck's cue is: the two would sit
+    // on the same pixel and the cue would win the pointer — correctly, since a
+    // cue is the DJ's own mark, but it makes the fixture ambiguous.
+    phrases: [60_000, 560_000, 1_060_000, 1_560_000],
   },
   session_read: {
     phase: "peak",
@@ -595,6 +608,9 @@ export async function openShell(
           }
           if (cmd === "move_loop_edge") {
             ((win.__loopArgs ??= []) as unknown[]).push(args);
+          }
+          if (cmd === "move_phrase") {
+            ((win.__phraseArgs ??= []) as unknown[]).push(args);
           }
           if (cmd === "plugin:event|listen") {
             handlers.set(String(args.event), args.handler as number);
