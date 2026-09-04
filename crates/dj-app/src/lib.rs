@@ -50,6 +50,7 @@ pub mod snapshot;
 pub mod sources;
 pub mod state;
 pub mod timecode;
+pub mod transition;
 pub mod wav;
 pub mod waveform;
 pub mod widgets;
@@ -422,6 +423,11 @@ pub fn run() {
             commands::set_track_functions,
             commands::suggest_next,
             commands::plan_transition,
+            commands::transition_arm,
+            commands::transition_current,
+            commands::transition_adjust,
+            commands::transition_replan,
+            commands::transition_clear,
             commands::session_save,
             commands::session_open,
             commands::session_diff,

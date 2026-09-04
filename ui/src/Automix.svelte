@@ -20,7 +20,7 @@
     planTransition,
     sidelist,
     type AutomixState,
-    type TransitionPlan,
+    type Transition,
   } from "./api";
 
   let {
@@ -46,7 +46,7 @@
    * Fetched on demand rather than polled: it depends on the playhead, and a
    * proposal that rewrote itself every frame could not be read.
    */
-  let plan = $state<TransitionPlan | null>(null);
+  let plan = $state<Transition | null>(null);
   let planning = $state(false);
   let planFrom = $state(1);
   let planTo = $state(2);

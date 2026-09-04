@@ -122,6 +122,14 @@ pub struct AppState {
     /// subdirectory to find where you started is the sort of implicit
     /// coupling that breaks silently the first time either path moves.
     config_dir: Mutex<Option<std::path::PathBuf>>,
+    /// The mix that is set up, if one is. See [`crate::transition`].
+    ///
+    /// One at a time, and here rather than in the interface for the same
+    /// reason the mapping draft is: a transition a DJ has adjusted must
+    /// survive closing the panel they adjusted it in, and everything §68 lists
+    /// as a reader of it — the waveform, the assistant, the autopilot — reads
+    /// it from djmanzo rather than from a Svelte component's local state.
+    transition: Mutex<Option<crate::transition::Transition>>,
     /// The set being recorded, if one is. See [`crate::setrec`].
     recording: Mutex<Option<crate::setrec::Recording>>,
     /// Read by the snapshot pump sixty times a second, so it is held outside
@@ -407,6 +415,7 @@ impl AppState {
             layout_dir: Mutex::new(None),
             mapping_draft: Mutex::new(dj_hid::editor::Draft::new("My mapping", String::new())),
             config_dir: Mutex::new(None),
+            transition: Mutex::new(None),
             recording: Mutex::new(None),
             recording_state: Arc::new(crate::setrec::RecordingState::default()),
             host,
@@ -653,6 +662,45 @@ impl AppState {
     #[must_use]
     pub fn layout_dir(&self) -> Option<std::path::PathBuf> {
         self.layout_dir.lock().ok()?.clone()
+    }
+
+    // -- the mix that is set up --------------------------------------------
+
+    /// A copy of the transition that is set up, if one is.
+    #[must_use]
+    pub fn transition(&self) -> Option<crate::transition::Transition> {
+        self.transition.lock().ok()?.clone()
+    }
+
+    /// Hold a transition, replacing whatever was held.
+    ///
+    /// One at a time on purpose: two set-up mixes is two answers to "what
+    /// happens next", and the panel that drew them would have to choose. A DJ
+    /// planning further ahead than the next mix is planning a *set*, which is
+    /// what Set Flow is for.
+    pub fn arm_transition(&self, transition: crate::transition::Transition) {
+        if let Ok(mut held) = self.transition.lock() {
+            *held = Some(transition);
+        }
+    }
+
+    /// Change the transition in place, returning what the change returned.
+    ///
+    /// `None` when nothing is set up, so a caller can tell "there was no mix
+    /// to adjust" from "the adjustment did nothing".
+    pub fn edit_transition<T>(
+        &self,
+        change: impl FnOnce(&mut crate::transition::Transition) -> T,
+    ) -> Option<T> {
+        let mut held = self.transition.lock().ok()?;
+        held.as_mut().map(change)
+    }
+
+    /// Forget it.
+    pub fn clear_transition(&self) {
+        if let Ok(mut held) = self.transition.lock() {
+            *held = None;
+        }
     }
 
     // -- recording the set -------------------------------------------------

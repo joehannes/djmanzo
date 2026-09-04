@@ -29,7 +29,7 @@
 //! **Whether the two records suit each other musically.** Key and tempo are
 //! arithmetic; taste is not.
 
-use dj_core::{MusicalKey, Phrase, SampleRate, action::TransitionStyle};
+use dj_core::{KeyRelation, MusicalKey, Phrase, SampleRate, action::TransitionStyle};
 
 /// The track going out, as the planner needs it.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -72,8 +72,9 @@ pub enum Reason {
     KeysMatch,
     /// The keys fight, so a long blend would expose it.
     KeysClash,
-    /// Not enough track left for a long transition.
-    Rushed { beats_left: f64 },
+    /// Not enough track left *after* the transition ends for the mix to be
+    /// late into, which is the margin a human pressing a button needs.
+    Rushed { beats_after: f64 },
 }
 
 /// A proposed transition.
@@ -85,9 +86,22 @@ pub struct Plan {
     /// Frame position of that beat, so the interface can draw it without
     /// redoing the arithmetic and landing a pixel off.
     pub start_frame: f64,
+    /// Frame position where the transition finishes, for the same reason.
+    ///
+    /// Carried rather than left to the reader: start plus length beats is one
+    /// multiplication, and it is the multiplication that decides where a
+    /// waveform marker lands. Two callers doing it separately is two chances
+    /// to do it against the wrong tempo.
+    pub end_frame: f64,
     /// How long the transition runs, in beats.
     pub length_beats: u32,
     pub style: TransitionStyle,
+    /// Incoming tempo minus outgoing, in BPM. Signed, because which way the
+    /// tempo moves is what a DJ's hand does on the pitch fader.
+    pub bpm_delta: f64,
+    /// How the two keys stand to each other, or `None` when either is
+    /// unanalysed. Unknown is not a clash -- see below.
+    pub key_relation: Option<KeyRelation>,
     pub reasons: Vec<Reason>,
 }
 
@@ -127,37 +141,10 @@ pub fn plan(out: &Outgoing, into: &Incoming) -> Option<Plan> {
         return None;
     }
 
-    let mut reasons = Vec::new();
-
     // Tempo and key first: they decide the style, and the style decides how
     // long the mix wants to be before the track's remaining length trims it.
     let tempos_match = ratio_within(out.bpm, into.bpm, TEMPO_TOLERANCE);
-    reasons.push(if tempos_match {
-        Reason::TemposMatch {
-            from: out.bpm,
-            to: into.bpm,
-        }
-    } else {
-        Reason::TemposClash {
-            from: out.bpm,
-            to: into.bpm,
-        }
-    });
-
-    let keys_match = match (out.key, into.key) {
-        (Some(a), Some(b)) => a.is_compatible_with(b),
-        // Unknown keys are not a clash. Treating them as one would make every
-        // unanalysed track a cut, which is a guess dressed as a decision.
-        _ => true,
-    };
-    if out.key.is_some() && into.key.is_some() {
-        reasons.push(if keys_match {
-            Reason::KeysMatch
-        } else {
-            Reason::KeysClash
-        });
-    }
-
+    let keys_match = relation(out, into).is_none_or(KeyRelation::mixes);
     let style = choose_style(tempos_match, keys_match);
 
     // The longest transition that leaves the tail margin intact.
@@ -167,12 +154,6 @@ pub fn plan(out: &Outgoing, into: &Incoming) -> Option<Plan> {
         .into_iter()
         .find(|&l| f64::from(l) <= usable)
         .unwrap_or(*LENGTHS.last().expect("LENGTHS is not empty"));
-    #[allow(clippy::cast_precision_loss)]
-    if f64::from(length) > usable {
-        reasons.push(Reason::Rushed {
-            beats_left: remaining_beats,
-        });
-    }
 
     // Where. The last boundary that still leaves room for the whole
     // transition, so the mix ends before the track does rather than being cut
@@ -195,13 +176,77 @@ pub fn plan(out: &Outgoing, into: &Incoming) -> Option<Plan> {
         }
         None => last_usable,
     };
+
+    evaluate(out, into, start_beat, length, style)
+}
+
+/// Say what a *particular* transition means, rather than choosing one.
+///
+/// [`plan`] decides where the mix starts, how long it runs and which way to do
+/// it; this describes the consequences of that choice. They are separate
+/// because a transition is an object a DJ can **edit** — pushed a phrase later,
+/// shortened to sixteen beats, cut instead of blended — and an edited
+/// transition still has to be able to say why it is what it is.
+///
+/// Re-deriving the reasons over the new geometry is the only way to keep the
+/// explanation true. The alternative — keeping the reasons the planner
+/// produced — is an interface confidently stating that a mix lands on a phrase
+/// boundary that the DJ has just moved it off.
+///
+/// `None` only when the outgoing tempo is not a tempo. Everything else about
+/// the geometry is the caller's to decide, including choices the planner would
+/// not have made: this reports, it does not veto.
+#[must_use]
+pub fn evaluate(
+    out: &Outgoing,
+    into: &Incoming,
+    start_beat: i64,
+    length_beats: u32,
+    style: TransitionStyle,
+) -> Option<Plan> {
+    let beat_frames = beat_frames(out.bpm, out.sample_rate)?;
+    let mut reasons = Vec::new();
+
+    let tempos_match = ratio_within(out.bpm, into.bpm, TEMPO_TOLERANCE);
+    reasons.push(if tempos_match {
+        Reason::TemposMatch {
+            from: out.bpm,
+            to: into.bpm,
+        }
+    } else {
+        Reason::TemposClash {
+            from: out.bpm,
+            to: into.bpm,
+        }
+    });
+
+    let key_relation = relation(out, into);
+    if let Some(relation) = key_relation {
+        reasons.push(if relation.mixes() {
+            Reason::KeysMatch
+        } else {
+            Reason::KeysClash
+        });
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    let start_frame = out.grid_anchor + start_beat as f64 * beat_frames;
+    let end_frame = start_frame + f64::from(length_beats) * beat_frames;
+
+    // Rushed is about what is left *after the mix ends*, not after it starts:
+    // a transition that finishes four beats before the file does has nowhere
+    // to be late into, which is the situation the margin exists to prevent.
+    let after = (out.length - end_frame) / beat_frames;
+    if after < TAIL_MARGIN {
+        reasons.push(Reason::Rushed {
+            beats_after: after.max(0.0),
+        });
+    }
+
     reasons.push(match out.phrase {
         Some(p) if p.starts_at(start_beat) => Reason::LandsOnPhrase { beat: start_beat },
         _ => Reason::LandsOnBar { beat: start_beat },
     });
-
-    #[allow(clippy::cast_precision_loss)]
-    let start_frame = out.grid_anchor + start_beat as f64 * beat_frames;
     reasons.push(Reason::Remaining {
         beats: (out.length - start_frame) / beat_frames,
     });
@@ -209,10 +254,22 @@ pub fn plan(out: &Outgoing, into: &Incoming) -> Option<Plan> {
     Some(Plan {
         start_beat,
         start_frame,
-        length_beats: length,
+        end_frame,
+        length_beats,
         style,
+        bpm_delta: into.bpm - out.bpm,
+        key_relation,
         reasons,
     })
+}
+
+/// How the two keys stand to each other, when both are known.
+///
+/// `None` rather than a relation meaning "unknown", because unknown is not a
+/// clash: treating it as one would make every unanalysed track a cut, which is
+/// a guess dressed as a decision.
+fn relation(out: &Outgoing, into: &Incoming) -> Option<KeyRelation> {
+    Some(out.key?.relation_to(into.key?))
 }
 
 /// Which way to do it.
@@ -489,6 +546,47 @@ mod tests {
                 "{bad} BPM produced a plan"
             );
         }
+    }
+
+    /// **The rushed warning counts what it says it counts.**
+    ///
+    /// It fires when the mix would finish with less than the tail margin
+    /// behind it, so the number it carries is the room *after the mix ends* —
+    /// not the room from the playhead, which is larger by the whole
+    /// transition. The interface prints it beside another reason ending in
+    /// "beats left", and two numbers a comma apart that look alike and mean
+    /// different things is how a DJ stops reading either. Found by driving the
+    /// application: the line read "only 277 beats left · 32 beats left".
+    #[test]
+    fn a_rushed_transition_reports_the_room_it_is_short_of() {
+        let out = outgoing(100.0, 400.0);
+        let into = incoming(120.0, Some(key(8, Mode::Minor)));
+
+        // Eight beats starting at 385 of a 400-beat record ends at 393, with
+        // seven beats behind it -- one short of the margin.
+        let plan = evaluate(&out, &into, 385, 8, TransitionStyle::Blend).expect("a plan");
+        let rushed = plan
+            .reasons
+            .iter()
+            .find_map(|r| match r {
+                Reason::Rushed { beats_after } => Some(*beats_after),
+                _ => None,
+            })
+            .expect("a mix ending seven beats from the end did not say it was rushed");
+        assert!(
+            (rushed - 7.0).abs() < 0.01,
+            "it reported {rushed} beats, which is not the room after the mix ends"
+        );
+
+        // And a roomy one does not claim to be rushed at all.
+        let roomy = evaluate(&out, &into, 200, 32, TransitionStyle::Blend).expect("a plan");
+        assert!(
+            !roomy
+                .reasons
+                .iter()
+                .any(|r| matches!(r, Reason::Rushed { .. })),
+            "a mix ending 168 beats before the record does was called rushed"
+        );
     }
 
     /// Without a phrase structure it still plans, and says the start is only a

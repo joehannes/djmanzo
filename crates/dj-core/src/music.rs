@@ -300,6 +300,82 @@ impl MusicalKey {
     pub fn is_compatible_with(self, other: MusicalKey) -> bool {
         self.compatible().contains(&other)
     }
+
+    /// *How* two keys are related, rather than only whether they mix.
+    ///
+    /// [`Self::is_compatible_with`] answers yes or no, which is what a filter
+    /// needs. A DJ looking at two records wants the reason: a neighbour on the
+    /// wheel and a relative major are both "compatible" and they do not sound
+    /// the same, and 8A against 3A is not merely "no" -- it is the tritone,
+    /// the one distance worth naming out loud.
+    #[must_use]
+    pub fn relation_to(self, other: MusicalKey) -> KeyRelation {
+        if self == other {
+            return KeyRelation::Same;
+        }
+        if self.hour == other.hour {
+            return KeyRelation::RelativeMode;
+        }
+        // Distance around a twelve-hour wheel, taking the short way round.
+        let apart = i16::from(self.hour).abs_diff(i16::from(other.hour));
+        let apart = apart.min(12 - apart);
+        match (apart, self.mode == other.mode) {
+            (1, true) => KeyRelation::Neighbour,
+            (_, _) if apart == 6 => KeyRelation::Tritone,
+            _ => KeyRelation::Distant,
+        }
+    }
+}
+
+/// How one key stands to another, in the terms a DJ mixes by.
+///
+/// The Camelot wheel's own vocabulary rather than music theory's: a DJ reading
+/// this mid-set is deciding whether to hold a blend open for eight bars, and
+/// "neighbour" answers that where "subdominant" does not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum KeyRelation {
+    /// The same key. Nothing to manage.
+    Same,
+    /// One hour around the wheel, same ring. The ordinary harmonic step.
+    Neighbour,
+    /// Same hour, the other ring -- relative major or minor. A change of
+    /// colour rather than of key, and the reason a set can lift without
+    /// moving.
+    RelativeMode,
+    /// Six hours apart: the tritone. Named because it is the distance that
+    /// sounds like a mistake rather than like a modulation.
+    Tritone,
+    /// Anywhere else on the wheel. Mixable in a cut, tiring in a long blend.
+    Distant,
+}
+
+impl KeyRelation {
+    /// True when the two sit together well enough to hold a blend open.
+    ///
+    /// Agrees with [`MusicalKey::is_compatible_with`] by construction: the
+    /// three relations that answer true here are exactly the three that
+    /// [`MusicalKey::compatible`] lists besides the key itself. Asserted by
+    /// test, because two rules that must agree and are written down twice
+    /// eventually do not.
+    #[must_use]
+    pub const fn mixes(self) -> bool {
+        matches!(
+            self,
+            KeyRelation::Same | KeyRelation::Neighbour | KeyRelation::RelativeMode
+        )
+    }
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            KeyRelation::Same => "same key",
+            KeyRelation::Neighbour => "neighbour",
+            KeyRelation::RelativeMode => "relative major/minor",
+            KeyRelation::Tritone => "tritone",
+            KeyRelation::Distant => "distant",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -410,6 +486,68 @@ mod tests {
     fn key_hour_is_validated() {
         assert!(MusicalKey::new(0, Mode::Major).is_none());
         assert!(MusicalKey::new(13, Mode::Major).is_none());
+    }
+
+    #[test]
+    fn a_relation_is_named_for_what_it_is() {
+        let a_minor = MusicalKey::new(8, Mode::Minor).unwrap();
+        assert_eq!(a_minor.relation_to(a_minor), KeyRelation::Same);
+        assert_eq!(
+            a_minor.relation_to(MusicalKey::new(9, Mode::Minor).unwrap()),
+            KeyRelation::Neighbour
+        );
+        assert_eq!(
+            a_minor.relation_to(MusicalKey::new(8, Mode::Major).unwrap()),
+            KeyRelation::RelativeMode
+        );
+        assert_eq!(
+            a_minor.relation_to(MusicalKey::new(2, Mode::Minor).unwrap()),
+            KeyRelation::Tritone
+        );
+        assert_eq!(
+            a_minor.relation_to(MusicalKey::new(4, Mode::Minor).unwrap()),
+            KeyRelation::Distant
+        );
+    }
+
+    /// **The wheel wraps for relations too.**
+    ///
+    /// 12A into 1A is one hour apart, not eleven. The arithmetic that gets
+    /// this wrong looks right at every hour except the two either side of
+    /// midnight -- which is where a set that has been climbing all night ends
+    /// up.
+    #[test]
+    fn a_neighbour_across_midnight_is_still_a_neighbour() {
+        let twelve_a = MusicalKey::new(12, Mode::Minor).unwrap();
+        let one_a = MusicalKey::new(1, Mode::Minor).unwrap();
+        assert_eq!(twelve_a.relation_to(one_a), KeyRelation::Neighbour);
+        assert_eq!(one_a.relation_to(twelve_a), KeyRelation::Neighbour);
+    }
+
+    /// **The two rules about mixing agree, over all 576 pairs.**
+    ///
+    /// `is_compatible_with` is what filters and the suggester ask; `mixes` is
+    /// what the pair view draws. They are written down separately, so without
+    /// this they would eventually disagree about one hour of the wheel and the
+    /// interface would contradict the ranking that put the record there.
+    #[test]
+    fn naming_the_relation_never_contradicts_compatibility() {
+        let all = (1..=12u8).flat_map(|hour| {
+            [Mode::Minor, Mode::Major]
+                .into_iter()
+                .map(move |mode| MusicalKey::new(hour, mode).unwrap())
+        });
+        for a in all.clone() {
+            for b in all.clone() {
+                assert_eq!(
+                    a.relation_to(b).mixes(),
+                    a.is_compatible_with(b),
+                    "{} against {} disagreed",
+                    a.camelot(),
+                    b.camelot()
+                );
+            }
+        }
     }
 }
 

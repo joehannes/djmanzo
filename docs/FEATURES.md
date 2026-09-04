@@ -125,6 +125,8 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | One gesture sets a track aside — `→` on a browser row, and it is in Prepare | Cockpit §21 |
 | **Next**, a rail of up to eight candidates for what follows the playing deck, each on one line of deltas with a confidence bar | Cockpit §22 |
 | **Set plan**, its own surface: the night as a sequence, with the seam between each pair of records and a count of the joins that need a cut | Cockpit §20 |
+| **Pair**, its own surface: two records side by side and the seam between them — the deltas, the key relation, where the mix starts and ends, and the reasons | Cockpit §20 |
+| **The transition is an object**: djmanzo holds the mix you set up, you move it, shorten it or change its style, and the reasons are re-derived over what you changed | Cockpit §68 |
 | **Command palette** on `Ctrl/Cmd + K` — every verb the parser accepts, every surface, and anything you type that parses | Cockpit §51 |
 | Search across the whole library, instant | M3 |
 | Playlists / crates / smart folders | M3 |

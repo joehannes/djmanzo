@@ -34,7 +34,7 @@ pub use fx::{EffectKind, FX_SLOTS, FxChange, Placement};
 pub use genre::{Blendability, Family, Feel, Grammar, Region, families, family_for};
 pub use hotcue::{HOT_CUE_SLOTS, LoopLimits, LoopRegion};
 pub use jog::JogMode;
-pub use music::{Beatgrid, Bpm, Confidence, Mode, MusicalKey, Phrase, Trajectory};
+pub use music::{Beatgrid, Bpm, Confidence, KeyRelation, Mode, MusicalKey, Phrase, Trajectory};
 pub use pads::{Lit, PADS, Pad, PadAction, PadLabel, PadPage};
 pub use param::{DeckParam, GlobalParam, ParamId};
 pub use sampler::{

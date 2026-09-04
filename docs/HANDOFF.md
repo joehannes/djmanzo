@@ -159,15 +159,19 @@ eventually disagree.
 
 The largest open sections, in the order they are worth doing:
 
-1. **§20's remaining views** — compact cards, and the pair/transition view. Set
-   Flow ships; the performance table is the browser at fewer columns than §20
-   lists.
-2. **§11, the context engine** — the room, the night, the phase. Phase 5 of
+1. **§11, the context engine** — the room, the night, the phase. Phase 5 of
    `GUI-OVERHAUL.md`, and what §9, §12, §14 and §17 all wait on.
-3. **§25–§27, the waveform as instrumentation** — direct manipulation, the
-   ghost track, and answering "what will happen if I do it".
-4. **§68, the transition as a first-class object.** The planner already
-   produces one; nothing holds it, so it cannot be saved, edited or replayed.
+2. **§25–§27, the waveform as instrumentation** — direct manipulation, the
+   ghost track, and answering "what will happen if I do it". The transition
+   object §27 was waiting on now exists, and the pair view already draws a mix
+   point on a waveform lane; what is missing is manipulating it there.
+3. **§68's remaining half.** The object ships and the pair view reads it — but
+   the automix, the autopilot and replay each still plan their own transition
+   rather than performing the one djmanzo is holding, which is the unification
+   §68 is actually asking for. Its stem, EQ and FX plans are absent because
+   nothing yet decides them; a field that is always empty is a promise.
+4. **§20's last view** — the compact cards. Set Flow and the pair view ship;
+   the performance table is the browser at fewer columns than §20 lists.
 5. **§74, the contextual rail.**
 
 Three older items are open and are not part of the 105:

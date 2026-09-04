@@ -44,6 +44,7 @@
     type Workspace,
   } from "./api";
   import Next from "./Next.svelte";
+  import Pair from "./Pair.svelte";
   import Palette from "./Palette.svelte";
   import Plan from "./Plan.svelte";
   import SideView from "./SideView.svelte";
@@ -199,6 +200,7 @@
     "prepare",
     "next",
     "plan",
+    "pair",
     "booth",
     "presets",
     "sampler",
@@ -243,6 +245,7 @@
     prepare: "right",
     next: "right",
     plan: "bottom",
+    pair: "bottom",
     booth: "bottom",
     log: "bottom",
     presets: "right",
@@ -1083,6 +1086,12 @@
           side dock is 360 px wide.
         -->
         <IconButton icon="fa-solid fa-list-ol" label="Plan" title="The shape of the night, as a sequence" active={isOpen("plan")} onClick={() => toggleSurface("plan")} />
+        <!--
+          The pair: two records side by side and the seam between them. Along
+          the bottom for the same reason the plan is -- two columns and a
+          waveform each need width, and a side dock is 360 px.
+        -->
+        <IconButton icon="fa-solid fa-code-compare" label="Pair" title="Two records side by side, and the seam between them" active={isOpen("pair")} onClick={() => toggleSurface("pair")} />
         <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={isOpen("presets")} onClick={() => toggleSurface("presets")} />
         <!--
           The booth: microphone, automix, a plugin insert and the master
@@ -1321,6 +1330,10 @@
     <Plan enabled={ready} />
   {/snippet}
 
+  {#snippet surfacePair()}
+    <Pair enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
+  {/snippet}
+
   {#snippet surfaceBooth()}
     {#if snapshot}
       <div class="mixer">
@@ -1500,6 +1513,7 @@
         {:else if placement.surface === "prepare"}{@render surfacePrepare()}
         {:else if placement.surface === "next"}{@render surfaceNext()}
         {:else if placement.surface === "plan"}{@render surfacePlan()}
+        {:else if placement.surface === "pair"}{@render surfacePair()}
         {:else if placement.surface === "booth"}{@render surfaceBooth()}
         {:else if placement.surface === "presets"}{@render surfacePresets()}
         {:else if placement.surface === "assistant"}{@render surfaceAssistant()}
