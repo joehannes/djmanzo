@@ -7,9 +7,11 @@
     moveLoopEdge,
     movePhrase,
     padPages,
+    railModes,
     type DeckState,
     type Placed,
     type PadPageDto,
+    type RailModeDto,
     type SamplerState,
     type StemSwap,
   } from "./api";
@@ -18,6 +20,7 @@
   import Fx from "./Fx.svelte";
   import Stems from "./Stems.svelte";
   import Pads from "./Pads.svelte";
+  import Rail from "./Rail.svelte";
   import Overview from "./Overview.svelte";
   import Waveform from "./Waveform.svelte";
   import SvgKnob from "./controls/SvgKnob.svelte";
@@ -81,8 +84,8 @@
    * The deck to draw when nothing has said otherwise.
    *
    * The same order `dj_app::widgets::from_layout` produces for the default
-   * layout, and there is a Rust test asserting that list against the order
-   * this component draws in. Duplicated deliberately rather than awaited: the
+   * layout, and `the_fallback_deck_agrees_with_the_one_rust_builds` reads this
+   * list out of this file and asserts it against that order. Duplicated deliberately rather than awaited: the
    * tree arrives over a command, and a deck that is blank for one frame at
    * startup -- or for the whole session if the command fails -- would be a
    * worse failure than a list that has to be kept in step with a test that
@@ -94,6 +97,7 @@
     "deck.progress",
     "deck.stems",
     "deck.times",
+    "deck.rail",
     "deck.pads",
     "deck.beat_jump",
     "deck.loops",
@@ -320,6 +324,24 @@
       // performance surface with nothing saying so.
       .catch((problem) => {
         error = `could not read the pad pages: ${problem}`;
+      });
+  });
+
+  /**
+   * §74's rail modes, fetched once and for the same reason the pad pages are:
+   * the table is a constant in Rust, and what varies is which row applies —
+   * which arrives in every snapshot as `deck.rail_mode`.
+   */
+  let railModeList = $state<RailModeDto[]>([]);
+  $effect(() => {
+    void railModes(deck.number)
+      .then((modes) => {
+        railModeList = modes;
+      })
+      // Quietly: an empty list draws no rail, which is the state a deck was in
+      // before §74 and is not worth an error banner over a strip of shortcuts.
+      .catch(() => {
+        railModeList = [];
       });
   });
 
@@ -570,6 +592,16 @@
     onPhraseMoved={(frame) => void movePhrase(deck.number, frame)}
     onSavedLoopRecalled={(slot) => void send(`deck ${deck.number} loop_recall ${slot}`)}
   />
+  {/snippet}
+  {#snippet zoneRail()}
+  <!--
+    §74's contextual rail. Only for a deck with a record on it: a strip of
+    controls for nothing is four buttons that do nothing, which is the opposite
+    of promoting the ones that matter.
+  -->
+  {#if deck.loaded}
+    <Rail {deck} modes={railModeList} {enabled} {send} />
+  {/if}
   {/snippet}
   {#snippet zoneOverview()}
   <!--
@@ -1088,6 +1120,7 @@
   -->
   {#snippet zone(placed: Placed)}
     {#if placed.widget === "deck.waveform"}{@render zoneWaveform(placed.props)}
+    {:else if placed.widget === "deck.rail"}{@render zoneRail()}
     {:else if placed.widget === "deck.overview"}{@render zoneOverview()}
     {:else if placed.widget === "deck.progress"}{@render zoneProgress()}
     {:else if placed.widget === "deck.stems"}{@render zoneStems()}

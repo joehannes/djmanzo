@@ -138,6 +138,14 @@ pub struct DeckSnapshot {
     /// Hot cue positions in frames, slot 1 first. `None` for an empty slot —
     /// which is not the same as a cue at frame zero.
     pub hot_cues: Vec<Option<f32>>,
+    /// Which set of controls this deck's contextual rail is offering, by name.
+    ///
+    /// §74. The *name* rather than the controls: the table behind it is a
+    /// constant read once, exactly as the pad pages are, and sending eight
+    /// labels and eight verbs per deck sixty times a second to say something
+    /// that changes when a hand lands on a platter would be a lot of string
+    /// allocation for one word. See [`dj_core::RailMode`].
+    pub rail_mode: String,
     /// The loops saved against this record, by slot.
     ///
     /// Sparse rather than eight nullable entries like `hot_cues`, because a
@@ -741,6 +749,26 @@ impl Snapshot {
                             (value >= 0.0).then_some(value)
                         })
                         .collect(),
+                    // §74's rail, as a mode name. Every fact it reads is one
+                    // this snapshot already carries -- a hand on the platter,
+                    // a muted stem, whether the deck is playing -- so the rail
+                    // follows what the DJ is doing without anything having to
+                    // watch them.
+                    rail_mode: dj_core::RailMode::of(
+                        get(DeckParam::Playing) >= 0.5,
+                        get(DeckParam::JogTouched) >= 0.5,
+                        get(DeckParam::StemSoloing) >= 0.5
+                            || [
+                                DeckParam::StemVocalMute,
+                                DeckParam::StemDrumsMute,
+                                DeckParam::StemBassMute,
+                                DeckParam::StemOtherMute,
+                            ]
+                            .into_iter()
+                            .any(|p| get(p) >= 0.5),
+                    )
+                    .name()
+                    .to_owned(),
                     // From the remembered track rather than from the registry,
                     // because the engine does not hold these: a saved loop is
                     // the library's, and what the deck has is whichever set

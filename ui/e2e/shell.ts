@@ -57,6 +57,7 @@ import snapshot from "./snapshot.json" with { type: "json" };
  * compared it with a screenshot of the running application.
  */
 import padPages from "./pad-pages.json" with { type: "json" };
+import railModes from "./rail-modes.json" with { type: "json" };
 import surfaces from "./surfaces.json" with { type: "json" };
 
 /**
@@ -69,6 +70,7 @@ import surfaces from "./surfaces.json" with { type: "json" };
  */
 const ANSWERS: Record<string, unknown> = {
   pad_pages: padPages,
+  rail_modes: railModes,
   list_layouts: [],
   chosen_layout: null,
   layout_folder: null,
@@ -623,6 +625,20 @@ export async function openShell(
           // marker has still "reached djmanzo".
           if (cmd === "dispatch") {
             ((win.__dispatched ??= []) as unknown[]).push(args.action);
+          }
+          // Both of these are per-deck tables in Rust, rendered against the
+          // deck number they were asked for. The fixtures are captured for
+          // deck 1, so the stub does the substitution the real command does --
+          // without it, a rail or a pad on deck 2 would dispatch deck 1's
+          // action and a test could not tell the difference.
+          if (cmd === "rail_modes" || cmd === "pad_pages") {
+            const deck = Number(args.deck ?? 1);
+            const table = answers[cmd];
+            return Promise.resolve(
+              JSON.parse(
+                JSON.stringify(table).replaceAll("deck 1 ", `deck ${deck} `),
+              ),
+            );
           }
           if (cmd === "plugin:event|listen") {
             handlers.set(String(args.event), args.handler as number);

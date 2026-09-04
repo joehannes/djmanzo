@@ -163,6 +163,100 @@ fn the_browser_fixture_has_the_pad_pages_the_interface_asks_for() {
     );
 }
 
+/// **The deck the interface falls back to is the deck djmanzo builds.**
+///
+/// `Deck.svelte` holds a copy of the default widget order, used when the layout
+/// tree has not arrived or could not be read — a deck that was blank for a
+/// frame at startup, or for a whole session if that command failed, is a worse
+/// failure than a duplicated list. Its comment has always said a Rust test
+/// asserts it against the real order. There was no such test: the two lists
+/// could drift, and the first thing anyone would notice is a control missing
+/// from a deck whose layout had failed to load.
+///
+/// This is that test. It reads the list out of the component rather than
+/// restating it, so it cannot be the third copy.
+#[test]
+fn the_fallback_deck_agrees_with_the_one_rust_builds() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/Deck.svelte");
+    let source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+
+    let start = source.find("const FULL: Placed[] = [").expect(
+        "Deck.svelte no longer has a FULL fallback list; if that is deliberate, delete this test",
+    );
+    let body = &source[start..];
+    // The list closes with `].map(...)`, not with `];` -- looking for the
+    // latter ran on into the next three constants in the file, which are also
+    // lists of widget names.
+    let end = body.find("].map(").expect("the FULL list is not closed");
+    let drawn: Vec<&str> = body[..end]
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .filter(|word| word.starts_with("deck."))
+        .collect();
+
+    let tree = dj_app::widgets::resolve(&dj_app::widgets::from_layout(
+        &dj_app::layout::Layout::default(),
+    ));
+    let built: Vec<&str> = tree.slots["stage"][0].children["deck"]
+        .iter()
+        .map(|placed| placed.widget.as_str())
+        .collect();
+
+    assert_eq!(
+        drawn, built,
+        "\n`Deck.svelte`'s fallback deck and the one `widgets::from_layout` builds \
+         have drifted. A deck whose layout tree fails to arrive would draw the \
+         wrong controls, in the wrong order, with nothing saying so.\n"
+    );
+}
+
+/// The rail's modes and what each promotes, as a golden file.
+///
+/// Generated rather than captured, for the reason the pad pages are:
+/// `rail_modes` is a pure function of `dj_core::RailMode::ALL`, so a golden
+/// file fails on any change to what the rail offers rather than merely on a
+/// change to its shape.
+///
+/// It exists because §74's rail is the one part of a deck whose contents are
+/// decided by what the DJ is doing, so a browser stub answering it wrongly
+/// would test a rail djmanzo does not have.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_rail_the_interface_asks_for() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/rail-modes.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::rail_modes(1))
+        .expect("the rail serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the rail modes");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored rail modes are JSON");
+    let fresh: serde_json::Value =
+        serde_json::from_str(&fresh).expect("the fresh rail modes are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe rail's modes have changed, so the browser is drawing a rail djmanzo \
+         no longer offers.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// The surfaces the cockpit can place, as a golden file.
 ///
 /// Generated rather than captured, for the same reason as the pad pages:

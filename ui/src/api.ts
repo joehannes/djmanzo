@@ -202,6 +202,14 @@ export interface DeckState {
    * Empty for a record nobody has saved a loop against, which is most of them.
    */
   saved_loops: SavedLoop[];
+  /**
+   * Which set of controls this deck's contextual rail is offering, by name.
+   *
+   * §74. The name rather than the controls: the table behind it is a constant
+   * fetched once, and what changes sixty times a second is which of its four
+   * rows applies.
+   */
+  rail_mode: string;
 }
 
 /** A loop kept with the record, drawn on the lane and recalled by its slot. */
@@ -256,6 +264,21 @@ export type Lit =
   | { StemSolo: "Vocal" | "Drums" | "Bass" | "Other" };
 
 /** One pad, with its actions already written out by the backend. */
+/** One rail mode and the controls it promotes. §74. */
+export interface RailModeDto {
+  name: string;
+  controls: { label: string; action: string }[];
+}
+
+/**
+ * Every rail mode and what is on it.
+ *
+ * Asked once, like the pad pages: the table is a constant, and what changes is
+ * which of its rows applies — the deck's snapshot carries that as `rail_mode`.
+ */
+export const railModes = (deck: number) =>
+  invoke<RailModeDto[]>("rail_modes", { deck });
+
 export interface PadDto {
   label: string;
   /** Null for a pad this page leaves blank. */

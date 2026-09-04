@@ -1356,6 +1356,33 @@ mod tests {
 
     // -- attention ---------------------------------------------------------
 
+    /// **The rail is sized to the tightest budget, and `promoted_controls` is
+    /// what says which that is.**
+    ///
+    /// That field was written for §74's rail and had no reader at all until
+    /// the rail existed — a number describing a thing that was not built. This
+    /// is the reader: every mode is sized to fit while *performing*, which is
+    /// the smallest of the four allowances, so the rail does not shrink when
+    /// the music starts. A strip you have to re-learn at the worst moment is
+    /// worse than one control fewer.
+    #[test]
+    fn no_rail_mode_exceeds_the_attention_budget_it_is_offered_under() {
+        let tightest = Attention::performing().promoted_controls;
+        assert_eq!(
+            usize::from(tightest),
+            dj_core::rail::MOST,
+            "the rail's own cap and the budget it is sized to have drifted apart"
+        );
+        for mode in dj_core::RailMode::ALL {
+            assert!(
+                mode.controls().len() <= usize::from(tightest),
+                "{} promotes {} controls, over a budget of {tightest}",
+                mode.name(),
+                mode.controls().len()
+            );
+        }
+    }
+
     /// The rule from `docs/GUI-OVERHAUL.md` §18, as a test: mixing must never
     /// be noisier than preparing, and nothing may rearrange while mixing.
     #[test]

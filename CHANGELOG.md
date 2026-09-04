@@ -16,6 +16,39 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The contextual control rail.** §74 calls it "the core idea of adaptive UI": a
+compact strip carrying whichever four to eight controls the moment calls for.
+Every loaded deck has one now, and it holds six.
+
+Which six comes from **what the DJ has just done**. A hand on the platter is
+scratching, and the rail offers cue, vinyl mode, slip, reverse, brake and
+backspin. A muted stem is a stem transition: the four stems, a loop and a
+phrase loop. A deck stopped with a record on it is being readied: cue, loop,
+phrase, and the three grid controls. A deck that is playing is being mixed.
+
+That ordering is a safety rule as much as a set of lists. Every mode change
+here follows an action the DJ took, so the rail never rearranges itself under a
+hand reaching for it — which is the failure that makes adaptive interfaces
+hostile, and the one `cockpit::Attention::reflow` was written to prevent.
+
+**Six, because that is what the attention budget allows while performing.**
+`Attention::promoted_controls` was written for this rail and had no reader at
+all: a number describing a thing that did not exist. Sizing every mode to the
+tightest of the four budgets means the rail does not shrink when the music
+starts — a strip you have to re-learn at the worst moment is worse than one
+control fewer — and a test holds the modes to that number rather than to a
+constant written down twice.
+
+It does not latch, deliberately. Every control it promotes is also a widget on
+the deck, and that widget is where its state is shown; a second lit copy in the
+rail would be two things claiming to say whether slip is on.
+
+Where §74's named lists ask for something the vocabulary has no verb for, the
+gap is named rather than filled: **stem FX** is a continuous per-stem filter,
+which is a knob's gesture and not a switch's, and **tags, rating and transition
+points** are a library row and a panel. Inventing verbs so a strip of buttons
+could be full is the wrong direction.
+
 **The ghost track: the record you are about to bring in, over the one that is
 playing.** §27 asks for the future to be made visible — *if I bring this in
 here, this is what happens* — before loading or committing. The pair view drew

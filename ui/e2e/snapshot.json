@@ -157,7 +157,8 @@
     null,
     null
    ],
-   "saved_loops": []
+   "saved_loops": [],
+   "rail_mode": "mixing"
   },
   {
    "number": 2,
@@ -319,7 +320,8 @@
      "start_frames": 64000.0,
      "end_frames": 76000.0
     }
-   ]
+   ],
+   "rail_mode": "preparing"
   },
   {
    "number": 3,
@@ -452,7 +454,8 @@
     null,
     null
    ],
-   "saved_loops": []
+   "saved_loops": [],
+   "rail_mode": "preparing"
   },
   {
    "number": 4,
@@ -585,7 +588,8 @@
     null,
     null
    ],
-   "saved_loops": []
+   "saved_loops": [],
+   "rail_mode": "preparing"
   },
   {
    "number": 5,
@@ -718,7 +722,8 @@
     null,
     null
    ],
-   "saved_loops": []
+   "saved_loops": [],
+   "rail_mode": "preparing"
   },
   {
    "number": 6,
@@ -851,7 +856,8 @@
     null,
     null
    ],
-   "saved_loops": []
+   "saved_loops": [],
+   "rail_mode": "preparing"
   }
  ],
  "master": {

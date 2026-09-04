@@ -206,6 +206,17 @@ pub fn catalog() -> &'static [Widget] {
             needs: &["decks.playing"],
         },
         Widget {
+            name: "deck.rail",
+            about: "§74's contextual rail: the controls this deck's moment calls for.",
+            slots: DECK_SLOT,
+            offers: &[],
+            props: NO_PROPS,
+            // The playhead is not among them: the rail follows what the DJ is
+            // doing -- a hand on the platter, a muted stem, a stopped deck --
+            // and none of that moves sixty times a second.
+            needs: &["decks.playing"],
+        },
+        Widget {
             name: "deck.pads",
             about: "The pad zone, with its pages.",
             slots: DECK_SLOT,
@@ -906,6 +917,12 @@ pub fn from_layout(layout: &Layout) -> Tree {
     inside.push(Placement::of("deck.progress"));
     inside.push(Placement::of("deck.stems"));
     inside.push(Placement::of("deck.times"));
+    // §74's rail, above the pads: both are contextual blocks of controls, and
+    // the rail is the smaller and the more urgent of the two. Unconditional
+    // rather than behind a flag in the flat format, because the flat format
+    // predates it and a layout saved before this existed should still get it --
+    // a DJ who has never heard of the rail is exactly who it is for.
+    inside.push(Placement::of("deck.rail"));
     if layout.pads {
         inside.push(Placement::of("deck.pads"));
     }
@@ -1448,6 +1465,7 @@ mod tests {
                 "deck.progress",
                 "deck.stems",
                 "deck.times",
+                "deck.rail",
                 "deck.pads",
                 "deck.beat_jump",
                 "deck.loops",

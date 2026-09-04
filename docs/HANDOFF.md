@@ -257,7 +257,12 @@ The largest open sections, in the order they are worth doing:
    to listen that is not a deck, and **queue** needs a play queue this
    application does not have; the Sidelist is a different statement. All of
    them are features, not wiring.
-5. **§74, the contextual rail.**
+5. **§74's rail ships**, so what is left of Phase 3 is elsewhere. Four modes
+   on every loaded deck, chosen by what the DJ has just done and sized to
+   the attention budget. The three lists §74 names are followed where the
+   vocabulary has a verb; stem FX, tags, rating and transition points do
+   not, and are named rather than invented. What it deliberately does not do
+   is latch, because every control it promotes is also a widget on the deck.
 
 Three older items are open and are not part of the 105:
 

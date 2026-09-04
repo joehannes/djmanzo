@@ -6091,6 +6091,41 @@ mod persistence_tests {
         assert!(recall_loop(&state, deck(), 1).is_err());
     }
 
+    /// **Every control the rail promotes is a real action.** A rail entry is a
+    /// verb by construction — the same one a pad or a key sends — and a label
+    /// with a typo in its verb is a button that does nothing in front of a
+    /// room. Rendered against a deck the way the interface will send it, so
+    /// this is the string that actually travels.
+    #[test]
+    fn every_rail_control_is_an_action_djmanzo_knows() {
+        for mode in dj_core::RailMode::ALL {
+            for dto in rail_modes(1) {
+                for control in &dto.controls {
+                    assert!(
+                        Action::parse(&control.action).is_ok(),
+                        "{} offers {:?}, which does not parse",
+                        mode.name(),
+                        control.action
+                    );
+                }
+            }
+        }
+        // And it is addressed to the deck it was asked for.
+        let second = rail_modes(2);
+        assert!(!second.is_empty());
+        for mode in &second {
+            for control in &mode.controls {
+                assert!(
+                    control.action.starts_with("deck 2 "),
+                    "{:?} is addressed to the wrong deck",
+                    control.action
+                );
+            }
+        }
+        // A deck that does not exist gets nothing rather than deck 1's rail.
+        assert!(rail_modes(0).is_empty());
+    }
+
     #[test]
     fn every_saved_loop_verb_the_interface_sends_parses() {
         for text in ["deck 1 loop_save 1", "deck 2 loop_recall 8"] {
@@ -7232,6 +7267,49 @@ fn label_of(label: dj_core::PadLabel) -> String {
         PadLabel::StemMute(stem) => format!("{} mute", stem.name()),
         PadLabel::StemSolo(stem) => format!("{} solo", stem.name()),
     }
+}
+
+/// Every rail mode and the controls it promotes. §74.
+///
+/// Sent once and matched against the mode name the snapshot carries, exactly
+/// as the pad pages are: the table is a constant, and what changes sixty times
+/// a second is which of its four rows applies. The verbs are pre-rendered
+/// against a deck number so the interface dispatches them without knowing the
+/// grammar.
+#[must_use]
+#[tauri::command]
+pub fn rail_modes(deck: u8) -> Vec<RailModeDto> {
+    let Some(id) = DeckId::from_human(deck) else {
+        return Vec::new();
+    };
+    dj_core::RailMode::ALL
+        .into_iter()
+        .map(|mode| RailModeDto {
+            name: mode.name().to_owned(),
+            controls: mode
+                .controls()
+                .iter()
+                .map(|control| RailControlDto {
+                    label: control.label.to_owned(),
+                    action: format!("deck {} {}", id.human_number(), control.verb),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// One rail mode, as the interface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct RailModeDto {
+    pub name: String,
+    pub controls: Vec<RailControlDto>,
+}
+
+/// One control the rail promotes: a label and the action it sends.
+#[derive(Debug, Clone, Serialize)]
+pub struct RailControlDto {
+    pub label: String,
+    pub action: String,
 }
 
 /// One page, as the interface draws it.

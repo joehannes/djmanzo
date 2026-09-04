@@ -28,7 +28,7 @@
     blank?: boolean;
     disabled?: boolean;
     title?: string;
-    kind?: "control" | "pad" | "tab";
+    kind?: "control" | "pad" | "tab" | "chip";
     onclick?: (event: MouseEvent) => void;
     onpointerdown?: (event: PointerEvent) => void;
     onpointerup?: (event: PointerEvent) => void;
@@ -42,7 +42,7 @@
       ? "transparent"
       : hot
         ? "var(--accent)"
-        : kind === "tab"
+        : kind === "tab" || kind === "chip"
           ? "var(--panel)"
           : "var(--panel-raised, var(--panel))",
   );
@@ -149,6 +149,16 @@
 
   .control {
     min-block-size: 2rem;
+  }
+
+  /*
+    §74's rail. A tab's proportions without a tab's meaning: short, compact,
+    and sitting in a row of its own kind. Not uppercased, because these are
+    control names a DJ reads rather than section headings they scan.
+  */
+  .chip {
+    min-block-size: 1.65rem;
+    font-size: 0.72em;
   }
 
   .blank span {

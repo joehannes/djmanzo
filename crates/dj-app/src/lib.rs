@@ -518,6 +518,7 @@ pub fn run() {
             commands::sidelist_clear,
             commands::list_layouts,
             commands::pad_pages,
+            commands::rail_modes,
             commands::layout_folder,
             commands::world,
             commands::demo_folder,

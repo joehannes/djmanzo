@@ -36,14 +36,14 @@ rather than taken.
 | 8 | Adaptation levels | 🟡 | Five density bands, derived from measured deck heights. The wider notion of adaptation levels is not built |
 | 9 | Separate autonomy from confidence | ⬜ | Modelled in the audit; not in the code |
 | 10 | AI posture stays compatible with djmanzo's | ⚖️ | The six postures and nine occasions are untouched |
-| 11 | Add a context engine | 🟡 | `dj_app::context` reads **the night** from the records that have actually been played — their loudness and their tempo — and publishes a phase, an energy, a confidence and its typed reasons on every snapshot. It will not guess: under three analysed records the answer is `None`, which is what `SessionContext.session` had been hardcoded to since it was written. The assistant panel draws it beside the occasion, so what the DJ declared and what the records say sit together. What §11 also asks for and this does not do is *unify*: the occasion, the hardware, the audience, the DJ's behaviour, the attention budget and the performance health are all still their own types in their own modules |
+| 11 | Add a context engine | 🟡 | `dj_app::context` reads **the night** from the records that have actually been played — their loudness and their tempo — and publishes a phase, an energy, a confidence and its typed reasons on every snapshot. It will not guess: under three analysed records the answer is `None`, which is what `SessionContext.session` had been hardcoded to since it was written. The assistant panel draws it beside the occasion, so what the DJ declared and what the records say sit together. What §11 also asks for and this does not do is *unify*: the occasion, the hardware, the audience, the DJ's behaviour, the attention budget and the performance health are all still their own types in their own modules. One of them has stopped being an orphan: the attention budget's `promoted_controls` is what sizes §74's rail |
 | 12 | Learn the DJ | 🟡 | Taste learned from play history ships. Persona learning does not |
 | 13 | Never learn badly | ⬜ | |
 | 14 | Behavioural signals | ⬜ | Needs an events table with decay |
 | 15 | AI should understand DJ technique | ✅ | The technique catalogue ships |
 | 16 | Domain knowledge packs | 🟡 | Genre families ship; packs as a format do not |
 | 17 | GUI adapts to session phase | 🟡 | Occasion-aware density ships, and the phase is now a real reading rather than a `None` — the living interface's energy comes from the night instead of from the master meter. Phase-*driven layout* still does not: nothing rearranges when the room turns |
-| 18 | Attention budget | 🟡 | `cockpit::Attention` exists with the rule that matters — while performing, the interface may not reflow — but nothing consults it yet |
+| 18 | Attention budget | 🟡 | `cockpit::Attention` exists with the rule that matters — while performing, the interface may not reflow. Its `promoted_controls` now has a reader: §74's rail is sized to the tightest of the four budgets, and a test holds every mode to it rather than to a number written down twice. The other three fields — how many suggestions, how many notices, how much motion — are still consulted by nothing |
 | 19 | No random UI reorganisation | ⚖️ | Enforced by a golden-order test: the deck's control order is asserted in full and fails if anything moves |
 | 20 | Playlist / library overhaul | 🟡 | Function tags and their filtering ship, and three of the four views do. **Set Flow**: a dockable surface drawing the plan as a sequence with the seam between each pair — its deltas, its confidence, and whether it needs a cut rather than a blend. **Pair**: its own surface, the two records side by side with the seam between them, each with its waveform, and the mix point drawn *on* the outgoing one. **Compact cards**: the browser's second representation, the sleeve read out of the file's tags and served as an image, falling back to lettering; the same rows, the same sort and the same actions as the table, from one snippet so the two cannot drift. **The performance table** now offers fourteen columns with a picker that applies as it is pressed and is remembered: title, artist, album, genre, year, BPM, Camelot, the key by name, energy, time, rating, plays, last played and phrase length. Thirteen of §20's twenty, plus the colour, which is a stripe on the title rather than a column of its own. What is left has no data behind it rather than no column: **vocal** and **stem availability** need the separator's output kept, **transition suitability** and **AI confidence** are relative to a track nothing has named, **request count** is not joined to the library, and **function tags** are stored per record and would need a bulk read. Two card actions are missing for the same kind of reason: **preview** needs somewhere to listen that is not a deck, **queue** needs a play queue this application does not have |
 | 21 | "Prepare" must be first class | ✅ | Its own dockable surface beside the browser, not a strip inside it. One gesture — `→` on a browser row — hands a track over; `prepare.svelte.ts` is the only path between them, so there is no second, differently-behaved way to set a track aside |
@@ -99,7 +99,7 @@ rather than taken.
 | 71 | "What should I do next?" | ✅ | The assistant's next step is shown before it happens |
 | 72 | User override matrix | ⬜ | |
 | 73 | AI knows what is expensive | ✅ | `mistakes_are_costly` reaches the deck as careful mode |
-| 74 | Contextual control rail | ⬜ | Phase 3's remaining half |
+| 74 | Contextual control rail | 🟡 | **The rail ships.** Four modes — scratching, stems, preparing, mixing — each promoting six controls, on every loaded deck. Which mode a deck is in comes from what the DJ has just done: a hand on the platter, a muted stem, a stopped deck. That ordering matters as much as the lists do — every change is a consequence of an action they took, so the rail never rearranges itself under a hand reaching for it, which is the failure that makes adaptive interfaces hostile. Six because that is `Attention::performing().promoted_controls`, the tightest of the four budgets: sized to the tightest, the rail does not shrink when the music starts. §74's three named lists are followed where the vocabulary has a verb for them, and where it does not the gap is named rather than filled by inventing one — **stem FX** is a continuous per-stem filter and not a switch, and **tags, rating and transition points** are a library row and a panel. The fourth mode is a choice: §74 gives no list for the ordinary case of a record playing |
 | 75 | Visual control of audio features | 🟡 | |
 | 76 | Library "AI lens" | ⬜ | |
 | 77 | Exploration vs performance | 🟡 | `cockpit::Focus` models it; nothing switches on it |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **31 done, 38 part, 17 open, 19 standing rules.**
+Of the 105 sections: **31 done, 39 part, 16 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**31 of 86 deliverable sections are complete and 38 more are partly there.**
+**31 of 86 deliverable sections are complete and 39 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 31 whole plus 38 halves over 86 is 58%, and the phase view is stricter
+way: 31 whole plus 39 halves over 86 is 59%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

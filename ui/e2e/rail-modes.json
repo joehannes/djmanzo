@@ -1,0 +1,118 @@
+[
+  {
+    "name": "scratch",
+    "controls": [
+      {
+        "label": "Cue",
+        "action": "deck 1 cue"
+      },
+      {
+        "label": "Vinyl",
+        "action": "deck 1 jog_mode vinyl"
+      },
+      {
+        "label": "Slip",
+        "action": "deck 1 slip_toggle"
+      },
+      {
+        "label": "Reverse",
+        "action": "deck 1 reverse_toggle"
+      },
+      {
+        "label": "Brake",
+        "action": "deck 1 brake 2"
+      },
+      {
+        "label": "Spin",
+        "action": "deck 1 backspin 2"
+      }
+    ]
+  },
+  {
+    "name": "stems",
+    "controls": [
+      {
+        "label": "Vocal",
+        "action": "deck 1 stem_mute vocal"
+      },
+      {
+        "label": "Drums",
+        "action": "deck 1 stem_mute drums"
+      },
+      {
+        "label": "Bass",
+        "action": "deck 1 stem_mute bass"
+      },
+      {
+        "label": "Other",
+        "action": "deck 1 stem_mute other"
+      },
+      {
+        "label": "Loop 4",
+        "action": "deck 1 loop 4"
+      },
+      {
+        "label": "Phrase",
+        "action": "deck 1 loop_phrase 1"
+      }
+    ]
+  },
+  {
+    "name": "preparing",
+    "controls": [
+      {
+        "label": "Cue",
+        "action": "deck 1 cue"
+      },
+      {
+        "label": "Loop 4",
+        "action": "deck 1 loop 4"
+      },
+      {
+        "label": "Phrase",
+        "action": "deck 1 loop_phrase 1"
+      },
+      {
+        "label": "Grid here",
+        "action": "deck 1 grid_here"
+      },
+      {
+        "label": "Tap",
+        "action": "deck 1 grid_tap"
+      },
+      {
+        "label": "Reset grid",
+        "action": "deck 1 grid_reset"
+      }
+    ]
+  },
+  {
+    "name": "mixing",
+    "controls": [
+      {
+        "label": "Sync",
+        "action": "deck 1 sync_toggle"
+      },
+      {
+        "label": "Loop 4",
+        "action": "deck 1 loop 4"
+      },
+      {
+        "label": "Phrase",
+        "action": "deck 1 loop_phrase 1"
+      },
+      {
+        "label": "Keylock",
+        "action": "deck 1 keylock_toggle"
+      },
+      {
+        "label": "Slip",
+        "action": "deck 1 slip_toggle"
+      },
+      {
+        "label": "Headphones",
+        "action": "deck 1 cue_toggle"
+      }
+    ]
+  }
+]

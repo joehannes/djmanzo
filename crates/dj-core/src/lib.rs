@@ -21,6 +21,7 @@ pub mod hotcue;
 pub mod music;
 pub mod pads;
 pub mod param;
+pub mod rail;
 pub mod sampler;
 pub mod time;
 pub mod vocabulary;
@@ -37,6 +38,7 @@ pub use jog::JogMode;
 pub use music::{Beatgrid, Bpm, Confidence, KeyRelation, Mode, MusicalKey, Phrase, Trajectory};
 pub use pads::{Lit, PADS, Pad, PadAction, PadLabel, PadPage};
 pub use param::{DeckParam, GlobalParam, ParamId};
+pub use rail::{RailControl, RailMode};
 pub use sampler::{
     MAX_RECORD_SECONDS, RecordSource, SAMPLE_BANKS, SAMPLE_SLOTS, SampleChange, SampleOutput,
     SamplerChange, TriggerMode,
