@@ -61,6 +61,17 @@
   let totalFrames = $state(0);
   /** Which generation of this deck's content the tiles belong to. */
   let epoch = $state(0);
+  /**
+   * Where the drums are out, and where they come back — §25's breakdown and
+   * drop layers, in frames, straight from Rust.
+   *
+   * Held here rather than derived from the deck's snapshot because they belong
+   * to the *record*, not to what the deck is doing: they change when a track
+   * loads and when its analysis lands, and never in between. The same effect
+   * that fetches the length fetches them, for the same reason.
+   */
+  let breakdowns = $state<{ start_frame: number; end_frame: number }[]>([]);
+  let drops = $state<number[]>([]);
 
   // Interpolation state. Updated from snapshots, read every animation frame.
   let anchorFrame = 0;
@@ -78,6 +89,8 @@
         ready = info.ready;
         totalFrames = info.total_frames;
         epoch = info.epoch;
+        breakdowns = info.breakdowns;
+        drops = info.drops;
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -215,6 +228,27 @@
       .map((c) => ({ slot: c.slot, left: c.frame / framesPerPixel })),
   );
 
+  /**
+   * The breakdowns and drops, as pixels inside the strip.
+   *
+   * A band along the top edge rather than a wash over the waveform. A wash
+   * would tint the bands underneath it, and the bands *are* the colour that
+   * says what is playing — §57 forbids exactly that, and `dj_render`'s palette
+   * test exists because it was broken once already. A band at the edge cannot
+   * recolour anything.
+   */
+  const breakdownBands = $derived(
+    breakdowns.map((section) => ({
+      key: section.start_frame,
+      left: section.start_frame / framesPerPixel,
+      // Never thinner than a hairline, for the same reason the loop band is
+      // not: a short breakdown fully zoomed out is under a pixel wide.
+      width: Math.max((section.end_frame - section.start_frame) / framesPerPixel, 2),
+    })),
+  );
+
+  const dropMarks = $derived(drops.map((frame) => ({ frame, left: frame / framesPerPixel })));
+
   const loopBand = $derived.by(() => {
     const region = deck.active_loop;
     if (!region) return null;
@@ -266,6 +300,22 @@
 <div class="lane" bind:this={lane} style:height="{height}px">
   {#if ready}
     <div class="strip" bind:this={strip}>
+      <!--
+        Under the cues and the mix point, over nothing: these say what the
+        record does, and everything else on this lane says what the DJ or
+        djmanzo is doing about it.
+      -->
+      {#each breakdownBands as band (band.key)}
+        <div
+          class="breakdown"
+          style:left="{band.left}px"
+          style:width="{band.width}px"
+          title="The drums are out here"
+        ></div>
+      {/each}
+      {#each dropMarks as drop (drop.frame)}
+        <div class="drop" style:left="{drop.left}px" title="The drums come back here"></div>
+      {/each}
       {#if loopBand}
         <div
           class="loop-band"
@@ -347,6 +397,41 @@
     bottom: 0;
     background: var(--accent-2);
     opacity: 0.16;
+    pointer-events: none;
+  }
+
+  /*
+    §25's breakdown layer. A band along the top edge, never a wash over the
+    waveform: the waveform's colour *is* the spectral balance, and tinting it
+    would be the overload §57 forbids -- `dj_render`'s palette test exists
+    because that rule was broken once already.
+
+    Neutral on purpose. This lane already spends indigo, teal and amber on the
+    three bands and pink on the phrase markers; a sixth hue would be a colour
+    nobody could learn. Grey saying "less" is what a breakdown is.
+  */
+  .breakdown {
+    position: absolute;
+    top: 0;
+    height: 3px;
+    background: var(--text-dim);
+    opacity: 0.75;
+    pointer-events: none;
+  }
+
+  /*
+    The drop, drawn as the far end of the band it belongs to rather than as a
+    line of its own. A dim band ending in a bright tick reads as "quiet until
+    *here*", and the pairing carries the meaning without either half claiming a
+    hue. Deliberately not full height: every full-height line on this lane is
+    already something else -- a beat, a bar, a phrase, a cue, a mix point.
+  */
+  .drop {
+    position: absolute;
+    top: 0;
+    height: 38%;
+    width: 2px;
+    background: var(--text);
     pointer-events: none;
   }
 

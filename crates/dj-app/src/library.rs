@@ -552,6 +552,7 @@ mod tests {
             key: None,
             loudness: dj_analysis::Lufs::SILENCE,
             phrases: None,
+            energy: None,
         };
         let stored = stored_analysis(&analysis);
         assert_eq!(stored.loudness_lufs, None);
@@ -565,6 +566,7 @@ mod tests {
             key: None,
             loudness: dj_analysis::Lufs::new(-9.5),
             phrases: None,
+            energy: None,
         };
         assert_eq!(stored_analysis(&analysis).loudness_lufs, Some(-9.5));
     }
@@ -579,6 +581,7 @@ mod tests {
             key: None,
             loudness: dj_analysis::Lufs::new(-12.0),
             phrases: None,
+            energy: None,
         });
         assert_eq!(stored.bpm, None);
         assert_eq!(stored.beatgrid(), None);

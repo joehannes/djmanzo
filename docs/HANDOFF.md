@@ -203,11 +203,19 @@ The largest open sections, in the order they are worth doing:
    health are still six separate types nobody assembles, so §9, §12, §14 and
    §17 still each reach for their own. Phase 5 of `GUI-OVERHAUL.md`.
 2. **§25–§27, the waveform as instrumentation.** The transition is drawn on
-   the outgoing lane and can be **dragged** there — §26's first two examples.
-   What is left is the rest of §25's semantic layers (vocal and stem presence,
-   breakdowns, drops, the energy trajectory), the other things §26 wants
+   the outgoing lane and can be **dragged** there — §26's first two examples —
+   and **breakdowns and drops** now draw on both the lane and the overview, so
+   twelve of §25's twenty layers ship. What is left of §25 is vocal and stem
+   presence (both need the separator's output kept, not just played), the
+   energy trajectory as a curve rather than as two markers, saved loops, and
+   the runway to the end of the record. Then the other things §26 wants
    grabbable (cue markers, phrase markers, loops), and §27's ghost track, which
    needs a second render of a track that is not loaded.
+
+   The obvious next thing is not a layer at all: **the planner does not know
+   about breakdowns yet.** `dj_app::plan` scores a mix on tempo, key and phrase
+   and will happily land one in the middle of one — which is the mistake the
+   layer exists to stop a human making. `Section::contains` is there for it.
 3. **§68's last reader.** The object ships; the pair view draws it, the automix
    performs it and the autopilot defers to it. Replay still reconstructs a
    transition from the action log rather than from the object. Its stem, EQ and

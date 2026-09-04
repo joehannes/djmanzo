@@ -1389,6 +1389,13 @@ pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
     )
 }
 
+/// A stretch of the record, in frames, for a lane to draw.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct FrameSpan {
+    pub start_frame: f64,
+    pub end_frame: f64,
+}
+
 /// What the interface needs to size a deck's waveform strip.
 #[derive(Debug, Clone, Serialize)]
 pub struct WaveformInfo {
@@ -1399,15 +1406,66 @@ pub struct WaveformInfo {
     /// webview's own cache misses when the content changes -- see
     /// `WaveformStore::epochs`.
     pub epoch: u32,
+    /// Where the drums are out. §25's breakdown layer.
+    ///
+    /// **In frames, not beats.** The analyser counts them in beats because
+    /// that is what structure is measured in, and the conversion happens here
+    /// because this is where the grid and the record's own sample rate both
+    /// live. A lane that did the arithmetic would be a second opinion about
+    /// where beat 96 is, formed from three numbers it would have to be sent
+    /// anyway -- which is the same rule the mix point already follows.
+    pub breakdowns: Vec<FrameSpan>,
+    /// Where the drums come back. Empty when a record fades out rather than
+    /// dropping, which is most of them.
+    pub drops: Vec<f64>,
+}
+
+/// Turn the analyser's beat indices into frames, using the grid they were
+/// counted against.
+///
+/// The *analysed* grid, deliberately, not the working one: the beat indices
+/// came from that grid, so reading them against a grid the DJ has since nudged
+/// would move every breakdown by however far the nudge was.
+fn energy_in_frames(state: &AppState, deck: u8) -> (Vec<FrameSpan>, Vec<f64>) {
+    let Some(overlay) = state.waveforms().analysed_grid(deck) else {
+        return (Vec::new(), Vec::new());
+    };
+    let Some(analysis) = state.analysis().for_deck(deck) else {
+        return (Vec::new(), Vec::new());
+    };
+    let Some(energy) = analysis.energy.as_ref() else {
+        return (Vec::new(), Vec::new());
+    };
+    let at = |beat: i64| {
+        overlay
+            .grid
+            .beat_position(beat, overlay.sample_rate)
+            .get()
+            .max(0.0)
+    };
+    (
+        energy
+            .breakdowns
+            .iter()
+            .map(|section| FrameSpan {
+                start_frame: at(section.start),
+                end_frame: at(section.end),
+            })
+            .collect(),
+        energy.drops.iter().map(|&beat| at(beat)).collect(),
+    )
 }
 
 #[tauri::command]
 pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
+    let (breakdowns, drops) = energy_in_frames(&state, deck);
     WaveformInfo {
         deck,
         ready: state.waveforms().has_summary(deck),
         total_frames: state.waveforms().total_frames(deck).unwrap_or(0) as u64,
         epoch: state.waveforms().epoch(deck),
+        breakdowns,
+        drops,
     }
 }
 
@@ -2117,6 +2175,116 @@ mod grid_edit_tests {
     use dj_core::{Beatgrid, Bpm, Confidence, FramePos, SampleRate};
 
     const SR: SampleRate = SampleRate::DEFAULT;
+
+    /// **A breakdown reaches the interface in frames, on the grid it was
+    /// counted against.**
+    ///
+    /// The analyser reports beats, because that is what structure is measured
+    /// in; a lane draws frames. The conversion is here rather than in the
+    /// interface for the reason `WaveformInfo` says: an interface doing it
+    /// would need the grid, the tempo and the record's own sample rate to form
+    /// a second opinion about where beat 96 is.
+    #[test]
+    fn a_breakdown_reaches_the_lane_as_frames() {
+        // 120 BPM at 48 kHz: 24 000 frames a beat, anchored at frame 0.
+        let state = app_with_grid(120.0, 0.0);
+        let track = dj_core::TrackId::from_bytes([7u8; 32]);
+        state.analysis().record(
+            deck(),
+            track,
+            dj_analysis::Analysis {
+                tempo: None,
+                key: None,
+                loudness: dj_analysis::Lufs::SILENCE,
+                phrases: None,
+                energy: Some(dj_analysis::energy::EnergyAnalysis {
+                    breakdowns: vec![dj_analysis::energy::Section { start: 64, end: 96 }],
+                    drops: vec![96],
+                }),
+            },
+        );
+
+        let (breakdowns, drops) = energy_in_frames(&state, 1);
+        assert_eq!(breakdowns.len(), 1);
+        assert!(
+            (breakdowns[0].start_frame - 64.0 * 24_000.0).abs() < 1.0,
+            "beat 64 came out at frame {}",
+            breakdowns[0].start_frame
+        );
+        assert!(
+            (breakdowns[0].end_frame - 96.0 * 24_000.0).abs() < 1.0,
+            "beat 96 came out at frame {}",
+            breakdowns[0].end_frame
+        );
+        assert_eq!(drops, vec![breakdowns[0].end_frame], "the drop is the end");
+    }
+
+    /// **An edited grid does not move the breakdown**, because the audio did
+    /// not move.
+    ///
+    /// The beat indices were counted against the grid the analyser produced,
+    /// so they have to be read back against that same grid. A DJ who corrects
+    /// a grid by half a beat — or by an octave, which is the common one — has
+    /// changed where beat 64 *is*, not where the drums stop. Reading the
+    /// indices against the working grid would slide every breakdown by
+    /// whatever the correction was, which is the sort of wrongness that looks
+    /// like the detector being bad.
+    ///
+    /// Without this the choice is untestable: `set_analysed_grid` sets both
+    /// copies, so a fixture that only ever calls it cannot tell them apart.
+    #[test]
+    fn correcting_the_grid_does_not_move_the_breakdown() {
+        let state = app_with_grid(120.0, 0.0);
+        let track = dj_core::TrackId::from_bytes([7u8; 32]);
+        state.analysis().record(
+            deck(),
+            track,
+            dj_analysis::Analysis {
+                tempo: None,
+                key: None,
+                loudness: dj_analysis::Lufs::SILENCE,
+                phrases: None,
+                energy: Some(dj_analysis::energy::EnergyAnalysis {
+                    breakdowns: vec![dj_analysis::energy::Section { start: 64, end: 96 }],
+                    drops: vec![96],
+                }),
+            },
+        );
+        let before = energy_in_frames(&state, 1).0;
+
+        // The octave correction: the DJ says it is 60 BPM, not 120.
+        state.waveforms().set_grid(
+            deck(),
+            Some(dj_render::GridOverlay {
+                grid: Beatgrid::new(
+                    FramePos::new(0.0),
+                    Bpm::new(60.0).unwrap(),
+                    Confidence::new(1.0),
+                ),
+                sample_rate: SR,
+                phrase: None,
+            }),
+        );
+
+        let after = energy_in_frames(&state, 1).0;
+        assert_eq!(
+            after[0].start_frame, before[0].start_frame,
+            "correcting the grid moved the breakdown; the drums did not move"
+        );
+        assert!(
+            (after[0].start_frame - 64.0 * 24_000.0).abs() < 1.0,
+            "the breakdown is at frame {}, not where the analyser found it",
+            after[0].start_frame
+        );
+    }
+
+    /// A deck nothing has analysed says nothing, rather than an empty answer
+    /// that looks like "this record has no breakdowns".
+    #[test]
+    fn a_deck_with_no_analysis_reports_no_breakdowns() {
+        let state = app_with_grid(120.0, 0.0);
+        assert_eq!(energy_in_frames(&state, 1).0.len(), 0);
+    }
 
     fn deck() -> DeckId {
         DeckId::from_human(1).unwrap()

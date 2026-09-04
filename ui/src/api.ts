@@ -1031,6 +1031,27 @@ export interface WaveformInfo {
    * waveform after a load, and a beat-grid edit would appear to do nothing.
    */
   epoch: number;
+  /**
+   * Stretches of the record with the drums out — §25's breakdown layer.
+   *
+   * In frames, worked out in Rust from the beat indices the analyser reports
+   * and the grid it counted them against. The interface does not convert: it
+   * would need the grid, the tempo and the record's own sample rate to form a
+   * second opinion about where beat 96 is.
+   */
+  breakdowns: FrameSpan[];
+  /**
+   * Frames where the drums come back. One per breakdown that ends before the
+   * record does — a record that fades out has a breakdown and no drop, which
+   * is most of them.
+   */
+  drops: number[];
+}
+
+/** A stretch of a record, in frames. */
+export interface FrameSpan {
+  start_frame: number;
+  end_frame: number;
 }
 
 export const waveformInfo = (deck: number) =>

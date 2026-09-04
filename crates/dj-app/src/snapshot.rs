@@ -1338,6 +1338,7 @@ mod tests {
                 }),
                 loudness: Lufs::new(-11.0),
                 phrases: None,
+                energy: None,
             },
         );
 
@@ -1391,6 +1392,7 @@ mod tests {
                 key: None,
                 loudness: Lufs::new(-14.0),
                 phrases: None,
+                energy: None,
             },
         );
 

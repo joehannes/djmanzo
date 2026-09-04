@@ -24,6 +24,15 @@
   let totalFrames = $state(0);
   let epoch = $state(0);
   let ready = $state(false);
+  /**
+   * Where the drums are out, and where they come back, in frames.
+   *
+   * This is the view that most wants them. The comment at the top of this file
+   * has said since it was written that the overview answers "where is the
+   * breakdown"; until now it could not, because nothing had worked one out.
+   */
+  let breakdowns = $state<{ start_frame: number; end_frame: number }[]>([]);
+  let drops = $state<number[]>([]);
 
   // Interpolation state, as in the scrolling lane: snapshots arrive at 60 Hz
   // but a frame landing between two of them must still move.
@@ -52,6 +61,8 @@
         ready = info.ready;
         totalFrames = info.total_frames;
         epoch = info.epoch;
+        breakdowns = info.breakdowns;
+        drops = info.drops;
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -86,6 +97,25 @@
       .filter((c): c is { slot: number; frame: number } => c.frame != null)
       .map((c) => ({ slot: c.slot, left: fraction(c.frame) * 100 })),
   );
+
+  /**
+   * The breakdowns as a band along the top edge, and the drops as ticks at
+   * their far ends.
+   *
+   * At the edge rather than washed over the waveform: the waveform's colour is
+   * the spectral balance, and tinting it would be the overload §57 forbids.
+   * The two are drawn as one shape — a dim band ending in a bright tick — so
+   * "quiet until *here*" is legible without either of them claiming a hue.
+   */
+  const breakdownBands = $derived(
+    breakdowns.map((section) => ({
+      key: section.start_frame,
+      left: fraction(section.start_frame) * 100,
+      width: (fraction(section.end_frame) - fraction(section.start_frame)) * 100,
+    })),
+  );
+
+  const dropMarks = $derived(drops.map((frame) => ({ frame, left: fraction(frame) * 100 })));
 
   const loopBand = $derived.by(() => {
     const region = deck.active_loop;
@@ -158,6 +188,17 @@
     {#each markers as marker (marker.slot)}
       <div class="cue" style:left="{marker.left}%"></div>
     {/each}
+    {#each breakdownBands as band (band.key)}
+      <div
+        class="breakdown"
+        style:left="{band.left}%"
+        style:width="{band.width}%"
+        title="The drums are out here"
+      ></div>
+    {/each}
+    {#each dropMarks as drop (drop.frame)}
+      <div class="drop" style:left="{drop.left}%" title="The drums come back here"></div>
+    {/each}
     <div class="playhead" bind:this={playhead}></div>
   {:else}
     <div class="empty"></div>
@@ -194,6 +235,41 @@
     width: 2px;
     background: var(--text);
     will-change: transform;
+    pointer-events: none;
+  }
+
+  /*
+    §25's breakdown layer. A band along the top edge, never a wash over the
+    waveform: the waveform's colour *is* the spectral balance, and tinting it
+    would be the overload §57 forbids -- `dj_render`'s palette test exists
+    because that rule was broken once already.
+
+    Neutral on purpose. This lane already spends indigo, teal and amber on the
+    three bands and pink on the phrase markers; a sixth hue would be a colour
+    nobody could learn. Grey saying "less" is what a breakdown is.
+  */
+  .breakdown {
+    position: absolute;
+    top: 0;
+    height: 3px;
+    background: var(--text-dim);
+    opacity: 0.75;
+    pointer-events: none;
+  }
+
+  /*
+    The drop, drawn as the far end of the band it belongs to rather than as a
+    line of its own. A dim band ending in a bright tick reads as "quiet until
+    *here*", and the pairing carries the meaning without either half claiming a
+    hue. Deliberately not full height: every full-height line on this lane is
+    already something else -- a beat, a bar, a phrase, a cue, a mix point.
+  */
+  .drop {
+    position: absolute;
+    top: 0;
+    height: 38%;
+    width: 2px;
+    background: var(--text);
     pointer-events: none;
   }
 

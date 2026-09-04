@@ -338,7 +338,18 @@ const ANSWERS: Record<string, unknown> = {
   // The length matches the pair fixture's transition, which sits at 6.83M
   // frames -- a mark outside the record would be dropped by the lane's own
   // filter and the drag test would have nothing to grab.
-  waveform_info: { deck: 1, ready: true, total_frames: 8_000_000, epoch: 1 },
+  //
+  // One breakdown with a drop at its end, so the lane's newest layer has
+  // something to draw. A quarter of the way in and running for an eighth of
+  // the record, which is what a breakdown looks like.
+  waveform_info: {
+    deck: 1,
+    ready: true,
+    total_frames: 8_000_000,
+    epoch: 1,
+    breakdowns: [{ start_frame: 2_000_000, end_frame: 3_000_000 }],
+    drops: [3_000_000],
+  },
   session_read: {
     phase: "peak",
     energy: 0.82,

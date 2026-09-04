@@ -16,6 +16,52 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**djmanzo sees the breakdown coming.** §25 asks the waveform to answer *what is
+about to happen*, and in dance music the answer is nearly always a breakdown or
+a drop. Those are the two moments a mix is planned around: you do not land a
+new record in the middle of a breakdown, and you do land one on a drop. The
+lane could not show either.
+
+**A breakdown is where the drums leave** — not where it gets quieter. A
+breakdown is often the loudest part of a record, all pad and vocal and reverb,
+and a filter sweep that doubles the perceived level is still a breakdown if the
+kick is out. So the signal is the onset flux under 150 Hz, per beat, measured
+against what *this* record sounds like when it is running. Against this record
+and not a fixed level: a minimal techno record and a big-room house record
+differ by more between themselves than either differs from its own breakdown.
+
+Two thresholds rather than one, the same shape the night context uses. With one
+threshold a breakdown starts and stops on every stray kick, and a marker that
+flickers is worse than none.
+
+Three judgements the tests pin, because each was wrong in a first draft:
+
+- **The reference is the ninetieth percentile, not the seventy-fifth.** On a
+  record that is more than a quarter breakdown, the seventy-fifth percentile
+  *is* the breakdown, so the record gets measured against its own quiet part
+  and nothing is found. A long ambient intro and outro is enough to do it.
+- **A fade-out is a breakdown with no drop.** Half the records ever pressed end
+  quiet, and a drop invented at the last beat would put a marker on all of
+  them.
+- **A record that never loses its drums reports nothing**, and so does one with
+  no low end at all. Both are real answers about real records rather than
+  failures to find something.
+
+**Drawn at the lane's edge, never over the waveform.** The waveform's colour is
+the spectral balance; a wash across it would recolour the bands underneath,
+which is exactly the overload §57 forbids and which this project got wrong once
+already. So a breakdown is a dim grey band along the top edge and the drop is a
+brighter tick at its far end — one shape reading "quiet until *here*", claiming
+no hue on a lane that already spends four.
+
+Both the scrolling lane and the overview draw them. The overview especially:
+its own comment has said since it was written that it answers "where am I in
+the track, and where is the breakdown", and until now it could not.
+
+The analyser reports beats and the lane draws frames; the conversion happens in
+Rust, against **the grid the analyser counted them with** rather than the one
+the DJ may since have corrected. The audio did not move when the grid did.
+
 **Fixed: the phrase marker was drawn in the waveform's own colour.** §57 says
 it in one line — *never overload the same colour with multiple meanings* — and
 the lane broke it from the day phrase detection started working: the marker was

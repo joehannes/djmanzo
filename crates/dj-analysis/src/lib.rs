@@ -29,6 +29,7 @@
 //! the input moves the key round the wheel by a fifth, noise is never
 //! confident — rather than for numbers nobody can vouch for.
 
+pub mod energy;
 pub mod key;
 pub mod loudness;
 pub mod melody;
@@ -52,7 +53,7 @@ use dj_core::SampleRate;
 /// field recording has no tempo, a drum loop has no key, and a silent file has
 /// no loudness. A missing field means "could not tell", which the interface
 /// should show as such rather than filling in a plausible zero.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Analysis {
     pub tempo: Option<TempoAnalysis>,
     pub key: Option<KeyAnalysis>,
@@ -63,6 +64,11 @@ pub struct Analysis {
     /// recording or an ambient piece that genuinely has no phrases -- see
     /// [`structure::phrases`]. Absent is a real answer, not a failure.
     pub phrases: Option<PhraseAnalysis>,
+    /// Where the drums leave and where they come back.
+    ///
+    /// `None` on the same terms as [`Analysis::phrases`]: no grid, too short,
+    /// or a record that never loses its drums. See [`energy::read`].
+    pub energy: Option<energy::EnergyAnalysis>,
 }
 
 impl Analysis {
@@ -104,11 +110,19 @@ pub fn analyse(samples: &[f32], sample_rate: SampleRate) -> Analysis {
         .as_ref()
         .and_then(|t| structure::phrases(&banded, &t.grid, sample_rate, frames));
 
+    // Breakdowns are counted in beats, so like phrases they need the grid --
+    // and they read the same banded curve, so this is arithmetic rather than
+    // another pass over the audio.
+    let energy = tempo
+        .as_ref()
+        .and_then(|t| energy::read(&banded, &t.grid, sample_rate, frames));
+
     Analysis {
         tempo,
         key: key::detect(samples, rate),
         loudness: loudness::integrated(samples, rate),
         phrases,
+        energy,
     }
 }
 

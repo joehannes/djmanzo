@@ -42,7 +42,7 @@ use std::sync::{Arc, Mutex};
 /// A cached record from an older version is discarded and recomputed rather
 /// than read, which is why this number exists: reading an old record with new
 /// code is how a library ends up full of confidently wrong BPMs.
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 3;
 
 /// What the analyser found, in a form that survives a restart.
 ///
@@ -72,6 +72,18 @@ struct CachedAnalysis {
     phrase_beats: Option<u32>,
     phrase_anchor: Option<u32>,
     phrase_confidence: Option<f32>,
+    /// Stretches with the drums out, as `[start, end)` beat indices, and the
+    /// beats the drums come back on.
+    ///
+    /// Flat pairs rather than the analyser's own `Section`, for the reason at
+    /// the top of this file: the cache format is deliberately not a
+    /// serialisation of an internal type. `#[serde(default)]` so a record
+    /// written before this field existed still reads -- though the version bump
+    /// above means none will.
+    #[serde(default)]
+    breakdowns: Vec<(i64, i64)>,
+    #[serde(default)]
+    drops: Vec<i64>,
 }
 
 impl CachedAnalysis {
@@ -102,6 +114,13 @@ impl CachedAnalysis {
             phrase_beats: analysis.phrases.map(|p| p.beats),
             phrase_anchor: analysis.phrases.map(|p| p.anchor),
             phrase_confidence: analysis.phrases.map(|p| p.confidence),
+            breakdowns: analysis.energy.as_ref().map_or_else(Vec::new, |e| {
+                e.breakdowns.iter().map(|s| (s.start, s.end)).collect()
+            }),
+            drops: analysis
+                .energy
+                .as_ref()
+                .map_or_else(Vec::new, |e| e.drops.clone()),
         }
     }
 
@@ -150,11 +169,24 @@ impl CachedAnalysis {
             _ => None,
         };
 
+        // Empty is absent, not "an answer with nothing in it": `energy::read`
+        // returns `None` rather than an empty list precisely so a record with
+        // no breakdowns is told apart from one nothing has looked at.
+        let energy = (!self.breakdowns.is_empty()).then(|| dj_analysis::energy::EnergyAnalysis {
+            breakdowns: self
+                .breakdowns
+                .iter()
+                .map(|&(start, end)| dj_analysis::energy::Section { start, end })
+                .collect(),
+            drops: self.drops.clone(),
+        });
+
         Some(Analysis {
             tempo,
             key,
             loudness: self.lufs.map_or(Lufs::SILENCE, Lufs::new),
             phrases,
+            energy,
         })
     }
 }
@@ -307,7 +339,7 @@ pub fn analyse_or_cached(
     }
 
     let analysis = dj_analysis::analyse(samples, sample_rate);
-    store.record(deck, id, analysis);
+    store.record(deck, id, analysis.clone());
     store
         .for_deck(deck.human_number())
         .unwrap_or_else(|| Arc::new(analysis))
@@ -363,6 +395,7 @@ mod tests {
             }),
             loudness: Lufs::new(-9.3),
             phrases: None,
+            energy: None,
         }
     }
 
@@ -412,6 +445,7 @@ mod tests {
             key: None,
             loudness: Lufs::SILENCE,
             phrases: None,
+            energy: None,
         };
         let restored = CachedAnalysis::from_analysis(&silent)
             .to_analysis()
@@ -517,6 +551,7 @@ mod tests {
         let quiet = Analysis {
             loudness: Lufs::new(-20.0),
             phrases: None,
+            energy: None,
             ..analysis()
         };
         assert_eq!(
@@ -527,6 +562,7 @@ mod tests {
         let loud = Analysis {
             loudness: Lufs::new(-8.0),
             phrases: None,
+            energy: None,
             ..analysis()
         };
         assert_eq!(
@@ -543,6 +579,7 @@ mod tests {
         let already = Analysis {
             loudness: Lufs::new(-14.2),
             phrases: None,
+            energy: None,
             ..analysis()
         };
         assert_eq!(auto_gain_action(deck, &already), None);
@@ -556,6 +593,7 @@ mod tests {
         let silent = Analysis {
             loudness: Lufs::SILENCE,
             phrases: None,
+            energy: None,
             ..analysis()
         };
         assert_eq!(auto_gain_action(deck, &silent), None);
@@ -569,6 +607,7 @@ mod tests {
         let quiet = Analysis {
             loudness: Lufs::new(-19.0),
             phrases: None,
+            energy: None,
             ..analysis()
         };
         let action = auto_gain_action(deck, &quiet).unwrap();
@@ -591,6 +630,7 @@ mod tests {
         let nearly_silent = Analysis {
             loudness: Lufs::new(-90.0),
             phrases: None,
+            energy: None,
             ..analysis()
         };
         let action = auto_gain_action(deck, &nearly_silent).unwrap();
