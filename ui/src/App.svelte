@@ -1316,7 +1316,7 @@
     a decision; it is what one variable does.
   -->
   {#snippet surfaceLibrary()}
-    <Browse enabled={ready} deckCount={deckCount} />
+    <Browse enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
   {/snippet}
   {#snippet surfacePrepare()}
     <SideView enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />

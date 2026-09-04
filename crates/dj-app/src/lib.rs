@@ -30,6 +30,7 @@ pub mod cockpit;
 pub mod commands;
 pub mod context;
 pub mod control;
+pub mod cover;
 pub mod grid;
 pub mod host;
 pub mod layout;
@@ -125,6 +126,9 @@ pub fn run() {
     // What the context engine has made of the night, read by the pump on every
     // frame and written once a record. See `crate::context`.
     let night = Arc::clone(state.night());
+    // The library, for the sleeve protocol below: it looks a track up by id to
+    // find the file its artwork is embedded in.
+    let covers = state.library();
     // The snapshot pump is where a hot cue change becomes visible to the host:
     // the engine sets cues at a playhead quantize may have moved, so the only
     // reliable reading is the one the audio thread publishes. See
@@ -168,6 +172,12 @@ pub fn run() {
                     .body(Vec::new())
                     .unwrap_or_default(),
             }
+        })
+        // Sleeves for the browser's card view, served the same way. Read out of
+        // the file's tags on demand; see `crate::cover` for why nothing is
+        // precomputed and why the browser is the only cache.
+        .register_uri_scheme_protocol(cover::SCHEME, move |_ctx, request| {
+            cover::respond(&covers, request.uri().path())
         })
         // The user's own logo, served the same way tiles are -- as an image the
         // webview loads, not bytes pushed through IPC.

@@ -1068,6 +1068,25 @@ export function tileUrl(
     : `wave://localhost/${path}`;
 }
 
+/**
+ * URL for a record's sleeve, read out of the file's own tags.
+ *
+ * Served over a custom protocol for the same reason waveform tiles are: as an
+ * `<img>` the browser fetches only what is on screen, decodes it off the main
+ * thread and keeps it, where base64 through IPC would put a megabyte of JPEG
+ * in a JSON string per card on every render.
+ *
+ * **404 is the ordinary answer.** Most collections are part-tagged, and a card
+ * with no sleeve falls back to its lettering — see `Library.svelte`. Nothing
+ * here can tell in advance which records have one, so the request is the test.
+ */
+export function coverUrl(track: string): string {
+  // Same per-platform rewriting as `tileUrl`; see the comment there.
+  return navigator.userAgent.includes("Windows")
+    ? `http://cover.localhost/${track}`
+    : `cover://localhost/${track}`;
+}
+
 // ---------------------------------------------------------------------------
 // Sources
 // ---------------------------------------------------------------------------

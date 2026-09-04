@@ -13,6 +13,7 @@
     loadTrack,
     resolveSourceTrack,
     searchSources,
+    type DeckState,
     type SearchResults,
     type SourceTrack,
   } from "./api";
@@ -20,7 +21,8 @@
   let {
     enabled,
     deckCount = 2,
-  }: { enabled: boolean; deckCount?: number } = $props();
+    decks = [],
+  }: { enabled: boolean; deckCount?: number; decks?: DeckState[] } = $props();
 
   let text = $state("");
   let results = $state<SearchResults[]>([]);
@@ -85,7 +87,7 @@
   </div>
 
 {#if tab === "library"}
-  <Library {enabled} {deckCount} />
+  <Library {enabled} {deckCount} {decks} />
 {:else}
   <div class="search">
     <input

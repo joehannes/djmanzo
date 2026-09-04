@@ -95,6 +95,19 @@ the *previous* bundle. A Playwright run then tests the old code and passes.
 This has produced a false "mutation killed" result more than once. Always look
 for `✓ built` in the output; never pipe it to `tail -1` and assume.
 
+**The window under Xvfb is 1280×800 whatever the screen is,** and there is no
+window manager to drag it. That is the right size to *judge* the interface at,
+and the wrong one for looking at a docked surface's contents — a card grid in
+the bottom dock gets about 230 px. `xdotool search --name djmanzo` returns
+**two** window ids; sizing the first does nothing, because the one carrying the
+webview is the second. `xdotool windowsize <second id> 1560 1150` on a
+1600×1200 screen gives the dock room to be read. Do not conclude a surface is
+broken because it is cut off at 800 px; check what the window actually is.
+
+**`pkill -f` matches the shell running it.** `pkill -f "target/debug/djmanzo"`
+kills your own tool call, because the pattern is in that process's command
+line. Bracket a character — `pkill -f "[d]ebug/djmanzo"` — or kill by pid.
+
 **Playwright's browser.** CI installs its own. A container that pre-installs
 one is pointed at it with `DJMANZO_CHROMIUM=/opt/pw-browsers/chromium`,
 otherwise every test fails with "Executable doesn't exist".
@@ -198,8 +211,15 @@ The largest open sections, in the order they are worth doing:
    transition from the action log rather than from the object. Its stem, EQ and
    FX plans are absent because nothing yet decides them; a field that is always
    empty is a promise.
-4. **§20's last view** — the compact cards. Set Flow and the pair view ship;
-   the performance table is the browser at fewer columns than §20 lists.
+4. **§20's remaining half.** Three of the four views ship — the performance
+   table, Set Flow, the pair view and now the compact cards, with the sleeve
+   read out of the file's own tags and served over a `cover://` scheme. What is
+   left is the table's wider column set (§20 lists twenty columns and offers
+   instant custom configuration; the browser draws six and cannot be
+   reconfigured), and the two card actions nothing behind them exists for:
+   **preview** needs somewhere to listen that is not a deck, and **queue**
+   needs a play queue this application does not have — the Sidelist is a
+   different statement. Both are features, not wiring.
 5. **§74, the contextual rail.**
 
 Three older items are open and are not part of the 105:

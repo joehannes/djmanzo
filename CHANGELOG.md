@@ -16,6 +16,55 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The browser has a second view: cards, with the sleeves.** §20 asks for
+several representations of the same collection and calls it one of the highest
+priorities; the browser had one. There is now a table and a grid of cards, on
+the same rows — the same search, the same sort, the same selection and the same
+actions, rendered from **one snippet** so the two cannot drift into one being
+the lesser browser. Which view you are in is remembered, because a person who
+prefers sleeves prefers them tomorrow.
+
+The sleeve is read out of the file's own tags — DJs tag their collections, and
+the pictures were already there. It is served over a `cover://` URI scheme as
+an ordinary image rather than base64'd through IPC, which is the trick waveform
+tiles and the user's logo already use: the browser fetches only what is on
+screen, decodes it off its own main thread, and keeps it. Nothing is
+precomputed at scan time and nothing is cached on disk — reading a tag is
+milliseconds, and a cache of five hundred sleeves is hundreds of megabytes that
+something would have to invalidate.
+
+A record with no picture is the ordinary case in a real collection, so it is
+not a failure: the card falls back to lettering, and the lettering is
+*underneath* the image rather than swapped in when it fails, which is what
+stops a broken-image icon flashing across the grid on every scroll. The front
+cover wins over the other pictures a well-tagged album carries — a browser that
+took the first would show the disc label for some records and the sleeve for
+others — and the content type comes from the bytes, not from a tag that says
+`image/jpg`.
+
+Two things §20 asks a card for are new verbs rather than new drawing:
+
+- **Stage** puts a record on the deck that is *not playing*, which is exactly
+  what the automix and the autopilot both mean by somewhere to mix into. One
+  press instead of remembering which deck is free.
+- **Favourite** writes five stars. This library already has a rating a DJ sorts
+  and filters by, and a separate favourite flag would be a second opinion about
+  the same judgement that drifts the first time somebody uses one and not the
+  other.
+
+Both are on the table's rows too, since they come from the same snippet.
+
+Cards sort from a control of their own — the table sorts from its column
+headings and cards have none, so without it the second view would be the one
+you cannot order. It shares `sortBy` with the table, so switching views keeps
+the order you chose.
+
+**Not shipped, and named rather than quietly missing:** §20 also lists
+*preview* and *queue* on a card. Preview needs somewhere to listen that is not
+a deck, and queue needs a play queue this application does not have — the
+Sidelist is a different statement. Both are features; neither is wiring.
+
+
 **Fixed: the autopilot could never mix.** Its idea of a deck to mix *into* was
 one with nothing loaded, while the record it would mix is read off that same
 deck — so the two could never both be there. It staged a track, the deck became

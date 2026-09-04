@@ -33,6 +33,7 @@
     addToPlaylist,
     checkFilter,
     clearTrackField,
+    coverUrl,
     defaultMusicFolder,
     editTracks,
     findDuplicates,
@@ -54,6 +55,7 @@
     removeFromPlaylist,
     setPlaylistQuery,
     smartPlaylistTracks,
+    type DeckState,
     type Duplicate,
     type LibraryStatus,
     type LibraryTrack,
@@ -68,7 +70,8 @@
   let {
     enabled,
     deckCount = 2,
-  }: { enabled: boolean; deckCount?: number } = $props();
+    decks = [],
+  }: { enabled: boolean; deckCount?: number; decks?: DeckState[] } = $props();
 
   /**
    * The drag payload for tracks.
@@ -218,6 +221,23 @@
   let loading = $state<string | null>(null);
 
   type Column = "title" | "artist" | "album" | "bpm" | "key" | "duration_seconds";
+  /**
+   * The sortable columns, and what to call them.
+   *
+   * One list, read by the table's headings and by the card view's sort
+   * control. Two lists would eventually offer different columns in the two
+   * views, and a DJ who sorted by BPM in the table and could not in cards
+   * would conclude the cards were the lesser browser -- which is exactly what
+   * §20 is asking us not to build.
+   */
+  const COLUMNS: [Column, string][] = [
+    ["title", "Title"],
+    ["artist", "Artist"],
+    ["album", "Album"],
+    ["bpm", "BPM"],
+    ["key", "Key"],
+    ["duration_seconds", "Time"],
+  ];
   let sortBy = $state<Column>("artist");
   let ascending = $state(true);
 
@@ -617,6 +637,116 @@
    * their live state. */
   const deckNumbers = $derived(Array.from({ length: deckCount }, (_, i) => i + 1));
 
+  // -------------------------------------------------------------------------
+  // The two representations
+  // -------------------------------------------------------------------------
+
+  /**
+   * Table or cards.
+   *
+   * The directive's §20 asks for several representations of the same
+   * collection, and this is the same rows either way: the same sort, the same
+   * search, the same selection, the same actions. A card view that quietly
+   * showed a different set of records — or offered fewer things to do with one
+   * — would be a second browser rather than a second view of this one.
+   *
+   * Cards are for when the sleeve is the fastest way to find a record, which
+   * is most of how a physical collection is searched and none of how a
+   * spreadsheet is.
+   */
+  type Layout = "table" | "cards";
+  const LAYOUT_KEY = "djmanzo.library.layout";
+
+  function safeStorage(): Storage | null {
+    try {
+      return typeof localStorage === "undefined" ? null : localStorage;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Remembered, because it is a working preference and not a mode.
+   *
+   * Somebody who prefers sleeves prefers them tomorrow as well, and being
+   * handed the table again on every launch is the kind of small daily friction
+   * that makes a person stop using the view they wanted.
+   */
+  let layout = $state<Layout>(safeStorage()?.getItem(LAYOUT_KEY) === "cards" ? "cards" : "table");
+
+  function choose(next: Layout) {
+    layout = next;
+    try {
+      safeStorage()?.setItem(LAYOUT_KEY, next);
+    } catch {
+      // A browser with storage denied still gets the view it asked for; it
+      // just forgets by the next launch. Not worth a message.
+    }
+  }
+
+  /**
+   * Records whose sleeve came back 404, so the card stops asking.
+   *
+   * Most collections are part-tagged and a missing sleeve is not a failure —
+   * see `coverUrl`. Without this the browser would re-request the same missing
+   * picture on every scroll back.
+   */
+  let sleeveless = $state<Set<string>>(new SvelteSet());
+
+  /**
+   * The lettering a card falls back to.
+   *
+   * Deliberately monochrome. Colour already means something in this browser —
+   * it is the marking the DJ applied — and a second, generated colour language
+   * on the same tile would be two things that look like the same statement.
+   */
+  function initials(track: LibraryTrack): string {
+    const letter = (of: string) => of.trim()[0]?.toUpperCase() ?? "";
+    // Artist then title, not the first two words of either: "JL" for both Juan
+    // Luis Guerra records tells you nothing, and "JB" and "JO" tell you which.
+    return `${letter(track.artist)}${letter(track.title)}`;
+  }
+
+  /**
+   * Somewhere to put a record without choosing a deck.
+   *
+   * A deck that is **loaded but not playing** is what the autopilot and the
+   * automix both mean by a place to mix into, so staging from the browser is
+   * the same statement they are already reading. First rather than best: with
+   * two decks there is no interesting choice, and with four the DJ who cares
+   * uses the numbered buttons beside this one.
+   */
+  const freeDeck = $derived(
+    decks.find((deck) => !deck.playing && deck.number <= deckCount)?.number ?? null,
+  );
+
+  async function stage(track: LibraryTrack) {
+    if (freeDeck === null) return;
+    await toDeck(track, freeDeck);
+  }
+
+  /**
+   * Five stars, toggled.
+   *
+   * §20 asks a card for "favorite", and this library already has a rating a DJ
+   * sorts and filters by. A separate favourite flag would be a second opinion
+   * about the same judgement, and the two would drift the first time somebody
+   * used one and not the other. So a favourite *is* five stars, and the star
+   * on the card says so.
+   */
+  async function favourite(track: LibraryTrack) {
+    try {
+      if (track.rating === 5) {
+        await clearTrackField([track.id], "rating");
+      } else {
+        await editTracks([track.id], { rating: 5 });
+      }
+      await refresh();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   onMount(() => {
     void refresh();
     void refreshStatus();
@@ -628,6 +758,102 @@
     };
   });
 </script>
+
+{#snippet actions(track: LibraryTrack)}
+    <!--
+      Adding to a playlist is a select rather than a drag. Drag is
+      the gesture DJs know, and it will come — but a control that
+      works with one hand on a trackpad in a dark booth should not
+      wait for it.
+    -->
+    <!--
+      Plain lists only. A folder holds lists, and a smart folder
+      holds a query — a track filed into one is a member its own
+      filter does not select, so it goes in and never comes back
+      out. The store refuses both now; this stops the interface
+      offering a target it knows will be refused.
+    -->
+    {#if playlists.some((p) => p.kind === "list")}
+      <select
+        class="add-to"
+        aria-label="Add {track.title} to a playlist"
+        onchange={(event) => {
+          const target = event.currentTarget;
+          const id = Number(target.value);
+          target.value = "";
+          if (id) void addTo(id, track);
+        }}
+      >
+        <option value="">+</option>
+        {#each playlists.filter((p) => p.kind === "list") as list (list.id)}
+          <option value={list.id}>{list.name}</option>
+        {/each}
+      </select>
+    {/if}
+    <button
+      class="aside"
+      onclick={() => setAside(track.id)}
+      title="Set aside in the Sidelist"
+      aria-label="Set aside {track.title}"
+    >→</button>
+    <!--
+      A favourite is five stars. See `favourite` for why this writes the
+      rating a DJ already sorts by rather than a flag of its own.
+    -->
+    <button
+      class="star"
+      class:on={track.rating === 5}
+      onclick={() => favourite(track)}
+      title={track.rating === 5 ? "Remove from favourites" : "Favourite — five stars"}
+      aria-pressed={track.rating === 5}
+      aria-label="Favourite {track.title}"
+    >{track.rating === 5 ? "\u2605" : "\u2606"}</button>
+    <!--
+      "More like this" sits beside "set aside" because both are
+      things you do *with* a track rather than *to* a deck, and the
+      deck buttons at the end of the row should stay a block a hand
+      can find without reading.
+    -->
+    <button
+      class="alike"
+      class:on={likeThis === track.id}
+      onclick={() => showAlike(track.id)}
+      title="Find records like {track.title}"
+      aria-label="Find records like {track.title}"
+    >≈</button>
+    {#if selection.kind === "playlist" && "position" in track}
+      <button
+        class="drop"
+        onclick={() => removeAt((track as { position: number }).position)}
+        title="Take this out of {selection.name}"
+        aria-label="Remove from playlist"
+      >−</button>
+    {/if}
+    <!--
+      Somewhere to put it without choosing a deck. Disabled rather than hidden
+      when every deck is playing: a control that vanishes mid-set reads as a
+      bug, and the reason is in the tooltip.
+    -->
+    <button
+      class="stage"
+      onclick={() => void stage(track)}
+      disabled={!enabled || freeDeck === null || loading === track.path}
+      title={freeDeck === null
+        ? "Every deck is playing"
+        : `Stage on deck ${freeDeck}, ready to mix into`}
+      aria-label="Stage {track.title}"
+    >&#8681;</button>
+    {#each deckNumbers as deck (deck)}
+      <button
+        onclick={() => toDeck(track, deck)}
+        disabled={!enabled || loading === track.path}
+        title="Load onto deck {deck}"
+        aria-label="Load {track.title} onto deck {deck}"
+      >
+        {loading === track.path ? "…" : deck}
+      </button>
+    {/each}
+{/snippet}
 
 <div class="with-sidebar">
 <Crates bind:this={crates} bind:selection onchange={() => void refresh()} />
@@ -665,6 +891,57 @@
     {:else if selection.kind === "duplicates"}
       <span class="viewing">Tracks whose audio is in more than one place.</span>
     {/if}
+    <!--
+      The two representations of §20. A segmented pair rather than one button
+      that toggles: which view you are in should be readable without pressing
+      anything, and a single icon that means "you are in the table" and "go to
+      cards" at the same time is the control nobody can read at a glance.
+    -->
+    <!--
+      Sorting, where a card view can reach it. The table sorts from its column
+      headings and cards have none, so without this the second representation
+      would be the one you cannot order -- and the two share `sortBy`, so
+      switching views keeps the order you chose. Picking a column here does not
+      flip the direction the way clicking a heading twice does: a heading is
+      one control that means both, a menu and an arrow are two that mean one
+      each.
+    -->
+    {#if layout === "cards"}
+      <label class="sorting">
+        <span class="by">Sort</span>
+        <select
+          value={sortBy}
+          onchange={(event) => (sortBy = event.currentTarget.value as Column)}
+          aria-label="Sort the collection by"
+        >
+          {#each COLUMNS as [column, heading] (column)}
+            <option value={column}>{heading}</option>
+          {/each}
+        </select>
+        <button
+          class="direction"
+          onclick={() => (ascending = !ascending)}
+          title={ascending ? "Sorted up — reverse it" : "Sorted down — reverse it"}
+          aria-label="Reverse the order"
+        >{ascending ? "\u25b2" : "\u25bc"}</button>
+      </label>
+    {/if}
+    <div class="views" role="group" aria-label="How to show the collection">
+      <IconButton
+        icon="fa-solid fa-list"
+        title="Show as a table"
+        aria-label="Show as a table"
+        active={layout === "table"}
+        onClick={() => choose("table")}
+      />
+      <IconButton
+        icon="fa-solid fa-table-cells"
+        title="Show as cards with their sleeves"
+        aria-label="Show as cards"
+        active={layout === "cards"}
+        onClick={() => choose("cards")}
+      />
+    </div>
     <IconButton icon="fa-solid fa-folder-plus" title="Add folder…" onClick={addFolder} disabled={busy} />
     <IconButton icon="fa-solid fa-repeat" title={busy ? "Scanning…" : "Rescan"} onClick={rescan} disabled={busy || !status?.folders.length} />
     <IconButton icon="fa-solid fa-file-import" title="Import a rekordbox, Traktor or iTunes library export" onClick={() => importFrom(false)} disabled={busy} />
@@ -1024,144 +1301,149 @@
         <button onclick={() => (likeThis = null)}>show everything</button>
       </p>
     {/if}
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th class="pick"></th>
-            {#each [["title", "Title"], ["artist", "Artist"], ["album", "Album"], ["bpm", "BPM"], ["key", "Key"], ["duration_seconds", "Time"]] as [column, heading] (column)}
-              <th>
-                <button
-                  class="sort"
-                  class:active={sortBy === column}
-                  onclick={() => sort(column as Column)}
-                >
-                  {heading}{#if sortBy === column}<span class="arrow">{ascending ? "▲" : "▼"}</span>{/if}
-                </button>
-              </th>
-            {/each}
-            <th class="load-heading">Load</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each sorted as track (track.id)}
-            <tr
-              class:unanalysed={!track.analysed}
-              class:picked={selected.has(track.id)}
-              draggable="true"
-              ondragstart={(event) => startDrag(event, track)}
-            >
-              <td class="pick">
-                <input
-                  type="checkbox"
-                  checked={selected.has(track.id)}
-                  onchange={() => toggleSelected(track.id)}
-                  aria-label="Select {track.title}"
-                />
-              </td>
-              <td class="title" title={track.path}>
-                <!--
-                  The colour is a stripe rather than a filled row: a DJ colours
-                  tracks to find them at a glance, and a table of six saturated
-                  rows is harder to read than one with six marks down its edge.
-                -->
-                {#if track.colour}
-                  <span class="swatch" style="background: {track.colour}"></span>
-                {/if}{track.title}<!--
-                  Why this record is here, under its name and only while the
-                  question is being asked. In the ordinary collection view
-                  these would be noise on every row; in an answer they are the
-                  answer. Under the title rather than in a column of their own
-                  so the header and the cells cannot drift apart.
-                -->{#if likeThis && alikeWhy[track.id]?.length}<span class="why"
-                  >{#each alikeWhy[track.id].slice(0, 2) as reason (reason)}<span
-                    class="reason">{reason}</span
-                  >{/each}</span
-                >{/if}</td
-              >
-              <td>{track.artist}</td>
-              <td>{track.album ?? ""}</td>
+    {#if layout === "cards"}
+      <!--
+        §20's second view. The same rows as the table — the same sort, the same
+        search, the same selection, the same actions — laid out so the sleeve
+        does the finding. A card is operational: everything the row offers is
+        on it, from one snippet, so the two views cannot drift apart.
+      -->
+      <ul class="cards">
+        {#each sorted as track (track.id)}
+          <li
+            class="card"
+            class:unanalysed={!track.analysed}
+            class:picked={selected.has(track.id)}
+            draggable="true"
+            ondragstart={(event) => startDrag(event, track)}
+          >
+            <div class="sleeve">
               <!--
-                A blank rather than a zero when the analyser has not run. A
-                plausible-looking 0.0 is worse than an obvious gap, because a
-                DJ reads these at a glance and will not stop to wonder.
+                The lettering is underneath rather than instead of. A missing
+                sleeve is the ordinary case in a part-tagged collection, and
+                swapping the image out after it fails would flash a broken-image
+                icon across the grid on every scroll.
               -->
-              <td class="mono">{track.bpm != null ? track.bpm.toFixed(1) : ""}</td>
-              <td class="mono">{track.key ?? ""}</td>
-              <td class="mono">{formatTime(track.duration_seconds)}</td>
-              <td class="load">
-                <!--
-                  Adding to a playlist is a select rather than a drag. Drag is
-                  the gesture DJs know, and it will come — but a control that
-                  works with one hand on a trackpad in a dark booth should not
-                  wait for it.
-                -->
-                <!--
-                  Plain lists only. A folder holds lists, and a smart folder
-                  holds a query — a track filed into one is a member its own
-                  filter does not select, so it goes in and never comes back
-                  out. The store refuses both now; this stops the interface
-                  offering a target it knows will be refused.
-                -->
-                {#if playlists.some((p) => p.kind === "list")}
-                  <select
-                    class="add-to"
-                    aria-label="Add {track.title} to a playlist"
-                    onchange={(event) => {
-                      const target = event.currentTarget;
-                      const id = Number(target.value);
-                      target.value = "";
-                      if (id) void addTo(id, track);
-                    }}
-                  >
-                    <option value="">+</option>
-                    {#each playlists.filter((p) => p.kind === "list") as list (list.id)}
-                      <option value={list.id}>{list.name}</option>
-                    {/each}
-                  </select>
-                {/if}
-                <button
-                  class="aside"
-                  onclick={() => setAside(track.id)}
-                  title="Set aside in the Sidelist"
-                  aria-label="Set aside {track.title}"
-                >→</button>
-                <!--
-                  "More like this" sits beside "set aside" because both are
-                  things you do *with* a track rather than *to* a deck, and the
-                  deck buttons at the end of the row should stay a block a hand
-                  can find without reading.
-                -->
-                <button
-                  class="alike"
-                  class:on={likeThis === track.id}
-                  onclick={() => showAlike(track.id)}
-                  title="Find records like {track.title}"
-                  aria-label="Find records like {track.title}"
-                >≈</button>
-                {#if selection.kind === "playlist" && "position" in track}
+              <span class="lettering" aria-hidden="true">{initials(track)}</span>
+              {#if !sleeveless.has(track.id)}
+                <img
+                  src={coverUrl(track.id)}
+                  alt=""
+                  loading="lazy"
+                  onerror={() => sleeveless.add(track.id)}
+                />
+              {/if}
+              {#if track.colour}
+                <span class="swatch" style="background: {track.colour}"></span>
+              {/if}
+              <input
+                class="pick"
+                type="checkbox"
+                checked={selected.has(track.id)}
+                onchange={() => toggleSelected(track.id)}
+                aria-label="Select {track.title}"
+              />
+            </div>
+            <div class="what">
+              <strong class="title" title={track.path}>{track.title}</strong>
+              <span class="who">{track.artist}</span>
+              <!--
+                Blank rather than zero where the analyser has not run, for the
+                same reason the table's cells are: a plausible 0.0 is read at a
+                glance and believed.
+              -->
+              <span class="facts mono">
+                {track.bpm != null ? track.bpm.toFixed(1) : "—"}
+                · {track.key ?? "—"}
+                · {formatTime(track.duration_seconds)}
+              </span>
+              {#if likeThis && alikeWhy[track.id]?.length}
+                <span class="why">
+                  {#each alikeWhy[track.id].slice(0, 2) as reason (reason)}
+                    <span class="reason">{reason}</span>
+                  {/each}
+                </span>
+              {/if}
+            </div>
+            <div class="does">{@render actions(track)}</div>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="pick"></th>
+              {#each COLUMNS as [column, heading] (column)}
+                <th>
                   <button
-                    class="drop"
-                    onclick={() => removeAt((track as { position: number }).position)}
-                    title="Take this out of {selection.name}"
-                    aria-label="Remove from playlist"
-                  >−</button>
-                {/if}
-                {#each deckNumbers as deck (deck)}
-                  <button
-                    onclick={() => toDeck(track, deck)}
-                    disabled={!enabled || loading === track.path}
-                    title="Load onto deck {deck}"
+                    class="sort"
+                    class:active={sortBy === column}
+                    onclick={() => sort(column)}
                   >
-                    {loading === track.path ? "…" : deck}
+                    {heading}{#if sortBy === column}<span class="arrow">{ascending ? "▲" : "▼"}</span>{/if}
                   </button>
-                {/each}
-              </td>
+                </th>
+              {/each}
+              <th class="load-heading">Load</th>
             </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {#each sorted as track (track.id)}
+              <tr
+                class:unanalysed={!track.analysed}
+                class:picked={selected.has(track.id)}
+                draggable="true"
+                ondragstart={(event) => startDrag(event, track)}
+              >
+                <td class="pick">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(track.id)}
+                    onchange={() => toggleSelected(track.id)}
+                    aria-label="Select {track.title}"
+                  />
+                </td>
+                <td class="title" title={track.path}>
+                  <!--
+                    The colour is a stripe rather than a filled row: a DJ colours
+                    tracks to find them at a glance, and a table of six saturated
+                    rows is harder to read than one with six marks down its edge.
+                  -->
+                  {#if track.colour}
+                    <span class="swatch" style="background: {track.colour}"></span>
+                  {/if}{track.title}<!--
+                    Why this record is here, under its name and only while the
+                    question is being asked. In the ordinary collection view
+                    these would be noise on every row; in an answer they are the
+                    answer. Under the title rather than in a column of their own
+                    so the header and the cells cannot drift apart.
+                  -->{#if likeThis && alikeWhy[track.id]?.length}<span class="why"
+                    >{#each alikeWhy[track.id].slice(0, 2) as reason (reason)}<span
+                      class="reason">{reason}</span
+                    >{/each}</span
+                  >{/if}</td
+                >
+                <td>{track.artist}</td>
+                <td>{track.album ?? ""}</td>
+                <!--
+                  A blank rather than a zero when the analyser has not run. A
+                  plausible-looking 0.0 is worse than an obvious gap, because a
+                  DJ reads these at a glance and will not stop to wonder.
+                -->
+                <td class="mono">{track.bpm != null ? track.bpm.toFixed(1) : ""}</td>
+                <td class="mono">{track.key ?? ""}</td>
+                <td class="mono">{formatTime(track.duration_seconds)}</td>
+                <td class="load">
+                  {@render actions(track)}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -1290,6 +1572,182 @@
     font-size: 0.85em;
     padding: 0.05rem 0.1rem;
     max-width: 3.5rem;
+  }
+
+  /* ---------------------------------------------------------------------
+     §20's two representations
+     --------------------------------------------------------------------- */
+
+  /*
+    Both buttons are always there and the current one is lit, so which view you
+    are in is readable without pressing anything -- a single button that
+    toggled would have to mean "you are in the table" and "go to cards" at
+    once. `flex-shrink: 0` because they sit beside a search box that takes the
+    rest of the row: without it they were squeezed to an eight-pixel sliver,
+    which is what driving this actually looked like.
+  */
+  .views {
+    display: flex;
+    gap: 0.2rem;
+    flex-shrink: 0;
+  }
+
+  /* Beside the view buttons, and no wider than it needs to be. */
+  .sorting {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+    font-size: 0.8em;
+    color: var(--text-dim);
+  }
+
+  .sorting select {
+    font-size: 1em;
+    padding: 0.1rem 0.2rem;
+  }
+
+  .sorting .direction {
+    padding: 0.1rem 0.35rem;
+    font-size: 0.9em;
+  }
+
+  /*
+    `auto-fill` rather than a fixed count: this panel docks along the bottom of
+    a laptop screen and down the side of a booth monitor, and a grid that
+    insisted on four columns would be four slivers in the narrow one. 9.5rem is
+    the width at which a sleeve is still recognisable and its buttons still fit
+    on one row.
+  */
+  .cards {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: 0.6rem;
+    /* Scrolls inside itself, so the controls above stay reachable. */
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    /* Short collections stay at the top instead of stretching to fill. */
+    align-content: start;
+  }
+
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+    padding: 0.4rem;
+    border-radius: 6px;
+    background: var(--panel-raised);
+  }
+
+  .card.picked {
+    outline: 1px solid var(--accent-2);
+  }
+
+  /* The same statement the table makes about a record nothing has analysed. */
+  .card.unanalysed .facts {
+    color: var(--text-dim);
+  }
+
+  .sleeve {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--panel);
+    display: grid;
+    place-items: center;
+  }
+
+  /*
+    Over the lettering rather than instead of it -- see the markup. `cover`
+    because sleeves are square and scans are not, and a letterboxed grid reads
+    as broken.
+  */
+  .sleeve img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .lettering {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+  }
+
+  /* The DJ's own marking, kept where it cannot be mistaken for the sleeve. */
+  .card .swatch {
+    position: absolute;
+    left: 0.25rem;
+    bottom: 0.25rem;
+    width: 0.4rem;
+    height: 1rem;
+    margin: 0;
+  }
+
+  .sleeve .pick {
+    position: absolute;
+    top: 0.2rem;
+    right: 0.2rem;
+    margin: 0;
+  }
+
+  .what {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  /*
+    Two lines, then an ellipsis. A card grid whose rows are different heights
+    because one record has a long remix title is much harder to scan than one
+    that clips.
+  */
+  .card .title {
+    font-size: 0.85em;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .who,
+  .facts {
+    font-size: 0.78em;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .does {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.15rem;
+    margin-top: auto;
+  }
+
+  .does button {
+    padding: 0.05rem 0.3rem;
+    font-size: 0.85em;
+  }
+
+  /* A star is a state, so it says which one it is in. */
+  .star.on {
+    color: var(--accent-2);
+    border-color: var(--accent-2);
   }
 
   /*

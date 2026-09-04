@@ -1311,6 +1311,7 @@ dependencies = [
  "dj-sources",
  "dj-stems",
  "dj-world",
+ "lofty",
  "reqwest 0.12.28",
  "rtrb",
  "serde",

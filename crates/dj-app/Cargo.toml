@@ -75,3 +75,6 @@ workspace = true
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Writing a sleeve into a test file, so `cover` can be tested against a real
+# tagged file rather than a mock of one. Already the library's tag reader.
+lofty = { workspace = true }
