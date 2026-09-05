@@ -280,6 +280,12 @@ Three older items are open and are not part of the 105:
   Xvfb — scraping the Svelte source for unreachable controls was tried and
   rejected, because it produces both false positives and false negatives.
 
+**§47's emergency control ships**: Take over, in the top bar, stopping the
+automix and any assistant that was acting without touching the audio. What
+that section still wants is "return to last stable state", which needs
+snapshots djmanzo does not keep and would move faders under a hand — the
+failure everything else here avoids.
+
 Two smaller ones are open and honest about why: **#97**, a blue focus ring the
 owner reported, could not be reproduced in the default theme — the only blue in
 the palette is `pkg-daylight`'s deliberate high-contrast cyan, and it needs the

@@ -1632,6 +1632,18 @@ export const assistantApplyPack = (name: string) =>
   invoke<void>("assistant_apply_pack", { name });
 /** Take everything out of the assistant's hands, now. */
 export const assistantTakeOver = () => invoke<void>("assistant_take_over");
+
+/**
+ * §47's emergency control: stop everything djmanzo is doing on its own.
+ *
+ * Returns what it stopped, in words, so the interface can say it. A press that
+ * silently does nothing — because nothing was running — cannot be told from one
+ * that failed, and this is the control whose failure matters most.
+ *
+ * It does not touch the audio. See `commands::take_over_everything` for why
+ * "PANIC → safe transition" is deliberately not what this does.
+ */
+export const takeOverEverything = () => invoke<string[]>("take_over_everything");
 /** Hand everything back, whatever was taken. */
 export const assistantHandBack = () => invoke<void>("assistant_hand_back");
 

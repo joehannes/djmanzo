@@ -1118,6 +1118,15 @@ pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
             plan
         };
         run_automix_plan(state, plan);
+        // Dispatched after it has been applied, the way the grid edits below
+        // are, and for the same reason: **the log is what makes a set
+        // replayable** (ADR-0003). This branch returned before reaching the
+        // dispatch at the bottom, so handing the mix over to the machine and
+        // taking it back were the two events a replay of that night did not
+        // have — which is exactly the pair somebody reading it back would look
+        // for. The engine ignores the action itself; it is not the engine's
+        // business, and it says so where it ignores it.
+        let _ = state.bus().dispatch(parsed);
         return Ok(());
     }
 
@@ -3090,6 +3099,34 @@ mod grid_edit_tests {
         assert_eq!(log[0].event.to_line(), "deck 1 grid_nudge 10");
     }
 
+    /// **Handing the mix to the machine is in the session log**, and taking it
+    /// back is too.
+    ///
+    /// The automix branch of `perform` returned before reaching the dispatch at
+    /// the bottom, so neither event was recorded — and those two are precisely
+    /// what somebody reading a night back would look for. ADR-0003's whole
+    /// claim is that the log is what makes a set replayable; a set that ran on
+    /// the automix replayed as though a person had done it all.
+    #[test]
+    fn handing_the_mix_over_and_taking_it_back_are_both_recorded() {
+        let state = app_with_grid(128.0, 0.0);
+        state.bus().clear_log();
+
+        perform(&state, "automix on").unwrap();
+        perform(&state, "automix off").unwrap();
+
+        let lines: Vec<String> = state
+            .bus()
+            .log()
+            .iter()
+            .map(|entry| entry.event.to_line())
+            .collect();
+        assert_eq!(
+            lines,
+            vec!["automix on".to_owned(), "automix off".to_owned()]
+        );
+    }
+
     /// The other half: an edit that was refused must not appear to have
     /// happened.
     #[test]
@@ -3882,6 +3919,81 @@ pub fn assistant_take_over(state: State<'_, AppState>) -> Result<(), String> {
     let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
     guard.takeover.take_all();
     Ok(())
+}
+
+/// **The emergency control.** §47.
+///
+/// One press, from the top bar, that stops everything the machine is doing on
+/// its own — and leaves the audio exactly where it is.
+///
+/// # What it stops
+///
+/// The automix, if it is running. The assistant's *acting* postures, dropped to
+/// `Suggest`: after this it may still offer, with reasons, because a DJ who has
+/// taken the controls back has not asked to be left without advice. And every
+/// control the assistant might be holding, released to the human — the same
+/// `take_all` a hand on a fader already does for one control.
+///
+/// # What it deliberately does not do
+///
+/// **It does not touch the audio.** No fader moves, no stop, no crossfader cut.
+/// §47 asks for "PANIC → safe transition" and this is not that: an emergency
+/// control that changes what a room can hear is worse than whatever it was
+/// pressed about, and there is no version of "safe" that is safe on every
+/// record. What a DJ needs at that moment is their hands back on a mix that is
+/// still running.
+///
+/// **It does not restore a previous state.** §47's "return to last stable
+/// state" would mean moving faders under a hand from a snapshot taken some
+/// seconds ago, which is the same failure again, and djmanzo keeps no such
+/// snapshots.
+///
+/// # Why it says what it stopped
+///
+/// A press that silently does nothing — because nothing was running — is
+/// indistinguishable from a press that failed, and this is the one control
+/// whose failure a DJ cannot afford to find out about later.
+#[tauri::command]
+pub fn take_over_everything(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    take_everything_back(&state)
+}
+
+/// As [`take_over_everything`], against the state itself so it can be tested
+/// without a Tauri handle.
+fn take_everything_back(state: &AppState) -> Result<Vec<String>, String> {
+    let mut stopped = Vec::new();
+
+    // Through the action bus rather than by reaching into the automix, so it
+    // lands in the session log like every other stop -- ADR-0003. A set that
+    // was replayed without this in it would replay the automix carrying on.
+    let running = state
+        .automix()
+        .lock()
+        .map(|mix| mix.is_enabled())
+        .unwrap_or(false);
+    if running {
+        perform(state, "automix off")?;
+        stopped.push("the automix".to_owned());
+    }
+
+    let conduct = state.conduct();
+    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    if guard.posture.may_act() {
+        stopped.push(format!(
+            "the assistant, which was on {}",
+            guard.posture.name()
+        ));
+        guard.posture = dj_assistant::Posture::Suggest;
+    }
+    // Reported only when the assistant was still free to move something. If
+    // the DJ already had their hands on it, saying "took the controls" would be
+    // telling them about a thing they had done themselves.
+    if !guard.takeover.anything_held() {
+        stopped.push("every control the assistant could have moved".to_owned());
+    }
+    guard.takeover.take_all();
+
+    Ok(stopped)
 }
 
 /// Hand everything back.
@@ -6190,6 +6302,88 @@ mod persistence_tests {
     /// with a typo in its verb is a button that does nothing in front of a
     /// room. Rendered against a deck the way the interface will send it, so
     /// this is the string that actually travels.
+    /// **The emergency control stops the machine, not the music.** §47.
+    ///
+    /// The whole design decision, as a test: after the press the automix is
+    /// off, the assistant is no longer a posture that acts, and every audio
+    /// parameter is exactly where it was. An emergency control that changes
+    /// what a room can hear is worse than whatever it was pressed about.
+    #[test]
+    fn taking_everything_back_leaves_the_audio_alone() {
+        let state = app_with_track();
+        state.host().open(None, None, 128).unwrap();
+        perform(&state, "deck 1 volume 0.8").unwrap();
+        perform(&state, "crossfader 0.25").unwrap();
+        perform(&state, "automix on").unwrap();
+        {
+            let conduct = state.conduct();
+            let mut guard = conduct.lock().unwrap();
+            guard.posture = dj_assistant::Posture::Autopilot;
+        }
+
+        // Cleared here, so what the log holds afterwards is exactly what the
+        // emergency control performed and nothing the setup did.
+        state.bus().clear_log();
+
+        let stopped = take_everything_back(&state).expect("the emergency control answers");
+
+        assert!(
+            !state.automix().lock().unwrap().is_enabled(),
+            "the automix was still running after the emergency control"
+        );
+        let conduct = state.conduct();
+        let guard = conduct.lock().unwrap();
+        assert!(
+            !guard.posture.may_act(),
+            "the assistant was still allowed to move controls"
+        );
+        assert!(
+            guard.takeover.anything_held(),
+            "the assistant was not asked to step off"
+        );
+
+        // **What it performed**, rather than what a parameter reads afterwards.
+        // The registry is written by the engine publishing its state, so in a
+        // test with no audio thread running every parameter sits where it
+        // started whatever this does — which the first version of this test
+        // asserted, vacuously, and a mutation adding `crossfader 0.5` sailed
+        // straight through it.
+        let performed: Vec<String> = state
+            .bus()
+            .log()
+            .iter()
+            .map(|entry| entry.event.to_line())
+            .collect();
+        assert_eq!(
+            performed,
+            vec!["automix off".to_owned()],
+            "the emergency control performed something besides stopping the machine"
+        );
+
+        // And it says what it did, because a press that silently does nothing
+        // cannot be told from one that failed.
+        assert!(
+            stopped.iter().any(|line| line.contains("automix")),
+            "it did not say it had stopped the automix: {stopped:?}"
+        );
+    }
+
+    /// Pressing it with nothing running is not a failure and not a lie: there
+    /// is nothing to report having stopped, and the controls are still taken.
+    #[test]
+    fn taking_everything_back_with_nothing_running_says_so() {
+        let state = app_with_track();
+        let stopped = take_everything_back(&state).expect("the emergency control answers");
+        assert!(
+            !stopped.iter().any(|line| line.contains("automix")),
+            "it claimed to stop an automix that was not running: {stopped:?}"
+        );
+        assert!(
+            state.conduct().lock().unwrap().takeover.anything_held(),
+            "the controls were not taken"
+        );
+    }
+
     #[test]
     fn every_rail_control_is_an_action_djmanzo_knows() {
         for mode in dj_core::RailMode::ALL {

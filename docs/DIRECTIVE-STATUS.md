@@ -72,7 +72,7 @@ rather than taken.
 | 44 | Transactional AI actions | ⬜ | |
 | 45 | Instant manual takeover | ✅ | Per parameter. Touching a control wins |
 | 46 | Guardrails for autopilot | ✅ | Careful mode holds the controls that cannot be undone by pressing them again |
-| 47 | Emergency UX | ⬜ | `Attention::emergency()` exists as a type only |
+| 47 | Emergency UX | 🟡 | **Take over** sits in the top bar beside REC and Mark, which is the whole of what this section asks: *when something goes wrong, the user must not search through menus*. The gesture existed inside the Conduct panel, which is a panel you have to open. One press stops the automix, drops an acting assistant to `suggest`, and releases every control it could have moved — and **does not touch the audio**: no fader, no stop, no crossfader cut. §47 lists "PANIC → safe transition" and that is deliberately not this, because an emergency control that changes what a room can hear is worse than whatever it was pressed about, and there is no version of "safe" that is safe on every record. It says what it stopped, because a press that appears to do nothing cannot be told from one that failed. Not done: **return to last stable state**, which would move faders under a hand from a snapshot, and which djmanzo does not keep. `Attention::emergency()` is still a type nothing reads |
 | 48 | Performance / laptop mode | 🟡 | The interface measures its own frame rate and says what a low one means. Density adapts |
 | 49 | Professional workflow principle | ⚖️ | |
 | 50 | Don't over-modalize | ✅ | The dock manager is this section: panels stopped taking turns |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **31 done, 39 part, 16 open, 19 standing rules.**
+Of the 105 sections: **31 done, 40 part, 15 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**31 of 86 deliverable sections are complete and 39 more are partly there.**
+**31 of 86 deliverable sections are complete and 40 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 31 whole plus 39 halves over 86 is 59%, and the phase view is stricter
+way: 31 whole plus 40 halves over 86 is 59%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

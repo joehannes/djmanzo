@@ -16,6 +16,40 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Take over: one press that stops everything djmanzo is doing on its own.**
+§47 is one sentence where it matters — *when something goes wrong, the user
+must not search through menus* — and the gesture existed only inside the
+Conduct panel, which is a panel you have to open. It is in the top bar now,
+beside REC and Mark, for the reason those are there.
+
+One press stops the automix, drops an assistant that was *acting* to `suggest`,
+and releases every control it could have moved. `suggest` rather than `off`: a
+DJ who has taken the controls back has not asked to be left without advice.
+
+**It does not touch the audio.** No fader, no stop, no crossfader cut. §47
+lists "PANIC → safe transition" and this is deliberately not that: an emergency
+control that changes what a room can hear is worse than whatever it was pressed
+about, and there is no version of "safe" that is safe on every record. What a
+DJ needs at that moment is their hands back on a mix that is still running.
+"Return to last stable state" is out for the same reason twice over — it would
+move faders under a hand, from a snapshot djmanzo does not keep.
+
+And it says what it stopped, in djmanzo's words rather than a fixed sentence,
+because a press that appears to do nothing cannot be told from one that failed.
+
+**Fixed: handing the mix to the machine was not in the session log.** The
+automix branch of `perform` returned before reaching the dispatch at the
+bottom, so `automix on` and `automix off` were the two events a replay of that
+night did not have — and they are exactly the pair somebody reading it back
+would look for. ADR-0003's whole claim is that the log is what makes a set
+replayable; a set that ran on the automix replayed as though a person had done
+all of it.
+
+**Fixed: pressing Take over twice wiped its own answer.** The first press's
+dismissal timer cleared the second press's message, so the control that has to
+be trustworthy appeared to have done nothing the one time it was pressed twice.
+Found by pressing it twice.
+
 **The energy trajectory, as a curve.** §25 asks for it that way rather than as
 two markers — and the two markers it already had, the breakdown band and the
 drop tick, are *thresholds over exactly this measurement*. So the line they

@@ -71,6 +71,7 @@
     openDevice,
     assistantConduct,
     noteAdd,
+    takeOverEverything,
     sessionLog,
     sessionSave,
     sessionDiff,
@@ -151,6 +152,44 @@
       error = `Could not mark the moment: ${why}`;
     }
   }
+  /**
+   * §47's emergency control: stop everything djmanzo is doing on its own.
+   *
+   * What it stopped is *said*, not flashed and forgotten: a press that appears
+   * to do nothing — because nothing was running — is indistinguishable from one
+   * that failed, and this is the control whose failure a DJ cannot afford to
+   * discover later. It goes in the same place as the other notices rather than
+   * into a toast of its own, so there is one place to look.
+   */
+  let tookOver = $state<string | null>(null);
+  const TOOK_OVER_SHOWN_MS = 6000;
+  /**
+   * The timer that clears the notice, held so a second press can cancel it.
+   *
+   * Without that, pressing twice inside six seconds clears the *second*
+   * message when the first press's timer fires — so the control that has to be
+   * trustworthy is the one that appears to have done nothing. Found by pressing
+   * it twice while driving the application.
+   */
+  let tookOverTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function takeEverythingBack() {
+    try {
+      const stopped = await takeOverEverything();
+      tookOver =
+        stopped.length > 0
+          ? `Took over. Stopped ${stopped.join(", ")}. The audio is where you left it.`
+          : "Took over. Nothing was running on its own; the controls are yours.";
+      if (tookOverTimer !== null) clearTimeout(tookOverTimer);
+      tookOverTimer = setTimeout(() => {
+        tookOver = null;
+        tookOverTimer = null;
+      }, TOOK_OVER_SHOWN_MS);
+    } catch (why) {
+      error = `Could not take over: ${why}`;
+    }
+  }
+
   // Saving a set and comparing two takes. See the Session log panel below.
   let savePath = $state("");
   let saved = $state<SessionSummary | null>(null);
@@ -1247,12 +1286,35 @@
         >
           {markedAt > 0 ? "Marked" : "Mark"}
         </button>
+        <!--
+          §47's emergency control. In the top bar because that is the whole of
+          the section: "when something goes wrong, the user must not search
+          through menus". The same gesture exists inside the Conduct panel,
+          which is a panel you have to open.
+
+          It stops the machine and not the music — no fader moves, no stop —
+          and it says what it stopped, because a press that silently does
+          nothing cannot be told from one that failed. See
+          `commands::take_over_everything`.
+        -->
+        <button
+          class="takeover"
+          disabled={!ready}
+          onclick={takeEverythingBack}
+          title="Stop everything djmanzo is doing on its own. The audio keeps playing."
+        >
+          Take over
+        </button>
       </div>
     </div>
   </header>
 
   {#if error}
     <p class="error">{error}</p>
+  {/if}
+
+  {#if tookOver}
+    <p class="notice">{tookOver}</p>
   {/if}
 
   <!--
@@ -2273,6 +2335,54 @@
     border-radius: 8px;
     color: var(--danger);
     font-size: 0.85em;
+  }
+
+  /*
+    What the emergency control stopped. Stated rather than flashed: §47's whole
+    point is that this is the control a DJ presses when they are already in
+    trouble, and one that appears to do nothing is the worst possible answer.
+
+    Accent rather than danger: the emergency is what was happening before the
+    press, not the press. A red bar here would read as "this went wrong".
+  */
+  .notice {
+    margin: 0;
+    padding: 0.6rem 0.9rem;
+    background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    font-size: 0.85em;
+  }
+
+  /*
+    §47's emergency control, beside REC and Mark for the reason those are
+    there: findable without hunting, while both hands are busy.
+
+    Outlined in the warn colour rather than filled with it. Filled, it would be
+    the loudest thing in a bar that also carries the record button; outlined, it
+    is the one control with an edge, which is enough to find and not enough to
+    dominate a screen a DJ looks at all night.
+  */
+  .takeover {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--warn);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--warn);
+    font: inherit;
+    font-size: 0.78em;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .takeover:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--warn) 16%, transparent);
+  }
+
+  .takeover:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   .waiting {

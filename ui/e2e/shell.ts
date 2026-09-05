@@ -71,6 +71,8 @@ import surfaces from "./surfaces.json" with { type: "json" };
 const ANSWERS: Record<string, unknown> = {
   pad_pages: padPages,
   rail_modes: railModes,
+  // §47's emergency control answers with what it stopped, in words.
+  take_over_everything: ["the automix", "the assistant, which was on autopilot"],
   list_layouts: [],
   chosen_layout: null,
   layout_folder: null,
