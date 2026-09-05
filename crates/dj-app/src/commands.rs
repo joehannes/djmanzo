@@ -3529,6 +3529,58 @@ pub fn assistant_packs() -> Vec<PackDto> {
         .collect()
 }
 
+/// §72's override matrix: what the assistant may do at every posture.
+///
+/// One row per capability, one cell per posture, in the order the postures are
+/// offered — so a DJ can read what turning the dial up actually permits rather
+/// than inferring it from four words of prose. `built` says whether djmanzo can
+/// do the thing at all: three of §72's rows describe powers nothing exercises
+/// yet, and a table that quietly permitted them would be a specification
+/// pretending to be a description.
+#[must_use]
+#[tauri::command]
+pub fn authority_matrix() -> Vec<AuthorityRowDto> {
+    dj_assistant::Capability::ALL
+        .into_iter()
+        .map(|what| AuthorityRowDto {
+            label: what.label().to_owned(),
+            built: what.built(),
+            allowances: dj_assistant::Posture::ALL
+                .into_iter()
+                .map(|posture| what_and_where(posture, what))
+                .collect(),
+        })
+        .collect()
+}
+
+fn what_and_where(
+    posture: dj_assistant::Posture,
+    what: dj_assistant::Capability,
+) -> AuthorityCellDto {
+    AuthorityCellDto {
+        posture: posture.name().to_owned(),
+        allowance: posture.allows(what).name().to_owned(),
+    }
+}
+
+/// One row of §72's matrix.
+#[derive(Debug, Clone, Serialize)]
+pub struct AuthorityRowDto {
+    pub label: String,
+    /// False for a capability djmanzo does not have yet, so the interface can
+    /// say so instead of drawing a row of empty cells that look like a choice.
+    pub built: bool,
+    pub allowances: Vec<AuthorityCellDto>,
+}
+
+/// One cell: a posture, and how far it may go.
+#[derive(Debug, Clone, Serialize)]
+pub struct AuthorityCellDto {
+    pub posture: String,
+    /// `no`, `limited` or `yes`.
+    pub allowance: String,
+}
+
 /// How the assistant is conducting itself, and what it would do next.
 #[tauri::command]
 pub fn assistant_conduct(state: State<'_, AppState>) -> Result<ConductDto, String> {

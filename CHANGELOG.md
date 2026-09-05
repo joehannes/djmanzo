@@ -16,6 +16,29 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**§72's override matrix, written out.** "Create an explicit matrix specifying
+what AI may do at every posture." It was four booleans on `Posture`, and
+`may_act` in particular answered one question for four different powers:
+nudging an EQ, riding sync and pulling the crossfader are not the same
+permission, and a DJ who wanted the machine to beatmatch but not to touch the
+tone had no way to say so and no way to find out what it would do.
+
+`dj_assistant::authority` is one row per thing the assistant might do and one
+cell per posture — and `may_act`, `may_stage` and `may_mix` are **derived from
+it**. One table, not two descriptions free to disagree, and the one they would
+disagree about is what an autopilot does to a live mix.
+
+It is drawn in the Conduct panel with the current posture marked rather than
+filtered to, because a DJ deciding whether to turn the dial up is asking what
+changes. Three of §72's rows — EQ, FX and layout adaptation — describe powers
+djmanzo does not have; they say "not yet" in the row rather than showing empty
+cells that look like a setting.
+
+Invariants, held by tests rather than by intention: nothing is more permitted
+at a quieter posture, `off` permits nothing, and a row for something unbuilt is
+permitted nowhere. What §72 still wants is **configurable** — the cells are
+djmanzo's answer, not yet the DJ's to override.
+
 **Take over: one press that stops everything djmanzo is doing on its own.**
 §47 is one sentence where it matters — *when something goes wrong, the user
 must not search through menus* — and the gesture existed only inside the

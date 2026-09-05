@@ -97,7 +97,7 @@ rather than taken.
 | 69 | Practice lab | ⬜ | |
 | 70 | Learning mode | ✅ | The coach ships |
 | 71 | "What should I do next?" | ✅ | The assistant's next step is shown before it happens |
-| 72 | User override matrix | ⬜ | |
+| 72 | User override matrix | 🟡 | **The matrix is explicit and is the source of the rules.** It was four booleans on `Posture`, and `may_act` in particular answered one question for four different powers — nudging an EQ, riding sync and pulling the crossfader are not the same permission. `dj_assistant::authority` writes out one row per thing the assistant might do and one cell per posture, and `may_act`, `may_stage` and `may_mix` are **derived from it**, so there is one table rather than two descriptions free to disagree. Drawn in the Conduct panel with the DJ's current posture marked, because a matrix nobody can read is not explicit. Three of §72's rows — EQ, FX and layout adaptation — describe powers djmanzo does not have, and say so in the row rather than showing empty cells that look like a setting. Invariants held by tests: nothing is more permitted at a quieter posture, `off` permits nothing, and an unbuilt row is permitted nowhere. Not done: **configurable** — the cells are djmanzo's answer, not yet the DJ's to override |
 | 73 | AI knows what is expensive | ✅ | `mistakes_are_costly` reaches the deck as careful mode |
 | 74 | Contextual control rail | 🟡 | **The rail ships.** Four modes — scratching, stems, preparing, mixing — each promoting six controls, on every loaded deck. Which mode a deck is in comes from what the DJ has just done: a hand on the platter, a muted stem, a stopped deck. That ordering matters as much as the lists do — every change is a consequence of an action they took, so the rail never rearranges itself under a hand reaching for it, which is the failure that makes adaptive interfaces hostile. Six because that is `Attention::performing().promoted_controls`, the tightest of the four budgets: sized to the tightest, the rail does not shrink when the music starts. §74's three named lists are followed where the vocabulary has a verb for them, and where it does not the gap is named rather than filled by inventing one — **stem FX** is a continuous per-stem filter and not a switch, and **tags, rating and transition points** are a library row and a panel. The fourth mode is a choice: §74 gives no list for the ordinary case of a record playing |
 | 75 | Visual control of audio features | 🟡 | |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **31 done, 40 part, 15 open, 19 standing rules.**
+Of the 105 sections: **31 done, 41 part, 14 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**31 of 86 deliverable sections are complete and 40 more are partly there.**
+**31 of 86 deliverable sections are complete and 41 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 31 whole plus 40 halves over 86 is 59%, and the phase view is stricter
+way: 31 whole plus 41 halves over 86 is 60%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

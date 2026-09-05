@@ -1,0 +1,302 @@
+[
+  {
+    "label": "Recommend a track",
+    "built": true,
+    "allowances": [
+      {
+        "posture": "off",
+        "allowance": "no"
+      },
+      {
+        "posture": "watch",
+        "allowance": "no"
+      },
+      {
+        "posture": "suggest",
+        "allowance": "yes"
+      },
+      {
+        "posture": "prepare",
+        "allowance": "yes"
+      },
+      {
+        "posture": "assist",
+        "allowance": "yes"
+      },
+      {
+        "posture": "autopilot",
+        "allowance": "yes"
+      }
+    ]
+  },
+  {
+    "label": "Load the next deck",
+    "built": true,
+    "allowances": [
+      {
+        "posture": "off",
+        "allowance": "no"
+      },
+      {
+        "posture": "watch",
+        "allowance": "no"
+      },
+      {
+        "posture": "suggest",
+        "allowance": "no"
+      },
+      {
+        "posture": "prepare",
+        "allowance": "limited"
+      },
+      {
+        "posture": "assist",
+        "allowance": "yes"
+      },
+      {
+        "posture": "autopilot",
+        "allowance": "yes"
+      }
+    ]
+  },
+  {
+    "label": "Set the cue",
+    "built": true,
+    "allowances": [
+      {
+        "posture": "off",
+        "allowance": "no"
+      },
+      {
+        "posture": "watch",
+        "allowance": "no"
+      },
+      {
+        "posture": "suggest",
+        "allowance": "no"
+      },
+      {
+        "posture": "prepare",
+        "allowance": "limited"
+      },
+      {
+        "posture": "assist",
+        "allowance": "yes"
+      },
+      {
+        "posture": "autopilot",
+        "allowance": "yes"
+      }
+    ]
+  },
+  {
+    "label": "Match the gain",
+    "built": true,
+    "allowances": [
+      {
+        "posture": "off",
+        "allowance": "no"
+      },
+      {
+        "posture": "watch",
+        "allowance": "no"
+      },
+      {
+        "posture": "suggest",
+        "allowance": "no"
+      },
+      {
+        "posture": "prepare",
+        "allowance": "limited"
+      },
+      {
+        "posture": "assist",
+        "allowance": "yes"
+      },
+      {
+        "posture": "autopilot",
+        "allowance": "yes"
+      }
+    ]
+  },
+  {
+    "label": "Sync",
+    "built": true,
+    "allowances": [
+      {
+        "posture": "off",
+        "allowance": "no"
+      },
+      {
+        "posture": "watch",
+        "allowance": "no"
+      },
+      {
+        "posture": "suggest",
+        "allowance": "no"
+      },
+      {
+        "posture": "prepare",
+        "allowance": "no"
+      },
+      {
+        "posture": "assist",
+        "allowance": "yes"
+      },
+      {
+        "posture": "autopilot",
+        "allowance": "yes"
+      }
+    ]
+  },
+  {
+    "label": "Move an EQ band",
+    "built": false,
+    "allowances": [
+      {
+        "posture": "off",
+        "allowance": "no"
+      },
+      {
+        "posture": "watch",
+        "allowance": "no"
+      },
+      {
+        "posture": "suggest",
+        "allowance": "no"
+      },
+      {
+        "posture": "prepare",
+        "allowance": "no"
+      },
+      {
+        "posture": "assist",
+        "allowance": "no"
+      },
+      {
+        "posture": "autopilot",
+        "allowance": "no"
+      }
+    ]
+  },
+  {
+    "label": "Drive an effect",
+    "built": false,
+    "allowances": [
+      {
+        "posture": "off",
+        "allowance": "no"
+      },
+      {
+        "posture": "watch",
+        "allowance": "no"
+      },
+      {
+        "posture": "suggest",
+        "allowance": "no"
+      },
+      {
+        "posture": "prepare",
+        "allowance": "no"
+      },
+      {
+        "posture": "assist",
+        "allowance": "no"
+      },
+      {
+        "posture": "autopilot",
+        "allowance": "no"
+      }
+    ]
+  },
+  {
+    "label": "Move the crossfader",
+    "built": true,
+    "allowances": [
+      {
+        "posture": "off",
+        "allowance": "no"
+      },
+      {
+        "posture": "watch",
+        "allowance": "no"
+      },
+      {
+        "posture": "suggest",
+        "allowance": "no"
+      },
+      {
+        "posture": "prepare",
+        "allowance": "no"
+      },
+      {
+        "posture": "assist",
+        "allowance": "no"
+      },
+      {
+        "posture": "autopilot",
+        "allowance": "yes"
+      }
+    ]
+  },
+  {
+    "label": "Choose what plays next",
+    "built": true,
+    "allowances": [
+      {
+        "posture": "off",
+        "allowance": "no"
+      },
+      {
+        "posture": "watch",
+        "allowance": "no"
+      },
+      {
+        "posture": "suggest",
+        "allowance": "no"
+      },
+      {
+        "posture": "prepare",
+        "allowance": "no"
+      },
+      {
+        "posture": "assist",
+        "allowance": "no"
+      },
+      {
+        "posture": "autopilot",
+        "allowance": "yes"
+      }
+    ]
+  },
+  {
+    "label": "Rearrange the cockpit",
+    "built": false,
+    "allowances": [
+      {
+        "posture": "off",
+        "allowance": "no"
+      },
+      {
+        "posture": "watch",
+        "allowance": "no"
+      },
+      {
+        "posture": "suggest",
+        "allowance": "no"
+      },
+      {
+        "posture": "prepare",
+        "allowance": "no"
+      },
+      {
+        "posture": "assist",
+        "allowance": "no"
+      },
+      {
+        "posture": "autopilot",
+        "allowance": "no"
+      }
+    ]
+  }
+]

@@ -482,6 +482,7 @@ pub fn run() {
             commands::assistant_set_occasion,
             commands::assistant_apply_pack,
             commands::assistant_take_over,
+            commands::authority_matrix,
             commands::take_over_everything,
             commands::assistant_hand_back,
             commands::assistant_set_setlist,

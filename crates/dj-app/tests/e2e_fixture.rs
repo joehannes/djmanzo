@@ -257,6 +257,45 @@ fn the_browser_fixture_has_the_rail_the_interface_asks_for() {
     );
 }
 
+/// §72's override matrix, as a golden file.
+///
+/// Generated rather than captured, like the pad pages and the rail: it is a
+/// pure function of `dj_assistant::authority`, so a golden file fails on any
+/// change to *what the assistant is permitted to do* — which is the one table
+/// in this application whose silent drift would be worst.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_authority_matrix() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/authority.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::authority_matrix())
+        .expect("the matrix serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the matrix");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored matrix is JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh matrix is JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nWhat the assistant is permitted to do has changed. If that was \
+         deliberate, say so in the commit.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// The surfaces the cockpit can place, as a golden file.
 ///
 /// Generated rather than captured, for the same reason as the pad pages:

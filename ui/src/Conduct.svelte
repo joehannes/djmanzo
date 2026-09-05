@@ -32,6 +32,8 @@
     assistantSetOccasion,
     assistantSetPosture,
     assistantTakeOver,
+    authorityMatrix,
+    type AuthorityRow,
     OCCASIONS,
     POSTURES,
     POSTURE_HELP,
@@ -105,7 +107,36 @@
     }
   }
 
+  /**
+   * §72's matrix, fetched once because it is a constant table.
+   *
+   * What changes is which column the DJ is in, and `conduct.posture` already
+   * says that.
+   *
+   * A failure is *said*, not swallowed. Stale or invented cells would be worse
+   * than none — the whole value of this table is that it is what djmanzo will
+   * actually do — but a panel that quietly omits the permissions grid looks
+   * exactly like a build that never had one, which is how a broken read stays
+   * unnoticed.
+   */
+  let authority = $state<AuthorityRow[]>([]);
+  let authorityError = $state<string | null>(null);
+
   onMount(() => {
+    void (async () => {
+      try {
+        const rows = await authorityMatrix();
+        // An answer that is not a table is a failure, not an empty table. The
+        // two look identical on screen and only one of them is a permissions
+        // grid a DJ can rely on.
+        if (!Array.isArray(rows)) throw new Error("djmanzo sent no matrix");
+        authority = rows;
+        authorityError = null;
+      } catch (why) {
+        authority = [];
+        authorityError = String(why);
+      }
+    })();
     void (async () => {
       try {
         packs = await assistantPacks();
@@ -223,6 +254,60 @@
     {/each}
   </div>
   <p class="hint">{POSTURE_HELP[conduct?.posture ?? "suggest"]}</p>
+
+  <!--
+    §72's override matrix, written out. The four words under the ladder say how
+    much it does; this says what that *means* — which of the machine's hands
+    are on which control at the posture you have chosen.
+
+    The current column is marked rather than the table being filtered to it: a
+    DJ deciding whether to turn the dial up is asking what changes, and a table
+    showing only where they already are cannot answer that.
+  -->
+  {#if authorityError}
+    <h3>What it may do</h3>
+    <p class="hint">Could not read what the assistant is permitted to do: {authorityError}</p>
+  {:else if authority.length > 0}
+    <h3>What it may do</h3>
+    <table class="authority">
+      <thead>
+        <tr>
+          <!-- The corner cell heads neither a row nor a column; it is the
+               label column's own space, and giving it a scope would tell a
+               screen reader that the capability names are a posture. -->
+          <td><span class="visually-hidden">Capability</span></td>
+          {#each POSTURES as posture (posture)}
+            <th scope="col" class:now={conduct?.posture === posture}>{posture}</th>
+          {/each}
+        </tr>
+      </thead>
+      <tbody>
+        {#each authority as row (row.label)}
+          <tr class:unbuilt={!row.built}>
+            <th scope="row">
+              {row.label}
+              {#if !row.built}<span class="soon" title="djmanzo does not do this yet">not yet</span
+                >{/if}
+            </th>
+            {#each row.allowances as cell (cell.posture)}
+              <td
+                class={cell.allowance}
+                class:now={conduct?.posture === cell.posture}
+                title="{row.label} at {cell.posture}: {cell.allowance}"
+              >
+                {cell.allowance === "yes" ? "✓" : cell.allowance === "limited" ? "~" : ""}
+                <span class="visually-hidden">{cell.allowance}</span>
+              </td>
+            {/each}
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+    <p class="hint">
+      <strong>~</strong> means only where the room cannot hear it — a deck that is
+      not playing yet.
+    </p>
+  {/if}
 
   <h3>What the night is</h3>
   <select
@@ -526,6 +611,79 @@
     margin: 0;
     font-size: 0.75rem;
     opacity: 0.75;
+  }
+
+  /*
+    §72's matrix. Dense on purpose -- it is a reference a DJ scans, not a form
+    they fill in, and ten rows by six columns has to fit in a docked panel.
+  */
+  .authority {
+    inline-size: 100%;
+    border-collapse: collapse;
+    font-size: 0.7rem;
+  }
+
+  .authority th,
+  .authority td {
+    padding: 0.15rem 0.2rem;
+    text-align: center;
+    border-block-end: 1px solid var(--edge);
+  }
+
+  .authority th[scope="row"] {
+    text-align: start;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+
+  .authority th[scope="col"] {
+    color: var(--text-dim);
+    font-weight: 400;
+    text-transform: capitalize;
+  }
+
+  /* Where the DJ is now. Marked rather than filtered to, so the question
+     "what changes if I turn this up" has an answer on the same screen. */
+  .authority .now {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text);
+  }
+
+  .authority td.yes {
+    color: var(--accent);
+  }
+
+  .authority td.limited {
+    color: var(--warn);
+  }
+
+  /* A row for something djmanzo cannot do yet. Dimmed and labelled rather than
+     hidden: the row is the promise, and hiding it would make the table look
+     complete. */
+  .authority tr.unbuilt th[scope="row"] {
+    color: var(--text-dim);
+  }
+
+  .soon {
+    margin-inline-start: 0.3rem;
+    padding: 0 0.25rem;
+    border: 1px solid var(--edge);
+    border-radius: 4px;
+    color: var(--text-dim);
+    font-size: 0.62rem;
+  }
+
+  /* Read by a screen reader, not by an eye. The cells carry a tick or a tilde,
+     which is legible and not speakable. */
+  .visually-hidden {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .error {

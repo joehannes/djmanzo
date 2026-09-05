@@ -58,6 +58,7 @@ import snapshot from "./snapshot.json" with { type: "json" };
  */
 import padPages from "./pad-pages.json" with { type: "json" };
 import railModes from "./rail-modes.json" with { type: "json" };
+import authority from "./authority.json" with { type: "json" };
 import surfaces from "./surfaces.json" with { type: "json" };
 
 /**
@@ -71,6 +72,7 @@ import surfaces from "./surfaces.json" with { type: "json" };
 const ANSWERS: Record<string, unknown> = {
   pad_pages: padPages,
   rail_modes: railModes,
+  authority_matrix: authority,
   // §47's emergency control answers with what it stopped, in words.
   take_over_everything: ["the automix", "the assistant, which was on autopilot"],
   list_layouts: [],

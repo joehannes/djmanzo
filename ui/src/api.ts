@@ -1633,6 +1633,33 @@ export const assistantApplyPack = (name: string) =>
 /** Take everything out of the assistant's hands, now. */
 export const assistantTakeOver = () => invoke<void>("assistant_take_over");
 
+/** One cell of §72's matrix: a posture, and how far it may go. */
+export interface AuthorityCell {
+  posture: string;
+  /** `no`, `limited` or `yes`. */
+  allowance: string;
+}
+
+/** One row: a thing the assistant might do, at every posture. */
+export interface AuthorityRow {
+  label: string;
+  /**
+   * False for a capability djmanzo does not have yet. Three of §72's rows
+   * describe powers nothing exercises, and a row of empty cells that looked
+   * like a *choice* would be worse than one that says so.
+   */
+  built: boolean;
+  allowances: AuthorityCell[];
+}
+
+/**
+ * §72's override matrix, from Rust.
+ *
+ * Fetched once: it is a constant table, and the only thing that changes is
+ * which column the DJ is currently in — which the conduct answer already says.
+ */
+export const authorityMatrix = () => invoke<AuthorityRow[]>("authority_matrix");
+
 /**
  * §47's emergency control: stop everything djmanzo is doing on its own.
  *

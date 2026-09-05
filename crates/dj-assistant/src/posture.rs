@@ -74,24 +74,31 @@ impl Posture {
 
     /// Whether it may move a control on its own.
     ///
-    /// The single question every caller actually asks. `Prepare` answers
-    /// **false**: staging a deck is not moving a control the audience can hear,
-    /// and conflating the two is what makes "prepare" collapse into "assist".
+    /// The single question most callers ask. `Prepare` answers **false**:
+    /// staging a deck is not moving a control the audience can hear, and
+    /// conflating the two is what makes "prepare" collapse into "assist".
+    ///
+    /// Read out of §72's matrix rather than written here, and `Sync` is the row
+    /// that answers it: sync is the first thing this application does that a
+    /// room can hear. The three predicates below come from the same table for
+    /// the same reason — two descriptions of one rule are free to disagree, and
+    /// the one they disagree about is what an autopilot does to a live mix. See
+    /// [`crate::authority`].
     #[must_use]
     pub fn may_act(self) -> bool {
-        matches!(self, Self::Assist | Self::Autopilot)
+        self.allows(crate::Capability::Sync).permitted()
     }
 
     /// Whether it may load and cue a deck that is not playing.
     #[must_use]
     pub fn may_stage(self) -> bool {
-        matches!(self, Self::Prepare | Self::Assist | Self::Autopilot)
+        self.allows(crate::Capability::LoadNextDeck).permitted()
     }
 
     /// Whether it may perform a transition unasked.
     #[must_use]
     pub fn may_mix(self) -> bool {
-        matches!(self, Self::Autopilot)
+        self.allows(crate::Capability::Crossfader).permitted()
     }
 
     /// Whether it may say anything unprompted.
