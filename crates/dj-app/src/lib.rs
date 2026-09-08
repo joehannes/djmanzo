@@ -53,6 +53,7 @@ pub mod staged;
 pub mod state;
 pub mod timecode;
 pub mod transition;
+pub mod uiop;
 pub mod wav;
 pub mod waveform;
 pub mod widgets;
@@ -413,6 +414,8 @@ pub fn run() {
             commands::authority_matrix,
             commands::authority_set,
             commands::authority_reset,
+            commands::ui_vocabulary,
+            commands::ui_do,
             commands::room_forget,
             commands::words_search,
             commands::words_progress,

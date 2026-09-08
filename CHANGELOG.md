@@ -16,6 +16,43 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The assistant can ask for the interface, not only the controls** — the
+directive's §41, and the last of `GUI-OVERHAUL.md`'s phase 5. `dj_app::uiop` is
+a second closed vocabulary — `ui show prepare`, `ui pin room`, `ui focus 2` —
+generated from `cockpit::surfaces()`, so a panel djmanzo does not have cannot be
+asked for and the refusal happens at the parse rather than being applied and
+quietly doing nothing. The model never emits JavaScript and never touches the
+DOM, which is the thing §41 is emphatic about.
+
+It is deliberately **not** on the action bus. An action is something the engine
+does, and the engine has never heard of a panel; putting `ui show prepare` into
+`dj_core::Action` would push the cockpit into the crate at the bottom of the
+dependency graph and make a session replay depend on the interface it was
+recorded against. Two closed vocabularies, kept equally strict, not mixed.
+
+**Density is the one item on §41's list left out**, on purpose. The interface
+picks its density from the window it is in, by measurement; an assistant
+overriding that would be adaptation fighting adaptation, with the DJ unable to
+tell which had last word.
+
+**§72 gates it.** `adapt_layout` is its own row of the matrix, so "suggest
+records but never touch my layout" is a setting rather than a feature request —
+and an operation the posture refuses is reported to the DJ rather than
+swallowed.
+
+**It is reachable by hand too.** The palette offers pin, unpin and focus
+alongside the surfaces, because §51 calls the palette the semantic interface
+and an operation only the assistant could reach would be a control nobody can
+press. Pinning especially: it is the per-surface half of freezing a layout and
+there had been no gesture for it anywhere.
+
+**One duplicated table removed.** Where a surface lands when it opens was a
+`Record<Drawn, Dock>` in `App.svelte`; it is `cockpit::Surface::home` now,
+because the moment the assistant could open a panel there were two answers to
+"where does this go" — and the second one occasionally named a dock the surface
+is not allowed in, which the resolver dropped with a note nobody reads. A test
+asserts every home is a dock that surface can actually be placed in.
+
 **The assistant asks before it acts** — the directive's §44. A non-trivial move
 is a **transaction** now: load the record, cue it to its first phrase, trim it
 to match, engage sync, run the mix — staged together as *Prepared next

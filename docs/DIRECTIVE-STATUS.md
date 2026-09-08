@@ -66,7 +66,7 @@ rather than taken.
 | 38 | Crowd signals never control the DJ unasked | ⚖️ | |
 | 39 | UI for audience intelligence | 🟡 | RoomSense is nested inside the assistant rather than promoted |
 | 40 | Assistant sees everything important | 🟡 | `SessionContext` now carries the phase, its certainty, its basis and the drift, and the autopilot reads the certainty. Still narrower than `DJContext`: the music, hardware and behaviour contexts are not gathered |
-| 41 | AI can operate the GUI indirectly | ⬜ | ADR-0008 makes it possible — a layout is data — and §72's `adapt_layout` row now says which postures may. The typed UI vocabulary itself is not built |
+| 41 | AI can operate the GUI indirectly | ✅ | `dj_app::uiop` — `ui show prepare`, `ui pin room`, `ui focus 2`, generated from `cockpit::surfaces()` so a panel djmanzo does not have cannot be asked for. Gated by §72's `adapt_layout` row, applied in Rust and announced on an event, because a panel the assistant opened has to appear without anybody pressing anything. Reachable by hand from the palette too. Density is deliberately excluded: the interface measures its own |
 | 42 | Suggestions must be explainable | ✅ | The transition planner states where and how, with its reasoning |
 | 43 | Suggestion fatigue | 🟡 | `Attention::performing()` caps suggestions at one and the cap is now derived and published; no surface draws suggestions against it yet |
 | 44 | Transactional AI actions | ✅ | `dj_app::staged`. The whole next transition — load, cue, trim, sync, mix — staged as one thing with Accept, Modify and Reject, in a strip under the top bar rather than a panel. Accepting runs every chosen move through the same `perform_step` the automatic tick uses, so there is no second execution path and the whole thing logs and replays. Partial success is reported as partial |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **36 done, 33 part, 17 open, 19 standing rules.**
+Of the 105 sections: **37 done, 33 part, 16 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**36 of 86 deliverable sections are complete and 33 more are partly there.**
+**37 of 86 deliverable sections are complete and 33 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 36 whole plus 33 halves over 86 is 61%, and the phase view is stricter
+way: 37 whole plus 33 halves over 86 is 62%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

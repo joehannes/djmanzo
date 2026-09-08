@@ -4684,9 +4684,9 @@ pub struct PaletteEntryDto {
     pub label: String,
     /// One line, in the imperative, from the vocabulary's own help.
     pub about: String,
-    /// `action` or `surface` -- how the interface should carry it out.
+    /// `action`, `surface` or `ui` -- how the interface should carry it out.
     pub kind: &'static str,
-    /// The action text, or the surface name.
+    /// The action text, the surface name, or the interface operation.
     pub run: String,
 }
 
@@ -4780,6 +4780,43 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
                 about: surface.about.to_owned(),
                 kind: "surface",
                 run: surface.name.to_owned(),
+            });
+        }
+    }
+
+    // Tier 4: the rest of §41's interface vocabulary.
+    //
+    // Here because the palette is what §51 calls "the semantic interface", and
+    // an operation only the assistant could reach would be a control a DJ has
+    // no way to press. Pinning especially: it is the per-surface half of
+    // freezing a layout, and until now there was no gesture for it anywhere.
+    for surface in crate::cockpit::surfaces() {
+        for (verb, word) in [("pin", "Pin"), ("unpin", "Unpin")] {
+            let label = format!("{word} {}", surface.title);
+            let run = format!("ui {verb} {}", surface.name);
+            if matches(needle, &label) || matches(needle, &run) {
+                out.push(PaletteEntryDto {
+                    label,
+                    about: if verb == "pin" {
+                        "Hold it where it is, out of adaptation's reach.".to_owned()
+                    } else {
+                        "Let it be moved again.".to_owned()
+                    },
+                    kind: "ui",
+                    run,
+                });
+            }
+        }
+    }
+    for deck in 1..=decks {
+        let label = format!("Focus deck {deck}");
+        let run = format!("ui focus {deck}");
+        if matches(needle, &label) || matches(needle, &run) {
+            out.push(PaletteEntryDto {
+                label,
+                about: "Mark this deck for a moment.".to_owned(),
+                kind: "ui",
+                run,
             });
         }
     }
@@ -6724,6 +6761,92 @@ pub fn set_cockpit_workspace(
     let resolved = crate::cockpit::resolve(&workspace);
     state.set_workspace(&resolved.workspace);
     resolved
+}
+
+// -- the typed UI vocabulary -------------------------------------------------
+//
+// §41. See `crate::uiop` for why this is a second closed vocabulary rather than
+// more verbs on the action bus, and why density is deliberately not in it.
+
+/// Every interface operation this build accepts, as lines a model can be shown.
+///
+/// Generated from the surfaces that exist, so it cannot offer a panel djmanzo
+/// does not have — the same guarantee `dj_core::vocabulary` gives the action
+/// bus, one layer up.
+#[tauri::command]
+#[must_use]
+pub fn ui_vocabulary(state: State<'_, AppState>) -> Vec<String> {
+    crate::uiop::as_prompt_lines(u8::try_from(state.deck_count()).unwrap_or(4))
+}
+
+/// Carry out one interface operation.
+///
+/// The DJ's own path — a palette entry, a button — and so ungated: a person
+/// asking for a panel is not something to check a matrix about. The assistant's
+/// path is [`ui_request`], which asks §72 first.
+#[tauri::command]
+pub fn ui_do(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    op: String,
+) -> Result<crate::uiop::Applied, String> {
+    let op = crate::uiop::UiOp::parse(&op).map_err(|error| error.to_string())?;
+    Ok(carry_out_ui(&app, &state, &op))
+}
+
+/// Carry out one interface operation **on the assistant's behalf**.
+///
+/// Asks §72's matrix first, because rearranging a DJ's screen mid-set is
+/// exactly the kind of thing they may want the machine to stay out of. It is
+/// its own capability row (`adapt_layout`) rather than folded into another,
+/// which is what lets "suggest records but never touch my layout" be a setting
+/// rather than a feature request.
+///
+/// # Errors
+/// When the operation is not in the vocabulary, or the posture refuses it.
+pub fn ui_request(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    op: &crate::uiop::UiOp,
+) -> Result<crate::uiop::Applied, String> {
+    let posture = state
+        .conduct()
+        .lock()
+        .map(|guard| guard.posture)
+        .unwrap_or_default();
+    let allowed = state
+        .conduct()
+        .lock()
+        .map(|guard| {
+            guard
+                .authority
+                .allows(dj_assistant::Capability::AdaptLayout, posture)
+        })
+        .unwrap_or_default();
+    if !allowed.permits() {
+        return Err(format!(
+            "the assistant may not rearrange the interface at {}",
+            posture.name()
+        ));
+    }
+    Ok(carry_out_ui(app, state, op))
+}
+
+/// Apply, store and announce. The one place an operation actually lands.
+fn carry_out_ui(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    op: &crate::uiop::UiOp,
+) -> crate::uiop::Applied {
+    let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
+    let applied = crate::uiop::apply(op, &stored);
+    state.set_workspace(&applied.workspace.workspace);
+    // Announced rather than returned only, because the interesting caller is
+    // the assistant: a panel that opened because the machine asked for it has
+    // to appear without the DJ having pressed anything.
+    use tauri::Emitter as _;
+    let _ = app.emit("cockpit", &applied);
+    applied
 }
 
 // ---------------------------------------------------------------- controllers

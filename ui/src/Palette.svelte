@@ -23,7 +23,7 @@
    * suggester's lesson is that two rankings over the same thing eventually
    * disagree. The interface draws the answer and sends the key presses.
    */
-  import { palette, type PaletteEntry } from "./api";
+  import { palette, uiDo, type PaletteEntry } from "./api";
 
   let {
     enabled,
@@ -102,7 +102,12 @@
   }
 
   function run(entry: PaletteEntry) {
+    // Three kinds, three destinations. `ui` goes straight to Rust rather than
+    // through `onSurface`, because §41's operations are a vocabulary of their
+    // own and the interface applies none of them itself — it draws the
+    // arrangement that comes back.
     if (entry.kind === "surface") onSurface(entry.run);
+    else if (entry.kind === "ui") void uiDo(entry.run);
     else onAction(entry.run);
     hide();
   }

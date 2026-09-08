@@ -1312,9 +1312,12 @@ export interface PaletteEntry {
   label: string;
   /** One line, from the vocabulary's own help. */
   about: string;
-  /** `"action"` to send it through the bus, `"surface"` to open a panel. */
-  kind: "action" | "surface";
-  /** The action text, or the surface name. */
+  /**
+   * How to carry it out: `"action"` through the bus, `"surface"` to open a
+   * panel, `"ui"` for one of §41's interface operations.
+   */
+  kind: "action" | "surface" | "ui";
+  /** The action text, the surface name, or the interface operation. */
   run: string;
 }
 
@@ -1834,6 +1837,14 @@ export interface Surface {
   stackable: boolean;
   collapsible: boolean;
   contextual: boolean;
+  /**
+   * Where it opens when nothing has said otherwise.
+   *
+   * Always one of `docks`. In Rust rather than in the interface because §41
+   * lets the assistant open a panel too, and two answers to "where does this
+   * go" is one answer too many.
+   */
+  home: Dock;
   docks: Dock[];
 }
 
@@ -2588,6 +2599,37 @@ export interface NightRead {
 }
 
 export const nightRead = () => invoke<NightRead>("night_read");
+
+/* -- the typed interface vocabulary (§41) ---------------------------------- */
+
+/**
+ * What an interface operation did.
+ *
+ * `focus` is deliberately not part of the workspace: bringing a deck to
+ * attention is a moment, not an arrangement, and storing it would mean a deck
+ * still highlighted tomorrow because the assistant mentioned it once.
+ */
+export interface UiApplied {
+  workspace: ResolvedWorkspace;
+  focus: number | null;
+  /** What was done, in one line, for a DJ wondering why a panel opened. */
+  what: string;
+}
+
+/** Every operation this build accepts, generated from the surfaces that exist. */
+export const uiVocabulary = () => invoke<string[]>("ui_vocabulary");
+
+/** Carry one out. `ui show prepare`, `ui pin room`, `ui focus 2`. */
+export const uiDo = (op: string) => invoke<UiApplied>("ui_do", { op });
+
+/**
+ * The arrangement changed under the interface's feet.
+ *
+ * Emitted when an operation lands — which for the assistant's ones is the only
+ * way the panel would ever appear, since nobody pressed anything.
+ */
+export const onCockpit = (handler: (applied: UiApplied) => void): Promise<UnlistenFn> =>
+  listen<UiApplied>("cockpit", (event) => handler(event.payload));
 
 /* -- what the assistant has prepared, before any of it happens ------------- */
 

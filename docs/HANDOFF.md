@@ -106,6 +106,17 @@ catch a clipped deck spent a session measuring an application that no longer
 existed. A Rust test now reads the TypeScript file and fails when they
 disagree — do not delete it.
 
+**The `npm run build` trap is real and it caught this project again.** Under a
+mutation test the mutated file failed `svelte-check`, so `vite build` never
+ran, `dist/` kept the previous bundle, and Playwright reported the mutation
+*killed nothing* — two green tests against code that was never built. Grepping
+the output for `✓ built|ERROR` is not enough either: the ERROR line matches and
+the `&&` succeeds. Gate on `✓ built` alone:
+
+```
+npm run build 2>&1 | grep -q "✓ built" || { echo "not built"; exit 1; }
+```
+
 **Recapturing `ui/e2e/snapshot.json` can quietly weaken the budget.**
 `DJMANZO_SNAPSHOT_OUT` writes the moment two decks are loaded, which is *before*
 the analyser has finished — so a fresh capture can land with `analysis: null` on
@@ -188,24 +199,28 @@ comes from. With no set built there is nothing to load and the plan is empty,
 and it says so. Wiring the Next rail's suggester in as a fallback is a small
 piece of work and is part of §68's remaining half rather than of §44.
 
+**Phase 5 is closed.** The context engine, §9's warrant, §44's transactions,
+§72's matrix, §47's emergency and §41's typed interface vocabulary all ship.
+The shape to copy from it: one judgement made in one place, published, with a
+stated certainty — and consumers that read it rather than each working the same
+thing out. Two duplicated tables were removed on the way (the histogram
+`dj_assistant::room` kept, and the dock table `App.svelte` kept), both found
+because a second consumer appeared and disagreed with the first.
+
 The largest open sections, in the order they are worth doing:
 
-1. **§41, the typed UI vocabulary** — the last of phase 5. The assistant can
-   ask for a control; it cannot yet ask for a *surface*. `cockpit::surfaces()`
-   already publishes the closed list a vocabulary would be generated from, and
-   §72's `adapt_layout` row already says which postures may.
-2. **§25–§27, the waveform as instrumentation** — direct manipulation, the
+1. **§25–§27, the waveform as instrumentation** — direct manipulation, the
    ghost track, and answering "what will happen if I do it". The transition
    object §27 was waiting on now exists, and the pair view already draws a mix
    point on a waveform lane; what is missing is manipulating it there.
-3. **§68's remaining half.** The object ships and the pair view reads it — but
+2. **§68's remaining half.** The object ships and the pair view reads it — but
    the automix, the autopilot and replay each still plan their own transition
    rather than performing the one djmanzo is holding, which is the unification
    §68 is actually asking for. Its stem, EQ and FX plans are absent because
    nothing yet decides them; a field that is always empty is a promise.
-4. **§20's last view** — the compact cards. Set Flow and the pair view ship;
+3. **§20's last view** — the compact cards. Set Flow and the pair view ship;
    the performance table is the browser at fewer columns than §20 lists.
-5. **§74, the contextual rail.**
+4. **§74, the contextual rail.**
 
 Three older items are open and are not part of the 105:
 

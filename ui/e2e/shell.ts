@@ -553,6 +553,10 @@ export async function openShell(
     ([answers, state]: [Record<string, unknown>, unknown]) => {
       const handlers = new Map<string, number>();
       const win = window as unknown as Record<string, unknown>;
+      // Exposed so a test can deliver an event djmanzo would emit — the
+      // `cockpit` one especially, which is the only way an operation the DJ
+      // did not press ever reaches this window.
+      win.__handlers = handlers;
 
       /**
        * Hand the snapshot to whoever is listening for it.

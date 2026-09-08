@@ -18,6 +18,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -44,6 +45,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -69,6 +71,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -94,6 +97,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -120,6 +124,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -146,6 +151,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -173,6 +179,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -200,6 +207,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -225,6 +233,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -250,6 +259,7 @@
     "stackable": false,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -276,6 +286,7 @@
     "stackable": false,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -302,6 +313,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -328,6 +340,7 @@
     "stackable": false,
     "collapsible": false,
     "contextual": false,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -354,6 +367,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -380,6 +394,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -405,6 +420,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -430,6 +446,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -455,6 +472,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -480,6 +498,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -506,6 +525,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -532,6 +552,7 @@
     "stackable": false,
     "collapsible": false,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -557,6 +578,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -583,6 +605,7 @@
     "stackable": false,
     "collapsible": false,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",

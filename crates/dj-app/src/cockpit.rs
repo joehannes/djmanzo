@@ -576,6 +576,13 @@ pub struct Surface {
     pub collapsible: bool,
     /// True when the context engine may open this on its own.
     pub contextual: bool,
+    /// Where it opens when nothing has said otherwise.
+    ///
+    /// Here rather than in the interface because two places deciding where a
+    /// panel lands is two places that eventually disagree — and one of them
+    /// would be `uiop`, opening a surface somewhere the DJ's own button never
+    /// puts it. Always one of [`Self::docks`]; asserted by test.
+    pub home: Dock,
     /// Docks this may be placed in.
     pub docks: &'static [Dock],
 }
@@ -612,6 +619,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Bottom,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -627,6 +635,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: true,
+            home: Dock::Right,
             docks: SIDE,
         },
         Surface {
@@ -642,6 +651,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: true,
+            home: Dock::Right,
             docks: SIDE,
         },
         Surface {
@@ -657,6 +667,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Bottom,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -672,6 +683,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: true,
+            home: Dock::Bottom,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -687,6 +699,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: true,
+            home: Dock::Right,
             docks: ANY_DOCK,
         },
         Surface {
@@ -702,6 +715,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: true,
+            home: Dock::Right,
             docks: ANY_DOCK,
         },
         Surface {
@@ -717,6 +731,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: true,
+            home: Dock::Right,
             docks: SIDE,
         },
         Surface {
@@ -732,6 +747,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Right,
             docks: SIDE,
         },
         Surface {
@@ -747,6 +763,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: false,
             collapsible: true,
             contextual: true,
+            home: Dock::Right,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -762,6 +779,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: false,
             collapsible: true,
             contextual: true,
+            home: Dock::Right,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -777,6 +795,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Right,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -792,6 +811,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: false,
             collapsible: false,
             contextual: false,
+            home: Dock::Bottom,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -807,6 +827,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: true,
+            home: Dock::Bottom,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -822,6 +843,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Right,
             docks: SIDE,
         },
         Surface {
@@ -837,6 +859,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Right,
             docks: SIDE,
         },
         Surface {
@@ -852,6 +875,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Right,
             docks: SIDE,
         },
         Surface {
@@ -867,6 +891,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Right,
             docks: SIDE,
         },
         // The three the audit's list did not have, added when the dock manager
@@ -886,6 +911,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Bottom,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -901,6 +927,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Right,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -916,6 +943,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: false,
             collapsible: false,
             contextual: false,
+            home: Dock::Right,
             docks: SIDE,
         },
         Surface {
@@ -931,6 +959,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: true,
             collapsible: true,
             contextual: false,
+            home: Dock::Bottom,
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
@@ -946,6 +975,7 @@ pub fn surfaces() -> &'static [Surface] {
             stackable: false,
             collapsible: false,
             contextual: false,
+            home: Dock::Right,
             docks: SIDE,
         },
     ]
@@ -1306,6 +1336,31 @@ mod tests {
             Attention::preparing(),
             "narrowed the interface on a read nothing agreed with"
         );
+    }
+
+    /// **Where a surface opens has to be somewhere it may be.**
+    ///
+    /// The resolver drops a placement in a dock the surface does not allow,
+    /// with a note — so a home that broke this rule would make "open the rail"
+    /// open nothing at all, quietly. It was a table in `App.svelte` before §41
+    /// needed a second copy of it.
+    #[test]
+    fn every_surface_opens_somewhere_it_is_allowed_to_be() {
+        for surface in surfaces() {
+            assert!(
+                surface.docks.contains(&surface.home),
+                "{} opens in {:?}, which is not one of its docks",
+                surface.name,
+                surface.home
+            );
+            // And never into the overlay or another screen by default: both
+            // are deliberate choices a DJ makes, not places things land.
+            assert!(
+                !matches!(surface.home, Dock::Overlay | Dock::Detached),
+                "{} opens detached or over the decks by default",
+                surface.name
+            );
+        }
     }
 
     /// A surface djmanzo can place has to be one the browser knows the name

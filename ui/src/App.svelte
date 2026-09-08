@@ -33,6 +33,7 @@
     setWatershed,
     watershedShowing,
     cockpitSurfaces,
+    onCockpit,
     cockpitWorkspace,
     densityBands,
     type DensityBand,
@@ -234,31 +235,17 @@
   const isOpen = (name: Drawn) => placements.some((p) => p.surface === name);
 
   /**
-   * Where a surface goes when it is opened by its toolbar button.
+   * Where a surface lands when you open it.
    *
-   * From the surface's own preferred size rather than from a table here:
-   * something wider than it is tall wants the bottom, and something taller
-   * than it is wide wants the side. The library prefers 900x380 and lands
-   * along the bottom; settings prefers 620x560 and lands beside the decks.
-   * A rule beats a list of special cases, and this one is derived from a
-   * number Rust already publishes.
+   * **From Rust, not from a table here.** This was a `Record<Drawn, Dock>` in
+   * this file, and the moment §41 let the assistant open a panel there were
+   * two answers to "where does this go" — with the assistant's version
+   * occasionally naming a dock the surface is not allowed in, which the
+   * resolver silently dropped. `cockpit::Surface::home` is the single answer
+   * now, and a test asserts every home is a dock that surface can be placed in.
    */
-  const HOME: Record<Drawn, Dock> = {
-    library: "bottom",
-    prepare: "right",
-    next: "right",
-    plan: "bottom",
-    pair: "bottom",
-    night: "right",
-    booth: "bottom",
-    log: "bottom",
-    presets: "right",
-    sampler: "right",
-    assistant: "right",
-    settings: "right",
-    keys: "right",
-    controllers: "right",
-  };
+  let surfaceHomes = $state<Record<string, Dock>>({});
+  const homeOf = (name: string): Dock => surfaceHomes[name] ?? "right";
 
   /**
    * Open or close a surface, and remember it.
@@ -285,7 +272,7 @@
           ...current.surfaces,
           {
             surface: name,
-            dock: HOME[name],
+            dock: homeOf(name),
             // Newest last within its dock, which is where the eye expects the
             // thing it just opened.
             order: current.surfaces.length,
@@ -359,6 +346,25 @@
     return () => window.removeEventListener("resize", fitDensity);
   });
 
+  /**
+   * A deck the assistant has asked the DJ to look at, if any.
+   *
+   * §41's `ui focus 2`. It fades on its own after a few seconds rather than
+   * latching, because attention is a moment: a deck still outlined ten minutes
+   * later is teaching the DJ to ignore the outline, which costs the next one.
+   */
+  let focusedDeck = $state<number | null>(null);
+  let focusTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** How long an asked-for glance lasts. */
+  const FOCUS_MS = 6000;
+
+  function focusDeck(number: number) {
+    focusedDeck = number;
+    clearTimeout(focusTimer);
+    focusTimer = setTimeout(() => (focusedDeck = null), FOCUS_MS);
+  }
+
   /** What a surface is called, from Rust rather than from a list here. */
   let surfaceTitles = $state<Record<string, string>>({});
   const titleOf = (name: string) => surfaceTitles[name] ?? name;
@@ -367,6 +373,7 @@
     try {
       const known = await cockpitSurfaces();
       surfaceTitles = Object.fromEntries(known.map((s) => [s.name, s.title]));
+      surfaceHomes = Object.fromEntries(known.map((s) => [s.name, s.home]));
     } catch {
       // A surface with no title falls back to its name, which is still a word
       // a DJ can read -- worse than "Session log", better than an empty header.
@@ -589,6 +596,16 @@
   const ready = $derived((snapshot?.master.sample_rate ?? 0) > 0);
 
   $effect(() => {
+    // §41. An arrangement can now change without anybody in this window
+    // pressing anything — the assistant asks, Rust applies and stores, and
+    // this is how the panel actually appears. `focus` is not stored, so it is
+    // acted on here and forgotten.
+    const unwatchCockpit = onCockpit((applied) => {
+      workspace = applied.workspace.workspace;
+      workspaceNotes = applied.workspace.notes;
+      if (applied.focus !== null) focusDeck(applied.focus);
+    });
+
     const unlisten = onSnapshot((next) => {
       snapshot = next;
     });
@@ -607,6 +624,7 @@
       });
     return () => {
       void unlisten.then((fn) => fn());
+      void unwatchCockpit.then((fn) => fn());
     };
   });
 
@@ -1629,6 +1647,12 @@
 
     <div class="decks" class:four={deckCount === 4} class:six={deckCount === 6}>
       {#each snapshot.decks.slice(0, deckCount) as deck (deck.number)}
+        <!--
+          Wrapped rather than given a prop: the outline is about *this window's*
+          attention, not about the deck's state, and threading it through Deck
+          would put a presentational flag next to the audio ones.
+        -->
+        <div class="deck-slot" class:looking={focusedDeck === deck.number}>
         <Deck
           {deck}
           sampler={snapshot.master.sampler}
@@ -1640,6 +1664,7 @@
           {density}
           careful={conductCare}
         />
+        </div>
       {/each}
     </div>
 
@@ -1743,6 +1768,21 @@
     they inherit the button style, which is what makes them look like
     siblings.
   */
+  /*
+    A deck the assistant has asked you to look at. An outline rather than a
+    colour change: the deck's own colours mean things about the audio, and
+    borrowing one of them for "look here" would make the two indistinguishable
+    at the far end of a dark booth.
+  */
+  .deck-slot {
+    display: contents;
+  }
+
+  .deck-slot.looking :global(.deck) {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
   .mark.done {
     border-color: var(--accent);
     color: var(--accent);
