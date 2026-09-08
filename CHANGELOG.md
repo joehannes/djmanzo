@@ -16,6 +16,39 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The mix point can be grabbed** — the directive's §26, which is blunt about
+it: "the DJ should be able to physically grab the thing they are thinking
+about. Do not force them to edit a numerical property in a settings panel."
+The pair view's move buttons were that settings panel. The mix point on the
+outgoing waveform is a handle now — drag it, or focus it and use the arrow
+keys, because a mouse is not the only hand.
+
+**It moves in beats, not in pixels.** A mix point between two beats is a mix
+point that is not on the grid, and djmanzo's whole answer here is about the
+grid — so a drag says "this many beats later" and the snapping falls out of the
+arithmetic rather than being a rule applied afterwards. The beat length comes
+from the transition itself, which spans a known number of beats between two
+known frames, so no tempo has to be inferred from a deck.
+
+**The waveform works nothing out.** It reports where the handle was let go;
+`transition_adjust` decides what that means and re-derives the reasons. Drag
+the mix off its phrase boundary and it stops claiming to land on one — which is
+§68's rule, now reachable with a hand.
+
+**Only once djmanzo is holding the mix.** A proposal is an opinion and
+`transition_adjust` refuses to move one, so a handle offered before *Set up*
+would be a control that does nothing — the same rule the buttons beside it
+already follow.
+
+Two things came out of building it. The drag listens on the window rather than
+calling `setPointerCapture`: djmanzo runs in WebKitGTK, the browser tests run
+in Chromium, and capture is exactly the sort of thing that differs between them
+— a control that passes its test and does nothing where it ships. And
+`waveform_info` had never been answered by the browser harness, so every
+waveform lane in the pair view had rendered as an empty box in every test that
+has ever run over it, including the ones whose commit said "each with its
+waveform". The lanes are drawn in the tests now.
+
 **The assistant can ask for the interface, not only the controls** — the
 directive's §41, and the last of `GUI-OVERHAUL.md`'s phase 5. `dj_app::uiop` is
 a second closed vocabulary — `ui show prepare`, `ui pin room`, `ui focus 2` —

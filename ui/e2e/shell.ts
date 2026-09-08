@@ -130,6 +130,13 @@ const ANSWERS: Record<string, unknown> = {
   // tables by `basis` and `warrant`, so a `null` here would throw inside the
   // surface and take the dock with it -- the failure `stems_status` above
   // documents, in a different panel.
+  // The waveform's own answer, without which `Waveform.svelte` never leaves
+  // its "no tiles yet" state — so every lane in the pair view rendered as an
+  // empty box and no browser test had ever seen one, including the ones whose
+  // commit message said "each with its waveform". The tiles themselves are
+  // `wave://` URLs that resolve to nothing here; what is being measured is the
+  // marks and cues drawn over them, which is the part a DJ grabs.
+  waveform_info: { deck: 1, ready: true, total_frames: 12_000_000, epoch: 1 },
   // Nothing staged, which is what a fresh application has. `Staged.svelte`
   // draws nothing at all for this, which is the point: the strip costs the
   // decks no height until there is something to decide.
@@ -621,12 +628,23 @@ export async function openShell(
               win.__transition = null;
             } else if (cmd === "transition_adjust" && win.__transition) {
               const held = win.__transition as Held;
+              // Moved in frames as well as in beats, because that is what
+              // djmanzo answers with and what the waveform draws. A stub that
+              // moved only the beat index left the mark sitting exactly where
+              // it was, so a drag that worked and a drag that did nothing
+              // looked identical — which is the whole thing this is here to
+              // tell apart.
+              const beats = Number(args.moveBeats ?? 0);
+              const beatFrames =
+                ((held.end_frame as number) - (held.start_frame as number)) /
+                (held.length_beats as number);
               win.__transition = {
                 ...held,
                 length_beats: args.lengthBeats ?? held.length_beats,
                 style: args.style ?? held.style,
-                start_beat:
-                  (held.start_beat as number) + Number(args.moveBeats ?? 0),
+                start_beat: (held.start_beat as number) + beats,
+                start_frame: (held.start_frame as number) + beats * beatFrames,
+                end_frame: (held.end_frame as number) + beats * beatFrames,
                 edited: true,
               };
             }

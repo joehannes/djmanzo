@@ -142,6 +142,28 @@
   const arm = () => ask(() => transitionArm(from, to));
   const replan = () => ask(() => transitionReplan());
   const move = (beats: number) => ask(() => transitionAdjust({ moveBeats: beats }));
+
+  /**
+   * A mark was dragged on the outgoing lane. §26.
+   *
+   * **Converted to beats, not to a frame.** A mix point between two beats is a
+   * mix point that is not on the grid, and djmanzo's whole answer here is
+   * about the grid — so a drag says "this many beats later" and the snapping
+   * falls out of the arithmetic rather than being a rule applied afterwards.
+   *
+   * The beat length comes from the transition itself: the mix spans
+   * `length_beats` between two known frames, so no tempo has to be inferred
+   * from a deck. Nothing here works out what the move *means*; `transition_adjust`
+   * re-derives the reasons, and what comes back is what gets drawn — a drag
+   * the planner snaps elsewhere snaps visibly.
+   */
+  function dragged(mix: Transition, label: string, frame: number) {
+    if (label !== "mix in") return;
+    const beatFrames = (mix.end_frame - mix.start_frame) / mix.length_beats;
+    if (!Number.isFinite(beatFrames) || beatFrames <= 0) return;
+    const beats = Math.round((frame - mix.start_frame) / beatFrames);
+    if (beats !== 0) void move(beats);
+  }
   const lengthen = (beats: number) => ask(() => transitionAdjust({ lengthBeats: beats }));
   const restyle = (style: string) => ask(() => transitionAdjust({ style }));
 
@@ -247,10 +269,20 @@
             framesPerPixel={laneZoom(side, index, mix)}
             marks={index === 0
               ? [
-                  { frame: mix.start_frame, label: "mix in" },
+                  {
+                    frame: mix.start_frame,
+                    label: "mix in",
+                    // Grabbable only once djmanzo is *holding* the mix. A
+                    // proposal is an opinion, and `transition_adjust` refuses
+                    // to move one — so a handle that invited a drag before
+                    // Set up would be a control that does nothing, which is
+                    // the same rule the move buttons beside it already follow.
+                    draggable: mix.armed,
+                  },
                   { frame: mix.end_frame, label: "out" },
                 ]
               : []}
+            onMoveMark={(label, frame) => dragged(mix, label, frame)}
           />
         </div>
       {/if}

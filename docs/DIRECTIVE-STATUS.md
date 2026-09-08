@@ -51,7 +51,7 @@ rather than taken.
 | 23 | Track function tagging | ✅ | Ten functions, closed vocabulary, migration 10, browser picker, and `for is opener` in smart folders |
 | 24 | Pairs and relationships | ⬜ | Needs new storage with confidence decay |
 | 25 | Waveform overhaul | ⬜ | |
-| 26 | Direct manipulation on the waveform | ⬜ | |
+| 26 | Direct manipulation on the waveform | 🟡 | The mix point is a handle on the outgoing waveform — drag it or use the arrow keys, and it moves in whole beats because a mix point between two beats is not on the grid. The waveform reports a position; Rust decides what it means and re-derives the reasons. The rest of §26's list — cue markers, phrase markers, loop edges, stem regions — is not draggable yet |
 | 27 | Preview / ghost track | ⬜ | The object it waited on ships — see §68. What is missing is the preview itself: a second render of the outgoing track, which needs a player djmanzo does not have |
 | 28 | Stem-aware UI | ✅ | The stems module ships, folding so it costs a row when unused |
 | 29 | Intelligent control handles | ⬜ | |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **37 done, 33 part, 16 open, 19 standing rules.**
+Of the 105 sections: **37 done, 34 part, 15 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**37 of 86 deliverable sections are complete and 33 more are partly there.**
+**37 of 86 deliverable sections are complete and 34 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 37 whole plus 33 halves over 86 is 62%, and the phase view is stricter
+way: 37 whole plus 34 halves over 86 is 63%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

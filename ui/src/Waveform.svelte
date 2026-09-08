@@ -21,6 +21,7 @@
     height = 96,
     framesPerPixel = 256,
     marks = [],
+    onMoveMark,
   }: {
     deck: DeckState;
     height?: number;
@@ -34,8 +35,93 @@
      * seconds converts before it gets here, because the sample rate is a
      * property of the record and this component knows nothing about records.
      */
-    marks?: { frame: number; label: string }[];
+    marks?: { frame: number; label: string; draggable?: boolean }[];
+    /**
+     * A draggable mark was let go somewhere else. Frames, in the file.
+     *
+     * §26: "the DJ should be able to physically grab the thing they are
+     * thinking about". What this reports is a *position*, not a decision —
+     * whoever owns the mark decides what moving it means, and re-derives
+     * whatever it implies. The waveform works nothing out.
+     */
+    onMoveMark?: (label: string, frame: number) => void;
   } = $props();
+
+  /**
+   * The mark being dragged, and where it has got to.
+   *
+   * Held locally so the line follows the pointer at once. The real answer
+   * comes back from Rust on release, which is what is then drawn — so a drag
+   * that Rust refuses or snaps elsewhere snaps visibly, rather than leaving
+   * the interface showing a mix djmanzo is not holding.
+   */
+  let dragging = $state<{ label: string; frame: number } | null>(null);
+
+  function frameAt(event: PointerEvent): number {
+    const box = strip?.getBoundingClientRect();
+    if (!box) return 0;
+    return Math.max(0, (event.clientX - box.left) * framesPerPixel);
+  }
+
+  /**
+   * Start a drag, listening on the window rather than capturing the pointer.
+   *
+   * `setPointerCapture` is the obvious way and it is the one dependency worth
+   * not having: djmanzo runs in WebKitGTK, the browser tests run in Chromium,
+   * and capture semantics are exactly the sort of thing that differs between
+   * them — leaving a control that passes its test and does nothing where it
+   * ships. Window listeners behave the same everywhere, and they also handle
+   * the case capture is usually reached for: a pointer that leaves the lane
+   * mid-drag still moves the mark.
+   */
+  function grab(event: PointerEvent, mark: { label: string; draggable?: boolean }) {
+    if (!mark.draggable) return;
+    event.preventDefault();
+    dragging = { label: mark.label, frame: frameAt(event) };
+    window.addEventListener("pointermove", drag);
+    window.addEventListener("pointerup", drop, { once: true });
+    window.addEventListener("pointercancel", cancel, { once: true });
+  }
+
+  function drag(event: PointerEvent) {
+    if (!dragging) return;
+    dragging = { ...dragging, frame: frameAt(event) };
+  }
+
+  function cancel() {
+    dragging = null;
+    window.removeEventListener("pointermove", drag);
+  }
+
+  /**
+   * How far an arrow key moves a mark, in pixels of lane.
+   *
+   * Pixels rather than frames, so one press is the same visible distance at
+   * every zoom — which is what a hand expects from a nudge. Whoever owns the
+   * mark still snaps the answer to whatever grid it belongs on.
+   */
+  const NUDGE_PX = 6;
+  const NUDGE_FAST_PX = 48;
+
+  function nudge(event: KeyboardEvent, mark: { label: string; frame: number }) {
+    const step =
+      event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    if (step === 0) return;
+    event.preventDefault();
+    const pixels = event.shiftKey ? NUDGE_FAST_PX : NUDGE_PX;
+    onMoveMark?.(
+      mark.label,
+      Math.max(0, mark.frame + step * pixels * framesPerPixel),
+    );
+  }
+
+  function drop(event: PointerEvent) {
+    window.removeEventListener("pointermove", drag);
+    if (!dragging) return;
+    const { label, frame } = { ...dragging, frame: frameAt(event) };
+    dragging = null;
+    onMoveMark?.(label, frame);
+  }
 
   /** Tile width in pixels. Wide enough that a lane needs few of them. */
   const TILE_WIDTH = 512;
@@ -203,13 +289,41 @@
         </div>
       {/each}
       {#each marks as mark (mark.label)}
-        <div
-          class="mark"
-          style:left="{mark.frame / framesPerPixel}px"
-          title={mark.label}
-        >
-          <span class="mark-flag">{mark.label}</span>
-        </div>
+        {#if mark.draggable}
+          <!--
+            A real handle: pointer events, a grab cursor, and a hit area wider
+            than the two-pixel line, because a two-pixel target in a dark booth
+            is a target nobody hits. It is a slider rather than a decorated
+            div, so the keyboard reaches it — §26 asks for the DJ to grab the
+            thing they are thinking about, and a mouse is not the only hand.
+          -->
+          <div
+            class="mark grabbable"
+            class:dragging={dragging?.label === mark.label}
+            style:left="{(dragging?.label === mark.label
+              ? dragging.frame
+              : mark.frame) / framesPerPixel}px"
+            title="{mark.label} — drag, or use the arrow keys"
+            role="slider"
+            tabindex="0"
+            aria-label="{mark.label}, drag to move"
+            aria-valuenow={Math.round(mark.frame)}
+            aria-valuemin={0}
+            aria-valuemax={Math.round(totalFrames)}
+            onpointerdown={(e) => grab(e, mark)}
+            onkeydown={(e) => nudge(e, mark)}
+          >
+            <span class="mark-flag">{mark.label}</span>
+          </div>
+        {:else}
+          <div
+            class="mark"
+            style:left="{mark.frame / framesPerPixel}px"
+            title={mark.label}
+          >
+            <span class="mark-flag">{mark.label}</span>
+          </div>
+        {/if}
       {/each}
       {#each visibleTiles as tile (tile.key)}
         <img
@@ -293,6 +407,35 @@
     border-left: 2px dashed var(--warn);
     pointer-events: none;
     z-index: 2;
+  }
+
+  /*
+    A handle rather than a line. The hit area is eleven pixels wide and hangs
+    off the left of the line so the line itself stays where it says it is: a
+    marker that moves to where you can grab it is a marker that lies about the
+    thing it marks.
+  */
+  .mark.grabbable {
+    pointer-events: auto;
+    cursor: grab;
+    width: 11px;
+    margin-left: -5px;
+    border-left-style: solid;
+    border-left-color: var(--accent);
+    touch-action: none;
+  }
+
+  .mark.grabbable .mark-flag {
+    color: var(--accent);
+  }
+
+  .mark.grabbable:focus-visible {
+    outline: 2px solid var(--accent);
+  }
+
+  .mark.dragging {
+    cursor: grabbing;
+    border-left-style: solid;
   }
 
   .mark-flag {

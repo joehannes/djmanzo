@@ -115,4 +115,62 @@ test.describe("the pair view", () => {
     ).toBeVisible();
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **§26: the mix point can be grabbed.**
+   *
+   * The directive is blunt about this — "the DJ should be able to physically
+   * grab the thing they are thinking about. Do not force them to edit a
+   * numerical property in a settings panel." The panel's shorten and move
+   * buttons are the settings panel; this is the waveform.
+   *
+   * What is asserted is the round trip, which is the half a type-check cannot
+   * see: a drag on the lane reaches Rust and what comes back is what is drawn.
+   * The arithmetic of where a mix may go is Rust's and is tested there.
+   */
+  test("the mix point can be dragged on the waveform", async ({ page }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+
+    // Not until djmanzo is holding it: a proposal is an opinion, and offering
+    // a handle for one would be offering a control that does nothing.
+    await expect(page.getByRole("slider", { name: /mix in/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+
+    const handle = page.getByRole("slider", { name: /mix in/ });
+    await expect(handle).toBeVisible();
+    const before = await handle.getAttribute("aria-valuenow");
+
+    const box = await handle.boundingBox();
+    expect(box, "the mix point has no handle to grab").not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + 140, box!.y + box!.height / 2, { steps: 8 });
+    await page.mouse.up();
+
+    // Rust answered, and the handle is where Rust put it — which is on a beat,
+    // not where the pointer happened to stop.
+    await expect
+      .poll(async () => handle.getAttribute("aria-valuenow"))
+      .not.toBe(before);
+    await expect(page.locator(`${PAIR} .edited`)).toBeVisible();
+    expect(errorsThrown(page), "the pair view threw while dragging").toEqual([]);
+  });
+
+  /** And the same handle answers the keyboard, because a mouse is not the only hand. */
+  test("the mix point moves with the arrow keys", async ({ page }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+
+    const handle = page.getByRole("slider", { name: /mix in/ });
+    const before = await handle.getAttribute("aria-valuenow");
+    await handle.focus();
+    await page.keyboard.press("ArrowRight");
+
+    await expect
+      .poll(async () => handle.getAttribute("aria-valuenow"))
+      .not.toBe(before);
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });

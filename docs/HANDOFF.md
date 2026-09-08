@@ -106,6 +106,13 @@ catch a clipped deck spent a session measuring an application that no longer
 existed. A Rust test now reads the TypeScript file and fails when they
 disagree — do not delete it.
 
+**The browser harness answers only what somebody remembered to stub.** An
+unstubbed command resolves to `null`, and a component that reads a field off it
+throws inside its own subtree — quietly, while every assertion around it stays
+green. `waveform_info` was unstubbed for as long as the pair view has existed,
+so its waveform lanes had never once rendered in a test. If a panel looks empty
+in a browser test and full in the application, look at `ANSWERS` first.
+
 **The `npm run build` trap is real and it caught this project again.** Under a
 mutation test the mutated file failed `svelte-check`, so `vite build` never
 ran, `dist/` kept the previous bundle, and Playwright reported the mutation
@@ -209,10 +216,16 @@ because a second consumer appeared and disagreed with the first.
 
 The largest open sections, in the order they are worth doing:
 
-1. **§25–§27, the waveform as instrumentation** — direct manipulation, the
-   ghost track, and answering "what will happen if I do it". The transition
-   object §27 was waiting on now exists, and the pair view already draws a mix
-   point on a waveform lane; what is missing is manipulating it there.
+1. **§25–§27, the waveform as instrumentation.** §26 has its first handle: the
+   mix point is draggable on the outgoing lane, in whole beats, with Rust
+   re-deriving what it means. The rest of §26's list — cue markers, phrase
+   markers, loop edges, stem regions — uses the same `onMoveMark` shape and is
+   mostly a matter of giving each mark an owner that knows what moving it
+   means. §25's twenty layers are five today (amplitude, spectral balance,
+   beats, downbeats, phrases); the ones worth adding next are the ones djmanzo
+   already computes — the mix-out region, the runway to the end of the record,
+   and the grid's own confidence. §27's ghost track still needs a preview
+   player djmanzo does not have.
 2. **§68's remaining half.** The object ships and the pair view reads it — but
    the automix, the autopilot and replay each still plan their own transition
    rather than performing the one djmanzo is holding, which is the unification
