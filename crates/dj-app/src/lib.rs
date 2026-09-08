@@ -49,6 +49,7 @@ pub mod setrec;
 pub mod share;
 pub mod snapshot;
 pub mod sources;
+pub mod staged;
 pub mod state;
 pub mod timecode;
 pub mod transition;
@@ -404,6 +405,14 @@ pub fn run() {
             commands::room_saw,
             commands::room_read,
             commands::night_read,
+            commands::staged_prepare,
+            commands::staged_current,
+            commands::staged_choose,
+            commands::staged_reject,
+            commands::staged_accept,
+            commands::authority_matrix,
+            commands::authority_set,
+            commands::authority_reset,
             commands::room_forget,
             commands::words_search,
             commands::words_progress,

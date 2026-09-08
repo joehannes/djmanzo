@@ -2589,6 +2589,79 @@ export interface NightRead {
 
 export const nightRead = () => invoke<NightRead>("night_read");
 
+/* -- what the assistant has prepared, before any of it happens ------------- */
+
+/** How far a posture may go with one row of the override matrix. */
+export type Allowance = "no" | "limited" | "yes";
+
+/**
+ * One move inside a staged transaction.
+ *
+ * A move the posture refuses arrives with `allowance: "no"` and `chosen:
+ * false`, and is drawn greyed rather than dropped — see `dj_app::staged` for
+ * why hiding it would leave a DJ wondering what djmanzo thinks a cued deck is
+ * for.
+ */
+export interface StagedMove {
+  about: string;
+  /** The row of §72's matrix this belongs to. */
+  capability: string;
+  allowance: Allowance;
+  /** Whether it will run on Accept. Turning this off is Modify. */
+  chosen: boolean;
+}
+
+/** A bundle the assistant has prepared, waiting for Accept, Modify or Reject. */
+export interface Staged {
+  headline: string;
+  because: string;
+  moves: StagedMove[];
+  /** The deck the plan is about. It goes stale when that record leaves. */
+  live_deck: number;
+}
+
+/** Where an accepted transaction stopped, if it did. */
+export interface StagedStopped {
+  at: number;
+  about: string;
+  because: string;
+}
+
+/** What actually happened on Accept. Partial success is a real outcome. */
+export interface StagedOutcome {
+  done: string[];
+  stopped: StagedStopped | null;
+}
+
+export const stagedPrepare = () => invoke<Staged | null>("staged_prepare");
+export const stagedCurrent = () => invoke<Staged | null>("staged_current");
+export const stagedChoose = (index: number, chosen: boolean) =>
+  invoke<Staged | null>("staged_choose", { index, chosen });
+export const stagedReject = () => invoke<void>("staged_reject");
+export const stagedAccept = () => invoke<StagedOutcome>("staged_accept");
+
+/* -- the override matrix --------------------------------------------------- */
+
+/** One row of §72's matrix: what each posture may do with one capability. */
+export interface AuthorityRow {
+  capability: string;
+  title: string;
+  /** Whether the room hears this the moment it happens. */
+  audible: boolean;
+  /** One per posture, in the order `Posture::ALL` lists them. */
+  allowances: Allowance[];
+  /** Which of those you have changed from djmanzo's answer. */
+  changed: boolean[];
+}
+
+export const authorityMatrix = () => invoke<AuthorityRow[]>("authority_matrix");
+export const authoritySet = (
+  capability: string,
+  posture: string,
+  allowance: Allowance,
+) => invoke<void>("authority_set", { capability, posture, allowance });
+export const authorityReset = () => invoke<void>("authority_reset");
+
 /* -- finding a record from what you remember ------------------------------- */
 
 /** One record whose words contain the phrase. */

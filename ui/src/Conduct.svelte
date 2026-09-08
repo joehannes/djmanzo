@@ -32,6 +32,7 @@
     assistantSetOccasion,
     assistantSetPosture,
     assistantTakeOver,
+    stagedPrepare,
     OCCASIONS,
     POSTURES,
     POSTURE_HELP,
@@ -46,6 +47,19 @@
   let { enabled }: { enabled: boolean } = $props();
 
   let conduct = $state<Conduct | null>(null);
+  /** Why the last press produced no plan, or empty when it produced one. */
+  let nothingToStage = $state("");
+
+  async function prepare() {
+    try {
+      const plan = await stagedPrepare();
+      nothingToStage = plan
+        ? ""
+        : (conduct?.because ?? "there is nowhere for a record to go");
+    } catch (problem) {
+      nothingToStage = String(problem);
+    }
+  }
   let packs = $state<AssistantPack[]>([]);
   let error = $state<string | null>(null);
   /**
@@ -153,6 +167,29 @@
     <span class="step">{conduct?.next_step ?? "…"}</span>
     <span class="because">{conduct?.because ?? ""}</span>
   </div>
+  <!--
+    §44. Asking for the whole transition rather than watching one step at a
+    time: the plan appears in the strip under the top bar with Accept, Modify
+    and Reject, which is where a decision about the next three minutes belongs
+    — not inside a panel that has to be open for it to be seen.
+  -->
+  <button
+    class="prepare"
+    disabled={!enabled}
+    onclick={prepare}
+    title="Stage the whole next transition — load, cue, trim, sync and the mix — without doing any of it"
+  >
+    Prepare the next transition
+  </button>
+  <!--
+    Found by driving it: a press that produced no plan produced nothing at all
+    on screen, which reads as a broken button rather than as "there is nothing
+    to stage". The reason is the autopilot's own, so this cannot disagree with
+    the line above it.
+  -->
+  {#if nothingToStage}
+    <p class="hint">Nothing to stage — {nothingToStage}</p>
+  {/if}
 
   <h3>How much it does</h3>
   <div class="ladder" role="radiogroup" aria-label="How much the assistant does">

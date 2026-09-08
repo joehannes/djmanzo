@@ -607,6 +607,19 @@ pub enum MixerAction {
     Clap(ClapChange),
     /// Change the sampler as a whole: its bank, its level, or stop everything.
     Sampler(SamplerChange),
+    /// Put the mix back to a state a DJ can work from, now.
+    ///
+    /// [§47 of the directive](../../../docs/DIRECTIVE.md): when something goes
+    /// wrong, nobody should be searching through menus. It is a verb rather
+    /// than a button so that it is on the keyboard, on a controller pad and in
+    /// a script — the three places a hand actually is when something goes
+    /// wrong.
+    ///
+    /// **What it means is decided by the application, not the engine.** It
+    /// expands into ordinary actions there — see `dj_app::commands::perform` —
+    /// so every part of it logs and replays like anything else, and there is no
+    /// privileged path that a session file cannot reproduce.
+    Safe,
 }
 
 impl Action {
@@ -690,6 +703,7 @@ impl Action {
                 &mut words,
             )?))),
             "clap" => Ok(Action::Mixer(MixerAction::Clap(parse_clap(&mut words)?))),
+            "safe" => Ok(Action::Mixer(MixerAction::Safe)),
             "quantize" => match words.next().ok_or(ParseError::MissingVerb)? {
                 "on" => Ok(Action::Mixer(MixerAction::SetQuantize(true))),
                 "off" => Ok(Action::Mixer(MixerAction::SetQuantize(false))),
@@ -1371,6 +1385,7 @@ impl fmt::Display for Action {
             Action::Mixer(MixerAction::SplitCue(false)) => write!(f, "cue split_off"),
             Action::Mixer(MixerAction::SetRecording(true)) => write!(f, "record on"),
             Action::Mixer(MixerAction::SetRecording(false)) => write!(f, "record off"),
+            Action::Mixer(MixerAction::Safe) => write!(f, "safe"),
             Action::Mixer(MixerAction::SetQuantize(true)) => write!(f, "quantize on"),
             Action::Mixer(MixerAction::SetQuantize(false)) => write!(f, "quantize off"),
             Action::Mixer(MixerAction::Fx { slot, change }) => {

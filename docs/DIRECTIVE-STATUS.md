@@ -66,13 +66,13 @@ rather than taken.
 | 38 | Crowd signals never control the DJ unasked | ⚖️ | |
 | 39 | UI for audience intelligence | 🟡 | RoomSense is nested inside the assistant rather than promoted |
 | 40 | Assistant sees everything important | 🟡 | `SessionContext` now carries the phase, its certainty, its basis and the drift, and the autopilot reads the certainty. Still narrower than `DJContext`: the music, hardware and behaviour contexts are not gathered |
-| 41 | AI can operate the GUI indirectly | ⬜ | ADR-0008 makes it possible — a layout is data — but nothing does it |
+| 41 | AI can operate the GUI indirectly | ⬜ | ADR-0008 makes it possible — a layout is data — and §72's `adapt_layout` row now says which postures may. The typed UI vocabulary itself is not built |
 | 42 | Suggestions must be explainable | ✅ | The transition planner states where and how, with its reasoning |
 | 43 | Suggestion fatigue | 🟡 | `Attention::performing()` caps suggestions at one and the cap is now derived and published; no surface draws suggestions against it yet |
-| 44 | Transactional AI actions | ⬜ | |
+| 44 | Transactional AI actions | ✅ | `dj_app::staged`. The whole next transition — load, cue, trim, sync, mix — staged as one thing with Accept, Modify and Reject, in a strip under the top bar rather than a panel. Accepting runs every chosen move through the same `perform_step` the automatic tick uses, so there is no second execution path and the whole thing logs and replays. Partial success is reported as partial |
 | 45 | Instant manual takeover | ✅ | Per parameter. Touching a control wins |
 | 46 | Guardrails for autopilot | ✅ | Careful mode holds the controls that cannot be undone by pressing them again |
-| 47 | Emergency UX | ⬜ | `Attention::emergency()` exists as a type only |
+| 47 | Emergency UX | ✅ | **SAFE**, beside REC and Mark, and `safe` on the action bus so it is also on a controller and in a script. Takes every control back, drops anything staged, clears every rack, flattens the EQ and filter, restores master gain and the limiter. It never stops a record, moves a fader or touches the crossfader — asserted over the text of every action it expands into, because what it refuses to do is the part that matters |
 | 48 | Performance / laptop mode | 🟡 | The interface measures its own frame rate and says what a low one means. Density adapts |
 | 49 | Professional workflow principle | ⚖️ | |
 | 50 | Don't over-modalize | ✅ | The dock manager is this section: panels stopped taking turns |
@@ -97,7 +97,7 @@ rather than taken.
 | 69 | Practice lab | ⬜ | |
 | 70 | Learning mode | ✅ | The coach ships |
 | 71 | "What should I do next?" | ✅ | The assistant's next step is shown before it happens |
-| 72 | User override matrix | ⬜ | |
+| 72 | User override matrix | ✅ | `dj_assistant::authority` — the directive's ten capabilities against six postures, verbatim and asserted against the directive's own table. The second of three gates the assistant passes, so it is what actually stops a mix rather than a diagram. Configurable both ways, except that Off and Watch cannot be widened |
 | 73 | AI knows what is expensive | ✅ | `mistakes_are_costly` reaches the deck as careful mode |
 | 74 | Contextual control rail | ⬜ | Phase 3's remaining half |
 | 75 | Visual control of audio features | 🟡 | |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **33 done, 33 part, 20 open, 19 standing rules.**
+Of the 105 sections: **36 done, 33 part, 17 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**33 of 86 deliverable sections are complete and 33 more are partly there.**
+**36 of 86 deliverable sections are complete and 33 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 33 whole plus 33 halves over 86 is 58%, and the phase view is stricter
+way: 36 whole plus 33 halves over 86 is 61%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

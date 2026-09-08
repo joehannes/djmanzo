@@ -46,6 +46,7 @@
   import Next from "./Next.svelte";
   import Pair from "./Pair.svelte";
   import Night from "./Night.svelte";
+  import Staged from "./Staged.svelte";
   import Palette from "./Palette.svelte";
   import Plan from "./Plan.svelte";
   import SideView from "./SideView.svelte";
@@ -1265,6 +1266,26 @@
         >
           {markedAt > 0 ? "Marked" : "Mark"}
         </button>
+        <!--
+          §47. Beside REC and Mark because it is the third control that has to
+          be findable without hunting, and the only one that is found while
+          something is going wrong.
+
+          It is `safe` on the action bus, so the same thing is on a controller
+          pad, on a keyboard shortcut and at the top of a script. What it does
+          and — more to the point — what it refuses to do is written down in
+          `commands::make_safe`: it never stops a record and never moves a
+          fader, because an emergency control that silences the floor is worse
+          than the emergency.
+        -->
+        <button
+          class="safe"
+          disabled={!ready}
+          onclick={() => send("safe")}
+          title="Take every control back, clear every effect, flatten the tone. Nothing stops playing."
+        >
+          SAFE
+        </button>
       </div>
     </div>
   </header>
@@ -1316,6 +1337,16 @@
       the waveform will not scroll smoothly.
     </p>
   {/if}
+
+  <!--
+    §44's staged transaction, in the notice band rather than as a surface.
+
+    It belongs here for the reason the audit gives: the AI is never the largest
+    thing on screen, and what it normally has to say is one line and two
+    buttons. It occupies no height at all when nothing is staged, so the decks
+    are not paying for it the rest of the night.
+  -->
+  <Staged enabled={ready} />
 
   <!--
     Decks and mixer sit in their own scrolling region so that opening the
@@ -1715,6 +1746,27 @@
   .mark.done {
     border-color: var(--accent);
     color: var(--accent);
+  }
+
+  /*
+    The one control in the row that is coloured when nothing is wrong.
+
+    REC and Mark light up when they are doing something; this is lit all the
+    time, because the moment it is wanted is the moment nobody is going to scan
+    a row of grey squares for it. §47's whole requirement is "must not search
+    through menus", and a control that only announces itself once you have
+    found it has not met it.
+  */
+  .safe {
+    border-color: var(--danger);
+    color: var(--danger);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  .safe:hover:not(:disabled) {
+    background: var(--danger);
+    color: var(--bg);
   }
 
   .topbar {

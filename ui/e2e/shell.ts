@@ -130,6 +130,11 @@ const ANSWERS: Record<string, unknown> = {
   // tables by `basis` and `warrant`, so a `null` here would throw inside the
   // surface and take the dock with it -- the failure `stems_status` above
   // documents, in a different panel.
+  // Nothing staged, which is what a fresh application has. `Staged.svelte`
+  // draws nothing at all for this, which is the point: the strip costs the
+  // decks no height until there is something to decide.
+  staged_current: null,
+  authority_matrix: [],
   night_read: {
     phase: null,
     words: null,
@@ -622,6 +627,40 @@ export async function openShell(
               };
             }
             return Promise.resolve(win.__transition ?? null);
+          }
+          // The staged transaction, held between calls the way djmanzo holds
+          // it — the same reasoning as the transition above. Accept and
+          // Modify both change what comes back, and a fixed answer would make
+          // a press that changes the plan look identical to one that does
+          // nothing. What Rust does with the plan is tested in Rust.
+          if (
+            cmd === "staged_prepare" ||
+            cmd === "staged_current" ||
+            cmd === "staged_choose" ||
+            cmd === "staged_reject" ||
+            cmd === "staged_accept"
+          ) {
+            type Plan = { moves: Record<string, unknown>[] } & Record<string, unknown>;
+            if (cmd === "staged_prepare") {
+              win.__staged = JSON.parse(
+                JSON.stringify(answers.staged_prepare ?? null),
+              );
+            } else if (cmd === "staged_reject") {
+              win.__staged = null;
+              return Promise.resolve(null);
+            } else if (cmd === "staged_accept") {
+              const held = win.__staged as Plan | null;
+              const done = (held?.moves ?? [])
+                .filter((m) => m.chosen && m.allowance !== "no")
+                .map((m) => String(m.about));
+              win.__staged = null;
+              return Promise.resolve({ done, stopped: null });
+            } else if (cmd === "staged_choose" && win.__staged) {
+              const held = win.__staged as Plan;
+              const move = held.moves[Number(args.index)];
+              if (move && move.allowance !== "no") move.chosen = Boolean(args.chosen);
+            }
+            return Promise.resolve(win.__staged ?? null);
           }
           return Promise.resolve(answers[cmd] ?? null);
         },

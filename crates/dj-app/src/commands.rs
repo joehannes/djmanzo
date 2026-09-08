@@ -1050,6 +1050,13 @@ pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
         return Ok(());
     }
 
+    // The emergency. Expanded here rather than in the engine because what
+    // "safe" means is a decision about a performance, not about audio: see
+    // `make_safe` for what it does and, more importantly, what it refuses to.
+    if let Action::Mixer(dj_core::MixerAction::Safe) = parsed {
+        return make_safe(state);
+    }
+
     // A plugin parameter goes to the engine like everything else — but the
     // cached list the interface draws from lives here, and a slider that
     // snapped back on the next snapshot would be unusable.
@@ -1864,6 +1871,84 @@ mod tests {
 
 /// The order separation happens in, which is the whole of look-ahead.
 #[cfg(test)]
+mod safe_tests {
+    use super::safe_actions;
+
+    /// **The property that matters is what is missing.**
+    ///
+    /// An emergency control that silences the floor is worse than the
+    /// emergency it was pressed for. So `safe` never stops a record, never
+    /// moves a channel fader, and never touches the crossfader — deciding what
+    /// the room hears is what a hand is for, and this clears everything that
+    /// got between the hand and the sound.
+    ///
+    /// Asserted over the text of every action it produces rather than over a
+    /// handful of them, so a verb added to the expansion later has to pass the
+    /// same rule.
+    #[test]
+    fn nothing_in_safe_can_silence_the_floor() {
+        let lines = safe_actions(4);
+        assert!(!lines.is_empty());
+        for line in &lines {
+            assert!(
+                !line.contains("crossfader") && !line.contains("xfader"),
+                "safe moves the crossfader: {line}"
+            );
+            assert!(
+                !line.contains(" volume "),
+                "safe moves a channel fader: {line}"
+            );
+            for stopper in [
+                "pause", "play", "cue", "eject", "brake", "backspin", "reverse",
+            ] {
+                assert!(
+                    !line.split_whitespace().any(|word| word == stopper),
+                    "safe touches the transport: {line}"
+                );
+            }
+        }
+    }
+
+    /// And what it must do, on every deck the rig has.
+    #[test]
+    fn safe_flattens_every_deck_and_clears_every_rack() {
+        let decks = 4;
+        let lines = safe_actions(decks);
+        for number in 1..=decks {
+            for band in ["eq_low", "eq_mid", "eq_high"] {
+                assert!(
+                    lines.contains(&format!("deck {number} {band} 1")),
+                    "deck {number}'s {band} is not flattened"
+                );
+            }
+            assert!(lines.contains(&format!("deck {number} filter 0")));
+            for slot in 1..=dj_core::FX_SLOTS {
+                assert!(lines.contains(&format!("deck {number} fx {slot} off")));
+            }
+        }
+        for slot in 1..=dj_core::FX_SLOTS {
+            assert!(lines.contains(&format!("master fx {slot} off")));
+        }
+        assert!(lines.contains(&"master gain 0".to_owned()));
+        assert!(lines.contains(&"limiter on".to_owned()));
+    }
+
+    /// Every line of it is a real action, so the whole emergency logs and
+    /// replays like anything else rather than through a path of its own.
+    #[test]
+    fn every_line_of_safe_is_an_action_the_parser_accepts() {
+        for line in safe_actions(2) {
+            assert!(
+                dj_core::Action::parse(&line).is_ok(),
+                "safe would dispatch {line:?}, which is not in the vocabulary"
+            );
+        }
+        // And `safe` itself is, so it is on a controller and in a script.
+        assert!(dj_core::Action::parse("safe").is_ok());
+    }
+}
+
+#[cfg(test)]
 mod separation_order_tests {
     use super::next_chunk_to_separate;
 
@@ -2525,12 +2610,22 @@ fn perform_step(state: &AppState, step: &crate::autopilot::Step) -> Result<Optio
             }
             Ok(Some(format!("loaded deck {}", deck.human_number())))
         }
-        Step::Cue { deck, beat } => {
+        Step::Cue { deck, at } => {
+            // Resolved here rather than where the step was built, because the
+            // grid it is resolved against arrives with the analyser seconds
+            // after the load — and a step built before the load could not have
+            // known it. `deck N seek <frame>` is the action that then goes on
+            // the bus, so what is logged and replayed is a seek like any other.
+            let frame = cue_frame(state, *deck, *at)?;
             perform(
                 state,
-                &format!("deck {} seek_beat {beat}", deck.human_number()),
+                &format!("deck {} seek {frame:.0}", deck.human_number()),
             )?;
             Ok(Some(format!("cued deck {}", deck.human_number())))
+        }
+        Step::Sync { deck } => {
+            perform(state, &format!("deck {} sync", deck.human_number()))?;
+            Ok(Some(format!("synced deck {}", deck.human_number())))
         }
         Step::MatchGain { deck, db } => {
             perform(state, &format!("deck {} gain {db:.2}", deck.human_number()))?;
@@ -2547,6 +2642,126 @@ fn perform_step(state: &AppState, step: &crate::autopilot::Step) -> Result<Optio
             perform(state, &format!("automix beats {beats}"))?;
             perform(state, "automix now")?;
             Ok(Some(format!("mixing over {beats} beats")))
+        }
+    }
+}
+
+/// The emergency, expanded.
+///
+/// [§47](../../../docs/DIRECTIVE.md) asks for a control a DJ can hit without
+/// thinking when something has gone wrong, and says the semantics need care.
+/// These are the semantics, and the second list is the important one.
+///
+/// **What it does.** Takes every control back from the assistant and throws
+/// away anything it had staged. Clears every effect on every deck and on the
+/// master. Puts all three EQ bands and the filter back to neutral. Restores
+/// master gain to unity and re-engages the limiter.
+///
+/// **What it deliberately does not do.** It does not stop a record, move a
+/// channel fader, or move the crossfader. Every one of those changes what the
+/// room is hearing *immediately*, and the failure mode of an emergency control
+/// that silences the floor is far worse than the emergency: a DJ who hits SAFE
+/// because an effect ran away has a problem, and a DJ who hits SAFE and gets
+/// silence has a disaster. What a hand is for is deciding what the room hears;
+/// this clears everything that got between the hand and the sound, and stops
+/// there.
+///
+/// Every part of it is an ordinary action on the ordinary bus, so the whole
+/// thing appears in the session log as what it was and replays exactly.
+fn make_safe(state: &AppState) -> Result<(), String> {
+    // The assistant first: clearing an effect while something is still allowed
+    // to put one back is not an emergency stop, it is a race.
+    if let Ok(mut guard) = state.conduct().lock() {
+        guard.takeover.take_all();
+    }
+    state.clear_staged();
+
+    let mut failures = Vec::new();
+    for line in safe_actions(state.deck_count()) {
+        if let Err(error) = perform(state, &line) {
+            failures.push(format!("{line}: {error}"));
+        }
+    }
+
+    // Reported rather than swallowed, and only after everything else has been
+    // tried: an emergency that stopped at its first failure would leave the
+    // rest of the rack running.
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("safe, except: {}", failures.join("; ")))
+    }
+}
+
+/// Exactly what `safe` expands into, in order.
+///
+/// A list rather than a loop of side effects so that the property that matters
+/// — what is *not* in it — can be asserted without an engine, an audio device
+/// or a running set. See [`make_safe`] for the reasoning behind the omissions;
+/// `nothing_in_safe_can_silence_the_floor` is what holds them to it.
+#[must_use]
+pub fn safe_actions(decks: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    for number in 1..=decks {
+        for slot in 1..=dj_core::FX_SLOTS {
+            lines.push(format!("deck {number} fx {slot} off"));
+        }
+        for band in ["eq_low", "eq_mid", "eq_high"] {
+            lines.push(format!("deck {number} {band} 1"));
+        }
+        lines.push(format!("deck {number} filter 0"));
+    }
+    for slot in 1..=dj_core::FX_SLOTS {
+        lines.push(format!("master fx {slot} off"));
+    }
+    lines.push("master gain 0".to_owned());
+    lines.push("limiter on".to_owned());
+    lines
+}
+
+/// Where a [`crate::autopilot::CueTo`] actually is on a deck, in frames.
+///
+/// Needs three things the deck only has once it has been analysed: a grid to
+/// count beats from, a sample rate to turn beats into frames, and a phrase
+/// length to know how long a phrase is. Missing any of them is an error rather
+/// than a guess — seeking a record to a place nobody worked out is worse than
+/// leaving it where the DJ put it, because it happens silently and the DJ finds
+/// out when they bring the fader up.
+fn cue_frame(
+    state: &AppState,
+    deck: dj_core::DeckId,
+    at: crate::autopilot::CueTo,
+) -> Result<f64, String> {
+    let overlay = state.waveforms().grid(deck.human_number()).ok_or_else(|| {
+        format!(
+            "deck {} has no beat grid to cue against",
+            deck.human_number()
+        )
+    })?;
+    let beat_frames = overlay.sample_rate.as_f64() * 60.0 / overlay.grid.bpm.get();
+    if !(beat_frames.is_finite() && beat_frames > 0.0) {
+        return Err(format!(
+            "deck {}'s grid has no usable tempo",
+            deck.human_number()
+        ));
+    }
+    match at {
+        crate::autopilot::CueTo::PhraseStart => {
+            let phrase = overlay.phrase.ok_or_else(|| {
+                format!(
+                    "deck {} has no phrase structure to cue to",
+                    deck.human_number()
+                )
+            })?;
+            // The first phrase boundary at or after the start of the record.
+            // Counted from the grid anchor, which is *some* beat rather than
+            // necessarily the first — so this walks forward from wherever the
+            // anchor happens to be until it is inside the track.
+            let anchor = overlay.grid.anchor.get();
+            let length = f64::from(phrase.beats) * beat_frames;
+            let first = anchor + f64::from(phrase.anchor) * beat_frames;
+            let behind = ((0.0 - first) / length).ceil().max(0.0);
+            Ok((first + behind * length).max(0.0))
         }
     }
 }
@@ -2978,6 +3193,179 @@ pub fn assistant_apply_pack(state: State<'_, AppState>, name: String) -> Result<
     state.set_occasion(pack.occasion)
 }
 
+// -- the staged transaction -------------------------------------------------
+//
+// §44. See `crate::staged` for why a bundle rather than five decisions, and why
+// accepting is not a second way of doing things.
+
+/// Prepare the next transition, without doing any of it.
+///
+/// Replaces whatever was staged: a plan is about the record that is playing,
+/// and asking again means asking about now.
+#[tauri::command]
+pub fn staged_prepare(state: State<'_, AppState>) -> Result<Option<crate::staged::Staged>, String> {
+    let conduct = state.conduct();
+    let guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    let situation = read_situation(&state, &guard);
+    let decision = crate::autopilot::next_step(&situation, &guard.takeover, &guard.authority);
+    // The planner is asked directly rather than through the decision, because
+    // the decision is one step and this is the whole shape of the mix.
+    let planned = situation
+        .staged
+        .as_ref()
+        .and_then(|(_, incoming)| crate::plan::plan(&situation.outgoing, incoming));
+    let live_track = state.deck_track_id(situation.live);
+    let staged = crate::staged::build(
+        &situation,
+        planned.as_ref(),
+        &guard.authority,
+        guard.posture,
+        &decision.because,
+        live_track,
+    );
+    drop(guard);
+    state.set_staged(staged.clone());
+    Ok(staged)
+}
+
+/// What is staged, or nothing.
+///
+/// Answers `None` and clears the plan when the record it was about has left the
+/// deck — a plan drawn against a set that no longer exists is worse than no
+/// plan, because it looks current.
+#[tauri::command]
+pub fn staged_current(state: State<'_, AppState>) -> Option<crate::staged::Staged> {
+    let staged = state.staged()?;
+    let live = dj_core::DeckId::from_human(staged.live_deck)?;
+    if staged.still_current(live, state.deck_track_id(live)) {
+        Some(staged)
+    } else {
+        state.clear_staged();
+        None
+    }
+}
+
+/// Turn one move on or off. **Modify.**
+#[tauri::command]
+pub fn staged_choose(
+    state: State<'_, AppState>,
+    index: usize,
+    chosen: bool,
+) -> Result<Option<crate::staged::Staged>, String> {
+    state.choose_staged(index, chosen)?;
+    Ok(state.staged())
+}
+
+/// Throw it away. **Reject.**
+#[tauri::command]
+pub fn staged_reject(state: State<'_, AppState>) {
+    state.clear_staged();
+}
+
+/// Carry it out. **Accept.**
+///
+/// Every chosen move goes through `perform_step`, the same function the
+/// automatic tick uses, so what a press does and what the tick does cannot
+/// drift apart. The plan is cleared whatever happens: a transaction that had
+/// been half carried out is not one to offer again.
+#[tauri::command]
+pub fn staged_accept(state: State<'_, AppState>) -> Result<crate::staged::Outcome, String> {
+    let staged = state.staged().ok_or("nothing is staged")?;
+    let mut done = Vec::new();
+    let mut stopped = None;
+    for (index, step) in staged.chosen() {
+        match perform_step(&state, step) {
+            Ok(Some(what)) => done.push(what),
+            Ok(None) => {}
+            Err(because) => {
+                stopped = Some(crate::staged::Stopped {
+                    at: index,
+                    about: staged.moves[index].about.clone(),
+                    because,
+                });
+                break;
+            }
+        }
+    }
+    state.clear_staged();
+    Ok(crate::staged::Outcome { done, stopped })
+}
+
+// -- the override matrix ----------------------------------------------------
+
+/// One row of §72's matrix, for the panel that shows it.
+#[derive(Debug, Clone, Serialize)]
+pub struct AuthorityRow {
+    pub capability: String,
+    pub title: String,
+    /// Whether the room hears this the moment it happens.
+    pub audible: bool,
+    /// One entry per posture, in `Posture::ALL` order.
+    pub allowances: Vec<String>,
+    /// Which of those the DJ has changed from djmanzo's answer.
+    pub changed: Vec<bool>,
+}
+
+/// The matrix as it currently stands.
+#[tauri::command]
+pub fn authority_matrix(state: State<'_, AppState>) -> Result<Vec<AuthorityRow>, String> {
+    let conduct = state.conduct();
+    let guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    Ok(dj_assistant::Capability::ALL
+        .into_iter()
+        .map(|capability| AuthorityRow {
+            capability: capability.name().to_owned(),
+            title: capability.title().to_owned(),
+            audible: capability.is_audible(),
+            allowances: dj_assistant::Posture::ALL
+                .into_iter()
+                .map(|posture| {
+                    guard
+                        .authority
+                        .allows(capability, posture)
+                        .name()
+                        .to_owned()
+                })
+                .collect(),
+            changed: dj_assistant::Posture::ALL
+                .into_iter()
+                .map(|posture| {
+                    guard.authority.allows(capability, posture)
+                        != dj_assistant::Authority::default_for(capability, posture)
+                })
+                .collect(),
+        })
+        .collect())
+}
+
+/// Change one cell of the matrix.
+#[tauri::command]
+pub fn authority_set(
+    state: State<'_, AppState>,
+    capability: String,
+    posture: String,
+    allowance: String,
+) -> Result<(), String> {
+    let capability = dj_assistant::Capability::parse(&capability)
+        .ok_or_else(|| format!("{capability:?} is not something the matrix covers"))?;
+    let posture = dj_assistant::Posture::parse(&posture)
+        .ok_or_else(|| format!("{posture:?} is not a posture"))?;
+    let allowance = dj_assistant::Allowance::parse(&allowance)
+        .ok_or_else(|| format!("{allowance:?} is not no, limited or yes"))?;
+    let conduct = state.conduct();
+    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    guard.authority.set(capability, posture, allowance)
+}
+
+/// Put every cell back to djmanzo's answer.
+#[tauri::command]
+pub fn authority_reset(state: State<'_, AppState>) -> Result<(), String> {
+    let conduct = state.conduct();
+    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    guard.authority.reset();
+    Ok(())
+}
+
 /// Take everything out of the assistant's hands, now.
 ///
 /// The panic gesture. Touching one control already takes that one; this is for
@@ -3008,7 +3396,7 @@ pub fn assistant_hand_back(state: State<'_, AppState>) -> Result<(), String> {
 /// shown and what is done cannot drift apart.
 fn decide(state: &AppState, conduct: &crate::state::Conduct) -> crate::autopilot::Decision {
     let situation = read_situation(state, conduct);
-    crate::autopilot::next_step(&situation, &conduct.takeover)
+    crate::autopilot::next_step(&situation, &conduct.takeover, &conduct.authority)
 }
 
 /// Assemble what the autopilot needs from the live application.
@@ -3129,7 +3517,8 @@ fn describe_step(step: &crate::autopilot::Step) -> String {
     match step {
         Step::Nothing => "nothing".to_owned(),
         Step::Stage { deck, .. } => format!("load deck {}", deck.human_number()),
-        Step::Cue { deck, beat } => format!("cue deck {} to beat {beat}", deck.human_number()),
+        Step::Cue { deck, .. } => format!("cue deck {} to the phrase", deck.human_number()),
+        Step::Sync { deck } => format!("sync deck {}", deck.human_number()),
         Step::MatchGain { deck, db } => {
             format!("trim deck {} by {db:+.1} dB", deck.human_number())
         }

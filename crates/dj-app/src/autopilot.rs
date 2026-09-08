@@ -34,7 +34,7 @@
 //! and then explains is one a DJ cannot get ahead of.
 
 use crate::plan::{self, Incoming, Outgoing};
-use dj_assistant::{Occasion, Posture, Takeover, Warrant};
+use dj_assistant::{Allowance, Authority, Capability, Occasion, Posture, Takeover, Warrant};
 use dj_core::{Certainty, DeckId, ParamId, TrackId, action::TransitionStyle, param::DeckParam};
 
 /// Where the set is, as the autopilot needs it.
@@ -68,8 +68,16 @@ pub struct Situation {
 pub enum Step {
     /// Put a record on a deck that is not playing.
     Stage { deck: DeckId, track: TrackId },
-    /// Move a staged deck's playhead to the phrase the mix will start from.
-    Cue { deck: DeckId, beat: i64 },
+    /// Move a staged deck's playhead to where the mix will start from.
+    ///
+    /// The *intent*, not a frame. Where "the phrase" is depends on the record's
+    /// grid, which arrives with the analyser some seconds after the load — so a
+    /// frame worked out when the step was built would be a frame worked out
+    /// before there was anything to work it out from. It is resolved at the
+    /// moment of obedience instead; see `commands::perform_step`.
+    Cue { deck: DeckId, at: CueTo },
+    /// Engage sync on a staged deck, so it comes in on the beat.
+    Sync { deck: DeckId },
     /// Match the staged deck's level to the live one.
     MatchGain { deck: DeckId, db: f64 },
     /// Start the mix.
@@ -81,6 +89,21 @@ pub enum Step {
     },
     /// Nothing to do. The common case, not a failure.
     Nothing,
+}
+
+/// Where a cue step means.
+///
+/// One variant today and an enum all the same: `Seek(frame)` already exists as
+/// an action for "put the playhead exactly here", and the thing this expresses
+/// is the one that action cannot — a place named by the music rather than by a
+/// number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CueTo {
+    /// The start of the record's first full phrase.
+    ///
+    /// What `Posture::Prepare` promises when it says a record arrives "cued to
+    /// the phrase", and what it did not do until this existed.
+    PhraseStart,
 }
 
 /// A step, and why.
@@ -114,7 +137,7 @@ const STAGE_WITHIN_SECONDS: f64 = 90.0;
 /// `takeover` is consulted before anything else. See the module docs on why the
 /// order of the questions matters.
 #[must_use]
-pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
+pub fn next_step(situation: &Situation, takeover: &Takeover, authority: &Authority) -> Decision {
     let Situation {
         posture, occasion, ..
     } = situation;
@@ -126,6 +149,14 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
     if !warrant.may_speak() && !warrant.may_stage() {
         return Decision::nothing("the assistant is not acting at this level");
     }
+
+    // The three gates, in the order `dj_assistant::authority` sets out.
+    // `takeover` is asked per control further down, where the control is
+    // known; these two are asked about the *kind* of thing and about how sure
+    // the night is, and both must pass.
+    let may = |capability| authority.allows(capability, *posture) != Allowance::No;
+    let may_stage = warrant.may_stage() && may(Capability::LoadNextDeck);
+    let may_mix = warrant.may_mix() && may(Capability::Crossfader);
 
     // A deck with no record on it has zero length, which is not the same as a
     // record that has just finished -- and treating it as one had the autopilot
@@ -144,9 +175,7 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
     //
     // Everything from Prepare upwards does this. It is the whole of what
     // Prepare is, and the part of Autopilot that happens first.
-    if warrant.may_stage()
-        && let Some(idle) = situation.idle
-    {
+    if may_stage && let Some(idle) = situation.idle {
         {
             if situation.staged.is_none() {
                 if remaining > STAGE_WITHIN_SECONDS {
@@ -194,7 +223,7 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
     // -- mixing -----------------------------------------------------------
     //
     // Only Autopilot, and only with somewhere to go.
-    if !warrant.may_mix() {
+    if !may_mix {
         return Decision::nothing(match (posture, warrant) {
             // The one case §9 calls invalid, and the sentence a DJ deserves
             // for it: the machine is not mixing because the night it would be
@@ -203,6 +232,10 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
                 "staged, not mixing -- the night and your occasion disagree"
             }
             (Posture::Prepare, _) => "ready when you are",
+            // The matrix, rather than the night, is what refused. Said
+            // separately because the fix is a different one: turn the level up,
+            // or put the cell back.
+            _ if warrant.may_mix() => "your override matrix does not allow the crossfader here",
             _ => "waiting",
         });
     }
@@ -335,7 +368,7 @@ mod tests {
     #[test]
     fn the_quiet_postures_do_nothing() {
         for posture in [Posture::Off, Posture::Watch] {
-            let decision = next_step(&situation(posture), &Takeover::new());
+            let decision = next_step(&situation(posture), &Takeover::new(), &Authority::new());
             assert_eq!(decision.step, Step::Nothing, "{} acted", posture.name());
         }
     }
@@ -351,7 +384,7 @@ mod tests {
 
         // With nothing staged, it stages.
         assert_eq!(
-            next_step(&state, &takeover).step,
+            next_step(&state, &takeover, &Authority::new()).step,
             Step::Stage {
                 deck: deck(2),
                 track: TrackId::from_bytes([9; 32])
@@ -361,7 +394,7 @@ mod tests {
         // With something staged and levelled, it stops -- it does not mix.
         state.staged = Some((TrackId::from_bytes([9; 32]), incoming()));
         assert_eq!(
-            next_step(&state, &takeover).step,
+            next_step(&state, &takeover, &Authority::new()).step,
             Step::Nothing,
             "Prepare performed a transition"
         );
@@ -377,13 +410,23 @@ mod tests {
 
         assert!(
             matches!(
-                next_step(&ready_to_mix(Posture::Autopilot), &takeover).step,
+                next_step(
+                    &ready_to_mix(Posture::Autopilot),
+                    &takeover,
+                    &Authority::new()
+                )
+                .step,
                 Step::Mix { .. }
             ),
             "autopilot did not mix when everything was ready"
         );
         assert_eq!(
-            next_step(&ready_to_mix(Posture::Prepare), &takeover).step,
+            next_step(
+                &ready_to_mix(Posture::Prepare),
+                &takeover,
+                &Authority::new()
+            )
+            .step,
             Step::Nothing
         );
     }
@@ -401,7 +444,11 @@ mod tests {
     /// which is the half that was never in question.
     #[test]
     fn an_unreadable_night_stages_instead_of_mixing() {
-        let mixing = next_step(&ready_to_mix(Posture::Autopilot), &Takeover::new());
+        let mixing = next_step(
+            &ready_to_mix(Posture::Autopilot),
+            &Takeover::new(),
+            &Authority::new(),
+        );
         assert!(
             matches!(mixing.step, Step::Mix { .. }),
             "the fixture must mix or this tests nothing: {mixing:?}"
@@ -411,7 +458,7 @@ mod tests {
             certainty: Certainty::Unsure,
             ..ready_to_mix(Posture::Autopilot)
         };
-        let decision = next_step(&unsure, &Takeover::new());
+        let decision = next_step(&unsure, &Takeover::new(), &Authority::new());
         assert_eq!(decision.step, Step::Nothing);
         assert!(
             decision.because.contains("disagree"),
@@ -426,10 +473,57 @@ mod tests {
         };
         assert!(
             matches!(
-                next_step(&staging, &Takeover::new()).step,
+                next_step(&staging, &Takeover::new(), &Authority::new()).step,
                 Step::Stage { .. }
             ),
             "an unclear night stopped the assistant doing the silent half too"
+        );
+    }
+
+    /// **The matrix is a real gate, not a table on a screen.**
+    ///
+    /// "Autopilot, but never the crossfader" is §72's whole point, and it has
+    /// to stop the mix while leaving everything silent still happening. The
+    /// sentence matters too: the reason a DJ is not being mixed for is their
+    /// own setting, and it is a different fix from turning the level up.
+    #[test]
+    fn narrowing_the_matrix_stops_the_mix_and_says_it_was_the_matrix() {
+        let mut authority = Authority::new();
+        authority
+            .set(Capability::Crossfader, Posture::Autopilot, Allowance::No)
+            .expect("narrowing autopilot is allowed");
+
+        let decision = next_step(
+            &ready_to_mix(Posture::Autopilot),
+            &Takeover::new(),
+            &authority,
+        );
+        assert_eq!(decision.step, Step::Nothing);
+        assert!(
+            decision.because.contains("matrix"),
+            "said {:?} rather than naming the matrix",
+            decision.because
+        );
+
+        // And the silent half is untouched by it.
+        assert!(matches!(
+            next_step(&situation(Posture::Autopilot), &Takeover::new(), &authority).step,
+            Step::Stage { .. }
+        ));
+
+        // Narrowing the load instead stops that, and nothing else has to know.
+        let mut no_loading = Authority::new();
+        no_loading
+            .set(Capability::LoadNextDeck, Posture::Autopilot, Allowance::No)
+            .expect("narrowing is allowed");
+        assert_eq!(
+            next_step(
+                &situation(Posture::Autopilot),
+                &Takeover::new(),
+                &no_loading
+            )
+            .step,
+            Step::Nothing
         );
     }
 
@@ -449,6 +543,7 @@ mod tests {
                         ..ready_to_mix(posture)
                     },
                     &Takeover::new(),
+                    &Authority::new(),
                 );
                 assert!(
                     !matches!(decision.step, Step::Mix { .. }),
@@ -465,7 +560,10 @@ mod tests {
         let ready = ready_to_mix(Posture::Autopilot);
         let free = Takeover::new();
         assert!(
-            matches!(next_step(&ready, &free).step, Step::Mix { .. }),
+            matches!(
+                next_step(&ready, &free, &Authority::new()).step,
+                Step::Mix { .. }
+            ),
             "the fixture does not mix even with nothing held, so this test \
              would pass for the wrong reason"
         );
@@ -473,7 +571,7 @@ mod tests {
         let mut held = Takeover::new();
         held.touched(ParamId::Global(dj_core::param::GlobalParam::Crossfader));
         assert_eq!(
-            next_step(&ready, &held).step,
+            next_step(&ready, &held, &Authority::new()).step,
             Step::Nothing,
             "the assistant moved the crossfader out of the DJ's hand"
         );
@@ -489,7 +587,10 @@ mod tests {
         let mut held = Takeover::new();
         held.touched(ParamId::Deck(deck(2), DeckParam::Position));
 
-        assert_eq!(next_step(&state, &held).step, Step::Nothing);
+        assert_eq!(
+            next_step(&state, &held, &Authority::new()).step,
+            Step::Nothing
+        );
     }
 
     /// **It does not stage ten minutes early.**
@@ -502,7 +603,10 @@ mod tests {
             outgoing: outgoing(600.0),
             ..situation(Posture::Prepare)
         };
-        assert_eq!(next_step(&early, &Takeover::new()).step, Step::Nothing);
+        assert_eq!(
+            next_step(&early, &Takeover::new(), &Authority::new()).step,
+            Step::Nothing
+        );
     }
 
     /// **Level matching happens on the silent deck, before the mix.**
@@ -517,7 +621,7 @@ mod tests {
             ..situation(Posture::Prepare)
         };
         assert_eq!(
-            next_step(&state, &Takeover::new()).step,
+            next_step(&state, &Takeover::new(), &Authority::new()).step,
             Step::MatchGain {
                 deck: deck(2),
                 db: -3.5
@@ -534,7 +638,10 @@ mod tests {
             gain_offset_db: Some(0.2),
             ..situation(Posture::Prepare)
         };
-        assert_eq!(next_step(&state, &Takeover::new()).step, Step::Nothing);
+        assert_eq!(
+            next_step(&state, &Takeover::new(), &Authority::new()).step,
+            Step::Nothing
+        );
     }
 
     /// **The occasion shortens the mix, and cannot lengthen it past the plan.**
@@ -553,13 +660,15 @@ mod tests {
             ..peak.clone()
         };
 
-        let Step::Mix { beats: at_peak, .. } = next_step(&peak, &Takeover::new()).step else {
+        let Step::Mix { beats: at_peak, .. } =
+            next_step(&peak, &Takeover::new(), &Authority::new()).step
+        else {
             panic!("peak did not mix");
         };
         let Step::Mix {
             beats: in_background,
             ..
-        } = next_step(&background, &Takeover::new()).step
+        } = next_step(&background, &Takeover::new(), &Authority::new()).step
         else {
             panic!("background did not mix");
         };
@@ -586,7 +695,10 @@ mod tests {
             idle: None,
             ..ready_to_mix(Posture::Autopilot)
         };
-        assert_eq!(next_step(&state, &Takeover::new()).step, Step::Nothing);
+        assert_eq!(
+            next_step(&state, &Takeover::new(), &Authority::new()).step,
+            Step::Nothing
+        );
     }
 
     /// **Every decision carries a reason**, so an interface can say what is
@@ -604,7 +716,7 @@ mod tests {
             ready_to_mix(Posture::Autopilot),
         ];
         for state in cases {
-            let decision = next_step(&state, &Takeover::new());
+            let decision = next_step(&state, &Takeover::new(), &Authority::new());
             assert!(
                 !decision.because.trim().is_empty(),
                 "a {} decision gave no reason",
@@ -626,6 +738,9 @@ mod tests {
             },
             ..situation(Posture::Autopilot)
         };
-        assert_eq!(next_step(&state, &Takeover::new()).step, Step::Nothing);
+        assert_eq!(
+            next_step(&state, &Takeover::new(), &Authority::new()).step,
+            Step::Nothing
+        );
     }
 }

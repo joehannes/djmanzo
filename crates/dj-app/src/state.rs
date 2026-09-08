@@ -136,6 +136,14 @@ pub struct AppState {
     /// as a reader of it — the waveform, the assistant, the autopilot — reads
     /// it from djmanzo rather than from a Svelte component's local state.
     transition: Mutex<Option<crate::transition::Transition>>,
+    /// The transaction the assistant has prepared, if one is waiting.
+    ///
+    /// One at a time, and held here for the reason the transition object is:
+    /// a plan a DJ is halfway through modifying must survive closing the panel
+    /// they are modifying it in, and everything that acts on it — Accept, the
+    /// emergency, the staleness check on every snapshot — reads djmanzo's copy
+    /// rather than a component's.
+    staged: Mutex<Option<crate::staged::Staged>>,
     /// The set being recorded, if one is. See [`crate::setrec`].
     recording: Mutex<Option<crate::setrec::Recording>>,
     /// Read by the snapshot pump sixty times a second, so it is held outside
@@ -297,6 +305,12 @@ pub struct Conduct {
     pub posture: dj_assistant::Posture,
     pub occasion: dj_assistant::Occasion,
     pub takeover: dj_assistant::Takeover,
+    /// What each posture may do — §72's matrix, with the DJ's changes.
+    ///
+    /// Here rather than beside the other preferences because it is read on
+    /// every autopilot tick alongside the posture, and the two changing under
+    /// one lock is what stops a tick seeing a new matrix against an old level.
+    pub authority: dj_assistant::Authority,
     /// The set the assistant is working through, if one was built.
     ///
     /// Track ids rather than the full slots: the assistant needs to know what
@@ -322,6 +336,7 @@ impl Default for Conduct {
             posture: dj_assistant::Posture::Suggest,
             occasion: dj_assistant::Occasion::Open,
             takeover: dj_assistant::Takeover::new(),
+            authority: dj_assistant::Authority::new(),
             setlist: Vec::new(),
             played: 0,
         }
@@ -414,6 +429,7 @@ impl AppState {
             remote: Arc::new(crate::remote::Remote::default()),
             audience: Arc::new(crate::audience::Audience::default()),
             room: Arc::new(Mutex::new(dj_assistant::room::Room::new())),
+            staged: Mutex::new(None),
             night: Arc::new(crate::night::Night::new()),
             peers: Arc::new(crate::peersync::Peers::default()),
             clock: Arc::new(crate::clock::MidiClock::default()),
@@ -1360,6 +1376,39 @@ impl AppState {
     #[must_use]
     pub fn night(&self) -> Arc<crate::night::Night> {
         Arc::clone(&self.night)
+    }
+
+    /// The transaction waiting for an answer, if there is one.
+    #[must_use]
+    pub fn staged(&self) -> Option<crate::staged::Staged> {
+        self.staged.lock().ok().and_then(|held| held.clone())
+    }
+
+    /// Hold a prepared transaction, replacing whatever was there.
+    pub fn set_staged(&self, staged: Option<crate::staged::Staged>) {
+        if let Ok(mut held) = self.staged.lock() {
+            *held = staged;
+        }
+    }
+
+    /// Throw away whatever was staged. **Reject**, and what the emergency does.
+    pub fn clear_staged(&self) {
+        self.set_staged(None);
+    }
+
+    /// Change one move in the held transaction. **Modify**.
+    ///
+    /// # Errors
+    /// When nothing is staged, the index is not a move, or the posture refuses
+    /// it.
+    pub fn choose_staged(&self, index: usize, chosen: bool) -> Result<(), String> {
+        let mut held = self
+            .staged
+            .lock()
+            .map_err(|_| "the staged plan is poisoned")?;
+        held.as_mut()
+            .ok_or("nothing is staged")?
+            .choose(index, chosen)
     }
 
     /// Set what the night is, and tell the context engine.

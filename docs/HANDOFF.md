@@ -177,13 +177,23 @@ Three of `DJContext`'s eight fields are still ungathered (`musicContext`,
 `hardwareContext`, `djBehaviorContext`) and they are absent rather than empty,
 because a field that is always null is a promise.
 
+Phase 5's gate is met. §44's transactions, §72's matrix and §47's emergency
+ship alongside the context engine and §9's warrant, and the three gates an
+assistant passes — a hand on the control, the posture's matrix, the night's
+certainty — are three separate questions in three separate places, on purpose.
+
+**One limitation to know about the transaction.** Its "next record" comes from
+`Conduct::setlist` only, because that is where `autopilot::Situation::next`
+comes from. With no set built there is nothing to load and the plan is empty,
+and it says so. Wiring the Next rail's suggester in as a fallback is a small
+piece of work and is part of §68's remaining half rather than of §44.
+
 The largest open sections, in the order they are worth doing:
 
-1. **The rest of phase 5** — staged transactions (§44) and AI-requested typed
-   UI operations (§41). The context engine and §9's warrant are done; what is
-   missing is the *transaction*: stage a load, a cue, a gain and a loop
-   together, and offer Accept / Modify / Reject before any of it becomes
-   actions on the bus.
+1. **§41, the typed UI vocabulary** — the last of phase 5. The assistant can
+   ask for a control; it cannot yet ask for a *surface*. `cockpit::surfaces()`
+   already publishes the closed list a vocabulary would be generated from, and
+   §72's `adapt_layout` row already says which postures may.
 2. **§25–§27, the waveform as instrumentation** — direct manipulation, the
    ghost track, and answering "what will happen if I do it". The transition
    object §27 was waiting on now exists, and the pair view already draws a mix

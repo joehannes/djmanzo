@@ -101,7 +101,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 82] = [
+static VOCABULARY: [VerbSpec; 83] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -723,6 +723,13 @@ static VOCABULARY: [VerbSpec; 82] = [
     },
     VerbSpec {
         target: Target::Mixer,
+        verb: "safe",
+        argument: ArgSpec::None,
+        help: "emergency: take every control back, clear every effect, flatten the tone",
+        example: "safe",
+    },
+    VerbSpec {
+        target: Target::Mixer,
         verb: "limiter on",
         argument: ArgSpec::None,
         help: "engage the master limiter (on by default)",
@@ -857,6 +864,7 @@ mod tests {
             "cue split_off",
             "record on",
             "record off",
+            "safe",
             "limiter on",
             "limiter off",
             "sync",

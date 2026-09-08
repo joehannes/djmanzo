@@ -16,6 +16,63 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The assistant asks before it acts** — the directive's §44. A non-trivial move
+is a **transaction** now: load the record, cue it to its first phrase, trim it
+to match, engage sync, run the mix — staged together as *Prepared next
+transition*, with Accept, Modify and Reject, and carried out only then. Five
+separate prompts is five chances to say yes to half a plan, which leaves a
+record loaded and cued that nothing is going to mix.
+
+Accepting is not a second way of doing things. Every move is an
+`autopilot::Step` and Accept runs it through the same `perform_step` the
+automatic tick uses, so what a press does and what the tick does cannot drift
+apart. **Modify is a checkbox**: "load it and cue it, but I will bring it in
+myself" is one click on one row, and it leaves the rest of the plan intact.
+Partial success is reported as partial — a transaction that stopped at its
+third move says which one and why, rather than reporting "accepted".
+
+**§72's override matrix, as a table with three gates behind it.**
+`dj_assistant::authority` holds the directive's matrix verbatim — ten
+capabilities against six postures — and it is now the *second* of three
+questions asked before anything moves: has a hand already claimed this control
+(`Takeover`), does the posture permit this kind of thing at all (the matrix),
+and is the read of the night sure enough to act on (§9's `Warrant`). Three
+questions rather than one because a DJ whose machine did nothing deserves to
+know which of them said no. It is configurable in both directions, except that
+Off and Watch cannot be widened: those words would stop meaning anything.
+
+**A refused move is shown greyed, never dropped.** A plan that silently stopped
+after the trim would leave a DJ wondering what djmanzo thinks a cued deck is
+for — and the obvious fix, turning the level up one notch, is invisible to
+somebody who was never told what was going to happen.
+
+**SAFE** — §47's emergency control, beside REC and Mark, and the only control
+in that row that is coloured when nothing is wrong. It takes every control back
+from the assistant, throws away anything staged, clears every effect on every
+deck and on the master, flattens all three EQ bands and the filter, restores
+master gain and re-engages the limiter.
+
+What it refuses to do is the part that took the thought. **It never stops a
+record, never moves a channel fader, and never touches the crossfader.** An
+emergency control that silences the floor is far worse than the emergency: a DJ
+who hits SAFE because an effect ran away has a problem, and one who hits SAFE
+and gets silence has a disaster. It is `safe` on the action bus, so it is on a
+controller pad and in a script as well as on screen, and every part of it is an
+ordinary action that logs and replays.
+
+**A half-built path found and finished.** `Step::Cue` was never emitted by
+anything, and the action text it would have dispatched — `deck N seek_beat` —
+is not a verb the parser accepts, so the one thing `Posture::Prepare` promises
+in its own documentation ("loaded, cued to the phrase and gain-matched") had
+never happened. Cueing is real now, and the *intent* is what is staged: where
+"the phrase" is depends on a grid that arrives with the analyser seconds after
+the load, so it is resolved at the moment of obedience rather than guessed when
+the plan was built.
+
+Found by driving it: pressing "Prepare the next transition" when there was
+nowhere to stage produced nothing at all on screen, which reads as a broken
+button. It says why now, in the autopilot's own words.
+
 **The context engine** — the directive's §11, and the thing §9, §12, §14 and
 §17 have all been waiting on. `dj_core::ContextEngine` answers one question,
 in one place, for every consumer: **what is tonight?** The theme, the attention
