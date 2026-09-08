@@ -34,16 +34,16 @@ rather than taken.
 | 6 | Dock / surface manager | ✅ | Side and bottom docks, several surfaces at once, framed and closable, persisted. `cockpit::Surface`/`Dock`/`Workspace` |
 | 7 | Workspace presets | 🟡 | Three ship in Rust (Perform, Prepare, Read the room); no picker in the interface yet |
 | 8 | Adaptation levels | 🟡 | Five density bands, derived from measured deck heights. The wider notion of adaptation levels is not built |
-| 9 | Separate autonomy from confidence | ⬜ | Modelled in the audit; not in the code |
+| 9 | Separate autonomy from confidence | ✅ | `dj_assistant::Warrant`. The invalid cell is **unrepresentable**: `Act` and `Mix` carry a `Grounds` whose constructor is private and refuses a certainty below `Fair`, so no caller anywhere can write down a warrant to act on a read something disagrees with. Asserted over the whole 6×3 matrix, and the consequence — an unclear night stages instead of mixing — is asserted in the autopilot |
 | 10 | AI posture stays compatible with djmanzo's | ⚖️ | The six postures and nine occasions are untouched |
-| 11 | Add a context engine | ⬜ | Phase 5 |
+| 11 | Add a context engine | 🟡 | `dj_core::ContextEngine` ships and is the common input: the phase, its certainty, what produced it and which way the evidence disagrees, from two sources and nothing else — what the DJ declared, and where the last few minutes sit in the whole night's own range. `dj_app::night` feeds it from the snapshot the pump has just built. Five of `DJContext`'s eight fields are real (`sessionPhase`, `occasion`, `attentionBudget`, `audienceContext` through RoomSense, `performanceHealth` through the frame monitor); `musicContext`, `hardwareContext` and `djBehaviorContext` are not gathered yet |
 | 12 | Learn the DJ | 🟡 | Taste learned from play history ships. Persona learning does not |
 | 13 | Never learn badly | ⬜ | |
 | 14 | Behavioural signals | ⬜ | Needs an events table with decay |
 | 15 | AI should understand DJ technique | ✅ | The technique catalogue ships |
 | 16 | Domain knowledge packs | 🟡 | Genre families ship; packs as a format do not |
-| 17 | GUI adapts to session phase | 🟡 | Occasion-aware density ships; phase-driven layout does not |
-| 18 | Attention budget | 🟡 | `cockpit::Attention` exists with the rule that matters — while performing, the interface may not reflow — but nothing consults it yet |
+| 17 | GUI adapts to session phase | 🟡 | Occasion-aware density ships, and peak time now narrows the attention budget — but only on a read worth acting on. Phase-driven *layout* does not |
+| 18 | Attention budget | ✅ | `Attention::for_context` derives it in one place from the context engine, in order of severity — something broken, two records audible, peak time, room to think — and it is published on the snapshot and written onto the root as `data-motion`, where the stylesheet honours it. The rule that matters is enforced rather than hoped for: while two records are audible the interface may not reflow |
 | 19 | No random UI reorganisation | ⚖️ | Enforced by a golden-order test: the deck's control order is asserted in full and fails if anything moves |
 | 20 | Playlist / library overhaul | 🟡 | Function tags and their filtering ship, and two of the four views do. **Set Flow**: a dockable surface drawing the plan as a sequence with the seam between each pair — its deltas, its confidence, and whether it needs a cut rather than a blend. **Pair**: its own surface, the two records side by side with the seam between them, each with its waveform, and the mix point drawn *on* the outgoing one. The performance table is the browser today, at fewer columns than §20 lists; the compact cards do not exist |
 | 21 | "Prepare" must be first class | ✅ | Its own dockable surface beside the browser, not a strip inside it. One gesture — `→` on a browser row — hands a track over; `prepare.svelte.ts` is the only path between them, so there is no second, differently-behaved way to set a track aside |
@@ -65,10 +65,10 @@ rather than taken.
 | 37 | Causal crowd analysis | ⬜ | Needs action↔room time-series storage |
 | 38 | Crowd signals never control the DJ unasked | ⚖️ | |
 | 39 | UI for audience intelligence | 🟡 | RoomSense is nested inside the assistant rather than promoted |
-| 40 | Assistant sees everything important | 🟡 | `SessionContext` is narrower than the directive's `DJContext` |
+| 40 | Assistant sees everything important | 🟡 | `SessionContext` now carries the phase, its certainty, its basis and the drift, and the autopilot reads the certainty. Still narrower than `DJContext`: the music, hardware and behaviour contexts are not gathered |
 | 41 | AI can operate the GUI indirectly | ⬜ | ADR-0008 makes it possible — a layout is data — but nothing does it |
 | 42 | Suggestions must be explainable | ✅ | The transition planner states where and how, with its reasoning |
-| 43 | Suggestion fatigue | 🟡 | `Attention::performing()` caps suggestions at one; not yet consulted |
+| 43 | Suggestion fatigue | 🟡 | `Attention::performing()` caps suggestions at one and the cap is now derived and published; no surface draws suggestions against it yet |
 | 44 | Transactional AI actions | ⬜ | |
 | 45 | Instant manual takeover | ✅ | Per parameter. Touching a control wins |
 | 46 | Guardrails for autopilot | ✅ | Careful mode holds the controls that cannot be undone by pressing them again |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **31 done, 33 part, 22 open, 19 standing rules.**
+Of the 105 sections: **33 done, 33 part, 20 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**31 of 86 deliverable sections are complete and 33 more are partly there.**
+**33 of 86 deliverable sections are complete and 33 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 31 whole plus 33 halves over 86 is 55%, and the phase view is stricter
+way: 33 whole plus 33 halves over 86 is 58%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

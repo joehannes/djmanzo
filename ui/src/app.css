@@ -341,3 +341,26 @@ button.on {
     transform: none;
   }
 }
+
+/*
+ * The attention budget, as CSS.
+ *
+ * `data-motion` is written from `Snapshot.attention.motion`, which djmanzo
+ * derives in one place from the context engine -- see `cockpit::Attention`. The
+ * only level that changes anything here is `none`, which is what an emergency
+ * gets: the recording has failed or the headphone card has stopped taking
+ * audio, and every state must be readable from a still frame while the DJ sorts
+ * it out. ADR-0009's tier 0 is a requirement rather than a courtesy, and this
+ * is where it is honoured.
+ *
+ * The press feedback survives on purpose. It is not decoration -- it is the
+ * acknowledgement that a control took the press, which is exactly what somebody
+ * fixing something at speed needs most.
+ */
+:root[data-motion="none"] *,
+:root[data-motion="none"] *::before,
+:root[data-motion="none"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}

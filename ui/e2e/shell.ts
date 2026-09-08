@@ -125,6 +125,27 @@ const ANSWERS: Record<string, unknown> = {
     movement: null,
     loudness: null,
   },
+  // A night nothing has read yet, which is what a fresh application has. The
+  // shape matters more than the values: `Night.svelte` indexes its label
+  // tables by `basis` and `warrant`, so a `null` here would throw inside the
+  // surface and take the dock with it -- the failure `stems_status` above
+  // documents, in a different panel.
+  night_read: {
+    phase: null,
+    words: null,
+    energy: null,
+    certainty: null,
+    certainty_about: null,
+    basis: null,
+    drift: null,
+    time_of_day: null,
+    declared: null,
+    measured: null,
+    readings: 0,
+    still_needed: 90,
+    notes: ["Nothing has read the night yet."],
+    warrant: "speak",
+  },
     // What the presets and settings surfaces ask for.
   //
   // The list is long because `Settings.svelte` is one panel over every
@@ -507,8 +528,18 @@ export async function openShell(
    * application never sends.
    */
   master: Record<string, unknown> = {},
+  /**
+   * Answers to change before the shell starts.
+   *
+   * The same discipline `master` follows: it varies an answer djmanzo really
+   * gives, so a test can measure the panel in a state the captured fixture
+   * happens not to be in — a night the evidence disputes, say. It does not let
+   * a test invent a shape the application never sends.
+   */
+  answers: Record<string, unknown> = {},
 ) {
   const state = { ...snapshot, master: { ...snapshot.master, ...master } };
+  const table = { ...ANSWERS, ...answers };
   const thrown: string[] = [];
   pageErrors.set(page, thrown);
   page.on("pageerror", (error) => thrown.push(error.message));
@@ -603,7 +634,7 @@ export async function openShell(
         convertFileSrc: (path: string) => path,
       };
     },
-    [ANSWERS, state] as [Record<string, unknown>, unknown],
+    [table, state] as [Record<string, unknown>, unknown],
   );
 
   await page.goto(url);

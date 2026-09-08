@@ -117,7 +117,14 @@ describe("publishing the audio to CSS", () => {
     publishAudio(
       {
         audio: { loudness: 0.2, bands: [0.2, 0.2, 0.2, 0.2] },
-        session: { phase: "peak", energy: 0.9, environment: { time_of_day: "night" } },
+        session: {
+          phase: "peak",
+          energy: 0.9,
+          environment: { time_of_day: "night" },
+          certainty: "sure",
+          basis: "agreed",
+          drift: null,
+        },
       },
       root,
     );

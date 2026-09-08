@@ -16,6 +16,56 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The context engine** — the directive's §11, and the thing §9, §12, §14 and
+§17 have all been waiting on. `dj_core::ContextEngine` answers one question,
+in one place, for every consumer: **what is tonight?** The theme, the attention
+budget, the assistant and the autopilot read its answer instead of each working
+one out, which is what §11 asks for in the sentence "do not duplicate context
+logic inside each component".
+
+**It reads the night against itself.** "Loud" is a number about a room, a rig
+and a mastering engineer, so there is no threshold at which a set is at its
+peak. What is portable is a comparison with the same night earlier on, through
+the same output — the argument `dj_assistant::room` already makes about a
+camera, applied to a master bus, and now sharing its histogram rather than
+keeping a second copy of it. Loudness and tempo are placed against tonight's
+own spread of both, averaged because they are confounded differently: the
+master fader moves one and not the other.
+
+**It says nothing until it can say something true.** Six minutes of music
+before the evidence may name a phase, and nothing at all if the night has not
+varied enough to place a reading in. The first version of this module defaulted
+to *Peak* at *0.95 energy* on every snapshot, and this is the guard against
+that returning: a test drives eighty-nine readings and fails if a phase is
+named.
+
+**Where your word and the evidence disagree, you win.** An occasion is a
+statement about the night; a histogram is not. So the declaration is the phase,
+djmanzo says which way its own reading points, and the arc marks both. It
+reports the disagreement; it never overrules the person who has been in the
+room all night.
+
+**§9, as a type rather than as a rule.** Autonomy — the posture — and certainty
+stay orthogonal, and the one combination §9 calls invalid is not
+*representable*: `dj_assistant::Warrant::Act` and `::Mix` carry a `Grounds`
+whose constructor is private and refuses a certainty below `Fair`. The
+consequence a DJ actually meets is that a night the music contradicts stops the
+autopilot mixing unasked — it stages the record and says why — while everything
+the room cannot hear carries on.
+
+**The attention budget is consulted at last.** §18's `cockpit::Attention` has
+existed as a type with nothing reading it; it is now derived from the same
+context, published on the snapshot, and reaches the stylesheet as
+`data-motion`. Two records audible means the interface may not reflow, because
+somebody is reaching for it. A failed recording or a headphone card that has
+stopped taking audio means nothing moves at all.
+
+**The night, a surface of its own.** It shows its working rather than asking to
+be believed: the arc with the phase marked, what produced it, how sure that
+makes it, which way the music disagrees, and what all of that currently allows
+the assistant to do. Before anything has read the night it says so, with the
+count — an empty panel reads as broken.
+
 **The transition is an object** — the directive's §68. `dj_app::transition`
 holds one mix: the two decks, where it starts and ends in both frames and
 seconds, how long it runs, which way, what the tempo and the key do across it,

@@ -31,6 +31,7 @@
 //! **Time of day** is here, because a clock is a real instrument.
 
 use crate::Occasion;
+use dj_core::Spread;
 use std::collections::VecDeque;
 use std::time::{Duration, SystemTime};
 
@@ -47,12 +48,6 @@ pub const NEAR: Duration = Duration::from_secs(3 * 60);
 /// half a minute of looking. Below it the answer is "not yet", which is a
 /// better answer than a confident one drawn from four frames.
 pub const ENOUGH: usize = 15;
-
-/// How many buckets the night's own distribution is kept in.
-///
-/// Twenty over the 0..1 range, so a reading is placed to within five percent
-/// of the range without keeping every reading of a six-hour night.
-const BUCKETS: usize = 20;
 
 /// What is being measured.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,43 +174,6 @@ impl Reading {
     pub fn is_empty(&self) -> bool {
         self.light.is_none() && self.movement.is_none() && self.loudness.is_none()
     }
-}
-
-/// The night's own distribution of one sense, coarsely.
-#[derive(Debug, Default, Clone)]
-struct Spread {
-    counts: [u32; BUCKETS],
-    total: u32,
-}
-
-impl Spread {
-    fn add(&mut self, value: f32) {
-        let bucket = bucket_of(value);
-        self.counts[bucket] = self.counts[bucket].saturating_add(1);
-        self.total = self.total.saturating_add(1);
-    }
-
-    /// What fraction of tonight's readings were below `value`.
-    ///
-    /// Half of its own bucket counts as below, so a night where every reading
-    /// lands in one bucket answers "about half" rather than "none" — which is
-    /// what "no news" should look like when nothing has changed.
-    fn below(&self, value: f32) -> Option<f32> {
-        if self.total == 0 {
-            return None;
-        }
-        let bucket = bucket_of(value);
-        let under: u32 = self.counts[..bucket].iter().sum();
-        let within = f64::from(self.counts[bucket]) / 2.0;
-        #[allow(clippy::cast_possible_truncation)]
-        Some(((f64::from(under) + within) / f64::from(self.total)) as f32)
-    }
-}
-
-fn bucket_of(value: f32) -> usize {
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let bucket = (value.clamp(0.0, 1.0) * BUCKETS as f32) as usize;
-    bucket.min(BUCKETS - 1)
 }
 
 /// Where the near window sits inside the night.

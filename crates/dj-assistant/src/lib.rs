@@ -49,7 +49,7 @@ pub use coach::{Footing, Moment, Note, Observed};
 pub use http::{HttpJson, ReqwestJson};
 pub use native::{AnthropicProvider, GoogleProvider};
 pub use openai_compat::OpenAiCompatProvider;
-pub use posture::{Occasion, Pack, Posture, packs};
+pub use posture::{Grounds, Occasion, Pack, Posture, Warrant, packs};
 pub use provider::{
     AssistantError, Completion, LlmProvider, Model, ProviderId, ProviderStatus, Role, Turn, Usage,
 };

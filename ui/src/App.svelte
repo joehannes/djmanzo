@@ -45,6 +45,7 @@
   } from "./api";
   import Next from "./Next.svelte";
   import Pair from "./Pair.svelte";
+  import Night from "./Night.svelte";
   import Palette from "./Palette.svelte";
   import Plan from "./Plan.svelte";
   import SideView from "./SideView.svelte";
@@ -201,6 +202,7 @@
     "next",
     "plan",
     "pair",
+    "night",
     "booth",
     "presets",
     "sampler",
@@ -246,6 +248,7 @@
     next: "right",
     plan: "bottom",
     pair: "bottom",
+    night: "right",
     booth: "bottom",
     log: "bottom",
     presets: "right",
@@ -742,6 +745,20 @@
     publishAudio(snapshot?.context);
   });
 
+  /*
+    And the attention budget goes to CSS the same way.
+
+    One attribute rather than a prop threaded through thirty components: what
+    the budget governs is whether things move, and motion is decided in the
+    stylesheet. `cockpit::Attention` derives the level in Rust from the context
+    engine, so a panel cannot decide for itself that now is a good moment to
+    animate -- see `app.css` for what `none` actually costs.
+  */
+  $effect(() => {
+    const motion = snapshot?.attention.motion;
+    if (motion) document.documentElement.dataset.motion = motion;
+  });
+
   /**
    * The set recording, or nothing if no snapshot has arrived.
    *
@@ -1092,6 +1109,7 @@
           waveform each need width, and a side dock is 360 px.
         -->
         <IconButton icon="fa-solid fa-code-compare" label="Pair" title="Two records side by side, and the seam between them" active={isOpen("pair")} onClick={() => toggleSurface("pair")} />
+        <IconButton icon="fa-solid fa-moon" label="Night" title="Where the set is in its arc, and what says so" active={isOpen("night")} onClick={() => toggleSurface("night")} />
         <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={isOpen("presets")} onClick={() => toggleSurface("presets")} />
         <!--
           The booth: microphone, automix, a plugin insert and the master
@@ -1334,6 +1352,10 @@
     <Pair enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
   {/snippet}
 
+  {#snippet surfaceNight()}
+    <Night enabled={ready} />
+  {/snippet}
+
   {#snippet surfaceBooth()}
     {#if snapshot}
       <div class="mixer">
@@ -1514,6 +1536,7 @@
         {:else if placement.surface === "next"}{@render surfaceNext()}
         {:else if placement.surface === "plan"}{@render surfacePlan()}
         {:else if placement.surface === "pair"}{@render surfacePair()}
+        {:else if placement.surface === "night"}{@render surfaceNight()}
         {:else if placement.surface === "booth"}{@render surfaceBooth()}
         {:else if placement.surface === "presets"}{@render surfacePresets()}
         {:else if placement.surface === "assistant"}{@render surfaceAssistant()}

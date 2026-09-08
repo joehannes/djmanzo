@@ -11,6 +11,13 @@
     },
     "session": null
   },
+  "attention": {
+    "promoted_controls": 8,
+    "suggestions": 5,
+    "notices": 3,
+    "reflow": true,
+    "motion": "normal"
+  },
   "decks": [
     {
       "number": 1,

@@ -34,14 +34,21 @@
 //! and then explains is one a DJ cannot get ahead of.
 
 use crate::plan::{self, Incoming, Outgoing};
-use dj_assistant::{Occasion, Posture, Takeover};
-use dj_core::{DeckId, ParamId, TrackId, action::TransitionStyle, param::DeckParam};
+use dj_assistant::{Occasion, Posture, Takeover, Warrant};
+use dj_core::{Certainty, DeckId, ParamId, TrackId, action::TransitionStyle, param::DeckParam};
 
 /// Where the set is, as the autopilot needs it.
 #[derive(Debug, Clone)]
 pub struct Situation {
     pub posture: Posture,
     pub occasion: Occasion,
+    /// How sure djmanzo is about the night it would be mixing into.
+    ///
+    /// The other axis of [§9](../../../docs/DIRECTIVE.md), and the reason the
+    /// posture alone no longer decides. `dj_core::Certainty::Fair` is what to
+    /// pass when nothing has formed an opinion — see `Posture::unweighed`,
+    /// which says why that is not the same as being unsure.
+    pub certainty: Certainty,
     /// The deck the room is hearing.
     pub live: DeckId,
     /// Where the live deck is and how it is set up.
@@ -112,7 +119,11 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
         posture, occasion, ..
     } = situation;
 
-    if *posture == Posture::Off || *posture == Posture::Watch {
+    // Autonomy and certainty, resolved into the one question every branch
+    // below actually asks. `Posture::may_act` and its neighbours describe what
+    // a level is *for*; this describes what may happen now.
+    let warrant = posture.warrant(situation.certainty);
+    if !warrant.may_speak() && !warrant.may_stage() {
         return Decision::nothing("the assistant is not acting at this level");
     }
 
@@ -133,7 +144,7 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
     //
     // Everything from Prepare upwards does this. It is the whole of what
     // Prepare is, and the part of Autopilot that happens first.
-    if posture.may_stage()
+    if warrant.may_stage()
         && let Some(idle) = situation.idle
     {
         {
@@ -183,9 +194,15 @@ pub fn next_step(situation: &Situation, takeover: &Takeover) -> Decision {
     // -- mixing -----------------------------------------------------------
     //
     // Only Autopilot, and only with somewhere to go.
-    if !posture.may_mix() {
-        return Decision::nothing(match posture {
-            Posture::Prepare => "ready when you are",
+    if !warrant.may_mix() {
+        return Decision::nothing(match (posture, warrant) {
+            // The one case §9 calls invalid, and the sentence a DJ deserves
+            // for it: the machine is not mixing because the night it would be
+            // mixing into is not one it can read.
+            (Posture::Assist | Posture::Autopilot, Warrant::Stage) => {
+                "staged, not mixing -- the night and your occasion disagree"
+            }
+            (Posture::Prepare, _) => "ready when you are",
             _ => "waiting",
         });
     }
@@ -308,6 +325,9 @@ mod tests {
             staged: None,
             next: Some(TrackId::from_bytes([9; 32])),
             gain_offset_db: None,
+            // Nothing has read this night, which is not the same as doubting
+            // it. See `Posture::unweighed`.
+            certainty: Certainty::Fair,
         }
     }
 
@@ -373,6 +393,73 @@ mod tests {
     /// The check whose failure an audience hears. Tested against a situation
     /// that would otherwise definitely mix, so a pass means the takeover did
     /// the work and not some other condition.
+    /// §9's invalid cell, as behaviour: full autonomy on a night the evidence
+    /// contradicts stages the record and stops there.
+    ///
+    /// It does not stop working. A DJ whose assistant went silent because the
+    /// room disagreed with the occasion would have lost the staging as well,
+    /// which is the half that was never in question.
+    #[test]
+    fn an_unreadable_night_stages_instead_of_mixing() {
+        let mixing = next_step(&ready_to_mix(Posture::Autopilot), &Takeover::new());
+        assert!(
+            matches!(mixing.step, Step::Mix { .. }),
+            "the fixture must mix or this tests nothing: {mixing:?}"
+        );
+
+        let unsure = Situation {
+            certainty: Certainty::Unsure,
+            ..ready_to_mix(Posture::Autopilot)
+        };
+        let decision = next_step(&unsure, &Takeover::new());
+        assert_eq!(decision.step, Step::Nothing);
+        assert!(
+            decision.because.contains("disagree"),
+            "said {:?} rather than why it is not mixing",
+            decision.because
+        );
+
+        // And with a deck free, the same night still gets a record staged.
+        let staging = Situation {
+            certainty: Certainty::Unsure,
+            ..situation(Posture::Autopilot)
+        };
+        assert!(
+            matches!(
+                next_step(&staging, &Takeover::new()).step,
+                Step::Stage { .. }
+            ),
+            "an unclear night stopped the assistant doing the silent half too"
+        );
+    }
+
+    /// Certainty gates autonomy; it never grants it.
+    #[test]
+    fn no_certainty_makes_a_quiet_posture_loud() {
+        for certainty in Certainty::ALL {
+            for posture in [
+                Posture::Off,
+                Posture::Watch,
+                Posture::Suggest,
+                Posture::Prepare,
+            ] {
+                let decision = next_step(
+                    &Situation {
+                        certainty,
+                        ..ready_to_mix(posture)
+                    },
+                    &Takeover::new(),
+                );
+                assert!(
+                    !matches!(decision.step, Step::Mix { .. }),
+                    "{} mixed at {}",
+                    posture.name(),
+                    certainty.name()
+                );
+            }
+        }
+    }
+
     #[test]
     fn a_hand_on_the_crossfader_stops_the_mix() {
         let ready = ready_to_mix(Posture::Autopilot);

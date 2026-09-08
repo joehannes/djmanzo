@@ -397,6 +397,68 @@ impl Attention {
             motion: Motion::None,
         }
     }
+
+    /// The budget for the frame about to be shown.
+    ///
+    /// The one place this is decided. [§11](../../../docs/DIRECTIVE.md) asks
+    /// for a context engine that is the *common* input to the adaptive
+    /// interface rather than a rule copied into every panel, and an attention
+    /// budget each surface worked out for itself would be four rules that
+    /// disagree at exactly the moment they matter.
+    ///
+    /// The order is the order of severity, and it is not negotiable:
+    ///
+    /// 1. **Something is broken.** The recording has failed, or the headphone
+    ///    card has stopped taking audio. Nothing may reflow and nothing may
+    ///    suggest; the DJ needs the controls.
+    /// 2. **Two records are audible.** A mix is happening. §18's rule that the
+    ///    interface may not move while somebody is reaching for it is exactly
+    ///    this case.
+    /// 3. **The night is at its peak**, and something more than a guess says
+    ///    so. A DJ at peak time has moments between records too — but only
+    ///    where the read is worth acting on, which is what
+    ///    `dj_core::Certainty` is for.
+    /// 4. Otherwise there is room to think.
+    #[must_use]
+    pub fn for_context(snapshot: &crate::Snapshot) -> Self {
+        if failing(snapshot) {
+            return Self::emergency();
+        }
+        if audible(snapshot) >= 2 {
+            return Self::performing();
+        }
+        let peaking = snapshot.context.session.is_some_and(|read| {
+            read.phase == dj_core::SessionPhase::Peak && read.certainty >= dj_core::Certainty::Fair
+        });
+        if peaking {
+            return Self::performing();
+        }
+        Self::preparing()
+    }
+}
+
+/// Whether something is wrong enough to want the advice to stop.
+///
+/// Both of these are failures the DJ can act on and neither is a counter that
+/// only goes up: an xrun count is a fact about the whole night, and an
+/// interface that went into emergency at the first one and stayed there would
+/// have said nothing useful about the second.
+fn failing(snapshot: &crate::Snapshot) -> bool {
+    snapshot.master.recording.failed
+        || snapshot
+            .master
+            .split_output
+            .as_ref()
+            .is_some_and(|split| !split.healthy)
+}
+
+/// How many decks the room can hear.
+fn audible(snapshot: &crate::Snapshot) -> usize {
+    snapshot
+        .decks
+        .iter()
+        .filter(|deck| deck.playing && deck.volume > 0.01)
+        .count()
 }
 
 // -- surfaces ---------------------------------------------------------------
@@ -620,6 +682,21 @@ pub fn surfaces() -> &'static [Surface] {
             least: (200, 80),
             prefer: (300, 200),
             priority: 75,
+            performance_critical: false,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            contextual: true,
+            docks: ANY_DOCK,
+        },
+        Surface {
+            name: "night",
+            title: "The night",
+            about: "Where the set is in its arc, and what says so.",
+            category: Category::Assistant,
+            least: (220, 96),
+            prefer: (320, 200),
+            priority: 70,
             performance_critical: false,
             detachable: true,
             stackable: true,
@@ -1159,6 +1236,87 @@ pub fn semantic_tokens() -> Vec<(&'static str, TokenShape)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A frame with `decks` decks audible.
+    fn frame(decks: u8) -> crate::Snapshot {
+        let registry = dj_control::ParameterRegistry::new();
+        registry.set(
+            dj_core::ParamId::Global(dj_core::param::GlobalParam::SampleRate),
+            48_000.0,
+        );
+        for number in 1..=decks {
+            let deck = dj_core::DeckId::from_human(number).expect("a deck");
+            registry.set(
+                dj_core::ParamId::Deck(deck, dj_core::param::DeckParam::Playing),
+                1.0,
+            );
+            registry.set(
+                dj_core::ParamId::Deck(deck, dj_core::param::DeckParam::Volume),
+                1.0,
+            );
+        }
+        crate::Snapshot::capture(&registry, 2).with_session(None)
+    }
+
+    /// One budget, decided in one place, in order of severity.
+    ///
+    /// §18's rule is the second row and it is the one that matters: while two
+    /// records are audible the interface may not move, because somebody is
+    /// reaching for it.
+    #[test]
+    fn the_attention_budget_follows_the_context() {
+        assert_eq!(frame(0).attention, Attention::preparing());
+        assert!(frame(0).attention.reflow);
+
+        let mixing = frame(2);
+        assert_eq!(mixing.attention, Attention::performing());
+        assert!(!mixing.attention.reflow, "the interface may reflow mid-mix");
+
+        let mut broken = frame(0);
+        broken.master.recording.failed = true;
+        let broken = broken.with_session(None);
+        assert_eq!(broken.attention, Attention::emergency());
+        assert_eq!(broken.attention.suggestions, 0);
+    }
+
+    /// Peak time earns a performing budget — but only on a read worth acting
+    /// on, which is the other half of §9.
+    #[test]
+    fn peak_time_only_narrows_the_budget_when_the_read_is_worth_it() {
+        let peak = |certainty| {
+            Some(dj_core::SessionRead {
+                phase: dj_core::SessionPhase::Peak,
+                energy: 0.9,
+                environment: dj_core::EnvironmentContext::default(),
+                certainty,
+                basis: dj_core::Basis::Agreed,
+                drift: None,
+            })
+        };
+        assert_eq!(
+            frame(0)
+                .with_session(peak(dj_core::Certainty::Sure))
+                .attention,
+            Attention::performing()
+        );
+        assert_eq!(
+            frame(0)
+                .with_session(peak(dj_core::Certainty::Unsure))
+                .attention,
+            Attention::preparing(),
+            "narrowed the interface on a read nothing agreed with"
+        );
+    }
+
+    /// A surface djmanzo can place has to be one the browser knows the name
+    /// of, and the contextual ones are the ones the engine may open.
+    #[test]
+    fn the_night_is_a_surface_the_context_engine_may_open() {
+        let night = surface("night").expect("the night is a surface");
+        assert!(night.contextual);
+        assert!(!night.performance_critical);
+        assert_eq!(night.category, Category::Assistant);
+    }
 
     /// The bands have to be usable as a lookup: ordered, and total.
     #[test]

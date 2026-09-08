@@ -98,6 +98,12 @@ pub struct AppState {
     audience: Arc<crate::audience::Audience>,
     /// What the room has been doing, when anything is watching it.
     room: Arc<Mutex<dj_assistant::room::Room>>,
+    /// What the night has been, and therefore what it is. See [`crate::night`].
+    ///
+    /// One per run of the application, alongside `session_id` and for the same
+    /// reason: a context engine is about *this* night and starting a second one
+    /// would throw away the range the first had built.
+    night: Arc<crate::night::Night>,
     /// Tempo sync with other djmanzo instances. Off until a DJ switches it
     /// on; see `crate::peersync`.
     peers: Arc<crate::peersync::Peers>,
@@ -408,6 +414,7 @@ impl AppState {
             remote: Arc::new(crate::remote::Remote::default()),
             audience: Arc::new(crate::audience::Audience::default()),
             room: Arc::new(Mutex::new(dj_assistant::room::Room::new())),
+            night: Arc::new(crate::night::Night::new()),
             peers: Arc::new(crate::peersync::Peers::default()),
             clock: Arc::new(crate::clock::MidiClock::default()),
             clock_follow: Arc::new(crate::clock::ClockFollow::default()),
@@ -1347,6 +1354,27 @@ impl AppState {
     #[must_use]
     pub fn conduct(&self) -> Arc<Mutex<Conduct>> {
         Arc::clone(&self.conduct)
+    }
+
+    /// The context engine.
+    #[must_use]
+    pub fn night(&self) -> Arc<crate::night::Night> {
+        Arc::clone(&self.night)
+    }
+
+    /// Set what the night is, and tell the context engine.
+    ///
+    /// The one path between the two. An occasion set in one place and pushed to
+    /// the engine in another is the shape that eventually ships a night the
+    /// interface and the engine disagree about — and `assistant_apply_pack`
+    /// setting both dials at once is exactly the second place it would happen.
+    pub fn set_occasion(&self, occasion: dj_assistant::Occasion) -> Result<(), String> {
+        let conduct = self.conduct();
+        let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+        guard.occasion = occasion;
+        drop(guard);
+        self.night.declare(occasion.declares_phase());
+        Ok(())
     }
 
     /// Note that a human moved a control.

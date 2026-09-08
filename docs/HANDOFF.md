@@ -106,6 +106,16 @@ catch a clipped deck spent a session measuring an application that no longer
 existed. A Rust test now reads the TypeScript file and fails when they
 disagree — do not delete it.
 
+**Recapturing `ui/e2e/snapshot.json` can quietly weaken the budget.**
+`DJMANZO_SNAPSHOT_OUT` writes the moment two decks are loaded, which is *before*
+the analyser has finished — so a fresh capture can land with `analysis: null` on
+both decks, and a deck with no tempo, key or phrase row is shorter than the one
+the budget exists to measure. Adding a field to `Snapshot` does not need a new
+capture: the fixture test compares *keys*, so adding the new key to the
+committed file with the value djmanzo really produces for that state preserves
+everything the geometry was calibrated against. Recapture only when the values
+themselves need to change, and check the analysis came with them.
+
 **The band floors are a fact about the top bar, not only about the deck.**
 Adding one destination button pushed that row onto another wrapped line and
 took 40 px out of every stage at every window height. Do not guess the
@@ -157,10 +167,23 @@ dockable surfaces of their own, and each time the thing they replaced was
 removed rather than duplicated — because two places that do the same job
 eventually disagree.
 
+The context engine (§11) now exists and is the shape the rest of phase 5 should
+follow: one judgement, made in one place, published on the snapshot, with a
+stated certainty and a stated basis — and consumers that read it rather than
+each working the same thing out. `dj_core::ContextEngine` is the engine,
+`dj_app::night` feeds it, `cockpit::Attention::for_context` and the autopilot
+are the first two consumers, and the **Night** surface shows its working.
+Three of `DJContext`'s eight fields are still ungathered (`musicContext`,
+`hardwareContext`, `djBehaviorContext`) and they are absent rather than empty,
+because a field that is always null is a promise.
+
 The largest open sections, in the order they are worth doing:
 
-1. **§11, the context engine** — the room, the night, the phase. Phase 5 of
-   `GUI-OVERHAUL.md`, and what §9, §12, §14 and §17 all wait on.
+1. **The rest of phase 5** — staged transactions (§44) and AI-requested typed
+   UI operations (§41). The context engine and §9's warrant are done; what is
+   missing is the *transaction*: stage a load, a cue, a gain and a loop
+   together, and offer Accept / Modify / Reject before any of it becomes
+   actions on the bus.
 2. **§25–§27, the waveform as instrumentation** — direct manipulation, the
    ghost track, and answering "what will happen if I do it". The transition
    object §27 was waiting on now exists, and the pair view already draws a mix

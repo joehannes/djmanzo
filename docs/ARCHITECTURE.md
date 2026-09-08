@@ -342,6 +342,10 @@ made for behaviour, applied to what is on screen. It is not implemented yet.
 crates/
   dj-core       domain types: TrackId, TimePos, Beatgrid, CuePoint, MusicalKey, Action
                 — no I/O, no dependencies beyond std + serde; everything else depends on it
+                — and `context::ContextEngine`, the one place a session phase is decided.
+                It keeps state but still takes no clock and opens no file: it is fed
+                observations and elapsed times, which is what makes a six-hour night a
+                millisecond of test
   dj-audio      AudioBackend trait, device enumeration, clock/drift correction, cpal backend
   dj-engine     THE realtime crate: decks, scaler, mixer, sampler, sync. RT rules apply here
                 and nowhere else.

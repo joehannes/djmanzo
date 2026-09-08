@@ -155,6 +155,33 @@
     ]
   },
   {
+    "name": "night",
+    "title": "The night",
+    "about": "Where the set is in its arc, and what says so.",
+    "category": "assistant",
+    "least": [
+      220,
+      96
+    ],
+    "prefer": [
+      320,
+      200
+    ],
+    "priority": 70,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "overlay",
+      "detached"
+    ]
+  },
+  {
     "name": "requests",
     "title": "Requests",
     "about": "What the room has asked for.",

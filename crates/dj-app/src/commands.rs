@@ -1384,6 +1384,10 @@ pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
         },
         Some(&recording),
     )
+    // The engine's last answer rather than a fresh one: a panel asking for a
+    // frame outside the pump must see what the interface is already showing,
+    // not a second opinion computed from a slightly different moment.
+    .with_session(state.night().read())
 }
 
 /// What the interface needs to size a deck's waveform strip.
@@ -2956,10 +2960,7 @@ pub fn assistant_set_posture(state: State<'_, AppState>, posture: String) -> Res
 pub fn assistant_set_occasion(state: State<'_, AppState>, occasion: String) -> Result<(), String> {
     let wanted = dj_assistant::Occasion::parse(&occasion)
         .ok_or_else(|| format!("{occasion:?} is not an occasion"))?;
-    let conduct = state.conduct();
-    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
-    guard.occasion = wanted;
-    Ok(())
+    state.set_occasion(wanted)
 }
 
 /// Choose a pack, setting both dials at once.
@@ -2969,11 +2970,12 @@ pub fn assistant_apply_pack(state: State<'_, AppState>, name: String) -> Result<
         .iter()
         .find(|p| p.name.eq_ignore_ascii_case(name.trim()))
         .ok_or_else(|| format!("no pack called {name:?}"))?;
-    let conduct = state.conduct();
-    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
-    guard.posture = pack.posture;
-    guard.occasion = pack.occasion;
-    Ok(())
+    {
+        let conduct = state.conduct();
+        let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+        guard.posture = pack.posture;
+    }
+    state.set_occasion(pack.occasion)
 }
 
 /// Take everything out of the assistant's hands, now.
@@ -3105,6 +3107,13 @@ fn read_situation(
     crate::autopilot::Situation {
         posture: conduct.posture,
         occasion: conduct.occasion,
+        // What the context engine has made of the night, or `Fair` where it has
+        // not made anything of it yet -- the assistant is not held back for the
+        // six minutes the engine needs before it can speak.
+        certainty: state
+            .night()
+            .read()
+            .map_or(dj_core::Certainty::Fair, |read| read.certainty),
         live,
         outgoing,
         idle,
@@ -6952,6 +6961,85 @@ pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
         light: room.lately(Sense::Light),
         movement: room.lately(Sense::Movement),
         loudness: room.lately(Sense::Loudness),
+    })
+}
+
+// -- what the night is -----------------------------------------------------
+//
+// See `crate::night` and `dj_core::context`: the phase is a judgement made in
+// one place, and this is the view of it.
+
+/// What djmanzo has made of the night.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NightDto {
+    /// The phase, by its stable name, or `None` when nothing has read one.
+    pub phase: Option<String>,
+    /// The phase as it appears mid-sentence, for a heading.
+    pub words: Option<String>,
+    /// How hard the night is going, 0..=1. See `dj_core::SessionRead::energy`.
+    pub energy: Option<f32>,
+    /// How much to believe it: `unsure`, `fair` or `sure`.
+    pub certainty: Option<String>,
+    /// One line saying what that certainty means.
+    pub certainty_about: Option<String>,
+    /// What produced the phase: `declared`, `measured`, `agreed`, `disputed`.
+    pub basis: Option<String>,
+    /// Which way the evidence pulls, when the two disagree.
+    pub drift: Option<String>,
+    /// Roughly when it is, from the clock.
+    pub time_of_day: Option<String>,
+    /// What the DJ's occasion says the night is, when it says anything.
+    pub declared: Option<String>,
+    /// What the music alone reads as, which is not always the same thing.
+    ///
+    /// Carried separately from `phase` so the interface can *mark* a
+    /// disagreement rather than only describe it. `phase` is the DJ's word
+    /// wherever they have given one; this is what djmanzo would have said.
+    pub measured: Option<String>,
+    /// How many readings tonight's range is built from.
+    pub readings: usize,
+    /// How many more before the music alone may name a phase.
+    pub still_needed: usize,
+    /// Everything worth saying, most important first. Never empty.
+    pub notes: Vec<String>,
+    /// What the assistant is allowed to do, given the posture and the
+    /// certainty. See `dj_assistant::Warrant` — this is §9's matrix as it
+    /// actually stands right now.
+    pub warrant: String,
+}
+
+/// What djmanzo has made of the night, for the surface that shows it.
+#[tauri::command]
+pub fn night_read(state: State<'_, AppState>) -> Result<NightDto, String> {
+    let night = state.night();
+    let read = night.read();
+    let (readings, still_needed) = night.progress();
+    let posture = state
+        .conduct()
+        .lock()
+        .map(|guard| guard.posture)
+        .unwrap_or_default();
+    let warrant = read.map_or_else(
+        || posture.unweighed(),
+        |read| posture.warrant(read.certainty),
+    );
+    Ok(NightDto {
+        phase: read.map(|read| read.phase.name().to_owned()),
+        words: read.map(|read| crate::night::phase_words(read.phase).to_owned()),
+        energy: read.map(|read| read.energy),
+        certainty: read.map(|read| read.certainty.name().to_owned()),
+        certainty_about: read.map(|read| read.certainty.about().to_owned()),
+        basis: read.map(|read| read.basis.name().to_owned()),
+        drift: read
+            .and_then(|read| read.drift)
+            .map(|d| d.name().to_owned()),
+        time_of_day: read.map(|read| read.environment.time_of_day.name().to_owned()),
+        declared: night.declared().map(|phase| phase.name().to_owned()),
+        measured: night.measured().map(|phase| phase.name().to_owned()),
+        readings,
+        still_needed,
+        notes: night.notes(),
+        warrant: warrant.name().to_owned(),
     })
 }
 

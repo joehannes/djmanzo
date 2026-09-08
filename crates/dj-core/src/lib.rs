@@ -27,7 +27,8 @@ pub mod vocabulary;
 
 pub use action::{Action, DeckAction, EqBand, MixerAction, Stem, StemChange};
 pub use context::{
-    AudioMetrics, EnvironmentContext, SessionContext, SessionPhase, SessionRead, TimeOfDay,
+    AudioMetrics, Basis, Certainty, ContextEngine, Drift, EnvironmentContext, Observation,
+    SessionContext, SessionPhase, SessionRead, Spread, TimeOfDay,
 };
 pub use deck::{CrossfaderAssign, DeckId, MAX_DECKS};
 pub use fx::{EffectKind, FX_SLOTS, FxChange, Placement};

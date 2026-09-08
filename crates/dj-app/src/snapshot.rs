@@ -487,11 +487,29 @@ pub struct SplitOutputSnapshot {
 pub struct Snapshot {
     /// The global session context driving the UI's contextual expression.
     pub context: SessionContext,
+    /// How much the interface may ask of the DJ right now.
+    ///
+    /// Derived from the same context rather than decided by whichever panel is
+    /// asking, which is the whole of [§11](../../../docs/DIRECTIVE.md): one
+    /// context engine underneath, not a copy of the logic in each consumer.
+    pub attention: crate::cockpit::Attention,
     pub decks: Vec<DeckSnapshot>,
     pub master: MasterSnapshot,
 }
 
 impl Snapshot {
+    /// Attach what the context engine has made of the night.
+    ///
+    /// A separate step rather than another parameter on `capture_all`, because
+    /// capturing is reading the registry and this is a judgement over time.
+    /// The attention budget follows from it, so the two can never disagree.
+    #[must_use]
+    pub fn with_session(mut self, read: Option<dj_core::SessionRead>) -> Self {
+        self.context.session = read;
+        self.attention = crate::cockpit::Attention::for_context(&self);
+        self
+    }
+
     /// Read the current state of `deck_count` decks.
     #[must_use]
     pub fn capture(registry: &ParameterRegistry, deck_count: usize) -> Self {
@@ -708,6 +726,10 @@ impl Snapshot {
 
         Self {
             context,
+            // Replaced by `with_session` once the context engine has looked at
+            // this frame. Preparing is the honest default: a snapshot nobody
+            // has read the night from is not one to freeze the interface on.
+            attention: crate::cockpit::Attention::preparing(),
             decks,
             master: MasterSnapshot {
                 recording: SetRecordingSnapshot {
@@ -894,6 +916,12 @@ pub struct Sources {
     pub samples: Option<Arc<SampleNames>>,
     /// The set recording's counters. See [`crate::setrec::RecordingState`].
     pub recording: Option<Arc<crate::setrec::RecordingState>>,
+    /// The context engine. See [`crate::night::Night`].
+    ///
+    /// The pump is where it belongs: it already builds the frame the engine
+    /// reads, sixty times a second, and every other candidate would have been a
+    /// second loop looking at the same decks.
+    pub night: Option<Arc<crate::night::Night>>,
 }
 
 /// A running snapshot pump. Stops when dropped.
@@ -953,6 +981,7 @@ impl SnapshotPump {
             tracks,
             samples,
             recording,
+            night,
         } = sources;
         let alive = Arc::new(AtomicBool::new(true));
         let thread = {
@@ -978,6 +1007,11 @@ impl SnapshotPump {
                             },
                             recording.as_deref(),
                         );
+                        // The night is read from the frame that is about to be
+                        // shown, so what the interface draws and what the
+                        // engine saw are the same moment.
+                        let read = night.as_deref().and_then(|night| night.observe(&snapshot));
+                        let snapshot = snapshot.with_session(read);
                         let changed = previous.as_ref() != Some(&snapshot);
 
                         // Skip identical frames -- an idle application should not

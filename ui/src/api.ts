@@ -608,17 +608,35 @@ export interface AudioMetrics {
   bands: [number, number, number, number];
 }
 
+/** How much to believe a reading of the night. Ordered, quietest first. */
+export type Certainty = "unsure" | "fair" | "sure";
+
+/** What produced a phase. See `dj_core::context::Basis`. */
+export type Basis = "nothing" | "declared" | "measured" | "agreed" | "disputed";
+
+/** Which way the evidence pulls away from what the DJ declared. */
+export type Drift = "hotter" | "cooler";
+
 /**
- * Somebody's reading of the room.
+ * djmanzo's reading of the night.
  *
- * Only ever present once something has actually read it, which is M9. Until
- * then `SessionContext.session` is null and a theme shows its neutral
+ * Present only once `dj_core::ContextEngine` has something to go on: an
+ * occasion the DJ chose, or six minutes of music to compare the last few
+ * minutes against. Until then it is null and a theme shows its neutral
  * treatment rather than guessing.
  */
 export interface SessionRead {
   phase: SessionPhase;
+  /**
+   * 0..=1. Where the music sits in the whole night's own range, or — before
+   * there is a range — the measured loudness. `certainty` says which.
+   */
   energy: number;
   environment: EnvironmentContext;
+  certainty: Certainty;
+  basis: Basis;
+  /** Set only when `basis` is `disputed`. */
+  drift: Drift | null;
 }
 
 export interface SessionContext {
@@ -626,8 +644,27 @@ export interface SessionContext {
   session: SessionRead | null;
 }
 
+/** How still the interface may be asked to hold. */
+export type Motion = "none" | "low" | "normal" | "high";
+
+/**
+ * How much the interface may ask of the DJ right now.
+ *
+ * Derived in Rust from the same context every other consumer reads, so no
+ * panel has to decide for itself whether now is a moment to interrupt.
+ */
+export interface Attention {
+  promoted_controls: number;
+  suggestions: number;
+  notices: number;
+  /** False during a mix, always. Nothing may move while somebody reaches. */
+  reflow: boolean;
+  motion: Motion;
+}
+
 export interface Snapshot {
   context: SessionContext;
+  attention: Attention;
   decks: DeckState[];
   master: MasterState;
 }
@@ -2509,6 +2546,48 @@ export const roomSaw = (reading: {
   });
 export const roomRead = () => invoke<RoomRead>("room_read");
 export const roomForget = () => invoke<void>("room_forget");
+
+/* -- what the night is ----------------------------------------------------- */
+
+/**
+ * djmanzo's reading of the night, with its working shown.
+ *
+ * The judgement is made once, in `dj_core::ContextEngine`, and this is the view
+ * of it. Everything is nullable together: before anything has read the night
+ * there is no phase, no certainty and no basis, and the notes say so in a
+ * sentence rather than leaving the panel to invent one.
+ */
+export interface NightRead {
+  phase: SessionPhase | null;
+  /** The phase as it appears mid-sentence, e.g. "at its peak". */
+  words: string | null;
+  energy: number | null;
+  certainty: Certainty | null;
+  /** One line saying what that certainty means. */
+  certainty_about: string | null;
+  basis: Basis | null;
+  drift: Drift | null;
+  time_of_day: TimeOfDay | null;
+  /** What your occasion says the night is, when it says anything. */
+  declared: SessionPhase | null;
+  /**
+   * What the music alone reads as, which is not always `phase`.
+   *
+   * `phase` is your word wherever you have given one; this is what djmanzo
+   * would have said. Carried separately so a disagreement can be marked rather
+   * than only described.
+   */
+  measured: SessionPhase | null;
+  readings: number;
+  /** How many more before the music alone may name a phase. */
+  still_needed: number;
+  /** Worth saying, most important first. Never empty. */
+  notes: string[];
+  /** What the assistant may do right now. See `dj_assistant::Warrant`. */
+  warrant: "nothing" | "watch" | "speak" | "stage" | "act" | "mix";
+}
+
+export const nightRead = () => invoke<NightRead>("night_read");
 
 /* -- finding a record from what you remember ------------------------------- */
 

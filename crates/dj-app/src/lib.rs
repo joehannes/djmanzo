@@ -35,6 +35,7 @@ pub mod layout;
 pub mod library;
 pub mod memory;
 pub mod monitors;
+pub mod night;
 pub mod peersync;
 pub mod persist;
 pub mod plan;
@@ -121,6 +122,7 @@ pub fn run() {
     let deck_tracks = state.deck_tracks();
     let sample_names = state.sample_names();
     let recording_state = state.recording_state();
+    let night = state.night();
     // The snapshot pump is where a hot cue change becomes visible to the host:
     // the engine sets cues at a playhead quantize may have moved, so the only
     // reliable reading is the one the audio thread publishes. See
@@ -272,6 +274,7 @@ pub fn run() {
                     tracks: Some(deck_tracks),
                     samples: Some(sample_names),
                     recording: Some(recording_state),
+                    night: Some(night),
                 },
                 move |snapshot| {
                     use tauri::Emitter;
@@ -400,6 +403,7 @@ pub fn run() {
             commands::audience_sheet,
             commands::room_saw,
             commands::room_read,
+            commands::night_read,
             commands::room_forget,
             commands::words_search,
             commands::words_progress,
