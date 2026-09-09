@@ -201,10 +201,13 @@ fn walk(events: &[TimedEvent]) -> (Vec<Crossing>, Vec<(Duration, DeckId, Signal)
                             signals.push((entry.at, deck, Signal::Echo));
                         }
                     }
-                    FxChange::SetEnabled(true) | FxChange::ToggleEnabled => {
-                        if selected.get(&(deck, *slot)) == Some(&EffectKind::Echo) {
-                            signals.push((entry.at, deck, Signal::Echo));
-                        }
+                    // Turning on a slot that already holds an echo, which is
+                    // the other half of the same signal: a DJ who set the slot
+                    // up earlier in the night throws it here.
+                    FxChange::SetEnabled(true) | FxChange::ToggleEnabled
+                        if selected.get(&(deck, *slot)) == Some(&EffectKind::Echo) =>
+                    {
+                        signals.push((entry.at, deck, Signal::Echo));
                     }
                     _ => {}
                 },

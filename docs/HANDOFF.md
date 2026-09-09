@@ -95,6 +95,15 @@ the *previous* bundle. A Playwright run then tests the old code and passes.
 This has produced a false "mutation killed" result more than once. Always look
 for `✓ built` in the output; never pipe it to `tail -1` and assume.
 
+**The container's Rust can be older than CI's, and clippy gains lints.** CI
+runs `dtolnay/rust-toolchain@stable`, so it is whatever stable is on the day.
+This container was four releases behind it, and a clean local
+`clippy -D warnings` was followed by a CI failure on `collapsible_match` — a
+lint the local clippy did not have. Check `cargo clippy --version` against
+CI's before trusting a green local run, and `rustup update stable` if they
+disagree; it takes a few minutes and a full rebuild, and it is cheaper than a
+red pipeline per commit.
+
 **Playwright's browser.** CI installs its own. A container that pre-installs
 one is pointed at it with `DJMANZO_CHROMIUM=/opt/pw-browsers/chromium`,
 otherwise every test fails with "Executable doesn't exist".
