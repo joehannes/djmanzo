@@ -402,6 +402,32 @@
     ]
   },
   {
+    "name": "mixes",
+    "title": "Tonight's mixes",
+    "about": "How tonight's records were joined, and what kind of mix each was.",
+    "category": "planning",
+    "least": [
+      260,
+      140
+    ],
+    "prefer": [
+      380,
+      320
+    ],
+    "priority": 30,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "home": "right",
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
     "name": "history",
     "title": "History",
     "about": "What has been played tonight.",

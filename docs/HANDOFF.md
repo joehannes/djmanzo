@@ -120,6 +120,14 @@ green. `waveform_info` was unstubbed for as long as the pair view has existed,
 so its waveform lanes had never once rendered in a test. If a panel looks empty
 in a browser test and full in the application, look at `ANSWERS` first.
 
+**Flex children shrink to nothing, so a dock squeezes instead of scrolling.**
+A third surface in a side dock rendered as one row cut through the middle of
+its letters — the dock has `overflow: auto` and never reached the height that
+would use it, because every surface in it shrank to make room. `.dock.side >
+.surface` has a `min-height` floor now. Worth remembering as a shape rather
+than as one fix: a scrollable flex column only scrolls if its children refuse
+to shrink.
+
 **The harness can be *fuller* than the application, not only emptier.** The
 `waveform_info` note above is the emptier direction. The other direction cost a
 session's confidence: a new field was added to that command, the Playwright stub
@@ -254,12 +262,22 @@ The largest open sections, in the order they are worth doing:
    markers, loop edges — uses the same `onMoveMark` shape: it is mostly a
    matter of giving each mark an owner that knows what moving it means. §27's
    ghost track still needs a preview player djmanzo does not have.
-2. **§68's last quarter.** The automix and the autopilot perform the held mix
-   now; **replay** still re-runs the actions a transition produced rather than
-   the object, which is fine for reproducing a night and useless for
-   *re-planning* one. The stem, EQ and FX plans are still absent because
-   nothing decides them — the automix's own style handling (`begin`) is the
-   closest thing to an FX plan that exists and would be the place to start.
+2. **§68's last quarter.** The automix and the autopilot perform the held mix,
+   and `dj_app::mixes` now derives the *performed* one back out of the action
+   log — the night's own list of what went into what, in beats, with the style
+   named from what was actually done. **Replay** is the piece still missing:
+   it re-runs the actions rather than the object, so a night can be reproduced
+   and not *re-planned*, and there is no way to hear one mix back on its own.
+   `replay.rs` renders a whole session; a window between two timestamps is the
+   natural next step and `mixes` now supplies the timestamps. The stem, EQ and
+   FX plans are still absent because nothing decides them — the automix's own
+   style handling (`begin`) is the closest thing to an FX plan that exists.
+
+   **What `mixes` cannot see**, so nobody rediscovers it as a bug: a mix made
+   entirely with EQ and no fader movement at all. The outgoing record never
+   becomes inaudible, so nothing crosses. That is a real gap and a small one —
+   a mix that never takes the outgoing record out is a mix that has not
+   finished.
 3. **§20's last view** — the compact cards. Set Flow and the pair view ship;
    the performance table is the browser at fewer columns than §20 lists.
 4. **§74, the contextual rail.**

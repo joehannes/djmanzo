@@ -2627,6 +2627,32 @@ export interface NightRead {
 
 export const nightRead = () => invoke<NightRead>("night_read");
 
+/* -- the mixes tonight (§67, §68) ------------------------------------------ */
+
+/**
+ * One handover, read back out of the action log.
+ *
+ * Derived rather than recorded — see `dj_app::mixes` — so a set recorded long
+ * before this existed still has its mixes in it. Everything here arrives
+ * decided: the browser interprets none of it, because a second opinion formed
+ * here would be one the coach and the session file disagree with.
+ */
+export interface Mix {
+  /** Seconds into the set. */
+  at: number;
+  took_seconds: number;
+  /** Length in beats, when the outgoing record's tempo is known. */
+  beats: number | null;
+  out_deck: number;
+  in_deck: number;
+  /** `null` where the record is no longer in the library. */
+  out_title: string | null;
+  in_title: string | null;
+  style: string;
+}
+
+export const sessionMixes = () => invoke<Mix[]>("session_mixes");
+
 /* -- the typed interface vocabulary (§41) ---------------------------------- */
 
 /**

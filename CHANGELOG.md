@@ -16,6 +16,46 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The night knows its own mixes** — §67 says the session contains transitions
+and §68 asks for those transitions to be explicit objects. `dj_app::transition`
+holds the mix that is *about* to happen; `dj_app::mixes` holds the ones that
+already did, and a **Tonight's mixes** surface shows them: what went into what,
+how long it took in beats, and what kind of mix it was.
+
+**Derived, never recorded.** The obvious implementation writes a transition
+into the session file as it is performed, and `SessionEvent` already argues
+against it about loading: an event with two spellings makes two takes recorded
+through different paths diff as different sets. A mix *is* its actions, so
+recording it beside them would be recording it twice and inviting the two to
+disagree. Deriving it instead means every set djmanzo has ever recorded gains
+its mixes, including the ones recorded before any of this existed.
+
+**One rule, not a recogniser per gesture.** A handover is *the room stopped
+hearing one record and started hearing another* — audibility computed the way
+the engine computes it, the channel fader times the crossfader gain for that
+deck's assignment, through `dj_dsp`'s own curve. A crossfader sweep, two
+channel faders crossing, and a fader against an assignment are all one event to
+the room, and a module with a branch for each would disagree with itself the
+first time somebody used two at once.
+
+**The style is a fact from the log, not a guess.** Length decides between a cut
+and a mix first, because that is what the room hears. Within a mix the most
+specific gesture names it: a vocal taken across is a vocal drop, an echo
+engaged over the outgoing record is an echo, the outgoing bass pulled out is a
+blend, and a crossfade with none of them is a fade. A gesture on the *incoming*
+deck names nothing — the bass coming out of the record arriving is a DJ making
+room for it, and attributing that to the record leaving would call almost every
+mix a blend until the word stopped meaning anything.
+
+`dj_assistant::coach::CUT_MAX` is public now and shared, so the coach cannot
+call a handover a cut while the session's own list of it says otherwise.
+
+**Two things found by opening it in the running application.** A pair of short
+titles was drawn as two columns with the arrow stranded between them. And a
+third surface in a side dock squeezed to a single row cut through the middle of
+its letters — flex children shrink to nothing, so the dock never reached the
+height that would make it scroll. Side surfaces have a floor now.
+
 **The record says where it can be left, and the grid says when it is guessing**
 — two more of §25's twenty layers, both from arithmetic djmanzo already does.
 

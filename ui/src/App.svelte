@@ -47,6 +47,7 @@
   import Next from "./Next.svelte";
   import Pair from "./Pair.svelte";
   import Night from "./Night.svelte";
+  import Mixes from "./Mixes.svelte";
   import Staged from "./Staged.svelte";
   import Palette from "./Palette.svelte";
   import Plan from "./Plan.svelte";
@@ -213,6 +214,7 @@
     "keys",
     "controllers",
     "log",
+    "mixes",
   ] as const;
   type Drawn = (typeof DRAWN)[number];
 
@@ -1405,6 +1407,10 @@
     <Night enabled={ready} />
   {/snippet}
 
+  {#snippet surfaceMixes()}
+    <Mixes enabled={ready} />
+  {/snippet}
+
   {#snippet surfaceBooth()}
     {#if snapshot}
       <div class="mixer">
@@ -1586,6 +1592,7 @@
         {:else if placement.surface === "plan"}{@render surfacePlan()}
         {:else if placement.surface === "pair"}{@render surfacePair()}
         {:else if placement.surface === "night"}{@render surfaceNight()}
+        {:else if placement.surface === "mixes"}{@render surfaceMixes()}
         {:else if placement.surface === "booth"}{@render surfaceBooth()}
         {:else if placement.surface === "presets"}{@render surfacePresets()}
         {:else if placement.surface === "assistant"}{@render surfaceAssistant()}
@@ -2095,6 +2102,22 @@
        squeezed under about 320 px stops being a panel and becomes a column of
        ellipses. */
     flex: 0 1 clamp(320px, 30%, 520px);
+  }
+
+  /*
+    And a floor on the height of each panel in it.
+
+    Flex children shrink to nothing by default, so a third surface in a side
+    dock left the one at the bottom showing a single row cut through the
+    middle of its letters — found by opening Tonight's mixes with the Night and
+    the assistant already there. The dock already scrolls; without a floor it
+    never reaches the height that would make it, and squeezes instead. Eight
+    rems is about the smallest height at which every side surface is still a
+    panel rather than a title bar with a hint of content under it, and it is
+    close to the least height `cockpit::Surface` asks for.
+  */
+  .dock.side > .surface {
+    min-height: 8rem;
   }
 
   .dock.bottom {

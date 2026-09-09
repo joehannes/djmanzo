@@ -1491,6 +1491,65 @@ pub fn report_bench(label: String, fps: f64, p50_ms: f64, p95_ms: f64, worst_ms:
     );
 }
 
+/// One mix the night contains, as the interface shows it.
+#[derive(Debug, Clone, Serialize)]
+pub struct MixDto {
+    /// Seconds into the set.
+    pub at: f64,
+    pub took_seconds: f64,
+    /// How long it ran in beats, when the outgoing record's tempo is known.
+    /// Absent rather than zero: a mix whose record has left the library has an
+    /// unknown length, and nought beats is a different claim.
+    pub beats: Option<f64>,
+    pub out_deck: u8,
+    pub in_deck: u8,
+    /// What was on them. `None` where the record is no longer in the library,
+    /// which is the one thing that can make a night's own list incomplete.
+    pub out_title: Option<String>,
+    pub in_title: Option<String>,
+    pub style: String,
+}
+
+/// The mixes tonight, read back out of the action log.
+///
+/// §67 says the session contains transitions and §68 says the transition
+/// object should drive practice and replay. `crate::mixes` derives them rather
+/// than recording them — see that module for why — so this works on a set
+/// recorded long before any of it existed.
+///
+/// The tempo and the titles come from the library here rather than in
+/// `mixes`, which has no business knowing what a library is: the log holds
+/// track ids and durations, and turning those into "42 beats" and a name is
+/// the job of the layer that can look them up.
+#[tauri::command]
+pub fn session_mixes(state: State<'_, AppState>) -> Vec<MixDto> {
+    let db = library(&state).ok();
+    let named = |id: Option<dj_core::TrackId>| -> (Option<String>, Option<f64>) {
+        let Some(track) = id.and_then(|id| db.as_ref()?.track(id).ok().flatten()) else {
+            return (None, None);
+        };
+        (Some(track.display_title()), track.analysis.bpm)
+    };
+
+    crate::mixes::handovers(&state.bus().log())
+        .into_iter()
+        .map(|mix| {
+            let (out_title, bpm) = named(mix.out_track);
+            let (in_title, _) = named(mix.in_track);
+            MixDto {
+                at: mix.began.as_secs_f64(),
+                took_seconds: mix.took().as_secs_f64(),
+                beats: bpm.and_then(|bpm| mix.beats(bpm)),
+                out_deck: mix.out.human_number(),
+                in_deck: mix.into.human_number(),
+                out_title,
+                in_title,
+                style: mix.style.as_str().to_owned(),
+            }
+        })
+        .collect()
+}
+
 /// The session so far, as replayable text.
 ///
 /// This is the action log from `ADR-0003` made visible. In M0 it exists to prove

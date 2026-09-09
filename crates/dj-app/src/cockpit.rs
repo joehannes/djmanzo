@@ -847,6 +847,27 @@ pub fn surfaces() -> &'static [Surface] {
             docks: SIDE,
         },
         Surface {
+            name: "mixes",
+            title: "Tonight's mixes",
+            // Deliberately not History's question. That one answers *which
+            // records* were played and persists across nights; this answers
+            // how tonight's were joined, which is a fact about the set rather
+            // than about the collection -- §67's "a session contains
+            // transitions", read back out of the session's own log.
+            about: "How tonight's records were joined, and what kind of mix each was.",
+            category: Category::Planning,
+            least: (260, 140),
+            prefer: (380, 320),
+            priority: 30,
+            performance_critical: false,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            contextual: false,
+            home: Dock::Right,
+            docks: SIDE,
+        },
+        Surface {
             name: "history",
             title: "History",
             about: "What has been played tonight.",

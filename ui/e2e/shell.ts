@@ -151,6 +151,31 @@ const ANSWERS: Record<string, unknown> = {
   // that matters reads it back and checks every `data-layer` on screen is in
   // it, so this stub is deliberately the real shape rather than a stand-in.
   waveform_layers: layers,
+  // Two mixes, the shape `dj_app::mixes` derives them in: a blend into a cut,
+  // oldest first, because that is the order the log produces and the panel is
+  // what reverses it.
+  session_mixes: [
+    {
+      at: 214.0,
+      took_seconds: 15.5,
+      beats: 32,
+      out_deck: 1,
+      in_deck: 2,
+      out_title: "Bachata Rosa",
+      in_title: "Ojalá Que Llueva Café",
+      style: "blend",
+    },
+    {
+      at: 461.0,
+      took_seconds: 1.4,
+      beats: null,
+      out_deck: 2,
+      in_deck: 1,
+      out_title: "Ojalá Que Llueva Café",
+      in_title: null,
+      style: "cut",
+    },
+  ],
   // Nothing staged, which is what a fresh application has. `Staged.svelte`
   // draws nothing at all for this, which is the point: the strip costs the
   // decks no height until there is something to decide.

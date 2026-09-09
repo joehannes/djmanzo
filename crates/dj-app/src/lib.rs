@@ -34,6 +34,7 @@ pub mod host;
 pub mod layout;
 pub mod library;
 pub mod memory;
+pub mod mixes;
 pub mod monitors;
 pub mod night;
 pub mod peersync;
@@ -432,6 +433,7 @@ pub fn run() {
             commands::get_snapshot,
             commands::waveform_info,
             commands::report_bench,
+            commands::session_mixes,
             commands::session_log,
             commands::library_status,
             commands::palette,

@@ -103,6 +103,14 @@ const PHRASE_SLACK: u32 = 1;
 /// swap, and calling them one would teach the wrong name for the wrong thing.
 const ONE_GESTURE: Duration = Duration::from_secs(2);
 
+/// The longest crossfade the room hears as an edit rather than as a mix.
+///
+/// Two seconds, which is roughly four beats at a danceable tempo. Public
+/// because `dj_app::mixes` decides the same thing about the same handover when
+/// it reads a night back, and two numbers for one judgement would let the
+/// coach call a mix a cut while the session's own list of it says otherwise.
+pub const CUT_MAX: Duration = Duration::from_secs(2);
+
 /// A low EQ at or below this is out of the way.
 const LOW_IS_OUT: f32 = 0.25;
 
@@ -294,9 +302,7 @@ pub fn crossfade_shape(moments: &[Moment]) -> Option<&'static technique::Techniq
     }
 
     let took = last.0.saturating_sub(first.0);
-    // Two seconds is roughly four beats at a danceable tempo: fast enough
-    // that the room hears an edit rather than a mix.
-    if took <= Duration::from_secs(2) {
+    if took <= CUT_MAX {
         technique::by_name("cut")
     } else {
         technique::by_name("long blend")
