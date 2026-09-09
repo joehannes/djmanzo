@@ -324,8 +324,16 @@ The largest open sections, in the order they are worth doing:
    relationships) and §81 (profile by context) all want to be built *on that
    type* rather than beside it: anything that counts gestures its own way is a
    second learner with its own idea of what is enough, which is the failure
-   §13 is about. §24 in particular is now reachable — `dj_app::mixes` already
-   derives the pairs a night actually contained.
+   §13 is about.
+
+   **§24's first half exists**: `kept_pairs` stores the transitions a DJ
+   *kept*, directionally and weighted by how many times, and the Next rail
+   reads them. What it deliberately does not store is what merely happened —
+   that is derivable from the log, and a second copy would disagree with it.
+   §24's remaining examples ("works only with an 8-beat loop", "A vocal → B
+   instrumental") want a transition object that records what was done to the
+   *stems*, which is also §68's last absent field. One piece of work would
+   close both.
 4. **§20's performance table** is the browser at fewer columns than §20 lists —
    the other three views ship. Adding the missing columns (energy, vocal and
    stem availability, transition suitability, request count, AI confidence)

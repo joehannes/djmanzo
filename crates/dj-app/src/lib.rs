@@ -473,6 +473,7 @@ pub fn run() {
             commands::waveform_info,
             commands::report_bench,
             commands::at_hand,
+            commands::keep_mix,
             commands::learned_tendencies,
             commands::session_mixes,
             commands::session_render_mix,

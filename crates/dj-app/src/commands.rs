@@ -1508,6 +1508,9 @@ pub struct MixDto {
     pub out_title: Option<String>,
     pub in_title: Option<String>,
     pub style: String,
+    /// How many times this exact pair has been kept — §24's confidence
+    /// weight. Zero for most, which is what the button is for.
+    pub kept: u32,
 }
 
 /// One control on §74's contextual rail.
@@ -1616,6 +1619,48 @@ pub fn learned_tendencies(state: State<'_, AppState>) -> Vec<TendencyDto> {
         .collect()
 }
 
+/// Keep one of tonight's mixes: §24's "Save this transition".
+///
+/// The only thing written to `kept_pairs`. Every mix a night contained is
+/// already derivable from the action log — `crate::mixes` does it — so
+/// recording those too would be a second copy that eventually disagrees with
+/// the log it came from. What cannot be derived is that the DJ thought one was
+/// worth keeping.
+///
+/// Identified by when it happened rather than by an index, because the list is
+/// newest-first in the interface and re-derived on every read: an index would
+/// name a different mix the moment another one finished.
+///
+/// # Errors
+/// When no mix began at that moment, when either record has left the library,
+/// or whatever the database says. Named rather than swallowed: a *Keep* that
+/// silently kept nothing is worse than one that failed, because a DJ finds out
+/// weeks later when the pair never comes back.
+#[tauri::command]
+pub fn keep_mix(state: State<'_, AppState>, at: f64) -> Result<u32, String> {
+    let db = library(&state)?;
+    let found = crate::mixes::handovers(&state.bus().log())
+        .into_iter()
+        // The same tolerance the interface's own rounding needs: `at` makes a
+        // round trip through a float in JSON and comes back a hair off.
+        .find(|mix| (mix.began.as_secs_f64() - at).abs() < 0.01)
+        .ok_or_else(|| format!("no mix began at {at:.0}s"))?;
+
+    let (Some(from), Some(into)) = (found.out_track, found.in_track) else {
+        return Err("that mix has a record djmanzo cannot name".to_owned());
+    };
+    // Beats need the outgoing record's tempo, which the log does not hold.
+    let beats = db
+        .track(from)
+        .ok()
+        .flatten()
+        .and_then(|t| t.analysis.bpm)
+        .and_then(|bpm| found.beats(bpm));
+
+    db.keep_pair(from, into, Some(found.style.as_str()), beats)
+        .map_err(|e| e.to_string())
+}
+
 /// The mixes tonight, read back out of the action log.
 ///
 /// §67 says the session contains transitions and §68 says the transition
@@ -1651,6 +1696,10 @@ pub fn session_mixes(state: State<'_, AppState>) -> Vec<MixDto> {
                 out_title,
                 in_title,
                 style: mix.style.as_str().to_owned(),
+                kept: match (mix.out_track, mix.in_track, db.as_ref()) {
+                    (Some(from), Some(into), Some(db)) => db.pair_kept(from, into).unwrap_or(0),
+                    _ => 0,
+                },
             }
         })
         .collect()
@@ -2431,6 +2480,69 @@ mod stem_out_tests {
 /// stored analysis, which a freshly loaded deck does not have. Every browser
 /// test passed — the harness answers `waveform_info` itself — and the running
 /// application drew no band on any lane.
+/// §24's kept pairs, folded into a ranking.
+///
+/// The seam between two things that are each tested elsewhere: the store
+/// counts keeps, the scorer weighs them, and this is where they meet. Worth
+/// its own tests because a join that reads the right rows and then forgets to
+/// re-sort looks exactly like one that works, until a DJ notices the second
+/// row scoring higher than the first.
+#[cfg(test)]
+mod kept_pair_tests {
+    use super::*;
+    use dj_library::suggest::{Reason, Suggestion};
+
+    fn id(byte: u8) -> dj_core::TrackId {
+        dj_core::TrackId::from_bytes([byte; 32])
+    }
+
+    fn scored(byte: u8, score: f64) -> Suggestion {
+        Suggestion {
+            track: id(byte),
+            score,
+            reasons: vec![Reason::PhraseUnknown],
+        }
+    }
+
+    /// **A pair the DJ kept climbs, and the list is re-sorted around it.**
+    #[test]
+    fn a_kept_pair_moves_up_the_rail_rather_than_only_scoring_higher() {
+        let ranked = vec![scored(1, 5.0), scored(2, 4.0), scored(3, 3.0)];
+        let kept = std::collections::HashMap::from([(id(3), 3u32)]);
+
+        let out = with_kept(ranked, &kept);
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(3), id(1), id(2)],
+            "a kept pair scored higher but stayed where it was"
+        );
+        assert!(out[0].reasons.contains(&Reason::KeptBefore { times: 3 }));
+        // And the ones nobody kept are untouched, reasons included.
+        assert_eq!(out[1].reasons, vec![Reason::PhraseUnknown]);
+    }
+
+    /// **Nothing kept changes nothing**, which is most rails.
+    #[test]
+    fn a_rail_with_no_kept_pairs_is_exactly_the_ranking_it_was() {
+        let ranked = vec![scored(1, 5.0), scored(2, 4.0)];
+        let out = with_kept(ranked.clone(), &std::collections::HashMap::new());
+        assert_eq!(out, ranked);
+    }
+
+    /// The tie-break is the suggester's own, so two equal candidates cannot
+    /// come out of here in a different order from the one that produced them.
+    #[test]
+    fn equal_candidates_keep_the_order_the_suggester_gave_them() {
+        let ranked = vec![scored(9, 4.0), scored(2, 4.0)];
+        let out = with_kept(ranked, &std::collections::HashMap::new());
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(2), id(9)],
+            "the tie-break differs from the suggester's"
+        );
+    }
+}
+
 #[cfg(test)]
 mod mix_out_tests {
     use super::*;
@@ -4841,10 +4953,31 @@ pub fn suggest_next(
     let pool = db.all_tracks(5_000).map_err(|e| e.to_string())?;
     let playing_now = current_track(&state, deck_id);
 
-    Ok(dj_library::suggest::rank(&now, trajectory, &pool)
+    // §24. What the DJ has kept going into, after this record — read once
+    // rather than per candidate, because it is one indexed query for the whole
+    // rail and five thousand of them would be five thousand.
+    //
+    // Applied after scoring rather than inside it: the scorer is a pure
+    // function over two records and its whole test suite rests on that. This
+    // is the layer that has a database.
+    let kept: std::collections::HashMap<dj_core::TrackId, u32> = playing_now
+        .and_then(|from| db.kept_after(from).ok())
+        .unwrap_or_default()
         .into_iter()
-        // Never suggest what is already on the deck.
-        .filter(|s| Some(s.track) != playing_now)
+        .map(|pair| (pair.into, pair.kept))
+        .collect();
+
+    let ranked = with_kept(
+        dj_library::suggest::rank(&now, trajectory, &pool)
+            .into_iter()
+            // Never suggest what is already on the deck.
+            .filter(|s| Some(s.track) != playing_now)
+            .collect(),
+        &kept,
+    );
+
+    Ok(ranked
+        .into_iter()
         .take(limit.clamp(1, 100))
         .filter_map(|s| {
             let track = pool.iter().find(|t| t.id == s.track)?;
@@ -4857,6 +4990,37 @@ pub fn suggest_next(
             })
         })
         .collect())
+}
+
+/// Fold §24's kept pairs into a ranking, and re-sort.
+///
+/// Separate from the command so it can be tested: the command needs a live
+/// `AppState` and a database, and this is the part with a decision in it.
+///
+/// Re-sorting is the decision. A rail that lifted a candidate's score without
+/// moving it would show a higher number further down the list, which reads as
+/// a bug in the ranking rather than as the feature it is.
+fn with_kept(
+    ranked: Vec<dj_library::suggest::Suggestion>,
+    kept: &std::collections::HashMap<dj_core::TrackId, u32>,
+) -> Vec<dj_library::suggest::Suggestion> {
+    let mut out: Vec<_> = ranked
+        .into_iter()
+        .map(|s| {
+            let times = kept.get(&s.track).copied().unwrap_or(0);
+            dj_library::suggest::also_kept_before(s, times)
+        })
+        .collect();
+    // The same tie-break `suggest::rank` uses, so a re-sort here cannot put
+    // two equal candidates in a different order from the one that produced
+    // them.
+    out.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.track.cmp(&b.track))
+    });
+    out
 }
 
 /// Records like a given one, tilted by what this DJ actually plays.
@@ -4990,6 +5154,10 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
         Reason::PhraseUnknown => "no phrase structure".to_owned(),
         Reason::SameFamily(name) => format!("same family ({name})"),
         Reason::OtherFamily { from, to } => format!("{from} to {to}"),
+        // §24's answer to "why do I keep seeing these two together?", in the
+        // place a DJ asks it: beside the suggestion itself.
+        Reason::KeptBefore { times: 1 } => "you kept this mix".to_owned(),
+        Reason::KeptBefore { times } => format!("you kept this mix {times} times"),
         Reason::Unanalysed => "not analysed yet".to_owned(),
     }
 }
@@ -5028,13 +5196,17 @@ fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
     /// is an implementation detail and not something a DJ should read.
     const fn place(reason: &Reason) -> u8 {
         match reason {
+            // First of all, when it is there. "You kept this mix" is the
+            // strongest thing djmanzo can say about a pair and it is the DJ's
+            // own word — it should not read fourth, after a loudness delta.
+            Reason::KeptBefore { .. } => 0,
             Reason::TempoFits { .. }
             | Reason::TempoHalfOrDouble { .. }
-            | Reason::TempoFar { .. } => 0,
-            Reason::SameKey(_) | Reason::Harmonic { .. } | Reason::KeyClash { .. } => 1,
-            Reason::Loudness { .. } => 2,
-            Reason::SameFamily(_) | Reason::OtherFamily { .. } => 3,
-            Reason::PhraseKnown { .. } | Reason::PhraseUnknown | Reason::Unanalysed => 4,
+            | Reason::TempoFar { .. } => 1,
+            Reason::SameKey(_) | Reason::Harmonic { .. } | Reason::KeyClash { .. } => 2,
+            Reason::Loudness { .. } => 3,
+            Reason::SameFamily(_) | Reason::OtherFamily { .. } => 4,
+            Reason::PhraseKnown { .. } | Reason::PhraseUnknown | Reason::Unanalysed => 5,
         }
     }
 
@@ -5044,6 +5216,10 @@ fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
     ordered
         .into_iter()
         .filter_map(|reason| match reason {
+            // On the summary line too, and first: it is the one thing on it a
+            // DJ said rather than djmanzo worked out.
+            Reason::KeptBefore { times: 1 } => Some("kept".to_owned()),
+            Reason::KeptBefore { times } => Some(format!("kept \u{00d7}{times}")),
             Reason::SameKey(k) => Some(k.camelot()),
             Reason::Harmonic { from, to } | Reason::KeyClash { from, to } => {
                 let arrow = format!("{}\u{2192}{}", from.camelot(), to.camelot());

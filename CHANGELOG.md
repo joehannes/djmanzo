@@ -16,6 +16,42 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**djmanzo remembers which records you put together** — §24's learned track
+relationships, and the gesture it names: *"Save this transition."*
+
+**Only what was kept, never what merely happened.** Every mix a night contained
+is already derivable from the action log — `dj_app::mixes` does it — so storing
+those as relationships too would be a second copy that eventually disagrees
+with the log it came from. What cannot be derived is that the DJ thought one
+was worth having back, and that is the whole of what `kept_pairs` holds.
+
+**Directional, and the primary key says so.** A bachata that lands beautifully
+after a merengue is not the same claim in reverse, and a DJ who kept one
+direction has said nothing about the other.
+
+**Confidence-weighted, and the weight is a count.** Keeping the same pair again
+is a stronger claim about it rather than a duplicate row. A count rather than a
+score because it is a fact rather than a judgement, and the place to make the
+judgement is where it is used.
+
+**And it is used where the question gets asked.** §24 wants a DJ to be able to
+say *"why do I keep seeing these two together?"* — so the Next rail says it,
+first among the reasons, because it is the one thing on that line the DJ said
+rather than djmanzo worked out. The weight is capped at three: without a
+ceiling a pair kept twenty times would outrank every musical fact about every
+other candidate and the rail would stop showing anything else. "You have done
+this before" is a strong reason, not an override — deliberately less than a key
+match and a tempo match together.
+
+Applied *after* scoring rather than inside it. The scorer is a pure function
+over two records and its whole test suite rests on that; the history lives in a
+database, and the layer that has one is the layer that applies it.
+
+**What §24 lists and this does not have**: "A → C works only with an 8-beat
+loop", "A vocal → B instrumental", and "E is often selected after a crowd-energy
+drop". The first two need a transition object that records what was *done* to
+the stems, and the third needs crowd sensing this container has no camera for.
+
 **What you do, and when** — §14's behavioural signals, read through §13's rule.
 They ship together because either alone is worse than neither: signals with no
 rule for reading them is how the wrong preference gets learned, and a rule with

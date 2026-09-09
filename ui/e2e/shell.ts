@@ -195,6 +195,7 @@ const ANSWERS: Record<string, unknown> = {
       out_title: "Bachata Rosa",
       in_title: "Ojalá Que Llueva Café",
       style: "blend",
+      kept: 0,
     },
     {
       at: 461.0,
@@ -205,6 +206,7 @@ const ANSWERS: Record<string, unknown> = {
       out_title: "Ojalá Que Llueva Café",
       in_title: null,
       style: "cut",
+      kept: 2,
     },
   ],
   // Nothing staged, which is what a fresh application has. `Staged.svelte`
@@ -701,6 +703,14 @@ export async function openShell(
           // test can check *which* mix was asked for: the panel holds two
           // numbers per row and passing the wrong row's would produce a
           // plausible file of the wrong twenty seconds.
+          // §24's keep. Answered here rather than from the table so a test
+          // can check *which* mix was kept: the panel holds a timestamp per
+          // row, and keeping the wrong row would store a plausible pair of the
+          // wrong two records.
+          if (cmd === "keep_mix") {
+            win.__keptAt = args.at;
+            return Promise.resolve(1);
+          }
           if (cmd === "session_render_mix") {
             win.__renderMixArgs = { at: args.at, tookSeconds: args.tookSeconds };
             return Promise.resolve(

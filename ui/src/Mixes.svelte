@@ -24,7 +24,7 @@
    * disagree with.
    */
   import { onMount } from "svelte";
-  import { formatTime, sessionMixes, sessionRenderMix, type Mix } from "./api";
+  import { formatTime, keepMix, sessionMixes, sessionRenderMix, type Mix } from "./api";
 
   interface Props {
     /** False before an audio device is open, when there is no set to read. */
@@ -115,6 +115,33 @@
     if (rendered) answer?.scrollIntoView({ block: "nearest" });
   });
 
+  /**
+   * §24's "Save this transition".
+   *
+   * The one thing djmanzo stores about a pair. Every mix a night contained is
+   * already derivable from the log, so keeping is not a record of what
+   * happened — it is the DJ saying this one was worth having back, which is
+   * the only part that cannot be derived.
+   *
+   * Refreshes rather than counting locally: the count comes back from the
+   * database, and a number the interface incremented itself would be a second
+   * opinion about how many times something was kept.
+   */
+  let keeping = $state<number | null>(null);
+
+  async function keep(mix: Mix) {
+    keeping = mix.at;
+    try {
+      await keepMix(mix.at);
+      await refresh();
+      error = "";
+    } catch (problem) {
+      error = String(problem);
+    } finally {
+      keeping = null;
+    }
+  }
+
   async function hearItAgain(mix: Mix) {
     rendering = mix.at;
     rendered = null;
@@ -157,6 +184,21 @@
           </div>
           <div class="how">
             <span>deck {mix.out_deck} → {mix.in_deck}</span>
+            <!--
+              §24. Lit once kept, with the count, because keeping the same pair
+              again is a stronger claim about it rather than a duplicate — and
+              a DJ should be able to see they have said it before.
+            -->
+            <button
+              class="keep"
+              class:on={mix.kept > 0}
+              disabled={!enabled || keeping !== null}
+              onclick={() => void keep(mix)}
+              title={mix.kept > 0
+                ? `Kept ${mix.kept} time${mix.kept === 1 ? "" : "s"}. Keeping it again says so more strongly.`
+                : "Keep this transition, so djmanzo offers it back"}
+              aria-pressed={mix.kept > 0}
+            >{keeping === mix.at ? "…" : mix.kept > 0 ? `kept ×${mix.kept}` : "keep"}</button>
             <button
               class="again"
               disabled={!enabled || rendering !== null}
@@ -266,9 +308,15 @@
 
   /* Quiet: it is a thing you do to one row occasionally, not the reason the
      panel exists. */
-  .again {
+  .again,
+  .keep {
     font-size: 0.66rem;
     padding: 0 0.3rem;
+  }
+
+  .keep.on {
+    background: var(--accent);
+    color: var(--on-accent);
   }
 
   /* The path it wrote, which is the whole point of having pressed it. Wrapped

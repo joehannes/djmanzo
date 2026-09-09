@@ -48,6 +48,22 @@ pub enum LibraryError {
 
 type Result<T> = std::result::Result<T, LibraryError>;
 
+/// One transition the DJ kept, read back.
+///
+/// §24's "confidence-weighted learned relationship", and the weight is a
+/// count: how many times this exact pair was worth keeping. A count rather
+/// than a score because it is a fact rather than a judgement — anything that
+/// turns it into a number between nought and one has made a decision, and the
+/// place to make that decision is where it is used.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeptPair {
+    pub into: TrackId,
+    pub kept: u32,
+    /// What the mix was, the last time it was kept.
+    pub style: Option<String>,
+    pub beats: Option<f64>,
+}
+
 /// The library database.
 ///
 /// One connection behind a mutex rather than a pool. SQLite serialises writes
@@ -1120,6 +1136,113 @@ impl Library {
                 .into_iter()
                 .filter(|f| found.contains(f))
                 .collect())
+        })
+    }
+
+    /// Keep a transition: two records the DJ put together and wants back.
+    ///
+    /// §24 names this gesture — "Save this transition" — and it is the only
+    /// thing written here. Every mix a night contained is already derivable
+    /// from the action log (`dj_app::mixes`), so recording those too would be
+    /// a second copy that eventually disagrees with the log it came from. What
+    /// cannot be derived is that the DJ thought one was worth keeping.
+    ///
+    /// Keeping the same pair again strengthens it rather than duplicating it,
+    /// and updates what the mix was — the most recent time you kept it is the
+    /// version you meant.
+    ///
+    /// # Errors
+    /// Whatever the database says. A pair naming a track the library does not
+    /// have is refused by the foreign key rather than stored as a dangling
+    /// relationship nothing can resolve.
+    pub fn keep_pair(
+        &self,
+        from: TrackId,
+        into: TrackId,
+        style: Option<&str>,
+        beats: Option<f64>,
+    ) -> Result<u32> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64);
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO kept_pairs (from_id, into_id, kept, style, beats, last_at)
+                 VALUES (?1, ?2, 1, ?3, ?4, ?5)
+                 ON CONFLICT(from_id, into_id) DO UPDATE SET
+                     kept = kept + 1,
+                     style = excluded.style,
+                     beats = excluded.beats,
+                     last_at = excluded.last_at",
+                rusqlite::params![from.to_hex(), into.to_hex(), style, beats, now],
+            )?;
+            conn.query_row(
+                "SELECT kept FROM kept_pairs WHERE from_id = ?1 AND into_id = ?2",
+                rusqlite::params![from.to_hex(), into.to_hex()],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|kept| u32::try_from(kept).unwrap_or(u32::MAX))
+            .map_err(LibraryError::from)
+        })
+    }
+
+    /// How many times this exact transition has been kept.
+    ///
+    /// Directional: A into B says nothing about B into A. Zero for a pair
+    /// nobody has kept, which is most of them.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn pair_kept(&self, from: TrackId, into: TrackId) -> Result<u32> {
+        self.with(|conn| {
+            let kept: Option<i64> = conn
+                .query_row(
+                    "SELECT kept FROM kept_pairs WHERE from_id = ?1 AND into_id = ?2",
+                    rusqlite::params![from.to_hex(), into.to_hex()],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            Ok(kept.map_or(0, |k| u32::try_from(k).unwrap_or(u32::MAX)))
+        })
+    }
+
+    /// What the DJ has kept going *into*, after this record.
+    ///
+    /// Most-kept first, then most recent — the two things that make one of
+    /// these worth offering ahead of another.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn kept_after(&self, from: TrackId) -> Result<Vec<KeptPair>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT into_id, kept, style, beats FROM kept_pairs
+                 WHERE from_id = ?1 ORDER BY kept DESC, last_at DESC",
+            )?;
+            let rows = stmt.query_map([from.to_hex()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<f64>>(3)?,
+                ))
+            })?;
+            let mut found = Vec::new();
+            for row in rows {
+                let (hex, kept, style, beats) = row?;
+                // A row whose id will not parse is a corrupt one, and skipping
+                // it is right: the alternative is refusing to answer "what have
+                // I put after this" at all because of one bad byte.
+                if let Some(into) = TrackId::from_hex(&hex) {
+                    found.push(KeptPair {
+                        into,
+                        kept: u32::try_from(kept).unwrap_or(u32::MAX),
+                        style,
+                        beats,
+                    });
+                }
+            }
+            Ok(found)
         })
     }
 
@@ -2253,6 +2376,89 @@ mod tests {
 
     fn library() -> Library {
         Library::in_memory().unwrap()
+    }
+
+    // -- kept pairs (§24) ------------------------------------------------------
+
+    /// **Keeping a transition remembers it, and keeping it again strengthens
+    /// it.**
+    ///
+    /// §24's "Save this transition", and its "confidence-weighted" is a count:
+    /// the second time you keep the same pair you are saying something
+    /// stronger about it, not creating a duplicate.
+    #[test]
+    fn keeping_the_same_pair_twice_strengthens_it_rather_than_duplicating_it() {
+        let lib = library();
+        lib.upsert_track(&track(1, "one", "a")).unwrap();
+        lib.upsert_track(&track(2, "two", "b")).unwrap();
+
+        assert_eq!(lib.pair_kept(id(1), id(2)).unwrap(), 0, "nothing kept yet");
+        assert_eq!(
+            lib.keep_pair(id(1), id(2), Some("blend"), Some(32.0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            lib.keep_pair(id(1), id(2), Some("echo"), Some(16.0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(lib.pair_kept(id(1), id(2)).unwrap(), 2);
+
+        let kept = lib.kept_after(id(1)).unwrap();
+        assert_eq!(kept.len(), 1, "one pair became two rows");
+        // The most recent keep is the version meant.
+        assert_eq!(kept[0].style.as_deref(), Some("echo"));
+        assert_eq!(kept[0].beats, Some(16.0));
+    }
+
+    /// **A into B says nothing about B into A.**
+    ///
+    /// A bachata that lands beautifully after a merengue is not the same claim
+    /// in reverse, and a DJ who kept one direction has said nothing about the
+    /// other. Storing it undirected would put words in their mouth.
+    #[test]
+    fn a_kept_pair_is_directional() {
+        let lib = library();
+        lib.upsert_track(&track(1, "one", "a")).unwrap();
+        lib.upsert_track(&track(2, "two", "b")).unwrap();
+        lib.keep_pair(id(1), id(2), None, None).unwrap();
+
+        assert_eq!(lib.pair_kept(id(1), id(2)).unwrap(), 1);
+        assert_eq!(lib.pair_kept(id(2), id(1)).unwrap(), 0);
+        assert_eq!(lib.kept_after(id(2)).unwrap(), vec![]);
+    }
+
+    /// The strongest first, so a rail offering one of these offers the one
+    /// most worth offering.
+    #[test]
+    fn what_you_kept_most_comes_back_first() {
+        let lib = library();
+        for byte in 1..=3u8 {
+            lib.upsert_track(&track(byte, &format!("t{byte}"), "a"))
+                .unwrap();
+        }
+        lib.keep_pair(id(1), id(2), None, None).unwrap();
+        lib.keep_pair(id(1), id(3), None, None).unwrap();
+        lib.keep_pair(id(1), id(3), None, None).unwrap();
+
+        let kept = lib.kept_after(id(1)).unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].into, id(3));
+        assert_eq!(kept[0].kept, 2);
+        assert_eq!(kept[1].into, id(2));
+    }
+
+    /// **A pair naming a record the library does not have is refused.**
+    ///
+    /// Not stored as a dangling relationship nothing can resolve — which would
+    /// come back later as a suggestion for a record that is not there.
+    #[test]
+    fn a_pair_about_a_record_the_library_lacks_is_refused() {
+        let lib = library();
+        lib.upsert_track(&track(1, "one", "a")).unwrap();
+        assert!(lib.keep_pair(id(1), id(9), None, None).is_err());
+        assert_eq!(lib.kept_after(id(1)).unwrap(), vec![]);
     }
 
     // -- learned taste ---------------------------------------------------------

@@ -136,6 +136,17 @@ pub enum Reason {
     PhraseKnown { beats: u32 },
     /// No phrase structure was found -- mix by ear.
     PhraseUnknown,
+    /// The DJ has kept this exact transition before, this many times.
+    ///
+    /// §24's learned relationship, and it is deliberately *only* what was
+    /// kept: every mix a night contained is derivable from the action log, and
+    /// a suggester weighing all of them would be weighing every accident and
+    /// every record that happened to be next in a crate. Keeping one is a
+    /// statement.
+    ///
+    /// Directional, like the thing it comes from. A into B says nothing about
+    /// B into A.
+    KeptBefore { times: u32 },
     /// Both records name a genre and they are the same family.
     SameFamily(&'static str),
     /// Both name a genre and the families differ.
@@ -179,6 +190,18 @@ impl Reason {
             Self::Loudness { .. } => 0.0,
             Self::PhraseKnown { .. } => 0.5,
             Self::PhraseUnknown => 0.0,
+            // The strongest single reason there is, and it should be: the DJ
+            // said so. Capped at 3.0 — two keeps and four say the same thing,
+            // and without a ceiling a pair kept twenty times would outrank
+            // every musical fact about every other candidate and the rail
+            // would stop showing anything else.
+            //
+            // Deliberately not larger than a key match plus a tempo match
+            // together (6.0). "You have done this before" is a strong reason
+            // and not an override: a DJ whose set has moved on wants the rail
+            // to notice, and one who wants the pair again has it near the top
+            // rather than pinned to it.
+            Self::KeptBefore { times } => f64::from(times).min(3.0),
             // Both zero on purpose; see `OtherFamily`.
             Self::SameFamily(_) | Self::OtherFamily { .. } => 0.0,
             Self::Unanalysed => -10.0,
@@ -218,6 +241,26 @@ impl Suggestion {
         const WORST: f64 = -7.5;
         ((self.score - WORST) / (BEST - WORST)).clamp(0.0, 1.0)
     }
+}
+
+/// Say that this pair has been kept before, and re-score.
+///
+/// Separate from [`score`] rather than a parameter to it, because the history
+/// lives in a database and the scorer is a pure function over two records —
+/// the property its whole test suite rests on. A caller that has the history
+/// applies it; every caller that does not is unchanged.
+///
+/// `times` of zero is a pair nobody has kept, which is most of them, and
+/// changes nothing.
+#[must_use]
+pub fn also_kept_before(mut suggestion: Suggestion, times: u32) -> Suggestion {
+    if times == 0 {
+        return suggestion;
+    }
+    let reason = Reason::KeptBefore { times };
+    suggestion.score += reason.weight();
+    suggestion.reasons.push(reason);
+    suggestion
 }
 
 /// Rank `candidates` for playing after `now`.
@@ -795,5 +838,49 @@ mod tests {
                 scored.reasons
             );
         }
+    }
+    /// **A pair the DJ kept before is a stronger reason than any single
+    /// musical fact — and not stronger than all of them together.**
+    ///
+    /// §24 asks for confidence-weighted learned relationships. The weight is
+    /// how many times it was kept, capped: without a ceiling a pair kept
+    /// twenty times would outrank every fact about every other candidate and
+    /// the rail would stop showing anything else. "You have done this before"
+    /// is a strong reason, not an override.
+    #[test]
+    fn keeping_a_pair_lifts_it_without_letting_it_win_outright() {
+        let one = Reason::KeptBefore { times: 1 }.weight();
+        let four = Reason::KeptBefore { times: 4 }.weight();
+        let twenty = Reason::KeptBefore { times: 20 }.weight();
+
+        assert!(one > 0.0, "keeping a pair counted for nothing");
+        assert!(four > one, "keeping it more said nothing more");
+        assert_eq!(four, twenty, "the weight has no ceiling");
+        assert!(
+            twenty
+                < Reason::SameKey(key(8, Mode::Minor)).weight()
+                    + Reason::TempoFits {
+                        from: 120.0,
+                        to: 122.0
+                    }
+                    .weight(),
+            "a kept pair outranks every musical fact together"
+        );
+    }
+
+    /// **A pair nobody kept changes nothing at all.**
+    ///
+    /// Most pairs. A scorer that shifted every candidate by a zero-weighted
+    /// reason would put a chip on every row saying nothing.
+    #[test]
+    fn a_pair_nobody_kept_is_left_exactly_as_it_was() {
+        let candidate = track(2, Some(128.0), Some(key(8, Mode::Minor)), Some(-8.0));
+        let scored = score(&playing(), Trajectory::Hold, &candidate);
+
+        assert_eq!(also_kept_before(scored.clone(), 0), scored);
+
+        let lifted = also_kept_before(scored.clone(), 2);
+        assert!(lifted.score > scored.score);
+        assert!(lifted.reasons.contains(&Reason::KeptBefore { times: 2 }));
     }
 }

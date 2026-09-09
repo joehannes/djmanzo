@@ -84,6 +84,37 @@ test.describe("tonight's mixes", () => {
   });
 
   /**
+   * **Keeping a mix says which one, and shows that it has been kept.**
+   *
+   * §24's "Save this transition", and the two halves that matter: the pair
+   * that reaches Rust is the row's own, and a pair already kept says so with
+   * its count rather than looking identical to one nobody has kept. Keeping
+   * the same pair again is a stronger claim about it, not a duplicate — so the
+   * control stays pressable.
+   */
+  test("a mix can be kept, and one already kept says so", async ({ page }) => {
+    await openMixes(page);
+    const rows = page.locator('[data-surface="mixes"] li');
+
+    // The newest, kept twice in the fixture.
+    await expect(rows.first().getByRole("button", { name: /kept/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(rows.first()).toContainText("kept ×2");
+
+    // The older one, never kept.
+    const keep = rows.last().getByRole("button", { name: "keep" });
+    await expect(keep).toHaveAttribute("aria-pressed", "false");
+    await keep.click();
+
+    const kept = await page.evaluate(
+      () => (window as unknown as { __keptAt?: number }).__keptAt,
+    );
+    expect(kept, "the wrong mix was kept").toBe(214);
+  });
+
+  /**
    * **Hearing one back says where it went.**
    *
    * §68's object driving replay. What a browser can prove is the round trip:

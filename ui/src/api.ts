@@ -2714,9 +2714,21 @@ export interface Mix {
   out_title: string | null;
   in_title: string | null;
   style: string;
+  /** How many times this exact pair has been kept — §24's confidence weight. */
+  kept: number;
 }
 
 export const sessionMixes = () => invoke<Mix[]>("session_mixes");
+
+/**
+ * §24's "Save this transition": keep one of tonight's mixes.
+ *
+ * Identified by when it began rather than by an index, because the list is
+ * newest-first and re-derived on every read — an index would name a different
+ * mix the moment another one finished. Answers how many times the pair has
+ * been kept, which is the weight §24 asks for.
+ */
+export const keepMix = (at: number) => invoke<number>("keep_mix", { at });
 
 /**
  * Render one of tonight's mixes back to a WAV, in context.

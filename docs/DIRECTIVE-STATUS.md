@@ -49,7 +49,7 @@ rather than taken.
 | 21 | "Prepare" must be first class | ✅ | Its own dockable surface beside the browser, not a strip inside it. One gesture — `→` on a browser row — hands a track over; `prepare.svelte.ts` is the only path between them, so there is no second, differently-behaved way to set a track aside |
 | 22 | Next-track rail | 🟡 | The rail ships as its own dockable surface, following whichever deck is playing: up to eight candidates, each with one line of deltas (`+3 BPM · 8A→9A · +1 dB`), a confidence bar, and load / set aside / more-like-this / pin / pass. Two of the fifteen things §22 lists are not there — **audition**, which needs a preview player djmanzo does not have, and the **estimated transition type**, which means running the M8 planner per candidate |
 | 23 | Track function tagging | ✅ | Ten functions, closed vocabulary, migration 10, browser picker, and `for is opener` in smart folders |
-| 24 | Pairs and relationships | ⬜ | Needs new storage with confidence decay |
+| 24 | Pairs and relationships | 🟡 | **"Save this transition"** ships: a *keep* on any of tonight's mixes stores the pair, directionally, with what the mix was — and keeping the same one again strengthens it rather than duplicating it, which is §24's confidence weight as a count. Only what was *kept* is stored: every mix a night contained is already derivable from the log, and a second copy of those would eventually disagree with it. The Next rail answers "why do I keep seeing these two together?" with a reason placed first, weighted below a key match and a tempo match together — a strong reason, not an override. What §24 also lists and this lacks: "works only with an 8-beat loop" and "A vocal → B instrumental" need a transition object that records what was done to the stems, and "often selected after a crowd-energy drop" needs crowd sensing |
 | 25 | Waveform overhaul | 🟡 | The architecture ships: `dj_render::layer` names §25's twenty layers, what each encodes, which half of the renderer draws it and whether it exists. **Eleven do** — amplitude, spectral balance, beats, phrases, downbeats, cues, the loop region, the seam, the mix-out window, the grid's own uncertainty and the runway. A golden file and a browser test keep the count honest in both directions: everything on screen carries a `data-layer` that must be in the table, in the overview as well as the lane. The nine that do not exist are named rather than forgotten, and reserve no colour |
 | 26 | Direct manipulation on the waveform | 🟡 | The mix point is a handle on the outgoing waveform — drag it or use the arrow keys, and it moves in whole beats because a mix point between two beats is not on the grid. The waveform reports a position; Rust decides what it means and re-derives the reasons. The rest of §26's list — cue markers, phrase markers, loop edges, stem regions — is not draggable yet |
 | 27 | Preview / ghost track | ⬜ | The object it waited on ships — see §68. What is missing is the preview itself: a second render of the outgoing track, which needs a player djmanzo does not have |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **40 done, 36 part, 10 open, 19 standing rules.**
+Of the 105 sections: **40 done, 37 part, 9 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**40 of 86 deliverable sections are complete and 36 more are partly there.**
+**40 of 86 deliverable sections are complete and 37 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 40 whole plus 36 halves over 86 is 67%, and the phase view is stricter
+way: 40 whole plus 37 halves over 86 is 68%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

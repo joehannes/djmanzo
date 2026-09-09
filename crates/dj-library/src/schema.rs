@@ -95,6 +95,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 10,
         sql: MIGRATION_10,
     },
+    Migration {
+        version: 11,
+        sql: MIGRATION_11,
+    },
 ];
 
 /// The initial schema.
@@ -603,6 +607,46 @@ CREATE TABLE track_functions (
 CREATE INDEX track_functions_by_function ON track_functions(function, track_id);
 "#;
 
+const MIGRATION_11: &str = r#"
+-- Two records a DJ put together, and kept.
+--
+-- §24 asks for learned track *relationships* rather than only track metadata,
+-- and names the gesture: "Save this transition." This is where a saved one
+-- goes.
+--
+-- **Only what was kept, never what merely happened.** Every mix a night
+-- contained is already derivable from the action log — see `dj_app::mixes` —
+-- so storing those here would be a second copy that eventually disagrees with
+-- the log it came from. What cannot be derived is that the DJ thought one was
+-- worth remembering, and that is exactly what this table holds.
+--
+-- Directional, and the primary key says so: A into B is not B into A. A
+-- bachata that lands beautifully after a merengue is not the same claim in
+-- reverse, and a DJ who kept one direction has said nothing about the other.
+CREATE TABLE kept_pairs (
+    from_id TEXT    NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    into_id TEXT    NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    -- How many times it has been kept. Keeping the same pair again is a
+    -- stronger claim about it, not a duplicate row.
+    kept    INTEGER NOT NULL DEFAULT 1,
+    -- What the mix was, the last time it was kept: the style djmanzo read off
+    -- the log, and how long it ran in beats. Nullable because a mix whose
+    -- record has left the library has no tempo to count beats against, and a
+    -- confident zero would be worse than an absence.
+    style   TEXT,
+    beats   REAL,
+    -- Unix seconds, so "the ones you kept lately" is answerable and a sweep
+    -- can tell an old habit from a current one.
+    last_at INTEGER NOT NULL,
+    PRIMARY KEY (from_id, into_id)
+);
+
+-- The question this is read for is "what have I put after this record", which
+-- the primary key already answers. This is the other direction: "what led into
+-- this one", for a DJ working backwards from a record they want to arrive at.
+CREATE INDEX kept_pairs_by_into ON kept_pairs(into_id, from_id);
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -688,6 +732,10 @@ mod tests {
             "track_paths",
             "tracks_fts",
             "notes",
+            "lyrics",
+            "melodies",
+            "track_functions",
+            "kept_pairs",
         ] {
             let found: i64 = conn
                 .query_row(
