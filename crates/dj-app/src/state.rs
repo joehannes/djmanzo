@@ -151,6 +151,8 @@ pub struct AppState {
     recording_state: Arc<crate::setrec::RecordingState>,
     host: AudioHost,
     waveforms: Arc<WaveformStore>,
+    /// Cover art, read once per track and kept. See `crate::art`.
+    covers: Arc<crate::art::Covers>,
     /// API keys, in the OS keychain. Values go in and never come back out --
     /// see `dj_secrets`.
     secrets: Arc<dyn SecretStore>,
@@ -443,6 +445,7 @@ impl AppState {
             recording_state: Arc::new(crate::setrec::RecordingState::default()),
             host,
             waveforms: Arc::new(WaveformStore::new()),
+            covers: Arc::new(crate::art::Covers::new()),
             secrets,
             secrets_persist,
             sources,
@@ -1100,6 +1103,11 @@ impl AppState {
     #[must_use]
     pub fn waveforms(&self) -> &Arc<WaveformStore> {
         &self.waveforms
+    }
+
+    #[must_use]
+    pub fn covers(&self) -> &Arc<crate::art::Covers> {
+        &self.covers
     }
 
     /// The network control server, running or not.

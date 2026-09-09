@@ -1248,6 +1248,24 @@ export function logoUrl(version: number): string {
     : `brand://localhost/${path}`;
 }
 
+/**
+ * URL for a track's cover art.
+ *
+ * §20's card view is the one that needs it. Served as an image on its own
+ * scheme rather than pushed through IPC for the same reason waveform tiles
+ * are: a grid asks for fifty at once, and base64 through the bridge would cost
+ * a third more bytes, block the main thread decoding them, and defeat the
+ * browser's own image cache.
+ *
+ * A track with no cover answers 404, which an `<img>` reports as an error —
+ * the card draws its fallback on that rather than asking first.
+ */
+export function artUrl(trackId: string): string {
+  return navigator.userAgent.includes("Windows")
+    ? `http://art.localhost/${trackId}`
+    : `art://localhost/${trackId}`;
+}
+
 // -- the library -----------------------------------------------------------
 
 /** One track as the browser shows it. Pre-formatted in Rust — see the DTO. */

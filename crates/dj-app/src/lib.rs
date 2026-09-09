@@ -20,6 +20,7 @@
 //! `docs/adr/0003-action-bus-and-parameter-registry.md`.
 
 pub mod analysis;
+pub mod art;
 pub mod assistant;
 pub mod audience;
 pub mod automix;
@@ -120,6 +121,8 @@ pub fn run() {
     let registry = state.registry();
     let deck_count = state.deck_count();
     let waveforms = Arc::clone(state.waveforms());
+    let covers = Arc::clone(state.covers());
+    let cover_library = state.library();
     let bridge_handle = state.bridge_handle();
     let analysis = Arc::clone(state.analysis());
     let deck_tracks = state.deck_tracks();
@@ -163,6 +166,40 @@ pub fn run() {
                     .header("Cache-Control", "public, max-age=31536000, immutable")
                     .header("Access-Control-Allow-Origin", "*")
                     .body(png.as_ref().clone())
+                    .unwrap_or_default(),
+                None => http::Response::builder()
+                    .status(404)
+                    .body(Vec::new())
+                    .unwrap_or_default(),
+            }
+        })
+        // Cover art, served the same way tiles are and for the same reasons: a
+        // card grid asks for fifty images at once, and base64 through IPC
+        // would cost a third more bytes, block the main thread decoding them,
+        // and defeat the browser's own image cache. See `crate::art`.
+        .register_uri_scheme_protocol(art::SCHEME, move |_ctx, request| {
+            let path = request.uri().path().to_owned();
+            let Some(track) = art::parse_path(&path) else {
+                return http::Response::builder()
+                    .status(400)
+                    .body(Vec::new())
+                    .unwrap_or_default();
+            };
+            let found = covers.get(track, |id| {
+                Some(cover_library.get().ok()?.track(id).ok()??.path)
+            });
+            match found {
+                Some(cover) => http::Response::builder()
+                    .status(200)
+                    .header("Content-Type", cover.mime)
+                    // A track id is the record's identity, so the picture
+                    // behind one does not change under a running application:
+                    // re-tagging a file re-scans it into a different id.
+                    // Unlike the logo, which *is* replaced in place at one URL
+                    // and therefore must not be cached at all.
+                    .header("Cache-Control", "public, max-age=31536000, immutable")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .body(cover.bytes.as_ref().clone())
                     .unwrap_or_default(),
                 None => http::Response::builder()
                     .status(404)

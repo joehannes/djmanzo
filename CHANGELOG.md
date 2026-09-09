@@ -16,6 +16,41 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The collection as cards, and the artwork to put on them** — §20's second
+view, and the last of its four. Three shipped already: the performance table,
+Set Flow and the pair view.
+
+**djmanzo read every tag except the pictures**, so the view §20 describes as
+"when album/artwork is valuable" had no artwork to be about. It reads them now,
+preferring the front cover and falling back through the other picture types
+rather than taking whichever one the tagger happened to store first — a card
+showing the publisher's logo instead of the sleeve is a card that looks broken.
+
+Covers are served on their own URI scheme, like waveform tiles and for the same
+reason: a grid asks for fifty images at once, and base64 through the bridge
+would cost a third more bytes, block the main thread decoding them, and defeat
+the browser's own image cache. Each answer is kept — **including the absence of
+one**, which is the half that matters: a hand-organised collection is mostly
+untagged files, and without remembering that, every scroll would re-probe every
+one of them from disk to learn nothing.
+
+**Each card is operational**, which §20 asks for in as many words. Load onto a
+deck, set aside, more like this, favourite, and the reasons when the list being
+shown is a suggestion. Three of §20's card actions — *stage*, *add to prepare*
+and *queue* — are one gesture in djmanzo, because Prepare is where a set-aside
+record goes and the Sidelist is what Prepare holds; three buttons doing one
+thing would be three chances to wonder which you wanted. *Favourite* is the
+five-star rating djmanzo already has rather than a flag of its own.
+
+**Two of §20's list are absent and left out rather than faked.** *Preview* needs
+a player that auditions a record without a deck, which djmanzo does not have —
+the same gap §27's ghost track waits on. *Compare* puts two records side by
+side, and the pair view compares two *decks*.
+
+**A record with no cover still says something about itself**: its key and its
+tempo, over a colour taken from the Camelot hour. Not a placeholder icon
+repeated down the grid, which is a wall of one shape.
+
 **One mix can be heard back on its own** — the last of §68's list, which asks
 for the transition object to drive *replay*. `replay::Window` names a stretch
 of a set, `crate::mixes` supplies the two numbers, and **hear it again** on any

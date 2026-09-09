@@ -95,6 +95,13 @@ the *previous* bundle. A Playwright run then tests the old code and passes.
 This has produced a false "mutation killed" result more than once. Always look
 for `✓ built` in the output; never pipe it to `tail -1` and assume.
 
+**A card grid is a good way to discover a panel is too small.** The card view
+shipped with `minmax(140px, 1fr)`, which in the browser docked along the bottom
+gave one column the whole width — a single cover taller than the panel, cut
+off, with nothing else reachable. A grid of things that should stay a readable
+size needs a *ceiling* as well as a floor, and anything with `aspect-ratio`
+inside one needs a `max-height` or its width decides the panel's height.
+
 **The container's Rust can be older than CI's, and clippy gains lints.** CI
 runs `dtolnay/rust-toolchain@stable`, so it is whatever stable is on the day.
 This container was four releases behind it, and a clean local
@@ -302,9 +309,12 @@ The largest open sections, in the order they are worth doing:
    becomes inaudible, so nothing crosses. That is a real gap and a small one —
    a mix that never takes the outgoing record out is a mix that has not
    finished.
-3. **§20's last view** — the compact cards. Set Flow and the pair view ship;
-   the performance table is the browser at fewer columns than §20 lists.
-4. **§74, the contextual rail.**
+3. **§74, the contextual rail.**
+4. **§20's performance table** is the browser at fewer columns than §20 lists —
+   the other three views ship. Adding the missing columns (energy, vocal and
+   stem availability, transition suitability, request count, AI confidence)
+   mostly waits on analysis that does not exist, which is the same wall §25's
+   remaining layers are behind.
 
 Three older items are open and are not part of the 105:
 

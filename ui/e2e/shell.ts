@@ -520,6 +520,25 @@ const ANSWERS: Record<string, unknown> = {
       rating: null,
       colour: null,
     },
+    // A second record, rated, so a test can tell a favourite from one that is
+    // not — and so the card grid has more than one cell to lay out.
+    {
+      id: "b".repeat(64),
+      path: "/music/ojala.flac",
+      title: "Ojalá Que Llueva Café",
+      artist: "Juan Luis Guerra",
+      album: "Ojalá Que Llueva Café",
+      genre: "Merengue",
+      year: 1989,
+      duration_seconds: 262,
+      bpm: 138,
+      key: "11B",
+      loudness_lufs: null,
+      analysed: true,
+      play_count: 3,
+      rating: 5,
+      colour: null,
+    },
   ],
   default_music_folder: null,
   library_status: {

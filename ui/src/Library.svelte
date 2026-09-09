@@ -29,6 +29,7 @@
   import Crates, { type Selection } from "./Crates.svelte";
   import IconButton from "./controls/IconButton.svelte";
   import { setAside } from "./prepare.svelte";
+  import Cards from "./Cards.svelte";
   import {
     addToPlaylist,
     checkFilter,
@@ -126,6 +127,39 @@
       likeThisTitle = tracks.find((t) => t.id === id)?.title ?? "that track";
       likeThis = id;
       error = "";
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /**
+   * Which of §20's representations is on screen.
+   *
+   * Two of the four live here because they are two views of *this* selection:
+   * the same crate, the same search, the same "more like this" — §20 asks for
+   * "several representations of the same underlying collection", and a card
+   * grid that could not follow the crate you clicked would be a different
+   * panel wearing the browser's name. Set Flow and the pair view are surfaces
+   * of their own because they are about a *set* rather than a collection.
+   *
+   * Not stored. It is a way of looking, changed in a second and changed back,
+   * and a browser that opened in cards because of something done last Tuesday
+   * would be a browser somebody has to fix before they can search.
+   */
+  let showing = $state<"table" | "cards">("table");
+
+  /**
+   * §20's "favorite", which djmanzo spells as a five-star rating.
+   *
+   * Not a flag of its own: ratings already exist and are already editable in
+   * bulk below, and a second boolean meaning "I like this" would be a parallel
+   * opinion about one question — exactly the "awkward parallel systems" §21
+   * warns about, one section over.
+   */
+  async function toggleFavourite(track: LibraryTrack) {
+    try {
+      await editTracks([track.id], { rating: (track.rating ?? 0) >= 5 ? 0 : 5 });
+      await refresh();
     } catch (e) {
       error = String(e);
     }
@@ -665,6 +699,25 @@
     {:else if selection.kind === "duplicates"}
       <span class="viewing">Tracks whose audio is in more than one place.</span>
     {/if}
+    <!--
+      §20's two representations of this selection. A pair of buttons rather
+      than a dropdown: it is switched constantly while digging, and a menu that
+      has to be opened to change a view is a menu nobody changes.
+    -->
+    <span class="views" role="group" aria-label="How to show the collection">
+      <button
+        class:on={showing === "table"}
+        aria-pressed={showing === "table"}
+        title="A row per record, dense and sortable"
+        onclick={() => (showing = "table")}
+      >Table</button>
+      <button
+        class:on={showing === "cards"}
+        aria-pressed={showing === "cards"}
+        title="Sleeves, when the artwork is worth seeing"
+        onclick={() => (showing = "cards")}
+      >Cards</button>
+    </span>
     <IconButton icon="fa-solid fa-folder-plus" title="Add folder…" onClick={addFolder} disabled={busy} />
     <IconButton icon="fa-solid fa-repeat" title={busy ? "Scanning…" : "Rescan"} onClick={rescan} disabled={busy || !status?.folders.length} />
     <IconButton icon="fa-solid fa-file-import" title="Import a rekordbox, Traktor or iTunes library export" onClick={() => importFrom(false)} disabled={busy} />
@@ -1024,6 +1077,21 @@
         <button onclick={() => (likeThis = null)}>show everything</button>
       </p>
     {/if}
+    {#if showing === "cards"}
+      <Cards
+        tracks={sorted}
+        {enabled}
+        {deckNumbers}
+        {loading}
+        why={likeThis ? alikeWhy : {}}
+        favourite={likeThis}
+        onDeck={(track, deck) => void toDeck(track, deck)}
+        onAside={setAside}
+        onAlike={(id) => void showAlike(id)}
+        onFavourite={(track) => void toggleFavourite(track)}
+        onDrag={startDrag}
+      />
+    {:else}
     <div class="table-scroll">
       <table>
         <thead>
@@ -1148,10 +1216,17 @@
                   >−</button>
                 {/if}
                 {#each deckNumbers as deck (deck)}
+                  <!--
+                    Labelled for the same reason the card's is: the visible
+                    text is a bare number, which is enough for an eye that can
+                    see the row it is in and nothing at all for a screen
+                    reader.
+                  -->
                   <button
                     onclick={() => toDeck(track, deck)}
                     disabled={!enabled || loading === track.path}
                     title="Load onto deck {deck}"
+                    aria-label="Load {track.title} onto deck {deck}"
                   >
                     {loading === track.path ? "…" : deck}
                   </button>
@@ -1162,12 +1237,30 @@
         </tbody>
       </table>
     </div>
+    {/if}
   {/if}
 </div>
 
 </div>
 
 <style>
+  /* The view switch. Small, and beside the search rather than above it: it is
+     about what you are looking at, which is what the search box is too. */
+  .views {
+    display: inline-flex;
+    gap: 0.15rem;
+  }
+
+  .views button {
+    font-size: 0.7rem;
+    padding: 0 0.4rem;
+  }
+
+  .views button.on {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
   /*
     Sidebar and rows side by side, both scrolling inside themselves so the
     controls above stay reachable however long either gets.
