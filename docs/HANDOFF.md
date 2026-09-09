@@ -95,6 +95,14 @@ the *previous* bundle. A Playwright run then tests the old code and passes.
 This has produced a false "mutation killed" result more than once. Always look
 for `✓ built` in the output; never pipe it to `tail -1` and assume.
 
+**"Rail" already meant something here.** §22's *Next* rail — which record comes
+next — has `rail.spec.ts` and a `mod rail` in the command tests. §74's rail is
+about which *controls* are under your hands, and building it as `rail` silently
+overwrote §22's test file: eight tests gone, and the suite still green because
+the replacement passed. It is `at_hand` throughout now. Before naming a module
+after a word from the directive, grep for it: the 105 sections reuse words that
+mean different things in different places.
+
 **A card grid is a good way to discover a panel is too small.** The card view
 shipped with `minmax(140px, 1fr)`, which in the browser docked along the bottom
 gave one column the whole width — a single cover taller than the panel, cut
@@ -309,8 +317,7 @@ The largest open sections, in the order they are worth doing:
    becomes inaudible, so nothing crosses. That is a real gap and a small one —
    a mix that never takes the outgoing record out is a mix that has not
    finished.
-3. **§74, the contextual rail.**
-4. **§20's performance table** is the browser at fewer columns than §20 lists —
+3. **§20's performance table** is the browser at fewer columns than §20 lists —
    the other three views ship. Adding the missing columns (energy, vocal and
    stem availability, transition suitability, request count, AI confidence)
    mostly waits on analysis that does not exist, which is the same wall §25's

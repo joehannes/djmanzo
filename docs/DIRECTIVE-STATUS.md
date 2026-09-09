@@ -99,7 +99,7 @@ rather than taken.
 | 71 | "What should I do next?" | ✅ | The assistant's next step is shown before it happens |
 | 72 | User override matrix | ✅ | `dj_assistant::authority` — the directive's ten capabilities against six postures, verbatim and asserted against the directive's own table. The second of three gates the assistant passes, so it is what actually stops a mix rather than a diagram. Configurable both ways, except that Off and Watch cannot be widened |
 | 73 | AI knows what is expensive | ✅ | `mistakes_are_costly` reaches the deck as careful mode |
-| 74 | Contextual control rail | ⬜ | Phase 3's remaining half |
+| 74 | Contextual control rail | ✅ | **At hand**: `dj_app::at_hand` reads the snapshot for what the hands are doing — a platter touched, stems being played, a record against another, one cued and waiting — and answers with four to eight controls, each an action the parser already accepts. A latched one offers the other half, so "bass out" becomes "bass in" once the low band is out. The panel names the deck and why, because a row that silently became a different row is a row nobody trusts. Which deck is its own judgement: §41's focus fades after six seconds by design, so it follows the hands instead. §74's stem FX, tags, rating and transition points are named as absent — a rack of four numbers, and three things that belong to a record rather than a deck |
 | 75 | Visual control of audio features | 🟡 | |
 | 76 | Library "AI lens" | ⬜ | |
 | 77 | Exploration vs performance | 🟡 | `cockpit::Focus` models it; nothing switches on it |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **38 done, 35 part, 13 open, 19 standing rules.**
+Of the 105 sections: **39 done, 35 part, 12 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**38 of 86 deliverable sections are complete and 35 more are partly there.**
+**39 of 86 deliverable sections are complete and 35 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 38 whole plus 35 halves over 86 is 64%, and the phase view is stricter
+way: 39 whole plus 35 halves over 86 is 66%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

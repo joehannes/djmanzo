@@ -1510,6 +1510,72 @@ pub struct MixDto {
     pub style: String,
 }
 
+/// One control on §74's contextual rail.
+#[derive(Debug, Clone, Serialize)]
+pub struct AtHandControlDto {
+    pub label: String,
+    /// The action, exactly as the parser accepts it — so pressing it is the
+    /// same event as typing it or mapping a controller to it.
+    pub action: String,
+    pub on: bool,
+}
+
+/// What is at hand on one deck.
+#[derive(Debug, Clone, Serialize)]
+pub struct AtHandDto {
+    pub deck: u8,
+    pub doing: String,
+    /// Why this set and not another, in the DJ's own terms.
+    pub because: String,
+    pub controls: Vec<AtHandControlDto>,
+}
+
+/// The four to eight controls that matter on `deck` right now.
+///
+/// §74's contextual rail. The judgement is `crate::at_hand`'s, over the same
+/// snapshot the interface is already drawing, so the rail cannot be showing a
+/// deck the rest of the application is not.
+///
+/// Whether another record is audible is the one thing a deck cannot see from
+/// itself, and it is the difference between *mixing* and merely *playing* — so
+/// it is worked out here, where every deck is in reach, rather than guessed at
+/// per deck.
+#[tauri::command]
+pub fn at_hand(state: State<'_, AppState>, deck: Option<u8>) -> Result<AtHandDto, String> {
+    let snapshot = crate::Snapshot::capture(&state.registry(), state.deck_count());
+    // No deck asked for means "wherever the hands are", which is the rail's
+    // ordinary use: §41's `ui focus` fades after six seconds by design, so it
+    // cannot be what a rail follows for a whole set.
+    let deck = deck
+        .or_else(|| crate::at_hand::busiest(&snapshot.decks))
+        .unwrap_or(1);
+    let view = snapshot
+        .decks
+        .iter()
+        .find(|d| d.number == deck)
+        .ok_or_else(|| format!("no deck {deck}"))?;
+    let against = snapshot
+        .decks
+        .iter()
+        .any(|other| other.number != deck && other.playing && other.pre_fader_level > 0.0);
+
+    let hand = crate::at_hand::at_hand(view, against);
+    Ok(AtHandDto {
+        deck: hand.deck,
+        doing: hand.doing.slug().to_owned(),
+        because: hand.because.to_owned(),
+        controls: hand
+            .controls
+            .into_iter()
+            .map(|c| AtHandControlDto {
+                label: c.label,
+                action: c.action,
+                on: c.on,
+            })
+            .collect(),
+    })
+}
+
 /// The mixes tonight, read back out of the action log.
 ///
 /// §67 says the session contains transitions and §68 says the transition

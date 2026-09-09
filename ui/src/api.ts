@@ -2645,6 +2645,33 @@ export interface NightRead {
 
 export const nightRead = () => invoke<NightRead>("night_read");
 
+/* -- the contextual rail (§74) --------------------------------------------- */
+
+/** One control on §74's contextual rail. */
+export interface AtHandControl {
+  label: string;
+  /** The action, exactly as the parser accepts it. */
+  action: string;
+  on: boolean;
+}
+
+/**
+ * The four to eight controls that matter on a deck right now.
+ *
+ * The judgement is `dj_app::at_hand`'s, over the same snapshot everything else
+ * draws from. Asking without a deck means "wherever the hands are", which is
+ * the ordinary use: §41's `ui focus` fades after six seconds by design, so it
+ * cannot be what a rail follows for a whole set.
+ */
+export interface AtHand {
+  deck: number;
+  doing: string;
+  because: string;
+  controls: AtHandControl[];
+}
+
+export const atHand = (deck?: number) => invoke<AtHand>("at_hand", { deck: deck ?? null });
+
 /* -- the mixes tonight (§67, §68) ------------------------------------------ */
 
 /**

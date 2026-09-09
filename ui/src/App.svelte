@@ -48,6 +48,7 @@
   import Pair from "./Pair.svelte";
   import Night from "./Night.svelte";
   import Mixes from "./Mixes.svelte";
+  import AtHand from "./AtHand.svelte";
   import Staged from "./Staged.svelte";
   import Palette from "./Palette.svelte";
   import Plan from "./Plan.svelte";
@@ -215,6 +216,7 @@
     "controllers",
     "log",
     "mixes",
+    "athand",
   ] as const;
   type Drawn = (typeof DRAWN)[number];
 
@@ -1411,6 +1413,10 @@
     <Mixes enabled={ready} />
   {/snippet}
 
+  {#snippet surfaceAtHand()}
+    <AtHand enabled={ready} send={(action) => void send(action)} />
+  {/snippet}
+
   {#snippet surfaceBooth()}
     {#if snapshot}
       <div class="mixer">
@@ -1593,6 +1599,7 @@
         {:else if placement.surface === "pair"}{@render surfacePair()}
         {:else if placement.surface === "night"}{@render surfaceNight()}
         {:else if placement.surface === "mixes"}{@render surfaceMixes()}
+        {:else if placement.surface === "athand"}{@render surfaceAtHand()}
         {:else if placement.surface === "booth"}{@render surfaceBooth()}
         {:else if placement.surface === "presets"}{@render surfacePresets()}
         {:else if placement.surface === "assistant"}{@render surfaceAssistant()}

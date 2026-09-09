@@ -402,6 +402,32 @@
     ]
   },
   {
+    "name": "athand",
+    "title": "At hand",
+    "about": "The four to eight controls that matter on the focused deck right now.",
+    "category": "performance",
+    "least": [
+      200,
+      90
+    ],
+    "prefer": [
+      300,
+      140
+    ],
+    "priority": 85,
+    "performance_critical": true,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "home": "right",
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
     "name": "mixes",
     "title": "Tonight's mixes",
     "about": "How tonight's records were joined, and what kind of mix each was.",

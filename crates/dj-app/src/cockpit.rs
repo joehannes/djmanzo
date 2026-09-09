@@ -847,6 +847,29 @@ pub fn surfaces() -> &'static [Surface] {
             docks: SIDE,
         },
         Surface {
+            // Not "rail": §22's Next rail is already the rail here, and two
+            // things with one name is a session lost to reading the wrong one.
+            name: "athand",
+            title: "At hand",
+            about: "The four to eight controls that matter on the focused deck right now.",
+            category: Category::Performance,
+            // Small on purpose: §74 calls it *compact*, and a rail that needs
+            // a third of the screen is a panel.
+            least: (200, 90),
+            prefer: (300, 140),
+            // High, because it is only worth having where it can be reached
+            // without looking — which means it must not be the surface that
+            // gets collapsed when room runs short.
+            priority: 85,
+            performance_critical: true,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            contextual: true,
+            home: Dock::Right,
+            docks: SIDE,
+        },
+        Surface {
             name: "mixes",
             title: "Tonight's mixes",
             // Deliberately not History's question. That one answers *which

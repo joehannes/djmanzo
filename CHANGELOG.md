@@ -16,6 +16,50 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**At hand: the four to eight controls that matter now** — §74's contextual
+control rail, which the directive closes by calling "the core idea of adaptive
+UI".
+
+**It reads the hands, not the night.** §11's context engine reads where the set
+is in its arc; that is the wrong clock for this. A rail answers "what am I
+doing this second", and the answer changes when a hand lands on a platter —
+minutes before any engine would notice the tempo had risen. So the reading is
+the snapshot: a hand on the jog, a stem pulled, a record playing against
+another, a deck cued and waiting. Both readings exist and neither replaces the
+other.
+
+**Every control is an action djmanzo already accepts**, carried as the exact
+text the parser takes — so a press is the same event as typing it, mapping a
+controller to it, or the assistant asking for it. A test parses every control
+of every state, so the rail cannot offer a verb djmanzo does not have. Unlike
+the palette it *may* carry an argument: `loop 4` and `eq_low 0` are exactly
+what "most relevant now" means, and choosing the number is this module's job.
+
+**A latched control offers the other half.** "bass out" becomes "bass in" once
+the low band is out, and "loop 4" becomes "loop off" once one is running. A row
+with both side by side is a row where half the buttons are always wrong.
+
+**It says which deck and why**, always. A row of controls that silently became
+a different row is a row a DJ stops trusting, and the whole of §74 rests on
+being trusted enough to reach for without looking. Which deck is its own
+judgement: §41's `ui focus` fades after six seconds because attention is a
+moment, so the rail follows the hands instead — a platter being touched, then
+stems being played, then the record being got ready, because during a set the
+deck that is *not* playing to the room is the one being worked on.
+
+**A rule that would have misfired on every deck**, caught by writing the test
+before trusting the fixture: "a stem volume away from unity" is true of every
+deck in the first second after launch, because the registry reads zero for a
+stem the engine has not published yet. Comparing the four stems against *each
+other* says the same thing about a pulled stem and nothing at all about four
+that have never been touched.
+
+**Stem FX, tags, rating and transition points** are on §74's list and are not
+here. The first is a rack of four numbers rather than a button; the other three
+belong to a record rather than a deck, and editing a rating from a rail would
+be the browser's job done where a DJ cannot see which record they were
+changing.
+
 **The collection as cards, and the artwork to put on them** — §20's second
 view, and the last of its four. Three shipped already: the performance table,
 Set Flow and the pair view.

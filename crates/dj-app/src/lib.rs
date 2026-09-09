@@ -22,6 +22,7 @@
 pub mod analysis;
 pub mod art;
 pub mod assistant;
+pub mod at_hand;
 pub mod audience;
 pub mod automix;
 pub mod autopilot;
@@ -470,6 +471,7 @@ pub fn run() {
             commands::get_snapshot,
             commands::waveform_info,
             commands::report_bench,
+            commands::at_hand,
             commands::session_mixes,
             commands::session_render_mix,
             commands::session_log,

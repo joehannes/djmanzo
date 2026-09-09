@@ -151,6 +151,21 @@ const ANSWERS: Record<string, unknown> = {
   // that matters reads it back and checks every `data-layer` on screen is in
   // it, so this stub is deliberately the real shape rather than a stand-in.
   waveform_layers: layers,
+  // §74's rail, in the shape `dj_app::rail` produces for a deck being got
+  // ready: five controls, each an action the parser accepts, with the loop and
+  // the sync showing their state.
+  at_hand: {
+    deck: 2,
+    doing: "preparing",
+    because: "this record is cued and waiting",
+    controls: [
+      { label: "cue", action: "deck 2 cue", on: false },
+      { label: "mark", action: "deck 2 hotcue_set 1", on: false },
+      { label: "loop 4", action: "deck 2 loop 4", on: false },
+      { label: "sync", action: "deck 2 sync", on: true },
+      { label: "keylock", action: "deck 2 keylock_toggle", on: false },
+    ],
+  },
   // Two mixes, the shape `dj_app::mixes` derives them in: a blend into a cut,
   // oldest first, because that is the order the log produces and the panel is
   // what reverses it.
@@ -657,6 +672,15 @@ export async function openShell(
           // would make every dock test measure the fixture instead of the
           // press. Rust's resolver is tested in Rust; what matters here is
           // that the round trip carries the arrangement.
+          // Every action the interface sends, in order. Recorded rather than
+          // counted: `__asked` holds command *names*, and what matters about a
+          // control on §74's rail is the exact action text it dispatched — a
+          // rail whose buttons all reached the bus with the wrong argument
+          // would look identical to one that worked.
+          if (cmd === "dispatch") {
+            ((win.__dispatched ??= []) as string[]).push(String(args.action));
+            return Promise.resolve(null);
+          }
           // The mix re-render. Answered here rather than from the table so a
           // test can check *which* mix was asked for: the panel holds two
           // numbers per row and passing the wrong row's would produce a
