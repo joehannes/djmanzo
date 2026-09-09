@@ -59,6 +59,15 @@ import snapshot from "./snapshot.json" with { type: "json" };
 import padPages from "./pad-pages.json" with { type: "json" };
 import surfaces from "./surfaces.json" with { type: "json" };
 import layers from "./layers.json" with { type: "json" };
+/**
+ * The five transition styles and what each does, generated from
+ * `dj_app::shape` by the same Rust test.
+ *
+ * Not typed out here, for the reason the golden file's test gives: a
+ * hand-written copy of the list is how `vocal drop` came to be performed by
+ * the automix and offered by no panel.
+ */
+import styles from "./styles.json" with { type: "json" };
 
 /**
  * Answers for the commands the shell asks on start-up.
@@ -426,7 +435,12 @@ const ANSWERS: Record<string, unknown> = {
       "keys sit together",
       "88 beats left",
     ],
+    // The blend's own shape, taken from the same generated table rather than
+    // copied -- so a restyle below can look the new one up and the panel says
+    // what the new style actually does.
+    shape: styles.find((style) => style.name === "blend")?.shape,
   },
+  transition_styles: styles,
   transition_current: null,
   transition_clear: null,
   // The palette's answer, which Rust ranks. Two actions and one surface, so a
@@ -758,10 +772,27 @@ export async function openShell(
               const beatFrames =
                 ((held.end_frame as number) - (held.start_frame as number)) /
                 (held.length_beats as number);
+              // A restyle brings the new style's shape with it, the way
+              // `describe_transition` derives it. Carrying the old shape would
+              // leave the panel describing a blend's bass swap under the word
+              // "cut", which is the one thing this row exists to tell you.
+              //
+              // Read out of the answers table rather than off the import at
+              // the top of this file: this function is serialised into the
+              // browser, where a binding from this module's scope is a
+              // ReferenceError that surfaces as an adjustment doing nothing.
+              const restyled = (args.style ?? held.style) as string;
+              const offered = (answers.transition_styles ?? []) as {
+                name: string;
+                shape: unknown;
+              }[];
               win.__transition = {
                 ...held,
                 length_beats: args.lengthBeats ?? held.length_beats,
-                style: args.style ?? held.style,
+                style: restyled,
+                shape:
+                  offered.find((style) => style.name === restyled)?.shape ??
+                  held.shape,
                 start_beat: (held.start_beat as number) + beats,
                 start_frame: (held.start_frame as number) + beats * beatFrames,
                 end_frame: (held.end_frame as number) + beats * beatFrames,

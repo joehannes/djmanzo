@@ -32,9 +32,11 @@
    * are in either record. A "vocal clash" drawn from two tracks both having a
    * vocal somewhere would be a guess with a confident face on it.
    *
-   * **Candidate techniques**, beyond the five styles offered below. The
-   * planner picks one and the DJ can take another; ranking all five per pair
-   * needs a scorer that does not exist yet.
+   * **Candidate techniques**, beyond the styles offered below. The planner
+   * picks one and the DJ can take another; ranking them per pair needs a
+   * scorer that does not exist yet. What is drawn instead is what each one
+   * *does* — §68's stem, EQ and FX plans, from the same table the automix
+   * performs — so the choice is at least an informed one.
    */
   import { untrack } from "svelte";
   import IconButton from "./controls/IconButton.svelte";
@@ -47,11 +49,11 @@
     transitionClear,
     transitionCurrent,
     transitionReplan,
-    TRANSITION_STYLES,
-    TRANSITION_HELP,
+    transitionStyles,
     type DeckState,
     type PairSide,
     type Transition,
+    type TransitionStyleInfo,
   } from "./api";
 
   let {
@@ -166,6 +168,16 @@
   }
   const lengthen = (beats: number) => ask(() => transitionAdjust({ lengthBeats: beats }));
   const restyle = (style: string) => ask(() => transitionAdjust({ style }));
+
+  /**
+   * The styles on offer, from Rust — see `transitionStyles`. The *current*
+   * style's description comes from `pair.shape` instead, so it is the held
+   * transition's own answer rather than a lookup that could miss.
+   */
+  let styles: TransitionStyleInfo[] = $state([]);
+  transitionStyles()
+    .then((offered) => (styles = offered))
+    .catch(() => (styles = []));
 
   async function forget() {
     await transitionClear().catch(() => {});
@@ -410,16 +422,29 @@
           </div>
           <div class="group" role="group" aria-label="How it is done">
             <span class="label">Style</span>
-            {#each TRANSITION_STYLES as style (style)}
+            {#each styles as style (style.name)}
               <button
-                class:on={pair.style === style}
-                onclick={() => restyle(style)}
+                class:on={pair.style === style.name}
+                onclick={() => restyle(style.name)}
                 disabled={!enabled || !pair.armed}
-                title={TRANSITION_HELP[style]}
-              >{style}</button>
+                title={style.shape.does.join(". ")}
+              >{style.name}</button>
             {/each}
           </div>
         </div>
+        <!--
+          What the style will do, before it is pressed.
+
+          §68's stem, EQ and FX plans, in words — and the same words the
+          automix performs, because both read `dj_app::shape`. The seam above
+          says *where* the mix is; this says *what happens in it*, which is the
+          half a DJ otherwise has to know from the style's name.
+        -->
+        <ul class="does" data-testid="pair-does">
+          {#each pair.shape.does as line (line)}
+            <li>{line}</li>
+          {/each}
+        </ul>
         {#if !pair.armed}
           <p class="hint">Set it up to adjust it. Until then this is an opinion, and nothing is held.</p>
         {/if}
@@ -684,6 +709,24 @@
   }
 
   .empty,
+  /* What the style does, under the row that chooses it. */
+  .does {
+    list-style: none;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.6rem;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  .does li::before {
+    content: "\2022";
+    margin-right: 0.35rem;
+    opacity: 0.5;
+  }
+
   .hint,
   .error {
     font-size: 0.72rem;

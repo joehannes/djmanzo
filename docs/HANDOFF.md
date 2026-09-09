@@ -119,6 +119,15 @@ CI's before trusting a green local run, and `rustup update stable` if they
 disagree; it takes a few minutes and a full rebuild, and it is cheaper than a
 red pipeline per commit.
 
+**The Playwright stub runs in the browser, not in Node.** `openShell` is
+serialised into the page by `addInitScript`, so anything it closes over from
+`shell.ts`'s module scope — an import, a helper — is a `ReferenceError` in
+the page. It does not look like one: the failing command's promise rejects and
+the panel simply does not change, which reads as an adjustment that did
+nothing. Everything the stub body needs has to reach it through the answers
+table, which *is* serialised. Three previously-green tests failed this way in
+one edit.
+
 **Playwright's browser.** CI installs its own. A container that pre-installs
 one is pointed at it with `DJMANZO_CHROMIUM=/opt/pw-browsers/chromium`,
 otherwise every test fails with "Executable doesn't exist".
@@ -295,16 +304,33 @@ The largest open sections, in the order they are worth doing:
    markers, loop edges — uses the same `onMoveMark` shape: it is mostly a
    matter of giving each mark an owner that knows what moving it means. §27's
    ghost track still needs a preview player djmanzo does not have.
-2. **§68's last quarter.** The automix and the autopilot perform the held mix,
-   and `dj_app::mixes` now derives the *performed* one back out of the action
-   log — the night's own list of what went into what, in beats, with the style
-   named from what was actually done. **Replay reads it now**: `replay::Window`
+2. **§68 is closed; what it was going to drive is not.** The automix and the
+   autopilot perform the held mix, `dj_app::mixes` derives the *performed* one
+   back out of the action log, and **replay reads it**: `replay::Window`
    renders one handover back to a WAV with its run-up, and *hear it again* on
-   any row does it. What is still missing is re-*planning* — changing a
-   recorded mix's length or style and hearing the alternative, which is §69's
-   practice lab rather than §68's object. The stem, EQ and FX plans are still
-   absent because nothing decides them — the automix's own style handling
-   (`begin`) is the closest thing to an FX plan that exists.
+   any row does it.
+
+   The last field arrived as `dj_app::shape` — **one table of what a style
+   does beyond the two channel faders**, which is §68's `outgoingStems`,
+   `incomingStems`, `eqPlan` and `fxPlan`. Read it before adding a transition
+   style, because the automix now *performs* that table rather than branching
+   on the style itself: a new style is a row there and nothing in `automix`
+   changes. The plans are derived from the style on every read, never stored
+   on the transition — a stored copy is a second answer, and the one that goes
+   stale is the one a panel is reading.
+
+   **This is the shape of the whole class of bug it fixed.** The styles were
+   listed once in Rust and again in TypeScript, and the descriptions a third
+   time; `vocal drop` was in the vocabulary and performed by the automix for
+   months while no panel offered it, because nothing made the interface's copy
+   wrong when a style was added. The list is served from Rust now
+   (`transition_styles`) and the browser harness stubs it from a golden file
+   the Rust test blesses. If you find yourself typing a list that Rust already
+   has, that is the bug arriving again.
+
+   What is still missing is re-*planning* — changing a recorded mix's length
+   or style and hearing the alternative, which is §69's practice lab rather
+   than §68's object, and the preview, which is §27 and needs a player.
 
    **A replay window is not a seek**, and anything built on it inherits that:
    the engine's state at a moment is the whole set up to it, so rendering the
@@ -330,10 +356,11 @@ The largest open sections, in the order they are worth doing:
    *kept*, directionally and weighted by how many times, and the Next rail
    reads them. What it deliberately does not store is what merely happened —
    that is derivable from the log, and a second copy would disagree with it.
-   §24's remaining examples ("works only with an 8-beat loop", "A vocal → B
-   instrumental") want a transition object that records what was done to the
-   *stems*, which is also §68's last absent field. One piece of work would
-   close both.
+   Of §24's remaining examples, "A vocal → B instrumental" is now derivable —
+   the style is in the log and `dj_app::shape` says what each style does to
+   the stems, so a kept vocal drop *is* a record of one. "Works only with an
+   8-beat loop" is not: nothing records the loop that was running under a
+   transition.
 4. **§20's performance table** is the browser at fewer columns than §20 lists —
    the other three views ship. Adding the missing columns (energy, vocal and
    stem availability, transition suitability, request count, AI confidence)

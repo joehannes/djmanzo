@@ -14,14 +14,27 @@
    * the right moment.
    */
   import {
-    TRANSITION_STYLES,
-    TRANSITION_HELP,
     formatTime,
     planTransition,
     sidelist,
+    transitionStyles,
     type AutomixState,
     type Transition,
+    type TransitionStyleInfo,
   } from "./api";
+
+  /**
+   * The styles on offer, and what each does — asked, not written here.
+   *
+   * `dj_app::shape` is the table the automix performs, so the tooltip on a
+   * button is the same answer the mix will be. Empty until it arrives, which
+   * is one frame: a row of buttons that briefly describes the wrong thing
+   * would be worse than a row that briefly is not there.
+   */
+  let styles: TransitionStyleInfo[] = $state([]);
+  transitionStyles()
+    .then((offered) => (styles = offered))
+    .catch(() => (styles = []));
 
   let {
     automix,
@@ -113,14 +126,14 @@
   {/if}
 
   <div class="styles" class:deferred={automix.holding}>
-    {#each TRANSITION_STYLES as style (style)}
+    {#each styles as style (style.name)}
       <button
-        class:active={automix.style === style}
+        class:active={automix.style === style.name}
         disabled={!enabled}
-        title={TRANSITION_HELP[style]}
-        onclick={() => send(`automix style ${style}`)}
+        title={style.shape.does.join(". ")}
+        onclick={() => send(`automix style ${style.name}`)}
       >
-        {style}
+        {style.name}
       </button>
     {/each}
   </div>

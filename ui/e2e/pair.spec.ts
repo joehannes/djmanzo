@@ -16,6 +16,7 @@
 import { expect, test } from "@playwright/test";
 
 import { errorsThrown, openShell } from "./shell";
+import styles from "./styles.json" with { type: "json" };
 
 /** Open the shell with the pair view docked. */
 async function pairOpen(page: import("@playwright/test").Page) {
@@ -171,6 +172,58 @@ test.describe("the pair view", () => {
     await expect
       .poll(async () => handle.getAttribute("aria-valuenow"))
       .not.toBe(before);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **§68's stem, EQ and FX plans: what the style will do, before it is
+   * pressed.**
+   *
+   * A row of buttons labelled "blend", "echo", "vocal drop" tells a DJ what
+   * the style is called, not what it does to their two records. The plans come
+   * from `dj_app::shape`, which is the table the automix performs -- so what
+   * this row says is what will happen, and a restyle changes it.
+   */
+  test("says what the style will do, and changes it when restyled", async ({
+    page,
+  }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+
+    // The blend swaps the lows: that is the whole of what makes it a blend.
+    const does = page.getByTestId("pair-does");
+    await expect(does).toContainText("low EQ handed over");
+
+    // A cut has no overlap for an EQ plan to happen over, and says so rather
+    // than going quiet.
+    await page.locator(`${PAIR} button`, { hasText: /^cut$/ }).click();
+    await expect(does).toContainText("no overlap");
+    await expect(does).not.toContainText("low EQ");
+
+    expect(errorsThrown(page), "the pair view threw while restyling").toEqual([]);
+  });
+
+  /**
+   * **Every style djmanzo can perform is a style the panel offers.**
+   *
+   * `vocal drop` was in the vocabulary and performed by the automix while no
+   * panel offered it, because the list of styles was hand-written on this side
+   * and nothing made it wrong when a style was added. It is served from Rust
+   * now; this checks the list that arrives is the whole list.
+   */
+  test("offers every style djmanzo has", async ({ page }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+
+    const group = page.locator(`${PAIR} [aria-label="How it is done"] button`);
+    await expect(group).toHaveCount(styles.length);
+    for (const style of styles) {
+      await expect(
+        group.filter({ hasText: new RegExp(`^${style.name}$`) }),
+        `no ${style.name} button`,
+      ).toHaveCount(1);
+    }
     expect(errorsThrown(page)).toEqual([]);
   });
 

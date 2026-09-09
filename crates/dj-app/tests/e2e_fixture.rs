@@ -248,6 +248,49 @@ fn the_browser_fixture_has_the_waveform_layers_the_renderer_declares() {
     );
 }
 
+/// The browser's transition styles are djmanzo's.
+///
+/// The five styles and what each does are a table in `dj_app::shape` -- the one
+/// the automix performs -- so the browser harness stubs `transition_styles`
+/// from this file rather than from a list somebody typed. That is not
+/// housekeeping: `vocal drop` was in the vocabulary and performed by the
+/// automix for months while no panel offered it, because the interface's copy
+/// of the list was hand-written and nothing made it wrong when a style was
+/// added.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_transition_styles_djmanzo_offers() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/styles.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::transition_styles())
+        .expect("the styles serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the styles");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored styles are JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh styles are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe transition styles have changed, so the browser is testing panels \
+         against styles djmanzo no longer offers -- or missing one it does.\n\n\
+         Regenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// The fixture has to describe a screen worth measuring.
 ///
 /// Both of these were false in an earlier version of the fixture, and both

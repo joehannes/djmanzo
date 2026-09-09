@@ -4570,6 +4570,86 @@ pub struct PairSideDto {
     pub functions: Vec<String>,
 }
 
+/// What one style does beyond the two channel faders.
+///
+/// The interface shape of [`crate::shape::Shape`] -- §68's `outgoingStems`,
+/// `incomingStems`, `eqPlan` and `fxPlan`. `does` is the same thing in the
+/// words a panel can print, derived from the fields beside it rather than
+/// written separately, so a tooltip cannot describe a mix djmanzo no longer
+/// performs.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShapeDto {
+    /// Whether the two records are ever audible at the same time.
+    pub overlaps: bool,
+    /// The stem soloed on the outgoing deck for the length of the mix, if any.
+    pub outgoing_stem: Option<String>,
+    pub incoming_stem: Option<String>,
+    /// The fraction of the transition by which the low-EQ handover has
+    /// finished. `None` when the style does not touch the EQ at all, which is
+    /// not the same as a handover that takes the whole mix.
+    pub eq_done_by: Option<f64>,
+    pub fx: Option<ShapeFxDto>,
+    pub does: Vec<String>,
+}
+
+/// The effect a style throws over the outgoing deck.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShapeFxDto {
+    pub effect: String,
+    pub beats: f32,
+    pub slot: u8,
+}
+
+/// One transition style, and what it does.
+///
+/// Served rather than written on the interface side: the automix performs
+/// [`crate::shape`]'s table, so the buttons that offer a style read the same
+/// table instead of a second description of it that nothing keeps true. It is
+/// also how the interface learns a style exists -- `vocal drop` was in the
+/// vocabulary and performed by the automix while no panel offered it, because
+/// the list of styles was hand-written twice.
+#[derive(Debug, Clone, Serialize)]
+pub struct StyleDto {
+    /// Exactly as the action grammar spells it, so a button's label is also
+    /// the word `automix style <name>` takes.
+    pub name: String,
+    pub shape: ShapeDto,
+}
+
+/// Turn a shape into what the interface draws.
+fn describe_shape(shape: &crate::shape::Shape) -> ShapeDto {
+    ShapeDto {
+        overlaps: shape.overlaps,
+        outgoing_stem: shape.outgoing_stems.solo().map(|s| s.name().to_owned()),
+        incoming_stem: shape.incoming_stems.solo().map(|s| s.name().to_owned()),
+        eq_done_by: match shape.eq {
+            crate::shape::Eq::Flat => None,
+            crate::shape::Eq::HandOverLows { done_by } => Some(done_by),
+        },
+        fx: shape.fx.outgoing().map(|(slot, kind, beats)| ShapeFxDto {
+            effect: kind.name().to_owned(),
+            beats,
+            slot,
+        }),
+        does: shape.words(),
+    }
+}
+
+/// Every transition style, in the vocabulary's own order.
+///
+/// A read of a table; it holds nothing and moves nothing.
+#[tauri::command]
+#[must_use]
+pub fn transition_styles() -> Vec<StyleDto> {
+    dj_core::action::TransitionStyle::ALL
+        .into_iter()
+        .map(|style| StyleDto {
+            name: style.as_str().to_owned(),
+            shape: describe_shape(&crate::shape::shape(style)),
+        })
+        .collect()
+}
+
 /// A transition, flattened for the interface.
 ///
 /// The interface shape of [`crate::transition::Transition`], which is §68's
@@ -4611,6 +4691,9 @@ pub struct TransitionDto {
     /// was just asked about.
     pub armed: bool,
     pub reasons: Vec<String>,
+    /// What this style does beyond the faders, so the pair view can say what
+    /// pressing the button will do before it is pressed.
+    pub shape: ShapeDto,
 }
 
 /// Everything the planner needs about one deck, read from the live registry.
@@ -4730,6 +4813,7 @@ fn describe_transition(
             .iter()
             .map(describe_plan_reason)
             .collect(),
+        shape: describe_shape(&transition.shape()),
     }))
 }
 

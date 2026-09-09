@@ -464,23 +464,32 @@ export interface ClapState {
   bypassed: boolean;
 }
 
-export type TransitionStyle = "cut" | "fade" | "blend" | "echo";
+export type TransitionStyle = "cut" | "fade" | "blend" | "echo" | "vocal drop";
 
-/** Every style, in the order the interface offers them. */
-export const TRANSITION_STYLES: readonly TransitionStyle[] = [
-  "blend",
-  "fade",
-  "cut",
-  "echo",
-];
+/**
+ * Every style, and what each one does, from Rust.
+ *
+ * Asked rather than written here. The list used to be a constant on this side
+ * and the descriptions a second constant beside it — which is how `vocal drop`
+ * came to be in the vocabulary, performed by the automix, and offered by no
+ * panel: nothing made the interface's copy of the list wrong when a style was
+ * added. `dj_app::shape` is the table the automix performs, so the buttons
+ * that offer a style now read the same table.
+ *
+ * The answer is a fixed table, so it is fetched once and shared. A failure is
+ * not cached: the backend not being there yet is not an answer.
+ */
+let offered: Promise<TransitionStyleInfo[]> | null = null;
 
-/** What each style does, in the words a DJ would use. */
-export const TRANSITION_HELP: Record<TransitionStyle, string> = {
-  blend: "Crossfade with the outgoing bass pulled out. What a DJ does by hand.",
-  fade: "A straight crossfade.",
-  cut: "One stops, the next starts. Right for unrelated songs.",
-  echo: "An echo over the outgoing track so it dissolves rather than ends.",
-};
+export function transitionStyles(): Promise<TransitionStyleInfo[]> {
+  offered ??= invoke<TransitionStyleInfo[]>("transition_styles").catch(
+    (error) => {
+      offered = null;
+      throw error;
+    },
+  );
+  return offered;
+}
 
 /** The automix, when the DJ has handed the mix over. */
 export interface AutomixState {
@@ -1471,6 +1480,48 @@ export interface Transition {
   armed: boolean;
   /** Short phrases, as the suggester's are. */
   reasons: string[];
+  /** What this style does beyond the two channel faders. */
+  shape: TransitionShape;
+}
+
+/**
+ * What one style does beyond the two channel faders.
+ *
+ * §68's `outgoingStems`, `incomingStems`, `eqPlan` and `fxPlan`. `does` is the
+ * same thing in words, derived in Rust from the fields beside it — the automix
+ * performs that table, so a panel printing `does` cannot describe a mix
+ * djmanzo would not perform.
+ */
+export interface TransitionShape {
+  /** Whether the two records are ever audible at the same time. */
+  overlaps: boolean;
+  /** The stem soloed on that deck for the length of the mix, if any. */
+  outgoing_stem: string | null;
+  incoming_stem: string | null;
+  /**
+   * The fraction of the transition by which the low-EQ handover has finished.
+   * `null` when the style does not touch the EQ, which is not the same as a
+   * handover that takes the whole mix.
+   */
+  eq_done_by: number | null;
+  fx: TransitionShapeFx | null;
+  does: string[];
+}
+
+export interface TransitionShapeFx {
+  effect: string;
+  beats: number;
+  slot: number;
+}
+
+/** One style, and what it does. */
+export interface TransitionStyleInfo {
+  /**
+   * Exactly as the action grammar spells it, so the label is also the word
+   * `automix style <name>` takes.
+   */
+  name: string;
+  shape: TransitionShape;
 }
 
 /**

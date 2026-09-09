@@ -39,8 +39,9 @@
 //! on the end. Detecting the real end is analysis work and is not done here;
 //! until it is, the honest description is "mixes out of the end of the file".
 
-use dj_core::action::{Action, AutomixChange, DeckAction, TransitionStyle};
-use dj_core::fx::{EffectKind, FxChange};
+use crate::shape;
+use dj_core::action::{Action, AutomixChange, DeckAction, StemChange, TransitionStyle};
+use dj_core::fx::FxChange;
 use dj_core::{CrossfaderAssign, DeckId};
 
 /// How far ahead of the handover a track is asked for, in seconds.
@@ -124,14 +125,36 @@ enum Phase {
     /// A track has been asked for on `incoming` and not yet arrived.
     Waiting { outgoing: DeckId, incoming: DeckId },
     /// Mid-transition.
-    Mixing {
-        outgoing: DeckId,
-        incoming: DeckId,
-        /// The outgoing playhead where the transition began, in frames.
-        from: u64,
-        /// How long it lasts, in frames.
-        span: u64,
-    },
+    Mixing(Running),
+}
+
+/// The transition that is happening, as one thing.
+///
+/// One value rather than five arguments, because the five belong together: a
+/// transition is these decks, from there, for that long, in that style, and a
+/// function that took four of them and read the fifth off the panel is exactly
+/// the defect [`Running::style`] describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Running {
+    outgoing: DeckId,
+    incoming: DeckId,
+    /// The outgoing playhead where the transition began, in frames.
+    from: u64,
+    /// How long it lasts, in frames.
+    span: u64,
+    /// What kind of mix this *is*.
+    ///
+    /// Carried rather than read from the panel, because a held mix can name a
+    /// style the panel does not — and the panel can be changed mid-transition
+    /// by a DJ setting up the *next* one. Without this, `begin` honoured the
+    /// held style and `mix` and `finish` read the panel's: a held blend against
+    /// a panel set to fade opened as a blend and carried on as a fade, which is
+    /// neither, and which djmanzo's own record of the night would read back as
+    /// the wrong one.
+    ///
+    /// §68's argument, in one field: one object drives the mix, so every part
+    /// of it agrees about what the mix is.
+    style: TransitionStyle,
 }
 
 /// The mix djmanzo is holding, as the automix needs it.
@@ -263,11 +286,8 @@ impl Automix {
             }
             AutomixChange::SetEnabled(false) => {
                 self.enabled = false;
-                if let Phase::Mixing {
-                    outgoing, incoming, ..
-                } = self.phase
-                {
-                    self.finish(outgoing, incoming, decks, &mut plan);
+                if let Phase::Mixing(running) = self.phase {
+                    self.finish(running, decks, &mut plan);
                 }
                 self.phase = Phase::Watching;
             }
@@ -292,12 +312,7 @@ impl Automix {
             Phase::Waiting { outgoing, incoming } => {
                 self.wait(outgoing, incoming, decks, &mut plan);
             }
-            Phase::Mixing {
-                outgoing,
-                incoming,
-                from,
-                span,
-            } => self.mix(outgoing, incoming, from, span, decks, &mut plan),
+            Phase::Mixing(running) => self.mix(running, decks, &mut plan),
         }
         plan
     }
@@ -416,56 +431,58 @@ impl Automix {
         // tempo — a DJ would never re-pitch the record the crowd is dancing to.
         plan.deck(incoming, DeckAction::Sync);
 
-        match style {
-            TransitionStyle::Cut => {
-                // No overlap at all: the outgoing deck stops on the same tick
-                // the incoming one starts.
-                self.set_fader(incoming, 1.0, plan);
-                plan.deck(incoming, DeckAction::Play);
-                self.finish(outgoing.id, incoming, decks, plan);
-                self.phase = Phase::Watching;
-                return;
-            }
-            TransitionStyle::Echo | TransitionStyle::VocalDrop => {
-                // Slot 1 of the outgoing deck's rack, thrown as it leaves. The
-                // slot is overwritten rather than asked about: automix is
-                // driving, and a transition that depended on which effect the
-                // DJ happened to leave loaded would be a different transition
-                // every time.
-                plan.act(Action::Deck {
-                    deck: outgoing.id,
-                    action: DeckAction::Fx {
-                        slot: 1,
-                        change: FxChange::Select(EffectKind::Echo),
-                    },
-                });
-                plan.act(Action::Deck {
-                    deck: outgoing.id,
-                    action: DeckAction::Fx {
-                        slot: 1,
-                        change: FxChange::Beats(4.0),
-                    },
-                });
-                plan.act(Action::Deck {
-                    deck: outgoing.id,
-                    action: DeckAction::Fx {
-                        slot: 1,
-                        change: FxChange::SetEnabled(true),
-                    },
-                });
+        // Everything past the two faders is the style's, and the style's shape
+        // is a table rather than a branch here -- see `crate::shape`.
+        let shape = shape::shape(style);
 
-                if style == TransitionStyle::VocalDrop {
-                    // Set the outgoing deck to Vocal solo
-                    plan.act(Action::Deck {
-                        deck: outgoing.id,
-                        action: DeckAction::Stem {
-                            stem: dj_core::action::Stem::Vocal,
-                            change: dj_core::action::StemChange::SetSolo(true),
-                        },
-                    });
-                }
+        let running = Running {
+            outgoing: outgoing.id,
+            incoming,
+            from: outgoing.position as u64,
+            span: span as u64,
+            style,
+        };
+
+        if !shape.overlaps {
+            // Nothing is audible at the same time, so there is no span for a
+            // stem or an EQ plan to happen over: the outgoing deck stops on
+            // the same tick the incoming one starts.
+            self.set_fader(incoming, 1.0, plan);
+            plan.deck(incoming, DeckAction::Play);
+            self.finish(running, decks, plan);
+            self.phase = Phase::Watching;
+            return;
+        }
+
+        if let Some((slot, kind, beats)) = shape.fx.outgoing() {
+            // The slot is overwritten rather than asked about: automix is
+            // driving, and a transition that depended on which effect the DJ
+            // happened to leave loaded would be a different transition every
+            // time.
+            for change in [
+                FxChange::Select(kind),
+                FxChange::Beats(beats),
+                FxChange::SetEnabled(true),
+            ] {
+                plan.act(Action::Deck {
+                    deck: outgoing.id,
+                    action: DeckAction::Fx { slot, change },
+                });
             }
-            TransitionStyle::Fade | TransitionStyle::Blend => {}
+        }
+        for (deck, stems) in [
+            (outgoing.id, shape.outgoing_stems),
+            (incoming, shape.incoming_stems),
+        ] {
+            if let Some(stem) = stems.solo() {
+                plan.act(Action::Deck {
+                    deck,
+                    action: DeckAction::Stem {
+                        stem,
+                        change: StemChange::SetSolo(true),
+                    },
+                });
+            }
         }
 
         // Start silent and come up, so the first frame of the incoming track is
@@ -473,24 +490,18 @@ impl Automix {
         self.set_fader(incoming, 0.0, plan);
         plan.deck(incoming, DeckAction::Play);
 
-        self.phase = Phase::Mixing {
-            outgoing: outgoing.id,
-            incoming,
-            from: outgoing.position as u64,
-            span: span as u64,
-        };
+        self.phase = Phase::Mixing(running);
     }
 
     /// Mid-transition: move the faders to where the music says they should be.
-    fn mix(
-        &mut self,
-        outgoing: DeckId,
-        incoming: DeckId,
-        from: u64,
-        span: u64,
-        decks: &[DeckView],
-        plan: &mut Plan,
-    ) {
+    fn mix(&mut self, running: Running, decks: &[DeckView], plan: &mut Plan) {
+        let Running {
+            outgoing,
+            incoming,
+            from,
+            span,
+            style,
+        } = running;
         let Some(out) = view(decks, outgoing) else {
             self.phase = Phase::Watching;
             return;
@@ -510,26 +521,34 @@ impl Automix {
         self.set_fader(outgoing, angle.cos() as f32, plan);
         self.set_fader(incoming, angle.sin() as f32, plan);
 
-        if self.style == TransitionStyle::Blend {
-            // The bass swap. Both kicks at once is the thing that makes an
-            // automatic mix sound automatic, so the outgoing low end comes out
-            // over the first half and the incoming one arrives over it.
-            //
-            // The EQ range is 0..=4 with 1.0 as unity, so a cut is toward zero.
-            let swap = (progress * 2.0).clamp(0.0, 1.0) as f32;
+        // The style's EQ plan. Guarded on whether there *is* a plan rather than
+        // on the value it currently gives: a swap is nought at the start too,
+        // and skipping the write there would leave the incoming record's bass
+        // in for the first tick of the one style that exists to take it out.
+        //
+        // The EQ range is 0..=4 with 1.0 as unity, so a cut is toward zero.
+        let eq = shape::shape(style).eq;
+        if eq != shape::Eq::Flat {
+            let swap = eq.swap_at(progress) as f32;
             plan.deck(outgoing, DeckAction::SetEqLow(1.0 - swap));
             plan.deck(incoming, DeckAction::SetEqLow(swap));
         }
 
         if progress >= 1.0 {
-            self.finish(outgoing, incoming, decks, plan);
+            self.finish(running, decks, plan);
             self.phase = Phase::Watching;
         }
     }
 
     /// Close the transition: the incoming deck holds the room, the outgoing one
     /// is put back the way it was found.
-    fn finish(&mut self, outgoing: DeckId, incoming: DeckId, decks: &[DeckView], plan: &mut Plan) {
+    fn finish(&mut self, running: Running, decks: &[DeckView], plan: &mut Plan) {
+        let Running {
+            outgoing,
+            incoming,
+            style,
+            ..
+        } = running;
         self.set_fader(incoming, 1.0, plan);
         plan.deck(incoming, DeckAction::SetEqLow(1.0));
 
@@ -539,23 +558,32 @@ impl Automix {
         // silent-with-the-fader-down, which reads as a broken channel.
         self.set_fader(outgoing, 1.0, plan);
         plan.deck(outgoing, DeckAction::SetEqLow(1.0));
-        if self.style == TransitionStyle::Echo || self.style == TransitionStyle::VocalDrop {
+        // Everything the shape switched on is switched off again, from the same
+        // table that switched it on -- so a style cannot leave a deck holding
+        // an effect or a solo the DJ did not set.
+        let shape = shape::shape(style);
+        if let Some((slot, _, _)) = shape.fx.outgoing() {
             plan.act(Action::Deck {
                 deck: outgoing,
                 action: DeckAction::Fx {
-                    slot: 1,
+                    slot,
                     change: FxChange::SetEnabled(false),
                 },
             });
         }
-        if self.style == TransitionStyle::VocalDrop {
-            plan.act(Action::Deck {
-                deck: outgoing,
-                action: DeckAction::Stem {
-                    stem: dj_core::action::Stem::Vocal,
-                    change: dj_core::action::StemChange::SetSolo(false),
-                },
-            });
+        for (deck, stems) in [
+            (outgoing, shape.outgoing_stems),
+            (incoming, shape.incoming_stems),
+        ] {
+            if let Some(stem) = stems.solo() {
+                plan.act(Action::Deck {
+                    deck,
+                    action: DeckAction::Stem {
+                        stem,
+                        change: StemChange::SetSolo(false),
+                    },
+                });
+            }
         }
         plan.deck(outgoing, DeckAction::Eject);
         // Ejecting clears the deck, so the next preload will fill it.
@@ -774,6 +802,48 @@ mod tests {
         );
     }
 
+    /// **The style a mix starts with is the style it finishes with.**
+    ///
+    /// §68's whole argument: one transition object drives the mix, so that
+    /// every part of it agrees about what the mix *is*. `begin` honoured the
+    /// held mix's style and then `mix` and `finish` read the panel's, so a
+    /// held Blend performed against a panel set to Fade opened as a blend and
+    /// carried on as a fade — no bass swap, no cleanup of what the opening
+    /// set up. A hybrid of two styles, which is neither, and which djmanzo's
+    /// own record of the night would then read back as the wrong one.
+    #[test]
+    fn a_held_mix_keeps_its_own_style_all_the_way_through() {
+        // The panel says fade; the DJ set up a blend.
+        let mut mix = on(TransitionStyle::Fade);
+        mix.hold(Some(held_at(30.0, 16, TransitionStyle::Blend)));
+        mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+        assert!(mix.is_mixing(), "the held mix did not start");
+
+        // Halfway through: a blend swaps the bass, a fade does not.
+        let plan = mix.tick(&[playing(1, 34.0), playing(2, 4.0)]);
+        assert!(
+            text(&plan).iter().any(|a| a.starts_with("deck 1 eq_low")),
+            "the blend stopped being a blend once it was running: {:?}",
+            text(&plan)
+        );
+    }
+
+    /// And the other way: a panel set to blend must not turn a held fade into
+    /// one. The held mix is the mix, in both directions.
+    #[test]
+    fn the_panel_cannot_turn_a_held_fade_into_a_blend() {
+        let mut mix = on(TransitionStyle::Blend);
+        mix.hold(Some(held_at(30.0, 16, TransitionStyle::Fade)));
+        mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+
+        let plan = mix.tick(&[playing(1, 34.0), playing(2, 4.0)]);
+        assert!(
+            !text(&plan).iter().any(|a| a.starts_with("deck 1 eq_low")),
+            "a held fade swapped the bass: {:?}",
+            text(&plan)
+        );
+    }
+
     /// The held mix does not stop it loading a record in time.
     #[test]
     fn a_held_mix_still_gets_its_record_loaded_early() {
@@ -923,6 +993,38 @@ mod tests {
             )),
             "a fade touched the EQ: {:?}",
             text(&mid)
+        );
+    }
+
+    /// **The incoming record's bass is out from the first tick of the mix, not
+    /// the second.**
+    ///
+    /// A blend whose swap only starts once progress has moved off nought lets
+    /// the incoming kick through for one tick at exactly the moment both
+    /// records first sound together -- which is the one thing the swap exists
+    /// to prevent, at the one moment it is most audible.
+    #[test]
+    fn a_blend_takes_the_incoming_bass_out_from_the_first_tick() {
+        let decks = |seconds: f64| vec![playing(1, seconds), loaded_idle(2)];
+        let mut blend = on(TransitionStyle::Blend);
+        blend.tick(&decks(35.0));
+        blend.tick(&decks(52.0));
+        assert!(blend.is_mixing(), "the transition never opened");
+
+        // The same playhead again: progress is exactly nought.
+        let first = blend.tick(&decks(52.0));
+        let incoming = first.actions.iter().find_map(|a| match a {
+            Action::Deck {
+                deck,
+                action: DeckAction::SetEqLow(gain),
+            } if deck.human_number() == 2 => Some(*gain),
+            _ => None,
+        });
+        assert_eq!(
+            incoming,
+            Some(0.0),
+            "the incoming bass was not cut at the top of the blend: {:?}",
+            text(&first)
         );
     }
 

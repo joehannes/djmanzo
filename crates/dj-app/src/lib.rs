@@ -49,6 +49,7 @@ pub mod remote;
 pub mod replay;
 pub mod session;
 pub mod setrec;
+pub mod shape;
 pub mod share;
 pub mod signals;
 pub mod snapshot;
@@ -488,6 +489,7 @@ pub fn run() {
             commands::transition_arm,
             commands::transition_current,
             commands::transition_adjust,
+            commands::transition_styles,
             commands::transition_replan,
             commands::transition_clear,
             commands::session_save,
