@@ -96,7 +96,23 @@
     </button>
   </header>
 
-  <div class="styles">
+  <!--
+    §68. When djmanzo is holding a mix, that is the one that will be performed
+    — its decks, its point, its length and its style — and the controls below
+    describe the mix *after* it. Said rather than left to be discovered: a DJ
+    whose style buttons appear to do nothing deserves to know that something
+    more specific is in charge, and the two promises are genuinely different.
+    Without a held mix the handover is the end of the file minus the
+    transition, which is wrong for any record with applause on the end.
+  -->
+  {#if automix.holding}
+    <p class="holding">
+      Performing the mix you set up — where you put it, over the length you
+      chose. These settings are for the one after.
+    </p>
+  {/if}
+
+  <div class="styles" class:deferred={automix.holding}>
     {#each TRANSITION_STYLES as style (style)}
       <button
         class:active={automix.style === style}
@@ -109,7 +125,7 @@
     {/each}
   </div>
 
-  <label class="control">
+  <label class="control" class:deferred={automix.holding}>
     <span>Over <em class="mono">{automix.beats.toFixed(0)} beats</em></span>
     <input
       type="range"
@@ -199,6 +215,27 @@
 </section>
 
 <style>
+  /*
+    The held mix, and the controls it supersedes.
+
+    Dimmed rather than disabled: they still work, and what they set is the mix
+    after this one. A disabled control says "not now"; a dimmed one says "not
+    the thing in front of you", which is the true statement here.
+  */
+  .holding {
+    margin: 0 0 0.4rem;
+    padding: 0.3rem 0.5rem;
+    border-left: 2px solid var(--accent);
+    background: var(--panel-raised);
+    font-size: 0.82em;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+
+  .deferred {
+    opacity: 0.55;
+  }
+
   .automix {
     display: flex;
     flex-direction: column;

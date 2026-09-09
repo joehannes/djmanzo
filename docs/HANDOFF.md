@@ -226,11 +226,12 @@ The largest open sections, in the order they are worth doing:
    already computes — the mix-out region, the runway to the end of the record,
    and the grid's own confidence. §27's ghost track still needs a preview
    player djmanzo does not have.
-2. **§68's remaining half.** The object ships and the pair view reads it — but
-   the automix, the autopilot and replay each still plan their own transition
-   rather than performing the one djmanzo is holding, which is the unification
-   §68 is actually asking for. Its stem, EQ and FX plans are absent because
-   nothing yet decides them; a field that is always empty is a promise.
+2. **§68's last quarter.** The automix and the autopilot perform the held mix
+   now; **replay** still re-runs the actions a transition produced rather than
+   the object, which is fine for reproducing a night and useless for
+   *re-planning* one. The stem, EQ and FX plans are still absent because
+   nothing decides them — the automix's own style handling (`begin`) is the
+   closest thing to an FX plan that exists and would be the place to start.
 3. **§20's last view** — the compact cards. Set Flow and the pair view ship;
    the performance table is the browser at fewer columns than §20 lists.
 4. **§74, the contextual rail.**

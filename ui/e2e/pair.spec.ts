@@ -173,4 +173,37 @@ test.describe("the pair view", () => {
       .not.toBe(before);
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **§68: the automix performs the mix you set up.**
+   *
+   * The transition object exists so that everything performs the *same* mix.
+   * Before this the automix decided its own moment, so a DJ who spent a minute
+   * adjusting a mix point and then switched automix on watched it be ignored.
+   * The arithmetic is Rust's and is tested in `dj_app::automix`; what a browser
+   * can prove is that the panel stops claiming to be in charge of a handover
+   * it is not deciding.
+   */
+  test("the automix says when it is performing the held mix", async ({
+    page,
+  }) => {
+    await openShell(page, "/", {
+      automix: {
+        enabled: true,
+        mixing: false,
+        beats: 16,
+        style: "blend",
+        holding: true,
+      },
+    });
+    await page.getByRole("button", { name: "Booth", exact: true }).click();
+
+    const panel = page.locator("section.automix");
+    await expect(panel.locator(".holding")).toContainText(
+      "Performing the mix you set up",
+    );
+    // And the controls that no longer decide this handover say so.
+    await expect(panel.locator(".styles.deferred")).toHaveCount(1);
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });

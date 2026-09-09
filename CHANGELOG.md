@@ -16,6 +16,40 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**One transition, performed by whoever is driving** — §68's remaining half. The
+transition object has existed since the pair view shipped, and the automix went
+on deciding its own decks, its own moment and its own length regardless. A DJ
+who spent a minute adjusting a mix point and then handed over watched it be
+ignored: two answers to one question, which is exactly what §68 says an
+explicit transition object is for.
+
+The automix performs the held mix now — its decks, its start, its length and
+its style. **The start is the part that matters.** Without one the handover is
+"the end of the file minus the transition length", which the automix's own
+documentation is honest about being wrong for any record with applause on the
+end. With one, somebody has actually decided, and a human may have dragged it.
+
+**Where it does not apply it is ignored, not forced.** A plan about deck 1 says
+nothing about a mix out of deck 3, and performing it anyway would be worse than
+djmanzo's own answer — which is what it falls back to. And a held mix is spent
+once performed: re-running a mix that has happened is not a mix.
+
+**The autopilot defers to it too.** Its mix step used to push a style and a
+length into the automix and fire; where djmanzo is already holding a mix for
+those two decks it now says only "go", and reports "performing the mix you set
+up".
+
+**The panel says which promise is in force.** "Mixes out of the end of the
+file" and "mixes where you said" are different things, and a panel that showed
+them identically would be hiding the one thing that changed. The style and
+length controls are dimmed rather than disabled while a held mix is in charge —
+they still work, and what they set is the mix *after* this one.
+
+Mutation testing earned its keep here. Three mutations, and the second one
+survived: the test for "a plan about other decks is ignored" named a deck that
+was not in the rig at all, so it passed whether or not the check existed. It
+names a deck that is present now.
+
 **The mix point can be grabbed** — the directive's §26, which is blunt about
 it: "the DJ should be able to physically grab the thing they are thinking
 about. Do not force them to edit a numerical property in a settings panel."

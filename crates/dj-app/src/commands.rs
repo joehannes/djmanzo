@@ -2634,10 +2634,29 @@ fn perform_step(state: &AppState, step: &crate::autopilot::Step) -> Result<Optio
                 deck.human_number()
             )))
         }
-        Step::Mix { beats, style, .. } => {
+        Step::Mix {
+            from,
+            to,
+            beats,
+            style,
+        } => {
             // Through the automix, which already knows how to run a transition
             // of a given style and length. Re-implementing it here would be a
             // second transition engine to keep in agreement with the first.
+            //
+            // §68: where djmanzo is already *holding* a mix for these two
+            // decks, that one is performed and this says nothing about style
+            // or length. A DJ who set a mix up in the pair view and then let
+            // the assistant run it should get the mix they set up — the whole
+            // point of there being one transition object is that there is one
+            // answer to "what happens next".
+            let holding = state
+                .transition()
+                .is_some_and(|held| held.outgoing_deck == *from && held.incoming_deck == *to);
+            if holding {
+                perform(state, "automix now")?;
+                return Ok(Some("performing the mix you set up".to_owned()));
+            }
             perform(state, &format!("automix style {}", style.as_str()))?;
             perform(state, &format!("automix beats {beats}"))?;
             perform(state, "automix now")?;
@@ -6288,6 +6307,10 @@ pub fn publish_automix(state: &AppState, mix: &crate::automix::Automix) {
     );
     set(GlobalParam::AutomixBeats, mix.beats());
     set(GlobalParam::AutomixStyle, mix.style().index() as f32);
+    set(
+        GlobalParam::AutomixHolding,
+        if mix.held().is_some() { 1.0 } else { 0.0 },
+    );
 }
 
 /// Send what the automix asked for.

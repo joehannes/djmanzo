@@ -1028,7 +1028,8 @@
       "enabled": false,
       "mixing": false,
       "beats": 16.0,
-      "style": "blend"
+      "style": "blend",
+      "holding": false
     },
     "clap": {
       "loaded": false,

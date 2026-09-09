@@ -490,6 +490,15 @@ export interface AutomixState {
   /** How long a transition lasts, in beats. */
   beats: number;
   style: TransitionStyle;
+  /**
+   * True when it will perform the mix djmanzo is holding rather than one of
+   * its own.
+   *
+   * The difference is one you have to be able to see: without a held mix the
+   * handover is "the end of the file minus the transition", which is wrong for
+   * any record with applause on the end. With one, somebody decided.
+   */
+  holding: boolean;
 }
 
 /** The microphone / line input strip. */

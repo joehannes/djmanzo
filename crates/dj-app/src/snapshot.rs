@@ -371,6 +371,9 @@ pub struct AutomixSnapshot {
     pub beats: f32,
     /// One of `cut`, `fade`, `blend`, `echo`.
     pub style: &'static str,
+    /// True when it will perform the mix djmanzo is holding rather than one of
+    /// its own — §68's unification, as something a DJ can see.
+    pub holding: bool,
 }
 
 /// The microphone / line input strip.
@@ -845,6 +848,7 @@ impl Snapshot {
                         )
                             as usize)
                         .as_str(),
+                        holding: get(GlobalParam::AutomixHolding) >= 0.5,
                     }
                 },
                 mic: {

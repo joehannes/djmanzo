@@ -134,12 +134,42 @@ enum Phase {
     },
 }
 
+/// The mix djmanzo is holding, as the automix needs it.
+///
+/// [§68 of the directive](../../../docs/DIRECTIVE.md) asks for one transition
+/// object that drives the waveform, the suggestions, the preview, the
+/// autopilot, practice and replay — "that would unify many currently separate
+/// concepts". This is that unification arriving here. Without it the automix
+/// decides its own decks, its own moment and its own length, so a DJ who spent
+/// a minute adjusting a mix point in the pair view and then switched automix on
+/// watched it be ignored — two answers to one question, which is precisely what
+/// §68 exists to stop.
+///
+/// A copy rather than a borrow of `crate::transition::Transition`: this module
+/// is a pure state machine over `DeckView`s, and it stays that way.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Held {
+    pub outgoing: DeckId,
+    pub incoming: DeckId,
+    /// Where the mix starts, in frames of the outgoing record.
+    ///
+    /// The point of the whole thing. Without a held mix the handover is "the
+    /// end of the file minus the transition length", which the module note
+    /// above is honest about being wrong for any record with applause on the
+    /// end. With one, somebody has actually decided.
+    pub start_frame: f64,
+    pub length_beats: u32,
+    pub style: TransitionStyle,
+}
+
 /// The automix.
 #[derive(Debug)]
 pub struct Automix {
     enabled: bool,
     style: TransitionStyle,
     beats: f32,
+    /// The mix djmanzo is holding, if it is holding one. See [`Held`].
+    held: Option<Held>,
     phase: Phase,
     /// Set by `automix now`, consumed on the next tick.
     forced: bool,
@@ -162,6 +192,7 @@ impl Automix {
             enabled: false,
             style: TransitionStyle::Blend,
             beats: DEFAULT_BEATS,
+            held: None,
             phase: Phase::Watching,
             forced: false,
             written: [None; dj_core::MAX_DECKS],
@@ -187,6 +218,35 @@ impl Automix {
     #[must_use]
     pub fn is_mixing(&self) -> bool {
         matches!(self.phase, Phase::Mixing { .. })
+    }
+
+    /// Hand over the transition djmanzo is holding, or take it away.
+    ///
+    /// Pushed rather than pulled: this module knows nothing about the
+    /// application, and a tick that reached for a lock sixty times a second to
+    /// ask whether a mix had been set up would be a lock in the wrong place.
+    pub fn hold(&mut self, held: Option<Held>) {
+        self.held = held;
+    }
+
+    /// The mix it will perform, if one has been set up for it.
+    #[must_use]
+    pub fn held(&self) -> Option<Held> {
+        self.held
+    }
+
+    /// Whether the held mix still describes the decks in front of it.
+    ///
+    /// A plan about deck 1 does not describe a mix out of deck 3. Where it does
+    /// not apply it is ignored rather than forced — the automix carries on with
+    /// its own answer, which is worse but is at least about the right records.
+    fn holding_for(&self, outgoing: DeckId, decks: &[DeckView]) -> Option<Held> {
+        let held = self.held?;
+        if held.outgoing != outgoing || held.incoming == outgoing {
+            return None;
+        }
+        view(decks, held.incoming)?;
+        Some(held)
     }
 
     /// Apply a change from the action vocabulary.
@@ -248,20 +308,36 @@ impl Automix {
             self.forced = false;
             return;
         };
-        let span = self.span_frames(&outgoing);
         let lead = PRELOAD_SECONDS * outgoing.sample_rate;
+
+        // How long until the mix starts. With a held mix that is a place
+        // somebody decided; without one it is the end of the file minus the
+        // transition, which the module note above is honest about.
+        let until = match self.holding_for(outgoing.id, decks) {
+            Some(held) => held.start_frame - outgoing.position,
+            None => outgoing.remaining() - self.span_frames(&outgoing),
+        };
 
         // `forced` skips the wait but not the load: there still has to be a
         // track to mix into.
-        if !self.forced && outgoing.remaining() > span + lead {
+        if !self.forced && until > lead {
             return;
         }
 
-        let Some(incoming) = free_deck(decks, outgoing.id) else {
-            // Nowhere to go. Not an error — a two-deck rig with both decks
-            // playing is a DJ who is already mixing.
-            self.forced = false;
-            return;
+        // A held mix names the deck it is going into. Falling back to "any
+        // free deck" would be djmanzo performing a different transition from
+        // the one on screen, which is the whole failure §68 names.
+        let incoming = match self.holding_for(outgoing.id, decks) {
+            Some(held) => held.incoming,
+            None => {
+                let Some(free) = free_deck(decks, outgoing.id) else {
+                    // Nowhere to go. Not an error — a two-deck rig with both
+                    // decks playing is a DJ who is already mixing.
+                    self.forced = false;
+                    return;
+                };
+                free
+            }
         };
 
         // Ask for a track if there is not one already there. A deck the DJ
@@ -300,7 +376,11 @@ impl Automix {
             // happen without automix too.
             return;
         }
-        if self.forced || out.remaining() <= self.span_frames(&out) {
+        let due = match self.holding_for(outgoing, decks) {
+            Some(held) => out.position >= held.start_frame,
+            None => out.remaining() <= self.span_frames(&out),
+        };
+        if self.forced || due {
             self.begin(out, incoming, decks, plan);
         }
     }
@@ -308,7 +388,18 @@ impl Automix {
     /// Open the transition.
     fn begin(&mut self, outgoing: DeckView, incoming: DeckId, decks: &[DeckView], plan: &mut Plan) {
         self.forced = false;
-        let span = self.span_frames(&outgoing);
+        // The held mix decides how long and in what style, and is then spent:
+        // performing it twice would be re-running a mix that has happened.
+        // What the DJ set in the automix panel is what the *next* one uses,
+        // which is the honest reading of a plan that was about this handover.
+        let held = self.holding_for(outgoing.id, decks).inspect(|_| {
+            self.held = None;
+        });
+        let style = held.map_or(self.style, |held| held.style);
+        let span = held.map_or_else(
+            || self.span_frames(&outgoing),
+            |held| f64::from(held.length_beats) * outgoing.frames_per_beat(),
+        );
 
         // Take the crossfader out of the question — see the module note.
         plan.deck(
@@ -325,7 +416,7 @@ impl Automix {
         // tempo — a DJ would never re-pitch the record the crowd is dancing to.
         plan.deck(incoming, DeckAction::Sync);
 
-        match self.style {
+        match style {
             TransitionStyle::Cut => {
                 // No overlap at all: the outgoing deck stops on the same tick
                 // the incoming one starts.
@@ -363,7 +454,7 @@ impl Automix {
                     },
                 });
 
-                if self.style == TransitionStyle::VocalDrop {
+                if style == TransitionStyle::VocalDrop {
                     // Set the outgoing deck to Vocal solo
                     plan.act(Action::Deck {
                         deck: outgoing.id,
@@ -581,6 +672,121 @@ mod tests {
 
     fn has(plan: &Plan, needle: &str) -> bool {
         text(plan).iter().any(|a| a == needle)
+    }
+
+    fn held_at(seconds: f64, beats: u32, style: TransitionStyle) -> Held {
+        Held {
+            outgoing: deck(1),
+            incoming: deck(2),
+            start_frame: seconds * SR,
+            length_beats: beats,
+            style,
+        }
+    }
+
+    /// **§68: it performs the mix djmanzo is holding, not one of its own.**
+    ///
+    /// Without this the automix mixes out of the end of the file, so a DJ who
+    /// set a mix point at 0:30 in the pair view and switched automix on got a
+    /// transition at 0:59 instead. Two answers to one question, which is the
+    /// failure the transition object exists to end.
+    #[test]
+    fn it_starts_where_the_held_mix_says_rather_than_at_the_end() {
+        let mut mix = on(TransitionStyle::Blend);
+        mix.hold(Some(held_at(30.0, 16, TransitionStyle::Blend)));
+
+        // Well before the end of the file, and *at* the held point.
+        let plan = mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+        assert!(
+            has(&plan, "deck 2 play"),
+            "the held mix did not start at its own point: {:?}",
+            text(&plan)
+        );
+        assert!(mix.is_mixing());
+
+        // Without a held mix the same moment is far too early.
+        let mut plain = on(TransitionStyle::Blend);
+        assert_eq!(
+            plain.tick(&[playing(1, 30.0), loaded_idle(2)]),
+            Plan::default(),
+            "it began a transition thirty seconds early with nothing held"
+        );
+    }
+
+    /// The held mix decides the style and the length too, not only the moment.
+    #[test]
+    fn the_held_mix_decides_its_own_style_and_length() {
+        let mut mix = on(TransitionStyle::Blend);
+        mix.apply(AutomixChange::Beats(16.0), &[]);
+        // A cut, which is a different transition from the blend set in the
+        // panel — and short.
+        mix.hold(Some(held_at(30.0, 4, TransitionStyle::Cut)));
+
+        let plan = mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+        // A cut finishes on the spot: the outgoing deck stops as the incoming
+        // one starts, so nothing is left mixing.
+        assert!(has(&plan, "deck 2 play"));
+        assert!(!mix.is_mixing(), "a cut left a transition running");
+        assert!(
+            has(&plan, "deck 2 volume 1"),
+            "a cut did not bring the incoming deck straight up: {:?}",
+            text(&plan)
+        );
+    }
+
+    /// **A plan about other decks is ignored, not forced.**
+    ///
+    /// A transition set up for deck 1 says nothing about a mix out of deck 3,
+    /// and performing it anyway would be worse than performing djmanzo's own
+    /// answer — which is what it falls back to.
+    #[test]
+    fn a_held_mix_about_other_decks_is_ignored() {
+        let mut mix = on(TransitionStyle::Blend);
+        // Out of deck 3 and into deck 2. Deck 2 is present and free, so the
+        // *only* thing that can refuse this plan is that deck 1 is the one
+        // playing — which is the check being tested. An earlier version of
+        // this test named a deck that was not in the rig at all, so it passed
+        // whether or not the check existed; mutation testing found that.
+        mix.hold(Some(Held {
+            outgoing: deck(3),
+            incoming: deck(2),
+            start_frame: 30.0 * SR,
+            length_beats: 16,
+            style: TransitionStyle::Blend,
+        }));
+        assert_eq!(
+            mix.tick(&[playing(1, 30.0), loaded_idle(2), loaded_idle(3)]),
+            Plan::default(),
+            "a plan about deck 3 started a mix out of deck 1"
+        );
+        assert!(mix.held().is_some(), "an inapplicable plan was thrown away");
+    }
+
+    /// Spent once performed. Re-running a mix that has happened is not a mix.
+    #[test]
+    fn a_held_mix_is_used_once() {
+        let mut mix = on(TransitionStyle::Blend);
+        mix.hold(Some(held_at(30.0, 16, TransitionStyle::Blend)));
+        mix.tick(&[playing(1, 30.0), loaded_idle(2)]);
+        assert!(
+            mix.held().is_none(),
+            "the held mix survived being performed"
+        );
+    }
+
+    /// The held mix does not stop it loading a record in time.
+    #[test]
+    fn a_held_mix_still_gets_its_record_loaded_early() {
+        let mut mix = on(TransitionStyle::Blend);
+        mix.hold(Some(held_at(30.0, 16, TransitionStyle::Blend)));
+        // Fifteen seconds before the held point, inside the preload window.
+        let plan = mix.tick(&[playing(1, 15.0), empty(2)]);
+        assert_eq!(
+            plan.load,
+            Some(deck(2)),
+            "nothing was asked for ahead of a held mix"
+        );
+        assert!(!mix.is_mixing(), "it began early rather than loading early");
     }
 
     #[test]

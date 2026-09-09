@@ -705,6 +705,7 @@ impl AppState {
         if let Ok(mut held) = self.transition.lock() {
             *held = Some(transition);
         }
+        self.tell_automix();
     }
 
     /// Change the transition in place, returning what the change returned.
@@ -715,14 +716,43 @@ impl AppState {
         &self,
         change: impl FnOnce(&mut crate::transition::Transition) -> T,
     ) -> Option<T> {
-        let mut held = self.transition.lock().ok()?;
-        held.as_mut().map(change)
+        let answer = {
+            let mut held = self.transition.lock().ok()?;
+            held.as_mut().map(change)
+        };
+        // After the lock is dropped, because telling the automix takes its own.
+        self.tell_automix();
+        answer
     }
 
     /// Forget it.
     pub fn clear_transition(&self) {
         if let Ok(mut held) = self.transition.lock() {
             *held = None;
+        }
+        self.tell_automix();
+    }
+
+    /// Hand the automix whatever mix djmanzo is now holding.
+    ///
+    /// §68's unification, in one call. Pushed on every change rather than read
+    /// on every tick: the automix runs off the snapshot pump sixty times a
+    /// second and has no business taking this lock at that rate, and a mix
+    /// changes when somebody changes it.
+    ///
+    /// A transition with no start frame — one whose grid has gone — hands over
+    /// `None`, so the automix falls back to its own answer rather than aiming
+    /// at a place nobody worked out.
+    fn tell_automix(&self) {
+        let held = self.transition().map(|transition| crate::automix::Held {
+            outgoing: transition.outgoing_deck,
+            incoming: transition.incoming_deck,
+            start_frame: transition.plan.start_frame,
+            length_beats: transition.plan.length_beats,
+            style: transition.plan.style,
+        });
+        if let Ok(mut automix) = self.automix.lock() {
+            automix.hold(held);
         }
     }
 
