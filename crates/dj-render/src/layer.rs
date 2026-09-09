@@ -26,6 +26,17 @@
 //! one. Layers that are not drawn yet declare `Role::Unassigned`, which is
 //! honest and is excluded from the check: reserving a colour for something
 //! nobody has built is how a palette runs out for no reason.
+//!
+//! # Where "uncertainty" is drawn, and where it is not
+//!
+//! The rasteriser has always faded the beat grid by its own confidence — that
+//! is [`Beatgrid`](dj_core::Beatgrid) being drawn at the weight it deserves,
+//! and it belongs to the `beats` layer rather than being a layer of its own.
+//! What it cannot do is be *read*: at overview zoom the grid is suppressed
+//! entirely for density, so a faint grid and an absent one look identical, and
+//! neither says whether the analyser was guessing. The `confidence` layer is
+//! the part that says so, which is why it is an overlay while the fade it
+//! talks about is in the tile.
 
 use serde::Serialize;
 
@@ -50,6 +61,18 @@ pub enum Role {
     Seam,
     /// How much of the record is left.
     Runway,
+    /// Somewhere djmanzo suggests, as distinct from somewhere it is so.
+    ///
+    /// The distinction §57 is really about. "A mix could go here" and "the mix
+    /// goes here" drawn in one colour is an interface that cannot be trusted
+    /// at a glance, which is the only way a waveform is ever read.
+    Proposed,
+    /// What is an estimate rather than a measurement.
+    ///
+    /// Shared, eventually and deliberately: vocal and stem presence will each
+    /// arrive with a confidence of their own, and they are the same kind of
+    /// claim about a different thing.
+    Uncertain,
     /// Nothing yet. The layer is named but not drawn.
     Unassigned,
 }
@@ -64,6 +87,8 @@ impl Role {
             Role::Looping => "looping",
             Role::Seam => "seam",
             Role::Runway => "runway",
+            Role::Proposed => "proposed",
+            Role::Uncertain => "uncertain",
             Role::Unassigned => "unassigned",
         }
     }
@@ -205,9 +230,9 @@ static LAYERS: [Layer; 20] = [
     Layer {
         name: "mix-out",
         title: "Likely mix-out",
-        about: "Where this record could be left, structurally.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        about: "The stretch in which a mix out of this record can begin.",
+        role: Role::Proposed,
+        drawn: Drawn::Overlay,
     },
     Layer {
         name: "mix-in",
@@ -254,9 +279,9 @@ static LAYERS: [Layer; 20] = [
     Layer {
         name: "confidence",
         title: "Uncertainty",
-        about: "How much of this is measured and how much is a guess.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        about: "That the beat grid under all of this is an estimate.",
+        role: Role::Uncertain,
+        drawn: Drawn::Overlay,
     },
     Layer {
         name: "runway",
@@ -334,7 +359,14 @@ mod tests {
             "the record's own sound"
         );
         assert_eq!(grouped.get("grid").map(Vec::len), Some(3), "the pulse");
-        for role in ["placed", "looping", "seam", "runway"] {
+        for role in [
+            "placed",
+            "looping",
+            "seam",
+            "runway",
+            "proposed",
+            "uncertain",
+        ] {
             assert_eq!(
                 grouped.get(role).map(Vec::len),
                 Some(1),
@@ -379,6 +411,8 @@ mod tests {
                 "cues",
                 "loop",
                 "seam",
+                "mix-out",
+                "confidence",
                 "runway",
             ],
             "the built layers changed; say so in the docs as well as here"

@@ -137,7 +137,16 @@ const ANSWERS: Record<string, unknown> = {
   // commit message said "each with its waveform". The tiles themselves are
   // `wave://` URLs that resolve to nothing here; what is being measured is the
   // marks and cues drawn over them, which is the part a DJ grabs.
-  waveform_info: { deck: 1, ready: true, total_frames: 12_000_000, epoch: 1 },
+  // 12 000 000 frames is a little over four minutes at 48 kHz. The mix-out
+  // window is placed inside it the way Rust would: near the end, a couple of
+  // phrases wide, opening on a phrase boundary.
+  waveform_info: {
+    deck: 1,
+    ready: true,
+    total_frames: 12_000_000,
+    epoch: 1,
+    mix_out: { opens_frame: 10_800_000, closes_frame: 11_600_000, on_phrase: true },
+  },
   // §25's inventory, answered from the same table Rust publishes. The test
   // that matters reads it back and checks every `data-layer` on screen is in
   // it, so this stub is deliberately the real shape rather than a stand-in.

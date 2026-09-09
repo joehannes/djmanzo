@@ -1407,6 +1407,24 @@ pub struct WaveformInfo {
     /// webview's own cache misses when the content changes -- see
     /// `WaveformStore::epochs`.
     pub epoch: u32,
+    /// Where this record could be left, from `plan::mix_out`.
+    ///
+    /// Here rather than on the snapshot because it is a property of the
+    /// *record*: it changes when a deck loads or an analysis lands and at no
+    /// other time, and this is the call the waveform already makes on exactly
+    /// those two events. Sixty times a second for a number that changes twice
+    /// a track would be the snapshot pump carrying furniture.
+    pub mix_out: Option<MixOutInfo>,
+}
+
+/// §25's `mix-out` layer, as the waveform draws it.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct MixOutInfo {
+    pub opens_frame: f64,
+    pub closes_frame: f64,
+    /// Whether the opening is a phrase boundary or merely a beat. The band
+    /// says which, because they are not the same promise.
+    pub on_phrase: bool,
 }
 
 #[tauri::command]
@@ -1416,7 +1434,46 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         ready: state.waveforms().has_summary(deck),
         total_frames: state.waveforms().total_frames(deck).unwrap_or(0) as u64,
         epoch: state.waveforms().epoch(deck),
+        mix_out: mix_out_of(&state, deck),
     }
+}
+
+/// Where this deck's record could be left, when djmanzo knows enough to say.
+///
+/// **From the grid the tiles are drawn from**, not from the library's stored
+/// analysis. Two reasons, and the second is why this was rewritten after
+/// looking at the running application:
+///
+/// 1. The band has to line up with the beat lines beside it. Those are
+///    rasterised from `WaveformStore`'s overlay, so anything drawn against a
+///    different grid would sit a fraction of a beat off the lines it claims to
+///    be a beat of — and a hand-edited grid would move the lines and leave the
+///    band behind.
+/// 2. A deck can have a grid the library row does not. The demo run showed
+///    exactly that: both decks reading 123.7 BPM at full confidence, the
+///    library rows still un-analysed, and no band on either lane. The first
+///    version asked the library and drew nothing, and every browser test
+///    passed because the harness answered the window itself.
+///
+/// `None` covers a deck with nothing on it, one still being analysed, and a
+/// record too short to leave. The waveform draws no band for any of them,
+/// which is the honest answer to all three.
+fn mix_out_of(state: &AppState, deck: u8) -> Option<MixOutInfo> {
+    let overlay = state.waveforms().grid(deck)?;
+    let length = state.waveforms().total_frames(deck)?;
+    #[allow(clippy::cast_precision_loss)]
+    let window = crate::plan::mix_out(&crate::plan::Record {
+        length: length as f64,
+        bpm: overlay.grid.bpm.get(),
+        phrase: overlay.phrase,
+        sample_rate: overlay.sample_rate,
+        grid_anchor: overlay.grid.anchor.get(),
+    })?;
+    Some(MixOutInfo {
+        opens_frame: window.opens_frame,
+        closes_frame: window.closes_frame,
+        on_phrase: window.on_phrase,
+    })
 }
 
 /// Report a frame-timing measurement from the webview.
@@ -2197,6 +2254,115 @@ mod stem_out_tests {
 /// renderer *and* the engine, that it survives a round trip, and that the
 /// failures are reported rather than swallowed -- which is the part that would
 /// silently break.
+/// The mix-out window, from the deck's own grid.
+///
+/// Its own module because it needs a *summary* on the deck as well as a grid —
+/// the length comes from the same place the lane's width does — and because
+/// the thing worth proving here is the wiring rather than the arithmetic.
+/// `plan::mix_out` is tested against the planner's constants in `plan`; this
+/// asks whether a deck that has a record on it answers at all.
+///
+/// It exists because the first version of `mix_out_of` read the library's
+/// stored analysis, which a freshly loaded deck does not have. Every browser
+/// test passed — the harness answers `waveform_info` itself — and the running
+/// application drew no band on any lane.
+#[cfg(test)]
+mod mix_out_tests {
+    use super::*;
+    use dj_core::{Beatgrid, Bpm, Confidence, FramePos, SampleRate};
+    use dj_render::WaveformSummary;
+
+    /// Small on purpose: 8 kHz and 120 BPM puts a hundred beats in 400 000
+    /// frames, which is a 3 MB fixture rather than a 40 MB one. The window's
+    /// arithmetic does not care, and a test that allocates a real record's
+    /// worth of silence is a test people start skipping.
+    const SR: SampleRate = SampleRate::new(8_000).unwrap();
+    const BPM: f64 = 120.0;
+    const BEATS: usize = 100;
+
+    fn deck() -> DeckId {
+        DeckId::from_human(1).unwrap()
+    }
+
+    fn beat_frames() -> f64 {
+        SR.as_f64() * 60.0 / BPM
+    }
+
+    /// A deck with a record on it: a summary, so it has a length, and a grid,
+    /// so it has beats. Both are what the rasteriser draws from.
+    fn deck_with_a_record(phrase: Option<dj_core::Phrase>) -> AppState {
+        let state = AppState::new(true);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let frames = (beat_frames() * BEATS as f64) as usize;
+        state
+            .waveforms()
+            .set_summary(deck(), WaveformSummary::analyse(&vec![0.0; frames * 2], SR));
+        state.waveforms().set_grid(
+            deck(),
+            Some(dj_render::GridOverlay {
+                grid: Beatgrid::new(
+                    FramePos::new(0.0),
+                    Bpm::new(BPM).unwrap(),
+                    Confidence::CERTAIN,
+                ),
+                sample_rate: SR,
+                phrase,
+            }),
+        );
+        state
+    }
+
+    /// **A deck with a record on it says where the record can be left.**
+    ///
+    /// The whole of what went wrong: the answer came back `None` for a deck
+    /// that plainly had a grid, because it was asked of the wrong place.
+    #[test]
+    fn a_deck_with_a_grid_answers_a_window() {
+        let state = deck_with_a_record(dj_core::Phrase::new(16, 0));
+        let window = mix_out_of(&state, 1).expect("a deck with a grid has a window");
+
+        // Both edges in beats, against the planner's own arithmetic.
+        let opens = window.opens_frame / beat_frames();
+        let closes = window.closes_frame / beat_frames();
+        assert!(
+            (closes - 84.0).abs() < 0.01,
+            "closed at beat {closes} rather than at 100 - 8 - 8"
+        );
+        assert_eq!(
+            opens % 16.0,
+            0.0,
+            "the window opened {opens} beats in, which is not a phrase boundary"
+        );
+        assert!(window.on_phrase);
+        assert!(opens < closes);
+    }
+
+    /// And an empty deck says nothing rather than guessing at a length.
+    #[test]
+    fn a_deck_with_nothing_on_it_has_no_window() {
+        let state = AppState::new(true);
+        assert!(mix_out_of(&state, 1).is_none(), "an empty deck answered");
+
+        // A grid but no record: a length of zero is not a record to leave.
+        state.waveforms().set_grid(
+            deck(),
+            Some(dj_render::GridOverlay {
+                grid: Beatgrid::new(
+                    FramePos::new(0.0),
+                    Bpm::new(BPM).unwrap(),
+                    Confidence::CERTAIN,
+                ),
+                sample_rate: SR,
+                phrase: None,
+            }),
+        );
+        assert!(
+            mix_out_of(&state, 1).is_none(),
+            "a deck with no record answered"
+        );
+    }
+}
+
 #[cfg(test)]
 mod grid_edit_tests {
     use super::*;

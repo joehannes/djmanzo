@@ -13,7 +13,13 @@
    * grid, the spectral colouring and the theme for free.
    */
   import { onMount } from "svelte";
-  import { playbackFramesPerSecond, tileUrl, waveformInfo, type DeckState } from "./api";
+  import {
+    playbackFramesPerSecond,
+    tileUrl,
+    waveformInfo,
+    type DeckState,
+    type MixOutInfo,
+  } from "./api";
   import { theme } from "./theme.svelte";
 
   let { deck, height = 34 }: { deck: DeckState; height?: number } = $props();
@@ -24,6 +30,7 @@
   let totalFrames = $state(0);
   let epoch = $state(0);
   let ready = $state(false);
+  let mixOut = $state<MixOutInfo | null>(null);
 
   // Interpolation state, as in the scrolling lane: snapshots arrive at 60 Hz
   // but a frame landing between two of them must still move.
@@ -52,6 +59,7 @@
         ready = info.ready;
         totalFrames = info.total_frames;
         epoch = info.epoch;
+        mixOut = info.mix_out ?? null;
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -96,6 +104,30 @@
     // faithful width would be invisible. Floored to something locatable —
     // the overview is for finding your place, not for measuring.
     return { left, width: Math.max(right - left, 0.4) };
+  });
+
+  /**
+   * §25's mix-out layer: where this record could be left.
+   *
+   * Here as well as in the scrolling lane, and this is the view it is really
+   * for. The lane runs at a few hundred frames per pixel — two seconds of
+   * record across a deck — so a band twenty beats from the end is off screen
+   * until you are already inside it, which answers "what is about to happen"
+   * far too late to be worth anything. Over the whole track it is visible from
+   * the moment the record loads, which is the question this view exists to
+   * answer.
+   */
+  const mixOutBand = $derived.by(() => {
+    if (!mixOut || totalFrames <= 0) return null;
+    const left = fraction(mixOut.opens_frame) * 100;
+    const right = fraction(mixOut.closes_frame) * 100;
+    // Floored for the same reason the loop band is: on a ten-minute record the
+    // window is a couple of percent, and a faithful width there is a hairline
+    // nobody can aim at. This view is for finding your place, not for
+    // measuring — the lane draws it to scale.
+    return right > left
+      ? { left, width: Math.max(right - left, 0.8), onPhrase: mixOut.on_phrase }
+      : null;
   });
 
   onMount(() => {
@@ -147,16 +179,35 @@
 
 <div class="overview" bind:this={box} style:height="{height}px">
   {#if url}
+    <!--
+      Stamped with the layer each one is, like the lane's. Without it the
+      browser test that reads every `data-layer` off a rendered page could not
+      see this view at all — and the loop and the cues drawn here are the same
+      two layers of §25's twenty, drawn in a second place.
+    -->
+    {#if mixOutBand}
+      <div
+        class="mix-out"
+        class:on-phrase={mixOutBand.onPhrase}
+        data-layer="mix-out"
+        style:left="{mixOutBand.left}%"
+        style:width="{mixOutBand.width}%"
+        title={mixOutBand.onPhrase
+          ? "Mix out anywhere in here and any transition djmanzo would propose still fits. It opens on a phrase."
+          : "Mix out anywhere in here and any transition djmanzo would propose still fits. No phrase structure, so it opens on a beat."}
+      ></div>
+    {/if}
     {#if loopBand}
       <div
         class="loop-band"
+        data-layer="loop"
         style:left="{loopBand.left}%"
         style:width="{loopBand.width}%"
       ></div>
     {/if}
     <img class="whole" src={url} alt="" width={tileWidth} {height} draggable="false" />
     {#each markers as marker (marker.slot)}
-      <div class="cue" style:left="{marker.left}%"></div>
+      <div class="cue" data-layer="cues" style:left="{marker.left}%"></div>
     {/each}
     <div class="playhead" bind:this={playhead}></div>
   {:else}
@@ -213,5 +264,26 @@
     background: var(--accent-2);
     opacity: 0.25;
     pointer-events: none;
+  }
+
+  /*
+    Where the record can be left, over the whole of it. The same two edges as
+    the lane's — solid where the window opens, dashed where it closes — but no
+    label: this strip is thirty-four pixels tall and a word in it would cover
+    the record rather than describe it.
+  */
+  .mix-out {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--ok, #6a9955) 22%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--ok, #6a9955) 75%, transparent);
+    border-right: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 55%, transparent);
+    pointer-events: none;
+  }
+
+  .mix-out:not(.on-phrase) {
+    border-left-style: dashed;
+    opacity: 0.6;
   }
 </style>

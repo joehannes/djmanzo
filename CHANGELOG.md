@@ -16,6 +16,44 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The record says where it can be left, and the grid says when it is guessing**
+— two more of §25's twenty layers, both from arithmetic djmanzo already does.
+
+**Mix-out.** `plan::mix_out` answers where a record can structurally be left:
+the window opens at the last beat where the longest transition the planner will
+propose still leaves its tail margin intact, and closes at the last beat where
+the shortest one does. Inside it, every length djmanzo would suggest fits; after
+it, whatever you start is `Reason::Rushed`. Both edges come from the planner's
+own constants, so the band and the warning cannot disagree on screen about the
+same mix. It is a fact about the *record*, not about the playhead or the pair —
+and it has a type that cannot express a playhead, so it cannot come to depend on
+one.
+
+Drawn on the overview as well as in the scrolling lane, and the overview is the
+view it is really for: a lane runs at a couple of hundred frames per pixel, so a
+band twenty beats from the end is off screen until you are already inside it.
+
+**Uncertainty.** The rasteriser has always faded beat lines by the grid's
+confidence, and that fade cannot be *read*: at overview zoom the grid is
+suppressed entirely for density, so faint and absent look identical and neither
+says whether the analyser was guessing. A hatch under the record says so, over
+the record's own length and nothing more, gated on the same threshold that
+disables Sync rather than on a second one.
+
+**Found by running the interface: the band never appeared at all.** The first
+version asked the *library* for the record's grid, and a freshly loaded deck does
+not have one there — the demo run showed both decks reading 123.7 BPM at full
+confidence with un-analysed library rows and no band on either lane. Every
+browser test passed, because the harness answers `waveform_info` itself. It now
+reads the grid the tiles are rasterised from, which is the better answer anyway:
+the band lines up with the beat lines beside it by construction, and follows a
+hand-edited grid instead of the analyser's first opinion. There is a Rust test
+for the wiring now, not only for the arithmetic.
+
+**Eleven of twenty.** The overview's loop and cue markers are stamped with the
+layer they are, so the check that reads every `data-layer` off a rendered page
+covers that view too.
+
 **The waveform's layers are named, counted and checked** — §25's "multilayer
 semantic visualization architecture". Twenty layers live in
 `dj_render::layer`, each saying what it encodes, which half of the renderer

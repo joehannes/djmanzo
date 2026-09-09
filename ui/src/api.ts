@@ -1077,6 +1077,24 @@ export interface WaveformInfo {
    * waveform after a load, and a beat-grid edit would appear to do nothing.
    */
   epoch: number;
+  /**
+   * §25's mix-out layer: the stretch in which a mix out of this record can
+   * begin, from `plan::mix_out`.
+   *
+   * `null` for an empty deck, a record with no grid, and one too short to be
+   * left — the waveform draws no band for any of them. It arrives here rather
+   * than on the snapshot because it is a fact about the record: it changes on
+   * a load and on an analysis, which are the two events this call already
+   * answers.
+   */
+  mix_out: MixOutInfo | null;
+}
+
+export interface MixOutInfo {
+  opens_frame: number;
+  closes_frame: number;
+  /** Whether the window opens on a phrase boundary or merely on a beat. */
+  on_phrase: boolean;
 }
 
 export const waveformInfo = (deck: number) =>

@@ -120,6 +120,16 @@ green. `waveform_info` was unstubbed for as long as the pair view has existed,
 so its waveform lanes had never once rendered in a test. If a panel looks empty
 in a browser test and full in the application, look at `ANSWERS` first.
 
+**The harness can be *fuller* than the application, not only emptier.** The
+`waveform_info` note above is the emptier direction. The other direction cost a
+session's confidence: a new field was added to that command, the Playwright stub
+was given a plausible value for it, four browser tests passed — and Rust never
+produced the value at all, because the producer asked the library for a grid
+that a freshly loaded deck only has in the engine. Nothing on any lane. When you
+add a field to a stubbed command, the browser test proves the *drawing*; write a
+Rust test for the *producer* in the same commit, and look at the running
+application before believing either.
+
 **The `npm run build` trap is real and it caught this project again.** Under a
 mutation test the mutated file failed `svelte-check`, so `vite build` never
 ran, `dist/` kept the previous bundle, and Playwright reported the mutation
@@ -225,15 +235,25 @@ The largest open sections, in the order they are worth doing:
 
 1. **§25–§27, the waveform as instrumentation.** The architecture and §57's
    colour rule ship; `dj_render::layer` is the inventory and the count is
-   checked in both directions. **Nine of twenty** exist. The next ones worth
-   building are the ones djmanzo already computes: the grid's own confidence
-   (the rasteriser already fades beat lines by it — it just is not named as a
-   layer), and the mix-out region from the planner. Vocal, stems, breakdowns
-   and drops need analysis that does not exist. §26 has its first handle and
-   the rest of its list — cue markers, phrase markers, loop edges — uses the
-   same `onMoveMark` shape: it is mostly a matter of giving each mark an owner
-   that knows what moving it means. §27's ghost track still needs a preview
-   player djmanzo does not have.
+   checked in both directions. **Eleven of twenty** exist. The nine that do not
+   are the ones djmanzo cannot yet compute: vocal and stem presence,
+   breakdowns, drops, saved loops, energy trajectory, the mix-*in* region, the
+   AI's own suggestion and crowd response. Each needs analysis or history that
+   does not exist, so the next one built is a research question rather than a
+   drawing one — **mix-in** is the cheapest of them, and even it needs
+   something that can say where a record's intro ends.
+
+   **Where a layer is drawn matters as much as whether it is.** The mix-out
+   band was written for the scrolling lane first and was almost never on
+   screen: a lane runs at a couple of hundred frames per pixel, which is two
+   seconds of record, so anything twenty beats from the end is invisible until
+   you are inside it. The overview is where a whole-record fact belongs. Ask
+   which of the two views a new layer is a fact *about* before drawing it.
+
+   §26 has its first handle and the rest of its list — cue markers, phrase
+   markers, loop edges — uses the same `onMoveMark` shape: it is mostly a
+   matter of giving each mark an owner that knows what moving it means. §27's
+   ghost track still needs a preview player djmanzo does not have.
 2. **§68's last quarter.** The automix and the autopilot perform the held mix
    now; **replay** still re-runs the actions a transition produced rather than
    the object, which is fine for reproducing a night and useless for

@@ -79,9 +79,9 @@
   {
     "name": "mix-out",
     "title": "Likely mix-out",
-    "about": "Where this record could be left, structurally.",
-    "role": "unassigned",
-    "drawn": "nowhere"
+    "about": "The stretch in which a mix out of this record can begin.",
+    "role": "proposed",
+    "drawn": "overlay"
   },
   {
     "name": "mix-in",
@@ -128,9 +128,9 @@
   {
     "name": "confidence",
     "title": "Uncertainty",
-    "about": "How much of this is measured and how much is a guess.",
-    "role": "unassigned",
-    "drawn": "nowhere"
+    "about": "That the beat grid under all of this is an estimate.",
+    "role": "uncertain",
+    "drawn": "overlay"
   },
   {
     "name": "runway",

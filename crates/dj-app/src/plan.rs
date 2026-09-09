@@ -46,6 +46,36 @@ pub struct Outgoing {
     pub grid_anchor: f64,
 }
 
+/// A record, as the mix-out window needs it.
+///
+/// Deliberately less than [`Outgoing`]: no playhead, no key. Where a record
+/// can be left is a fact about its shape, and a type that cannot express
+/// "where the playhead is" cannot come to depend on it by accident.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Record {
+    /// Total length in frames.
+    pub length: f64,
+    pub bpm: f64,
+    pub phrase: Option<Phrase>,
+    pub sample_rate: SampleRate,
+    /// Frame position of a beat, from which every other beat follows.
+    pub grid_anchor: f64,
+}
+
+impl Outgoing {
+    /// Everything about the record, with the playhead dropped.
+    #[must_use]
+    pub const fn record(&self) -> Record {
+        Record {
+            length: self.length,
+            bpm: self.bpm,
+            phrase: self.phrase,
+            sample_rate: self.sample_rate,
+            grid_anchor: self.grid_anchor,
+        }
+    }
+}
+
 /// The track coming in.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Incoming {
@@ -178,6 +208,95 @@ pub fn plan(out: &Outgoing, into: &Incoming) -> Option<Plan> {
     };
 
     evaluate(out, into, start_beat, length, style)
+}
+
+/// The stretch of a record in which a mix out of it can begin.
+///
+/// §25's `mix-out` layer — *where this record could be left, structurally*.
+///
+/// It is a property of the **record**, not of a pair and not of the playhead.
+/// That is the whole reason it can be drawn on a waveform with no transition
+/// planned on it, and it is why the band does not creep along under a DJ who
+/// is watching it: the planner's *choice* moves as the playhead advances; the
+/// record's shape does not.
+///
+/// # Where the two edges come from
+///
+/// Both are [`plan`]'s own arithmetic rather than a second opinion, which is
+/// why this lives beside it. The window **opens** at the last beat where the
+/// longest transition the planner will propose still leaves [`TAIL_MARGIN`]
+/// intact, and **closes** at the last beat where the shortest one does.
+/// Inside it every length djmanzo would suggest fits somewhere. Before it, a
+/// DJ is leaving record on the table; after it, whatever they start is
+/// [`Reason::Rushed`] — the same fact, said the same way, from the same
+/// constants.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MixOut {
+    /// Beat index where the window opens, counted from the grid anchor.
+    pub opens_beat: i64,
+    /// Frame position of that beat.
+    pub opens_frame: f64,
+    /// Frame position of the last beat a transition may begin on.
+    pub closes_frame: f64,
+    /// True when the opening is a phrase boundary rather than merely a beat.
+    ///
+    /// Separate from the frames for the same reason [`Reason::LandsOnPhrase`]
+    /// and [`Reason::LandsOnBar`] are separate reasons: a window that opens on
+    /// real structure is a stronger claim than one that opens on arithmetic,
+    /// and dressing the second as the first is the kind of confident lie this
+    /// module exists to avoid.
+    pub on_phrase: bool,
+}
+
+/// Where `record` could be left, structurally. `None` when there is nowhere.
+///
+/// `None` when the tempo is not a tempo, or when there is no room: a record
+/// with fewer beats left than the shortest transition plus the tail margin has
+/// nowhere to be mixed out of, and an eight-bar loop is not a record you leave.
+#[must_use]
+pub fn mix_out(record: &Record) -> Option<MixOut> {
+    let out = record;
+    let beat_frames = beat_frames(out.bpm, out.sample_rate)?;
+    let last_beat = (out.length - out.grid_anchor) / beat_frames;
+    if !last_beat.is_finite() {
+        return None;
+    }
+
+    let longest = f64::from(LENGTHS[0]);
+    let shortest = f64::from(*LENGTHS.last().expect("LENGTHS is not empty"));
+    #[allow(clippy::cast_possible_truncation)]
+    let closes_beat = (last_beat - TAIL_MARGIN - shortest).floor() as i64;
+    if closes_beat <= 0 {
+        return None;
+    }
+    // Clamped rather than refused: a record too short for the longest blend
+    // still has somewhere to be left, and the window simply starts at its
+    // beginning. Refusing here would hide the answer for exactly the records
+    // where the margin is tightest.
+    #[allow(clippy::cast_possible_truncation)]
+    let target = (last_beat - TAIL_MARGIN - longest).max(0.0).floor() as i64;
+
+    let (opens_beat, on_phrase) = match out.phrase {
+        // Snapped back, not forward: a window that opens later than it could
+        // is a window that hides usable record. Never behind the start of the
+        // grid, where there is no audio to open on.
+        Some(phrase) => match target - i64::from(phrase.beat_within(target)) {
+            boundary if boundary >= 0 => (boundary, true),
+            _ => (target, false),
+        },
+        None => (target, false),
+    };
+    if closes_beat <= opens_beat {
+        return None;
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    Some(MixOut {
+        opens_beat,
+        opens_frame: out.grid_anchor + opens_beat as f64 * beat_frames,
+        closes_frame: out.grid_anchor + closes_beat as f64 * beat_frames,
+        on_phrase,
+    })
 }
 
 /// Say what a *particular* transition means, rather than choosing one.
@@ -604,6 +723,112 @@ mod tests {
                 .any(|r| matches!(r, Reason::LandsOnBar { .. })),
             "a bar-line start was not distinguished from a phrase start: {:?}",
             plan.reasons
+        );
+    }
+
+    /// **The mix-out window is about the record, not about the playhead.**
+    ///
+    /// The thing §25's layer promises. A band that crept forward under a DJ
+    /// watching it would be drawing the planner's current *answer*, which
+    /// already has a marker of its own — and would say that where a record can
+    /// be left depends on how far through it you are, which is not true of any
+    /// record.
+    #[test]
+    fn where_a_record_can_be_left_does_not_move_with_the_playhead() {
+        let early = mix_out(&outgoing(4.0, 400.0).record()).expect("a window");
+        let late = mix_out(&outgoing(300.0, 400.0).record()).expect("the same window");
+        assert_eq!(early, late);
+    }
+
+    /// **Both edges are the planner's own arithmetic.**
+    ///
+    /// Derived here from `LENGTHS` and `TAIL_MARGIN` rather than written down,
+    /// so a change to either moves the test and the code together. Two answers
+    /// to "how late is too late" is the failure this shares constants to
+    /// avoid: the band would say one thing and `Reason::Rushed` another, on
+    /// the same screen, about the same mix.
+    #[test]
+    fn the_window_closes_where_the_shortest_mix_stops_fitting() {
+        let total = 400.0;
+        let window = mix_out(&outgoing(100.0, total).record()).expect("a window");
+
+        let shortest = f64::from(*LENGTHS.last().unwrap());
+        let expected_close = total - TAIL_MARGIN - shortest;
+        assert!(
+            (window.closes_frame / beat() - expected_close).abs() < 0.01,
+            "the window closes at beat {}, not at {expected_close}",
+            window.closes_frame / beat()
+        );
+
+        // A mix started on the closing beat is not rushed; one a beat later is.
+        let out = outgoing(100.0, total);
+        let into = incoming(120.0, Some(key(8, Mode::Minor)));
+        #[allow(clippy::cast_possible_truncation)]
+        let closing = expected_close as i64;
+        for (beat_index, rushed) in [(closing, false), (closing + 1, true)] {
+            let plan =
+                evaluate(&out, &into, beat_index, 8, TransitionStyle::Blend).expect("a plan");
+            assert_eq!(
+                plan.reasons
+                    .iter()
+                    .any(|r| matches!(r, Reason::Rushed { .. })),
+                rushed,
+                "beat {beat_index} disagrees with the window about being rushed"
+            );
+        }
+    }
+
+    /// **The window opens on a phrase where there is one, and says so.**
+    ///
+    /// A window that opened four beats into a phrase would open somewhere no
+    /// DJ starts a mix, and would then be a band whose left edge means
+    /// nothing.
+    #[test]
+    fn the_window_opens_on_a_phrase_boundary_and_admits_when_it_does_not() {
+        let window = mix_out(&outgoing(100.0, 400.0).record()).expect("a window");
+        assert!(window.on_phrase, "a 16-beat phrase structure was ignored");
+        assert_eq!(
+            window.opens_beat % 16,
+            0,
+            "it opened {} beats into a phrase",
+            window.opens_beat % 16
+        );
+
+        let bare = mix_out(
+            &Outgoing {
+                phrase: None,
+                ..outgoing(100.0, 400.0)
+            }
+            .record(),
+        )
+        .expect("a window");
+        assert!(
+            !bare.on_phrase,
+            "a record with no phrase structure claimed its window opens on one"
+        );
+        // And it opens later than the snapped one, because nothing pulled it
+        // back to a boundary -- which is what makes the claim worth carrying.
+        assert!(bare.opens_beat >= window.opens_beat);
+    }
+
+    /// **A record with nowhere left to be mixed out of has no window.**
+    ///
+    /// Not a window at beat zero, and not a hairline at the end: a loop or a
+    /// jingle is not a record you leave, and drawing a band across all of one
+    /// would tell a DJ to mix out of a sample.
+    #[test]
+    fn a_record_too_short_to_leave_has_no_window() {
+        assert_eq!(mix_out(&outgoing(0.0, 12.0).record()), None);
+        assert_eq!(
+            mix_out(
+                &Outgoing {
+                    bpm: 0.0,
+                    ..outgoing(100.0, 400.0)
+                }
+                .record()
+            ),
+            None,
+            "a record with no tempo has no beats to count a window in"
         );
     }
 }
