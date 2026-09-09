@@ -2625,6 +2625,41 @@ export interface UiApplied {
   what: string;
 }
 
+/* -- the waveform's semantic layers (§25) ----------------------------------- */
+
+/** What a layer's colour means. §57: never two meanings on one colour. */
+export type LayerRole =
+  | "sound"
+  | "grid"
+  | "placed"
+  | "looping"
+  | "seam"
+  | "runway"
+  | "unassigned";
+
+/** Which half of the renderer draws it. Neither is a fallback. */
+export type LayerDrawn = "tile" | "overlay" | "nowhere";
+
+/** One of §25's twenty layers, and what it currently is. */
+export interface WaveformLayer {
+  /** The slug the interface stamps on an element as `data-layer`. */
+  name: string;
+  title: string;
+  about: string;
+  role: LayerRole;
+  drawn: LayerDrawn;
+}
+
+/**
+ * The layer inventory, from Rust.
+ *
+ * The interface draws from it rather than beside it: a browser test checks
+ * that every `data-layer` on screen is in this list, so a layer drawn without
+ * being declared fails instead of quietly becoming a twenty-first.
+ */
+export const waveformLayers = () =>
+  invoke<WaveformLayer[]>("waveform_layers");
+
 /** Every operation this build accepts, generated from the surfaces that exist. */
 export const uiVocabulary = () => invoke<string[]>("ui_vocabulary");
 

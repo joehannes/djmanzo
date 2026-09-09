@@ -50,7 +50,7 @@ rather than taken.
 | 22 | Next-track rail | 🟡 | The rail ships as its own dockable surface, following whichever deck is playing: up to eight candidates, each with one line of deltas (`+3 BPM · 8A→9A · +1 dB`), a confidence bar, and load / set aside / more-like-this / pin / pass. Two of the fifteen things §22 lists are not there — **audition**, which needs a preview player djmanzo does not have, and the **estimated transition type**, which means running the M8 planner per candidate |
 | 23 | Track function tagging | ✅ | Ten functions, closed vocabulary, migration 10, browser picker, and `for is opener` in smart folders |
 | 24 | Pairs and relationships | ⬜ | Needs new storage with confidence decay |
-| 25 | Waveform overhaul | ⬜ | |
+| 25 | Waveform overhaul | 🟡 | The architecture ships: `dj_render::layer` names §25's twenty layers, what each encodes, which half of the renderer draws it and whether it exists. **Nine do** — amplitude, spectral balance, beats, phrases, downbeats, cues, the loop region, the seam and the runway. A golden file and a browser test keep the count honest in both directions: everything on screen carries a `data-layer` that must be in the table. The eleven that do not exist are named rather than forgotten, and reserve no colour |
 | 26 | Direct manipulation on the waveform | 🟡 | The mix point is a handle on the outgoing waveform — drag it or use the arrow keys, and it moves in whole beats because a mix point between two beats is not on the grid. The waveform reports a position; Rust decides what it means and re-derives the reasons. The rest of §26's list — cue markers, phrase markers, loop edges, stem regions — is not draggable yet |
 | 27 | Preview / ghost track | ⬜ | The object it waited on ships — see §68. What is missing is the preview itself: a second render of the outgoing track, which needs a player djmanzo does not have |
 | 28 | Stem-aware UI | ✅ | The stems module ships, folding so it costs a row when unused |
@@ -82,7 +82,7 @@ rather than taken.
 | 54 | Professional functional presets | 🟡 | Four layout presets ship; they are not the functional ones this asks for |
 | 55 | Visual language architecture | ✅ | ADR-0009 and a validated token set |
 | 56 | Visual feedback should be functional | ⚖️ | |
-| 57 | Waveform colour must be semantic | ⬜ | The renderer emits amplitude only |
+| 57 | Waveform colour must be semantic | ✅ | Every drawn layer declares what its colour *means*, and a test refuses two unrelated layers on one meaning — a property of the set, which is why the set exists. Grouped roles are named and counted: the three grid layers are one meaning at three weights, which is texture rather than a second colour. An unbuilt layer reserves nothing |
 | 58 | Information hierarchy (tiers) | 🟡 | The four tiers are modelled; the rail that would use them is not built |
 | 59 | Density system | ✅ | Five bands, and the fixed-pixel blocks that ignored them are fixed — density moves a deck 122 px now, against 68 before |
 | 60 | Resizability | ✅ | The band follows the window, with a test at five heights |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **37 done, 34 part, 15 open, 19 standing rules.**
+Of the 105 sections: **38 done, 35 part, 13 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**37 of 86 deliverable sections are complete and 34 more are partly there.**
+**38 of 86 deliverable sections are complete and 35 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 37 whole plus 34 halves over 86 is 63%, and the phase view is stricter
+way: 38 whole plus 35 halves over 86 is 64%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

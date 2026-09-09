@@ -57,6 +57,33 @@
    */
   let dragging = $state<{ label: string; frame: number } | null>(null);
 
+  /**
+   * How much record is left, as a band at the end of the lane.
+   *
+   * Thirty seconds. Long enough that noticing it is still useful — a DJ who
+   * sees it has time to do something — and short enough that it is not on
+   * screen for half of every record, which would make it furniture rather than
+   * a warning.
+   */
+  const RUNWAY_SECONDS = 30;
+
+  const runway = $derived.by(() => {
+    const rate = deck.length_seconds > 0 ? totalFrames / deck.length_seconds : 0;
+    if (!totalFrames || rate <= 0) return null;
+    const width = (RUNWAY_SECONDS * rate) / framesPerPixel;
+    const left = totalFrames / framesPerPixel - width;
+    return width > 1 ? { left, width } : null;
+  });
+
+  /** The stretch a transition covers, when two marks describe one. */
+  const seamBand = $derived.by(() => {
+    if (marks.length < 2) return null;
+    const frames = marks.map((mark) => mark.frame).sort((a, b) => a - b);
+    const left = frames[0] / framesPerPixel;
+    const width = (frames[frames.length - 1] - frames[0]) / framesPerPixel;
+    return width > 1 ? { left, width } : null;
+  });
+
   function frameAt(event: PointerEvent): number {
     const box = strip?.getBoundingClientRect();
     if (!box) return 0;
@@ -276,15 +303,46 @@
 <div class="lane" bind:this={lane} style:height="{height}px">
   {#if ready}
     <div class="strip" bind:this={strip}>
+      <!--
+        §25's runway layer: how much record is left.
+
+        Its own colour meaning, not a second use of one that already means
+        something — see `dj_render::layer`, where §57's rule is enforced over
+        the whole set rather than remembered one layer at a time. Drawn behind
+        everything else because it is context: the thing you notice without
+        looking at it, which is what "how long have I got" should be.
+      -->
+      {#if runway}
+        <div
+          class="runway"
+          data-layer="runway"
+          style:left="{runway.left}px"
+          style:width="{runway.width}px"
+        ></div>
+      {/if}
+      <!--
+        And the seam as a *region* rather than two lines. The marks say where
+        it starts and ends; this says what it covers, which is the question a
+        DJ actually asks of a mix point.
+      -->
+      {#if seamBand}
+        <div
+          class="seam-band"
+          data-layer="seam"
+          style:left="{seamBand.left}px"
+          style:width="{seamBand.width}px"
+        ></div>
+      {/if}
       {#if loopBand}
         <div
           class="loop-band"
+          data-layer="loop"
           style:left="{loopBand.left}px"
           style:width="{loopBand.width}px"
         ></div>
       {/if}
       {#each markers as marker (marker.slot)}
-        <div class="cue-marker" style:left="{marker.left}px">
+        <div class="cue-marker" data-layer="cues" style:left="{marker.left}px">
           <span class="cue-flag">{marker.slot}</span>
         </div>
       {/each}
@@ -299,6 +357,7 @@
           -->
           <div
             class="mark grabbable"
+            data-layer="seam"
             class:dragging={dragging?.label === mark.label}
             style:left="{(dragging?.label === mark.label
               ? dragging.frame
@@ -318,6 +377,7 @@
         {:else}
           <div
             class="mark"
+            data-layer="seam"
             style:left="{mark.frame / framesPerPixel}px"
             title={mark.label}
           >
@@ -365,6 +425,23 @@
     Under the tiles, so the waveform stays readable through it. A loop band
     that covered the audio would hide exactly the part you are looping.
   */
+  /*
+    The layer order, in one place.
+
+    Written out because it was wrong and nothing noticed: the runway had
+    `z-index: 0` while the tiles have `z-index: auto` and come *later* in the
+    DOM, so it painted underneath an opaque waveform and was invisible in the
+    application. The browser test passed anyway — Playwright's `toBeVisible`
+    asks whether an element has a box, not whether anything can be seen of it.
+
+    Bottom to top: the record, then washes over it, then things at a position,
+    then the playhead. Each step is something drawn *about* the one below it,
+    which is the order §25's layers actually stack in.
+  */
+  .tile {
+    z-index: 0;
+  }
+
   .loop-band {
     position: absolute;
     top: 0;
@@ -372,6 +449,7 @@
     background: var(--accent-2);
     opacity: 0.16;
     pointer-events: none;
+    z-index: 2;
   }
 
   .cue-marker {
@@ -381,7 +459,7 @@
     width: 2px;
     background: var(--accent);
     pointer-events: none;
-    z-index: 2;
+    z-index: 3;
   }
 
   .cue-flag {
@@ -400,13 +478,42 @@
   /* Distinct from a cue marker on purpose: a cue is a place the DJ put, and
      these are places djmanzo is proposing. Dashed, and labelled with a word
      rather than a number. */
+  /*
+    The runway. A wash rather than a line, because it is an amount of time
+    rather than a moment — and behind everything, because it is the thing you
+    should notice without looking for it.
+  */
+  .runway {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: linear-gradient(
+      to right,
+      transparent,
+      color-mix(in srgb, var(--danger) 22%, transparent)
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* What the mix covers, between the two marks that bound it. */
+  .seam-band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    pointer-events: none;
+    z-index: 2;
+  }
+
   .mark {
     position: absolute;
     top: 0;
     bottom: 0;
     border-left: 2px dashed var(--warn);
     pointer-events: none;
-    z-index: 2;
+    z-index: 3;
   }
 
   /*
@@ -467,6 +574,7 @@
     width: 1px;
     background: var(--text);
     opacity: 0.85;
+    z-index: 4;
   }
 
   .pending {

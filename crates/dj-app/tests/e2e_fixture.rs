@@ -209,6 +209,45 @@ fn the_browser_fixture_has_the_surfaces_the_cockpit_can_place() {
     );
 }
 
+/// The waveform's semantic layers, as a golden file.
+///
+/// The same reasoning as the surfaces: `dj_render::layers()` is a constant
+/// table, so it can be re-derived here and a golden file fails on any change to
+/// it. The browser reads it to check the other direction — that every
+/// `data-layer` actually on screen is one djmanzo declares — which is how §25's
+/// inventory stays a fact rather than a list somebody maintains.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_waveform_layers_the_renderer_declares() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/layers.json");
+    let fresh = serde_json::to_string_pretty(&dj_render::layers()).expect("the layers serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the layers");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored layers are JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh layers are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe waveform's layers have changed, so the browser is checking what it \
+         draws against a list djmanzo no longer has.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// The fixture has to describe a screen worth measuring.
 ///
 /// Both of these were false in an earlier version of the fixture, and both

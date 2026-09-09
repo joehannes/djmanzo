@@ -16,6 +16,40 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The waveform's layers are named, counted and checked** — §25's "multilayer
+semantic visualization architecture". Twenty layers live in
+`dj_render::layer`, each saying what it encodes, which half of the renderer
+draws it — the Rust rasteriser or the interface over the top, neither a
+fallback — and whether it exists yet. Nine of the twenty do.
+
+A list of twenty in a document is a list that quietly stops matching the code.
+This one is checked in both directions: a golden file keeps the interface's copy
+honest, and a browser test reads every `data-layer` off a rendered page and
+fails if anything on screen is not in the table. "Nine of twenty" is a fact
+rather than a recollection.
+
+**§57 becomes a constraint rather than a warning.** "Never overload the same
+colour with multiple meanings" is a property of the whole *set*, so it cannot be
+enforced one layer at a time — which is the argument for the table existing.
+Every drawn layer declares what its colour means and a test refuses two
+unrelated layers on one meaning. Grouped roles are allowed and named: the three
+grid layers are one meaning at three weights, which is texture, not a second
+colour. A layer nobody has built reserves nothing, because that is how a palette
+runs out for no reason.
+
+**Two new layers**, both answering questions §25 puts to the waveform that
+amplitude alone cannot. **Runway** — how much record is left, as a wash over the
+last thirty seconds. **Seam** — what a mix *covers*, as a region between its two
+marks rather than only the marks themselves.
+
+**A stacking bug, found by looking at the application.** The runway shipped
+under the tiles and was invisible: `z-index: 0` against tiles at `z-index: auto`
+that come later in the DOM. The browser test passed anyway, because Playwright's
+`toBeVisible` asks whether an element has a box, not whether anything can be
+seen of it. The layer order is written down explicitly now — record, washes,
+positions, playhead — and a test compares computed z-indices rather than
+presence.
+
 **One transition, performed by whoever is driving** — §68's remaining half. The
 transition object has existed since the pair view shipped, and the automix went
 on deciding its own decks, its own moment and its own length regardless. A DJ

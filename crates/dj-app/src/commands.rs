@@ -6786,6 +6786,18 @@ pub fn set_cockpit_workspace(
     resolved
 }
 
+/// The waveform's semantic layers — §25's twenty, and which of them exist.
+///
+/// Handed to the interface so that what is drawn and what is *named* come from
+/// one table. A browser test checks the other direction: everything on screen
+/// carries a `data-layer` that is in this list, so a layer drawn without being
+/// declared fails rather than quietly becoming a twenty-first.
+#[tauri::command]
+#[must_use]
+pub fn waveform_layers() -> &'static [dj_render::Layer] {
+    dj_render::layers()
+}
+
 // -- the typed UI vocabulary -------------------------------------------------
 //
 // §41. See `crate::uiop` for why this is a second closed vocabulary rather than

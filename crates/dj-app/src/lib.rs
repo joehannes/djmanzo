@@ -414,6 +414,7 @@ pub fn run() {
             commands::authority_matrix,
             commands::authority_set,
             commands::authority_reset,
+            commands::waveform_layers,
             commands::ui_vocabulary,
             commands::ui_do,
             commands::room_forget,

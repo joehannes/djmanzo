@@ -58,6 +58,7 @@ import snapshot from "./snapshot.json" with { type: "json" };
  */
 import padPages from "./pad-pages.json" with { type: "json" };
 import surfaces from "./surfaces.json" with { type: "json" };
+import layers from "./layers.json" with { type: "json" };
 
 /**
  * Answers for the commands the shell asks on start-up.
@@ -137,6 +138,10 @@ const ANSWERS: Record<string, unknown> = {
   // `wave://` URLs that resolve to nothing here; what is being measured is the
   // marks and cues drawn over them, which is the part a DJ grabs.
   waveform_info: { deck: 1, ready: true, total_frames: 12_000_000, epoch: 1 },
+  // §25's inventory, answered from the same table Rust publishes. The test
+  // that matters reads it back and checks every `data-layer` on screen is in
+  // it, so this stub is deliberately the real shape rather than a stand-in.
+  waveform_layers: layers,
   // Nothing staged, which is what a fresh application has. `Staged.svelte`
   // draws nothing at all for this, which is the point: the strip costs the
   // decks no height until there is something to decide.

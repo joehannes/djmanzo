@@ -106,6 +106,13 @@ catch a clipped deck spent a session measuring an application that no longer
 existed. A Rust test now reads the TypeScript file and fails when they
 disagree — do not delete it.
 
+**`toBeVisible()` is not "can be seen".** Playwright asks whether an element
+has a box, not whether anything is painted over it. A waveform layer shipped
+underneath the opaque tiles — `z-index: 0` against tiles at `z-index: auto` that
+come later in the DOM — and the browser test passed while the application showed
+nothing. Where paint order is the thing that matters, assert computed
+`z-index`, and look at the running application.
+
 **The browser harness answers only what somebody remembered to stub.** An
 unstubbed command resolves to `null`, and a component that reads a field off it
 throws inside its own subtree — quietly, while every assertion around it stays
@@ -216,15 +223,16 @@ because a second consumer appeared and disagreed with the first.
 
 The largest open sections, in the order they are worth doing:
 
-1. **§25–§27, the waveform as instrumentation.** §26 has its first handle: the
-   mix point is draggable on the outgoing lane, in whole beats, with Rust
-   re-deriving what it means. The rest of §26's list — cue markers, phrase
-   markers, loop edges, stem regions — uses the same `onMoveMark` shape and is
-   mostly a matter of giving each mark an owner that knows what moving it
-   means. §25's twenty layers are five today (amplitude, spectral balance,
-   beats, downbeats, phrases); the ones worth adding next are the ones djmanzo
-   already computes — the mix-out region, the runway to the end of the record,
-   and the grid's own confidence. §27's ghost track still needs a preview
+1. **§25–§27, the waveform as instrumentation.** The architecture and §57's
+   colour rule ship; `dj_render::layer` is the inventory and the count is
+   checked in both directions. **Nine of twenty** exist. The next ones worth
+   building are the ones djmanzo already computes: the grid's own confidence
+   (the rasteriser already fades beat lines by it — it just is not named as a
+   layer), and the mix-out region from the planner. Vocal, stems, breakdowns
+   and drops need analysis that does not exist. §26 has its first handle and
+   the rest of its list — cue markers, phrase markers, loop edges — uses the
+   same `onMoveMark` shape: it is mostly a matter of giving each mark an owner
+   that knows what moving it means. §27's ghost track still needs a preview
    player djmanzo does not have.
 2. **§68's last quarter.** The automix and the autopilot perform the held mix
    now; **replay** still re-runs the actions a transition produced rather than
