@@ -120,6 +120,15 @@ green. `waveform_info` was unstubbed for as long as the pair view has existed,
 so its waveform lanes had never once rendered in a test. If a panel looks empty
 in a browser test and full in the application, look at `ANSWERS` first.
 
+**A result that appears below the fold reads as a button that did nothing.**
+Recorded a third time, because it happened a third time: pressing *hear it
+again* added a line to its row, and in a docked panel that line was exactly the
+one pushed out of sight. The fix is one call — scroll the answer into view when
+it arrives — and it is worth doing wherever a control's result appears *inside*
+a panel rather than replacing it. A browser test of it would be vacuous at the
+harness's window size, where nothing overflows; this was found and checked by
+driving the application.
+
 **Flex children shrink to nothing, so a dock squeezes instead of scrolling.**
 A third surface in a side dock rendered as one row cut through the middle of
 its letters — the dock has `overflow: auto` and never reached the height that
@@ -265,13 +274,19 @@ The largest open sections, in the order they are worth doing:
 2. **§68's last quarter.** The automix and the autopilot perform the held mix,
    and `dj_app::mixes` now derives the *performed* one back out of the action
    log — the night's own list of what went into what, in beats, with the style
-   named from what was actually done. **Replay** is the piece still missing:
-   it re-runs the actions rather than the object, so a night can be reproduced
-   and not *re-planned*, and there is no way to hear one mix back on its own.
-   `replay.rs` renders a whole session; a window between two timestamps is the
-   natural next step and `mixes` now supplies the timestamps. The stem, EQ and
-   FX plans are still absent because nothing decides them — the automix's own
-   style handling (`begin`) is the closest thing to an FX plan that exists.
+   named from what was actually done. **Replay reads it now**: `replay::Window`
+   renders one handover back to a WAV with its run-up, and *hear it again* on
+   any row does it. What is still missing is re-*planning* — changing a
+   recorded mix's length or style and hearing the alternative, which is §69's
+   practice lab rather than §68's object. The stem, EQ and FX plans are still
+   absent because nothing decides them — the automix's own style handling
+   (`begin`) is the closest thing to an FX plan that exists.
+
+   **A replay window is not a seek**, and anything built on it inherits that:
+   the engine's state at a moment is the whole set up to it, so rendering the
+   third hour costs three hours. Do not try to make it cheaper by skipping the
+   run-up — a test asserts the window is the same audio the whole set produces
+   there, and it fails under exactly that change.
 
    **What `mixes` cannot see**, so nobody rediscovers it as a bug: a mix made
    entirely with EQ and no fader movement at all. The outgoing record never

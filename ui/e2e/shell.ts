@@ -638,6 +638,18 @@ export async function openShell(
           // would make every dock test measure the fixture instead of the
           // press. Rust's resolver is tested in Rust; what matters here is
           // that the round trip carries the arrangement.
+          // The mix re-render. Answered here rather than from the table so a
+          // test can check *which* mix was asked for: the panel holds two
+          // numbers per row and passing the wrong row's would produce a
+          // plausible file of the wrong twenty seconds.
+          if (cmd === "session_render_mix") {
+            win.__renderMixArgs = { at: args.at, tookSeconds: args.tookSeconds };
+            return Promise.resolve(
+              `20s → /home/dj/.config/djmanzo/recordings/mix-at-${Math.round(
+                Number(args.at),
+              )}s.wav`,
+            );
+          }
           if (cmd === "set_cockpit_workspace") {
             return Promise.resolve({ workspace: args.workspace, notes: [] });
           }

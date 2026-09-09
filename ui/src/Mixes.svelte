@@ -24,7 +24,7 @@
    * disagree with.
    */
   import { onMount } from "svelte";
-  import { formatTime, sessionMixes, type Mix } from "./api";
+  import { formatTime, sessionMixes, sessionRenderMix, type Mix } from "./api";
 
   interface Props {
     /** False before an audio device is open, when there is no set to read. */
@@ -84,6 +84,48 @@
 
   /** Newest first: what you just did is what you want to see. */
   const recent = $derived([...mixes].reverse());
+
+  /**
+   * Hearing one back.
+   *
+   * §68's object driving replay. The whole set up to the mix is re-rendered
+   * and thrown away — the engine's state at any moment *is* everything before
+   * it — so this is minutes of work for a set that has been running a while,
+   * and the button says so rather than appearing to do nothing.
+   *
+   * One at a time, by which mix is working: two renders of the same set at
+   * once would decode the same records twice for no benefit, and a panel that
+   * cannot say which one it is busy on is a panel with a spinner and no
+   * meaning.
+   */
+  let rendering = $state<number | null>(null);
+  let rendered = $state<{ at: number; said: string } | null>(null);
+
+  /**
+   * The answer, brought into view.
+   *
+   * A result line that appears below the fold of its own panel reads as
+   * nothing having happened — this project has shipped that twice, in two
+   * different panels, and found it both times by driving the application. The
+   * row grows by a line when the path arrives, and in a docked panel that line
+   * is exactly the one pushed out of sight.
+   */
+  let answer = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (rendered) answer?.scrollIntoView({ block: "nearest" });
+  });
+
+  async function hearItAgain(mix: Mix) {
+    rendering = mix.at;
+    rendered = null;
+    try {
+      rendered = { at: mix.at, said: await sessionRenderMix(mix.at, mix.took_seconds) };
+    } catch (problem) {
+      rendered = { at: mix.at, said: String(problem) };
+    } finally {
+      rendering = null;
+    }
+  }
 </script>
 
 <section class="mixes">
@@ -115,6 +157,14 @@
           </div>
           <div class="how">
             <span>deck {mix.out_deck} → {mix.in_deck}</span>
+            <button
+              class="again"
+              disabled={!enabled || rendering !== null}
+              onclick={() => void hearItAgain(mix)}
+              title="Re-render this mix to a file, with eight seconds of run-up. The set is replayed up to it, so this takes a while on a long night."
+            >
+              {rendering === mix.at ? "rendering…" : "hear it again"}
+            </button>
             <!--
               Beats where the record's tempo is known, seconds where it is not.
               Not both: a DJ reads one number, and "21 s · 43 beats" is two
@@ -128,6 +178,9 @@
               {/if}
             </span>
           </div>
+          {#if rendered?.at === mix.at}
+            <p class="said" bind:this={answer}>{rendered.said}</p>
+          {/if}
         </li>
       {/each}
     </ol>
@@ -209,6 +262,24 @@
     gap: 0.4rem;
     color: var(--text-dim);
     font-size: 0.72rem;
+  }
+
+  /* Quiet: it is a thing you do to one row occasionally, not the reason the
+     panel exists. */
+  .again {
+    font-size: 0.66rem;
+    padding: 0 0.3rem;
+  }
+
+  /* The path it wrote, which is the whole point of having pressed it. Wrapped
+     rather than truncated: a file path with its middle missing is a path
+     nobody can use. */
+  .said {
+    margin: 0.2rem 0 0;
+    font-size: 0.68rem;
+    line-height: 1.4;
+    color: var(--text-dim);
+    overflow-wrap: anywhere;
   }
 
   .empty,

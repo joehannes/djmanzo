@@ -4142,6 +4142,105 @@ pub fn session_open(path: String) -> Result<SessionSummaryDto, String> {
     })
 }
 
+/// Decode the records a set loaded, once each.
+///
+/// Kept rather than re-decoded per load: a set that brings a record back for a
+/// second play should not pay for it twice, and a DJ's crate is small enough
+/// that holding it is cheaper than the disk.
+fn decoder(
+    db: Arc<dj_library::Library>,
+) -> impl FnMut(dj_core::TrackId) -> Option<Arc<dyn dj_decode::TrackSource>> {
+    let mut decoded: std::collections::HashMap<dj_core::TrackId, Arc<dyn dj_decode::TrackSource>> =
+        std::collections::HashMap::new();
+    move |id: dj_core::TrackId| -> Option<Arc<dyn dj_decode::TrackSource>> {
+        if let Some(found) = decoded.get(&id) {
+            return Some(Arc::clone(found));
+        }
+        let track = db.track(id).ok().flatten()?;
+        let loaded = dj_decode::decode_file(&track.path).ok()?;
+        let source: Arc<dyn dj_decode::TrackSource> = Arc::new(loaded.buffer);
+        decoded.insert(id, Arc::clone(&source));
+        Some(source)
+    }
+}
+
+/// How much run-up one mix is rendered with.
+///
+/// Eight seconds. A transition is not a thing you can judge from its own
+/// duration alone — what it sounds like depends on what was already playing —
+/// and eight seconds is about four bars at a danceable tempo, which is enough
+/// to hear where the outgoing record was before anything moved.
+const MIX_LEAD_IN: f64 = 8.0;
+
+/// And how long after it lands.
+///
+/// Four seconds: long enough to hear the incoming record standing on its own,
+/// short enough that the file is about the mix rather than about the next
+/// track.
+const MIX_TAIL: f64 = 4.0;
+
+/// Render one of tonight's mixes back to a WAV, in context.
+///
+/// §68's object driving replay. `crate::mixes` says when each handover
+/// happened and how long it took; this hands those two numbers to
+/// `replay::Window` and renders that stretch of the set the DJ is playing.
+///
+/// **It is not a seek, and this is where the cost is.** The engine's state at
+/// any moment is the whole set up to it, so everything before the mix is
+/// rendered and thrown away — a mix from the third hour means rendering three
+/// hours. Replay runs to no deadline and is far faster than real time, but it
+/// is not free, and a caller should say so rather than let a DJ think a button
+/// is broken.
+///
+/// The file lands in the recordings folder beside the settings, named for
+/// where in the set it came from. Not the music folder, for the same reason
+/// recordings are not: the browser would find it and offer it as a track.
+#[tauri::command]
+pub fn session_render_mix(
+    state: State<'_, AppState>,
+    at: f64,
+    took_seconds: f64,
+) -> Result<String, String> {
+    let db = library(&state)?;
+    let rate = dj_core::SampleRate::DEFAULT;
+    let session = crate::session::Session {
+        events: state.bus().log(),
+    };
+    if session.events.is_empty() {
+        return Err("nothing has happened yet tonight".to_owned());
+    }
+
+    let from = (at - MIX_LEAD_IN).max(0.0);
+    let to = at + took_seconds.max(0.0) + MIX_TAIL;
+    let dir = state
+        .recordings_dir()
+        .ok_or_else(|| "no settings folder to write into yet".to_owned())?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    // Named for where in the set it came from, so two mixes from one night do
+    // not overwrite each other and the name says which is which.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let path = dir.join(format!("mix-at-{}s.wav", at.max(0.0).round() as u64));
+
+    let mut resolve = decoder(db);
+    let rendered = crate::replay::render_to_wav(
+        &session,
+        rate,
+        state.deck_count(),
+        0,
+        crate::replay::Window::seconds(from, to, rate),
+        &mut resolve,
+        &path,
+    )?;
+
+    // What came out, not what it cost: reporting the run-up would tell a DJ
+    // their twenty-second mix is three hours long.
+    Ok(format!(
+        "{:.0}s → {}",
+        rendered.emitted as f64 / rate.as_f64(),
+        path.display()
+    ))
+}
+
 /// Re-render a saved set to a WAV file.
 ///
 /// Faster than real time, and with nothing dropped: a replay runs to no
@@ -4162,22 +4261,7 @@ pub fn session_render(
     let db = library(&state)?;
     let session = crate::session::Session::read(std::path::Path::new(&session_path))?;
     let rate = dj_core::SampleRate::DEFAULT;
-
-    // Decoded once each and kept, rather than re-decoded per load: a set that
-    // brings a record back for a second play should not pay for it twice, and
-    // a DJ's crate is small enough that holding it is cheaper than the disk.
-    let mut decoded: std::collections::HashMap<dj_core::TrackId, Arc<dyn dj_decode::TrackSource>> =
-        std::collections::HashMap::new();
-    let mut resolve = |id: dj_core::TrackId| -> Option<Arc<dyn dj_decode::TrackSource>> {
-        if let Some(found) = decoded.get(&id) {
-            return Some(Arc::clone(found));
-        }
-        let track = db.track(id).ok().flatten()?;
-        let loaded = dj_decode::decode_file(&track.path).ok()?;
-        let source: Arc<dyn dj_decode::TrackSource> = Arc::new(loaded.buffer);
-        decoded.insert(id, Arc::clone(&source));
-        Some(source)
-    };
+    let mut resolve = decoder(db);
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let tail = (tail_seconds.max(0.0) * rate.as_f64()) as u64;
@@ -4186,6 +4270,7 @@ pub fn session_render(
         rate,
         state.deck_count(),
         tail,
+        crate::replay::Window::WHOLE,
         &mut resolve,
         std::path::Path::new(&out_path),
     )?;

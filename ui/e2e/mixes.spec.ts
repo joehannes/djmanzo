@@ -82,4 +82,30 @@ test.describe("tonight's mixes", () => {
     // And the deck it left is named even where the record it went to is not.
     await expect(rows.first()).toContainText("deck 1");
   });
+
+  /**
+   * **Hearing one back says where it went.**
+   *
+   * §68's object driving replay. What a browser can prove is the round trip:
+   * the two numbers the panel holds reach Rust, and what comes back is put in
+   * front of the DJ rather than swallowed — a render whose file nobody is told
+   * about is a button that appears to do nothing.
+   *
+   * The arithmetic is Rust's and is tested there, against a set it builds
+   * itself.
+   */
+  test("a mix can be heard again, and the file is named", async ({ page }) => {
+    await openMixes(page);
+    const row = page.locator('[data-surface="mixes"] li').last();
+
+    await row.getByRole("button", { name: "hear it again" }).click();
+    await expect(row.locator(".said")).toContainText("mix-at-214s.wav");
+
+    // The two numbers that reached Rust are the mix's own, not the row's
+    // position or a default.
+    const asked = await page.evaluate(
+      () => (window as unknown as { __renderMixArgs?: unknown }).__renderMixArgs,
+    );
+    expect(asked).toEqual({ at: 214, tookSeconds: 15.5 });
+  });
 });

@@ -434,6 +434,7 @@ pub fn run() {
             commands::waveform_info,
             commands::report_bench,
             commands::session_mixes,
+            commands::session_render_mix,
             commands::session_log,
             commands::library_status,
             commands::palette,

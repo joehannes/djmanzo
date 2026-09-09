@@ -2653,6 +2653,18 @@ export interface Mix {
 
 export const sessionMixes = () => invoke<Mix[]>("session_mixes");
 
+/**
+ * Render one of tonight's mixes back to a WAV, in context.
+ *
+ * **Not a seek.** The engine's state at any moment is the whole set up to it,
+ * so everything before the mix is rendered and thrown away — a mix from the
+ * third hour of a set means rendering three hours. Replay runs to no deadline
+ * and is far faster than real time, but it is not instant, and a caller has to
+ * say so rather than let a DJ think the button is broken.
+ */
+export const sessionRenderMix = (at: number, tookSeconds: number) =>
+  invoke<string>("session_render_mix", { at, tookSeconds });
+
 /* -- the typed interface vocabulary (§41) ---------------------------------- */
 
 /**

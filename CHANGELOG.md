@@ -16,6 +16,31 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**One mix can be heard back on its own** — the last of §68's list, which asks
+for the transition object to drive *replay*. `replay::Window` names a stretch
+of a set, `crate::mixes` supplies the two numbers, and **hear it again** on any
+row of Tonight's mixes re-renders that handover to a WAV with eight seconds of
+run-up and four of tail.
+
+**A window is not a seek**, and that is stated rather than hidden. The engine's
+state at any moment *is* the whole set up to it — which record is on which
+deck, where its playhead is, where every fader was left — so everything before
+the window is still rendered and thrown away. A replay that jumped in would be
+a different set that happens to share a clock, and it would be silently
+plausible, which is worse. A mix from the third hour therefore costs three
+hours of rendering; replay runs to no deadline and is far faster than real
+time, but it is not free, and the button says so.
+
+`Rendered` reports the cost and the output as separate numbers now. They differ
+whenever there is a window, and telling a DJ their twenty-second mix is three
+hours long would be a confident wrong answer about a file just written.
+
+**Found by driving it: the answer landed below the fold.** The row grows by a
+line when the path arrives, and in a docked panel that line is exactly the one
+pushed out of sight — a result nobody can see reads as a button that did
+nothing. This project has shipped that twice, in two different panels. The
+answer scrolls itself into view now.
+
 **The night knows its own mixes** — §67 says the session contains transitions
 and §68 asks for those transitions to be explicit objects. `dj_app::transition`
 holds the mix that is *about* to happen; `dj_app::mixes` holds the ones that
