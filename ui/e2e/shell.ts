@@ -98,6 +98,22 @@ const ANSWERS: Record<string, unknown> = {
   assistant_packs: [],
   list_llm_providers: [],
   learned_taste: { favourites: [], plays: 0, confident: false },
+  // §13/§14. Two gestures that reached four occurrences in one phase, with the
+  // sentences Rust writes — never "you like", always what was seen and when.
+  learned_tendencies: [
+    {
+      says: "You often ride the EQ when the night is at its peak. Seen 9 times.",
+      gesture: "eq-moved",
+      phase: "peak",
+      seen: 9,
+    },
+    {
+      says: "You sometimes sweep the filter when the night is building. Seen 4 times.",
+      gesture: "filter-swept",
+      phase: "heat",
+      seen: 4,
+    },
+  ],
   assistant_state: {
     provider: "",
     model: "",

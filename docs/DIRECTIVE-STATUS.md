@@ -38,8 +38,8 @@ rather than taken.
 | 10 | AI posture stays compatible with djmanzo's | ⚖️ | The six postures and nine occasions are untouched |
 | 11 | Add a context engine | 🟡 | `dj_core::ContextEngine` ships and is the common input: the phase, its certainty, what produced it and which way the evidence disagrees, from two sources and nothing else — what the DJ declared, and where the last few minutes sit in the whole night's own range. `dj_app::night` feeds it from the snapshot the pump has just built. Five of `DJContext`'s eight fields are real (`sessionPhase`, `occasion`, `attentionBudget`, `audienceContext` through RoomSense, `performanceHealth` through the frame monitor); `musicContext`, `hardwareContext` and `djBehaviorContext` are not gathered yet |
 | 12 | Learn the DJ | 🟡 | Taste learned from play history ships. Persona learning does not |
-| 13 | Never learn badly | ⬜ | |
-| 14 | Behavioural signals | ⬜ | Needs an events table with decay |
+| 13 | Never learn badly | ✅ | A **type**, not a warning. `dj_app::signals::Signal` carries the gesture and the phase the night was in as one value that cannot be taken apart, and `Tendency` — the only thing that generalises — is constructible solely through `tendencies()`: never without a phase, never on fewer than four occurrences *in that same phase*. So the directive's own bad sentence, "user likes enormous BPM jumps", is not one this workspace can produce; "you sometimes move the tempo by hand when the night is at its peak" is. The wording is written in Rust, so the interface cannot make a claim Rust would not |
+| 14 | Behavioural signals | 🟡 | Twelve of §14's twenty gestures, derived from the action log rather than recorded separately — so a set from before this existed has them too. Coarser than the vocabulary on purpose: six EQ verbs are one gesture a DJ would name, and counting per verb would need six times the evidence. A test asserts every gesture named is one the bus can produce. The other six — track searched, previewed, staged, candidate rejected, candidate selected, assistant suggestion accepted — are not actions and are absent rather than approximated. Decay is not implemented: tonight's log is the window, which is the honest scope until sessions are read back across nights |
 | 15 | AI should understand DJ technique | ✅ | The technique catalogue ships |
 | 16 | Domain knowledge packs | 🟡 | Genre families ship; packs as a format do not |
 | 17 | GUI adapts to session phase | 🟡 | Occasion-aware density ships, and peak time now narrows the attention budget — but only on a read worth acting on. Phase-driven *layout* does not |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **39 done, 35 part, 12 open, 19 standing rules.**
+Of the 105 sections: **40 done, 36 part, 10 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**39 of 86 deliverable sections are complete and 35 more are partly there.**
+**40 of 86 deliverable sections are complete and 36 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 39 whole plus 35 halves over 86 is 66%, and the phase view is stricter
+way: 40 whole plus 36 halves over 86 is 67%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

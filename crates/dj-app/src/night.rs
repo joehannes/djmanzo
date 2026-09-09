@@ -37,6 +37,17 @@ pub struct Night {
     engine: Mutex<ContextEngine>,
     /// The phase the DJ's occasion declares, when it declares one.
     declared: Mutex<Option<SessionPhase>>,
+    /// Every phase the night has been read as, and when it became that.
+    ///
+    /// §67 lists the *set arc* as part of the session, and this is it as it
+    /// actually happened rather than as it stands now. `crate::signals` needs
+    /// it and cannot work without it: attributing a whole night's gestures to
+    /// whichever phase it happens to be now is exactly the mis-learning §13
+    /// exists to prevent.
+    ///
+    /// Only changes are stored, so this is a handful of entries over a whole
+    /// set rather than one per snapshot at sixty a second.
+    arc: Mutex<Vec<(Duration, SessionPhase)>>,
     started: Instant,
 }
 
@@ -52,6 +63,7 @@ impl Night {
         Self {
             engine: Mutex::new(ContextEngine::new()),
             declared: Mutex::new(None),
+            arc: Mutex::new(Vec::new()),
             started: Instant::now(),
         }
     }
@@ -94,10 +106,42 @@ impl Night {
             audio: snapshot.context.audio,
             declared: self.declared(),
         };
-        self.engine
+        let read = self
+            .engine
             .lock()
             .ok()
-            .and_then(|mut engine| engine.observe(&observation))
+            .and_then(|mut engine| engine.observe(&observation));
+
+        // Record the arc, changes only. `read` is `Some` on every observation
+        // once the engine has enough, so appending unconditionally would store
+        // sixty entries a second for the rest of the night.
+        if let Some(seen) = &read
+            && let Ok(mut arc) = self.arc.lock()
+            && arc.last().map(|(_, phase)| *phase) != Some(seen.phase)
+        {
+            arc.push((elapsed, seen.phase));
+        }
+        read
+    }
+
+    /// What the night was, at a moment that has already passed.
+    ///
+    /// `None` before anything could say — which is the first stretch of every
+    /// set by `dj_core::context`'s own design, and is the honest answer rather
+    /// than the earliest phase backdated over it.
+    #[must_use]
+    pub fn phase_at(&self, at: Duration) -> Option<SessionPhase> {
+        let arc = self.arc.lock().ok()?;
+        arc.iter()
+            .rev()
+            .find(|(began, _)| *began <= at)
+            .map(|(_, phase)| *phase)
+    }
+
+    /// The arc so far, as changes.
+    #[must_use]
+    pub fn arc(&self) -> Vec<(Duration, SessionPhase)> {
+        self.arc.lock().map(|arc| arc.clone()).unwrap_or_default()
     }
 
     /// The last answer, without taking another look.
@@ -383,5 +427,60 @@ mod tests {
         let (kept, needed) = night.progress();
         assert!(kept >= dj_core::context::ENOUGH);
         assert_eq!(needed, 0);
+    }
+
+    /// **The arc keeps what the night *was*, not only what it is.**
+    ///
+    /// §67 lists the set arc as part of the session, and `crate::signals`
+    /// cannot work without it: attributing a whole night's gestures to
+    /// whichever phase it happens to be now is exactly the mis-learning §13
+    /// exists to prevent.
+    #[test]
+    fn the_arc_remembers_when_the_night_changed_and_refuses_to_backdate() {
+        let night = Night::new();
+        // Nothing has read anything yet, so nothing is claimed about any
+        // moment — including the ones that have already happened.
+        assert_eq!(night.arc(), vec![]);
+        assert_eq!(night.phase_at(Duration::from_secs(0)), None);
+        assert_eq!(night.phase_at(Duration::from_secs(600)), None);
+
+        let mut last = Duration::ZERO;
+        for step in 0..(dj_core::context::ENOUGH + 40) {
+            #[allow(clippy::cast_precision_loss)]
+            let loudness = (step as f32 / 250.0).min(1.0);
+            last = dj_core::context::SAMPLE * u32::try_from(step).expect("fits");
+            night.observe_at(&frame(1, loudness), last, Some(1));
+        }
+
+        let arc = night.arc();
+        assert!(
+            !arc.is_empty(),
+            "a night that read as something kept nothing"
+        );
+        // Changes only: a phase that held for a hundred observations is one
+        // entry, not a hundred.
+        assert!(
+            arc.len() < 10,
+            "the arc stored {} entries for one climb",
+            arc.len()
+        );
+        let mut phases = arc.iter().map(|(_, p)| *p);
+        let mut previous = phases.next();
+        for phase in phases {
+            assert_ne!(Some(phase), previous, "the arc repeats a phase");
+            previous = Some(phase);
+        }
+
+        // And the answer for a moment is the phase that was current *then*.
+        let (began, phase) = arc[0];
+        assert_eq!(night.phase_at(began), Some(phase));
+        assert_eq!(
+            night.phase_at(last),
+            Some(night.read().expect("a read").phase)
+        );
+        // Still nothing claimed about the stretch before anything was read.
+        if began > Duration::ZERO {
+            assert_eq!(night.phase_at(began - Duration::from_millis(1)), None);
+        }
     }
 }

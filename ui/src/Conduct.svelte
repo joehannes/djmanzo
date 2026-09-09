@@ -26,6 +26,7 @@
   import {
     assistantApplyPack,
     learnedTaste,
+    learnedTendencies,
     assistantConduct,
     assistantHandBack,
     assistantPacks,
@@ -38,6 +39,7 @@
     POSTURE_HELP,
     type AssistantPack,
     type LearnedTaste,
+    type Tendency,
     type Conduct,
   } from "./api";
   import { onMount } from "svelte";
@@ -70,6 +72,14 @@
    * number that changes about as often as a season.
    */
   let taste = $state<LearnedTaste | null>(null);
+  /**
+   * §14's signals read through §13's rule.
+   *
+   * Re-read rather than read once, unlike the taste above: taste comes from
+   * years of plays and does not move during a set, while this is about
+   * *tonight* and changes as the night does.
+   */
+  let tendencies = $state<Tendency[]>([]);
 
   /**
    * How often the panel re-reads what the assistant would do.
@@ -87,6 +97,16 @@
       error = null;
     } catch (e) {
       error = String(e);
+    }
+    // On the same tick as the conduct, because it is about *tonight* and the
+    // night moves while the panel is open — unlike the taste above, which is
+    // years of plays and is read once. It walks the log to answer, which is
+    // why it rides an existing two-second tick rather than getting one of its
+    // own.
+    try {
+      tendencies = await learnedTendencies();
+    } catch {
+      tendencies = [];
     }
   }
 
@@ -273,6 +293,28 @@
     </p>
   {/if}
 
+  <!--
+    §14's signals, read through §13's rule.
+
+    Beside "what you reach for" rather than in a panel of its own, because both
+    are djmanzo saying what it has worked out about this DJ and two homes for
+    that is two things to go and check. The difference is the subject: the one
+    above is about records, this is about hands.
+
+    Every line names the part of the night it is about, because §13's whole
+    point is that a gesture without its context is a preference waiting to be
+    learned wrongly. Nothing here is assembled in the browser — the sentence
+    arrives written, so the interface cannot make a claim Rust would not.
+  -->
+  {#if tendencies.length > 0}
+    <h3>What you do, and when</h3>
+    <ul class="tendencies">
+      {#each tendencies as tendency (tendency.gesture + tendency.phase)}
+        <li>{tendency.says}</li>
+      {/each}
+    </ul>
+  {/if}
+
   {#if error}
     <p class="error">{error}</p>
   {/if}
@@ -384,6 +426,18 @@
      never accidental. */
   .ladder button.acting.active {
     border-color: var(--warn, #d97706);
+  }
+
+  .tendencies {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-dim);
   }
 
   .taste {

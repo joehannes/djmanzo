@@ -50,6 +50,7 @@ pub mod replay;
 pub mod session;
 pub mod setrec;
 pub mod share;
+pub mod signals;
 pub mod snapshot;
 pub mod sources;
 pub mod staged;
@@ -472,6 +473,7 @@ pub fn run() {
             commands::waveform_info,
             commands::report_bench,
             commands::at_hand,
+            commands::learned_tendencies,
             commands::session_mixes,
             commands::session_render_mix,
             commands::session_log,

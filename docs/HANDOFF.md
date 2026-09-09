@@ -317,7 +317,16 @@ The largest open sections, in the order they are worth doing:
    becomes inaudible, so nothing crosses. That is a real gap and a small one —
    a mix that never takes the outgoing record out is a mix that has not
    finished.
-3. **§20's performance table** is the browser at fewer columns than §20 lists —
+3. **The learning cluster, now that §13 and §14 exist.** `dj_app::signals`
+   names the gestures and `Tendency` is the only thing that generalises from
+   them — constructible only through `tendencies()`, never without a phase,
+   never on fewer than four in that phase. §12 (learn the DJ), §24 (pairs and
+   relationships) and §81 (profile by context) all want to be built *on that
+   type* rather than beside it: anything that counts gestures its own way is a
+   second learner with its own idea of what is enough, which is the failure
+   §13 is about. §24 in particular is now reachable — `dj_app::mixes` already
+   derives the pairs a night actually contained.
+4. **§20's performance table** is the browser at fewer columns than §20 lists —
    the other three views ship. Adding the missing columns (energy, vocal and
    stem availability, transition suitability, request count, AI confidence)
    mostly waits on analysis that does not exist, which is the same wall §25's

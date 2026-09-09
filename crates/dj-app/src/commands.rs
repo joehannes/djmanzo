@@ -1576,6 +1576,46 @@ pub fn at_hand(state: State<'_, AppState>, deck: Option<u8>) -> Result<AtHandDto
     })
 }
 
+/// One thing djmanzo has noticed you do, and where.
+#[derive(Debug, Clone, Serialize)]
+pub struct TendencyDto {
+    /// The whole sentence, written in Rust — §13's rule is about the *words*
+    /// as much as the counting, so the interface is not given the parts to
+    /// assemble a claim out of.
+    pub says: String,
+    pub gesture: String,
+    pub phase: String,
+    pub seen: usize,
+}
+
+/// What tonight's gestures amount to, if anything.
+///
+/// §14's signals read through §13's rule. Nothing here is a preference: a
+/// gesture becomes a tendency only after four occurrences **in one phase of
+/// the night**, and the sentence it produces names that phase. "You sometimes
+/// sweep the filter when the night is at its peak" is a thing djmanzo saw;
+/// "you like filter sweeps" is a thing it would be inventing.
+///
+/// Empty is the ordinary answer for most of a set, and it is an answer: for
+/// the first stretch nothing has read the night yet, so nothing can generalise
+/// — which is `crate::night::phase_at` refusing to backdate a phase over the
+/// part of the evening it could not see.
+#[tauri::command]
+pub fn learned_tendencies(state: State<'_, AppState>) -> Vec<TendencyDto> {
+    let night = state.night();
+    let log = state.bus().log();
+    let signals = crate::signals::signals(&log, &|at| night.phase_at(at));
+    crate::signals::tendencies(&signals)
+        .into_iter()
+        .map(|t| TendencyDto {
+            says: t.words(),
+            gesture: t.did().slug().to_owned(),
+            phase: t.context().name().to_owned(),
+            seen: t.seen(),
+        })
+        .collect()
+}
+
 /// The mixes tonight, read back out of the action log.
 ///
 /// §67 says the session contains transitions and §68 says the transition

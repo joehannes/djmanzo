@@ -2645,6 +2645,26 @@ export interface NightRead {
 
 export const nightRead = () => invoke<NightRead>("night_read");
 
+/* -- what tonight's gestures amount to (§13, §14) --------------------------- */
+
+/**
+ * One thing djmanzo has noticed you do, and where.
+ *
+ * The sentence is written in Rust. §13's rule — "do not silently convert
+ * unusual behavior into permanent preference" — is about the *words* as much
+ * as the counting, so the interface is deliberately not handed the parts to
+ * assemble a claim out of.
+ */
+export interface Tendency {
+  /** The whole sentence, as `dj_app::signals` wrote it. */
+  says: string;
+  gesture: string;
+  phase: string;
+  seen: number;
+}
+
+export const learnedTendencies = () => invoke<Tendency[]>("learned_tendencies");
+
 /* -- the contextual rail (§74) --------------------------------------------- */
 
 /** One control on §74's contextual rail. */

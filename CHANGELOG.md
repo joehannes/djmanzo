@@ -16,6 +16,50 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**What you do, and when** — §14's behavioural signals, read through §13's rule.
+They ship together because either alone is worse than neither: signals with no
+rule for reading them is how the wrong preference gets learned, and a rule with
+nothing to read is a comment.
+
+§13 is the important half and the directive spells out the sentence it does not
+want: *not* "user likes enormous BPM jumps", but "large jumps occasionally
+occur in high-energy contexts". So it is a **type** here rather than a warning.
+A signal carries what was done and the phase the night was in as one value that
+cannot be taken apart, and a `Tendency` — the only thing that generalises —
+cannot be constructed without a phase, nor from fewer than four occurrences
+**in that same phase**. "The DJ likes large tempo moves" is not a sentence this
+module can produce.
+
+That is the discipline `Grounds` already uses for §9: a rule enforced by a
+constructor is still there in the seventh place somebody needs it, and a
+runtime check is one `if` away from being forgotten.
+
+**The night now keeps its arc.** `Night::phase_at` answers what the night was
+at a moment that has already passed, from the changes it recorded rather than
+from whatever phase it is now — because attributing a whole set's gestures to
+the phase it happens to be in at the end is exactly the mis-learning §13 is
+about. It refuses to backdate: the first stretch of every night reads as
+nothing, because nothing could read it yet. §67 lists the set arc as part of a
+session, and this is it.
+
+**Twelve gestures, coarser than the vocabulary.** Six EQ verbs are six
+spellings of one thing a DJ would call riding the EQ, and counting per verb
+would need six times the evidence to notice it. A test asserts every gesture
+named is one the bus can actually produce — a signal djmanzo watches for and
+never sees would look like the DJ never doing it.
+
+**Six of §14's twenty are absent and named as such**: track searched,
+previewed, staged, candidate rejected, candidate selected, and assistant
+suggestion accepted. None is an action — searching is a query, previewing needs
+a player djmanzo does not have, and the rest are interface gestures that never
+reach the bus. Approximating them from something else would be inventing
+exactly the unusual behaviour §13 is about.
+
+Shown beside "what you reach for" rather than in a panel of its own: both are
+djmanzo saying what it has worked out about this DJ, and two homes for that is
+two things to go and check. The sentence arrives written from Rust, so the
+interface cannot make a claim Rust would not.
+
 **At hand: the four to eight controls that matter now** — §74's contextual
 control rail, which the directive closes by calling "the core idea of adaptive
 UI".
