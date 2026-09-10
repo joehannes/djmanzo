@@ -155,6 +155,39 @@
     }
   });
 
+  /**
+   * **And ask again when the record it follows changes.**
+   *
+   * Not a poll — see above, and the reason still holds: a rail that
+   * reshuffled every time a deck moved would be unreadable. This is the one
+   * input the answer actually depends on. Without it the rail asked once, at
+   * start-up, **before the decks had loaded**, and never again: djmanzo
+   * answered honestly about a deck holding nothing, so every row came up with
+   * no deltas and no transition and stayed that way for the rest of the night.
+   * Found by driving the application and confirmed in Rust's own log —
+   * `current_track` returning `None` at start-up and `Some` a refresh later.
+   *
+   * The deck **picker** was already covered — its `onchange` refreshes — and
+   * a first draft of the test for this measured that instead, so it passed
+   * with the effect below disabled. What only this covers is the record on
+   * the followed deck changing underneath it, which is the start-up case and
+   * also every load from the browser, a controller or the assistant.
+   *
+   * A `$derived` rather than reading `decks` inside the effect. The prop is a
+   * fresh array sixty times a second, so an effect touching it directly runs
+   * sixty times a second — §29's trap, which remounted every knob in the
+   * application. A derived string only wakes the effect when the string
+   * changes.
+   */
+  const following = $derived(decks.find((d) => d.number === from)?.title ?? null);
+  let followed = $state<string | null>(null);
+  $effect(() => {
+    const now = following;
+    if (!enabled || !asked || now === followed) return;
+    followed = now;
+    void refresh();
+  });
+
   async function onto(candidate: Suggestion, deck: number) {
     busy = candidate.track.id;
     try {

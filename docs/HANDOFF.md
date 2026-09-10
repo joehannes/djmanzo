@@ -245,18 +245,29 @@ whether a reading counts: a room watched *only* in the twelve seconds djmanzo
 is meant to ignore must produce nothing. State a window as an exclusion, not
 as an average.
 
-**An open observation, not yet explained: the Next rail can come up with no
-deltas and no transition while two analysed records sit on the decks.** Both
-lines vanish together, which is the signature of `suggest_next` reading
-`Playing::nothing()` — `current_track` returning `None` — since the deltas
-come from the scorer and the transition from `outgoing_of`, and both start
-there. Ruled out: the library rows *are* analysed (checked in `library.db`),
-the interface renders both lines correctly against the browser fixture, and
-the same emptiness reproduces on the last committed build, so it is not
-§12's or §22's doing. It is state-dependent: earlier in the same session the
-same binary showed both lines for the same records. If you see it, start at
-`state.deck_tracks()` and how the demo folder gets loaded, and please write
-down what you find.
+**A panel that asks once asks before the answer exists.** The Next rail came
+up with no deltas and no transition on every row while two analysed records
+sat on the decks, and stayed that way all night. It asks once, on open — and
+at start-up that is *before* the interface has loaded the decks, so
+`current_track` answered `None`, djmanzo honestly ranked against silence, and
+nothing ever asked again. Confirmed rather than guessed: a temporary
+`tracing::info!` in `suggest_next` printed `on_deck=None` at start-up and
+`on_deck=Some(..)` one refresh later.
+
+The rail was right not to poll — its own comment says a rail that reshuffled
+every time a deck moved would be unreadable — so the fix is to re-ask when
+**the one input the answer depends on** changes: the record on the deck it
+follows. As a `$derived` string, not by reading the `decks` prop inside the
+effect, because that prop is a fresh array sixty times a second (§29's trap).
+
+Two things about testing it, both of which cost a round. The deck **picker**
+was already refreshing on change, so the obvious test measured that and passed
+with the fix removed. And no browser test could stage the real case at all,
+because the harness delivered exactly one snapshot — a component that asks
+once looked identical to one that keeps up. `shell.ts` now exposes `__emit`
+and `__lastState` so a test can deliver a second frame with one field
+changed; reach for it whenever a component has to react to state *changing*
+rather than to state *being*.
 
 **A timing test made patient can become a test of the timeout.** A 60 Hz
 pump test slept 80 ms and asserted a snapshot had arrived; it failed once on a

@@ -814,6 +814,27 @@ export async function openShell(
         handler?.({ event: "snapshot", id: 0, payload: state });
       };
 
+      /*
+        A test affordance: deliver **another** snapshot.
+
+        Without it every browser test sees exactly one frame of djmanzo, and a
+        component that asks once at start-up looks identical to one that keeps
+        up with the decks. That is not hypothetical — the Next rail shipped
+        asking once, before the decks had loaded, and nothing in this suite
+        could tell.
+
+        The last state is kept beside it so a test can clone it and change one
+        field, rather than hand-writing a snapshot the application never sends.
+      */
+      win.__lastState = state;
+      win.__emit = (next: unknown) => {
+        win.__lastState = next;
+        const id = handlers.get("snapshot");
+        if (id === undefined) return;
+        const handler = win[`_${id}`] as ((event: unknown) => void) | undefined;
+        handler?.({ event: "snapshot", id: 0, payload: next });
+      };
+
       win.__TAURI_INTERNALS__ = {
         invoke: (cmd: string, args: Record<string, unknown>) => {
           // A record of what the interface asked for, so a stub that answers

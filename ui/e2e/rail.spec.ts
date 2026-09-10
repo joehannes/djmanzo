@@ -300,3 +300,69 @@ test.describe("the learned profile", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+/**
+ * The rail asking again when the thing it depends on changes.
+ *
+ * It deliberately does not poll — a rail that reshuffled every time a deck
+ * moved would be unreadable, and the file says so. But it asked **once**, at
+ * start-up, before the decks had loaded, and never again: djmanzo answered
+ * honestly about a deck holding nothing, so every row came up with no deltas
+ * and no transition and stayed that way. Found by driving the application and
+ * confirmed in Rust's log — `current_track` returning `None` at start-up and
+ * `Some` a refresh later.
+ *
+ * The start-up race itself cannot be staged here (the harness answers
+ * instantly and the fixture's decks are loaded from the first frame), so what
+ * is measured is the same code path from the other end: the deck the rail
+ * follows changing.
+ */
+test.describe("the rail following its deck", () => {
+  test("asks again when the record on its deck changes", async ({ page }) => {
+    await railOpen(page);
+    await expect(page.locator('.surface[data-surface="next"] li').first()).toBeVisible();
+
+    const asked = await watch(page);
+    // A second snapshot with a different record on deck 1 — which is what
+    // start-up looks like from the rail's side, and what every load from the
+    // browser, a controller or the assistant looks like too.
+    //
+    // Deliberately *not* the deck picker: its `onchange` already refreshes,
+    // so a test driving that passes with this effect removed. The first
+    // draft of this test did exactly that and proved nothing.
+    await page.evaluate(() => {
+      const win = window as unknown as {
+        __lastState: { decks: { title: string | null }[] };
+        __emit: (next: unknown) => void;
+      };
+      win.__emit({
+        ...win.__lastState,
+        decks: win.__lastState.decks.map((deck, index) =>
+          index === 0 ? { ...deck, title: "Something Else Entirely" } : deck,
+        ),
+      });
+    });
+
+    await expect
+      .poll(async () => (await asked()).filter((c) => c === "suggest_next").length)
+      .toBeGreaterThan(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * And it does not ask on every snapshot. The prop carrying the decks is a
+   * fresh array sixty times a second; an effect reading it directly would
+   * re-run at that rate, which is §29's trap — it remounted every knob in the
+   * application before anyone noticed.
+   */
+  test("does not ask again while nothing it follows has changed", async ({ page }) => {
+    await railOpen(page);
+    await expect(page.locator('.surface[data-surface="next"] li').first()).toBeVisible();
+
+    const asked = await watch(page);
+    // Long enough for sixty snapshots several times over.
+    await page.waitForTimeout(1200);
+    const calls = (await asked()).filter((c) => c === "suggest_next").length;
+    expect(calls, `the rail asked ${calls} times with nothing changed`).toBe(0);
+  });
+});
