@@ -229,6 +229,22 @@ add a field to a stubbed command, the browser test proves the *drawing*; write a
 Rust test for the *producer* in the same commit, and look at the running
 application before believing either.
 
+**A test whose loop is bounded by the constant it is testing proves nothing.**
+Recorded twice now, in §81 and again in §37: `for count in 0..ENOUGH_NIGHTS`
+looks like it walks every case below the threshold, and lowering the constant
+to 1 shortens the loop to a single empty case and the test stays green. Write
+the literals — 0, 1, 2 — and the mutation dies. It is the same shape as any
+test that derives its expected value from the code under test.
+
+**A median is robust to the window being wrong, which makes a test of the
+window's *value* useless.** §37 reads the room twelve to thirty seconds after
+a mix. Widening that to start at the mix's end moves six readings into
+fifteen and the median does not move at all, so the test that checked the
+number passed with the window in the wrong place. What separates them is
+whether a reading counts: a room watched *only* in the twelve seconds djmanzo
+is meant to ignore must produce nothing. State a window as an exclusion, not
+as an average.
+
 **A layout test can be vacuous at the harness's window size, and look green.**
 §35's baseline table has five columns in a side dock, which looked like a
 table that would push its own panel sideways — so wrapping headers and
@@ -351,7 +367,15 @@ thing out. Two duplicated tables were removed on the way (the histogram
 `dj_assistant::room` kept, and the dock table `App.svelte` kept), both found
 because a second consumer appeared and disagreed with the first.
 
-The largest open sections, in the order they are worth doing:
+**The directive's open list is now empty.** Every one of its 86 deliverable
+sections has something real behind it: 41 finished, 45 partly there, and none
+untouched. That is a different claim from the directive being done, and the
+two must not be confused — a 🟡 in `DIRECTIVE-STATUS.md` names exactly what is
+missing from that section, and those named gaps are the work. Read them before
+starting anything; "what is left" is answerable from that file rather than
+from a list here that will go stale.
+
+The largest of them, in the order they are worth doing:
 
 1. **§25–§27, the waveform as instrumentation.** The architecture and §57's
    colour rule ship; `dj_render::layer` is the inventory and the count is
@@ -368,6 +392,14 @@ The largest open sections, in the order they are worth doing:
    in Rust and against a fixture in the browser, and the running application
    shows the panel in its empty state and nothing else. Do not let a green
    suite there become a claim about how a room reads.
+
+   §37 is also **the one place djmanzo writes down something it could not
+   otherwise derive**. Room readings live twenty minutes and a night's log
+   does not outlive the run, so "this has happened on previous nights" has no
+   source; `mix_responses` is that exception, taken as narrowly as the claim
+   allows — one row per mix per sense, four values, no time series. If you are
+   about to add a second such table, the bar is that one: say what cannot be
+   derived, and store the *finding* rather than the feed.
 
    §27's ghost is the twelfth, and it went in without any of that because it
    is arithmetic over two records rather than a new reading of one: the mix is

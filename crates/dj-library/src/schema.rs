@@ -103,6 +103,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 12,
         sql: MIGRATION_12,
     },
+    Migration {
+        version: 13,
+        sql: MIGRATION_13,
+    },
 ];
 
 /// The initial schema.
@@ -711,6 +715,46 @@ CREATE TABLE nights (
 CREATE INDEX nights_by_setting ON nights(setting, began_at);
 "#;
 
+/// §37: what the room did after a mix.
+///
+/// **The one thing in this project that has to be written down.** Everything
+/// else about a night is derived from the action log, and this cannot be:
+/// room readings live for twenty minutes in memory and the log does not
+/// outlive the run that made it, so "this has happened on previous nights"
+/// has no source to be derived from. Written as narrowly as the claim allows
+/// — one row per mix per sense, four small values, no time series — so that
+/// what is stored is the *finding* rather than the sensor feed.
+///
+/// No foreign key to `nights`: a response is worth keeping from a run whose
+/// setting the DJ never got round to naming, and a cascade would delete a
+/// night's findings if the row it hangs off were ever rebuilt.
+const MIGRATION_13: &str = r#"
+CREATE TABLE mix_responses (
+    -- The run this happened in. One night is one vote in `dj_app::response`,
+    -- however many mixes it contained, so this is what that groups by.
+    session_id TEXT    NOT NULL,
+    -- Seconds into the set, so two mixes in one night are two rows and a
+    -- re-read of the same mix replaces rather than duplicates.
+    at_seconds INTEGER NOT NULL,
+    -- A `dj_core::action::TransitionStyle` name, and a `dj_app::setting`
+    -- slug. Denormalised on purpose: the setting is what "here" means in
+    -- §37's sentence, and a response has to keep the setting the night was
+    -- called at the time even if the DJ renames it later.
+    style      TEXT    NOT NULL,
+    setting    TEXT    NOT NULL,
+    -- `light`, `movement` or `loudness`.
+    sense      TEXT    NOT NULL,
+    -- The minute before the mix, and the twelve-to-thirty seconds after it.
+    before     REAL    NOT NULL,
+    after      REAL    NOT NULL,
+    PRIMARY KEY (session_id, at_seconds, sense)
+);
+
+-- "After a blend at a club night" is the question every reading of this table
+-- asks, and it is asked once per answer rather than per row.
+CREATE INDEX mix_responses_by_setting ON mix_responses(setting, style, sense);
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -801,6 +845,7 @@ mod tests {
             "track_functions",
             "kept_pairs",
             "nights",
+            "mix_responses",
         ] {
             let found: i64 = conn
                 .query_row(

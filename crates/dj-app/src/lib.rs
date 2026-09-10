@@ -53,6 +53,7 @@ pub mod profile;
 pub mod rackcapture;
 pub mod remote;
 pub mod replay;
+pub mod response;
 pub mod session;
 pub mod setrec;
 pub mod setting;
@@ -354,6 +355,14 @@ pub fn run() {
                         &library_writer,
                         &pump_audience,
                     );
+                    // §37. On the same pump for the same reason the automix
+                    // is: it sees exactly what the DJ sees, and a second
+                    // thread watching the same log would be a second answer
+                    // about which mixes have happened.
+                    {
+                        let state: tauri::State<'_, AppState> = handle.state();
+                        record_responses(&state, &session_id, &library_writer);
+                    }
                     // A fixture for the interface's layout budget, captured
                     // from the running application rather than rebuilt from a
                     // bare parameter registry.
@@ -517,6 +526,7 @@ pub fn run() {
             commands::learned_taste,
             commands::library_lens,
             commands::ghost_preview,
+            commands::room_history,
             commands::control_handles,
             commands::theme_now,
             commands::theme_lock,
@@ -651,6 +661,77 @@ static START: std::sync::LazyLock<std::time::Instant> =
 /// the playhead is the audio thread's to report, and this is where the host
 /// reads it. The threshold and the reasoning are in
 /// [`persist::PlayWatcher`].
+/// §37: write down what the room did after any mix whose window has closed.
+///
+/// Cheap on the overwhelming majority of ticks: the recorder's own set says
+/// which mixes are finished with, and with nothing watching the room every
+/// mix reaches that set once and is never looked at again. It costs a log
+/// walk, which `dj_app::mixes` is already doing for the panel.
+///
+/// Silent when there is no library, no session, or nothing to say. §37 is a
+/// bonus a camera buys; djmanzo does not depend on it and must not stall for
+/// it.
+fn record_responses(state: &AppState, session: &str, writer: &persist::LibraryWriter) {
+    let Ok(mut done) = state.responses_done().lock() else {
+        return;
+    };
+    let log = state.bus().log();
+    let Some(elapsed) = log.last().map(|event| event.at) else {
+        return;
+    };
+    let handovers = crate::mixes::handovers(&log);
+    if handovers.is_empty() {
+        return;
+    }
+    let Ok(room) = state.room().lock() else {
+        return;
+    };
+    let readings: Vec<_> = room.series().copied().collect();
+    drop(room);
+
+    let fresh = crate::response::note(
+        &handovers,
+        elapsed,
+        std::time::SystemTime::now(),
+        &readings,
+        &mut done,
+    );
+    if fresh.iter().all(|noted| noted.responses.is_empty()) {
+        return;
+    }
+
+    // What the DJ said the night is. §37's "here", and the honest version of
+    // it — see `crate::response`. Read from the library rather than held,
+    // because `night_setting` is what writes it and this must not be a second
+    // idea of what tonight is; read only once there is something to write,
+    // because this runs on the snapshot pump and a query per tick would be a
+    // query sixty times a second for the whole night. A night nobody has named
+    // takes the same default `note_night` gives it.
+    let setting = state
+        .library()
+        .get()
+        .ok()
+        .and_then(|db| db.night(session).ok().flatten())
+        .map_or_else(
+            || crate::setting::Setting::OpenFormat.slug().to_owned(),
+            |night| night.setting,
+        );
+
+    for noted in fresh {
+        for response in &noted.responses {
+            writer.send(persist::Write::Response {
+                session: session.to_owned(),
+                at_seconds: noted.at_seconds,
+                style: noted.style.clone(),
+                setting: setting.clone(),
+                sense: response.sense.name().to_owned(),
+                before: response.before,
+                after: response.after,
+            });
+        }
+    }
+}
+
 fn record_plays(
     snapshot: &Snapshot,
     tracks: &snapshot::DeckTracks,

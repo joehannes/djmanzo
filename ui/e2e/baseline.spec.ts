@@ -181,3 +181,88 @@ test.describe("§35's room baseline", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+/**
+ * §37's causal crowd analysis, and the word it must never say.
+ *
+ * > Correlate changes with DJ actions. […] "This type of transition has
+ * > historically improved room response here."
+ *
+ * The arithmetic — the twelve-to-thirty second window, one vote per night,
+ * the threshold below which nothing is said — is Rust's and is tested in
+ * `dj_app::response`. What is measured here is what reaches a DJ: that the
+ * sentence carries its own evidence, that nothing appears until there is
+ * something to say, and that the panel does not turn a correlation into a
+ * cause on its way to the screen.
+ */
+test.describe("§37's history", () => {
+  const HISTORY = [
+    {
+      setting: "club",
+      style: "blend",
+      sense: "movement",
+      nights: 5,
+      usually: "rose",
+      says: "After a blend at a club night, the floor has picked up — 4 of 5 nights.",
+    },
+    // Four nights that disagree. It is in the table and it says nothing, which
+    // is the case the threshold exists for.
+    {
+      setting: "club",
+      style: "cut",
+      sense: "movement",
+      nights: 4,
+      usually: null,
+      says: null,
+    },
+  ];
+
+  /**
+   * **The sentence carries its own evidence.**
+   *
+   * "Historically" with no count behind it is the kind of claim a DJ cannot
+   * weigh and so cannot use. Four of five is something they can disagree with.
+   */
+  test("says what happened after, and over how many nights", async ({ page }) => {
+    await openShell(page, "/", {}, { room_history: HISTORY });
+    await page.getByRole("button", { name: "Assistant", exact: true }).click();
+    await page.getByText("The room", { exact: true }).click();
+
+    const said = page.locator(`${ROOM} .history li`);
+    await expect(said).toHaveCount(1);
+    const sentence = (await said.first().textContent()) ?? "";
+    expect(sentence).toContain("4 of 5 nights");
+    expect(sentence).toContain("club night");
+    expect(sentence).toContain("blend");
+    // §37 is a correlation. The panel must not promote it.
+    expect(sentence, "the panel claimed a cause").not.toContain("because");
+    expect(sentence).not.toContain("improved");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **Nights that disagree are silent, not shown as a weak finding.**
+   *
+   * The row is in the answer with `says: null`, and a panel that rendered it
+   * anyway — greyed out, or as "no clear pattern" — would be putting a
+   * non-finding in front of a DJ mid-set.
+   */
+  test("shows nothing for the nights that disagree", async ({ page }) => {
+    await openShell(page, "/", {}, { room_history: HISTORY });
+    await page.getByRole("button", { name: "Assistant", exact: true }).click();
+    await page.getByText("The room", { exact: true }).click();
+
+    await expect(page.locator(`${ROOM} .history li`)).toHaveCount(1);
+    await expect(page.locator(`${ROOM} .history`)).not.toContainText("cut");
+  });
+
+  /** With nothing recorded there is no section at all, not an empty one. */
+  test("a djmanzo that has never watched a room says nothing", async ({ page }) => {
+    await openShell(page, "/");
+    await page.getByRole("button", { name: "Assistant", exact: true }).click();
+    await page.getByText("The room", { exact: true }).click();
+    await expect(page.locator(ROOM)).toBeVisible();
+    await expect(page.locator(`${ROOM} .history`)).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});

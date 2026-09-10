@@ -558,6 +558,17 @@ impl Room {
         })
     }
 
+    /// Every reading still held, oldest first.
+    ///
+    /// For §37, which correlates the room with what the DJ did and therefore
+    /// needs the readings themselves rather than a summary of them. Bounded by
+    /// [`RECENT`] like everything else here, which is the real constraint on
+    /// that section: a mix can only be read while it is still inside this
+    /// window, and after twenty minutes there is nothing left to read it from.
+    pub fn series(&self) -> impl Iterator<Item = &Reading> {
+        self.seen.iter()
+    }
+
     /// How many readings are in the near window.
     #[must_use]
     pub fn recent(&self) -> usize {

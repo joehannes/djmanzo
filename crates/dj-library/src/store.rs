@@ -114,6 +114,39 @@ pub struct Night {
     pub techniques: Option<String>,
 }
 
+/// §37: what the room did after one mix, as it goes in.
+///
+/// Borrowed rather than owned, like [`NightRead`]: the caller has these as
+/// slices of things it already holds, and a write is not a reason to clone
+/// four strings.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MixResponse<'a> {
+    pub session_id: &'a str,
+    /// Seconds into the set the mix began. Part of the key.
+    pub at_seconds: i64,
+    /// A `dj_core::action::TransitionStyle` name.
+    pub style: &'a str,
+    /// A `dj_app::setting::Setting` slug — what "here" means in §37.
+    pub setting: &'a str,
+    /// `light`, `movement` or `loudness`.
+    pub sense: &'a str,
+    /// The minute before the mix, and the twelve-to-thirty seconds after it.
+    pub before: f32,
+    pub after: f32,
+}
+
+/// The same thing coming back out.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredResponse {
+    pub session_id: String,
+    pub at_seconds: i64,
+    pub style: String,
+    pub setting: String,
+    pub sense: String,
+    pub before: f32,
+    pub after: f32,
+}
+
 /// The library database.
 ///
 /// One connection behind a mutex rather than a pool. SQLite serialises writes
@@ -1267,6 +1300,76 @@ impl Library {
                  FROM nights WHERE setting = ?1 ORDER BY began_at DESC",
             )?;
             let rows = stmt.query_map([setting], read_night)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    /// §37: what the room did after one mix, kept for the nights to come.
+    ///
+    /// **Replaces rather than appends.** The key is the mix, so re-reading the
+    /// same handover — which happens whenever a recorder is restarted or the
+    /// log re-walked — corrects the row instead of voting twice with it.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn note_response(&self, response: &MixResponse<'_>) -> Result<()> {
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO mix_responses
+                     (session_id, at_seconds, style, setting, sense, before, after)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(session_id, at_seconds, sense) DO UPDATE SET
+                     style   = ?3,
+                     setting = ?4,
+                     before  = ?6,
+                     after   = ?7",
+                rusqlite::params![
+                    response.session_id,
+                    response.at_seconds,
+                    response.style,
+                    response.setting,
+                    response.sense,
+                    f64::from(response.before),
+                    f64::from(response.after),
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Every response ever recorded, oldest night first.
+    ///
+    /// Deliberately unaggregated. The rule for what counts as *usually* —
+    /// how many nights, how much agreement, a night counting once however
+    /// many mixes it made — lives in `dj_app::response` where it can be read
+    /// and argued with, and putting a `GROUP BY` here would make it a second
+    /// rule expressed in SQL that nothing tests.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn responses(&self) -> Result<Vec<StoredResponse>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT session_id, at_seconds, style, setting, sense, before, after
+                 FROM mix_responses ORDER BY session_id, at_seconds",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(StoredResponse {
+                    session_id: row.get(0)?,
+                    at_seconds: row.get(1)?,
+                    style: row.get(2)?,
+                    setting: row.get(3)?,
+                    sense: row.get(4)?,
+                    #[allow(clippy::cast_possible_truncation)]
+                    before: row.get::<_, f64>(5)? as f32,
+                    #[allow(clippy::cast_possible_truncation)]
+                    after: row.get::<_, f64>(6)? as f32,
+                })
+            })?;
             let mut out = Vec::new();
             for row in rows {
                 out.push(row?);
@@ -2695,6 +2798,74 @@ mod tests {
         assert!(club.iter().all(|n| n.setting == "club"));
         assert_eq!(lib.nights_in("wedding").unwrap().len(), 1);
         assert!(lib.nights_in("beach").unwrap().is_empty());
+    }
+
+    // -- room responses (§37) --------------------------------------------------
+
+    fn response<'a>(session: &'a str, at: i64, style: &'a str) -> MixResponse<'a> {
+        MixResponse {
+            session_id: session,
+            at_seconds: at,
+            style,
+            setting: "club",
+            sense: "movement",
+            before: 0.2,
+            after: 0.8,
+        }
+    }
+
+    /// **Re-reading the same mix corrects the row rather than voting twice.**
+    ///
+    /// The property that makes the recorder safe to run more than once — on a
+    /// restart, or over a log walked again — and the failure it stops is
+    /// arithmetic rather than cosmetic: `dj_app::response` counts nights, and
+    /// a duplicated mix is a night whose evidence quietly doubled.
+    #[test]
+    fn a_mix_read_twice_is_one_row() {
+        let lib = library();
+        lib.note_response(&response("a", 300, "blend")).unwrap();
+        lib.note_response(&MixResponse {
+            after: 0.3,
+            style: "cut",
+            ..response("a", 300, "blend")
+        })
+        .unwrap();
+
+        let all = lib.responses().unwrap();
+        assert_eq!(all.len(), 1, "the same mix was stored twice: {all:?}");
+        assert!((all[0].after - 0.3).abs() < 1e-6, "the correction was lost");
+        assert_eq!(all[0].style, "cut");
+    }
+
+    /// Two mixes in one night, and two senses of one mix, are separate rows —
+    /// the first because a night has more than one mix in it, the second
+    /// because the floor and the noise can disagree about the same moment.
+    #[test]
+    fn a_night_keeps_every_mix_and_every_sense_apart() {
+        let lib = library();
+        lib.note_response(&response("a", 300, "blend")).unwrap();
+        lib.note_response(&response("a", 600, "cut")).unwrap();
+        lib.note_response(&MixResponse {
+            sense: "loudness",
+            ..response("a", 300, "blend")
+        })
+        .unwrap();
+        lib.note_response(&response("b", 300, "blend")).unwrap();
+
+        let all = lib.responses().unwrap();
+        assert_eq!(all.len(), 4, "{all:?}");
+        assert_eq!(all.iter().filter(|r| r.session_id == "a").count(), 3);
+    }
+
+    /// A response survives a night whose setting was never named, because the
+    /// setting it carries is its own.
+    #[test]
+    fn a_response_needs_no_night_row_behind_it() {
+        let lib = library();
+        lib.note_response(&response("never-named", 300, "blend"))
+            .unwrap();
+        assert_eq!(lib.responses().unwrap().len(), 1);
+        assert!(lib.nights_in("club").unwrap().is_empty());
     }
 
     // -- kept pairs (§24) ------------------------------------------------------

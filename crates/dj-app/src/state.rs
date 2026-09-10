@@ -98,6 +98,13 @@ pub struct AppState {
     audience: Arc<crate::audience::Audience>,
     /// What the room has been doing, when anything is watching it.
     room: Arc<Mutex<dj_assistant::room::Room>>,
+    /// §37: the mixes whose room response has already been written down.
+    ///
+    /// Keyed by seconds into the set, which is what the row is keyed by, so
+    /// the two cannot get out of step. Lives here rather than in the recorder
+    /// because the recorder runs on the snapshot pump and has no memory of its
+    /// own between ticks.
+    responses_done: Arc<Mutex<std::collections::BTreeSet<i64>>>,
     /// What the night has been, and therefore what it is. See [`crate::night`].
     ///
     /// One per run of the application, alongside `session_id` and for the same
@@ -439,6 +446,7 @@ impl AppState {
             remote: Arc::new(crate::remote::Remote::default()),
             audience: Arc::new(crate::audience::Audience::default()),
             room: Arc::new(Mutex::new(dj_assistant::room::Room::new())),
+            responses_done: Arc::new(Mutex::new(std::collections::BTreeSet::new())),
             staged: Mutex::new(None),
             night: Arc::new(crate::night::Night::new()),
             peers: Arc::new(crate::peersync::Peers::default()),
@@ -1147,6 +1155,12 @@ impl AppState {
     #[must_use]
     pub fn room(&self) -> &Arc<Mutex<dj_assistant::room::Room>> {
         &self.room
+    }
+
+    /// §37: which mixes have already had their room response written down.
+    #[must_use]
+    pub fn responses_done(&self) -> &Arc<Mutex<std::collections::BTreeSet<i64>>> {
+        &self.responses_done
     }
 
     /// The MIDI clock, sending or not.

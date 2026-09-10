@@ -157,6 +157,9 @@ const ANSWERS: Record<string, unknown> = {
     baseline: [],
     phase: null,
   },
+  // §37. Empty by default, because a fresh install has never watched a room —
+  // and present, because `RoomSense.svelte` maps over it.
+  room_history: [],
   // A night nothing has read yet, which is what a fresh application has. The
   // shape matters more than the values: `Night.svelte` indexes its label
   // tables by `basis` and `warrant`, so a `null` here would throw inside the

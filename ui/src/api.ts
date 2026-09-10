@@ -2914,6 +2914,33 @@ export const roomSaw = (reading: {
     loudness: reading.loudness ?? null,
   });
 export const roomRead = () => invoke<RoomRead>("room_read");
+
+/** §37: what the room has usually done after one kind of mix. */
+export interface RoomHistory {
+  /** A setting slug — what "here" means in §37. */
+  setting: string;
+  style: string;
+  /** `light`, `movement` or `loudness`. */
+  sense: string;
+  /** How many nights this is drawn from. */
+  nights: number;
+  /** `rose`, `fell`, or null when the nights do not agree. */
+  usually: string | null;
+  /** The sentence, worded in Rust, or null when there is nothing to say. */
+  says: string | null;
+}
+
+/**
+ * §37: what has happened after this kind of mix on previous nights.
+ *
+ * Never a causal claim. A floor that fills twelve seconds after a mix may be
+ * filling because of it or in spite of it, and nothing djmanzo has can tell
+ * those apart — so the sentence says what happened after, over enough nights
+ * that coincidence is the worse explanation, and never says *because*.
+ *
+ * Empty is the ordinary answer: without a camera nothing is ever recorded.
+ */
+export const roomHistory = () => invoke<RoomHistory[]>("room_history");
 export const roomForget = () => invoke<void>("room_forget");
 
 /* -- what the night is ----------------------------------------------------- */

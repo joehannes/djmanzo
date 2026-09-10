@@ -31,7 +31,14 @@
    * because it is served from localhost. A USB webcam on a long cable is the
    * honest workaround, and it is a good one.
    */
-  import { roomForget, roomRead, roomSaw, type RoomRead } from "./api";
+  import {
+    roomForget,
+    roomHistory,
+    roomRead,
+    roomSaw,
+    type RoomHistory,
+    type RoomRead,
+  } from "./api";
   import { onMount } from "svelte";
 
   interface Props {
@@ -236,11 +243,27 @@
     }
   }
 
+  /**
+   * §37, and it is not on the poll.
+   *
+   * What has happened on *previous* nights cannot change while a DJ is
+   * looking at it — it is written at the end of a mix and read across whole
+   * nights — so asking every three seconds would be a database query a
+   * thousand times an hour for an answer that moves once.
+   */
+  let history = $state<RoomHistory[]>([]);
+  const said = $derived(
+    history.map((row) => row.says).filter((says): says is string => says !== null),
+  );
+
   onMount(() => stop);
 
   $effect(() => {
     if (!enabled) return;
     void refresh();
+    void roomHistory()
+      .then((rows) => (history = rows))
+      .catch(() => (history = []));
     const poll = setInterval(() => void refresh(), 3000);
     return () => clearInterval(poll);
   });
@@ -360,6 +383,31 @@
       says compares the room with itself earlier tonight.
       {#if read.recent > 0}({read.recent} readings in the last three minutes.){/if}
     </p>
+  {/if}
+
+  <!--
+    §37: what has happened on previous nights, when there have been enough of
+    them to say. Below the numbers because it is a different kind of claim —
+    everything above is tonight, measured; this is a tally over nights, and it
+    reads as history rather than as a reading.
+
+    Never a causal sentence, and the panel does not add one: the wording is
+    Rust's, it says what happened *after*, and the count is in it so a DJ can
+    weigh it themselves.
+  -->
+  {#if said.length > 0}
+    <div class="history">
+      <h4>On nights like this one</h4>
+      <ul>
+        {#each said as sentence (sentence)}
+          <li>{sentence}</li>
+        {/each}
+      </ul>
+      <p class="note">
+        What the room did afterwards, not what the mix did to it — nothing here
+        can tell those apart.
+      </p>
+    </div>
   {/if}
 
   {#if looking && haveCamera}
@@ -497,6 +545,26 @@
     text-align: left;
     font-weight: inherit;
     white-space: nowrap;
+  }
+
+  /* §37's tally over previous nights, which is not tonight's reading. */
+  .history {
+    border-top: 1px solid var(--line, #2a2a2a);
+    padding-top: 0.4rem;
+  }
+
+  .history h4 {
+    margin: 0 0 0.2rem;
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  .history ul {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 0.85em;
   }
 
   /*

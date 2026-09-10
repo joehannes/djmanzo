@@ -5911,6 +5911,79 @@ pub fn ghost_preview(
     }))
 }
 
+/// §37: what the room has usually done after one kind of mix.
+#[derive(Debug, Clone, Serialize)]
+pub struct SeenDto {
+    /// A `dj_app::setting::Setting` slug — what "here" means in §37.
+    pub setting: String,
+    /// A transition style's name.
+    pub style: String,
+    /// `light`, `movement` or `loudness`.
+    pub sense: String,
+    /// How many nights this is drawn from.
+    pub nights: usize,
+    /// `rose`, `fell`, or `null` when the nights do not agree — which is the
+    /// common answer and the important one.
+    pub usually: Option<String>,
+    /// The sentence, worded in Rust, or `null` when there is nothing to say.
+    pub says: Option<String>,
+}
+
+/// §37: what has happened after this kind of mix on previous nights.
+///
+/// **The one thing djmanzo writes down about a room.** Everything else it
+/// says is derived from the action log; a comparison across nights cannot be,
+/// because the readings live twenty minutes and the log does not outlive the
+/// run. See `dj_app::response`.
+///
+/// Never a causal claim, whatever §37 is called. A floor that fills twelve
+/// seconds after a mix may be filling because of it or in spite of it, and
+/// nothing here can tell those apart — so the sentence says what happened
+/// after, over enough nights that coincidence is the worse explanation, and
+/// never says *because*.
+///
+/// Empty is the ordinary answer: djmanzo runs without a camera, and without
+/// one nothing is ever recorded.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn room_history(state: State<'_, AppState>) -> Result<Vec<SeenDto>, String> {
+    let db = library(&state)?;
+    let stored = db.responses().map_err(|e| e.to_string())?;
+
+    let nights: Vec<crate::response::Night<'_>> = stored
+        .iter()
+        .filter_map(|row| {
+            Some(crate::response::Night {
+                session_id: &row.session_id,
+                setting: &row.setting,
+                style: &row.style,
+                sense: [
+                    dj_assistant::room::Sense::Movement,
+                    dj_assistant::room::Sense::Loudness,
+                    dj_assistant::room::Sense::Light,
+                ]
+                .into_iter()
+                .find(|sense| sense.name() == row.sense)?,
+                lift: crate::response::Lift::between(row.before, row.after),
+            })
+        })
+        .collect();
+
+    Ok(crate::response::seen(&nights)
+        .into_iter()
+        .map(|seen| SeenDto {
+            setting: seen.setting().to_owned(),
+            style: seen.style().to_owned(),
+            sense: seen.sense().name().to_owned(),
+            nights: seen.nights(),
+            usually: seen.usually().map(|lift| lift.name().to_owned()),
+            says: seen.words(),
+        })
+        .collect())
+}
+
 /// Which track is on a deck, if any.
 fn current_track(state: &AppState, deck: dj_core::DeckId) -> Option<dj_core::TrackId> {
     let tracks = state.deck_tracks();
