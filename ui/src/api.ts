@@ -1514,6 +1514,30 @@ export interface TransitionShapeFx {
   slot: number;
 }
 
+/** §29: what one control's gestures do. */
+export interface ControlHandle {
+  control: string;
+  /** What a double-click sends. */
+  reset: string;
+  /** How much finer a shift-drag is than a drag. */
+  fine: number;
+  /** §29's level three: `[label, action]` per entry. */
+  options: [string, string][];
+}
+
+/**
+ * §29's gestures, from Rust.
+ *
+ * Asked rather than written here, for the reason every call site showed: each
+ * knob passed its own idea of where the control resets to, and nothing made a
+ * fourth one agree. A control's unity point is a fact about the parameter.
+ *
+ * Every answer is action text, so a drag, a double-click, a menu entry and a
+ * MIDI CC all end up as the same action — §29's last bullet, and ADR-0003.
+ */
+export const controlHandles = (deck: number) =>
+  invoke<ControlHandle[]>("control_handles", { deck });
+
 /**
  * One record through §76's AI lens.
  *

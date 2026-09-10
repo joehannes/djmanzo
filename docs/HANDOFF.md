@@ -143,6 +143,21 @@ at all when the application has already exited. Three attempts to restart it
 went nowhere before that was noticed. Use `|| true`, or put the launch in its
 own command.
 
+**A `$effect` that reads the snapshot runs at 60 Hz.** `Deck.svelte` is handed
+a fresh `deck` object sixty times a second, so an effect touching `deck.number`
+re-ran at that rate — refetching a fixed table, reassigning its state to a new
+object, and remounting every knob beneath it. The visible symptom was a
+contextual menu that opened and vanished within the same frame. Anything that
+should happen *once per deck* belongs in `onMount`; a deck component's number
+does not change for the life of the instance.
+
+**Svelte state set during a `pointerup` that releases pointer capture can be
+lost.** Setting `menu = true` in the handler was reliably discarded: the flag
+went true, the handler read it back as true, and the template never rendered.
+Deferring the write by one tick (`setTimeout(fn, 0)`) puts it outside that
+release and it holds. Found by driving it — a type-check cannot see a state
+write that does not survive.
+
 **Playwright's browser.** CI installs its own. A container that pre-installs
 one is pointed at it with `DJMANZO_CHROMIUM=/opt/pw-browsers/chromium`,
 otherwise every test fails with "Executable doesn't exist".
@@ -443,7 +458,25 @@ The largest open sections, in the order they are worth doing:
    rather than quietly dropped, so a DJ counting the columns they were promised
    knows which is missing and why.
 
-7. **§20's performance table** is the browser at fewer columns than §20 lists —
+7. **§29's gestures are a table in Rust, and that is the point.** Every
+   `SvgKnob` used to carry its own `ondblclick` naming its own reset value —
+   three EQ bands each spelling `1`, the filter spelling `0`, and nothing
+   making a fourth call site agree. `dj_app::handle` owns it now, and answers
+   in **action text** so a drag, a double-click, a menu entry and a MIDI CC are
+   the same action. Adding a control is a row there.
+
+   **The menu stays short by rule.** §29's own warning is "do not turn every
+   knob into a huge widget", and a contextual menu is exactly where one grows
+   into a widget. A test refuses more than four entries.
+
+   **The AI hover is the bullet that is missing**, and it is missing for a
+   reason worth keeping: the assistant stages whole moves — load this, cue
+   there, set the fader — rather than opinions about single parameter values,
+   so there is nothing for a hover to read yet. Whatever provides it should
+   come from the assistant's own staging rather than a second scorer invented
+   for the tooltip.
+
+8. **§20's performance table** is the browser at fewer columns than §20 lists —
    the other three views ship. Adding the missing columns (energy, vocal and
    stem availability, transition suitability, request count, AI confidence)
    mostly waits on analysis that does not exist, which is the same wall §25's

@@ -10,6 +10,7 @@
     type SamplerState,
     type StemSwap,
   } from "./api";
+  import { onMount } from "svelte";
   import JogWheel from "./JogWheel.svelte";
   import { fill } from "./meter";
   import Fx from "./Fx.svelte";
@@ -18,11 +19,24 @@
   import Overview from "./Overview.svelte";
   import Waveform from "./Waveform.svelte";
   import SvgKnob from "./controls/SvgKnob.svelte";
+  import { controlHandles, type ControlHandle } from "./api";
   import SvgFader from "./controls/SvgFader.svelte";
   import SvgPad from "./controls/SvgPad.svelte";
   import IconButton from "./controls/IconButton.svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { acceptFiles, isOver } from "./dragdrop.svelte";
+
+  /**
+   * §29's gestures, from Rust — see `dj_app::handle`.
+   *
+   * Per deck, because every action names its own deck: a menu that acted on
+   * "whichever deck" is the one thing a DJ cannot risk mid-mix.
+   *
+   * Empty until it arrives, and an empty entry means the control offers no
+   * contextual options and neither gesture opens anything. A menu that opens
+   * empty is worse than no menu.
+   */
+  let handles = $state<Record<string, ControlHandle>>({});
 
   let {
     deck,
@@ -73,6 +87,31 @@
     density?: number;
     zones?: Placed[] | null;
   } = $props();
+
+  /**
+   * Fetched once, on mount.
+   *
+   * Deliberately **not** an `$effect` reading `deck.number`. The snapshot
+   * arrives sixty times a second and hands this component a fresh `deck`
+   * object each time, so an effect that touches it re-ran at 60 Hz —
+   * refetching a fixed table, reassigning `handles` to a new object, and
+   * remounting every knob under it. The visible symptom was a contextual menu
+   * that opened and vanished within the same frame.
+   *
+   * A deck component's number does not change for the life of the instance,
+   * and what a control resets to does not change while a set is running.
+   */
+  onMount(() => {
+    void controlHandles(deck.number)
+      .then((got) => {
+        const next: Record<string, ControlHandle> = {};
+        for (const handle of got) next[handle.control] = handle;
+        handles = next;
+      })
+      .catch(() => {
+        handles = {};
+      });
+  });
 
   /**
    * The deck to draw when nothing has said otherwise.
@@ -422,6 +461,7 @@
 </script>
 <section
   class="deck"
+  data-deck={deck.number}
   class:playing={deck.playing}
   class:drop-target={isOver(dropZone)}
   bind:this={dropZone}
@@ -895,7 +935,9 @@
           size={46}
           disabled={!enabled}
           oninput={(val) => send(`deck ${deck.number} ${band.id} ${val}`)}
-          ondblclick={() => send(`deck ${deck.number} ${band.id} 1`)}
+          ondblclick={() => send(handles[band.id]?.reset ?? `deck ${deck.number} ${band.id} 1`)}
+          options={handles[band.id]?.options}
+          onoption={(action) => send(action)}
         />
         <button
           class="kill"
@@ -926,7 +968,9 @@
       disabled={!enabled}
       size={56}
       oninput={(val) => send(`deck ${deck.number} filter ${val}`)}
-      ondblclick={() => send(`deck ${deck.number} filter 0`)}
+      ondblclick={() => send(handles.filter?.reset ?? `deck ${deck.number} filter 0`)}
+      options={handles.filter?.options}
+      onoption={(action) => send(action)}
     />
   </label>
 

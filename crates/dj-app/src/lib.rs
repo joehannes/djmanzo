@@ -32,6 +32,7 @@ pub mod cockpit;
 pub mod commands;
 pub mod control;
 pub mod grid;
+pub mod handle;
 pub mod host;
 pub mod layout;
 pub mod lens;
@@ -513,6 +514,7 @@ pub fn run() {
             commands::similar_to,
             commands::learned_taste,
             commands::library_lens,
+            commands::control_handles,
             commands::coach_report,
             commands::note_add,
             commands::note_write,

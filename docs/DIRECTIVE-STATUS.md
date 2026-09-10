@@ -54,7 +54,7 @@ rather than taken.
 | 26 | Direct manipulation on the waveform | 🟡 | The mix point is a handle on the outgoing waveform — drag it or use the arrow keys, and it moves in whole beats because a mix point between two beats is not on the grid. The waveform reports a position; Rust decides what it means and re-derives the reasons. The rest of §26's list — cue markers, phrase markers, loop edges, stem regions — is not draggable yet |
 | 27 | Preview / ghost track | ⬜ | The object it waited on ships — see §68. What is missing is the preview itself: a second render of the outgoing track, which needs a player djmanzo does not have |
 | 28 | Stem-aware UI | ✅ | The stems module ships, folding so it costs a row when unused |
-| 29 | Intelligent control handles | ⬜ | |
+| 29 | Intelligent control handles | 🟡 | **Progressive disclosure on a knob, with the table in Rust.** §29's last bullet — "MIDI = same underlying parameter" — is ADR-0003 stated as a control requirement, so `dj_app::handle` answers each gesture with **action text** rather than a number: a drag, a double-click, a menu entry and a MIDI CC all end up as the same action. Level one is the readout, which stays the interface's because it is about how a number reads. Level two is drag, **shift-drag at a quarter speed** (on the keyboard too), and **double-click to the parameter's own unity** — the one fact every call site used to spell out for itself, three EQ bands each naming `1` and the filter naming `0` with nothing making a fourth agree. Level three is a short contextual menu on **right-click or press-and-hold**, the second because a booth has trackpads and a control reachable only by right-click is one half the room cannot reach; it takes focus so Escape closes it, and every entry parses as an action, asserted by test. The menu is deliberately never more than four entries — §29's own warning is *do not turn every knob into a huge widget*, and a contextual menu is exactly where a knob grows into one. What §29 lists and this does not have: **the AI hover**, which would show what the assistant would set the control to — the assistant stages whole moves rather than single parameter values, so there is nothing yet for a hover to read. Six controls are covered (three EQ bands, filter, volume, pitch), not every parameter in the registry: a table of four hundred entries is one nobody keeps true |
 | 30 | Colour system named for meaning | 🟡 | Fourteen semantic roles exist as types with tests; the stylesheet still uses the appearance tokens |
 | 31 | Theme adaptation | ⬜ | |
 | 32 | Theme packs | 🟡 | Themes ship; packs as a format do not |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **41 done, 39 part, 6 open, 19 standing rules.**
+Of the 105 sections: **41 done, 40 part, 5 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**41 of 86 deliverable sections are complete and 39 more are partly there.**
+**41 of 86 deliverable sections are complete and 40 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 41 whole plus 39 halves over 86 is 70%, and the phase view is stricter
+way: 41 whole plus 40 halves over 86 is 71%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

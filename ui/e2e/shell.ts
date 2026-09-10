@@ -443,6 +443,9 @@ const ANSWERS: Record<string, unknown> = {
   transition_styles: styles,
   // §76's lens, answered per row below so a test can tell the columns apart.
   library_lens: [],
+  // §29's gestures, answered per deck below so a test can prove the menu acts
+  // on the deck it was opened on.
+  control_handles: [],
   // §81. Tonight opens unnamed, which is the state the picker exists to end —
   // and the state in which the hint has to be right.
   night_now: {
@@ -844,6 +847,32 @@ export async function openShell(
               };
             }
             return Promise.resolve(win.__transition ?? null);
+          }
+          // §29's control handles. Answered per deck rather than fixed above,
+          // because the one thing worth proving in a browser is that a menu
+          // opened on deck 2 sends actions about deck 2 — a menu that acted on
+          // whichever deck is the accident a DJ cannot risk mid-mix.
+          if (cmd === "control_handles") {
+            const n = Number(args.deck ?? 1);
+            const of = (verb: string, unity: string, options: [string, string][]) => ({
+              control: verb,
+              reset: `deck ${n} ${verb} ${unity}`,
+              fine: 0.25,
+              options,
+            });
+            return Promise.resolve([
+              of("eq_low", "1", [
+                ["Kill", `deck ${n} eq_low 0`],
+                ["Unity", `deck ${n} eq_low 1`],
+                ["Full", `deck ${n} eq_low 4`],
+              ]),
+              of("eq_mid", "1", [["Unity", `deck ${n} eq_mid 1`]]),
+              of("eq_high", "1", [["Unity", `deck ${n} eq_high 1`]]),
+              of("filter", "0", [
+                ["Off", `deck ${n} filter 0`],
+                ["Low-pass", `deck ${n} filter -0.6`],
+              ]),
+            ]);
           }
           // §76's lens: one row per id it is handed, and *only* the ids it is
           // handed. Answered here rather than fixed above because the whole

@@ -5526,6 +5526,49 @@ pub fn learned_taste(state: State<'_, AppState>) -> Result<TasteDto, String> {
     })
 }
 
+/// One control's gestures, for the interface. §29.
+#[derive(Debug, Clone, Serialize)]
+pub struct HandleDto {
+    /// The verb, so the interface can ask for the control it is drawing.
+    pub control: String,
+    /// What a double-click sends.
+    pub reset: String,
+    /// How much finer a shift-drag is than a drag.
+    pub fine: f64,
+    /// §29's level three: `[label, action]` per entry.
+    pub options: Vec<(String, String)>,
+}
+
+/// §29: what a control's gestures do.
+///
+/// Asked rather than written on the interface side, for the reason every call
+/// site demonstrated: each `SvgKnob` passed its own `ondblclick` naming its own
+/// idea of where the control resets to, and nothing made a fourth one agree.
+/// A control's unity point is a fact about the parameter.
+///
+/// Every answer is action text — exactly what `Action::parse` takes — so a
+/// drag, a double-click, a menu entry and a MIDI CC end up as the same action.
+/// That is §29's last bullet ("MIDI = same underlying parameter") and ADR-0003.
+///
+/// # Errors
+/// A deck djmanzo does not have.
+#[tauri::command]
+pub fn control_handles(deck: u8) -> Result<Vec<HandleDto>, String> {
+    let deck = dj_core::DeckId::from_human(deck).ok_or("no such deck")?;
+    Ok(crate::handle::Control::ALL
+        .into_iter()
+        .map(|control| {
+            let h = crate::handle::handle(deck, control);
+            HandleDto {
+                control: control.verb().to_owned(),
+                reset: h.reset,
+                fine: h.fine,
+                options: h.options.into_iter().map(|o| (o.label, o.action)).collect(),
+            }
+        })
+        .collect())
+}
+
 /// One record through §76's lens.
 ///
 /// Every field may be absent, and an absence is drawn as one: a lens that
