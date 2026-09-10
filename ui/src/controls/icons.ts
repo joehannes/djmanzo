@@ -46,6 +46,10 @@ export const ICONS: Record<string, IconGlyph> = {
   "expand": { d: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" },
   "eye": { d: "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6zM12 9.5a2.5 2.5 0 1 0 0 5.0a2.5 2.5 0 1 0 0 -5.0z" },
   "eye-slash": { d: "M2 12s3.5-6 10-6c1.6 0 3 .35 4.3.9M22 12s-3.5 6-10 6c-1.6 0-3-.35-4.3-.9M4 4l16 16" },
+  // A flask: a narrow neck over a conical body, with the liquid line the thing
+  // that makes it read as a laboratory rather than as a funnel. The practice
+  // lab is a sandbox, and this is the one shape that says so without a word.
+  "flask": { d: "M10 3v6L4.5 18a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7 -3L14 9V3M9 3h6M7.2 14h9.6" },
   "file-import": { d: "M14 3H6v18h12V7l-4-4zM14 3v4h4M2 12h8M7 9l3 3-3 3" },
   "file-lines": { d: "M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6" },
   "filter": { d: "M3 5h18l-7 8v6l-4 2v-8L3 5z" },
@@ -71,6 +75,10 @@ export const ICONS: Record<string, IconGlyph> = {
   "list-ol": { d: "M9 6h11M9 12h11M9 18h11M4.5 6h0.01M4.5 12h0.01M4.5 18h0.01" },
   "location-dot": { d: "M12 21s7-6.3 7-11a7 7 0 1 0 -14 0c0 4.7 7 11 7 11zM12 7.5a2.5 2.5 0 1 0 0 5.0a2.5 2.5 0 1 0 0 -5.0z" },
   "lock": { d: "M7 11h10v9H7zM9 11V8a3 3 0 0 1 6 0v3" },
+  // The same body with the shackle swung open: the arc leaves and does not
+  // come back down. Drawn as a pair with `lock` so the two read as one
+  // control in two states rather than as two different marks.
+  "lock-open": { d: "M7 11h10v9H7zM9 11V8a3 3 0 0 1 6 0" },
   "magnifying-glass": { d: "M11 5a6 6 0 1 0 0 12a6 6 0 1 0 0 -12zM15.5 15.5L21 21" },
   "microphone": { d: "M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1 -6 0V6a3 3 0 0 1 3 -3zM6 11a6 6 0 0 0 12 0M12 17v4M9 21h6" },
   "minus": { d: "M5 12h14" },

@@ -1,0 +1,142 @@
+[
+  {
+    "name": "amplitude",
+    "title": "Amplitude",
+    "about": "How loud the record is, moment to moment.",
+    "role": "sound",
+    "drawn": "tile"
+  },
+  {
+    "name": "spectral",
+    "title": "Spectral balance",
+    "about": "Which part of the spectrum each moment belongs to.",
+    "role": "sound",
+    "drawn": "tile"
+  },
+  {
+    "name": "beats",
+    "title": "Beat grid",
+    "about": "Every beat, fainter where the grid is a guess.",
+    "role": "grid",
+    "drawn": "tile"
+  },
+  {
+    "name": "phrases",
+    "title": "Phrase structure",
+    "about": "The 16 or 32 beat groups the music is actually built from.",
+    "role": "grid",
+    "drawn": "tile"
+  },
+  {
+    "name": "downbeats",
+    "title": "Downbeats",
+    "about": "Every fourth beat, so bars can be counted without counting beats.",
+    "role": "grid",
+    "drawn": "tile"
+  },
+  {
+    "name": "cues",
+    "title": "Cue markers",
+    "about": "Where you put a hot cue.",
+    "role": "placed",
+    "drawn": "overlay"
+  },
+  {
+    "name": "loop",
+    "title": "Loop region",
+    "about": "The stretch repeating right now.",
+    "role": "looping",
+    "drawn": "overlay"
+  },
+  {
+    "name": "saved-loops",
+    "title": "Saved loops",
+    "about": "Loops kept for later, drawn where they would fire.",
+    "role": "unassigned",
+    "drawn": "nowhere"
+  },
+  {
+    "name": "vocal",
+    "title": "Vocal presence",
+    "about": "Where somebody is singing.",
+    "role": "unassigned",
+    "drawn": "nowhere"
+  },
+  {
+    "name": "stems",
+    "title": "Stem presence",
+    "about": "Which of the four currents is carrying the record here.",
+    "role": "unassigned",
+    "drawn": "nowhere"
+  },
+  {
+    "name": "seam",
+    "title": "Transition",
+    "about": "Where the mix starts and ends, and what it covers.",
+    "role": "seam",
+    "drawn": "overlay"
+  },
+  {
+    "name": "mix-out",
+    "title": "Likely mix-out",
+    "about": "The stretch in which a mix out of this record can begin.",
+    "role": "proposed",
+    "drawn": "overlay"
+  },
+  {
+    "name": "mix-in",
+    "title": "Likely mix-in",
+    "about": "Where a record could be brought in.",
+    "role": "unassigned",
+    "drawn": "nowhere"
+  },
+  {
+    "name": "breakdowns",
+    "title": "Breakdowns",
+    "about": "Where the record thins out.",
+    "role": "unassigned",
+    "drawn": "nowhere"
+  },
+  {
+    "name": "drops",
+    "title": "Drops",
+    "about": "Where it comes back.",
+    "role": "unassigned",
+    "drawn": "nowhere"
+  },
+  {
+    "name": "energy",
+    "title": "Energy trajectory",
+    "about": "Where the record is going, over its whole length.",
+    "role": "unassigned",
+    "drawn": "nowhere"
+  },
+  {
+    "name": "suggestion",
+    "title": "AI recommendation",
+    "about": "What djmanzo would do, drawn as a ghost rather than as a fact.",
+    "role": "proposed",
+    "drawn": "overlay"
+  },
+  {
+    "name": "crowd",
+    "title": "Crowd response",
+    "about": "What the room did last time this played.",
+    "role": "unassigned",
+    "drawn": "nowhere"
+  },
+  {
+    "name": "confidence",
+    "title": "Uncertainty",
+    "about": "That the beat grid under all of this is an estimate.",
+    "role": "uncertain",
+    "drawn": "overlay"
+  },
+  {
+    "name": "runway",
+    "title": "Runway",
+    "about": "How much record is left before it ends.",
+    "role": "runway",
+    "drawn": "overlay"
+  }
+]

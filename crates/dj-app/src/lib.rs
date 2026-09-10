@@ -20,7 +20,9 @@
 //! `docs/adr/0003-action-bus-and-parameter-registry.md`.
 
 pub mod analysis;
+pub mod art;
 pub mod assistant;
+pub mod at_hand;
 pub mod audience;
 pub mod automix;
 pub mod autopilot;
@@ -29,28 +31,42 @@ pub mod clock;
 pub mod cockpit;
 pub mod commands;
 pub mod control;
+pub mod ghost;
 pub mod grid;
+pub mod handle;
 pub mod host;
 pub mod layout;
+pub mod lens;
 pub mod library;
 pub mod memory;
+pub mod mixes;
 pub mod monitors;
+pub mod mood;
+pub mod night;
 pub mod peersync;
 pub mod persist;
 pub mod plan;
 pub mod plugins;
+pub mod practice;
 pub mod presets;
+pub mod profile;
 pub mod rackcapture;
 pub mod remote;
 pub mod replay;
+pub mod response;
 pub mod session;
 pub mod setrec;
+pub mod setting;
+pub mod shape;
 pub mod share;
+pub mod signals;
 pub mod snapshot;
 pub mod sources;
+pub mod staged;
 pub mod state;
 pub mod timecode;
 pub mod transition;
+pub mod uiop;
 pub mod wav;
 pub mod waveform;
 pub mod widgets;
@@ -116,11 +132,14 @@ pub fn run() {
     let registry = state.registry();
     let deck_count = state.deck_count();
     let waveforms = Arc::clone(state.waveforms());
+    let covers = Arc::clone(state.covers());
+    let cover_library = state.library();
     let bridge_handle = state.bridge_handle();
     let analysis = Arc::clone(state.analysis());
     let deck_tracks = state.deck_tracks();
     let sample_names = state.sample_names();
     let recording_state = state.recording_state();
+    let night = state.night();
     // The snapshot pump is where a hot cue change becomes visible to the host:
     // the engine sets cues at a playhead quantize may have moved, so the only
     // reliable reading is the one the audio thread publishes. See
@@ -158,6 +177,40 @@ pub fn run() {
                     .header("Cache-Control", "public, max-age=31536000, immutable")
                     .header("Access-Control-Allow-Origin", "*")
                     .body(png.as_ref().clone())
+                    .unwrap_or_default(),
+                None => http::Response::builder()
+                    .status(404)
+                    .body(Vec::new())
+                    .unwrap_or_default(),
+            }
+        })
+        // Cover art, served the same way tiles are and for the same reasons: a
+        // card grid asks for fifty images at once, and base64 through IPC
+        // would cost a third more bytes, block the main thread decoding them,
+        // and defeat the browser's own image cache. See `crate::art`.
+        .register_uri_scheme_protocol(art::SCHEME, move |_ctx, request| {
+            let path = request.uri().path().to_owned();
+            let Some(track) = art::parse_path(&path) else {
+                return http::Response::builder()
+                    .status(400)
+                    .body(Vec::new())
+                    .unwrap_or_default();
+            };
+            let found = covers.get(track, |id| {
+                Some(cover_library.get().ok()?.track(id).ok()??.path)
+            });
+            match found {
+                Some(cover) => http::Response::builder()
+                    .status(200)
+                    .header("Content-Type", cover.mime)
+                    // A track id is the record's identity, so the picture
+                    // behind one does not change under a running application:
+                    // re-tagging a file re-scans it into a different id.
+                    // Unlike the logo, which *is* replaced in place at one URL
+                    // and therefore must not be cached at all.
+                    .header("Cache-Control", "public, max-age=31536000, immutable")
+                    .header("Access-Control-Allow-Origin", "*")
+                    .body(cover.bytes.as_ref().clone())
                     .unwrap_or_default(),
                 None => http::Response::builder()
                     .status(404)
@@ -272,6 +325,7 @@ pub fn run() {
                     tracks: Some(deck_tracks),
                     samples: Some(sample_names),
                     recording: Some(recording_state),
+                    night: Some(night),
                 },
                 move |snapshot| {
                     use tauri::Emitter;
@@ -301,6 +355,14 @@ pub fn run() {
                         &library_writer,
                         &pump_audience,
                     );
+                    // §37. On the same pump for the same reason the automix
+                    // is: it sees exactly what the DJ sees, and a second
+                    // thread watching the same log would be a second answer
+                    // about which mixes have happened.
+                    {
+                        let state: tauri::State<'_, AppState> = handle.state();
+                        record_responses(&state, &session_id, &library_writer);
+                    }
                     // A fixture for the interface's layout budget, captured
                     // from the running application rather than rebuilt from a
                     // bare parameter registry.
@@ -400,6 +462,18 @@ pub fn run() {
             commands::audience_sheet,
             commands::room_saw,
             commands::room_read,
+            commands::night_read,
+            commands::staged_prepare,
+            commands::staged_current,
+            commands::staged_choose,
+            commands::staged_reject,
+            commands::staged_accept,
+            commands::authority_matrix,
+            commands::authority_set,
+            commands::authority_reset,
+            commands::waveform_layers,
+            commands::ui_vocabulary,
+            commands::ui_do,
             commands::room_forget,
             commands::words_search,
             commands::words_progress,
@@ -415,6 +489,14 @@ pub fn run() {
             commands::get_snapshot,
             commands::waveform_info,
             commands::report_bench,
+            commands::at_hand,
+            commands::keep_mix,
+            commands::learned_tendencies,
+            commands::night_setting,
+            commands::night_now,
+            commands::learned_profiles,
+            commands::session_mixes,
+            commands::session_render_mix,
             commands::session_log,
             commands::library_status,
             commands::palette,
@@ -426,6 +508,8 @@ pub fn run() {
             commands::transition_arm,
             commands::transition_current,
             commands::transition_adjust,
+            commands::transition_styles,
+            commands::practice_rehearse,
             commands::transition_replan,
             commands::transition_clear,
             commands::session_save,
@@ -440,6 +524,14 @@ pub fn run() {
             commands::setlist_save,
             commands::similar_to,
             commands::learned_taste,
+            commands::library_lens,
+            commands::ghost_preview,
+            commands::room_history,
+            commands::profile_tonight,
+            commands::control_handles,
+            commands::theme_now,
+            commands::theme_lock,
+            commands::theme_chosen,
             commands::coach_report,
             commands::note_add,
             commands::note_write,
@@ -570,6 +662,77 @@ static START: std::sync::LazyLock<std::time::Instant> =
 /// the playhead is the audio thread's to report, and this is where the host
 /// reads it. The threshold and the reasoning are in
 /// [`persist::PlayWatcher`].
+/// §37: write down what the room did after any mix whose window has closed.
+///
+/// Cheap on the overwhelming majority of ticks: the recorder's own set says
+/// which mixes are finished with, and with nothing watching the room every
+/// mix reaches that set once and is never looked at again. It costs a log
+/// walk, which `dj_app::mixes` is already doing for the panel.
+///
+/// Silent when there is no library, no session, or nothing to say. §37 is a
+/// bonus a camera buys; djmanzo does not depend on it and must not stall for
+/// it.
+fn record_responses(state: &AppState, session: &str, writer: &persist::LibraryWriter) {
+    let Ok(mut done) = state.responses_done().lock() else {
+        return;
+    };
+    let log = state.bus().log();
+    let Some(elapsed) = log.last().map(|event| event.at) else {
+        return;
+    };
+    let handovers = crate::mixes::handovers(&log);
+    if handovers.is_empty() {
+        return;
+    }
+    let Ok(room) = state.room().lock() else {
+        return;
+    };
+    let readings: Vec<_> = room.series().copied().collect();
+    drop(room);
+
+    let fresh = crate::response::note(
+        &handovers,
+        elapsed,
+        std::time::SystemTime::now(),
+        &readings,
+        &mut done,
+    );
+    if fresh.iter().all(|noted| noted.responses.is_empty()) {
+        return;
+    }
+
+    // What the DJ said the night is. §37's "here", and the honest version of
+    // it — see `crate::response`. Read from the library rather than held,
+    // because `night_setting` is what writes it and this must not be a second
+    // idea of what tonight is; read only once there is something to write,
+    // because this runs on the snapshot pump and a query per tick would be a
+    // query sixty times a second for the whole night. A night nobody has named
+    // takes the same default `note_night` gives it.
+    let setting = state
+        .library()
+        .get()
+        .ok()
+        .and_then(|db| db.night(session).ok().flatten())
+        .map_or_else(
+            || crate::setting::Setting::OpenFormat.slug().to_owned(),
+            |night| night.setting,
+        );
+
+    for noted in fresh {
+        for response in &noted.responses {
+            writer.send(persist::Write::Response {
+                session: session.to_owned(),
+                at_seconds: noted.at_seconds,
+                style: noted.style.clone(),
+                setting: setting.clone(),
+                sense: response.sense.name().to_owned(),
+                before: response.before,
+                after: response.after,
+            });
+        }
+    }
+}
+
 fn record_plays(
     snapshot: &Snapshot,
     tracks: &snapshot::DeckTracks,

@@ -1,0 +1,78 @@
+[
+  {
+    "name": "cut",
+    "shape": {
+      "overlaps": false,
+      "outgoing_stem": null,
+      "incoming_stem": null,
+      "eq_done_by": null,
+      "fx": null,
+      "does": [
+        "no overlap: one stops, the next starts"
+      ]
+    }
+  },
+  {
+    "name": "fade",
+    "shape": {
+      "overlaps": true,
+      "outgoing_stem": null,
+      "incoming_stem": null,
+      "eq_done_by": null,
+      "fx": null,
+      "does": [
+        "EQ untouched; the faders carry it"
+      ]
+    }
+  },
+  {
+    "name": "blend",
+    "shape": {
+      "overlaps": true,
+      "outgoing_stem": null,
+      "incoming_stem": null,
+      "eq_done_by": 0.5,
+      "fx": null,
+      "does": [
+        "low EQ handed over by 50% through"
+      ]
+    }
+  },
+  {
+    "name": "echo",
+    "shape": {
+      "overlaps": true,
+      "outgoing_stem": null,
+      "incoming_stem": null,
+      "eq_done_by": null,
+      "fx": {
+        "effect": "echo",
+        "beats": 4.0,
+        "slot": 1
+      },
+      "does": [
+        "EQ untouched; the faders carry it",
+        "echo on the outgoing deck, 4 beats, slot 1"
+      ]
+    }
+  },
+  {
+    "name": "vocal drop",
+    "shape": {
+      "overlaps": true,
+      "outgoing_stem": "vocal",
+      "incoming_stem": null,
+      "eq_done_by": null,
+      "fx": {
+        "effect": "echo",
+        "beats": 4.0,
+        "slot": 1
+      },
+      "does": [
+        "outgoing deck: vocal only",
+        "EQ untouched; the faders carry it",
+        "echo on the outgoing deck, 4 beats, slot 1"
+      ]
+    }
+  }
+]

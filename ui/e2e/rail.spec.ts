@@ -164,3 +164,205 @@ test.describe("the next-track rail", () => {
     ).toHaveCount(0);
   });
 });
+
+/**
+ * §22's *estimated transition type*, the last of its fifteen that djmanzo can
+ * answer without a second player.
+ *
+ * The estimate itself is the planner's and is tested in Rust. What matters
+ * here is what the rail does with it: that it is a line about the **mix**
+ * rather than another chip about the two records, that a pair djmanzo would
+ * cut says so beside a pair it would blend, and that it is worded once — a
+ * rail and a ghost panel disagreeing about the same mix is the failure §68's
+ * table exists to prevent, at the scale of a sentence.
+ */
+test.describe("the estimated transition", () => {
+  test("says what the mix into each candidate would be", async ({ page }) => {
+    await railOpen(page);
+
+    const rows = page.locator('.surface[data-surface="next"] li');
+    await expect(rows.first().locator(".mix")).toHaveText("32-beat blend at 3:45");
+    // The second candidate clashes, so the planner cuts. Two records the same
+    // distance apart with different mixes is the whole value of the line.
+    await expect(rows.nth(1).locator(".mix")).toHaveText("8-beat cut at 4:01");
+  });
+
+  /**
+   * **A line about the mix, under the line about the records.**
+   *
+   * §22 asks for deltas *and* an estimated transition, and they answer
+   * different questions: `+3 BPM · 8A→9A` is about the two records, and
+   * `32-beat blend` is about what happens between them. Folded into one line
+   * they read as one fact and neither is findable at a glance.
+   */
+  test("is its own line, below the deltas", async ({ page }) => {
+    await railOpen(page);
+
+    const row = page.locator('.surface[data-surface="next"] li').first();
+    const why = await row.locator(".why").boundingBox();
+    const mix = await row.locator(".mix").boundingBox();
+    expect(mix!.y, "the transition is not below the deltas").toBeGreaterThan(why!.y);
+    expect(
+      await row.locator(".why").textContent(),
+      "the deltas line swallowed the transition",
+    ).not.toContain("blend");
+  });
+
+  /**
+   * The rail and §27's ghost panel say the same words about the same mix,
+   * because both are handed the phrase rather than composing one.
+   */
+  test("is worded the same way the ghost panel words it", async ({ page }) => {
+    await railOpen(page);
+
+    const row = page.locator('.surface[data-surface="next"] li').first();
+    const inRail = await row.locator(".mix").textContent();
+    await row.getByRole("button", { name: /^Preview / }).click();
+    await expect(row.locator(".ghost-what")).toBeVisible();
+    expect(await row.locator(".ghost-what").textContent()).toBe(inRail);
+  });
+});
+
+/**
+ * §12's other half: the rail consulting what djmanzo has learned about this
+ * DJ, and **saying that it did**.
+ *
+ * §81 built profiles and nothing read them, which made them a thing djmanzo
+ * could say about a DJ rather than a thing it did for one. The arithmetic —
+ * the bound, the log map, what happens to an untagged record — is Rust's and
+ * is tested there. What matters here is the consent shape: a ranking that has
+ * been conditioned must say so and must name its evidence, and one that has
+ * not must look exactly as it always did.
+ */
+const WEDDING = {
+  setting: "wedding",
+  title: "Wedding",
+  nights: 5,
+  density: "cosy",
+  style: "blend",
+  automation: "suggest",
+  techniques: ["eq-moved"],
+  genres: [
+    ["Bachata", 0.62],
+    ["Merengue", 0.38],
+  ],
+  says: "Wedding, over 5 nights: mostly blend transitions, 62% Bachata, assistant on suggest.",
+};
+
+test.describe("the learned profile", () => {
+  /**
+   * **A conditioned ranking says so, with the evidence.**
+   *
+   * A rail quietly reordered by what a DJ usually plays at weddings is a rail
+   * they cannot argue with: they would have to notice the order disagreed
+   * with the deltas and work out why.
+   */
+  test("says what it is ranking for, and over how many nights", async ({ page }) => {
+    await openShell(page, "/", {}, { profile_tonight: WEDDING });
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
+    const line = page.locator('.surface[data-surface="next"] .profile');
+    await expect(line).toBeVisible();
+    const said = (await line.textContent()) ?? "";
+    expect(said, "the kind of night is not named").toContain("Wedding");
+    expect(said, "the evidence is not named").toContain("5 nights");
+  });
+
+  /**
+   * **One line for the rail, not one per row.**
+   *
+   * Eight rows already carry a name, a confidence bar, the deltas and the
+   * transition. A fifth line per row would push the rail past what can be
+   * read at a glance, which is the one thing a rail is for.
+   */
+  test("is one line for the whole rail", async ({ page }) => {
+    await openShell(page, "/", {}, { profile_tonight: WEDDING });
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
+    await expect(page.locator('.surface[data-surface="next"] .profile')).toHaveCount(1);
+    const rows = page.locator('.surface[data-surface="next"] li');
+    expect(await rows.count()).toBeGreaterThan(1);
+    await expect(rows.first().locator(".profile")).toHaveCount(0);
+  });
+
+  /**
+   * **A night nobody has named is the rail as it always was.**
+   *
+   * §81's settings are told, never inferred. With no profile there is nothing
+   * being tilted, and nothing claiming to be.
+   */
+  test("says nothing when the night has not been named", async ({ page }) => {
+    await railOpen(page);
+    await expect(page.locator('.surface[data-surface="next"] .profile')).toHaveCount(0);
+    // And the ranking is untouched: the fixture's order is the scorer's.
+    const rows = page.locator('.surface[data-surface="next"] li .name');
+    await expect(rows.first()).toHaveText("Ojalá Que Llueva Café");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});
+
+/**
+ * The rail asking again when the thing it depends on changes.
+ *
+ * It deliberately does not poll — a rail that reshuffled every time a deck
+ * moved would be unreadable, and the file says so. But it asked **once**, at
+ * start-up, before the decks had loaded, and never again: djmanzo answered
+ * honestly about a deck holding nothing, so every row came up with no deltas
+ * and no transition and stayed that way. Found by driving the application and
+ * confirmed in Rust's log — `current_track` returning `None` at start-up and
+ * `Some` a refresh later.
+ *
+ * The start-up race itself cannot be staged here (the harness answers
+ * instantly and the fixture's decks are loaded from the first frame), so what
+ * is measured is the same code path from the other end: the deck the rail
+ * follows changing.
+ */
+test.describe("the rail following its deck", () => {
+  test("asks again when the record on its deck changes", async ({ page }) => {
+    await railOpen(page);
+    await expect(page.locator('.surface[data-surface="next"] li').first()).toBeVisible();
+
+    const asked = await watch(page);
+    // A second snapshot with a different record on deck 1 — which is what
+    // start-up looks like from the rail's side, and what every load from the
+    // browser, a controller or the assistant looks like too.
+    //
+    // Deliberately *not* the deck picker: its `onchange` already refreshes,
+    // so a test driving that passes with this effect removed. The first
+    // draft of this test did exactly that and proved nothing.
+    await page.evaluate(() => {
+      const win = window as unknown as {
+        __lastState: { decks: { title: string | null }[] };
+        __emit: (next: unknown) => void;
+      };
+      win.__emit({
+        ...win.__lastState,
+        decks: win.__lastState.decks.map((deck, index) =>
+          index === 0 ? { ...deck, title: "Something Else Entirely" } : deck,
+        ),
+      });
+    });
+
+    await expect
+      .poll(async () => (await asked()).filter((c) => c === "suggest_next").length)
+      .toBeGreaterThan(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * And it does not ask on every snapshot. The prop carrying the decks is a
+   * fresh array sixty times a second; an effect reading it directly would
+   * re-run at that rate, which is §29's trap — it remounted every knob in the
+   * application before anyone noticed.
+   */
+  test("does not ask again while nothing it follows has changed", async ({ page }) => {
+    await railOpen(page);
+    await expect(page.locator('.surface[data-surface="next"] li').first()).toBeVisible();
+
+    const asked = await watch(page);
+    // Long enough for sixty snapshots several times over.
+    await page.waitForTimeout(1200);
+    const calls = (await asked()).filter((c) => c === "suggest_next").length;
+    expect(calls, `the rail asked ${calls} times with nothing changed`).toBe(0);
+  });
+});

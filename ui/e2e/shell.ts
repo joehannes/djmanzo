@@ -58,6 +58,16 @@ import snapshot from "./snapshot.json" with { type: "json" };
  */
 import padPages from "./pad-pages.json" with { type: "json" };
 import surfaces from "./surfaces.json" with { type: "json" };
+import layers from "./layers.json" with { type: "json" };
+/**
+ * The five transition styles and what each does, generated from
+ * `dj_app::shape` by the same Rust test.
+ *
+ * Not typed out here, for the reason the golden file's test gives: a
+ * hand-written copy of the list is how `vocal drop` came to be performed by
+ * the automix and offered by no panel.
+ */
+import styles from "./styles.json" with { type: "json" };
 
 /**
  * Answers for the commands the shell asks on start-up.
@@ -97,6 +107,22 @@ const ANSWERS: Record<string, unknown> = {
   assistant_packs: [],
   list_llm_providers: [],
   learned_taste: { favourites: [], plays: 0, confident: false },
+  // §13/§14. Two gestures that reached four occurrences in one phase, with the
+  // sentences Rust writes — never "you like", always what was seen and when.
+  learned_tendencies: [
+    {
+      says: "You often ride the EQ when the night is at its peak. Seen 9 times.",
+      gesture: "eq-moved",
+      phase: "peak",
+      seen: 9,
+    },
+    {
+      says: "You sometimes sweep the filter when the night is building. Seen 4 times.",
+      gesture: "filter-swept",
+      phase: "heat",
+      seen: 4,
+    },
+  ],
   assistant_state: {
     provider: "",
     model: "",
@@ -124,6 +150,103 @@ const ANSWERS: Record<string, unknown> = {
     light: null,
     movement: null,
     loudness: null,
+    // §35's baseline. Empty and null, because the fixture is a room nothing
+    // has looked at — but present, because `RoomSense.svelte` reads
+    // `.baseline.length`, and an absent array is the `stems_status` failure
+    // above in a different panel.
+    baseline: [],
+    phase: null,
+  },
+  // §37. Empty by default, because a fresh install has never watched a room —
+  // and present, because `RoomSense.svelte` maps over it.
+  room_history: [],
+  // A night nothing has read yet, which is what a fresh application has. The
+  // shape matters more than the values: `Night.svelte` indexes its label
+  // tables by `basis` and `warrant`, so a `null` here would throw inside the
+  // surface and take the dock with it -- the failure `stems_status` above
+  // documents, in a different panel.
+  // The waveform's own answer, without which `Waveform.svelte` never leaves
+  // its "no tiles yet" state — so every lane in the pair view rendered as an
+  // empty box and no browser test had ever seen one, including the ones whose
+  // commit message said "each with its waveform". The tiles themselves are
+  // `wave://` URLs that resolve to nothing here; what is being measured is the
+  // marks and cues drawn over them, which is the part a DJ grabs.
+  // 12 000 000 frames is a little over four minutes at 48 kHz. The mix-out
+  // window is placed inside it the way Rust would: near the end, a couple of
+  // phrases wide, opening on a phrase boundary.
+  waveform_info: {
+    deck: 1,
+    ready: true,
+    total_frames: 12_000_000,
+    epoch: 1,
+    mix_out: { opens_frame: 10_800_000, closes_frame: 11_600_000, on_phrase: true },
+  },
+  // §25's inventory, answered from the same table Rust publishes. The test
+  // that matters reads it back and checks every `data-layer` on screen is in
+  // it, so this stub is deliberately the real shape rather than a stand-in.
+  waveform_layers: layers,
+  // §74's rail, in the shape `dj_app::rail` produces for a deck being got
+  // ready: five controls, each an action the parser accepts, with the loop and
+  // the sync showing their state.
+  at_hand: {
+    deck: 2,
+    doing: "preparing",
+    because: "this record is cued and waiting",
+    controls: [
+      { label: "cue", action: "deck 2 cue", on: false },
+      { label: "mark", action: "deck 2 hotcue_set 1", on: false },
+      { label: "loop 4", action: "deck 2 loop 4", on: false },
+      { label: "sync", action: "deck 2 sync", on: true },
+      { label: "keylock", action: "deck 2 keylock_toggle", on: false },
+    ],
+  },
+  // Two mixes, the shape `dj_app::mixes` derives them in: a blend into a cut,
+  // oldest first, because that is the order the log produces and the panel is
+  // what reverses it.
+  session_mixes: [
+    {
+      at: 214.0,
+      took_seconds: 15.5,
+      beats: 32,
+      out_deck: 1,
+      in_deck: 2,
+      out_title: "Bachata Rosa",
+      in_title: "Ojalá Que Llueva Café",
+      style: "blend",
+      kept: 0,
+    },
+    {
+      at: 461.0,
+      took_seconds: 1.4,
+      beats: null,
+      out_deck: 2,
+      in_deck: 1,
+      out_title: "Ojalá Que Llueva Café",
+      in_title: null,
+      style: "cut",
+      kept: 2,
+    },
+  ],
+  // Nothing staged, which is what a fresh application has. `Staged.svelte`
+  // draws nothing at all for this, which is the point: the strip costs the
+  // decks no height until there is something to decide.
+  staged_current: null,
+  authority_matrix: [],
+  night_read: {
+    phase: null,
+    words: null,
+    energy: null,
+    certainty: null,
+    certainty_about: null,
+    basis: null,
+    drift: null,
+    time_of_day: null,
+    declared: null,
+    measured: null,
+    readings: 0,
+    still_needed: 90,
+    notes: ["Nothing has read the night yet."],
+    warrant: "speak",
   },
     // What the presets and settings surfaces ask for.
   //
@@ -197,6 +320,49 @@ const ANSWERS: Record<string, unknown> = {
   sidelist_add: null,
   // Two candidates, so the rail has a ranking and not just a row.
   //
+  // §27's ghost, on the same record `waveform_info` above describes: a
+  // 32-beat blend starting where the mix-out window opens, with the
+  // candidate's first full phrase eight beats into it.
+  //
+  // Five of §27's seven answered and two not, in the shape and the order Rust
+  // sends them. The two that are not are the point of the fixture as much as
+  // the five that are: the panel has to say so, and a stub carrying only the
+  // answered ones would let it ship silently dropping them.
+  ghost_preview: {
+    track: "b".repeat(64),
+    deck: 1,
+    start_frame: 10_800_000,
+    end_frame: 11_568_000,
+    start_seconds: 225,
+    end_seconds: 241,
+    length_beats: 32,
+    style: "blend",
+    bpm_delta: 3,
+    pitch_percent: -2.3,
+    key_relation: "neighbour",
+    says: "32-beat blend at 3:45",
+    landing: { frame: 10_992_000, lead_beats: 8, within_mix: true },
+    weakens_from: 10_800_000,
+    weakens_to: 11_600_000,
+    reasons: ["phrase start (beat 450)", "128 into 131 BPM", "96 beats left"],
+    asked: [
+      {
+        slug: "first-phrase",
+        about: "where its first strong phrase would align",
+        answered: true,
+      },
+      { slug: "vocal-entry", about: "where the vocal enters", answered: false },
+      { slug: "drop", about: "where the drop occurs", answered: false },
+      {
+        slug: "outgoing-weakens",
+        about: "where the outgoing track becomes weak",
+        answered: true,
+      },
+      { slug: "overlap", about: "likely transition overlap", answered: true },
+      { slug: "key-relation", about: "key relationship", answered: true },
+      { slug: "tempo-movement", about: "BPM movement", answered: true },
+    ],
+  },
   // The shape `suggest_next` and `similar_to` both return, including the
   // `summary` line the rail actually renders -- a fixture that carried only
   // `reasons` would have let the rail ship showing nothing and passed.
@@ -223,6 +389,15 @@ const ANSWERS: Record<string, unknown> = {
       reasons: ["harmonic (9A)", "127 BPM fits", "+1 dB"],
       summary: "+3 BPM \u00b7 8A\u21929A \u00b7 +1 dB",
       confidence: 0.94,
+      // §22's estimated transition type. The phrase is Rust's — the rail and
+      // §27's ghost panel both draw it, so a stub that made one up here would
+      // let the two drift apart without a test noticing.
+      transition: {
+        style: "blend",
+        length_beats: 32,
+        at_seconds: 225,
+        says: "32-beat blend at 3:45",
+      },
     },
     {
       track: {
@@ -246,9 +421,23 @@ const ANSWERS: Record<string, unknown> = {
       reasons: ["key clash (3B)", "118 BPM fits", "-3 dB"],
       summary: "-6 BPM \u00b7 8A\u21923B clash \u00b7 -3 dB",
       confidence: 0.55,
+      // A clashing pair, so the planner cuts rather than blends — which is
+      // the whole value of the line: the two records are the same distance
+      // apart as the row above and the mix is a different one.
+      transition: {
+        style: "cut",
+        length_beats: 8,
+        at_seconds: 241,
+        says: "8-beat cut at 4:01",
+      },
     },
   ],
   similar_to: [],
+  // §12: no profile by default, because a fresh install has never been told
+  // what kind of night it is — and `null` rather than absent, because
+  // `Next.svelte` reads it and an unstubbed command is the failure the
+  // `stems_status` note above documents.
+  profile_tonight: null,
   // What the pair view is handed: two records and the seam between them.
   //
   // §68's transition object, in the shape `dj_app::commands::TransitionDto`
@@ -321,7 +510,64 @@ const ANSWERS: Record<string, unknown> = {
       "keys sit together",
       "88 beats left",
     ],
+    // The blend's own shape, taken from the same generated table rather than
+    // copied -- so a restyle below can look the new one up and the panel says
+    // what the new style actually does.
+    shape: styles.find((style) => style.name === "blend")?.shape,
   },
+  transition_styles: styles,
+  // §76's lens, answered per row below so a test can tell the columns apart.
+  library_lens: [],
+  // §29's gestures, answered per deck below so a test can prove the menu acts
+  // on the deck it was opened on.
+  control_handles: [],
+  // §31. Steady by default — which is what djmanzo answers on almost every
+  // tick, and is the whole point of the section.
+  theme_now: { theme: "pkg-organic", over_ms: 0, locked: false },
+  theme_lock: null,
+  theme_chosen: null,
+  // §81. Tonight opens unnamed, which is the state the picker exists to end —
+  // and the state in which the hint has to be right.
+  night_now: {
+    setting: null,
+    density: null,
+    style: null,
+    posture: null,
+    techniques: [],
+  },
+  // Three wedding nights and three club nights, which is what §81 is about:
+  // the same DJ, two different answers, and never their average.
+  learned_profiles: [
+    {
+      setting: "wedding",
+      title: "Wedding",
+      nights: 3,
+      density: "Relaxed",
+      style: "fade",
+      automation: "prepare",
+      techniques: ["eq-moved"],
+      genres: [
+        ["Bachata", 0.7],
+        ["Merengue", 0.3],
+      ],
+      says: "Wedding, over 3 nights: mostly fade transitions, 70% Bachata, assistant on prepare.",
+    },
+    {
+      setting: "club",
+      title: "Club",
+      nights: 4,
+      density: "Pro Dense",
+      style: "blend",
+      automation: "suggest",
+      techniques: ["looped", "filter-swept"],
+      genres: [["Techno", 1]],
+      says: "Club, over 4 nights: mostly blend transitions, 100% Techno, assistant on suggest.",
+    },
+  ],
+  // A rehearsal, in the shape `dj_app::commands::RehearsalDto` serialises. The
+  // stub answers per style below, because the whole of what this panel does is
+  // tell four renders of one pair apart.
+  practice_rehearse: null,
   transition_current: null,
   transition_clear: null,
   // The palette's answer, which Rust ranks. Two actions and one surface, so a
@@ -448,6 +694,25 @@ const ANSWERS: Record<string, unknown> = {
       rating: null,
       colour: null,
     },
+    // A second record, rated, so a test can tell a favourite from one that is
+    // not — and so the card grid has more than one cell to lay out.
+    {
+      id: "b".repeat(64),
+      path: "/music/ojala.flac",
+      title: "Ojalá Que Llueva Café",
+      artist: "Juan Luis Guerra",
+      album: "Ojalá Que Llueva Café",
+      genre: "Merengue",
+      year: 1989,
+      duration_seconds: 262,
+      bpm: 138,
+      key: "11B",
+      loudness_lufs: null,
+      analysed: true,
+      play_count: 3,
+      rating: 5,
+      colour: null,
+    },
   ],
   default_music_folder: null,
   library_status: {
@@ -507,8 +772,18 @@ export async function openShell(
    * application never sends.
    */
   master: Record<string, unknown> = {},
+  /**
+   * Answers to change before the shell starts.
+   *
+   * The same discipline `master` follows: it varies an answer djmanzo really
+   * gives, so a test can measure the panel in a state the captured fixture
+   * happens not to be in — a night the evidence disputes, say. It does not let
+   * a test invent a shape the application never sends.
+   */
+  answers: Record<string, unknown> = {},
 ) {
   const state = { ...snapshot, master: { ...snapshot.master, ...master } };
+  const table = { ...ANSWERS, ...answers };
   const thrown: string[] = [];
   pageErrors.set(page, thrown);
   page.on("pageerror", (error) => thrown.push(error.message));
@@ -517,6 +792,10 @@ export async function openShell(
     ([answers, state]: [Record<string, unknown>, unknown]) => {
       const handlers = new Map<string, number>();
       const win = window as unknown as Record<string, unknown>;
+      // Exposed so a test can deliver an event djmanzo would emit — the
+      // `cockpit` one especially, which is the only way an operation the DJ
+      // did not press ever reaches this window.
+      win.__handlers = handlers;
 
       /**
        * Hand the snapshot to whoever is listening for it.
@@ -533,6 +812,27 @@ export async function openShell(
           | ((event: unknown) => void)
           | undefined;
         handler?.({ event: "snapshot", id: 0, payload: state });
+      };
+
+      /*
+        A test affordance: deliver **another** snapshot.
+
+        Without it every browser test sees exactly one frame of djmanzo, and a
+        component that asks once at start-up looks identical to one that keeps
+        up with the decks. That is not hypothetical — the Next rail shipped
+        asking once, before the decks had loaded, and nothing in this suite
+        could tell.
+
+        The last state is kept beside it so a test can clone it and change one
+        field, rather than hand-writing a snapshot the application never sends.
+      */
+      win.__lastState = state;
+      win.__emit = (next: unknown) => {
+        win.__lastState = next;
+        const id = handlers.get("snapshot");
+        if (id === undefined) return;
+        const handler = win[`_${id}`] as ((event: unknown) => void) | undefined;
+        handler?.({ event: "snapshot", id: 0, payload: next });
       };
 
       win.__TAURI_INTERNALS__ = {
@@ -552,7 +852,42 @@ export async function openShell(
           // would make every dock test measure the fixture instead of the
           // press. Rust's resolver is tested in Rust; what matters here is
           // that the round trip carries the arrangement.
+          // Every action the interface sends, in order. Recorded rather than
+          // counted: `__asked` holds command *names*, and what matters about a
+          // control on §74's rail is the exact action text it dispatched — a
+          // rail whose buttons all reached the bus with the wrong argument
+          // would look identical to one that worked.
+          if (cmd === "dispatch") {
+            ((win.__dispatched ??= []) as string[]).push(String(args.action));
+            return Promise.resolve(null);
+          }
+          // The mix re-render. Answered here rather than from the table so a
+          // test can check *which* mix was asked for: the panel holds two
+          // numbers per row and passing the wrong row's would produce a
+          // plausible file of the wrong twenty seconds.
+          // §24's keep. Answered here rather than from the table so a test
+          // can check *which* mix was kept: the panel holds a timestamp per
+          // row, and keeping the wrong row would store a plausible pair of the
+          // wrong two records.
+          if (cmd === "keep_mix") {
+            win.__keptAt = args.at;
+            return Promise.resolve(1);
+          }
+          if (cmd === "session_render_mix") {
+            win.__renderMixArgs = { at: args.at, tookSeconds: args.tookSeconds };
+            return Promise.resolve(
+              `20s → /home/dj/.config/djmanzo/recordings/mix-at-${Math.round(
+                Number(args.at),
+              )}s.wav`,
+            );
+          }
           if (cmd === "set_cockpit_workspace") {
+            // Recorded as well as echoed. What a test needs to know about a
+            // save is that it *happened and carried the right thing* — an
+            // arrangement drawn on screen and never written looks identical
+            // until the application is reopened, which is the defect §89's
+            // four-deck configuration found.
+            ((win.__saved ??= []) as unknown[]).push(args.workspace);
             return Promise.resolve({ workspace: args.workspace, notes: [] });
           }
           // The transition object, held between calls the way djmanzo holds
@@ -581,16 +916,176 @@ export async function openShell(
               win.__transition = null;
             } else if (cmd === "transition_adjust" && win.__transition) {
               const held = win.__transition as Held;
+              // Moved in frames as well as in beats, because that is what
+              // djmanzo answers with and what the waveform draws. A stub that
+              // moved only the beat index left the mark sitting exactly where
+              // it was, so a drag that worked and a drag that did nothing
+              // looked identical — which is the whole thing this is here to
+              // tell apart.
+              const beats = Number(args.moveBeats ?? 0);
+              const beatFrames =
+                ((held.end_frame as number) - (held.start_frame as number)) /
+                (held.length_beats as number);
+              // A restyle brings the new style's shape with it, the way
+              // `describe_transition` derives it. Carrying the old shape would
+              // leave the panel describing a blend's bass swap under the word
+              // "cut", which is the one thing this row exists to tell you.
+              //
+              // Read out of the answers table rather than off the import at
+              // the top of this file: this function is serialised into the
+              // browser, where a binding from this module's scope is a
+              // ReferenceError that surfaces as an adjustment doing nothing.
+              const restyled = (args.style ?? held.style) as string;
+              const offered = (answers.transition_styles ?? []) as {
+                name: string;
+                shape: unknown;
+              }[];
               win.__transition = {
                 ...held,
                 length_beats: args.lengthBeats ?? held.length_beats,
-                style: args.style ?? held.style,
-                start_beat:
-                  (held.start_beat as number) + Number(args.moveBeats ?? 0),
+                style: restyled,
+                shape:
+                  offered.find((style) => style.name === restyled)?.shape ??
+                  held.shape,
+                start_beat: (held.start_beat as number) + beats,
+                start_frame: (held.start_frame as number) + beats * beatFrames,
+                end_frame: (held.end_frame as number) + beats * beatFrames,
                 edited: true,
               };
             }
             return Promise.resolve(win.__transition ?? null);
+          }
+          // §29's control handles. Answered per deck rather than fixed above,
+          // because the one thing worth proving in a browser is that a menu
+          // opened on deck 2 sends actions about deck 2 — a menu that acted on
+          // whichever deck is the accident a DJ cannot risk mid-mix.
+          if (cmd === "control_handles") {
+            const n = Number(args.deck ?? 1);
+            const of = (verb: string, unity: string, options: [string, string][]) => ({
+              control: verb,
+              reset: `deck ${n} ${verb} ${unity}`,
+              fine: 0.25,
+              options,
+            });
+            return Promise.resolve([
+              of("eq_low", "1", [
+                ["Kill", `deck ${n} eq_low 0`],
+                ["Unity", `deck ${n} eq_low 1`],
+                ["Full", `deck ${n} eq_low 4`],
+              ]),
+              of("eq_mid", "1", [["Unity", `deck ${n} eq_mid 1`]]),
+              of("eq_high", "1", [["Unity", `deck ${n} eq_high 1`]]),
+              of("filter", "0", [
+                ["Off", `deck ${n} filter 0`],
+                ["Low-pass", `deck ${n} filter -0.6`],
+              ]),
+            ]);
+          }
+          // §76's lens: one row per id it is handed, and *only* the ids it is
+          // handed. Answered here rather than fixed above because the whole
+          // claim of the lens is that it is about the rows already on screen —
+          // a fixed answer could not tell that apart from a lens that queried
+          // the library itself.
+          if (cmd === "library_lens") {
+            const ids = (args.tracks ?? []) as string[];
+            return Promise.resolve(
+              ids.map((id, n) => ({
+                track: id,
+                // The first row has an opinion; the second has none, so a test
+                // can prove a blank is drawn as a blank rather than as zero.
+                likely_next: n === 0 ? 0.82 : null,
+                affinity: n === 0 ? 0.55 : null,
+                phase_fit: n === 0 ? 1 : null,
+                risks: n === 0 ? [["keys", "keys clash"]] : [],
+                novelty: n === 0 ? 1 : 0.25,
+                familiarity: n === 0 ? 0 : 1,
+                functions: n === 0 ? ["peak"] : [],
+              })),
+            );
+          }
+          // §81's setting, held between calls the way djmanzo holds it. A
+          // fixed answer would make naming the night look identical to not
+          // naming it, and the whole of what a browser can prove here is that
+          // the press reaches Rust and the answer comes back.
+          if (cmd === "night_setting") {
+            const before = (win.__night ?? {
+              setting: null,
+              density: null,
+              style: null,
+              posture: null,
+              techniques: [],
+            }) as Record<string, unknown>;
+            win.__night = {
+              ...before,
+              // An absent setting never overwrites a named one — the rule
+              // `Library::note_night` enforces, mirrored so the panel's own
+              // refresh cannot look like it is un-saying the DJ's answer.
+              setting: args.setting ?? before.setting,
+              density: args.density ?? before.density,
+            };
+            return Promise.resolve(win.__night);
+          }
+          if (cmd === "night_now") {
+            return Promise.resolve(win.__night ?? answers.night_now);
+          }
+          // A rehearsal, answered per style. Fixed answers would make four
+          // renders of the same pair indistinguishable, and telling them apart
+          // is the whole of what the practice panel is for.
+          if (cmd === "practice_rehearse") {
+            const offered = (answers.transition_styles ?? []) as {
+              name: string;
+              shape: unknown;
+            }[];
+            const held = win.__transition as Record<string, unknown> | null;
+            if (!held) {
+              return Promise.reject(
+                new Error("set a transition up in the pair view first"),
+              );
+            }
+            const style = (args.style ?? held.style) as string;
+            return Promise.resolve({
+              style,
+              path: `/recordings/practice/aaaaaaaa-bbbbbbbb-${style.replace(" ", "-")}.wav`,
+              seconds: 27.5,
+              mix_from: 8,
+              mix_to: 23.5,
+              actions: style === "cut" ? 12 : 964,
+              shape: offered.find((s) => s.name === style)?.shape ?? null,
+            });
+          }
+          // The staged transaction, held between calls the way djmanzo holds
+          // it — the same reasoning as the transition above. Accept and
+          // Modify both change what comes back, and a fixed answer would make
+          // a press that changes the plan look identical to one that does
+          // nothing. What Rust does with the plan is tested in Rust.
+          if (
+            cmd === "staged_prepare" ||
+            cmd === "staged_current" ||
+            cmd === "staged_choose" ||
+            cmd === "staged_reject" ||
+            cmd === "staged_accept"
+          ) {
+            type Plan = { moves: Record<string, unknown>[] } & Record<string, unknown>;
+            if (cmd === "staged_prepare") {
+              win.__staged = JSON.parse(
+                JSON.stringify(answers.staged_prepare ?? null),
+              );
+            } else if (cmd === "staged_reject") {
+              win.__staged = null;
+              return Promise.resolve(null);
+            } else if (cmd === "staged_accept") {
+              const held = win.__staged as Plan | null;
+              const done = (held?.moves ?? [])
+                .filter((m) => m.chosen && m.allowance !== "no")
+                .map((m) => String(m.about));
+              win.__staged = null;
+              return Promise.resolve({ done, stopped: null });
+            } else if (cmd === "staged_choose" && win.__staged) {
+              const held = win.__staged as Plan;
+              const move = held.moves[Number(args.index)];
+              if (move && move.allowance !== "no") move.chosen = Boolean(args.chosen);
+            }
+            return Promise.resolve(win.__staged ?? null);
           }
           return Promise.resolve(answers[cmd] ?? null);
         },
@@ -603,7 +1098,7 @@ export async function openShell(
         convertFileSrc: (path: string) => path,
       };
     },
-    [ANSWERS, state] as [Record<string, unknown>, unknown],
+    [table, state] as [Record<string, unknown>, unknown],
   );
 
   await page.goto(url);

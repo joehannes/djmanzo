@@ -450,6 +450,15 @@ pub enum GlobalParam {
     AutomixBeats,
     /// Which transition style, as an index into `TransitionStyle::ALL`.
     AutomixStyle,
+    /// 1.0 when the automix will perform the mix djmanzo is holding rather
+    /// than one of its own.
+    ///
+    /// [§68](../../../docs/DIRECTIVE.md): the transition object exists so that
+    /// everything performs the *same* mix. Published because the difference is
+    /// one a DJ has to be able to see — "mixes out of the end of the file" and
+    /// "mixes where you said" are different promises, and a panel that showed
+    /// them identically would be hiding the one thing that changed.
+    AutomixHolding,
     /// 1.0 when an input device is attached to the microphone strip.
     ///
     /// Distinct from [`GlobalParam::MicOpen`]: a DJ can arm the channel with no
@@ -884,7 +893,7 @@ impl GlobalParam {
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
     /// readings since.
-    pub const COUNT: usize = 134;
+    pub const COUNT: usize = 135;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -931,6 +940,7 @@ impl GlobalParam {
             AutomixMixing,
             AutomixBeats,
             AutomixStyle,
+            AutomixHolding,
             MicPresent,
             MicOpen,
             MicGainDb,
@@ -1211,6 +1221,7 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::AutomixMixing => "automix_mixing",
         GlobalParam::AutomixBeats => "automix_beats",
         GlobalParam::AutomixStyle => "automix_style",
+        GlobalParam::AutomixHolding => "automix_holding",
         GlobalParam::MicPresent => "mic_present",
         GlobalParam::MicOpen => "mic_open",
         GlobalParam::MicGainDb => "mic_gain_db",

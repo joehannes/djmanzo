@@ -16,6 +16,7 @@
 import { expect, test } from "@playwright/test";
 
 import { errorsThrown, openShell } from "./shell";
+import styles from "./styles.json" with { type: "json" };
 
 /** Open the shell with the pair view docked. */
 async function pairOpen(page: import("@playwright/test").Page) {
@@ -113,6 +114,149 @@ test.describe("the pair view", () => {
       "an adjusted transition does not say it has been adjusted, so a DJ " +
         "cannot tell djmanzo's proposal from their own change to it",
     ).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **§26: the mix point can be grabbed.**
+   *
+   * The directive is blunt about this — "the DJ should be able to physically
+   * grab the thing they are thinking about. Do not force them to edit a
+   * numerical property in a settings panel." The panel's shorten and move
+   * buttons are the settings panel; this is the waveform.
+   *
+   * What is asserted is the round trip, which is the half a type-check cannot
+   * see: a drag on the lane reaches Rust and what comes back is what is drawn.
+   * The arithmetic of where a mix may go is Rust's and is tested there.
+   */
+  test("the mix point can be dragged on the waveform", async ({ page }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+
+    // Not until djmanzo is holding it: a proposal is an opinion, and offering
+    // a handle for one would be offering a control that does nothing.
+    await expect(page.getByRole("slider", { name: /mix in/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+
+    const handle = page.getByRole("slider", { name: /mix in/ });
+    await expect(handle).toBeVisible();
+    const before = await handle.getAttribute("aria-valuenow");
+
+    const box = await handle.boundingBox();
+    expect(box, "the mix point has no handle to grab").not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + 140, box!.y + box!.height / 2, { steps: 8 });
+    await page.mouse.up();
+
+    // Rust answered, and the handle is where Rust put it — which is on a beat,
+    // not where the pointer happened to stop.
+    await expect
+      .poll(async () => handle.getAttribute("aria-valuenow"))
+      .not.toBe(before);
+    await expect(page.locator(`${PAIR} .edited`)).toBeVisible();
+    expect(errorsThrown(page), "the pair view threw while dragging").toEqual([]);
+  });
+
+  /** And the same handle answers the keyboard, because a mouse is not the only hand. */
+  test("the mix point moves with the arrow keys", async ({ page }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+
+    const handle = page.getByRole("slider", { name: /mix in/ });
+    const before = await handle.getAttribute("aria-valuenow");
+    await handle.focus();
+    await page.keyboard.press("ArrowRight");
+
+    await expect
+      .poll(async () => handle.getAttribute("aria-valuenow"))
+      .not.toBe(before);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **§68's stem, EQ and FX plans: what the style will do, before it is
+   * pressed.**
+   *
+   * A row of buttons labelled "blend", "echo", "vocal drop" tells a DJ what
+   * the style is called, not what it does to their two records. The plans come
+   * from `dj_app::shape`, which is the table the automix performs -- so what
+   * this row says is what will happen, and a restyle changes it.
+   */
+  test("says what the style will do, and changes it when restyled", async ({
+    page,
+  }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+
+    // The blend swaps the lows: that is the whole of what makes it a blend.
+    const does = page.getByTestId("pair-does");
+    await expect(does).toContainText("low EQ handed over");
+
+    // A cut has no overlap for an EQ plan to happen over, and says so rather
+    // than going quiet.
+    await page.locator(`${PAIR} button`, { hasText: /^cut$/ }).click();
+    await expect(does).toContainText("no overlap");
+    await expect(does).not.toContainText("low EQ");
+
+    expect(errorsThrown(page), "the pair view threw while restyling").toEqual([]);
+  });
+
+  /**
+   * **Every style djmanzo can perform is a style the panel offers.**
+   *
+   * `vocal drop` was in the vocabulary and performed by the automix while no
+   * panel offered it, because the list of styles was hand-written on this side
+   * and nothing made it wrong when a style was added. It is served from Rust
+   * now; this checks the list that arrives is the whole list.
+   */
+  test("offers every style djmanzo has", async ({ page }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+
+    const group = page.locator(`${PAIR} [aria-label="How it is done"] button`);
+    await expect(group).toHaveCount(styles.length);
+    for (const style of styles) {
+      await expect(
+        group.filter({ hasText: new RegExp(`^${style.name}$`) }),
+        `no ${style.name} button`,
+      ).toHaveCount(1);
+    }
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **§68: the automix performs the mix you set up.**
+   *
+   * The transition object exists so that everything performs the *same* mix.
+   * Before this the automix decided its own moment, so a DJ who spent a minute
+   * adjusting a mix point and then switched automix on watched it be ignored.
+   * The arithmetic is Rust's and is tested in `dj_app::automix`; what a browser
+   * can prove is that the panel stops claiming to be in charge of a handover
+   * it is not deciding.
+   */
+  test("the automix says when it is performing the held mix", async ({
+    page,
+  }) => {
+    await openShell(page, "/", {
+      automix: {
+        enabled: true,
+        mixing: false,
+        beats: 16,
+        style: "blend",
+        holding: true,
+      },
+    });
+    await page.getByRole("button", { name: "Booth", exact: true }).click();
+
+    const panel = page.locator("section.automix");
+    await expect(panel.locator(".holding")).toContainText(
+      "Performing the mix you set up",
+    );
+    // And the controls that no longer decide this handover say so.
+    await expect(panel.locator(".styles.deferred")).toHaveCount(1);
     expect(errorsThrown(page)).toEqual([]);
   });
 });

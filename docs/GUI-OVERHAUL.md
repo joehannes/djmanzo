@@ -365,6 +365,14 @@ type DJContext = {
 already drives contextual expression. This is an expansion of a field that
 ships, not a new subsystem — which is what makes it affordable.
 
+**Five of the eight are real now.** `sessionPhase` comes from
+`dj_core::ContextEngine` with a certainty and a stated basis; `occasion` is the
+DJ's; `attentionBudget` is derived from both in `cockpit::Attention` and
+published beside them; `audienceContext` is RoomSense; `performanceHealth` is
+the frame monitor. `musicContext`, `hardwareContext` and `djBehaviorContext`
+are the three nothing gathers yet, and a field that is always empty is a
+promise — so they are absent rather than present and null.
+
 Autonomy and confidence stay **orthogonal** (§9 of the directive):
 
 | | low autonomy | high autonomy |
@@ -373,7 +381,11 @@ Autonomy and confidence stay **orthogonal** (§9 of the directive):
 | **low confidence** | show uncertainty / do nothing | **invalid — never allowed** |
 
 That bottom-right cell being unrepresentable is a type-level obligation, not a
-runtime check.
+runtime check. **It is discharged**: `dj_assistant::Warrant::Act` and `::Mix`
+carry a `Grounds` whose constructor is private to its module and refuses a
+certainty below `Fair`, so the value cannot be written down anywhere in the
+workspace. A runtime check would be one `if` away from being forgotten in the
+seventh place that needs it; this is zero places.
 
 ## 14. AI integration model
 
@@ -678,8 +690,8 @@ Vertical slices, each shippable, each green before the next:
 | ~~**2**~~ | ADR-0008 W3 + dock manager. *New shell, old functionality.* | **done** — the deck renders from the widget tree; surfaces dock; `ui/e2e/docks.spec.ts` enforces reachability |
 | 🟡 **3** | performance cockpit: decks, waveform, mixer, rail, mission bar | **the gate is met** — every performing control is on screen at 1280×800, master strip and deck channel strip both pinned, enforced by `ui/e2e/budget.spec.ts` with no `test.fail()` left. The context rail and the mission bar are still to come. |
 | 🟡 **4** | library: table, cards, set flow, pair view, prepare, rail | one gesture Library→Prepare→Deck. Prepare, the rail, Set Flow and the **pair view** ship as surfaces of their own; the compact cards and the wider performance table do not. The pair view reads §68's transition object, so the seam a DJ adjusts there is the one djmanzo holds |
-| **5** | intelligence: context engine, transactions, takeover, promotion | posture matrix enforced by test |
-| **6** | room: baseline, causal, Room HUD | HUD visible while browsing |
+| ~~**5**~~ | intelligence: context engine, transactions, takeover, promotion | **done** — the posture matrix is §72's own table in `dj_assistant::authority`, asserted against the directive verbatim and enforced as the second of three gates. Transactions ship (`dj_app::staged`): the whole next transition with Accept, Modify and Reject, and a refused move shown greyed rather than dropped. Takeover was already per-parameter. The context engine (`dj_core::ContextEngine`) is the common input to the attention budget, the theme's energy and the autopilot. Promotion ships as `dj_app::uiop` — a second closed vocabulary, generated from the surfaces that exist |
+
 | **7** | theming: packs, adaptation, Watershed as a world | no flicker; hysteresis tested |
 | **8** | specialist workspaces | each opens and is usable |
 

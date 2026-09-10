@@ -29,6 +29,7 @@
   import Crates, { type Selection } from "./Crates.svelte";
   import IconButton from "./controls/IconButton.svelte";
   import { setAside } from "./prepare.svelte";
+  import Cards from "./Cards.svelte";
   import {
     addToPlaylist,
     checkFilter,
@@ -38,6 +39,7 @@
     findDuplicates,
     forgetTrackPath,
     formatTime,
+    libraryLens,
     importLibrary,
     similarTo,
     type Suggestion,
@@ -56,6 +58,7 @@
     smartPlaylistTracks,
     type Duplicate,
     type LibraryStatus,
+    type LensRow,
     type LibraryTrack,
     type PlayRecord,
     type Playlist,
@@ -126,6 +129,92 @@
       likeThisTitle = tracks.find((t) => t.id === id)?.title ?? "that track";
       likeThis = id;
       error = "";
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /**
+   * Which of §20's representations is on screen.
+   *
+   * Two of the four live here because they are two views of *this* selection:
+   * the same crate, the same search, the same "more like this" — §20 asks for
+   * "several representations of the same underlying collection", and a card
+   * grid that could not follow the crate you clicked would be a different
+   * panel wearing the browser's name. Set Flow and the pair view are surfaces
+   * of their own because they are about a *set* rather than a collection.
+   *
+   * Not stored. It is a way of looking, changed in a second and changed back,
+   * and a browser that opened in cards because of something done last Tuesday
+   * would be a browser somebody has to fix before they can search.
+   */
+  let showing = $state<"table" | "cards">("table");
+
+  /**
+   * §76's AI lens.
+   *
+   * Off by default, and off is the *standard* view — not a stripped one. The
+   * directive's closing line for §76 is "this must never replace the standard
+   * library view", and the shape of this keeps that true rather than promising
+   * it: the lens is a second call about the rows already on screen, joined by
+   * track id. Nothing about the query, the sort or the columns djmanzo has
+   * always shown depends on it.
+   */
+  let lens = $state(false);
+  let lensed = $state<Record<string, LensRow>>({});
+
+  /**
+   * Fetched for the rows that are showing, when the lens is on.
+   *
+   * Keyed on the ids rather than on the array, so a re-sort of the same
+   * records does not re-ask: the lens is about the records, and sorting them
+   * differently does not change djmanzo's opinion of any of them.
+   */
+  let lensKey = $state("");
+
+  $effect(() => {
+    if (!lens) {
+      lensed = {};
+      lensKey = "";
+      return;
+    }
+    const ids = sorted.map((t) => t.id);
+    const key = ids.join(",");
+    if (key === lensKey || ids.length === 0) return;
+    lensKey = key;
+    void libraryLens(ids, 1)
+      .then((rows) => {
+        const next: Record<string, LensRow> = {};
+        for (const row of rows) next[row.track] = row;
+        lensed = next;
+      })
+      .catch(() => {
+        lensed = {};
+      });
+  });
+
+  /**
+   * A fraction as two digits, or a blank.
+   *
+   * The blank is the point: `null` means djmanzo has nothing to say, and a `0`
+   * in that cell would read as "bad" rather than "no opinion".
+   */
+  function fraction(value: number | null | undefined): string {
+    return value == null ? "" : value.toFixed(2);
+  }
+
+  /**
+   * §20's "favorite", which djmanzo spells as a five-star rating.
+   *
+   * Not a flag of its own: ratings already exist and are already editable in
+   * bulk below, and a second boolean meaning "I like this" would be a parallel
+   * opinion about one question — exactly the "awkward parallel systems" §21
+   * warns about, one section over.
+   */
+  async function toggleFavourite(track: LibraryTrack) {
+    try {
+      await editTracks([track.id], { rating: (track.rating ?? 0) >= 5 ? 0 : 5 });
+      await refresh();
     } catch (e) {
       error = String(e);
     }
@@ -665,6 +754,42 @@
     {:else if selection.kind === "duplicates"}
       <span class="viewing">Tracks whose audio is in more than one place.</span>
     {/if}
+    <!--
+      §20's two representations of this selection. A pair of buttons rather
+      than a dropdown: it is switched constantly while digging, and a menu that
+      has to be opened to change a view is a menu nobody changes.
+    -->
+    <span class="views" role="group" aria-label="How to show the collection">
+      <button
+        class:on={showing === "table"}
+        aria-pressed={showing === "table"}
+        title="A row per record, dense and sortable"
+        onclick={() => (showing = "table")}
+      >Table</button>
+      <button
+        class:on={showing === "cards"}
+        aria-pressed={showing === "cards"}
+        title="Sleeves, when the artwork is worth seeing"
+        onclick={() => (showing = "cards")}
+      >Cards</button>
+    </span>
+    <!--
+      §76's AI lens. A toggle beside the view switch rather than inside it,
+      because it is not a third view: it *adds columns to* whichever of the two
+      is showing. §76 closes with "this must never replace the standard library
+      view", and the way that is kept true is that the lens is a separate call
+      about the rows already on screen — turning it off leaves the table
+      exactly as it was, because the lens was never inside it.
+    -->
+    <span class="views" role="group" aria-label="djmanzo's opinion">
+      <button
+        class:on={lens}
+        aria-pressed={lens}
+        data-testid="lens-toggle"
+        title="Add djmanzo's opinion beside each record. The standard view is unchanged underneath."
+        onclick={() => (lens = !lens)}
+      >AI lens</button>
+    </span>
     <IconButton icon="fa-solid fa-folder-plus" title="Add folder…" onClick={addFolder} disabled={busy} />
     <IconButton icon="fa-solid fa-repeat" title={busy ? "Scanning…" : "Rescan"} onClick={rescan} disabled={busy || !status?.folders.length} />
     <IconButton icon="fa-solid fa-file-import" title="Import a rekordbox, Traktor or iTunes library export" onClick={() => importFrom(false)} disabled={busy} />
@@ -1024,6 +1149,21 @@
         <button onclick={() => (likeThis = null)}>show everything</button>
       </p>
     {/if}
+    {#if showing === "cards"}
+      <Cards
+        tracks={sorted}
+        {enabled}
+        {deckNumbers}
+        {loading}
+        why={likeThis ? alikeWhy : {}}
+        favourite={likeThis}
+        onDeck={(track, deck) => void toDeck(track, deck)}
+        onAside={setAside}
+        onAlike={(id) => void showAlike(id)}
+        onFavourite={(track) => void toggleFavourite(track)}
+        onDrag={startDrag}
+      />
+    {:else}
     <div class="table-scroll">
       <table>
         <thead>
@@ -1040,6 +1180,26 @@
                 </button>
               </th>
             {/each}
+            {#if lens}
+              <!--
+                §76's columns, added to the right of the ones djmanzo has
+                always shown. Never in place of them, and never reordering
+                them: a DJ who turns the lens on must still find Title where
+                Title was.
+
+                Crowd suitability is one of §76's eight and is deliberately
+                absent — it needs to know what the room is doing, which needs a
+                camera or a microphone in it. Named in the header's title
+                rather than silently dropped, so a DJ counting the columns they
+                were promised knows which one is missing and why.
+              -->
+              <th class="lens" title="How well it follows what is playing">Next</th>
+              <th class="lens" title="How much you play records like it">Yours</th>
+              <th class="lens" title="Whether it is for this part of the night">Phase</th>
+              <th class="lens" title="What could go wrong in the mix">Risk</th>
+              <th class="lens" title="New to your sets, and how well worn">New / worn</th>
+              <th class="lens" title="What you said it is for">For</th>
+            {/if}
             <th class="load-heading">Load</th>
           </tr>
         </thead>
@@ -1089,6 +1249,31 @@
               <td class="mono">{track.bpm != null ? track.bpm.toFixed(1) : ""}</td>
               <td class="mono">{track.key ?? ""}</td>
               <td class="mono">{formatTime(track.duration_seconds)}</td>
+              {#if lens}
+                <!--
+                  A blank where djmanzo has nothing to say, never a zero. An
+                  empty cell reads as "no opinion"; a 0 reads as "bad", and the
+                  two are different answers.
+                -->
+                <td class="lens mono">{fraction(lensed[track.id]?.likely_next)}</td>
+                <td class="lens mono">{fraction(lensed[track.id]?.affinity)}</td>
+                <td class="lens mono">{fraction(lensed[track.id]?.phase_fit)}</td>
+                <td class="lens risks">
+                  {#each lensed[track.id]?.risks ?? [] as [slug, words] (slug)}
+                    <span class="risk" title={words}>{slug}</span>
+                  {/each}
+                </td>
+                <td class="lens mono" title="New to your sets / how well worn">
+                  {#if lensed[track.id]}
+                    {fraction(lensed[track.id].novelty)} / {fraction(lensed[track.id].familiarity)}
+                  {/if}
+                </td>
+                <td class="lens for">
+                  {#each lensed[track.id]?.functions ?? [] as tag (tag)}
+                    <span class="tag">{tag}</span>
+                  {/each}
+                </td>
+              {/if}
               <td class="load">
                 <!--
                   Adding to a playlist is a select rather than a drag. Drag is
@@ -1148,10 +1333,17 @@
                   >−</button>
                 {/if}
                 {#each deckNumbers as deck (deck)}
+                  <!--
+                    Labelled for the same reason the card's is: the visible
+                    text is a bare number, which is enough for an eye that can
+                    see the row it is in and nothing at all for a screen
+                    reader.
+                  -->
                   <button
                     onclick={() => toDeck(track, deck)}
                     disabled={!enabled || loading === track.path}
                     title="Load onto deck {deck}"
+                    aria-label="Load {track.title} onto deck {deck}"
                   >
                     {loading === track.path ? "…" : deck}
                   </button>
@@ -1162,12 +1354,74 @@
         </tbody>
       </table>
     </div>
+    {/if}
   {/if}
 </div>
 
 </div>
 
 <style>
+  /* §76's columns. Visually quieter than the ones djmanzo has always shown:
+     they are an opinion beside the record, not a fact about it. */
+  .lens {
+    color: var(--muted);
+    font-size: 0.72rem;
+    white-space: nowrap;
+    /* The headings ran together without this — "Time Next YoursPhaseRisk" —
+       which is what a column with no padding looks like beside five others. */
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  th.lens {
+    font-weight: 500;
+  }
+
+  /* A rule where djmanzo's opinion begins, so the eye can tell the columns
+     that are facts about the record from the ones that are a view of it. */
+  th.lens:first-of-type,
+  td.lens:first-of-type {
+    border-left: 1px solid var(--line);
+  }
+
+  .risks,
+  .for {
+    display: table-cell;
+  }
+
+  .risk,
+  .tag {
+    display: inline-block;
+    margin-right: 0.2rem;
+    padding: 0 0.28rem;
+    border-radius: 3px;
+    font-size: 0.62rem;
+    border: 1px solid var(--line);
+  }
+
+  /* A risk is the one thing here a DJ should notice without looking for it. */
+  .risk {
+    border-color: color-mix(in srgb, var(--warn) 50%, var(--line));
+    color: var(--warn);
+  }
+
+  /* The view switch. Small, and beside the search rather than above it: it is
+     about what you are looking at, which is what the search box is too. */
+  .views {
+    display: inline-flex;
+    gap: 0.15rem;
+  }
+
+  .views button {
+    font-size: 0.7rem;
+    padding: 0 0.4rem;
+  }
+
+  .views button.on {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
   /*
     Sidebar and rows side by side, both scrolling inside themselves so the
     controls above stay reachable however long either gets.

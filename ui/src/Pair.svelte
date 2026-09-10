@@ -32,9 +32,11 @@
    * are in either record. A "vocal clash" drawn from two tracks both having a
    * vocal somewhere would be a guess with a confident face on it.
    *
-   * **Candidate techniques**, beyond the five styles offered below. The
-   * planner picks one and the DJ can take another; ranking all five per pair
-   * needs a scorer that does not exist yet.
+   * **Candidate techniques**, beyond the styles offered below. The planner
+   * picks one and the DJ can take another; ranking them per pair needs a
+   * scorer that does not exist yet. What is drawn instead is what each one
+   * *does* — §68's stem, EQ and FX plans, from the same table the automix
+   * performs — so the choice is at least an informed one.
    */
   import { untrack } from "svelte";
   import IconButton from "./controls/IconButton.svelte";
@@ -47,11 +49,11 @@
     transitionClear,
     transitionCurrent,
     transitionReplan,
-    TRANSITION_STYLES,
-    TRANSITION_HELP,
+    transitionStyles,
     type DeckState,
     type PairSide,
     type Transition,
+    type TransitionStyleInfo,
   } from "./api";
 
   let {
@@ -142,8 +144,40 @@
   const arm = () => ask(() => transitionArm(from, to));
   const replan = () => ask(() => transitionReplan());
   const move = (beats: number) => ask(() => transitionAdjust({ moveBeats: beats }));
+
+  /**
+   * A mark was dragged on the outgoing lane. §26.
+   *
+   * **Converted to beats, not to a frame.** A mix point between two beats is a
+   * mix point that is not on the grid, and djmanzo's whole answer here is
+   * about the grid — so a drag says "this many beats later" and the snapping
+   * falls out of the arithmetic rather than being a rule applied afterwards.
+   *
+   * The beat length comes from the transition itself: the mix spans
+   * `length_beats` between two known frames, so no tempo has to be inferred
+   * from a deck. Nothing here works out what the move *means*; `transition_adjust`
+   * re-derives the reasons, and what comes back is what gets drawn — a drag
+   * the planner snaps elsewhere snaps visibly.
+   */
+  function dragged(mix: Transition, label: string, frame: number) {
+    if (label !== "mix in") return;
+    const beatFrames = (mix.end_frame - mix.start_frame) / mix.length_beats;
+    if (!Number.isFinite(beatFrames) || beatFrames <= 0) return;
+    const beats = Math.round((frame - mix.start_frame) / beatFrames);
+    if (beats !== 0) void move(beats);
+  }
   const lengthen = (beats: number) => ask(() => transitionAdjust({ lengthBeats: beats }));
   const restyle = (style: string) => ask(() => transitionAdjust({ style }));
+
+  /**
+   * The styles on offer, from Rust — see `transitionStyles`. The *current*
+   * style's description comes from `pair.shape` instead, so it is the held
+   * transition's own answer rather than a lookup that could miss.
+   */
+  let styles: TransitionStyleInfo[] = $state([]);
+  transitionStyles()
+    .then((offered) => (styles = offered))
+    .catch(() => (styles = []));
 
   async function forget() {
     await transitionClear().catch(() => {});
@@ -247,10 +281,20 @@
             framesPerPixel={laneZoom(side, index, mix)}
             marks={index === 0
               ? [
-                  { frame: mix.start_frame, label: "mix in" },
+                  {
+                    frame: mix.start_frame,
+                    label: "mix in",
+                    // Grabbable only once djmanzo is *holding* the mix. A
+                    // proposal is an opinion, and `transition_adjust` refuses
+                    // to move one — so a handle that invited a drag before
+                    // Set up would be a control that does nothing, which is
+                    // the same rule the move buttons beside it already follow.
+                    draggable: mix.armed,
+                  },
                   { frame: mix.end_frame, label: "out" },
                 ]
               : []}
+            onMoveMark={(label, frame) => dragged(mix, label, frame)}
           />
         </div>
       {/if}
@@ -378,16 +422,29 @@
           </div>
           <div class="group" role="group" aria-label="How it is done">
             <span class="label">Style</span>
-            {#each TRANSITION_STYLES as style (style)}
+            {#each styles as style (style.name)}
               <button
-                class:on={pair.style === style}
-                onclick={() => restyle(style)}
+                class:on={pair.style === style.name}
+                onclick={() => restyle(style.name)}
                 disabled={!enabled || !pair.armed}
-                title={TRANSITION_HELP[style]}
-              >{style}</button>
+                title={style.shape.does.join(". ")}
+              >{style.name}</button>
             {/each}
           </div>
         </div>
+        <!--
+          What the style will do, before it is pressed.
+
+          §68's stem, EQ and FX plans, in words — and the same words the
+          automix performs, because both read `dj_app::shape`. The seam above
+          says *where* the mix is; this says *what happens in it*, which is the
+          half a DJ otherwise has to know from the style's name.
+        -->
+        <ul class="does" data-testid="pair-does">
+          {#each pair.shape.does as line (line)}
+            <li>{line}</li>
+          {/each}
+        </ul>
         {#if !pair.armed}
           <p class="hint">Set it up to adjust it. Until then this is an opinion, and nothing is held.</p>
         {/if}
@@ -652,6 +709,24 @@
   }
 
   .empty,
+  /* What the style does, under the row that chooses it. */
+  .does {
+    list-style: none;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.6rem;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  .does li::before {
+    content: "\2022";
+    margin-right: 0.35rem;
+    opacity: 0.5;
+  }
+
   .hint,
   .error {
     font-size: 0.72rem;

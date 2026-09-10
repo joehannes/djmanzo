@@ -31,7 +31,14 @@
    * because it is served from localhost. A USB webcam on a long cable is the
    * honest workaround, and it is a good one.
    */
-  import { roomForget, roomRead, roomSaw, type RoomRead } from "./api";
+  import {
+    roomForget,
+    roomHistory,
+    roomRead,
+    roomSaw,
+    type RoomHistory,
+    type RoomRead,
+  } from "./api";
   import { onMount } from "svelte";
 
   interface Props {
@@ -236,11 +243,27 @@
     }
   }
 
+  /**
+   * §37, and it is not on the poll.
+   *
+   * What has happened on *previous* nights cannot change while a DJ is
+   * looking at it — it is written at the end of a mix and read across whole
+   * nights — so asking every three seconds would be a database query a
+   * thousand times an hour for an answer that moves once.
+   */
+  let history = $state<RoomHistory[]>([]);
+  const said = $derived(
+    history.map((row) => row.says).filter((says): says is string => says !== null),
+  );
+
   onMount(() => stop);
 
   $effect(() => {
     if (!enabled) return;
     void refresh();
+    void roomHistory()
+      .then((rows) => (history = rows))
+      .catch(() => (history = []));
     const poll = setInterval(() => void refresh(), 3000);
     return () => clearInterval(poll);
   });
@@ -306,6 +329,50 @@
       </div>
     </dl>
     <!--
+      §35's baseline, as a table: the current activity once, and where it sits
+      against each reach it can be placed in. It is the numbers above given the
+      only thing that makes them mean anything, which is why it sits directly
+      under them.
+
+      A reach with nothing behind it is an em dash rather than a blank or a
+      zero — "we have never been here before" is an answer, and the two things
+      it must not look like are "usual" and "lowest".
+    -->
+    {#if read.baseline.length > 0}
+      <table class="baseline">
+        <thead>
+          <tr>
+            <th scope="col">Against</th>
+            <th scope="col">Now</th>
+            <th scope="col">Last 20 min</th>
+            <th scope="col">Tonight</th>
+            <th scope="col"
+              >{read.phase
+                ? `At ${read.phase.replace(/_/g, " ")}`
+                : "Similar phases"}</th
+            >
+          </tr>
+        </thead>
+        <tbody>
+          {#each read.baseline as row (row.sense)}
+            <tr>
+              <th scope="row">{row.sense}</th>
+              <td>{Math.round(row.now * 100)}%</td>
+              {#each ["recent", "tonight", "phase"] as reach (reach)}
+                {@const found = row.against.find((a) => a.horizon === reach)}
+                <td
+                  class="reach"
+                  class:notable={found?.notable}
+                  data-against={found?.against ?? "unknown"}
+                  title={found ? `${row.sense} ${found.against} ${found.than}` : "Not enough of the night at this reach to compare against"}
+                >{found ? found.against : "—"}</td>
+              {/each}
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+    <!--
       Said next to the numbers because the numbers invite the wrong reading:
       40% light is not "dim", it is 40% of what this lens reports, and the only
       true statement is a comparison with the same lens earlier tonight.
@@ -316,6 +383,31 @@
       says compares the room with itself earlier tonight.
       {#if read.recent > 0}({read.recent} readings in the last three minutes.){/if}
     </p>
+  {/if}
+
+  <!--
+    §37: what has happened on previous nights, when there have been enough of
+    them to say. Below the numbers because it is a different kind of claim —
+    everything above is tonight, measured; this is a tally over nights, and it
+    reads as history rather than as a reading.
+
+    Never a causal sentence, and the panel does not add one: the wording is
+    Rust's, it says what happened *after*, and the count is in it so a DJ can
+    weigh it themselves.
+  -->
+  {#if said.length > 0}
+    <div class="history">
+      <h4>On nights like this one</h4>
+      <ul>
+        {#each said as sentence (sentence)}
+          <li>{sentence}</li>
+        {/each}
+      </ul>
+      <p class="note">
+        What the room did afterwards, not what the mix did to it — nothing here
+        can tell those apart.
+      </p>
+    </div>
   {/if}
 
   {#if looking && haveCamera}
@@ -434,6 +526,81 @@
   .numbers div {
     display: flex;
     gap: 0.35rem;
+  }
+
+  /*
+    §35's baseline table. Deliberately plain: it is a reference a DJ glances
+    at, not a chart, and every cell is one word that already says everything
+    it means.
+  */
+  .baseline {
+    border-collapse: collapse;
+    font-size: 0.75em;
+    width: 100%;
+  }
+
+  .baseline th,
+  .baseline td {
+    padding: 0.15rem 0.4rem 0.15rem 0;
+    text-align: left;
+    font-weight: inherit;
+    white-space: nowrap;
+  }
+
+  /* §37's tally over previous nights, which is not tonight's reading. */
+  .history {
+    border-top: 1px solid var(--line, #2a2a2a);
+    padding-top: 0.4rem;
+  }
+
+  .history h4 {
+    margin: 0 0 0.2rem;
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  .history ul {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 0.85em;
+  }
+
+  /*
+    No special handling of the width, and that is a finding rather than an
+    omission. Five nowrap columns in a side dock looked like a table that
+    would push its own panel sideways, so wrapping headers and
+    `table-layout: fixed` went in with a test to prove it. The test passed
+    with every fix removed, at 1280 and at 900: the side dock's own floor is
+    wider than this table's natural width, so the overflow cannot happen and
+    neither fix was doing anything. Both came out again, with the test.
+  */
+  .baseline thead th {
+    color: var(--muted);
+    font-size: 0.9em;
+  }
+
+  .baseline tbody th {
+    text-transform: capitalize;
+  }
+
+  /*
+    The usual is not news, so it is not coloured. Only a reach with something
+    to say takes the eye — the same rule the sentences above follow, applied
+    to the table they came from.
+  */
+  .reach {
+    color: var(--muted);
+  }
+
+  .reach.notable {
+    color: var(--fg);
+  }
+
+  .reach.notable[data-against="highest"],
+  .reach.notable[data-against="higher"] {
+    color: var(--warn);
   }
 
   .numbers dt {

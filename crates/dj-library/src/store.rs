@@ -48,6 +48,105 @@ pub enum LibraryError {
 
 type Result<T> = std::result::Result<T, LibraryError>;
 
+/// One transition the DJ kept, read back.
+///
+/// §24's "confidence-weighted learned relationship", and the weight is a
+/// count: how many times this exact pair was worth keeping. A count rather
+/// than a score because it is a fact rather than a judgement — anything that
+/// turns it into a number between nought and one has made a decision, and the
+/// place to make that decision is where it is used.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeptPair {
+    pub into: TrackId,
+    pub kept: u32,
+    /// What the mix was, the last time it was kept.
+    pub style: Option<String>,
+    pub beats: Option<f64>,
+}
+
+/// What has been read off tonight's action log so far.
+///
+/// Every field optional and every one meaning "nothing to say about this yet"
+/// rather than "nothing happened": a night ten minutes old has no commonest
+/// transition style because it has had no transitions, and writing a guess
+/// there would put it in a profile.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NightRead<'a> {
+    pub density: Option<&'a str>,
+    pub style: Option<&'a str>,
+    pub posture: Option<&'a str>,
+    pub techniques: Option<&'a str>,
+}
+
+fn read_night(row: &rusqlite::Row<'_>) -> rusqlite::Result<Night> {
+    Ok(Night {
+        session_id: row.get(0)?,
+        setting: row.get(1)?,
+        began_at: row.get(2)?,
+        density: row.get(3)?,
+        style: row.get(4)?,
+        posture: row.get(5)?,
+        techniques: row.get(6)?,
+    })
+}
+
+/// One night, and what kind of night it was.
+///
+/// §81's conditional profile rests on this: without knowing which nights were
+/// weddings, "how you play at weddings" is a question with no rows behind it.
+///
+/// The four optional figures were read off the action log while it existed —
+/// see the `nights` table's note. `None` is a real answer for every one of
+/// them: a night that ended before djmanzo could read anything off it has an
+/// absence, not a confident zero.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Night {
+    pub session_id: String,
+    /// A `dj_app::setting::Setting` slug. Kept as text here because the
+    /// library does not know about settings — it stores what it is given, and
+    /// the layer that has the type is the layer that parses it.
+    pub setting: String,
+    pub began_at: i64,
+    pub density: Option<String>,
+    pub style: Option<String>,
+    pub posture: Option<String>,
+    /// `dj_app::signals::Did` slugs, comma-separated, as they were stored.
+    pub techniques: Option<String>,
+}
+
+/// §37: what the room did after one mix, as it goes in.
+///
+/// Borrowed rather than owned, like [`NightRead`]: the caller has these as
+/// slices of things it already holds, and a write is not a reason to clone
+/// four strings.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MixResponse<'a> {
+    pub session_id: &'a str,
+    /// Seconds into the set the mix began. Part of the key.
+    pub at_seconds: i64,
+    /// A `dj_core::action::TransitionStyle` name.
+    pub style: &'a str,
+    /// A `dj_app::setting::Setting` slug — what "here" means in §37.
+    pub setting: &'a str,
+    /// `light`, `movement` or `loudness`.
+    pub sense: &'a str,
+    /// The minute before the mix, and the twelve-to-thirty seconds after it.
+    pub before: f32,
+    pub after: f32,
+}
+
+/// The same thing coming back out.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredResponse {
+    pub session_id: String,
+    pub at_seconds: i64,
+    pub style: String,
+    pub setting: String,
+    pub sense: String,
+    pub before: f32,
+    pub after: f32,
+}
+
 /// The library database.
 ///
 /// One connection behind a mutex rather than a pool. SQLite serialises writes
@@ -1120,6 +1219,302 @@ impl Library {
                 .into_iter()
                 .filter(|f| found.contains(f))
                 .collect())
+        })
+    }
+
+    /// Say what kind of night this one is, and keep what has been read off it.
+    ///
+    /// §81. Called when the DJ names the setting and again as the night goes,
+    /// because the four figures are read off the action log and the log does
+    /// not outlive the run that made it — see the `nights` table.
+    ///
+    /// The setting is never overwritten by a later call that does not name
+    /// one: a refresh of tonight's figures must not quietly un-say that this
+    /// was a wedding. `began_at` is likewise kept from the first call, because
+    /// it is when the night started, not when it was last written.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn note_night(
+        &self,
+        session_id: &str,
+        setting: Option<&str>,
+        read: NightRead<'_>,
+    ) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64);
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO nights (session_id, setting, began_at, density, style, posture, techniques)
+                 VALUES (?1, COALESCE(?2, 'open-format'), ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(session_id) DO UPDATE SET
+                     setting    = COALESCE(?2, setting),
+                     density    = COALESCE(?4, density),
+                     style      = COALESCE(?5, style),
+                     posture    = COALESCE(?6, posture),
+                     techniques = COALESCE(?7, techniques)",
+                rusqlite::params![
+                    session_id,
+                    setting,
+                    now,
+                    read.density,
+                    read.style,
+                    read.posture,
+                    read.techniques,
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// One night, if djmanzo has been told anything about it.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn night(&self, session_id: &str) -> Result<Option<Night>> {
+        self.with(|conn| {
+            let found = conn
+                .query_row(
+                    "SELECT session_id, setting, began_at, density, style, posture, techniques
+                     FROM nights WHERE session_id = ?1",
+                    [session_id],
+                    read_night,
+                )
+                .optional()?;
+            Ok(found)
+        })
+    }
+
+    /// Every night of one setting, most recent first.
+    ///
+    /// The query a profile is built from, asked once per profile rather than
+    /// once per night.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn nights_in(&self, setting: &str) -> Result<Vec<Night>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT session_id, setting, began_at, density, style, posture, techniques
+                 FROM nights WHERE setting = ?1 ORDER BY began_at DESC",
+            )?;
+            let rows = stmt.query_map([setting], read_night)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    /// §37: what the room did after one mix, kept for the nights to come.
+    ///
+    /// **Replaces rather than appends.** The key is the mix, so re-reading the
+    /// same handover — which happens whenever a recorder is restarted or the
+    /// log re-walked — corrects the row instead of voting twice with it.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn note_response(&self, response: &MixResponse<'_>) -> Result<()> {
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO mix_responses
+                     (session_id, at_seconds, style, setting, sense, before, after)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(session_id, at_seconds, sense) DO UPDATE SET
+                     style   = ?3,
+                     setting = ?4,
+                     before  = ?6,
+                     after   = ?7",
+                rusqlite::params![
+                    response.session_id,
+                    response.at_seconds,
+                    response.style,
+                    response.setting,
+                    response.sense,
+                    f64::from(response.before),
+                    f64::from(response.after),
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// Every response ever recorded, oldest night first.
+    ///
+    /// Deliberately unaggregated. The rule for what counts as *usually* —
+    /// how many nights, how much agreement, a night counting once however
+    /// many mixes it made — lives in `dj_app::response` where it can be read
+    /// and argued with, and putting a `GROUP BY` here would make it a second
+    /// rule expressed in SQL that nothing tests.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn responses(&self) -> Result<Vec<StoredResponse>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT session_id, at_seconds, style, setting, sense, before, after
+                 FROM mix_responses ORDER BY session_id, at_seconds",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(StoredResponse {
+                    session_id: row.get(0)?,
+                    at_seconds: row.get(1)?,
+                    style: row.get(2)?,
+                    setting: row.get(3)?,
+                    sense: row.get(4)?,
+                    #[allow(clippy::cast_possible_truncation)]
+                    before: row.get::<_, f64>(5)? as f32,
+                    #[allow(clippy::cast_possible_truncation)]
+                    after: row.get::<_, f64>(6)? as f32,
+                })
+            })?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    /// What was played, by genre, across the nights of one setting.
+    ///
+    /// §81's "genre weights", **derived rather than stored**: the plays are
+    /// already in `history` and the genres are already on the tracks, so a
+    /// stored weight would be a second copy that drifts the first time a DJ
+    /// re-tags a record. Commonest first; records with no genre are left out
+    /// rather than counted as a genre called nothing.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn genres_in(&self, setting: &str) -> Result<Vec<(String, u32)>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.genre, count(*) AS plays
+                 FROM history h
+                 JOIN nights n ON n.session_id = h.session_id
+                 JOIN tracks t ON t.id = h.track_id
+                 WHERE n.setting = ?1 AND t.genre IS NOT NULL AND t.genre <> ''
+                 GROUP BY t.genre
+                 ORDER BY plays DESC, t.genre ASC",
+            )?;
+            let rows = stmt.query_map([setting], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            let mut out = Vec::new();
+            for row in rows {
+                let (genre, plays) = row?;
+                out.push((genre, u32::try_from(plays).unwrap_or(u32::MAX)));
+            }
+            Ok(out)
+        })
+    }
+
+    /// Keep a transition: two records the DJ put together and wants back.
+    ///
+    /// §24 names this gesture — "Save this transition" — and it is the only
+    /// thing written here. Every mix a night contained is already derivable
+    /// from the action log (`dj_app::mixes`), so recording those too would be
+    /// a second copy that eventually disagrees with the log it came from. What
+    /// cannot be derived is that the DJ thought one was worth keeping.
+    ///
+    /// Keeping the same pair again strengthens it rather than duplicating it,
+    /// and updates what the mix was — the most recent time you kept it is the
+    /// version you meant.
+    ///
+    /// # Errors
+    /// Whatever the database says. A pair naming a track the library does not
+    /// have is refused by the foreign key rather than stored as a dangling
+    /// relationship nothing can resolve.
+    pub fn keep_pair(
+        &self,
+        from: TrackId,
+        into: TrackId,
+        style: Option<&str>,
+        beats: Option<f64>,
+    ) -> Result<u32> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64);
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO kept_pairs (from_id, into_id, kept, style, beats, last_at)
+                 VALUES (?1, ?2, 1, ?3, ?4, ?5)
+                 ON CONFLICT(from_id, into_id) DO UPDATE SET
+                     kept = kept + 1,
+                     style = excluded.style,
+                     beats = excluded.beats,
+                     last_at = excluded.last_at",
+                rusqlite::params![from.to_hex(), into.to_hex(), style, beats, now],
+            )?;
+            conn.query_row(
+                "SELECT kept FROM kept_pairs WHERE from_id = ?1 AND into_id = ?2",
+                rusqlite::params![from.to_hex(), into.to_hex()],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|kept| u32::try_from(kept).unwrap_or(u32::MAX))
+            .map_err(LibraryError::from)
+        })
+    }
+
+    /// How many times this exact transition has been kept.
+    ///
+    /// Directional: A into B says nothing about B into A. Zero for a pair
+    /// nobody has kept, which is most of them.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn pair_kept(&self, from: TrackId, into: TrackId) -> Result<u32> {
+        self.with(|conn| {
+            let kept: Option<i64> = conn
+                .query_row(
+                    "SELECT kept FROM kept_pairs WHERE from_id = ?1 AND into_id = ?2",
+                    rusqlite::params![from.to_hex(), into.to_hex()],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            Ok(kept.map_or(0, |k| u32::try_from(k).unwrap_or(u32::MAX)))
+        })
+    }
+
+    /// What the DJ has kept going *into*, after this record.
+    ///
+    /// Most-kept first, then most recent — the two things that make one of
+    /// these worth offering ahead of another.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn kept_after(&self, from: TrackId) -> Result<Vec<KeptPair>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT into_id, kept, style, beats FROM kept_pairs
+                 WHERE from_id = ?1 ORDER BY kept DESC, last_at DESC",
+            )?;
+            let rows = stmt.query_map([from.to_hex()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<f64>>(3)?,
+                ))
+            })?;
+            let mut found = Vec::new();
+            for row in rows {
+                let (hex, kept, style, beats) = row?;
+                // A row whose id will not parse is a corrupt one, and skipping
+                // it is right: the alternative is refusing to answer "what have
+                // I put after this" at all because of one bad byte.
+                if let Some(into) = TrackId::from_hex(&hex) {
+                    found.push(KeptPair {
+                        into,
+                        kept: u32::try_from(kept).unwrap_or(u32::MAX),
+                        style,
+                        beats,
+                    });
+                }
+            }
+            Ok(found)
         })
     }
 
@@ -2253,6 +2648,307 @@ mod tests {
 
     fn library() -> Library {
         Library::in_memory().unwrap()
+    }
+
+    // -- nights and settings (§81) ---------------------------------------------
+
+    fn genred(byte: u8, title: &str, genre: &str) -> LibraryTrack {
+        let mut t = track(byte, title, "someone");
+        t.tags.genre = Some(genre.to_owned());
+        t
+    }
+
+    /// **A refresh must not un-say what kind of night this is.**
+    ///
+    /// The four figures are read off the action log as the night goes, so this
+    /// row is written many times. The setting is written *once*, by a DJ. A
+    /// refresh that passed `None` and overwrote it would quietly move a whole
+    /// night into the open-format profile halfway through — and the DJ would
+    /// have no reason to look, because they said "wedding" an hour ago and it
+    /// was accepted.
+    #[test]
+    fn refreshing_a_night_keeps_the_setting_it_was_given() {
+        let lib = library();
+        lib.note_night("n1", Some("wedding"), NightRead::default())
+            .unwrap();
+        let began = lib.night("n1").unwrap().unwrap().began_at;
+
+        lib.note_night(
+            "n1",
+            None,
+            NightRead {
+                density: Some("calm"),
+                style: Some("blend"),
+                ..NightRead::default()
+            },
+        )
+        .unwrap();
+
+        let night = lib.night("n1").unwrap().unwrap();
+        assert_eq!(night.setting, "wedding", "a refresh moved the night");
+        assert_eq!(night.began_at, began, "a refresh restarted the night");
+        assert_eq!(night.density.as_deref(), Some("calm"));
+        assert_eq!(night.style.as_deref(), Some("blend"));
+    }
+
+    /// And a figure already read is not wiped by a later read that has nothing
+    /// to say. A night whose last transition was an hour ago still had one.
+    #[test]
+    fn a_read_with_nothing_in_it_wipes_nothing() {
+        let lib = library();
+        lib.note_night(
+            "n1",
+            Some("club"),
+            NightRead {
+                style: Some("blend"),
+                techniques: Some("looped,eq-moved"),
+                ..NightRead::default()
+            },
+        )
+        .unwrap();
+        lib.note_night("n1", None, NightRead::default()).unwrap();
+
+        let night = lib.night("n1").unwrap().unwrap();
+        assert_eq!(night.style.as_deref(), Some("blend"));
+        assert_eq!(night.techniques.as_deref(), Some("looped,eq-moved"));
+    }
+
+    /// The DJ can correct themselves: naming a setting again does change it.
+    /// It is only an *absent* setting that leaves the old one alone.
+    #[test]
+    fn naming_a_different_setting_does_move_the_night() {
+        let lib = library();
+        lib.note_night("n1", Some("club"), NightRead::default())
+            .unwrap();
+        lib.note_night("n1", Some("wedding"), NightRead::default())
+            .unwrap();
+        assert_eq!(lib.night("n1").unwrap().unwrap().setting, "wedding");
+    }
+
+    /// **Genre weights are derived, and they are per setting.**
+    ///
+    /// The whole of §81 in one query: the same collection played at a wedding
+    /// and at a club produces two different answers, because the nights are
+    /// told apart. A universal profile would answer both with the average of
+    /// them, which describes neither evening.
+    #[test]
+    fn genres_are_counted_per_setting_rather_than_over_everything() {
+        let lib = library();
+        lib.upsert_track(&genred(1, "one", "Bachata")).unwrap();
+        lib.upsert_track(&genred(2, "two", "Techno")).unwrap();
+        lib.note_night("wed", Some("wedding"), NightRead::default())
+            .unwrap();
+        lib.note_night("clb", Some("club"), NightRead::default())
+            .unwrap();
+
+        lib.record_play(id(1), 1, Some("wed")).unwrap();
+        lib.record_play(id(1), 2, Some("wed")).unwrap();
+        lib.record_play(id(2), 3, Some("wed")).unwrap();
+        lib.record_play(id(2), 4, Some("clb")).unwrap();
+
+        assert_eq!(
+            lib.genres_in("wedding").unwrap(),
+            vec![("Bachata".to_owned(), 2), ("Techno".to_owned(), 1)]
+        );
+        assert_eq!(
+            lib.genres_in("club").unwrap(),
+            vec![("Techno".to_owned(), 1)],
+            "a club night was counted with the weddings"
+        );
+        assert!(lib.genres_in("beach").unwrap().is_empty());
+    }
+
+    /// A play from a night djmanzo was never told about counts towards no
+    /// profile at all, rather than towards the default one. It is the same
+    /// refusal `Setting::parse` makes: unknown is not open-format.
+    #[test]
+    fn a_play_from_an_unnamed_night_belongs_to_no_setting() {
+        let lib = library();
+        lib.upsert_track(&genred(1, "one", "Bachata")).unwrap();
+        lib.record_play(id(1), 1, Some("never-named")).unwrap();
+        for setting in [
+            "club",
+            "wedding",
+            "beach",
+            "latin",
+            "practice",
+            "open-format",
+        ] {
+            assert!(
+                lib.genres_in(setting).unwrap().is_empty(),
+                "an unnamed night was counted as {setting}"
+            );
+        }
+    }
+
+    /// Every night of a setting comes back, newest first, and nights of other
+    /// settings do not.
+    #[test]
+    fn nights_in_a_setting_are_the_nights_of_that_setting() {
+        let lib = library();
+        lib.note_night("a", Some("club"), NightRead::default())
+            .unwrap();
+        lib.note_night("b", Some("wedding"), NightRead::default())
+            .unwrap();
+        lib.note_night("c", Some("club"), NightRead::default())
+            .unwrap();
+
+        let club = lib.nights_in("club").unwrap();
+        assert_eq!(club.len(), 2);
+        assert!(club.iter().all(|n| n.setting == "club"));
+        assert_eq!(lib.nights_in("wedding").unwrap().len(), 1);
+        assert!(lib.nights_in("beach").unwrap().is_empty());
+    }
+
+    // -- room responses (§37) --------------------------------------------------
+
+    fn response<'a>(session: &'a str, at: i64, style: &'a str) -> MixResponse<'a> {
+        MixResponse {
+            session_id: session,
+            at_seconds: at,
+            style,
+            setting: "club",
+            sense: "movement",
+            before: 0.2,
+            after: 0.8,
+        }
+    }
+
+    /// **Re-reading the same mix corrects the row rather than voting twice.**
+    ///
+    /// The property that makes the recorder safe to run more than once — on a
+    /// restart, or over a log walked again — and the failure it stops is
+    /// arithmetic rather than cosmetic: `dj_app::response` counts nights, and
+    /// a duplicated mix is a night whose evidence quietly doubled.
+    #[test]
+    fn a_mix_read_twice_is_one_row() {
+        let lib = library();
+        lib.note_response(&response("a", 300, "blend")).unwrap();
+        lib.note_response(&MixResponse {
+            after: 0.3,
+            style: "cut",
+            ..response("a", 300, "blend")
+        })
+        .unwrap();
+
+        let all = lib.responses().unwrap();
+        assert_eq!(all.len(), 1, "the same mix was stored twice: {all:?}");
+        assert!((all[0].after - 0.3).abs() < 1e-6, "the correction was lost");
+        assert_eq!(all[0].style, "cut");
+    }
+
+    /// Two mixes in one night, and two senses of one mix, are separate rows —
+    /// the first because a night has more than one mix in it, the second
+    /// because the floor and the noise can disagree about the same moment.
+    #[test]
+    fn a_night_keeps_every_mix_and_every_sense_apart() {
+        let lib = library();
+        lib.note_response(&response("a", 300, "blend")).unwrap();
+        lib.note_response(&response("a", 600, "cut")).unwrap();
+        lib.note_response(&MixResponse {
+            sense: "loudness",
+            ..response("a", 300, "blend")
+        })
+        .unwrap();
+        lib.note_response(&response("b", 300, "blend")).unwrap();
+
+        let all = lib.responses().unwrap();
+        assert_eq!(all.len(), 4, "{all:?}");
+        assert_eq!(all.iter().filter(|r| r.session_id == "a").count(), 3);
+    }
+
+    /// A response survives a night whose setting was never named, because the
+    /// setting it carries is its own.
+    #[test]
+    fn a_response_needs_no_night_row_behind_it() {
+        let lib = library();
+        lib.note_response(&response("never-named", 300, "blend"))
+            .unwrap();
+        assert_eq!(lib.responses().unwrap().len(), 1);
+        assert!(lib.nights_in("club").unwrap().is_empty());
+    }
+
+    // -- kept pairs (§24) ------------------------------------------------------
+
+    /// **Keeping a transition remembers it, and keeping it again strengthens
+    /// it.**
+    ///
+    /// §24's "Save this transition", and its "confidence-weighted" is a count:
+    /// the second time you keep the same pair you are saying something
+    /// stronger about it, not creating a duplicate.
+    #[test]
+    fn keeping_the_same_pair_twice_strengthens_it_rather_than_duplicating_it() {
+        let lib = library();
+        lib.upsert_track(&track(1, "one", "a")).unwrap();
+        lib.upsert_track(&track(2, "two", "b")).unwrap();
+
+        assert_eq!(lib.pair_kept(id(1), id(2)).unwrap(), 0, "nothing kept yet");
+        assert_eq!(
+            lib.keep_pair(id(1), id(2), Some("blend"), Some(32.0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            lib.keep_pair(id(1), id(2), Some("echo"), Some(16.0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(lib.pair_kept(id(1), id(2)).unwrap(), 2);
+
+        let kept = lib.kept_after(id(1)).unwrap();
+        assert_eq!(kept.len(), 1, "one pair became two rows");
+        // The most recent keep is the version meant.
+        assert_eq!(kept[0].style.as_deref(), Some("echo"));
+        assert_eq!(kept[0].beats, Some(16.0));
+    }
+
+    /// **A into B says nothing about B into A.**
+    ///
+    /// A bachata that lands beautifully after a merengue is not the same claim
+    /// in reverse, and a DJ who kept one direction has said nothing about the
+    /// other. Storing it undirected would put words in their mouth.
+    #[test]
+    fn a_kept_pair_is_directional() {
+        let lib = library();
+        lib.upsert_track(&track(1, "one", "a")).unwrap();
+        lib.upsert_track(&track(2, "two", "b")).unwrap();
+        lib.keep_pair(id(1), id(2), None, None).unwrap();
+
+        assert_eq!(lib.pair_kept(id(1), id(2)).unwrap(), 1);
+        assert_eq!(lib.pair_kept(id(2), id(1)).unwrap(), 0);
+        assert_eq!(lib.kept_after(id(2)).unwrap(), vec![]);
+    }
+
+    /// The strongest first, so a rail offering one of these offers the one
+    /// most worth offering.
+    #[test]
+    fn what_you_kept_most_comes_back_first() {
+        let lib = library();
+        for byte in 1..=3u8 {
+            lib.upsert_track(&track(byte, &format!("t{byte}"), "a"))
+                .unwrap();
+        }
+        lib.keep_pair(id(1), id(2), None, None).unwrap();
+        lib.keep_pair(id(1), id(3), None, None).unwrap();
+        lib.keep_pair(id(1), id(3), None, None).unwrap();
+
+        let kept = lib.kept_after(id(1)).unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].into, id(3));
+        assert_eq!(kept[0].kept, 2);
+        assert_eq!(kept[1].into, id(2));
+    }
+
+    /// **A pair naming a record the library does not have is refused.**
+    ///
+    /// Not stored as a dangling relationship nothing can resolve — which would
+    /// come back later as a suggestion for a record that is not there.
+    #[test]
+    fn a_pair_about_a_record_the_library_lacks_is_refused() {
+        let lib = library();
+        lib.upsert_track(&track(1, "one", "a")).unwrap();
+        assert!(lib.keep_pair(id(1), id(9), None, None).is_err());
+        assert_eq!(lib.kept_after(id(1)).unwrap(), vec![]);
     }
 
     // -- learned taste ---------------------------------------------------------

@@ -11,6 +11,13 @@
     },
     "session": null
   },
+  "attention": {
+    "promoted_controls": 8,
+    "suggestions": 5,
+    "notices": 3,
+    "reflow": true,
+    "motion": "normal"
+  },
   "decks": [
     {
       "number": 1,
@@ -1021,7 +1028,8 @@
       "enabled": false,
       "mixing": false,
       "beats": 16.0,
-      "style": "blend"
+      "style": "blend",
+      "holding": false
     },
     "clap": {
       "loaded": false,

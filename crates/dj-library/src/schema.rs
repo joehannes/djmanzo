@@ -95,6 +95,18 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 10,
         sql: MIGRATION_10,
     },
+    Migration {
+        version: 11,
+        sql: MIGRATION_11,
+    },
+    Migration {
+        version: 12,
+        sql: MIGRATION_12,
+    },
+    Migration {
+        version: 13,
+        sql: MIGRATION_13,
+    },
 ];
 
 /// The initial schema.
@@ -603,6 +615,146 @@ CREATE TABLE track_functions (
 CREATE INDEX track_functions_by_function ON track_functions(function, track_id);
 "#;
 
+const MIGRATION_11: &str = r#"
+-- Two records a DJ put together, and kept.
+--
+-- §24 asks for learned track *relationships* rather than only track metadata,
+-- and names the gesture: "Save this transition." This is where a saved one
+-- goes.
+--
+-- **Only what was kept, never what merely happened.** Every mix a night
+-- contained is already derivable from the action log — see `dj_app::mixes` —
+-- so storing those here would be a second copy that eventually disagrees with
+-- the log it came from. What cannot be derived is that the DJ thought one was
+-- worth remembering, and that is exactly what this table holds.
+--
+-- Directional, and the primary key says so: A into B is not B into A. A
+-- bachata that lands beautifully after a merengue is not the same claim in
+-- reverse, and a DJ who kept one direction has said nothing about the other.
+CREATE TABLE kept_pairs (
+    from_id TEXT    NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    into_id TEXT    NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    -- How many times it has been kept. Keeping the same pair again is a
+    -- stronger claim about it, not a duplicate row.
+    kept    INTEGER NOT NULL DEFAULT 1,
+    -- What the mix was, the last time it was kept: the style djmanzo read off
+    -- the log, and how long it ran in beats. Nullable because a mix whose
+    -- record has left the library has no tempo to count beats against, and a
+    -- confident zero would be worse than an absence.
+    style   TEXT,
+    beats   REAL,
+    -- Unix seconds, so "the ones you kept lately" is answerable and a sweep
+    -- can tell an old habit from a current one.
+    last_at INTEGER NOT NULL,
+    PRIMARY KEY (from_id, into_id)
+);
+
+-- The question this is read for is "what have I put after this record", which
+-- the primary key already answers. This is the other direction: "what led into
+-- this one", for a DJ working backwards from a record they want to arrive at.
+CREATE INDEX kept_pairs_by_into ON kept_pairs(into_id, from_id);
+"#;
+
+/// §81: what kind of night each one was.
+///
+/// The `history` table has carried a `session_id` since the first schema,
+/// with a comment saying it groups a night's plays "without needing a sessions
+/// table yet". This is that table, and §81 is why it is needed now: the
+/// directive asks djmanzo to keep *conditional* profiles of its DJ rather than
+/// one universal one, and a profile per setting is only possible if each
+/// night's plays can be told apart by setting.
+///
+/// # Only what cannot be derived
+///
+/// The rule `kept_pairs` states, applied again. Genre weights, what was played
+/// and when are all derivable by joining `history` to `tracks`, so none of them
+/// is stored here.
+///
+/// What *is* stored is the setting, because nothing can derive it. djmanzo
+/// reads the arc of a night from the music and is right to -- energy and tempo
+/// are in the signal. Nothing in the signal says *wedding*: a room dancing at
+/// 128 BPM is a club or a wedding according to facts no microphone has. So the
+/// setting is told, and it is told once per night.
+///
+/// # And the four figures that do not survive the night
+///
+/// §81 also lists density, technique preferences, transition style and
+/// automation tolerance. Every one of those is derivable *from the action log*
+/// -- and the action log does not outlive the run of the application that made
+/// it, unless a DJ saves it by hand. So they are written here as the night
+/// goes, from the log, while the log still exists. That is not a second copy
+/// of anything: it is the only trace that survives, and a profile assembled
+/// from nothing is a profile that says nothing.
+///
+/// Nullable for exactly that reason. A night that ended before djmanzo could
+/// read anything off it has an absence rather than a confident zero.
+const MIGRATION_12: &str = r#"
+CREATE TABLE nights (
+    -- The application's own id for a run, the same one `history` groups by.
+    session_id TEXT    PRIMARY KEY,
+    -- One of `dj_app::setting::Setting`'s slugs. Not free text: "Wedding",
+    -- "wedding" and "weddings" would be three profiles a DJ meant as one, each
+    -- with a third of the evidence and none of them able to say anything.
+    setting    TEXT    NOT NULL,
+    -- Unix seconds.
+    began_at   INTEGER NOT NULL,
+    -- Read off the action log while it existed. See the note above.
+    --
+    -- `density` is the interface band the DJ actually ran at, `style` the
+    -- commonest transition of the night, `posture` how much the assistant was
+    -- allowed to do, and `techniques` the gestures that generalised, as a
+    -- comma-separated list of `dj_app::signals::Did` slugs.
+    density    TEXT,
+    style      TEXT,
+    posture    TEXT,
+    techniques TEXT
+);
+
+-- "Every wedding" is the question a profile is built from, and it is asked
+-- once per profile rather than per night.
+CREATE INDEX nights_by_setting ON nights(setting, began_at);
+"#;
+
+/// §37: what the room did after a mix.
+///
+/// **The one thing in this project that has to be written down.** Everything
+/// else about a night is derived from the action log, and this cannot be:
+/// room readings live for twenty minutes in memory and the log does not
+/// outlive the run that made it, so "this has happened on previous nights"
+/// has no source to be derived from. Written as narrowly as the claim allows
+/// — one row per mix per sense, four small values, no time series — so that
+/// what is stored is the *finding* rather than the sensor feed.
+///
+/// No foreign key to `nights`: a response is worth keeping from a run whose
+/// setting the DJ never got round to naming, and a cascade would delete a
+/// night's findings if the row it hangs off were ever rebuilt.
+const MIGRATION_13: &str = r#"
+CREATE TABLE mix_responses (
+    -- The run this happened in. One night is one vote in `dj_app::response`,
+    -- however many mixes it contained, so this is what that groups by.
+    session_id TEXT    NOT NULL,
+    -- Seconds into the set, so two mixes in one night are two rows and a
+    -- re-read of the same mix replaces rather than duplicates.
+    at_seconds INTEGER NOT NULL,
+    -- A `dj_core::action::TransitionStyle` name, and a `dj_app::setting`
+    -- slug. Denormalised on purpose: the setting is what "here" means in
+    -- §37's sentence, and a response has to keep the setting the night was
+    -- called at the time even if the DJ renames it later.
+    style      TEXT    NOT NULL,
+    setting    TEXT    NOT NULL,
+    -- `light`, `movement` or `loudness`.
+    sense      TEXT    NOT NULL,
+    -- The minute before the mix, and the twelve-to-thirty seconds after it.
+    before     REAL    NOT NULL,
+    after      REAL    NOT NULL,
+    PRIMARY KEY (session_id, at_seconds, sense)
+);
+
+-- "After a blend at a club night" is the question every reading of this table
+-- asks, and it is asked once per answer rather than per row.
+CREATE INDEX mix_responses_by_setting ON mix_responses(setting, style, sense);
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -688,6 +840,12 @@ mod tests {
             "track_paths",
             "tracks_fts",
             "notes",
+            "lyrics",
+            "melodies",
+            "track_functions",
+            "kept_pairs",
+            "nights",
+            "mix_responses",
         ] {
             let found: i64 = conn
                 .query_row(

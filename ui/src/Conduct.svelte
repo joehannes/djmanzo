@@ -26,17 +26,22 @@
   import {
     assistantApplyPack,
     learnedTaste,
+    learnedProfiles,
+    learnedTendencies,
     assistantConduct,
     assistantHandBack,
     assistantPacks,
     assistantSetOccasion,
     assistantSetPosture,
     assistantTakeOver,
+    stagedPrepare,
     OCCASIONS,
     POSTURES,
     POSTURE_HELP,
     type AssistantPack,
     type LearnedTaste,
+    type Profile,
+    type Tendency,
     type Conduct,
   } from "./api";
   import { onMount } from "svelte";
@@ -46,6 +51,19 @@
   let { enabled }: { enabled: boolean } = $props();
 
   let conduct = $state<Conduct | null>(null);
+  /** Why the last press produced no plan, or empty when it produced one. */
+  let nothingToStage = $state("");
+
+  async function prepare() {
+    try {
+      const plan = await stagedPrepare();
+      nothingToStage = plan
+        ? ""
+        : (conduct?.because ?? "there is nowhere for a record to go");
+    } catch (problem) {
+      nothingToStage = String(problem);
+    }
+  }
   let packs = $state<AssistantPack[]>([]);
   let error = $state<string | null>(null);
   /**
@@ -56,6 +74,27 @@
    * number that changes about as often as a season.
    */
   let taste = $state<LearnedTaste | null>(null);
+  /**
+   * §14's signals read through §13's rule.
+   *
+   * Re-read rather than read once, unlike the taste above: taste comes from
+   * years of plays and does not move during a set, while this is about
+   * *tonight* and changes as the night does.
+   */
+  let tendencies = $state<Tendency[]>([]);
+  /**
+   * §81's conditional profiles: how this DJ plays, per kind of night.
+   *
+   * Beside the tendencies because they answer the same question — what has
+   * djmanzo worked out about you — at a different scale. A tendency is about
+   * one gesture in one part of a night; a profile is about a whole kind of
+   * night. Two panels for that would be two places to look.
+   *
+   * Read on the same tick, and it can change mid-set: naming tonight as a
+   * wedding can be the third wedding, which is the night a profile first
+   * exists.
+   */
+  let profiles = $state<Profile[]>([]);
 
   /**
    * How often the panel re-reads what the assistant would do.
@@ -73,6 +112,21 @@
       error = null;
     } catch (e) {
       error = String(e);
+    }
+    // On the same tick as the conduct, because it is about *tonight* and the
+    // night moves while the panel is open — unlike the taste above, which is
+    // years of plays and is read once. It walks the log to answer, which is
+    // why it rides an existing two-second tick rather than getting one of its
+    // own.
+    try {
+      tendencies = await learnedTendencies();
+    } catch {
+      tendencies = [];
+    }
+    try {
+      profiles = await learnedProfiles();
+    } catch {
+      profiles = [];
     }
   }
 
@@ -153,6 +207,29 @@
     <span class="step">{conduct?.next_step ?? "…"}</span>
     <span class="because">{conduct?.because ?? ""}</span>
   </div>
+  <!--
+    §44. Asking for the whole transition rather than watching one step at a
+    time: the plan appears in the strip under the top bar with Accept, Modify
+    and Reject, which is where a decision about the next three minutes belongs
+    — not inside a panel that has to be open for it to be seen.
+  -->
+  <button
+    class="prepare"
+    disabled={!enabled}
+    onclick={prepare}
+    title="Stage the whole next transition — load, cue, trim, sync and the mix — without doing any of it"
+  >
+    Prepare the next transition
+  </button>
+  <!--
+    Found by driving it: a press that produced no plan produced nothing at all
+    on screen, which reads as a broken button rather than as "there is nothing
+    to stage". The reason is the autopilot's own, so this cannot disagree with
+    the line above it.
+  -->
+  {#if nothingToStage}
+    <p class="hint">Nothing to stage — {nothingToStage}</p>
+  {/if}
 
   <h3>How much it does</h3>
   <div class="ladder" role="radiogroup" aria-label="How much the assistant does">
@@ -234,6 +311,55 @@
       {/each}
       <span class="from">from {taste.plays} plays</span>
     </p>
+  {/if}
+
+  <!--
+    §14's signals, read through §13's rule.
+
+    Beside "what you reach for" rather than in a panel of its own, because both
+    are djmanzo saying what it has worked out about this DJ and two homes for
+    that is two things to go and check. The difference is the subject: the one
+    above is about records, this is about hands.
+
+    Every line names the part of the night it is about, because §13's whole
+    point is that a gesture without its context is a preference waiting to be
+    learned wrongly. Nothing here is assembled in the browser — the sentence
+    arrives written, so the interface cannot make a claim Rust would not.
+  -->
+  {#if tendencies.length > 0}
+    <h3>What you do, and when</h3>
+    <ul class="tendencies">
+      {#each tendencies as tendency (tendency.gesture + tendency.phase)}
+        <li>{tendency.says}</li>
+      {/each}
+    </ul>
+  {/if}
+
+  <!--
+    §81: not one profile of this DJ but one per kind of night.
+
+    A DJ who plays bachata at weddings and techno at clubs, averaged, is a DJ
+    who plays neither — and the average carries twice the evidence of either
+    real answer, so a system offering it would offer it strongly. So these are
+    separate, and each one says how many nights it rests on: three nights and
+    thirty are not the same claim.
+
+    Absent until there is enough. A setting under the threshold produces no
+    profile at all rather than an empty one, because an empty profile reads as
+    "djmanzo knows nothing about you here" when the truth is "not yet".
+  -->
+  {#if profiles.length > 0}
+    <h3>How you play, by the kind of night</h3>
+    <ul class="profiles" data-testid="profiles">
+      {#each profiles as profile (profile.setting)}
+        <li>
+          <span class="says">{profile.says}</span>
+          {#if profile.techniques.length > 0}
+            <span class="how">{profile.techniques.join(", ")}</span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
   {/if}
 
   {#if error}
@@ -347,6 +473,43 @@
      never accidental. */
   .ladder button.acting.active {
     border-color: var(--warn, #d97706);
+  }
+
+  .tendencies {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+
+  .profiles {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+
+  .profiles li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  /* The gestures, under the sentence rather than inside it: the sentence is
+     Rust's and must not be extended here. */
+  .profiles .how {
+    font-size: 0.68rem;
+    opacity: 0.75;
   }
 
   .taste {

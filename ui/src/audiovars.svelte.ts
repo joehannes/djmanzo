@@ -27,7 +27,7 @@
  * |---|---|
  * | `--audio-loudness` | overall level, RMS |
  * | `--audio-bass` … `--audio-treble` | the four bands |
- * | `--audio-energy` | how hard the room is going, or loudness until M9 |
+ * | `--audio-energy` | how hard the night is going, or loudness until it is read |
  * | `--audio-hue` | a colour derived from energy, in degrees |
  */
 import type { SessionContext } from "./api";
@@ -84,8 +84,12 @@ export function publishAudio(context: SessionContext | undefined, target?: Style
 
   const audio = context?.audio;
   const bands = audio?.bands ?? [0, 0, 0, 0];
-  // `session` is null until M9 reads the room, so energy falls back to the
-  // loudness that is actually measured. See `dj_core::context`.
+  // `session` is null until `dj_core::ContextEngine` has something to go on —
+  // an occasion the DJ chose, or six minutes of music to compare the last few
+  // minutes against — so energy falls back to the loudness that is actually
+  // measured. It steps every four seconds once there is a reading, because by
+  // then it is a judgement about the night rather than a level: the four bands
+  // and `--audio-loudness` are what stay live. See `dj_core::context`.
   const energy = context?.session?.energy ?? audio?.loudness ?? 0;
 
   const values = [

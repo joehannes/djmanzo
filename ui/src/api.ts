@@ -464,23 +464,32 @@ export interface ClapState {
   bypassed: boolean;
 }
 
-export type TransitionStyle = "cut" | "fade" | "blend" | "echo";
+export type TransitionStyle = "cut" | "fade" | "blend" | "echo" | "vocal drop";
 
-/** Every style, in the order the interface offers them. */
-export const TRANSITION_STYLES: readonly TransitionStyle[] = [
-  "blend",
-  "fade",
-  "cut",
-  "echo",
-];
+/**
+ * Every style, and what each one does, from Rust.
+ *
+ * Asked rather than written here. The list used to be a constant on this side
+ * and the descriptions a second constant beside it — which is how `vocal drop`
+ * came to be in the vocabulary, performed by the automix, and offered by no
+ * panel: nothing made the interface's copy of the list wrong when a style was
+ * added. `dj_app::shape` is the table the automix performs, so the buttons
+ * that offer a style now read the same table.
+ *
+ * The answer is a fixed table, so it is fetched once and shared. A failure is
+ * not cached: the backend not being there yet is not an answer.
+ */
+let offered: Promise<TransitionStyleInfo[]> | null = null;
 
-/** What each style does, in the words a DJ would use. */
-export const TRANSITION_HELP: Record<TransitionStyle, string> = {
-  blend: "Crossfade with the outgoing bass pulled out. What a DJ does by hand.",
-  fade: "A straight crossfade.",
-  cut: "One stops, the next starts. Right for unrelated songs.",
-  echo: "An echo over the outgoing track so it dissolves rather than ends.",
-};
+export function transitionStyles(): Promise<TransitionStyleInfo[]> {
+  offered ??= invoke<TransitionStyleInfo[]>("transition_styles").catch(
+    (error) => {
+      offered = null;
+      throw error;
+    },
+  );
+  return offered;
+}
 
 /** The automix, when the DJ has handed the mix over. */
 export interface AutomixState {
@@ -490,6 +499,15 @@ export interface AutomixState {
   /** How long a transition lasts, in beats. */
   beats: number;
   style: TransitionStyle;
+  /**
+   * True when it will perform the mix djmanzo is holding rather than one of
+   * its own.
+   *
+   * The difference is one you have to be able to see: without a held mix the
+   * handover is "the end of the file minus the transition", which is wrong for
+   * any record with applause on the end. With one, somebody decided.
+   */
+  holding: boolean;
 }
 
 /** The microphone / line input strip. */
@@ -608,17 +626,35 @@ export interface AudioMetrics {
   bands: [number, number, number, number];
 }
 
+/** How much to believe a reading of the night. Ordered, quietest first. */
+export type Certainty = "unsure" | "fair" | "sure";
+
+/** What produced a phase. See `dj_core::context::Basis`. */
+export type Basis = "nothing" | "declared" | "measured" | "agreed" | "disputed";
+
+/** Which way the evidence pulls away from what the DJ declared. */
+export type Drift = "hotter" | "cooler";
+
 /**
- * Somebody's reading of the room.
+ * djmanzo's reading of the night.
  *
- * Only ever present once something has actually read it, which is M9. Until
- * then `SessionContext.session` is null and a theme shows its neutral
+ * Present only once `dj_core::ContextEngine` has something to go on: an
+ * occasion the DJ chose, or six minutes of music to compare the last few
+ * minutes against. Until then it is null and a theme shows its neutral
  * treatment rather than guessing.
  */
 export interface SessionRead {
   phase: SessionPhase;
+  /**
+   * 0..=1. Where the music sits in the whole night's own range, or — before
+   * there is a range — the measured loudness. `certainty` says which.
+   */
   energy: number;
   environment: EnvironmentContext;
+  certainty: Certainty;
+  basis: Basis;
+  /** Set only when `basis` is `disputed`. */
+  drift: Drift | null;
 }
 
 export interface SessionContext {
@@ -626,8 +662,27 @@ export interface SessionContext {
   session: SessionRead | null;
 }
 
+/** How still the interface may be asked to hold. */
+export type Motion = "none" | "low" | "normal" | "high";
+
+/**
+ * How much the interface may ask of the DJ right now.
+ *
+ * Derived in Rust from the same context every other consumer reads, so no
+ * panel has to decide for itself whether now is a moment to interrupt.
+ */
+export interface Attention {
+  promoted_controls: number;
+  suggestions: number;
+  notices: number;
+  /** False during a mix, always. Nothing may move while somebody reaches. */
+  reflow: boolean;
+  motion: Motion;
+}
+
 export interface Snapshot {
   context: SessionContext;
+  attention: Attention;
   decks: DeckState[];
   master: MasterState;
 }
@@ -1031,6 +1086,24 @@ export interface WaveformInfo {
    * waveform after a load, and a beat-grid edit would appear to do nothing.
    */
   epoch: number;
+  /**
+   * §25's mix-out layer: the stretch in which a mix out of this record can
+   * begin, from `plan::mix_out`.
+   *
+   * `null` for an empty deck, a record with no grid, and one too short to be
+   * left — the waveform draws no band for any of them. It arrives here rather
+   * than on the snapshot because it is a fact about the record: it changes on
+   * a load and on an analysis, which are the two events this call already
+   * answers.
+   */
+  mix_out: MixOutInfo | null;
+}
+
+export interface MixOutInfo {
+  opens_frame: number;
+  closes_frame: number;
+  /** Whether the window opens on a phrase boundary or merely on a beat. */
+  on_phrase: boolean;
 }
 
 export const waveformInfo = (deck: number) =>
@@ -1184,6 +1257,24 @@ export function logoUrl(version: number): string {
     : `brand://localhost/${path}`;
 }
 
+/**
+ * URL for a track's cover art.
+ *
+ * §20's card view is the one that needs it. Served as an image on its own
+ * scheme rather than pushed through IPC for the same reason waveform tiles
+ * are: a grid asks for fifty at once, and base64 through the bridge would cost
+ * a third more bytes, block the main thread decoding them, and defeat the
+ * browser's own image cache.
+ *
+ * A track with no cover answers 404, which an `<img>` reports as an error —
+ * the card draws its fallback on that rather than asking first.
+ */
+export function artUrl(trackId: string): string {
+  return navigator.userAgent.includes("Windows")
+    ? `http://art.localhost/${trackId}`
+    : `art://localhost/${trackId}`;
+}
+
 // -- the library -----------------------------------------------------------
 
 /** One track as the browser shows it. Pre-formatted in Rust — see the DTO. */
@@ -1275,9 +1366,12 @@ export interface PaletteEntry {
   label: string;
   /** One line, from the vocabulary's own help. */
   about: string;
-  /** `"action"` to send it through the bus, `"surface"` to open a panel. */
-  kind: "action" | "surface";
-  /** The action text, or the surface name. */
+  /**
+   * How to carry it out: `"action"` through the bus, `"surface"` to open a
+   * panel, `"ui"` for one of §41's interface operations.
+   */
+  kind: "action" | "surface" | "ui";
+  /** The action text, the surface name, or the interface operation. */
   run: string;
 }
 
@@ -1315,6 +1409,26 @@ export interface Suggestion {
   summary: string;
   /** 0 to 1 — how much of the achievable score this candidate got. */
   confidence: number;
+  /**
+   * §22's *estimated transition type*: what the mix into this record would be.
+   *
+   * The planner's own answer — the same call §27's ghost overlay is drawn
+   * from — so the line in the rail, the band on the record and the mix
+   * djmanzo performs are one plan seen three times. `null` when there is
+   * nothing honest to say: an empty deck, an unanalysed record on either
+   * side, or a track too near its end for any transition to fit.
+   */
+  transition: TransitionEstimate | null;
+}
+
+/** §22: what the mix into one candidate would be. */
+export interface TransitionEstimate {
+  style: string;
+  length_beats: number;
+  /** Where it would begin, in seconds into the outgoing record. */
+  at_seconds: number;
+  /** `32-beat blend at 2:09`, worded in Rust so nothing re-spells it. */
+  says: string;
 }
 
 /**
@@ -1386,6 +1500,296 @@ export interface Transition {
   armed: boolean;
   /** Short phrases, as the suggester's are. */
   reasons: string[];
+  /** What this style does beyond the two channel faders. */
+  shape: TransitionShape;
+}
+
+/**
+ * What one style does beyond the two channel faders.
+ *
+ * §68's `outgoingStems`, `incomingStems`, `eqPlan` and `fxPlan`. `does` is the
+ * same thing in words, derived in Rust from the fields beside it — the automix
+ * performs that table, so a panel printing `does` cannot describe a mix
+ * djmanzo would not perform.
+ */
+export interface TransitionShape {
+  /** Whether the two records are ever audible at the same time. */
+  overlaps: boolean;
+  /** The stem soloed on that deck for the length of the mix, if any. */
+  outgoing_stem: string | null;
+  incoming_stem: string | null;
+  /**
+   * The fraction of the transition by which the low-EQ handover has finished.
+   * `null` when the style does not touch the EQ, which is not the same as a
+   * handover that takes the whole mix.
+   */
+  eq_done_by: number | null;
+  fx: TransitionShapeFx | null;
+  does: string[];
+}
+
+export interface TransitionShapeFx {
+  effect: string;
+  beats: number;
+  slot: number;
+}
+
+/** §31: what the interface should be wearing. */
+export interface Mood {
+  /** The theme package id. */
+  theme: string;
+  /** How long the change should take. Zero when nothing is changing. */
+  over_ms: number;
+  /** True when the DJ has pinned it and djmanzo has stopped deciding. */
+  locked: boolean;
+}
+
+/**
+ * Offer the theme a reading of the night, and hear what to wear.
+ *
+ * **The answer is almost always "the same thing".** §31's warning — never let
+ * the interface flicker from colour to colour every time the track changes —
+ * is the feature, and it lives in `dj_app::mood`: a four-minute minimum, a
+ * forty-second settling time, and a lock that beats both. Safe to call on a
+ * tick; it changes its mind a handful of times a night.
+ */
+export const themeNow = () => invoke<Mood>("theme_now");
+
+/** Pin the theme, or let djmanzo decide again. §31's manual lock. */
+export const themeLock = (locked: boolean) =>
+  invoke<void>("theme_lock", { locked });
+
+/** Tell djmanzo the DJ chose one, so it stops deciding over them. */
+export const themeChosen = (theme: string) =>
+  invoke<void>("theme_chosen", { theme });
+
+/** §29: what one control's gestures do. */
+export interface ControlHandle {
+  control: string;
+  /** What a double-click sends. */
+  reset: string;
+  /** How much finer a shift-drag is than a drag. */
+  fine: number;
+  /** §29's level three: `[label, action]` per entry. */
+  options: [string, string][];
+}
+
+/**
+ * §29's gestures, from Rust.
+ *
+ * Asked rather than written here, for the reason every call site showed: each
+ * knob passed its own idea of where the control resets to, and nothing made a
+ * fourth one agree. A control's unity point is a fact about the parameter.
+ *
+ * Every answer is action text, so a drag, a double-click, a menu entry and a
+ * MIDI CC all end up as the same action — §29's last bullet, and ADR-0003.
+ */
+export const controlHandles = (deck: number) =>
+  invoke<ControlHandle[]>("control_handles", { deck });
+
+/**
+ * One record through §76's AI lens.
+ *
+ * Every field may be absent, and an absence is drawn as one. A lens that
+ * filled its blanks with zero would rank an unanalysed record below a merely
+ * bad one — and would look like a judgement while doing it.
+ */
+export interface LensRow {
+  /** Track id, so this joins to the row the table is already drawing. */
+  track: string;
+  /** How well it follows what is playing. `null` with nothing on the deck. */
+  likely_next: number | null;
+  /** How much this DJ plays records like it. `null` until there is history. */
+  affinity: number | null;
+  /** Whether it is *for* this part of the night. `null` before the night reads. */
+  phase_fit: number | null;
+  /** `[slug, words]` per risk. Empty means nothing stood out. */
+  risks: [string, string][];
+  /** New to this DJ's sets, 1 down to 0. */
+  novelty: number;
+  /** Well worn in them, 0 up to 1. Not the inverse of novelty — see Rust. */
+  familiarity: number;
+  functions: string[];
+}
+
+/**
+ * §76's lens: djmanzo's opinion beside the records already on screen.
+ *
+ * **It adds; it never replaces.** It is handed the ids the table is already
+ * showing and answers about those — it does not query, filter or order the
+ * library — so turning it off leaves the standard view exactly as it was,
+ * because the lens was never inside it.
+ */
+export const libraryLens = (tracks: string[], deck: number) =>
+  invoke<LensRow[]>("library_lens", { tracks, deck });
+
+/** One of §27's seven questions, and whether djmanzo can answer it. */
+export interface GhostAsked {
+  slug: string;
+  /** §27's own words, so the panel cannot quietly reword what was asked. */
+  about: string;
+  answered: boolean;
+}
+
+/** Where the candidate's first full phrase would land, on the outgoing record. */
+export interface GhostLanding {
+  /** Frames on the outgoing record — the lane on screen. */
+  frame: number;
+  /** Beats of the candidate before that phrase. Zero is no pickup. */
+  lead_beats: number;
+  /** False when the phrase arrives after the mix has already finished. */
+  within_mix: boolean;
+}
+
+/**
+ * §27's ghost: what happens if this record comes in here.
+ *
+ * Frames throughout, like the transition object, because that is what the
+ * waveform is drawn in. Nothing here is worked out on this side — the mix is
+ * the planner's, so what is drawn before loading is what djmanzo performs
+ * after.
+ */
+export interface Ghost {
+  /** The candidate, as hex, so this joins to the row already on screen. */
+  track: string;
+  /** The deck the ghost is drawn over. */
+  deck: number;
+  start_frame: number;
+  end_frame: number;
+  start_seconds: number;
+  end_seconds: number;
+  length_beats: number;
+  style: string;
+  /** Incoming tempo minus outgoing, signed. */
+  bpm_delta: number;
+  /** What the pitch fader on the incoming deck does, as a percentage. */
+  pitch_percent: number;
+  key_relation: string | null;
+  /**
+   * The mix in one phrase — `32-beat blend at 2:09`.
+   *
+   * Worded in Rust because §22's rail draws the same phrase beside every
+   * candidate, and one mix with two spellings is two answers.
+   */
+  says: string;
+  landing: GhostLanding | null;
+  /** Where the outgoing record becomes weak, in frames. */
+  weakens_from: number | null;
+  weakens_to: number | null;
+  reasons: string[];
+  /** §27's seven, in its order, each saying whether it is answered. */
+  asked: GhostAsked[];
+}
+
+/**
+ * §27: what happens if this candidate comes in over `deck`. Nothing moves.
+ *
+ * `null` when there is nothing honest to draw — an empty deck, an unanalysed
+ * record on either side, or a track already too near its end for any
+ * transition djmanzo proposes to fit.
+ */
+export const ghostPreview = (deck: number, track: string) =>
+  invoke<Ghost | null>("ghost_preview", { deck, track });
+
+/** What kind of night this is, and what has been read off it so far. §81. */
+export interface NightSetting {
+  /** A setting slug, or null when the DJ has not said yet. */
+  setting: string | null;
+  density: string | null;
+  style: string | null;
+  posture: string | null;
+  techniques: string[];
+}
+
+/** One conditional profile: how this DJ plays in one kind of night. */
+export interface Profile {
+  setting: string;
+  title: string;
+  /**
+   * How many nights it rests on. Drawn rather than hidden: three nights and
+   * thirty are not the same claim, and a profile that hides the difference is
+   * asking to be over-trusted.
+   */
+  nights: number;
+  density: string | null;
+  style: string | null;
+  automation: string | null;
+  techniques: string[];
+  /** Genre and its share of the plays, commonest first. */
+  genres: [string, number][];
+  /** The sentence, written in Rust so a panel cannot assemble a stronger one. */
+  says: string;
+}
+
+/**
+ * Say what kind of night this is, and keep what has been read off it.
+ *
+ * §81. Called with a setting when the DJ names one, and without as the night
+ * goes — the four figures come off the action log, which does not outlive the
+ * run that made it. An absent setting never overwrites a named one.
+ *
+ * `density` is passed from here because this side is the only thing that knows
+ * it: the band comes from the window's own height.
+ */
+export const noteNight = (setting?: string, density?: string) =>
+  invoke<NightSetting>("night_setting", {
+    setting: setting ?? null,
+    density: density ?? null,
+  });
+
+/** Tonight's row, without writing anything. */
+export const nightNow = () => invoke<NightSetting>("night_now");
+
+/** Every conditional profile there is enough evidence for. */
+/**
+ * §12: the profile the rail is ranking by tonight, if any.
+ *
+ * **Said out loud, because it changes the answer.** A ranking quietly
+ * conditioned on what you usually play at weddings is one you cannot argue
+ * with — you would have to notice the order disagreed with the deltas and
+ * work out why. `null` until you have named the night and there are enough
+ * nights of it, which is exactly when nothing is being tilted either.
+ */
+export const profileTonight = () =>
+  invoke<Profile | null>("profile_tonight");
+
+export const learnedProfiles = () => invoke<Profile[]>("learned_profiles");
+
+/** One rehearsal: a mix that was never played, as a file you can hear. */
+export interface Rehearsal {
+  style: string;
+  path: string;
+  seconds: number;
+  /** Where the mix sits inside the file, in seconds. */
+  mix_from: number;
+  mix_to: number;
+  /** How many actions the automix sent. A cut is a handful; a blend is a
+   * thousand fader writes, and the difference is worth seeing. */
+  actions: number;
+  shape: TransitionShape;
+}
+
+/**
+ * Rehearse the held transition and render it to a file.
+ *
+ * §69: nothing here touches the live decks. The automix is stepped offline
+ * against a simulated playhead and `replay` renders the result headless, so a
+ * DJ can hear the next mix while the current one is still playing to the room.
+ *
+ * `style` hears an alternative **without restyling the held mix** — trying a
+ * vocal drop in the lab must not change what the automix is about to perform.
+ */
+export const practiceRehearse = (style?: string) =>
+  invoke<Rehearsal>("practice_rehearse", { style: style ?? null });
+
+/** One style, and what it does. */
+export interface TransitionStyleInfo {
+  /**
+   * Exactly as the action grammar spells it, so the label is also the word
+   * `automix style <name>` takes.
+   */
+  name: string;
+  shape: TransitionShape;
 }
 
 /**
@@ -1797,6 +2201,14 @@ export interface Surface {
   stackable: boolean;
   collapsible: boolean;
   contextual: boolean;
+  /**
+   * Where it opens when nothing has said otherwise.
+   *
+   * Always one of `docks`. In Rust rather than in the interface because §41
+   * lets the assistant open a panel too, and two answers to "where does this
+   * go" is one answer too many.
+   */
+  home: Dock;
   docks: Dock[];
 }
 
@@ -1970,8 +2382,16 @@ export const assistantSetSetlist = (tracks: string[]) =>
  * clash and a match, so it reorders records that all work and never promotes
  * one that does not.
  */
-export const similarTo = (track: string, limit = 20) =>
-  invoke<Suggestion[]>("similar_to", { track, limit });
+/**
+ * More records like this one — and, when a deck is named, what the mix into
+ * each would be.
+ *
+ * The two answer different questions on purpose. The ranking is "like the
+ * seed"; the transition is "what happens if it comes in *here*", which is
+ * about whatever is playing rather than about the seed at all.
+ */
+export const similarTo = (track: string, limit = 20, deck?: number) =>
+  invoke<Suggestion[]>("similar_to", { track, limit, deck: deck ?? null });
 
 /** What the history says this DJ reaches for. */
 export interface LearnedTaste {
@@ -2495,6 +2915,39 @@ export interface RoomRead {
   light: number | null;
   movement: number | null;
   loudness: number | null;
+  /**
+   * §35's baseline: where the room is now against each reach it can be
+   * compared with. One entry per sense that has been measured enough.
+   */
+  baseline: Baseline[];
+  /**
+   * The phase the "similar phases" comparison was made against, or null when
+   * the night has not read yet. Said rather than implied.
+   */
+  phase: string | null;
+}
+
+/** One sense, placed against every reach §35 asks for. */
+export interface Baseline {
+  /** `light`, `movement` or `loudness`. */
+  sense: string;
+  /** The middle of the last three minutes: §35's *current room activity*. */
+  now: number;
+  against: BaselineAgainst[];
+  /** The sentences this baseline is worth, worded in Rust. */
+  notes: string[];
+}
+
+/** Where the room sits against one reach. */
+export interface BaselineAgainst {
+  /** `recent`, `tonight` or `phase`. */
+  horizon: string;
+  /** What it was compared with, in words — "than it has been tonight". */
+  than: string;
+  /** `lowest`, `lower`, `usual`, `higher` or `highest`. */
+  against: string;
+  /** Whether this reach has anything to say. The usual is not news. */
+  notable: boolean;
 }
 
 export const roomSaw = (reading: {
@@ -2508,7 +2961,312 @@ export const roomSaw = (reading: {
     loudness: reading.loudness ?? null,
   });
 export const roomRead = () => invoke<RoomRead>("room_read");
+
+/** §37: what the room has usually done after one kind of mix. */
+export interface RoomHistory {
+  /** A setting slug — what "here" means in §37. */
+  setting: string;
+  style: string;
+  /** `light`, `movement` or `loudness`. */
+  sense: string;
+  /** How many nights this is drawn from. */
+  nights: number;
+  /** `rose`, `fell`, or null when the nights do not agree. */
+  usually: string | null;
+  /** The sentence, worded in Rust, or null when there is nothing to say. */
+  says: string | null;
+}
+
+/**
+ * §37: what has happened after this kind of mix on previous nights.
+ *
+ * Never a causal claim. A floor that fills twelve seconds after a mix may be
+ * filling because of it or in spite of it, and nothing djmanzo has can tell
+ * those apart — so the sentence says what happened after, over enough nights
+ * that coincidence is the worse explanation, and never says *because*.
+ *
+ * Empty is the ordinary answer: without a camera nothing is ever recorded.
+ */
+export const roomHistory = () => invoke<RoomHistory[]>("room_history");
 export const roomForget = () => invoke<void>("room_forget");
+
+/* -- what the night is ----------------------------------------------------- */
+
+/**
+ * djmanzo's reading of the night, with its working shown.
+ *
+ * The judgement is made once, in `dj_core::ContextEngine`, and this is the view
+ * of it. Everything is nullable together: before anything has read the night
+ * there is no phase, no certainty and no basis, and the notes say so in a
+ * sentence rather than leaving the panel to invent one.
+ */
+export interface NightRead {
+  phase: SessionPhase | null;
+  /** The phase as it appears mid-sentence, e.g. "at its peak". */
+  words: string | null;
+  energy: number | null;
+  certainty: Certainty | null;
+  /** One line saying what that certainty means. */
+  certainty_about: string | null;
+  basis: Basis | null;
+  drift: Drift | null;
+  time_of_day: TimeOfDay | null;
+  /** What your occasion says the night is, when it says anything. */
+  declared: SessionPhase | null;
+  /**
+   * What the music alone reads as, which is not always `phase`.
+   *
+   * `phase` is your word wherever you have given one; this is what djmanzo
+   * would have said. Carried separately so a disagreement can be marked rather
+   * than only described.
+   */
+  measured: SessionPhase | null;
+  readings: number;
+  /** How many more before the music alone may name a phase. */
+  still_needed: number;
+  /** Worth saying, most important first. Never empty. */
+  notes: string[];
+  /** What the assistant may do right now. See `dj_assistant::Warrant`. */
+  warrant: "nothing" | "watch" | "speak" | "stage" | "act" | "mix";
+}
+
+export const nightRead = () => invoke<NightRead>("night_read");
+
+/* -- what tonight's gestures amount to (§13, §14) --------------------------- */
+
+/**
+ * One thing djmanzo has noticed you do, and where.
+ *
+ * The sentence is written in Rust. §13's rule — "do not silently convert
+ * unusual behavior into permanent preference" — is about the *words* as much
+ * as the counting, so the interface is deliberately not handed the parts to
+ * assemble a claim out of.
+ */
+export interface Tendency {
+  /** The whole sentence, as `dj_app::signals` wrote it. */
+  says: string;
+  gesture: string;
+  phase: string;
+  seen: number;
+}
+
+export const learnedTendencies = () => invoke<Tendency[]>("learned_tendencies");
+
+/* -- the contextual rail (§74) --------------------------------------------- */
+
+/** One control on §74's contextual rail. */
+export interface AtHandControl {
+  label: string;
+  /** The action, exactly as the parser accepts it. */
+  action: string;
+  on: boolean;
+}
+
+/**
+ * The four to eight controls that matter on a deck right now.
+ *
+ * The judgement is `dj_app::at_hand`'s, over the same snapshot everything else
+ * draws from. Asking without a deck means "wherever the hands are", which is
+ * the ordinary use: §41's `ui focus` fades after six seconds by design, so it
+ * cannot be what a rail follows for a whole set.
+ */
+export interface AtHand {
+  deck: number;
+  doing: string;
+  because: string;
+  controls: AtHandControl[];
+}
+
+export const atHand = (deck?: number) => invoke<AtHand>("at_hand", { deck: deck ?? null });
+
+/* -- the mixes tonight (§67, §68) ------------------------------------------ */
+
+/**
+ * One handover, read back out of the action log.
+ *
+ * Derived rather than recorded — see `dj_app::mixes` — so a set recorded long
+ * before this existed still has its mixes in it. Everything here arrives
+ * decided: the browser interprets none of it, because a second opinion formed
+ * here would be one the coach and the session file disagree with.
+ */
+export interface Mix {
+  /** Seconds into the set. */
+  at: number;
+  took_seconds: number;
+  /** Length in beats, when the outgoing record's tempo is known. */
+  beats: number | null;
+  out_deck: number;
+  in_deck: number;
+  /** `null` where the record is no longer in the library. */
+  out_title: string | null;
+  in_title: string | null;
+  style: string;
+  /** How many times this exact pair has been kept — §24's confidence weight. */
+  kept: number;
+}
+
+export const sessionMixes = () => invoke<Mix[]>("session_mixes");
+
+/**
+ * §24's "Save this transition": keep one of tonight's mixes.
+ *
+ * Identified by when it began rather than by an index, because the list is
+ * newest-first and re-derived on every read — an index would name a different
+ * mix the moment another one finished. Answers how many times the pair has
+ * been kept, which is the weight §24 asks for.
+ */
+export const keepMix = (at: number) => invoke<number>("keep_mix", { at });
+
+/**
+ * Render one of tonight's mixes back to a WAV, in context.
+ *
+ * **Not a seek.** The engine's state at any moment is the whole set up to it,
+ * so everything before the mix is rendered and thrown away — a mix from the
+ * third hour of a set means rendering three hours. Replay runs to no deadline
+ * and is far faster than real time, but it is not instant, and a caller has to
+ * say so rather than let a DJ think the button is broken.
+ */
+export const sessionRenderMix = (at: number, tookSeconds: number) =>
+  invoke<string>("session_render_mix", { at, tookSeconds });
+
+/* -- the typed interface vocabulary (§41) ---------------------------------- */
+
+/**
+ * What an interface operation did.
+ *
+ * `focus` is deliberately not part of the workspace: bringing a deck to
+ * attention is a moment, not an arrangement, and storing it would mean a deck
+ * still highlighted tomorrow because the assistant mentioned it once.
+ */
+export interface UiApplied {
+  workspace: ResolvedWorkspace;
+  focus: number | null;
+  /** What was done, in one line, for a DJ wondering why a panel opened. */
+  what: string;
+}
+
+/* -- the waveform's semantic layers (§25) ----------------------------------- */
+
+/** What a layer's colour means. §57: never two meanings on one colour. */
+export type LayerRole =
+  | "sound"
+  | "grid"
+  | "placed"
+  | "looping"
+  | "seam"
+  | "runway"
+  | "unassigned";
+
+/** Which half of the renderer draws it. Neither is a fallback. */
+export type LayerDrawn = "tile" | "overlay" | "nowhere";
+
+/** One of §25's twenty layers, and what it currently is. */
+export interface WaveformLayer {
+  /** The slug the interface stamps on an element as `data-layer`. */
+  name: string;
+  title: string;
+  about: string;
+  role: LayerRole;
+  drawn: LayerDrawn;
+}
+
+/**
+ * The layer inventory, from Rust.
+ *
+ * The interface draws from it rather than beside it: a browser test checks
+ * that every `data-layer` on screen is in this list, so a layer drawn without
+ * being declared fails instead of quietly becoming a twenty-first.
+ */
+export const waveformLayers = () =>
+  invoke<WaveformLayer[]>("waveform_layers");
+
+/** Every operation this build accepts, generated from the surfaces that exist. */
+export const uiVocabulary = () => invoke<string[]>("ui_vocabulary");
+
+/** Carry one out. `ui show prepare`, `ui pin room`, `ui focus 2`. */
+export const uiDo = (op: string) => invoke<UiApplied>("ui_do", { op });
+
+/**
+ * The arrangement changed under the interface's feet.
+ *
+ * Emitted when an operation lands — which for the assistant's ones is the only
+ * way the panel would ever appear, since nobody pressed anything.
+ */
+export const onCockpit = (handler: (applied: UiApplied) => void): Promise<UnlistenFn> =>
+  listen<UiApplied>("cockpit", (event) => handler(event.payload));
+
+/* -- what the assistant has prepared, before any of it happens ------------- */
+
+/** How far a posture may go with one row of the override matrix. */
+export type Allowance = "no" | "limited" | "yes";
+
+/**
+ * One move inside a staged transaction.
+ *
+ * A move the posture refuses arrives with `allowance: "no"` and `chosen:
+ * false`, and is drawn greyed rather than dropped — see `dj_app::staged` for
+ * why hiding it would leave a DJ wondering what djmanzo thinks a cued deck is
+ * for.
+ */
+export interface StagedMove {
+  about: string;
+  /** The row of §72's matrix this belongs to. */
+  capability: string;
+  allowance: Allowance;
+  /** Whether it will run on Accept. Turning this off is Modify. */
+  chosen: boolean;
+}
+
+/** A bundle the assistant has prepared, waiting for Accept, Modify or Reject. */
+export interface Staged {
+  headline: string;
+  because: string;
+  moves: StagedMove[];
+  /** The deck the plan is about. It goes stale when that record leaves. */
+  live_deck: number;
+}
+
+/** Where an accepted transaction stopped, if it did. */
+export interface StagedStopped {
+  at: number;
+  about: string;
+  because: string;
+}
+
+/** What actually happened on Accept. Partial success is a real outcome. */
+export interface StagedOutcome {
+  done: string[];
+  stopped: StagedStopped | null;
+}
+
+export const stagedPrepare = () => invoke<Staged | null>("staged_prepare");
+export const stagedCurrent = () => invoke<Staged | null>("staged_current");
+export const stagedChoose = (index: number, chosen: boolean) =>
+  invoke<Staged | null>("staged_choose", { index, chosen });
+export const stagedReject = () => invoke<void>("staged_reject");
+export const stagedAccept = () => invoke<StagedOutcome>("staged_accept");
+
+/* -- the override matrix --------------------------------------------------- */
+
+/** One row of §72's matrix: what each posture may do with one capability. */
+export interface AuthorityRow {
+  capability: string;
+  title: string;
+  /** Whether the room hears this the moment it happens. */
+  audible: boolean;
+  /** One per posture, in the order `Posture::ALL` lists them. */
+  allowances: Allowance[];
+  /** Which of those you have changed from djmanzo's answer. */
+  changed: boolean[];
+}
+
+export const authorityMatrix = () => invoke<AuthorityRow[]>("authority_matrix");
+export const authoritySet = (
+  capability: string,
+  posture: string,
+  allowance: Allowance,
+) => invoke<void>("authority_set", { capability, posture, allowance });
+export const authorityReset = () => invoke<void>("authority_reset");
 
 /* -- finding a record from what you remember ------------------------------- */
 

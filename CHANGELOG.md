@@ -16,6 +16,513 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**djmanzo remembers which records you put together** — §24's learned track
+relationships, and the gesture it names: *"Save this transition."*
+
+**Only what was kept, never what merely happened.** Every mix a night contained
+is already derivable from the action log — `dj_app::mixes` does it — so storing
+those as relationships too would be a second copy that eventually disagrees
+with the log it came from. What cannot be derived is that the DJ thought one
+was worth having back, and that is the whole of what `kept_pairs` holds.
+
+**Directional, and the primary key says so.** A bachata that lands beautifully
+after a merengue is not the same claim in reverse, and a DJ who kept one
+direction has said nothing about the other.
+
+**Confidence-weighted, and the weight is a count.** Keeping the same pair again
+is a stronger claim about it rather than a duplicate row. A count rather than a
+score because it is a fact rather than a judgement, and the place to make the
+judgement is where it is used.
+
+**And it is used where the question gets asked.** §24 wants a DJ to be able to
+say *"why do I keep seeing these two together?"* — so the Next rail says it,
+first among the reasons, because it is the one thing on that line the DJ said
+rather than djmanzo worked out. The weight is capped at three: without a
+ceiling a pair kept twenty times would outrank every musical fact about every
+other candidate and the rail would stop showing anything else. "You have done
+this before" is a strong reason, not an override — deliberately less than a key
+match and a tempo match together.
+
+Applied *after* scoring rather than inside it. The scorer is a pure function
+over two records and its whole test suite rests on that; the history lives in a
+database, and the layer that has one is the layer that applies it.
+
+**What §24 lists and this does not have**: "A → C works only with an 8-beat
+loop", "A vocal → B instrumental", and "E is often selected after a crowd-energy
+drop". The first two need a transition object that records what was *done* to
+the stems, and the third needs crowd sensing this container has no camera for.
+
+**What you do, and when** — §14's behavioural signals, read through §13's rule.
+They ship together because either alone is worse than neither: signals with no
+rule for reading them is how the wrong preference gets learned, and a rule with
+nothing to read is a comment.
+
+§13 is the important half and the directive spells out the sentence it does not
+want: *not* "user likes enormous BPM jumps", but "large jumps occasionally
+occur in high-energy contexts". So it is a **type** here rather than a warning.
+A signal carries what was done and the phase the night was in as one value that
+cannot be taken apart, and a `Tendency` — the only thing that generalises —
+cannot be constructed without a phase, nor from fewer than four occurrences
+**in that same phase**. "The DJ likes large tempo moves" is not a sentence this
+module can produce.
+
+That is the discipline `Grounds` already uses for §9: a rule enforced by a
+constructor is still there in the seventh place somebody needs it, and a
+runtime check is one `if` away from being forgotten.
+
+**The night now keeps its arc.** `Night::phase_at` answers what the night was
+at a moment that has already passed, from the changes it recorded rather than
+from whatever phase it is now — because attributing a whole set's gestures to
+the phase it happens to be in at the end is exactly the mis-learning §13 is
+about. It refuses to backdate: the first stretch of every night reads as
+nothing, because nothing could read it yet. §67 lists the set arc as part of a
+session, and this is it.
+
+**Twelve gestures, coarser than the vocabulary.** Six EQ verbs are six
+spellings of one thing a DJ would call riding the EQ, and counting per verb
+would need six times the evidence to notice it. A test asserts every gesture
+named is one the bus can actually produce — a signal djmanzo watches for and
+never sees would look like the DJ never doing it.
+
+**Six of §14's twenty are absent and named as such**: track searched,
+previewed, staged, candidate rejected, candidate selected, and assistant
+suggestion accepted. None is an action — searching is a query, previewing needs
+a player djmanzo does not have, and the rest are interface gestures that never
+reach the bus. Approximating them from something else would be inventing
+exactly the unusual behaviour §13 is about.
+
+Shown beside "what you reach for" rather than in a panel of its own: both are
+djmanzo saying what it has worked out about this DJ, and two homes for that is
+two things to go and check. The sentence arrives written from Rust, so the
+interface cannot make a claim Rust would not.
+
+**At hand: the four to eight controls that matter now** — §74's contextual
+control rail, which the directive closes by calling "the core idea of adaptive
+UI".
+
+**It reads the hands, not the night.** §11's context engine reads where the set
+is in its arc; that is the wrong clock for this. A rail answers "what am I
+doing this second", and the answer changes when a hand lands on a platter —
+minutes before any engine would notice the tempo had risen. So the reading is
+the snapshot: a hand on the jog, a stem pulled, a record playing against
+another, a deck cued and waiting. Both readings exist and neither replaces the
+other.
+
+**Every control is an action djmanzo already accepts**, carried as the exact
+text the parser takes — so a press is the same event as typing it, mapping a
+controller to it, or the assistant asking for it. A test parses every control
+of every state, so the rail cannot offer a verb djmanzo does not have. Unlike
+the palette it *may* carry an argument: `loop 4` and `eq_low 0` are exactly
+what "most relevant now" means, and choosing the number is this module's job.
+
+**A latched control offers the other half.** "bass out" becomes "bass in" once
+the low band is out, and "loop 4" becomes "loop off" once one is running. A row
+with both side by side is a row where half the buttons are always wrong.
+
+**It says which deck and why**, always. A row of controls that silently became
+a different row is a row a DJ stops trusting, and the whole of §74 rests on
+being trusted enough to reach for without looking. Which deck is its own
+judgement: §41's `ui focus` fades after six seconds because attention is a
+moment, so the rail follows the hands instead — a platter being touched, then
+stems being played, then the record being got ready, because during a set the
+deck that is *not* playing to the room is the one being worked on.
+
+**A rule that would have misfired on every deck**, caught by writing the test
+before trusting the fixture: "a stem volume away from unity" is true of every
+deck in the first second after launch, because the registry reads zero for a
+stem the engine has not published yet. Comparing the four stems against *each
+other* says the same thing about a pulled stem and nothing at all about four
+that have never been touched.
+
+**Stem FX, tags, rating and transition points** are on §74's list and are not
+here. The first is a rack of four numbers rather than a button; the other three
+belong to a record rather than a deck, and editing a rating from a rail would
+be the browser's job done where a DJ cannot see which record they were
+changing.
+
+**The collection as cards, and the artwork to put on them** — §20's second
+view, and the last of its four. Three shipped already: the performance table,
+Set Flow and the pair view.
+
+**djmanzo read every tag except the pictures**, so the view §20 describes as
+"when album/artwork is valuable" had no artwork to be about. It reads them now,
+preferring the front cover and falling back through the other picture types
+rather than taking whichever one the tagger happened to store first — a card
+showing the publisher's logo instead of the sleeve is a card that looks broken.
+
+Covers are served on their own URI scheme, like waveform tiles and for the same
+reason: a grid asks for fifty images at once, and base64 through the bridge
+would cost a third more bytes, block the main thread decoding them, and defeat
+the browser's own image cache. Each answer is kept — **including the absence of
+one**, which is the half that matters: a hand-organised collection is mostly
+untagged files, and without remembering that, every scroll would re-probe every
+one of them from disk to learn nothing.
+
+**Each card is operational**, which §20 asks for in as many words. Load onto a
+deck, set aside, more like this, favourite, and the reasons when the list being
+shown is a suggestion. Three of §20's card actions — *stage*, *add to prepare*
+and *queue* — are one gesture in djmanzo, because Prepare is where a set-aside
+record goes and the Sidelist is what Prepare holds; three buttons doing one
+thing would be three chances to wonder which you wanted. *Favourite* is the
+five-star rating djmanzo already has rather than a flag of its own.
+
+**Two of §20's list are absent and left out rather than faked.** *Preview* needs
+a player that auditions a record without a deck, which djmanzo does not have —
+the same gap §27's ghost track waits on. *Compare* puts two records side by
+side, and the pair view compares two *decks*.
+
+**A record with no cover still says something about itself**: its key and its
+tempo, over a colour taken from the Camelot hour. Not a placeholder icon
+repeated down the grid, which is a wall of one shape.
+
+**One mix can be heard back on its own** — the last of §68's list, which asks
+for the transition object to drive *replay*. `replay::Window` names a stretch
+of a set, `crate::mixes` supplies the two numbers, and **hear it again** on any
+row of Tonight's mixes re-renders that handover to a WAV with eight seconds of
+run-up and four of tail.
+
+**A window is not a seek**, and that is stated rather than hidden. The engine's
+state at any moment *is* the whole set up to it — which record is on which
+deck, where its playhead is, where every fader was left — so everything before
+the window is still rendered and thrown away. A replay that jumped in would be
+a different set that happens to share a clock, and it would be silently
+plausible, which is worse. A mix from the third hour therefore costs three
+hours of rendering; replay runs to no deadline and is far faster than real
+time, but it is not free, and the button says so.
+
+`Rendered` reports the cost and the output as separate numbers now. They differ
+whenever there is a window, and telling a DJ their twenty-second mix is three
+hours long would be a confident wrong answer about a file just written.
+
+**Found by driving it: the answer landed below the fold.** The row grows by a
+line when the path arrives, and in a docked panel that line is exactly the one
+pushed out of sight — a result nobody can see reads as a button that did
+nothing. This project has shipped that twice, in two different panels. The
+answer scrolls itself into view now.
+
+**The night knows its own mixes** — §67 says the session contains transitions
+and §68 asks for those transitions to be explicit objects. `dj_app::transition`
+holds the mix that is *about* to happen; `dj_app::mixes` holds the ones that
+already did, and a **Tonight's mixes** surface shows them: what went into what,
+how long it took in beats, and what kind of mix it was.
+
+**Derived, never recorded.** The obvious implementation writes a transition
+into the session file as it is performed, and `SessionEvent` already argues
+against it about loading: an event with two spellings makes two takes recorded
+through different paths diff as different sets. A mix *is* its actions, so
+recording it beside them would be recording it twice and inviting the two to
+disagree. Deriving it instead means every set djmanzo has ever recorded gains
+its mixes, including the ones recorded before any of this existed.
+
+**One rule, not a recogniser per gesture.** A handover is *the room stopped
+hearing one record and started hearing another* — audibility computed the way
+the engine computes it, the channel fader times the crossfader gain for that
+deck's assignment, through `dj_dsp`'s own curve. A crossfader sweep, two
+channel faders crossing, and a fader against an assignment are all one event to
+the room, and a module with a branch for each would disagree with itself the
+first time somebody used two at once.
+
+**The style is a fact from the log, not a guess.** Length decides between a cut
+and a mix first, because that is what the room hears. Within a mix the most
+specific gesture names it: a vocal taken across is a vocal drop, an echo
+engaged over the outgoing record is an echo, the outgoing bass pulled out is a
+blend, and a crossfade with none of them is a fade. A gesture on the *incoming*
+deck names nothing — the bass coming out of the record arriving is a DJ making
+room for it, and attributing that to the record leaving would call almost every
+mix a blend until the word stopped meaning anything.
+
+`dj_assistant::coach::CUT_MAX` is public now and shared, so the coach cannot
+call a handover a cut while the session's own list of it says otherwise.
+
+**Two things found by opening it in the running application.** A pair of short
+titles was drawn as two columns with the arrow stranded between them. And a
+third surface in a side dock squeezed to a single row cut through the middle of
+its letters — flex children shrink to nothing, so the dock never reached the
+height that would make it scroll. Side surfaces have a floor now.
+
+**The record says where it can be left, and the grid says when it is guessing**
+— two more of §25's twenty layers, both from arithmetic djmanzo already does.
+
+**Mix-out.** `plan::mix_out` answers where a record can structurally be left:
+the window opens at the last beat where the longest transition the planner will
+propose still leaves its tail margin intact, and closes at the last beat where
+the shortest one does. Inside it, every length djmanzo would suggest fits; after
+it, whatever you start is `Reason::Rushed`. Both edges come from the planner's
+own constants, so the band and the warning cannot disagree on screen about the
+same mix. It is a fact about the *record*, not about the playhead or the pair —
+and it has a type that cannot express a playhead, so it cannot come to depend on
+one.
+
+Drawn on the overview as well as in the scrolling lane, and the overview is the
+view it is really for: a lane runs at a couple of hundred frames per pixel, so a
+band twenty beats from the end is off screen until you are already inside it.
+
+**Uncertainty.** The rasteriser has always faded beat lines by the grid's
+confidence, and that fade cannot be *read*: at overview zoom the grid is
+suppressed entirely for density, so faint and absent look identical and neither
+says whether the analyser was guessing. A hatch under the record says so, over
+the record's own length and nothing more, gated on the same threshold that
+disables Sync rather than on a second one.
+
+**Found by running the interface: the band never appeared at all.** The first
+version asked the *library* for the record's grid, and a freshly loaded deck does
+not have one there — the demo run showed both decks reading 123.7 BPM at full
+confidence with un-analysed library rows and no band on either lane. Every
+browser test passed, because the harness answers `waveform_info` itself. It now
+reads the grid the tiles are rasterised from, which is the better answer anyway:
+the band lines up with the beat lines beside it by construction, and follows a
+hand-edited grid instead of the analyser's first opinion. There is a Rust test
+for the wiring now, not only for the arithmetic.
+
+**Eleven of twenty.** The overview's loop and cue markers are stamped with the
+layer they are, so the check that reads every `data-layer` off a rendered page
+covers that view too.
+
+**The waveform's layers are named, counted and checked** — §25's "multilayer
+semantic visualization architecture". Twenty layers live in
+`dj_render::layer`, each saying what it encodes, which half of the renderer
+draws it — the Rust rasteriser or the interface over the top, neither a
+fallback — and whether it exists yet. Nine of the twenty do.
+
+A list of twenty in a document is a list that quietly stops matching the code.
+This one is checked in both directions: a golden file keeps the interface's copy
+honest, and a browser test reads every `data-layer` off a rendered page and
+fails if anything on screen is not in the table. "Nine of twenty" is a fact
+rather than a recollection.
+
+**§57 becomes a constraint rather than a warning.** "Never overload the same
+colour with multiple meanings" is a property of the whole *set*, so it cannot be
+enforced one layer at a time — which is the argument for the table existing.
+Every drawn layer declares what its colour means and a test refuses two
+unrelated layers on one meaning. Grouped roles are allowed and named: the three
+grid layers are one meaning at three weights, which is texture, not a second
+colour. A layer nobody has built reserves nothing, because that is how a palette
+runs out for no reason.
+
+**Two new layers**, both answering questions §25 puts to the waveform that
+amplitude alone cannot. **Runway** — how much record is left, as a wash over the
+last thirty seconds. **Seam** — what a mix *covers*, as a region between its two
+marks rather than only the marks themselves.
+
+**A stacking bug, found by looking at the application.** The runway shipped
+under the tiles and was invisible: `z-index: 0` against tiles at `z-index: auto`
+that come later in the DOM. The browser test passed anyway, because Playwright's
+`toBeVisible` asks whether an element has a box, not whether anything can be
+seen of it. The layer order is written down explicitly now — record, washes,
+positions, playhead — and a test compares computed z-indices rather than
+presence.
+
+**One transition, performed by whoever is driving** — §68's remaining half. The
+transition object has existed since the pair view shipped, and the automix went
+on deciding its own decks, its own moment and its own length regardless. A DJ
+who spent a minute adjusting a mix point and then handed over watched it be
+ignored: two answers to one question, which is exactly what §68 says an
+explicit transition object is for.
+
+The automix performs the held mix now — its decks, its start, its length and
+its style. **The start is the part that matters.** Without one the handover is
+"the end of the file minus the transition length", which the automix's own
+documentation is honest about being wrong for any record with applause on the
+end. With one, somebody has actually decided, and a human may have dragged it.
+
+**Where it does not apply it is ignored, not forced.** A plan about deck 1 says
+nothing about a mix out of deck 3, and performing it anyway would be worse than
+djmanzo's own answer — which is what it falls back to. And a held mix is spent
+once performed: re-running a mix that has happened is not a mix.
+
+**The autopilot defers to it too.** Its mix step used to push a style and a
+length into the automix and fire; where djmanzo is already holding a mix for
+those two decks it now says only "go", and reports "performing the mix you set
+up".
+
+**The panel says which promise is in force.** "Mixes out of the end of the
+file" and "mixes where you said" are different things, and a panel that showed
+them identically would be hiding the one thing that changed. The style and
+length controls are dimmed rather than disabled while a held mix is in charge —
+they still work, and what they set is the mix *after* this one.
+
+Mutation testing earned its keep here. Three mutations, and the second one
+survived: the test for "a plan about other decks is ignored" named a deck that
+was not in the rig at all, so it passed whether or not the check existed. It
+names a deck that is present now.
+
+**The mix point can be grabbed** — the directive's §26, which is blunt about
+it: "the DJ should be able to physically grab the thing they are thinking
+about. Do not force them to edit a numerical property in a settings panel."
+The pair view's move buttons were that settings panel. The mix point on the
+outgoing waveform is a handle now — drag it, or focus it and use the arrow
+keys, because a mouse is not the only hand.
+
+**It moves in beats, not in pixels.** A mix point between two beats is a mix
+point that is not on the grid, and djmanzo's whole answer here is about the
+grid — so a drag says "this many beats later" and the snapping falls out of the
+arithmetic rather than being a rule applied afterwards. The beat length comes
+from the transition itself, which spans a known number of beats between two
+known frames, so no tempo has to be inferred from a deck.
+
+**The waveform works nothing out.** It reports where the handle was let go;
+`transition_adjust` decides what that means and re-derives the reasons. Drag
+the mix off its phrase boundary and it stops claiming to land on one — which is
+§68's rule, now reachable with a hand.
+
+**Only once djmanzo is holding the mix.** A proposal is an opinion and
+`transition_adjust` refuses to move one, so a handle offered before *Set up*
+would be a control that does nothing — the same rule the buttons beside it
+already follow.
+
+Two things came out of building it. The drag listens on the window rather than
+calling `setPointerCapture`: djmanzo runs in WebKitGTK, the browser tests run
+in Chromium, and capture is exactly the sort of thing that differs between them
+— a control that passes its test and does nothing where it ships. And
+`waveform_info` had never been answered by the browser harness, so every
+waveform lane in the pair view had rendered as an empty box in every test that
+has ever run over it, including the ones whose commit said "each with its
+waveform". The lanes are drawn in the tests now.
+
+**The assistant can ask for the interface, not only the controls** — the
+directive's §41, and the last of `GUI-OVERHAUL.md`'s phase 5. `dj_app::uiop` is
+a second closed vocabulary — `ui show prepare`, `ui pin room`, `ui focus 2` —
+generated from `cockpit::surfaces()`, so a panel djmanzo does not have cannot be
+asked for and the refusal happens at the parse rather than being applied and
+quietly doing nothing. The model never emits JavaScript and never touches the
+DOM, which is the thing §41 is emphatic about.
+
+It is deliberately **not** on the action bus. An action is something the engine
+does, and the engine has never heard of a panel; putting `ui show prepare` into
+`dj_core::Action` would push the cockpit into the crate at the bottom of the
+dependency graph and make a session replay depend on the interface it was
+recorded against. Two closed vocabularies, kept equally strict, not mixed.
+
+**Density is the one item on §41's list left out**, on purpose. The interface
+picks its density from the window it is in, by measurement; an assistant
+overriding that would be adaptation fighting adaptation, with the DJ unable to
+tell which had last word.
+
+**§72 gates it.** `adapt_layout` is its own row of the matrix, so "suggest
+records but never touch my layout" is a setting rather than a feature request —
+and an operation the posture refuses is reported to the DJ rather than
+swallowed.
+
+**It is reachable by hand too.** The palette offers pin, unpin and focus
+alongside the surfaces, because §51 calls the palette the semantic interface
+and an operation only the assistant could reach would be a control nobody can
+press. Pinning especially: it is the per-surface half of freezing a layout and
+there had been no gesture for it anywhere.
+
+**One duplicated table removed.** Where a surface lands when it opens was a
+`Record<Drawn, Dock>` in `App.svelte`; it is `cockpit::Surface::home` now,
+because the moment the assistant could open a panel there were two answers to
+"where does this go" — and the second one occasionally named a dock the surface
+is not allowed in, which the resolver dropped with a note nobody reads. A test
+asserts every home is a dock that surface can actually be placed in.
+
+**The assistant asks before it acts** — the directive's §44. A non-trivial move
+is a **transaction** now: load the record, cue it to its first phrase, trim it
+to match, engage sync, run the mix — staged together as *Prepared next
+transition*, with Accept, Modify and Reject, and carried out only then. Five
+separate prompts is five chances to say yes to half a plan, which leaves a
+record loaded and cued that nothing is going to mix.
+
+Accepting is not a second way of doing things. Every move is an
+`autopilot::Step` and Accept runs it through the same `perform_step` the
+automatic tick uses, so what a press does and what the tick does cannot drift
+apart. **Modify is a checkbox**: "load it and cue it, but I will bring it in
+myself" is one click on one row, and it leaves the rest of the plan intact.
+Partial success is reported as partial — a transaction that stopped at its
+third move says which one and why, rather than reporting "accepted".
+
+**§72's override matrix, as a table with three gates behind it.**
+`dj_assistant::authority` holds the directive's matrix verbatim — ten
+capabilities against six postures — and it is now the *second* of three
+questions asked before anything moves: has a hand already claimed this control
+(`Takeover`), does the posture permit this kind of thing at all (the matrix),
+and is the read of the night sure enough to act on (§9's `Warrant`). Three
+questions rather than one because a DJ whose machine did nothing deserves to
+know which of them said no. It is configurable in both directions, except that
+Off and Watch cannot be widened: those words would stop meaning anything.
+
+**A refused move is shown greyed, never dropped.** A plan that silently stopped
+after the trim would leave a DJ wondering what djmanzo thinks a cued deck is
+for — and the obvious fix, turning the level up one notch, is invisible to
+somebody who was never told what was going to happen.
+
+**SAFE** — §47's emergency control, beside REC and Mark, and the only control
+in that row that is coloured when nothing is wrong. It takes every control back
+from the assistant, throws away anything staged, clears every effect on every
+deck and on the master, flattens all three EQ bands and the filter, restores
+master gain and re-engages the limiter.
+
+What it refuses to do is the part that took the thought. **It never stops a
+record, never moves a channel fader, and never touches the crossfader.** An
+emergency control that silences the floor is far worse than the emergency: a DJ
+who hits SAFE because an effect ran away has a problem, and one who hits SAFE
+and gets silence has a disaster. It is `safe` on the action bus, so it is on a
+controller pad and in a script as well as on screen, and every part of it is an
+ordinary action that logs and replays.
+
+**A half-built path found and finished.** `Step::Cue` was never emitted by
+anything, and the action text it would have dispatched — `deck N seek_beat` —
+is not a verb the parser accepts, so the one thing `Posture::Prepare` promises
+in its own documentation ("loaded, cued to the phrase and gain-matched") had
+never happened. Cueing is real now, and the *intent* is what is staged: where
+"the phrase" is depends on a grid that arrives with the analyser seconds after
+the load, so it is resolved at the moment of obedience rather than guessed when
+the plan was built.
+
+Found by driving it: pressing "Prepare the next transition" when there was
+nowhere to stage produced nothing at all on screen, which reads as a broken
+button. It says why now, in the autopilot's own words.
+
+**The context engine** — the directive's §11, and the thing §9, §12, §14 and
+§17 have all been waiting on. `dj_core::ContextEngine` answers one question,
+in one place, for every consumer: **what is tonight?** The theme, the attention
+budget, the assistant and the autopilot read its answer instead of each working
+one out, which is what §11 asks for in the sentence "do not duplicate context
+logic inside each component".
+
+**It reads the night against itself.** "Loud" is a number about a room, a rig
+and a mastering engineer, so there is no threshold at which a set is at its
+peak. What is portable is a comparison with the same night earlier on, through
+the same output — the argument `dj_assistant::room` already makes about a
+camera, applied to a master bus, and now sharing its histogram rather than
+keeping a second copy of it. Loudness and tempo are placed against tonight's
+own spread of both, averaged because they are confounded differently: the
+master fader moves one and not the other.
+
+**It says nothing until it can say something true.** Six minutes of music
+before the evidence may name a phase, and nothing at all if the night has not
+varied enough to place a reading in. The first version of this module defaulted
+to *Peak* at *0.95 energy* on every snapshot, and this is the guard against
+that returning: a test drives eighty-nine readings and fails if a phase is
+named.
+
+**Where your word and the evidence disagree, you win.** An occasion is a
+statement about the night; a histogram is not. So the declaration is the phase,
+djmanzo says which way its own reading points, and the arc marks both. It
+reports the disagreement; it never overrules the person who has been in the
+room all night.
+
+**§9, as a type rather than as a rule.** Autonomy — the posture — and certainty
+stay orthogonal, and the one combination §9 calls invalid is not
+*representable*: `dj_assistant::Warrant::Act` and `::Mix` carry a `Grounds`
+whose constructor is private and refuses a certainty below `Fair`. The
+consequence a DJ actually meets is that a night the music contradicts stops the
+autopilot mixing unasked — it stages the record and says why — while everything
+the room cannot hear carries on.
+
+**The attention budget is consulted at last.** §18's `cockpit::Attention` has
+existed as a type with nothing reading it; it is now derived from the same
+context, published on the snapshot, and reaches the stylesheet as
+`data-motion`. Two records audible means the interface may not reflow, because
+somebody is reaching for it. A failed recording or a headphone card that has
+stopped taking audio means nothing moves at all.
+
+**The night, a surface of its own.** It shows its working rather than asking to
+be believed: the arc with the phase marked, what produced it, how sure that
+makes it, which way the music disagrees, and what all of that currently allows
+the assistant to do. Before anything has read the night it says so, with the
+count — an empty panel reads as broken.
+
 **The transition is an object** — the directive's §68. `dj_app::transition`
 holds one mix: the two decks, where it starts and ends in both frames and
 seconds, how long it runs, which way, what the tempo and the key do across it,

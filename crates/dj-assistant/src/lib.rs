@@ -29,6 +29,7 @@
 //! for anyone who would rather not send their track list to a third party.
 
 pub mod assistant;
+pub mod authority;
 pub mod budget;
 pub mod catalog;
 pub mod coach;
@@ -43,13 +44,14 @@ pub mod takeover;
 pub mod technique;
 
 pub use assistant::{Assistant, Plan, Source, extract_actions, system_prompt};
+pub use authority::{Allowance, Authority, Capability};
 pub use budget::Budget;
 pub use catalog::{ProviderInfo, catalog, info};
 pub use coach::{Footing, Moment, Note, Observed};
 pub use http::{HttpJson, ReqwestJson};
 pub use native::{AnthropicProvider, GoogleProvider};
 pub use openai_compat::OpenAiCompatProvider;
-pub use posture::{Occasion, Pack, Posture, packs};
+pub use posture::{Grounds, Occasion, Pack, Posture, Warrant, packs};
 pub use provider::{
     AssistantError, Completion, LlmProvider, Model, ProviderId, ProviderStatus, Role, Turn, Usage,
 };

@@ -33,6 +33,7 @@
     setWatershed,
     watershedShowing,
     cockpitSurfaces,
+    onCockpit,
     cockpitWorkspace,
     densityBands,
     type DensityBand,
@@ -45,11 +46,17 @@
   } from "./api";
   import Next from "./Next.svelte";
   import Pair from "./Pair.svelte";
+  import Night from "./Night.svelte";
+  import Mixes from "./Mixes.svelte";
+  import Practice from "./Practice.svelte";
+  import AtHand from "./AtHand.svelte";
+  import Staged from "./Staged.svelte";
   import Palette from "./Palette.svelte";
   import Plan from "./Plan.svelte";
   import SideView from "./SideView.svelte";
   import Watershed from "./Watershed.svelte";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
+  import { theme } from "./theme.svelte";
   import IconButton from "./controls/IconButton.svelte";
   import {
     emptyWorld,
@@ -67,6 +74,7 @@
     logoUrl,
     setBrandLogo,
     onSnapshot,
+    themeNow,
     activeDevice,
     openDevice,
     assistantConduct,
@@ -201,6 +209,8 @@
     "next",
     "plan",
     "pair",
+    "practice",
+    "night",
     "booth",
     "presets",
     "sampler",
@@ -209,6 +219,8 @@
     "keys",
     "controllers",
     "log",
+    "mixes",
+    "athand",
   ] as const;
   type Drawn = (typeof DRAWN)[number];
 
@@ -231,30 +243,17 @@
   const isOpen = (name: Drawn) => placements.some((p) => p.surface === name);
 
   /**
-   * Where a surface goes when it is opened by its toolbar button.
+   * Where a surface lands when you open it.
    *
-   * From the surface's own preferred size rather than from a table here:
-   * something wider than it is tall wants the bottom, and something taller
-   * than it is wide wants the side. The library prefers 900x380 and lands
-   * along the bottom; settings prefers 620x560 and lands beside the decks.
-   * A rule beats a list of special cases, and this one is derived from a
-   * number Rust already publishes.
+   * **From Rust, not from a table here.** This was a `Record<Drawn, Dock>` in
+   * this file, and the moment §41 let the assistant open a panel there were
+   * two answers to "where does this go" — with the assistant's version
+   * occasionally naming a dock the surface is not allowed in, which the
+   * resolver silently dropped. `cockpit::Surface::home` is the single answer
+   * now, and a test asserts every home is a dock that surface can be placed in.
    */
-  const HOME: Record<Drawn, Dock> = {
-    library: "bottom",
-    prepare: "right",
-    next: "right",
-    plan: "bottom",
-    pair: "bottom",
-    booth: "bottom",
-    log: "bottom",
-    presets: "right",
-    sampler: "right",
-    assistant: "right",
-    settings: "right",
-    keys: "right",
-    controllers: "right",
-  };
+  let surfaceHomes = $state<Record<string, Dock>>({});
+  const homeOf = (name: string): Dock => surfaceHomes[name] ?? "right";
 
   /**
    * Open or close a surface, and remember it.
@@ -263,6 +262,29 @@
    * placement the resolver corrected is the one drawn. Storing the request and
    * drawing the answer is how the two drift apart.
    */
+  /**
+   * Write the current arrangement, without changing it.
+   *
+   * `toggleSurface` saves as a side effect of opening a panel; this is for the
+   * changes that are not a panel — the deck count especially, which a DJ sets
+   * once and expects to find again.
+   */
+  async function saveWorkspace() {
+    const current = workspace;
+    if (!current) return;
+    const next = { ...current, decks: deckCount };
+    workspace = next;
+    try {
+      const resolved = await setCockpitWorkspace(next);
+      workspace = resolved.workspace;
+      workspaceNotes = resolved.notes;
+    } catch {
+      // Keeping the optimistic state, for the reason `toggleSurface` gives:
+      // failing to write a preferences file is not a reason to undo what the
+      // DJ just did.
+    }
+  }
+
   async function toggleSurface(name: Drawn) {
     const current = workspace ?? {
       name: "Custom",
@@ -281,7 +303,7 @@
           ...current.surfaces,
           {
             surface: name,
-            dock: HOME[name],
+            dock: homeOf(name),
             // Newest last within its dock, which is where the eye expects the
             // thing it just opened.
             order: current.surfaces.length,
@@ -294,7 +316,12 @@
     // Optimistic, then corrected. The panel appears on the press rather than
     // after a round trip to the filesystem, which at a laptop's worst moment
     // is not instant.
-    workspace = { ...current, surfaces };
+    //
+    // `decks` comes from the live count rather than from `current`: the deck
+    // toggle changes what is on screen without saving, so a workspace written
+    // from the stored value would quietly file away a number the DJ had
+    // already changed.
+    workspace = { ...current, surfaces, decks: deckCount };
     if (name === "log" && !already) log = await sessionLog().catch(() => log);
     try {
       const resolved = await setCockpitWorkspace(workspace);
@@ -332,12 +359,15 @@
    * size. Everything else on a deck reads `--density` off the document.
    */
   let density = $state(1);
+  /** The same band, by name — what §81 stores as a night's density. */
+  let densityName = $state("Standard");
 
   function fitDensity() {
     if (chosenDensity !== null || bands.length === 0) return;
     const height = window.innerHeight;
     const band = bands.find(([least]) => height >= least) ?? bands[bands.length - 1];
     density = band[2];
+    densityName = band[1];
     document.documentElement.style.setProperty("--density", String(band[2]));
   }
 
@@ -355,6 +385,25 @@
     return () => window.removeEventListener("resize", fitDensity);
   });
 
+  /**
+   * A deck the assistant has asked the DJ to look at, if any.
+   *
+   * §41's `ui focus 2`. It fades on its own after a few seconds rather than
+   * latching, because attention is a moment: a deck still outlined ten minutes
+   * later is teaching the DJ to ignore the outline, which costs the next one.
+   */
+  let focusedDeck = $state<number | null>(null);
+  let focusTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** How long an asked-for glance lasts. */
+  const FOCUS_MS = 6000;
+
+  function focusDeck(number: number) {
+    focusedDeck = number;
+    clearTimeout(focusTimer);
+    focusTimer = setTimeout(() => (focusedDeck = null), FOCUS_MS);
+  }
+
   /** What a surface is called, from Rust rather than from a list here. */
   let surfaceTitles = $state<Record<string, string>>({});
   const titleOf = (name: string) => surfaceTitles[name] ?? name;
@@ -363,6 +412,7 @@
     try {
       const known = await cockpitSurfaces();
       surfaceTitles = Object.fromEntries(known.map((s) => [s.name, s.title]));
+      surfaceHomes = Object.fromEntries(known.map((s) => [s.name, s.home]));
     } catch {
       // A surface with no title falls back to its name, which is still a word
       // a DJ can read -- worse than "Session log", better than an empty header.
@@ -371,6 +421,12 @@
       const resolved = await cockpitWorkspace();
       workspace = resolved.workspace;
       workspaceNotes = resolved.notes;
+      // A workspace remembers how many decks were on screen — `toggleSurface`
+      // writes `decks: deckCount` into every one it saves — and nothing read
+      // it back. So a DJ who arranged four decks, saved the workspace and
+      // reopened djmanzo got two, with the workspace still claiming four.
+      // Found by §89's four-deck configuration failing to be four decks.
+      deckCount = resolved.workspace.decks;
     } catch {
       workspace = null;
       workspaceNotes = [];
@@ -585,6 +641,17 @@
   const ready = $derived((snapshot?.master.sample_rate ?? 0) > 0);
 
   $effect(() => {
+    // §41. An arrangement can now change without anybody in this window
+    // pressing anything — the assistant asks, Rust applies and stores, and
+    // this is how the panel actually appears. `focus` is not stored, so it is
+    // acted on here and forgotten.
+    const unwatchCockpit = onCockpit((applied) => {
+      workspace = applied.workspace.workspace;
+      workspaceNotes = applied.workspace.notes;
+      deckCount = applied.workspace.workspace.decks;
+      if (applied.focus !== null) focusDeck(applied.focus);
+    });
+
     const unlisten = onSnapshot((next) => {
       snapshot = next;
     });
@@ -601,8 +668,27 @@
       .catch((problem) => {
         error = `the engine did not answer: ${problem}`;
       });
+    /**
+     * §31: ask djmanzo what to wear, slowly.
+     *
+     * Every twenty seconds, not every snapshot. The answer is almost always
+     * "the same thing" — `dj_app::mood` holds a four-minute minimum and a
+     * forty-second settling time, so a faster tick asks a question whose answer
+     * cannot have moved, and it walks the night's reading to produce it.
+     *
+     * The decision is not made here. Rust owns the rule, this owns the pixels,
+     * which is the same split the density bands use.
+     */
+    const wardrobe = setInterval(() => {
+      void themeNow()
+        .then((mood) => theme.adapt(mood.theme, mood.over_ms))
+        .catch(() => {});
+    }, 20_000);
+
     return () => {
+      clearInterval(wardrobe);
       void unlisten.then((fn) => fn());
+      void unwatchCockpit.then((fn) => fn());
     };
   });
 
@@ -740,6 +826,20 @@
   */
   $effect(() => {
     publishAudio(snapshot?.context);
+  });
+
+  /*
+    And the attention budget goes to CSS the same way.
+
+    One attribute rather than a prop threaded through thirty components: what
+    the budget governs is whether things move, and motion is decided in the
+    stylesheet. `cockpit::Attention` derives the level in Rust from the context
+    engine, so a panel cannot decide for itself that now is a good moment to
+    animate -- see `app.css` for what `none` actually costs.
+  */
+  $effect(() => {
+    const motion = snapshot?.attention.motion;
+    if (motion) document.documentElement.dataset.motion = motion;
   });
 
   /**
@@ -1092,6 +1192,13 @@
           waveform each need width, and a side dock is 360 px.
         -->
         <IconButton icon="fa-solid fa-code-compare" label="Pair" title="Two records side by side, and the seam between them" active={isOpen("pair")} onClick={() => toggleSurface("pair")} />
+        <!--
+          The lab. Beside the pair view because it is the same two records
+          asked a different question: that one says what the mix *is*, this one
+          lets you hear it before the room does.
+        -->
+        <IconButton icon="fa-solid fa-flask" label="Practice" title="Hear a transition before you play it, without touching the decks" active={isOpen("practice")} onClick={() => toggleSurface("practice")} />
+        <IconButton icon="fa-solid fa-moon" label="Night" title="Where the set is in its arc, and what says so" active={isOpen("night")} onClick={() => toggleSurface("night")} />
         <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={isOpen("presets")} onClick={() => toggleSurface("presets")} />
         <!--
           The booth: microphone, automix, a plugin insert and the master
@@ -1126,7 +1233,15 @@
           disagree about is worse than an unused deck.
         -->
         <button
-          onclick={() => (deckCount = deckCount === 2 ? 4 : deckCount === 4 ? 6 : 2)}
+          onclick={() => {
+            deckCount = deckCount === 2 ? 4 : deckCount === 4 ? 6 : 2;
+            // Remembered, like every other arrangement. Without this a DJ who
+            // set up four decks found two the next time they opened djmanzo,
+            // with nothing having said the change was temporary — the
+            // workspace already carried a `decks` field and only ever wrote
+            // the stale one.
+            void saveWorkspace();
+          }}
           title="Show {deckCount === 2 ? 'four' : deckCount === 4 ? 'six' : 'two'} decks. The engine runs six either way."
         >
           {deckCount} decks
@@ -1247,6 +1362,26 @@
         >
           {markedAt > 0 ? "Marked" : "Mark"}
         </button>
+        <!--
+          §47. Beside REC and Mark because it is the third control that has to
+          be findable without hunting, and the only one that is found while
+          something is going wrong.
+
+          It is `safe` on the action bus, so the same thing is on a controller
+          pad, on a keyboard shortcut and at the top of a script. What it does
+          and — more to the point — what it refuses to do is written down in
+          `commands::make_safe`: it never stops a record and never moves a
+          fader, because an emergency control that silences the floor is worse
+          than the emergency.
+        -->
+        <button
+          class="safe"
+          disabled={!ready}
+          onclick={() => send("safe")}
+          title="Take every control back, clear every effect, flatten the tone. Nothing stops playing."
+        >
+          SAFE
+        </button>
       </div>
     </div>
   </header>
@@ -1300,6 +1435,16 @@
   {/if}
 
   <!--
+    §44's staged transaction, in the notice band rather than as a surface.
+
+    It belongs here for the reason the audit gives: the AI is never the largest
+    thing on screen, and what it normally has to say is one line and two
+    buttons. It occupies no height at all when nothing is staged, so the decks
+    are not paying for it the rest of the night.
+  -->
+  <Staged enabled={ready} />
+
+  <!--
     Decks and mixer sit in their own scrolling region so that opening the
     browser compresses them rather than being squeezed to nothing itself. This
     is the layout every DJ application converges on, for the reason it matters:
@@ -1332,6 +1477,22 @@
 
   {#snippet surfacePair()}
     <Pair enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
+  {/snippet}
+
+  {#snippet surfacePractice()}
+    <Practice enabled={ready} />
+  {/snippet}
+
+  {#snippet surfaceNight()}
+    <Night enabled={ready} density={densityName} />
+  {/snippet}
+
+  {#snippet surfaceMixes()}
+    <Mixes enabled={ready} />
+  {/snippet}
+
+  {#snippet surfaceAtHand()}
+    <AtHand enabled={ready} send={(action) => void send(action)} />
   {/snippet}
 
   {#snippet surfaceBooth()}
@@ -1514,6 +1675,10 @@
         {:else if placement.surface === "next"}{@render surfaceNext()}
         {:else if placement.surface === "plan"}{@render surfacePlan()}
         {:else if placement.surface === "pair"}{@render surfacePair()}
+        {:else if placement.surface === "practice"}{@render surfacePractice()}
+        {:else if placement.surface === "night"}{@render surfaceNight()}
+        {:else if placement.surface === "mixes"}{@render surfaceMixes()}
+        {:else if placement.surface === "athand"}{@render surfaceAtHand()}
         {:else if placement.surface === "booth"}{@render surfaceBooth()}
         {:else if placement.surface === "presets"}{@render surfacePresets()}
         {:else if placement.surface === "assistant"}{@render surfaceAssistant()}
@@ -1575,6 +1740,12 @@
 
     <div class="decks" class:four={deckCount === 4} class:six={deckCount === 6}>
       {#each snapshot.decks.slice(0, deckCount) as deck (deck.number)}
+        <!--
+          Wrapped rather than given a prop: the outline is about *this window's*
+          attention, not about the deck's state, and threading it through Deck
+          would put a presentational flag next to the audio ones.
+        -->
+        <div class="deck-slot" class:looking={focusedDeck === deck.number}>
         <Deck
           {deck}
           sampler={snapshot.master.sampler}
@@ -1586,6 +1757,7 @@
           {density}
           careful={conductCare}
         />
+        </div>
       {/each}
     </div>
 
@@ -1689,9 +1861,45 @@
     they inherit the button style, which is what makes them look like
     siblings.
   */
+  /*
+    A deck the assistant has asked you to look at. An outline rather than a
+    colour change: the deck's own colours mean things about the audio, and
+    borrowing one of them for "look here" would make the two indistinguishable
+    at the far end of a dark booth.
+  */
+  .deck-slot {
+    display: contents;
+  }
+
+  .deck-slot.looking :global(.deck) {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
   .mark.done {
     border-color: var(--accent);
     color: var(--accent);
+  }
+
+  /*
+    The one control in the row that is coloured when nothing is wrong.
+
+    REC and Mark light up when they are doing something; this is lit all the
+    time, because the moment it is wanted is the moment nobody is going to scan
+    a row of grey squares for it. §47's whole requirement is "must not search
+    through menus", and a control that only announces itself once you have
+    found it has not met it.
+  */
+  .safe {
+    border-color: var(--danger);
+    color: var(--danger);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  .safe:hover:not(:disabled) {
+    background: var(--danger);
+    color: var(--bg);
   }
 
   .topbar {
@@ -1980,6 +2188,22 @@
        squeezed under about 320 px stops being a panel and becomes a column of
        ellipses. */
     flex: 0 1 clamp(320px, 30%, 520px);
+  }
+
+  /*
+    And a floor on the height of each panel in it.
+
+    Flex children shrink to nothing by default, so a third surface in a side
+    dock left the one at the bottom showing a single row cut through the
+    middle of its letters — found by opening Tonight's mixes with the Night and
+    the assistant already there. The dock already scrolls; without a floor it
+    never reaches the height that would make it, and squeezes instead. Eight
+    rems is about the smallest height at which every side surface is still a
+    panel rather than a title bar with a hint of content under it, and it is
+    close to the least height `cockpit::Surface` asks for.
+  */
+  .dock.side > .surface {
+    min-height: 8rem;
   }
 
   .dock.bottom {

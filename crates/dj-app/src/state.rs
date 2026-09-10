@@ -98,6 +98,19 @@ pub struct AppState {
     audience: Arc<crate::audience::Audience>,
     /// What the room has been doing, when anything is watching it.
     room: Arc<Mutex<dj_assistant::room::Room>>,
+    /// §37: the mixes whose room response has already been written down.
+    ///
+    /// Keyed by seconds into the set, which is what the row is keyed by, so
+    /// the two cannot get out of step. Lives here rather than in the recorder
+    /// because the recorder runs on the snapshot pump and has no memory of its
+    /// own between ticks.
+    responses_done: Arc<Mutex<std::collections::BTreeSet<i64>>>,
+    /// What the night has been, and therefore what it is. See [`crate::night`].
+    ///
+    /// One per run of the application, alongside `session_id` and for the same
+    /// reason: a context engine is about *this* night and starting a second one
+    /// would throw away the range the first had built.
+    night: Arc<crate::night::Night>,
     /// Tempo sync with other djmanzo instances. Off until a DJ switches it
     /// on; see `crate::peersync`.
     peers: Arc<crate::peersync::Peers>,
@@ -130,6 +143,22 @@ pub struct AppState {
     /// as a reader of it — the waveform, the assistant, the autopilot — reads
     /// it from djmanzo rather than from a Svelte component's local state.
     transition: Mutex<Option<crate::transition::Transition>>,
+    /// §31: what the interface is wearing, and the brakes on changing it.
+    ///
+    /// Held here rather than in the browser for the reason the density bands
+    /// are Rust's: the *rule* is a decision about the application and the
+    /// pixels are the interface's. It also has to survive a panel closing, and
+    /// the minimum duration is meaningless if it restarts whenever a component
+    /// remounts.
+    weather: Mutex<crate::mood::Weather>,
+    /// The transaction the assistant has prepared, if one is waiting.
+    ///
+    /// One at a time, and held here for the reason the transition object is:
+    /// a plan a DJ is halfway through modifying must survive closing the panel
+    /// they are modifying it in, and everything that acts on it — Accept, the
+    /// emergency, the staleness check on every snapshot — reads djmanzo's copy
+    /// rather than a component's.
+    staged: Mutex<Option<crate::staged::Staged>>,
     /// The set being recorded, if one is. See [`crate::setrec`].
     recording: Mutex<Option<crate::setrec::Recording>>,
     /// Read by the snapshot pump sixty times a second, so it is held outside
@@ -137,6 +166,8 @@ pub struct AppState {
     recording_state: Arc<crate::setrec::RecordingState>,
     host: AudioHost,
     waveforms: Arc<WaveformStore>,
+    /// Cover art, read once per track and kept. See `crate::art`.
+    covers: Arc<crate::art::Covers>,
     /// API keys, in the OS keychain. Values go in and never come back out --
     /// see `dj_secrets`.
     secrets: Arc<dyn SecretStore>,
@@ -291,6 +322,12 @@ pub struct Conduct {
     pub posture: dj_assistant::Posture,
     pub occasion: dj_assistant::Occasion,
     pub takeover: dj_assistant::Takeover,
+    /// What each posture may do — §72's matrix, with the DJ's changes.
+    ///
+    /// Here rather than beside the other preferences because it is read on
+    /// every autopilot tick alongside the posture, and the two changing under
+    /// one lock is what stops a tick seeing a new matrix against an old level.
+    pub authority: dj_assistant::Authority,
     /// The set the assistant is working through, if one was built.
     ///
     /// Track ids rather than the full slots: the assistant needs to know what
@@ -316,6 +353,7 @@ impl Default for Conduct {
             posture: dj_assistant::Posture::Suggest,
             occasion: dj_assistant::Occasion::Open,
             takeover: dj_assistant::Takeover::new(),
+            authority: dj_assistant::Authority::new(),
             setlist: Vec::new(),
             played: 0,
         }
@@ -408,11 +446,21 @@ impl AppState {
             remote: Arc::new(crate::remote::Remote::default()),
             audience: Arc::new(crate::audience::Audience::default()),
             room: Arc::new(Mutex::new(dj_assistant::room::Room::new())),
+            responses_done: Arc::new(Mutex::new(std::collections::BTreeSet::new())),
+            staged: Mutex::new(None),
+            night: Arc::new(crate::night::Night::new()),
             peers: Arc::new(crate::peersync::Peers::default()),
             clock: Arc::new(crate::clock::MidiClock::default()),
             clock_follow: Arc::new(crate::clock::ClockFollow::default()),
             taps: crate::grid::TapTracker::new(),
             layout_dir: Mutex::new(None),
+            // Starts on the default theme, at time zero: the minimum duration
+            // is spent by the time any set has begun, so the first reading is
+            // free to take effect.
+            weather: Mutex::new(crate::mood::Weather::new(
+                "pkg-organic",
+                std::time::Duration::ZERO,
+            )),
             mapping_draft: Mutex::new(dj_hid::editor::Draft::new("My mapping", String::new())),
             config_dir: Mutex::new(None),
             transition: Mutex::new(None),
@@ -420,6 +468,7 @@ impl AppState {
             recording_state: Arc::new(crate::setrec::RecordingState::default()),
             host,
             waveforms: Arc::new(WaveformStore::new()),
+            covers: Arc::new(crate::art::Covers::new()),
             secrets,
             secrets_persist,
             sources,
@@ -672,6 +721,12 @@ impl AppState {
         self.transition.lock().ok()?.clone()
     }
 
+    /// §31's theme weather, for the command that offers it a reading.
+    #[must_use]
+    pub fn weather(&self) -> &Mutex<crate::mood::Weather> {
+        &self.weather
+    }
+
     /// Hold a transition, replacing whatever was held.
     ///
     /// One at a time on purpose: two set-up mixes is two answers to "what
@@ -682,6 +737,7 @@ impl AppState {
         if let Ok(mut held) = self.transition.lock() {
             *held = Some(transition);
         }
+        self.tell_automix();
     }
 
     /// Change the transition in place, returning what the change returned.
@@ -692,14 +748,43 @@ impl AppState {
         &self,
         change: impl FnOnce(&mut crate::transition::Transition) -> T,
     ) -> Option<T> {
-        let mut held = self.transition.lock().ok()?;
-        held.as_mut().map(change)
+        let answer = {
+            let mut held = self.transition.lock().ok()?;
+            held.as_mut().map(change)
+        };
+        // After the lock is dropped, because telling the automix takes its own.
+        self.tell_automix();
+        answer
     }
 
     /// Forget it.
     pub fn clear_transition(&self) {
         if let Ok(mut held) = self.transition.lock() {
             *held = None;
+        }
+        self.tell_automix();
+    }
+
+    /// Hand the automix whatever mix djmanzo is now holding.
+    ///
+    /// §68's unification, in one call. Pushed on every change rather than read
+    /// on every tick: the automix runs off the snapshot pump sixty times a
+    /// second and has no business taking this lock at that rate, and a mix
+    /// changes when somebody changes it.
+    ///
+    /// A transition with no start frame — one whose grid has gone — hands over
+    /// `None`, so the automix falls back to its own answer rather than aiming
+    /// at a place nobody worked out.
+    fn tell_automix(&self) {
+        let held = self.transition().map(|transition| crate::automix::Held {
+            outgoing: transition.outgoing_deck,
+            incoming: transition.incoming_deck,
+            start_frame: transition.plan.start_frame,
+            length_beats: transition.plan.length_beats,
+            style: transition.plan.style,
+        });
+        if let Ok(mut automix) = self.automix.lock() {
+            automix.hold(held);
         }
     }
 
@@ -1049,6 +1134,11 @@ impl AppState {
         &self.waveforms
     }
 
+    #[must_use]
+    pub fn covers(&self) -> &Arc<crate::art::Covers> {
+        &self.covers
+    }
+
     /// The network control server, running or not.
     #[must_use]
     pub fn remote(&self) -> &Arc<crate::remote::Remote> {
@@ -1065,6 +1155,12 @@ impl AppState {
     #[must_use]
     pub fn room(&self) -> &Arc<Mutex<dj_assistant::room::Room>> {
         &self.room
+    }
+
+    /// §37: which mixes have already had their room response written down.
+    #[must_use]
+    pub fn responses_done(&self) -> &Arc<Mutex<std::collections::BTreeSet<i64>>> {
+        &self.responses_done
     }
 
     /// The MIDI clock, sending or not.
@@ -1347,6 +1443,60 @@ impl AppState {
     #[must_use]
     pub fn conduct(&self) -> Arc<Mutex<Conduct>> {
         Arc::clone(&self.conduct)
+    }
+
+    /// The context engine.
+    #[must_use]
+    pub fn night(&self) -> Arc<crate::night::Night> {
+        Arc::clone(&self.night)
+    }
+
+    /// The transaction waiting for an answer, if there is one.
+    #[must_use]
+    pub fn staged(&self) -> Option<crate::staged::Staged> {
+        self.staged.lock().ok().and_then(|held| held.clone())
+    }
+
+    /// Hold a prepared transaction, replacing whatever was there.
+    pub fn set_staged(&self, staged: Option<crate::staged::Staged>) {
+        if let Ok(mut held) = self.staged.lock() {
+            *held = staged;
+        }
+    }
+
+    /// Throw away whatever was staged. **Reject**, and what the emergency does.
+    pub fn clear_staged(&self) {
+        self.set_staged(None);
+    }
+
+    /// Change one move in the held transaction. **Modify**.
+    ///
+    /// # Errors
+    /// When nothing is staged, the index is not a move, or the posture refuses
+    /// it.
+    pub fn choose_staged(&self, index: usize, chosen: bool) -> Result<(), String> {
+        let mut held = self
+            .staged
+            .lock()
+            .map_err(|_| "the staged plan is poisoned")?;
+        held.as_mut()
+            .ok_or("nothing is staged")?
+            .choose(index, chosen)
+    }
+
+    /// Set what the night is, and tell the context engine.
+    ///
+    /// The one path between the two. An occasion set in one place and pushed to
+    /// the engine in another is the shape that eventually ships a night the
+    /// interface and the engine disagree about — and `assistant_apply_pack`
+    /// setting both dials at once is exactly the second place it would happen.
+    pub fn set_occasion(&self, occasion: dj_assistant::Occasion) -> Result<(), String> {
+        let conduct = self.conduct();
+        let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+        guard.occasion = occasion;
+        drop(guard);
+        self.night.declare(occasion.declares_phase());
+        Ok(())
     }
 
     /// Note that a human moved a control.

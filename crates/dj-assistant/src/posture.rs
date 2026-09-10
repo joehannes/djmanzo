@@ -12,7 +12,7 @@
 //! nothing at peak time" are both coherent requests, and a single combined
 //! setting could express neither.
 
-use dj_core::Trajectory;
+use dj_core::{Certainty, SessionPhase, Trajectory};
 use serde::{Deserialize, Serialize};
 
 /// How much the assistant does.
@@ -107,6 +107,40 @@ impl Posture {
     #[must_use]
     pub fn records(self) -> bool {
         !matches!(self, Self::Off)
+    }
+
+    /// What this posture may do, given how sure the system is.
+    ///
+    /// The posture is the autonomy axis and `certainty` is the other one; see
+    /// [`Warrant`] for why the two are combined here rather than checked
+    /// separately at each call site.
+    ///
+    /// [`Self::may_act`] and its neighbours answer *what this posture is for*
+    /// and take no view of the night — which is the right answer for an
+    /// interface listing the levels, and the wrong one for deciding whether to
+    /// move a fader now.
+    #[must_use]
+    pub fn warrant(self, certainty: Certainty) -> Warrant {
+        match self {
+            Self::Off => Warrant::Nothing,
+            Self::Watch => Warrant::Watch,
+            Self::Suggest => Warrant::Speak,
+            Self::Prepare => Warrant::Stage,
+            Self::Assist => Grounds::enough(certainty).map_or(Warrant::Stage, Warrant::Act),
+            Self::Autopilot => Grounds::enough(certainty).map_or(Warrant::Stage, Warrant::Mix),
+        }
+    }
+
+    /// What this posture may do when nothing has formed an opinion yet.
+    ///
+    /// Deliberately **not** the same as a low certainty. "Nothing disagrees
+    /// because nothing has looked" and "something looked and disagreed" are
+    /// different claims, and collapsing them would leave the assistant inert
+    /// for the first six minutes of every set — which is exactly how long
+    /// `dj_core::ContextEngine` needs before it can say anything at all.
+    #[must_use]
+    pub fn unweighed(self) -> Warrant {
+        self.warrant(Certainty::Fair)
     }
 }
 
@@ -240,6 +274,29 @@ impl Occasion {
             Self::Background | Self::Requests => 0.05,
         }
     }
+
+    /// Where in the arc of a night this occasion puts the set, if anywhere.
+    ///
+    /// Most occasions say what *good* means without saying where the night is:
+    /// a DJ practising at home is not at any point in an arc, and "requests"
+    /// is a policy rather than a place. Those answer `None`, which is the
+    /// honest answer and the one `dj_core::ContextEngine` needs — a phase
+    /// invented from an occasion that never named one would be exactly the
+    /// unmade claim that module exists to refuse.
+    #[must_use]
+    pub fn declares_phase(self) -> Option<SessionPhase> {
+        match self {
+            Self::WarmUp => Some(SessionPhase::WarmUp),
+            Self::Peak => Some(SessionPhase::Peak),
+            Self::Close => Some(SessionPhase::Cooldown),
+            Self::Learning
+            | Self::Practice
+            | Self::Experimenting
+            | Self::Background
+            | Self::Requests
+            | Self::Open => None,
+        }
+    }
 }
 
 /// A named bundle of both dials and what they imply.
@@ -313,9 +370,232 @@ pub fn packs() -> &'static [Pack] {
     ]
 }
 
+// -- autonomy against certainty ---------------------------------------------
+
+/// Grounds to do something the room will hear.
+///
+/// A witness, not a value: it carries the certainty that justified the act, and
+/// it cannot be built anywhere but here. That is the whole mechanism behind
+/// [`Warrant`] — see its documentation for why a runtime check would not do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Grounds(Certainty);
+
+impl Grounds {
+    /// How sure the system was when it was allowed to act.
+    ///
+    /// For an interface that says so, which [§42](../../../docs/DIRECTIVE.md)
+    /// requires of every suggestion.
+    #[must_use]
+    pub const fn certainty(self) -> Certainty {
+        self.0
+    }
+
+    /// Grounds enough to act, or none.
+    ///
+    /// Private on purpose. Outside this module the only way to hold a
+    /// `Grounds` is to have been handed one inside a [`Warrant`], which is what
+    /// makes the invalid combination unrepresentable rather than merely
+    /// checked.
+    fn enough(certainty: Certainty) -> Option<Self> {
+        (certainty >= Certainty::Fair).then_some(Self(certainty))
+    }
+}
+
+/// What the assistant may do right now.
+///
+/// [§9 of the directive](../../../docs/DIRECTIVE.md) asks for autonomy and
+/// certainty to be **separate and fundamental**, and names one combination as
+/// invalid: high autonomy on a low-certainty read. This is that rule as a type.
+///
+/// [`Warrant::Act`] and [`Warrant::Mix`] carry [`Grounds`], whose constructor is
+/// private and refuses a certainty below [`Certainty::Fair`]. So no caller
+/// anywhere can build a warrant to act on a read something disagrees with —
+/// not because a check would catch it, but because the value cannot be written
+/// down. A runtime check would be one `if` away from being forgotten in the
+/// seventh place that needs it; this is zero places.
+///
+/// The other three cells of §9's matrix are ordinary and all representable:
+/// sure and only suggesting, unsure and doing nothing, sure and acting.
+///
+/// # It steps down; it does not stop
+///
+/// An assistant that went silent whenever the night was unclear would be
+/// useless exactly when a DJ is busiest. Low certainty at a high posture
+/// degrades to the highest thing that *is* warranted — usually staging, which
+/// the room cannot hear — rather than to nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Warrant {
+    /// Nothing at all.
+    Nothing,
+    /// Record the set, say nothing, touch nothing.
+    Watch,
+    /// Offer, with reasons.
+    Speak,
+    /// Load and cue a deck the room cannot hear.
+    Stage,
+    /// Move a control the room can hear.
+    Act(Grounds),
+    /// Perform a whole transition unasked.
+    Mix(Grounds),
+}
+
+impl Warrant {
+    /// Whether a control the room hears may move.
+    #[must_use]
+    pub const fn may_act(self) -> bool {
+        matches!(self, Self::Act(_) | Self::Mix(_))
+    }
+
+    /// Whether a whole transition may be performed unasked.
+    #[must_use]
+    pub const fn may_mix(self) -> bool {
+        matches!(self, Self::Mix(_))
+    }
+
+    /// Whether a deck that is not playing may be loaded and cued.
+    #[must_use]
+    pub const fn may_stage(self) -> bool {
+        matches!(self, Self::Stage | Self::Act(_) | Self::Mix(_))
+    }
+
+    /// Whether anything may be said unprompted.
+    #[must_use]
+    pub const fn may_speak(self) -> bool {
+        !matches!(self, Self::Nothing | Self::Watch)
+    }
+
+    /// The grounds behind it, where there are any.
+    #[must_use]
+    pub const fn grounds(self) -> Option<Grounds> {
+        match self {
+            Self::Act(grounds) | Self::Mix(grounds) => Some(grounds),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Nothing => "nothing",
+            Self::Watch => "watch",
+            Self::Speak => "speak",
+            Self::Stage => "stage",
+            Self::Act(_) => "act",
+            Self::Mix(_) => "mix",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §9's rule, over the whole matrix: **no posture, at any level, acts on a
+    /// read something disagrees with.**
+    ///
+    /// The other three cells are ordinary, so the test also asserts they are
+    /// reachable — a rule enforced by refusing everything would pass a
+    /// one-sided version of this.
+    #[test]
+    fn no_posture_acts_on_a_read_something_disagrees_with() {
+        for posture in Posture::ALL {
+            let unsure = posture.warrant(Certainty::Unsure);
+            assert!(
+                !unsure.may_act(),
+                "{} acts at {}",
+                posture.name(),
+                Certainty::Unsure.name()
+            );
+            assert!(!unsure.may_mix(), "{} mixes unsure", posture.name());
+        }
+
+        // High certainty, low autonomy: sure, and only suggesting.
+        assert!(!Posture::Suggest.warrant(Certainty::Sure).may_act());
+        assert!(Posture::Suggest.warrant(Certainty::Sure).may_speak());
+        // High certainty, high autonomy: automatic execution is possible.
+        assert!(Posture::Autopilot.warrant(Certainty::Sure).may_mix());
+        // Low certainty, low autonomy: nothing happens, and nothing breaks.
+        assert_eq!(Posture::Off.warrant(Certainty::Unsure), Warrant::Nothing);
+    }
+
+    /// An unclear night makes the assistant do less, not nothing.
+    #[test]
+    fn low_certainty_steps_a_posture_down_rather_than_off() {
+        assert_eq!(
+            Posture::Autopilot.warrant(Certainty::Unsure),
+            Warrant::Stage
+        );
+        assert_eq!(Posture::Assist.warrant(Certainty::Unsure), Warrant::Stage);
+        assert!(Posture::Autopilot.warrant(Certainty::Unsure).may_stage());
+    }
+
+    /// Nothing having looked is not the same as having looked and doubted.
+    #[test]
+    fn an_unweighed_night_is_not_a_doubted_one() {
+        assert!(Posture::Autopilot.unweighed().may_mix());
+        assert!(!Posture::Autopilot.warrant(Certainty::Unsure).may_mix());
+    }
+
+    /// The warrant carries what justified it, so an interface can say so.
+    #[test]
+    fn a_warrant_to_act_carries_the_certainty_behind_it() {
+        for certainty in [Certainty::Fair, Certainty::Sure] {
+            let grounds = Posture::Autopilot
+                .warrant(certainty)
+                .grounds()
+                .expect("acting has grounds");
+            assert_eq!(grounds.certainty(), certainty);
+        }
+        assert_eq!(Posture::Prepare.warrant(Certainty::Sure).grounds(), None);
+    }
+
+    /// A posture never gains a power from certainty that it does not have.
+    #[test]
+    fn certainty_never_promotes_a_posture_past_what_it_is_for() {
+        for posture in Posture::ALL {
+            for certainty in Certainty::ALL {
+                let warrant = posture.warrant(certainty);
+                assert!(
+                    !warrant.may_act() || posture.may_act(),
+                    "{} was allowed to act",
+                    posture.name()
+                );
+                assert!(
+                    !warrant.may_mix() || posture.may_mix(),
+                    "{} was allowed to mix",
+                    posture.name()
+                );
+                assert_eq!(
+                    warrant.may_speak(),
+                    posture.may_speak(),
+                    "{} changed whether it may speak on certainty alone",
+                    posture.name()
+                );
+            }
+        }
+    }
+
+    /// An occasion that names no point in the arc must not be made to.
+    #[test]
+    fn only_the_occasions_that_are_a_point_in_the_night_declare_one() {
+        let declared: Vec<Occasion> = Occasion::ALL
+            .into_iter()
+            .filter(|o| o.declares_phase().is_some())
+            .collect();
+        assert_eq!(
+            declared,
+            vec![Occasion::WarmUp, Occasion::Peak, Occasion::Close],
+            "an occasion started or stopped claiming a place in the night"
+        );
+        assert_eq!(Occasion::Open.declares_phase(), None);
+        // And the ones that do are not all the same point.
+        let phases: std::collections::BTreeSet<&str> = declared
+            .iter()
+            .filter_map(|o| o.declares_phase())
+            .map(dj_core::SessionPhase::name)
+            .collect();
+        assert_eq!(phases.len(), declared.len());
+    }
 
     /// **Prepare stages but does not act.**
     ///

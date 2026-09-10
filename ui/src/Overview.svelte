@@ -13,10 +13,51 @@
    * grid, the spectral colouring and the theme for free.
    */
   import { onMount } from "svelte";
-  import { playbackFramesPerSecond, tileUrl, waveformInfo, type DeckState } from "./api";
+  import {
+    playbackFramesPerSecond,
+    tileUrl,
+    waveformInfo,
+    type DeckState,
+    type MixOutInfo,
+  } from "./api";
   import { theme } from "./theme.svelte";
 
-  let { deck, height = 34 }: { deck: DeckState; height?: number } = $props();
+  let {
+    deck,
+    height = 34,
+    ghost = null,
+  }: {
+    deck: DeckState;
+    height?: number;
+    /**
+     * §27's ghost: a mix that has not happened, over a record not loaded.
+     *
+     * Frames on *this* record. The caller has already converted the
+     * candidate's beats onto this record's grid, because that conversion needs
+     * both tempos and this component knows one.
+     *
+     * The whole-record view is where a ghost belongs and the scrolling lane is
+     * not. A mix point is typically minutes ahead of the playhead, and the
+     * lane runs at a few hundred frames per pixel — so a ghost drawn there
+     * would be off screen until the DJ was already inside it, which is after
+     * the decision §27 exists to inform.
+     *
+     * Drawn as `suggestion`, the layer §25 reserves for "what djmanzo would
+     * do, drawn as a ghost rather than as a fact". It shares its colour
+     * meaning with the mix-out window and with nothing else: both are djmanzo
+     * saying *could*. Nothing here takes a pointer, which is §27's word —
+     * non-destructive — expressed rather than promised.
+     */
+    ghost?: {
+      /** Where the mix would begin and end, in frames. */
+      from: number;
+      to: number;
+      /** Where the candidate's first full phrase would land. */
+      landing?: number | null;
+      /** What the band means, for the hover. */
+      title?: string;
+    } | null;
+  } = $props();
 
   let box = $state<HTMLDivElement | null>(null);
   let playhead = $state<HTMLDivElement | null>(null);
@@ -24,6 +65,7 @@
   let totalFrames = $state(0);
   let epoch = $state(0);
   let ready = $state(false);
+  let mixOut = $state<MixOutInfo | null>(null);
 
   // Interpolation state, as in the scrolling lane: snapshots arrive at 60 Hz
   // but a frame landing between two of them must still move.
@@ -52,6 +94,7 @@
         ready = info.ready;
         totalFrames = info.total_frames;
         epoch = info.epoch;
+        mixOut = info.mix_out ?? null;
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -96,6 +139,51 @@
     // faithful width would be invisible. Floored to something locatable —
     // the overview is for finding your place, not for measuring.
     return { left, width: Math.max(right - left, 0.4) };
+  });
+
+  /**
+   * §25's mix-out layer: where this record could be left.
+   *
+   * Here as well as in the scrolling lane, and this is the view it is really
+   * for. The lane runs at a few hundred frames per pixel — two seconds of
+   * record across a deck — so a band twenty beats from the end is off screen
+   * until you are already inside it, which answers "what is about to happen"
+   * far too late to be worth anything. Over the whole track it is visible from
+   * the moment the record loads, which is the question this view exists to
+   * answer.
+   */
+  const mixOutBand = $derived.by(() => {
+    if (!mixOut || totalFrames <= 0) return null;
+    const left = fraction(mixOut.opens_frame) * 100;
+    const right = fraction(mixOut.closes_frame) * 100;
+    // Floored for the same reason the loop band is: on a ten-minute record the
+    // window is a couple of percent, and a faithful width there is a hairline
+    // nobody can aim at. This view is for finding your place, not for
+    // measuring — the lane draws it to scale.
+    return right > left
+      ? { left, width: Math.max(right - left, 0.8), onPhrase: mixOut.on_phrase }
+      : null;
+  });
+
+  /**
+   * §27's ghost band: the stretch a mix *would* cover.
+   *
+   * Floored to a locatable width for the same reason the other two bands are:
+   * a 32-beat blend is about one percent of a five-minute record, and a
+   * faithful width there is a hairline nobody can see. This view is for
+   * understanding what would happen, not for measuring it.
+   */
+  const ghostBand = $derived.by(() => {
+    if (!ghost || totalFrames <= 0) return null;
+    const left = fraction(ghost.from) * 100;
+    const right = fraction(ghost.to) * 100;
+    return right > left ? { left, width: Math.max(right - left, 1.2) } : null;
+  });
+
+  /** Where the candidate's first full phrase lands, as a position. */
+  const ghostLanding = $derived.by(() => {
+    if (!ghost || ghost.landing == null || totalFrames <= 0) return null;
+    return { left: fraction(ghost.landing) * 100 };
   });
 
   onMount(() => {
@@ -147,16 +235,58 @@
 
 <div class="overview" bind:this={box} style:height="{height}px">
   {#if url}
+    <!--
+      Stamped with the layer each one is, like the lane's. Without it the
+      browser test that reads every `data-layer` off a rendered page could not
+      see this view at all — and the loop and the cues drawn here are the same
+      two layers of §25's twenty, drawn in a second place.
+    -->
+    {#if mixOutBand}
+      <div
+        class="mix-out"
+        class:on-phrase={mixOutBand.onPhrase}
+        data-layer="mix-out"
+        style:left="{mixOutBand.left}%"
+        style:width="{mixOutBand.width}%"
+        title={mixOutBand.onPhrase
+          ? "Mix out anywhere in here and any transition djmanzo would propose still fits. It opens on a phrase."
+          : "Mix out anywhere in here and any transition djmanzo would propose still fits. No phrase structure, so it opens on a beat."}
+      ></div>
+    {/if}
+    <!--
+      §27: the ghost. A hatched band for the overlap and a dotted line where
+      the candidate's first full phrase would land — a record that is not
+      loaded and a mix that has not been armed, drawn so it cannot be mistaken
+      for either.
+    -->
+    {#if ghostBand}
+      <div
+        class="ghost-band"
+        data-layer="suggestion"
+        style:left="{ghostBand.left}%"
+        style:width="{ghostBand.width}%"
+        title={ghost?.title ?? "If this came in here, this is what it would cover"}
+      ></div>
+    {/if}
+    {#if ghostLanding}
+      <div
+        class="ghost-landing"
+        data-layer="suggestion"
+        style:left="{ghostLanding.left}%"
+        title="Where the candidate's first full phrase would land"
+      ></div>
+    {/if}
     {#if loopBand}
       <div
         class="loop-band"
+        data-layer="loop"
         style:left="{loopBand.left}%"
         style:width="{loopBand.width}%"
       ></div>
     {/if}
     <img class="whole" src={url} alt="" width={tileWidth} {height} draggable="false" />
     {#each markers as marker (marker.slot)}
-      <div class="cue" style:left="{marker.left}%"></div>
+      <div class="cue" data-layer="cues" style:left="{marker.left}%"></div>
     {/each}
     <div class="playhead" bind:this={playhead}></div>
   {:else}
@@ -212,6 +342,57 @@
     bottom: 0;
     background: var(--accent-2);
     opacity: 0.25;
+    pointer-events: none;
+  }
+
+  /*
+    Where the record can be left, over the whole of it. The same two edges as
+    the lane's — solid where the window opens, dashed where it closes — but no
+    label: this strip is thirty-four pixels tall and a word in it would cover
+    the record rather than describe it.
+  */
+  .mix-out {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--ok, #6a9955) 22%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--ok, #6a9955) 75%, transparent);
+    border-right: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 55%, transparent);
+    pointer-events: none;
+  }
+
+  .mix-out:not(.on-phrase) {
+    border-left-style: dashed;
+    opacity: 0.6;
+  }
+
+  /*
+    §27's ghost. The same colour meaning as `.mix-out` -- both are djmanzo
+    saying *could* -- and a different texture, because they say it about
+    different things: the window is a place a record can be left, this is a
+    whole mix that has not happened. Hatched rather than washed, so it reads as
+    provisional at a glance against the solid band it sits over.
+  */
+  .ghost-band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: repeating-linear-gradient(
+      45deg,
+      color-mix(in srgb, var(--ok, #6a9955) 45%, transparent) 0 3px,
+      transparent 3px 6px
+    );
+    border-left: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 85%, transparent);
+    border-right: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 60%, transparent);
+    pointer-events: none;
+  }
+
+  .ghost-landing {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    border-left: 2px dotted color-mix(in srgb, var(--ok, #6a9955) 95%, transparent);
     pointer-events: none;
   }
 </style>

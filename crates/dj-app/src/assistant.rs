@@ -161,16 +161,25 @@ pub fn reset_spend(state: State<'_, AppState>) -> AssistantStateDto {
 /// action *text*, and dispatch puts that text on the bus through the same door
 /// the interface uses. Nothing here can reach the engine directly.
 #[tauri::command]
-pub async fn ask(state: State<'_, AppState>, text: String) -> Result<AnswerDto, String> {
+pub async fn ask(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+) -> Result<AnswerDto, String> {
     let selection = state
         .assistant_selection()
         .ok_or_else(|| "no assistant provider is available".to_owned())?;
+    let decks = u8::try_from(state.deck_count()).unwrap_or(4);
     let assistant = Assistant::new(
         selection.provider,
         selection.model,
         Arc::clone(state.budget()),
     )
-    .with_pricing(selection.input_price, selection.output_price);
+    .with_pricing(selection.input_price, selection.output_price)
+    // §41: the interface's own vocabulary, generated from the surfaces that
+    // exist. Injected rather than known by `dj_assistant`, which has never
+    // heard of a panel.
+    .with_commands(crate::uiop::as_prompt_lines(decks));
 
     let plan = assistant
         .interpret(&text)
@@ -197,8 +206,31 @@ pub async fn ask(state: State<'_, AppState>, text: String) -> Result<AnswerDto, 
         }
     }
 
+    // §41. A line that was not an action gets a second look here, because this
+    // is the layer that knew what it injected. Anything that is not one of
+    // *these* either stays rejected — an assistant that guessed at the
+    // difference would be exactly the failure ADR-0005 exists to prevent.
+    let mut rejected = Vec::new();
+    let mut arranged = Vec::new();
+    for line in plan.rejected {
+        match crate::uiop::UiOp::parse(&line) {
+            Ok(op) => match crate::commands::ui_request(&app, &state, &op) {
+                Ok(applied) => arranged.push(applied.what),
+                // Refused by §72's matrix. Reported rather than swallowed: a
+                // DJ who has told the assistant to leave their screen alone
+                // should see that it tried, not silence.
+                Err(why) => rejected.push(format!("{line} — {why}")),
+            },
+            Err(_) => rejected.push(line),
+        }
+    }
+
     let reply = if undelivered.is_empty() {
-        plan.reply
+        if arranged.is_empty() {
+            plan.reply
+        } else {
+            format!("{} ({})", plan.reply, arranged.join(", "))
+        }
     } else {
         format!(
             "{} (the engine did not take {} of them — is a device open?)",
@@ -210,7 +242,7 @@ pub async fn ask(state: State<'_, AppState>, text: String) -> Result<AnswerDto, 
     Ok(AnswerDto {
         reply,
         actions: plan.actions,
-        rejected: plan.rejected,
+        rejected,
         source: match plan.source {
             dj_assistant::Source::Local => "local",
             dj_assistant::Source::Model => "model",

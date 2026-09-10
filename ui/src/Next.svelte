@@ -29,13 +29,19 @@
    * quietly learned the first as the second would slowly hide a collection
    * from its owner. They last as long as the session does.
    */
+  import { tick } from "svelte";
   import IconButton from "./controls/IconButton.svelte";
+  import Overview from "./Overview.svelte";
   import {
+    ghostPreview,
     loadTrack,
+    profileTonight,
     sidelistAdd,
     similarTo,
     suggestNext,
     type DeckState,
+    type Ghost,
+    type Profile,
     type Suggestion,
     type Trajectory,
   } from "./api";
@@ -97,11 +103,24 @@
     return [...up, ...rest].slice(0, ROWS);
   });
 
+  /**
+   * §12: what the ranking is conditioned on tonight, when it is conditioned.
+   *
+   * Asked for beside the candidates rather than on a timer, because it can
+   * only change when the DJ names the night — and it is drawn as **one line
+   * for the whole rail** rather than a note per row. Eight rows in a docked
+   * column already carry a name, a confidence bar, the deltas and the
+   * transition; a fifth line per row would push the rail past what can be
+   * read at a glance, which is the one thing it is for.
+   */
+  let profile = $state<Profile | null>(null);
+
   async function refresh() {
     working = true;
     try {
+      profile = await profileTonight().catch(() => null);
       candidates = like
-        ? await similarTo(like.track.id, ROWS * 2)
+        ? await similarTo(like.track.id, ROWS * 2, from)
         : await suggestNext(from, trajectory, ROWS * 2);
       error = null;
     } catch (e) {
@@ -134,6 +153,39 @@
       asked = true;
       void refresh();
     }
+  });
+
+  /**
+   * **And ask again when the record it follows changes.**
+   *
+   * Not a poll — see above, and the reason still holds: a rail that
+   * reshuffled every time a deck moved would be unreadable. This is the one
+   * input the answer actually depends on. Without it the rail asked once, at
+   * start-up, **before the decks had loaded**, and never again: djmanzo
+   * answered honestly about a deck holding nothing, so every row came up with
+   * no deltas and no transition and stayed that way for the rest of the night.
+   * Found by driving the application and confirmed in Rust's own log —
+   * `current_track` returning `None` at start-up and `Some` a refresh later.
+   *
+   * The deck **picker** was already covered — its `onchange` refreshes — and
+   * a first draft of the test for this measured that instead, so it passed
+   * with the effect below disabled. What only this covers is the record on
+   * the followed deck changing underneath it, which is the start-up case and
+   * also every load from the browser, a controller or the assistant.
+   *
+   * A `$derived` rather than reading `decks` inside the effect. The prop is a
+   * fresh array sixty times a second, so an effect touching it directly runs
+   * sixty times a second — §29's trap, which remounted every knob in the
+   * application. A derived string only wakes the effect when the string
+   * changes.
+   */
+  const following = $derived(decks.find((d) => d.number === from)?.title ?? null);
+  let followed = $state<string | null>(null);
+  $effect(() => {
+    const now = following;
+    if (!enabled || !asked || now === followed) return;
+    followed = now;
+    void refresh();
   });
 
   async function onto(candidate: Suggestion, deck: number) {
@@ -173,6 +225,81 @@
   function reject(candidate: Suggestion) {
     rejected = [...rejected, candidate.track.id];
   }
+
+  /**
+   * §27's ghost, for whichever candidate is being considered.
+   *
+   * One at a time, and held beside the rail rather than inside a row, because
+   * §27 is a question about a *pair*: this record against the one playing. Two
+   * ghosts open at once would be two answers to "what happens next" with
+   * nothing saying which deck each belonged to.
+   */
+  let ghost = $state<Ghost | null>(null);
+  /** Which row asked, so a second press closes it rather than re-fetching. */
+  let ghosting = $state<string | null>(null);
+  /** Said out loud when there is nothing honest to draw. */
+  let ghostEmpty = $state(false);
+
+  async function toggleGhost(candidate: Suggestion) {
+    if (ghosting === candidate.track.id) {
+      ghosting = null;
+      ghost = null;
+      ghostEmpty = false;
+      return;
+    }
+    ghosting = candidate.track.id;
+    ghost = null;
+    ghostEmpty = false;
+    try {
+      const seen = await ghostPreview(from, candidate.track.id);
+      // The row may have been closed or another one opened while this was in
+      // flight. Dropping a stale answer is the difference between a ghost and
+      // a ghost of the record before it.
+      if (ghosting !== candidate.track.id) return;
+      ghost = seen;
+      ghostEmpty = seen === null;
+      error = null;
+      /*
+        And bring it into view. The rail is a docked, scrolling list a hundred
+        or so pixels tall, so a panel added under the eighth row opens entirely
+        below the fold — which is what the running application showed: the
+        overlay was drawn correctly and every word explaining it was
+        unreachable without scrolling for it.
+
+        `block: "end"` rather than `nearest`: the panel is the tallest thing
+        in the list and the line that matters most is its last one — what
+        djmanzo cannot see. `nearest` brought the top of it into view and left
+        that line clipped, which is the same failure one scroll position along.
+      */
+      await tick();
+      document
+        .querySelector(`[data-ghost="${candidate.track.id}"]`)
+        ?.scrollIntoView({ block: "end" });
+    } catch (e) {
+      if (ghosting !== candidate.track.id) return;
+      error = String(e);
+      ghosting = null;
+    }
+  }
+
+  /** The deck the ghost is drawn over, when it is still loaded. */
+  const ghostDeck = $derived(decks.find((d) => d.number === from) ?? null);
+
+  /** §27's key relationship and BPM movement, on one line. */
+  const ghostMovement = $derived.by(() => {
+    if (!ghost) return "";
+    const parts = [
+      `${ghost.bpm_delta >= 0 ? "+" : ""}${ghost.bpm_delta.toFixed(1)} BPM`,
+      `${ghost.pitch_percent >= 0 ? "+" : ""}${ghost.pitch_percent.toFixed(1)}% pitch`,
+    ];
+    if (ghost.key_relation) parts.push(ghost.key_relation);
+    return parts.join(" · ");
+  });
+
+  /** What §27 asks for that djmanzo cannot see. Named, never quietly dropped. */
+  const ghostUnseen = $derived(
+    (ghost?.asked ?? []).filter((a) => !a.answered).map((a) => a.about),
+  );
 
   function togglePin(candidate: Suggestion) {
     pinned = pinned.includes(candidate.track.id)
@@ -241,6 +368,18 @@
     <p class="error">{error}</p>
   {/if}
 
+  <!--
+    §12. A ranking that is conditioned says so, with the evidence, because a
+    DJ who cannot see why the order changed cannot disagree with it. The
+    sentence is Rust's — §81's `Profile::words` — so the rail cannot make a
+    claim about this DJ that djmanzo would not.
+  -->
+  {#if profile}
+    <p class="profile" title="Records you play at this kind of night are nudged up the list. It can reorder records that all work; it can never lift one that does not mix.">
+      Ranked for tonight: {profile.says}
+    </p>
+  {/if}
+
   {#if shown.length === 0}
     <p class="empty">
       {working
@@ -269,6 +408,20 @@
             </span>
           </div>
           <div class="why" title={candidate.reasons.join(" · ")}>{candidate.summary}</div>
+          <!--
+            §22's estimated transition type. A second line rather than another
+            chip on the first: the deltas line is about the two *records* and
+            this is about the *mix*, and a DJ scanning eight rows reads them as
+            two different questions.
+
+            Rust's wording, not this component's — §27's ghost panel draws the
+            same phrase, and one mix with two spellings is two answers.
+          -->
+          {#if candidate.transition}
+            <div class="mix" title="What djmanzo would do if you brought this in">
+              {candidate.transition.says}
+            </div>
+          {/if}
           <div class="acts">
             {#each deckNumbers as deck (deck)}
               <button
@@ -298,11 +451,83 @@
               aria-label="Pin {candidate.track.title}"
             >●</button>
             <button
+              class:on={ghosting === candidate.track.id}
+              onclick={() => toggleGhost(candidate)}
+              disabled={!enabled}
+              title="What happens if this comes in — without loading it"
+              aria-label="Preview {candidate.track.title} as a ghost"
+            >&deg;</button>
+            <button
               onclick={() => reject(candidate)}
               title="Not this one, this time"
               aria-label="Pass on {candidate.track.title}"
             >&times;</button>
           </div>
+          <!--
+            §27's ghost, under the row that asked for it.
+            **Non-destructive**: nothing is loaded, nothing is armed, nothing
+            is written down — the panel is the whole of the action, which is
+            why it is safe to open on eight records in a row mid-set.
+          -->
+          {#if ghosting === candidate.track.id}
+            <div class="ghost" data-ghost={candidate.track.id}>
+              {#if ghost && ghostDeck}
+                <Overview
+                  deck={ghostDeck}
+                  height={34}
+                  ghost={{
+                    from: ghost.start_frame,
+                    to: ghost.end_frame,
+                    landing: ghost.landing?.frame ?? null,
+                    title: `If this came in here: a ${ghost.says} — ${ghost.reasons.join(" · ")}`,
+                  }}
+                />
+                <div class="ghost-line" title={ghost.reasons.join(" · ")}>
+                  <span class="ghost-what">{ghost.says}</span>
+                  <span class="ghost-move">{ghostMovement}</span>
+                </div>
+                <!--
+                  Terse on purpose. The rail is a few hundred pixels wide and a
+                  sentence wraps to three lines in it — which is how the first
+                  draft of this panel put its own numbers below the fold, in a
+                  surface that had to be scrolled to reach them at all.
+                -->
+                <div class="ghost-line">
+                  {#if !ghost.landing}
+                    no phrase structure — where its first strong phrase lands is
+                    not something djmanzo can say
+                  {:else if ghost.landing.lead_beats < 0.5}
+                    opens on a phrase — no lead-in
+                  {:else}
+                    {Math.round(ghost.landing.lead_beats)} beat{Math.round(
+                      ghost.landing.lead_beats,
+                    ) === 1
+                      ? ""
+                      : "s"} of lead-in{ghost.landing.within_mix
+                      ? ""
+                      : " — after the mix ends"}
+                  {/if}
+                </div>
+                {#if ghostUnseen.length > 0}
+                  <!--
+                    Named rather than left out. An overlay quietly showing five
+                    of §27's seven marks reads as a record with no vocal and no
+                    drop, which is a confident lie.
+                  -->
+                  <div class="ghost-line unseen">
+                    djmanzo cannot see: {ghostUnseen.join(" · ")}
+                  </div>
+                {/if}
+              {:else if ghostEmpty}
+                <div class="ghost-line unseen">
+                  Nothing to show: the deck is empty, one of the two records is
+                  unanalysed, or there is no longer room for a transition.
+                </div>
+              {:else}
+                <div class="ghost-line">Working out what would happen…</div>
+              {/if}
+            </div>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -413,12 +638,65 @@
     transform-origin: left center;
   }
 
+  /* §12: what the whole rail is conditioned on, once rather than per row. */
+  .profile {
+    margin: 0;
+    font-size: 0.7rem;
+    color: var(--muted);
+    border-left: 2px solid var(--accent-2);
+    padding-left: 0.4rem;
+  }
+
+  /* §22's estimated transition: about the mix, not about the two records. */
+  .mix {
+    font-size: 0.7rem;
+    color: var(--ok, #6a9955);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .why {
     font-size: 0.7rem;
     color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* §27's ghost panel: a whole record, and what would happen on it. */
+  .ghost {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 0.35rem;
+    padding: 0.35rem;
+    border-radius: 4px;
+    background: var(--panel-raised);
+    border-left: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 60%, transparent);
+  }
+
+  .ghost-line {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  .ghost-what {
+    color: var(--ok, #6a9955);
+    white-space: nowrap;
+  }
+
+  .ghost-move {
+    white-space: nowrap;
+  }
+
+  /* What djmanzo cannot see, in the colour it uses for saying so. */
+  .ghost-line.unseen {
+    color: var(--warn);
+    white-space: normal;
   }
 
   .acts {

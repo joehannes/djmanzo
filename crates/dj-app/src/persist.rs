@@ -47,6 +47,20 @@ pub enum Write {
         at: i64,
         session: Option<String>,
     },
+    /// §37: what the room did after a mix.
+    ///
+    /// Owned rather than borrowed, unlike `dj_library::MixResponse`: it
+    /// crosses a channel to another thread, so there is nothing left here for
+    /// it to borrow from.
+    Response {
+        session: String,
+        at_seconds: i64,
+        style: String,
+        setting: String,
+        sense: String,
+        before: f32,
+        after: f32,
+    },
 }
 
 /// How many pending writes to hold.
@@ -79,6 +93,23 @@ impl LibraryWriter {
                         Write::Play { track, at, session } => {
                             db.record_play(*track, *at, session.as_deref())
                         }
+                        Write::Response {
+                            session,
+                            at_seconds,
+                            style,
+                            setting,
+                            sense,
+                            before,
+                            after,
+                        } => db.note_response(&dj_library::MixResponse {
+                            session_id: session,
+                            at_seconds: *at_seconds,
+                            style,
+                            setting,
+                            sense,
+                            before: *before,
+                            after: *after,
+                        }),
                     };
                     if let Err(error) = result {
                         tracing::warn!(%error, "could not save deck state");

@@ -38,12 +38,14 @@
 //! view must not then call the same pair 0.6 because it weighed the phrase
 //! boundary in as well.
 //!
-//! # What it does not carry yet
+//! # The stem, EQ and FX plans are derived, not stored
 //!
-//! §68's optional `outgoingStems`, `eqPlan` and `fxPlan` are not here. Nothing
-//! in djmanzo yet decides *which stems* or *which EQ curve* a transition
-//! should use — the automix runs a style, not a per-band plan — and a field
-//! that is always `None` is a promise rather than a feature.
+//! §68's `outgoingStems`, `incomingStems`, `eqPlan` and `fxPlan` come from
+//! [`Transition::shape`], which reads [`crate::shape`]'s table for the style
+//! this transition holds. They are not fields, because a stored copy is a
+//! second answer: the automix performs the table, and a transition carrying
+//! its own idea of what a blend does could describe a mix djmanzo would not
+//! perform. Restyle it and the plans follow, with nothing to keep in step.
 
 use crate::plan::{self, Incoming, Outgoing, Plan};
 use dj_core::action::TransitionStyle;
@@ -112,6 +114,32 @@ impl Transition {
             outgoing,
             incoming,
         })
+    }
+
+    /// The record going out, as it was when the transition was armed.
+    ///
+    /// Read-only, and the playhead in it is the armed-at one rather than a
+    /// live reading — see the field. [`crate::practice`] needs the length and
+    /// the sample rate to rehearse the mix, and re-deriving them from a deck
+    /// would be a second answer about the same record.
+    #[must_use]
+    pub fn outgoing(&self) -> &Outgoing {
+        &self.outgoing
+    }
+
+    /// The record coming in, as the planner was given it.
+    #[must_use]
+    pub fn incoming(&self) -> &Incoming {
+        &self.incoming
+    }
+
+    /// What this transition's style does beyond the two channel faders.
+    ///
+    /// Derived from the style each time rather than held, so a restyle cannot
+    /// leave the stem, EQ and FX plans describing the previous one.
+    #[must_use]
+    pub fn shape(&self) -> crate::shape::Shape {
+        crate::shape::shape(self.plan.style)
     }
 
     /// Where the mix starts, in seconds into the outgoing record.
@@ -470,5 +498,35 @@ mod tests {
         transition.set_length(32);
         transition.set_style(TransitionStyle::Echo);
         assert!((transition.confidence - 0.8).abs() < f64::EPSILON);
+    }
+
+    /// **The stem, EQ and FX plans follow a restyle, because they are derived.**
+    ///
+    /// §68's four optional plans are the half of a transition that says what
+    /// will actually happen to the two records. Held as fields they would be a
+    /// second copy of `dj_app::shape`'s table -- and the copy that goes stale
+    /// is the one a panel is reading, so the interface would confidently
+    /// describe a blend's bass swap under the word "cut".
+    #[test]
+    fn restyling_changes_what_the_transition_says_it_will_do() {
+        let mut transition = armed();
+        transition.set_style(TransitionStyle::Blend);
+        let blend = transition.shape();
+        assert!(blend.overlaps);
+        assert!(
+            matches!(blend.eq, crate::shape::Eq::HandOverLows { .. }),
+            "a blend that does not hand the lows over is a fade"
+        );
+
+        transition.set_style(TransitionStyle::Cut);
+        let cut = transition.shape();
+        assert!(!cut.overlaps, "a cut overlapped");
+        assert_eq!(cut.eq, crate::shape::Eq::Flat);
+
+        transition.set_style(TransitionStyle::VocalDrop);
+        assert_eq!(
+            transition.shape().outgoing_stems.solo(),
+            Some(dj_core::action::Stem::Vocal)
+        );
     }
 }

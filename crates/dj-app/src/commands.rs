@@ -1050,6 +1050,13 @@ pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
         return Ok(());
     }
 
+    // The emergency. Expanded here rather than in the engine because what
+    // "safe" means is a decision about a performance, not about audio: see
+    // `make_safe` for what it does and, more importantly, what it refuses to.
+    if let Action::Mixer(dj_core::MixerAction::Safe) = parsed {
+        return make_safe(state);
+    }
+
     // A plugin parameter goes to the engine like everything else — but the
     // cached list the interface draws from lives here, and a slider that
     // snapped back on the next snapshot would be unusable.
@@ -1384,6 +1391,10 @@ pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
         },
         Some(&recording),
     )
+    // The engine's last answer rather than a fresh one: a panel asking for a
+    // frame outside the pump must see what the interface is already showing,
+    // not a second opinion computed from a slightly different moment.
+    .with_session(state.night().read())
 }
 
 /// What the interface needs to size a deck's waveform strip.
@@ -1396,6 +1407,24 @@ pub struct WaveformInfo {
     /// webview's own cache misses when the content changes -- see
     /// `WaveformStore::epochs`.
     pub epoch: u32,
+    /// Where this record could be left, from `plan::mix_out`.
+    ///
+    /// Here rather than on the snapshot because it is a property of the
+    /// *record*: it changes when a deck loads or an analysis lands and at no
+    /// other time, and this is the call the waveform already makes on exactly
+    /// those two events. Sixty times a second for a number that changes twice
+    /// a track would be the snapshot pump carrying furniture.
+    pub mix_out: Option<MixOutInfo>,
+}
+
+/// §25's `mix-out` layer, as the waveform draws it.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct MixOutInfo {
+    pub opens_frame: f64,
+    pub closes_frame: f64,
+    /// Whether the opening is a phrase boundary or merely a beat. The band
+    /// says which, because they are not the same promise.
+    pub on_phrase: bool,
 }
 
 #[tauri::command]
@@ -1405,7 +1434,46 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         ready: state.waveforms().has_summary(deck),
         total_frames: state.waveforms().total_frames(deck).unwrap_or(0) as u64,
         epoch: state.waveforms().epoch(deck),
+        mix_out: mix_out_of(&state, deck),
     }
+}
+
+/// Where this deck's record could be left, when djmanzo knows enough to say.
+///
+/// **From the grid the tiles are drawn from**, not from the library's stored
+/// analysis. Two reasons, and the second is why this was rewritten after
+/// looking at the running application:
+///
+/// 1. The band has to line up with the beat lines beside it. Those are
+///    rasterised from `WaveformStore`'s overlay, so anything drawn against a
+///    different grid would sit a fraction of a beat off the lines it claims to
+///    be a beat of — and a hand-edited grid would move the lines and leave the
+///    band behind.
+/// 2. A deck can have a grid the library row does not. The demo run showed
+///    exactly that: both decks reading 123.7 BPM at full confidence, the
+///    library rows still un-analysed, and no band on either lane. The first
+///    version asked the library and drew nothing, and every browser test
+///    passed because the harness answered the window itself.
+///
+/// `None` covers a deck with nothing on it, one still being analysed, and a
+/// record too short to leave. The waveform draws no band for any of them,
+/// which is the honest answer to all three.
+fn mix_out_of(state: &AppState, deck: u8) -> Option<MixOutInfo> {
+    let overlay = state.waveforms().grid(deck)?;
+    let length = state.waveforms().total_frames(deck)?;
+    #[allow(clippy::cast_precision_loss)]
+    let window = crate::plan::mix_out(&crate::plan::Record {
+        length: length as f64,
+        bpm: overlay.grid.bpm.get(),
+        phrase: overlay.phrase,
+        sample_rate: overlay.sample_rate,
+        grid_anchor: overlay.grid.anchor.get(),
+    })?;
+    Some(MixOutInfo {
+        opens_frame: window.opens_frame,
+        closes_frame: window.closes_frame,
+        on_phrase: window.on_phrase,
+    })
 }
 
 /// Report a frame-timing measurement from the webview.
@@ -1421,6 +1489,414 @@ pub fn report_bench(label: String, fps: f64, p50_ms: f64, p95_ms: f64, worst_ms:
     println!(
         "BENCH {label}: {fps:.1} fps | p50 {p50_ms:.2} ms | p95 {p95_ms:.2} ms | worst {worst_ms:.2} ms"
     );
+}
+
+/// One mix the night contains, as the interface shows it.
+#[derive(Debug, Clone, Serialize)]
+pub struct MixDto {
+    /// Seconds into the set.
+    pub at: f64,
+    pub took_seconds: f64,
+    /// How long it ran in beats, when the outgoing record's tempo is known.
+    /// Absent rather than zero: a mix whose record has left the library has an
+    /// unknown length, and nought beats is a different claim.
+    pub beats: Option<f64>,
+    pub out_deck: u8,
+    pub in_deck: u8,
+    /// What was on them. `None` where the record is no longer in the library,
+    /// which is the one thing that can make a night's own list incomplete.
+    pub out_title: Option<String>,
+    pub in_title: Option<String>,
+    pub style: String,
+    /// How many times this exact pair has been kept — §24's confidence
+    /// weight. Zero for most, which is what the button is for.
+    pub kept: u32,
+}
+
+/// One control on §74's contextual rail.
+#[derive(Debug, Clone, Serialize)]
+pub struct AtHandControlDto {
+    pub label: String,
+    /// The action, exactly as the parser accepts it — so pressing it is the
+    /// same event as typing it or mapping a controller to it.
+    pub action: String,
+    pub on: bool,
+}
+
+/// What is at hand on one deck.
+#[derive(Debug, Clone, Serialize)]
+pub struct AtHandDto {
+    pub deck: u8,
+    pub doing: String,
+    /// Why this set and not another, in the DJ's own terms.
+    pub because: String,
+    pub controls: Vec<AtHandControlDto>,
+}
+
+/// The four to eight controls that matter on `deck` right now.
+///
+/// §74's contextual rail. The judgement is `crate::at_hand`'s, over the same
+/// snapshot the interface is already drawing, so the rail cannot be showing a
+/// deck the rest of the application is not.
+///
+/// Whether another record is audible is the one thing a deck cannot see from
+/// itself, and it is the difference between *mixing* and merely *playing* — so
+/// it is worked out here, where every deck is in reach, rather than guessed at
+/// per deck.
+#[tauri::command]
+pub fn at_hand(state: State<'_, AppState>, deck: Option<u8>) -> Result<AtHandDto, String> {
+    let snapshot = crate::Snapshot::capture(&state.registry(), state.deck_count());
+    // No deck asked for means "wherever the hands are", which is the rail's
+    // ordinary use: §41's `ui focus` fades after six seconds by design, so it
+    // cannot be what a rail follows for a whole set.
+    let deck = deck
+        .or_else(|| crate::at_hand::busiest(&snapshot.decks))
+        .unwrap_or(1);
+    let view = snapshot
+        .decks
+        .iter()
+        .find(|d| d.number == deck)
+        .ok_or_else(|| format!("no deck {deck}"))?;
+    let against = snapshot
+        .decks
+        .iter()
+        .any(|other| other.number != deck && other.playing && other.pre_fader_level > 0.0);
+
+    let hand = crate::at_hand::at_hand(view, against);
+    Ok(AtHandDto {
+        deck: hand.deck,
+        doing: hand.doing.slug().to_owned(),
+        because: hand.because.to_owned(),
+        controls: hand
+            .controls
+            .into_iter()
+            .map(|c| AtHandControlDto {
+                label: c.label,
+                action: c.action,
+                on: c.on,
+            })
+            .collect(),
+    })
+}
+
+/// One thing djmanzo has noticed you do, and where.
+#[derive(Debug, Clone, Serialize)]
+pub struct TendencyDto {
+    /// The whole sentence, written in Rust — §13's rule is about the *words*
+    /// as much as the counting, so the interface is not given the parts to
+    /// assemble a claim out of.
+    pub says: String,
+    pub gesture: String,
+    pub phase: String,
+    pub seen: usize,
+}
+
+/// What tonight's gestures amount to, if anything.
+///
+/// §14's signals read through §13's rule. Nothing here is a preference: a
+/// gesture becomes a tendency only after four occurrences **in one phase of
+/// the night**, and the sentence it produces names that phase. "You sometimes
+/// sweep the filter when the night is at its peak" is a thing djmanzo saw;
+/// "you like filter sweeps" is a thing it would be inventing.
+///
+/// Empty is the ordinary answer for most of a set, and it is an answer: for
+/// the first stretch nothing has read the night yet, so nothing can generalise
+/// — which is `crate::night::phase_at` refusing to backdate a phase over the
+/// part of the evening it could not see.
+#[tauri::command]
+pub fn learned_tendencies(state: State<'_, AppState>) -> Vec<TendencyDto> {
+    let night = state.night();
+    let log = state.bus().log();
+    let signals = crate::signals::signals(&log, &|at| night.phase_at(at));
+    crate::signals::tendencies(&signals)
+        .into_iter()
+        .map(|t| TendencyDto {
+            says: t.words(),
+            gesture: t.did().slug().to_owned(),
+            phase: t.context().name().to_owned(),
+            seen: t.seen(),
+        })
+        .collect()
+}
+
+/// Tonight, and what kind of night it is. §81.
+#[derive(Debug, Clone, Serialize)]
+pub struct SettingDto {
+    /// A `Setting` slug, or `null` when the DJ has not said yet.
+    pub setting: Option<String>,
+    /// What has been read off tonight's log so far. Every one may be absent,
+    /// and an absence means "nothing to say yet" rather than "nothing".
+    pub density: Option<String>,
+    pub style: Option<String>,
+    pub posture: Option<String>,
+    pub techniques: Vec<String>,
+}
+
+/// One conditional profile, as the interface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProfileDto {
+    pub setting: String,
+    pub title: String,
+    /// How many nights it rests on. Drawn, because three nights and thirty are
+    /// not the same claim and a profile that hides the difference is asking to
+    /// be over-trusted.
+    pub nights: usize,
+    pub density: Option<String>,
+    pub style: Option<String>,
+    pub automation: Option<String>,
+    pub techniques: Vec<String>,
+    /// Genre and its share of the plays, commonest first.
+    pub genres: Vec<(String, f64)>,
+    /// The sentence, written in Rust — see `crate::profile::Profile::words`.
+    pub says: String,
+}
+
+/// Say what kind of night this is, and keep what has been read off it.
+///
+/// §81. Both halves in one call because they happen together: the moment a DJ
+/// names the setting, everything already read off tonight's log belongs to it.
+///
+/// Called again as the night goes, with `setting` absent — the four figures
+/// come off the action log and the log does not outlive the run that made it,
+/// so they are written while they exist. An absent setting never overwrites a
+/// named one; see `Library::note_night`.
+///
+/// `density` comes from the interface because the interface is the only thing
+/// that knows it: the band is chosen from the window's own height. That is not
+/// a second copy of anything Rust holds — it is the only copy.
+///
+/// # Errors
+/// A setting djmanzo does not know, or whatever the database says.
+#[tauri::command]
+pub fn night_setting(
+    state: State<'_, AppState>,
+    setting: Option<String>,
+    density: Option<String>,
+) -> Result<SettingDto, String> {
+    let setting = match setting.as_deref() {
+        Some(word) => {
+            Some(crate::setting::Setting::parse(word).ok_or_else(|| format!("no {word} setting"))?)
+        }
+        None => None,
+    };
+
+    // Everything read off tonight's log, now, while there is a log.
+    let log = state.bus().log();
+    let night = state.night();
+    let signals = crate::signals::signals(&log, &|at| night.phase_at(at));
+    let techniques: Vec<String> = crate::signals::tendencies(&signals)
+        .into_iter()
+        .map(|t| t.did().slug().to_owned())
+        .collect();
+
+    // The commonest way tonight's records were joined. `None` until there has
+    // been a handover: a night with one record in it has no transition style,
+    // and a confident answer there would be an invention.
+    let mut styles: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for handover in crate::mixes::handovers(&log) {
+        *styles.entry(handover.style.as_str()).or_default() += 1;
+    }
+    let style = styles
+        .into_iter()
+        .max_by_key(|(name, n)| (*n, *name))
+        .map(|(name, _)| name.to_owned());
+
+    let posture = state
+        .conduct()
+        .lock()
+        .ok()
+        .map(|conduct| conduct.posture.name().to_owned());
+
+    let joined = techniques.join(",");
+    let db = library(&state)?;
+    db.note_night(
+        &state.session_id(),
+        setting.map(|s| s.slug()),
+        dj_library::NightRead {
+            density: density.as_deref(),
+            style: style.as_deref(),
+            posture: posture.as_deref(),
+            techniques: (!joined.is_empty()).then_some(joined.as_str()),
+        },
+    )
+    .map_err(|e| e.to_string())?;
+
+    let stored = db
+        .night(&state.session_id())
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "the night was not written".to_owned())?;
+    Ok(SettingDto {
+        setting: Some(stored.setting),
+        density: stored.density,
+        style: stored.style,
+        posture: stored.posture,
+        techniques: stored
+            .techniques
+            .unwrap_or_default()
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(ToOwned::to_owned)
+            .collect(),
+    })
+}
+
+/// Tonight's row, without writing anything.
+///
+/// `setting: null` when the DJ has not said what kind of night this is, which
+/// is the state every night opens in and the one the panel exists to end.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn night_now(state: State<'_, AppState>) -> Result<SettingDto, String> {
+    let db = library(&state)?;
+    let stored = db.night(&state.session_id()).map_err(|e| e.to_string())?;
+    Ok(match stored {
+        Some(night) => SettingDto {
+            setting: Some(night.setting),
+            density: night.density,
+            style: night.style,
+            posture: night.posture,
+            techniques: night
+                .techniques
+                .unwrap_or_default()
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(ToOwned::to_owned)
+                .collect(),
+        },
+        None => SettingDto {
+            setting: None,
+            density: None,
+            style: None,
+            posture: None,
+            techniques: Vec::new(),
+        },
+    })
+}
+
+/// §81's conditional profiles: how this DJ plays, per kind of night.
+///
+/// Only the settings there is enough evidence for — see
+/// `crate::profile::ENOUGH_NIGHTS`. A setting under the threshold is absent
+/// rather than empty, because an interface draws an empty profile as one that
+/// knows nothing about you, which is a different and much weaker claim than
+/// one that does not exist yet.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn learned_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileDto>, String> {
+    let db = library(&state)?;
+    let mut nights = Vec::new();
+    for setting in crate::setting::Setting::ALL {
+        nights.extend(db.nights_in(setting.slug()).map_err(|e| e.to_string())?);
+    }
+    // One query per setting, and only for the settings a profile was built
+    // for: asking for every genre table up front would be six queries to
+    // answer a question about, usually, one.
+    let genres =
+        |setting: crate::setting::Setting| db.genres_in(setting.slug()).unwrap_or_default();
+    Ok(crate::profile::profiles(&nights, &genres)
+        .into_iter()
+        .map(|p| ProfileDto {
+            setting: p.setting().slug().to_owned(),
+            title: p.setting().title().to_owned(),
+            nights: p.nights(),
+            density: p.density().map(ToOwned::to_owned),
+            style: p.style().map(|s| s.as_str().to_owned()),
+            automation: p.automation().map(|a| a.name().to_owned()),
+            techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
+            genres: p.genres().to_vec(),
+            says: p.words(),
+        })
+        .collect())
+}
+
+/// Keep one of tonight's mixes: §24's "Save this transition".
+///
+/// The only thing written to `kept_pairs`. Every mix a night contained is
+/// already derivable from the action log — `crate::mixes` does it — so
+/// recording those too would be a second copy that eventually disagrees with
+/// the log it came from. What cannot be derived is that the DJ thought one was
+/// worth keeping.
+///
+/// Identified by when it happened rather than by an index, because the list is
+/// newest-first in the interface and re-derived on every read: an index would
+/// name a different mix the moment another one finished.
+///
+/// # Errors
+/// When no mix began at that moment, when either record has left the library,
+/// or whatever the database says. Named rather than swallowed: a *Keep* that
+/// silently kept nothing is worse than one that failed, because a DJ finds out
+/// weeks later when the pair never comes back.
+#[tauri::command]
+pub fn keep_mix(state: State<'_, AppState>, at: f64) -> Result<u32, String> {
+    let db = library(&state)?;
+    let found = crate::mixes::handovers(&state.bus().log())
+        .into_iter()
+        // The same tolerance the interface's own rounding needs: `at` makes a
+        // round trip through a float in JSON and comes back a hair off.
+        .find(|mix| (mix.began.as_secs_f64() - at).abs() < 0.01)
+        .ok_or_else(|| format!("no mix began at {at:.0}s"))?;
+
+    let (Some(from), Some(into)) = (found.out_track, found.in_track) else {
+        return Err("that mix has a record djmanzo cannot name".to_owned());
+    };
+    // Beats need the outgoing record's tempo, which the log does not hold.
+    let beats = db
+        .track(from)
+        .ok()
+        .flatten()
+        .and_then(|t| t.analysis.bpm)
+        .and_then(|bpm| found.beats(bpm));
+
+    db.keep_pair(from, into, Some(found.style.as_str()), beats)
+        .map_err(|e| e.to_string())
+}
+
+/// The mixes tonight, read back out of the action log.
+///
+/// §67 says the session contains transitions and §68 says the transition
+/// object should drive practice and replay. `crate::mixes` derives them rather
+/// than recording them — see that module for why — so this works on a set
+/// recorded long before any of it existed.
+///
+/// The tempo and the titles come from the library here rather than in
+/// `mixes`, which has no business knowing what a library is: the log holds
+/// track ids and durations, and turning those into "42 beats" and a name is
+/// the job of the layer that can look them up.
+#[tauri::command]
+pub fn session_mixes(state: State<'_, AppState>) -> Vec<MixDto> {
+    let db = library(&state).ok();
+    let named = |id: Option<dj_core::TrackId>| -> (Option<String>, Option<f64>) {
+        let Some(track) = id.and_then(|id| db.as_ref()?.track(id).ok().flatten()) else {
+            return (None, None);
+        };
+        (Some(track.display_title()), track.analysis.bpm)
+    };
+
+    crate::mixes::handovers(&state.bus().log())
+        .into_iter()
+        .map(|mix| {
+            let (out_title, bpm) = named(mix.out_track);
+            let (in_title, _) = named(mix.in_track);
+            MixDto {
+                at: mix.began.as_secs_f64(),
+                took_seconds: mix.took().as_secs_f64(),
+                beats: bpm.and_then(|bpm| mix.beats(bpm)),
+                out_deck: mix.out.human_number(),
+                in_deck: mix.into.human_number(),
+                out_title,
+                in_title,
+                style: mix.style.as_str().to_owned(),
+                kept: match (mix.out_track, mix.in_track, db.as_ref()) {
+                    (Some(from), Some(into), Some(db)) => db.pair_kept(from, into).unwrap_or(0),
+                    _ => 0,
+                },
+            }
+        })
+        .collect()
 }
 
 /// The session so far, as replayable text.
@@ -1440,6 +1916,259 @@ pub fn session_log(state: State<'_, AppState>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §22's estimate and §27's ghost are the same plan, and the phrase they
+    /// are drawn as is written once.
+    mod transition_estimate {
+        use super::super::{estimate_transition, transition_words};
+        use dj_core::{Mode, MusicalKey, Phrase, SampleRate};
+
+        const SR: SampleRate = SampleRate::DEFAULT;
+        const BPM: f64 = 120.0;
+
+        fn beat() -> f64 {
+            SR.as_f64() * 60.0 / BPM
+        }
+
+        fn outgoing() -> crate::plan::Outgoing {
+            crate::plan::Outgoing {
+                position: 64.0 * beat(),
+                length: 256.0 * beat(),
+                bpm: BPM,
+                phrase: Phrase::new(16, 0),
+                key: MusicalKey::new(8, Mode::Minor),
+                sample_rate: SR,
+                grid_anchor: 0.0,
+            }
+        }
+
+        fn candidate(analysed: bool) -> dj_library::LibraryTrack {
+            dj_library::LibraryTrack {
+                id: dj_core::TrackId::from_bytes([7u8; 32]),
+                path: std::path::PathBuf::from("/music/a.flac"),
+                tags: dj_library::Tags::default(),
+                duration_frames: 300 * 48_000,
+                sample_rate: SR,
+                channels: 2,
+                file_size: None,
+                file_modified: None,
+                added_at: 0,
+                analysis: if analysed {
+                    dj_library::StoredAnalysis {
+                        bpm: Some(BPM),
+                        grid_anchor: Some(0.0),
+                        grid_beats_per_bar: Some(4),
+                        grid_confidence: Some(0.9),
+                        phrase_beats: Some(16),
+                        phrase_anchor: Some(0),
+                        phrase_confidence: Some(0.9),
+                        ..dj_library::StoredAnalysis::default()
+                    }
+                } else {
+                    dj_library::StoredAnalysis::default()
+                },
+                stats: dj_library::PlayStats::default(),
+                colour: None,
+            }
+        }
+
+        /// **The rail shows the mix djmanzo would actually perform.**
+        ///
+        /// §22 asks for the estimated transition type, and the only version of
+        /// that worth having is the planner's own. A rail estimating for
+        /// itself would put one style beside a record and perform another the
+        /// moment it was loaded.
+        #[test]
+        fn the_rail_shows_the_planners_own_answer() {
+            let out = outgoing();
+            let track = candidate(true);
+            let estimate = estimate_transition(&out, &track).expect("a plan");
+
+            let ghost = crate::ghost::look(
+                &out,
+                &crate::ghost::Candidate {
+                    bpm: BPM,
+                    phrase: Phrase::new(16, 0),
+                    key: None,
+                    sample_rate: SR,
+                    grid_anchor: 0.0,
+                },
+            )
+            .expect("a ghost");
+
+            assert_eq!(estimate.style, ghost.plan.style.as_str());
+            assert_eq!(estimate.length_beats, ghost.plan.length_beats);
+            assert!(
+                (estimate.at_seconds - ghost.plan.start_frame / SR.as_f64()).abs() < 1e-9,
+                "the rail and the ghost disagree about where the mix starts"
+            );
+        }
+
+        /// **An unanalysed record gets no line rather than a borrowed tempo.**
+        ///
+        /// The planner will happily plan against any tempo it is handed, so
+        /// falling back to the outgoing record's would put a confident
+        /// "32-beat blend" beside a record nobody has analysed — which reads
+        /// exactly like one that has been.
+        #[test]
+        fn a_record_with_no_grid_gets_no_estimate() {
+            assert!(estimate_transition(&outgoing(), &candidate(false)).is_none());
+        }
+
+        /// A record already past its last usable phrase gets none either, for
+        /// the same reason `plan::plan` answers `None` there.
+        #[test]
+        fn a_record_with_no_room_left_gets_no_estimate() {
+            let mut nearly_over = outgoing();
+            nearly_over.position = nearly_over.length - 2.0 * beat();
+            assert!(estimate_transition(&nearly_over, &candidate(true)).is_none());
+        }
+
+        /// The phrase is written once, and it is the one a DJ reads.
+        #[test]
+        fn the_phrase_says_the_length_the_style_and_the_time() {
+            assert_eq!(
+                transition_words(32, "blend", 129.0),
+                "32-beat blend at 2:09"
+            );
+            // Negative seconds cannot happen and must not print as `0:-9`.
+            assert_eq!(transition_words(8, "cut", -1.0), "8-beat cut at 0:00");
+        }
+    }
+
+    /// §12: the rail consulting tonight's profile.
+    mod ranked_by_profile {
+        use super::super::with_profile;
+
+        fn suggestion(byte: u8, score: f64) -> dj_library::suggest::Suggestion {
+            dj_library::suggest::Suggestion {
+                track: dj_core::TrackId::from_bytes([byte; 32]),
+                score,
+                reasons: Vec::new(),
+            }
+        }
+
+        fn profile(plays: &[(&str, u32)]) -> crate::profile::Profile {
+            let counted: Vec<(String, u32)> = plays
+                .iter()
+                .map(|(name, n)| ((*name).to_owned(), *n))
+                .collect();
+            let nights: Vec<dj_library::Night> = (0..crate::profile::ENOUGH_NIGHTS)
+                .map(|n| dj_library::Night {
+                    session_id: format!("w{n}"),
+                    setting: "wedding".to_owned(),
+                    began_at: 0,
+                    density: None,
+                    style: None,
+                    posture: None,
+                    techniques: None,
+                })
+                .collect();
+            crate::profile::profiles(&nights, &|_| counted.clone())
+                .into_iter()
+                .next()
+                .expect("enough nights")
+        }
+
+        /// **A lifted score moves the row.**
+        ///
+        /// The decision this function exists for. A rail that added to a
+        /// score without re-sorting would show a higher number further down
+        /// the list, which reads as a bug in the ranking rather than as the
+        /// profile doing its job.
+        #[test]
+        fn a_record_the_profile_prefers_moves_up_the_rail() {
+            // Two records the scorer put a hair apart, and a wedding that is
+            // almost all bachata.
+            let ranked = vec![(suggestion(1, 5.0), None), (suggestion(2, 4.9), None)];
+            let genre = |id: dj_core::TrackId| {
+                (id == dj_core::TrackId::from_bytes([2u8; 32])).then(|| "Bachata".to_owned())
+            };
+            let out = with_profile(
+                ranked,
+                Some(&profile(&[("Bachata", 90), ("Merengue", 10)])),
+                &genre,
+            );
+
+            assert_eq!(
+                out[0].0.track,
+                dj_core::TrackId::from_bytes([2u8; 32]),
+                "the profile's preference did not reach the top of the rail"
+            );
+            assert!(out[0].1.is_some(), "it moved without saying why");
+            assert_eq!(
+                out[1].1, None,
+                "a record it said nothing about got a reason"
+            );
+        }
+
+        /// **A profile with no genres moves nothing, so it claims nothing.**
+        ///
+        /// Found in the running application: a wedding profile built from
+        /// nights whose plays carry no genre is a real profile — it says how
+        /// this DJ mixes at weddings — and it tilts nothing, because the tilt
+        /// is entirely a genre leaning. The rail said "Ranked for tonight"
+        /// over a ranking it had not touched.
+        #[test]
+        fn a_profile_that_cannot_tilt_does_not_reorder_anything() {
+            let ranked = vec![(suggestion(1, 5.0), None), (suggestion(2, 4.9), None)];
+            let no_genres = profile(&[]);
+            assert!(no_genres.genres().is_empty());
+            let out = with_profile(ranked, Some(&no_genres), &|_| Some("Bachata".to_owned()));
+            assert_eq!(out[0].0.track, dj_core::TrackId::from_bytes([1u8; 32]));
+            assert_eq!(out[0].0.score, 5.0, "a score moved with nothing to move it");
+            assert!(out.iter().all(|(_, because)| because.is_none()));
+        }
+
+        /// **With no profile, nothing moves and nothing is claimed.**
+        ///
+        /// §81's settings are told, never inferred, so a night the DJ has not
+        /// named ranks exactly as it did before any of this existed.
+        #[test]
+        fn a_night_nobody_has_named_ranks_as_it_always_did() {
+            let ranked = vec![(suggestion(1, 5.0), None), (suggestion(2, 4.9), None)];
+            let out = with_profile(ranked, None, &|_| Some("Bachata".to_owned()));
+            assert_eq!(out[0].0.track, dj_core::TrackId::from_bytes([1u8; 32]));
+            assert_eq!(
+                out[0].0.score, 5.0,
+                "a score moved with no profile to move it"
+            );
+            assert!(out.iter().all(|(_, because)| because.is_none()));
+        }
+
+        /// **It cannot lift a record over one that actually mixes.**
+        ///
+        /// The bound, seen from the rail rather than from the arithmetic. A
+        /// key clash is minus two and a half; three quarters of a point
+        /// cannot cross that, so the worst a profile can do is reorder
+        /// records that would all work.
+        #[test]
+        fn it_cannot_promote_a_record_that_does_not_mix() {
+            // **Ten genres, not two.** With two, an even split is a half and
+            // the raw tilt cannot exceed one whatever the shares are — so a
+            // two-genre fixture passes this with the bound removed and proves
+            // nothing. Across ten, a genre with nine tenths of the plays is
+            // nine times an even split, and log2(9) is over three: enough to
+            // cross the gap below if the bound were not there.
+            let mut plays = vec![("Bachata", 900u32)];
+            for other in [
+                "Merengue", "Salsa", "Cumbia", "Son", "Vals", "Tango", "Bolero", "Danzon",
+                "Guaracha",
+            ] {
+                plays.push((other, 11));
+            }
+            let ranked = vec![(suggestion(1, 5.0), None), (suggestion(2, 2.0), None)];
+            let genre = |id: dj_core::TrackId| {
+                (id == dj_core::TrackId::from_bytes([2u8; 32])).then(|| "Bachata".to_owned())
+            };
+            let out = with_profile(ranked, Some(&profile(&plays)), &genre);
+            assert_eq!(
+                out[0].0.track,
+                dj_core::TrackId::from_bytes([1u8; 32]),
+                "a profile promoted a record three points behind"
+            );
+        }
+    }
 
     mod command_palette {
         use super::super::{PALETTE_LIMIT, matches, palette};
@@ -1860,6 +2589,84 @@ mod tests {
 
 /// The order separation happens in, which is the whole of look-ahead.
 #[cfg(test)]
+mod safe_tests {
+    use super::safe_actions;
+
+    /// **The property that matters is what is missing.**
+    ///
+    /// An emergency control that silences the floor is worse than the
+    /// emergency it was pressed for. So `safe` never stops a record, never
+    /// moves a channel fader, and never touches the crossfader — deciding what
+    /// the room hears is what a hand is for, and this clears everything that
+    /// got between the hand and the sound.
+    ///
+    /// Asserted over the text of every action it produces rather than over a
+    /// handful of them, so a verb added to the expansion later has to pass the
+    /// same rule.
+    #[test]
+    fn nothing_in_safe_can_silence_the_floor() {
+        let lines = safe_actions(4);
+        assert!(!lines.is_empty());
+        for line in &lines {
+            assert!(
+                !line.contains("crossfader") && !line.contains("xfader"),
+                "safe moves the crossfader: {line}"
+            );
+            assert!(
+                !line.contains(" volume "),
+                "safe moves a channel fader: {line}"
+            );
+            for stopper in [
+                "pause", "play", "cue", "eject", "brake", "backspin", "reverse",
+            ] {
+                assert!(
+                    !line.split_whitespace().any(|word| word == stopper),
+                    "safe touches the transport: {line}"
+                );
+            }
+        }
+    }
+
+    /// And what it must do, on every deck the rig has.
+    #[test]
+    fn safe_flattens_every_deck_and_clears_every_rack() {
+        let decks = 4;
+        let lines = safe_actions(decks);
+        for number in 1..=decks {
+            for band in ["eq_low", "eq_mid", "eq_high"] {
+                assert!(
+                    lines.contains(&format!("deck {number} {band} 1")),
+                    "deck {number}'s {band} is not flattened"
+                );
+            }
+            assert!(lines.contains(&format!("deck {number} filter 0")));
+            for slot in 1..=dj_core::FX_SLOTS {
+                assert!(lines.contains(&format!("deck {number} fx {slot} off")));
+            }
+        }
+        for slot in 1..=dj_core::FX_SLOTS {
+            assert!(lines.contains(&format!("master fx {slot} off")));
+        }
+        assert!(lines.contains(&"master gain 0".to_owned()));
+        assert!(lines.contains(&"limiter on".to_owned()));
+    }
+
+    /// Every line of it is a real action, so the whole emergency logs and
+    /// replays like anything else rather than through a path of its own.
+    #[test]
+    fn every_line_of_safe_is_an_action_the_parser_accepts() {
+        for line in safe_actions(2) {
+            assert!(
+                dj_core::Action::parse(&line).is_ok(),
+                "safe would dispatch {line:?}, which is not in the vocabulary"
+            );
+        }
+        // And `safe` itself is, so it is on a controller and in a script.
+        assert!(dj_core::Action::parse("safe").is_ok());
+    }
+}
+
+#[cfg(test)]
 mod separation_order_tests {
     use super::next_chunk_to_separate;
 
@@ -2108,6 +2915,178 @@ mod stem_out_tests {
 /// renderer *and* the engine, that it survives a round trip, and that the
 /// failures are reported rather than swallowed -- which is the part that would
 /// silently break.
+/// The mix-out window, from the deck's own grid.
+///
+/// Its own module because it needs a *summary* on the deck as well as a grid —
+/// the length comes from the same place the lane's width does — and because
+/// the thing worth proving here is the wiring rather than the arithmetic.
+/// `plan::mix_out` is tested against the planner's constants in `plan`; this
+/// asks whether a deck that has a record on it answers at all.
+///
+/// It exists because the first version of `mix_out_of` read the library's
+/// stored analysis, which a freshly loaded deck does not have. Every browser
+/// test passed — the harness answers `waveform_info` itself — and the running
+/// application drew no band on any lane.
+/// §24's kept pairs, folded into a ranking.
+///
+/// The seam between two things that are each tested elsewhere: the store
+/// counts keeps, the scorer weighs them, and this is where they meet. Worth
+/// its own tests because a join that reads the right rows and then forgets to
+/// re-sort looks exactly like one that works, until a DJ notices the second
+/// row scoring higher than the first.
+#[cfg(test)]
+mod kept_pair_tests {
+    use super::*;
+    use dj_library::suggest::{Reason, Suggestion};
+
+    fn id(byte: u8) -> dj_core::TrackId {
+        dj_core::TrackId::from_bytes([byte; 32])
+    }
+
+    fn scored(byte: u8, score: f64) -> Suggestion {
+        Suggestion {
+            track: id(byte),
+            score,
+            reasons: vec![Reason::PhraseUnknown],
+        }
+    }
+
+    /// **A pair the DJ kept climbs, and the list is re-sorted around it.**
+    #[test]
+    fn a_kept_pair_moves_up_the_rail_rather_than_only_scoring_higher() {
+        let ranked = vec![scored(1, 5.0), scored(2, 4.0), scored(3, 3.0)];
+        let kept = std::collections::HashMap::from([(id(3), 3u32)]);
+
+        let out = with_kept(ranked, &kept);
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(3), id(1), id(2)],
+            "a kept pair scored higher but stayed where it was"
+        );
+        assert!(out[0].reasons.contains(&Reason::KeptBefore { times: 3 }));
+        // And the ones nobody kept are untouched, reasons included.
+        assert_eq!(out[1].reasons, vec![Reason::PhraseUnknown]);
+    }
+
+    /// **Nothing kept changes nothing**, which is most rails.
+    #[test]
+    fn a_rail_with_no_kept_pairs_is_exactly_the_ranking_it_was() {
+        let ranked = vec![scored(1, 5.0), scored(2, 4.0)];
+        let out = with_kept(ranked.clone(), &std::collections::HashMap::new());
+        assert_eq!(out, ranked);
+    }
+
+    /// The tie-break is the suggester's own, so two equal candidates cannot
+    /// come out of here in a different order from the one that produced them.
+    #[test]
+    fn equal_candidates_keep_the_order_the_suggester_gave_them() {
+        let ranked = vec![scored(9, 4.0), scored(2, 4.0)];
+        let out = with_kept(ranked, &std::collections::HashMap::new());
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(2), id(9)],
+            "the tie-break differs from the suggester's"
+        );
+    }
+}
+
+#[cfg(test)]
+mod mix_out_tests {
+    use super::*;
+    use dj_core::{Beatgrid, Bpm, Confidence, FramePos, SampleRate};
+    use dj_render::WaveformSummary;
+
+    /// Small on purpose: 8 kHz and 120 BPM puts a hundred beats in 400 000
+    /// frames, which is a 3 MB fixture rather than a 40 MB one. The window's
+    /// arithmetic does not care, and a test that allocates a real record's
+    /// worth of silence is a test people start skipping.
+    const SR: SampleRate = SampleRate::new(8_000).unwrap();
+    const BPM: f64 = 120.0;
+    const BEATS: usize = 100;
+
+    fn deck() -> DeckId {
+        DeckId::from_human(1).unwrap()
+    }
+
+    fn beat_frames() -> f64 {
+        SR.as_f64() * 60.0 / BPM
+    }
+
+    /// A deck with a record on it: a summary, so it has a length, and a grid,
+    /// so it has beats. Both are what the rasteriser draws from.
+    fn deck_with_a_record(phrase: Option<dj_core::Phrase>) -> AppState {
+        let state = AppState::new(true);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let frames = (beat_frames() * BEATS as f64) as usize;
+        state
+            .waveforms()
+            .set_summary(deck(), WaveformSummary::analyse(&vec![0.0; frames * 2], SR));
+        state.waveforms().set_grid(
+            deck(),
+            Some(dj_render::GridOverlay {
+                grid: Beatgrid::new(
+                    FramePos::new(0.0),
+                    Bpm::new(BPM).unwrap(),
+                    Confidence::CERTAIN,
+                ),
+                sample_rate: SR,
+                phrase,
+            }),
+        );
+        state
+    }
+
+    /// **A deck with a record on it says where the record can be left.**
+    ///
+    /// The whole of what went wrong: the answer came back `None` for a deck
+    /// that plainly had a grid, because it was asked of the wrong place.
+    #[test]
+    fn a_deck_with_a_grid_answers_a_window() {
+        let state = deck_with_a_record(dj_core::Phrase::new(16, 0));
+        let window = mix_out_of(&state, 1).expect("a deck with a grid has a window");
+
+        // Both edges in beats, against the planner's own arithmetic.
+        let opens = window.opens_frame / beat_frames();
+        let closes = window.closes_frame / beat_frames();
+        assert!(
+            (closes - 84.0).abs() < 0.01,
+            "closed at beat {closes} rather than at 100 - 8 - 8"
+        );
+        assert_eq!(
+            opens % 16.0,
+            0.0,
+            "the window opened {opens} beats in, which is not a phrase boundary"
+        );
+        assert!(window.on_phrase);
+        assert!(opens < closes);
+    }
+
+    /// And an empty deck says nothing rather than guessing at a length.
+    #[test]
+    fn a_deck_with_nothing_on_it_has_no_window() {
+        let state = AppState::new(true);
+        assert!(mix_out_of(&state, 1).is_none(), "an empty deck answered");
+
+        // A grid but no record: a length of zero is not a record to leave.
+        state.waveforms().set_grid(
+            deck(),
+            Some(dj_render::GridOverlay {
+                grid: Beatgrid::new(
+                    FramePos::new(0.0),
+                    Bpm::new(BPM).unwrap(),
+                    Confidence::CERTAIN,
+                ),
+                sample_rate: SR,
+                phrase: None,
+            }),
+        );
+        assert!(
+            mix_out_of(&state, 1).is_none(),
+            "a deck with no record answered"
+        );
+    }
+}
+
 #[cfg(test)]
 mod grid_edit_tests {
     use super::*;
@@ -2521,12 +3500,22 @@ fn perform_step(state: &AppState, step: &crate::autopilot::Step) -> Result<Optio
             }
             Ok(Some(format!("loaded deck {}", deck.human_number())))
         }
-        Step::Cue { deck, beat } => {
+        Step::Cue { deck, at } => {
+            // Resolved here rather than where the step was built, because the
+            // grid it is resolved against arrives with the analyser seconds
+            // after the load — and a step built before the load could not have
+            // known it. `deck N seek <frame>` is the action that then goes on
+            // the bus, so what is logged and replayed is a seek like any other.
+            let frame = cue_frame(state, *deck, *at)?;
             perform(
                 state,
-                &format!("deck {} seek_beat {beat}", deck.human_number()),
+                &format!("deck {} seek {frame:.0}", deck.human_number()),
             )?;
             Ok(Some(format!("cued deck {}", deck.human_number())))
+        }
+        Step::Sync { deck } => {
+            perform(state, &format!("deck {} sync", deck.human_number()))?;
+            Ok(Some(format!("synced deck {}", deck.human_number())))
         }
         Step::MatchGain { deck, db } => {
             perform(state, &format!("deck {} gain {db:.2}", deck.human_number()))?;
@@ -2535,14 +3524,153 @@ fn perform_step(state: &AppState, step: &crate::autopilot::Step) -> Result<Optio
                 deck.human_number()
             )))
         }
-        Step::Mix { beats, style, .. } => {
+        Step::Mix {
+            from,
+            to,
+            beats,
+            style,
+        } => {
             // Through the automix, which already knows how to run a transition
             // of a given style and length. Re-implementing it here would be a
             // second transition engine to keep in agreement with the first.
+            //
+            // §68: where djmanzo is already *holding* a mix for these two
+            // decks, that one is performed and this says nothing about style
+            // or length. A DJ who set a mix up in the pair view and then let
+            // the assistant run it should get the mix they set up — the whole
+            // point of there being one transition object is that there is one
+            // answer to "what happens next".
+            let holding = state
+                .transition()
+                .is_some_and(|held| held.outgoing_deck == *from && held.incoming_deck == *to);
+            if holding {
+                perform(state, "automix now")?;
+                return Ok(Some("performing the mix you set up".to_owned()));
+            }
             perform(state, &format!("automix style {}", style.as_str()))?;
             perform(state, &format!("automix beats {beats}"))?;
             perform(state, "automix now")?;
             Ok(Some(format!("mixing over {beats} beats")))
+        }
+    }
+}
+
+/// The emergency, expanded.
+///
+/// [§47](../../../docs/DIRECTIVE.md) asks for a control a DJ can hit without
+/// thinking when something has gone wrong, and says the semantics need care.
+/// These are the semantics, and the second list is the important one.
+///
+/// **What it does.** Takes every control back from the assistant and throws
+/// away anything it had staged. Clears every effect on every deck and on the
+/// master. Puts all three EQ bands and the filter back to neutral. Restores
+/// master gain to unity and re-engages the limiter.
+///
+/// **What it deliberately does not do.** It does not stop a record, move a
+/// channel fader, or move the crossfader. Every one of those changes what the
+/// room is hearing *immediately*, and the failure mode of an emergency control
+/// that silences the floor is far worse than the emergency: a DJ who hits SAFE
+/// because an effect ran away has a problem, and a DJ who hits SAFE and gets
+/// silence has a disaster. What a hand is for is deciding what the room hears;
+/// this clears everything that got between the hand and the sound, and stops
+/// there.
+///
+/// Every part of it is an ordinary action on the ordinary bus, so the whole
+/// thing appears in the session log as what it was and replays exactly.
+fn make_safe(state: &AppState) -> Result<(), String> {
+    // The assistant first: clearing an effect while something is still allowed
+    // to put one back is not an emergency stop, it is a race.
+    if let Ok(mut guard) = state.conduct().lock() {
+        guard.takeover.take_all();
+    }
+    state.clear_staged();
+
+    let mut failures = Vec::new();
+    for line in safe_actions(state.deck_count()) {
+        if let Err(error) = perform(state, &line) {
+            failures.push(format!("{line}: {error}"));
+        }
+    }
+
+    // Reported rather than swallowed, and only after everything else has been
+    // tried: an emergency that stopped at its first failure would leave the
+    // rest of the rack running.
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("safe, except: {}", failures.join("; ")))
+    }
+}
+
+/// Exactly what `safe` expands into, in order.
+///
+/// A list rather than a loop of side effects so that the property that matters
+/// — what is *not* in it — can be asserted without an engine, an audio device
+/// or a running set. See [`make_safe`] for the reasoning behind the omissions;
+/// `nothing_in_safe_can_silence_the_floor` is what holds them to it.
+#[must_use]
+pub fn safe_actions(decks: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    for number in 1..=decks {
+        for slot in 1..=dj_core::FX_SLOTS {
+            lines.push(format!("deck {number} fx {slot} off"));
+        }
+        for band in ["eq_low", "eq_mid", "eq_high"] {
+            lines.push(format!("deck {number} {band} 1"));
+        }
+        lines.push(format!("deck {number} filter 0"));
+    }
+    for slot in 1..=dj_core::FX_SLOTS {
+        lines.push(format!("master fx {slot} off"));
+    }
+    lines.push("master gain 0".to_owned());
+    lines.push("limiter on".to_owned());
+    lines
+}
+
+/// Where a [`crate::autopilot::CueTo`] actually is on a deck, in frames.
+///
+/// Needs three things the deck only has once it has been analysed: a grid to
+/// count beats from, a sample rate to turn beats into frames, and a phrase
+/// length to know how long a phrase is. Missing any of them is an error rather
+/// than a guess — seeking a record to a place nobody worked out is worse than
+/// leaving it where the DJ put it, because it happens silently and the DJ finds
+/// out when they bring the fader up.
+fn cue_frame(
+    state: &AppState,
+    deck: dj_core::DeckId,
+    at: crate::autopilot::CueTo,
+) -> Result<f64, String> {
+    let overlay = state.waveforms().grid(deck.human_number()).ok_or_else(|| {
+        format!(
+            "deck {} has no beat grid to cue against",
+            deck.human_number()
+        )
+    })?;
+    let beat_frames = overlay.sample_rate.as_f64() * 60.0 / overlay.grid.bpm.get();
+    if !(beat_frames.is_finite() && beat_frames > 0.0) {
+        return Err(format!(
+            "deck {}'s grid has no usable tempo",
+            deck.human_number()
+        ));
+    }
+    match at {
+        crate::autopilot::CueTo::PhraseStart => {
+            let phrase = overlay.phrase.ok_or_else(|| {
+                format!(
+                    "deck {} has no phrase structure to cue to",
+                    deck.human_number()
+                )
+            })?;
+            // The first phrase boundary at or after the start of the record.
+            // Counted from the grid anchor, which is *some* beat rather than
+            // necessarily the first — so this walks forward from wherever the
+            // anchor happens to be until it is inside the track.
+            let anchor = overlay.grid.anchor.get();
+            let length = f64::from(phrase.beats) * beat_frames;
+            let first = anchor + f64::from(phrase.anchor) * beat_frames;
+            let behind = ((0.0 - first) / length).ceil().max(0.0);
+            Ok((first + behind * length).max(0.0))
         }
     }
 }
@@ -2956,10 +4084,7 @@ pub fn assistant_set_posture(state: State<'_, AppState>, posture: String) -> Res
 pub fn assistant_set_occasion(state: State<'_, AppState>, occasion: String) -> Result<(), String> {
     let wanted = dj_assistant::Occasion::parse(&occasion)
         .ok_or_else(|| format!("{occasion:?} is not an occasion"))?;
-    let conduct = state.conduct();
-    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
-    guard.occasion = wanted;
-    Ok(())
+    state.set_occasion(wanted)
 }
 
 /// Choose a pack, setting both dials at once.
@@ -2969,10 +4094,184 @@ pub fn assistant_apply_pack(state: State<'_, AppState>, name: String) -> Result<
         .iter()
         .find(|p| p.name.eq_ignore_ascii_case(name.trim()))
         .ok_or_else(|| format!("no pack called {name:?}"))?;
+    {
+        let conduct = state.conduct();
+        let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+        guard.posture = pack.posture;
+    }
+    state.set_occasion(pack.occasion)
+}
+
+// -- the staged transaction -------------------------------------------------
+//
+// §44. See `crate::staged` for why a bundle rather than five decisions, and why
+// accepting is not a second way of doing things.
+
+/// Prepare the next transition, without doing any of it.
+///
+/// Replaces whatever was staged: a plan is about the record that is playing,
+/// and asking again means asking about now.
+#[tauri::command]
+pub fn staged_prepare(state: State<'_, AppState>) -> Result<Option<crate::staged::Staged>, String> {
+    let conduct = state.conduct();
+    let guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    let situation = read_situation(&state, &guard);
+    let decision = crate::autopilot::next_step(&situation, &guard.takeover, &guard.authority);
+    // The planner is asked directly rather than through the decision, because
+    // the decision is one step and this is the whole shape of the mix.
+    let planned = situation
+        .staged
+        .as_ref()
+        .and_then(|(_, incoming)| crate::plan::plan(&situation.outgoing, incoming));
+    let live_track = state.deck_track_id(situation.live);
+    let staged = crate::staged::build(
+        &situation,
+        planned.as_ref(),
+        &guard.authority,
+        guard.posture,
+        &decision.because,
+        live_track,
+    );
+    drop(guard);
+    state.set_staged(staged.clone());
+    Ok(staged)
+}
+
+/// What is staged, or nothing.
+///
+/// Answers `None` and clears the plan when the record it was about has left the
+/// deck — a plan drawn against a set that no longer exists is worse than no
+/// plan, because it looks current.
+#[tauri::command]
+pub fn staged_current(state: State<'_, AppState>) -> Option<crate::staged::Staged> {
+    let staged = state.staged()?;
+    let live = dj_core::DeckId::from_human(staged.live_deck)?;
+    if staged.still_current(live, state.deck_track_id(live)) {
+        Some(staged)
+    } else {
+        state.clear_staged();
+        None
+    }
+}
+
+/// Turn one move on or off. **Modify.**
+#[tauri::command]
+pub fn staged_choose(
+    state: State<'_, AppState>,
+    index: usize,
+    chosen: bool,
+) -> Result<Option<crate::staged::Staged>, String> {
+    state.choose_staged(index, chosen)?;
+    Ok(state.staged())
+}
+
+/// Throw it away. **Reject.**
+#[tauri::command]
+pub fn staged_reject(state: State<'_, AppState>) {
+    state.clear_staged();
+}
+
+/// Carry it out. **Accept.**
+///
+/// Every chosen move goes through `perform_step`, the same function the
+/// automatic tick uses, so what a press does and what the tick does cannot
+/// drift apart. The plan is cleared whatever happens: a transaction that had
+/// been half carried out is not one to offer again.
+#[tauri::command]
+pub fn staged_accept(state: State<'_, AppState>) -> Result<crate::staged::Outcome, String> {
+    let staged = state.staged().ok_or("nothing is staged")?;
+    let mut done = Vec::new();
+    let mut stopped = None;
+    for (index, step) in staged.chosen() {
+        match perform_step(&state, step) {
+            Ok(Some(what)) => done.push(what),
+            Ok(None) => {}
+            Err(because) => {
+                stopped = Some(crate::staged::Stopped {
+                    at: index,
+                    about: staged.moves[index].about.clone(),
+                    because,
+                });
+                break;
+            }
+        }
+    }
+    state.clear_staged();
+    Ok(crate::staged::Outcome { done, stopped })
+}
+
+// -- the override matrix ----------------------------------------------------
+
+/// One row of §72's matrix, for the panel that shows it.
+#[derive(Debug, Clone, Serialize)]
+pub struct AuthorityRow {
+    pub capability: String,
+    pub title: String,
+    /// Whether the room hears this the moment it happens.
+    pub audible: bool,
+    /// One entry per posture, in `Posture::ALL` order.
+    pub allowances: Vec<String>,
+    /// Which of those the DJ has changed from djmanzo's answer.
+    pub changed: Vec<bool>,
+}
+
+/// The matrix as it currently stands.
+#[tauri::command]
+pub fn authority_matrix(state: State<'_, AppState>) -> Result<Vec<AuthorityRow>, String> {
+    let conduct = state.conduct();
+    let guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    Ok(dj_assistant::Capability::ALL
+        .into_iter()
+        .map(|capability| AuthorityRow {
+            capability: capability.name().to_owned(),
+            title: capability.title().to_owned(),
+            audible: capability.is_audible(),
+            allowances: dj_assistant::Posture::ALL
+                .into_iter()
+                .map(|posture| {
+                    guard
+                        .authority
+                        .allows(capability, posture)
+                        .name()
+                        .to_owned()
+                })
+                .collect(),
+            changed: dj_assistant::Posture::ALL
+                .into_iter()
+                .map(|posture| {
+                    guard.authority.allows(capability, posture)
+                        != dj_assistant::Authority::default_for(capability, posture)
+                })
+                .collect(),
+        })
+        .collect())
+}
+
+/// Change one cell of the matrix.
+#[tauri::command]
+pub fn authority_set(
+    state: State<'_, AppState>,
+    capability: String,
+    posture: String,
+    allowance: String,
+) -> Result<(), String> {
+    let capability = dj_assistant::Capability::parse(&capability)
+        .ok_or_else(|| format!("{capability:?} is not something the matrix covers"))?;
+    let posture = dj_assistant::Posture::parse(&posture)
+        .ok_or_else(|| format!("{posture:?} is not a posture"))?;
+    let allowance = dj_assistant::Allowance::parse(&allowance)
+        .ok_or_else(|| format!("{allowance:?} is not no, limited or yes"))?;
     let conduct = state.conduct();
     let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
-    guard.posture = pack.posture;
-    guard.occasion = pack.occasion;
+    guard.authority.set(capability, posture, allowance)
+}
+
+/// Put every cell back to djmanzo's answer.
+#[tauri::command]
+pub fn authority_reset(state: State<'_, AppState>) -> Result<(), String> {
+    let conduct = state.conduct();
+    let mut guard = conduct.lock().map_err(|_| "assistant state is poisoned")?;
+    guard.authority.reset();
     Ok(())
 }
 
@@ -3006,7 +4305,7 @@ pub fn assistant_hand_back(state: State<'_, AppState>) -> Result<(), String> {
 /// shown and what is done cannot drift apart.
 fn decide(state: &AppState, conduct: &crate::state::Conduct) -> crate::autopilot::Decision {
     let situation = read_situation(state, conduct);
-    crate::autopilot::next_step(&situation, &conduct.takeover)
+    crate::autopilot::next_step(&situation, &conduct.takeover, &conduct.authority)
 }
 
 /// Assemble what the autopilot needs from the live application.
@@ -3105,6 +4404,13 @@ fn read_situation(
     crate::autopilot::Situation {
         posture: conduct.posture,
         occasion: conduct.occasion,
+        // What the context engine has made of the night, or `Fair` where it has
+        // not made anything of it yet -- the assistant is not held back for the
+        // six minutes the engine needs before it can speak.
+        certainty: state
+            .night()
+            .read()
+            .map_or(dj_core::Certainty::Fair, |read| read.certainty),
         live,
         outgoing,
         idle,
@@ -3120,7 +4426,8 @@ fn describe_step(step: &crate::autopilot::Step) -> String {
     match step {
         Step::Nothing => "nothing".to_owned(),
         Step::Stage { deck, .. } => format!("load deck {}", deck.human_number()),
-        Step::Cue { deck, beat } => format!("cue deck {} to beat {beat}", deck.human_number()),
+        Step::Cue { deck, .. } => format!("cue deck {} to the phrase", deck.human_number()),
+        Step::Sync { deck } => format!("sync deck {}", deck.human_number()),
         Step::MatchGain { deck, db } => {
             format!("trim deck {} by {db:+.1} dB", deck.human_number())
         }
@@ -3500,6 +4807,230 @@ pub fn session_open(path: String) -> Result<SessionSummaryDto, String> {
     })
 }
 
+/// Decode the records a set loaded, once each.
+///
+/// Kept rather than re-decoded per load: a set that brings a record back for a
+/// second play should not pay for it twice, and a DJ's crate is small enough
+/// that holding it is cheaper than the disk.
+fn decoder(
+    db: Arc<dj_library::Library>,
+) -> impl FnMut(dj_core::TrackId) -> Option<Arc<dyn dj_decode::TrackSource>> {
+    let mut decoded: std::collections::HashMap<dj_core::TrackId, Arc<dyn dj_decode::TrackSource>> =
+        std::collections::HashMap::new();
+    move |id: dj_core::TrackId| -> Option<Arc<dyn dj_decode::TrackSource>> {
+        if let Some(found) = decoded.get(&id) {
+            return Some(Arc::clone(found));
+        }
+        let track = db.track(id).ok().flatten()?;
+        let loaded = dj_decode::decode_file(&track.path).ok()?;
+        let source: Arc<dyn dj_decode::TrackSource> = Arc::new(loaded.buffer);
+        decoded.insert(id, Arc::clone(&source));
+        Some(source)
+    }
+}
+
+/// How much run-up one mix is rendered with.
+///
+/// Eight seconds. A transition is not a thing you can judge from its own
+/// duration alone — what it sounds like depends on what was already playing —
+/// and eight seconds is about four bars at a danceable tempo, which is enough
+/// to hear where the outgoing record was before anything moved.
+const MIX_LEAD_IN: f64 = 8.0;
+
+/// And how long after it lands.
+///
+/// Four seconds: long enough to hear the incoming record standing on its own,
+/// short enough that the file is about the mix rather than about the next
+/// track.
+const MIX_TAIL: f64 = 4.0;
+
+/// Render one of tonight's mixes back to a WAV, in context.
+///
+/// §68's object driving replay. `crate::mixes` says when each handover
+/// happened and how long it took; this hands those two numbers to
+/// `replay::Window` and renders that stretch of the set the DJ is playing.
+///
+/// **It is not a seek, and this is where the cost is.** The engine's state at
+/// any moment is the whole set up to it, so everything before the mix is
+/// rendered and thrown away — a mix from the third hour means rendering three
+/// hours. Replay runs to no deadline and is far faster than real time, but it
+/// is not free, and a caller should say so rather than let a DJ think a button
+/// is broken.
+///
+/// The file lands in the recordings folder beside the settings, named for
+/// where in the set it came from. Not the music folder, for the same reason
+/// recordings are not: the browser would find it and offer it as a track.
+#[tauri::command]
+pub fn session_render_mix(
+    state: State<'_, AppState>,
+    at: f64,
+    took_seconds: f64,
+) -> Result<String, String> {
+    let db = library(&state)?;
+    let rate = dj_core::SampleRate::DEFAULT;
+    let session = crate::session::Session {
+        events: state.bus().log(),
+    };
+    if session.events.is_empty() {
+        return Err("nothing has happened yet tonight".to_owned());
+    }
+
+    let from = (at - MIX_LEAD_IN).max(0.0);
+    let to = at + took_seconds.max(0.0) + MIX_TAIL;
+    let dir = state
+        .recordings_dir()
+        .ok_or_else(|| "no settings folder to write into yet".to_owned())?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    // Named for where in the set it came from, so two mixes from one night do
+    // not overwrite each other and the name says which is which.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let path = dir.join(format!("mix-at-{}s.wav", at.max(0.0).round() as u64));
+
+    let mut resolve = decoder(db);
+    let rendered = crate::replay::render_to_wav(
+        &session,
+        rate,
+        state.deck_count(),
+        0,
+        crate::replay::Window::seconds(from, to, rate),
+        &mut resolve,
+        &path,
+    )?;
+
+    // What came out, not what it cost: reporting the run-up would tell a DJ
+    // their twenty-second mix is three hours long.
+    Ok(format!(
+        "{:.0}s → {}",
+        rendered.emitted as f64 / rate.as_f64(),
+        path.display()
+    ))
+}
+
+/// One rehearsal, as the practice surface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct RehearsalDto {
+    /// The style that was rehearsed, as the grammar spells it.
+    pub style: String,
+    /// Where the file landed.
+    pub path: String,
+    /// How long it runs.
+    pub seconds: f64,
+    /// Where the mix itself sits inside it, so a player can mark it.
+    pub mix_from: f64,
+    pub mix_to: f64,
+    /// How many actions the automix sent. A number a DJ can compare between
+    /// styles: a cut is a handful, a blend is a thousand fader writes.
+    pub actions: usize,
+    /// What the style does beyond the faders, from the same table the automix
+    /// performs -- so the file and the description cannot disagree.
+    pub shape: ShapeDto,
+}
+
+/// Rehearse the held transition, and hear it.
+///
+/// §69's practice surface: "two tracks can be explored **without altering the
+/// live master**." Nothing here touches the live engine. The automix is run
+/// offline against a simulated playhead, its actions become a set file that
+/// was never played, and `replay` renders that file headless -- see
+/// [`crate::practice`]. The DJ's records keep playing to the room throughout.
+///
+/// `style` rehearses an alternative **without restyling the held mix**, which
+/// is the same promise one level up: trying a vocal drop in the lab must not
+/// change the mix the automix is about to perform. The transition is cloned
+/// and the clone is restyled; djmanzo goes on holding what it held.
+///
+/// Unlike [`session_render_mix`] this is cheap. A rehearsal is synthetic, so
+/// it has no history to be faithful to: it renders the run-up, the mix and the
+/// tail, and nothing else, whatever hour of the night it is.
+#[tauri::command]
+pub fn practice_rehearse(
+    state: State<'_, AppState>,
+    style: Option<String>,
+) -> Result<RehearsalDto, String> {
+    let Some(mut transition) = state.transition() else {
+        return Err("set a transition up in the pair view first".to_owned());
+    };
+    if let Some(word) = style.as_deref() {
+        let style = dj_core::action::TransitionStyle::parse(word)
+            .ok_or_else(|| format!("no {word} style"))?;
+        // On the clone. `state.transition()` handed back a copy, and nothing
+        // here writes it back.
+        transition.set_style(style);
+    }
+
+    let db = library(&state)?;
+    let track = db
+        .track(transition.incoming_track)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "the record coming in has left the library".to_owned())?;
+    let grid = track
+        .analysis
+        .beatgrid()
+        .ok_or_else(|| "the record coming in has no beatgrid to rehearse against".to_owned())?;
+    #[allow(clippy::cast_precision_loss)]
+    let incoming = crate::plan::Record {
+        length: track.duration_frames as f64,
+        bpm: grid.bpm.get(),
+        phrase: phrase_of(&track),
+        sample_rate: track.sample_rate,
+        grid_anchor: grid.anchor.get(),
+    };
+
+    let rehearsal = crate::practice::rehearse(
+        &transition,
+        incoming,
+        crate::practice::RUN_UP,
+        crate::practice::TAIL,
+    );
+
+    let dir = state
+        .recordings_dir()
+        .ok_or_else(|| "no settings folder to write into yet".to_owned())?;
+    let dir = dir.join("practice");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    // Named for the pair and the style, so rehearsing the same mix four ways
+    // leaves four files a DJ can play against each other -- which is §69's
+    // "hear alternative transitions" as files rather than as a promise.
+    let name = format!(
+        "{}-{}-{}.wav",
+        short(transition.outgoing_track),
+        short(transition.incoming_track),
+        transition.plan.style.as_str().replace(' ', "-")
+    );
+    let path = dir.join(name);
+
+    let mut resolve = decoder(db);
+    crate::replay::render_to_wav(
+        &rehearsal.session,
+        transition.outgoing().sample_rate,
+        rehearsal.decks,
+        // The tail. Nothing is *sent* during it, so a render that stopped at
+        // the last event would end the file the instant the mix landed.
+        rehearsal.tail_frames,
+        crate::replay::Window::WHOLE,
+        &mut resolve,
+        &path,
+    )?;
+
+    Ok(RehearsalDto {
+        style: transition.plan.style.as_str().to_owned(),
+        path: path.display().to_string(),
+        seconds: rehearsal.seconds,
+        mix_from: rehearsal.mix_from,
+        mix_to: rehearsal.mix_to,
+        actions: rehearsal.session.events.len(),
+        shape: describe_shape(&transition.shape()),
+    })
+}
+
+/// The first eight characters of a track id, for a filename.
+///
+/// Enough to tell two records apart in a folder and short enough that the name
+/// stays readable. Not the title: a title has slashes and colons in it.
+fn short(track: dj_core::TrackId) -> String {
+    track.to_hex().chars().take(8).collect()
+}
+
 /// Re-render a saved set to a WAV file.
 ///
 /// Faster than real time, and with nothing dropped: a replay runs to no
@@ -3520,22 +5051,7 @@ pub fn session_render(
     let db = library(&state)?;
     let session = crate::session::Session::read(std::path::Path::new(&session_path))?;
     let rate = dj_core::SampleRate::DEFAULT;
-
-    // Decoded once each and kept, rather than re-decoded per load: a set that
-    // brings a record back for a second play should not pay for it twice, and
-    // a DJ's crate is small enough that holding it is cheaper than the disk.
-    let mut decoded: std::collections::HashMap<dj_core::TrackId, Arc<dyn dj_decode::TrackSource>> =
-        std::collections::HashMap::new();
-    let mut resolve = |id: dj_core::TrackId| -> Option<Arc<dyn dj_decode::TrackSource>> {
-        if let Some(found) = decoded.get(&id) {
-            return Some(Arc::clone(found));
-        }
-        let track = db.track(id).ok().flatten()?;
-        let loaded = dj_decode::decode_file(&track.path).ok()?;
-        let source: Arc<dyn dj_decode::TrackSource> = Arc::new(loaded.buffer);
-        decoded.insert(id, Arc::clone(&source));
-        Some(source)
-    };
+    let mut resolve = decoder(db);
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let tail = (tail_seconds.max(0.0) * rate.as_f64()) as u64;
@@ -3544,6 +5060,7 @@ pub fn session_render(
         rate,
         state.deck_count(),
         tail,
+        crate::replay::Window::WHOLE,
         &mut resolve,
         std::path::Path::new(&out_path),
     )?;
@@ -3625,6 +5142,86 @@ pub struct PairSideDto {
     pub functions: Vec<String>,
 }
 
+/// What one style does beyond the two channel faders.
+///
+/// The interface shape of [`crate::shape::Shape`] -- §68's `outgoingStems`,
+/// `incomingStems`, `eqPlan` and `fxPlan`. `does` is the same thing in the
+/// words a panel can print, derived from the fields beside it rather than
+/// written separately, so a tooltip cannot describe a mix djmanzo no longer
+/// performs.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShapeDto {
+    /// Whether the two records are ever audible at the same time.
+    pub overlaps: bool,
+    /// The stem soloed on the outgoing deck for the length of the mix, if any.
+    pub outgoing_stem: Option<String>,
+    pub incoming_stem: Option<String>,
+    /// The fraction of the transition by which the low-EQ handover has
+    /// finished. `None` when the style does not touch the EQ at all, which is
+    /// not the same as a handover that takes the whole mix.
+    pub eq_done_by: Option<f64>,
+    pub fx: Option<ShapeFxDto>,
+    pub does: Vec<String>,
+}
+
+/// The effect a style throws over the outgoing deck.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShapeFxDto {
+    pub effect: String,
+    pub beats: f32,
+    pub slot: u8,
+}
+
+/// One transition style, and what it does.
+///
+/// Served rather than written on the interface side: the automix performs
+/// [`crate::shape`]'s table, so the buttons that offer a style read the same
+/// table instead of a second description of it that nothing keeps true. It is
+/// also how the interface learns a style exists -- `vocal drop` was in the
+/// vocabulary and performed by the automix while no panel offered it, because
+/// the list of styles was hand-written twice.
+#[derive(Debug, Clone, Serialize)]
+pub struct StyleDto {
+    /// Exactly as the action grammar spells it, so a button's label is also
+    /// the word `automix style <name>` takes.
+    pub name: String,
+    pub shape: ShapeDto,
+}
+
+/// Turn a shape into what the interface draws.
+fn describe_shape(shape: &crate::shape::Shape) -> ShapeDto {
+    ShapeDto {
+        overlaps: shape.overlaps,
+        outgoing_stem: shape.outgoing_stems.solo().map(|s| s.name().to_owned()),
+        incoming_stem: shape.incoming_stems.solo().map(|s| s.name().to_owned()),
+        eq_done_by: match shape.eq {
+            crate::shape::Eq::Flat => None,
+            crate::shape::Eq::HandOverLows { done_by } => Some(done_by),
+        },
+        fx: shape.fx.outgoing().map(|(slot, kind, beats)| ShapeFxDto {
+            effect: kind.name().to_owned(),
+            beats,
+            slot,
+        }),
+        does: shape.words(),
+    }
+}
+
+/// Every transition style, in the vocabulary's own order.
+///
+/// A read of a table; it holds nothing and moves nothing.
+#[tauri::command]
+#[must_use]
+pub fn transition_styles() -> Vec<StyleDto> {
+    dj_core::action::TransitionStyle::ALL
+        .into_iter()
+        .map(|style| StyleDto {
+            name: style.as_str().to_owned(),
+            shape: describe_shape(&crate::shape::shape(style)),
+        })
+        .collect()
+}
+
 /// A transition, flattened for the interface.
 ///
 /// The interface shape of [`crate::transition::Transition`], which is §68's
@@ -3666,6 +5263,9 @@ pub struct TransitionDto {
     /// was just asked about.
     pub armed: bool,
     pub reasons: Vec<String>,
+    /// What this style does beyond the faders, so the pair view can say what
+    /// pressing the button will do before it is pressed.
+    pub shape: ShapeDto,
 }
 
 /// Everything the planner needs about one deck, read from the live registry.
@@ -3785,6 +5385,7 @@ fn describe_transition(
             .iter()
             .map(describe_plan_reason)
             .collect(),
+        shape: describe_shape(&transition.shape()),
     }))
 }
 
@@ -3924,6 +5525,53 @@ fn phrase_of(track: &dj_library::LibraryTrack) -> Option<dj_core::Phrase> {
     dj_core::Phrase::new(track.analysis.phrase_beats?, track.analysis.phrase_anchor?)
 }
 
+/// §22: the mix into one candidate, from §27's own planner.
+///
+/// `None` for exactly the reasons the ghost answers `None`, and one more that
+/// is the candidate's rather than the pair's: a record with no beat grid
+/// cannot be planned into, and falling back to the outgoing tempo — which
+/// `transition_between` does for a record that is *loaded*, where the deck has
+/// one either way — would put a confident line beside a record nobody has
+/// analysed.
+fn estimate_transition(
+    out: &crate::plan::Outgoing,
+    candidate: &dj_library::LibraryTrack,
+) -> Option<TransitionEstimateDto> {
+    let grid = candidate.analysis.beatgrid()?;
+    let ghost = crate::ghost::look(
+        out,
+        &crate::ghost::Candidate {
+            bpm: grid.bpm.get(),
+            phrase: phrase_of(candidate),
+            key: candidate.analysis.key(),
+            sample_rate: candidate.sample_rate,
+            grid_anchor: grid.anchor.get(),
+        },
+    )?;
+    let at_seconds = ghost.plan.start_frame / out.sample_rate.as_f64();
+    Some(TransitionEstimateDto {
+        style: ghost.plan.style.as_str().to_owned(),
+        length_beats: ghost.plan.length_beats,
+        at_seconds,
+        says: transition_words(
+            ghost.plan.length_beats,
+            ghost.plan.style.as_str(),
+            at_seconds,
+        ),
+    })
+}
+
+/// A transition in one phrase: `32-beat blend at 2:09`.
+///
+/// One spelling, in Rust, because it is now drawn in two places — §27's ghost
+/// panel and §22's rail — and two spellings of the same mix is the failure
+/// `dj_app::shape` exists to prevent, at the scale of a sentence.
+fn transition_words(length_beats: u32, style: &str, at_seconds: f64) -> String {
+    #[allow(clippy::cast_possible_truncation)]
+    let at = crate::share::clock(at_seconds.max(0.0) as i64);
+    format!("{length_beats}-beat {style} at {at}")
+}
+
 /// Render one planner reason for the interface. Terse, like the suggester's.
 fn describe_plan_reason(reason: &crate::plan::Reason) -> String {
     use crate::plan::Reason;
@@ -3968,6 +5616,31 @@ pub struct SuggestionDto {
     /// How much of the achievable score this got, 0 to 1. See
     /// `dj_library::suggest::Suggestion::confidence`.
     pub confidence: f64,
+    /// §22's *estimated transition type*: what the mix into this record would
+    /// be, if it were brought in.
+    ///
+    /// `None` when there is nothing honest to say — an empty deck, an
+    /// unanalysed record on either side, or a track already too near its end
+    /// for any transition the planner proposes to fit.
+    pub transition: Option<TransitionEstimateDto>,
+}
+
+/// §22: what the mix into one candidate would be.
+///
+/// **The planner's own answer, not a second one.** It is `dj_app::ghost` —
+/// the same call §27's overlay is drawn from — so the line in the rail, the
+/// ghost band on the record and the mix djmanzo performs are one plan seen
+/// three times. A rail that estimated for itself would be a fourth.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransitionEstimateDto {
+    /// The style's own name, as the automix panel spells it.
+    pub style: String,
+    pub length_beats: u32,
+    /// Where it would begin, in seconds into the outgoing record.
+    pub at_seconds: f64,
+    /// The same thing in one phrase — `32-beat blend at 2:09` — worded in
+    /// Rust so the rail and the ghost panel cannot say it differently.
+    pub says: String,
 }
 
 /// What to play after whatever is on `deck`.
@@ -4008,22 +5681,204 @@ pub fn suggest_next(
     let pool = db.all_tracks(5_000).map_err(|e| e.to_string())?;
     let playing_now = current_track(&state, deck_id);
 
-    Ok(dj_library::suggest::rank(&now, trajectory, &pool)
+    // §24. What the DJ has kept going into, after this record — read once
+    // rather than per candidate, because it is one indexed query for the whole
+    // rail and five thousand of them would be five thousand.
+    //
+    // Applied after scoring rather than inside it: the scorer is a pure
+    // function over two records and its whole test suite rests on that. This
+    // is the layer that has a database.
+    let kept: std::collections::HashMap<dj_core::TrackId, u32> = playing_now
+        .and_then(|from| db.kept_after(from).ok())
+        .unwrap_or_default()
         .into_iter()
-        // Never suggest what is already on the deck.
-        .filter(|s| Some(s.track) != playing_now)
+        .map(|pair| (pair.into, pair.kept))
+        .collect();
+
+    let ranked = with_kept(
+        dj_library::suggest::rank(&now, trajectory, &pool)
+            .into_iter()
+            // Never suggest what is already on the deck.
+            .filter(|s| Some(s.track) != playing_now)
+            .collect(),
+        &kept,
+    );
+
+    // §12's other half: tonight's profile, when the DJ has named the night.
+    // Read once for the whole rail — it is two queries and a fold, and five
+    // thousand candidates would be ten thousand queries.
+    let profile = tonight_profile(&state, &db);
+    let genres: std::collections::HashMap<dj_core::TrackId, String> = pool
+        .iter()
+        .filter_map(|t| Some((t.id, t.tags.genre.clone()?)))
+        .collect();
+    let ranked = with_profile(
+        ranked.into_iter().map(|s| (s, None)).collect(),
+        profile.as_ref(),
+        &|id| genres.get(&id).cloned(),
+    );
+
+    // §22's estimated transition type. Read once for the whole rail rather
+    // than per candidate — it is the *outgoing* half, which every row shares —
+    // and the plan itself is arithmetic over two records, so a dozen of them
+    // costs less than the query that found the candidates.
+    let outgoing = playing_now
+        .and_then(|id| db.track(id).ok().flatten())
+        .and_then(|track| outgoing_of(&state, deck_id, &track));
+
+    Ok(ranked
+        .into_iter()
         .take(limit.clamp(1, 100))
-        .filter_map(|s| {
+        .filter_map(|(s, because)| {
             let track = pool.iter().find(|t| t.id == s.track)?;
             Some(SuggestionDto {
+                transition: outgoing
+                    .as_ref()
+                    .and_then(|out| estimate_transition(out, track)),
                 track: LibraryTrackDto::from(track.clone()),
                 score: s.score,
-                reasons: s.reasons.iter().map(describe_reason).collect(),
+                // The profile's reason goes with the scorer's rather than
+                // beside them: it moved the same number, so it belongs in the
+                // same list, and the rail already shows that list on hover.
+                reasons: s
+                    .reasons
+                    .iter()
+                    .map(describe_reason)
+                    .chain(because)
+                    .collect(),
                 summary: summarise_reasons(&s.reasons),
                 confidence: s.confidence(),
             })
         })
         .collect())
+}
+
+/// §12: the profile the rail is ranking by tonight, if any.
+///
+/// **Said out loud, because it changes the answer.** A ranking quietly
+/// conditioned on what a DJ usually plays at weddings is a ranking they
+/// cannot argue with — they would have to notice the order was different from
+/// what the deltas imply and work out why. So the rail is handed the profile
+/// itself: the setting, the nights behind it, and the sentence djmanzo writes
+/// about it.
+///
+/// `None` until the DJ has named the night and there are enough nights of it.
+///
+/// **And `None` when the profile cannot move the ranking**, which is the case
+/// the running application turned up: a profile whose nights have no genred
+/// plays behind them is a real profile — it can still say how this DJ mixes
+/// at weddings — and it tilts nothing, because the tilt is entirely a genre
+/// leaning. The rail asks "what is the ranking conditioned on", and a profile
+/// that conditions nothing is not an answer to that question; a line saying
+/// "ranked for tonight" over an untouched ranking is a claim djmanzo cannot
+/// support. §81's own panel still shows the profile, which is where a profile
+/// that says nothing about genres belongs.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn profile_tonight(state: State<'_, AppState>) -> Result<Option<ProfileDto>, String> {
+    let db = library(&state)?;
+    Ok(tonight_profile(&state, &db)
+        .filter(|p| !p.genres().is_empty())
+        .map(|p| ProfileDto {
+            setting: p.setting().slug().to_owned(),
+            title: p.setting().title().to_owned(),
+            nights: p.nights(),
+            density: p.density().map(ToOwned::to_owned),
+            style: p.style().map(|s| s.as_str().to_owned()),
+            automation: p.automation().map(|a| a.name().to_owned()),
+            techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
+            genres: p.genres().to_vec(),
+            says: p.words(),
+        }))
+}
+
+/// Tonight's profile, when the DJ has said what kind of night it is.
+///
+/// `None` until they have — §81's settings are **told, never inferred**, and
+/// a rail that guessed the setting in order to rank by it would be ranking by
+/// a guess. `None` too until there are enough nights of that setting for a
+/// profile to exist at all, which `profile::profiles` decides.
+fn tonight_profile(state: &AppState, db: &dj_library::Library) -> Option<crate::profile::Profile> {
+    let setting = crate::setting::Setting::parse(&db.night(&state.session_id()).ok()??.setting)?;
+    let nights = db.nights_in(setting.slug()).ok()?;
+    let genres = |s: crate::setting::Setting| db.genres_in(s.slug()).unwrap_or_default();
+    crate::profile::profiles(&nights, &genres)
+        .into_iter()
+        .find(|p| p.setting() == setting)
+}
+
+/// Fold §81's profile into a ranking, and re-sort.
+///
+/// **The other half of §12.** Profiles were learned and read by nothing,
+/// which made them a thing djmanzo could say about a DJ rather than a thing
+/// it did for one. This is the doing, and it is deliberately the smallest
+/// version of it: a bounded tilt on records whose genre this kind of night
+/// actually contains, with the reason carried on the row.
+///
+/// Separate from the command and from the profile so all three can be tested:
+/// the command needs a database, the profile owns the arithmetic, and this is
+/// the part with the re-sort in it — which is the decision. A rail that lifted
+/// a score without moving the row would show a higher number further down the
+/// list, and that reads as a bug in the ranking rather than as the feature.
+fn with_profile(
+    ranked: Vec<(dj_library::suggest::Suggestion, Option<String>)>,
+    profile: Option<&crate::profile::Profile>,
+    genre_of: &dyn Fn(dj_core::TrackId) -> Option<String>,
+) -> Vec<(dj_library::suggest::Suggestion, Option<String>)> {
+    let Some(profile) = profile else {
+        return ranked;
+    };
+    let mut out: Vec<_> = ranked
+        .into_iter()
+        .map(|(mut s, _)| {
+            let genre = genre_of(s.track);
+            s.score += profile.tilt_for(genre.as_deref());
+            let because = profile.because(genre.as_deref());
+            (s, because)
+        })
+        .collect();
+    // The same tie-break the ranking used, so a re-sort cannot reorder two
+    // candidates the profile said nothing about.
+    out.sort_by(|a, b| {
+        b.0.score
+            .partial_cmp(&a.0.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.track.cmp(&b.0.track))
+    });
+    out
+}
+
+/// Fold §24's kept pairs into a ranking, and re-sort.
+///
+/// Separate from the command so it can be tested: the command needs a live
+/// `AppState` and a database, and this is the part with a decision in it.
+///
+/// Re-sorting is the decision. A rail that lifted a candidate's score without
+/// moving it would show a higher number further down the list, which reads as
+/// a bug in the ranking rather than as the feature it is.
+fn with_kept(
+    ranked: Vec<dj_library::suggest::Suggestion>,
+    kept: &std::collections::HashMap<dj_core::TrackId, u32>,
+) -> Vec<dj_library::suggest::Suggestion> {
+    let mut out: Vec<_> = ranked
+        .into_iter()
+        .map(|s| {
+            let times = kept.get(&s.track).copied().unwrap_or(0);
+            dj_library::suggest::also_kept_before(s, times)
+        })
+        .collect();
+    // The same tie-break `suggest::rank` uses, so a re-sort here cannot put
+    // two equal candidates in a different order from the one that produced
+    // them.
+    out.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.track.cmp(&b.track))
+    });
+    out
 }
 
 /// Records like a given one, tilted by what this DJ actually plays.
@@ -4041,6 +5896,7 @@ pub fn similar_to(
     state: State<'_, AppState>,
     track: String,
     limit: usize,
+    deck: Option<u8>,
 ) -> Result<Vec<SuggestionDto>, String> {
     use dj_library::suggest::{Playing, Trajectory};
 
@@ -4074,6 +5930,12 @@ pub fn similar_to(
         })
         .collect();
 
+    let outgoing = deck.and_then(dj_core::DeckId::from_human).and_then(|id| {
+        let playing = current_track(&state, id)?;
+        let track = db.track(playing).ok().flatten()?;
+        outgoing_of(&state, id, &track)
+    });
+
     // Re-sorted, because the tilt has moved things. Ties break on id so the
     // same library gives the same answer every time -- a "more like this" that
     // shuffled on each press would be impossible to trust.
@@ -4087,6 +5949,16 @@ pub fn similar_to(
         .into_iter()
         .take(limit.clamp(1, 100))
         .map(|(score, s, track)| SuggestionDto {
+            // §22's estimate, and it is about the *deck* rather than the seed.
+            // "Like this record" is a different question from "what happens if
+            // it comes in here", and the rail draws both at once — so the
+            // ranking answers the first and this answers the second, from
+            // whatever is actually playing. `None` when the caller named no
+            // deck, which is honest: without one there is nothing to mix out
+            // of and a line here would be about nothing.
+            transition: outgoing
+                .as_ref()
+                .and_then(|out| estimate_transition(out, track)),
             track: LibraryTrackDto::from(track.clone()),
             score,
             reasons: s.reasons.iter().map(describe_reason).collect(),
@@ -4126,6 +5998,473 @@ pub fn learned_taste(state: State<'_, AppState>) -> Result<TasteDto, String> {
     })
 }
 
+/// What the interface should be wearing. §31.
+#[derive(Debug, Clone, Serialize)]
+pub struct MoodDto {
+    /// The theme package's id, as `ui/src/controls/themes/packages.ts` spells
+    /// it.
+    pub theme: String,
+    /// How long the change should take, in milliseconds. Zero when nothing is
+    /// changing — which is most ticks, and is the point of §31.
+    pub over_ms: u64,
+    /// True when the DJ has pinned it and djmanzo has stopped deciding.
+    pub locked: bool,
+}
+
+/// §31: offer the theme a reading of the night, and hear what to wear.
+///
+/// **The answer is almost always "the same thing".** §31's warning — "never
+/// allow the interface to flicker from color to color every time the track
+/// changes" — is the feature, and it lives in `dj_app::mood`: a four-minute
+/// minimum, a forty-second settling time, and a lock that beats both. Calling
+/// this on a tick is safe and expected; it changes its mind a handful of times
+/// a night.
+///
+/// The reading is **the setting the DJ named** (§81) and the phase djmanzo has
+/// read from the music. Venue ambience is told rather than sensed because
+/// there is no light sensor here — see `crate::mood`.
+///
+/// # Errors
+/// Whatever the database says, when tonight's setting is read back.
+#[tauri::command]
+pub fn theme_now(state: State<'_, AppState>) -> Result<MoodDto, String> {
+    // The setting the DJ named. Without one there is nothing to adapt *to*,
+    // and open format is the honest default: whatever the room turns out to
+    // want. It is also what §81 writes when nobody has said.
+    let setting = library(&state)
+        .ok()
+        .and_then(|db| db.night(&state.session_id()).ok().flatten())
+        .and_then(|night| crate::setting::Setting::parse(&night.setting))
+        .unwrap_or(crate::setting::Setting::OpenFormat);
+
+    // The phase from the music. Before djmanzo can read one, a warm-up is the
+    // right assumption: a set that has just started *is* warming up, and it is
+    // also the most subdued answer, which is the safe direction to be wrong in.
+    let phase = state
+        .night()
+        .read()
+        .map_or(dj_core::SessionPhase::WarmUp, |read| read.phase);
+
+    let at = state.night().elapsed();
+    let want = crate::mood::wanted(setting, phase);
+    let mood = state
+        .weather()
+        .lock()
+        .map_err(|_| "the theme weather is poisoned".to_owned())?
+        .consider(want, at);
+
+    Ok(MoodDto {
+        theme: mood.theme.to_owned(),
+        over_ms: u64::try_from(mood.over.as_millis()).unwrap_or(u64::MAX),
+        locked: mood.locked,
+    })
+}
+
+/// Pin the theme, or let djmanzo decide again. §31's manual lock.
+///
+/// Locking does not change what is worn — it stops it changing. A lock that
+/// also snapped the theme somewhere would be a second decision hiding inside a
+/// refusal to decide.
+///
+/// # Errors
+/// When the lock is poisoned.
+#[tauri::command]
+pub fn theme_lock(state: State<'_, AppState>, locked: bool) -> Result<(), String> {
+    state
+        .weather()
+        .lock()
+        .map_err(|_| "the theme weather is poisoned".to_owned())?
+        .lock(locked);
+    Ok(())
+}
+
+/// The DJ chose a theme. It takes effect now, and restarts the minimum.
+///
+/// # Errors
+/// When the lock is poisoned.
+#[tauri::command]
+pub fn theme_chosen(state: State<'_, AppState>, theme: String) -> Result<(), String> {
+    // Leaked rather than borrowed: `Weather` holds `&'static str` because the
+    // ids are compile-time constants everywhere else, and a theme a DJ chose
+    // lives as long as the application anyway. One small leak per manual
+    // choice, of which there are a handful a night.
+    let theme: &'static str = Box::leak(theme.into_boxed_str());
+    let at = state.night().elapsed();
+    state
+        .weather()
+        .lock()
+        .map_err(|_| "the theme weather is poisoned".to_owned())?
+        .choose(theme, at);
+    Ok(())
+}
+
+/// One control's gestures, for the interface. §29.
+#[derive(Debug, Clone, Serialize)]
+pub struct HandleDto {
+    /// The verb, so the interface can ask for the control it is drawing.
+    pub control: String,
+    /// What a double-click sends.
+    pub reset: String,
+    /// How much finer a shift-drag is than a drag.
+    pub fine: f64,
+    /// §29's level three: `[label, action]` per entry.
+    pub options: Vec<(String, String)>,
+}
+
+/// §29: what a control's gestures do.
+///
+/// Asked rather than written on the interface side, for the reason every call
+/// site demonstrated: each `SvgKnob` passed its own `ondblclick` naming its own
+/// idea of where the control resets to, and nothing made a fourth one agree.
+/// A control's unity point is a fact about the parameter.
+///
+/// Every answer is action text — exactly what `Action::parse` takes — so a
+/// drag, a double-click, a menu entry and a MIDI CC end up as the same action.
+/// That is §29's last bullet ("MIDI = same underlying parameter") and ADR-0003.
+///
+/// # Errors
+/// A deck djmanzo does not have.
+#[tauri::command]
+pub fn control_handles(deck: u8) -> Result<Vec<HandleDto>, String> {
+    let deck = dj_core::DeckId::from_human(deck).ok_or("no such deck")?;
+    Ok(crate::handle::Control::ALL
+        .into_iter()
+        .map(|control| {
+            let h = crate::handle::handle(deck, control);
+            HandleDto {
+                control: control.verb().to_owned(),
+                reset: h.reset,
+                fine: h.fine,
+                options: h.options.into_iter().map(|o| (o.label, o.action)).collect(),
+            }
+        })
+        .collect())
+}
+
+/// One record through §76's lens.
+///
+/// Every field may be absent, and an absence is drawn as one: a lens that
+/// filled its blanks with zero would rank an unanalysed record below a merely
+/// bad one, and look like a judgement while doing it.
+#[derive(Debug, Clone, Serialize)]
+pub struct LensRowDto {
+    /// The track id, as hex, so the browser can join this to the row it is
+    /// already drawing rather than being handed the record twice.
+    pub track: String,
+    pub likely_next: Option<f64>,
+    pub affinity: Option<f64>,
+    pub phase_fit: Option<f64>,
+    /// Slug and words per risk, so the interface can style it and say it.
+    pub risks: Vec<(String, String)>,
+    pub novelty: f64,
+    pub familiarity: f64,
+    pub functions: Vec<String>,
+}
+
+/// §76's AI lens: djmanzo's opinion beside the records the browser is showing.
+///
+/// **It adds; it never replaces.** The lens takes the ids of rows the browser
+/// already has and answers about those — it does not query, filter or order
+/// the library, so turning it off leaves the standard view exactly as it was,
+/// because the lens was never inside it. That is §76's closing line, expressed
+/// as the shape of the command rather than as a promise.
+///
+/// `deck` is what the lens is *relative to*: "likely next" and "transition
+/// risk" are about following the record playing there. A deck with nothing on
+/// it leaves both empty rather than ranking the collection against silence.
+///
+/// # Errors
+/// Whatever the database says. An id the library does not hold is skipped, not
+/// fatal: a browser row can be a moment stale.
+#[tauri::command]
+pub fn library_lens(
+    state: State<'_, AppState>,
+    tracks: Vec<String>,
+    deck: u8,
+) -> Result<Vec<LensRowDto>, String> {
+    let db = library(&state)?;
+
+    // What is playing, from the library row rather than the snapshot, for the
+    // reason `suggest_next` gives: the candidates are scored against the same
+    // numbers.
+    let playing_id = dj_core::DeckId::from_human(deck).and_then(|id| current_track(&state, id));
+    let playing = playing_id
+        .and_then(|id| db.track(id).ok().flatten())
+        .map(|t| dj_library::suggest::Playing::of(&t));
+
+    // Read once for the whole page, not once per row: both of these are a
+    // query, and fifty rows would be a hundred of them.
+    let taste = db.learn_taste(crate::library::now_seconds()).ok();
+    let phase = state.night().read().map(|read| read.phase);
+
+    let now = crate::lens::Now {
+        playing: playing.as_ref(),
+        playing_id,
+        trajectory: dj_core::Trajectory::Hold,
+        phase,
+        now: crate::library::now_seconds(),
+    };
+
+    let mut out = Vec::with_capacity(tracks.len());
+    for hex in &tracks {
+        let Some(id) = dj_core::TrackId::from_hex(hex) else {
+            continue;
+        };
+        let Some(track) = db.track(id).ok().flatten() else {
+            continue;
+        };
+        let functions = db.functions_for(id).unwrap_or_default();
+        let seen = crate::lens::look(&track, &functions, taste.as_ref(), now);
+        out.push(LensRowDto {
+            track: hex.clone(),
+            likely_next: seen.likely_next,
+            affinity: seen.affinity,
+            phase_fit: seen.phase_fit,
+            risks: seen
+                .risks
+                .iter()
+                .map(|r| (r.slug().to_owned(), r.words().to_owned()))
+                .collect(),
+            novelty: seen.novelty,
+            familiarity: seen.familiarity,
+            functions: seen.functions.iter().map(|f| f.slug().to_owned()).collect(),
+        });
+    }
+    Ok(out)
+}
+
+/// One of §27's seven questions, and whether djmanzo can answer it.
+#[derive(Debug, Clone, Serialize)]
+pub struct GhostAskedDto {
+    pub slug: String,
+    /// §27's own words, so the panel cannot quietly reword what was asked.
+    pub about: String,
+    pub answered: bool,
+}
+
+/// Where the candidate's first full phrase would land, on the outgoing record.
+#[derive(Debug, Clone, Serialize)]
+pub struct GhostLandingDto {
+    /// Frames on the outgoing record — the lane on screen.
+    pub frame: f64,
+    /// Beats of the candidate before that phrase. Zero is no pickup.
+    pub lead_beats: f64,
+    /// False when the phrase arrives after the mix has already finished.
+    pub within_mix: bool,
+}
+
+/// §27's ghost: what happens if this record comes in here.
+///
+/// Frames throughout, for the reason [`TransitionDto`] gives: the waveform is
+/// drawn in frames, and converting seconds back through a sample rate the
+/// interface would have to infer is two roundings and a division by zero
+/// waiting for an empty deck.
+#[derive(Debug, Clone, Serialize)]
+pub struct GhostDto {
+    /// The candidate, as hex, so the caller can join this to the row it is
+    /// already drawing.
+    pub track: String,
+    /// The deck the ghost is drawn over.
+    pub deck: u8,
+    /// The stretch the two records would share.
+    pub start_frame: f64,
+    pub end_frame: f64,
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+    pub length_beats: u32,
+    pub style: String,
+    /// Incoming tempo minus outgoing, signed.
+    pub bpm_delta: f64,
+    /// What the pitch fader on the incoming deck does, as a percentage.
+    pub pitch_percent: f64,
+    pub key_relation: Option<String>,
+    pub landing: Option<GhostLandingDto>,
+    /// Where the outgoing record becomes weak, in frames. The same window the
+    /// lane already draws, not a second opinion about it.
+    pub weakens_from: Option<f64>,
+    pub weakens_to: Option<f64>,
+    pub reasons: Vec<String>,
+    /// The mix in one phrase — `32-beat blend at 2:09`. Worded here rather
+    /// than in the panel, because §22's rail draws the same phrase and two
+    /// spellings of one mix is two answers.
+    pub says: String,
+    /// §27's seven, in its order, each saying whether it is answered.
+    pub asked: Vec<GhostAskedDto>,
+}
+
+/// §27: draw the future of `deck` meeting `track`, without loading anything.
+///
+/// **Nothing moves.** No deck is touched, no transition is armed, nothing is
+/// written down — which is the whole of §27's "non-destructive", and the
+/// reason a DJ can ask this of eight candidates in a row while a record plays.
+///
+/// The geometry is the planner's, so what is drawn here is the mix djmanzo
+/// would actually perform if the record were loaded. A ghost that worked one
+/// out for itself would be showing a DJ a transition and then doing another.
+///
+/// `None` when there is nothing honest to draw: an empty deck, an unanalysed
+/// record on either side, or a track already too near its end for any
+/// transition the planner proposes to fit.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn ghost_preview(
+    state: State<'_, AppState>,
+    deck: u8,
+    track: String,
+) -> Result<Option<GhostDto>, String> {
+    let Some(deck_id) = dj_core::DeckId::from_human(deck) else {
+        return Ok(None);
+    };
+    let Some(id) = dj_core::TrackId::from_hex(&track) else {
+        return Ok(None);
+    };
+    let db = library(&state)?;
+    let Some(out_track) = current_track(&state, deck_id).and_then(|id| db.track(id).ok().flatten())
+    else {
+        return Ok(None);
+    };
+    let Some(candidate_track) = db.track(id).ok().flatten() else {
+        return Ok(None);
+    };
+    let Some(outgoing) = outgoing_of(&state, deck_id, &out_track) else {
+        return Ok(None);
+    };
+    // The candidate's own grid, or nothing. Falling back to the outgoing
+    // track's tempo -- which `transition_between` does for a *loaded* record,
+    // where the deck has one either way -- would draw a confident ghost of a
+    // record nobody has analysed.
+    let Some(grid) = candidate_track.analysis.beatgrid() else {
+        return Ok(None);
+    };
+    let candidate = crate::ghost::Candidate {
+        bpm: grid.bpm.get(),
+        phrase: phrase_of(&candidate_track),
+        key: candidate_track.analysis.key(),
+        sample_rate: candidate_track.sample_rate,
+        grid_anchor: grid.anchor.get(),
+    };
+
+    let Some(ghost) = crate::ghost::look(&outgoing, &candidate) else {
+        return Ok(None);
+    };
+    let rate = outgoing.sample_rate.as_f64();
+    Ok(Some(GhostDto {
+        track,
+        deck,
+        start_frame: ghost.plan.start_frame,
+        end_frame: ghost.plan.end_frame,
+        start_seconds: ghost.plan.start_frame / rate,
+        end_seconds: ghost.plan.end_frame / rate,
+        length_beats: ghost.plan.length_beats,
+        style: ghost.plan.style.as_str().to_owned(),
+        bpm_delta: ghost.plan.bpm_delta,
+        pitch_percent: ghost.pitch_percent,
+        key_relation: ghost.keys().map(|r| r.as_str().to_owned()),
+        says: transition_words(
+            ghost.plan.length_beats,
+            ghost.plan.style.as_str(),
+            ghost.plan.start_frame / rate,
+        ),
+        landing: ghost.landing.map(|l| GhostLandingDto {
+            frame: l.frame,
+            lead_beats: l.lead_beats,
+            within_mix: l.within_mix,
+        }),
+        weakens_from: ghost.weakens.map(|w| w.opens_frame),
+        weakens_to: ghost.weakens.map(|w| w.closes_frame),
+        reasons: ghost
+            .plan
+            .reasons
+            .iter()
+            .map(describe_plan_reason)
+            .collect(),
+        asked: ghost
+            .asked
+            .iter()
+            .map(|(asked, answered)| GhostAskedDto {
+                slug: asked.slug().to_owned(),
+                about: asked.about().to_owned(),
+                answered: *answered,
+            })
+            .collect(),
+    }))
+}
+
+/// §37: what the room has usually done after one kind of mix.
+#[derive(Debug, Clone, Serialize)]
+pub struct SeenDto {
+    /// A `dj_app::setting::Setting` slug — what "here" means in §37.
+    pub setting: String,
+    /// A transition style's name.
+    pub style: String,
+    /// `light`, `movement` or `loudness`.
+    pub sense: String,
+    /// How many nights this is drawn from.
+    pub nights: usize,
+    /// `rose`, `fell`, or `null` when the nights do not agree — which is the
+    /// common answer and the important one.
+    pub usually: Option<String>,
+    /// The sentence, worded in Rust, or `null` when there is nothing to say.
+    pub says: Option<String>,
+}
+
+/// §37: what has happened after this kind of mix on previous nights.
+///
+/// **The one thing djmanzo writes down about a room.** Everything else it
+/// says is derived from the action log; a comparison across nights cannot be,
+/// because the readings live twenty minutes and the log does not outlive the
+/// run. See `dj_app::response`.
+///
+/// Never a causal claim, whatever §37 is called. A floor that fills twelve
+/// seconds after a mix may be filling because of it or in spite of it, and
+/// nothing here can tell those apart — so the sentence says what happened
+/// after, over enough nights that coincidence is the worse explanation, and
+/// never says *because*.
+///
+/// Empty is the ordinary answer: djmanzo runs without a camera, and without
+/// one nothing is ever recorded.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn room_history(state: State<'_, AppState>) -> Result<Vec<SeenDto>, String> {
+    let db = library(&state)?;
+    let stored = db.responses().map_err(|e| e.to_string())?;
+
+    let nights: Vec<crate::response::Night<'_>> = stored
+        .iter()
+        .filter_map(|row| {
+            Some(crate::response::Night {
+                session_id: &row.session_id,
+                setting: &row.setting,
+                style: &row.style,
+                sense: [
+                    dj_assistant::room::Sense::Movement,
+                    dj_assistant::room::Sense::Loudness,
+                    dj_assistant::room::Sense::Light,
+                ]
+                .into_iter()
+                .find(|sense| sense.name() == row.sense)?,
+                lift: crate::response::Lift::between(row.before, row.after),
+            })
+        })
+        .collect();
+
+    Ok(crate::response::seen(&nights)
+        .into_iter()
+        .map(|seen| SeenDto {
+            setting: seen.setting().to_owned(),
+            style: seen.style().to_owned(),
+            sense: seen.sense().name().to_owned(),
+            nights: seen.nights(),
+            usually: seen.usually().map(|lift| lift.name().to_owned()),
+            says: seen.words(),
+        })
+        .collect())
+}
+
 /// Which track is on a deck, if any.
 fn current_track(state: &AppState, deck: dj_core::DeckId) -> Option<dj_core::TrackId> {
     let tracks = state.deck_tracks();
@@ -4157,6 +6496,10 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
         Reason::PhraseUnknown => "no phrase structure".to_owned(),
         Reason::SameFamily(name) => format!("same family ({name})"),
         Reason::OtherFamily { from, to } => format!("{from} to {to}"),
+        // §24's answer to "why do I keep seeing these two together?", in the
+        // place a DJ asks it: beside the suggestion itself.
+        Reason::KeptBefore { times: 1 } => "you kept this mix".to_owned(),
+        Reason::KeptBefore { times } => format!("you kept this mix {times} times"),
         Reason::Unanalysed => "not analysed yet".to_owned(),
     }
 }
@@ -4195,13 +6538,17 @@ fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
     /// is an implementation detail and not something a DJ should read.
     const fn place(reason: &Reason) -> u8 {
         match reason {
+            // First of all, when it is there. "You kept this mix" is the
+            // strongest thing djmanzo can say about a pair and it is the DJ's
+            // own word — it should not read fourth, after a loudness delta.
+            Reason::KeptBefore { .. } => 0,
             Reason::TempoFits { .. }
             | Reason::TempoHalfOrDouble { .. }
-            | Reason::TempoFar { .. } => 0,
-            Reason::SameKey(_) | Reason::Harmonic { .. } | Reason::KeyClash { .. } => 1,
-            Reason::Loudness { .. } => 2,
-            Reason::SameFamily(_) | Reason::OtherFamily { .. } => 3,
-            Reason::PhraseKnown { .. } | Reason::PhraseUnknown | Reason::Unanalysed => 4,
+            | Reason::TempoFar { .. } => 1,
+            Reason::SameKey(_) | Reason::Harmonic { .. } | Reason::KeyClash { .. } => 2,
+            Reason::Loudness { .. } => 3,
+            Reason::SameFamily(_) | Reason::OtherFamily { .. } => 4,
+            Reason::PhraseKnown { .. } | Reason::PhraseUnknown | Reason::Unanalysed => 5,
         }
     }
 
@@ -4211,6 +6558,10 @@ fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
     ordered
         .into_iter()
         .filter_map(|reason| match reason {
+            // On the summary line too, and first: it is the one thing on it a
+            // DJ said rather than djmanzo worked out.
+            Reason::KeptBefore { times: 1 } => Some("kept".to_owned()),
+            Reason::KeptBefore { times } => Some(format!("kept \u{00d7}{times}")),
             Reason::SameKey(k) => Some(k.camelot()),
             Reason::Harmonic { from, to } | Reason::KeyClash { from, to } => {
                 let arrow = format!("{}\u{2192}{}", from.camelot(), to.camelot());
@@ -4286,9 +6637,9 @@ pub struct PaletteEntryDto {
     pub label: String,
     /// One line, in the imperative, from the vocabulary's own help.
     pub about: String,
-    /// `action` or `surface` -- how the interface should carry it out.
+    /// `action`, `surface` or `ui` -- how the interface should carry it out.
     pub kind: &'static str,
-    /// The action text, or the surface name.
+    /// The action text, the surface name, or the interface operation.
     pub run: String,
 }
 
@@ -4382,6 +6733,43 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
                 about: surface.about.to_owned(),
                 kind: "surface",
                 run: surface.name.to_owned(),
+            });
+        }
+    }
+
+    // Tier 4: the rest of §41's interface vocabulary.
+    //
+    // Here because the palette is what §51 calls "the semantic interface", and
+    // an operation only the assistant could reach would be a control a DJ has
+    // no way to press. Pinning especially: it is the per-surface half of
+    // freezing a layout, and until now there was no gesture for it anywhere.
+    for surface in crate::cockpit::surfaces() {
+        for (verb, word) in [("pin", "Pin"), ("unpin", "Unpin")] {
+            let label = format!("{word} {}", surface.title);
+            let run = format!("ui {verb} {}", surface.name);
+            if matches(needle, &label) || matches(needle, &run) {
+                out.push(PaletteEntryDto {
+                    label,
+                    about: if verb == "pin" {
+                        "Hold it where it is, out of adaptation's reach.".to_owned()
+                    } else {
+                        "Let it be moved again.".to_owned()
+                    },
+                    kind: "ui",
+                    run,
+                });
+            }
+        }
+    }
+    for deck in 1..=decks {
+        let label = format!("Focus deck {deck}");
+        let run = format!("ui focus {deck}");
+        if matches(needle, &label) || matches(needle, &run) {
+            out.push(PaletteEntryDto {
+                label,
+                about: "Mark this deck for a moment.".to_owned(),
+                kind: "ui",
+                run,
             });
         }
     }
@@ -5853,6 +8241,10 @@ pub fn publish_automix(state: &AppState, mix: &crate::automix::Automix) {
     );
     set(GlobalParam::AutomixBeats, mix.beats());
     set(GlobalParam::AutomixStyle, mix.style().index() as f32);
+    set(
+        GlobalParam::AutomixHolding,
+        if mix.held().is_some() { 1.0 } else { 0.0 },
+    );
 }
 
 /// Send what the automix asked for.
@@ -6326,6 +8718,104 @@ pub fn set_cockpit_workspace(
     let resolved = crate::cockpit::resolve(&workspace);
     state.set_workspace(&resolved.workspace);
     resolved
+}
+
+/// The waveform's semantic layers — §25's twenty, and which of them exist.
+///
+/// Handed to the interface so that what is drawn and what is *named* come from
+/// one table. A browser test checks the other direction: everything on screen
+/// carries a `data-layer` that is in this list, so a layer drawn without being
+/// declared fails rather than quietly becoming a twenty-first.
+#[tauri::command]
+#[must_use]
+pub fn waveform_layers() -> &'static [dj_render::Layer] {
+    dj_render::layers()
+}
+
+// -- the typed UI vocabulary -------------------------------------------------
+//
+// §41. See `crate::uiop` for why this is a second closed vocabulary rather than
+// more verbs on the action bus, and why density is deliberately not in it.
+
+/// Every interface operation this build accepts, as lines a model can be shown.
+///
+/// Generated from the surfaces that exist, so it cannot offer a panel djmanzo
+/// does not have — the same guarantee `dj_core::vocabulary` gives the action
+/// bus, one layer up.
+#[tauri::command]
+#[must_use]
+pub fn ui_vocabulary(state: State<'_, AppState>) -> Vec<String> {
+    crate::uiop::as_prompt_lines(u8::try_from(state.deck_count()).unwrap_or(4))
+}
+
+/// Carry out one interface operation.
+///
+/// The DJ's own path — a palette entry, a button — and so ungated: a person
+/// asking for a panel is not something to check a matrix about. The assistant's
+/// path is [`ui_request`], which asks §72 first.
+#[tauri::command]
+pub fn ui_do(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    op: String,
+) -> Result<crate::uiop::Applied, String> {
+    let op = crate::uiop::UiOp::parse(&op).map_err(|error| error.to_string())?;
+    Ok(carry_out_ui(&app, &state, &op))
+}
+
+/// Carry out one interface operation **on the assistant's behalf**.
+///
+/// Asks §72's matrix first, because rearranging a DJ's screen mid-set is
+/// exactly the kind of thing they may want the machine to stay out of. It is
+/// its own capability row (`adapt_layout`) rather than folded into another,
+/// which is what lets "suggest records but never touch my layout" be a setting
+/// rather than a feature request.
+///
+/// # Errors
+/// When the operation is not in the vocabulary, or the posture refuses it.
+pub fn ui_request(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    op: &crate::uiop::UiOp,
+) -> Result<crate::uiop::Applied, String> {
+    let posture = state
+        .conduct()
+        .lock()
+        .map(|guard| guard.posture)
+        .unwrap_or_default();
+    let allowed = state
+        .conduct()
+        .lock()
+        .map(|guard| {
+            guard
+                .authority
+                .allows(dj_assistant::Capability::AdaptLayout, posture)
+        })
+        .unwrap_or_default();
+    if !allowed.permits() {
+        return Err(format!(
+            "the assistant may not rearrange the interface at {}",
+            posture.name()
+        ));
+    }
+    Ok(carry_out_ui(app, state, op))
+}
+
+/// Apply, store and announce. The one place an operation actually lands.
+fn carry_out_ui(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    op: &crate::uiop::UiOp,
+) -> crate::uiop::Applied {
+    let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
+    let applied = crate::uiop::apply(op, &stored);
+    state.set_workspace(&applied.workspace.workspace);
+    // Announced rather than returned only, because the interesting caller is
+    // the assistant: a panel that opened because the machine asked for it has
+    // to appear without the DJ having pressed anything.
+    use tauri::Emitter as _;
+    let _ = app.emit("cockpit", &applied);
+    applied
 }
 
 // ---------------------------------------------------------------- controllers
@@ -6877,6 +9367,40 @@ pub struct RoomDto {
     pub light: Option<f32>,
     pub movement: Option<f32>,
     pub loudness: Option<f32>,
+    /// §35's baseline: where the room is now against each reach it can be
+    /// compared with. One entry per sense that has been measured enough.
+    pub baseline: Vec<BaselineDto>,
+    /// The phase the comparison against similar phases was made with, or
+    /// `null` when the night has not read yet. Said rather than implied — a
+    /// panel showing phase comparisons with nothing naming the phase is a
+    /// panel making a claim it cannot support.
+    pub phase: Option<String>,
+}
+
+/// One sense, placed against every reach §35 asks for.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BaselineDto {
+    /// `light`, `movement` or `loudness`.
+    pub sense: String,
+    /// The middle of the last three minutes: §35's *current room activity*.
+    pub now: f32,
+    /// Each reach and where the room sits against it.
+    pub against: Vec<BaselineAgainstDto>,
+    /// The sentences this baseline is worth, already worded in Rust.
+    pub notes: Vec<String>,
+}
+
+/// Where the room sits against one reach.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BaselineAgainstDto {
+    /// `recent`, `tonight` or `phase`.
+    pub horizon: String,
+    /// What it is being compared with, in words — "than it has been tonight".
+    pub than: String,
+    /// `lowest`, `lower`, `usual`, `higher` or `highest`.
+    pub against: String,
+    /// Whether this reach has anything to say. The usual is not news.
+    pub notable: bool,
 }
 
 /// How recently a reading has to have arrived for the panel to say "watching".
@@ -6911,18 +9435,24 @@ pub fn room_saw(
         }
     }
 
+    // The phase **as it is now**, stored with the reading. §35's "activity at
+    // similar session phases" is a question about the past, and looking the
+    // phase up when somebody asks would file the whole night under whatever it
+    // had become by then.
+    let phase = state.night().read().map(|read| read.phase);
+
     state
         .room()
         .lock()
         .map_err(|_| "the room's readings are poisoned")?
-        .saw(reading);
+        .saw(reading, phase);
     Ok(())
 }
 
 /// What the room has been doing, and whether it matches the night.
 #[tauri::command]
 pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
-    use dj_assistant::room::{Sense, hour_of};
+    use dj_assistant::room::{Horizon, Sense, hour_of};
 
     let room = state.room();
     let room = room
@@ -6935,6 +9465,34 @@ pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
         .map(|guard| guard.occasion)
         .unwrap_or_default();
 
+    let phase = state.night().read().map(|read| read.phase);
+    let baseline = [Sense::Movement, Sense::Loudness, Sense::Light]
+        .into_iter()
+        .filter_map(|sense| {
+            let read = room.baseline(sense, phase)?;
+            Some(BaselineDto {
+                sense: sense.name().to_owned(),
+                now: read.now,
+                notes: read.notes(),
+                against: read
+                    .against
+                    .iter()
+                    .map(|(horizon, against)| BaselineAgainstDto {
+                        horizon: match horizon {
+                            Horizon::Recent => "recent",
+                            Horizon::Tonight => "tonight",
+                            Horizon::LikePhase(_) => "phase",
+                        }
+                        .to_owned(),
+                        than: horizon.than(),
+                        against: against.name().to_owned(),
+                        notable: against.is_notable(),
+                    })
+                    .collect(),
+            })
+        })
+        .collect();
+
     Ok(RoomDto {
         // Derived from the readings themselves rather than from a flag the
         // interface sets: a window that closed without saying so cannot leave
@@ -6946,12 +9504,93 @@ pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
         }),
         recent: room.recent(),
         enough: room.has_looked_enough(),
-        notes: room.notes(),
+        notes: room.notes(phase),
         disagreement: room.disagrees_with(occasion),
         hour: hour_of(std::time::SystemTime::now()),
         light: room.lately(Sense::Light),
         movement: room.lately(Sense::Movement),
         loudness: room.lately(Sense::Loudness),
+        baseline,
+        phase: phase.map(|p| p.name().to_owned()),
+    })
+}
+
+// -- what the night is -----------------------------------------------------
+//
+// See `crate::night` and `dj_core::context`: the phase is a judgement made in
+// one place, and this is the view of it.
+
+/// What djmanzo has made of the night.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NightDto {
+    /// The phase, by its stable name, or `None` when nothing has read one.
+    pub phase: Option<String>,
+    /// The phase as it appears mid-sentence, for a heading.
+    pub words: Option<String>,
+    /// How hard the night is going, 0..=1. See `dj_core::SessionRead::energy`.
+    pub energy: Option<f32>,
+    /// How much to believe it: `unsure`, `fair` or `sure`.
+    pub certainty: Option<String>,
+    /// One line saying what that certainty means.
+    pub certainty_about: Option<String>,
+    /// What produced the phase: `declared`, `measured`, `agreed`, `disputed`.
+    pub basis: Option<String>,
+    /// Which way the evidence pulls, when the two disagree.
+    pub drift: Option<String>,
+    /// Roughly when it is, from the clock.
+    pub time_of_day: Option<String>,
+    /// What the DJ's occasion says the night is, when it says anything.
+    pub declared: Option<String>,
+    /// What the music alone reads as, which is not always the same thing.
+    ///
+    /// Carried separately from `phase` so the interface can *mark* a
+    /// disagreement rather than only describe it. `phase` is the DJ's word
+    /// wherever they have given one; this is what djmanzo would have said.
+    pub measured: Option<String>,
+    /// How many readings tonight's range is built from.
+    pub readings: usize,
+    /// How many more before the music alone may name a phase.
+    pub still_needed: usize,
+    /// Everything worth saying, most important first. Never empty.
+    pub notes: Vec<String>,
+    /// What the assistant is allowed to do, given the posture and the
+    /// certainty. See `dj_assistant::Warrant` — this is §9's matrix as it
+    /// actually stands right now.
+    pub warrant: String,
+}
+
+/// What djmanzo has made of the night, for the surface that shows it.
+#[tauri::command]
+pub fn night_read(state: State<'_, AppState>) -> Result<NightDto, String> {
+    let night = state.night();
+    let read = night.read();
+    let (readings, still_needed) = night.progress();
+    let posture = state
+        .conduct()
+        .lock()
+        .map(|guard| guard.posture)
+        .unwrap_or_default();
+    let warrant = read.map_or_else(
+        || posture.unweighed(),
+        |read| posture.warrant(read.certainty),
+    );
+    Ok(NightDto {
+        phase: read.map(|read| read.phase.name().to_owned()),
+        words: read.map(|read| crate::night::phase_words(read.phase).to_owned()),
+        energy: read.map(|read| read.energy),
+        certainty: read.map(|read| read.certainty.name().to_owned()),
+        certainty_about: read.map(|read| read.certainty.about().to_owned()),
+        basis: read.map(|read| read.basis.name().to_owned()),
+        drift: read
+            .and_then(|read| read.drift)
+            .map(|d| d.name().to_owned()),
+        time_of_day: read.map(|read| read.environment.time_of_day.name().to_owned()),
+        declared: night.declared().map(|phase| phase.name().to_owned()),
+        measured: night.measured().map(|phase| phase.name().to_owned()),
+        readings,
+        still_needed,
+        notes: night.notes(),
+        warrant: warrant.name().to_owned(),
     })
 }
 

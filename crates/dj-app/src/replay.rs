@@ -59,10 +59,71 @@ use std::sync::Arc;
 /// split at events regardless, so it does not affect *when* anything happens.
 const BLOCK: usize = 1_024;
 
+/// The stretch of a set that comes *out*.
+///
+/// Everything before it is still rendered. The engine's state at any moment is
+/// the whole set up to that moment — which record is on which deck, where its
+/// playhead is, where every fader was left — so a replay that jumped in at a
+/// timestamp would be rendering a different set that happens to share a clock.
+/// What a window changes is what reaches the sink, not what is computed.
+///
+/// The cost is honest and worth stating: hearing a mix from the third hour of
+/// a set back means rendering the first three hours. Replay runs to no
+/// deadline and so is far faster than real time, but it is not free, and
+/// nothing here pretends the window is a seek.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Window {
+    /// First frame handed to the sink.
+    pub from: u64,
+    /// One past the last. Rendering stops here: nothing after it is wanted, so
+    /// nothing after it is computed.
+    pub to: u64,
+}
+
+impl Window {
+    /// The whole set, which is what every existing caller means.
+    pub const WHOLE: Window = Window {
+        from: 0,
+        to: u64::MAX,
+    };
+
+    /// A window in seconds, as a DJ and `crate::mixes` both state one.
+    ///
+    /// An inverted or empty range becomes an empty window rather than a
+    /// panic or a whole-set render: asking for nothing should produce nothing,
+    /// and producing *everything* is the worst possible reading of it.
+    #[must_use]
+    pub fn seconds(from: f64, to: f64, rate: SampleRate) -> Self {
+        let frame = |seconds: f64| -> u64 {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            {
+                (seconds.max(0.0) * rate.as_f64()).round() as u64
+            }
+        };
+        let start = frame(from);
+        Self {
+            from: start,
+            to: frame(to).max(start),
+        }
+    }
+
+    const fn covers(self, frame: u64) -> bool {
+        frame >= self.from && frame < self.to
+    }
+}
+
 /// What a replay produced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rendered {
+    /// Frames computed. With a [`Window`] this is the whole set up to the end
+    /// of it, most of which nobody hears — it is the *cost*, not the output.
     pub frames: u64,
+    /// Frames handed to the sink, which is the length of what came out.
+    ///
+    /// Equal to `frames` for a whole-set render, and deliberately separate:
+    /// reporting a twenty-second mix as "the set is three hours" would be a
+    /// confident wrong answer about the file just written.
+    pub emitted: u64,
     /// Events delivered. Fewer than the session holds means it was cut short.
     pub events: usize,
 }
@@ -111,6 +172,7 @@ pub fn render(
     rate: SampleRate,
     deck_count: usize,
     extra_frames: u64,
+    window: Window,
     tracks: &mut dyn FnMut(TrackId) -> Option<Arc<dyn dj_decode::TrackSource>>,
     sink: &mut dyn FnMut(&[f32]),
 ) -> Result<Rendered, ReplayError> {
@@ -137,12 +199,15 @@ pub fn render(
         .collect();
 
     let last = schedule.last().map_or(0, |(f, _)| *f);
-    let total = last + extra_frames;
+    // Saturating, because `Window::WHOLE` ends at `u64::MAX` and the whole
+    // point of that value is that adding to it must not wrap round to nothing.
+    let total = last.saturating_add(extra_frames).min(window.to);
 
     let mut buffer = vec![0.0f32; BLOCK * 2];
     let mut frame = 0u64;
     let mut next = 0usize;
     let mut delivered = 0usize;
+    let mut emitted = 0u64;
 
     loop {
         // Everything due at or before this frame, before any of it is
@@ -174,10 +239,19 @@ pub fn render(
         }
 
         // Render up to the next event, never past it. See the module docs on
-        // why a fixed block would be wrong.
+        // why a fixed block would be wrong. The window's opening edge is a
+        // boundary of the same kind: without it a block could straddle it, and
+        // twenty milliseconds of the wrong side of a mix would be handed to
+        // the sink or kept from it.
+        let edge = if frame < window.from {
+            window.from
+        } else {
+            total
+        };
         let until = schedule
             .get(next)
             .map_or(total, |(at, _)| (*at).min(total))
+            .min(edge)
             .max(frame + 1);
         #[allow(clippy::cast_possible_truncation)]
         let frames = ((until - frame).min(BLOCK as u64)) as usize;
@@ -192,7 +266,13 @@ pub fn render(
                 sample_rate: rate,
             },
         );
-        sink(out);
+        // Rendered either way; handed over only inside the window. Skipping
+        // the render would leave every deck's playhead where it was when the
+        // window opened, which is not the set that was played.
+        if window.covers(frame) {
+            sink(out);
+            emitted += frames as u64;
+        }
         frame += frames as u64;
 
         // Retired buffers are dropped here rather than accumulating. In the
@@ -204,6 +284,7 @@ pub fn render(
 
     Ok(Rendered {
         frames: frame,
+        emitted,
         events: delivered,
     })
 }
@@ -217,6 +298,7 @@ pub fn render_to_wav(
     rate: SampleRate,
     deck_count: usize,
     extra_frames: u64,
+    window: Window,
     tracks: &mut dyn FnMut(TrackId) -> Option<Arc<dyn dj_decode::TrackSource>>,
     path: &std::path::Path,
 ) -> Result<Rendered, String> {
@@ -229,6 +311,7 @@ pub fn render_to_wav(
         rate,
         deck_count,
         extra_frames,
+        window,
         tracks,
         &mut |block| {
             if failure.is_some() {
@@ -327,9 +410,17 @@ mod tests {
     fn run(session: &Session) -> Vec<f32> {
         let mut out = Vec::new();
         let mut tracks = resolver();
-        render(session, RATE, 2, RATE.get().into(), &mut tracks, &mut |b| {
-            out.extend_from_slice(b);
-        })
+        render(
+            session,
+            RATE,
+            2,
+            RATE.get().into(),
+            Window::WHOLE,
+            &mut tracks,
+            &mut |b| {
+                out.extend_from_slice(b);
+            },
+        )
         .expect("it renders");
         out
     }
@@ -398,7 +489,7 @@ mod tests {
     fn a_missing_track_is_refused_by_name() {
         let session = a_set();
         let mut none = |_| None;
-        let error = render(&session, RATE, 2, 0, &mut none, &mut |_| {})
+        let error = render(&session, RATE, 2, 0, Window::WHOLE, &mut none, &mut |_| {})
             .expect_err("a missing track should stop the replay");
         assert_eq!(
             error,
@@ -416,7 +507,16 @@ mod tests {
     fn every_event_reaches_the_engine() {
         let session = a_set();
         let mut tracks = resolver();
-        let rendered = render(&session, RATE, 2, 0, &mut tracks, &mut |_| {}).expect("renders");
+        let rendered = render(
+            &session,
+            RATE,
+            2,
+            0,
+            Window::WHOLE,
+            &mut tracks,
+            &mut |_| {},
+        )
+        .expect("renders");
         assert_eq!(rendered.events, session.events.len());
     }
 
@@ -450,9 +550,17 @@ mod tests {
         };
         let mut lengths = Vec::new();
         let mut tracks = resolver();
-        render(&session, RATE, 2, 2_000, &mut tracks, &mut |b| {
-            lengths.push(b.len() / 2);
-        })
+        render(
+            &session,
+            RATE,
+            2,
+            2_000,
+            Window::WHOLE,
+            &mut tracks,
+            &mut |b| {
+                lengths.push(b.len() / 2);
+            },
+        )
         .expect("renders");
 
         assert_eq!(
@@ -467,9 +575,15 @@ mod tests {
     #[test]
     fn an_empty_set_renders_nothing() {
         let mut tracks = resolver();
-        let rendered = render(&Session::default(), RATE, 2, 0, &mut tracks, &mut |_| {
-            panic!("an empty set produced audio")
-        })
+        let rendered = render(
+            &Session::default(),
+            RATE,
+            2,
+            0,
+            Window::WHOLE,
+            &mut tracks,
+            &mut |_| panic!("an empty set produced audio"),
+        )
         .expect("renders");
         assert_eq!(rendered.frames, 0);
         assert_eq!(rendered.events, 0);
@@ -480,8 +594,16 @@ mod tests {
     #[test]
     fn the_tail_is_rendered_after_the_last_event() {
         let mut tracks = resolver();
-        let rendered =
-            render(&a_set(), RATE, 2, 24_000, &mut tracks, &mut |_| {}).expect("renders");
+        let rendered = render(
+            &a_set(),
+            RATE,
+            2,
+            24_000,
+            Window::WHOLE,
+            &mut tracks,
+            &mut |_| {},
+        )
+        .expect("renders");
         let last_event = (0.5 * RATE.as_f64()) as u64;
         assert!(
             rendered.frames >= last_event + 24_000,
@@ -489,5 +611,114 @@ mod tests {
             rendered.frames,
             last_event + 24_000
         );
+    }
+
+    /// **A window hands over its own stretch and nothing else.**
+    ///
+    /// The point of §68's object driving replay: hearing *one mix* back rather
+    /// than a set. Measured in samples out rather than in frames rendered,
+    /// because those are deliberately different numbers — everything before
+    /// the window is still computed.
+    #[test]
+    fn a_window_hands_over_only_its_own_stretch() {
+        let mut out = Vec::new();
+        let mut tracks = resolver();
+        let window = Window::seconds(0.2, 0.4, RATE);
+        render(&a_set(), RATE, 2, 24_000, window, &mut tracks, &mut |b| {
+            out.extend_from_slice(b);
+        })
+        .expect("renders");
+
+        let frames = out.len() / 2;
+        let expected = (window.to - window.from) as usize;
+        assert_eq!(
+            frames,
+            expected,
+            "a fifth of a second at {} Hz is {expected} frames, not {frames}",
+            RATE.get()
+        );
+    }
+
+    /// **What was computed and what came out are different numbers, and both
+    /// are reported.**
+    ///
+    /// A caller writes the second one on a file it has just made. Reporting
+    /// the first would tell a DJ their twenty-second mix is three hours long.
+    #[test]
+    fn a_window_reports_what_came_out_as_well_as_what_it_cost() {
+        let mut tracks = resolver();
+        let window = Window::seconds(0.2, 0.4, RATE);
+        let rendered =
+            render(&a_set(), RATE, 2, 24_000, window, &mut tracks, &mut |_| {}).expect("renders");
+
+        assert_eq!(rendered.emitted, window.to - window.from);
+        assert!(
+            rendered.frames > rendered.emitted,
+            "the run-up to the window cost nothing, which cannot be right"
+        );
+
+        // And for a whole set the two agree, so nothing has to remember which
+        // to read when there is no window.
+        let mut tracks = resolver();
+        let all = render(
+            &a_set(),
+            RATE,
+            2,
+            24_000,
+            Window::WHOLE,
+            &mut tracks,
+            &mut |_| {},
+        )
+        .expect("renders");
+        assert_eq!(all.frames, all.emitted);
+    }
+
+    /// **What comes out of a window is what the whole set had at that point.**
+    ///
+    /// The reason everything before the window is still rendered rather than
+    /// skipped. A replay that jumped in would start every deck at frame zero
+    /// with the faders where they began, which is a different set that happens
+    /// to share a clock — and it would be silently plausible, which is worse.
+    #[test]
+    fn a_window_is_the_same_audio_the_whole_set_produces_there() {
+        let whole = run(&a_set());
+        let window = Window::seconds(0.2, 0.4, RATE);
+
+        let mut part = Vec::new();
+        let mut tracks = resolver();
+        render(&a_set(), RATE, 2, 24_000, window, &mut tracks, &mut |b| {
+            part.extend_from_slice(b);
+        })
+        .expect("renders");
+
+        let from = window.from as usize * 2;
+        assert_eq!(
+            part,
+            whole[from..from + part.len()],
+            "the window is not the stretch of the set it names"
+        );
+        // And it is not silence, or the comparison above would prove nothing.
+        assert!(part.iter().any(|s| s.abs() > 1e-6), "the window is silent");
+    }
+
+    /// An inverted window is empty rather than a panic or the whole set.
+    ///
+    /// Asking for nothing should produce nothing; producing *everything* is
+    /// the worst available reading of it, and is what a naive clamp would do.
+    #[test]
+    fn a_backwards_window_produces_nothing() {
+        let mut out = Vec::new();
+        let mut tracks = resolver();
+        render(
+            &a_set(),
+            RATE,
+            2,
+            24_000,
+            Window::seconds(0.4, 0.2, RATE),
+            &mut tracks,
+            &mut |b| out.extend_from_slice(b),
+        )
+        .expect("renders");
+        assert!(out.is_empty(), "{} samples came out of nothing", out.len());
     }
 }

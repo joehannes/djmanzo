@@ -795,6 +795,13 @@ impl Engine {
             // those. Named here rather than caught by a wildcard so that a new
             // mixer action cannot be silently ignored by accident.
             Action::Mixer(MixerAction::Automix(_)) => {}
+            // Nor is the emergency. `safe` expands into ordinary actions in the
+            // application — flat EQ, no effects, the limiter back on — and the
+            // engine sees those, one at a time, like any other. A single
+            // engine-side "panic" would be a second way to move a control, and
+            // the one thing worse than a mix going wrong is a mix going wrong
+            // through a path no session file can reproduce.
+            Action::Mixer(MixerAction::Safe) => {}
             Action::Mixer(MixerAction::Mic(change)) => {
                 use dj_core::action::MicChange;
                 match change {

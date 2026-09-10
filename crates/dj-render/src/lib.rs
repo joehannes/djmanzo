@@ -17,9 +17,11 @@
 //!              multi-resolution     column fill
 //! ```
 
+pub mod layer;
 pub mod summary;
 pub mod tile;
 
+pub use layer::{Drawn, Layer, Role, layer, layers};
 pub use summary::{Bucket, WaveformSummary};
 pub use tile::{
     BYTES_PER_PIXEL, GridOverlay, Palette, Theme, Tile, TileSpec, render_tile,

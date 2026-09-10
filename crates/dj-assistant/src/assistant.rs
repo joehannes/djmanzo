@@ -64,6 +64,22 @@ impl Plan {
 /// emitting commands the parser rejects.
 #[must_use]
 pub fn system_prompt() -> String {
+    system_prompt_with(&[])
+}
+
+/// As [`system_prompt`], plus a second vocabulary the caller owns.
+///
+/// The interface's operations (§41) live in `dj_app::uiop`, because they are
+/// about panels and this crate has never heard of one. They are *injected*
+/// rather than known here, so the rule that a model is only ever told about
+/// commands that exist survives crossing a crate boundary — see
+/// [ADR-0005](../../../docs/adr/0005-assistant-speaks-only-actions.md).
+///
+/// Lines that are not `dj_core::Action`s come back in [`Plan::rejected`], and
+/// it is the caller — the one that knew what it injected — that gets a second
+/// look at them.
+#[must_use]
+pub fn system_prompt_with(extra: &[String]) -> String {
     let mut prompt = String::from(
         "You control a DJ application. Reply with ONLY action commands, one per \
          line, chosen from the list below. No explanation, no code fences, no \
@@ -75,6 +91,14 @@ pub fn system_prompt() -> String {
         prompt.push_str("  ");
         prompt.push_str(&line);
         prompt.push('\n');
+    }
+    if !extra.is_empty() {
+        prompt.push_str("\nInterface commands:\n");
+        for line in extra {
+            prompt.push_str("  ");
+            prompt.push_str(line);
+            prompt.push('\n');
+        }
     }
     prompt.push_str(
         "\nDeck numbers are 1 to 4. Values outside a command's range are \
@@ -131,6 +155,8 @@ pub struct Assistant {
     budget: Arc<Budget>,
     /// Per-token pricing for the chosen model, when known.
     pricing: Option<(f64, f64)>,
+    /// A second vocabulary the caller owns — see [`system_prompt_with`].
+    extra_commands: Vec<String>,
 }
 
 impl Assistant {
@@ -145,7 +171,20 @@ impl Assistant {
             model: model.into(),
             budget,
             pricing: None,
+            extra_commands: Vec::new(),
         }
+    }
+
+    /// Offer the model a second vocabulary the caller will interpret.
+    ///
+    /// `dj_app` passes the interface operations here. Anything the model
+    /// produces from them arrives in [`Plan::rejected`] — this crate has no way
+    /// to tell a valid one from a hallucination, and guessing would be exactly
+    /// the failure ADR-0005 exists to prevent.
+    #[must_use]
+    pub fn with_commands(mut self, extra: Vec<String>) -> Self {
+        self.extra_commands = extra;
+        self
     }
 
     /// Tell the assistant what the chosen model costs, per million tokens.
@@ -216,7 +255,10 @@ impl Assistant {
             });
         }
 
-        let turns = [Turn::system(system_prompt()), Turn::user(text)];
+        let turns = [
+            Turn::system(system_prompt_with(&self.extra_commands)),
+            Turn::user(text),
+        ];
         let completion = self.provider.complete(&self.model, &turns).await?;
 
         let cost = self.pricing.map(|(input, output)| {

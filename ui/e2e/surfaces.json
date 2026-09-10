@@ -18,6 +18,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -44,6 +45,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -69,6 +71,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -94,6 +97,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -120,6 +124,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -146,6 +151,35 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "overlay",
+      "detached"
+    ]
+  },
+  {
+    "name": "night",
+    "title": "The night",
+    "about": "Where the set is in its arc, and what says so.",
+    "category": "assistant",
+    "least": [
+      220,
+      96
+    ],
+    "prefer": [
+      320,
+      200
+    ],
+    "priority": 70,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -173,6 +207,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -198,6 +233,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -223,6 +259,7 @@
     "stackable": false,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -249,6 +286,7 @@
     "stackable": false,
     "collapsible": true,
     "contextual": true,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -275,6 +313,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -285,22 +324,23 @@
   {
     "name": "practice",
     "title": "Practice",
-    "about": "Two records as a laboratory, without touching the master.",
+    "about": "Hear a transition before you play it, without touching the decks.",
     "category": "planning",
     "least": [
-      520,
-      300
+      360,
+      200
     ],
     "prefer": [
-      900,
-      520
+      620,
+      360
     ],
     "priority": 30,
     "performance_critical": false,
     "detachable": true,
-    "stackable": false,
-    "collapsible": false,
-    "contextual": false,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -327,6 +367,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": true,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -353,6 +394,59 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "athand",
+    "title": "At hand",
+    "about": "The four to eight controls that matter on the focused deck right now.",
+    "category": "performance",
+    "least": [
+      200,
+      90
+    ],
+    "prefer": [
+      300,
+      140
+    ],
+    "priority": 85,
+    "performance_critical": true,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
+    "home": "right",
+    "docks": [
+      "left",
+      "right",
+      "detached"
+    ]
+  },
+  {
+    "name": "mixes",
+    "title": "Tonight's mixes",
+    "about": "How tonight's records were joined, and what kind of mix each was.",
+    "category": "planning",
+    "least": [
+      260,
+      140
+    ],
+    "prefer": [
+      380,
+      320
+    ],
+    "priority": 30,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -378,6 +472,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -403,6 +498,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -428,6 +524,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -453,6 +550,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -479,6 +577,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -505,6 +604,7 @@
     "stackable": false,
     "collapsible": false,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",
@@ -530,6 +630,7 @@
     "stackable": true,
     "collapsible": true,
     "contextual": false,
+    "home": "bottom",
     "docks": [
       "left",
       "right",
@@ -556,6 +657,7 @@
     "stackable": false,
     "collapsible": false,
     "contextual": false,
+    "home": "right",
     "docks": [
       "left",
       "right",

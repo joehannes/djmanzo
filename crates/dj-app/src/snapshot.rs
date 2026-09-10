@@ -371,6 +371,9 @@ pub struct AutomixSnapshot {
     pub beats: f32,
     /// One of `cut`, `fade`, `blend`, `echo`.
     pub style: &'static str,
+    /// True when it will perform the mix djmanzo is holding rather than one of
+    /// its own — §68's unification, as something a DJ can see.
+    pub holding: bool,
 }
 
 /// The microphone / line input strip.
@@ -487,11 +490,29 @@ pub struct SplitOutputSnapshot {
 pub struct Snapshot {
     /// The global session context driving the UI's contextual expression.
     pub context: SessionContext,
+    /// How much the interface may ask of the DJ right now.
+    ///
+    /// Derived from the same context rather than decided by whichever panel is
+    /// asking, which is the whole of [§11](../../../docs/DIRECTIVE.md): one
+    /// context engine underneath, not a copy of the logic in each consumer.
+    pub attention: crate::cockpit::Attention,
     pub decks: Vec<DeckSnapshot>,
     pub master: MasterSnapshot,
 }
 
 impl Snapshot {
+    /// Attach what the context engine has made of the night.
+    ///
+    /// A separate step rather than another parameter on `capture_all`, because
+    /// capturing is reading the registry and this is a judgement over time.
+    /// The attention budget follows from it, so the two can never disagree.
+    #[must_use]
+    pub fn with_session(mut self, read: Option<dj_core::SessionRead>) -> Self {
+        self.context.session = read;
+        self.attention = crate::cockpit::Attention::for_context(&self);
+        self
+    }
+
     /// Read the current state of `deck_count` decks.
     #[must_use]
     pub fn capture(registry: &ParameterRegistry, deck_count: usize) -> Self {
@@ -708,6 +729,10 @@ impl Snapshot {
 
         Self {
             context,
+            // Replaced by `with_session` once the context engine has looked at
+            // this frame. Preparing is the honest default: a snapshot nobody
+            // has read the night from is not one to freeze the interface on.
+            attention: crate::cockpit::Attention::preparing(),
             decks,
             master: MasterSnapshot {
                 recording: SetRecordingSnapshot {
@@ -823,6 +848,7 @@ impl Snapshot {
                         )
                             as usize)
                         .as_str(),
+                        holding: get(GlobalParam::AutomixHolding) >= 0.5,
                     }
                 },
                 mic: {
@@ -894,6 +920,12 @@ pub struct Sources {
     pub samples: Option<Arc<SampleNames>>,
     /// The set recording's counters. See [`crate::setrec::RecordingState`].
     pub recording: Option<Arc<crate::setrec::RecordingState>>,
+    /// The context engine. See [`crate::night::Night`].
+    ///
+    /// The pump is where it belongs: it already builds the frame the engine
+    /// reads, sixty times a second, and every other candidate would have been a
+    /// second loop looking at the same decks.
+    pub night: Option<Arc<crate::night::Night>>,
 }
 
 /// A running snapshot pump. Stops when dropped.
@@ -953,6 +985,7 @@ impl SnapshotPump {
             tracks,
             samples,
             recording,
+            night,
         } = sources;
         let alive = Arc::new(AtomicBool::new(true));
         let thread = {
@@ -978,6 +1011,11 @@ impl SnapshotPump {
                             },
                             recording.as_deref(),
                         );
+                        // The night is read from the frame that is about to be
+                        // shown, so what the interface draws and what the
+                        // engine saw are the same moment.
+                        let read = night.as_deref().and_then(|night| night.observe(&snapshot));
+                        let snapshot = snapshot.with_session(read);
                         let changed = previous.as_ref() != Some(&snapshot);
 
                         // Skip identical frames -- an idle application should not
@@ -1045,29 +1083,70 @@ mod tests {
         assert!(snapshot.decks[0].length_seconds.is_finite());
     }
 
+    /// Poll `check` until it answers, or give up after `deadline`.
+    ///
+    /// The shape every timing assertion in here wants: a test that waits for
+    /// what it is asserting rather than for a duration somebody guessed, so
+    /// it is as fast as the machine allows and as patient as it needs to be.
+    fn until<T>(deadline: Duration, mut check: impl FnMut() -> Option<T>) -> Option<T> {
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(found) = check() {
+                return Some(found);
+            }
+            if start.elapsed() > deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
     #[test]
     fn pump_emits_when_state_changes() {
         let registry = Arc::new(ParameterRegistry::new());
         let seen = Arc::new(Mutex::new(Vec::new()));
 
+        // **The heartbeat is pushed out of the way**, like the idle test's,
+        // and that is what makes the deadline below safe. The first attempt at
+        // de-flaking this simply waited longer on the default one-second
+        // heartbeat — and a mutation that stopped the pump noticing changes at
+        // all still passed, because the heartbeat emitted anyway. Waiting
+        // longer for "did anything arrive" tests less the longer it waits.
+        // With the heartbeat a minute out, anything arriving is a change.
         let pump = {
             let seen = Arc::clone(&seen);
-            SnapshotPump::start(Arc::clone(&registry), 2, move |snapshot| {
-                seen.lock().unwrap().push(snapshot);
-            })
+            SnapshotPump::with_heartbeat(
+                Arc::clone(&registry),
+                2,
+                Duration::from_secs(60),
+                move |snapshot| {
+                    seen.lock().unwrap().push(snapshot);
+                },
+            )
         };
 
-        std::thread::sleep(Duration::from_millis(50));
-        let baseline = seen.lock().unwrap().len();
-        assert!(baseline >= 1, "should emit an initial snapshot");
+        // Waited for rather than slept through. The pump ticks at 60 Hz, so
+        // eighty milliseconds is five ticks and looks like plenty — until a
+        // CI runner is building three other crates at once and the thread is
+        // not scheduled inside it. That failed exactly once on a macOS runner,
+        // green on Linux and Windows in the same run, and a fixed sleep can
+        // only ever be made longer. A deadline asserts the same thing and
+        // finishes as soon as it is true.
+        let baseline = until(Duration::from_secs(5), || {
+            let count = seen.lock().unwrap().len();
+            (count >= 1).then_some(count)
+        })
+        .expect("should emit an initial snapshot");
 
         registry.set(
             ParamId::Deck(DeckId::from_human(1).unwrap(), DeckParam::Playing),
             1.0,
         );
-        std::thread::sleep(Duration::from_millis(80));
         assert!(
-            seen.lock().unwrap().len() > baseline,
+            until(Duration::from_secs(5), || {
+                (seen.lock().unwrap().len() > baseline).then_some(())
+            })
+            .is_some(),
             "a state change should produce a new snapshot"
         );
         drop(pump);
