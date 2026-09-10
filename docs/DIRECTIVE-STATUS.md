@@ -101,7 +101,7 @@ rather than taken.
 | 73 | AI knows what is expensive | ✅ | `mistakes_are_costly` reaches the deck as careful mode |
 | 74 | Contextual control rail | ✅ | **At hand**: `dj_app::at_hand` reads the snapshot for what the hands are doing — a platter touched, stems being played, a record against another, one cued and waiting — and answers with four to eight controls, each an action the parser already accepts. A latched one offers the other half, so "bass out" becomes "bass in" once the low band is out. The panel names the deck and why, because a row that silently became a different row is a row nobody trusts. Which deck is its own judgement: §41's focus fades after six seconds by design, so it follows the hands instead. §74's stem FX, tags, rating and transition points are named as absent — a rack of four numbers, and three things that belong to a record rather than a deck |
 | 75 | Visual control of audio features | 🟡 | |
-| 76 | Library "AI lens" | ⬜ | |
+| 76 | Library "AI lens" | 🟡 | **A toggle that adds, and can never replace.** §76 closes with "this must never replace the standard library view", and the shape keeps that true rather than promising it: `library_lens` is handed the ids the table is *already showing* and answers about those. It does not query, filter or order the collection, so turning it off leaves the standard view exactly as it was — because the lens was never inside it, and a browser test compares the standard headings with it on and off. Six of §76's eight columns ship, each from something djmanzo already knows: **likely next** from the same scorer the Next rail uses, **user affinity** from `dj_library::learned`, **phase suitability** from the record's own function tags against the night's phase, **transition risk** as the scorer's own bad news kept as named reasons rather than boiled to a number, **novelty and familiarity** from the play count and the last-played date, and **function tags**. A record cannot follow itself, so the row for what is playing has no next and no risk. A column djmanzo cannot answer is **blank, never zero** — an empty cell means no opinion and a zero means bad, and they are different answers. What §76 lists and this does not have: **crowd suitability**, which needs to know what the room is doing and so needs a camera or a microphone in it — named in the header rather than silently dropped. And novelty and familiarity are this DJ's own history, not the room's ears: the crowd's familiarity with a record is not something djmanzo can know |
 | 77 | Exploration vs performance | 🟡 | `cockpit::Focus` models it; nothing switches on it |
 | 78 | "Freeze" | 🟡 | `Workspace.frozen` exists and is stored; nothing honours it |
 | 79 | "Lock my workflow" | 🟡 | Same field, same gap |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **41 done, 38 part, 7 open, 19 standing rules.**
+Of the 105 sections: **41 done, 39 part, 6 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**41 of 86 deliverable sections are complete and 38 more are partly there.**
+**41 of 86 deliverable sections are complete and 39 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 41 whole plus 38 halves over 86 is 70%, and the phase view is stricter
+way: 41 whole plus 39 halves over 86 is 70%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

@@ -5526,6 +5526,98 @@ pub fn learned_taste(state: State<'_, AppState>) -> Result<TasteDto, String> {
     })
 }
 
+/// One record through §76's lens.
+///
+/// Every field may be absent, and an absence is drawn as one: a lens that
+/// filled its blanks with zero would rank an unanalysed record below a merely
+/// bad one, and look like a judgement while doing it.
+#[derive(Debug, Clone, Serialize)]
+pub struct LensRowDto {
+    /// The track id, as hex, so the browser can join this to the row it is
+    /// already drawing rather than being handed the record twice.
+    pub track: String,
+    pub likely_next: Option<f64>,
+    pub affinity: Option<f64>,
+    pub phase_fit: Option<f64>,
+    /// Slug and words per risk, so the interface can style it and say it.
+    pub risks: Vec<(String, String)>,
+    pub novelty: f64,
+    pub familiarity: f64,
+    pub functions: Vec<String>,
+}
+
+/// §76's AI lens: djmanzo's opinion beside the records the browser is showing.
+///
+/// **It adds; it never replaces.** The lens takes the ids of rows the browser
+/// already has and answers about those — it does not query, filter or order
+/// the library, so turning it off leaves the standard view exactly as it was,
+/// because the lens was never inside it. That is §76's closing line, expressed
+/// as the shape of the command rather than as a promise.
+///
+/// `deck` is what the lens is *relative to*: "likely next" and "transition
+/// risk" are about following the record playing there. A deck with nothing on
+/// it leaves both empty rather than ranking the collection against silence.
+///
+/// # Errors
+/// Whatever the database says. An id the library does not hold is skipped, not
+/// fatal: a browser row can be a moment stale.
+#[tauri::command]
+pub fn library_lens(
+    state: State<'_, AppState>,
+    tracks: Vec<String>,
+    deck: u8,
+) -> Result<Vec<LensRowDto>, String> {
+    let db = library(&state)?;
+
+    // What is playing, from the library row rather than the snapshot, for the
+    // reason `suggest_next` gives: the candidates are scored against the same
+    // numbers.
+    let playing_id = dj_core::DeckId::from_human(deck).and_then(|id| current_track(&state, id));
+    let playing = playing_id
+        .and_then(|id| db.track(id).ok().flatten())
+        .map(|t| dj_library::suggest::Playing::of(&t));
+
+    // Read once for the whole page, not once per row: both of these are a
+    // query, and fifty rows would be a hundred of them.
+    let taste = db.learn_taste(crate::library::now_seconds()).ok();
+    let phase = state.night().read().map(|read| read.phase);
+
+    let now = crate::lens::Now {
+        playing: playing.as_ref(),
+        playing_id,
+        trajectory: dj_core::Trajectory::Hold,
+        phase,
+        now: crate::library::now_seconds(),
+    };
+
+    let mut out = Vec::with_capacity(tracks.len());
+    for hex in &tracks {
+        let Some(id) = dj_core::TrackId::from_hex(hex) else {
+            continue;
+        };
+        let Some(track) = db.track(id).ok().flatten() else {
+            continue;
+        };
+        let functions = db.functions_for(id).unwrap_or_default();
+        let seen = crate::lens::look(&track, &functions, taste.as_ref(), now);
+        out.push(LensRowDto {
+            track: hex.clone(),
+            likely_next: seen.likely_next,
+            affinity: seen.affinity,
+            phase_fit: seen.phase_fit,
+            risks: seen
+                .risks
+                .iter()
+                .map(|r| (r.slug().to_owned(), r.words().to_owned()))
+                .collect(),
+            novelty: seen.novelty,
+            familiarity: seen.familiarity,
+            functions: seen.functions.iter().map(|f| f.slug().to_owned()).collect(),
+        });
+    }
+    Ok(out)
+}
+
 /// Which track is on a deck, if any.
 fn current_track(state: &AppState, deck: dj_core::DeckId) -> Option<dj_core::TrackId> {
     let tracks = state.deck_tracks();

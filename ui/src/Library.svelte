@@ -39,6 +39,7 @@
     findDuplicates,
     forgetTrackPath,
     formatTime,
+    libraryLens,
     importLibrary,
     similarTo,
     type Suggestion,
@@ -57,6 +58,7 @@
     smartPlaylistTracks,
     type Duplicate,
     type LibraryStatus,
+    type LensRow,
     type LibraryTrack,
     type PlayRecord,
     type Playlist,
@@ -147,6 +149,59 @@
    * would be a browser somebody has to fix before they can search.
    */
   let showing = $state<"table" | "cards">("table");
+
+  /**
+   * §76's AI lens.
+   *
+   * Off by default, and off is the *standard* view — not a stripped one. The
+   * directive's closing line for §76 is "this must never replace the standard
+   * library view", and the shape of this keeps that true rather than promising
+   * it: the lens is a second call about the rows already on screen, joined by
+   * track id. Nothing about the query, the sort or the columns djmanzo has
+   * always shown depends on it.
+   */
+  let lens = $state(false);
+  let lensed = $state<Record<string, LensRow>>({});
+
+  /**
+   * Fetched for the rows that are showing, when the lens is on.
+   *
+   * Keyed on the ids rather than on the array, so a re-sort of the same
+   * records does not re-ask: the lens is about the records, and sorting them
+   * differently does not change djmanzo's opinion of any of them.
+   */
+  let lensKey = $state("");
+
+  $effect(() => {
+    if (!lens) {
+      lensed = {};
+      lensKey = "";
+      return;
+    }
+    const ids = sorted.map((t) => t.id);
+    const key = ids.join(",");
+    if (key === lensKey || ids.length === 0) return;
+    lensKey = key;
+    void libraryLens(ids, 1)
+      .then((rows) => {
+        const next: Record<string, LensRow> = {};
+        for (const row of rows) next[row.track] = row;
+        lensed = next;
+      })
+      .catch(() => {
+        lensed = {};
+      });
+  });
+
+  /**
+   * A fraction as two digits, or a blank.
+   *
+   * The blank is the point: `null` means djmanzo has nothing to say, and a `0`
+   * in that cell would read as "bad" rather than "no opinion".
+   */
+  function fraction(value: number | null | undefined): string {
+    return value == null ? "" : value.toFixed(2);
+  }
 
   /**
    * §20's "favorite", which djmanzo spells as a five-star rating.
@@ -718,6 +773,23 @@
         onclick={() => (showing = "cards")}
       >Cards</button>
     </span>
+    <!--
+      §76's AI lens. A toggle beside the view switch rather than inside it,
+      because it is not a third view: it *adds columns to* whichever of the two
+      is showing. §76 closes with "this must never replace the standard library
+      view", and the way that is kept true is that the lens is a separate call
+      about the rows already on screen — turning it off leaves the table
+      exactly as it was, because the lens was never inside it.
+    -->
+    <span class="views" role="group" aria-label="djmanzo's opinion">
+      <button
+        class:on={lens}
+        aria-pressed={lens}
+        data-testid="lens-toggle"
+        title="Add djmanzo's opinion beside each record. The standard view is unchanged underneath."
+        onclick={() => (lens = !lens)}
+      >AI lens</button>
+    </span>
     <IconButton icon="fa-solid fa-folder-plus" title="Add folder…" onClick={addFolder} disabled={busy} />
     <IconButton icon="fa-solid fa-repeat" title={busy ? "Scanning…" : "Rescan"} onClick={rescan} disabled={busy || !status?.folders.length} />
     <IconButton icon="fa-solid fa-file-import" title="Import a rekordbox, Traktor or iTunes library export" onClick={() => importFrom(false)} disabled={busy} />
@@ -1108,6 +1180,26 @@
                 </button>
               </th>
             {/each}
+            {#if lens}
+              <!--
+                §76's columns, added to the right of the ones djmanzo has
+                always shown. Never in place of them, and never reordering
+                them: a DJ who turns the lens on must still find Title where
+                Title was.
+
+                Crowd suitability is one of §76's eight and is deliberately
+                absent — it needs to know what the room is doing, which needs a
+                camera or a microphone in it. Named in the header's title
+                rather than silently dropped, so a DJ counting the columns they
+                were promised knows which one is missing and why.
+              -->
+              <th class="lens" title="How well it follows what is playing">Next</th>
+              <th class="lens" title="How much you play records like it">Yours</th>
+              <th class="lens" title="Whether it is for this part of the night">Phase</th>
+              <th class="lens" title="What could go wrong in the mix">Risk</th>
+              <th class="lens" title="New to your sets, and how well worn">New / worn</th>
+              <th class="lens" title="What you said it is for">For</th>
+            {/if}
             <th class="load-heading">Load</th>
           </tr>
         </thead>
@@ -1157,6 +1249,31 @@
               <td class="mono">{track.bpm != null ? track.bpm.toFixed(1) : ""}</td>
               <td class="mono">{track.key ?? ""}</td>
               <td class="mono">{formatTime(track.duration_seconds)}</td>
+              {#if lens}
+                <!--
+                  A blank where djmanzo has nothing to say, never a zero. An
+                  empty cell reads as "no opinion"; a 0 reads as "bad", and the
+                  two are different answers.
+                -->
+                <td class="lens mono">{fraction(lensed[track.id]?.likely_next)}</td>
+                <td class="lens mono">{fraction(lensed[track.id]?.affinity)}</td>
+                <td class="lens mono">{fraction(lensed[track.id]?.phase_fit)}</td>
+                <td class="lens risks">
+                  {#each lensed[track.id]?.risks ?? [] as [slug, words] (slug)}
+                    <span class="risk" title={words}>{slug}</span>
+                  {/each}
+                </td>
+                <td class="lens mono" title="New to your sets / how well worn">
+                  {#if lensed[track.id]}
+                    {fraction(lensed[track.id].novelty)} / {fraction(lensed[track.id].familiarity)}
+                  {/if}
+                </td>
+                <td class="lens for">
+                  {#each lensed[track.id]?.functions ?? [] as tag (tag)}
+                    <span class="tag">{tag}</span>
+                  {/each}
+                </td>
+              {/if}
               <td class="load">
                 <!--
                   Adding to a playlist is a select rather than a drag. Drag is
@@ -1244,6 +1361,50 @@
 </div>
 
 <style>
+  /* §76's columns. Visually quieter than the ones djmanzo has always shown:
+     they are an opinion beside the record, not a fact about it. */
+  .lens {
+    color: var(--muted);
+    font-size: 0.72rem;
+    white-space: nowrap;
+    /* The headings ran together without this — "Time Next YoursPhaseRisk" —
+       which is what a column with no padding looks like beside five others. */
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  th.lens {
+    font-weight: 500;
+  }
+
+  /* A rule where djmanzo's opinion begins, so the eye can tell the columns
+     that are facts about the record from the ones that are a view of it. */
+  th.lens:first-of-type,
+  td.lens:first-of-type {
+    border-left: 1px solid var(--line);
+  }
+
+  .risks,
+  .for {
+    display: table-cell;
+  }
+
+  .risk,
+  .tag {
+    display: inline-block;
+    margin-right: 0.2rem;
+    padding: 0 0.28rem;
+    border-radius: 3px;
+    font-size: 0.62rem;
+    border: 1px solid var(--line);
+  }
+
+  /* A risk is the one thing here a DJ should notice without looking for it. */
+  .risk {
+    border-color: color-mix(in srgb, var(--warn) 50%, var(--line));
+    color: var(--warn);
+  }
+
   /* The view switch. Small, and beside the search rather than above it: it is
      about what you are looking at, which is what the search box is too. */
   .views {

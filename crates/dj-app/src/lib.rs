@@ -34,6 +34,7 @@ pub mod control;
 pub mod grid;
 pub mod host;
 pub mod layout;
+pub mod lens;
 pub mod library;
 pub mod memory;
 pub mod mixes;
@@ -511,6 +512,7 @@ pub fn run() {
             commands::setlist_save,
             commands::similar_to,
             commands::learned_taste,
+            commands::library_lens,
             commands::coach_report,
             commands::note_add,
             commands::note_write,

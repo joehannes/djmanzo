@@ -1514,6 +1514,42 @@ export interface TransitionShapeFx {
   slot: number;
 }
 
+/**
+ * One record through §76's AI lens.
+ *
+ * Every field may be absent, and an absence is drawn as one. A lens that
+ * filled its blanks with zero would rank an unanalysed record below a merely
+ * bad one — and would look like a judgement while doing it.
+ */
+export interface LensRow {
+  /** Track id, so this joins to the row the table is already drawing. */
+  track: string;
+  /** How well it follows what is playing. `null` with nothing on the deck. */
+  likely_next: number | null;
+  /** How much this DJ plays records like it. `null` until there is history. */
+  affinity: number | null;
+  /** Whether it is *for* this part of the night. `null` before the night reads. */
+  phase_fit: number | null;
+  /** `[slug, words]` per risk. Empty means nothing stood out. */
+  risks: [string, string][];
+  /** New to this DJ's sets, 1 down to 0. */
+  novelty: number;
+  /** Well worn in them, 0 up to 1. Not the inverse of novelty — see Rust. */
+  familiarity: number;
+  functions: string[];
+}
+
+/**
+ * §76's lens: djmanzo's opinion beside the records already on screen.
+ *
+ * **It adds; it never replaces.** It is handed the ids the table is already
+ * showing and answers about those — it does not query, filter or order the
+ * library — so turning it off leaves the standard view exactly as it was,
+ * because the lens was never inside it.
+ */
+export const libraryLens = (tracks: string[], deck: number) =>
+  invoke<LensRow[]>("library_lens", { tracks, deck });
+
 /** What kind of night this is, and what has been read off it so far. §81. */
 export interface NightSetting {
   /** A setting slug, or null when the DJ has not said yet. */

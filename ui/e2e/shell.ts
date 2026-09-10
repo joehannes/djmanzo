@@ -441,6 +441,8 @@ const ANSWERS: Record<string, unknown> = {
     shape: styles.find((style) => style.name === "blend")?.shape,
   },
   transition_styles: styles,
+  // §76's lens, answered per row below so a test can tell the columns apart.
+  library_lens: [],
   // §81. Tonight opens unnamed, which is the state the picker exists to end —
   // and the state in which the hint has to be right.
   night_now: {
@@ -842,6 +844,28 @@ export async function openShell(
               };
             }
             return Promise.resolve(win.__transition ?? null);
+          }
+          // §76's lens: one row per id it is handed, and *only* the ids it is
+          // handed. Answered here rather than fixed above because the whole
+          // claim of the lens is that it is about the rows already on screen —
+          // a fixed answer could not tell that apart from a lens that queried
+          // the library itself.
+          if (cmd === "library_lens") {
+            const ids = (args.tracks ?? []) as string[];
+            return Promise.resolve(
+              ids.map((id, n) => ({
+                track: id,
+                // The first row has an opinion; the second has none, so a test
+                // can prove a blank is drawn as a blank rather than as zero.
+                likely_next: n === 0 ? 0.82 : null,
+                affinity: n === 0 ? 0.55 : null,
+                phase_fit: n === 0 ? 1 : null,
+                risks: n === 0 ? [["keys", "keys clash"]] : [],
+                novelty: n === 0 ? 1 : 0.25,
+                familiarity: n === 0 ? 0 : 1,
+                functions: n === 0 ? ["peak"] : [],
+              })),
+            );
           }
           // §81's setting, held between calls the way djmanzo holds it. A
           // fixed answer would make naming the night look identical to not

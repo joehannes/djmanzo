@@ -423,7 +423,27 @@ The largest open sections, in the order they are worth doing:
    that made it. That last one is the exception to "derive, never record" and
    it is worth stating rather than discovering.
 
-6. **§20's performance table** is the browser at fewer columns than §20 lists —
+6. **§76's lens adds; it is built so it cannot replace.** `library_lens` takes
+   the ids the table is already showing and answers about *those*. It never
+   queries, filters or orders the collection — which is how "this must never
+   replace the standard library view" stays true under later edits rather than
+   depending on someone remembering it. If a future column needs the lens to
+   choose which rows appear, that is a different feature and §76 says not to
+   build it here.
+
+   **A blank is not a zero**, and the distinction is the whole design: an empty
+   cell means djmanzo has no opinion, a `0.00` means it thinks the record is
+   bad. Filling blanks would rank an unanalysed record below a merely
+   unsuitable one while looking like it had considered both.
+
+   **Crowd suitability is one of §76's eight and is not here**, because it
+   needs to know what the room is doing. Novelty and familiarity are likewise
+   this DJ's own history and not the room's ears — the crowd's familiarity with
+   a record is not knowable from a laptop. Both are named in the interface
+   rather than quietly dropped, so a DJ counting the columns they were promised
+   knows which is missing and why.
+
+7. **§20's performance table** is the browser at fewer columns than §20 lists —
    the other three views ship. Adding the missing columns (energy, vocal and
    stem availability, transition suitability, request count, AI confidence)
    mostly waits on analysis that does not exist, which is the same wall §25's
