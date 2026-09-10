@@ -60,8 +60,8 @@ rather than taken.
 | 32 | Theme packs | 🟡 | Themes ship; packs as a format do not |
 | 33 | Accessibility | 🟡 | Roles and labels throughout, and the tests query by role rather than by class. No audit has been run |
 | 34 | Crowd / audience intelligence | 🟡 | RoomSense and audience requests ship |
-| 35 | Room baseline | ⬜ | |
-| 36 | Multi-signal crowd model | 🟡 | Light, movement, loudness and time of day ship |
+| 35 | Room baseline | 🟡 | **All four of §35's comparisons ship, and no absolute threshold anywhere.** `dj_assistant::room::Horizon` is the reach a reading is placed against and `Baseline` is the placing: the middle of the last three minutes (§35's *current*), against the last twenty minutes (*recent*), against the whole night (*earlier*), and against **every other stretch of tonight that was at this phase** — the fourth, and the only one that is not simply a longer window, because a peak an hour ago is a better comparison for a peak now than the cooldown in between. Every answer is a position inside a distribution this room produced tonight, so nothing means anything absolute and nothing needs a calibrated lens; that is §35's opening refusal expressed as a type rather than promised in a comment. The phase reach carries the guard that matters: a reading is filed under the phase the night was in *at the time*, so the near window sits inside the phase's own distribution, and `ENOUGH_AT_PHASE` refuses the comparison until three quarters of it is some other stretch — without it a night that reached peak two minutes ago would confidently report the room as usual for a peak. Shorter reaches earn a sentence only by **disagreeing** with the night: *quieter than it has been tonight, busier than the last twenty minutes* is a room coming back, and three sentences saying a floor emptied is a panel nobody finishes. Drawn as a table under the meters, one row per sense, a reach it cannot make shown as absent rather than as "usual". What §35 also asks for and this does not have: the **venue** half of "venue/session baseline" — comparing tonight with previous nights in the same room needs a stored reading series, and `nights` carries no sensor history. **Nothing here has been shown to work on a real camera or microphone:** this container has neither, so it is tested against synthetic series in Rust and a fixture in the browser, and it claims nothing about how a room reads |
+| 36 | Multi-signal crowd model | 🟡 | Light, movement, loudness and time of day ship, each placed against §35's four reaches rather than against a threshold. What §36 asks for beyond the signals — combining them into one model of the crowd — is not built, and is deliberately not faked: three numbers that disagree are three facts, and averaging them into a mood is the statistics-lying this module exists to avoid |
 | 37 | Causal crowd analysis | ⬜ | Needs action↔room time-series storage |
 | 38 | Crowd signals never control the DJ unasked | ⚖️ | |
 | 39 | UI for audience intelligence | 🟡 | RoomSense is nested inside the assistant rather than promoted |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **41 done, 43 part, 2 open, 19 standing rules.**
+Of the 105 sections: **41 done, 44 part, 1 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**41 of 86 deliverable sections are complete and 43 more are partly there.**
+**41 of 86 deliverable sections are complete and 44 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 41 whole plus 43 halves over 86 is 73%, and the phase view is stricter
+way: 41 whole plus 44 halves over 86 is 73%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

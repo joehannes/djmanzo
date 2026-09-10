@@ -2868,6 +2868,39 @@ export interface RoomRead {
   light: number | null;
   movement: number | null;
   loudness: number | null;
+  /**
+   * §35's baseline: where the room is now against each reach it can be
+   * compared with. One entry per sense that has been measured enough.
+   */
+  baseline: Baseline[];
+  /**
+   * The phase the "similar phases" comparison was made against, or null when
+   * the night has not read yet. Said rather than implied.
+   */
+  phase: string | null;
+}
+
+/** One sense, placed against every reach §35 asks for. */
+export interface Baseline {
+  /** `light`, `movement` or `loudness`. */
+  sense: string;
+  /** The middle of the last three minutes: §35's *current room activity*. */
+  now: number;
+  against: BaselineAgainst[];
+  /** The sentences this baseline is worth, worded in Rust. */
+  notes: string[];
+}
+
+/** Where the room sits against one reach. */
+export interface BaselineAgainst {
+  /** `recent`, `tonight` or `phase`. */
+  horizon: string;
+  /** What it was compared with, in words — "than it has been tonight". */
+  than: string;
+  /** `lowest`, `lower`, `usual`, `higher` or `highest`. */
+  against: string;
+  /** Whether this reach has anything to say. The usual is not news. */
+  notable: boolean;
 }
 
 export const roomSaw = (reading: {

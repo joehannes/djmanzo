@@ -306,6 +306,50 @@
       </div>
     </dl>
     <!--
+      §35's baseline, as a table: the current activity once, and where it sits
+      against each reach it can be placed in. It is the numbers above given the
+      only thing that makes them mean anything, which is why it sits directly
+      under them.
+
+      A reach with nothing behind it is an em dash rather than a blank or a
+      zero — "we have never been here before" is an answer, and the two things
+      it must not look like are "usual" and "lowest".
+    -->
+    {#if read.baseline.length > 0}
+      <table class="baseline">
+        <thead>
+          <tr>
+            <th scope="col">Against</th>
+            <th scope="col">Now</th>
+            <th scope="col">Last 20 min</th>
+            <th scope="col">Tonight</th>
+            <th scope="col"
+              >{read.phase
+                ? `At ${read.phase.replace(/_/g, " ")}`
+                : "Similar phases"}</th
+            >
+          </tr>
+        </thead>
+        <tbody>
+          {#each read.baseline as row (row.sense)}
+            <tr>
+              <th scope="row">{row.sense}</th>
+              <td>{Math.round(row.now * 100)}%</td>
+              {#each ["recent", "tonight", "phase"] as reach (reach)}
+                {@const found = row.against.find((a) => a.horizon === reach)}
+                <td
+                  class="reach"
+                  class:notable={found?.notable}
+                  data-against={found?.against ?? "unknown"}
+                  title={found ? `${row.sense} ${found.against} ${found.than}` : "Not enough of the night at this reach to compare against"}
+                >{found ? found.against : "—"}</td>
+              {/each}
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+    <!--
       Said next to the numbers because the numbers invite the wrong reading:
       40% light is not "dim", it is 40% of what this lens reports, and the only
       true statement is a comparison with the same lens earlier tonight.
@@ -434,6 +478,61 @@
   .numbers div {
     display: flex;
     gap: 0.35rem;
+  }
+
+  /*
+    §35's baseline table. Deliberately plain: it is a reference a DJ glances
+    at, not a chart, and every cell is one word that already says everything
+    it means.
+  */
+  .baseline {
+    border-collapse: collapse;
+    font-size: 0.75em;
+    width: 100%;
+  }
+
+  .baseline th,
+  .baseline td {
+    padding: 0.15rem 0.4rem 0.15rem 0;
+    text-align: left;
+    font-weight: inherit;
+    white-space: nowrap;
+  }
+
+  /*
+    No special handling of the width, and that is a finding rather than an
+    omission. Five nowrap columns in a side dock looked like a table that
+    would push its own panel sideways, so wrapping headers and
+    `table-layout: fixed` went in with a test to prove it. The test passed
+    with every fix removed, at 1280 and at 900: the side dock's own floor is
+    wider than this table's natural width, so the overflow cannot happen and
+    neither fix was doing anything. Both came out again, with the test.
+  */
+  .baseline thead th {
+    color: var(--muted);
+    font-size: 0.9em;
+  }
+
+  .baseline tbody th {
+    text-transform: capitalize;
+  }
+
+  /*
+    The usual is not news, so it is not coloured. Only a reach with something
+    to say takes the eye — the same rule the sentences above follow, applied
+    to the table they came from.
+  */
+  .reach {
+    color: var(--muted);
+  }
+
+  .reach.notable {
+    color: var(--fg);
+  }
+
+  .reach.notable[data-against="highest"],
+  .reach.notable[data-against="higher"] {
+    color: var(--warn);
   }
 
   .numbers dt {

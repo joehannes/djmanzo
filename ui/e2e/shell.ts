@@ -150,6 +150,12 @@ const ANSWERS: Record<string, unknown> = {
     light: null,
     movement: null,
     loudness: null,
+    // §35's baseline. Empty and null, because the fixture is a room nothing
+    // has looked at — but present, because `RoomSense.svelte` reads
+    // `.baseline.length`, and an absent array is the `stems_status` failure
+    // above in a different panel.
+    baseline: [],
+    phase: null,
   },
   // A night nothing has read yet, which is what a fresh application has. The
   // shape matters more than the values: `Night.svelte` indexes its label

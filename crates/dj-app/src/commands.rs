@@ -8813,6 +8813,40 @@ pub struct RoomDto {
     pub light: Option<f32>,
     pub movement: Option<f32>,
     pub loudness: Option<f32>,
+    /// §35's baseline: where the room is now against each reach it can be
+    /// compared with. One entry per sense that has been measured enough.
+    pub baseline: Vec<BaselineDto>,
+    /// The phase the comparison against similar phases was made with, or
+    /// `null` when the night has not read yet. Said rather than implied — a
+    /// panel showing phase comparisons with nothing naming the phase is a
+    /// panel making a claim it cannot support.
+    pub phase: Option<String>,
+}
+
+/// One sense, placed against every reach §35 asks for.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BaselineDto {
+    /// `light`, `movement` or `loudness`.
+    pub sense: String,
+    /// The middle of the last three minutes: §35's *current room activity*.
+    pub now: f32,
+    /// Each reach and where the room sits against it.
+    pub against: Vec<BaselineAgainstDto>,
+    /// The sentences this baseline is worth, already worded in Rust.
+    pub notes: Vec<String>,
+}
+
+/// Where the room sits against one reach.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BaselineAgainstDto {
+    /// `recent`, `tonight` or `phase`.
+    pub horizon: String,
+    /// What it is being compared with, in words — "than it has been tonight".
+    pub than: String,
+    /// `lowest`, `lower`, `usual`, `higher` or `highest`.
+    pub against: String,
+    /// Whether this reach has anything to say. The usual is not news.
+    pub notable: bool,
 }
 
 /// How recently a reading has to have arrived for the panel to say "watching".
@@ -8847,18 +8881,24 @@ pub fn room_saw(
         }
     }
 
+    // The phase **as it is now**, stored with the reading. §35's "activity at
+    // similar session phases" is a question about the past, and looking the
+    // phase up when somebody asks would file the whole night under whatever it
+    // had become by then.
+    let phase = state.night().read().map(|read| read.phase);
+
     state
         .room()
         .lock()
         .map_err(|_| "the room's readings are poisoned")?
-        .saw(reading);
+        .saw(reading, phase);
     Ok(())
 }
 
 /// What the room has been doing, and whether it matches the night.
 #[tauri::command]
 pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
-    use dj_assistant::room::{Sense, hour_of};
+    use dj_assistant::room::{Horizon, Sense, hour_of};
 
     let room = state.room();
     let room = room
@@ -8871,6 +8911,34 @@ pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
         .map(|guard| guard.occasion)
         .unwrap_or_default();
 
+    let phase = state.night().read().map(|read| read.phase);
+    let baseline = [Sense::Movement, Sense::Loudness, Sense::Light]
+        .into_iter()
+        .filter_map(|sense| {
+            let read = room.baseline(sense, phase)?;
+            Some(BaselineDto {
+                sense: sense.name().to_owned(),
+                now: read.now,
+                notes: read.notes(),
+                against: read
+                    .against
+                    .iter()
+                    .map(|(horizon, against)| BaselineAgainstDto {
+                        horizon: match horizon {
+                            Horizon::Recent => "recent",
+                            Horizon::Tonight => "tonight",
+                            Horizon::LikePhase(_) => "phase",
+                        }
+                        .to_owned(),
+                        than: horizon.than(),
+                        against: against.name().to_owned(),
+                        notable: against.is_notable(),
+                    })
+                    .collect(),
+            })
+        })
+        .collect();
+
     Ok(RoomDto {
         // Derived from the readings themselves rather than from a flag the
         // interface sets: a window that closed without saying so cannot leave
@@ -8882,12 +8950,14 @@ pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
         }),
         recent: room.recent(),
         enough: room.has_looked_enough(),
-        notes: room.notes(),
+        notes: room.notes(phase),
         disagreement: room.disagrees_with(occasion),
         hour: hour_of(std::time::SystemTime::now()),
         light: room.lately(Sense::Light),
         movement: room.lately(Sense::Movement),
         loudness: room.lately(Sense::Loudness),
+        baseline,
+        phase: phase.map(|p| p.name().to_owned()),
     })
 }
 

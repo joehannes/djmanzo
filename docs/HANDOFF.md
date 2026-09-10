@@ -229,6 +229,17 @@ add a field to a stubbed command, the browser test proves the *drawing*; write a
 Rust test for the *producer* in the same commit, and look at the running
 application before believing either.
 
+**A layout test can be vacuous at the harness's window size, and look green.**
+§35's baseline table has five columns in a side dock, which looked like a
+table that would push its own panel sideways — so wrapping headers and
+`table-layout: fixed` went in, with a test to prove it. The test passed with
+every fix removed, at 1280 and again at 900: the side dock's own floor is
+wider than the table's natural width, so the overflow it guarded against
+cannot happen. All of it came out again, fixes and test both. The general
+form: **before writing a layout budget, break the layout and watch the budget
+fail.** A budget that has never failed is a budget measuring something that
+was never at risk, and it will be quoted later as evidence.
+
 **A width assertion in pixels can be satisfied by the element's own borders.**
 The ghost band's first test asked for a bounding box wider than one pixel, and
 a mutation setting the band's width to *zero* left it green: the element has a
@@ -351,6 +362,12 @@ The largest open sections, in the order they are worth doing:
    next one built is a research question rather than a drawing one —
    **mix-in** is the cheapest of them, and even it needs something that can say
    where a record's intro ends.
+
+   Nothing here can be checked against a real room. **This container has no
+   camera and no microphone**, so §34–§37 are tested against synthetic series
+   in Rust and against a fixture in the browser, and the running application
+   shows the panel in its empty state and nothing else. Do not let a green
+   suite there become a claim about how a room reads.
 
    §27's ghost is the twelfth, and it went in without any of that because it
    is arithmetic over two records rather than a new reading of one: the mix is
