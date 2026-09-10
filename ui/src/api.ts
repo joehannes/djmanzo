@@ -1514,6 +1514,33 @@ export interface TransitionShapeFx {
   slot: number;
 }
 
+/** One rehearsal: a mix that was never played, as a file you can hear. */
+export interface Rehearsal {
+  style: string;
+  path: string;
+  seconds: number;
+  /** Where the mix sits inside the file, in seconds. */
+  mix_from: number;
+  mix_to: number;
+  /** How many actions the automix sent. A cut is a handful; a blend is a
+   * thousand fader writes, and the difference is worth seeing. */
+  actions: number;
+  shape: TransitionShape;
+}
+
+/**
+ * Rehearse the held transition and render it to a file.
+ *
+ * §69: nothing here touches the live decks. The automix is stepped offline
+ * against a simulated playhead and `replay` renders the result headless, so a
+ * DJ can hear the next mix while the current one is still playing to the room.
+ *
+ * `style` hears an alternative **without restyling the held mix** — trying a
+ * vocal drop in the lab must not change what the automix is about to perform.
+ */
+export const practiceRehearse = (style?: string) =>
+  invoke<Rehearsal>("practice_rehearse", { style: style ?? null });
+
 /** One style, and what it does. */
 export interface TransitionStyleInfo {
   /**

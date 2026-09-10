@@ -4459,6 +4459,131 @@ pub fn session_render_mix(
     ))
 }
 
+/// One rehearsal, as the practice surface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct RehearsalDto {
+    /// The style that was rehearsed, as the grammar spells it.
+    pub style: String,
+    /// Where the file landed.
+    pub path: String,
+    /// How long it runs.
+    pub seconds: f64,
+    /// Where the mix itself sits inside it, so a player can mark it.
+    pub mix_from: f64,
+    pub mix_to: f64,
+    /// How many actions the automix sent. A number a DJ can compare between
+    /// styles: a cut is a handful, a blend is a thousand fader writes.
+    pub actions: usize,
+    /// What the style does beyond the faders, from the same table the automix
+    /// performs -- so the file and the description cannot disagree.
+    pub shape: ShapeDto,
+}
+
+/// Rehearse the held transition, and hear it.
+///
+/// §69's practice surface: "two tracks can be explored **without altering the
+/// live master**." Nothing here touches the live engine. The automix is run
+/// offline against a simulated playhead, its actions become a set file that
+/// was never played, and `replay` renders that file headless -- see
+/// [`crate::practice`]. The DJ's records keep playing to the room throughout.
+///
+/// `style` rehearses an alternative **without restyling the held mix**, which
+/// is the same promise one level up: trying a vocal drop in the lab must not
+/// change the mix the automix is about to perform. The transition is cloned
+/// and the clone is restyled; djmanzo goes on holding what it held.
+///
+/// Unlike [`session_render_mix`] this is cheap. A rehearsal is synthetic, so
+/// it has no history to be faithful to: it renders the run-up, the mix and the
+/// tail, and nothing else, whatever hour of the night it is.
+#[tauri::command]
+pub fn practice_rehearse(
+    state: State<'_, AppState>,
+    style: Option<String>,
+) -> Result<RehearsalDto, String> {
+    let Some(mut transition) = state.transition() else {
+        return Err("set a transition up in the pair view first".to_owned());
+    };
+    if let Some(word) = style.as_deref() {
+        let style = dj_core::action::TransitionStyle::parse(word)
+            .ok_or_else(|| format!("no {word} style"))?;
+        // On the clone. `state.transition()` handed back a copy, and nothing
+        // here writes it back.
+        transition.set_style(style);
+    }
+
+    let db = library(&state)?;
+    let track = db
+        .track(transition.incoming_track)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "the record coming in has left the library".to_owned())?;
+    let grid = track
+        .analysis
+        .beatgrid()
+        .ok_or_else(|| "the record coming in has no beatgrid to rehearse against".to_owned())?;
+    #[allow(clippy::cast_precision_loss)]
+    let incoming = crate::plan::Record {
+        length: track.duration_frames as f64,
+        bpm: grid.bpm.get(),
+        phrase: phrase_of(&track),
+        sample_rate: track.sample_rate,
+        grid_anchor: grid.anchor.get(),
+    };
+
+    let rehearsal = crate::practice::rehearse(
+        &transition,
+        incoming,
+        crate::practice::RUN_UP,
+        crate::practice::TAIL,
+    );
+
+    let dir = state
+        .recordings_dir()
+        .ok_or_else(|| "no settings folder to write into yet".to_owned())?;
+    let dir = dir.join("practice");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    // Named for the pair and the style, so rehearsing the same mix four ways
+    // leaves four files a DJ can play against each other -- which is §69's
+    // "hear alternative transitions" as files rather than as a promise.
+    let name = format!(
+        "{}-{}-{}.wav",
+        short(transition.outgoing_track),
+        short(transition.incoming_track),
+        transition.plan.style.as_str().replace(' ', "-")
+    );
+    let path = dir.join(name);
+
+    let mut resolve = decoder(db);
+    crate::replay::render_to_wav(
+        &rehearsal.session,
+        transition.outgoing().sample_rate,
+        rehearsal.decks,
+        // The tail. Nothing is *sent* during it, so a render that stopped at
+        // the last event would end the file the instant the mix landed.
+        rehearsal.tail_frames,
+        crate::replay::Window::WHOLE,
+        &mut resolve,
+        &path,
+    )?;
+
+    Ok(RehearsalDto {
+        style: transition.plan.style.as_str().to_owned(),
+        path: path.display().to_string(),
+        seconds: rehearsal.seconds,
+        mix_from: rehearsal.mix_from,
+        mix_to: rehearsal.mix_to,
+        actions: rehearsal.session.events.len(),
+        shape: describe_shape(&transition.shape()),
+    })
+}
+
+/// The first eight characters of a track id, for a filename.
+///
+/// Enough to tell two records apart in a folder and short enough that the name
+/// stays readable. Not the title: a title has slashes and colons in it.
+fn short(track: dj_core::TrackId) -> String {
+    track.to_hex().chars().take(8).collect()
+}
+
 /// Re-render a saved set to a WAV file.
 ///
 /// Faster than real time, and with nothing dropped: a replay runs to no

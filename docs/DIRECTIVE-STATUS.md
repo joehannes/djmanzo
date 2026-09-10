@@ -94,7 +94,7 @@ rather than taken.
 | 66 | DJ workflow knowledge | ✅ | The workflow model is audit §9 |
 | 67 | The session is a loop, not a screen | 🟡 | The action log has been the session since M0, and it now *contains transitions* the way §67 lists them: `dj_app::mixes` reads a night back as the mixes in it — what went into what, over how many beats, and what kind of mix each was — derived from the log rather than recorded beside it, so a set recorded before any of this has them too. **Tonight's mixes** is the surface. The rest of §67's list is elsewhere and not yet gathered into one object: the timeline, the room, the DJ's own state, requests and the set arc each have a home of their own |
 | 68 | Transition object | ✅ | `dj_app::transition::Transition` carries every field §68 lists: the two decks, where the mix starts and ends in frames and seconds, its length, style, tempo delta, key relation, the pair's confidence on the rail's scale, the typed reasons, and now the **stem, EQ and FX plans**. Those four come from `dj_app::shape`, which is one table saying what a style does beyond the faders — and it is the table **the automix performs**, so what the pair view says a style will do before it is pressed is what happens when it is. They are derived from the style rather than stored on the object, because a stored copy is a second answer that a restyle can leave behind. djmanzo **holds** a transition; it can be moved on the waveform, shortened and restyled, and an edit **re-derives the reasons over the new geometry** rather than keeping the planner's. **The automix performs it** — its decks, its start, its length, its style — instead of deciding its own, and the autopilot defers to it rather than pushing settings in; where it does not apply it is ignored rather than forced. The object exists on **both** sides of a mix: `dj_app::mixes` derives the performed one out of the log, and it **drives replay** — `replay::Window` renders one handover back to a WAV with its run-up, from the set the DJ is playing. Everything before the window is still rendered and discarded, because the engine's state at a moment is the whole set up to it; that cost is stated rather than hidden. Of the seven things §68 says such an object could drive, five do: the waveform, the suggestions, the AI preparation, the autopilot and the replay. The other two are not the object's absence but their own sections' — preview is §27, which needs a player, and practice is §69 |
-| 69 | Practice lab | ⬜ | |
+| 69 | Practice lab | 🟡 | **Two records explored without altering the live master**, which is the sentence §69 rests on. `dj_app::practice` builds a set file for a mix that was never played and `replay` renders it headless — no fader moves, no deck is touched, and the record playing to the room keeps playing. **The real automix writes it**: it is stepped offline against a simulated playhead and the actions it emits *are* the rehearsal, so what you hear is what djmanzo would perform rather than a second implementation of a crossfade. Rehearsing an alternative style **does not restyle the held mix** — the transition is cloned — so the four files of one pair are §69's "hear alternative transitions" as things on disk. A rehearsal is cheap where a replay is not: it is synthetic, so it has no history to be faithful to and costs its own length whatever hour of the night it is. "Save successful transitions" is §24's *keep*, which ships. Comparing BPM, phrase structure and keys is the pair view's and is drawn there rather than a second time. What §69 lists and this does not have: experimenting with stems, testing FX and creating loops **live** — those need a second engine feeding the headphone output, which is real work and is not this. Nothing here can say whether any of it *sounds* right; there is no audio device in this container |
 | 70 | Learning mode | ✅ | The coach ships |
 | 71 | "What should I do next?" | ✅ | The assistant's next step is shown before it happens |
 | 72 | User override matrix | ✅ | `dj_assistant::authority` — the directive's ten capabilities against six postures, verbatim and asserted against the directive's own table. The second of three gates the assistant passes, so it is what actually stops a mix rather than a diagram. Configurable both ways, except that Off and Watch cannot be widened |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **41 done, 36 part, 9 open, 19 standing rules.**
+Of the 105 sections: **41 done, 37 part, 8 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**41 of 86 deliverable sections are complete and 36 more are partly there.**
+**41 of 86 deliverable sections are complete and 37 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 41 whole plus 36 halves over 86 is 69%, and the phase view is stricter
+way: 41 whole plus 37 halves over 86 is 69%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

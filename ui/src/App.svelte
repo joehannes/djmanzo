@@ -48,6 +48,7 @@
   import Pair from "./Pair.svelte";
   import Night from "./Night.svelte";
   import Mixes from "./Mixes.svelte";
+  import Practice from "./Practice.svelte";
   import AtHand from "./AtHand.svelte";
   import Staged from "./Staged.svelte";
   import Palette from "./Palette.svelte";
@@ -206,6 +207,7 @@
     "next",
     "plan",
     "pair",
+    "practice",
     "night",
     "booth",
     "presets",
@@ -1132,6 +1134,12 @@
           waveform each need width, and a side dock is 360 px.
         -->
         <IconButton icon="fa-solid fa-code-compare" label="Pair" title="Two records side by side, and the seam between them" active={isOpen("pair")} onClick={() => toggleSurface("pair")} />
+        <!--
+          The lab. Beside the pair view because it is the same two records
+          asked a different question: that one says what the mix *is*, this one
+          lets you hear it before the room does.
+        -->
+        <IconButton icon="fa-solid fa-flask" label="Practice" title="Hear a transition before you play it, without touching the decks" active={isOpen("practice")} onClick={() => toggleSurface("practice")} />
         <IconButton icon="fa-solid fa-moon" label="Night" title="Where the set is in its arc, and what says so" active={isOpen("night")} onClick={() => toggleSurface("night")} />
         <IconButton icon="fa-solid fa-layer-group" label="Presets" title="Effect and mix presets" active={isOpen("presets")} onClick={() => toggleSurface("presets")} />
         <!--
@@ -1405,6 +1413,10 @@
     <Pair enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
   {/snippet}
 
+  {#snippet surfacePractice()}
+    <Practice enabled={ready} />
+  {/snippet}
+
   {#snippet surfaceNight()}
     <Night enabled={ready} />
   {/snippet}
@@ -1597,6 +1609,7 @@
         {:else if placement.surface === "next"}{@render surfaceNext()}
         {:else if placement.surface === "plan"}{@render surfacePlan()}
         {:else if placement.surface === "pair"}{@render surfacePair()}
+        {:else if placement.surface === "practice"}{@render surfacePractice()}
         {:else if placement.surface === "night"}{@render surfaceNight()}
         {:else if placement.surface === "mixes"}{@render surfaceMixes()}
         {:else if placement.surface === "athand"}{@render surfaceAtHand()}

@@ -328,9 +328,9 @@ The largest open sections, in the order they are worth doing:
    the Rust test blesses. If you find yourself typing a list that Rust already
    has, that is the bug arriving again.
 
-   What is still missing is re-*planning* — changing a recorded mix's length
-   or style and hearing the alternative, which is §69's practice lab rather
-   than §68's object, and the preview, which is §27 and needs a player.
+   Re-*planning* — changing a mix's length or style and hearing the
+   alternative — is now `dj_app::practice`, below. The preview is §27 and still
+   needs a player.
 
    **A replay window is not a seek**, and anything built on it inherits that:
    the engine's state at a moment is the whole set up to it, so rendering the
@@ -343,7 +343,34 @@ The largest open sections, in the order they are worth doing:
    becomes inaudible, so nothing crosses. That is a real gap and a small one —
    a mix that never takes the outgoing record out is a mix that has not
    finished.
-3. **The learning cluster, now that §13 and §14 exist.** `dj_app::signals`
+3. **The practice lab renders; it does not play.** `dj_app::practice` builds a
+   set file for a mix that was never played and hands it to `replay`, so §69's
+   "without altering the live master" is a property of the mechanism rather
+   than a promise: there is no second engine and no live output path, and
+   nothing it does can reach the decks.
+
+   **The automix writes the rehearsal.** The real state machine is stepped
+   against a simulated playhead and its actions *are* the file. Do not be
+   tempted to write the crossfade out in `practice` — that would be a second
+   implementation, and the day the automix changed the lab would keep
+   rehearsing the old one. `what_it_rehearses_is_what_the_automix_performs`
+   fails under exactly that change.
+
+   **Two defects in it were invisible to every test and obvious on playing the
+   file**, which is the third time this project has learnt the same thing. The
+   tail is not made of events — a replay stops at the last action, and the last
+   thing a transition does is eject the outgoing record — so the file ended the
+   instant the mix landed, four seconds short of what the panel claimed. And
+   `mix_to` came from the plan's geometry rather than from where the rehearsal
+   actually finished, so a cut was marked as a fifteen-second mix inside a
+   twelve-second file. Both are pinned now, including a Rust test that renders
+   a rehearsal and compares the file's length with the number beside it.
+
+   What §69 asks for and is **not** here: stems, FX and loops explored *live*.
+   Those need a second engine feeding the headphone output. That is a real
+   piece of work and the offline half does not pretend to be it.
+
+4. **The learning cluster, now that §13 and §14 exist.** `dj_app::signals`
    names the gestures and `Tendency` is the only thing that generalises from
    them — constructible only through `tendencies()`, never without a phase,
    never on fewer than four in that phase. §12 (learn the DJ), §24 (pairs and
@@ -361,7 +388,7 @@ The largest open sections, in the order they are worth doing:
    the stems, so a kept vocal drop *is* a record of one. "Works only with an
    8-beat loop" is not: nothing records the loop that was running under a
    transition.
-4. **§20's performance table** is the browser at fewer columns than §20 lists —
+5. **§20's performance table** is the browser at fewer columns than §20 lists —
    the other three views ship. Adding the missing columns (energy, vocal and
    stem availability, transition suitability, request count, AI confidence)
    mostly waits on analysis that does not exist, which is the same wall §25's

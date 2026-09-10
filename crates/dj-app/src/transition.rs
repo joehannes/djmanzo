@@ -116,6 +116,23 @@ impl Transition {
         })
     }
 
+    /// The record going out, as it was when the transition was armed.
+    ///
+    /// Read-only, and the playhead in it is the armed-at one rather than a
+    /// live reading — see the field. [`crate::practice`] needs the length and
+    /// the sample rate to rehearse the mix, and re-deriving them from a deck
+    /// would be a second answer about the same record.
+    #[must_use]
+    pub fn outgoing(&self) -> &Outgoing {
+        &self.outgoing
+    }
+
+    /// The record coming in, as the planner was given it.
+    #[must_use]
+    pub fn incoming(&self) -> &Incoming {
+        &self.incoming
+    }
+
     /// What this transition's style does beyond the two channel faders.
     ///
     /// Derived from the style each time rather than held, so a restyle cannot

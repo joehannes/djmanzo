@@ -441,6 +441,10 @@ const ANSWERS: Record<string, unknown> = {
     shape: styles.find((style) => style.name === "blend")?.shape,
   },
   transition_styles: styles,
+  // A rehearsal, in the shape `dj_app::commands::RehearsalDto` serialises. The
+  // stub answers per style below, because the whole of what this panel does is
+  // tell four renders of one pair apart.
+  practice_rehearse: null,
   transition_current: null,
   transition_clear: null,
   // The palette's answer, which Rust ranks. Two actions and one surface, so a
@@ -800,6 +804,31 @@ export async function openShell(
               };
             }
             return Promise.resolve(win.__transition ?? null);
+          }
+          // A rehearsal, answered per style. Fixed answers would make four
+          // renders of the same pair indistinguishable, and telling them apart
+          // is the whole of what the practice panel is for.
+          if (cmd === "practice_rehearse") {
+            const offered = (answers.transition_styles ?? []) as {
+              name: string;
+              shape: unknown;
+            }[];
+            const held = win.__transition as Record<string, unknown> | null;
+            if (!held) {
+              return Promise.reject(
+                new Error("set a transition up in the pair view first"),
+              );
+            }
+            const style = (args.style ?? held.style) as string;
+            return Promise.resolve({
+              style,
+              path: `/recordings/practice/aaaaaaaa-bbbbbbbb-${style.replace(" ", "-")}.wav`,
+              seconds: 27.5,
+              mix_from: 8,
+              mix_to: 23.5,
+              actions: style === "cut" ? 12 : 964,
+              shape: offered.find((s) => s.name === style)?.shape ?? null,
+            });
           }
           // The staged transaction, held between calls the way djmanzo holds
           // it — the same reasoning as the transition above. Accept and

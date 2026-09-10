@@ -43,6 +43,7 @@ pub mod peersync;
 pub mod persist;
 pub mod plan;
 pub mod plugins;
+pub mod practice;
 pub mod presets;
 pub mod rackcapture;
 pub mod remote;
@@ -490,6 +491,7 @@ pub fn run() {
             commands::transition_current,
             commands::transition_adjust,
             commands::transition_styles,
+            commands::practice_rehearse,
             commands::transition_replan,
             commands::transition_clear,
             commands::session_save,

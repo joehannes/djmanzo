@@ -801,16 +801,25 @@ pub fn surfaces() -> &'static [Surface] {
         Surface {
             name: "practice",
             title: "Practice",
-            about: "Two records as a laboratory, without touching the master.",
+            // §69's word is "sandbox", and the whole of it is the second half
+            // of that sentence: *without altering the live master*. What ships
+            // is the part that can be done honestly offline -- hearing the
+            // mix, and hearing the alternatives -- so this is a list of
+            // renders rather than the full laboratory the first draft of this
+            // entry was sized for.
+            about: "Hear a transition before you play it, without touching the decks.",
             category: Category::Planning,
-            least: (520, 300),
-            prefer: (900, 520),
+            least: (360, 200),
+            prefer: (620, 360),
             priority: 30,
             performance_critical: false,
             detachable: true,
-            stackable: false,
-            collapsible: false,
-            contextual: false,
+            // Beside the pair view, which is the same two records asked a
+            // different question, so it stacks and collapses the way that one
+            // does rather than demanding a dock to itself.
+            stackable: true,
+            collapsible: true,
+            contextual: true,
             home: Dock::Bottom,
             docks: SIDE_OR_BOTTOM,
         },

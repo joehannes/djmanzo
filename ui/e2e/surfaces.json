@@ -324,22 +324,22 @@
   {
     "name": "practice",
     "title": "Practice",
-    "about": "Two records as a laboratory, without touching the master.",
+    "about": "Hear a transition before you play it, without touching the decks.",
     "category": "planning",
     "least": [
-      520,
-      300
+      360,
+      200
     ],
     "prefer": [
-      900,
-      520
+      620,
+      360
     ],
     "priority": 30,
     "performance_critical": false,
     "detachable": true,
-    "stackable": false,
-    "collapsible": false,
-    "contextual": false,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": true,
     "home": "bottom",
     "docks": [
       "left",
