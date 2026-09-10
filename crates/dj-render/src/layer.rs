@@ -266,8 +266,8 @@ static LAYERS: [Layer; 20] = [
         name: "suggestion",
         title: "AI recommendation",
         about: "What djmanzo would do, drawn as a ghost rather than as a fact.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        role: Role::Proposed,
+        drawn: Drawn::Overlay,
     },
     Layer {
         name: "crowd",
@@ -359,14 +359,17 @@ mod tests {
             "the record's own sound"
         );
         assert_eq!(grouped.get("grid").map(Vec::len), Some(3), "the pulse");
-        for role in [
-            "placed",
-            "looping",
-            "seam",
-            "runway",
-            "proposed",
-            "uncertain",
-        ] {
+        // `proposed` carries the mix-out window and §27's ghost. Both are
+        // djmanzo saying *could*, about the same mix, at two scales -- where a
+        // record can be left, and what happens if this one comes in there. One
+        // colour for both is the distinction §57 asks for holding, not losing:
+        // what must never share it is anything that is so.
+        assert_eq!(
+            grouped.get("proposed"),
+            Some(&vec!["mix-out", "suggestion"]),
+            "the proposed colour is for what djmanzo suggests, and only that"
+        );
+        for role in ["placed", "looping", "seam", "runway", "uncertain"] {
             assert_eq!(
                 grouped.get(role).map(Vec::len),
                 Some(1),
@@ -412,6 +415,7 @@ mod tests {
                 "loop",
                 "seam",
                 "mix-out",
+                "suggestion",
                 "confidence",
                 "runway",
             ],

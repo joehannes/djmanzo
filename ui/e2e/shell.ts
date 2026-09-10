@@ -311,6 +311,48 @@ const ANSWERS: Record<string, unknown> = {
   sidelist_add: null,
   // Two candidates, so the rail has a ranking and not just a row.
   //
+  // §27's ghost, on the same record `waveform_info` above describes: a
+  // 32-beat blend starting where the mix-out window opens, with the
+  // candidate's first full phrase eight beats into it.
+  //
+  // Five of §27's seven answered and two not, in the shape and the order Rust
+  // sends them. The two that are not are the point of the fixture as much as
+  // the five that are: the panel has to say so, and a stub carrying only the
+  // answered ones would let it ship silently dropping them.
+  ghost_preview: {
+    track: "b".repeat(64),
+    deck: 1,
+    start_frame: 10_800_000,
+    end_frame: 11_568_000,
+    start_seconds: 225,
+    end_seconds: 241,
+    length_beats: 32,
+    style: "blend",
+    bpm_delta: 3,
+    pitch_percent: -2.3,
+    key_relation: "neighbour",
+    landing: { frame: 10_992_000, lead_beats: 8, within_mix: true },
+    weakens_from: 10_800_000,
+    weakens_to: 11_600_000,
+    reasons: ["phrase start (beat 450)", "128 into 131 BPM", "96 beats left"],
+    asked: [
+      {
+        slug: "first-phrase",
+        about: "where its first strong phrase would align",
+        answered: true,
+      },
+      { slug: "vocal-entry", about: "where the vocal enters", answered: false },
+      { slug: "drop", about: "where the drop occurs", answered: false },
+      {
+        slug: "outgoing-weakens",
+        about: "where the outgoing track becomes weak",
+        answered: true,
+      },
+      { slug: "overlap", about: "likely transition overlap", answered: true },
+      { slug: "key-relation", about: "key relationship", answered: true },
+      { slug: "tempo-movement", about: "BPM movement", answered: true },
+    ],
+  },
   // The shape `suggest_next` and `similar_to` both return, including the
   // `summary` line the rail actually renders -- a fixture that carried only
   // `reasons` would have let the rail ship showing nothing and passed.

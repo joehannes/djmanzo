@@ -31,6 +31,7 @@ pub mod clock;
 pub mod cockpit;
 pub mod commands;
 pub mod control;
+pub mod ghost;
 pub mod grid;
 pub mod handle;
 pub mod host;
@@ -515,6 +516,7 @@ pub fn run() {
             commands::similar_to,
             commands::learned_taste,
             commands::library_lens,
+            commands::ghost_preview,
             commands::control_handles,
             commands::theme_now,
             commands::theme_lock,

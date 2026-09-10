@@ -310,6 +310,9 @@ test.describe("the waveform's layers", () => {
     expect(built).toContain("seam");
     expect(built).toContain("mix-out");
     expect(built).toContain("confidence");
-    expect(built).toHaveLength(11);
+    // §27's ghost, which is the twelfth: the `suggestion` layer §25 reserves
+    // for "what djmanzo would do, drawn as a ghost rather than as a fact".
+    expect(built).toContain("suggestion");
+    expect(built).toHaveLength(12);
   });
 });

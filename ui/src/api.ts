@@ -1603,6 +1603,67 @@ export interface LensRow {
 export const libraryLens = (tracks: string[], deck: number) =>
   invoke<LensRow[]>("library_lens", { tracks, deck });
 
+/** One of §27's seven questions, and whether djmanzo can answer it. */
+export interface GhostAsked {
+  slug: string;
+  /** §27's own words, so the panel cannot quietly reword what was asked. */
+  about: string;
+  answered: boolean;
+}
+
+/** Where the candidate's first full phrase would land, on the outgoing record. */
+export interface GhostLanding {
+  /** Frames on the outgoing record — the lane on screen. */
+  frame: number;
+  /** Beats of the candidate before that phrase. Zero is no pickup. */
+  lead_beats: number;
+  /** False when the phrase arrives after the mix has already finished. */
+  within_mix: boolean;
+}
+
+/**
+ * §27's ghost: what happens if this record comes in here.
+ *
+ * Frames throughout, like the transition object, because that is what the
+ * waveform is drawn in. Nothing here is worked out on this side — the mix is
+ * the planner's, so what is drawn before loading is what djmanzo performs
+ * after.
+ */
+export interface Ghost {
+  /** The candidate, as hex, so this joins to the row already on screen. */
+  track: string;
+  /** The deck the ghost is drawn over. */
+  deck: number;
+  start_frame: number;
+  end_frame: number;
+  start_seconds: number;
+  end_seconds: number;
+  length_beats: number;
+  style: string;
+  /** Incoming tempo minus outgoing, signed. */
+  bpm_delta: number;
+  /** What the pitch fader on the incoming deck does, as a percentage. */
+  pitch_percent: number;
+  key_relation: string | null;
+  landing: GhostLanding | null;
+  /** Where the outgoing record becomes weak, in frames. */
+  weakens_from: number | null;
+  weakens_to: number | null;
+  reasons: string[];
+  /** §27's seven, in its order, each saying whether it is answered. */
+  asked: GhostAsked[];
+}
+
+/**
+ * §27: what happens if this candidate comes in over `deck`. Nothing moves.
+ *
+ * `null` when there is nothing honest to draw — an empty deck, an unanalysed
+ * record on either side, or a track already too near its end for any
+ * transition djmanzo proposes to fit.
+ */
+export const ghostPreview = (deck: number, track: string) =>
+  invoke<Ghost | null>("ghost_preview", { deck, track });
+
 /** What kind of night this is, and what has been read off it so far. §81. */
 export interface NightSetting {
   /** A setting slug, or null when the DJ has not said yet. */

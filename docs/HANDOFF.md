@@ -196,13 +196,20 @@ so its waveform lanes had never once rendered in a test. If a panel looks empty
 in a browser test and full in the application, look at `ANSWERS` first.
 
 **A result that appears below the fold reads as a button that did nothing.**
-Recorded a third time, because it happened a third time: pressing *hear it
-again* added a line to its row, and in a docked panel that line was exactly the
-one pushed out of sight. The fix is one call — scroll the answer into view when
-it arrives — and it is worth doing wherever a control's result appears *inside*
-a panel rather than replacing it. A browser test of it would be vacuous at the
-harness's window size, where nothing overflows; this was found and checked by
-driving the application.
+Recorded a fourth time, because it happened a fourth time: §27's ghost opened
+a panel under a row of the Next rail, and in a docked list a hundred pixels
+tall every word of it was below the fold — the overlay drew perfectly and
+nothing explaining it could be reached. The fix is one call, scroll the answer
+into view when it arrives, and it is worth doing wherever a control's result
+appears *inside* a panel rather than replacing it.
+
+The sharper half, learned on the second pass: **`block: "nearest"` is not
+enough for a panel taller than a line.** It brought the top of the ghost into
+view and left its last line — what djmanzo *cannot* see, which is the one that
+must not be missable — still clipped. Use `block: "end"` when the important
+line is the last one. A browser test of any of this would be vacuous at the
+harness's window size, where nothing overflows; it was found, and both fixes
+were checked, by driving the application.
 
 **Flex children shrink to nothing, so a dock squeezes instead of scrolling.**
 A third surface in a side dock rendered as one row cut through the middle of
@@ -221,6 +228,16 @@ that a freshly loaded deck only has in the engine. Nothing on any lane. When you
 add a field to a stubbed command, the browser test proves the *drawing*; write a
 Rust test for the *producer* in the same commit, and look at the running
 application before believing either.
+
+**A width assertion in pixels can be satisfied by the element's own borders.**
+The ghost band's first test asked for a bounding box wider than one pixel, and
+a mutation setting the band's width to *zero* left it green: the element has a
+two-pixel dashed border on each side, so its box is four pixels wide with no
+band in it at all. Assert against something the drawing cannot fake — here the
+band's left edge and width as **fractions of the record**, checked against the
+frame numbers the stub answers with, which pins where the mix is as well as
+that it has a width. A geometry test that cannot say *where* is usually not
+saying *whether*, either.
 
 **The `npm run build` trap is real and it caught this project again.** Under a
 mutation test the mutated file failed `svelte-check`, so `vite build` never
@@ -327,13 +344,21 @@ The largest open sections, in the order they are worth doing:
 
 1. **§25–§27, the waveform as instrumentation.** The architecture and §57's
    colour rule ship; `dj_render::layer` is the inventory and the count is
-   checked in both directions. **Eleven of twenty** exist. The nine that do not
-   are the ones djmanzo cannot yet compute: vocal and stem presence,
-   breakdowns, drops, saved loops, energy trajectory, the mix-*in* region, the
-   AI's own suggestion and crowd response. Each needs analysis or history that
-   does not exist, so the next one built is a research question rather than a
-   drawing one — **mix-in** is the cheapest of them, and even it needs
-   something that can say where a record's intro ends.
+   checked in both directions. **Twelve of twenty** exist. The eight that do
+   not are the ones djmanzo cannot yet compute: vocal and stem presence,
+   breakdowns, drops, saved loops, energy trajectory, the mix-*in* region and
+   crowd response. Each needs analysis or history that does not exist, so the
+   next one built is a research question rather than a drawing one —
+   **mix-in** is the cheapest of them, and even it needs something that can say
+   where a record's intro ends.
+
+   §27's ghost is the twelfth, and it went in without any of that because it
+   is arithmetic over two records rather than a new reading of one: the mix is
+   `plan::plan`'s, and all `dj_app::ghost` adds is where the candidate's first
+   full phrase lands on the outgoing grid. Its two missing marks — the vocal
+   entry and the drop — are **derived** from this same layer table rather than
+   written down beside it, so the day either analysis ships the panel stops
+   claiming it cannot see them. That is the pattern to copy for the other six.
 
    **Where a layer is drawn matters as much as whether it is.** The mix-out
    band was written for the scrolling lane first and was almost never on
@@ -344,8 +369,15 @@ The largest open sections, in the order they are worth doing:
 
    §26 has its first handle and the rest of its list — cue markers, phrase
    markers, loop edges — uses the same `onMoveMark` shape: it is mostly a
-   matter of giving each mark an owner that knows what moving it means. §27's
-   ghost track still needs a preview player djmanzo does not have.
+   matter of giving each mark an owner that knows what moving it means. Its
+   last item, *AI suggestion: show as a ghost layer*, ships with §27.
+
+   **§27 was mis-filed for several sessions as "needs a preview player".** It
+   does not: it says *display*, *overlay*, *ghost* and "make the future
+   visible", which is a drawing, not an audition. Auditioning a candidate into
+   headphones is a real thing djmanzo lacks, and it is not this section. Read
+   the section before believing a status row about it — this one had been
+   copied forward unexamined.
 2. **§68 is closed; what it was going to drive is not.** The automix and the
    autopilot perform the held mix, `dj_app::mixes` derives the *performed* one
    back out of the action log, and **replay reads it**: `replay::Window`
@@ -371,8 +403,10 @@ The largest open sections, in the order they are worth doing:
    has, that is the bug arriving again.
 
    Re-*planning* — changing a mix's length or style and hearing the
-   alternative — is now `dj_app::practice`, below. The preview is §27 and still
-   needs a player.
+   alternative — is now `dj_app::practice`, below. Seeing what a mix would do
+   before anything is loaded is `dj_app::ghost`, §27: it takes the same
+   `plan::plan` and draws it over the outgoing record's overview, so a
+   candidate can be understood while it is still a library row.
 
    **A replay window is not a seek**, and anything built on it inherits that:
    the engine's state at a moment is the whole set up to it, so rendering the

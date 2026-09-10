@@ -29,13 +29,18 @@
    * quietly learned the first as the second would slowly hide a collection
    * from its owner. They last as long as the session does.
    */
+  import { tick } from "svelte";
   import IconButton from "./controls/IconButton.svelte";
+  import Overview from "./Overview.svelte";
   import {
+    formatTime,
+    ghostPreview,
     loadTrack,
     sidelistAdd,
     similarTo,
     suggestNext,
     type DeckState,
+    type Ghost,
     type Suggestion,
     type Trajectory,
   } from "./api";
@@ -174,6 +179,81 @@
     rejected = [...rejected, candidate.track.id];
   }
 
+  /**
+   * §27's ghost, for whichever candidate is being considered.
+   *
+   * One at a time, and held beside the rail rather than inside a row, because
+   * §27 is a question about a *pair*: this record against the one playing. Two
+   * ghosts open at once would be two answers to "what happens next" with
+   * nothing saying which deck each belonged to.
+   */
+  let ghost = $state<Ghost | null>(null);
+  /** Which row asked, so a second press closes it rather than re-fetching. */
+  let ghosting = $state<string | null>(null);
+  /** Said out loud when there is nothing honest to draw. */
+  let ghostEmpty = $state(false);
+
+  async function toggleGhost(candidate: Suggestion) {
+    if (ghosting === candidate.track.id) {
+      ghosting = null;
+      ghost = null;
+      ghostEmpty = false;
+      return;
+    }
+    ghosting = candidate.track.id;
+    ghost = null;
+    ghostEmpty = false;
+    try {
+      const seen = await ghostPreview(from, candidate.track.id);
+      // The row may have been closed or another one opened while this was in
+      // flight. Dropping a stale answer is the difference between a ghost and
+      // a ghost of the record before it.
+      if (ghosting !== candidate.track.id) return;
+      ghost = seen;
+      ghostEmpty = seen === null;
+      error = null;
+      /*
+        And bring it into view. The rail is a docked, scrolling list a hundred
+        or so pixels tall, so a panel added under the eighth row opens entirely
+        below the fold — which is what the running application showed: the
+        overlay was drawn correctly and every word explaining it was
+        unreachable without scrolling for it.
+
+        `block: "end"` rather than `nearest`: the panel is the tallest thing
+        in the list and the line that matters most is its last one — what
+        djmanzo cannot see. `nearest` brought the top of it into view and left
+        that line clipped, which is the same failure one scroll position along.
+      */
+      await tick();
+      document
+        .querySelector(`[data-ghost="${candidate.track.id}"]`)
+        ?.scrollIntoView({ block: "end" });
+    } catch (e) {
+      if (ghosting !== candidate.track.id) return;
+      error = String(e);
+      ghosting = null;
+    }
+  }
+
+  /** The deck the ghost is drawn over, when it is still loaded. */
+  const ghostDeck = $derived(decks.find((d) => d.number === from) ?? null);
+
+  /** §27's key relationship and BPM movement, on one line. */
+  const ghostMovement = $derived.by(() => {
+    if (!ghost) return "";
+    const parts = [
+      `${ghost.bpm_delta >= 0 ? "+" : ""}${ghost.bpm_delta.toFixed(1)} BPM`,
+      `${ghost.pitch_percent >= 0 ? "+" : ""}${ghost.pitch_percent.toFixed(1)}% pitch`,
+    ];
+    if (ghost.key_relation) parts.push(ghost.key_relation);
+    return parts.join(" · ");
+  });
+
+  /** What §27 asks for that djmanzo cannot see. Named, never quietly dropped. */
+  const ghostUnseen = $derived(
+    (ghost?.asked ?? []).filter((a) => !a.answered).map((a) => a.about),
+  );
+
   function togglePin(candidate: Suggestion) {
     pinned = pinned.includes(candidate.track.id)
       ? pinned.filter((id) => id !== candidate.track.id)
@@ -298,11 +378,87 @@
               aria-label="Pin {candidate.track.title}"
             >●</button>
             <button
+              class:on={ghosting === candidate.track.id}
+              onclick={() => toggleGhost(candidate)}
+              disabled={!enabled}
+              title="What happens if this comes in — without loading it"
+              aria-label="Preview {candidate.track.title} as a ghost"
+            >&deg;</button>
+            <button
               onclick={() => reject(candidate)}
               title="Not this one, this time"
               aria-label="Pass on {candidate.track.title}"
             >&times;</button>
           </div>
+          <!--
+            §27's ghost, under the row that asked for it.
+            **Non-destructive**: nothing is loaded, nothing is armed, nothing
+            is written down — the panel is the whole of the action, which is
+            why it is safe to open on eight records in a row mid-set.
+          -->
+          {#if ghosting === candidate.track.id}
+            <div class="ghost" data-ghost={candidate.track.id}>
+              {#if ghost && ghostDeck}
+                <Overview
+                  deck={ghostDeck}
+                  height={34}
+                  ghost={{
+                    from: ghost.start_frame,
+                    to: ghost.end_frame,
+                    landing: ghost.landing?.frame ?? null,
+                    title: `If this came in here: a ${ghost.length_beats}-beat ${ghost.style} from ${formatTime(ghost.start_seconds)} — ${ghost.reasons.join(" · ")}`,
+                  }}
+                />
+                <div class="ghost-line" title={ghost.reasons.join(" · ")}>
+                  <span class="ghost-what"
+                    >{ghost.length_beats}-beat {ghost.style} at {formatTime(
+                      ghost.start_seconds,
+                    )}</span
+                  >
+                  <span class="ghost-move">{ghostMovement}</span>
+                </div>
+                <!--
+                  Terse on purpose. The rail is a few hundred pixels wide and a
+                  sentence wraps to three lines in it — which is how the first
+                  draft of this panel put its own numbers below the fold, in a
+                  surface that had to be scrolled to reach them at all.
+                -->
+                <div class="ghost-line">
+                  {#if !ghost.landing}
+                    no phrase structure — where its first strong phrase lands is
+                    not something djmanzo can say
+                  {:else if ghost.landing.lead_beats < 0.5}
+                    opens on a phrase — no lead-in
+                  {:else}
+                    {Math.round(ghost.landing.lead_beats)} beat{Math.round(
+                      ghost.landing.lead_beats,
+                    ) === 1
+                      ? ""
+                      : "s"} of lead-in{ghost.landing.within_mix
+                      ? ""
+                      : " — after the mix ends"}
+                  {/if}
+                </div>
+                {#if ghostUnseen.length > 0}
+                  <!--
+                    Named rather than left out. An overlay quietly showing five
+                    of §27's seven marks reads as a record with no vocal and no
+                    drop, which is a confident lie.
+                  -->
+                  <div class="ghost-line unseen">
+                    djmanzo cannot see: {ghostUnseen.join(" · ")}
+                  </div>
+                {/if}
+              {:else if ghostEmpty}
+                <div class="ghost-line unseen">
+                  Nothing to show: the deck is empty, one of the two records is
+                  unanalysed, or there is no longer room for a transition.
+                </div>
+              {:else}
+                <div class="ghost-line">Working out what would happen…</div>
+              {/if}
+            </div>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -419,6 +575,41 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* §27's ghost panel: a whole record, and what would happen on it. */
+  .ghost {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-top: 0.35rem;
+    padding: 0.35rem;
+    border-radius: 4px;
+    background: var(--panel-raised);
+    border-left: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 60%, transparent);
+  }
+
+  .ghost-line {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+
+  .ghost-what {
+    color: var(--ok, #6a9955);
+    white-space: nowrap;
+  }
+
+  .ghost-move {
+    white-space: nowrap;
+  }
+
+  /* What djmanzo cannot see, in the colour it uses for saying so. */
+  .ghost-line.unseen {
+    color: var(--warn);
+    white-space: normal;
   }
 
   .acts {

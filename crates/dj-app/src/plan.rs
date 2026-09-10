@@ -410,7 +410,7 @@ fn choose_style(tempos_match: bool, keys_match: bool) -> TransitionStyle {
 }
 
 /// Frames per beat, or `None` if the tempo is not a tempo.
-fn beat_frames(bpm: f64, rate: SampleRate) -> Option<f64> {
+pub(crate) fn beat_frames(bpm: f64, rate: SampleRate) -> Option<f64> {
     let frames = rate.as_f64() * 60.0 / bpm;
     (frames.is_finite() && frames > 0.0).then_some(frames)
 }

@@ -5761,6 +5761,156 @@ pub fn library_lens(
     Ok(out)
 }
 
+/// One of §27's seven questions, and whether djmanzo can answer it.
+#[derive(Debug, Clone, Serialize)]
+pub struct GhostAskedDto {
+    pub slug: String,
+    /// §27's own words, so the panel cannot quietly reword what was asked.
+    pub about: String,
+    pub answered: bool,
+}
+
+/// Where the candidate's first full phrase would land, on the outgoing record.
+#[derive(Debug, Clone, Serialize)]
+pub struct GhostLandingDto {
+    /// Frames on the outgoing record — the lane on screen.
+    pub frame: f64,
+    /// Beats of the candidate before that phrase. Zero is no pickup.
+    pub lead_beats: f64,
+    /// False when the phrase arrives after the mix has already finished.
+    pub within_mix: bool,
+}
+
+/// §27's ghost: what happens if this record comes in here.
+///
+/// Frames throughout, for the reason [`TransitionDto`] gives: the waveform is
+/// drawn in frames, and converting seconds back through a sample rate the
+/// interface would have to infer is two roundings and a division by zero
+/// waiting for an empty deck.
+#[derive(Debug, Clone, Serialize)]
+pub struct GhostDto {
+    /// The candidate, as hex, so the caller can join this to the row it is
+    /// already drawing.
+    pub track: String,
+    /// The deck the ghost is drawn over.
+    pub deck: u8,
+    /// The stretch the two records would share.
+    pub start_frame: f64,
+    pub end_frame: f64,
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+    pub length_beats: u32,
+    pub style: String,
+    /// Incoming tempo minus outgoing, signed.
+    pub bpm_delta: f64,
+    /// What the pitch fader on the incoming deck does, as a percentage.
+    pub pitch_percent: f64,
+    pub key_relation: Option<String>,
+    pub landing: Option<GhostLandingDto>,
+    /// Where the outgoing record becomes weak, in frames. The same window the
+    /// lane already draws, not a second opinion about it.
+    pub weakens_from: Option<f64>,
+    pub weakens_to: Option<f64>,
+    pub reasons: Vec<String>,
+    /// §27's seven, in its order, each saying whether it is answered.
+    pub asked: Vec<GhostAskedDto>,
+}
+
+/// §27: draw the future of `deck` meeting `track`, without loading anything.
+///
+/// **Nothing moves.** No deck is touched, no transition is armed, nothing is
+/// written down — which is the whole of §27's "non-destructive", and the
+/// reason a DJ can ask this of eight candidates in a row while a record plays.
+///
+/// The geometry is the planner's, so what is drawn here is the mix djmanzo
+/// would actually perform if the record were loaded. A ghost that worked one
+/// out for itself would be showing a DJ a transition and then doing another.
+///
+/// `None` when there is nothing honest to draw: an empty deck, an unanalysed
+/// record on either side, or a track already too near its end for any
+/// transition the planner proposes to fit.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn ghost_preview(
+    state: State<'_, AppState>,
+    deck: u8,
+    track: String,
+) -> Result<Option<GhostDto>, String> {
+    let Some(deck_id) = dj_core::DeckId::from_human(deck) else {
+        return Ok(None);
+    };
+    let Some(id) = dj_core::TrackId::from_hex(&track) else {
+        return Ok(None);
+    };
+    let db = library(&state)?;
+    let Some(out_track) = current_track(&state, deck_id).and_then(|id| db.track(id).ok().flatten())
+    else {
+        return Ok(None);
+    };
+    let Some(candidate_track) = db.track(id).ok().flatten() else {
+        return Ok(None);
+    };
+    let Some(outgoing) = outgoing_of(&state, deck_id, &out_track) else {
+        return Ok(None);
+    };
+    // The candidate's own grid, or nothing. Falling back to the outgoing
+    // track's tempo -- which `transition_between` does for a *loaded* record,
+    // where the deck has one either way -- would draw a confident ghost of a
+    // record nobody has analysed.
+    let Some(grid) = candidate_track.analysis.beatgrid() else {
+        return Ok(None);
+    };
+    let candidate = crate::ghost::Candidate {
+        bpm: grid.bpm.get(),
+        phrase: phrase_of(&candidate_track),
+        key: candidate_track.analysis.key(),
+        sample_rate: candidate_track.sample_rate,
+        grid_anchor: grid.anchor.get(),
+    };
+
+    let Some(ghost) = crate::ghost::look(&outgoing, &candidate) else {
+        return Ok(None);
+    };
+    let rate = outgoing.sample_rate.as_f64();
+    Ok(Some(GhostDto {
+        track,
+        deck,
+        start_frame: ghost.plan.start_frame,
+        end_frame: ghost.plan.end_frame,
+        start_seconds: ghost.plan.start_frame / rate,
+        end_seconds: ghost.plan.end_frame / rate,
+        length_beats: ghost.plan.length_beats,
+        style: ghost.plan.style.as_str().to_owned(),
+        bpm_delta: ghost.plan.bpm_delta,
+        pitch_percent: ghost.pitch_percent,
+        key_relation: ghost.keys().map(|r| r.as_str().to_owned()),
+        landing: ghost.landing.map(|l| GhostLandingDto {
+            frame: l.frame,
+            lead_beats: l.lead_beats,
+            within_mix: l.within_mix,
+        }),
+        weakens_from: ghost.weakens.map(|w| w.opens_frame),
+        weakens_to: ghost.weakens.map(|w| w.closes_frame),
+        reasons: ghost
+            .plan
+            .reasons
+            .iter()
+            .map(describe_plan_reason)
+            .collect(),
+        asked: ghost
+            .asked
+            .iter()
+            .map(|(asked, answered)| GhostAskedDto {
+                slug: asked.slug().to_owned(),
+                about: asked.about().to_owned(),
+                answered: *answered,
+            })
+            .collect(),
+    }))
+}
+
 /// Which track is on a deck, if any.
 fn current_track(state: &AppState, deck: dj_core::DeckId) -> Option<dj_core::TrackId> {
     let tracks = state.deck_tracks();

@@ -115,8 +115,8 @@
     "name": "suggestion",
     "title": "AI recommendation",
     "about": "What djmanzo would do, drawn as a ghost rather than as a fact.",
-    "role": "unassigned",
-    "drawn": "nowhere"
+    "role": "proposed",
+    "drawn": "overlay"
   },
   {
     "name": "crowd",
