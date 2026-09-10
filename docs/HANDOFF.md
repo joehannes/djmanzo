@@ -245,6 +245,17 @@ whether a reading counts: a room watched *only* in the twelve seconds djmanzo
 is meant to ignore must produce nothing. State a window as an exclusion, not
 as an average.
 
+**A timing test made patient can become a test of the timeout.** A 60 Hz
+pump test slept 80 ms and asserted a snapshot had arrived; it failed once on a
+loaded macOS runner and nowhere else. Waiting five seconds instead fixed the
+flake and broke the test: the pump's own one-second heartbeat emits anyway, so
+a mutation that stopped it noticing state changes at all still passed. The fix
+that works is to remove the *other* source first — `SnapshotPump::with_heartbeat`
+pushes it a minute out — and then wait as long as you like, because anything
+arriving is now the thing being tested. **Whenever you make a timing assertion
+more patient, mutate the behaviour it covers and watch it fail again**; a
+longer wait tests less, not more.
+
 **A layout test can be vacuous at the harness's window size, and look green.**
 §35's baseline table has five columns in a side dock, which looked like a
 table that would push its own panel sideways — so wrapping headers and

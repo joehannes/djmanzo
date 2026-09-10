@@ -1083,29 +1083,70 @@ mod tests {
         assert!(snapshot.decks[0].length_seconds.is_finite());
     }
 
+    /// Poll `check` until it answers, or give up after `deadline`.
+    ///
+    /// The shape every timing assertion in here wants: a test that waits for
+    /// what it is asserting rather than for a duration somebody guessed, so
+    /// it is as fast as the machine allows and as patient as it needs to be.
+    fn until<T>(deadline: Duration, mut check: impl FnMut() -> Option<T>) -> Option<T> {
+        let start = std::time::Instant::now();
+        loop {
+            if let Some(found) = check() {
+                return Some(found);
+            }
+            if start.elapsed() > deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
     #[test]
     fn pump_emits_when_state_changes() {
         let registry = Arc::new(ParameterRegistry::new());
         let seen = Arc::new(Mutex::new(Vec::new()));
 
+        // **The heartbeat is pushed out of the way**, like the idle test's,
+        // and that is what makes the deadline below safe. The first attempt at
+        // de-flaking this simply waited longer on the default one-second
+        // heartbeat — and a mutation that stopped the pump noticing changes at
+        // all still passed, because the heartbeat emitted anyway. Waiting
+        // longer for "did anything arrive" tests less the longer it waits.
+        // With the heartbeat a minute out, anything arriving is a change.
         let pump = {
             let seen = Arc::clone(&seen);
-            SnapshotPump::start(Arc::clone(&registry), 2, move |snapshot| {
-                seen.lock().unwrap().push(snapshot);
-            })
+            SnapshotPump::with_heartbeat(
+                Arc::clone(&registry),
+                2,
+                Duration::from_secs(60),
+                move |snapshot| {
+                    seen.lock().unwrap().push(snapshot);
+                },
+            )
         };
 
-        std::thread::sleep(Duration::from_millis(50));
-        let baseline = seen.lock().unwrap().len();
-        assert!(baseline >= 1, "should emit an initial snapshot");
+        // Waited for rather than slept through. The pump ticks at 60 Hz, so
+        // eighty milliseconds is five ticks and looks like plenty — until a
+        // CI runner is building three other crates at once and the thread is
+        // not scheduled inside it. That failed exactly once on a macOS runner,
+        // green on Linux and Windows in the same run, and a fixed sleep can
+        // only ever be made longer. A deadline asserts the same thing and
+        // finishes as soon as it is true.
+        let baseline = until(Duration::from_secs(5), || {
+            let count = seen.lock().unwrap().len();
+            (count >= 1).then_some(count)
+        })
+        .expect("should emit an initial snapshot");
 
         registry.set(
             ParamId::Deck(DeckId::from_human(1).unwrap(), DeckParam::Playing),
             1.0,
         );
-        std::thread::sleep(Duration::from_millis(80));
         assert!(
-            seen.lock().unwrap().len() > baseline,
+            until(Duration::from_secs(5), || {
+                (seen.lock().unwrap().len() > baseline).then_some(())
+            })
+            .is_some(),
             "a state change should produce a new snapshot"
         );
         drop(pump);
