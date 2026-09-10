@@ -33,7 +33,6 @@
   import IconButton from "./controls/IconButton.svelte";
   import Overview from "./Overview.svelte";
   import {
-    formatTime,
     ghostPreview,
     loadTrack,
     sidelistAdd,
@@ -106,7 +105,7 @@
     working = true;
     try {
       candidates = like
-        ? await similarTo(like.track.id, ROWS * 2)
+        ? await similarTo(like.track.id, ROWS * 2, from)
         : await suggestNext(from, trajectory, ROWS * 2);
       error = null;
     } catch (e) {
@@ -349,6 +348,20 @@
             </span>
           </div>
           <div class="why" title={candidate.reasons.join(" · ")}>{candidate.summary}</div>
+          <!--
+            §22's estimated transition type. A second line rather than another
+            chip on the first: the deltas line is about the two *records* and
+            this is about the *mix*, and a DJ scanning eight rows reads them as
+            two different questions.
+
+            Rust's wording, not this component's — §27's ghost panel draws the
+            same phrase, and one mix with two spellings is two answers.
+          -->
+          {#if candidate.transition}
+            <div class="mix" title="What djmanzo would do if you brought this in">
+              {candidate.transition.says}
+            </div>
+          {/if}
           <div class="acts">
             {#each deckNumbers as deck (deck)}
               <button
@@ -406,15 +419,11 @@
                     from: ghost.start_frame,
                     to: ghost.end_frame,
                     landing: ghost.landing?.frame ?? null,
-                    title: `If this came in here: a ${ghost.length_beats}-beat ${ghost.style} from ${formatTime(ghost.start_seconds)} — ${ghost.reasons.join(" · ")}`,
+                    title: `If this came in here: a ${ghost.says} — ${ghost.reasons.join(" · ")}`,
                   }}
                 />
                 <div class="ghost-line" title={ghost.reasons.join(" · ")}>
-                  <span class="ghost-what"
-                    >{ghost.length_beats}-beat {ghost.style} at {formatTime(
-                      ghost.start_seconds,
-                    )}</span
-                  >
+                  <span class="ghost-what">{ghost.says}</span>
                   <span class="ghost-move">{ghostMovement}</span>
                 </div>
                 <!--
@@ -567,6 +576,15 @@
     height: 100%;
     background: var(--accent);
     transform-origin: left center;
+  }
+
+  /* §22's estimated transition: about the mix, not about the two records. */
+  .mix {
+    font-size: 0.7rem;
+    color: var(--ok, #6a9955);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .why {

@@ -164,3 +164,61 @@ test.describe("the next-track rail", () => {
     ).toHaveCount(0);
   });
 });
+
+/**
+ * §22's *estimated transition type*, the last of its fifteen that djmanzo can
+ * answer without a second player.
+ *
+ * The estimate itself is the planner's and is tested in Rust. What matters
+ * here is what the rail does with it: that it is a line about the **mix**
+ * rather than another chip about the two records, that a pair djmanzo would
+ * cut says so beside a pair it would blend, and that it is worded once — a
+ * rail and a ghost panel disagreeing about the same mix is the failure §68's
+ * table exists to prevent, at the scale of a sentence.
+ */
+test.describe("the estimated transition", () => {
+  test("says what the mix into each candidate would be", async ({ page }) => {
+    await railOpen(page);
+
+    const rows = page.locator('.surface[data-surface="next"] li');
+    await expect(rows.first().locator(".mix")).toHaveText("32-beat blend at 3:45");
+    // The second candidate clashes, so the planner cuts. Two records the same
+    // distance apart with different mixes is the whole value of the line.
+    await expect(rows.nth(1).locator(".mix")).toHaveText("8-beat cut at 4:01");
+  });
+
+  /**
+   * **A line about the mix, under the line about the records.**
+   *
+   * §22 asks for deltas *and* an estimated transition, and they answer
+   * different questions: `+3 BPM · 8A→9A` is about the two records, and
+   * `32-beat blend` is about what happens between them. Folded into one line
+   * they read as one fact and neither is findable at a glance.
+   */
+  test("is its own line, below the deltas", async ({ page }) => {
+    await railOpen(page);
+
+    const row = page.locator('.surface[data-surface="next"] li').first();
+    const why = await row.locator(".why").boundingBox();
+    const mix = await row.locator(".mix").boundingBox();
+    expect(mix!.y, "the transition is not below the deltas").toBeGreaterThan(why!.y);
+    expect(
+      await row.locator(".why").textContent(),
+      "the deltas line swallowed the transition",
+    ).not.toContain("blend");
+  });
+
+  /**
+   * The rail and §27's ghost panel say the same words about the same mix,
+   * because both are handed the phrase rather than composing one.
+   */
+  test("is worded the same way the ghost panel words it", async ({ page }) => {
+    await railOpen(page);
+
+    const row = page.locator('.surface[data-surface="next"] li').first();
+    const inRail = await row.locator(".mix").textContent();
+    await row.getByRole("button", { name: /^Preview / }).click();
+    await expect(row.locator(".ghost-what")).toBeVisible();
+    expect(await row.locator(".ghost-what").textContent()).toBe(inRail);
+  });
+});

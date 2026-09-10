@@ -1409,6 +1409,26 @@ export interface Suggestion {
   summary: string;
   /** 0 to 1 — how much of the achievable score this candidate got. */
   confidence: number;
+  /**
+   * §22's *estimated transition type*: what the mix into this record would be.
+   *
+   * The planner's own answer — the same call §27's ghost overlay is drawn
+   * from — so the line in the rail, the band on the record and the mix
+   * djmanzo performs are one plan seen three times. `null` when there is
+   * nothing honest to say: an empty deck, an unanalysed record on either
+   * side, or a track too near its end for any transition to fit.
+   */
+  transition: TransitionEstimate | null;
+}
+
+/** §22: what the mix into one candidate would be. */
+export interface TransitionEstimate {
+  style: string;
+  length_beats: number;
+  /** Where it would begin, in seconds into the outgoing record. */
+  at_seconds: number;
+  /** `32-beat blend at 2:09`, worded in Rust so nothing re-spells it. */
+  says: string;
 }
 
 /**
@@ -1645,6 +1665,13 @@ export interface Ghost {
   /** What the pitch fader on the incoming deck does, as a percentage. */
   pitch_percent: number;
   key_relation: string | null;
+  /**
+   * The mix in one phrase — `32-beat blend at 2:09`.
+   *
+   * Worded in Rust because §22's rail draws the same phrase beside every
+   * candidate, and one mix with two spellings is two answers.
+   */
+  says: string;
   landing: GhostLanding | null;
   /** Where the outgoing record becomes weak, in frames. */
   weakens_from: number | null;
@@ -2343,8 +2370,16 @@ export const assistantSetSetlist = (tracks: string[]) =>
  * clash and a match, so it reorders records that all work and never promotes
  * one that does not.
  */
-export const similarTo = (track: string, limit = 20) =>
-  invoke<Suggestion[]>("similar_to", { track, limit });
+/**
+ * More records like this one — and, when a deck is named, what the mix into
+ * each would be.
+ *
+ * The two answer different questions on purpose. The ranking is "like the
+ * seed"; the transition is "what happens if it comes in *here*", which is
+ * about whatever is playing rather than about the seed at all.
+ */
+export const similarTo = (track: string, limit = 20, deck?: number) =>
+  invoke<Suggestion[]>("similar_to", { track, limit, deck: deck ?? null });
 
 /** What the history says this DJ reaches for. */
 export interface LearnedTaste {

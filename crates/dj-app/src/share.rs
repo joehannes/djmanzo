@@ -126,7 +126,7 @@ pub fn entries(plays: &[PlayRecord]) -> Vec<Entry> {
 /// Not zero-padded at the front: `4:12` is how a person says it, and `04:12`
 /// is how a machine does.
 #[must_use]
-fn clock(seconds: i64) -> String {
+pub(crate) fn clock(seconds: i64) -> String {
     let seconds = seconds.max(0);
     let (h, m, s) = (seconds / 3_600, (seconds / 60) % 60, seconds % 60);
     if h > 0 {

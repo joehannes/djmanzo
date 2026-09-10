@@ -1917,6 +1917,125 @@ pub fn session_log(state: State<'_, AppState>) -> Vec<String> {
 mod tests {
     use super::*;
 
+    /// §22's estimate and §27's ghost are the same plan, and the phrase they
+    /// are drawn as is written once.
+    mod transition_estimate {
+        use super::super::{estimate_transition, transition_words};
+        use dj_core::{Mode, MusicalKey, Phrase, SampleRate};
+
+        const SR: SampleRate = SampleRate::DEFAULT;
+        const BPM: f64 = 120.0;
+
+        fn beat() -> f64 {
+            SR.as_f64() * 60.0 / BPM
+        }
+
+        fn outgoing() -> crate::plan::Outgoing {
+            crate::plan::Outgoing {
+                position: 64.0 * beat(),
+                length: 256.0 * beat(),
+                bpm: BPM,
+                phrase: Phrase::new(16, 0),
+                key: MusicalKey::new(8, Mode::Minor),
+                sample_rate: SR,
+                grid_anchor: 0.0,
+            }
+        }
+
+        fn candidate(analysed: bool) -> dj_library::LibraryTrack {
+            dj_library::LibraryTrack {
+                id: dj_core::TrackId::from_bytes([7u8; 32]),
+                path: std::path::PathBuf::from("/music/a.flac"),
+                tags: dj_library::Tags::default(),
+                duration_frames: 300 * 48_000,
+                sample_rate: SR,
+                channels: 2,
+                file_size: None,
+                file_modified: None,
+                added_at: 0,
+                analysis: if analysed {
+                    dj_library::StoredAnalysis {
+                        bpm: Some(BPM),
+                        grid_anchor: Some(0.0),
+                        grid_beats_per_bar: Some(4),
+                        grid_confidence: Some(0.9),
+                        phrase_beats: Some(16),
+                        phrase_anchor: Some(0),
+                        phrase_confidence: Some(0.9),
+                        ..dj_library::StoredAnalysis::default()
+                    }
+                } else {
+                    dj_library::StoredAnalysis::default()
+                },
+                stats: dj_library::PlayStats::default(),
+                colour: None,
+            }
+        }
+
+        /// **The rail shows the mix djmanzo would actually perform.**
+        ///
+        /// §22 asks for the estimated transition type, and the only version of
+        /// that worth having is the planner's own. A rail estimating for
+        /// itself would put one style beside a record and perform another the
+        /// moment it was loaded.
+        #[test]
+        fn the_rail_shows_the_planners_own_answer() {
+            let out = outgoing();
+            let track = candidate(true);
+            let estimate = estimate_transition(&out, &track).expect("a plan");
+
+            let ghost = crate::ghost::look(
+                &out,
+                &crate::ghost::Candidate {
+                    bpm: BPM,
+                    phrase: Phrase::new(16, 0),
+                    key: None,
+                    sample_rate: SR,
+                    grid_anchor: 0.0,
+                },
+            )
+            .expect("a ghost");
+
+            assert_eq!(estimate.style, ghost.plan.style.as_str());
+            assert_eq!(estimate.length_beats, ghost.plan.length_beats);
+            assert!(
+                (estimate.at_seconds - ghost.plan.start_frame / SR.as_f64()).abs() < 1e-9,
+                "the rail and the ghost disagree about where the mix starts"
+            );
+        }
+
+        /// **An unanalysed record gets no line rather than a borrowed tempo.**
+        ///
+        /// The planner will happily plan against any tempo it is handed, so
+        /// falling back to the outgoing record's would put a confident
+        /// "32-beat blend" beside a record nobody has analysed — which reads
+        /// exactly like one that has been.
+        #[test]
+        fn a_record_with_no_grid_gets_no_estimate() {
+            assert!(estimate_transition(&outgoing(), &candidate(false)).is_none());
+        }
+
+        /// A record already past its last usable phrase gets none either, for
+        /// the same reason `plan::plan` answers `None` there.
+        #[test]
+        fn a_record_with_no_room_left_gets_no_estimate() {
+            let mut nearly_over = outgoing();
+            nearly_over.position = nearly_over.length - 2.0 * beat();
+            assert!(estimate_transition(&nearly_over, &candidate(true)).is_none());
+        }
+
+        /// The phrase is written once, and it is the one a DJ reads.
+        #[test]
+        fn the_phrase_says_the_length_the_style_and_the_time() {
+            assert_eq!(
+                transition_words(32, "blend", 129.0),
+                "32-beat blend at 2:09"
+            );
+            // Negative seconds cannot happen and must not print as `0:-9`.
+            assert_eq!(transition_words(8, "cut", -1.0), "8-beat cut at 0:00");
+        }
+    }
+
     mod command_palette {
         use super::super::{PALETTE_LIMIT, matches, palette};
 
@@ -5272,6 +5391,53 @@ fn phrase_of(track: &dj_library::LibraryTrack) -> Option<dj_core::Phrase> {
     dj_core::Phrase::new(track.analysis.phrase_beats?, track.analysis.phrase_anchor?)
 }
 
+/// §22: the mix into one candidate, from §27's own planner.
+///
+/// `None` for exactly the reasons the ghost answers `None`, and one more that
+/// is the candidate's rather than the pair's: a record with no beat grid
+/// cannot be planned into, and falling back to the outgoing tempo — which
+/// `transition_between` does for a record that is *loaded*, where the deck has
+/// one either way — would put a confident line beside a record nobody has
+/// analysed.
+fn estimate_transition(
+    out: &crate::plan::Outgoing,
+    candidate: &dj_library::LibraryTrack,
+) -> Option<TransitionEstimateDto> {
+    let grid = candidate.analysis.beatgrid()?;
+    let ghost = crate::ghost::look(
+        out,
+        &crate::ghost::Candidate {
+            bpm: grid.bpm.get(),
+            phrase: phrase_of(candidate),
+            key: candidate.analysis.key(),
+            sample_rate: candidate.sample_rate,
+            grid_anchor: grid.anchor.get(),
+        },
+    )?;
+    let at_seconds = ghost.plan.start_frame / out.sample_rate.as_f64();
+    Some(TransitionEstimateDto {
+        style: ghost.plan.style.as_str().to_owned(),
+        length_beats: ghost.plan.length_beats,
+        at_seconds,
+        says: transition_words(
+            ghost.plan.length_beats,
+            ghost.plan.style.as_str(),
+            at_seconds,
+        ),
+    })
+}
+
+/// A transition in one phrase: `32-beat blend at 2:09`.
+///
+/// One spelling, in Rust, because it is now drawn in two places — §27's ghost
+/// panel and §22's rail — and two spellings of the same mix is the failure
+/// `dj_app::shape` exists to prevent, at the scale of a sentence.
+fn transition_words(length_beats: u32, style: &str, at_seconds: f64) -> String {
+    #[allow(clippy::cast_possible_truncation)]
+    let at = crate::share::clock(at_seconds.max(0.0) as i64);
+    format!("{length_beats}-beat {style} at {at}")
+}
+
 /// Render one planner reason for the interface. Terse, like the suggester's.
 fn describe_plan_reason(reason: &crate::plan::Reason) -> String {
     use crate::plan::Reason;
@@ -5316,6 +5482,31 @@ pub struct SuggestionDto {
     /// How much of the achievable score this got, 0 to 1. See
     /// `dj_library::suggest::Suggestion::confidence`.
     pub confidence: f64,
+    /// §22's *estimated transition type*: what the mix into this record would
+    /// be, if it were brought in.
+    ///
+    /// `None` when there is nothing honest to say — an empty deck, an
+    /// unanalysed record on either side, or a track already too near its end
+    /// for any transition the planner proposes to fit.
+    pub transition: Option<TransitionEstimateDto>,
+}
+
+/// §22: what the mix into one candidate would be.
+///
+/// **The planner's own answer, not a second one.** It is `dj_app::ghost` —
+/// the same call §27's overlay is drawn from — so the line in the rail, the
+/// ghost band on the record and the mix djmanzo performs are one plan seen
+/// three times. A rail that estimated for itself would be a fourth.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransitionEstimateDto {
+    /// The style's own name, as the automix panel spells it.
+    pub style: String,
+    pub length_beats: u32,
+    /// Where it would begin, in seconds into the outgoing record.
+    pub at_seconds: f64,
+    /// The same thing in one phrase — `32-beat blend at 2:09` — worded in
+    /// Rust so the rail and the ghost panel cannot say it differently.
+    pub says: String,
 }
 
 /// What to play after whatever is on `deck`.
@@ -5379,12 +5570,23 @@ pub fn suggest_next(
         &kept,
     );
 
+    // §22's estimated transition type. Read once for the whole rail rather
+    // than per candidate — it is the *outgoing* half, which every row shares —
+    // and the plan itself is arithmetic over two records, so a dozen of them
+    // costs less than the query that found the candidates.
+    let outgoing = playing_now
+        .and_then(|id| db.track(id).ok().flatten())
+        .and_then(|track| outgoing_of(&state, deck_id, &track));
+
     Ok(ranked
         .into_iter()
         .take(limit.clamp(1, 100))
         .filter_map(|s| {
             let track = pool.iter().find(|t| t.id == s.track)?;
             Some(SuggestionDto {
+                transition: outgoing
+                    .as_ref()
+                    .and_then(|out| estimate_transition(out, track)),
                 track: LibraryTrackDto::from(track.clone()),
                 score: s.score,
                 reasons: s.reasons.iter().map(describe_reason).collect(),
@@ -5441,6 +5643,7 @@ pub fn similar_to(
     state: State<'_, AppState>,
     track: String,
     limit: usize,
+    deck: Option<u8>,
 ) -> Result<Vec<SuggestionDto>, String> {
     use dj_library::suggest::{Playing, Trajectory};
 
@@ -5474,6 +5677,12 @@ pub fn similar_to(
         })
         .collect();
 
+    let outgoing = deck.and_then(dj_core::DeckId::from_human).and_then(|id| {
+        let playing = current_track(&state, id)?;
+        let track = db.track(playing).ok().flatten()?;
+        outgoing_of(&state, id, &track)
+    });
+
     // Re-sorted, because the tilt has moved things. Ties break on id so the
     // same library gives the same answer every time -- a "more like this" that
     // shuffled on each press would be impossible to trust.
@@ -5487,6 +5696,16 @@ pub fn similar_to(
         .into_iter()
         .take(limit.clamp(1, 100))
         .map(|(score, s, track)| SuggestionDto {
+            // §22's estimate, and it is about the *deck* rather than the seed.
+            // "Like this record" is a different question from "what happens if
+            // it comes in here", and the rail draws both at once — so the
+            // ranking answers the first and this answers the second, from
+            // whatever is actually playing. `None` when the caller named no
+            // deck, which is honest: without one there is nothing to mix out
+            // of and a line here would be about nothing.
+            transition: outgoing
+                .as_ref()
+                .and_then(|out| estimate_transition(out, track)),
             track: LibraryTrackDto::from(track.clone()),
             score,
             reasons: s.reasons.iter().map(describe_reason).collect(),
@@ -5812,6 +6031,10 @@ pub struct GhostDto {
     pub weakens_from: Option<f64>,
     pub weakens_to: Option<f64>,
     pub reasons: Vec<String>,
+    /// The mix in one phrase — `32-beat blend at 2:09`. Worded here rather
+    /// than in the panel, because §22's rail draws the same phrase and two
+    /// spellings of one mix is two answers.
+    pub says: String,
     /// §27's seven, in its order, each saying whether it is answered.
     pub asked: Vec<GhostAskedDto>,
 }
@@ -5886,6 +6109,11 @@ pub fn ghost_preview(
         bpm_delta: ghost.plan.bpm_delta,
         pitch_percent: ghost.pitch_percent,
         key_relation: ghost.keys().map(|r| r.as_str().to_owned()),
+        says: transition_words(
+            ghost.plan.length_beats,
+            ghost.plan.style.as_str(),
+            ghost.plan.start_frame / rate,
+        ),
         landing: ghost.landing.map(|l| GhostLandingDto {
             frame: l.frame,
             lead_beats: l.lead_beats,

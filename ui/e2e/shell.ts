@@ -340,6 +340,7 @@ const ANSWERS: Record<string, unknown> = {
     bpm_delta: 3,
     pitch_percent: -2.3,
     key_relation: "neighbour",
+    says: "32-beat blend at 3:45",
     landing: { frame: 10_992_000, lead_beats: 8, within_mix: true },
     weakens_from: 10_800_000,
     weakens_to: 11_600_000,
@@ -388,6 +389,15 @@ const ANSWERS: Record<string, unknown> = {
       reasons: ["harmonic (9A)", "127 BPM fits", "+1 dB"],
       summary: "+3 BPM \u00b7 8A\u21929A \u00b7 +1 dB",
       confidence: 0.94,
+      // §22's estimated transition type. The phrase is Rust's — the rail and
+      // §27's ghost panel both draw it, so a stub that made one up here would
+      // let the two drift apart without a test noticing.
+      transition: {
+        style: "blend",
+        length_beats: 32,
+        at_seconds: 225,
+        says: "32-beat blend at 3:45",
+      },
     },
     {
       track: {
@@ -411,6 +421,15 @@ const ANSWERS: Record<string, unknown> = {
       reasons: ["key clash (3B)", "118 BPM fits", "-3 dB"],
       summary: "-6 BPM \u00b7 8A\u21923B clash \u00b7 -3 dB",
       confidence: 0.55,
+      // A clashing pair, so the planner cuts rather than blends — which is
+      // the whole value of the line: the two records are the same distance
+      // apart as the row above and the mix is a different one.
+      transition: {
+        style: "cut",
+        length_beats: 8,
+        at_seconds: 241,
+        says: "8-beat cut at 4:01",
+      },
     },
   ],
   similar_to: [],

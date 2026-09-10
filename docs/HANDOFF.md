@@ -412,6 +412,12 @@ The largest of them, in the order they are worth doing:
    about to add a second such table, the bar is that one: say what cannot be
    derived, and store the *finding* rather than the feed.
 
+   §27's ghost has already paid for itself twice: `ghost::look` is what §22's
+   rail estimates a transition with, so the line beside a candidate, the band
+   drawn on the record and the mix the automix performs are one plan rather
+   than three opinions. If something else needs to know what a mix *would* be,
+   call it rather than planning again.
+
    §27's ghost is the twelfth, and it went in without any of that because it
    is arithmetic over two records rather than a new reading of one: the mix is
    `plan::plan`'s, and all `dj_app::ghost` adds is where the candidate's first
