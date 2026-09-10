@@ -59,6 +59,21 @@ use dj_library::Night;
 /// threshold nobody reaches is a feature that never speaks.
 pub const ENOUGH_NIGHTS: usize = 3;
 
+/// The most a profile may move a candidate's score, either way.
+///
+/// Three quarters of a point, the same bound taste gets and quoted from the
+/// same scale: a same-key match is worth three and a key clash minus two and
+/// a half. So a profile can reorder records that would *all* work — it can
+/// prefer the bachata among two valid keys at a wedding — and can never lift
+/// one that would not, because the gap it would have to cross is more than
+/// seven times this.
+///
+/// **A profile breaks ties. It does not overrule the mixing.** It is also
+/// added on top of taste rather than instead of it, which is deliberate and
+/// is the reason for the bound: the two together can move a record by one and
+/// a half, still well inside what a single key relation is worth.
+pub const MOST_IT_MAY_MOVE: f64 = 0.75;
+
 /// How much of the evidence has to agree before a single answer is given.
 ///
 /// Half. A transition style used on two of five wedding nights is not "how you
@@ -127,6 +142,69 @@ impl Profile {
     #[must_use]
     pub fn genres(&self) -> &[(String, f64)] {
         &self.genres
+    }
+
+    /// How much this record's genre should move its score, at this kind of
+    /// night. Zero when the profile has nothing to say about it.
+    ///
+    /// **Added, never multiplied**, and bounded — the same construction
+    /// `dj_library::learned::Taste::tilt_for` uses, for the same two reasons.
+    /// A suggestion's score is signed, so multiplying a key clash by anything
+    /// above one makes it *better*; and a leaning is a ratio, so twice as
+    /// often as an even split and half as often are equal and opposite, which
+    /// only log space says.
+    ///
+    /// What is compared against is an **even split over the genres this kind
+    /// of night actually contains**, not over the library. A wedding that is
+    /// half bachata and half merengue has no leaning between them, and
+    /// measuring against the whole collection would give both a large one for
+    /// being a wedding at all.
+    #[must_use]
+    pub fn tilt_for(&self, genre: Option<&str>) -> f64 {
+        let Some(share) = self.share_of(genre) else {
+            return 0.0;
+        };
+        #[allow(clippy::cast_precision_loss)]
+        let even = 1.0 / self.genres.len() as f64;
+        if !(share > 0.0 && even > 0.0) {
+            return 0.0;
+        }
+        (share / even)
+            .log2()
+            .clamp(-MOST_IT_MAY_MOVE, MOST_IT_MAY_MOVE)
+    }
+
+    /// What share of the plays here this genre has, when it has any.
+    ///
+    /// `None` for an untagged record and for a genre this kind of night has
+    /// never seen — neutral rather than penalised, because most collections
+    /// are half-tagged and pushing the untagged half down would hide it.
+    #[must_use]
+    pub fn share_of(&self, genre: Option<&str>) -> Option<f64> {
+        let genre = genre?;
+        self.genres
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(genre))
+            .map(|(_, share)| *share)
+    }
+
+    /// Why a record moved, in words, when it moved at all.
+    ///
+    /// Always names the setting and the share, because §42 asks for
+    /// explainable suggestions and "you play a lot of this" is not one: it
+    /// cannot be checked, argued with, or recognised as wrong.
+    #[must_use]
+    pub fn because(&self, genre: Option<&str>) -> Option<String> {
+        let genre = genre?;
+        let share = self.share_of(Some(genre))?;
+        (self.tilt_for(Some(genre)).abs() > f64::EPSILON).then(|| {
+            #[allow(clippy::cast_possible_truncation)]
+            let percent = (share * 100.0).round() as i64;
+            format!(
+                "{percent}% of a {} night",
+                self.setting.title().to_lowercase()
+            )
+        })
     }
 
     /// One sentence, written here rather than in the interface.
@@ -299,6 +377,128 @@ mod tests {
 
     fn nothing(_: Setting) -> Vec<(String, u32)> {
         Vec::new()
+    }
+
+    /// A profile of one setting whose nights played these genres.
+    fn profile_of(setting: &str, plays: &[(&str, u32)]) -> Profile {
+        let counted: Vec<(String, u32)> = plays
+            .iter()
+            .map(|(name, n)| ((*name).to_owned(), *n))
+            .collect();
+        let genres = |_: Setting| counted.clone();
+        profiles(&nights(setting, ENOUGH_NIGHTS), &genres)
+            .into_iter()
+            .next()
+            .expect("enough nights for a profile")
+    }
+
+    /// **A profile breaks ties; it cannot overrule the mixing.**
+    ///
+    /// The load-bearing bound. A same-key match is worth three on the
+    /// suggester's scale and a key clash minus two and a half, so a tilt that
+    /// could reach either would let "you play a lot of this at weddings"
+    /// promote a record that does not mix. Nothing about a DJ's habits should
+    /// be able to do that.
+    #[test]
+    fn a_profile_can_reorder_records_that_work_and_lift_none_that_do_not() {
+        // As lopsided as a profile can get: one genre, every play.
+        let lopsided = profile_of("wedding", &[("Bachata", 200), ("Merengue", 1)]);
+        let tilt = lopsided.tilt_for(Some("Bachata"));
+        assert!(tilt > 0.0, "the commonest genre was not preferred");
+        assert!(
+            tilt <= MOST_IT_MAY_MOVE,
+            "a profile moved a record by {tilt}, past its own bound"
+        );
+        // And that bound, seen through the most lopsided profile there can
+        // be, is well under what one key relation is worth: a same-key match
+        // scores three and a clash minus two and a half. Asserted on the
+        // *measured* tilt rather than on the constant, which clippy rightly
+        // refuses — an assertion on a literal is a comment that can fail.
+        assert!(
+            tilt < 2.5,
+            "the most a profile can move a record is {tilt}, which can cross a key clash"
+        );
+    }
+
+    /// **An even night has no preferences, however many nights it rests on.**
+    ///
+    /// The comparison is against an even split over the genres *this kind of
+    /// night contains*, not over the library. A wedding that is half bachata
+    /// and half merengue prefers neither, and measuring against the whole
+    /// collection would hand both a large leaning for being a wedding at all.
+    #[test]
+    fn a_night_that_plays_everything_equally_prefers_nothing() {
+        let even = profile_of("wedding", &[("Bachata", 50), ("Merengue", 50)]);
+        assert!(even.tilt_for(Some("Bachata")).abs() < 1e-9);
+        assert!(even.tilt_for(Some("Merengue")).abs() < 1e-9);
+        assert_eq!(
+            even.because(Some("Bachata")),
+            None,
+            "it explained a nudge it did not make"
+        );
+    }
+
+    /// **A record with no genre, and a genre this night has never seen, are
+    /// left alone rather than pushed down.**
+    ///
+    /// Most collections are half-tagged. Penalising the untagged half would
+    /// hide half a library behind a habit.
+    #[test]
+    fn what_the_profile_has_never_seen_is_left_where_it_was() {
+        let known = profile_of("club", &[("Techno", 80), ("House", 20)]);
+        assert!((known.tilt_for(None) - 0.0).abs() < f64::EPSILON);
+        assert!((known.tilt_for(Some("Bachata")) - 0.0).abs() < f64::EPSILON);
+        assert_eq!(known.because(None), None);
+        assert_eq!(known.because(Some("Bachata")), None);
+    }
+
+    /// **The rarer half is pushed down as far as the commoner half is lifted.**
+    ///
+    /// A leaning is a ratio, and log space is what makes twice-as-often and
+    /// half-as-often equal and opposite. Without it a profile would only ever
+    /// promote, and a night's ranking would drift one way all evening.
+    #[test]
+    fn a_leaning_and_its_reciprocal_are_equal_and_opposite() {
+        // Three genres, so an even split is a third; 45 of 90 is one and a
+        // half times that and 20 of 90 is two thirds of it, which are
+        // reciprocals. Chosen to sit *inside* the bound — at twice and half
+        // an even split both ends are already clamped, and a clamped pair
+        // would look symmetric whatever the map did.
+        let leaning = profile_of("club", &[("Techno", 45), ("House", 20), ("Disco", 25)]);
+        let up = leaning.tilt_for(Some("Techno"));
+        let down = leaning.tilt_for(Some("House"));
+        assert!(up > 0.0 && down < 0.0, "{up} {down}");
+        assert!(
+            (up + down).abs() < 1e-9,
+            "{up} against {down} is not opposite"
+        );
+        assert!(
+            up < MOST_IT_MAY_MOVE && down > -MOST_IT_MAY_MOVE,
+            "the fixture is clamped, so it proves nothing: {up} {down}"
+        );
+    }
+
+    /// And a leaning past the bound stops at it, both ways.
+    #[test]
+    fn a_lopsided_night_is_held_at_the_bound() {
+        let lopsided = profile_of("club", &[("Techno", 200), ("House", 1)]);
+        assert!((lopsided.tilt_for(Some("Techno")) - MOST_IT_MAY_MOVE).abs() < 1e-9);
+        assert!((lopsided.tilt_for(Some("House")) + MOST_IT_MAY_MOVE).abs() < 1e-9);
+    }
+
+    /// The reason names the setting and the share, so a DJ can disagree with
+    /// the specific thing rather than with the whole ranking. §42.
+    #[test]
+    fn the_reason_names_the_night_and_the_evidence() {
+        let wedding = profile_of("wedding", &[("Bachata", 80), ("Merengue", 20)]);
+        let because = wedding
+            .because(Some("Bachata"))
+            .expect("a leaning worth explaining");
+        assert_eq!(because, "80% of a wedding night");
+        assert!(
+            wedding.because(Some("bachata")).is_some(),
+            "the genre was matched case-sensitively"
+        );
     }
 
     /// **§81's whole point: two settings are two answers, never their

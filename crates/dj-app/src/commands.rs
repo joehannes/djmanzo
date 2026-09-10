@@ -2036,6 +2036,140 @@ mod tests {
         }
     }
 
+    /// §12: the rail consulting tonight's profile.
+    mod ranked_by_profile {
+        use super::super::with_profile;
+
+        fn suggestion(byte: u8, score: f64) -> dj_library::suggest::Suggestion {
+            dj_library::suggest::Suggestion {
+                track: dj_core::TrackId::from_bytes([byte; 32]),
+                score,
+                reasons: Vec::new(),
+            }
+        }
+
+        fn profile(plays: &[(&str, u32)]) -> crate::profile::Profile {
+            let counted: Vec<(String, u32)> = plays
+                .iter()
+                .map(|(name, n)| ((*name).to_owned(), *n))
+                .collect();
+            let nights: Vec<dj_library::Night> = (0..crate::profile::ENOUGH_NIGHTS)
+                .map(|n| dj_library::Night {
+                    session_id: format!("w{n}"),
+                    setting: "wedding".to_owned(),
+                    began_at: 0,
+                    density: None,
+                    style: None,
+                    posture: None,
+                    techniques: None,
+                })
+                .collect();
+            crate::profile::profiles(&nights, &|_| counted.clone())
+                .into_iter()
+                .next()
+                .expect("enough nights")
+        }
+
+        /// **A lifted score moves the row.**
+        ///
+        /// The decision this function exists for. A rail that added to a
+        /// score without re-sorting would show a higher number further down
+        /// the list, which reads as a bug in the ranking rather than as the
+        /// profile doing its job.
+        #[test]
+        fn a_record_the_profile_prefers_moves_up_the_rail() {
+            // Two records the scorer put a hair apart, and a wedding that is
+            // almost all bachata.
+            let ranked = vec![(suggestion(1, 5.0), None), (suggestion(2, 4.9), None)];
+            let genre = |id: dj_core::TrackId| {
+                (id == dj_core::TrackId::from_bytes([2u8; 32])).then(|| "Bachata".to_owned())
+            };
+            let out = with_profile(
+                ranked,
+                Some(&profile(&[("Bachata", 90), ("Merengue", 10)])),
+                &genre,
+            );
+
+            assert_eq!(
+                out[0].0.track,
+                dj_core::TrackId::from_bytes([2u8; 32]),
+                "the profile's preference did not reach the top of the rail"
+            );
+            assert!(out[0].1.is_some(), "it moved without saying why");
+            assert_eq!(
+                out[1].1, None,
+                "a record it said nothing about got a reason"
+            );
+        }
+
+        /// **A profile with no genres moves nothing, so it claims nothing.**
+        ///
+        /// Found in the running application: a wedding profile built from
+        /// nights whose plays carry no genre is a real profile — it says how
+        /// this DJ mixes at weddings — and it tilts nothing, because the tilt
+        /// is entirely a genre leaning. The rail said "Ranked for tonight"
+        /// over a ranking it had not touched.
+        #[test]
+        fn a_profile_that_cannot_tilt_does_not_reorder_anything() {
+            let ranked = vec![(suggestion(1, 5.0), None), (suggestion(2, 4.9), None)];
+            let no_genres = profile(&[]);
+            assert!(no_genres.genres().is_empty());
+            let out = with_profile(ranked, Some(&no_genres), &|_| Some("Bachata".to_owned()));
+            assert_eq!(out[0].0.track, dj_core::TrackId::from_bytes([1u8; 32]));
+            assert_eq!(out[0].0.score, 5.0, "a score moved with nothing to move it");
+            assert!(out.iter().all(|(_, because)| because.is_none()));
+        }
+
+        /// **With no profile, nothing moves and nothing is claimed.**
+        ///
+        /// §81's settings are told, never inferred, so a night the DJ has not
+        /// named ranks exactly as it did before any of this existed.
+        #[test]
+        fn a_night_nobody_has_named_ranks_as_it_always_did() {
+            let ranked = vec![(suggestion(1, 5.0), None), (suggestion(2, 4.9), None)];
+            let out = with_profile(ranked, None, &|_| Some("Bachata".to_owned()));
+            assert_eq!(out[0].0.track, dj_core::TrackId::from_bytes([1u8; 32]));
+            assert_eq!(
+                out[0].0.score, 5.0,
+                "a score moved with no profile to move it"
+            );
+            assert!(out.iter().all(|(_, because)| because.is_none()));
+        }
+
+        /// **It cannot lift a record over one that actually mixes.**
+        ///
+        /// The bound, seen from the rail rather than from the arithmetic. A
+        /// key clash is minus two and a half; three quarters of a point
+        /// cannot cross that, so the worst a profile can do is reorder
+        /// records that would all work.
+        #[test]
+        fn it_cannot_promote_a_record_that_does_not_mix() {
+            // **Ten genres, not two.** With two, an even split is a half and
+            // the raw tilt cannot exceed one whatever the shares are — so a
+            // two-genre fixture passes this with the bound removed and proves
+            // nothing. Across ten, a genre with nine tenths of the plays is
+            // nine times an even split, and log2(9) is over three: enough to
+            // cross the gap below if the bound were not there.
+            let mut plays = vec![("Bachata", 900u32)];
+            for other in [
+                "Merengue", "Salsa", "Cumbia", "Son", "Vals", "Tango", "Bolero", "Danzon",
+                "Guaracha",
+            ] {
+                plays.push((other, 11));
+            }
+            let ranked = vec![(suggestion(1, 5.0), None), (suggestion(2, 2.0), None)];
+            let genre = |id: dj_core::TrackId| {
+                (id == dj_core::TrackId::from_bytes([2u8; 32])).then(|| "Bachata".to_owned())
+            };
+            let out = with_profile(ranked, Some(&profile(&plays)), &genre);
+            assert_eq!(
+                out[0].0.track,
+                dj_core::TrackId::from_bytes([1u8; 32]),
+                "a profile promoted a record three points behind"
+            );
+        }
+    }
+
     mod command_palette {
         use super::super::{PALETTE_LIMIT, matches, palette};
 
@@ -5570,6 +5704,20 @@ pub fn suggest_next(
         &kept,
     );
 
+    // §12's other half: tonight's profile, when the DJ has named the night.
+    // Read once for the whole rail — it is two queries and a fold, and five
+    // thousand candidates would be ten thousand queries.
+    let profile = tonight_profile(&state, &db);
+    let genres: std::collections::HashMap<dj_core::TrackId, String> = pool
+        .iter()
+        .filter_map(|t| Some((t.id, t.tags.genre.clone()?)))
+        .collect();
+    let ranked = with_profile(
+        ranked.into_iter().map(|s| (s, None)).collect(),
+        profile.as_ref(),
+        &|id| genres.get(&id).cloned(),
+    );
+
     // §22's estimated transition type. Read once for the whole rail rather
     // than per candidate — it is the *outgoing* half, which every row shares —
     // and the plan itself is arithmetic over two records, so a dozen of them
@@ -5581,7 +5729,7 @@ pub fn suggest_next(
     Ok(ranked
         .into_iter()
         .take(limit.clamp(1, 100))
-        .filter_map(|s| {
+        .filter_map(|(s, because)| {
             let track = pool.iter().find(|t| t.id == s.track)?;
             Some(SuggestionDto {
                 transition: outgoing
@@ -5589,12 +5737,117 @@ pub fn suggest_next(
                     .and_then(|out| estimate_transition(out, track)),
                 track: LibraryTrackDto::from(track.clone()),
                 score: s.score,
-                reasons: s.reasons.iter().map(describe_reason).collect(),
+                // The profile's reason goes with the scorer's rather than
+                // beside them: it moved the same number, so it belongs in the
+                // same list, and the rail already shows that list on hover.
+                reasons: s
+                    .reasons
+                    .iter()
+                    .map(describe_reason)
+                    .chain(because)
+                    .collect(),
                 summary: summarise_reasons(&s.reasons),
                 confidence: s.confidence(),
             })
         })
         .collect())
+}
+
+/// §12: the profile the rail is ranking by tonight, if any.
+///
+/// **Said out loud, because it changes the answer.** A ranking quietly
+/// conditioned on what a DJ usually plays at weddings is a ranking they
+/// cannot argue with — they would have to notice the order was different from
+/// what the deltas imply and work out why. So the rail is handed the profile
+/// itself: the setting, the nights behind it, and the sentence djmanzo writes
+/// about it.
+///
+/// `None` until the DJ has named the night and there are enough nights of it.
+///
+/// **And `None` when the profile cannot move the ranking**, which is the case
+/// the running application turned up: a profile whose nights have no genred
+/// plays behind them is a real profile — it can still say how this DJ mixes
+/// at weddings — and it tilts nothing, because the tilt is entirely a genre
+/// leaning. The rail asks "what is the ranking conditioned on", and a profile
+/// that conditions nothing is not an answer to that question; a line saying
+/// "ranked for tonight" over an untouched ranking is a claim djmanzo cannot
+/// support. §81's own panel still shows the profile, which is where a profile
+/// that says nothing about genres belongs.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn profile_tonight(state: State<'_, AppState>) -> Result<Option<ProfileDto>, String> {
+    let db = library(&state)?;
+    Ok(tonight_profile(&state, &db)
+        .filter(|p| !p.genres().is_empty())
+        .map(|p| ProfileDto {
+            setting: p.setting().slug().to_owned(),
+            title: p.setting().title().to_owned(),
+            nights: p.nights(),
+            density: p.density().map(ToOwned::to_owned),
+            style: p.style().map(|s| s.as_str().to_owned()),
+            automation: p.automation().map(|a| a.name().to_owned()),
+            techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
+            genres: p.genres().to_vec(),
+            says: p.words(),
+        }))
+}
+
+/// Tonight's profile, when the DJ has said what kind of night it is.
+///
+/// `None` until they have — §81's settings are **told, never inferred**, and
+/// a rail that guessed the setting in order to rank by it would be ranking by
+/// a guess. `None` too until there are enough nights of that setting for a
+/// profile to exist at all, which `profile::profiles` decides.
+fn tonight_profile(state: &AppState, db: &dj_library::Library) -> Option<crate::profile::Profile> {
+    let setting = crate::setting::Setting::parse(&db.night(&state.session_id()).ok()??.setting)?;
+    let nights = db.nights_in(setting.slug()).ok()?;
+    let genres = |s: crate::setting::Setting| db.genres_in(s.slug()).unwrap_or_default();
+    crate::profile::profiles(&nights, &genres)
+        .into_iter()
+        .find(|p| p.setting() == setting)
+}
+
+/// Fold §81's profile into a ranking, and re-sort.
+///
+/// **The other half of §12.** Profiles were learned and read by nothing,
+/// which made them a thing djmanzo could say about a DJ rather than a thing
+/// it did for one. This is the doing, and it is deliberately the smallest
+/// version of it: a bounded tilt on records whose genre this kind of night
+/// actually contains, with the reason carried on the row.
+///
+/// Separate from the command and from the profile so all three can be tested:
+/// the command needs a database, the profile owns the arithmetic, and this is
+/// the part with the re-sort in it — which is the decision. A rail that lifted
+/// a score without moving the row would show a higher number further down the
+/// list, and that reads as a bug in the ranking rather than as the feature.
+fn with_profile(
+    ranked: Vec<(dj_library::suggest::Suggestion, Option<String>)>,
+    profile: Option<&crate::profile::Profile>,
+    genre_of: &dyn Fn(dj_core::TrackId) -> Option<String>,
+) -> Vec<(dj_library::suggest::Suggestion, Option<String>)> {
+    let Some(profile) = profile else {
+        return ranked;
+    };
+    let mut out: Vec<_> = ranked
+        .into_iter()
+        .map(|(mut s, _)| {
+            let genre = genre_of(s.track);
+            s.score += profile.tilt_for(genre.as_deref());
+            let because = profile.because(genre.as_deref());
+            (s, because)
+        })
+        .collect();
+    // The same tie-break the ranking used, so a re-sort cannot reorder two
+    // candidates the profile said nothing about.
+    out.sort_by(|a, b| {
+        b.0.score
+            .partial_cmp(&a.0.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.track.cmp(&b.0.track))
+    });
+    out
 }
 
 /// Fold §24's kept pairs into a ranking, and re-sort.

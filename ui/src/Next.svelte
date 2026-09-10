@@ -35,11 +35,13 @@
   import {
     ghostPreview,
     loadTrack,
+    profileTonight,
     sidelistAdd,
     similarTo,
     suggestNext,
     type DeckState,
     type Ghost,
+    type Profile,
     type Suggestion,
     type Trajectory,
   } from "./api";
@@ -101,9 +103,22 @@
     return [...up, ...rest].slice(0, ROWS);
   });
 
+  /**
+   * §12: what the ranking is conditioned on tonight, when it is conditioned.
+   *
+   * Asked for beside the candidates rather than on a timer, because it can
+   * only change when the DJ names the night — and it is drawn as **one line
+   * for the whole rail** rather than a note per row. Eight rows in a docked
+   * column already carry a name, a confidence bar, the deltas and the
+   * transition; a fifth line per row would push the rail past what can be
+   * read at a glance, which is the one thing it is for.
+   */
+  let profile = $state<Profile | null>(null);
+
   async function refresh() {
     working = true;
     try {
+      profile = await profileTonight().catch(() => null);
       candidates = like
         ? await similarTo(like.track.id, ROWS * 2, from)
         : await suggestNext(from, trajectory, ROWS * 2);
@@ -318,6 +333,18 @@
 
   {#if error}
     <p class="error">{error}</p>
+  {/if}
+
+  <!--
+    §12. A ranking that is conditioned says so, with the evidence, because a
+    DJ who cannot see why the order changed cannot disagree with it. The
+    sentence is Rust's — §81's `Profile::words` — so the rail cannot make a
+    claim about this DJ that djmanzo would not.
+  -->
+  {#if profile}
+    <p class="profile" title="Records you play at this kind of night are nudged up the list. It can reorder records that all work; it can never lift one that does not mix.">
+      Ranked for tonight: {profile.says}
+    </p>
   {/if}
 
   {#if shown.length === 0}
@@ -576,6 +603,15 @@
     height: 100%;
     background: var(--accent);
     transform-origin: left center;
+  }
+
+  /* §12: what the whole rail is conditioned on, once rather than per row. */
+  .profile {
+    margin: 0;
+    font-size: 0.7rem;
+    color: var(--muted);
+    border-left: 2px solid var(--accent-2);
+    padding-left: 0.4rem;
   }
 
   /* §22's estimated transition: about the mix, not about the two records. */

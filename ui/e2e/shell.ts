@@ -433,6 +433,11 @@ const ANSWERS: Record<string, unknown> = {
     },
   ],
   similar_to: [],
+  // §12: no profile by default, because a fresh install has never been told
+  // what kind of night it is — and `null` rather than absent, because
+  // `Next.svelte` reads it and an unstubbed command is the failure the
+  // `stems_status` note above documents.
+  profile_tonight: null,
   // What the pair view is handed: two records and the seam between them.
   //
   // §68's transition object, in the shape `dj_app::commands::TransitionDto`

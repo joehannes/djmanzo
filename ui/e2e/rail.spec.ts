@@ -222,3 +222,81 @@ test.describe("the estimated transition", () => {
     expect(await row.locator(".ghost-what").textContent()).toBe(inRail);
   });
 });
+
+/**
+ * §12's other half: the rail consulting what djmanzo has learned about this
+ * DJ, and **saying that it did**.
+ *
+ * §81 built profiles and nothing read them, which made them a thing djmanzo
+ * could say about a DJ rather than a thing it did for one. The arithmetic —
+ * the bound, the log map, what happens to an untagged record — is Rust's and
+ * is tested there. What matters here is the consent shape: a ranking that has
+ * been conditioned must say so and must name its evidence, and one that has
+ * not must look exactly as it always did.
+ */
+const WEDDING = {
+  setting: "wedding",
+  title: "Wedding",
+  nights: 5,
+  density: "cosy",
+  style: "blend",
+  automation: "suggest",
+  techniques: ["eq-moved"],
+  genres: [
+    ["Bachata", 0.62],
+    ["Merengue", 0.38],
+  ],
+  says: "Wedding, over 5 nights: mostly blend transitions, 62% Bachata, assistant on suggest.",
+};
+
+test.describe("the learned profile", () => {
+  /**
+   * **A conditioned ranking says so, with the evidence.**
+   *
+   * A rail quietly reordered by what a DJ usually plays at weddings is a rail
+   * they cannot argue with: they would have to notice the order disagreed
+   * with the deltas and work out why.
+   */
+  test("says what it is ranking for, and over how many nights", async ({ page }) => {
+    await openShell(page, "/", {}, { profile_tonight: WEDDING });
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
+    const line = page.locator('.surface[data-surface="next"] .profile');
+    await expect(line).toBeVisible();
+    const said = (await line.textContent()) ?? "";
+    expect(said, "the kind of night is not named").toContain("Wedding");
+    expect(said, "the evidence is not named").toContain("5 nights");
+  });
+
+  /**
+   * **One line for the rail, not one per row.**
+   *
+   * Eight rows already carry a name, a confidence bar, the deltas and the
+   * transition. A fifth line per row would push the rail past what can be
+   * read at a glance, which is the one thing a rail is for.
+   */
+  test("is one line for the whole rail", async ({ page }) => {
+    await openShell(page, "/", {}, { profile_tonight: WEDDING });
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+
+    await expect(page.locator('.surface[data-surface="next"] .profile')).toHaveCount(1);
+    const rows = page.locator('.surface[data-surface="next"] li');
+    expect(await rows.count()).toBeGreaterThan(1);
+    await expect(rows.first().locator(".profile")).toHaveCount(0);
+  });
+
+  /**
+   * **A night nobody has named is the rail as it always was.**
+   *
+   * §81's settings are told, never inferred. With no profile there is nothing
+   * being tilted, and nothing claiming to be.
+   */
+  test("says nothing when the night has not been named", async ({ page }) => {
+    await railOpen(page);
+    await expect(page.locator('.surface[data-surface="next"] .profile')).toHaveCount(0);
+    // And the ranking is untouched: the fixture's order is the scorer's.
+    const rows = page.locator('.surface[data-surface="next"] li .name');
+    await expect(rows.first()).toHaveText("Ojalá Que Llueva Café");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});

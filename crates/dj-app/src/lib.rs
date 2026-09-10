@@ -527,6 +527,7 @@ pub fn run() {
             commands::library_lens,
             commands::ghost_preview,
             commands::room_history,
+            commands::profile_tonight,
             commands::control_handles,
             commands::theme_now,
             commands::theme_lock,

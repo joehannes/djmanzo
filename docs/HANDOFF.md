@@ -245,6 +245,19 @@ whether a reading counts: a room watched *only* in the twelve seconds djmanzo
 is meant to ignore must produce nothing. State a window as an exclusion, not
 as an average.
 
+**An open observation, not yet explained: the Next rail can come up with no
+deltas and no transition while two analysed records sit on the decks.** Both
+lines vanish together, which is the signature of `suggest_next` reading
+`Playing::nothing()` — `current_track` returning `None` — since the deltas
+come from the scorer and the transition from `outgoing_of`, and both start
+there. Ruled out: the library rows *are* analysed (checked in `library.db`),
+the interface renders both lines correctly against the browser fixture, and
+the same emptiness reproduces on the last committed build, so it is not
+§12's or §22's doing. It is state-dependent: earlier in the same session the
+same binary showed both lines for the same records. If you see it, start at
+`state.deck_tracks()` and how the demo folder gets loaded, and please write
+down what you find.
+
 **A timing test made patient can become a test of the timeout.** A 60 Hz
 pump test slept 80 ms and asserted a snapshot had arrived; it failed once on a
 loaded macOS runner and nowhere else. Waiting five seconds instead fixed the

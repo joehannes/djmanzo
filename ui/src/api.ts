@@ -1741,6 +1741,18 @@ export const noteNight = (setting?: string, density?: string) =>
 export const nightNow = () => invoke<NightSetting>("night_now");
 
 /** Every conditional profile there is enough evidence for. */
+/**
+ * §12: the profile the rail is ranking by tonight, if any.
+ *
+ * **Said out loud, because it changes the answer.** A ranking quietly
+ * conditioned on what you usually play at weddings is one you cannot argue
+ * with — you would have to notice the order disagreed with the deltas and
+ * work out why. `null` until you have named the night and there are enough
+ * nights of it, which is exactly when nothing is being tilted either.
+ */
+export const profileTonight = () =>
+  invoke<Profile | null>("profile_tonight");
+
 export const learnedProfiles = () => invoke<Profile[]>("learned_profiles");
 
 /** One rehearsal: a mix that was never played, as a file you can hear. */
