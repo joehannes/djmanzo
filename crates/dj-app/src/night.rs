@@ -124,6 +124,16 @@ impl Night {
         read
     }
 
+    /// How long the application has been running.
+    ///
+    /// The same clock `observe` measures against, so §31's theme weather and
+    /// the night's own arc agree about when things happened. A second clock
+    /// would be a second answer to "how far into the set are we".
+    #[must_use]
+    pub fn elapsed(&self) -> Duration {
+        self.started.elapsed()
+    }
+
     /// What the night was, at a moment that has already passed.
     ///
     /// `None` before anything could say — which is the first stretch of every

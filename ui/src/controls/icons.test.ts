@@ -17,7 +17,19 @@ function iconsInUse(): { name: string; file: string }[] {
   const found: { name: string; file: string }[] = [];
   for (const file of svelteFiles(join(import.meta.dirname, ".."))) {
     const source = readFileSync(file, "utf8");
+    // Two passes, because one is not enough.
+    //
+    // `icon="fa-solid fa-gear"` is the common case. But an icon chosen by a
+    // ternary — `icon={locked ? "fa-solid fa-lock" : "fa-solid fa-lock-open"}`
+    // — is invisible to that pattern, and shipped exactly that way: the button
+    // rendered a fallback letter and every test stayed green. So anything that
+    // *looks* like an icon name, anywhere, has to have a drawing behind it.
     for (const match of source.matchAll(/icon=["']([^"']+)["']/g)) {
+      found.push({ name: match[1], file });
+    }
+    for (const match of source.matchAll(
+      /["'](fa-(?:solid|regular|brands) fa-[a-z0-9-]+)["']/g,
+    )) {
       found.push({ name: match[1], file });
     }
   }

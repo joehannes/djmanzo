@@ -111,6 +111,18 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
+  /*
+    §31's smoothing. When djmanzo changes the theme it sets `--theme-fade` to
+    how long the change should take, and the ground fades rather than cutting.
+    Nought by default, so a DJ picking a theme from the menu gets it at once —
+    they have already decided, and making them watch a fade would be the
+    interface being slow about a thing they did on purpose.
+
+    On `background` only. Fading every colour in the interface at once looks
+    like a dissolve; fading the ground under them reads as the room changing,
+    which is what §31 is describing.
+  */
+  transition: background var(--theme-fade, 0ms) ease;
   /* The window is the app; nothing scrolls at the top level. */
   overflow: hidden;
   user-select: none;

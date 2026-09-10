@@ -5526,6 +5526,106 @@ pub fn learned_taste(state: State<'_, AppState>) -> Result<TasteDto, String> {
     })
 }
 
+/// What the interface should be wearing. §31.
+#[derive(Debug, Clone, Serialize)]
+pub struct MoodDto {
+    /// The theme package's id, as `ui/src/controls/themes/packages.ts` spells
+    /// it.
+    pub theme: String,
+    /// How long the change should take, in milliseconds. Zero when nothing is
+    /// changing — which is most ticks, and is the point of §31.
+    pub over_ms: u64,
+    /// True when the DJ has pinned it and djmanzo has stopped deciding.
+    pub locked: bool,
+}
+
+/// §31: offer the theme a reading of the night, and hear what to wear.
+///
+/// **The answer is almost always "the same thing".** §31's warning — "never
+/// allow the interface to flicker from color to color every time the track
+/// changes" — is the feature, and it lives in `dj_app::mood`: a four-minute
+/// minimum, a forty-second settling time, and a lock that beats both. Calling
+/// this on a tick is safe and expected; it changes its mind a handful of times
+/// a night.
+///
+/// The reading is **the setting the DJ named** (§81) and the phase djmanzo has
+/// read from the music. Venue ambience is told rather than sensed because
+/// there is no light sensor here — see `crate::mood`.
+///
+/// # Errors
+/// Whatever the database says, when tonight's setting is read back.
+#[tauri::command]
+pub fn theme_now(state: State<'_, AppState>) -> Result<MoodDto, String> {
+    // The setting the DJ named. Without one there is nothing to adapt *to*,
+    // and open format is the honest default: whatever the room turns out to
+    // want. It is also what §81 writes when nobody has said.
+    let setting = library(&state)
+        .ok()
+        .and_then(|db| db.night(&state.session_id()).ok().flatten())
+        .and_then(|night| crate::setting::Setting::parse(&night.setting))
+        .unwrap_or(crate::setting::Setting::OpenFormat);
+
+    // The phase from the music. Before djmanzo can read one, a warm-up is the
+    // right assumption: a set that has just started *is* warming up, and it is
+    // also the most subdued answer, which is the safe direction to be wrong in.
+    let phase = state
+        .night()
+        .read()
+        .map_or(dj_core::SessionPhase::WarmUp, |read| read.phase);
+
+    let at = state.night().elapsed();
+    let want = crate::mood::wanted(setting, phase);
+    let mood = state
+        .weather()
+        .lock()
+        .map_err(|_| "the theme weather is poisoned".to_owned())?
+        .consider(want, at);
+
+    Ok(MoodDto {
+        theme: mood.theme.to_owned(),
+        over_ms: u64::try_from(mood.over.as_millis()).unwrap_or(u64::MAX),
+        locked: mood.locked,
+    })
+}
+
+/// Pin the theme, or let djmanzo decide again. §31's manual lock.
+///
+/// Locking does not change what is worn — it stops it changing. A lock that
+/// also snapped the theme somewhere would be a second decision hiding inside a
+/// refusal to decide.
+///
+/// # Errors
+/// When the lock is poisoned.
+#[tauri::command]
+pub fn theme_lock(state: State<'_, AppState>, locked: bool) -> Result<(), String> {
+    state
+        .weather()
+        .lock()
+        .map_err(|_| "the theme weather is poisoned".to_owned())?
+        .lock(locked);
+    Ok(())
+}
+
+/// The DJ chose a theme. It takes effect now, and restarts the minimum.
+///
+/// # Errors
+/// When the lock is poisoned.
+#[tauri::command]
+pub fn theme_chosen(state: State<'_, AppState>, theme: String) -> Result<(), String> {
+    // Leaked rather than borrowed: `Weather` holds `&'static str` because the
+    // ids are compile-time constants everywhere else, and a theme a DJ chose
+    // lives as long as the application anyway. One small leak per manual
+    // choice, of which there are a handful a night.
+    let theme: &'static str = Box::leak(theme.into_boxed_str());
+    let at = state.night().elapsed();
+    state
+        .weather()
+        .lock()
+        .map_err(|_| "the theme weather is poisoned".to_owned())?
+        .choose(theme, at);
+    Ok(())
+}
+
 /// One control's gestures, for the interface. §29.
 #[derive(Debug, Clone, Serialize)]
 pub struct HandleDto {

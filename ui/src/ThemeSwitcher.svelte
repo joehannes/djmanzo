@@ -14,15 +14,33 @@
    */
   import { clickOutside } from "./controls/clickOutside";
   import { theme } from "./theme.svelte";
+  import { themeChosen, themeLock, themeNow } from "./api";
   import { themePackages } from "./controls/themes/packages";
   import type { ThemeSetting } from "./controls/themes/engine";
   import { paletteFor } from "./controls/themes/colors";
   import IconButton from "./controls/IconButton.svelte";
 
+  /**
+   * §31's lock, mirrored here so the button can show it.
+   *
+   * djmanzo holds the truth — the lock has to survive this menu closing, and a
+   * DJ who locked the theme an hour ago should still find it locked. This is
+   * only what the button draws, set from the same tick that applies the theme.
+   */
+  let locked = $state(false);
+
   let open = $state(false);
 
   function toggle() {
     open = !open;
+    // Read the lock from djmanzo rather than trusting what this component last
+    // saw: it survives the menu closing, and a button showing the opposite of
+    // the truth is worse than no button.
+    if (open) {
+      void themeNow()
+        .then((mood) => (locked = mood.locked))
+        .catch(() => {});
+    }
   }
 
   /**
@@ -87,6 +105,34 @@
         </div>
       </div>
 
+      <!--
+        §31's manual lock, and the sentence that explains why it is here.
+
+        Adaptation without a way to stop it is an interface arguing with its
+        DJ. Locking does not change what is worn — it stops it changing — so a
+        DJ who likes what they are looking at can keep it without also having
+        to pick it out of the list below.
+      -->
+      <div class="section">
+        <strong>Adapting</strong>
+        <p class="hint">
+          djmanzo picks a theme from the kind of night and where the set has
+          got to, slowly — never more than once every few records, and never
+          from a single reading. Lock it and it stops deciding.
+        </p>
+        <div class="opts">
+          <IconButton
+            icon={locked ? "fa-solid fa-lock" : "fa-solid fa-lock-open"}
+            title={locked ? "Locked — djmanzo is not deciding" : "Lock this theme"}
+            active={locked}
+            onClick={() => {
+              locked = !locked;
+              void themeLock(locked).catch(() => {});
+            }}
+          />
+        </div>
+      </div>
+
       {#each groups as group (group.setting)}
         {@const packages = bySetting(group.setting)}
         {#if packages.length > 0}
@@ -99,7 +145,14 @@
                 <button
                   class="theme"
                   class:active={theme.activePackage.id === pkg.id}
-                  onclick={() => theme.setPackage(pkg.id)}
+                  onclick={() => {
+                    theme.setPackage(pkg.id);
+                    // §31: the DJ has decided. Tell djmanzo, so its own
+                    // reading does not quietly replace this in four minutes —
+                    // an interface that overrode a deliberate choice would be
+                    // worse than one that never adapted at all.
+                    void themeChosen(pkg.id).catch(() => {});
+                  }}
                   title={pkg.when}
                 >
                   <span

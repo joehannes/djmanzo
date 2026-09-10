@@ -1514,6 +1514,35 @@ export interface TransitionShapeFx {
   slot: number;
 }
 
+/** §31: what the interface should be wearing. */
+export interface Mood {
+  /** The theme package id. */
+  theme: string;
+  /** How long the change should take. Zero when nothing is changing. */
+  over_ms: number;
+  /** True when the DJ has pinned it and djmanzo has stopped deciding. */
+  locked: boolean;
+}
+
+/**
+ * Offer the theme a reading of the night, and hear what to wear.
+ *
+ * **The answer is almost always "the same thing".** §31's warning — never let
+ * the interface flicker from colour to colour every time the track changes —
+ * is the feature, and it lives in `dj_app::mood`: a four-minute minimum, a
+ * forty-second settling time, and a lock that beats both. Safe to call on a
+ * tick; it changes its mind a handful of times a night.
+ */
+export const themeNow = () => invoke<Mood>("theme_now");
+
+/** Pin the theme, or let djmanzo decide again. §31's manual lock. */
+export const themeLock = (locked: boolean) =>
+  invoke<void>("theme_lock", { locked });
+
+/** Tell djmanzo the DJ chose one, so it stops deciding over them. */
+export const themeChosen = (theme: string) =>
+  invoke<void>("theme_chosen", { theme });
+
 /** §29: what one control's gestures do. */
 export interface ControlHandle {
   control: string;

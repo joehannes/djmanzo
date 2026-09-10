@@ -158,6 +158,13 @@ Deferring the write by one tick (`setTimeout(fn, 0)`) puts it outside that
 release and it holds. Found by driving it — a type-check cannot see a state
 write that does not survive.
 
+**The icon test only saw `icon="literal"`.** An icon chosen by a ternary —
+`icon={locked ? "fa-solid fa-lock" : "fa-solid fa-lock-open"}` — was invisible
+to its regex, so a button shipped rendering a fallback letter with every test
+green. It now also matches any `"fa-solid fa-…"` string anywhere in a
+component, which is what catches a name however it is assembled. If you add a
+third way to name an icon, check the guard still sees it.
+
 **Playwright's browser.** CI installs its own. A container that pre-installs
 one is pointed at it with `DJMANZO_CHROMIUM=/opt/pw-browsers/chromium`,
 otherwise every test fails with "Executable doesn't exist".
@@ -476,7 +483,22 @@ The largest open sections, in the order they are worth doing:
    come from the assistant's own staging rather than a second scorer invented
    for the tooltip.
 
-8. **§20's performance table** is the browser at fewer columns than §20 lists —
+8. **§31 is mostly brakes, and the brakes are the feature.** `dj_app::mood`
+   holds a four-minute minimum, forty seconds of hysteresis, a fade, and a lock
+   that beats all of them. Choosing a theme from the menu tells djmanzo to stop
+   deciding — an interface that overrode a deliberate choice four minutes later
+   would be worse than one that never adapted.
+
+   **Venue ambience is §81's setting**, told rather than sensed. That is why
+   §81 came first: §31's own examples are *beach*, *club* and *daylight*, which
+   is the axis §81 already asks the DJ about. The one thing this cannot do is
+   *daylight as a measurement* — whether the sun is on the screen now.
+
+   **Do not feed it the genre of the record on deck 1.** That changes every
+   four minutes, which is precisely the flicker §31 forbids. The phase is the
+   musical context, already smoothed over minutes by `dj_core::context`.
+
+9. **§20's performance table** is the browser at fewer columns than §20 lists —
    the other three views ship. Adding the missing columns (energy, vocal and
    stem availability, transition suitability, request count, AI confidence)
    mostly waits on analysis that does not exist, which is the same wall §25's

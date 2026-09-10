@@ -136,6 +136,14 @@ pub struct AppState {
     /// as a reader of it — the waveform, the assistant, the autopilot — reads
     /// it from djmanzo rather than from a Svelte component's local state.
     transition: Mutex<Option<crate::transition::Transition>>,
+    /// §31: what the interface is wearing, and the brakes on changing it.
+    ///
+    /// Held here rather than in the browser for the reason the density bands
+    /// are Rust's: the *rule* is a decision about the application and the
+    /// pixels are the interface's. It also has to survive a panel closing, and
+    /// the minimum duration is meaningless if it restarts whenever a component
+    /// remounts.
+    weather: Mutex<crate::mood::Weather>,
     /// The transaction the assistant has prepared, if one is waiting.
     ///
     /// One at a time, and held here for the reason the transition object is:
@@ -438,6 +446,13 @@ impl AppState {
             clock_follow: Arc::new(crate::clock::ClockFollow::default()),
             taps: crate::grid::TapTracker::new(),
             layout_dir: Mutex::new(None),
+            // Starts on the default theme, at time zero: the minimum duration
+            // is spent by the time any set has begun, so the first reading is
+            // free to take effect.
+            weather: Mutex::new(crate::mood::Weather::new(
+                "pkg-organic",
+                std::time::Duration::ZERO,
+            )),
             mapping_draft: Mutex::new(dj_hid::editor::Draft::new("My mapping", String::new())),
             config_dir: Mutex::new(None),
             transition: Mutex::new(None),
@@ -696,6 +711,12 @@ impl AppState {
     #[must_use]
     pub fn transition(&self) -> Option<crate::transition::Transition> {
         self.transition.lock().ok()?.clone()
+    }
+
+    /// §31's theme weather, for the command that offers it a reading.
+    #[must_use]
+    pub fn weather(&self) -> &Mutex<crate::mood::Weather> {
+        &self.weather
     }
 
     /// Hold a transition, replacing whatever was held.

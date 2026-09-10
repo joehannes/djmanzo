@@ -122,6 +122,30 @@ class Theme {
   }
 
   /**
+   * §31: wear what djmanzo asked for, over the time it asked for.
+   *
+   * Distinct from `setPackage` on purpose. That one is a DJ choosing, and is
+   * remembered across restarts; this one is djmanzo reading the night, and is
+   * **not** — a theme that adapted to last Saturday's peak and then opened
+   * that way on a Tuesday afternoon would be remembering the wrong thing.
+   *
+   * The decision is not made here. `dj_app::mood` holds the minimum duration,
+   * the settling time and the lock, and answers with the same id on almost
+   * every tick; this only paints. Rust owns the rule, the interface owns the
+   * pixels — the same split the density bands use.
+   */
+  adapt(id: string, overMs: number) {
+    if (id === this.#pkgId) return;
+    const root = document.documentElement;
+    // The fade is a custom property rather than a class, so a stylesheet can
+    // use it wherever a colour changes without this module knowing where those
+    // places are.
+    root.style.setProperty("--theme-fade", `${Math.max(0, overMs)}ms`);
+    this.#pkgId = id;
+    this.#apply();
+  }
+
+  /**
    * Stamp the resolved theme on the root element.
    *
    * Called from the two places the answer can change rather than from an

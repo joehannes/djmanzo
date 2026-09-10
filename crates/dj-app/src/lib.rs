@@ -40,6 +40,7 @@ pub mod library;
 pub mod memory;
 pub mod mixes;
 pub mod monitors;
+pub mod mood;
 pub mod night;
 pub mod peersync;
 pub mod persist;
@@ -515,6 +516,9 @@ pub fn run() {
             commands::learned_taste,
             commands::library_lens,
             commands::control_handles,
+            commands::theme_now,
+            commands::theme_lock,
+            commands::theme_chosen,
             commands::coach_report,
             commands::note_add,
             commands::note_write,

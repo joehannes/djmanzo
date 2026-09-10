@@ -446,6 +446,11 @@ const ANSWERS: Record<string, unknown> = {
   // §29's gestures, answered per deck below so a test can prove the menu acts
   // on the deck it was opened on.
   control_handles: [],
+  // §31. Steady by default — which is what djmanzo answers on almost every
+  // tick, and is the whole point of the section.
+  theme_now: { theme: "pkg-organic", over_ms: 0, locked: false },
+  theme_lock: null,
+  theme_chosen: null,
   // §81. Tonight opens unnamed, which is the state the picker exists to end —
   // and the state in which the hint has to be right.
   night_now: {

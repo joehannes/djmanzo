@@ -56,6 +56,7 @@
   import SideView from "./SideView.svelte";
   import Watershed from "./Watershed.svelte";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
+  import { theme } from "./theme.svelte";
   import IconButton from "./controls/IconButton.svelte";
   import {
     emptyWorld,
@@ -73,6 +74,7 @@
     logoUrl,
     setBrandLogo,
     onSnapshot,
+    themeNow,
     activeDevice,
     openDevice,
     assistantConduct,
@@ -631,7 +633,25 @@
       .catch((problem) => {
         error = `the engine did not answer: ${problem}`;
       });
+    /**
+     * §31: ask djmanzo what to wear, slowly.
+     *
+     * Every twenty seconds, not every snapshot. The answer is almost always
+     * "the same thing" — `dj_app::mood` holds a four-minute minimum and a
+     * forty-second settling time, so a faster tick asks a question whose answer
+     * cannot have moved, and it walks the night's reading to produce it.
+     *
+     * The decision is not made here. Rust owns the rule, this owns the pixels,
+     * which is the same split the density bands use.
+     */
+    const wardrobe = setInterval(() => {
+      void themeNow()
+        .then((mood) => theme.adapt(mood.theme, mood.over_ms))
+        .catch(() => {});
+    }, 20_000);
+
     return () => {
+      clearInterval(wardrobe);
       void unlisten.then((fn) => fn());
       void unwatchCockpit.then((fn) => fn());
     };
