@@ -165,6 +165,11 @@ green. It now also matches any `"fa-solid fa-…"` string anywhere in a
 component, which is what catches a name however it is assembled. If you add a
 third way to name an icon, check the guard still sees it.
 
+**`.deck` means three things.** It is the deck section, *and* a label in the
+Next rail, *and* a label in §74's At Hand panel — "Deck 1", saying which deck a
+row is about. A test counting `.deck` read four decks as five. Use
+`section.deck[data-deck]`, which is on the deck itself and means nothing else.
+
 **Playwright's browser.** CI installs its own. A container that pre-installs
 one is pointed at it with `DJMANZO_CHROMIUM=/opt/pw-browsers/chromium`,
 otherwise every test fails with "Executable doesn't exist".
@@ -498,7 +503,20 @@ The largest open sections, in the order they are worth doing:
    four minutes, which is precisely the flicker §31 forbids. The phase is the
    musical context, already smoothed over minutes by `dj_core::context`.
 
-9. **§20's performance table** is the browser at fewer columns than §20 lists —
+9. **§89 regresses geometry, not pixels, and the reason matters.** CI installs
+   its own Chromium and this container has a different build, so a screenshot
+   baseline captured in either place fails in the other on font rasterisation
+   alone. A suite that has to be re-blessed every run has stopped being a test,
+   and one re-blessed automatically never was one. What runs instead is
+   `budget.spec.ts`'s rules against all ten of §89's configurations — controls
+   on the first screen, decks inside the window, surfaces actually drawn, no
+   sideways scroll. Those fail for the right reason.
+
+   **It does not compare appearance**, and that gap is real: a theme that
+   turned every panel the same colour would pass all fifty of these. If pixel
+   diffing is ever wanted, pin the browser build in both places first.
+
+10. **§20's performance table** is the browser at fewer columns than §20 lists —
    the other three views ship. Adding the missing columns (energy, vocal and
    stem availability, transition suitability, request count, AI confidence)
    mostly waits on analysis that does not exist, which is the same wall §25's

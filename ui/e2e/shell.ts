@@ -786,6 +786,12 @@ export async function openShell(
             );
           }
           if (cmd === "set_cockpit_workspace") {
+            // Recorded as well as echoed. What a test needs to know about a
+            // save is that it *happened and carried the right thing* — an
+            // arrangement drawn on screen and never written looks identical
+            // until the application is reopened, which is the defect §89's
+            // four-deck configuration found.
+            ((win.__saved ??= []) as unknown[]).push(args.workspace);
             return Promise.resolve({ workspace: args.workspace, notes: [] });
           }
           // The transition object, held between calls the way djmanzo holds

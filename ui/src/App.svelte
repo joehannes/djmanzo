@@ -262,6 +262,29 @@
    * placement the resolver corrected is the one drawn. Storing the request and
    * drawing the answer is how the two drift apart.
    */
+  /**
+   * Write the current arrangement, without changing it.
+   *
+   * `toggleSurface` saves as a side effect of opening a panel; this is for the
+   * changes that are not a panel — the deck count especially, which a DJ sets
+   * once and expects to find again.
+   */
+  async function saveWorkspace() {
+    const current = workspace;
+    if (!current) return;
+    const next = { ...current, decks: deckCount };
+    workspace = next;
+    try {
+      const resolved = await setCockpitWorkspace(next);
+      workspace = resolved.workspace;
+      workspaceNotes = resolved.notes;
+    } catch {
+      // Keeping the optimistic state, for the reason `toggleSurface` gives:
+      // failing to write a preferences file is not a reason to undo what the
+      // DJ just did.
+    }
+  }
+
   async function toggleSurface(name: Drawn) {
     const current = workspace ?? {
       name: "Custom",
@@ -293,7 +316,12 @@
     // Optimistic, then corrected. The panel appears on the press rather than
     // after a round trip to the filesystem, which at a laptop's worst moment
     // is not instant.
-    workspace = { ...current, surfaces };
+    //
+    // `decks` comes from the live count rather than from `current`: the deck
+    // toggle changes what is on screen without saving, so a workspace written
+    // from the stored value would quietly file away a number the DJ had
+    // already changed.
+    workspace = { ...current, surfaces, decks: deckCount };
     if (name === "log" && !already) log = await sessionLog().catch(() => log);
     try {
       const resolved = await setCockpitWorkspace(workspace);
@@ -393,6 +421,12 @@
       const resolved = await cockpitWorkspace();
       workspace = resolved.workspace;
       workspaceNotes = resolved.notes;
+      // A workspace remembers how many decks were on screen — `toggleSurface`
+      // writes `decks: deckCount` into every one it saves — and nothing read
+      // it back. So a DJ who arranged four decks, saved the workspace and
+      // reopened djmanzo got two, with the workspace still claiming four.
+      // Found by §89's four-deck configuration failing to be four decks.
+      deckCount = resolved.workspace.decks;
     } catch {
       workspace = null;
       workspaceNotes = [];
@@ -614,6 +648,7 @@
     const unwatchCockpit = onCockpit((applied) => {
       workspace = applied.workspace.workspace;
       workspaceNotes = applied.workspace.notes;
+      deckCount = applied.workspace.workspace.decks;
       if (applied.focus !== null) focusDeck(applied.focus);
     });
 
@@ -1198,7 +1233,15 @@
           disagree about is worse than an unused deck.
         -->
         <button
-          onclick={() => (deckCount = deckCount === 2 ? 4 : deckCount === 4 ? 6 : 2)}
+          onclick={() => {
+            deckCount = deckCount === 2 ? 4 : deckCount === 4 ? 6 : 2;
+            // Remembered, like every other arrangement. Without this a DJ who
+            // set up four decks found two the next time they opened djmanzo,
+            // with nothing having said the change was temporary — the
+            // workspace already carried a `decks` field and only ever wrote
+            // the stale one.
+            void saveWorkspace();
+          }}
           title="Show {deckCount === 2 ? 'four' : deckCount === 4 ? 'six' : 'two'} decks. The engine runs six either way."
         >
           {deckCount} decks

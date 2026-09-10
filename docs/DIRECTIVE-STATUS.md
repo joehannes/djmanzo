@@ -114,7 +114,7 @@ rather than taken.
 | 86 | Test the action bus | ✅ | Pre-existing and still green |
 | 87 | Test state consistency | 🟡 | Loading from every source is not yet asserted to produce identical state |
 | 88 | Test adaptation | ✅ | `density.spec.ts` — the deck fits at every window tall enough, and a shorter window never gets a looser interface |
-| 89 | Visual regression | ⬜ | The ten workspace configurations are not captured |
+| 89 | Visual regression | 🟡 | **All ten of §89's configurations are captured, and the layout rules are held in every one.** `budget.spec.ts` measures the arrangement djmanzo opens at — it exists because the controls a DJ mixes with drifted below the fold twice, found by a human with a screenshot both times. §89's contribution is that one arrangement is not coverage, so the same rules now run against Classic 2 deck, Pro 2 deck, 4 deck, Compact laptop, Preparation, Practice, Autopilot, Club, Watershed and High Contrast: every performing control on the first screen, every deck drawn and inside the window, every surface the workspace names actually there, no sideways scroll, and nothing thrown. **Pixels are deliberately not diffed**: CI installs its own Chromium on `ubuntu-latest` and this container has a different build, so font rasterisation differs and a baseline captured in either place fails in the other for reasons that are nothing to do with djmanzo — a suite re-blessed every run has stopped being a test. What is regressed is geometry, which fails for the right reason and does not care which machine drew the font. **Finding the four-deck configuration found a real defect**: the workspace carried a `decks` field, `toggleSurface` wrote it, and nothing read it back — and the write used the stored count rather than the live one, so the toggle never reached the file. A DJ who set up four decks found two next time, with the saved workspace still claiming four. Both halves fixed and verified in the running application. What §89 asks for and this does not do: compare **appearance**. A theme that turned every panel the same colour would pass every one of these |
 | 90 | Performance regression | 🟡 | Geometry is ratcheted; frame rate is not |
 | 91 | Do not overengineer prematurely | ⚖️ | |
 | 92 | Do not migrate technology | ⚖️ | Still Svelte 5, TypeScript, Tauri 2, the action bus, the ParameterRegistry, the Rust waveform |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **41 done, 41 part, 4 open, 19 standing rules.**
+Of the 105 sections: **41 done, 42 part, 3 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**41 of 86 deliverable sections are complete and 41 more are partly there.**
+**41 of 86 deliverable sections are complete and 42 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 41 whole plus 41 halves over 86 is 72%, and the phase view is stricter
+way: 41 whole plus 42 halves over 86 is 72%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.
