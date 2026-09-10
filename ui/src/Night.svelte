@@ -22,15 +22,68 @@
    * stuck.
    */
   import { onMount } from "svelte";
-  import { nightRead, type NightRead } from "./api";
+  import {
+    nightNow,
+    nightRead,
+    noteNight,
+    type NightRead,
+    type NightSetting,
+  } from "./api";
   import { ARC, BASIS, CERTAINTY, WARRANT, WHEN } from "./night";
 
   interface Props {
     /** False before an audio device is open, when there is no set to read. */
     enabled: boolean;
+    /**
+     * The density band the interface is actually running at, by name.
+     *
+     * Passed down rather than worked out here: App picks the band from the
+     * window height, and a second calculation would eventually disagree with
+     * the one that set the font size. It goes to Rust with the setting,
+     * because §81 lists density among the things a profile differs in and this
+     * side is the only thing that knows it.
+     */
+    density?: string;
   }
 
-  let { enabled }: Props = $props();
+  let { enabled, density }: Props = $props();
+
+  /**
+   * §81: what kind of night this is.
+   *
+   * A different axis from the arc above. djmanzo reads the arc from the music
+   * and is right to — energy and tempo are in the signal. **Nothing in the
+   * signal says wedding.** A room dancing at 128 BPM is a club or a wedding
+   * according to facts no microphone has, so this is told rather than guessed:
+   * guessing it would file a whole night's habits under the wrong name, which
+   * is §13's failure at the scale of an evening.
+   *
+   * It lives in this panel because this is where the night is. Two homes for
+   * "what is tonight" would be two places to go and check.
+   */
+  const SETTINGS: { slug: string; title: string; about: string }[] = [
+    { slug: "club", title: "Club", about: "A crowd that came to dance, and knows what it came for." },
+    { slug: "beach", title: "Beach / sunset", about: "Warm, unhurried, and nobody is waiting for a drop." },
+    { slug: "wedding", title: "Wedding", about: "A room that is not there for the DJ." },
+    { slug: "latin", title: "Latin", about: "Where the technique is the genre's, not the format's." },
+    { slug: "practice", title: "Practice", about: "Nobody is listening. What happens here is not a gig." },
+    { slug: "open-format", title: "Open format", about: "Whatever the room turns out to want." },
+  ];
+
+  let tonight = $state<NightSetting | null>(null);
+  let saying = $state(false);
+
+  async function say(setting: string) {
+    saying = true;
+    try {
+      tonight = await noteNight(setting, density);
+      error = "";
+    } catch (problem) {
+      error = String(problem);
+    } finally {
+      saying = false;
+    }
+  }
 
   /**
    * How often the reading is fetched.
@@ -47,6 +100,13 @@
 
   async function refresh() {
     try {
+      // Keep tonight's figures current while there is a log to read them
+      // from. Only once the DJ has said what kind of night it is: writing a
+      // row for a night nobody has named would put it in the open-format
+      // profile by default, which is the guess this panel exists to avoid.
+      tonight = tonight?.setting
+        ? await noteNight(undefined, density)
+        : await nightNow();
       read = await nightRead();
       error = "";
     } catch (problem) {
@@ -115,6 +175,29 @@
         </li>
       {/each}
     </ol>
+
+    <!--
+      What kind of night, as opposed to where in it. Told, never read: see the
+      note in the script. The chosen one stays marked so a DJ can see at a
+      glance that djmanzo knows, and can correct it if they picked wrong.
+    -->
+    <div class="kind" role="group" aria-label="What kind of night this is">
+      <span class="label">Tonight is</span>
+      {#each SETTINGS as setting (setting.slug)}
+        <button
+          class:on={tonight?.setting === setting.slug}
+          disabled={!enabled || saying}
+          onclick={() => say(setting.slug)}
+          title={setting.about}
+        >{setting.title}</button>
+      {/each}
+    </div>
+    {#if !tonight?.setting}
+      <p class="hint" data-testid="night-unsaid">
+        Say what kind of night this is and djmanzo keeps what it learns under
+        that heading, rather than averaging your weddings with your club nights.
+      </p>
+    {/if}
 
     {#if read.phase}
       <dl class="facts">
@@ -223,6 +306,51 @@
   }
 
   /* Five names in the order a night goes through them. */
+  /* What kind of night. Told rather than read, and marked so. */
+  .kind {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .kind .label {
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-right: 0.2rem;
+  }
+
+  .kind button {
+    font: inherit;
+    font-size: 0.68rem;
+    padding: 0.18rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .kind button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .kind button.on {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+
+  .hint {
+    margin: 0;
+    font-size: 0.68rem;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+
   .arc {
     display: flex;
     flex-wrap: wrap;

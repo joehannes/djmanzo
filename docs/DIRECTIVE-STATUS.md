@@ -37,7 +37,7 @@ rather than taken.
 | 9 | Separate autonomy from confidence | ✅ | `dj_assistant::Warrant`. The invalid cell is **unrepresentable**: `Act` and `Mix` carry a `Grounds` whose constructor is private and refuses a certainty below `Fair`, so no caller anywhere can write down a warrant to act on a read something disagrees with. Asserted over the whole 6×3 matrix, and the consequence — an unclear night stages instead of mixing — is asserted in the autopilot |
 | 10 | AI posture stays compatible with djmanzo's | ⚖️ | The six postures and nine occasions are untouched |
 | 11 | Add a context engine | 🟡 | `dj_core::ContextEngine` ships and is the common input: the phase, its certainty, what produced it and which way the evidence disagrees, from two sources and nothing else — what the DJ declared, and where the last few minutes sit in the whole night's own range. `dj_app::night` feeds it from the snapshot the pump has just built. Five of `DJContext`'s eight fields are real (`sessionPhase`, `occasion`, `attentionBudget`, `audienceContext` through RoomSense, `performanceHealth` through the frame monitor); `musicContext`, `hardwareContext` and `djBehaviorContext` are not gathered yet |
-| 12 | Learn the DJ | 🟡 | Taste learned from play history ships. Persona learning does not |
+| 12 | Learn the DJ | 🟡 | Taste learned from play history ships, and **persona learning now has its shape**: §13's `Tendency` for gestures and §81's `Profile` for whole kinds of night, both constructor-enforced so neither can generalise on too little. What is missing is the other half — nothing yet *reads* a profile: it is offered to the DJ and consulted by nothing |
 | 13 | Never learn badly | ✅ | A **type**, not a warning. `dj_app::signals::Signal` carries the gesture and the phase the night was in as one value that cannot be taken apart, and `Tendency` — the only thing that generalises — is constructible solely through `tendencies()`: never without a phase, never on fewer than four occurrences *in that same phase*. So the directive's own bad sentence, "user likes enormous BPM jumps", is not one this workspace can produce; "you sometimes move the tempo by hand when the night is at its peak" is. The wording is written in Rust, so the interface cannot make a claim Rust would not |
 | 14 | Behavioural signals | 🟡 | Twelve of §14's twenty gestures, derived from the action log rather than recorded separately — so a set from before this existed has them too. Coarser than the vocabulary on purpose: six EQ verbs are one gesture a DJ would name, and counting per verb would need six times the evidence. A test asserts every gesture named is one the bus can produce. The other six — track searched, previewed, staged, candidate rejected, candidate selected, assistant suggestion accepted — are not actions and are absent rather than approximated. Decay is not implemented: tonight's log is the window, which is the honest scope until sessions are read back across nights |
 | 15 | AI should understand DJ technique | ✅ | The technique catalogue ships |
@@ -106,7 +106,7 @@ rather than taken.
 | 78 | "Freeze" | 🟡 | `Workspace.frozen` exists and is stored; nothing honours it |
 | 79 | "Lock my workflow" | 🟡 | Same field, same gap |
 | 80 | Persona learning | 🟡 | Taste ships; persona does not |
-| 81 | User profile by context | ⬜ | |
+| 81 | User profile by context | 🟡 | **Conditional profiles, never one universal one.** `dj_app::setting::Setting` is §81's own six — club, beach, wedding, latin, practice, open format — and it is **told, never inferred**: djmanzo reads the arc of a night from the music and is right to, but nothing in the signal says *wedding*, and guessing it would file a whole night's habits under the wrong name. A `nights` row per session carries the setting, which is the one thing nothing can derive. Genre weights are **derived** from `history ⋈ nights ⋈ tracks`; the other four of §81's five are read off the action log as the night goes, because the log does not outlive the run that made it. `dj_app::profile::Profile` has private fields and is constructible only through `profiles()` — §13's discipline at the scale of a whole night: nothing at all under three nights of a setting, and each field silent until half the nights that spoke agree. A gesture counts once per night, not once per press. The sentence is written in Rust and always names the setting and the evidence. Drawn in two places for two reasons: the picker sits in **The night**, beside the arc it is the other axis of; the profiles sit in the assistant beside §13's tendencies, because both are djmanzo saying what it worked out about this DJ. What §81 lists and this does not have: nothing in the list, but the profiles are **read and not yet acted on** — no suggestion, layout or posture consults them, which is what would make them worth having |
 | 82 | Performance metrics for the redesign | ✅ | Every claim in this work carries a measurement, and the ones that could not be measured say so |
 | 83 | Implementation strategy | ✅ | Nine phases in `GUI-OVERHAUL.md` §21 |
 | 84 | Test every step | ✅ | Clippy, the full Rust suite, svelte-check, vitest and Playwright green before each commit |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **41 done, 37 part, 8 open, 19 standing rules.**
+Of the 105 sections: **41 done, 38 part, 7 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**41 of 86 deliverable sections are complete and 37 more are partly there.**
+**41 of 86 deliverable sections are complete and 38 more are partly there.**
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 41 whole plus 37 halves over 86 is 69%, and the phase view is stricter
+way: 41 whole plus 38 halves over 86 is 70%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

@@ -128,6 +128,21 @@ nothing. Everything the stub body needs has to reach it through the answers
 table, which *is* serialised. Three previously-green tests failed this way in
 one edit.
 
+**A screenshot under software rendering can be a frozen region, not a
+defect.** With no GPU the webview sometimes leaves a rectangle of the previous
+frame — a black block, or old text — that survives mouse moves, scrolls and
+even a window resize. Reading through one is how a session came to believe the
+application was running last build's copy. Before concluding anything from a
+screenshot that looks wrong, check the process against the binary:
+`ps -o lstart= -p $(pgrep -f target/debug/djmanzo)` against
+`ls -l target/debug/djmanzo`. A relaunch clears it.
+
+**`pkill` returns 1 when nothing matched**, which aborts the rest of a compound
+shell command — so `pkill djmanzo; sleep 3; ./djmanzo &` silently does nothing
+at all when the application has already exited. Three attempts to restart it
+went nowhere before that was noticed. Use `|| true`, or put the launch in its
+own command.
+
 **Playwright's browser.** CI installs its own. A container that pre-installs
 one is pointed at it with `DJMANZO_CHROMIUM=/opt/pw-browsers/chromium`,
 otherwise every test fails with "Executable doesn't exist".
@@ -388,7 +403,27 @@ The largest open sections, in the order they are worth doing:
    the stems, so a kept vocal drop *is* a record of one. "Works only with an
    8-beat loop" is not: nothing records the loop that was running under a
    transition.
-5. **§20's performance table** is the browser at fewer columns than §20 lists —
+5. **§81's profiles are read and not yet acted on.** `dj_app::profile` builds
+   a conditional profile per kind of night — §81's six settings, told rather
+   than inferred, because nothing in the signal says *wedding*. It carries the
+   §13 discipline up a level: private fields, constructible only through
+   `profiles()`, nothing at all under three nights of a setting, and each field
+   silent until half the nights that spoke agree.
+
+   **Nothing consults one.** The suggester, the layout and the posture all
+   still behave the same at a wedding as at a club, which is the half that
+   would make the profiles worth having. Whatever reads them first should read
+   them *as a tilt* rather than as an override, the way `kept_pairs` is
+   weighted below a key match and a tempo match together — a DJ whose night is
+   going differently wants the machine to notice.
+
+   **The split to keep**: the setting is stored because nothing can derive it;
+   genre weights are derived because `history` already holds them; the other
+   four figures are stored only because the action log does not outlive the run
+   that made it. That last one is the exception to "derive, never record" and
+   it is worth stating rather than discovering.
+
+6. **§20's performance table** is the browser at fewer columns than §20 lists —
    the other three views ship. Adding the missing columns (energy, vocal and
    stem availability, transition suitability, request count, AI confidence)
    mostly waits on analysis that does not exist, which is the same wall §25's

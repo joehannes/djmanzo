@@ -441,6 +441,44 @@ const ANSWERS: Record<string, unknown> = {
     shape: styles.find((style) => style.name === "blend")?.shape,
   },
   transition_styles: styles,
+  // §81. Tonight opens unnamed, which is the state the picker exists to end —
+  // and the state in which the hint has to be right.
+  night_now: {
+    setting: null,
+    density: null,
+    style: null,
+    posture: null,
+    techniques: [],
+  },
+  // Three wedding nights and three club nights, which is what §81 is about:
+  // the same DJ, two different answers, and never their average.
+  learned_profiles: [
+    {
+      setting: "wedding",
+      title: "Wedding",
+      nights: 3,
+      density: "Relaxed",
+      style: "fade",
+      automation: "prepare",
+      techniques: ["eq-moved"],
+      genres: [
+        ["Bachata", 0.7],
+        ["Merengue", 0.3],
+      ],
+      says: "Wedding, over 3 nights: mostly fade transitions, 70% Bachata, assistant on prepare.",
+    },
+    {
+      setting: "club",
+      title: "Club",
+      nights: 4,
+      density: "Pro Dense",
+      style: "blend",
+      automation: "suggest",
+      techniques: ["looped", "filter-swept"],
+      genres: [["Techno", 1]],
+      says: "Club, over 4 nights: mostly blend transitions, 100% Techno, assistant on suggest.",
+    },
+  ],
   // A rehearsal, in the shape `dj_app::commands::RehearsalDto` serialises. The
   // stub answers per style below, because the whole of what this panel does is
   // tell four renders of one pair apart.
@@ -804,6 +842,31 @@ export async function openShell(
               };
             }
             return Promise.resolve(win.__transition ?? null);
+          }
+          // §81's setting, held between calls the way djmanzo holds it. A
+          // fixed answer would make naming the night look identical to not
+          // naming it, and the whole of what a browser can prove here is that
+          // the press reaches Rust and the answer comes back.
+          if (cmd === "night_setting") {
+            const before = (win.__night ?? {
+              setting: null,
+              density: null,
+              style: null,
+              posture: null,
+              techniques: [],
+            }) as Record<string, unknown>;
+            win.__night = {
+              ...before,
+              // An absent setting never overwrites a named one — the rule
+              // `Library::note_night` enforces, mirrored so the panel's own
+              // refresh cannot look like it is un-saying the DJ's answer.
+              setting: args.setting ?? before.setting,
+              density: args.density ?? before.density,
+            };
+            return Promise.resolve(win.__night);
+          }
+          if (cmd === "night_now") {
+            return Promise.resolve(win.__night ?? answers.night_now);
           }
           // A rehearsal, answered per style. Fixed answers would make four
           // renders of the same pair indistinguishable, and telling them apart

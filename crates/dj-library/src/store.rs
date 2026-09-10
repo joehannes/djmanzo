@@ -64,6 +64,56 @@ pub struct KeptPair {
     pub beats: Option<f64>,
 }
 
+/// What has been read off tonight's action log so far.
+///
+/// Every field optional and every one meaning "nothing to say about this yet"
+/// rather than "nothing happened": a night ten minutes old has no commonest
+/// transition style because it has had no transitions, and writing a guess
+/// there would put it in a profile.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NightRead<'a> {
+    pub density: Option<&'a str>,
+    pub style: Option<&'a str>,
+    pub posture: Option<&'a str>,
+    pub techniques: Option<&'a str>,
+}
+
+fn read_night(row: &rusqlite::Row<'_>) -> rusqlite::Result<Night> {
+    Ok(Night {
+        session_id: row.get(0)?,
+        setting: row.get(1)?,
+        began_at: row.get(2)?,
+        density: row.get(3)?,
+        style: row.get(4)?,
+        posture: row.get(5)?,
+        techniques: row.get(6)?,
+    })
+}
+
+/// One night, and what kind of night it was.
+///
+/// §81's conditional profile rests on this: without knowing which nights were
+/// weddings, "how you play at weddings" is a question with no rows behind it.
+///
+/// The four optional figures were read off the action log while it existed —
+/// see the `nights` table's note. `None` is a real answer for every one of
+/// them: a night that ended before djmanzo could read anything off it has an
+/// absence, not a confident zero.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Night {
+    pub session_id: String,
+    /// A `dj_app::setting::Setting` slug. Kept as text here because the
+    /// library does not know about settings — it stores what it is given, and
+    /// the layer that has the type is the layer that parses it.
+    pub setting: String,
+    pub began_at: i64,
+    pub density: Option<String>,
+    pub style: Option<String>,
+    pub posture: Option<String>,
+    /// `dj_app::signals::Did` slugs, comma-separated, as they were stored.
+    pub techniques: Option<String>,
+}
+
 /// The library database.
 ///
 /// One connection behind a mutex rather than a pool. SQLite serialises writes
@@ -1136,6 +1186,125 @@ impl Library {
                 .into_iter()
                 .filter(|f| found.contains(f))
                 .collect())
+        })
+    }
+
+    /// Say what kind of night this one is, and keep what has been read off it.
+    ///
+    /// §81. Called when the DJ names the setting and again as the night goes,
+    /// because the four figures are read off the action log and the log does
+    /// not outlive the run that made it — see the `nights` table.
+    ///
+    /// The setting is never overwritten by a later call that does not name
+    /// one: a refresh of tonight's figures must not quietly un-say that this
+    /// was a wedding. `began_at` is likewise kept from the first call, because
+    /// it is when the night started, not when it was last written.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn note_night(
+        &self,
+        session_id: &str,
+        setting: Option<&str>,
+        read: NightRead<'_>,
+    ) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64);
+        self.with(|conn| {
+            conn.execute(
+                "INSERT INTO nights (session_id, setting, began_at, density, style, posture, techniques)
+                 VALUES (?1, COALESCE(?2, 'open-format'), ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(session_id) DO UPDATE SET
+                     setting    = COALESCE(?2, setting),
+                     density    = COALESCE(?4, density),
+                     style      = COALESCE(?5, style),
+                     posture    = COALESCE(?6, posture),
+                     techniques = COALESCE(?7, techniques)",
+                rusqlite::params![
+                    session_id,
+                    setting,
+                    now,
+                    read.density,
+                    read.style,
+                    read.posture,
+                    read.techniques,
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    /// One night, if djmanzo has been told anything about it.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn night(&self, session_id: &str) -> Result<Option<Night>> {
+        self.with(|conn| {
+            let found = conn
+                .query_row(
+                    "SELECT session_id, setting, began_at, density, style, posture, techniques
+                     FROM nights WHERE session_id = ?1",
+                    [session_id],
+                    read_night,
+                )
+                .optional()?;
+            Ok(found)
+        })
+    }
+
+    /// Every night of one setting, most recent first.
+    ///
+    /// The query a profile is built from, asked once per profile rather than
+    /// once per night.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn nights_in(&self, setting: &str) -> Result<Vec<Night>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT session_id, setting, began_at, density, style, posture, techniques
+                 FROM nights WHERE setting = ?1 ORDER BY began_at DESC",
+            )?;
+            let rows = stmt.query_map([setting], read_night)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    /// What was played, by genre, across the nights of one setting.
+    ///
+    /// §81's "genre weights", **derived rather than stored**: the plays are
+    /// already in `history` and the genres are already on the tracks, so a
+    /// stored weight would be a second copy that drifts the first time a DJ
+    /// re-tags a record. Commonest first; records with no genre are left out
+    /// rather than counted as a genre called nothing.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn genres_in(&self, setting: &str) -> Result<Vec<(String, u32)>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.genre, count(*) AS plays
+                 FROM history h
+                 JOIN nights n ON n.session_id = h.session_id
+                 JOIN tracks t ON t.id = h.track_id
+                 WHERE n.setting = ?1 AND t.genre IS NOT NULL AND t.genre <> ''
+                 GROUP BY t.genre
+                 ORDER BY plays DESC, t.genre ASC",
+            )?;
+            let rows = stmt.query_map([setting], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            let mut out = Vec::new();
+            for row in rows {
+                let (genre, plays) = row?;
+                out.push((genre, u32::try_from(plays).unwrap_or(u32::MAX)));
+            }
+            Ok(out)
         })
     }
 
@@ -2376,6 +2545,156 @@ mod tests {
 
     fn library() -> Library {
         Library::in_memory().unwrap()
+    }
+
+    // -- nights and settings (§81) ---------------------------------------------
+
+    fn genred(byte: u8, title: &str, genre: &str) -> LibraryTrack {
+        let mut t = track(byte, title, "someone");
+        t.tags.genre = Some(genre.to_owned());
+        t
+    }
+
+    /// **A refresh must not un-say what kind of night this is.**
+    ///
+    /// The four figures are read off the action log as the night goes, so this
+    /// row is written many times. The setting is written *once*, by a DJ. A
+    /// refresh that passed `None` and overwrote it would quietly move a whole
+    /// night into the open-format profile halfway through — and the DJ would
+    /// have no reason to look, because they said "wedding" an hour ago and it
+    /// was accepted.
+    #[test]
+    fn refreshing_a_night_keeps_the_setting_it_was_given() {
+        let lib = library();
+        lib.note_night("n1", Some("wedding"), NightRead::default())
+            .unwrap();
+        let began = lib.night("n1").unwrap().unwrap().began_at;
+
+        lib.note_night(
+            "n1",
+            None,
+            NightRead {
+                density: Some("calm"),
+                style: Some("blend"),
+                ..NightRead::default()
+            },
+        )
+        .unwrap();
+
+        let night = lib.night("n1").unwrap().unwrap();
+        assert_eq!(night.setting, "wedding", "a refresh moved the night");
+        assert_eq!(night.began_at, began, "a refresh restarted the night");
+        assert_eq!(night.density.as_deref(), Some("calm"));
+        assert_eq!(night.style.as_deref(), Some("blend"));
+    }
+
+    /// And a figure already read is not wiped by a later read that has nothing
+    /// to say. A night whose last transition was an hour ago still had one.
+    #[test]
+    fn a_read_with_nothing_in_it_wipes_nothing() {
+        let lib = library();
+        lib.note_night(
+            "n1",
+            Some("club"),
+            NightRead {
+                style: Some("blend"),
+                techniques: Some("looped,eq-moved"),
+                ..NightRead::default()
+            },
+        )
+        .unwrap();
+        lib.note_night("n1", None, NightRead::default()).unwrap();
+
+        let night = lib.night("n1").unwrap().unwrap();
+        assert_eq!(night.style.as_deref(), Some("blend"));
+        assert_eq!(night.techniques.as_deref(), Some("looped,eq-moved"));
+    }
+
+    /// The DJ can correct themselves: naming a setting again does change it.
+    /// It is only an *absent* setting that leaves the old one alone.
+    #[test]
+    fn naming_a_different_setting_does_move_the_night() {
+        let lib = library();
+        lib.note_night("n1", Some("club"), NightRead::default())
+            .unwrap();
+        lib.note_night("n1", Some("wedding"), NightRead::default())
+            .unwrap();
+        assert_eq!(lib.night("n1").unwrap().unwrap().setting, "wedding");
+    }
+
+    /// **Genre weights are derived, and they are per setting.**
+    ///
+    /// The whole of §81 in one query: the same collection played at a wedding
+    /// and at a club produces two different answers, because the nights are
+    /// told apart. A universal profile would answer both with the average of
+    /// them, which describes neither evening.
+    #[test]
+    fn genres_are_counted_per_setting_rather_than_over_everything() {
+        let lib = library();
+        lib.upsert_track(&genred(1, "one", "Bachata")).unwrap();
+        lib.upsert_track(&genred(2, "two", "Techno")).unwrap();
+        lib.note_night("wed", Some("wedding"), NightRead::default())
+            .unwrap();
+        lib.note_night("clb", Some("club"), NightRead::default())
+            .unwrap();
+
+        lib.record_play(id(1), 1, Some("wed")).unwrap();
+        lib.record_play(id(1), 2, Some("wed")).unwrap();
+        lib.record_play(id(2), 3, Some("wed")).unwrap();
+        lib.record_play(id(2), 4, Some("clb")).unwrap();
+
+        assert_eq!(
+            lib.genres_in("wedding").unwrap(),
+            vec![("Bachata".to_owned(), 2), ("Techno".to_owned(), 1)]
+        );
+        assert_eq!(
+            lib.genres_in("club").unwrap(),
+            vec![("Techno".to_owned(), 1)],
+            "a club night was counted with the weddings"
+        );
+        assert!(lib.genres_in("beach").unwrap().is_empty());
+    }
+
+    /// A play from a night djmanzo was never told about counts towards no
+    /// profile at all, rather than towards the default one. It is the same
+    /// refusal `Setting::parse` makes: unknown is not open-format.
+    #[test]
+    fn a_play_from_an_unnamed_night_belongs_to_no_setting() {
+        let lib = library();
+        lib.upsert_track(&genred(1, "one", "Bachata")).unwrap();
+        lib.record_play(id(1), 1, Some("never-named")).unwrap();
+        for setting in [
+            "club",
+            "wedding",
+            "beach",
+            "latin",
+            "practice",
+            "open-format",
+        ] {
+            assert!(
+                lib.genres_in(setting).unwrap().is_empty(),
+                "an unnamed night was counted as {setting}"
+            );
+        }
+    }
+
+    /// Every night of a setting comes back, newest first, and nights of other
+    /// settings do not.
+    #[test]
+    fn nights_in_a_setting_are_the_nights_of_that_setting() {
+        let lib = library();
+        lib.note_night("a", Some("club"), NightRead::default())
+            .unwrap();
+        lib.note_night("b", Some("wedding"), NightRead::default())
+            .unwrap();
+        lib.note_night("c", Some("club"), NightRead::default())
+            .unwrap();
+
+        let club = lib.nights_in("club").unwrap();
+        assert_eq!(club.len(), 2);
+        assert!(club.iter().all(|n| n.setting == "club"));
+        assert_eq!(lib.nights_in("wedding").unwrap().len(), 1);
+        assert!(lib.nights_in("beach").unwrap().is_empty());
     }
 
     // -- kept pairs (§24) ------------------------------------------------------

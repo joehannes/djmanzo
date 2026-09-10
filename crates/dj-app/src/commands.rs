@@ -1619,6 +1619,200 @@ pub fn learned_tendencies(state: State<'_, AppState>) -> Vec<TendencyDto> {
         .collect()
 }
 
+/// Tonight, and what kind of night it is. §81.
+#[derive(Debug, Clone, Serialize)]
+pub struct SettingDto {
+    /// A `Setting` slug, or `null` when the DJ has not said yet.
+    pub setting: Option<String>,
+    /// What has been read off tonight's log so far. Every one may be absent,
+    /// and an absence means "nothing to say yet" rather than "nothing".
+    pub density: Option<String>,
+    pub style: Option<String>,
+    pub posture: Option<String>,
+    pub techniques: Vec<String>,
+}
+
+/// One conditional profile, as the interface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProfileDto {
+    pub setting: String,
+    pub title: String,
+    /// How many nights it rests on. Drawn, because three nights and thirty are
+    /// not the same claim and a profile that hides the difference is asking to
+    /// be over-trusted.
+    pub nights: usize,
+    pub density: Option<String>,
+    pub style: Option<String>,
+    pub automation: Option<String>,
+    pub techniques: Vec<String>,
+    /// Genre and its share of the plays, commonest first.
+    pub genres: Vec<(String, f64)>,
+    /// The sentence, written in Rust — see `crate::profile::Profile::words`.
+    pub says: String,
+}
+
+/// Say what kind of night this is, and keep what has been read off it.
+///
+/// §81. Both halves in one call because they happen together: the moment a DJ
+/// names the setting, everything already read off tonight's log belongs to it.
+///
+/// Called again as the night goes, with `setting` absent — the four figures
+/// come off the action log and the log does not outlive the run that made it,
+/// so they are written while they exist. An absent setting never overwrites a
+/// named one; see `Library::note_night`.
+///
+/// `density` comes from the interface because the interface is the only thing
+/// that knows it: the band is chosen from the window's own height. That is not
+/// a second copy of anything Rust holds — it is the only copy.
+///
+/// # Errors
+/// A setting djmanzo does not know, or whatever the database says.
+#[tauri::command]
+pub fn night_setting(
+    state: State<'_, AppState>,
+    setting: Option<String>,
+    density: Option<String>,
+) -> Result<SettingDto, String> {
+    let setting = match setting.as_deref() {
+        Some(word) => {
+            Some(crate::setting::Setting::parse(word).ok_or_else(|| format!("no {word} setting"))?)
+        }
+        None => None,
+    };
+
+    // Everything read off tonight's log, now, while there is a log.
+    let log = state.bus().log();
+    let night = state.night();
+    let signals = crate::signals::signals(&log, &|at| night.phase_at(at));
+    let techniques: Vec<String> = crate::signals::tendencies(&signals)
+        .into_iter()
+        .map(|t| t.did().slug().to_owned())
+        .collect();
+
+    // The commonest way tonight's records were joined. `None` until there has
+    // been a handover: a night with one record in it has no transition style,
+    // and a confident answer there would be an invention.
+    let mut styles: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for handover in crate::mixes::handovers(&log) {
+        *styles.entry(handover.style.as_str()).or_default() += 1;
+    }
+    let style = styles
+        .into_iter()
+        .max_by_key(|(name, n)| (*n, *name))
+        .map(|(name, _)| name.to_owned());
+
+    let posture = state
+        .conduct()
+        .lock()
+        .ok()
+        .map(|conduct| conduct.posture.name().to_owned());
+
+    let joined = techniques.join(",");
+    let db = library(&state)?;
+    db.note_night(
+        &state.session_id(),
+        setting.map(|s| s.slug()),
+        dj_library::NightRead {
+            density: density.as_deref(),
+            style: style.as_deref(),
+            posture: posture.as_deref(),
+            techniques: (!joined.is_empty()).then_some(joined.as_str()),
+        },
+    )
+    .map_err(|e| e.to_string())?;
+
+    let stored = db
+        .night(&state.session_id())
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "the night was not written".to_owned())?;
+    Ok(SettingDto {
+        setting: Some(stored.setting),
+        density: stored.density,
+        style: stored.style,
+        posture: stored.posture,
+        techniques: stored
+            .techniques
+            .unwrap_or_default()
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(ToOwned::to_owned)
+            .collect(),
+    })
+}
+
+/// Tonight's row, without writing anything.
+///
+/// `setting: null` when the DJ has not said what kind of night this is, which
+/// is the state every night opens in and the one the panel exists to end.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn night_now(state: State<'_, AppState>) -> Result<SettingDto, String> {
+    let db = library(&state)?;
+    let stored = db.night(&state.session_id()).map_err(|e| e.to_string())?;
+    Ok(match stored {
+        Some(night) => SettingDto {
+            setting: Some(night.setting),
+            density: night.density,
+            style: night.style,
+            posture: night.posture,
+            techniques: night
+                .techniques
+                .unwrap_or_default()
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(ToOwned::to_owned)
+                .collect(),
+        },
+        None => SettingDto {
+            setting: None,
+            density: None,
+            style: None,
+            posture: None,
+            techniques: Vec::new(),
+        },
+    })
+}
+
+/// §81's conditional profiles: how this DJ plays, per kind of night.
+///
+/// Only the settings there is enough evidence for — see
+/// `crate::profile::ENOUGH_NIGHTS`. A setting under the threshold is absent
+/// rather than empty, because an interface draws an empty profile as one that
+/// knows nothing about you, which is a different and much weaker claim than
+/// one that does not exist yet.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn learned_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileDto>, String> {
+    let db = library(&state)?;
+    let mut nights = Vec::new();
+    for setting in crate::setting::Setting::ALL {
+        nights.extend(db.nights_in(setting.slug()).map_err(|e| e.to_string())?);
+    }
+    // One query per setting, and only for the settings a profile was built
+    // for: asking for every genre table up front would be six queries to
+    // answer a question about, usually, one.
+    let genres =
+        |setting: crate::setting::Setting| db.genres_in(setting.slug()).unwrap_or_default();
+    Ok(crate::profile::profiles(&nights, &genres)
+        .into_iter()
+        .map(|p| ProfileDto {
+            setting: p.setting().slug().to_owned(),
+            title: p.setting().title().to_owned(),
+            nights: p.nights(),
+            density: p.density().map(ToOwned::to_owned),
+            style: p.style().map(|s| s.as_str().to_owned()),
+            automation: p.automation().map(|a| a.name().to_owned()),
+            techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
+            genres: p.genres().to_vec(),
+            says: p.words(),
+        })
+        .collect())
+}
+
 /// Keep one of tonight's mixes: §24's "Save this transition".
 ///
 /// The only thing written to `kept_pairs`. Every mix a night contained is

@@ -99,6 +99,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 11,
         sql: MIGRATION_11,
     },
+    Migration {
+        version: 12,
+        sql: MIGRATION_12,
+    },
 ];
 
 /// The initial schema.
@@ -647,6 +651,66 @@ CREATE TABLE kept_pairs (
 CREATE INDEX kept_pairs_by_into ON kept_pairs(into_id, from_id);
 "#;
 
+/// §81: what kind of night each one was.
+///
+/// The `history` table has carried a `session_id` since the first schema,
+/// with a comment saying it groups a night's plays "without needing a sessions
+/// table yet". This is that table, and §81 is why it is needed now: the
+/// directive asks djmanzo to keep *conditional* profiles of its DJ rather than
+/// one universal one, and a profile per setting is only possible if each
+/// night's plays can be told apart by setting.
+///
+/// # Only what cannot be derived
+///
+/// The rule `kept_pairs` states, applied again. Genre weights, what was played
+/// and when are all derivable by joining `history` to `tracks`, so none of them
+/// is stored here.
+///
+/// What *is* stored is the setting, because nothing can derive it. djmanzo
+/// reads the arc of a night from the music and is right to -- energy and tempo
+/// are in the signal. Nothing in the signal says *wedding*: a room dancing at
+/// 128 BPM is a club or a wedding according to facts no microphone has. So the
+/// setting is told, and it is told once per night.
+///
+/// # And the four figures that do not survive the night
+///
+/// §81 also lists density, technique preferences, transition style and
+/// automation tolerance. Every one of those is derivable *from the action log*
+/// -- and the action log does not outlive the run of the application that made
+/// it, unless a DJ saves it by hand. So they are written here as the night
+/// goes, from the log, while the log still exists. That is not a second copy
+/// of anything: it is the only trace that survives, and a profile assembled
+/// from nothing is a profile that says nothing.
+///
+/// Nullable for exactly that reason. A night that ended before djmanzo could
+/// read anything off it has an absence rather than a confident zero.
+const MIGRATION_12: &str = r#"
+CREATE TABLE nights (
+    -- The application's own id for a run, the same one `history` groups by.
+    session_id TEXT    PRIMARY KEY,
+    -- One of `dj_app::setting::Setting`'s slugs. Not free text: "Wedding",
+    -- "wedding" and "weddings" would be three profiles a DJ meant as one, each
+    -- with a third of the evidence and none of them able to say anything.
+    setting    TEXT    NOT NULL,
+    -- Unix seconds.
+    began_at   INTEGER NOT NULL,
+    -- Read off the action log while it existed. See the note above.
+    --
+    -- `density` is the interface band the DJ actually ran at, `style` the
+    -- commonest transition of the night, `posture` how much the assistant was
+    -- allowed to do, and `techniques` the gestures that generalised, as a
+    -- comma-separated list of `dj_app::signals::Did` slugs.
+    density    TEXT,
+    style      TEXT,
+    posture    TEXT,
+    techniques TEXT
+);
+
+-- "Every wedding" is the question a profile is built from, and it is asked
+-- once per profile rather than per night.
+CREATE INDEX nights_by_setting ON nights(setting, began_at);
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -736,6 +800,7 @@ mod tests {
             "melodies",
             "track_functions",
             "kept_pairs",
+            "nights",
         ] {
             let found: i64 = conn
                 .query_row(

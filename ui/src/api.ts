@@ -1514,6 +1514,58 @@ export interface TransitionShapeFx {
   slot: number;
 }
 
+/** What kind of night this is, and what has been read off it so far. §81. */
+export interface NightSetting {
+  /** A setting slug, or null when the DJ has not said yet. */
+  setting: string | null;
+  density: string | null;
+  style: string | null;
+  posture: string | null;
+  techniques: string[];
+}
+
+/** One conditional profile: how this DJ plays in one kind of night. */
+export interface Profile {
+  setting: string;
+  title: string;
+  /**
+   * How many nights it rests on. Drawn rather than hidden: three nights and
+   * thirty are not the same claim, and a profile that hides the difference is
+   * asking to be over-trusted.
+   */
+  nights: number;
+  density: string | null;
+  style: string | null;
+  automation: string | null;
+  techniques: string[];
+  /** Genre and its share of the plays, commonest first. */
+  genres: [string, number][];
+  /** The sentence, written in Rust so a panel cannot assemble a stronger one. */
+  says: string;
+}
+
+/**
+ * Say what kind of night this is, and keep what has been read off it.
+ *
+ * §81. Called with a setting when the DJ names one, and without as the night
+ * goes — the four figures come off the action log, which does not outlive the
+ * run that made it. An absent setting never overwrites a named one.
+ *
+ * `density` is passed from here because this side is the only thing that knows
+ * it: the band comes from the window's own height.
+ */
+export const noteNight = (setting?: string, density?: string) =>
+  invoke<NightSetting>("night_setting", {
+    setting: setting ?? null,
+    density: density ?? null,
+  });
+
+/** Tonight's row, without writing anything. */
+export const nightNow = () => invoke<NightSetting>("night_now");
+
+/** Every conditional profile there is enough evidence for. */
+export const learnedProfiles = () => invoke<Profile[]>("learned_profiles");
+
 /** One rehearsal: a mix that was never played, as a file you can hear. */
 export interface Rehearsal {
   style: string;

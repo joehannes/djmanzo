@@ -329,12 +329,15 @@
    * size. Everything else on a deck reads `--density` off the document.
    */
   let density = $state(1);
+  /** The same band, by name — what §81 stores as a night's density. */
+  let densityName = $state("Standard");
 
   function fitDensity() {
     if (chosenDensity !== null || bands.length === 0) return;
     const height = window.innerHeight;
     const band = bands.find(([least]) => height >= least) ?? bands[bands.length - 1];
     density = band[2];
+    densityName = band[1];
     document.documentElement.style.setProperty("--density", String(band[2]));
   }
 
@@ -1418,7 +1421,7 @@
   {/snippet}
 
   {#snippet surfaceNight()}
-    <Night enabled={ready} />
+    <Night enabled={ready} density={densityName} />
   {/snippet}
 
   {#snippet surfaceMixes()}

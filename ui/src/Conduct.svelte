@@ -26,6 +26,7 @@
   import {
     assistantApplyPack,
     learnedTaste,
+    learnedProfiles,
     learnedTendencies,
     assistantConduct,
     assistantHandBack,
@@ -39,6 +40,7 @@
     POSTURE_HELP,
     type AssistantPack,
     type LearnedTaste,
+    type Profile,
     type Tendency,
     type Conduct,
   } from "./api";
@@ -80,6 +82,19 @@
    * *tonight* and changes as the night does.
    */
   let tendencies = $state<Tendency[]>([]);
+  /**
+   * §81's conditional profiles: how this DJ plays, per kind of night.
+   *
+   * Beside the tendencies because they answer the same question — what has
+   * djmanzo worked out about you — at a different scale. A tendency is about
+   * one gesture in one part of a night; a profile is about a whole kind of
+   * night. Two panels for that would be two places to look.
+   *
+   * Read on the same tick, and it can change mid-set: naming tonight as a
+   * wedding can be the third wedding, which is the night a profile first
+   * exists.
+   */
+  let profiles = $state<Profile[]>([]);
 
   /**
    * How often the panel re-reads what the assistant would do.
@@ -107,6 +122,11 @@
       tendencies = await learnedTendencies();
     } catch {
       tendencies = [];
+    }
+    try {
+      profiles = await learnedProfiles();
+    } catch {
+      profiles = [];
     }
   }
 
@@ -315,6 +335,33 @@
     </ul>
   {/if}
 
+  <!--
+    §81: not one profile of this DJ but one per kind of night.
+
+    A DJ who plays bachata at weddings and techno at clubs, averaged, is a DJ
+    who plays neither — and the average carries twice the evidence of either
+    real answer, so a system offering it would offer it strongly. So these are
+    separate, and each one says how many nights it rests on: three nights and
+    thirty are not the same claim.
+
+    Absent until there is enough. A setting under the threshold produces no
+    profile at all rather than an empty one, because an empty profile reads as
+    "djmanzo knows nothing about you here" when the truth is "not yet".
+  -->
+  {#if profiles.length > 0}
+    <h3>How you play, by the kind of night</h3>
+    <ul class="profiles" data-testid="profiles">
+      {#each profiles as profile (profile.setting)}
+        <li>
+          <span class="says">{profile.says}</span>
+          {#if profile.techniques.length > 0}
+            <span class="how">{profile.techniques.join(", ")}</span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
   {#if error}
     <p class="error">{error}</p>
   {/if}
@@ -438,6 +485,31 @@
     font-size: 0.78rem;
     line-height: 1.45;
     color: var(--text-dim);
+  }
+
+  .profiles {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+
+  .profiles li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  /* The gestures, under the sentence rather than inside it: the sentence is
+     Rust's and must not be extended here. */
+  .profiles .how {
+    font-size: 0.68rem;
+    opacity: 0.75;
   }
 
   .taste {

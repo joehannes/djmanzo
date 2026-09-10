@@ -88,6 +88,33 @@ impl Did {
         }
     }
 
+    /// Every gesture djmanzo watches for.
+    pub const ALL: [Did; 12] = [
+        Did::Loaded,
+        Did::Ejected,
+        Did::Cued,
+        Did::Looped,
+        Did::LoopResized,
+        Did::StemChanged,
+        Did::EqMoved,
+        Did::FilterSwept,
+        Did::FxUsed,
+        Did::Crossfaded,
+        Did::TempoMoved,
+        Did::SyncChanged,
+    ];
+
+    /// Read back what [`Self::slug`] wrote.
+    ///
+    /// `None` for anything else. A stored gesture djmanzo no longer has is
+    /// dropped rather than mapped onto a neighbour, because a profile that
+    /// silently turned "filter swept" into "EQ moved" would be telling a DJ
+    /// they do something they do not.
+    #[must_use]
+    pub fn parse(slug: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|d| d.slug() == slug.trim())
+    }
+
     /// The gesture, as a DJ would name it.
     ///
     /// Written to follow "you", and deliberately in the plural-ish present:

@@ -45,11 +45,13 @@ pub mod plan;
 pub mod plugins;
 pub mod practice;
 pub mod presets;
+pub mod profile;
 pub mod rackcapture;
 pub mod remote;
 pub mod replay;
 pub mod session;
 pub mod setrec;
+pub mod setting;
 pub mod shape;
 pub mod share;
 pub mod signals;
@@ -477,6 +479,9 @@ pub fn run() {
             commands::at_hand,
             commands::keep_mix,
             commands::learned_tendencies,
+            commands::night_setting,
+            commands::night_now,
+            commands::learned_profiles,
             commands::session_mixes,
             commands::session_render_mix,
             commands::session_log,
