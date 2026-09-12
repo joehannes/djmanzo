@@ -1398,6 +1398,58 @@ impl Deck {
         self.enter_loop(region)
     }
 
+    /// Put one edge of the active loop somewhere else. §26's *loop: resize*.
+    ///
+    /// **The other edge stays put**, which is what resizing means and is the
+    /// difference between this and [`Self::move_loop`]. Snapped like every
+    /// other point a DJ places, and held inside the same limits the halve and
+    /// double buttons obey — a drag can reach a loop of two frames or of the
+    /// whole record, and neither is a loop.
+    ///
+    /// Nothing happens when nothing is looping: a drag begins on a band that
+    /// is on screen, and there is no band when there is no loop.
+    ///
+    /// Dragging an edge *past* the other one is clamped rather than swapped.
+    /// A DJ pulling the out point back through the in point is asking for the
+    /// shortest loop, not for the loop to turn inside out — and
+    /// `LoopRegion::new` refuses a reversed span anyway, so a swap here would
+    /// be inventing an intent to get round a type that exists to say no.
+    pub fn move_loop_edge(
+        &mut self,
+        edge: dj_core::action::Edge,
+        to: FramePos,
+        quantize: bool,
+    ) -> bool {
+        use dj_core::action::Edge;
+        let Some(region) = self.active_loop else {
+            return false;
+        };
+        let limits = self.loop_limits();
+        let landing = self
+            .snapped(to.clamped(self.len_frames() as f64), quantize)
+            .get();
+        let (start, end) = match edge {
+            Edge::In => (
+                landing.clamp(
+                    region.end.get() - limits.max_frames,
+                    region.end.get() - limits.min_frames,
+                ),
+                region.end.get(),
+            ),
+            Edge::Out => (
+                region.start.get(),
+                landing.clamp(
+                    region.start.get() + limits.min_frames,
+                    region.start.get() + limits.max_frames,
+                ),
+            ),
+        };
+        let Some(resized) = LoopRegion::new(FramePos::new(start), FramePos::new(end)) else {
+            return false;
+        };
+        self.enter_loop(resized)
+    }
+
     /// Halve or double the loop, keeping its start.
     pub fn scale_loop(&mut self, factor: f64) -> bool {
         let Some(region) = self.active_loop else {

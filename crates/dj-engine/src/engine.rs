@@ -671,6 +671,9 @@ impl Engine {
                     DeckAction::HotCueMove(slot, to) => {
                         target.move_hot_cue(slot, to, quantize);
                     }
+                    DeckAction::LoopEdge(edge, to) => {
+                        target.move_loop_edge(edge, to, quantize);
+                    }
                     DeckAction::LoopPhrases(phrases) => {
                         target.set_loop_phrases(f64::from(phrases));
                     }
@@ -4378,6 +4381,121 @@ mod loop_tests {
         assert!(
             (stored - BEAT * 4.0).abs() < 2.0,
             "quantised cue landed at {stored}, not on the beat"
+        );
+    }
+
+    /// **§26: resizing a loop moves one edge and leaves the other.**
+    ///
+    /// The load-bearing test for the loop handle, and the distinction it
+    /// protects is the one between resizing and sliding: `move_loop` keeps the
+    /// length and moves both ends, and a resize that quietly did that would
+    /// give a DJ dragging an edge a loop the same length somewhere else.
+    #[test]
+    fn dragging_a_loop_edge_moves_that_edge_and_leaves_the_other() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::Seek(FramePos::new(BEAT * 4.0)));
+        rig.act(1, DeckAction::LoopBeats(4.0));
+        rig.render(256);
+        let start = rig.param(1, DeckParam::LoopStart) as f64;
+        let end = rig.param(1, DeckParam::LoopEnd) as f64;
+        assert!(
+            (end - start - BEAT * 4.0).abs() < 2.0,
+            "the fixture is not four beats"
+        );
+
+        // Pull the out point in to two beats past the start.
+        rig.act(
+            1,
+            DeckAction::LoopEdge(
+                dj_core::action::Edge::Out,
+                FramePos::new(start + BEAT * 2.0),
+            ),
+        );
+        rig.render(256);
+        assert!(
+            (rig.param(1, DeckParam::LoopStart) as f64 - start).abs() < 2.0,
+            "the in point moved while the out point was being dragged -- that \
+             is sliding the loop, not resizing it"
+        );
+        assert!(
+            (rig.param(1, DeckParam::LoopEnd) as f64 - (start + BEAT * 2.0)).abs() < 2.0,
+            "the out point did not land where it was dropped"
+        );
+
+        // And the other edge, independently.
+        let end_now = rig.param(1, DeckParam::LoopEnd) as f64;
+        rig.act(
+            1,
+            DeckAction::LoopEdge(dj_core::action::Edge::In, FramePos::new(end_now - BEAT)),
+        );
+        rig.render(256);
+        assert!(
+            (rig.param(1, DeckParam::LoopEnd) as f64 - end_now).abs() < 2.0,
+            "the out point moved while the in point was being dragged"
+        );
+        assert!(
+            (rig.param(1, DeckParam::LoopStart) as f64 - (end_now - BEAT)).abs() < 2.0,
+            "the in point did not land where it was dropped"
+        );
+    }
+
+    /// An edge dragged through the other one is clamped, not swapped.
+    ///
+    /// A DJ pulling the out point back past the in point is asking for the
+    /// shortest loop, not for the loop to turn inside out.
+    #[test]
+    fn a_loop_edge_dragged_past_the_other_one_is_clamped() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::Seek(FramePos::new(BEAT * 8.0)));
+        rig.act(1, DeckAction::LoopBeats(4.0));
+        rig.render(256);
+        let start = rig.param(1, DeckParam::LoopStart) as f64;
+
+        rig.act(
+            1,
+            DeckAction::LoopEdge(
+                dj_core::action::Edge::Out,
+                FramePos::new(start - BEAT * 4.0),
+            ),
+        );
+        rig.render(256);
+
+        let (a, b) = (
+            rig.param(1, DeckParam::LoopStart) as f64,
+            rig.param(1, DeckParam::LoopEnd) as f64,
+        );
+        assert!(b > a, "the loop turned inside out: {a}..{b}");
+        assert!(
+            (a - start).abs() < 2.0,
+            "the in point moved when only the out point was dragged"
+        );
+        assert!(
+            b - a <= BEAT + 2.0,
+            "a loop dragged shut kept {} frames, which is not the shortest it \
+             is allowed to be",
+            b - a
+        );
+    }
+
+    /// Dragging an edge with nothing looping does nothing.
+    #[test]
+    fn resizing_without_a_loop_starts_no_loop() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.render(256);
+        assert_eq!(rig.param(1, DeckParam::LoopActive), 0.0);
+
+        rig.act(
+            1,
+            DeckAction::LoopEdge(dj_core::action::Edge::Out, FramePos::new(BEAT * 8.0)),
+        );
+        rig.render(256);
+        assert_eq!(
+            rig.param(1, DeckParam::LoopActive),
+            0.0,
+            "a drag with nothing looping started a loop out of nothing"
         );
     }
 

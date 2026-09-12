@@ -132,6 +132,28 @@ that was supposed to prove the branch existed could not have failed either
 way. A stub edit that touches an existing command deserves a run of the whole
 file, not of the test you just wrote.
 
+**A wall-clock assertion on this machine is a coin toss, and the fix is
+always the same shape.** Three tests failed under the full parallel workspace
+run and passed alone, about one run in three each, and every one of them was
+asserting that a thread got scheduled inside a fixed sleep or a fixed budget:
+
+- `dj-render`'s `zoomed_out_rendering_does_not_walk_the_whole_track` took a
+  single wall-clock sample. `fastest_ms_per` was written in that same file for
+  exactly this and the other three tests already used it; this one was the last
+  holdout.
+- `dj-net`'s `an_endless_body_is_refused_rather_than_read_forever` bounded the
+  client by a count of writes, so the client could finish pushing before the
+  server thread reached its cap check. It waits on a ten-second deadline now.
+- `dj-audio`'s `stream_only_calls_back_while_playing` slept 50 ms and asserted
+  the callback had run. It polls for the callback now, and samples after the
+  pause has settled rather than allowing "one in-flight block", which was the
+  same coin toss in the other direction.
+
+**Wait for the condition; never sleep for it.** And when a budget really is the
+point, take the best of a few attempts rather than one sample — a genuine
+regression is slow in every attempt. Each fix was checked to still fail for the
+right reason before being kept.
+
 **The scrolling lane is a moving target, and a browser test cannot chase it.**
 `Waveform.svelte` interpolates between snapshots at sixty frames a second, so a
 marker on a *playing* deck moves about seven pixels between `boundingBox()` and

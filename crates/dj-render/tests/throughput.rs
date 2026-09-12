@@ -162,18 +162,26 @@ fn zoomed_out_rendering_does_not_walk_the_whole_track() {
 
     // The overview waveform covers the entire track in one lane. Without the
     // resolution pyramid this would touch all fourteen million frames per draw.
-    let start = Instant::now();
-    let _ = render_tile(
-        &summary,
-        &TileSpec {
-            width: 2_000,
-            height: 64,
-            start_frame: 0.0,
-            frames_per_pixel: summary.total_frames() as f64 / 2_000.0,
-        },
-        &palette,
-    );
-    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+    //
+    // Through `fastest_ms_per` like its neighbours, and for the reason that
+    // helper's own note gives: a single wall-clock sample measures the
+    // scheduler as much as the renderer. This one took a single sample and was
+    // the last of the four still doing so, which is why it -- and only it --
+    // kept failing under the full workspace run and passing alone. A renderer
+    // that walked fourteen million frames would be slow in every attempt, so
+    // the best of three proves exactly what the assertion claims.
+    let elapsed = fastest_ms_per(1, 3, || {
+        let _ = render_tile(
+            &summary,
+            &TileSpec {
+                width: 2_000,
+                height: 64,
+                start_frame: 0.0,
+                frames_per_pixel: summary.total_frames() as f64 / 2_000.0,
+            },
+            &palette,
+        );
+    });
 
     println!("full-track overview: {elapsed:.2} ms");
     assert!(

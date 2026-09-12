@@ -671,19 +671,38 @@ mod tests {
         // Sixty-four times the cap, in chunks, and never a terminating one.
         // Far past any socket buffer, so a write failure means the far end
         // really has gone rather than that the kernel is still swallowing.
+        //
+        // Bounded by a **deadline** rather than by a count of writes, and that
+        // is the difference between a gate and a coin toss. With a fixed
+        // budget the client can finish pushing its sixty-four caps of body
+        // before the server thread has been scheduled enough to reach its own
+        // check -- which is not the server reading forever, it is the client
+        // winning a race the test never meant to run. Under the full
+        // workspace suite that happened about one run in three. The claim is
+        // unchanged: a server that really read forever never hangs up, and
+        // never hanging up inside ten seconds is what fails here.
         let chunk = format!("{:x}\r\n{}\r\n", 4096, "x".repeat(4096));
+        let enough = MOST_BODY * 64;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         let mut sent = 0usize;
         let mut hung_up = false;
-        for _ in 0..(MOST_BODY / 4096 * 64) {
+        while std::time::Instant::now() < deadline {
             if stream.write_all(chunk.as_bytes()).is_err() {
                 hung_up = true;
                 break;
             }
             sent += chunk.len();
+            // Past the point where any honest server has had its answer, ease
+            // off: a server that is genuinely reading forever should not be
+            // handed gigabytes while this waits for the deadline to prove it.
+            if sent > enough {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
         }
         assert!(
             hung_up,
-            "the server was still taking body after {sent} bytes, against a cap of {MOST_BODY}"
+            "the server was still taking body after {sent} bytes and ten \
+             seconds, against a cap of {MOST_BODY}"
         );
 
         // Whatever survived the close has to be the refusal, never a 200: the

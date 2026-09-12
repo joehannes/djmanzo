@@ -148,6 +148,29 @@ impl EqBand {
     }
 }
 
+/// Which end of a loop. §26's *loop: resize*.
+///
+/// A type rather than a bool, because `move_loop_edge(region, true)` at a call
+/// site says nothing about which end true is, and the two ends behave
+/// differently: moving the in point past the out point is a different mistake
+/// from moving the out point past the in point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Edge {
+    In,
+    Out,
+}
+
+impl Edge {
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::In => "in",
+            Self::Out => "out",
+        }
+    }
+}
+
 /// Something done to one deck.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum DeckAction {
@@ -310,6 +333,16 @@ pub enum DeckAction {
     /// a drag can only begin on a marker that is already on screen, so an empty
     /// slot arriving here is a mistake somewhere else and not an instruction.
     HotCueMove(u8, FramePos),
+
+    /// Put one edge of the active loop somewhere else. §26's *loop: resize*.
+    ///
+    /// Distinct from [`Self::LoopIn`] and [`Self::LoopOut`] for the reason
+    /// [`Self::HotCueMove`] is distinct from [`Self::HotCueSet`]: those put an
+    /// edge at the playhead, this puts it where the DJ pointed.
+    ///
+    /// Does nothing when nothing is looping — a drag begins on a band that is
+    /// on screen, and there is no band when there is no loop.
+    LoopEdge(Edge, FramePos),
 
     /// Loop the next `n` beats from here, and start looping.
     ///
@@ -664,6 +697,20 @@ impl Action {
                 // Two arguments — a slot and a position — so it takes the
                 // rest of the line the way `fx` does rather than the single
                 // word `parse_deck_verb` is shaped for.
+                // Two arguments for the same reason `hotcue_move` has two.
+                if verb == "loop_edge" {
+                    let edge = match words.next() {
+                        Some("in") => Edge::In,
+                        Some("out") => Edge::Out,
+                        Some(other) => return Err(ParseError::UnknownVerb(other.to_owned())),
+                        None => return Err(ParseError::MissingArgument),
+                    };
+                    let frame = FramePos::new(f64::from(parse_f32(words.next())?));
+                    return Ok(Action::Deck {
+                        deck,
+                        action: DeckAction::LoopEdge(edge, frame),
+                    });
+                }
                 if verb == "hotcue_move" {
                     let slot = parse_slot(words.next())?;
                     let frame = FramePos::new(f64::from(parse_f32(words.next())?));
@@ -1376,6 +1423,14 @@ impl fmt::Display for Action {
                 DeckAction::HotCueClear(n) => write!(f, "deck {deck} hotcue_clear {n}"),
                 DeckAction::HotCueMove(n, p) => {
                     write!(f, "deck {deck} hotcue_move {n} {}", number(p.get()))
+                }
+                DeckAction::LoopEdge(edge, p) => {
+                    write!(
+                        f,
+                        "deck {deck} loop_edge {} {}",
+                        edge.name(),
+                        number(p.get())
+                    )
                 }
                 DeckAction::LoopBeats(n) => write!(f, "deck {deck} loop {n}"),
                 DeckAction::LoopPhrases(n) => write!(f, "deck {deck} loop_phrase {n}"),

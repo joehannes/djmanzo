@@ -498,18 +498,35 @@ mod tests {
             "callback ran while paused"
         );
 
+        // Waited for rather than slept through. A fixed sleep asserts that the
+        // stream thread got scheduled inside it, which on a machine running
+        // the rest of this workspace in parallel is a coin toss rather than a
+        // claim about the backend -- and it came up tails about one run in
+        // three. What is being tested is that the callback runs *at all* while
+        // playing, so the test waits until it does, or gives up after a second.
         stream.play().unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        stream.pause().unwrap();
-        let after_play = calls.load(Ordering::Relaxed);
-        assert!(after_play > 0, "callback never ran while playing");
-
-        std::thread::sleep(std::time::Duration::from_millis(30));
-        let after_pause = calls.load(Ordering::Relaxed);
-        // Allow one in-flight block that started before the pause landed.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        while calls.load(Ordering::Relaxed) == 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
         assert!(
-            after_pause <= after_play + 1,
-            "callback kept running after pause: {after_play} -> {after_pause}"
+            calls.load(Ordering::Relaxed) > 0,
+            "callback never ran in a second of playing"
+        );
+
+        // And that it *stops*. Sampled after a settle rather than immediately,
+        // so the block already in flight when the pause landed is counted
+        // before the comparison rather than allowed for by a fudge of one --
+        // which is the same coin toss in the other direction, since a loaded
+        // scheduler can let two through.
+        stream.pause().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        let settled = calls.load(Ordering::Relaxed);
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            settled,
+            "callback kept running after pause"
         );
     }
 

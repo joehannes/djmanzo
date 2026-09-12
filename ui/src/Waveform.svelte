@@ -29,6 +29,7 @@
     marks = [],
     onMoveMark,
     onMoveCue,
+    onMoveLoopEdge,
   }: {
     deck: DeckState;
     height?: number;
@@ -65,6 +66,14 @@
      * neither of them is "the" deck.
      */
     onMoveCue?: (slot: number, frame: number) => void;
+    /**
+     * A loop edge was dragged. Which end, and where it was let go, in frames.
+     *
+     * §26's *loop: resize*. Absent for the same reason `onMoveCue` is absent
+     * on a lane whose cues nobody owns: a handle that does nothing is worse
+     * than no handle.
+     */
+    onMoveLoopEdge?: (edge: "in" | "out", frame: number) => void;
   } = $props();
 
   /**
@@ -345,7 +354,14 @@
     // Sub-pixel loops exist — a sixteenth of a beat zoomed out is well under
     // one — and a zero-width band is invisible rather than wrong. Floor it to a
     // hairline so the loop is still locatable.
-    return { left, width: Math.max(width, 2) };
+    return {
+      left,
+      width: Math.max(width, 2),
+      // The edges in frames as well as pixels: §26's drag reports a position
+      // in the file, the same as every other handle here.
+      start: region.start_frames,
+      end: region.end_frames,
+    };
   });
 
   onMount(() => {
@@ -467,6 +483,40 @@
           style:left="{loopBand.left}px"
           style:width="{loopBand.width}px"
         ></div>
+        {#if onMoveLoopEdge}
+          <!--
+            §26's *loop: resize*. One handle per end, because that is what a
+            resize is: the other edge stays where it is, which is the whole
+            difference between this and sliding the loop with `loop_move`.
+
+            Drawn as two handles rather than as draggable sides of the band,
+            because the band is sixteen pixels wide at a sixteenth-beat loop
+            and its two sides would be the same eleven-pixel target.
+          -->
+          {#each [{ edge: "in" as const, frame: loopBand.start }, { edge: "out" as const, frame: loopBand.end }] as end (end.edge)}
+            <div
+              class="loop-edge grabbable"
+              data-layer="loop"
+              class:dragging={dragging?.key === `loop ${end.edge}`}
+              style:left="{(dragging?.key === `loop ${end.edge}`
+                ? dragging.frame
+                : end.frame) / framesPerPixel}px"
+              title="Loop {end.edge} — drag, or use the arrow keys"
+              role="slider"
+              tabindex="0"
+              aria-label="Loop {end.edge}, drag to move"
+              aria-valuenow={Math.round(end.frame)}
+              aria-valuemin={0}
+              aria-valuemax={Math.round(totalFrames)}
+              onpointerdown={(e) =>
+                grab(e, `loop ${end.edge}`, (frame) =>
+                  onMoveLoopEdge?.(end.edge, frame),
+                )}
+              onkeydown={(e) =>
+                nudge(e, end.frame, (frame) => onMoveLoopEdge?.(end.edge, frame))}
+            ></div>
+          {/each}
+        {/if}
       {/if}
       {#each markers as marker (marker.slot)}
         {#if onMoveCue}
@@ -641,6 +691,31 @@
     says it is. A marker that moves to where you can grab it is a marker that
     lies about the thing it marks.
   */
+  /*
+    §26's loop handles. The same eleven-pixel hit area every other handle on
+    this lane has, and the accent-2 colour the band itself is drawn in, so the
+    two ends read as parts of the loop rather than as two more cues.
+  */
+  .loop-edge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 3;
+    width: 11px;
+    margin-left: -5px;
+    border-left: 2px solid var(--accent-2);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .loop-edge:focus-visible {
+    outline: 2px solid var(--accent-2);
+  }
+
+  .loop-edge.dragging {
+    cursor: grabbing;
+  }
+
   .cue-marker.grabbable {
     pointer-events: auto;
     cursor: grab;

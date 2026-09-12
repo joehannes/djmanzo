@@ -610,6 +610,8 @@
     height={height(props, 96)}
     onMoveCue={(slot, frame) =>
       void send(`deck ${deck.number} hotcue_move ${slot} ${Math.round(frame)}`)}
+    onMoveLoopEdge={(edge, frame) =>
+      void send(`deck ${deck.number} loop_edge ${edge} ${Math.round(frame)}`)}
   />
   {/snippet}
   {#snippet zoneOverview()}

@@ -70,6 +70,13 @@ async function stoppedWithACueInView(page: import("@playwright/test").Page) {
             ...deck,
             playing: false,
             hot_cues: [deck.position_frames + 8_000, ...deck.hot_cues.slice(1)],
+            // A loop around the playhead as well, for §26's *loop: resize*.
+            // The captured fixture has none — a loop is a thing a DJ turns on
+            // mid-record, not a state a track is loaded in.
+            active_loop: {
+              start_frames: deck.position_frames + 20_000,
+              end_frames: deck.position_frames + 60_000,
+            },
           }
         : deck,
     );
@@ -153,6 +160,60 @@ test.describe("§26's cue handles", () => {
       at(after.at(-1)!) - at(after[1]),
       "shift nudged no further than a plain press",
     ).toBeGreaterThan(at(moves[0]) - at(moves[1]));
+  });
+
+  /**
+   * **§26's *loop: resize* — one edge moves and the other stays.**
+   *
+   * Two handles rather than draggable sides of the band, because at a
+   * sixteenth-beat loop the band is sixteen pixels wide and its two sides
+   * would be the same target. What each one asks for is checked here; what
+   * landing there means — the clamp, the snap, the shortest loop it is allowed
+   * to be — is `Deck::move_loop_edge` and is tested in `dj-engine`.
+   */
+  test("each loop edge is its own handle, and says which end it is", async ({
+    page,
+  }) => {
+    await openShell(page, "/");
+    await stoppedWithACueInView(page);
+
+    const out = page
+      .locator('.deck[data-deck="1"] [aria-label="Loop out, drag to move"]')
+      .first();
+    await expect(
+      out,
+      "the loop band has no handles -- §26 asks for a loop you can resize",
+    ).toBeVisible();
+    await expect(
+      page.locator('.deck[data-deck="1"] [aria-label="Loop in, drag to move"]'),
+      "only one end of the loop can be grabbed",
+    ).toHaveCount(1);
+
+    const box = await out.boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 - 60, box!.y + box!.height / 2, {
+      steps: 4,
+    });
+    await page.mouse.up();
+
+    const edges = (await sent(page)).filter((a) => a.includes("loop_edge"));
+    expect(edges, "the drag finished and djmanzo was never told").toHaveLength(1);
+    expect(
+      edges[0],
+      "the out handle asked djmanzo to move the wrong end, which would resize " +
+        "the loop from the wrong side",
+    ).toMatch(/^deck 1 loop_edge out \d+$/);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** A lane with no loop has no loop handles. */
+  test("a deck with nothing looping has no loop handles", async ({ page }) => {
+    await openShell(page, "/");
+    await expect(
+      page.locator('.deck[data-deck="1"] [aria-label="Loop out, drag to move"]'),
+      "a handle appeared for a loop that does not exist",
+    ).toHaveCount(0);
   });
 
   /**
