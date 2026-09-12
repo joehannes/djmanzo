@@ -483,12 +483,14 @@
     flex: none;
   }
 
+  /* §30's `audience`: something the room did, rather than something the DJ or
+     the assistant did. */
   .live {
     font-size: 0.72em;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--accent);
-    border: 1px solid var(--accent);
+    color: var(--audience);
+    border: 1px solid var(--audience);
     border-radius: 999px;
     padding: 0.1rem 0.45rem;
   }
@@ -502,7 +504,7 @@
   .disagreement {
     margin: 0;
     padding: 0.5rem 0.6rem;
-    border-left: 2px solid var(--accent);
+    border-left: 2px solid var(--audience);
     background: var(--panel-raised);
     font-size: 0.9em;
     line-height: 1.5;

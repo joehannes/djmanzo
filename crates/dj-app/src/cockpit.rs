@@ -2040,6 +2040,120 @@ mod tests {
         );
     }
 
+    /// **Every role has a colour, and the pairs that must differ do.**
+    ///
+    /// §30's whole instruction in one test: *color must communicate meaning;
+    /// do not produce a neon application where everything is colorful and
+    /// nothing is semantically distinct.* Both halves are here, because either
+    /// alone is satisfiable by something useless -- fourteen roles all pointing
+    /// at the accent communicates nothing, and fourteen arbitrary hues is the
+    /// neon failure.
+    ///
+    /// The values are read out of the stylesheet rather than held in Rust,
+    /// because a colour is the interface's to own and this is the rule's. Each
+    /// role is an *alias* onto a token the palettes already define, so all
+    /// seven packages get all fourteen and nothing has to keep a hundred and
+    /// sixty-eight numbers true. Two roles outside a must-differ pair are free
+    /// to share one: `active`, `incoming` and `success` are all the accent, and
+    /// a control being on is never mistaken for a record arriving.
+    #[test]
+    fn every_role_has_a_colour_and_the_pairs_that_must_differ_do() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/app.css");
+        let sheet = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("could not read the stylesheet at {path}: {e}"));
+
+        // The first `:root` block is where the derived tokens live; a later
+        // block redefines the palette for the light theme and must not be read
+        // as a second answer for the same role.
+        let root = sheet
+            .split_once(":root {")
+            .and_then(|(_, rest)| rest.split_once("\n}"))
+            .map(|(inside, _)| inside)
+            .expect("`:root {` ... `\n}` is no longer how the stylesheet opens");
+
+        let value_of = |token: &str| -> Option<String> {
+            root.lines().find_map(|line| {
+                let line = line.trim();
+                let rest = line.strip_prefix(&format!("--{token}:"))?;
+                Some(rest.trim().trim_end_matches(';').to_owned())
+            })
+        };
+
+        let mut colours = std::collections::BTreeMap::new();
+        for role in Role::ALL {
+            let value = value_of(role.token()).unwrap_or_else(|| {
+                panic!(
+                    "`--{}` ({}) has no value, so anything drawn in it inherits \
+                     instead -- §30 asks every role to map to an actual colour",
+                    role.token(),
+                    role.about()
+                )
+            });
+            assert!(
+                !value.is_empty(),
+                "`--{}` is declared with nothing after the colon",
+                role.token()
+            );
+            colours.insert(*role, value);
+        }
+
+        // And each is actually asked for. Fourteen definitions nothing reads
+        // would be §30 satisfied on paper and not at all on screen, which is
+        // the state this section was in: the roles existed as types with tests
+        // and the stylesheet went on using the appearance tokens.
+        let components: Vec<std::path::PathBuf> = std::fs::read_dir(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src"),
+        )
+        .expect("the interface's sources are beside the crates")
+        .filter_map(|entry| Some(entry.ok()?.path()))
+        .chain(
+            std::fs::read_dir(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/controls"),
+            )
+            .expect("the shared controls are beside them")
+            .filter_map(|entry| Some(entry.ok()?.path())),
+        )
+        .filter(|path| path.extension().is_some_and(|kind| kind == "svelte"))
+        .collect();
+        assert!(
+            components.len() > 20,
+            "read {} components, which is not how many the interface has",
+            components.len()
+        );
+        let drawn: String = components
+            .iter()
+            .filter_map(|path| std::fs::read_to_string(path).ok())
+            .collect();
+        for role in Role::ALL {
+            assert!(
+                drawn.contains(&format!("var(--{})", role.token())),
+                "nothing asks for `--{}` ({}), so the role is a definition the \
+                 interface never draws",
+                role.token(),
+                role.about()
+            );
+        }
+
+        for a in Role::ALL {
+            for b in Role::ALL {
+                if !a.must_differ_from(*b) {
+                    continue;
+                }
+                assert_ne!(
+                    colours[a],
+                    colours[b],
+                    "{:?} and {:?} are both `{}`, and they are a pair a DJ has \
+                     to tell apart -- {} against {}",
+                    a,
+                    b,
+                    colours[a],
+                    a.about(),
+                    b.about()
+                );
+            }
+        }
+    }
+
     /// The pairs that must be told apart are told apart symmetrically, and
     /// nothing is required to differ from itself.
     #[test]

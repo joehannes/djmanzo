@@ -54,6 +54,71 @@
   --stem-bass: var(--danger);
   --stem-other: var(--accent-2);
 
+  /* §30's remaining roles, on the same terms as the four stems above.
+   *
+   * "Color must communicate meaning. Do NOT produce a neon application where
+   * everything is colorful and nothing is semantically distinct." Fourteen
+   * hand-picked hues per palette would be a hundred and sixty-eight numbers
+   * nobody keeps true, and would be the neon failure the section opens by
+   * warning about. So each role points at a token the palette already defines,
+   * and a palette that wants its own gets to override any of them.
+   *
+   * What the derivation may *not* do is collapse two roles a DJ has to tell
+   * apart. `dj_app::cockpit::Role::must_differ_from` names those pairs -- the
+   * mix pair, the four stems, who-did-it, the severity ladder, and selected
+   * against active -- and a Rust test reads this file and fails when any such
+   * pair ends up pointing at the same token. Roles outside a pair are free to
+   * share: `--active`, `--incoming` and `--success` are all the accent, and a
+   * control being on is never mistaken for a record arriving.
+   *
+   * `warn` and `danger` are absent because they already exist above: they were
+   * semantic from the beginning and simply lacked a name in Rust. */
+  /* Tokens the interface asks for that nothing used to define.
+   *
+   * Found by counting: components ask for `--muted` forty-seven times, `--ok`
+   * fourteen, `--line` ten, `--control` eight, and not one of them had a
+   * value anywhere. Two different failures came out of that, and both are
+   * §30's business.
+   *
+   * Where there was **no fallback** -- `--muted`, `--fg`, `--surface` and most
+   * of `--line` and `--control` -- the declaration is simply invalid, so the
+   * property falls back to whatever is inherited. Forty-seven pieces of text
+   * asking to be dim and getting the ordinary text colour instead.
+   *
+   * Where there **was** a fallback -- `var(--ok, #6a9955)` and friends -- the
+   * literal wins, so those parts of the interface draw a fixed hue on every
+   * palette. That is exactly what `theme-tokens.test.ts` was written to stop,
+   * escaping through the one exemption that test grants.
+   *
+   * Each is an alias onto a token the palettes already define, so all seven
+   * packages get them for free and `applyPackagePalette` keeps them in step:
+   * these resolve through `var()`, so changing `--text-dim` changes `--muted`
+   * with it. A palette that wants its own may still override any of them. */
+  --muted: var(--text-dim);
+  --fg: var(--text);
+  --surface: var(--panel);
+  --surface-2: var(--panel-raised);
+  --sunken: var(--bg);
+  --chip: var(--panel-raised);
+  --control: var(--panel-raised);
+  --line: var(--border);
+  --accent-warm: var(--warn);
+  --accent-soft: var(--accent-2);
+  --focus: var(--accent);
+  --warn-bg: color-mix(in srgb, var(--warn) 14%, transparent);
+  --radius-s: 4px;
+  /* The same stack `.mono` below sets, named so a component can ask for it. */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  --outgoing: var(--warn);
+  --incoming: var(--accent);
+  --selected: var(--accent-2);
+  --active: var(--accent);
+  --assistant: var(--accent-2);
+  --uncertain: var(--text-dim);
+  --audience: var(--accent);
+  --success: var(--accent);
+
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
     "Helvetica Neue", sans-serif;

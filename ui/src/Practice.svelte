@@ -251,9 +251,9 @@
     color: var(--accent);
   }
 
-  /* Already rendered once. */
+  /* Already rendered once — §30's `success`, which is simply "it worked". */
   .tries button.done {
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    background: color-mix(in srgb, var(--success) 12%, transparent);
   }
 
   .heard {

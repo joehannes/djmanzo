@@ -650,7 +650,7 @@
   /* §22's estimated transition: about the mix, not about the two records. */
   .mix {
     font-size: 0.7rem;
-    color: var(--ok, #6a9955);
+    color: var(--assistant);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -673,7 +673,7 @@
     padding: 0.35rem;
     border-radius: 4px;
     background: var(--panel-raised);
-    border-left: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 60%, transparent);
+    border-left: 2px dashed color-mix(in srgb, var(--assistant) 60%, transparent);
   }
 
   .ghost-line {
@@ -685,7 +685,7 @@
   }
 
   .ghost-what {
-    color: var(--ok, #6a9955);
+    color: var(--assistant);
     white-space: nowrap;
   }
 

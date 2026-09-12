@@ -240,7 +240,11 @@
 
 <div class="pair">
   {#snippet record(side: PairSide, index: number, mix: Transition)}
-    <section class="side" aria-label={index === 0 ? "Going out" : "Coming in"}>
+    <section
+      class="side"
+      data-role={index === 0 ? "outgoing" : "incoming"}
+      aria-label={index === 0 ? "Going out" : "Coming in"}
+    >
       <header>
         <span class="role">{index === 0 ? "out of" : "into"} deck {side.deck}</span>
         <h3 title={side.track.path}>{side.track.title}</h3>
@@ -524,11 +528,38 @@
     min-width: 0;
   }
 
+  /*
+    §30's two most expensive roles to confuse. The pair view is the one place
+    both records are on screen at once, which is exactly where "which of these
+    is leaving" has to be answerable without reading the words -- so the edge
+    of each card carries the role rather than the border every other panel has.
+
+    `--outgoing` and `--incoming` rather than two hand-picked hues: they are
+    the semantic tokens, they follow the palette, and `cockpit::Role` names
+    them as a pair that must stay distinguishable in every theme, with a test
+    that reads the stylesheet and fails if they ever collapse to one colour.
+  */
+  .side[data-role="outgoing"] {
+    border-left: 3px solid var(--outgoing);
+  }
+
+  .side[data-role="incoming"] {
+    border-left: 3px solid var(--incoming);
+  }
+
   .role {
     font-size: 0.65rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--muted);
+  }
+
+  .side[data-role="outgoing"] .role {
+    color: var(--outgoing);
+  }
+
+  .side[data-role="incoming"] .role {
+    color: var(--incoming);
   }
 
   .side h3 {

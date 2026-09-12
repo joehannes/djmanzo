@@ -76,17 +76,68 @@ describe("colour tokens", () => {
     }
   });
 
-  it("the four stem colours are four different tokens", () => {
-    const css = readFileSync(join(SRC, "app.css"), "utf8");
-    const values = ["vocal", "drums", "bass", "other"].map((stem) => {
-      const match = css.match(new RegExp(`--stem-${stem}:\\s*([^;]+);`));
-      expect(match, `--stem-${stem} has no value`).not.toBeNull();
-      return match![1].trim();
-    });
+  /**
+   * **Every token a component asks for has a value somewhere.**
+   *
+   * The load-bearing one, and it found the defect it was written for: the
+   * interface asked for `--muted` forty-seven times, `--ok` fourteen, `--line`
+   * ten and `--control` eight, and not one of those had a value anywhere.
+   *
+   * Two failures, both invisible. Without a fallback the declaration is
+   * invalid and the property inherits, so text asking to be dim came out the
+   * ordinary colour. With one -- `var(--ok, #6a9955)` -- the literal wins and
+   * that part of the interface draws a fixed hue on every palette, which is
+   * precisely what the hex-literal test above exists to prevent, escaping
+   * through the single exemption it grants.
+   *
+   * So a fallback does not excuse a token from this: the point is that the
+   * token resolves.
+   */
+  it("every token a component asks for is defined somewhere", () => {
+    const defined = new Set<string>();
+    for (const file of PALETTE_FILES) {
+      const source = readFileSync(join(SRC, file), "utf8");
+      for (const match of source.matchAll(/--([a-z0-9-]+)\s*:/g)) {
+        defined.add(match[1]);
+      }
+      // `colors.ts` writes them as quoted keys rather than declarations.
+      for (const match of source.matchAll(/"--([a-z0-9-]+)"/g)) {
+        defined.add(match[1]);
+      }
+    }
+
+    // A token one component sets for another is provided, even though no
+    // palette mentions it: `--jog-size` is a deck telling a jog wheel how big
+    // to be, which is a contract between two components rather than a colour.
+    // The rule being enforced is that *somebody* provides what is asked for.
+    const files = svelteFiles(SRC);
+    for (const file of files) {
+      for (const match of readFileSync(file, "utf8").matchAll(
+        /--([a-z0-9-]+)\s*[:=]/g,
+      )) {
+        defined.add(match[1]);
+      }
+    }
+
+    const missing = new Map<string, string[]>();
+    for (const file of files) {
+      for (const match of readFileSync(file, "utf8").matchAll(
+        /var\(\s*--([a-z0-9-]+)/g,
+      )) {
+        const token = match[1];
+        if (defined.has(token)) continue;
+        missing.set(token, [...(missing.get(token) ?? []), file.split("/src/")[1]]);
+      }
+    }
+
+    const report = [...missing]
+      .map(([token, files]) => `--${token} (${[...new Set(files)].join(", ")})`)
+      .sort();
     expect(
-      new Set(values).size,
-      `two stems share a colour, so they cannot be told apart: ${values.join(", ")}`,
-    ).toBe(4);
+      report,
+      `these are asked for and never defined, so they inherit or fall back to ` +
+        `a fixed hue:\n${report.join("\n")}`,
+    ).toEqual([]);
   });
 
   it("the palette files are exempt, because that is where colours live", () => {

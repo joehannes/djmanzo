@@ -425,8 +425,16 @@
   }
 
   /* Unsure is the one worth noticing: it is the state that stops the mix. */
+  /*
+    §30's `uncertain`, which that section calls the role most often missing:
+    "uncertainty needs a look of its own, or a low-confidence suggestion is
+    presented exactly like a high-confidence one." This was `--warn`, which
+    says *this will probably be a problem* -- a different claim from *djmanzo
+    is not sure*, and `Role::must_differ_from` has no opinion about the pair
+    only because they were never meant to be the same colour.
+  */
   .certainty[data-certainty="unsure"] {
-    color: var(--warn);
+    color: var(--uncertain);
   }
 
   .bar {

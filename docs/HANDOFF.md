@@ -132,6 +132,25 @@ that was supposed to prove the branch existed could not have failed either
 way. A stub edit that touches an existing command deserves a run of the whole
 file, not of the test you just wrote.
 
+**A token nothing defines fails in two different silent ways, and both were
+in the tree.** Without a fallback the declaration is invalid and the property
+inherits — forty-seven pieces of text asked to be `--muted` and came out the
+ordinary colour. With one, `var(--ok, #6a9955)` draws that green on every
+palette, which is exactly what `theme-tokens.test.ts` exists to stop, escaping
+through the single exemption that test grants. Neither shows up as an error
+anywhere. The vitest `every token a component asks for is defined somewhere`
+now catches both; a token one component sets for another (`--jog-size`) counts
+as provided, because the rule is that *somebody* answers, not that the palette
+does.
+
+**The place to name a colour's meaning is `cockpit::Role`, and the place to
+give it a value is `app.css`.** Each role aliases a token the palettes already
+define, so all seven packages get all fourteen for free. Before adding a
+fifteenth, read `Role::must_differ_from`: it names the pairs a DJ has to tell
+apart, and roles outside a pair are deliberately allowed to share a colour —
+forcing fourteen hues is the neon-everything failure §30 opens by warning
+about.
+
 **A wall-clock assertion on this machine is a coin toss, and the fix is
 always the same shape.** Three tests failed under the full parallel workspace
 run and passed alone, about one run in three each, and every one of them was

@@ -107,10 +107,20 @@
   .icon-button:hover:not(:disabled) {
     background: var(--panel-hover);
   }
+  /*
+    §30's `active` and `selected`, which that section lists separately and
+    which `Role::must_differ_from` names as a pair that has to stay
+    distinguishable: a panel that is *open* and a control the DJ has *picked*
+    are two different facts, and they sit next to each other constantly.
+
+    The fill and the ring were `--accent` and `--accent-2` already; naming them
+    is the change, so the pair is now answerable to the rule instead of being
+    two tokens that happened to differ.
+  */
   .icon-button.active {
-    background: var(--accent);
+    background: var(--active);
     color: var(--on-accent);
-    border-color: var(--accent-2);
+    border-color: var(--selected);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   }
   .label {

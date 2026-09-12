@@ -355,9 +355,9 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    background: color-mix(in srgb, var(--ok, #6a9955) 22%, transparent);
-    border-left: 2px solid color-mix(in srgb, var(--ok, #6a9955) 75%, transparent);
-    border-right: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 55%, transparent);
+    background: color-mix(in srgb, var(--assistant) 22%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--assistant) 75%, transparent);
+    border-right: 2px dashed color-mix(in srgb, var(--assistant) 55%, transparent);
     pointer-events: none;
   }
 
@@ -377,13 +377,17 @@
     position: absolute;
     top: 0;
     bottom: 0;
+    /* §30's `assistant` role: this is djmanzo saying *could*, and the section
+       asks for "what the machine did" to look different from "this is on".
+       It was `var(--assistant)`, a token nothing defined, so every palette
+       drew the same fixed green here. */
     background: repeating-linear-gradient(
       45deg,
-      color-mix(in srgb, var(--ok, #6a9955) 45%, transparent) 0 3px,
+      color-mix(in srgb, var(--assistant) 45%, transparent) 0 3px,
       transparent 3px 6px
     );
-    border-left: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 85%, transparent);
-    border-right: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 60%, transparent);
+    border-left: 2px dashed color-mix(in srgb, var(--assistant) 85%, transparent);
+    border-right: 2px dashed color-mix(in srgb, var(--assistant) 60%, transparent);
     pointer-events: none;
   }
 
@@ -392,7 +396,7 @@
     top: 0;
     bottom: 0;
     width: 0;
-    border-left: 2px dotted color-mix(in srgb, var(--ok, #6a9955) 95%, transparent);
+    border-left: 2px dotted color-mix(in srgb, var(--assistant) 95%, transparent);
     pointer-events: none;
   }
 </style>

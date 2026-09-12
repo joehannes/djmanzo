@@ -783,9 +783,9 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    background: color-mix(in srgb, var(--ok, #6a9955) 10%, transparent);
-    border-left: 2px solid color-mix(in srgb, var(--ok, #6a9955) 55%, transparent);
-    border-right: 2px dashed color-mix(in srgb, var(--ok, #6a9955) 40%, transparent);
+    background: color-mix(in srgb, var(--assistant) 10%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--assistant) 55%, transparent);
+    border-right: 2px dashed color-mix(in srgb, var(--assistant) 40%, transparent);
     pointer-events: none;
     z-index: 1;
   }
@@ -808,7 +808,7 @@
     padding: 0 0.25rem;
     font-size: 0.6rem;
     line-height: 1.3;
-    color: var(--ok, #6a9955);
+    color: var(--assistant);
     background: var(--panel);
     border-radius: 0 3px 3px 0;
     white-space: nowrap;
