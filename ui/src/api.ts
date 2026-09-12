@@ -2252,6 +2252,16 @@ export interface ResolvedWorkspace {
 export type DensityBand = [number, string, number];
 export const densityBands = () => invoke<DensityBand[]>("density_bands");
 
+/**
+ * §17: the surfaces the night's phase asks to have on screen.
+ *
+ * Surfaces to *open*, never an arrangement to impose — what the DJ already has
+ * stays, because §17 says the DJ must always be able to override the phase.
+ * The list is Rust's; the timing is the shell's, and §18 decides that: nothing
+ * moves while `attention.reflow` is false, which it is during every mix.
+ */
+export const phasePriorities = () => invoke<string[]>("phase_priorities");
+
 export const cockpitSurfaces = () => invoke<Surface[]>("cockpit_surfaces");
 export const cockpitWorkspaces = () => invoke<Workspace[]>("cockpit_workspaces");
 export const cockpitWorkspace = () => invoke<ResolvedWorkspace>("cockpit_workspace");

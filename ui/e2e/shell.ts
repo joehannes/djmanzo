@@ -776,7 +776,17 @@ const ANSWERS: Record<string, unknown> = {
     [1020, "Pro Dense", 0.86],
     [0, "Ultra Dense", 0.8],
   ],
-    cockpit_surfaces: surfaces,
+    /**
+   * §17's phase priorities.
+   *
+   * What the *Peak* phase asks for, because that is the phase whose whole
+   * instruction is "minimal UI clutter" and so the one worth a default that
+   * cannot be mistaken for a rearrangement. A test wanting another phase's
+   * list passes its own; `dj_app::cockpit::priorities` holds the real table
+   * and is tested there.
+   */
+  phase_priorities: ["room"],
+  cockpit_surfaces: surfaces,
   /**
    * §7's presets, for the picker.
    *

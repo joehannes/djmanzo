@@ -8683,6 +8683,26 @@ pub fn density_bands() -> Vec<(u16, &'static str, f32)> {
         .collect()
 }
 
+/// §17: what the night's phase asks to have on screen.
+///
+/// Surfaces to *open*, never an arrangement to impose — what the DJ already
+/// has stays, because their own choices outrank a phase reading and §17 says
+/// the DJ must always be able to override it.
+///
+/// The phase is read here rather than passed in, for the reason every other
+/// reading of it is: one judgement, made in one place. The *timing* is the
+/// interface's, and it is not free to choose it — §18's `Attention::reflow` is
+/// false during a mix, always, and nothing may move while somebody is reaching
+/// for it.
+#[tauri::command]
+#[must_use]
+pub fn phase_priorities(state: State<'_, AppState>) -> Vec<String> {
+    crate::cockpit::priorities(state.night().read().map(|read| read.phase))
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect()
+}
+
 /// The arrangements that ship, for the picker.
 #[tauri::command]
 #[must_use]

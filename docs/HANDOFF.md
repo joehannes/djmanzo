@@ -132,6 +132,18 @@ that was supposed to prove the branch existed could not have failed either
 way. A stub edit that touches an existing command deserves a run of the whole
 file, not of the test you just wrote.
 
+**Anything that rearranges the cockpit on its own must ask `Attention::reflow`
+first.** §18 states it without exceptions — *when actively mixing: no major
+layout reflow* — and `reflow` is false during every mix for that reason. §17's
+phase priorities are gated on it, and a phase that turns over mid-mix is
+**skipped rather than queued**: by the time the mix ends the phase is either
+still the same one, and the next snapshot applies it because the "last applied"
+marker was never advanced, or it has moved on and the stale one was never worth
+applying. The same gate belongs on anything else that moves a panel by itself.
+And it only ever opens: the DJ's own arrangement outranks a reading, and
+closing a panel the phase opened is how the override in §17's last sentence
+works without a dialog.
+
 **A token nothing defines fails in two different silent ways, and both were
 in the tree.** Without a fallback the declaration is invalid and the property
 inherits — forty-seven pieces of text asked to be `--muted` and came out the

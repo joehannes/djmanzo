@@ -37,6 +37,7 @@
     cockpitWorkspace,
     cockpitWorkspaces,
     densityBands,
+    phasePriorities,
     themeChosen,
     type DensityBand,
     setCockpitWorkspace,
@@ -928,6 +929,55 @@
   $effect(() => {
     const motion = snapshot?.attention.motion;
     if (motion) document.documentElement.dataset.motion = motion;
+  });
+
+  /*
+    §17: when the night moves to a new phase, open what that phase is for.
+
+    # Why this is an effect on the phase and not a poll
+
+    A phase changes a handful of times a night. What is watched is the *word*,
+    as a `$derived` string, rather than the snapshot -- which is a fresh object
+    sixty times a second, and reading it inside the effect is the trap that
+    remounted every knob in the application during §29.
+
+    # Why it may refuse to do anything
+
+    §18's rule, and it is not this component's to soften: `attention.reflow` is
+    false during a mix, always, because moving a panel while somebody is
+    reaching for it is the failure that makes adaptive interfaces feel hostile.
+    A phase that turns over mid-mix is therefore *skipped*, not queued: by the
+    time the mix ends the phase is either still the same one -- and the next
+    snapshot's effect run picks it up, because `promoted` was never advanced --
+    or it has moved on and the stale one was never worth applying.
+
+    # Why it only ever opens
+
+    §17 ends with "the DJ must always be able to override it", and the
+    overriding has to work without a dialog. So everything already on screen
+    stays, the phase adds, and closing one of its panels is the override. A
+    phase that replaced the arrangement would be taking a decision back from
+    the DJ every twenty minutes.
+  */
+  let promoted = $state<string | null>(null);
+  const phaseNow = $derived(snapshot?.context.session?.phase ?? null);
+
+  $effect(() => {
+    const now = phaseNow;
+    const mayMove = snapshot?.attention.reflow ?? false;
+    if (!ready || !mayMove || now === promoted) return;
+    promoted = now;
+    void phasePriorities()
+      .then((wanted) => {
+        for (const surface of wanted) {
+          if (!(DRAWN as readonly string[]).includes(surface)) continue;
+          if (isOpen(surface as Drawn)) continue;
+          void toggleSurface(surface as Drawn);
+        }
+      })
+      // A phase whose priorities cannot be read leaves the arrangement alone,
+      // which is the same thing it does during a mix.
+      .catch(() => {});
   });
 
   /**

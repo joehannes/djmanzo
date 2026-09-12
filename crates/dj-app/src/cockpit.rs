@@ -203,6 +203,68 @@ impl Role {
     }
 }
 
+// -- what a phase wants on screen --------------------------------------------
+
+/// The surfaces §17 says to prioritise, by the phase the night is in.
+///
+/// > Build a session-phase model. […] The system may infer phase, but the DJ
+/// > must always be able to override it.
+///
+/// `None` is §17's **Setup** — the stretch before anything has read as a
+/// phase, which `dj_core::context` produces honestly at the start of every
+/// night rather than backdating the earliest phase over it. So the six the
+/// section names map onto djmanzo's five plus that unread state:
+///
+/// | §17 | here |
+/// |---|---|
+/// | Setup | `None` |
+/// | Warm-up | [`SessionPhase::WarmUp`] |
+/// | Build | [`SessionPhase::Heat`] |
+/// | Peak | [`SessionPhase::Peak`] |
+/// | Release | [`SessionPhase::Cooldown`] |
+/// | Closing | [`SessionPhase::ChillOut`] |
+///
+/// # What a priority is, and what it is not
+///
+/// A surface to **open**, not an arrangement to impose. Everything already on
+/// screen stays: the DJ's own choices outrank a phase reading, which is what
+/// "the DJ must always be able to override it" means when the overriding has
+/// to work without a dialog.
+///
+/// Several of §17's priorities are not surfaces at all. *Gradual energy*,
+/// *longer transitions* and *harmonic resolution* are how djmanzo should
+/// **suggest**, not what it should show, and they belong to the planner rather
+/// than to the cockpit; *stems* and *FX* are drawn on the deck itself and have
+/// nowhere to be promoted to. Those are named in the tests rather than turned
+/// into panels that do not exist.
+///
+/// # Peak is the short one on purpose
+///
+/// §17's peak list ends with *minimal UI clutter*, which is an instruction
+/// about the other five words in it. A phase that opened five panels at the
+/// busiest moment of a night would be obeying the list and breaking the
+/// sentence, so peak promotes the one thing a DJ cannot get from the decks —
+/// what the floor is doing — and nothing else. A test asserts it stays the
+/// shortest list here.
+#[must_use]
+pub fn priorities(phase: Option<dj_core::SessionPhase>) -> &'static [&'static str] {
+    match phase {
+        // Setup: device health, library, preparation, playlist, room setup.
+        None => &["settings", "library", "prepare", "plan", "room"],
+        // Warm-up: next-track candidates, and a quiet screen around them.
+        Some(dj_core::SessionPhase::WarmUp) => &["next"],
+        // Build: compatible candidates, transitions, phrase structure.
+        Some(dj_core::SessionPhase::Heat) => &["next", "pair"],
+        // Peak: room response, and minimal UI clutter.
+        Some(dj_core::SessionPhase::Peak) => &["room"],
+        // Release: longer blends and crowd cooling.
+        Some(dj_core::SessionPhase::Cooldown) => &["next", "room"],
+        // Closing: requests and history live in the browser and the mixes
+        // panel; the end-of-set state and the recording are the booth's.
+        Some(dj_core::SessionPhase::ChillOut) => &["library", "mixes", "booth"],
+    }
+}
+
 // -- density ----------------------------------------------------------------
 
 /// How much the interface tries to fit on a screen.
@@ -2477,6 +2539,108 @@ mod tests {
              {checked} the names match -- a renamed preset silently stopped \
              being checked"
         );
+    }
+
+    // -- §17's phase priorities --------------------------------------------
+
+    /// **Every phase promotes only surfaces the shell draws.**
+    ///
+    /// The load-bearing one, and the same trap §7's presets fell into: a name
+    /// that `resolve` accepts and `App.svelte` then filters out is a phase
+    /// change that appears to do nothing. Read out of the shell, so promoting
+    /// a surface widens what a phase may ask for and demoting one breaks a
+    /// test rather than a night.
+    #[test]
+    fn every_phase_promotes_only_surfaces_the_shell_draws() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/App.svelte");
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("could not read the shell at {path}: {e}"));
+        let table = source
+            .split_once("const DRAWN = [")
+            .and_then(|(_, rest)| rest.split_once("] as const;"))
+            .map(|(inside, _)| inside)
+            .expect("`const DRAWN = [` ... `] as const;` is no longer how the shell lists them");
+        let drawn: std::collections::BTreeSet<&str> = table
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix('"'))
+            .filter_map(|rest| rest.split_once('"'))
+            .map(|(name, _)| name)
+            .collect();
+        assert!(
+            drawn.len() > 5,
+            "read {} surfaces out of the shell",
+            drawn.len()
+        );
+
+        let known: std::collections::BTreeSet<&str> = surfaces().iter().map(|s| s.name).collect();
+        for phase in std::iter::once(None).chain(dj_core::SessionPhase::ALL.map(Some)) {
+            for name in priorities(phase) {
+                assert!(
+                    known.contains(name),
+                    "{phase:?} promotes `{name}`, which is not a surface"
+                );
+                assert!(
+                    drawn.contains(name),
+                    "{phase:?} promotes `{name}`, which the shell never draws -- \
+                     the phase would arrive looking like it had done nothing"
+                );
+            }
+        }
+    }
+
+    /// **Peak stays the shortest list.**
+    ///
+    /// §17's peak priorities end with *minimal UI clutter*, which is an
+    /// instruction about the five words before it. Opening five panels at the
+    /// busiest moment of a night would obey the list and break the sentence.
+    #[test]
+    fn peak_promotes_less_than_any_other_phase() {
+        let at_peak = priorities(Some(dj_core::SessionPhase::Peak)).len();
+        assert!(at_peak > 0, "peak promotes nothing at all");
+        for phase in std::iter::once(None).chain(dj_core::SessionPhase::ALL.map(Some)) {
+            if phase == Some(dj_core::SessionPhase::Peak) {
+                continue;
+            }
+            assert!(
+                priorities(phase).len() >= at_peak,
+                "{phase:?} promotes fewer surfaces than peak does, so peak is no \
+                 longer the quiet one"
+            );
+        }
+        assert!(
+            at_peak <= 2,
+            "peak promotes {at_peak} surfaces, which is not minimal clutter"
+        );
+    }
+
+    /// §17 names six phases; djmanzo has five plus the stretch before anything
+    /// has read, and every one of the six answers something.
+    #[test]
+    fn all_six_of_the_directives_phases_have_priorities() {
+        let mut seen = 0;
+        for phase in std::iter::once(None).chain(dj_core::SessionPhase::ALL.map(Some)) {
+            assert!(
+                !priorities(phase).is_empty(),
+                "{phase:?} promotes nothing, so that phase does nothing"
+            );
+            seen += 1;
+        }
+        assert_eq!(
+            seen, 6,
+            "§17 names Setup, Warm-up, Build, Peak, Release and Closing; this \
+             table answers {seen} of them"
+        );
+    }
+
+    /// A phase never promotes the same surface twice.
+    #[test]
+    fn a_phase_does_not_promote_one_surface_twice() {
+        for phase in std::iter::once(None).chain(dj_core::SessionPhase::ALL.map(Some)) {
+            let mut seen = std::collections::BTreeSet::new();
+            for name in priorities(phase) {
+                assert!(seen.insert(name), "{phase:?} promotes `{name}` twice");
+            }
+        }
     }
 
     /// The one djmanzo opens with is still the empty one.

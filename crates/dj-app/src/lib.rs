@@ -463,6 +463,7 @@ pub fn run() {
             commands::audience_sheet,
             commands::room_saw,
             commands::mission_bar,
+            commands::phase_priorities,
             commands::room_read,
             commands::night_read,
             commands::staged_prepare,
