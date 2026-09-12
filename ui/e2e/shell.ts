@@ -738,6 +738,61 @@ const ANSWERS: Record<string, unknown> = {
     [0, "Ultra Dense", 0.8],
   ],
     cockpit_surfaces: surfaces,
+  /**
+   * §7's presets, for the picker.
+   *
+   * Four of the twenty-three, chosen to cover what applying one has to do: a
+   * deck count, a density, a theme, and panels that open. Copied field for
+   * field from `dj_app::cockpit::workspaces()` and kept honest by a Rust test
+   * that reads this file — `the_harness_and_rust_agree_about_the_presets`.
+   * A stub with made-up presets would prove the picker draws a list and
+   * nothing about whether pressing one does what it says.
+   */
+  cockpit_workspaces: [
+    {
+      name: "Perform",
+      about: "The decks and nothing else.",
+      surfaces: [],
+      density: "standard",
+      focus: "performing",
+      theme: "",
+      decks: 2,
+      frozen: false,
+    },
+    {
+      name: "Open Format",
+      about: "Four decks and the whole collection, for a night that goes anywhere.",
+      surfaces: [
+        { surface: "library", dock: "bottom", order: 0, size: null, collapsed: false, pinned: false },
+        { surface: "next", dock: "right", order: 0, size: null, collapsed: false, pinned: false },
+      ],
+      density: "compact",
+      focus: "preparing",
+      theme: "",
+      decks: 4,
+      frozen: false,
+    },
+    {
+      name: "High Contrast",
+      about: "The decks, in the theme built for a dark booth and a bright screen.",
+      surfaces: [],
+      density: "standard",
+      focus: "performing",
+      theme: "pkg-booth",
+      decks: 2,
+      frozen: false,
+    },
+    {
+      name: "Laptop Compact",
+      about: "Everything that fits on a small screen, and nothing that does not.",
+      surfaces: [],
+      density: "ultra-dense",
+      focus: "performing",
+      theme: "",
+      decks: 2,
+      frozen: false,
+    },
+  ],
   cockpit_workspace: {
     workspace: {
       name: "Perform",
@@ -847,6 +902,15 @@ export async function openShell(
             return Promise.resolve(1);
           }
           if (cmd === "plugin:event|unlisten") return Promise.resolve(null);
+          // Which theme was declared, not only that one was. §31 adapts the
+          // theme on its own, so painting the colours and telling djmanzo are
+          // two different things and only the second survives the next tick --
+          // a distinction `__asked` cannot draw, because it keeps names and
+          // throws the arguments away.
+          if (cmd === "theme_chosen") {
+            win.__chosenTheme = args.theme;
+            return Promise.resolve(null);
+          }
           // Echoed rather than tabulated: the application stores what this
           // hands back and draws that, so a stub returning a fixed answer
           // would make every dock test measure the fixture instead of the
@@ -888,6 +952,15 @@ export async function openShell(
             // until the application is reopened, which is the defect §89's
             // four-deck configuration found.
             ((win.__saved ??= []) as unknown[]).push(args.workspace);
+            // A test may ask for the write to fail, by answering this command
+            // with the string "reject". The shell's whole posture towards a
+            // failed save is that the DJ pressed something and it happened
+            // anyway — a preferences file that cannot be written is not a
+            // reason to undo it under them — and that posture is a branch
+            // nothing exercised, so it was free to rot.
+            if (answers.set_cockpit_workspace === "reject") {
+              return Promise.reject(new Error("the preferences file is read-only"));
+            }
             return Promise.resolve({ workspace: args.workspace, notes: [] });
           }
           // The transition object, held between calls the way djmanzo holds

@@ -32,7 +32,7 @@ rather than taken.
 | 4 | Do not build "an AI dashboard" | ⚖️ | Nothing AI-shaped has been added to the chrome |
 | 5 | The new GUI model | 🟡 | The performance zone is rebuilt; the Mission Bar is not |
 | 6 | Dock / surface manager | ✅ | Side and bottom docks, several surfaces at once, framed and closable, persisted. `cockpit::Surface`/`Dock`/`Workspace` |
-| 7 | Workspace presets | 🟡 | Three ship in Rust (Perform, Prepare, Read the room); no picker in the interface yet |
+| 7 | Workspace presets | ✅ | 23 of the 24 ship, chosen from a picker in the tool row; each sets its panels, decks, density and theme, and stays editable afterwards. VJ / Visual Performance is absent — there is no visual surface to arrange. `cockpit::workspaces()`, `workspace.spec.ts` |
 | 8 | Adaptation levels | 🟡 | Five density bands, derived from measured deck heights. The wider notion of adaptation levels is not built |
 | 9 | Separate autonomy from confidence | ✅ | `dj_assistant::Warrant`. The invalid cell is **unrepresentable**: `Act` and `Mix` carry a `Grounds` whose constructor is private and refuses a certainty below `Fair`, so no caller anywhere can write down a warrant to act on a read something disagrees with. Asserted over the whole 6×3 matrix, and the consequence — an unclear night stages instead of mixing — is asserted in the autopilot |
 | 10 | AI posture stays compatible with djmanzo's | ⚖️ | The six postures and nine occasions are untouched |
@@ -139,7 +139,7 @@ rather than taken.
 | Human DJ usability — usable without learning the AI | ✅ | The AI has never been in the way; §4 was honoured from the start |
 | Professional density — fast adjustment without opening panels | ✅ | Every performing control is on one screen at 1280×800 |
 | Adaptability — simple for a beginner, dense for a professional | 🟡 | Density adapts; the layouts that would express the two ends do not |
-| Modularity — a personal workflow can be constructed | 🟡 | Surfaces dock and persist; workspaces cannot yet be saved from the interface |
+| Modularity — a personal workflow can be constructed | 🟡 | Surfaces dock and persist, and §7's 23 arrangements can be chosen and then edited; what is missing is saving an edited one under a name of the DJ's own |
 | Predictability — adaptation never feels random | ✅ | Bands rather than a continuous ratio, so the interface settles; asserted by test |
 | AI subtlety — everywhere useful, dominant nowhere | ✅ | |
 | Instant takeover — human input always wins | ✅ | |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **41 done, 45 part, 0 open, 19 standing rules.**
+Of the 105 sections: **42 done, 44 part, 0 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**41 of 86 deliverable sections are complete and 45 more are partly there.** Nothing is untouched: every deliverable section now has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it.
+**42 of 86 deliverable sections are complete and 44 more are partly there.** Nothing is untouched: every deliverable section now has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it.
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 41 whole plus 45 halves over 86 is 74%, and the phase view is stricter
+way: 42 whole plus 44 halves over 86 is 74%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

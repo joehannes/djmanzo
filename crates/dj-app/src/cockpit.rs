@@ -1113,15 +1113,30 @@ pub struct Workspace {
 
 /// The arrangements that ship.
 ///
-/// Three, not seventeen. A DJ arrives with a way of working, not with a
-/// vocabulary of workspace names, so these are the three postures the audit
-/// found in the way people actually use the application -- playing, choosing,
-/// and setting the night up -- and everything else is a rearrangement they make
-/// themselves and keep.
+/// [§7](../../../docs/DIRECTIVE.md) names twenty-four and says the thing that
+/// matters more than the list: make them **starting points, not rigid
+/// identities**, and keep every one editable. So applying one is a
+/// rearrangement like any other — the DJ moves what they like afterwards and
+/// `set_cockpit_workspace` keeps *that*, under their own name if they give it
+/// one. Nothing here is a mode djmanzo puts itself into.
+///
+/// **This was three for a long time**, on the argument that a DJ arrives with
+/// a way of working rather than a vocabulary of workspace names. The argument
+/// is a good one and the directive overrules it: §7 lists the twenty-four by
+/// name, and where an implementation and that file disagree, that file wins.
+/// The three that were here are still here, and "Perform" is still first
+/// because [`opening`] takes the first.
 ///
 /// **The first one is empty on purpose.** Performing means the decks and
 /// nothing else; a surface that opens itself while somebody is mixing is the
 /// failure mode this whole redesign exists to avoid.
+///
+/// # The one of §7's twenty-four that is not here
+///
+/// **VJ / Visual Performance.** djmanzo has no visual surface — no video
+/// output, no visualiser, nothing to place — so a workspace by that name would
+/// arrange the same panels as any other and lie about it in the picker. It is
+/// absent rather than approximated, and a test below says so by name.
 #[must_use]
 pub fn workspaces() -> Vec<Workspace> {
     vec![
@@ -1131,13 +1146,180 @@ pub fn workspaces() -> Vec<Workspace> {
             surfaces: Vec::new(),
             density: Density::Standard,
             focus: Focus::Performing,
-            theme: String::new(),
+            theme: "".to_owned(),
             decks: 2,
             frozen: false,
         },
         Workspace {
-            name: "Prepare".to_owned(),
-            about: "The library beside the decks, with what is coming next.".to_owned(),
+            name: "Beginner".to_owned(),
+            about: "Everything named, nothing hidden, and the coach talking.".to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "practice".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "athand".to_owned(),
+                    dock: Dock::Right,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Relaxed,
+            focus: Focus::Learning,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Classic DJ".to_owned(),
+            about: "Two decks and a mixer, the way it has always been.".to_owned(),
+            surfaces: Vec::new(),
+            density: Density::Standard,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Pro Performance".to_owned(),
+            about: "Two decks, tight, with what is next and the booth to hand.".to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "next".to_owned(),
+                    dock: Dock::Right,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "booth".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::ProDense,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "4 Deck".to_owned(),
+            about: "Four decks, close together.".to_owned(),
+            surfaces: Vec::new(),
+            density: Density::Compact,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 4,
+            frozen: false,
+        },
+        Workspace {
+            name: "6 Deck".to_owned(),
+            about: "Every deck djmanzo has, at the cost of comfort.".to_owned(),
+            surfaces: Vec::new(),
+            density: Density::UltraDense,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 6,
+            frozen: false,
+        },
+        Workspace {
+            name: "Club".to_owned(),
+            about: "Four decks, the night's arc, and what is under your hands.".to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "night".to_owned(),
+                    dock: Dock::Right,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "athand".to_owned(),
+                    dock: Dock::Right,
+                    order: 1,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Compact,
+            focus: Focus::Performing,
+            theme: "pkg-booth".to_owned(),
+            decks: 4,
+            frozen: false,
+        },
+        Workspace {
+            name: "Mobile DJ".to_owned(),
+            about: "The collection and the booth, for a room that talks back.".to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "library".to_owned(),
+                    dock: Dock::Right,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "booth".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Standard,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Wedding / Event".to_owned(),
+            about: "The collection, the requests inside it, and what kind of night it is."
+                .to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "library".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "night".to_owned(),
+                    dock: Dock::Right,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Standard,
+            focus: Focus::Preparing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Open Format".to_owned(),
+            about: "Four decks and the whole collection, for a night that goes anywhere."
+                .to_owned(),
             surfaces: vec![
                 Placement {
                     surface: "library".to_owned(),
@@ -1158,13 +1340,196 @@ pub fn workspaces() -> Vec<Workspace> {
             ],
             density: Density::Compact,
             focus: Focus::Preparing,
-            theme: String::new(),
+            theme: "".to_owned(),
+            decks: 4,
+            frozen: false,
+        },
+        Workspace {
+            name: "Latin / Caribbean".to_owned(),
+            about:
+                "What comes next and where the night is, for a set that crosses genres on purpose."
+                    .to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "next".to_owned(),
+                    dock: Dock::Right,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "night".to_owned(),
+                    dock: Dock::Right,
+                    order: 1,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Standard,
+            focus: Focus::Performing,
+            theme: "pkg-sunset".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Scratch / Turntablism".to_owned(),
+            about: "Two decks and the controllers, with the hands in charge.".to_owned(),
+            surfaces: vec![Placement {
+                surface: "controllers".to_owned(),
+                dock: Dock::Right,
+                order: 0,
+                size: None,
+                collapsed: false,
+                pinned: false,
+            }],
+            density: Density::Compact,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Stem Performance".to_owned(),
+            about: "The decks alone, so the stem controls and the rack on them have room."
+                .to_owned(),
+            surfaces: Vec::new(),
+            density: Density::Compact,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Mashup / Remix".to_owned(),
+            about: "Four decks and the sampler, with the stem controls on each deck.".to_owned(),
+            surfaces: vec![Placement {
+                surface: "sampler".to_owned(),
+                dock: Dock::Bottom,
+                order: 0,
+                size: None,
+                collapsed: false,
+                pinned: false,
+            }],
+            density: Density::Compact,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 4,
+            frozen: false,
+        },
+        Workspace {
+            name: "Preparation".to_owned(),
+            about: "The library beside the decks, with what is coming next.".to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "library".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "prepare".to_owned(),
+                    dock: Dock::Right,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Compact,
+            focus: Focus::Preparing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Set Planning".to_owned(),
+            about: "The shape of the night, and the records to build it from.".to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "plan".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "library".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 1,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Standard,
+            focus: Focus::Planning,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Practice / Learning".to_owned(),
+            about: "A mix rehearsed offline, with the pair it is between.".to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "practice".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "pair".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 1,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Standard,
+            focus: Focus::Learning,
+            theme: "pkg-studio".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Autopilot".to_owned(),
+            about: "The booth and the assistant, while it drives and you watch.".to_owned(),
+            surfaces: vec![
+                Placement {
+                    surface: "booth".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "assistant".to_owned(),
+                    dock: Dock::Right,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+            ],
+            density: Density::Standard,
+            focus: Focus::Supervising,
+            theme: "".to_owned(),
             decks: 2,
             frozen: false,
         },
         Workspace {
             name: "Read the room".to_owned(),
-            about: "The library and the assistant at the same time -- the thing the old shell could not do."
+            about: "The library and the assistant at the same time -- the thing the old \
+                     shell could not do."
                 .to_owned(),
             surfaces: vec![
                 Placement {
@@ -1183,18 +1548,101 @@ pub fn workspaces() -> Vec<Workspace> {
                     collapsed: false,
                     pinned: false,
                 },
+            ],
+            density: Density::Compact,
+            focus: Focus::Preparing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Minimal".to_owned(),
+            about: "The decks, given room to breathe.".to_owned(),
+            surfaces: Vec::new(),
+            density: Density::Relaxed,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "High Contrast".to_owned(),
+            about: "The decks, in the theme built for a dark booth and a bright screen.".to_owned(),
+            surfaces: Vec::new(),
+            density: Density::Standard,
+            focus: Focus::Performing,
+            theme: "pkg-booth".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Laptop Compact".to_owned(),
+            about: "Everything that fits on a small screen, and nothing that does not.".to_owned(),
+            surfaces: Vec::new(),
+            density: Density::UltraDense,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Controller Focus".to_owned(),
+            about: "The decks and what is mapped to the hardware in front of them.".to_owned(),
+            surfaces: vec![Placement {
+                surface: "controllers".to_owned(),
+                dock: Dock::Right,
+                order: 0,
+                size: None,
+                collapsed: false,
+                pinned: false,
+            }],
+            density: Density::Standard,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "CDJ / External Mixer".to_owned(),
+            about: "The decks and the booth, for a mixer djmanzo is not.".to_owned(),
+            surfaces: vec![Placement {
+                surface: "booth".to_owned(),
+                dock: Dock::Bottom,
+                order: 0,
+                size: None,
+                collapsed: false,
+                pinned: false,
+            }],
+            density: Density::Standard,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
+            decks: 2,
+            frozen: false,
+        },
+        Workspace {
+            name: "Karaoke / MC".to_owned(),
+            about: "The microphone in the booth and the collection the requests are in.".to_owned(),
+            surfaces: vec![
                 Placement {
-                    surface: "room".to_owned(),
+                    surface: "booth".to_owned(),
+                    dock: Dock::Bottom,
+                    order: 0,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                Placement {
+                    surface: "library".to_owned(),
                     dock: Dock::Right,
-                    order: 1,
+                    order: 0,
                     size: None,
                     collapsed: false,
                     pinned: false,
                 },
             ],
-            density: Density::Compact,
-            focus: Focus::Preparing,
-            theme: String::new(),
+            density: Density::Standard,
+            focus: Focus::Performing,
+            theme: "".to_owned(),
             decks: 2,
             frozen: false,
         },
@@ -1530,6 +1978,28 @@ mod tests {
         );
     }
 
+    /// A density is spelled the same way stored as it is spoken.
+    ///
+    /// The shell applies a preset's density by matching the slug serde writes
+    /// into the workspace (`pro-dense`) against the name `density_bands`
+    /// answers with (`Pro Dense`), lowercased with its spaces hyphenated. That
+    /// is one table read two ways rather than two tables — but only while the
+    /// two spellings agree, and nothing would report it if they stopped: a
+    /// preset whose density did not match any band would quietly open at
+    /// whatever density the window happened to fit.
+    #[test]
+    fn a_density_is_spelled_the_same_way_stored_as_it_is_spoken() {
+        for density in Density::ALL {
+            let stored = serde_json::to_string(density).expect("a density serialises");
+            assert_eq!(
+                stored.trim_matches('"'),
+                density.name().to_lowercase().replace(' ', "-"),
+                "`{}` is stored as {stored}, which the shell cannot match to a band",
+                density.name()
+            );
+        }
+    }
+
     // -- roles -------------------------------------------------------------
 
     #[test]
@@ -1651,6 +2121,256 @@ mod tests {
     #[test]
     fn supervising_an_assisted_mix_is_as_quiet_as_mixing() {
         assert_eq!(Focus::Supervising.attention(), Attention::performing());
+    }
+
+    // -- workspace presets (§7) --------------------------------------------
+
+    /// **A preset cannot place a surface djmanzo does not have.**
+    ///
+    /// The load-bearing check. A workspace is data, and a typo in it is a
+    /// panel that silently does not open — the DJ picks "Stem Performance",
+    /// sees two decks, and concludes the preset does nothing. Resolving drops
+    /// unknown placements on purpose (a workspace saved by a newer djmanzo
+    /// must still open), which is exactly why the shipped ones have to be
+    /// checked here instead.
+    #[test]
+    fn every_preset_places_only_surfaces_that_exist() {
+        let known: std::collections::BTreeSet<&str> = surfaces().iter().map(|s| s.name).collect();
+        for workspace in workspaces() {
+            for placement in &workspace.surfaces {
+                assert!(
+                    known.contains(placement.surface.as_str()),
+                    "{} places `{}`, which is not a surface",
+                    workspace.name,
+                    placement.surface
+                );
+            }
+        }
+    }
+
+    /// Every preset says what it is for, under a name of its own, with a
+    /// number of decks djmanzo can actually draw.
+    #[test]
+    fn every_preset_has_its_own_name_and_says_what_it_is() {
+        let mut seen = std::collections::BTreeSet::new();
+        for workspace in workspaces() {
+            assert!(
+                seen.insert(workspace.name.clone()),
+                "two presets are called {}",
+                workspace.name
+            );
+            assert!(
+                workspace.about.len() > 12,
+                "{} has a stub description",
+                workspace.name
+            );
+            assert!(
+                workspace.decks >= 1 && (workspace.decks as usize) <= dj_core::MAX_DECKS,
+                "{} asks for {} decks",
+                workspace.name,
+                workspace.decks
+            );
+        }
+    }
+
+    /// A preset that names a theme names one that ships.
+    ///
+    /// The same failure the theme test in `dj_app::mood` guards: a package id
+    /// nothing can wear looks exactly like a workspace that decided not to
+    /// change the theme.
+    #[test]
+    fn a_preset_that_names_a_theme_names_one_that_exists() {
+        let packages = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../ui/src/controls/themes/packages.ts"),
+        )
+        .expect("the theme packages are beside the interface");
+        for workspace in workspaces() {
+            if workspace.theme.is_empty() {
+                continue;
+            }
+            assert!(
+                packages.contains(&format!("id: \"{}\"", workspace.theme)),
+                "{} asks for the theme `{}`, which does not ship",
+                workspace.name,
+                workspace.theme
+            );
+        }
+    }
+
+    /// **§7's twenty-four, and the one djmanzo cannot express.**
+    ///
+    /// Written out so that dropping one is a decision somebody makes here
+    /// rather than something that happens. VJ / Visual Performance is absent
+    /// because djmanzo has no visual surface at all: a workspace by that name
+    /// would arrange the same panels as any other and lie about it in the
+    /// picker.
+    #[test]
+    fn the_directive_names_twenty_four_and_twenty_three_of_them_ship() {
+        let names: std::collections::BTreeSet<String> =
+            workspaces().into_iter().map(|w| w.name).collect();
+        let asked = [
+            "Beginner",
+            "Classic DJ",
+            "Pro Performance",
+            "4 Deck",
+            "6 Deck",
+            "Club",
+            "Mobile DJ",
+            "Wedding / Event",
+            "Open Format",
+            "Latin / Caribbean",
+            "Scratch / Turntablism",
+            "Stem Performance",
+            "Mashup / Remix",
+            "Preparation",
+            "Set Planning",
+            "Practice / Learning",
+            "Autopilot",
+            "Minimal",
+            "High Contrast",
+            "Laptop Compact",
+            "Controller Focus",
+            "CDJ / External Mixer",
+            "Karaoke / MC",
+        ];
+        assert_eq!(asked.len(), 23, "§7 lists 24; one of them is not shippable");
+        for name in asked {
+            assert!(names.contains(name), "§7 asks for {name} and it is missing");
+        }
+        assert!(
+            !names
+                .iter()
+                .any(|n| n.contains("VJ") || n.contains("Visual")),
+            "a visual workspace appeared without a visual surface to put in it"
+        );
+    }
+
+    /// **Every preset places only surfaces the shell can actually draw.**
+    ///
+    /// The load-bearing one, and stronger than the check above it: the surface
+    /// registry lists twenty, the shell draws seventeen, and the other three
+    /// are components nested inside those (the room sensor inside the
+    /// assistant, the stem controls on the deck). A placement naming one of
+    /// them passes `resolve` — it is a real surface — and is then filtered out
+    /// of `placements` in `App.svelte` without a word. The DJ picks "Stem
+    /// Performance", sees two decks, and concludes the picker does nothing.
+    ///
+    /// Four shipped presets did exactly that, "Read the room" among them, and
+    /// nothing said so until there was a picker to press. So the list of what
+    /// the shell draws is read out of the shell itself: a surface promoted to
+    /// top level widens what presets may place, and one demoted breaks this
+    /// test rather than a night.
+    #[test]
+    fn every_preset_places_only_surfaces_the_shell_draws() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/App.svelte");
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("could not read the shell at {path}: {e}"));
+        let table = source
+            .split_once("const DRAWN = [")
+            .and_then(|(_, rest)| rest.split_once("] as const;"))
+            .map(|(inside, _)| inside)
+            .expect("`const DRAWN = [` ... `] as const;` is no longer how the shell lists them");
+
+        let drawn: std::collections::BTreeSet<&str> = table
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix('"'))
+            .filter_map(|rest| rest.split_once('"'))
+            .map(|(name, _)| name)
+            .collect();
+        assert!(
+            drawn.len() > 5,
+            "read {} surfaces out of the shell, which is not how many it draws",
+            drawn.len()
+        );
+
+        for workspace in workspaces() {
+            for placement in &workspace.surfaces {
+                assert!(
+                    drawn.contains(placement.surface.as_str()),
+                    "{} places `{}`, which the shell never draws -- the preset \
+                     would open looking like it had done nothing",
+                    workspace.name,
+                    placement.surface
+                );
+            }
+        }
+    }
+
+    /// The harness answers the picker with presets this table holds.
+    ///
+    /// Four of the twenty-three are typed out in `ui/e2e/shell.ts`, and the
+    /// browser test presses them and asserts what happens — four decks, a
+    /// density, a theme, a panel. All of that is a measurement of a stub
+    /// unless the stub says what Rust says, which is the lesson
+    /// `the_harness_and_rust_agree_about_the_bands` records: that table went
+    /// stale twice.
+    #[test]
+    fn the_harness_and_rust_agree_about_the_presets() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/e2e/shell.ts");
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("could not read the browser harness at {path}: {e}"));
+        let table = source
+            .split_once("cockpit_workspaces: [")
+            .and_then(|(_, rest)| rest.split_once("\n  ],"))
+            .map(|(inside, _)| inside)
+            .expect("`cockpit_workspaces: [` ... `\n  ],` is no longer how the harness writes it");
+
+        let mut checked = 0;
+        for workspace in workspaces() {
+            let Some(at) = table.find(&format!("name: \"{}\",", workspace.name)) else {
+                continue;
+            };
+            checked += 1;
+            let entry = &table[at..];
+            let entry = entry.split_once("\n    },").map_or(entry, |(head, _)| head);
+
+            for (what, wanted) in [
+                ("about", format!("about: \"{}\",", workspace.about)),
+                ("decks", format!("decks: {},", workspace.decks)),
+                (
+                    "density",
+                    format!(
+                        "density: \"{}\",",
+                        serde_json::to_string(&workspace.density)
+                            .expect("a density serialises")
+                            .trim_matches('"')
+                    ),
+                ),
+                ("theme", format!("theme: \"{}\",", workspace.theme)),
+            ] {
+                assert!(
+                    entry.contains(&wanted),
+                    "the harness gives `{}` a different {what} from this table -- \
+                     it wants `{wanted}`. A browser test pressing a preset the \
+                     application does not ship proves nothing about the picker",
+                    workspace.name,
+                );
+            }
+
+            for placement in &workspace.surfaces {
+                assert!(
+                    entry.contains(&format!("surface: \"{}\"", placement.surface)),
+                    "the harness gives `{}` without its `{}` panel",
+                    workspace.name,
+                    placement.surface,
+                );
+            }
+        }
+        assert_eq!(
+            checked, 4,
+            "the harness used to carry four of these presets and now carries \
+             {checked} the names match -- a renamed preset silently stopped \
+             being checked"
+        );
+    }
+
+    /// The one djmanzo opens with is still the empty one.
+    #[test]
+    fn the_opening_arrangement_is_still_the_decks_and_nothing_else() {
+        let opening = opening();
+        assert_eq!(opening.name, "Perform");
+        assert!(opening.surfaces.is_empty());
     }
 
     // -- surfaces ----------------------------------------------------------

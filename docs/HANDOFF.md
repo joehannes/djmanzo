@@ -126,7 +126,33 @@ the page. It does not look like one: the failing command's promise rejects and
 the panel simply does not change, which reads as an adjustment that did
 nothing. Everything the stub body needs has to reach it through the answers
 table, which *is* serialised. Three previously-green tests failed this way in
-one edit.
+one edit — and once, worse, a *new* test passed because of it: a branch meant
+to be reached only when a save fails was reached on every save, so the test
+that was supposed to prove the branch existed could not have failed either
+way. A stub edit that touches an existing command deserves a run of the whole
+file, not of the test you just wrote.
+
+**A surface Rust knows about is not a surface the shell draws.**
+`cockpit::surfaces()` lists twenty; `App.svelte`'s `DRAWN` list has seventeen,
+and the other three — the room sensor, the stem controls, the FX rack — are
+components mounted *inside* other panels. A workspace placing one of them
+passes `resolve` (it is a real surface) and is then filtered out of
+`placements` without a word, so the preset opens looking like it did nothing.
+Four shipped presets did exactly that, "Read the room" among them, and nothing
+said so until §7's picker made them pressable.
+`every_preset_places_only_surfaces_the_shell_draws` reads `DRAWN` out of
+`App.svelte` and is the guard. The general rule: **before placing a surface in
+anything, check it is in that list**, and if it should be and is not, promoting
+it is its own piece of work.
+
+**Painting the theme is not choosing it.** §31 reads the night and adapts the
+theme on a tick, so `theme.setPackage(id)` alone survives about four seconds:
+the next tick takes it back. `themeChosen(id)` is how a choice is declared, and
+the adaptation then stops deciding over it. §7's "High Contrast" preset shipped
+in a green interface for exactly this reason, and neither `svelte-check` nor
+the browser suite could see it — the harness has no night to read. It was
+found by watching the running application for half a minute, which is the
+argument for the habit above.
 
 **A screenshot under software rendering can be a frozen region, not a
 defect.** With no GPU the webview sometimes leaves a rectangle of the previous
@@ -403,7 +429,7 @@ thing out. Two duplicated tables were removed on the way (the histogram
 because a second consumer appeared and disagreed with the first.
 
 **The directive's open list is now empty.** Every one of its 86 deliverable
-sections has something real behind it: 41 finished, 45 partly there, and none
+sections has something real behind it: 42 finished, 44 partly there, and none
 untouched. That is a different claim from the directive being done, and the
 two must not be confused — a 🟡 in `DIRECTIVE-STATUS.md` names exactly what is
 missing from that section, and those named gaps are the work. Read them before

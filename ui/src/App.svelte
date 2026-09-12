@@ -35,7 +35,9 @@
     cockpitSurfaces,
     onCockpit,
     cockpitWorkspace,
+    cockpitWorkspaces,
     densityBands,
+    themeChosen,
     type DensityBand,
     setCockpitWorkspace,
     type Dock,
@@ -256,12 +258,81 @@
   const homeOf = (name: string): Dock => surfaceHomes[name] ?? "right";
 
   /**
-   * Open or close a surface, and remember it.
+   * The arrangements that ship, for the picker.
    *
-   * The write goes through Rust and the answer replaces the local state, so a
-   * placement the resolver corrected is the one drawn. Storing the request and
-   * drawing the answer is how the two drift apart.
+   * §7 asks for twenty-four named starting points; `dj_app::cockpit` holds
+   * twenty-three of them (there is no visual surface to build the twenty-fourth
+   * out of) and this only draws the list. The names, the descriptions and what
+   * each one opens are Rust's — the same split as the layouts beside them.
    */
+  let presets = $state<Workspace[]>([]);
+
+  /**
+   * Apply a preset, and then forget it is one.
+   *
+   * §7: *make these starting points, not rigid identities. Every preset should
+   * remain editable.* So this writes the preset as the workspace and stops
+   * there — the next panel the DJ opens goes through `toggleSurface` into the
+   * same workspace, under the same name, with no preset to be "off" of.
+   *
+   * The density and the theme are applied here rather than left in the stored
+   * workspace, which is where they used to sit and do nothing: the whole
+   * difference between "Laptop Compact" and "Minimal" is the density, and a
+   * picker where those two do the same thing is a picker nobody presses twice.
+   */
+  async function applyWorkspace(preset: Workspace) {
+    // Optimistic, then corrected — the same posture as `toggleSurface`, and
+    // for the same reason: the panels appear on the press.
+    workspace = preset;
+    deckCount = preset.decks;
+    applyDensity(preset.density);
+    // An empty theme is a preset with no opinion, not a preset asking for the
+    // default: a DJ who chose "Cyber Trance" and then picked "4 Deck" keeps
+    // their theme.
+    //
+    // Both halves, and the second is not decoration. §31 reads the night and
+    // adapts the theme on a tick; `setPackage` alone paints the colours and
+    // says nothing to djmanzo, so "High Contrast" wore the booth theme for
+    // about four seconds and then quietly went back to green under a DJ who
+    // had just asked for a dark-booth palette. `theme_chosen` is how a choice
+    // is declared, and the adaptation stops deciding over it. Found by driving
+    // the application; no type-check and no browser test could have seen it,
+    // because neither has a night to read.
+    if (preset.theme) {
+      theme.setPackage(preset.theme);
+      void themeChosen(preset.theme).catch(() => {});
+    }
+    try {
+      const resolved = await setCockpitWorkspace(preset);
+      workspace = resolved.workspace;
+      workspaceNotes = resolved.notes;
+      deckCount = resolved.workspace.decks;
+    } catch {
+      // Keeping the optimistic state, for the reason `toggleSurface` gives.
+    }
+  }
+
+  /**
+   * Wear a density a workspace named.
+   *
+   * The scale comes from the band table rather than from a copy here: Rust
+   * holds the five points and what each is worth, and `density_bands` already
+   * carries every one of them. The workspace stores the slug (`pro-dense`) and
+   * the band its spoken name (`Pro Dense`); a Rust test asserts those two
+   * spellings stay the same word, because a mismatch here is silent — the
+   * preset would simply open at whatever density the window fitted.
+   */
+  function applyDensity(named: string) {
+    const band = bands.find(([, name]) => name.toLowerCase().replace(/ /g, "-") === named);
+    if (!band) return;
+    // An explicit density wins over the window fitting, which is what
+    // `chosenDensity` means: the DJ has decided.
+    chosenDensity = band[2];
+    density = band[2];
+    densityName = band[1];
+    document.documentElement.style.setProperty("--density", String(band[2]));
+  }
+
   /**
    * Write the current arrangement, without changing it.
    *
@@ -285,6 +356,13 @@
     }
   }
 
+  /**
+   * Open or close a surface, and remember it.
+   *
+   * The write goes through Rust and the answer replaces the local state, so a
+   * placement the resolver corrected is the one drawn. Storing the request and
+   * drawing the answer is how the two drift apart.
+   */
   async function toggleSurface(name: Drawn) {
     const current = workspace ?? {
       name: "Custom",
@@ -416,6 +494,13 @@
     } catch {
       // A surface with no title falls back to its name, which is still a word
       // a DJ can read -- worse than "Session log", better than an empty header.
+    }
+    try {
+      presets = await cockpitWorkspaces();
+    } catch {
+      // No picker rather than an empty one: the select below hides itself when
+      // this list is empty, and every other way of arranging the cockpit still
+      // works.
     }
     try {
       const resolved = await cockpitWorkspace();
@@ -1246,6 +1331,47 @@
         >
           {deckCount} decks
         </button>
+        <!--
+          §7's workspace picker. A preset is a starting point: it opens some
+          panels, sets a deck count and a density, and may name a theme. It is
+          not a mode — nothing is "in" a workspace afterwards, and the next
+          panel the DJ opens edits it like any other arrangement.
+
+          Beside the layout picker rather than inside Settings because this is
+          the control a DJ reaches for when the night changes — a wedding turns
+          into an open-format floor at half past midnight, and that should be
+          one press from the booth screen.
+        -->
+        {#if presets.length > 0}
+          <select
+            class="workspace-preset"
+            aria-label="Workspace"
+            onchange={(event) => {
+              const chosen = presets.find((w) => w.name === event.currentTarget.value);
+              if (chosen) void applyWorkspace(chosen);
+            }}
+          >
+            <option value="">Workspace…</option>
+            {#each presets as option (option.name)}
+              <option
+                value={option.name}
+                title={option.about}
+                selected={workspace?.name === option.name}
+              >
+                {option.name}
+              </option>
+            {/each}
+          </select>
+          <!--
+            What the chosen one is for. The select shows twenty-three names and
+            a name is not a description: "Open Format" and "Club" are both
+            plausible at midnight, and this is the line that says which one
+            gives you four decks.
+          -->
+          {#if workspace?.about}
+            <span class="preset-about" title={workspace.about}>{workspace.about}</span>
+          {/if}
+        {/if}
         <!--
           The layout picker. A layout is data — it can hide the FX rack, it
           cannot change what a control does — so choosing one is safe even when
@@ -2098,6 +2224,34 @@
     place in the interface where "the file you are trusting is damaged" was
     said in the same voice as everything else.
   */
+  /*
+    The picker and the line beside it.
+
+    Capped and truncated rather than allowed to push the recording controls
+    along: "Everything that fits on a small screen, and nothing that does not"
+    is a sentence, and the two buttons at the end of this row are the two that
+    must never move. The whole sentence is in the `title`.
+  */
+  .workspace-preset {
+    /*
+      Wide enough for the longest name a DJ is likely to sit on all night --
+      "Laptop Compact", "High Contrast", "Pro Performance". It was 11rem, which
+      cut "Laptop Compact" to "Laptop Compa" in the running application. The
+      three longest names still truncate and the line beside them says what
+      they are.
+    */
+    max-width: 13rem;
+  }
+
+  .preset-about {
+    max-width: 18rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-dim);
+    font-size: 0.78rem;
+  }
+
   .warn-chip {
     padding: 0.2rem 0.45rem;
     border: 1px solid var(--warn);
