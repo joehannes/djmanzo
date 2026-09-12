@@ -82,6 +82,13 @@ pub enum Sense {
 }
 
 impl Sense {
+    /// The three, in one place.
+    ///
+    /// This list was written out in four functions in this file before §39
+    /// needed a fifth; a fourth sense added to the enum would have been three
+    /// silent omissions and one compile error.
+    pub const ALL: [Sense; 3] = [Sense::Light, Sense::Movement, Sense::Loudness];
+
     #[must_use]
     pub fn name(self) -> &'static str {
         match self {
@@ -262,6 +269,19 @@ fn against(fraction: f32) -> Against {
     }
 }
 
+/// `a`, `a and b`, `a, b and c` — a list as somebody would say it.
+///
+/// Written here rather than reached for from a crate because it is four lines
+/// and the alternative is a dependency whose licence would have to go in
+/// `RESEARCH.md` for an Oxford comma.
+fn say_all(words: &[&str]) -> String {
+    match words {
+        [] => String::new(),
+        [one] => (*one).to_owned(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
 /// What one stretch of the night measured, per sense.
 ///
 /// Three distributions kept together because they are always filled together
@@ -336,6 +356,78 @@ impl Horizon {
             ),
         }
     }
+}
+
+/// Which way the room is going, in one mark. §39's compact indicator.
+///
+/// §39's whole instruction is a warning: *do not create a giant analytics
+/// dashboard during a set*. What a DJ mid-mix can read is one arrow, so this
+/// is the one judgement made in one place, and the panel with six comparisons
+/// in it is what opens when they ask for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Way {
+    Rising,
+    Steady,
+    Falling,
+}
+
+impl Way {
+    /// The stable slug, so an interface can style it without re-deriving it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Rising => "rising",
+            Self::Steady => "steady",
+            Self::Falling => "falling",
+        }
+    }
+
+    /// What the chip reads, in §39's own spelling.
+    ///
+    /// Two arrows and a word rather than three of either, because that is
+    /// literally what the section asks for: `ROOM ↑`, `ROOM ↓`, `ROOM STABLE`.
+    /// Here rather than in the interface for the reason every other label in
+    /// this file is here: one table, and a mark cannot drift from the
+    /// judgement it stands for.
+    #[must_use]
+    pub const fn mark(self) -> &'static str {
+        match self {
+            Self::Rising => "↑",
+            Self::Steady => "STABLE",
+            Self::Falling => "↓",
+        }
+    }
+}
+
+/// One arrow, and what is behind it.
+///
+/// Read against [`Horizon::Recent`] alone, and that is the whole design
+/// decision worth stating: the question a chip in the top bar answers is *is
+/// the floor picking up or falling off right now*, and the other two reaches
+/// answer different questions. Mixing "busier than twenty minutes ago" with
+/// "busier than it usually is at peak" into one arrow would produce a mark
+/// that is sometimes about the moment and sometimes about the night, with
+/// nothing on screen saying which.
+///
+/// The senses are **counted, never averaged**. §36 states the rule this obeys:
+/// three numbers that disagree are three facts, and a mood computed out of
+/// them is the statistics-lying that module exists to avoid. So a split room
+/// reads `Steady` with `agreeing` well below `of`, and [`Glance::because`]
+/// names both halves — which is a DJ being told the senses disagree rather
+/// than being handed an average that hides it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Glance {
+    pub way: Way,
+    /// How many senses could be placed against the last twenty minutes at all.
+    pub of: usize,
+    /// How many of those read the way this glance does.
+    ///
+    /// The confidence §39 asks for, as evidence rather than as a percentage:
+    /// *2 of 3* is a number a DJ can argue with and 67% is not. The same shape
+    /// §37's nights are reported in.
+    pub agreeing: usize,
+    /// What was seen, in the words each sense deserves.
+    pub because: String,
 }
 
 /// Where the room is now, against every reach §35 asks for.
@@ -558,6 +650,69 @@ impl Room {
         })
     }
 
+    /// §39's one arrow: which way the floor has gone in the last twenty minutes.
+    ///
+    /// `None` when not one sense can be placed against that reach — nothing is
+    /// watching, or too little has arrived. Absent rather than `Steady`: a chip
+    /// reading STABLE over a room nobody is looking at is the panel lying by
+    /// omission, and this container has no camera at all, so that is the state
+    /// it is in here every time.
+    #[must_use]
+    pub fn glance(&self) -> Option<Glance> {
+        let mut rose = Vec::new();
+        let mut fell = Vec::new();
+        let mut held = 0;
+        for sense in Sense::ALL {
+            let Some(against) = self.at(Horizon::Recent, sense) else {
+                continue;
+            };
+            match against.direction(sense) {
+                None => held += 1,
+                Some(word) if matches!(against, Against::Higher | Against::Highest) => {
+                    rose.push(word);
+                }
+                Some(word) => fell.push(word),
+            }
+        }
+
+        let of = rose.len() + fell.len() + held;
+        if of == 0 {
+            return None;
+        }
+
+        let (way, agreeing) = if rose.len() > fell.len() {
+            (Way::Rising, rose.len())
+        } else if fell.len() > rose.len() {
+            (Way::Falling, fell.len())
+        } else {
+            (Way::Steady, held)
+        };
+
+        // Both halves, in the order they were measured, and no attempt to
+        // reconcile them. A room that is busier and quieter is a room that is
+        // busier and quieter.
+        let moved: Vec<&str> = rose.into_iter().chain(fell).collect();
+        let because = if moved.is_empty() {
+            format!(
+                "The room is holding where it has been {}.",
+                Horizon::Recent.than()
+            )
+        } else {
+            format!(
+                "The room is {} {}.",
+                say_all(&moved),
+                Horizon::Recent.than()
+            )
+        };
+
+        Some(Glance {
+            way,
+            of,
+            agreeing,
+            because,
+        })
+    }
+
     /// Every reading still held, oldest first.
     ///
     /// For §37, which correlates the room with what the DJ did and therefore
@@ -599,7 +754,7 @@ impl Room {
     /// Whether there is enough to say anything at all.
     #[must_use]
     pub fn has_looked_enough(&self) -> bool {
-        [Sense::Light, Sense::Movement, Sense::Loudness]
+        Sense::ALL
             .into_iter()
             .any(|sense| self.lately(sense).is_some())
     }
@@ -748,6 +903,140 @@ mod tests {
             room.saw(Reading::at(at(7100 + n * 2)).with(sense, late), None);
         }
         room
+    }
+
+    // -- §39's one arrow ---------------------------------------------------
+
+    /// **The glance reads the last twenty minutes, not the night.**
+    ///
+    /// The load-bearing test for §39, because the bug it guards against is
+    /// invisible: a chip reading the night's reach instead of the recent one
+    /// still shows an arrow, still shows a count, and is answering a different
+    /// question from the one a DJ mid-mix is asking. The fixture is built so
+    /// the two reaches point opposite ways — a quiet night with a loud last
+    /// twenty minutes and a middling now — so only one of them can be right.
+    #[test]
+    fn the_glance_reads_the_last_twenty_minutes_rather_than_the_night() {
+        let room = three_ways(0.1, 0.9, 0.5, Sense::Movement);
+        assert!(
+            room.at(Horizon::Tonight, Sense::Movement).expect("tonight") > Against::Usual,
+            "the fixture is supposed to read high against the night"
+        );
+
+        let glance = room.glance().expect("one sense is enough for an arrow");
+        assert_eq!(
+            glance.way,
+            Way::Falling,
+            "the floor has come off the last twenty minutes and the chip says \
+             it is rising -- it is reading the night's reach"
+        );
+        assert!(
+            glance.because.contains("stiller") && glance.because.contains("last twenty minutes"),
+            "the chip has to say what it saw and over what: {}",
+            glance.because
+        );
+    }
+
+    /// **Senses that disagree are counted, never averaged.**
+    ///
+    /// §36's refusal, applied to §39's chip: a floor that got busier while the
+    /// room got quieter is two facts, and one number in the middle of them is
+    /// a mood djmanzo invented. So the arrow stands down to STABLE with its
+    /// agreement well below its evidence, and both halves are said out loud.
+    #[test]
+    fn senses_that_disagree_are_not_averaged_into_a_mood() {
+        // Movement climbs over the last twenty minutes; loudness falls over
+        // the same stretch. One reading carries both, so the windows are
+        // identical and only the direction differs.
+        let mut room = Room::new();
+        for n in 0..198u64 {
+            room.saw(
+                Reading::at(at(n * 30))
+                    .with(Sense::Movement, 0.5)
+                    .with(Sense::Loudness, 0.5),
+                None,
+            );
+        }
+        for n in 0..30u64 {
+            room.saw(
+                Reading::at(at(6000 + n * 30))
+                    .with(Sense::Movement, 0.1)
+                    .with(Sense::Loudness, 0.9),
+                None,
+            );
+        }
+        for n in 0..ENOUGH as u64 {
+            room.saw(
+                Reading::at(at(7100 + n * 2))
+                    .with(Sense::Movement, 0.9)
+                    .with(Sense::Loudness, 0.1),
+                None,
+            );
+        }
+
+        let glance = room.glance().expect("two senses placed");
+        assert_eq!(glance.way, Way::Steady);
+        assert_eq!(glance.of, 2, "both senses were placed");
+        assert_eq!(
+            glance.agreeing, 0,
+            "neither sense is holding still, and the chip claims they are"
+        );
+        assert!(
+            glance.because.contains("busier") && glance.because.contains("quieter"),
+            "a split room has to name both halves rather than resolve them: {}",
+            glance.because
+        );
+    }
+
+    /// A room nothing is watching has no arrow at all.
+    ///
+    /// Absent rather than STABLE, which is the state this container is in
+    /// every time it runs: there is no camera and no microphone here, so a
+    /// chip that defaulted to "stable" would be djmanzo reporting on a room it
+    /// has never seen.
+    #[test]
+    fn a_room_nothing_is_watching_has_no_arrow() {
+        assert_eq!(Room::new().glance(), None);
+
+        // And one reading short of the near window's minimum is still nothing.
+        let mut thin = Room::new();
+        for n in 0..(ENOUGH as u64 - 1) {
+            thin.saw(Reading::at(at(n * 2)).with(Sense::Movement, 0.5), None);
+        }
+        assert_eq!(
+            thin.glance(),
+            None,
+            "an arrow appeared before there was enough to place it"
+        );
+    }
+
+    /// A room that has not moved says so, and says it is holding.
+    #[test]
+    fn a_room_carrying_on_reads_as_stable_and_says_what_that_means() {
+        let room = three_ways(0.5, 0.5, 0.5, Sense::Movement);
+        let glance = room.glance().expect("a flat night is still a reading");
+        assert_eq!(glance.way, Way::Steady);
+        assert_eq!((glance.agreeing, glance.of), (1, 1));
+        assert!(
+            glance.because.contains("holding"),
+            "a room that has not moved should say so: {}",
+            glance.because
+        );
+    }
+
+    /// Each way has its own slug and its own mark, and §39's three words are
+    /// the three that appear.
+    #[test]
+    fn every_way_has_its_own_slug_and_its_own_mark() {
+        let ways = [Way::Rising, Way::Steady, Way::Falling];
+        let mut seen = std::collections::BTreeSet::new();
+        for way in ways {
+            assert!(seen.insert(way.name()), "two ways are `{}`", way.name());
+            assert!(seen.insert(way.mark()), "two ways read `{}`", way.mark());
+        }
+        assert_eq!(Way::Rising.mark(), "↑");
+        assert_eq!(Way::Falling.mark(), "↓");
+        assert_eq!(Way::Steady.mark(), "STABLE");
     }
 
     /// **The four reaches §35 asks for, and no absolute number anywhere.**
@@ -931,7 +1220,7 @@ mod tests {
     #[test]
     fn each_sense_has_its_own_words_for_more_and_less() {
         let mut words = std::collections::BTreeSet::new();
-        for sense in [Sense::Light, Sense::Movement, Sense::Loudness] {
+        for sense in Sense::ALL {
             words.insert(sense.more());
             words.insert(sense.less());
             assert_eq!(Against::Usual.direction(sense), None);
@@ -1141,7 +1430,7 @@ mod tests {
             Against::Highest,
         ];
         let mut seen = std::collections::BTreeSet::new();
-        for sense in [Sense::Light, Sense::Movement, Sense::Loudness] {
+        for sense in Sense::ALL {
             for band in bands {
                 let phrase = band.phrase(sense);
                 assert!(!phrase.trim().is_empty());

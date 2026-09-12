@@ -19,13 +19,15 @@ import { expect, test } from "@playwright/test";
 import { errorsThrown, openShell } from "./shell";
 
 /*
-  The room panel lives inside the Assistant surface, in a fold under the
-  occasion — "the one thing djmanzo will say about a camera is that the floor
-  is doing something other than the night you set up", so it sits beside the
-  control it contradicts. That is why this is `.room` inside `assistant` and
-  not a surface of its own.
+  The room is a surface of its own. It was a `<details>` fold inside the
+  Assistant, placed there because "the one thing djmanzo will say about a
+  camera is that the floor is doing something other than the night you set
+  up" — and the cost of that placement was that it could only exist where the
+  assistant did, which is what §39 asks to be fixed. The disagreement it draws
+  is still the same sentence; it is now beside the night rather than inside
+  the assistant, and §39's chip in the status strip is the third way in.
 */
-const ROOM = '.surface[data-surface="assistant"] .room';
+const ROOM = '.surface[data-surface="room"]';
 
 /** A room half an hour into a night that has read as peak. */
 const READ = {
@@ -80,13 +82,21 @@ const READ = {
   ],
 };
 
+/**
+ * Open the room.
+ *
+ * One press, because §39 promoted it: this used to open the assistant and
+ * then unfold a `<details>` inside it, which is the nesting that section is
+ * about. The panel is its own surface now, the fold is gone, and §39's chip in
+ * the status strip is the way in — which is why that chip draws even with
+ * nothing to report.
+ */
 async function roomOpen(
   page: import("@playwright/test").Page,
   read: unknown = READ,
 ) {
   await openShell(page, "/", {}, { room_read: read });
-  await page.getByRole("button", { name: "Assistant", exact: true }).click();
-  await page.getByText("The room", { exact: true }).click();
+  await page.locator(".room-chip").click();
   await expect(page.locator(ROOM)).toBeVisible();
 }
 
@@ -174,8 +184,7 @@ test.describe("§35's room baseline", () => {
    */
   test("a room nobody is watching has no baseline to draw", async ({ page }) => {
     await openShell(page, "/");
-    await page.getByRole("button", { name: "Assistant", exact: true }).click();
-    await page.getByText("The room", { exact: true }).click();
+    await page.locator(".room-chip").click();
     await expect(page.locator(ROOM)).toBeVisible();
     await expect(page.locator(`${ROOM} table.baseline`)).toHaveCount(0);
     expect(errorsThrown(page)).toEqual([]);
@@ -225,8 +234,7 @@ test.describe("§37's history", () => {
    */
   test("says what happened after, and over how many nights", async ({ page }) => {
     await openShell(page, "/", {}, { room_history: HISTORY });
-    await page.getByRole("button", { name: "Assistant", exact: true }).click();
-    await page.getByText("The room", { exact: true }).click();
+    await page.locator(".room-chip").click();
 
     const said = page.locator(`${ROOM} .history li`);
     await expect(said).toHaveCount(1);
@@ -249,8 +257,7 @@ test.describe("§37's history", () => {
    */
   test("shows nothing for the nights that disagree", async ({ page }) => {
     await openShell(page, "/", {}, { room_history: HISTORY });
-    await page.getByRole("button", { name: "Assistant", exact: true }).click();
-    await page.getByText("The room", { exact: true }).click();
+    await page.locator(".room-chip").click();
 
     await expect(page.locator(`${ROOM} .history li`)).toHaveCount(1);
     await expect(page.locator(`${ROOM} .history`)).not.toContainText("cut");
@@ -259,8 +266,7 @@ test.describe("§37's history", () => {
   /** With nothing recorded there is no section at all, not an empty one. */
   test("a djmanzo that has never watched a room says nothing", async ({ page }) => {
     await openShell(page, "/");
-    await page.getByRole("button", { name: "Assistant", exact: true }).click();
-    await page.getByText("The room", { exact: true }).click();
+    await page.locator(".room-chip").click();
     await expect(page.locator(ROOM)).toBeVisible();
     await expect(page.locator(`${ROOM} .history`)).toHaveCount(0);
     expect(errorsThrown(page)).toEqual([]);

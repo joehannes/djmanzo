@@ -9375,6 +9375,30 @@ pub struct RoomDto {
     /// panel showing phase comparisons with nothing naming the phase is a
     /// panel making a claim it cannot support.
     pub phase: Option<String>,
+    /// §39's one arrow, or `null` when nothing can be placed yet.
+    ///
+    /// On the same read as everything else rather than behind a command of its
+    /// own: the chip and the panel are two views of one judgement, and two
+    /// commands would be two chances for them to disagree about which way the
+    /// room is going.
+    pub glance: Option<GlanceDto>,
+}
+
+/// §39's compact indicator: which way the floor has gone, and what says so.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GlanceDto {
+    /// `rising`, `steady` or `falling` — the slug, for styling.
+    pub way: String,
+    /// What the chip reads: `↑`, `↓` or `STABLE`, in §39's own spelling.
+    pub mark: String,
+    /// How many senses read this way, and how many could be placed at all.
+    ///
+    /// The confidence §39 asks for, as evidence rather than as a percentage.
+    pub agreeing: usize,
+    pub of: usize,
+    /// What was seen, in the words each sense deserves. The chip's title, and
+    /// the first line of the panel that opens from it.
+    pub says: String,
 }
 
 /// One sense, placed against every reach §35 asks for.
@@ -9512,6 +9536,13 @@ pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
         loudness: room.lately(Sense::Loudness),
         baseline,
         phase: phase.map(|p| p.name().to_owned()),
+        glance: room.glance().map(|glance| GlanceDto {
+            way: glance.way.name().to_owned(),
+            mark: glance.way.mark().to_owned(),
+            agreeing: glance.agreeing,
+            of: glance.of,
+            says: glance.because,
+        }),
     })
 }
 

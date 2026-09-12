@@ -2925,6 +2925,37 @@ export interface RoomRead {
    * the night has not read yet. Said rather than implied.
    */
   phase: string | null;
+  /**
+   * §39's one arrow, or null when nothing can be placed yet.
+   *
+   * Null rather than a "steady" that means "we have no idea": this container
+   * has no camera at all, so absent is the state it is in every time.
+   */
+  glance: Glance | null;
+}
+
+/**
+ * §39's compact indicator: which way the floor has gone, and what says so.
+ *
+ * Read against the last twenty minutes alone — the question a chip in the top
+ * bar answers is whether the floor is picking up *right now*. Rust decides;
+ * this only draws it.
+ */
+export interface Glance {
+  /** `rising`, `steady` or `falling` — the slug, for styling. */
+  way: string;
+  /** What the chip reads: `↑`, `↓` or `STABLE`, in §39's own spelling. */
+  mark: string;
+  /**
+   * How many senses read this way, of how many could be placed at all.
+   *
+   * The confidence §39 asks for, as evidence rather than as a percentage:
+   * *2 of 3* is a number a DJ can argue with and 67% is not.
+   */
+  agreeing: number;
+  of: number;
+  /** What was seen, in Rust's words. */
+  says: string;
 }
 
 /** One sense, placed against every reach §35 asks for. */

@@ -156,6 +156,9 @@ const ANSWERS: Record<string, unknown> = {
     // above in a different panel.
     baseline: [],
     phase: null,
+    // §39's arrow. Null by default, which is the state of every machine with
+    // no camera — including this one — and is drawn as no chip at all.
+    glance: null,
   },
   // §37. Empty by default, because a fresh install has never watched a room —
   // and present, because `RoomSense.svelte` maps over it.

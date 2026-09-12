@@ -392,12 +392,23 @@ numbers are a floor rather than a verdict. That is recorded in the ADR.
 `DIRECTIVE-STATUS.md` holds the live count; re-run its script rather than
 trusting a number written anywhere else, including here.
 
-The recently shipped cockpit work followed one shape three times: a valuable
+The recently shipped cockpit work followed one shape four times: a valuable
 thing was mounted *inside* another panel, so it could only exist where that
-panel did. **Prepare**, the **Next** rail and the **set plan** each became
-dockable surfaces of their own, and each time the thing they replaced was
-removed rather than duplicated — because two places that do the same job
-eventually disagree.
+panel did. **Prepare**, the **Next** rail, the **set plan** and §39's **room**
+each became dockable surfaces of their own, and each time the thing they
+replaced was removed rather than duplicated — because two places that do the
+same job eventually disagree.
+
+The room is the one to read if you are about to do the fifth. Three things had
+to move together and only the first is obvious: the component gets a surface
+and a `DRAWN` entry; the tests that reached it through its old parent have to
+be rerouted (four of `baseline.spec.ts`'s did, and they failed loudly, which is
+the good case); and **it needs a way in that does not depend on the thing it
+was nested under**. The panel row is thirteen buttons and already wraps on a
+laptop — a fourteenth cost the deck eleven pixels at the relaxed density and
+`density.spec.ts` caught it — so the way in is §39's own indicator in the
+status strip, which draws even with nothing to report precisely so that it can
+be that way in.
 
 The context engine (§11) now exists and is the shape the rest of phase 5 should
 follow: one judgement, made in one place, published on the snapshot, with a
