@@ -668,6 +668,9 @@ impl Engine {
                     DeckAction::HotCueClear(slot) => {
                         target.clear_hot_cue(slot);
                     }
+                    DeckAction::HotCueMove(slot, to) => {
+                        target.move_hot_cue(slot, to, quantize);
+                    }
                     DeckAction::LoopPhrases(phrases) => {
                         target.set_loop_phrases(f64::from(phrases));
                     }
@@ -4375,6 +4378,104 @@ mod loop_tests {
         assert!(
             (stored - BEAT * 4.0).abs() < 2.0,
             "quantised cue landed at {stored}, not on the beat"
+        );
+    }
+
+    /// **§26: a cue moves to where it was dragged, not to the playhead.**
+    ///
+    /// The load-bearing test for the drag, and the one distinction worth
+    /// protecting: `HotCueSet` puts a cue at the playhead, which is a DJ
+    /// listening, and this puts it where they pointed, which is a DJ looking.
+    /// Written so the two answers cannot be confused -- the playhead is left a
+    /// long way from where the cue is dragged, so a move that quietly fell back
+    /// to "set" lands somewhere this test can see.
+    #[test]
+    fn a_dragged_cue_lands_where_it_was_dropped_rather_than_at_the_playhead() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::Seek(FramePos::new(BEAT * 4.0)));
+        rig.act(1, DeckAction::HotCueSet(1));
+        rig.render(256);
+        assert!((rig.param(1, DeckParam::HotCue1) as f64 - BEAT * 4.0).abs() < 2.0);
+
+        // The playhead stays where it is; only the mark moves.
+        rig.act(1, DeckAction::HotCueMove(1, FramePos::new(BEAT * 16.0)));
+        rig.render(256);
+        let stored = rig.param(1, DeckParam::HotCue1) as f64;
+        assert!(
+            (stored - BEAT * 16.0).abs() < 2.0,
+            "the cue landed at {stored} rather than where it was dropped -- a \
+             drag that falls back to the playhead moves the mark to the wrong \
+             place every time"
+        );
+    }
+
+    /// Dragging a slot that holds nothing creates nothing.
+    ///
+    /// A drag starts on a marker that is on screen, so a move addressed at an
+    /// empty slot did not come from one. Creating a cue here would turn a
+    /// mis-addressed message into a mark the DJ never made.
+    #[test]
+    fn moving_an_empty_slot_does_not_invent_a_cue() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.render(256);
+        assert_eq!(
+            rig.param(1, DeckParam::HotCue4),
+            dj_core::param::UNSET_HOT_CUE
+        );
+
+        rig.act(1, DeckAction::HotCueMove(4, FramePos::new(BEAT * 8.0)));
+        rig.render(256);
+        assert_eq!(
+            rig.param(1, DeckParam::HotCue4),
+            dj_core::param::UNSET_HOT_CUE,
+            "a drag on an empty slot made a cue out of nothing"
+        );
+    }
+
+    /// A cue dragged past the end of the record stays inside it.
+    ///
+    /// A lane can be dragged past either edge, and a cue outside the audio is a
+    /// marker that can never be reached again.
+    #[test]
+    fn a_cue_dragged_off_the_end_stays_in_the_record() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::HotCueSet(2));
+        rig.render(256);
+
+        rig.act(1, DeckAction::HotCueMove(2, FramePos::new(1e12)));
+        rig.render(256);
+        let stored = rig.param(1, DeckParam::HotCue2) as f64;
+        assert!(
+            stored.is_finite() && (0.0..1e12).contains(&stored),
+            "a cue dragged off the end landed at {stored}"
+        );
+    }
+
+    /// Quantize applies to a dragged cue for the same reason it applies to a
+    /// set one: a cue a hair off the beat makes the deck sound late every time
+    /// it is pressed, and being in the wrong place is usually why it is being
+    /// moved.
+    #[test]
+    fn quantize_snaps_a_dragged_cue_onto_the_beat() {
+        let mut rig = new_rig();
+        rig.prepare(1, false);
+        rig.act(1, DeckAction::HotCueSet(1));
+        rig.send(Command::Action(Action::Mixer(MixerAction::SetQuantize(
+            true,
+        ))));
+        rig.act(
+            1,
+            DeckAction::HotCueMove(1, FramePos::new(BEAT * 8.0 + 3_000.0)),
+        );
+        rig.render(256);
+
+        let stored = rig.param(1, DeckParam::HotCue1) as f64;
+        assert!(
+            (stored - BEAT * 8.0).abs() < 2.0,
+            "a dragged cue landed at {stored}, not on the beat"
         );
     }
 

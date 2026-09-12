@@ -1499,6 +1499,35 @@ impl Deck {
         self.hot_cues = cues;
     }
 
+    /// Put an existing hot cue somewhere else. §26's drag.
+    ///
+    /// **An empty slot is left empty.** A drag begins on a marker that is on
+    /// screen, so a move addressed at a slot holding nothing did not come from
+    /// one — and creating a cue here would turn a mis-addressed message into a
+    /// mark the DJ never made, which is worse than the message doing nothing.
+    ///
+    /// Snapped like [`Self::set_hot_cue`] when quantize is on, for the reason
+    /// that one is: a cue a hair off the beat is a cue that makes the deck
+    /// sound late every time it is pressed, and the whole point of moving one
+    /// is usually that it is in the wrong place.
+    pub fn move_hot_cue(&mut self, slot: u8, to: FramePos, quantize: bool) -> bool {
+        let Some(index) = slot.checked_sub(1).map(usize::from) else {
+            return false;
+        };
+        // Clamped into the track, and computed before the mutable borrow for
+        // the reason `set_hot_cue` gives. A drag can end past either end of the
+        // lane, and a cue outside the audio is a marker that can never be
+        // reached again.
+        let landing = self.snapped(to.clamped(self.len_frames() as f64), quantize);
+        match self.hot_cues.get_mut(index) {
+            Some(cell @ Some(_)) => {
+                *cell = Some(landing);
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn clear_hot_cue(&mut self, slot: u8) -> bool {
         let Some(index) = slot.checked_sub(1).map(usize::from) else {
             return false;

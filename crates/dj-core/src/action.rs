@@ -298,6 +298,18 @@ pub enum DeckAction {
     HotCueSet(u8),
     /// Forget a hot cue.
     HotCueClear(u8),
+    /// Put an existing hot cue somewhere else.
+    ///
+    /// §26's drag, and deliberately not [`Self::HotCueSet`] with a parameter:
+    /// that one puts a cue *at the playhead*, which is a DJ listening, and this
+    /// one puts it where they pointed, which is a DJ looking. The two are the
+    /// same edit made for opposite reasons and a control that conflated them
+    /// would move a cue to the playhead every time somebody dragged it.
+    ///
+    /// Moving a slot that holds nothing does nothing rather than creating one:
+    /// a drag can only begin on a marker that is already on screen, so an empty
+    /// slot arriving here is a mistake somewhere else and not an instruction.
+    HotCueMove(u8, FramePos),
 
     /// Loop the next `n` beats from here, and start looping.
     ///
@@ -649,6 +661,17 @@ impl Action {
                 let verb = words.next().ok_or(ParseError::MissingVerb)?;
                 // `fx` is the one verb with a sub-grammar of its own, so it
                 // takes the rest of the line rather than a single argument.
+                // Two arguments — a slot and a position — so it takes the
+                // rest of the line the way `fx` does rather than the single
+                // word `parse_deck_verb` is shaped for.
+                if verb == "hotcue_move" {
+                    let slot = parse_slot(words.next())?;
+                    let frame = FramePos::new(f64::from(parse_f32(words.next())?));
+                    return Ok(Action::Deck {
+                        deck,
+                        action: DeckAction::HotCueMove(slot, frame),
+                    });
+                }
                 if verb == "fx" {
                     let (slot, change) = parse_fx(&mut words)?;
                     Ok(Action::Deck {
@@ -1351,6 +1374,9 @@ impl fmt::Display for Action {
                 DeckAction::HotCue(n) => write!(f, "deck {deck} hotcue {n}"),
                 DeckAction::HotCueSet(n) => write!(f, "deck {deck} hotcue_set {n}"),
                 DeckAction::HotCueClear(n) => write!(f, "deck {deck} hotcue_clear {n}"),
+                DeckAction::HotCueMove(n, p) => {
+                    write!(f, "deck {deck} hotcue_move {n} {}", number(p.get()))
+                }
                 DeckAction::LoopBeats(n) => write!(f, "deck {deck} loop {n}"),
                 DeckAction::LoopPhrases(n) => write!(f, "deck {deck} loop_phrase {n}"),
                 DeckAction::LoopOff => write!(f, "deck {deck} loop_off"),

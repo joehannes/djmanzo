@@ -28,6 +28,7 @@
     framesPerPixel = 256,
     marks = [],
     onMoveMark,
+    onMoveCue,
   }: {
     deck: DeckState;
     height?: number;
@@ -51,6 +52,19 @@
      * whatever it implies. The waveform works nothing out.
      */
     onMoveMark?: (label: string, frame: number) => void;
+    /**
+     * A hot cue was dragged. Slot (1-based) and where it was let go, in frames.
+     *
+     * §26's first named example — *cue marker: drag to move*. Separate from
+     * `onMoveMark` because a cue is addressed by slot rather than by label, and
+     * the consumer needs the number to build the action: a caller handed
+     * `"cue 3"` would have to parse a word this component had just assembled.
+     *
+     * Absent means the cues are not draggable here, which is the honest state
+     * of a lane nobody owns the cues of — the pair view draws two records and
+     * neither of them is "the" deck.
+     */
+    onMoveCue?: (slot: number, frame: number) => void;
   } = $props();
 
   /**
@@ -61,7 +75,22 @@
    * that Rust refuses or snaps elsewhere snaps visibly, rather than leaving
    * the interface showing a mix djmanzo is not holding.
    */
-  let dragging = $state<{ label: string; frame: number } | null>(null);
+  let dragging = $state<Drag | null>(null);
+
+  /**
+   * What is being dragged, where it has got to, and what to do on release.
+   *
+   * The commit is carried rather than worked out from the key, because there
+   * are now two kinds of thing on this lane that can be dragged — marks the
+   * caller supplied and the deck's own cues — and telling them apart by
+   * inspecting a string would be this component knowing something about its
+   * callers that it does not need to know.
+   */
+  interface Drag {
+    key: string;
+    frame: number;
+    commit: (frame: number) => void;
+  }
 
   /**
    * How much record is left, as a band at the end of the lane.
@@ -141,10 +170,13 @@
    * the case capture is usually reached for: a pointer that leaves the lane
    * mid-drag still moves the mark.
    */
-  function grab(event: PointerEvent, mark: { label: string; draggable?: boolean }) {
-    if (!mark.draggable) return;
+  function grab(
+    event: PointerEvent,
+    key: string,
+    commit: (frame: number) => void,
+  ) {
     event.preventDefault();
-    dragging = { label: mark.label, frame: frameAt(event) };
+    dragging = { key, frame: frameAt(event), commit };
     window.addEventListener("pointermove", drag);
     window.addEventListener("pointerup", drop, { once: true });
     window.addEventListener("pointercancel", cancel, { once: true });
@@ -170,24 +202,26 @@
   const NUDGE_PX = 6;
   const NUDGE_FAST_PX = 48;
 
-  function nudge(event: KeyboardEvent, mark: { label: string; frame: number }) {
+  function nudge(
+    event: KeyboardEvent,
+    from: number,
+    commit: (frame: number) => void,
+  ) {
     const step =
       event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
     if (step === 0) return;
     event.preventDefault();
     const pixels = event.shiftKey ? NUDGE_FAST_PX : NUDGE_PX;
-    onMoveMark?.(
-      mark.label,
-      Math.max(0, mark.frame + step * pixels * framesPerPixel),
-    );
+    commit(Math.max(0, from + step * pixels * framesPerPixel));
   }
 
   function drop(event: PointerEvent) {
     window.removeEventListener("pointermove", drag);
     if (!dragging) return;
-    const { label, frame } = { ...dragging, frame: frameAt(event) };
+    const { commit } = dragging;
+    const frame = frameAt(event);
     dragging = null;
-    onMoveMark?.(label, frame);
+    commit(frame);
   }
 
   /** Tile width in pixels. Wide enough that a lane needs few of them. */
@@ -293,7 +327,14 @@
     deck.hot_cues
       .map((frame, index) => ({ slot: index + 1, frame }))
       .filter((c): c is { slot: number; frame: number } => c.frame != null)
-      .map((c) => ({ slot: c.slot, left: c.frame / framesPerPixel })),
+      // The frame is kept as well as the pixel: §26's drag reports a position
+      // in the file, and a handle that only knew where it was on screen would
+      // have to convert back through a zoom it does not own.
+      .map((c) => ({
+        slot: c.slot,
+        frame: c.frame,
+        left: c.frame / framesPerPixel,
+      })),
   );
 
   const loopBand = $derived.by(() => {
@@ -428,9 +469,47 @@
         ></div>
       {/if}
       {#each markers as marker (marker.slot)}
-        <div class="cue-marker" data-layer="cues" style:left="{marker.left}px">
-          <span class="cue-flag">{marker.slot}</span>
-        </div>
+        {#if onMoveCue}
+          <!--
+            §26's first example: *cue marker — drag to move*. The same handle
+            the mix point already had, on the marks a DJ actually places: a
+            cue set a beat early is the commonest thing on a waveform that is
+            in the wrong place, and until now the only way to fix one was to
+            play to the right spot and set it again.
+
+            A slider rather than a decorated div, so the keyboard reaches it.
+            The arrow keys nudge, which is the gesture this is really for —
+            a cue is usually wrong by a hair rather than by a phrase, and a
+            hair is smaller than a mouse can reliably hit.
+          -->
+          <div
+            class="cue-marker grabbable"
+            data-layer="cues"
+            class:dragging={dragging?.key === `cue ${marker.slot}`}
+            style:left="{(dragging?.key === `cue ${marker.slot}`
+              ? dragging.frame
+              : marker.frame) / framesPerPixel}px"
+            title="Cue {marker.slot} — drag, or use the arrow keys"
+            role="slider"
+            tabindex="0"
+            aria-label="Cue {marker.slot}, drag to move"
+            aria-valuenow={Math.round(marker.frame)}
+            aria-valuemin={0}
+            aria-valuemax={Math.round(totalFrames)}
+            onpointerdown={(e) =>
+              grab(e, `cue ${marker.slot}`, (frame) =>
+                onMoveCue?.(marker.slot, frame),
+              )}
+            onkeydown={(e) =>
+              nudge(e, marker.frame, (frame) => onMoveCue?.(marker.slot, frame))}
+          >
+            <span class="cue-flag">{marker.slot}</span>
+          </div>
+        {:else}
+          <div class="cue-marker" data-layer="cues" style:left="{marker.left}px">
+            <span class="cue-flag">{marker.slot}</span>
+          </div>
+        {/if}
       {/each}
       {#each marks as mark (mark.label)}
         {#if mark.draggable}
@@ -444,8 +523,8 @@
           <div
             class="mark grabbable"
             data-layer="seam"
-            class:dragging={dragging?.label === mark.label}
-            style:left="{(dragging?.label === mark.label
+            class:dragging={dragging?.key === mark.label}
+            style:left="{(dragging?.key === mark.label
               ? dragging.frame
               : mark.frame) / framesPerPixel}px"
             title="{mark.label} — drag, or use the arrow keys"
@@ -455,8 +534,10 @@
             aria-valuenow={Math.round(mark.frame)}
             aria-valuemin={0}
             aria-valuemax={Math.round(totalFrames)}
-            onpointerdown={(e) => grab(e, mark)}
-            onkeydown={(e) => nudge(e, mark)}
+            onpointerdown={(e) =>
+              grab(e, mark.label, (frame) => onMoveMark?.(mark.label, frame))}
+            onkeydown={(e) =>
+              nudge(e, mark.frame, (frame) => onMoveMark?.(mark.label, frame))}
           >
             <span class="mark-flag">{mark.label}</span>
           </div>
@@ -552,6 +633,30 @@
     background: var(--accent);
     pointer-events: none;
     z-index: 3;
+  }
+
+  /*
+    §26's handle, on the same terms the mix point's has: eleven pixels of hit
+    area hanging off the left of the line, so the line itself stays where it
+    says it is. A marker that moves to where you can grab it is a marker that
+    lies about the thing it marks.
+  */
+  .cue-marker.grabbable {
+    pointer-events: auto;
+    cursor: grab;
+    width: 11px;
+    margin-left: -5px;
+    border-left: 2px solid var(--accent);
+    background: none;
+    touch-action: none;
+  }
+
+  .cue-marker.grabbable:focus-visible {
+    outline: 2px solid var(--accent);
+  }
+
+  .cue-marker.dragging {
+    cursor: grabbing;
   }
 
   .cue-flag {

@@ -132,6 +132,18 @@ that was supposed to prove the branch existed could not have failed either
 way. A stub edit that touches an existing command deserves a run of the whole
 file, not of the test you just wrote.
 
+**The scrolling lane is a moving target, and a browser test cannot chase it.**
+`Waveform.svelte` interpolates between snapshots at sixty frames a second, so a
+marker on a *playing* deck moves about seven pixels between `boundingBox()` and
+`mouse.down()` — and the press lands on the tile behind it, with no error and
+no dispatch. That is not a defect: a hand tracks a moving surface and a
+measure-then-click test cannot, and it is also the wrong case to design for,
+since cues get edited while a record is prepared. `cues.spec.ts` emits a
+**stopped** deck through `__emit` before dragging, and the arrow-key nudge is
+what covers the deck that is playing out to a room. If a drag test on a lane
+mysteriously dispatches nothing, this is why — check `deck.playing` in the
+state you emitted before looking anywhere else.
+
 **A threshold written beside the thing it colours is a threshold nobody
 agrees with.** The strip in the top bar grew one reading at a time — sample
 rate, latency, load, dropouts, clock drift — and only one of them ever got a

@@ -594,7 +594,23 @@
     Tiles come from the Rust renderer and are scrolled by a CSS transform;
     nothing here draws. See docs/adr/0004-waveform-rendering-strategy.md.
   -->
-  <Waveform {deck} height={height(props, 96)} />
+  <!--
+    §26: the cues on this lane can be grabbed. The waveform reports a frame and
+    knows nothing about what a cue is; the action is assembled here, where the
+    deck number lives, and Rust decides what landing there means -- it clamps
+    into the record, snaps to the grid when quantize is on, and refuses a slot
+    that holds nothing.
+
+    Rounded to a whole frame because the action vocabulary is text: a position
+    with sixteen decimal places in it is a line in the session log nobody can
+    read, and a fraction of a frame is forty microseconds.
+  -->
+  <Waveform
+    {deck}
+    height={height(props, 96)}
+    onMoveCue={(slot, frame) =>
+      void send(`deck ${deck.number} hotcue_move ${slot} ${Math.round(frame)}`)}
+  />
   {/snippet}
   {#snippet zoneOverview()}
   <!--
