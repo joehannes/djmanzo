@@ -87,16 +87,16 @@ const READ = {
  *
  * One press, because §39 promoted it: this used to open the assistant and
  * then unfold a `<details>` inside it, which is the nesting that section is
- * about. The panel is its own surface now, the fold is gone, and §39's chip in
- * the status strip is the way in — which is why that chip draws even with
- * nothing to report.
+ * about. The panel is its own surface now, the fold is gone, and §39's room
+ * reading on §5's Mission Bar is the way in — which is why that reading draws
+ * even with nothing to report.
  */
 async function roomOpen(
   page: import("@playwright/test").Page,
   read: unknown = READ,
 ) {
   await openShell(page, "/", {}, { room_read: read });
-  await page.locator(".room-chip").click();
+  await page.locator('.mission [data-mission="room"]').click();
   await expect(page.locator(ROOM)).toBeVisible();
 }
 
@@ -184,7 +184,7 @@ test.describe("§35's room baseline", () => {
    */
   test("a room nobody is watching has no baseline to draw", async ({ page }) => {
     await openShell(page, "/");
-    await page.locator(".room-chip").click();
+    await page.locator('.mission [data-mission="room"]').click();
     await expect(page.locator(ROOM)).toBeVisible();
     await expect(page.locator(`${ROOM} table.baseline`)).toHaveCount(0);
     expect(errorsThrown(page)).toEqual([]);
@@ -234,7 +234,7 @@ test.describe("§37's history", () => {
    */
   test("says what happened after, and over how many nights", async ({ page }) => {
     await openShell(page, "/", {}, { room_history: HISTORY });
-    await page.locator(".room-chip").click();
+    await page.locator('.mission [data-mission="room"]').click();
 
     const said = page.locator(`${ROOM} .history li`);
     await expect(said).toHaveCount(1);
@@ -257,7 +257,7 @@ test.describe("§37's history", () => {
    */
   test("shows nothing for the nights that disagree", async ({ page }) => {
     await openShell(page, "/", {}, { room_history: HISTORY });
-    await page.locator(".room-chip").click();
+    await page.locator('.mission [data-mission="room"]').click();
 
     await expect(page.locator(`${ROOM} .history li`)).toHaveCount(1);
     await expect(page.locator(`${ROOM} .history`)).not.toContainText("cut");
@@ -266,7 +266,7 @@ test.describe("§37's history", () => {
   /** With nothing recorded there is no section at all, not an empty one. */
   test("a djmanzo that has never watched a room says nothing", async ({ page }) => {
     await openShell(page, "/");
-    await page.locator(".room-chip").click();
+    await page.locator('.mission [data-mission="room"]').click();
     await expect(page.locator(ROOM)).toBeVisible();
     await expect(page.locator(`${ROOM} .history`)).toHaveCount(0);
     expect(errorsThrown(page)).toEqual([]);

@@ -37,8 +37,6 @@
     cockpitWorkspace,
     cockpitWorkspaces,
     densityBands,
-    roomRead,
-    type Glance,
     themeChosen,
     type DensityBand,
     setCockpitWorkspace,
@@ -50,6 +48,7 @@
   } from "./api";
   import Next from "./Next.svelte";
   import Pair from "./Pair.svelte";
+  import MissionBar from "./MissionBar.svelte";
   import Night from "./Night.svelte";
   import RoomSense from "./RoomSense.svelte";
   import Mixes from "./Mixes.svelte";
@@ -465,48 +464,6 @@
     // moment the interface settles.
     window.addEventListener("resize", fitDensity);
     return () => window.removeEventListener("resize", fitDensity);
-  });
-
-  /**
-   * §39's one arrow, for the top bar.
-   *
-   * The section is mostly a warning: *do not create a giant analytics
-   * dashboard during a set*. What a DJ mid-mix can read is one mark and a
-   * count, so that is what sits in the status strip, and the six comparisons
-   * open in a panel when they ask for them.
-   *
-   * Asked here rather than read off the room panel, because the whole point is
-   * that the panel does not have to be open. The judgement is `Room::glance`'s
-   * — the arrow in the bar and the first line of the panel are one answer seen
-   * twice, not two readings that can disagree.
-   *
-   * **Null is the normal state here and is drawn as nothing at all.** It means
-   * djmanzo cannot place the room against its own last twenty minutes: no
-   * camera, no permission, or not enough yet. A chip reading STABLE over a
-   * room nobody is looking at would be the panel lying by omission.
-   */
-  let glance = $state<Glance | null>(null);
-
-  /**
-   * How often the chip asks.
-   *
-   * Five seconds. The near window it is placed against is three minutes wide
-   * and the value is a median over it, so nothing this reads can move faster
-   * than that; the room panel polls harder because it draws the meters
-   * themselves.
-   */
-  const GLANCE_MS = 5000;
-
-  $effect(() => {
-    const ask = () =>
-      void roomRead()
-        .then((read) => (glance = read.glance))
-        // A room that cannot be read leaves the chip absent rather than
-        // stale — the same rule the null answer follows.
-        .catch(() => (glance = null));
-    ask();
-    const timer = setInterval(ask, GLANCE_MS);
-    return () => clearInterval(timer);
   });
 
   /**
@@ -1134,7 +1091,6 @@
     }
   }
 
-  const load = $derived(snapshot?.master.cpu_load ?? 0);
   // Read outside the template so event handlers, which run later, do not have
   // to prove `snapshot` is still non-null.
   const cueSplit = $derived(snapshot?.master.cue_split ?? false);
@@ -1239,45 +1195,26 @@
       {/if}
     </div>
 
-    <div class="status mono">
-      <!--
-        §39's compact indicator. `ROOM ↑`, `ROOM ↓` or `ROOM STABLE`, with the
-        evidence behind it as a count rather than as a percentage -- *2 of 3*
-        is a number a DJ can argue with.
+    <!--
+      §5's Mission Bar. `dj_app::mission` decides what is on it, what each
+      reading says and which of them is worth a colour; this only places it.
 
-        **An em dash rather than STABLE when djmanzo cannot place the room.**
-        That is the state of every machine with no camera, this one included,
-        and a chip reading STABLE over a room nobody is looking at would be a
-        claim about a floor djmanzo has never seen. It still draws, because
-        this is also the way in: §39's other half is *click / expand*, nothing
-        can be watching until the panel has been opened and given a camera, and
-        a room reachable only from its own reading would be reachable from
-        nowhere. The panel row is thirteen buttons and already wraps on a
-        laptop; a fourteenth cost the deck eleven pixels at the relaxed
-        density, which `density.spec.ts` caught.
-      -->
-      <button
-        class="room-chip"
-        data-way={glance?.way ?? "unread"}
-        title={glance
-          ? `${glance.says} ${glance.agreeing} of ${glance.of} ${
-              glance.of === 1 ? "sense reads" : "senses read"
-            } this way. Press to open the room.`
-          : "Nothing is watching the room. Press to open it and aim a camera."}
-        onclick={() => toggleSurface("room")}
-      >
-        ROOM {glance?.mark ?? "—"}
-        {#if glance}
-          <span class="room-of">{glance.agreeing}/{glance.of}</span>
-        {/if}
-      </button>
-      {#if active}
-        <span>{active.sample_rate / 1000} kHz</span>
-        <span>{active.latency_ms.toFixed(1)} ms</span>
-        <span class:hot={load > 0.7}>CPU {(load * 100).toFixed(0)}%</span>
-        {#if snapshot && snapshot.master.xruns > 0}
-          <span class="xruns">{snapshot.master.xruns} xruns</span>
-        {/if}
+      It replaced a strip that had grown here a reading at a time — the sample
+      rate, the latency, the load, the dropouts, the clock drift between two
+      cards, and §39's room chip — each with its own threshold written beside
+      it. The load went amber at 0.7 here and nothing else had a rule at all,
+      so a mix being flattened by the limiter and a recording that had stopped
+      writing were both invisible while a CPU figure a DJ can do nothing about
+      was the one thing on screen in colour.
+
+      The split-card drift is the one reading that did not move onto the bar.
+      It is not one of §5's eleven, it only exists on a two-device setup, and
+      it belongs with the device that produces it — so it stays here, beside
+      the bar rather than inside it.
+    -->
+    <div class="status mono">
+      <MissionBar onOpenRoom={() => toggleSurface("room")} />
+      {#if split}
         <!--
           Two cards means two crystals, and this is the measured disagreement
           between them. Shown because it is otherwise completely invisible: a
@@ -1285,17 +1222,13 @@
           a device misreporting its rate — which you would otherwise only find
           out when the headphones started clicking mid-set.
         -->
-        {#if split}
-          <span
-            class="drift"
-            class:xruns={!split.healthy}
-            title="Clock difference between the two sound cards, corrected by resampling. {split.queue_ms.toFixed(1)} ms queued."
-          >
-            {split.drift_ppm >= 0 ? "+" : ""}{split.drift_ppm.toFixed(0)} ppm
-          </span>
-        {/if}
-      {:else}
-        <span class="idle">no device</span>
+        <span
+          class="drift"
+          class:xruns={!split.healthy}
+          title="Clock difference between the two sound cards, corrected by resampling. {split.queue_ms.toFixed(1)} ms queued."
+        >
+          {split.drift_ppm >= 0 ? "+" : ""}{split.drift_ppm.toFixed(0)} ppm
+        </span>
       {/if}
     </div>
 
@@ -2334,61 +2267,6 @@
     font-size: 0.78rem;
   }
 
-  /*
-    §39's indicator. Sized to be read from a metre away in a dark booth without
-    being the thing you look at: it sits with the other peripheral readouts,
-    and the colour is what carries the direction at a glance.
-  */
-  .room-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.15rem 0.4rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: transparent;
-    color: var(--text-dim);
-    font: inherit;
-    font-size: 0.8rem;
-    letter-spacing: 0.04em;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .room-chip:hover {
-    border-color: var(--border-strong);
-    color: var(--text);
-  }
-
-  /*
-    Rising and falling are the two worth colouring; steady is deliberately the
-    same dim as the readouts beside it, because a room carrying on is not news
-    and §39's whole instruction is that the DJ should not have to stare at it.
-  */
-  .room-chip[data-way="rising"] {
-    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-    color: var(--accent);
-  }
-
-  .room-chip[data-way="falling"] {
-    border-color: color-mix(in srgb, var(--warn) 60%, transparent);
-    color: var(--warn);
-  }
-
-  /*
-    Nothing to report reads as nothing: dimmer than the readouts beside it, so
-    a chip with no reading behind it never competes for a glance with one that
-    has.
-  */
-  .room-chip[data-way="unread"] {
-    opacity: 0.55;
-  }
-
-  /* The evidence, quieter than the mark it supports. */
-  .room-of {
-    opacity: 0.7;
-  }
-
   .warn-chip {
     padding: 0.2rem 0.45rem;
     border: 1px solid var(--warn);
@@ -2415,16 +2293,9 @@
     color: var(--text-dim);
   }
 
-  .status .hot {
-    color: var(--warn);
-  }
-
+  /* Still worn by the split-card drift, which is the one reading left here. */
   .status .xruns {
     color: var(--danger);
-  }
-
-  .status .idle {
-    color: var(--warn);
   }
 
   /*

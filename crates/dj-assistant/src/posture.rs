@@ -64,6 +64,28 @@ impl Posture {
         }
     }
 
+    /// One line saying what changes at this level. Not what it is called.
+    ///
+    /// Here rather than in the interface because §5's Mission Bar says it too,
+    /// and a posture whose tooltip in the assistant disagreed with its tooltip
+    /// on the bar would be two answers to one question. `api.ts` carries the
+    /// same six lines for the panel that was drawing them before this existed,
+    /// and a Rust test reads that file and fails when they drift.
+    #[must_use]
+    pub const fn about(self) -> &'static str {
+        match self {
+            Self::Off => "Nothing at all.",
+            Self::Watch => "Records the set, says nothing. For practice you will review later.",
+            Self::Suggest => "Offers, with reasons. Never acts.",
+            Self::Prepare => {
+                "Loads and cues the next record, gain-matched, and stops there. You still do the \
+                 mixing."
+            }
+            Self::Assist => "Does the small things, asks about the big ones.",
+            Self::Autopilot => "Mixes on its own. Touch anything to take over.",
+        }
+    }
+
     /// Parse a posture by name.
     #[must_use]
     pub fn parse(word: &str) -> Option<Self> {
@@ -489,6 +511,43 @@ impl Warrant {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The interface and this table say the same thing about each posture.
+    ///
+    /// `api.ts` has carried these six lines since the assistant panel shipped
+    /// and §5's Mission Bar now says them too. Two copies of a sentence is the
+    /// arrangement this codebase keeps being bitten by, so the copy is allowed
+    /// to stay where the panel already reads it from and this fails when they
+    /// stop agreeing — the same technique the density bands and §7's presets
+    /// use.
+    #[test]
+    fn the_interface_and_this_table_describe_a_posture_the_same_way() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/api.ts");
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("could not read the interface's api at {path}: {e}"));
+        let table = source
+            .split_once("POSTURE_HELP: Record<string, string> = {")
+            .and_then(|(_, rest)| rest.split_once("\n};"))
+            .map(|(inside, _)| inside)
+            .expect("`POSTURE_HELP` is no longer written the way this reads it");
+
+        for posture in Posture::ALL {
+            // The interface wraps long lines, so the comparison is on the
+            // words rather than on the bytes between two quotes.
+            let squashed: String = table.split_whitespace().collect::<Vec<_>>().join(" ");
+            let ours: String = posture
+                .about()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            assert!(
+                squashed.contains(&ours),
+                "the interface describes `{}` differently from this table, which \
+                 says: {ours}",
+                posture.name()
+            );
+        }
+    }
 
     /// §9's rule, over the whole matrix: **no posture, at any level, acts on a
     /// read something disagrees with.**

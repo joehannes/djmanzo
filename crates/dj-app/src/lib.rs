@@ -39,6 +39,7 @@ pub mod layout;
 pub mod lens;
 pub mod library;
 pub mod memory;
+pub mod mission;
 pub mod mixes;
 pub mod monitors;
 pub mod mood;
@@ -461,6 +462,7 @@ pub fn run() {
             commands::audience_settle,
             commands::audience_sheet,
             commands::room_saw,
+            commands::mission_bar,
             commands::room_read,
             commands::night_read,
             commands::staged_prepare,

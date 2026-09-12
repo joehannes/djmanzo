@@ -132,6 +132,18 @@ that was supposed to prove the branch existed could not have failed either
 way. A stub edit that touches an existing command deserves a run of the whole
 file, not of the test you just wrote.
 
+**A threshold written beside the thing it colours is a threshold nobody
+agrees with.** The strip in the top bar grew one reading at a time — sample
+rate, latency, load, dropouts, clock drift — and only one of them ever got a
+rule: `class:hot={load > 0.7}`, written in the template. So the one figure on
+screen in colour was a CPU percentage a DJ can do nothing about, while a
+recording that had stopped writing and a limiter flattening the mix were both
+plain grey text. §5's bar is that gathering moved into `dj_app::mission`: one
+pass, one place that decides what is worth a colour, and a test that fails if a
+healthy night lights anything up. When you add a reading to the bar, add it
+there — the component is not allowed to decide, and a browser test asserts it
+draws the level Rust gave rather than one of its own.
+
 **A surface Rust knows about is not a surface the shell draws.**
 `cockpit::surfaces()` lists twenty; `App.svelte`'s `DRAWN` list has seventeen,
 and the other three — the room sensor, the stem controls, the FX rack — are

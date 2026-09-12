@@ -156,10 +156,46 @@ const ANSWERS: Record<string, unknown> = {
     // above in a different panel.
     baseline: [],
     phase: null,
-    // §39's arrow. Null by default, which is the state of every machine with
-    // no camera — including this one — and is drawn as no chip at all.
-    glance: null,
   },
+  /**
+   * §5's Mission Bar, at its emptiest.
+   *
+   * The bar `dj_app::mission` builds from a reading with nothing in it: a room
+   * nobody is watching, a clean bus, no sound card and an idle machine. A Rust
+   * test (`the_harness_and_rust_agree_about_an_unopened_bar`) reads this file,
+   * so a stub bar cannot describe an application that does not exist. A test
+   * that wants a fuller bar passes its own.
+   */
+  mission_bar: [
+    {
+      slug: "room",
+      label: "ROOM",
+      value: "—",
+      level: "quiet",
+      about: "Nothing is watching the room.",
+    },
+    {
+      slug: "output",
+      label: "OUT",
+      value: "clean",
+      level: "quiet",
+      about: "No dropouts, and the limiter is working within itself.",
+    },
+    {
+      slug: "device",
+      label: "",
+      value: "no device",
+      level: "watch",
+      about: "No sound card is open. Nothing will be heard until one is.",
+    },
+    {
+      slug: "health",
+      label: "CPU",
+      value: "0%",
+      level: "quiet",
+      about: "The audio thread is using 0% of its time.",
+    },
+  ],
   // §37. Empty by default, because a fresh install has never watched a room —
   // and present, because `RoomSense.svelte` maps over it.
   room_history: [],

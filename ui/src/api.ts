@@ -2925,37 +2925,6 @@ export interface RoomRead {
    * the night has not read yet. Said rather than implied.
    */
   phase: string | null;
-  /**
-   * §39's one arrow, or null when nothing can be placed yet.
-   *
-   * Null rather than a "steady" that means "we have no idea": this container
-   * has no camera at all, so absent is the state it is in every time.
-   */
-  glance: Glance | null;
-}
-
-/**
- * §39's compact indicator: which way the floor has gone, and what says so.
- *
- * Read against the last twenty minutes alone — the question a chip in the top
- * bar answers is whether the floor is picking up *right now*. Rust decides;
- * this only draws it.
- */
-export interface Glance {
-  /** `rising`, `steady` or `falling` — the slug, for styling. */
-  way: string;
-  /** What the chip reads: `↑`, `↓` or `STABLE`, in §39's own spelling. */
-  mark: string;
-  /**
-   * How many senses read this way, of how many could be placed at all.
-   *
-   * The confidence §39 asks for, as evidence rather than as a percentage:
-   * *2 of 3* is a number a DJ can argue with and 67% is not.
-   */
-  agreeing: number;
-  of: number;
-  /** What was seen, in Rust's words. */
-  says: string;
 }
 
 /** One sense, placed against every reach §35 asks for. */
@@ -2992,6 +2961,41 @@ export const roomSaw = (reading: {
     loudness: reading.loudness ?? null,
   });
 export const roomRead = () => invoke<RoomRead>("room_read");
+
+// ---------------------------------------------------------------------------
+// §5's Mission Bar
+// ---------------------------------------------------------------------------
+
+/**
+ * One reading on the bar.
+ *
+ * Every field is Rust's: the words, the short value and — the part that matters
+ * — whether it is worth a colour. The bar's whole design rule is that the
+ * normal state of everything is quiet, and a threshold decided per component
+ * here is how three things come to be amber on a normal night.
+ */
+export interface MissionItem {
+  /** `phase`, `occasion`, `posture`, `room`, `tempo`, `clock`, `recording`, `output`, `device`, `health`. */
+  slug: string;
+  /** The short word in front of the value, or empty when the value says it. */
+  label: string;
+  /** What it reads. Short: this is a HUD, not a sentence. */
+  value: string;
+  /** `quiet`, `watch` or `alarm`. */
+  level: string;
+  /** The whole of it, for the hover. */
+  about: string;
+}
+
+/**
+ * §5's Mission Bar, gathered in one answer.
+ *
+ * Polled rather than pushed: most of it moves on the scale of minutes — a
+ * phase, an occasion, a posture, a room — and the two that move faster (the
+ * load and the dropout count) are already on the snapshot for the meters that
+ * need them at 60 Hz.
+ */
+export const missionBar = () => invoke<MissionItem[]>("mission_bar");
 
 /** §37: what the room has usually done after one kind of mix. */
 export interface RoomHistory {

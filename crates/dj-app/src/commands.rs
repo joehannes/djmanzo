@@ -9375,30 +9375,6 @@ pub struct RoomDto {
     /// panel showing phase comparisons with nothing naming the phase is a
     /// panel making a claim it cannot support.
     pub phase: Option<String>,
-    /// §39's one arrow, or `null` when nothing can be placed yet.
-    ///
-    /// On the same read as everything else rather than behind a command of its
-    /// own: the chip and the panel are two views of one judgement, and two
-    /// commands would be two chances for them to disagree about which way the
-    /// room is going.
-    pub glance: Option<GlanceDto>,
-}
-
-/// §39's compact indicator: which way the floor has gone, and what says so.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct GlanceDto {
-    /// `rising`, `steady` or `falling` — the slug, for styling.
-    pub way: String,
-    /// What the chip reads: `↑`, `↓` or `STABLE`, in §39's own spelling.
-    pub mark: String,
-    /// How many senses read this way, and how many could be placed at all.
-    ///
-    /// The confidence §39 asks for, as evidence rather than as a percentage.
-    pub agreeing: usize,
-    pub of: usize,
-    /// What was seen, in the words each sense deserves. The chip's title, and
-    /// the first line of the panel that opens from it.
-    pub says: String,
 }
 
 /// One sense, placed against every reach §35 asks for.
@@ -9473,6 +9449,81 @@ pub fn room_saw(
     Ok(())
 }
 
+/// §5's Mission Bar: everything a DJ glances at, in one answer.
+///
+/// One command rather than the interface assembling six. The judgement — what
+/// each reading says, and whether it is worth a colour — is `dj_app::mission`'s
+/// and is tested there; this only gathers the inputs, which is the one part
+/// that needs a handle on the application.
+#[tauri::command]
+pub fn mission_bar(state: State<'_, AppState>) -> Vec<crate::mission::Item> {
+    use crate::mission::{Device, Reading, Recording, RoomRead};
+
+    let read = state.night().read();
+    let (occasion, posture) = state.conduct().lock().map_or_else(
+        |_| Default::default(),
+        |guard| (guard.occasion, guard.posture),
+    );
+
+    // The snapshot the interface is already drawing, not a second capture:
+    // a HUD showing a load measured a frame apart from the meters beside it is
+    // two truths about one moment.
+    let snapshot = get_snapshot(state.clone());
+    let master = &snapshot.master;
+
+    // The tempo only when exactly one deck is playing. With two in a mix there
+    // is no single "current tempo", and picking one of them would put a number
+    // on the bar that is right half the time and says nothing about which half.
+    let mut playing = snapshot
+        .decks
+        .iter()
+        .filter(|deck| deck.playing)
+        .filter_map(|deck| deck.effective_bpm);
+    let tempo = match (playing.next(), playing.next()) {
+        (Some(only), None) => Some(only),
+        _ => None,
+    };
+
+    let room = state
+        .room()
+        .lock()
+        .ok()
+        .and_then(|room| room.glance())
+        .map(|glance| RoomRead {
+            mark: glance.way.mark().to_owned(),
+            way: glance.way.name().to_owned(),
+            agreeing: glance.agreeing,
+            of: glance.of,
+            says: glance.because,
+        });
+
+    crate::mission::bar(&Reading {
+        phase: read.map(|read| read.phase.name().replace('_', " ")),
+        phase_certainty: read.map(|read| read.certainty.name().to_owned()),
+        occasion: occasion.name().to_owned(),
+        posture: posture.name().to_owned(),
+        posture_about: posture.about().to_owned(),
+        room,
+        cpu: master.cpu_load,
+        xruns: master.xruns,
+        limiter_db: master.limiter_reduction_db,
+        recording: master.recording.active.then_some(Recording {
+            seconds: master.recording.seconds,
+            dropped: master.recording.dropped,
+            failed: master.recording.failed,
+        }),
+        tempo,
+        elapsed: Some(state.night().elapsed().as_secs_f64()),
+        device: (master.sample_rate > 0.0).then(|| Device {
+            name: state
+                .active_device()
+                .map_or_else(|| "the sound card".to_owned(), |device| device.name),
+            sample_rate: master.sample_rate,
+            latency_ms: master.output_latency_ms,
+        }),
+    })
+}
+
 /// What the room has been doing, and whether it matches the night.
 #[tauri::command]
 pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
@@ -9536,13 +9587,6 @@ pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {
         loudness: room.lately(Sense::Loudness),
         baseline,
         phase: phase.map(|p| p.name().to_owned()),
-        glance: room.glance().map(|glance| GlanceDto {
-            way: glance.way.name().to_owned(),
-            mark: glance.way.mark().to_owned(),
-            agreeing: glance.agreeing,
-            of: glance.of,
-            says: glance.because,
-        }),
     })
 }
 
