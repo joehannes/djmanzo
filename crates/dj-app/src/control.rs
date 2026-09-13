@@ -35,6 +35,12 @@ pub struct MappingDto {
     pub bindings: usize,
     /// False when it came from the user's own `mappings` directory.
     pub bundled: bool,
+    /// §53: what this mapping actually puts under the hands.
+    ///
+    /// On every mapping rather than only the open one, so the picker can say
+    /// what each would give you *before* it is opened — which is the question a
+    /// DJ with two controllers in a bag is actually asking.
+    pub hands: dj_hid::hands::Hands,
 }
 
 /// One key on the shortcut sheet.
@@ -119,7 +125,11 @@ pub struct AudioRoutingDto {
 /// Everything the controller layer owns.
 pub struct ControlHub {
     /// Mappings that can be opened, bundled and user files together.
-    mappings: Mutex<Vec<(Mapping, bool)>>,
+    /// Every mapping, with §53's reading of what it reaches and whether it
+    /// shipped. The profile is derived once at load, from the same text: a
+    /// `Mapping` does not carry its `[[feedback]]` blocks, so deriving it later
+    /// would mean holding the text as a third thing to keep in step.
+    mappings: Mutex<Vec<(Mapping, dj_hid::hands::Hands, bool)>>,
     /// The keyboard mapping in force.
     keyboard: Mutex<KeyMap>,
     /// Whether the keyboard is listening at all. Off is a real setting: a DJ
@@ -179,10 +189,10 @@ impl ControlHub {
     #[must_use]
     pub fn new() -> (Self, Receiver<String>) {
         let (post, take) = std::sync::mpsc::channel();
-        let mappings = dj_hid::bundled::controllers()
+        let mappings = dj_hid::bundled::controllers_with_hands()
             .unwrap_or_default()
             .into_iter()
-            .map(|mapping| (mapping, true))
+            .map(|(mapping, hands)| (mapping, hands, true))
             .collect();
         // A broken bundled keyboard is a build error caught by a test in
         // `dj_hid::bundled`. If one somehow ships, an empty map means the
@@ -252,16 +262,16 @@ impl ControlHub {
                 }
                 continue;
             }
-            match Mapping::parse(&text) {
-                Ok(mapping) => {
+            match (Mapping::parse(&text), dj_hid::hands::Hands::read(&text)) {
+                (Ok(mapping), Ok(hands)) => {
                     let mut all = self.mappings.lock().unwrap();
                     // The user's own file replaces the bundled one of the same
                     // name rather than sitting alongside it, so editing a
                     // shipped mapping works the way editing a file should.
-                    all.retain(|(existing, _)| existing.name != mapping.name);
-                    all.push((mapping, false));
+                    all.retain(|(existing, _, _)| existing.name != mapping.name);
+                    all.push((mapping, hands, false));
                 }
-                Err(e) => problems.push(format!("{name}: {e}")),
+                (Err(e), _) | (_, Err(e)) => problems.push(format!("{name}: {e}")),
             }
         }
         problems
@@ -345,8 +355,8 @@ impl ControlHub {
             .lock()
             .ok()?
             .iter()
-            .find(|(mapping, _)| mapping.name == name)
-            .map(|(mapping, _)| mapping.clone())
+            .find(|(mapping, _, _)| mapping.name == name)
+            .map(|(mapping, _, _)| mapping.clone())
     }
 
     /// Every mapping that can be opened.
@@ -356,11 +366,12 @@ impl ControlHub {
             .lock()
             .unwrap()
             .iter()
-            .map(|(mapping, bundled)| MappingDto {
+            .map(|(mapping, hands, bundled)| MappingDto {
                 name: mapping.name.clone(),
                 device: mapping.device.clone(),
                 bindings: mapping.bindings.len(),
                 bundled: *bundled,
+                hands: *hands,
             })
             .collect()
     }
@@ -405,8 +416,8 @@ impl ControlHub {
         let chosen = {
             let all = self.mappings.lock().unwrap();
             let found = match mapping {
-                Some(name) => all.iter().find(|(m, _)| m.name == name),
-                None => all.iter().find(|(m, _)| m.fits(port)),
+                Some(name) => all.iter().find(|(m, _, _)| m.name == name),
+                None => all.iter().find(|(m, _, _)| m.fits(port)),
             };
             found
                 .ok_or_else(|| match mapping {
@@ -452,7 +463,7 @@ impl ControlHub {
         let chosen = {
             let all = self.mappings.lock().unwrap();
             all.iter()
-                .find(|(m, _)| m.name == mapping)
+                .find(|(m, _, _)| m.name == mapping)
                 .ok_or_else(|| format!("no mapping called {mapping:?}"))?
                 .0
                 .clone()

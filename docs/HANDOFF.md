@@ -471,6 +471,22 @@ every match, or djmanzo announces a cut it did not make on almost every query.
 Mutate the thing the comment claims, and when the mutation survives, suspect
 the comment first.
 
+**A guessed verb is a rule that silently covers nothing.** §53's pad count
+listed `hotcue_set`, `sample_play` and `loop_recall` from memory; the
+vocabulary's actual spellings are `hotcue`, `sampler`, `slice` and `roll`, so a
+DDJ-SR covered in fifty-six pads read as having none — and §53 would have given
+the on-screen pad zone room on the one controller that least needs it. The fix
+is the rule `dj_app::tiers` already had: a test walks both exception lists and
+fails on a verb `dj_core::vocabulary` does not have. Any list of verb strings
+outside the vocabulary needs one.
+
+**A fourth table has now been found read by nobody**: `dj_hid::feedback`'s
+`FeedbackMap`. It parses `[[feedback]]` blocks, several shipped mappings have
+them, and no other module consults it — so djmanzo never lights a controller.
+§53 reports the count *and* says nothing sends them, rather than letting a
+number imply otherwise. If you wire it, `out.rs` is the sender and it needs
+hardware to verify.
+
 **A confirmation can be destroyed by the thing it confirms.** §54's presets
 reported what they had just applied, in the Settings block the DJ pressed them
 in — and applying one opens its arrangement, which does not include Settings.

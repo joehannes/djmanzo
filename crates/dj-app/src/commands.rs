@@ -9725,6 +9725,24 @@ pub fn set_chosen_layers(state: State<'_, AppState>, layers: Vec<String>) -> Vec
     chosen
 }
 
+/// §53: what the controller now open puts under the DJ's hands.
+///
+/// `None` when nothing is open, which is a different answer from "a controller
+/// that reaches nothing" and has to stay so: the interface adapts to a
+/// controller's *gaps*, and a laptop-only DJ has no gaps to fill — they are
+/// already the case the interface is designed around.
+#[tauri::command]
+#[must_use]
+pub fn controller_hands(state: State<'_, AppState>) -> Option<dj_hid::hands::Hands> {
+    let control = state.control();
+    let open = control.status(None).open_mapping?;
+    control
+        .mappings()
+        .into_iter()
+        .find(|mapping| mapping.name == open)
+        .map(|mapping| mapping.hands)
+}
+
 /// One of §54's functional presets, as the picker offers it.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SetupDto {

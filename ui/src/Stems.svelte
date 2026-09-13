@@ -1,6 +1,7 @@
 <script lang="ts">
   import IconButton from "./controls/IconButton.svelte";
   import { dispatch, stemsStatus, type StemsStatus, type StemSwap } from "./api";
+  import { wantsStemsOpen } from "./hands.svelte";
   import { onDestroy, onMount } from "svelte";
 
   let {
@@ -139,6 +140,20 @@
    * force anywhere, so testing it for null alone would fling every deck's
    * stems open because somebody borrowed a vocal on deck 3.
    */
+  /**
+   * §53's worked example: *if there are no stem controls, expand stem
+   * controls.*
+   *
+   * The one case where the hardware decides how much room a surface gets. A DJ
+   * whose controller has stem pads reaches for those and the module is a
+   * readout; a DJ whose controller cannot reach the stems has only the screen,
+   * and a folded module is the feature hidden from the only person who needs it
+   * open.
+   *
+   * Nothing plugged in leaves it folded, deliberately: see `wantsStemsOpen`.
+   */
+  const noStemControls = $derived(wantsStemsOpen());
+
   const inUse = $derived(
     soloing ||
       swap?.from === deckNumber ||
@@ -250,7 +265,7 @@
   hidden -- which is the standing complaint about the products this competes
   with, and not a trade worth making to save a row.
 -->
-<details class="stem-fold" open={inUse}>
+<details class="stem-fold" open={inUse || noStemControls} data-stems-open={inUse || noStemControls}>
   <summary>
     Stems
     {#if inUse}

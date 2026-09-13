@@ -29,9 +29,43 @@
     setKeyboardEnabled,
     type AudioRouting,
     type ControlStatus,
+    type MappingInfo,
   } from "./api";
 
-  let { mappings = [] }: { mappings?: { name: string }[] } = $props();
+  let { mappings = [] }: { mappings?: MappingInfo[] } = $props();
+
+  /**
+   * §53: what the mapping now open actually puts under the hands.
+   *
+   * Read from the mapping rather than from the device, because a MIDI
+   * controller announces a name and nothing else. Said out loud on the panel
+   * because §53 opens with *"the UI should know"* — and a DJ who has just
+   * plugged something in is entitled to see what djmanzo thinks it can do
+   * before finding out mid-set that it disagrees.
+   */
+  const reach = $derived(
+    mappings.find((m) => m.name === status?.open_mapping)?.hands ?? null,
+  );
+
+  /**
+   * What the open controller reaches, in the order §53 lists it.
+   *
+   * Zero is drawn, not hidden: "no stem controls" is the reading §53's own
+   * worked example turns on, and a row that vanished when the answer was none
+   * would hide exactly the fact that matters.
+   */
+  const reachRows = $derived(
+    reach
+      ? [
+          ["Decks", `${reach.decks}`],
+          ["Jogs", `${reach.jogs}`],
+          ["Knobs and faders", `${reach.knobs}`],
+          ["Mixer channels", `${reach.channels}`],
+          ["Pads", `${reach.pads}`],
+          ["Stem controls", reach.stems ? "yes" : "none"],
+        ]
+      : [],
+  );
 
   let status = $state<ControlStatus | null>(null);
   let chosenPort = $state<string | null>(null);
@@ -198,6 +232,34 @@
         <IconButton icon="unlink" title="Disconnect" onClick={disconnect} disabled={busy} />
       </div>
 
+      <!--
+        §53: *the UI should know*. What the open mapping reaches, read off the
+        mapping rather than off the device — a MIDI controller announces a name
+        and nothing else, and its bindings are what a hand will actually find.
+      -->
+      {#if reach}
+        <dl class="reach" data-reach>
+          {#each reachRows as [label, value] (label)}
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          {/each}
+        </dl>
+        <!--
+          The two §53 asks for that djmanzo cannot answer from a mapping, named
+          rather than counted. A screen is driven by the controller's own
+          firmware; the lights are described in the file and nothing sends them
+          yet, and a count alone would imply a controller that lights up.
+        -->
+        <p class="note">
+          Screens: djmanzo cannot see them — they are driven by the
+          controller's own firmware, not by a mapping.
+          {#if reach.leds > 0}
+            Lights: this mapping describes {reach.leds}, and djmanzo does not
+            send them yet.
+          {/if}
+        </p>
+      {/if}
+
       {#if status.audio}
         <p class="note" class:warn={!!status.audio.not_applied}>
           {#if status.audio.not_applied}
@@ -339,6 +401,23 @@
     color: var(--muted);
     font-size: 0.68rem;
     flex: 1;
+  }
+
+  .reach {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 0.1rem 0.6rem;
+    margin: 0.5rem 0 0;
+    font-size: 0.8em;
+  }
+
+  .reach dt {
+    color: var(--muted);
+  }
+
+  .reach dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
   }
 
   .note,

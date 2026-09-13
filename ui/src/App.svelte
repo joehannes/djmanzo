@@ -14,7 +14,10 @@
   import Controllers from "./Controllers.svelte";
   import MappingEditor from "./MappingEditor.svelte";
   import { Keyboard } from "./keyboard.svelte";
-  import { controlMappings as listControlMappings } from "./api";
+  import {
+    controlMappings as listControlMappings,
+    type MappingInfo,
+  } from "./api";
   import { open } from "@tauri-apps/plugin-dialog";
   import { watchFrameRate } from "./framerate";
   import {
@@ -24,6 +27,7 @@
     writeAudioPreference,
   } from "./audiopref";
   import { loadRemembers } from "./remembers.svelte";
+  import { watchHands } from "./hands.svelte";
   import { publishAudio } from "./audiovars.svelte";
   import {
     chooseLayout,
@@ -691,7 +695,7 @@
    * Fetched once: the list only changes when a mapping is saved, and a DJ who
    * has just saved one is looking at their own work rather than at this list.
    */
-  let controlMappings = $state<{ name: string }[]>([]);
+  let controlMappings = $state<MappingInfo[]>([]);
 
   /**
    * The keyboard, listening.
@@ -997,6 +1001,11 @@
   $effect(() => {
     void loadWorkspace();
   });
+
+  // §53: what the controller now open reaches. Polled slowly, because this is
+  // the one question whose answer changes when somebody physically touches the
+  // machine — a scale of seconds rather than of frames.
+  $effect(() => watchHands());
 
   // §8 Level 1's favourite pad pages and kept controls, read once for the whole
   // application. Here rather than in the pad zone because four decks asking the

@@ -3043,11 +3043,44 @@ export interface AudioRouting {
   not_applied: string | null;
 }
 
+/**
+ * §53: what a controller actually puts under a DJ's hands.
+ *
+ * Read from the mapping rather than from the device — a MIDI controller
+ * announces a name and nothing else, and what it *does* is in its bindings.
+ * That is also the right answer: a four-deck controller mapped as two is a
+ * two-deck controller as far as the interface is concerned, because the
+ * bindings are what a hand will actually find.
+ */
+export interface Hands {
+  /** Decks a hand can reach. */
+  decks: number;
+  /** Faders, knobs and encoders that are not a jog. */
+  knobs: number;
+  /** Decks with a jog or a platter. */
+  jogs: number;
+  /** Buttons bound to a hot cue, a slice, a roll or a sampler slot. */
+  pads: number;
+  /** Whether anything on it reaches the stems. */
+  stems: boolean;
+  /** Mixer channels a hand can reach. */
+  channels: number;
+  /**
+   * Lights the mapping describes.
+   *
+   * Not a claim that djmanzo sends them — it does not yet, and the panel says
+   * so rather than letting a count imply a controller lights up.
+   */
+  leds: number;
+}
+
 export interface MappingInfo {
   name: string;
   device: string;
   bindings: number;
   bundled: boolean;
+  /** §53's reading of what this mapping reaches. */
+  hands: Hands;
 }
 
 export interface KeyBinding {
@@ -3063,6 +3096,15 @@ export interface KeyBinding {
 
 export const controlStatus = () => invoke<ControlStatus>("control_status");
 export const controlMappings = () => invoke<MappingInfo[]>("control_mappings");
+
+/**
+ * §53: what the controller now open puts under the hands.
+ *
+ * `null` when nothing is open, which is a different answer from "a controller
+ * that reaches nothing": a laptop-only DJ has no gaps for the interface to
+ * fill, and is already the case it is designed around.
+ */
+export const controllerHands = () => invoke<Hands | null>("controller_hands");
 export const keyboardKeys = () => invoke<KeyBinding[]>("keyboard_keys");
 export const setKeyboardEnabled = (on: boolean) =>
   invoke<void>("set_keyboard_enabled", { on });

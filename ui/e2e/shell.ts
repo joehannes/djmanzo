@@ -338,6 +338,16 @@ const ANSWERS: Record<string, unknown> = {
     keyboard: true,
     keyboard_name: "",
   },
+  /**
+   * §53: nothing plugged in, which is the ordinary case and the one the
+   * interface is designed around.
+   *
+   * `null` rather than a profile of zeros, because those are different answers:
+   * a laptop-only DJ has no gaps for the interface to fill, and a profile
+   * reading "no stem controls" would unfold a 370-pixel module for somebody who
+   * never asked.
+   */
+  controller_hands: null,
   peer_status: {
     running: false,
     address: null,
