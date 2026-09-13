@@ -55,26 +55,28 @@ test.describe("§80's learned preferences", () => {
   });
 
   /**
-   * **All four rows, in four different states, each saying which.**
+   * **All four rows, in the states they are actually in, each saying which.**
    *
    * §80 names four traits. A list of the ones djmanzo happens to believe today
    * would read as the whole of §80, and a trait that is merely quiet looks
-   * exactly like one that does not exist. The one djmanzo cannot see at all
-   * says so in terms of what is missing rather than going blank.
+   * exactly like one that does not exist — so a row with nothing behind it says
+   * "not enough nights yet" rather than going blank.
    */
-  test("a trait it cannot see says so, and one it agreed to is marked", async ({ page }) => {
+  test("a trait with nothing behind it says so, and one agreed to is marked", async ({ page }) => {
     const thrown = errorsThrown(page);
     await openPersona(page);
 
     await expect(page.getByTestId("persona").locator("li")).toHaveCount(4);
 
-    // The one §14's vocabulary cannot answer.
-    await expect(claim(page, "stems-for-vocals")).toContainText("cannot tell");
-    await expect(claim(page, "stems-for-vocals")).toContainText("which stem");
+    // §80's fourth, which reads the actions rather than §14's gestures: the
+    // gesture vocabulary collapses all four stem verbs into one on purpose, and
+    // `DeckAction::Stem` has carried the stem all along.
+    await expect(claim(page, "stems-for-vocals")).toContainText("mostly for the vocal");
+    await expect(claim(page, "stems-for-vocals")).toContainText("Learned preference");
 
-    // The one there is not enough evidence for yet — a different sentence from
-    // the one above, because "not yet" and "never from this data" are different
-    // things and only one of them is a reason to go and play more nights.
+    // The one there is not enough evidence for yet. "Not yet" is a reason to go
+    // and play more nights, which is a different thing from a claim that has
+    // been made.
     await expect(claim(page, "blend-length")).toContainText("Not enough nights yet.");
 
     // And one already agreed to, marked as such rather than looking unanswered.

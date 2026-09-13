@@ -2067,7 +2067,20 @@ pub fn learned_persona(state: State<'_, AppState>) -> Result<Vec<LearnedDto>, St
     let genres =
         |setting: crate::setting::Setting| db.genres_in(setting.slug()).unwrap_or_default();
     let profiles = crate::profile::profiles(&nights, &genres);
-    let claims = crate::persona::learned(&profiles);
+    // Tonight's own actions, for the one trait §81's profiles cannot carry:
+    // which stem a DJ actually reaches for. `DeckAction::Stem` has always
+    // carried it, and §14's gestures collapse all four into one on purpose —
+    // that rule is right for §14 and wrong here.
+    let actions: Vec<dj_core::Action> = state
+        .bus()
+        .log()
+        .into_iter()
+        .filter_map(|entry| match entry.event {
+            dj_control::SessionEvent::Action(action) => Some(action),
+            dj_control::SessionEvent::Load { .. } => None,
+        })
+        .collect();
+    let claims = crate::persona::learned(&profiles, &actions);
     let verdicts = state.persona_verdicts();
 
     Ok(crate::persona::Trait::ALL

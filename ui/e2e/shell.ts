@@ -658,10 +658,15 @@ const ANSWERS: Record<string, unknown> = {
   // Three wedding nights and three club nights, which is what §81 is about:
   // the same DJ, two different answers, and never their average.
   /**
-   * §80's four, in the state that makes the claim testable: one offered, one
-   * already accepted, one djmanzo has not seen enough of, and the one it cannot
-   * see at all. A stub where every row looked the same would let a panel that
-   * drew one shape for all four pass.
+   * §80's four, in the states that make the claims testable: two offered, one
+   * already accepted, and one djmanzo has not seen enough of. A stub where
+   * every row looked the same would let a panel that drew one shape for all
+   * four pass.
+   *
+   * None of them carries a `why_not` any more — all four are derivable since
+   * the stem trait started reading the actions rather than §14's gestures — but
+   * the field stays, and so does the branch that draws it: §80 names four
+   * traits and the next one added may well be one djmanzo cannot see.
    */
   learned_persona: [
     {
@@ -688,10 +693,9 @@ const ANSWERS: Record<string, unknown> = {
     },
     {
       slug: "stems-for-vocals",
-      says: "",
-      because: "",
-      why_not:
-        "djmanzo's log records that you reached for the stems and not which stem it was, so it cannot tell a vocal ride from a drum swap. Saying this anyway would be inventing the half of the sentence that means anything.",
+      says: "You use the stems mostly for the vocal.",
+      because: "More than half the times you reached for a stem, it was the vocal.",
+      why_not: "",
       verdict: "offered",
     },
   ],

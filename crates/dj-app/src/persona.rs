@@ -43,12 +43,12 @@ pub enum Trait {
     BlendLength,
     /// "This DJ uses stems mostly for vocals."
     ///
-    /// **Not derivable, and named rather than faked.** §14's gesture vocabulary
-    /// records `stem-changed` and not *which* stem, so the log says a DJ
-    /// reached for the stems and never says whether it was the vocal. Claiming
-    /// this from what djmanzo has would mean inventing the part of the sentence
-    /// that carries all of its meaning. Recording which stem is a change to
-    /// `signals::Did` and to what the bus logs, and it belongs to §14.
+    /// Read from the action log directly rather than through §14's gestures.
+    /// `DeckAction::Stem` carries the stem it was about and always has;
+    /// `signals::Did::StemChanged` collapses all four into one gesture, which
+    /// is §14's own rule — *six EQ verbs are one gesture a DJ would name* — and
+    /// is right for §14 and wrong for this. So the coarse gesture stays coarse
+    /// and [`stems_for`] reads the actions.
     StemsForVocals,
 }
 
@@ -72,18 +72,14 @@ impl Trait {
         }
     }
 
-    /// Why djmanzo cannot claim this yet, or empty where it can.
+    /// Why djmanzo cannot claim this at all. Empty for every row now.
+    ///
+    /// Kept as a field rather than deleted with its last occupant: §80 names
+    /// four traits and the next one added may well be one djmanzo cannot see,
+    /// and a list that could not say so would read as §80 being finished.
     #[must_use]
     pub const fn why_not(self) -> &'static str {
-        match self {
-            Self::StemsForVocals => {
-                "djmanzo's log records that you reached for the stems and not \
-                 which stem it was, so it cannot tell a vocal ride from a drum \
-                 swap. Saying this anyway would be inventing the half of the \
-                 sentence that means anything."
-            }
-            _ => "",
-        }
+        ""
     }
 
     /// A trait by its slug. `None` for anything else, never a fallback.
@@ -164,7 +160,7 @@ pub struct Learned {
 /// weddings does not "like a dense layout", they do two different jobs, and
 /// §81 exists precisely so djmanzo stops averaging those.
 #[must_use]
-pub fn learned(profiles: &[Profile]) -> Vec<Learned> {
+pub fn learned(profiles: &[Profile], actions: &[dj_core::Action]) -> Vec<Learned> {
     let mut said = Vec::new();
 
     let densities: Vec<&str> = profiles.iter().filter_map(Profile::density).collect();
@@ -207,7 +203,57 @@ pub fn learned(profiles: &[Profile]) -> Vec<Learned> {
         });
     }
 
+    if let Some(stem) = stems_for(actions) {
+        said.push(Learned {
+            which: Trait::StemsForVocals,
+            says: format!("You use the stems mostly for the {stem}."),
+            because: format!("More than half the times you reached for a stem, it was the {stem}."),
+        });
+    }
+
     said
+}
+
+/// How many stem moves before the split between them means anything.
+///
+/// Twelve. Three moves that happen to be two vocals is not a habit, and the
+/// threshold has to be a number rather than a judgement for the same reason
+/// §13's is: a claim about a DJ made from three gestures is the failure every
+/// learning type here is built to refuse. Twelve is three per stem — the
+/// smallest count at which "more than half" says something about a choice
+/// rather than about a short evening.
+pub const ENOUGH_STEM_MOVES: usize = 12;
+
+/// Which stem a DJ spends their stem moves on, if one clearly takes them.
+///
+/// Read from the actions rather than from §14's gestures. `DeckAction::Stem`
+/// carries the stem and always has; `Did::StemChanged` collapses all four into
+/// one, which is §14's rule — *six EQ verbs are one gesture a DJ would name* —
+/// and is right there and wrong here. Reaching for the vocal and reaching for
+/// the drums are one gesture to §14 and two different DJs to §80.
+///
+/// `None` unless one stem is **more than half** of every stem move. Half rather
+/// than a plurality: *mostly* is §80's own word, and a stem that is thirty per
+/// cent of four options is not mostly anything.
+#[must_use]
+pub fn stems_for(actions: &[dj_core::Action]) -> Option<dj_core::Stem> {
+    let mut counts = [0usize; dj_core::Stem::COUNT];
+    for action in actions {
+        if let dj_core::Action::Deck {
+            action: dj_core::DeckAction::Stem { stem, .. },
+            ..
+        } = action
+        {
+            counts[stem.index()] += 1;
+        }
+    }
+    let total: usize = counts.iter().sum();
+    if total < ENOUGH_STEM_MOVES {
+        return None;
+    }
+    dj_core::Stem::ALL
+        .into_iter()
+        .find(|stem| counts[stem.index()] * 2 > total)
 }
 
 /// How much evidence there is, as the opening of a sentence.
@@ -256,6 +302,23 @@ mod tests {
     use crate::setting::Setting;
     use dj_assistant::Posture;
 
+    /// `learned` with no stem moves behind it, which is every test that is not
+    /// about the stems.
+    fn learned_from(profiles: &[Profile]) -> Vec<Learned> {
+        learned(profiles, &[])
+    }
+
+    /// A stem move, as the bus logs one.
+    fn stem_move(stem: dj_core::Stem) -> dj_core::Action {
+        dj_core::Action::Deck {
+            deck: dj_core::DeckId::from_human(1).expect("deck one exists"),
+            action: dj_core::DeckAction::Stem {
+                stem,
+                change: dj_core::StemChange::ToggleMute,
+            },
+        }
+    }
+
     /// Build profiles for a test without reaching into `profile`'s private
     /// fields: `profiles` is the only constructor, so the evidence is real.
     fn profiles_for(rows: &[(Setting, usize, &str, Posture)]) -> Vec<Profile> {
@@ -295,7 +358,7 @@ mod tests {
         assert!(Verdict::Accepted.may_act());
 
         // And the other half: a refused claim is not put to them again.
-        let claims = learned(&profiles_for(&[
+        let claims = learned_from(&profiles_for(&[
             (Setting::Club, 4, "dense", Posture::Prepare),
             (Setting::Wedding, 4, "dense", Posture::Prepare),
         ]));
@@ -337,7 +400,7 @@ mod tests {
             (Setting::Club, 4, "dense", Posture::Prepare),
             (Setting::Wedding, 4, "dense", Posture::Prepare),
         ]);
-        let said = learned(&agreeing);
+        let said = learned_from(&agreeing);
         assert!(
             said.iter().any(|l| l.which == Trait::Density),
             "two agreeing profiles produced no claim: {said:?}"
@@ -348,14 +411,14 @@ mod tests {
             (Setting::Wedding, 4, "relaxed", Posture::Prepare),
         ]);
         assert!(
-            !learned(&disagreeing)
+            !learned_from(&disagreeing)
                 .iter()
                 .any(|l| l.which == Trait::Density),
             "djmanzo averaged a dense club night with a relaxed wedding"
         );
 
         // And nothing at all from nothing at all.
-        assert!(learned(&[]).is_empty());
+        assert!(learned_from(&[]).is_empty());
     }
 
     /// **Every claim carries its evidence.**
@@ -366,7 +429,7 @@ mod tests {
     /// §13's observations, and the two are deliberately different sentences.
     #[test]
     fn every_claim_says_what_it_is_based_on() {
-        let said = learned(&profiles_for(&[
+        let said = learned_from(&profiles_for(&[
             (Setting::Club, 4, "dense", Posture::Prepare),
             (Setting::Wedding, 4, "dense", Posture::Prepare),
         ]));
@@ -397,7 +460,7 @@ mod tests {
     /// automated reads copy.
     #[test]
     fn the_sentences_read_correctly_with_one_kind_of_night_behind_them() {
-        let one_kind = learned(&profiles_for(&[(
+        let one_kind = learned_from(&profiles_for(&[(
             Setting::Club,
             4,
             "Ultra Dense",
@@ -423,7 +486,7 @@ mod tests {
         }
 
         // And the plural still reads as a plural.
-        let two_kinds = learned(&profiles_for(&[
+        let two_kinds = learned_from(&profiles_for(&[
             (Setting::Club, 4, "Ultra Dense", Posture::Suggest),
             (Setting::Wedding, 4, "Ultra Dense", Posture::Suggest),
         ]));
@@ -436,29 +499,86 @@ mod tests {
         }
     }
 
-    /// **The fourth of §80's four is never claimed, and says why.**
+    /// **The load-bearing one for §80's fourth: which stem, from the actions
+    /// §14's gestures throw away.**
     ///
-    /// §14's vocabulary records `stem-changed` and not which stem, so *"you use
-    /// stems mostly for vocals"* would be djmanzo inventing the half of the
-    /// sentence that carries the meaning. Named rather than left off the list,
-    /// because a list of three would read as the whole of §80.
+    /// §14 collapses all four stem verbs into one gesture on purpose — *six EQ
+    /// verbs are one gesture a DJ would name* — and that rule is right for §14
+    /// and wrong for this. Reaching for the vocal and reaching for the drums
+    /// are one gesture to §14 and two different DJs to §80, and the actions
+    /// have carried the stem all along.
+    ///
+    /// *Mostly* is §80's own word, so it is more than half rather than a
+    /// plurality: a stem that is the largest of four at thirty per cent is not
+    /// mostly anything, and a claim built on a plurality would put a DJ's own
+    /// minority behaviour to them as their habit.
     #[test]
-    fn the_one_djmanzo_cannot_tell_is_named_rather_than_guessed() {
-        let said = learned(&profiles_for(&[
+    fn which_stem_is_read_from_the_actions_and_needs_a_majority() {
+        use dj_core::Stem;
+
+        // A clear majority: nine vocal moves in twelve.
+        let mut mostly_vocal: Vec<_> = (0..9).map(|_| stem_move(Stem::Vocal)).collect();
+        mostly_vocal.extend((0..3).map(|_| stem_move(Stem::Drums)));
+        assert_eq!(stems_for(&mostly_vocal), Some(Stem::Vocal));
+
+        // A plurality is not a majority. Five of twelve is the largest share
+        // and still not "mostly".
+        let mut plurality: Vec<_> = (0..5).map(|_| stem_move(Stem::Vocal)).collect();
+        plurality.extend((0..4).map(|_| stem_move(Stem::Drums)));
+        plurality.extend((0..3).map(|_| stem_move(Stem::Bass)));
+        assert_eq!(
+            stems_for(&plurality),
+            None,
+            "a stem that is five of twelve was reported as mostly"
+        );
+
+        // And not from too little. The same ratio, under the threshold.
+        let thin: Vec<_> = (0..3).map(|_| stem_move(Stem::Vocal)).collect();
+        assert_eq!(stems_for(&thin), None, "three stem moves became a habit");
+        // Three per stem is the floor. Lowering it would make a short evening
+        // of nine moves into a habit, which is what the threshold is for.
+        const { assert!(ENOUGH_STEM_MOVES >= dj_core::Stem::COUNT * 3) };
+
+        // Everything that is not a stem move is ignored rather than counted.
+        let unrelated = vec![dj_core::Action::Deck {
+            deck: dj_core::DeckId::from_human(1).expect("deck one exists"),
+            action: dj_core::DeckAction::Sync,
+        }];
+        assert_eq!(stems_for(&unrelated), None);
+    }
+
+    /// **And the claim reaches the list, in §80's register.**
+    #[test]
+    fn the_fourth_trait_is_claimed_once_there_is_enough_behind_it() {
+        use dj_core::Stem;
+        let profiles = profiles_for(&[
             (Setting::Club, 4, "dense", Posture::Prepare),
             (Setting::Wedding, 4, "dense", Posture::Prepare),
-        ]));
-        assert!(
-            !said.iter().any(|l| l.which == Trait::StemsForVocals),
-            "djmanzo claimed something about stems it cannot see"
-        );
-        assert!(!Trait::StemsForVocals.why_not().is_empty());
+        ]);
+        let moves: Vec<_> = (0..12).map(|_| stem_move(Stem::Vocal)).collect();
 
-        // The three it can tell carry no excuse, which is the other direction.
-        for which in [Trait::Density, Trait::AutomixAtPeak, Trait::BlendLength] {
+        let said = learned(&profiles, &moves);
+        let claim = said
+            .iter()
+            .find(|l| l.which == Trait::StemsForVocals)
+            .expect("twelve vocal moves produced no claim");
+        assert!(claim.says.contains("vocal"), "{}", claim.says);
+        assert!(!claim.because.trim().is_empty());
+
+        // With no stem moves it is simply absent, which is a different thing
+        // from djmanzo being unable to tell.
+        assert!(
+            !learned(&profiles, &[])
+                .iter()
+                .any(|l| l.which == Trait::StemsForVocals)
+        );
+
+        // No row carries a reason it cannot be claimed any more — all four are
+        // derivable now, and a stale excuse on screen would be worse than none.
+        for which in Trait::ALL {
             assert!(
                 which.why_not().is_empty(),
-                "{} carries a reason it cannot be claimed and is claimed anyway",
+                "{} still claims djmanzo cannot see it",
                 which.slug()
             );
         }

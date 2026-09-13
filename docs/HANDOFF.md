@@ -881,6 +881,18 @@ caught that. The second was 65, and the mutation it exists to catch — one
 ratchet is only worth the headroom it denies: mutate first, then pick the
 number.
 
+**"djmanzo cannot see this" is a claim, and it needs checking like any other.**
+§80's fourth trait shipped with a `why_not` saying the log recorded that a DJ
+reached for the stems and never which stem. That was wrong — `DeckAction::Stem`
+carries the stem and always has. What collapses all four into one is §14's
+*gesture* vocabulary, deliberately (*six EQ verbs are one gesture a DJ would
+name*), and that rule is right for §14 and wrong for §80. The correct move was
+not to change §14 but to **read the actions directly**, which is what
+`persona::stems_for` does. Before writing a row that says djmanzo cannot see
+something, go and look at the action rather than at the derived gesture: the
+derivation is where information gets thrown away, and it throws it away on
+purpose.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests
@@ -1271,9 +1283,9 @@ The largest of them, in the order they are worth doing:
    sentence about a DJ in the second register, the answer buttons are part of
    the feature, not a follow-up.**
 
-   What is left there is one trait: *stems mostly for vocals*. §14's `Did`
-   records `stem-changed` and not which stem, so it is a change to the
-   vocabulary and to what the bus logs, and it belongs to §14 rather than here.
+   All four traits ship. The fourth was briefly written off as underivable —
+   see the note above about checking that kind of claim — and reads the actions
+   rather than §14's gestures, which stay coarse on purpose.
 
 14. **§48 is closed, and it is the template for "a priority nobody can see".**
    The frame rate had been measured for a long time and the tier was consulted
