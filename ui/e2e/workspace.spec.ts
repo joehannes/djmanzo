@@ -350,6 +350,85 @@ test.describe("§5B's deck composition", () => {
     expect(thrown).toEqual([]);
   });
 
+  /**
+   * **§5B's supervisory display: the arrangement opens what it asks a
+   * supervisor to watch.**
+   *
+   * > Autopilot supervisory mode. Performance display becomes simplified and
+   * > emphasizes: current, next, transition, room response, automation state,
+   * > emergency takeover.
+   *
+   * Which panel carries which of the six is settled in `dj_app::cockpit`'s own
+   * test against §5B's list. This says the half only a browser can: that the
+   * panels really open, and that the deck is rebuilt rather than left at
+   * whatever the DJ last chose.
+   */
+  test("the autopilot arrangement opens what a supervisor watches", async ({
+    page,
+  }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/");
+
+    await page.locator(PICKER).selectOption("Autopilot");
+
+    for (const surface of ["assistant", "next", "room"]) {
+      await expect(
+        page.locator(`.surface[data-surface="${surface}"]`),
+        `§5B asks a supervisor to watch what the ${surface} panel carries, ` +
+          `and choosing Autopilot did not open it`,
+      ).toBeVisible();
+    }
+
+    // Simplified, and *told* to djmanzo — the same pair the theme and the two
+    // §5B compositions need, and for the same reason: a composition painted
+    // and not written down is gone the next time djmanzo opens.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as unknown as { __asked?: string[] }).__asked ?? [],
+        ),
+      )
+      .toContain("choose_layout");
+    expect(thrown).toEqual([]);
+  });
+
+  /**
+   * **And the composition it names really is a reduction.**
+   *
+   * *Simplified* is a claim about what is **not** on the deck, which nothing in
+   * Rust can see: the tree is a list of widget names either way, and a renderer
+   * that drew its own pad grid regardless would satisfy every assertion in
+   * `cockpit.rs` and put pads on a supervisory screen.
+   */
+  test("the supervisory composition builds a deck with nothing to perform on", async ({
+    page,
+  }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/", {}, { layout_tree: compositions.Starter });
+
+    const deck = page.locator(DECK).first();
+    await expect(deck).toBeVisible();
+    await expect(
+      deck.locator("button.svg-button.pad"),
+      "the watched deck still draws pads; `simplified` reached the tree and not the screen",
+    ).toHaveCount(0);
+    await expect(
+      deck.locator(".rack"),
+      "the watched deck still draws an effect rack",
+    ).toHaveCount(0);
+
+    // Less to perform with, not less to read: the lane a supervisor watches is
+    // the tallest of the compositions that ship, and a reduction that shrank it
+    // too would be the wrong reduction. 160 px at density 1; the floor is well
+    // under it so a band the shell chose for the window cannot fail this.
+    const lane = await deck
+      .locator(".lane")
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().height);
+    expect(lane).toBeGreaterThan(110);
+    expect(thrown).toEqual([]);
+  });
+
   test("the stem composition opens the stem module and leaves the wheel alone", async ({
     page,
   }) => {

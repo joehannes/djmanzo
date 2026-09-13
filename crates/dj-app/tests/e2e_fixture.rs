@@ -632,10 +632,10 @@ fn the_fixture_describes_a_running_engine_with_records_on_it() {
 /// would be a third description of a deck — after `layout::builtin()` and
 /// `widgets::from_layout` — and the first one to drift.
 ///
-/// Both compositions rather than one, because each is the other's control: the
-/// scratch deck has a platter and a folded stem module, the stem deck has the
-/// ordinary wheel and an open one. A single fixture could pass with both props
-/// ignored.
+/// More than one, because each is the others' control: the scratch deck has a
+/// platter and a folded stem module, the stem deck has the ordinary wheel and
+/// an open one, and the supervisory deck has neither and no pads. A single
+/// fixture could pass with every prop ignored.
 ///
 /// ```text
 /// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
@@ -645,7 +645,11 @@ fn the_browser_fixture_has_the_deck_compositions_5b_names() {
     let path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/compositions.json");
 
-    let wanted = ["Scratch", "Stem Performance"];
+    // `Starter` is here for §5B's supervisory mode rather than for a
+    // composition of its own: "performance display becomes simplified" is a
+    // claim about what is *not* on the deck, and the only way to check that a
+    // reduction really reduces is to build a deck out of it and look.
+    let wanted = ["Scratch", "Starter", "Stem Performance"];
     let trees: std::collections::BTreeMap<String, dj_app::widgets::Resolved> =
         dj_app::layout::builtin()
             .into_iter()
@@ -661,8 +665,8 @@ fn the_browser_fixture_has_the_deck_compositions_5b_names() {
     assert_eq!(
         trees.len(),
         wanted.len(),
-        "djmanzo ships {} of §5B's two named compositions; the browser cannot drive \
-         a deck composition that does not exist",
+        "djmanzo ships {} of the compositions §5B's arrangements name; the browser \
+         cannot drive a deck composition that does not exist",
         trees.len()
     );
 

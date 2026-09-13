@@ -1300,9 +1300,24 @@ The largest of them, in the order they are worth doing:
    finished. A number lifted out of a stylesheet has to be *measured*, not
    rounded: `5rem` is only 80 if the rem base is 16.
 
-   What is left of §5B: the **autopilot supervisory mode**, which is not a
-   composition. It asks what stands in the deck's place while something else
-   drives, not which controls the deck has.
+   **The supervisory mode was a mapping, not a feature.** §5B's autopilot mode
+   names six things to watch -- current, next, transition, room response,
+   automation state, emergency takeover -- and every one of them already
+   existed. The work was deciding which panel carries which, writing that
+   decision where it can be argued with (`cockpit::tests::the_autopilot_
+   arrangement_shows_what_5b_asks_a_supervisor_to_watch`) rather than leaving
+   it implicit in a list of three surface names, and taking the booth *out*:
+   its own `about` says "set up once a night rather than reached for during a
+   mix", which is the opposite of what a supervisor has open. When a directive
+   section reads as a feature, check first whether it is a mapping; the ones
+   that are cost a table and a test, not a panel.
+
+   **A surface can be declared and drawn by nobody.** `cockpit::surfaces()`
+   declares `transition` and `App.svelte`'s `DRAWN` does not list it, so a
+   preset placing it would be filtered out in silence --
+   `every_preset_places_only_surfaces_the_shell_draws` is why no preset does.
+   That is why §5B's *transition* is carried by the assistant here. If you
+   build that panel, the supervisory arrangement is where it belongs.
 
 13. **§90 has one ratchet and four honest refusals, and the split is the
    lesson.** A ratchet is only worth having where the number means the same

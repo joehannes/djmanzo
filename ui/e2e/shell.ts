@@ -137,6 +137,26 @@ const ANSWERS: Record<string, unknown> = {
       browser: false,
       density: 0.85,
     },
+    // The reduction §5B's supervisory mode names. Listed with the rest because
+    // a shell that looked the name up in a list without it would skip the
+    // composition and look exactly like a shell that honoured it.
+    {
+      name: "Starter",
+      description: "Two decks and big waveforms. Everything you need and nothing else.",
+      decks: 2,
+      waveform_height: 160,
+      overview: true,
+      pads: false,
+      loops: false,
+      fx: false,
+      beat_jump: false,
+      filter: false,
+      keylock: false,
+      browser: false,
+      density: 1.1,
+      jog: 70,
+      stems_open: false,
+    },
     // §5B's two, which the cockpit's arrangements now name. A harness that
     // listed neither would let a preset naming one pass by skipping it, which
     // looks exactly like a preset that honoured it.
@@ -1209,6 +1229,25 @@ const ANSWERS: Record<string, unknown> = {
       // optimised for limited screen height". A fixture where every row left
       // the deck alone would let a shell that ignored the field pass.
       layout: "Performance",
+      decks: 2,
+      locked: [],
+    },
+    {
+      // §5B's autopilot supervisory mode. In the fixture because it is the one
+      // arrangement built out of readings rather than controls, and because
+      // "simplified" is a claim about what is *not* on the deck -- which only a
+      // browser can check.
+      name: "Autopilot",
+      about: "What is playing, what is next and how the room is taking it, while it drives and you watch.",
+      surfaces: [
+        { surface: "assistant", dock: "right", order: 0, size: null, collapsed: false, pinned: false },
+        { surface: "next", dock: "right", order: 1, size: null, collapsed: false, pinned: false },
+        { surface: "room", dock: "bottom", order: 0, size: null, collapsed: false, pinned: false },
+      ],
+      density: "standard",
+      focus: "supervising",
+      theme: "",
+      layout: "Starter",
       decks: 2,
       locked: [],
     },

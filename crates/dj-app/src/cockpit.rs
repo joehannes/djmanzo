@@ -1876,21 +1876,44 @@ pub fn workspaces() -> Vec<Workspace> {
             layout: String::new(),
             locked: Vec::new(),
         },
+        // §5B's autopilot supervisory mode: "performance display becomes
+        // simplified and emphasizes: current, next, transition, room response,
+        // automation state, emergency takeover". Every one of those is a thing
+        // to *watch*, which is why this arrangement is built out of readings
+        // rather than controls -- and why the booth went. That panel is the
+        // microphone, the plugin insert and the master rack: its own `about`
+        // says "set up once a night rather than reached for during a mix",
+        // which is the opposite of what a supervisor has open.
         Workspace {
             name: "Autopilot".to_owned(),
-            about: "The booth and the assistant, while it drives and you watch.".to_owned(),
+            about: "What is playing, what is next and how the room is taking it, while it drives and you watch."
+                .to_owned(),
             surfaces: vec![
+                // Automation state and the emergency takeover, both. `Conduct`
+                // inside this panel carries "I'll take it" -- one press that
+                // pulls every control back -- above everything else in it, and
+                // it is also where what the assistant is about to do is said.
                 Placement {
-                    surface: "booth".to_owned(),
-                    dock: Dock::Bottom,
+                    surface: "assistant".to_owned(),
+                    dock: Dock::Right,
                     order: 0,
                     size: None,
                     collapsed: false,
                     pinned: false,
                 },
+                // Next.
                 Placement {
-                    surface: "assistant".to_owned(),
+                    surface: "next".to_owned(),
                     dock: Dock::Right,
+                    order: 1,
+                    size: None,
+                    collapsed: false,
+                    pinned: false,
+                },
+                // Room response.
+                Placement {
+                    surface: "room".to_owned(),
+                    dock: Dock::Bottom,
                     order: 0,
                     size: None,
                     collapsed: false,
@@ -1901,7 +1924,17 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Supervising,
             theme: "".to_owned(),
             decks: 2,
-            layout: String::new(),
+            // Current, simplified. `Starter` is the reduction djmanzo already
+            // ships -- no pads, no loops, no effect rack, no beat jump, no
+            // filter, no keylock, and the tallest waveform of the six -- which
+            // is a watched deck exactly: the record legible, the cue and the
+            // transport there for a takeover, and nothing to perform with.
+            //
+            // A seventh preset spelling the same reduction under a supervisory
+            // name would be two names for one layout, which
+            // `the_presets_trade_complexity_for_space` exists to prevent. A
+            // composition describes a deck, not the DJ in front of it.
+            layout: "Starter".to_owned(),
             locked: Vec::new(),
         },
         Workspace {
@@ -2896,6 +2929,83 @@ mod tests {
     /// the shell draws is read out of the shell itself: a surface promoted to
     /// top level widens what presets may place, and one demoted breaks this
     /// test rather than a night.
+    /// **§5B's supervisory display shows every emphasis §5B names.**
+    ///
+    /// > Autopilot supervisory mode. Performance display becomes simplified and
+    /// > emphasizes: current, next, transition, room response, automation
+    /// > state, emergency takeover.
+    ///
+    /// Six nouns, and an arrangement is the only place they can all be true at
+    /// once. Which panel carries which is a judgement and it is written here,
+    /// where it can be disagreed with, rather than left implicit in a list of
+    /// three surface names that reads as arbitrary: `assistant` carries three
+    /// of the six because `Conduct` inside it is where the takeover press, the
+    /// authority and the step about to be taken all live.
+    ///
+    /// *Simplified* is asserted against the default deck rather than against
+    /// another preset: "fewer controls than the other one" is satisfied by
+    /// giving the other one more.
+    #[test]
+    fn the_autopilot_arrangement_shows_what_5b_asks_a_supervisor_to_watch() {
+        let autopilot = workspaces()
+            .into_iter()
+            .find(|workspace| workspace.name == "Autopilot")
+            .expect("§7's autopilot arrangement ships");
+        let docked: std::collections::BTreeSet<&str> = autopilot
+            .surfaces
+            .iter()
+            .map(|placement| placement.surface.as_str())
+            .collect();
+
+        // "the deck" is not a surface: it is the performance zone itself, and
+        // what §5B asks of it is the `simplified` below.
+        for (emphasis, carried_by) in [
+            ("current", "the deck"),
+            ("next", "next"),
+            ("transition", "assistant"),
+            ("room response", "room"),
+            ("automation state", "assistant"),
+            ("emergency takeover", "assistant"),
+        ] {
+            if carried_by == "the deck" {
+                assert!(
+                    !autopilot.layout.is_empty(),
+                    "§5B asks the supervisory display to say what is playing and the                      arrangement leaves the deck at whatever the DJ last chose"
+                );
+                continue;
+            }
+            assert!(
+                docked.contains(carried_by),
+                "§5B asks a supervisor to watch {emphasis}, which djmanzo carries in                  the `{carried_by}` panel, and this arrangement does not open it"
+            );
+        }
+
+        let named = crate::layout::builtin()
+            .into_iter()
+            .find(|layout| layout.name == autopilot.layout)
+            .unwrap_or_else(|| panic!("`{}` is a composition that ships", autopilot.layout));
+        let ordinary = crate::layout::Layout::default();
+
+        for (what, simplified) in [
+            ("pads", !named.pads),
+            ("loops", !named.loops),
+            ("an effect rack", !named.fx),
+            ("beat jump", !named.beat_jump),
+        ] {
+            assert!(
+                simplified,
+                "§5B asks the supervisory display to be *simplified* and `{}` still                  draws {what}. A deck to perform on is not a deck to watch",
+                autopilot.layout
+            );
+        }
+        assert!(
+            named.waveform_height > ordinary.waveform_height,
+            "the record being watched is smaller on the watching deck ({} px) than on              an ordinary one ({} px); simplified means less to read, not less legible",
+            named.waveform_height,
+            ordinary.waveform_height
+        );
+    }
+
     #[test]
     fn every_preset_places_only_surfaces_the_shell_draws() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/App.svelte");
@@ -2975,6 +3085,11 @@ mod tests {
                     ),
                 ),
                 ("theme", format!("theme: \"{}\",", workspace.theme)),
+                // §5B: the field that rebuilds the deck. A fixture saying
+                // `layout: ""` where this table names a composition would let a
+                // browser test watch a shell that was never asked to do
+                // anything and call the silence a pass.
+                ("layout", format!("layout: \"{}\",", workspace.layout)),
             ] {
                 assert!(
                     entry.contains(&wanted),
@@ -2995,8 +3110,8 @@ mod tests {
             }
         }
         assert_eq!(
-            checked, 4,
-            "the harness used to carry four of these presets and now carries \
+            checked, 5,
+            "the harness used to carry five of these presets and now carries \
              {checked} the names match -- a renamed preset silently stopped \
              being checked"
         );

@@ -254,6 +254,207 @@
     },
     "notes": []
   },
+  "Starter": {
+    "name": "Starter",
+    "about": "Two decks and big waveforms. Everything you need and nothing else.",
+    "tokens": {
+      "density": "1.1"
+    },
+    "slots": {
+      "mixer": [
+        {
+          "widget": "mixer.crossfader",
+          "props": {},
+          "children": {}
+        },
+        {
+          "widget": "mixer.cue",
+          "props": {},
+          "children": {}
+        },
+        {
+          "widget": "mixer.master",
+          "props": {},
+          "children": {}
+        }
+      ],
+      "stage": [
+        {
+          "widget": "deck",
+          "props": {
+            "number": 1
+          },
+          "children": {
+            "deck": [
+              {
+                "widget": "deck.waveform",
+                "props": {
+                  "height": 160
+                },
+                "children": {}
+              },
+              {
+                "widget": "deck.overview",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.progress",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.stems",
+                "props": {
+                  "open": false
+                },
+                "children": {}
+              },
+              {
+                "widget": "deck.times",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.grid",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.transport",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.jog",
+                "props": {
+                  "size": 70
+                },
+                "children": {}
+              },
+              {
+                "widget": "deck.eq",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.volume",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.pitch",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.cue",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.xfader",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.meter",
+                "props": {},
+                "children": {}
+              }
+            ]
+          }
+        },
+        {
+          "widget": "deck",
+          "props": {
+            "number": 2
+          },
+          "children": {
+            "deck": [
+              {
+                "widget": "deck.waveform",
+                "props": {
+                  "height": 160
+                },
+                "children": {}
+              },
+              {
+                "widget": "deck.overview",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.progress",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.stems",
+                "props": {
+                  "open": false
+                },
+                "children": {}
+              },
+              {
+                "widget": "deck.times",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.grid",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.transport",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.jog",
+                "props": {
+                  "size": 70
+                },
+                "children": {}
+              },
+              {
+                "widget": "deck.eq",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.volume",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.pitch",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.cue",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.xfader",
+                "props": {},
+                "children": {}
+              },
+              {
+                "widget": "deck.meter",
+                "props": {},
+                "children": {}
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "notes": []
+  },
   "Stem Performance": {
     "name": "Stem Performance",
     "about": "The four parts of each record, open and to hand.",
