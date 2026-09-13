@@ -12,13 +12,16 @@
   import {
     cockpitLocks,
     padPages,
+    applySetup,
     railControls,
     remembered,
+    setups,
     waveformLayers,
     type LockOption,
     type PadPageDto,
     type RailControl,
     type Remembered,
+    type Setup,
     type WaveformLayer,
   } from "./api";
   import {
@@ -26,6 +29,7 @@
     starPage,
     keepControl,
     showLayer,
+    loadRemembers,
   } from "./remembers.svelte";
   import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import {
@@ -86,6 +90,7 @@
     deviceChannels = null,
     locked = [],
     onLock,
+    onSetUp,
   }: {
     onLogoChange: () => void;
     /**
@@ -99,6 +104,15 @@
     locked?: string[];
     /** Store a new set of locks. */
     onLock?: (locked: string[]) => void;
+    /**
+     * Open an arrangement and wear a theme, for §54's presets.
+     *
+     * Handed up rather than done here, and for the same reason the locks are:
+     * the cockpit is resolved against a window only the shell has measured,
+     * and two components applying a workspace from their own copies is how one
+     * silently drops what the other just saved.
+     */
+    onSetUp?: (workspace: string, theme: string) => void;
     /**
      * How many outputs the open device has, or `null` for none.
      *
@@ -505,17 +519,53 @@
   let allControls = $state<RailControl[]>([]);
   /** §25's twenty, and which of them a DJ may turn off. */
   let allLayers = $state<WaveformLayer[]>([]);
+  /** §54's functional presets, one per kind of night §81 names. */
+  let allSetups = $state<Setup[]>([]);
+  /** The one whose changes are being read, before anything is applied. */
+  let reading = $state<string | null>(null);
+  /** What the last one actually did, so nothing is hidden after the fact. */
+  let didSetUp = $state<{ title: string; changes: string[] } | null>(null);
+
+  /**
+   * Apply one of §54's presets.
+   *
+   * Rust does what Rust owns and hands back the two the shell does, which is
+   * why this is three steps rather than one call: the layers, the pad pages,
+   * the assistant's posture and the request page are set in Rust; the
+   * arrangement and the theme go up to the shell; and `loadRemembers` pulls the
+   * first two back so the pickers below this block show what was just applied
+   * rather than what was there a second ago.
+   */
+  async function setUp(preset: Setup) {
+    try {
+      const applied = await applySetup(preset.slug);
+      onSetUp?.(applied.workspace, applied.theme);
+      await loadRemembers();
+      didSetUp = { title: preset.title, changes: applied.changes };
+      reading = null;
+      error = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
 
   $effect(() => {
     // Deck 1 because the *names* of the pages are the same on every deck — only
     // the action strings are addressed to a deck number, and none of those are
     // read here.
-    void Promise.all([remembered(), padPages(1), railControls(), waveformLayers()])
-      .then(([rows, pages, controls, layers]) => {
+    void Promise.all([
+      remembered(),
+      padPages(1),
+      railControls(),
+      waveformLayers(),
+      setups(),
+    ])
+      .then(([rows, pages, controls, layers, nights]) => {
         remembers_list = rows;
         allPages = pages;
         allControls = controls;
         allLayers = layers;
+        allSetups = nights;
       })
       .catch(() => {
         // The block draws nothing rather than a guess, on the same principle as
@@ -537,6 +587,55 @@
   {#if error}
     <p class="error">{error}</p>
   {/if}
+
+  <!--
+    §54 first, because it is the one control here that changes six others. A DJ
+    setting up for a wedding had to find the arrangement, the theme, the
+    waveform layers, the pad pages, the assistant's posture and the request
+    page separately; this is that evening in one press.
+  -->
+  <div class="block setups">
+    <h3>Set up for tonight</h3>
+    <p class="hint">
+      Starting points, not identities — every control one of these touches stays
+      where you can change it afterwards. Press one to read what it would do;
+      press it again to do it.
+    </p>
+    <ul class="night-list">
+      {#each allSetups as night (night.slug)}
+        <li data-setup={night.slug}>
+          <button
+            class:chosen={reading === night.slug}
+            aria-expanded={reading === night.slug}
+            onclick={() =>
+              reading === night.slug ? void setUp(night) : (reading = night.slug)}
+          >
+            <span class="night-name">{night.title}</span>
+            <span class="night-about">{night.about}</span>
+          </button>
+          <!--
+            The list *before* anything happens, not after. §54's presets touch
+            six systems at once, and the rule `dj_app::presets` states about the
+            small ones applies with more force here: a preset that silently
+            changes six things is the kind of feature people stop trusting.
+          -->
+          {#if reading === night.slug}
+            <ul class="will">
+              {#each night.changes as change (change)}
+                <li>{change}</li>
+              {/each}
+            </ul>
+            <p class="hint again">Press {night.title} again to apply it.</p>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+    {#if didSetUp}
+      <p class="did" role="status">
+        {didSetUp.title}: {didSetUp.changes.join(" · ")}
+      </p>
+    {/if}
+  </div>
 
   <!--
     Screens first, because it is the one setting that changes the shape of the
@@ -1602,6 +1701,56 @@
   .lock-about {
     color: var(--muted);
     font-size: 0.85em;
+  }
+
+  .night-list {
+    list-style: none;
+    margin: 0.6rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .night-list > li > button {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    width: 100%;
+    text-align: left;
+    flex-wrap: wrap;
+  }
+
+  .night-list > li > button.chosen {
+    border-color: var(--selected);
+  }
+
+  .night-name {
+    min-width: 7.5rem;
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+  }
+
+  .night-about,
+  .will,
+  .did,
+  .again {
+    color: var(--muted);
+    font-size: 0.85em;
+  }
+
+  /* Indented under the preset it belongs to, so six systems read as one
+     answer rather than as six more rows in the list. */
+  .will {
+    list-style: none;
+    margin: 0.35rem 0 0;
+    padding: 0 0 0 1rem;
+    border-left: 2px solid var(--edge);
+  }
+
+  .did {
+    margin: 0.6rem 0 0;
+    color: var(--active);
   }
 
   .remembers h4 {

@@ -60,6 +60,7 @@ pub mod response;
 pub mod session;
 pub mod setrec;
 pub mod setting;
+pub mod setup;
 pub mod shape;
 pub mod share;
 pub mod signals;
@@ -617,6 +618,8 @@ pub fn run() {
             commands::kept_controls,
             commands::set_kept_controls,
             commands::remembered,
+            commands::setups,
+            commands::apply_setup,
             commands::chosen_layers,
             commands::set_chosen_layers,
             commands::my_workspaces,

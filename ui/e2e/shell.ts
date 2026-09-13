@@ -58,6 +58,9 @@ import snapshot from "./snapshot.json" with { type: "json" };
  */
 import padPages from "./pad-pages.json" with { type: "json" };
 import surfaces from "./surfaces.json" with { type: "json" };
+/** §54's functional presets, generated from `dj_app::setup::ALL` by the same
+ *  Rust test. */
+import setups from "./setups.json" with { type: "json" };
 import layers from "./layers.json" with { type: "json" };
 /**
  * The five transition styles and what each does, generated from
@@ -919,6 +922,15 @@ const ANSWERS: Record<string, unknown> = {
     .map((l) => l.name),
   /** Artist, A to Z — what the browser has always opened on. */
   library_sort: { column: "artist", ascending: true },
+  /**
+   * §54's six, from the same table Rust publishes.
+   *
+   * A golden file rather than a hand-written stub, for the reason the layers
+   * are: this is the fixture a test about "one press reaches six systems" is
+   * measured against, and a copy written here would go stale the first time a
+   * preset changed what it does.
+   */
+  setups,
   library_status: {
     tracks: 0,
     pending: 0,
@@ -1295,6 +1307,29 @@ export async function openShell(
           }
           if (cmd === "chosen_layers") {
             return Promise.resolve(win.__layers ?? answers.chosen_layers ?? []);
+          }
+          // §54's apply. Held between calls, like every other picker here: the
+          // claim is that one press reaches six systems, and a fixed answer
+          // would make a preset that worked and one that did nothing look the
+          // same.
+          if (cmd === "apply_setup") {
+            const night = ((answers.setups ?? []) as {
+              slug: string;
+              workspace: string;
+              theme: string;
+              changes: string[];
+            }[]).find((n) => n.slug === args.setting);
+            if (!night) {
+              return Promise.reject(
+                new Error(`${JSON.stringify(args.setting)} is not a kind of night djmanzo knows`),
+              );
+            }
+            win.__setUp = night.slug;
+            return Promise.resolve({
+              workspace: night.workspace,
+              theme: night.theme,
+              changes: night.changes,
+            });
           }
           if (cmd === "keep_workspace") {
             const held = (win.__kept ??= []) as { name: string }[];

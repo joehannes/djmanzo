@@ -471,6 +471,16 @@ every match, or djmanzo announces a cut it did not make on almost every query.
 Mutate the thing the comment claims, and when the mutation survives, suspect
 the comment first.
 
+**A confirmation can be destroyed by the thing it confirms.** §54's presets
+reported what they had just applied, in the Settings block the DJ pressed them
+in — and applying one opens its arrangement, which does not include Settings.
+The line was gone before it could be read. It passed in the browser harness
+because the stub's cockpit closes nothing, which is the shape of test that lies:
+green, specific, and about a state the application never reaches. The fix was to
+delete it; the list shown *before* the press is the whole promise and nothing
+takes that away. Before writing an "it worked" message, ask what the action does
+to the surface the message is on.
+
 **A token can exist, be correct, and be asked for by nobody.** §30's fourteen
 roles were defined, tested against `app.css`, and almost unused: thirty CSS
 rules painted a state with `--accent` directly. Nothing was visibly wrong,

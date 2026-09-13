@@ -1419,6 +1419,46 @@ export const keptControls = () => invoke<string[]>("kept_controls");
 export const setKeptControls = (controls: string[]) =>
   invoke<string[]>("set_kept_controls", { controls });
 
+/* -- §54's functional presets --------------------------------------------- */
+
+/** One of §54's presets: a whole night set up in one gesture. */
+export interface Setup {
+  /** §81's slug for the kind of night. */
+  slug: string;
+  title: string;
+  /** What kind of night it is, in one line. */
+  about: string;
+  /** The arrangement it opens, by the name the workspace picker shows. */
+  workspace: string;
+  /** The theme package id, or empty for "leave the theme alone". */
+  theme: string;
+  /**
+   * Everything it would change, in the DJ's own words.
+   *
+   * Shown *before* it is applied as well as after. §54's presets touch six
+   * systems at once, and a preset that silently changes six things is the kind
+   * of feature people stop trusting.
+   */
+  changes: string[];
+}
+
+/** §54's presets, one per kind of night §81 names. */
+export const setups = () => invoke<Setup[]>("setups");
+
+/** What one setup actually did, and the two things left for the interface. */
+export interface SetupApplied {
+  /** The arrangement to open. Rust does not apply this: the cockpit is
+   *  resolved against a window only the interface has measured. */
+  workspace: string;
+  /** The theme to wear, or empty to leave it. */
+  theme: string;
+  changes: string[];
+}
+
+/** Set the night up. Refuses a kind of night djmanzo does not know. */
+export const applySetup = (setting: string) =>
+  invoke<SetupApplied>("apply_setup", { setting });
+
 /** One of §8 Level 1's nine, and whether djmanzo actually keeps it. */
 export interface Remembered {
   slug: string;

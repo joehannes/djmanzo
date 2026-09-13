@@ -9725,6 +9725,99 @@ pub fn set_chosen_layers(state: State<'_, AppState>, layers: Vec<String>) -> Vec
     chosen
 }
 
+/// One of §54's functional presets, as the picker offers it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SetupDto {
+    /// §81's slug for the kind of night.
+    pub slug: String,
+    /// What a DJ would call it.
+    pub title: String,
+    /// What kind of night it is, in one line.
+    pub about: String,
+    /// The arrangement it opens, by the name the workspace picker shows.
+    pub workspace: String,
+    /// The theme package id, or empty for "leave the theme alone".
+    pub theme: String,
+    /// Everything it would change, in the DJ's own words — shown *before* it is
+    /// applied as well as after, because a preset that silently changes six
+    /// systems is the kind of feature people stop trusting.
+    pub changes: Vec<String>,
+}
+
+fn setup_dto(setup: crate::setup::Setup) -> SetupDto {
+    SetupDto {
+        slug: setup.setting.slug().to_owned(),
+        title: setup.setting.title().to_owned(),
+        about: setup.setting.about().to_owned(),
+        workspace: setup.workspace.to_owned(),
+        theme: setup.theme.to_owned(),
+        changes: setup.changes(),
+    }
+}
+
+/// §54's presets, one per kind of night.
+///
+/// Starting points rather than identities: every control one of these touches
+/// stays where a DJ can change it, which is §7's rule about the workspaces
+/// these name and applies to the rest of the systems too.
+#[tauri::command]
+#[must_use]
+pub fn setups() -> Vec<SetupDto> {
+    crate::setup::ALL.into_iter().map(setup_dto).collect()
+}
+
+/// What one setup actually did.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SetupApplied {
+    /// The arrangement the interface should open. Rust does not apply this
+    /// itself: the cockpit is resolved against the window, which only the
+    /// interface has measured.
+    pub workspace: String,
+    /// The theme to wear, or empty to leave it.
+    pub theme: String,
+    /// Every change, including the ones already made here.
+    pub changes: Vec<String>,
+}
+
+/// Set the night up.
+///
+/// Rust does what Rust owns — §25's layers, the pad pages, the assistant's
+/// posture, whether the room may ask for records — and hands back the two the
+/// interface owns. That split is not arbitrary: a workspace is resolved against
+/// a measured window and a theme is a stylesheet, and both would be Rust
+/// guessing at pixels.
+///
+/// Refuses rather than falls back on a slug it does not know, for the reason
+/// `Setting::parse` gives: the whole point of §81 is that the profiles are kept
+/// apart, and a wedding quietly becoming a club is worse than an error.
+#[tauri::command]
+pub fn apply_setup(state: State<'_, AppState>, setting: String) -> Result<SetupApplied, String> {
+    let which = crate::setting::Setting::parse(&setting)
+        .ok_or_else(|| format!("{setting:?} is not a kind of night djmanzo knows"))?;
+    let setup = crate::setup::setup(which);
+
+    let layers: Vec<String> = setup.layers.iter().map(|l| (*l).to_owned()).collect();
+    state.set_waveform_layers(
+        &dj_render::choosing(&layers)
+            .into_iter()
+            .map(|layer| layer.name.to_owned())
+            .collect::<Vec<_>>(),
+    );
+    let pages: Vec<String> = setup.pages.iter().map(|p| (*p).to_owned()).collect();
+    state.set_favourite_pad_pages(&keeping_pages(&pages));
+
+    if let Ok(mut guard) = state.conduct().lock() {
+        guard.posture = setup.posture;
+    }
+    state.audience().front().set_open(setup.requests);
+
+    Ok(SetupApplied {
+        workspace: setup.workspace.to_owned(),
+        theme: setup.theme.to_owned(),
+        changes: setup.changes(),
+    })
+}
+
 /// One of §8 Level 1's nine, and whether djmanzo actually keeps it.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RememberedDto {

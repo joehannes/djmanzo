@@ -332,6 +332,32 @@
    * difference between "Laptop Compact" and "Minimal" is the density, and a
    * picker where those two do the same thing is a picker nobody presses twice.
    */
+  /**
+   * §54's half of a functional preset that the shell owns.
+   *
+   * The arrangement and the theme, and nothing else: Rust has already set the
+   * waveform layers, the pad pages, the assistant's posture and the request
+   * page, which are its. This is here rather than in Settings for the reason
+   * the locks are — a workspace is resolved against a window only the shell has
+   * measured, and two components writing one from their own copies is how one
+   * silently drops what the other just saved.
+   *
+   * An arrangement the DJ has since edited is *theirs*: `presets` is the
+   * shipped list, and applying by name gets whatever that name means now,
+   * which is §7's rule that a preset is a starting point rather than a copy.
+   */
+  function setUpForTonight(name: string, pack: string) {
+    const preset = presets.find((p) => p.name === name);
+    if (preset) void applyWorkspace(preset);
+    // Both halves, for the reason `applyWorkspace` gives at length: painting
+    // the colours and telling djmanzo a choice was made are two different
+    // things, and §31 undoes the first within four seconds without the second.
+    if (pack) {
+      theme.setPackage(pack);
+      void themeChosen(pack).catch(() => {});
+    }
+  }
+
   async function applyWorkspace(preset: Workspace) {
     // Optimistic, then corrected — the same posture as `toggleSurface`, and
     // for the same reason: the panels appear on the press.
@@ -2012,6 +2038,7 @@
       deviceChannels={active?.channels ?? null}
       locked={workspace?.locked ?? []}
       onLock={saveLocks}
+      onSetUp={setUpForTonight}
     />
   {/snippet}
   {#snippet surfaceLog()}

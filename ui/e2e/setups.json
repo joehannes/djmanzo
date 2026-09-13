@@ -1,0 +1,91 @@
+[
+  {
+    "slug": "club",
+    "title": "Club",
+    "about": "A crowd that came to dance, and knows what it came for.",
+    "workspace": "Club",
+    "theme": "pkg-industrial",
+    "changes": [
+      "Arrangement: Club",
+      "Theme: pkg-industrial",
+      "Waveform: 7 of §25's layers",
+      "Pad pages: cues, loops, fx",
+      "Assistant: prepare",
+      "Requests: off"
+    ]
+  },
+  {
+    "slug": "beach",
+    "title": "Beach / sunset",
+    "about": "Warm, unhurried, and nobody is waiting for a drop.",
+    "workspace": "Open Format",
+    "theme": "pkg-sunset",
+    "changes": [
+      "Arrangement: Open Format",
+      "Theme: pkg-sunset",
+      "Waveform: 9 of §25's layers",
+      "Pad pages: cues, saved",
+      "Assistant: assist",
+      "Requests: on"
+    ]
+  },
+  {
+    "slug": "wedding",
+    "title": "Wedding",
+    "about": "A room that is not there for the DJ.",
+    "workspace": "Wedding / Event",
+    "theme": "pkg-organic",
+    "changes": [
+      "Arrangement: Wedding / Event",
+      "Theme: pkg-organic",
+      "Waveform: 7 of §25's layers",
+      "Pad pages: cues, saved, sampler",
+      "Assistant: assist",
+      "Requests: on"
+    ]
+  },
+  {
+    "slug": "latin",
+    "title": "Latin",
+    "about": "Where the technique is the genre's, not the format's.",
+    "workspace": "Classic DJ",
+    "theme": "pkg-organic",
+    "changes": [
+      "Arrangement: Classic DJ",
+      "Theme: pkg-organic",
+      "Waveform: 8 of §25's layers",
+      "Pad pages: cues, loops, roll",
+      "Assistant: suggest",
+      "Requests: on"
+    ]
+  },
+  {
+    "slug": "practice",
+    "title": "Practice",
+    "about": "Nobody is listening. What happens here is not a gig.",
+    "workspace": "Pro Performance",
+    "theme": "pkg-studio",
+    "changes": [
+      "Arrangement: Pro Performance",
+      "Theme: pkg-studio",
+      "Waveform: 10 of §25's layers",
+      "Pad pages: cues, loops, roll, slicer",
+      "Assistant: watch",
+      "Requests: off"
+    ]
+  },
+  {
+    "slug": "open-format",
+    "title": "Open format",
+    "about": "Whatever the room turns out to want.",
+    "workspace": "Open Format",
+    "theme": "",
+    "changes": [
+      "Arrangement: Open Format",
+      "Waveform: 8 of §25's layers",
+      "Pad pages: cues, loops, saved",
+      "Assistant: suggest",
+      "Requests: on"
+    ]
+  }
+]
