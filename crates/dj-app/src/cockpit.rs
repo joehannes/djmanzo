@@ -448,6 +448,39 @@ impl Attention {
         }
     }
 
+    /// The quieter of two budgets, field by field.
+    ///
+    /// §77's mechanism. The section asks djmanzo to recognise *exploration* and
+    /// *performance* as two mental modes and to move between them gracefully;
+    /// `Focus` has modelled them since the cockpit was written, stored on the
+    /// workspace, and — like §78's `frozen` before it — **nothing read it**.
+    ///
+    /// What reads it now is this, and the rule it enforces is one-way: a DJ's
+    /// chosen focus may make the interface **quieter and never louder**.
+    ///
+    /// The asymmetry is the whole design. Choosing a performing workspace is a
+    /// DJ saying "keep out of my way tonight", and that should hold between
+    /// records as well as during them — the machine has no standing to decide
+    /// they have relaxed. Choosing a learning workspace is not the same kind of
+    /// statement: a DJ practising with two decks audible is still mixing, the
+    /// room can still hear it, and an interface that got chattier because the
+    /// workspace said *Learning* would be talking over a live mix on the
+    /// strength of a menu choice made an hour earlier.
+    ///
+    /// So the derived budget is the ceiling and the chosen one can only lower
+    /// it. `min` on every count, `and` on the one flag, the lower of the two
+    /// motion levels.
+    #[must_use]
+    pub fn quieter_of(self, other: Self) -> Self {
+        Self {
+            promoted_controls: self.promoted_controls.min(other.promoted_controls),
+            suggestions: self.suggestions.min(other.suggestions),
+            notices: self.notices.min(other.notices),
+            reflow: self.reflow && other.reflow,
+            motion: self.motion.min(other.motion),
+        }
+    }
+
     /// Something is wrong and the DJ needs the controls, not the advice.
     #[must_use]
     pub const fn emergency() -> Self {
@@ -3425,6 +3458,118 @@ mod tests {
         assert_eq!(mine[0].name, "Mine", "the preset's name came with it");
         assert_eq!(mine[0].surfaces, was, "the panels did not come with it");
         assert_eq!(mine[0].decks, 4);
+    }
+
+    // -- §77's two modes ---------------------------------------------------
+
+    /// **The load-bearing one: the DJ's focus quietens the interface and never
+    /// makes it louder.**
+    ///
+    /// The asymmetry is the whole of §77 as djmanzo can honour it. A DJ who
+    /// chose a performing workspace has said "keep out of my way tonight", and
+    /// that has to hold *between* records too — the machine has no standing to
+    /// decide they have relaxed. A DJ who chose a learning workspace has said
+    /// something much weaker, and if two decks are audible the room can hear
+    /// them: an interface that got chattier on the strength of a menu choice
+    /// made an hour earlier would be talking over a live mix.
+    ///
+    /// Both directions, because each alone passes wrongly — a `max` passes the
+    /// first half and inverts the second, and ignoring the focus entirely
+    /// passes the second half and leaves §77 where it was.
+    #[test]
+    fn a_chosen_focus_may_quieten_the_interface_and_never_loosen_it() {
+        let mixing = Attention::performing();
+        let between = Attention::preparing();
+
+        // Chose performing, machine says there is room to think: stay quiet.
+        let kept = between.quieter_of(Focus::Performing.attention());
+        assert_eq!(
+            kept, mixing,
+            "a DJ who asked to be left alone got the chattier budget the moment \
+             a record ended"
+        );
+
+        // Chose learning, machine says a mix is running: stay quiet anyway.
+        let still_quiet = mixing.quieter_of(Focus::Learning.attention());
+        assert_eq!(
+            still_quiet, mixing,
+            "a workspace chosen an hour ago made the interface talk over a live \
+             mix"
+        );
+    }
+
+    /// It is quieter on every axis, not on whichever one happens to differ.
+    #[test]
+    fn quieter_means_quieter_in_every_way_at_once() {
+        let loud = Attention {
+            promoted_controls: 8,
+            suggestions: 5,
+            notices: 3,
+            reflow: true,
+            motion: Motion::High,
+        };
+        let quiet = Attention {
+            promoted_controls: 4,
+            suggestions: 0,
+            notices: 1,
+            reflow: false,
+            motion: Motion::None,
+        };
+        assert_eq!(loud.quieter_of(quiet), quiet);
+        assert_eq!(
+            quiet.quieter_of(loud),
+            quiet,
+            "the order changed the answer"
+        );
+
+        // And a mixed pair takes the quieter half of each.
+        let mixed = Attention {
+            promoted_controls: 8,
+            suggestions: 0,
+            notices: 3,
+            reflow: false,
+            motion: Motion::High,
+        };
+        let other = Attention {
+            promoted_controls: 4,
+            suggestions: 5,
+            notices: 1,
+            reflow: true,
+            motion: Motion::Low,
+        };
+        assert_eq!(
+            mixed.quieter_of(other),
+            Attention {
+                promoted_controls: 4,
+                suggestions: 0,
+                notices: 1,
+                reflow: false,
+                motion: Motion::Low,
+            }
+        );
+    }
+
+    /// Every focus a workspace can name leaves the emergency budget alone.
+    ///
+    /// §18's emergency is already the quietest thing djmanzo has, and a focus
+    /// that could raise it would let a menu choice put advice in front of a DJ
+    /// whose recording has just failed.
+    #[test]
+    fn no_focus_can_talk_over_an_emergency() {
+        let emergency = Attention::emergency();
+        for focus in [
+            Focus::Performing,
+            Focus::Preparing,
+            Focus::Planning,
+            Focus::Learning,
+            Focus::Supervising,
+        ] {
+            assert_eq!(
+                emergency.quieter_of(focus.attention()),
+                emergency,
+                "`{focus:?}` made an emergency louder"
+            );
+        }
     }
 
     /// Nothing that ships arrives locked.

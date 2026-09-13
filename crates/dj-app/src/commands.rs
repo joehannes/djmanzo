@@ -1493,6 +1493,11 @@ pub fn snapshot_now(state: &AppState) -> crate::Snapshot {
     // frame outside the pump must see what the interface is already showing,
     // not a second opinion computed from a slightly different moment.
     .with_session(state.night().read())
+    // And §77's focus, for the same reason: a frame read outside the pump that
+    // disagreed with the pump's about how quiet the interface should be would
+    // be a panel painting itself one way and then being corrected on the next
+    // tick.
+    .with_focus(state.focus().lock().ok().and_then(|held| *held))
 }
 
 /// What the interface needs to size a deck's waveform strip.

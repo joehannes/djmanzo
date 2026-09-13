@@ -90,6 +90,12 @@ pub struct AppState {
     /// autopilot tick and changed together when a pack is chosen, and separate
     /// locks would let a tick see a new posture against an old occasion.
     conduct: Arc<Mutex<Conduct>>,
+    /// §77: the focus the stored workspace names, for the snapshot pump.
+    ///
+    /// Held beside the workspace rather than read from it per tick: the
+    /// arrangement is a file and the pump runs sixty times a second. Seeded the
+    /// first time the workspace is read, and updated whenever one is stored.
+    focus: Arc<Mutex<Option<crate::cockpit::Focus>>>,
     /// §43: what has been suggested and what the DJ did with it.
     ///
     /// Not persisted. Fatigue is a fact about *this* night — a DJ who worked
@@ -448,6 +454,7 @@ impl AppState {
         Self {
             bus,
             conduct: Arc::new(Mutex::new(Conduct::default())),
+            focus: Arc::new(Mutex::new(None)),
             fatigue: Arc::new(Mutex::new(dj_assistant::Fatigue::new())),
             registry,
             remote: Arc::new(crate::remote::Remote::default()),
@@ -1084,8 +1091,15 @@ impl AppState {
     pub fn workspace(&self) -> Option<crate::cockpit::Workspace> {
         let path = self.workspace_path()?;
         let text = std::fs::read_to_string(&path).ok()?;
-        match serde_json::from_str(&text) {
-            Ok(workspace) => Some(workspace),
+        match serde_json::from_str::<crate::cockpit::Workspace>(&text) {
+            Ok(workspace) => {
+                // §77. Seeded here as well as on the write, because the first
+                // thing that happens after a restart is a read: without this
+                // the budget would ignore the DJ's chosen focus until the next
+                // time they moved a panel.
+                self.remember_focus(workspace.focus);
+                Some(workspace)
+            }
             Err(error) => {
                 tracing::warn!(%error, ?path, "starting from the default cockpit");
                 None
@@ -1093,8 +1107,16 @@ impl AppState {
         }
     }
 
+    /// §77: hold the chosen focus where the snapshot pump can see it.
+    fn remember_focus(&self, focus: crate::cockpit::Focus) {
+        if let Ok(mut held) = self.focus.lock() {
+            *held = Some(focus);
+        }
+    }
+
     /// Remember how the cockpit is arranged.
     pub fn set_workspace(&self, workspace: &crate::cockpit::Workspace) {
+        self.remember_focus(workspace.focus);
         let Some(path) = self.workspace_path() else {
             return;
         };
@@ -1542,6 +1564,12 @@ impl AppState {
     #[must_use]
     pub fn fatigue(&self) -> Arc<Mutex<dj_assistant::Fatigue>> {
         Arc::clone(&self.fatigue)
+    }
+
+    /// §77's chosen focus, for the snapshot pump.
+    #[must_use]
+    pub fn focus(&self) -> Arc<Mutex<Option<crate::cockpit::Focus>>> {
+        Arc::clone(&self.focus)
     }
 
     /// The context engine.

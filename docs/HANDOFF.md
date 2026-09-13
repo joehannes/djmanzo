@@ -437,6 +437,14 @@ target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 **`pkill -f "something"` matches its own shell.** It kills the command that
 ran it. Use `pkill -x <name>`.
 
+**Three fields have now been found stored and read by nobody**: `frozen`
+(§78), `focus` (§77) and the `last_played` / `phrase_beats` the library row
+carried into a DTO that dropped them (§20). The shape is always the same — a
+field added when the type was designed, for a consumer written later that never
+arrived — and it is invisible to every gate, because a field that is serialised
+round-trips perfectly. When a section's row says something "is modelled",
+`grep` for a reader before believing it.
+
 **A test of an ordering needs an input the old order gets wrong.** §58's
 palette ranking was first tested with the query `e`, and deleting the sort
 entirely left it green: the passes that generate the list already run verbs,

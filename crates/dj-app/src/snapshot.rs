@@ -513,6 +513,23 @@ impl Snapshot {
         self
     }
 
+    /// Let the DJ's chosen focus quieten the budget. §77.
+    ///
+    /// After [`Self::with_session`], because it works on the budget that one
+    /// derived: the machine's reading is the ceiling and the DJ's choice can
+    /// only lower it. See [`crate::cockpit::Attention::quieter_of`] for why
+    /// that is one-way.
+    ///
+    /// `None` — no workspace stored, or one that never named a focus — leaves
+    /// the derived budget exactly as it was.
+    #[must_use]
+    pub fn with_focus(mut self, focus: Option<crate::cockpit::Focus>) -> Self {
+        if let Some(focus) = focus {
+            self.attention = self.attention.quieter_of(focus.attention());
+        }
+        self
+    }
+
     /// Read the current state of `deck_count` decks.
     #[must_use]
     pub fn capture(registry: &ParameterRegistry, deck_count: usize) -> Self {
@@ -926,6 +943,12 @@ pub struct Sources {
     /// reads, sixty times a second, and every other candidate would have been a
     /// second loop looking at the same decks.
     pub night: Option<Arc<crate::night::Night>>,
+    /// §77: the focus the DJ's workspace names, when it names one.
+    ///
+    /// A shared cell rather than the workspace itself, because the workspace
+    /// lives in a file and this loop runs sixty times a second. Written when an
+    /// arrangement is stored or read, which is the only time it can change.
+    pub focus: Option<Arc<std::sync::Mutex<Option<crate::cockpit::Focus>>>>,
 }
 
 /// A running snapshot pump. Stops when dropped.
@@ -986,6 +1009,7 @@ impl SnapshotPump {
             samples,
             recording,
             night,
+            focus,
         } = sources;
         let alive = Arc::new(AtomicBool::new(true));
         let thread = {
@@ -1015,7 +1039,13 @@ impl SnapshotPump {
                         // shown, so what the interface draws and what the
                         // engine saw are the same moment.
                         let read = night.as_deref().and_then(|night| night.observe(&snapshot));
-                        let snapshot = snapshot.with_session(read);
+                        // §77, after the session: the machine's reading is the
+                        // ceiling and the DJ's chosen focus can only lower it.
+                        let chosen = focus
+                            .as_deref()
+                            .and_then(|slot| slot.lock().ok().map(|held| *held))
+                            .flatten();
+                        let snapshot = snapshot.with_session(read).with_focus(chosen);
                         let changed = previous.as_ref() != Some(&snapshot);
 
                         // Skip identical frames -- an idle application should not
@@ -1099,6 +1129,42 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(2));
         }
+    }
+
+    /// §77's rule, at the seam the pump uses.
+    ///
+    /// `with_focus` after `with_session`, so the machine's reading is the
+    /// ceiling. Asserted here as well as in `cockpit` because the order of the
+    /// two calls is the thing that makes it one-way, and that order lives in
+    /// this file and in the pump.
+    #[test]
+    fn a_chosen_focus_only_ever_quietens_the_frame_the_pump_sends() {
+        use crate::cockpit::{Attention, Focus};
+        let registry = ParameterRegistry::new();
+        let quiet = Snapshot::capture(&registry, 2)
+            .with_session(None)
+            .with_focus(Some(Focus::Performing));
+        assert_eq!(
+            quiet.attention,
+            Attention::performing(),
+            "a performing workspace did not quieten an idle frame"
+        );
+
+        let untouched = Snapshot::capture(&registry, 2)
+            .with_session(None)
+            .with_focus(None);
+        assert_eq!(
+            untouched.attention,
+            Attention::preparing(),
+            "a frame with no workspace focus was quietened by nothing at all"
+        );
+
+        // And the loud direction does not exist: an idle frame is already
+        // `preparing`, and `Preparing` cannot raise it past that.
+        let asked_for_more = Snapshot::capture(&registry, 2)
+            .with_session(None)
+            .with_focus(Some(Focus::Preparing));
+        assert_eq!(asked_for_more.attention, Attention::preparing());
     }
 
     #[test]

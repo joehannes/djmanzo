@@ -319,6 +319,13 @@ pub fn run() {
                 state.set_config_dir(dir);
             }
 
+            // §77. Read once here so the pump has the handle; the state seeds
+            // it from the stored workspace on the first read and updates it on
+            // every write.
+            let chosen_focus = {
+                let state: tauri::State<'_, AppState> = handle.state();
+                state.focus()
+            };
             let pump = SnapshotPump::start_with_bridge(
                 registry,
                 deck_count,
@@ -329,6 +336,7 @@ pub fn run() {
                     samples: Some(sample_names),
                     recording: Some(recording_state),
                     night: Some(night),
+                    focus: Some(chosen_focus),
                 },
                 move |snapshot| {
                     use tauri::Emitter;
