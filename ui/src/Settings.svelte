@@ -671,7 +671,7 @@
       record; on a CD deck or a phone it does not.
     </p>
     <div class="row" style="gap: 0.5rem; flex-wrap: wrap;">
-      <select class="grow" bind:value={vinylFormat}>
+      <select class="grow" aria-label="Timecode format" bind:value={vinylFormat}>
         {#each vinyl.formats as format (format.name)}
           <option value={format.name} disabled={!format.usable}>
             {format.name} — {Math.round(format.carrierHz)} Hz, good for
@@ -700,7 +700,7 @@
       </p>
     {:else}
       <div class="row" style="gap: 0.5rem; flex-wrap: wrap;">
-        <select class="grow" bind:value={vinylDevice}>
+        <select class="grow" aria-label="Input the timecode arrives on" bind:value={vinylDevice}>
           {#each inputs as device (device.id)}
             <option value={device.id}>{device.name}</option>
           {/each}
@@ -819,7 +819,7 @@
       <p class="hint">No MIDI outputs on this machine.</p>
     {:else}
       <div class="row">
-        <select class="grow" bind:value={clockPort} disabled={clock.running}>
+        <select class="grow" aria-label="MIDI port to send clock on" bind:value={clockPort} disabled={clock.running}>
           {#each outputs.ports as port (port)}
             <option value={port}>{port}</option>
           {/each}
@@ -855,7 +855,7 @@
       <p class="hint">No MIDI inputs to follow.</p>
     {:else}
       <div class="row">
-        <select class="grow" bind:value={followPort} disabled={!!clock.following}>
+        <select class="grow" aria-label="MIDI port to follow clock from" bind:value={followPort} disabled={!!clock.following}>
           {#each clockInputs as port (port)}
             <option value={port}>{port}</option>
           {/each}
@@ -902,12 +902,14 @@
     </p>
     <div class="row">
       <input
+        aria-label="Address the line protocol listens on"
         class="grow"
         bind:value={remoteAddress}
         placeholder="127.0.0.1:7654"
         disabled={remote.running}
       />
       <input
+        aria-label="Passphrase for the line protocol"
         class="grow"
         type="password"
         bind:value={remoteToken}
@@ -942,7 +944,13 @@
       badly. Use the line protocol above for anything off this machine.
     </p>
     <div class="row">
-      <input class="grow" bind:value={oscAddress} placeholder="127.0.0.1:9000" disabled={!!remote.osc} />
+      <input
+        aria-label="Address the OSC port listens on"
+        class="grow"
+        bind:value={oscAddress}
+        placeholder="127.0.0.1:9000"
+        disabled={!!remote.osc}
+      />
       {#if remote.osc}
         <IconButton icon="ban" title="Close the OSC port" onClick={stopOscPort} />
       {:else}

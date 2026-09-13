@@ -174,6 +174,7 @@
           {#if provider.credential}
             <div class="row">
               <input
+                aria-label="{provider.label} — {provider.credential_label ?? 'key'}"
                 type="password"
                 autocomplete="off"
                 placeholder={provider.is_set ? `Replace ${provider.hint}` : provider.credential_label}
@@ -285,6 +286,7 @@
 
   <div class="compose">
     <input
+      aria-label="Ask the assistant"
       type="text"
       placeholder={enabled ? "Ask for something…" : "Connect a device first"}
       bind:value={text}

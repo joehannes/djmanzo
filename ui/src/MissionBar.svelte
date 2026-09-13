@@ -27,6 +27,26 @@
    */
   import { missionBar, type MissionItem } from "./api";
 
+  /**
+   * What each level draws beside the value.
+   *
+   * §33: *colour alone must never encode critical state*. Mirrors
+   * `dj_app::mission::Level::mark`, and a Rust test reads this table and fails
+   * when the two disagree — the mark is a glyph, which is a pixels question, but
+   * *which* level gets one is a judgement and belongs where the levels are
+   * decided.
+   *
+   * `aria-hidden` on the mark itself: a screen reader announcing "exclamation
+   * exclamation" says less than the `title` beside it already does, in a voice
+   * that costs a second to parse. The redundancy §33 asks for is a redundancy
+   * for eyes; the sentence is the one for ears.
+   */
+  const MARK: Record<string, string> = {
+    quiet: "",
+    watch: "!",
+    alarm: "!!",
+  };
+
   interface Props {
     /** Opened when the room reading is pressed. §39's *click / expand*. */
     onOpenRoom: () => void;
@@ -83,6 +103,7 @@
       >
         {#if item.label}<span class="mission-label">{item.label}</span>{/if}
         {item.value}
+        {#if MARK[item.level]}<span class="mission-mark" aria-hidden="true">{MARK[item.level]}</span>{/if}
       </button>
     {:else}
       <span
@@ -93,6 +114,7 @@
       >
         {#if item.label}<span class="mission-label">{item.label}</span>{/if}
         {item.value}
+        {#if MARK[item.level]}<span class="mission-mark" aria-hidden="true">{MARK[item.level]}</span>{/if}
       </span>
     {/if}
   {/each}
@@ -105,7 +127,7 @@
     flex-wrap: wrap;
     gap: 0.55rem;
     font-size: 0.8rem;
-    color: var(--text-dim);
+    color: var(--text);
   }
 
   .mission-item {
@@ -115,10 +137,19 @@
     white-space: nowrap;
   }
 
-  /* The label is the word a DJ learns the position by, so it is quieter than
-     the figure that changes. */
+  /*
+    The label is the word a DJ learns the position by, so it is quieter than the
+    figure that changes.
+
+    Quieter by being dim rather than by being faded. It was `opacity: 0.6` over
+    the dim text the whole bar used, which multiplied out to 3.39:1 against the
+    panel -- under the 4.5:1 that nine-pixel text needs, and §33 asks for
+    *daylight* by name. The hierarchy is now the other way round: the figure is
+    full-strength text and the label is the dim token, so the pair still reads
+    as a caption and a reading, and both are legible with the sun on the screen.
+  */
   .mission-label {
-    opacity: 0.6;
+    color: var(--muted);
     letter-spacing: 0.04em;
   }
 
@@ -126,14 +157,37 @@
     Colour is the whole of the HUD idea, and it is spent sparingly: an item that
     is quiet looks exactly like the text around it, so the two that are not draw
     the eye without anything needing to flash.
+
+    It is also never on its own. §33: *colour alone must never encode critical
+    state*, and this strip was the clearest breach of it in the application --
+    amber and red and nothing else, on the one surface whose entire job is to
+    say that something has gone wrong. Three channels now, which is what the
+    section asks for by name: the colour, the mark (iconography), and the
+    outline that becomes a fill (border treatment, then texture). Any one of
+    them alone tells a DJ which reading to look at; the first to survive a
+    hazer, a sunlit window or deuteranopia wins.
   */
   .mission-item[data-level="watch"] {
     color: var(--warn);
+    border: 1px solid currentColor;
+    border-radius: var(--radius-s);
+    padding: 0 0.3rem;
   }
 
   .mission-item[data-level="alarm"] {
     color: var(--danger);
     font-weight: 600;
+    border: 1px solid currentColor;
+    border-radius: var(--radius-s);
+    padding: 0 0.3rem;
+    background: var(--warn-bg);
+  }
+
+  /* Set in its own width so a reading gaining a mark does not shove the eight
+     readings after it along the strip. */
+  .mission-mark {
+    font-weight: 700;
+    letter-spacing: -0.05em;
   }
 
   /* The room is pressable; it should not look like a form control while doing

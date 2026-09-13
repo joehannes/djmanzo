@@ -44,12 +44,44 @@ pub enum Level {
 }
 
 impl Level {
+    /// Every level there is, so a test can walk them.
+    pub const ALL: [Self; 3] = [Self::Quiet, Self::Watch, Self::Alarm];
+
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
             Self::Quiet => "quiet",
             Self::Watch => "watch",
             Self::Alarm => "alarm",
+        }
+    }
+
+    /// What the bar draws beside the value, on top of the colour.
+    ///
+    /// §33's one absolute: *colour alone must never encode critical state*.
+    /// The bar is where that rule bites hardest — it is the only part of the
+    /// interface whose whole job is to say "something is wrong", and it said
+    /// it in amber and red and nothing else. A DJ with deuteranopia read a
+    /// failing recording as a working one, and so did anyone looking at the
+    /// screen through a hazer at four in the morning.
+    ///
+    /// One character, because this is §5's HUD and the label beside it is
+    /// three. Rising rather than different: a glance has to order two marks
+    /// without reading them, and one exclamation next to two is ordered before
+    /// it is recognised. Quiet has none on purpose — a mark on the nine
+    /// readings that are fine is a bar with nine marks on it, which is the
+    /// same as a bar with none.
+    ///
+    /// The mark is the *second* channel, not the replacement: the colour stays,
+    /// and `MissionBar.svelte` adds a third — an outline for a caution, a fill
+    /// for an alarm — because §33 lists border treatment beside iconography and
+    /// a HUD read at arm's length gets the shape before the glyph.
+    #[must_use]
+    pub const fn mark(self) -> &'static str {
+        match self {
+            Self::Quiet => "",
+            Self::Watch => "!",
+            Self::Alarm => "!!",
         }
     }
 }
@@ -828,5 +860,110 @@ mod tests {
         broken.cpu = BUSY;
         broken.xruns = 1.0;
         assert_eq!(loudest(&bar(&broken)), Level::Alarm);
+    }
+
+    /// **§33, and the load-bearing one for it: nothing that matters is said in
+    /// colour alone.**
+    ///
+    /// The section states it as an absolute — *colour alone must never encode
+    /// critical state* — and the mission bar is where the application broke it
+    /// worst: the one strip whose whole job is to say something has gone wrong
+    /// said it in amber and red and nothing else. Two readings that differ only
+    /// in hue are one reading to about one man in twelve, and to anybody at all
+    /// looking through haze or at a screen with the sun on it.
+    ///
+    /// Both halves are asserted, because either alone passes wrongly: a mark on
+    /// every level is a bar that marks nothing, and a mark on no level is where
+    /// this started.
+    #[test]
+    fn every_level_worth_a_colour_is_worth_a_mark_and_quiet_is_neither() {
+        assert_eq!(
+            Level::Quiet.mark(),
+            "",
+            "a bar that marks a healthy reading marks nothing"
+        );
+        for level in Level::ALL {
+            if level == Level::Quiet {
+                continue;
+            }
+            assert!(
+                !level.mark().is_empty(),
+                "`{}` is drawn in colour and nothing else, which is the one \
+                 thing §33 forbids",
+                level.name()
+            );
+        }
+        assert_ne!(
+            Level::Watch.mark(),
+            Level::Alarm.mark(),
+            "a caution and an alarm carry the same mark, so the second channel \
+             says only that something is wrong and never which"
+        );
+    }
+
+    /// The interface draws the marks this table decided, rather than its own.
+    ///
+    /// The house pattern, and needed here for the usual reason: the glyph is a
+    /// pixels question and lives in the component, but *which* level earns one
+    /// is a judgement and lives with the levels. Two copies with no test
+    /// between them is how a level gains a mark in Rust and stays invisible on
+    /// screen.
+    #[test]
+    fn the_bar_and_this_table_agree_about_the_marks() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../ui/src/MissionBar.svelte"
+        );
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("could not read the mission bar at {path}: {e}"));
+        let table = source
+            .split_once("const MARK: Record<string, string> = {")
+            .and_then(|(_, rest)| rest.split_once("};"))
+            .map(|(inside, _)| inside)
+            .expect("`MARK` is no longer written the way this reads it");
+
+        for level in Level::ALL {
+            let want = format!("{}: \"{}\",", level.name(), level.mark());
+            assert!(
+                table.contains(&want),
+                "the bar draws `{}` differently from this table, which marks it \
+                 {:?}",
+                level.name(),
+                level.mark()
+            );
+        }
+    }
+
+    /// A colour is never the only difference the stylesheet makes either.
+    ///
+    /// The mark is the channel a screen reads; this is the one a glance reads.
+    /// §33 lists border treatment beside iconography for a reason: at the
+    /// distance a booth screen is actually looked at, a one-character glyph is
+    /// below the resolution of the glance and an outlined chip is not.
+    #[test]
+    fn a_level_the_bar_colours_is_a_level_it_also_shapes() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../ui/src/MissionBar.svelte"
+        );
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("could not read the mission bar at {path}: {e}"));
+
+        for level in Level::ALL {
+            if level == Level::Quiet {
+                continue;
+            }
+            let opener = format!(".mission-item[data-level=\"{}\"] {{", level.name());
+            let rule = source
+                .split_once(opener.as_str())
+                .and_then(|(_, rest)| rest.split_once('}'))
+                .map(|(inside, _)| inside)
+                .unwrap_or_else(|| panic!("the bar has no rule for `{}`", level.name()));
+            assert!(
+                rule.contains("border:"),
+                "`{}` is drawn with colour and no shape: {rule}",
+                level.name()
+            );
+        }
     }
 }

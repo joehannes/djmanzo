@@ -405,6 +405,83 @@ button.on {
   100% { translate: calc(var(--glitch, 0px) * -1) 0; }
 }
 
+/*
+ * High contrast, which §33 asks for by name.
+ *
+ * The operating system's own setting, honoured the way the reduced-motion one
+ * below it is: a media query, so nothing has to be switched on inside djmanzo
+ * and a DJ who set it once on their laptop gets it here without knowing this
+ * application has an opinion about it.
+ *
+ * Two tokens carry almost all of it, because almost everything quiet in this
+ * interface is quiet through one of them. `--text-dim` is every caption, every
+ * hint and every unit; `--border` is every hairline between two panels. Raising
+ * the pair rather than writing a second palette means the seven theme packages
+ * all get it, and that a palette which already has strong borders is not
+ * flattened by a rule that assumes it does not.
+ *
+ * The disabled opacity is the third. 0.45 of the text colour is legible in a
+ * studio and gone under a booth light, and a control that is off *and* unread
+ * is a control a DJ presses twice before working out that it is not going to
+ * do anything.
+ *
+ * What this does not do is invent a high-contrast *theme*. §31 has the theme
+ * machinery and a DJ who wants one can choose Daylight; this is the narrower
+ * promise that whatever they have chosen is legible when the system says the
+ * person at the screen needs it to be.
+ */
+@media (prefers-contrast: more) {
+  /*
+    `!important` on exactly two declarations, and it is not laziness.
+
+    §31's theme packages set their palette as inline custom properties on the
+    root element, because that is how a theme can change during a set without
+    rewriting a stylesheet. Inline wins over every normal rule in every sheet,
+    so a plain `:root` block here is a rule that can never fire on any of the
+    seven packages -- which is what it did: the query matched, the declarations
+    applied, and the chosen theme overwrote both of them a layer up. A
+    stylesheet declaration marked important does outrank a normal inline one,
+    which is the only lever a sheet has against a theme that is doing its job.
+  */
+  :root {
+    --text-dim: var(--text) !important;
+    --border: var(--border-strong) !important;
+  }
+
+  button:disabled,
+  select:disabled,
+  input:disabled,
+  textarea:disabled {
+    opacity: 0.72;
+  }
+}
+
+/*
+ * Said, but not drawn.
+ *
+ * For the handful of places where a reader needs a word that a DJ looking at
+ * the screen already has from position or from an icon -- the page's own
+ * heading, the column of a table whose cells explain themselves. `display:
+ * none` and `visibility: hidden` would take it away from the reader too, which
+ * is the mistake this class exists to stop somebody making; the one-pixel clip
+ * is the technique that leaves the text in the accessibility tree.
+ *
+ * Kept to genuinely redundant words. A control whose *only* name is off screen
+ * is a control nobody can point at, and §33 asks for labels, not for a second
+ * interface nobody can see.
+ */
+.offscreen {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -89,6 +89,7 @@
 {:else}
   <div class="search">
     <input
+      aria-label="Search every source"
       type="search"
       placeholder="Search every source you have set up…"
       bind:value={text}

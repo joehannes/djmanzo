@@ -250,6 +250,7 @@
 
   <h3>What the night is</h3>
   <select
+    aria-label="What the night is"
     disabled={!enabled}
     value={conduct?.occasion ?? "open"}
     onchange={(e) => choose(() => assistantSetOccasion(e.currentTarget.value))}
@@ -451,10 +452,23 @@
     cursor: pointer;
   }
 
+  /*
+    The chosen rung.
+
+    `color` is restated rather than left to the sheet. `.ladder button` above
+    sets `color: inherit`, and a scoped selector outranks the global
+    `button.active` that pairs this background with a dark foreground -- so the
+    posture the DJ had actually chosen was drawn in light text on the accent at
+    2.4:1, which is the one rung on the ladder that has to be readable. §33's
+    audit found it; it is the same shape of defect as the arcs in the plan, and
+    the general form is that a component restyling `.active` inherits half of a
+    pair that was written as a pair.
+  */
   .ladder button.active,
   .packs button.active {
     background: var(--accent-soft, rgba(128, 128, 128, 0.28));
     border-color: var(--accent, rgba(128, 128, 128, 0.7));
+    color: var(--on-accent);
   }
 
   /* The two levels that move a live control are marked, so choosing one is

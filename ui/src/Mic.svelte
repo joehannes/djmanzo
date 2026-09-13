@@ -98,7 +98,12 @@
 
   {#if !mic.present}
     <div class="attach">
-      <select bind:value={chosen} disabled={!enabled || busy} onfocus={refresh}>
+      <select
+        aria-label="Microphone input"
+        bind:value={chosen}
+        disabled={!enabled || busy}
+        onfocus={refresh}
+      >
         <option value={null}>System default input</option>
         {#each devices as device (device.id)}
           <option value={device.id}>{device.name}</option>

@@ -437,6 +437,39 @@ target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 **`pkill -f "something"` matches its own shell.** It kills the command that
 ran it. Use `pkill -x <name>`.
 
+**A component that restyles `.active` inherits half of a pair.** `app.css` sets
+`button.active { background: var(--accent-2); color: var(--on-accent) }` — a
+fill and a foreground written together, as §30 asks. A scoped rule in a
+component outranks it, so `.ladder button { color: inherit }` and `.arcs
+button.active { color: var(--accent) }` each kept the fill and replaced the
+text: 2.4:1 and 1.47:1, on the chosen posture and the chosen arc. Both were
+invisible to `svelte-check`, to the hex-literal test (they name tokens) and to
+the role test (the roles are all defined). If you restate one half of a colour
+pair in a component, restate the other.
+
+**A hover rule outranks a state rule.** `button:hover:not(:disabled)` is two
+pseudo-classes; `.active` is one class. The sheet already knew this for plain
+buttons and says so — but `IconButton` had its own `:hover` and no `.active:hover`,
+so putting the pointer on the *open panel's* button repainted it in the dark
+hover fill and left the near-black `--on-accent` text on it. 1.23:1, on the one
+control whose state you are checking. Any component with both a `:hover` and an
+`.active` needs the third rule.
+
+**The theme's palette is inline, so a media query cannot beat it.** §31's
+packages set their tokens as inline custom properties on the root element, which
+outrank every normal rule in every sheet. A `@media (prefers-contrast: more)`
+block that simply redeclares `--text-dim` matches, applies, and is overwritten a
+layer up on all seven packages — green tests, nothing on screen. `!important`
+on the declaration is the only lever a stylesheet has there, and it is what
+`app.css`'s high-contrast block uses.
+
+**An accessibility audit only sees what it can open.** `ui/e2e/access.spec.ts`
+runs axe-core over the shell and the fourteen panels the rail can open in a
+container. It cannot open the ones that need a MIDI device, a `.clap` on disk or
+a sound card — so the six nameless `select`s it found were six of twenty-four.
+`ui/src/access.test.ts` reads the source instead: it knows nothing about
+contrast or computed roles, and it reaches every component. Both, not either.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests

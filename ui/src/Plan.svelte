@@ -391,9 +391,17 @@
     flex-wrap: wrap;
   }
 
+  /*
+    The shape the night is being planned around.
+
+    The ring is the accent; the text is not. It was -- `color: var(--accent)`
+    over the accent-2 fill the sheet gives every active button, which is 1.47:1
+    and means the arc you had chosen was the one word on the row you could not
+    read. Left to the sheet's own pairing now, so the fill and the foreground
+    stay two halves of one decision.
+  */
   .arcs button.active {
     border-color: var(--accent);
-    color: var(--accent);
   }
 
   .help,

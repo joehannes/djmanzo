@@ -316,6 +316,7 @@
         {#if editing?.id === node.id}
           <!-- svelte-ignore a11y_autofocus -->
           <input
+            aria-label="Rename this crate"
             class="rename"
             bind:value={editing.name}
             autofocus

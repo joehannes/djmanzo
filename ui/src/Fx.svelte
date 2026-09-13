@@ -216,6 +216,7 @@
       <div class="keep">
     {#if naming}
       <input
+        aria-label="Name for this chain"
         class="chain-name"
         bind:value={chainName}
         placeholder="name this chain"

@@ -401,6 +401,10 @@
             -->
             <span
               class="confidence"
+              role="meter"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow={Math.round(candidate.confidence * 100)}
               title="{Math.round(candidate.confidence * 100)}% of what this ranking can be sure of"
               aria-label="Confidence {Math.round(candidate.confidence * 100)} percent"
             >

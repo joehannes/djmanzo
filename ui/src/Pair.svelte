@@ -382,6 +382,10 @@
           <span class="deltas">{tempoDelta(pair.bpm_delta)} &middot; {keyLine(pair)}</span>
           <span
             class="confidence"
+            role="meter"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow={Math.round(pair.confidence * 100)}
             title="{Math.round(pair.confidence * 100)}% — how well these two go together, on the rail's scale"
             aria-label="Confidence {Math.round(pair.confidence * 100)} percent"
           >

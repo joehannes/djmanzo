@@ -55,6 +55,29 @@
     children?: Snippet;
     [key: string]: unknown;
   } = $props();
+
+  /**
+   * How this button says it is on.
+   *
+   * `aria-pressed` on a toggle, and *nothing* when the caller has given the
+   * button a role that forbids it. §33's audit found the browser's two tabs
+   * reporting `aria-pressed` on `role="tab"`, which is not a warning about
+   * tidiness: an attribute a role prohibits is dropped by assistive technology
+   * along with whatever it was saying, so the pair announced neither which one
+   * was open nor that either could be pressed. The role brings its own way of
+   * saying it -- `aria-selected` -- and the call site already passes that.
+   *
+   * Spread rather than written inline because an attribute set to `undefined`
+   * and an attribute absent are the same to Svelte only for the first case;
+   * this keeps the two rules in one place where the next role that prohibits it
+   * can be added to the list.
+   */
+  const PROHIBIT_PRESSED = ["tab", "menuitem", "option", "treeitem", "radio"];
+  const pressed = $derived(
+    active === undefined || PROHIBIT_PRESSED.includes(String(rest.role ?? ""))
+      ? {}
+      : { "aria-pressed": active },
+  );
 </script>
 
 <!--
@@ -66,7 +89,7 @@
   class:active={active === true}
   {disabled}
   {title}
-  aria-pressed={active === undefined ? undefined : active}
+  {...pressed}
   onclick={() => {
     if (!disabled) onClick?.();
   }}
@@ -106,6 +129,23 @@
   }
   .icon-button:hover:not(:disabled) {
     background: var(--panel-hover);
+  }
+  /*
+    The hover, for a button that is already on.
+
+    Without this rule the plain hover above wins on specificity, so putting the
+    pointer on an open panel's button replaced the accent fill with the dark
+    hover fill and left the `--on-accent` text -- near-black -- sitting on it.
+    1.23:1. The label of the panel you just opened disappeared for as long as
+    your hand stayed where it was, which is most of the time.
+
+    §33's audit found it; nothing else could have. `svelte-check` has no opinion
+    about contrast, a screenshot test would have had to be taking the shot with
+    the pointer parked, and the only reason it never came up in use is that the
+    button you are hovering is the one you already know the name of.
+  */
+  .icon-button.active:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--active) 88%, white);
   }
   /*
     §30's `active` and `selected`, which that section lists separately and

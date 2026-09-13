@@ -625,7 +625,22 @@
   {/if}
   {/snippet}
   {#snippet zoneProgress()}
-  <div class="progress" role="progressbar" aria-valuenow={progress * 100}>
+  <!--
+    Named, and named with the deck number in it. §33's audit found this bar
+    announcing itself as "progress bar, 43%" with nothing saying *what* was 43%
+    or which of four decks it belonged to -- which on a surface carrying two of
+    them at once is the same as saying nothing. The bounds go with it: a
+    progress bar without them is a percentage a screen reader has to guess the
+    scale of.
+  -->
+  <div
+    class="progress"
+    role="progressbar"
+    aria-label="Deck {deck.number} position"
+    aria-valuemin="0"
+    aria-valuemax="100"
+    aria-valuenow={progress * 100}
+  >
     <div class="fill" style:scale="{fill(progress)} 1"></div>
   </div>
   {/snippet}
@@ -1122,7 +1137,21 @@
   </div>
   {/snippet}
   {#snippet zoneMeter()}
-  <div class="meter" aria-label="deck level">
+  <!--
+    `role="meter"` rather than a bare div. The label was there and was being
+    thrown away: ARIA forbids `aria-label` on an element with no role, so a
+    screen reader read this as an empty box and the words "deck level" reached
+    nobody. §33's audit is what found it; it had been that way since the meter
+    was written.
+  -->
+  <div
+    class="meter"
+    role="meter"
+    aria-label="Deck {deck.number} level"
+    aria-valuemin="0"
+    aria-valuemax="1"
+    aria-valuenow={deck.peak}
+  >
     <div class="meter-fill" style:scale="{fill(deck.peak)} 1"></div>
   </div>
   {/snippet}

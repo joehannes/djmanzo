@@ -129,6 +129,7 @@
   {#if !clap.loaded}
     <div class="pick">
       <select
+        aria-label="Plugin to insert"
         bind:value={chosen}
         disabled={!enabled || busy}
         onfocus={() => !scanned && scan()}

@@ -1153,6 +1153,17 @@
 </script>
 
 <main>
+  <!--
+    The page's own name, for a reader that cannot see the mark in the corner.
+
+    Not decoration and not a box ticked: a screen reader's usual way into an
+    unfamiliar application is the heading list, and this one had no headings at
+    all above the panels -- so the whole booth was one flat run of controls with
+    nothing saying where it started. Off-screen rather than drawn, because the
+    brand already says it to anyone who can see it and §5's bar has no room for
+    it twice.
+  -->
+  <h1 class="offscreen">djmanzo — the booth</h1>
   <header class="topbar">
     <!--
       The DJ's own logo, if they set one. A booth screen carrying someone
@@ -1187,7 +1198,11 @@
 
     <div class="device">
       {#if isOpen("settings")}
-        <select bind:value={selectedDevice} disabled={devices.length === 0}>
+        <select
+          aria-label="Sound card"
+          bind:value={selectedDevice}
+          disabled={devices.length === 0}
+        >
           {#each devices as device (device.id)}
             <option value={device.id}>
               {device.name}{device.is_default ? " (default)" : ""}
@@ -1195,7 +1210,7 @@
           {/each}
         </select>
 
-        <select bind:value={bufferFrames}>
+        <select aria-label="Buffer size" bind:value={bufferFrames}>
           {#each [64, 128, 256, 512, 1024] as frames (frames)}
             <option value={frames}>{frames} frames</option>
           {/each}
@@ -1203,6 +1218,7 @@
 
         {#if devices.length > 1}
           <select
+            aria-label="Headphone cue sound card"
             bind:value={selectedCueDevice}
             title="Send the headphone cue to a second sound card. Only needed when the main device has no spare channels."
           >

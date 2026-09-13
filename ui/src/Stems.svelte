@@ -292,6 +292,7 @@
         <div class="stem-slider-container" style="--stem-color: {STEM_COLORS[i]}">
           <div class="stem-meter" style="height: {volumeState[i] * 100}%"></div>
           <input 
+            aria-label="{name} level"
             type="range" 
             min="0" 
             max="1" 

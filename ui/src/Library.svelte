@@ -1168,7 +1168,13 @@
       <table>
         <thead>
           <tr>
-            <th class="pick"></th>
+            <!--
+              The checkbox column. Its heading is a word rather than nothing:
+              a blank `th` leaves the cells under it belonging to no column at
+              all, so a reader moving across a row announces the artist, the
+              BPM, and then a checkbox with no idea what ticking it does.
+            -->
+            <th class="pick"><span class="offscreen">Pick</span></th>
             {#each [["title", "Title"], ["artist", "Artist"], ["album", "Album"], ["bpm", "BPM"], ["key", "Key"], ["duration_seconds", "Time"]] as [column, heading] (column)}
               <th>
                 <button

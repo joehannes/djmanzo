@@ -167,12 +167,13 @@
       every couple of seconds.</p>
   {:else if status}
     <div class="pick">
-      <select bind:value={chosenPort} disabled={busy}>
+      <select aria-label="MIDI input" bind:value={chosenPort} disabled={busy}>
         {#each status.inputs as port (port)}
           <option value={port}>{port}</option>
         {/each}
       </select>
       <select
+        aria-label="Mapping for this MIDI controller"
         bind:value={chosenMapping}
         disabled={busy}
         title="Leave on “fits the port” unless yours is not recognised"
@@ -236,12 +237,12 @@
         <p class="note">No HID devices.</p>
       {:else}
         <div class="pick">
-          <select bind:value={chosenHid} disabled={busy}>
+          <select aria-label="HID device" bind:value={chosenHid} disabled={busy}>
             {#each status.hid_inputs as device (device.path)}
               <option value={device.path}>{device.name} · {device.id}</option>
             {/each}
           </select>
-          <select bind:value={chosenHidMapping} disabled={busy}>
+          <select aria-label="Mapping for this HID device" bind:value={chosenHidMapping} disabled={busy}>
             <option value={null}>Choose a mapping…</option>
             {#each mappings as mapping (mapping.name)}
               <option value={mapping.name}>{mapping.name}</option>

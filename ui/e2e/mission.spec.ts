@@ -141,6 +141,22 @@ test.describe("§5's mission bar", () => {
       "the bar coloured a reading Rust called quiet, so the threshold is being " +
         "decided in two places again",
     ).toHaveAttribute("data-level", "quiet");
+
+    // §33, on screen: the level is never *only* a colour. What the marks are
+    // and which levels earn one is `dj_app::mission::Level::mark` and is tested
+    // there, against the table in `MissionBar.svelte`; this is the half those
+    // tests cannot see, which is whether the glyph reaches the strip at all.
+    await expect(
+      page.locator(`${item("recording")} .mission-mark`),
+      "a failing recording is drawn in red and nothing else, which is the one " +
+        "thing §33 states as an absolute",
+    ).toHaveText("!!");
+    await expect(page.locator(`${item("output")} .mission-mark`)).toHaveText("!");
+    await expect(
+      page.locator(`${item("health")} .mission-mark`),
+      "a healthy reading was marked, so the marks say nothing by being on " +
+        "everything",
+    ).toHaveCount(0);
   });
 
   /**
