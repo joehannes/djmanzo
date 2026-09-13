@@ -307,7 +307,19 @@ pub fn catalog() -> &'static [Widget] {
             about: "The jog wheel -- position, and a nudge a mouse can reach.",
             slots: DECK_SLOT,
             offers: &[],
-            props: NO_PROPS,
+            // §5B's scratch mode: "jog surfaces and turntable-oriented controls
+            // expand". The deck's own default is small on purpose -- the
+            // waveform above gives the position in a form easier to read -- and
+            // a turntablist is the one DJ for whom that is backwards.
+            props: &[Prop {
+                name: "size",
+                about: "Wheel diameter in pixels.",
+                kind: PropKind::Count {
+                    default: 70,
+                    least: 48,
+                    most: 320,
+                },
+            }],
             needs: &["decks.position"],
         },
         Widget {
@@ -355,7 +367,15 @@ pub fn catalog() -> &'static [Widget] {
             about: "The four stems, with their mutes and volumes.",
             slots: DECK_SLOT,
             offers: &[],
-            props: NO_PROPS,
+            // §5B's stem performance: "stem controls become first-class". The
+            // module folds by default because it is the biggest block on a deck,
+            // and opens itself when a stem is in use or when §53 sees a
+            // controller that cannot reach them. This is the third reason.
+            props: &[Prop {
+                name: "open",
+                about: "Start unfolded rather than as a one-row header.",
+                kind: PropKind::Flag { default: false },
+            }],
             needs: &["decks.stems"],
         },
         Widget {
@@ -904,7 +924,7 @@ pub fn from_layout(layout: &Layout) -> Tree {
         inside.push(Placement::of("deck.overview"));
     }
     inside.push(Placement::of("deck.progress"));
-    inside.push(Placement::of("deck.stems"));
+    inside.push(Placement::of("deck.stems").with("open", layout.stems_open));
     inside.push(Placement::of("deck.times"));
     if layout.pads {
         inside.push(Placement::of("deck.pads"));
@@ -927,7 +947,7 @@ pub fn from_layout(layout: &Layout) -> Tree {
     if layout.loops {
         inside.push(Placement::of("deck.perform"));
     }
-    inside.push(Placement::of("deck.jog"));
+    inside.push(Placement::of("deck.jog").with("size", i64::from(layout.jog)));
     if layout.eq {
         inside.push(Placement::of("deck.eq"));
     }
@@ -1648,5 +1668,76 @@ mod tests {
         assert_eq!(out.name, "Booth");
         assert_eq!(out.slots["mixer"][0].widget, "mixer.crossfader");
         assert!(out.notes.is_empty());
+    }
+    /// A prop the upconversion sets is a prop the deck reads.
+    ///
+    /// `from_layout` is the only thing that turns a `Layout` into placements
+    /// and `Deck.svelte` is the only thing that draws them, and between the two
+    /// there is nothing that would notice a prop that is set and never looked
+    /// at. The tree would be right, the snapshot would be right, the golden
+    /// file would be right, and the screen would be unchanged -- which is the
+    /// worst shape a defect can take, because every test in the workspace
+    /// agrees with it. §5B's platter size was exactly that for one commit.
+    ///
+    /// The default is checked, not just the reading. A renderer needs a number
+    /// for the case where a tree omits a prop, so the number is written twice
+    /// -- in the declaration above and in `Deck.svelte` -- and two copies of a
+    /// number drift. This makes the second copy have to match the first.
+    #[test]
+    fn a_prop_the_upconversion_sets_is_a_prop_the_deck_reads() {
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../ui/src/Deck.svelte"
+        ))
+        .expect("`Deck.svelte` is in the tree");
+
+        let tree = from_layout(&Layout::default());
+        let inside = &tree.slots["stage"][0].children["deck"];
+        let mut checked = 0;
+
+        for placement in inside {
+            for (name, value) in &placement.props {
+                let declared = widget(&placement.widget)
+                    .and_then(|found| found.props.iter().find(|prop| prop.name == name))
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "`{}` sets `{name}`, which it does not declare",
+                            placement.widget
+                        )
+                    });
+
+                // One spelling per shape. A prop read some third way is not
+                // read as far as this test is concerned, which is the point:
+                // the shapes are few enough to keep, and a renderer free to
+                // invent a fourth is a renderer this cannot check.
+                let reading = match declared.kind {
+                    PropKind::Count { default, .. } => {
+                        format!("pixels(props, \"{name}\", {default})")
+                    }
+                    PropKind::Flag { .. } => format!("props?.{name} === true"),
+                    PropKind::Amount { .. } | PropKind::Choice { .. } => panic!(
+                        "`{}` sets `{name}`, whose shape no deck widget has used before. \
+                         Decide how `Deck.svelte` spells reading one and add the arm here.",
+                        placement.widget
+                    ),
+                };
+
+                assert!(
+                    source.contains(&reading),
+                    "`from_layout` sets `{}`'s `{name}` to {value}, and `Deck.svelte` never \
+                     reads it: it has no `{reading}`. Either the wire is missing -- the prop \
+                     travels to the interface and changes nothing on screen -- or the \
+                     fallback there has drifted from the default declared here.",
+                    placement.widget,
+                );
+                checked += 1;
+            }
+        }
+
+        assert!(
+            checked >= 2,
+            "the deck's placements carried {checked} props, so this test checked almost \
+             nothing. `from_layout` sets a waveform height, a stem fold and a platter size."
+        );
     }
 }

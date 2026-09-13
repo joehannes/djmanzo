@@ -2545,6 +2545,16 @@ export interface Layout {
   eq: boolean;
   filter: boolean;
   keylock: boolean;
+  /**
+   * The jog wheel's diameter in pixels, 48..=320.
+   *
+   * §5B's scratch composition is the reason it is a number rather than a flag:
+   * the deck's small default is right for everyone whose hands are not on the
+   * records, and wrong for the one DJ who aims at the platter continuously.
+   */
+  jog: number;
+  /** Whether the stem module starts unfolded — §5B's stem composition. */
+  stems_open: boolean;
   browser: boolean;
   /** 0.8..=1.4, multiplying the root font size. */
   density: number;

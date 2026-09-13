@@ -14,7 +14,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { errorsThrown, openShell } from "./shell";
+import { compositions, errorsThrown, openShell } from "./shell";
 // The same table the interface applies, so "wearing the booth theme" is
 // measured against djmanzo's own colours rather than against a hex typed here.
 import { paletteFor } from "../src/controls/themes/colors";
@@ -300,6 +300,80 @@ test.describe("§5B's deck composition", () => {
       asked.filter((cmd) => cmd === "choose_layout"),
       "an arrangement that names no composition rebuilt the deck anyway",
     ).toEqual([]);
+    expect(thrown).toEqual([]);
+  });
+
+  /**
+   * **The load-bearing pair: §5B's two named compositions build two different
+   * decks, and each is the other's control.**
+   *
+   * > Scratch mode: jog surfaces and turntable-oriented controls expand. […]
+   * > Stem performance mode: large stem-aware waveform and stem controls become
+   * > first-class.
+   *
+   * These are the only two compositions that change a control rather than how
+   * much is on screen, and both travel as a prop on a placement — a number on
+   * `deck.jog` and a flag on `deck.stems`. A prop is the one thing in the
+   * layout format that can be set, serialised, resolved, stored in a golden
+   * file and still reach nothing: every Rust test would agree the tree is
+   * right, and the deck would look exactly as it did before. So the assertion
+   * is measured off the screen.
+   *
+   * The trees come from `compositions.json`, which Rust blesses out of
+   * `layout::builtin()` — the deck is built from what `layout_tree` answers,
+   * and a tree typed out here would be a third description of a deck.
+   */
+  test("the scratch composition puts a platter on the deck and leaves the stems folded", async ({
+    page,
+  }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/", {}, { layout_tree: compositions.Scratch });
+
+    const platter = page.locator(`${DECK} .platter`).first();
+    await expect(platter).toBeVisible();
+    // 200 px, as `layout::builtin()` asks for, against the deck's usual 80.
+    // A range rather than the number because the density token scales it and
+    // an arrangement may state its own.
+    const width = await platter.evaluate(
+      (el) => el.getBoundingClientRect().width,
+    );
+    expect(
+      width,
+      "the scratch deck's wheel is the ordinary nudge target, so `size` reached nothing",
+    ).toBeGreaterThan(150);
+
+    // The control half: this composition says nothing about the stems, and a
+    // flag that unfolded them regardless would pass the other test alone.
+    await expect(
+      page.locator("[data-stems-open]").first(),
+    ).toHaveAttribute("data-stems-open", "false");
+    expect(thrown).toEqual([]);
+  });
+
+  test("the stem composition opens the stem module and leaves the wheel alone", async ({
+    page,
+  }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/", {}, { layout_tree: compositions["Stem Performance"] });
+
+    await expect
+      .poll(() =>
+        page
+          .locator("[data-stems-open]")
+          .first()
+          .getAttribute("data-stems-open"),
+      )
+      .toBe("true");
+
+    const platter = page.locator(`${DECK} .platter`).first();
+    await expect(platter).toBeVisible();
+    const width = await platter.evaluate(
+      (el) => el.getBoundingClientRect().width,
+    );
+    expect(
+      width,
+      "the stem deck grew a platter it never asked for",
+    ).toBeLessThan(150);
     expect(thrown).toEqual([]);
   });
 });

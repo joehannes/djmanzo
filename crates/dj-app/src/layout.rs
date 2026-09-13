@@ -45,6 +45,24 @@ pub struct Layout {
     pub eq: bool,
     pub filter: bool,
     pub keylock: bool,
+    /// The jog wheel's diameter, in pixels.
+    ///
+    /// [§5B](../../../docs/DIRECTIVE.md)'s scratch mode: *jog surfaces and
+    /// turntable-oriented controls expand*. The deck's default is deliberately
+    /// small — the jog is a position display the waveform above already gives
+    /// in a form easier to read, plus a nudge target a mouse can use — and a
+    /// turntablist is the one DJ for whom that reasoning is backwards.
+    #[serde(default = "default_jog")]
+    pub jog: u16,
+    /// Whether the stem module starts unfolded.
+    ///
+    /// §5B's stem performance: *stem controls become first-class*. It is the
+    /// biggest block on a deck, so it folds by default and opens itself when
+    /// a stem is actually in use — and §53 opens it for a DJ whose controller
+    /// cannot reach the stems. This is the third reason: an arrangement built
+    /// for stem work, where the module is the point rather than a readout.
+    #[serde(default)]
+    pub stems_open: bool,
     /// Whether the browser is open when the application starts.
     pub browser: bool,
     /// Overall scale, 0.8..=1.4. Multiplies the root font size, which every
@@ -67,10 +85,32 @@ impl Default for Layout {
             eq: true,
             filter: true,
             keylock: true,
+            jog: default_jog(),
+            stems_open: false,
             browser: false,
             density: 1.0,
         }
     }
+}
+
+/// The jog's default diameter in pixels: the 70 the deck already drew.
+///
+/// Seventy and not a rounder number because that is what the stylesheet said.
+/// `.jog-row` set `--jog-size: 5rem` and the interface's root font size is
+/// `calc(14px * var(--density))`, so the wheel a DJ has been looking at is
+/// 70 px at density 1 and scales with the band. Making this 80 would have been
+/// a default that quietly grew every deck by ten pixels — which the density
+/// browser test caught, because a deck that no longer fits its window is
+/// exactly the failure that test exists for.
+///
+/// A function because `serde(default = …)` needs one. It is also the number
+/// `widgets::catalog` declares for `deck.jog`'s `size` prop and the fallback
+/// `Deck.svelte` uses when a tree omits it — three copies, which is two too
+/// many, so `widgets::tests::a_prop_the_upconversion_sets_is_a_prop_the_deck_reads`
+/// reads the renderer and fails if the numbers part company. The stylesheet no
+/// longer carries a fourth: the size arrives as an inline custom property.
+const fn default_jog() -> u16 {
+    70
 }
 
 impl Layout {
@@ -91,6 +131,9 @@ impl Layout {
             _ => 6,
         };
         self.waveform_height = self.waveform_height.clamp(48, 320);
+        // The same range as the lane. A jog smaller than 48 px is not a target
+        // a hand can find, and one larger than 320 takes the deck.
+        self.jog = self.jog.clamp(48, 320);
         self.density = if self.density.is_finite() {
             self.density.clamp(0.8, 1.4)
         } else {
@@ -150,6 +193,37 @@ pub fn builtin() -> Vec<Layout> {
             decks: 4,
             waveform_height: 72,
             density: 0.85,
+            ..Layout::default()
+        },
+        // §5B names two compositions that are about one control each rather
+        // than about how much is on screen, which is what the four above
+        // trade. They are here because §5B asks for them by name.
+        Layout {
+            name: "Scratch".to_owned(),
+            description: "Big platters and a tall waveform, for hands on the records.".to_owned(),
+            decks: 2,
+            waveform_height: 140,
+            // §5B: "jog surfaces and turntable-oriented controls expand". Two
+            // and a half times the deck's usual wheel — a turntablist aims at
+            // it continuously, which is the opposite of the assumption the
+            // small default is built on.
+            jog: 200,
+            // A scratch DJ works the crossfader and the platter. The racks are
+            // not what the hands are on, and the screen they take is screen the
+            // platters want.
+            fx: false,
+            beat_jump: false,
+            ..Layout::default()
+        },
+        Layout {
+            name: "Stem Performance".to_owned(),
+            description: "The four parts of each record, open and to hand.".to_owned(),
+            decks: 2,
+            // §5B: "large stem-aware waveform and stem controls become
+            // first-class". Both halves — the lane is tall and the module is
+            // not a one-row header somebody has to find and unfold.
+            waveform_height: 140,
+            stems_open: true,
             ..Layout::default()
         },
     ]
@@ -242,15 +316,66 @@ mod tests {
     }
 
     #[test]
-    fn the_four_presets_ship_and_are_all_drawable() {
+    fn the_presets_ship_and_are_all_drawable() {
         let presets = builtin();
         let names: Vec<&str> = presets.iter().map(|l| l.name.as_str()).collect();
-        assert_eq!(names, vec!["Starter", "Essentials", "Pro", "Performance"]);
+        assert_eq!(
+            names,
+            vec![
+                "Starter",
+                "Essentials",
+                "Pro",
+                "Performance",
+                "Scratch",
+                "Stem Performance",
+            ]
+        );
 
         for preset in presets {
             let sane = preset.clone().sane();
             assert_eq!(sane, preset, "{} is not already sane", preset.name);
         }
+    }
+
+    /// §5B's two are about one control each, and that has to be true of them.
+    ///
+    /// The other four trade how much is on screen, and a composition that only
+    /// did that would be a fifth and sixth name for a reduction rather than
+    /// what §5B asks for: *jog surfaces and turntable-oriented controls expand*
+    /// and *stem controls become first-class*. Each is asserted against the
+    /// default rather than against the other, because "bigger than the other
+    /// one" is satisfied by making the other one smaller.
+    #[test]
+    fn the_two_compositions_are_each_about_the_control_they_name() {
+        let presets = builtin();
+        let by = |name: &str| -> Layout {
+            presets
+                .iter()
+                .find(|layout| layout.name == name)
+                .unwrap_or_else(|| panic!("`{name}` ships"))
+                .clone()
+        };
+        let ordinary = Layout::default();
+
+        let scratch = by("Scratch");
+        assert!(
+            scratch.jog > ordinary.jog,
+            "the scratch composition draws the same wheel as every other deck"
+        );
+        assert!(
+            !scratch.stems_open,
+            "the scratch composition opens a stem module it is not about"
+        );
+
+        let stems = by("Stem Performance");
+        assert!(
+            stems.stems_open,
+            "the stem composition leaves the stem module folded away"
+        );
+        assert_eq!(
+            stems.jog, ordinary.jog,
+            "the stem composition grew a platter it is not about"
+        );
     }
 
     /// They have to differ along the axis they exist for, or they are four
@@ -297,6 +422,7 @@ mod tests {
         let layout = Layout {
             decks: 7,
             waveform_height: 9000,
+            jog: 9000,
             density: 40.0,
             name: "   ".to_owned(),
             ..Layout::default()
@@ -305,6 +431,10 @@ mod tests {
 
         assert_eq!(layout.decks, 6, "seven decks is more than six, so six");
         assert_eq!(layout.waveform_height, 320);
+        assert_eq!(
+            layout.jog, 320,
+            "a platter wider than the deck is not a platter"
+        );
         assert!((layout.density - 1.4).abs() < 1e-6);
         assert_eq!(layout.name, "Custom", "a nameless layout is unpickable");
     }

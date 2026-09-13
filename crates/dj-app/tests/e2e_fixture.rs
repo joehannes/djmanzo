@@ -622,3 +622,72 @@ fn the_fixture_describes_a_running_engine_with_records_on_it() {
          200 px shorter, so this would measure the case that never fails"
     );
 }
+
+/// §5B's two deck compositions, resolved, as a golden file.
+///
+/// The browser cannot reach these any other way. Every other arrangement test
+/// presses a preset and watches what the shell *asks*; a composition is the one
+/// thing that changes what a deck is *made of*, and the deck is built from the
+/// resolved tree that `layout_tree` answers with. A tree typed out by hand here
+/// would be a third description of a deck — after `layout::builtin()` and
+/// `widgets::from_layout` — and the first one to drift.
+///
+/// Both compositions rather than one, because each is the other's control: the
+/// scratch deck has a platter and a folded stem module, the stem deck has the
+/// ordinary wheel and an open one. A single fixture could pass with both props
+/// ignored.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_deck_compositions_5b_names() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/compositions.json");
+
+    let wanted = ["Scratch", "Stem Performance"];
+    let trees: std::collections::BTreeMap<String, dj_app::widgets::Resolved> =
+        dj_app::layout::builtin()
+            .into_iter()
+            .filter(|layout| wanted.contains(&layout.name.as_str()))
+            .map(|layout| {
+                let name = layout.name.clone();
+                (
+                    name,
+                    dj_app::widgets::resolve(&dj_app::widgets::from_layout(&layout)),
+                )
+            })
+            .collect();
+    assert_eq!(
+        trees.len(),
+        wanted.len(),
+        "djmanzo ships {} of §5B's two named compositions; the browser cannot drive \
+         a deck composition that does not exist",
+        trees.len()
+    );
+
+    let fresh = serde_json::to_string_pretty(&trees).expect("the trees serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the compositions");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored compositions are JSON");
+    let fresh: serde_json::Value =
+        serde_json::from_str(&fresh).expect("the fresh compositions are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe deck compositions have changed, so the browser is building a deck \
+         djmanzo no longer makes.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}

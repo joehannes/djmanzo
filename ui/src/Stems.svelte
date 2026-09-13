@@ -18,6 +18,7 @@
     soloing = false,
     swap = null,
     deckCount = 2,
+    startOpen = false,
   }: {
     deckNumber: number;
     muteState?: boolean[];
@@ -43,6 +44,14 @@
      * no button.
      */
     soloing?: boolean;
+    /**
+     * Whether the layout asked for this module open.
+     *
+     * §5B's stem performance composition: "stem controls become first-class".
+     * It is the layout's opening position, not a lock -- a DJ who folds it
+     * away keeps it folded, the same as when a stem in use opened it.
+     */
+    startOpen?: boolean;
   } = $props();
 
   /**
@@ -265,7 +274,7 @@
   hidden -- which is the standing complaint about the products this competes
   with, and not a trade worth making to save a row.
 -->
-<details class="stem-fold" open={inUse || noStemControls} data-stems-open={inUse || noStemControls}>
+<details class="stem-fold" open={inUse || noStemControls || startOpen} data-stems-open={inUse || noStemControls || startOpen}>
   <summary>
     Stems
     {#if inUse}

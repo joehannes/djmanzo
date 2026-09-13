@@ -161,9 +161,26 @@
    */
   const keylock = $derived(placed.some((zone) => zone.widget === "deck.keylock"));
 
-  /** A prop the tree set, if it set one and it is a number. */
-  function height(props: Record<string, unknown>, fallback: number): number {
-    const value = props?.height;
+  /**
+   * A pixel prop the tree set, if it set one and it is a number.
+   *
+   * Scaled by the density the DJ chose, because a layout that asks for a
+   * 200 px platter is asking for one relative to the rest of the deck; an
+   * ultra-dense arrangement that shrank everything except the wheel would put
+   * the wheel through the bottom of the column.
+   *
+   * The fallback is the widget's own declared default, from
+   * `crates/dj-app/src/widgets.rs`. A renderer needs a number for the case
+   * where a tree omits a prop, so the number exists here as well as there, and
+   * `a_prop_the_upconversion_sets_is_a_prop_the_deck_reads` in that file reads
+   * this one and fails if the two part company. Change it there first.
+   */
+  function pixels(
+    props: Record<string, unknown>,
+    name: string,
+    fallback: number,
+  ): number {
+    const value = props?.[name];
     return Math.round((typeof value === "number" ? value : fallback) * density);
   }
 
@@ -607,7 +624,7 @@
   -->
   <Waveform
     {deck}
-    height={height(props, 96)}
+    height={pixels(props, "height", 96)}
     onMoveCue={(slot, frame) =>
       void send(`deck ${deck.number} hotcue_move ${slot} ${Math.round(frame)}`)}
     onMoveLoopEdge={(edge, frame) =>
@@ -646,7 +663,7 @@
     <div class="fill" style:scale="{fill(progress)} 1"></div>
   </div>
   {/snippet}
-  {#snippet zoneStems()}
+  {#snippet zoneStems(props: Record<string, unknown>)}
   {#if deck.loaded}
     <!--
       Below the waveform, not above it. Mounted above, this pushed the one
@@ -654,7 +671,7 @@
       loaded -- and it is the biggest block on the deck. It folds now (see
       `Stems.svelte`), so it costs a row when nothing is using it.
     -->
-    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} eqState={deck.stem_eq} filterState={deck.stem_filters} soloing={deck.stem_soloing} swap={stemSwap} deckCount={deckCount} />
+    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} eqState={deck.stem_eq} filterState={deck.stem_filters} soloing={deck.stem_soloing} swap={stemSwap} deckCount={deckCount} startOpen={props?.open === true} />
   {/if}
   {/snippet}
   {#snippet zoneTimes()}
@@ -930,7 +947,7 @@
     </div>
 
   {/snippet}
-  {#snippet zoneJog()}
+  {#snippet zoneJog(props: Record<string, unknown>)}
   <!--
     The platter. Drag the middle to scratch, the rim to bend, and wind it to
     search a paused deck -- the same three things the hardware does, and the
@@ -940,8 +957,13 @@
     target and a position display, and the waveform above already answers
     position better than a circle does; a full row for it cost about 155 px,
     which is more than the waveform got in three of the four shipped presets.
+
+    §5B's scratch mode is the one DJ for whom that reasoning is backwards, so
+    the size comes from the tree rather than from this file: a composition that
+    wants hands on the records asks for a platter, and gets one here.
   -->
-  <div class="jog-row">
+  {@const size = pixels(props, "size", 70)}
+  <div class="jog-row" style="--jog-size: {size}px">
     <JogWheel
       deckNumber={deck.number}
       touched={deck.jog_touched}
@@ -1168,7 +1190,7 @@
     {#if placed.widget === "deck.waveform"}{@render zoneWaveform(placed.props)}
     {:else if placed.widget === "deck.overview"}{@render zoneOverview()}
     {:else if placed.widget === "deck.progress"}{@render zoneProgress()}
-    {:else if placed.widget === "deck.stems"}{@render zoneStems()}
+    {:else if placed.widget === "deck.stems"}{@render zoneStems(placed.props)}
     {:else if placed.widget === "deck.times"}{@render zoneTimes()}
     {:else if placed.widget === "deck.pads"}{@render zonePads()}
     {:else if placed.widget === "deck.beat_jump"}{@render zoneBeatJump()}
@@ -1177,7 +1199,7 @@
     {:else if placed.widget === "deck.grid"}{@render zoneGrid()}
     {:else if placed.widget === "deck.transport"}{@render zoneTransport()}
     {:else if placed.widget === "deck.perform"}{@render zonePerform()}
-    {:else if placed.widget === "deck.jog"}{@render zoneJog()}
+    {:else if placed.widget === "deck.jog"}{@render zoneJog(placed.props)}
     {:else if placed.widget === "deck.eq"}{@render zoneEq()}
     {:else if placed.widget === "deck.filter"}{@render zoneFilter()}
     {:else if placed.widget === "deck.volume"}{@render zoneVolume()}
@@ -1363,9 +1385,11 @@
 
   /* The jog is a position display the waveform above already gives in a form
      easier to read, and a nudge target a mouse can use. It stays, at a size
-     that reflects what it adds rather than what it is. */
+     the tree decides -- see `zoneJog` -- rather than one written here, because
+     a stylesheet carrying the number too is a second place for it to drift.
+     This rule used to say `--jog-size: 5rem`, which at this interface's 14 px
+     rem base is the 70 the layout now defaults to. */
   .jog-row {
-    --jog-size: 5rem;
     padding: 0;
     align-items: flex-end;
   }

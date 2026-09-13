@@ -1751,7 +1751,11 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            layout: String::new(),
+            // §5B's scratch mode: jog surfaces and turntable-oriented controls
+            // expand. The `Scratch` composition is that by name — a platter two and
+            // a half times the usual size, a tall lane, and the racks the hands are
+            // not on taken off the screen they want.
+            layout: "Scratch".to_owned(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1763,7 +1767,11 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            layout: String::new(),
+            // §5B's stem performance: a large stem-aware waveform and stem controls
+            // that become first-class. The module folds by default because it is the
+            // biggest block on a deck; this is the arrangement where it is the point
+            // rather than a readout.
+            layout: "Stem Performance".to_owned(),
             locked: Vec::new(),
         },
         Workspace {

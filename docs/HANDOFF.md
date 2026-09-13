@@ -1275,15 +1275,34 @@ The largest of them, in the order they are worth doing:
    naming the blocker on screen is what made it obvious which section to do
    next.
 
-12. **§5B's remaining half needs a wider `Layout`, not a wire.** An arrangement
-   can now name a deck composition, which is what §5B asked for, and four of
-   the twenty-three do. The two compositions §5B also names — *scratch mode:
-   jog surfaces and turntable-oriented controls expand*, *stem performance:
-   stem controls become first-class* — cannot be expressed: `Layout` has
-   booleans for the pads, loops, effects and beat jump and a waveform height,
-   and no knob for a jog size or a stem prominence. Adding those is a widening
-   of `layout::Layout` and of `widgets::from_layout`, and then two more rows in
-   `cockpit::workspaces()` name them. Nothing is blocked on analysis.
+12. **§5B's compositions ship, and the trap is the one a golden file cannot
+   see.** An arrangement can name a deck composition and six of the twenty-three
+   do; `Layout` gained `jog` (pixels, 48..=320) and `stems_open`, which
+   `from_layout` puts on `deck.jog`'s `size` prop and `deck.stems`'s `open`
+   prop, and `Scratch` and `Stem Performance` ship as compositions.
+
+   **A prop is the one thing in this format that can be set, resolved, stored
+   in a golden file and still reach nothing.** The tree would be right, the
+   snapshot would be right, `compositions.json` would be right, and the deck
+   would look exactly as it did before — every test in the workspace agreeing
+   with a defect. So `widgets::tests::a_prop_the_upconversion_sets_is_a_prop_the_deck_reads`
+   reads `Deck.svelte` and fails when a prop `from_layout` sets is not read
+   there in one of two spellings. **If you add a prop to a deck placement, that
+   test is the one that will stop you**, and the fix is a line in the renderer,
+   not an arm in the test.
+
+   **The default was 5rem, which is 70 and not 80.** `.jog-row` said
+   `--jog-size: 5rem` and this interface's root font size is
+   `calc(14px * var(--density))`, so the wheel a DJ has been looking at is 70 px
+   at density 1. Declaring 80 as "the default" was a ten-pixel growth on every
+   deck in the application, and it was `density.spec.ts` — a deck no longer
+   fitting its window — that said so, three gates after the change looked
+   finished. A number lifted out of a stylesheet has to be *measured*, not
+   rounded: `5rem` is only 80 if the rem base is 16.
+
+   What is left of §5B: the **autopilot supervisory mode**, which is not a
+   composition. It asks what stands in the deck's place while something else
+   drives, not which controls the deck has.
 
 13. **§90 has one ratchet and four honest refusals, and the split is the
    lesson.** A ratchet is only worth having where the number means the same
