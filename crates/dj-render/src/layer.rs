@@ -131,6 +131,68 @@ impl Layer {
     pub const fn exists(&self) -> bool {
         !matches!(self.drawn, Drawn::Nowhere)
     }
+
+    /// Whether a DJ may turn this one off.
+    ///
+    /// §8 Level 1 asks djmanzo to remember a *preferred waveform display*, and
+    /// this table is what that display is made of — so the picker is over these
+    /// rows. Two of them are not preferences:
+    ///
+    /// - **Amplitude and spectral balance are the waveform itself.** A picker
+    ///   offering to remove them is a picker offering an empty strip, which is
+    ///   the same judgement §20's table makes about its title column: the box
+    ///   is shown, disabled, and says why, rather than silently re-ticking
+    ///   itself.
+    /// - **A layer nobody has built cannot be turned off.** Offering it would
+    ///   be a control over nothing, and a DJ who ticked it and saw no change
+    ///   would learn the wrong thing about the ones that do work.
+    #[must_use]
+    pub const fn choosable(&self) -> bool {
+        self.exists() && !matches!(self.role, Role::Sound)
+    }
+}
+
+/// Turn what a DJ asked for into what the waveform will actually draw.
+///
+/// The same round trip §20's columns make, and for the same reasons: a
+/// preferences file written by a later djmanzo may name a layer this build has
+/// never heard of, and a DJ opening an older one should get the layers it
+/// *does* have rather than a blank strip. Unknown names are dropped, repeats
+/// collapse, and the two that are the waveform itself go back in whether they
+/// were asked for or not.
+///
+/// An empty ask is **everything**, not nothing: somebody who has unticked every
+/// box wants the instrumentation back, and a waveform that had to be rebuilt
+/// layer by layer after one stray click would be a worse surface than one with
+/// no picker at all.
+#[must_use]
+pub fn choosing(asked: &[String]) -> Vec<&'static Layer> {
+    if asked.is_empty() {
+        return LAYERS.iter().filter(|layer| layer.exists()).collect();
+    }
+    let mut chosen: Vec<&'static Layer> = LAYERS
+        .iter()
+        .filter(|layer| !layer.choosable() && layer.exists())
+        .collect();
+    for layer in asked
+        .iter()
+        .filter_map(|name| layer(name))
+        .filter(|layer| layer.choosable())
+    {
+        if !chosen.iter().any(|held| held.name == layer.name) {
+            chosen.push(layer);
+        }
+    }
+    // Back into §25's own order, which is the order the picker offers them in
+    // and the order this table is written in. A set is not a sequence and the
+    // one a DJ stored is whatever order they happened to tick.
+    chosen.sort_by_key(|layer| {
+        LAYERS
+            .iter()
+            .position(|row| row.name == layer.name)
+            .unwrap_or(usize::MAX)
+    });
+    chosen
 }
 
 /// §25's twenty, in its order, with what each one currently is.
@@ -295,6 +357,84 @@ static LAYERS: [Layer; 20] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **The load-bearing one: a chosen set is a set the waveform can draw.**
+    ///
+    /// Three rules, and each is about a waveform that is still readable
+    /// afterwards. A slug this build does not have is dropped rather than
+    /// refused; the two layers that *are* the waveform go back whether they
+    /// were asked for or not; and unticking everything gives the whole
+    /// instrumentation back rather than an empty strip.
+    #[test]
+    fn choosing_gives_back_something_that_can_be_drawn() {
+        let names = |chosen: Vec<&'static Layer>| -> Vec<&'static str> {
+            chosen.into_iter().map(|layer| layer.name).collect()
+        };
+
+        // Nothing asked for is everything djmanzo has.
+        let all = names(choosing(&[]));
+        assert_eq!(
+            all.len(),
+            LAYERS.iter().filter(|l| l.exists()).count(),
+            "an empty ask should be the whole instrumentation: {all:?}"
+        );
+
+        // One layer asked for still carries the record itself.
+        let one = names(choosing(&["cues".to_owned()]));
+        assert!(one.contains(&"amplitude"), "{one:?}");
+        assert!(one.contains(&"spectral"), "{one:?}");
+        assert!(one.contains(&"cues"), "{one:?}");
+        assert!(!one.contains(&"beats"), "{one:?}");
+
+        // A slug from another build, a repeat, and one nobody has drawn yet.
+        let messy = names(choosing(&[
+            "hologram".to_owned(),
+            "cues".to_owned(),
+            "cues".to_owned(),
+            "crowd".to_owned(),
+        ]));
+        assert_eq!(messy, one, "unknown, repeated and unbuilt should all drop");
+
+        // And §25's order, not the order they were ticked in.
+        let backwards = names(choosing(&["runway".to_owned(), "beats".to_owned()]));
+        assert_eq!(
+            backwards
+                .iter()
+                .position(|n| *n == "beats")
+                .expect("beats survived"),
+            backwards
+                .iter()
+                .position(|n| *n == "runway")
+                .map(|at| at - 1)
+                .expect("runway survived"),
+            "the picker offers §25's order and the chooser answers in it: {backwards:?}"
+        );
+    }
+
+    /// **Only what exists, and not the record itself, can be turned off.**
+    ///
+    /// A control over a layer nobody has built is a control over nothing, and a
+    /// DJ who ticked it and saw no change would learn the wrong thing about the
+    /// ones that do work.
+    #[test]
+    fn the_choosable_layers_are_the_ones_choosing_is_about() {
+        for layer in &LAYERS {
+            if !layer.exists() {
+                assert!(!layer.choosable(), "{} is not drawn anywhere", layer.name);
+            }
+            if layer.role == Role::Sound {
+                assert!(
+                    !layer.choosable(),
+                    "{} is the waveform itself and cannot be a preference",
+                    layer.name
+                );
+            }
+        }
+        assert!(
+            LAYERS.iter().filter(|l| l.choosable()).count() >= 7,
+            "the picker would be too short to be worth having"
+        );
+    }
     use std::collections::BTreeSet;
 
     /// §25 names twenty. If the directive is ever read again and this is

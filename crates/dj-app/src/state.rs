@@ -1060,6 +1060,40 @@ impl AppState {
         }
     }
 
+    /// The file the chosen waveform layers live in.
+    ///
+    /// Its own file rather than a field of the workspace, on the same reasoning
+    /// the columns have one: which instrumentation a DJ reads is a fact about
+    /// how they play, not about the shape they last dragged the panels into.
+    fn waveform_layers_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("layers.json"))
+    }
+
+    /// The waveform layers the DJ has chosen, or empty for "all of them".
+    #[must_use]
+    pub fn waveform_layers(&self) -> Vec<String> {
+        let Some(path) = self.waveform_layers_path() else {
+            return Vec::new();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Vec::new();
+        };
+        serde_json::from_str(&text).unwrap_or_default()
+    }
+
+    /// Remember the chosen waveform layers.
+    pub fn set_waveform_layers(&self, layers: &[String]) {
+        let Some(path) = self.waveform_layers_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(layers) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "your waveform will not survive a restart");
+        }
+    }
+
     /// The file the DJ's favourite pad pages live in.
     fn pad_pages_path(&self) -> Option<std::path::PathBuf> {
         Some(self.config_dir.lock().ok()?.clone()?.join("pad-pages.json"))

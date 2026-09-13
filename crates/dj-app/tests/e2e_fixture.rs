@@ -275,7 +275,12 @@ fn the_browser_fixture_has_the_surfaces_the_cockpit_can_place() {
 #[test]
 fn the_browser_fixture_has_the_waveform_layers_the_renderer_declares() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/layers.json");
-    let fresh = serde_json::to_string_pretty(&dj_render::layers()).expect("the layers serialise");
+    // From the command's own shape rather than from `dj_render::layers()`: the
+    // table gained `choosable` and `why_not` when §8's waveform row became a
+    // preference, and a golden file of the bare inventory would have left the
+    // browser stubbing a picker with no idea which boxes it may tick.
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::layer_choices())
+        .expect("the layers serialise");
 
     if std::env::var_os("DJMANZO_BLESS").is_some() {
         std::fs::write(&path, format!("{fresh}\n")).expect("writing the layers");

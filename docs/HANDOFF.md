@@ -497,6 +497,20 @@ green. It is checked now, on the same criterion the other three meet: never an
 `Option`, never absent. If you add a field to one of the other nested types,
 ask which side of that line it falls on.
 
+**A feature that crosses both halves of the renderer needs a test that says
+so.** §25's layers are drawn in two places — seven as elements in the
+interface, three rasterised in Rust and carried in the tile URL — so a layer
+can be offered in the picker and gated in neither, and the box would tick and
+nothing would happen. A Rust test reads `Waveform.svelte` and `Overview.svelte`
+and fails when a choosable layer has no `showing("…")` guard, plus a separate
+one over `gridSlug`. Without them the picker could go fully decorative with
+every gate green.
+
+**Anything in a tile URL is part of a one-year immutable cache key.** The
+theme was there for that reason and §25's grid layers are there now for the
+same one: a setting that changes the pixels and not the URL is a setting a DJ
+will report as broken, because the browser keeps serving what it already has.
+
 **Do not recapture `snapshot.json` on different audio to add one field.** The
 file is the baseline every layout budget is measured against, and a recapture
 moves every number in it — track lengths, loudness, which budget the engine was
@@ -971,11 +985,12 @@ The largest of them, in the order they are worth doing:
    level is autonomy, and the certainty is a different number that must not be
    folded into it.
 
-   **The waveform row cannot be closed from here.** §8 asks djmanzo to
-   remember the *preferred waveform display* and §25 has not shipped waveform
-   styles, so there is no preference to keep. It is on the list on screen
-   saying exactly that, which is the posture to copy: a list of eight would
-   have read as the whole of §8.
+   **The waveform row closed itself.** §8 asks djmanzo to remember the
+   *preferred waveform display*, and the row said "not yet, and here is what
+   has to happen first" until §25's layer inventory became a picker. That is
+   the posture to copy: a list of eight would have read as the whole of §8, and
+   naming the blocker on screen is what made it obvious which section to do
+   next.
 
 Three older items are open and are not part of the 105:
 

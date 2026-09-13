@@ -161,26 +161,105 @@ test.describe("§8 Level 1: what djmanzo remembers", () => {
   });
 
   /**
-   * **The list says what djmanzo does not keep, as plainly as what it does.**
+   * **Nine rows, each saying what losing it would cost.**
    *
-   * A list of eight would read as the whole of §8. A DJ who sets their waveform
-   * up and finds it back at the default tomorrow has learned something this
-   * block could have told them in advance, and "not yet, and here is what has
-   * to happen first" is a different answer from "no".
+   * The list carried a tenth claim for a while: the waveform row, marked as not
+   * kept, with the sentence saying what had to happen first. §25's layers
+   * becoming choosable is what happened, and the row reads like the rest now —
+   * but the shape that let it say so is still there, and the Rust test holds
+   * every row's claim against a file that exists.
    */
-  test("the one thing djmanzo does not remember says so", async ({ page }) => {
+  test("every row says what forgetting it would cost", async ({ page }) => {
     const thrown = errorsThrown(page);
     await openShell(page, "/");
     await openRemembers(page);
 
     await expect(page.locator(".remembers .remember-list li")).toHaveCount(9);
-    const waveform = page.locator('.remembers li[data-remembers="waveform-display"]');
-    await expect(waveform).toHaveClass(/unkept/);
-    await expect(waveform.locator(".remember-not")).toContainText("Not yet");
+    // Every row says what losing it would cost, rather than leaving that to be
+    // inferred from its name.
+    await expect(page.locator(".remembers .remember-cost")).toHaveCount(9);
+    expect(thrown).toEqual([]);
+  });
+});
 
-    // And every other row says what losing it would cost, rather than being
-    // left to be inferred from its name.
-    await expect(page.locator(".remembers .remember-cost")).toHaveCount(8);
+test.describe("§8's ninth: the waveform a DJ chose", () => {
+  /**
+   * **The load-bearing one: unticking a layer takes it off the waveform and
+   * off the tile.**
+   *
+   * Both halves, because §25's layers are drawn by both halves of the renderer
+   * and a picker that reached only one would be a picker that half works. The
+   * overlays are elements this test can count; the grid lines are rasterised
+   * in Rust and travel in the tile URL, where they are part of the cache key —
+   * so what the browser can prove about them is that the URL changed, which is
+   * the thing that makes the cached tile miss.
+   */
+  test("a layer you turn off leaves the waveform", async ({ page }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/");
+
+    const cues = page.locator('.lane [data-layer="cues"]');
+    await expect(cues.first()).toBeVisible();
+    // Every tile URL carries all three grid letters to start with.
+    const before = await page.locator(".lane .strip img").first().getAttribute("src");
+    expect(before).toContain("/bdp");
+
+    await openRemembers(page);
+    const box = (name: string) =>
+      page.locator(`.remembers [data-layer-row="${name}"] input`);
+    await box("cues").uncheck();
+    await box("beats").uncheck();
+
+    await expect(cues).toHaveCount(0);
+    await expect
+      .poll(async () =>
+        page.locator(".lane .strip img").first().getAttribute("src"),
+      )
+      .toContain("/-dp");
+    expect(thrown).toEqual([]);
+  });
+
+  /**
+   * **The waveform itself is not a preference, and says so.**
+   *
+   * The same judgement §20's table makes about its title column: a picker
+   * offering to remove the amplitude is a picker offering an empty strip, so
+   * the box is there, disabled, carrying the reason — rather than silently
+   * re-ticking itself under the DJ, which is what the first version of the
+   * column picker did before it was turned into this.
+   */
+  test("the two layers that are the waveform cannot be turned off", async ({ page }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/");
+    await openRemembers(page);
+
+    for (const name of ["amplitude", "spectral"]) {
+      const row = page.locator(`.remembers [data-layer-row="${name}"]`);
+      await expect(row.locator("input")).toBeDisabled();
+      await expect(row).toContainText("This is the waveform itself");
+    }
+    // And a layer nobody has built is offered the same way rather than left off
+    // the list: "twelve of twenty" is a fact a DJ is entitled to see.
+    const unbuilt = page.locator('.remembers [data-layer-row="crowd"]');
+    await expect(unbuilt.locator("input")).toBeDisabled();
+    await expect(unbuilt).toContainText("cannot draw this yet");
+    expect(thrown).toEqual([]);
+  });
+
+  /**
+   * **And §8's list no longer has a row djmanzo does not keep.**
+   *
+   * The waveform row was the one `remembered` reported as absent, with the
+   * sentence saying what had to happen first. It has happened.
+   */
+  test("every one of the nine is remembered now", async ({ page }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/");
+    await openRemembers(page);
+
+    await expect(page.locator(".remembers .remember-list li")).toHaveCount(9);
+    await expect(page.locator(".remembers .remember-cost")).toHaveCount(9);
+    await expect(page.locator(".remembers .remember-not")).toHaveCount(0);
     expect(thrown).toEqual([]);
   });
 });

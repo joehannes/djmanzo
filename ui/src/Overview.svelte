@@ -15,11 +15,13 @@
   import { onMount } from "svelte";
   import {
     playbackFramesPerSecond,
+    gridSlug,
     tileUrl,
     waveformInfo,
     type DeckState,
     type MixOutInfo,
   } from "./api";
+  import { remembers, showing } from "./remembers.svelte";
   import { theme } from "./theme.svelte";
 
   let {
@@ -114,7 +116,16 @@
     // One tile for the entire track: the zoom *is* the track length.
     const framesPerPixel = totalFrames / tileWidth;
     if (!(framesPerPixel > 0)) return null;
-    return tileUrl(deck.number, tileWidth, height, 0, framesPerPixel, theme.resolved, epoch);
+    return tileUrl(
+      deck.number,
+      tileWidth,
+      height,
+      0,
+      framesPerPixel,
+      theme.resolved,
+      epoch,
+      gridSlug(remembers.layers),
+    );
   });
 
   /** Fraction of the track a frame sits at, clamped so nothing escapes the box. */
@@ -241,7 +252,7 @@
       see this view at all — and the loop and the cues drawn here are the same
       two layers of §25's twenty, drawn in a second place.
     -->
-    {#if mixOutBand}
+    {#if mixOutBand && showing("mix-out")}
       <div
         class="mix-out"
         class:on-phrase={mixOutBand.onPhrase}
@@ -259,7 +270,7 @@
       loaded and a mix that has not been armed, drawn so it cannot be mistaken
       for either.
     -->
-    {#if ghostBand}
+    {#if ghostBand && showing("suggestion")}
       <div
         class="ghost-band"
         data-layer="suggestion"
@@ -268,7 +279,7 @@
         title={ghost?.title ?? "If this came in here, this is what it would cover"}
       ></div>
     {/if}
-    {#if ghostLanding}
+    {#if ghostLanding && showing("suggestion")}
       <div
         class="ghost-landing"
         data-layer="suggestion"
@@ -276,7 +287,7 @@
         title="Where the candidate's first full phrase would land"
       ></div>
     {/if}
-    {#if loopBand}
+    {#if loopBand && showing("loop")}
       <div
         class="loop-band"
         data-layer="loop"
@@ -285,7 +296,7 @@
       ></div>
     {/if}
     <img class="whole" src={url} alt="" width={tileWidth} {height} draggable="false" />
-    {#each markers as marker (marker.slot)}
+    {#each showing("cues") ? markers : [] as marker (marker.slot)}
       <div class="cue" data-layer="cues" style:left="{marker.left}%"></div>
     {/each}
     <div class="playhead" bind:this={playhead}></div>

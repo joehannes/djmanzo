@@ -21,10 +21,10 @@ pub mod layer;
 pub mod summary;
 pub mod tile;
 
-pub use layer::{Drawn, Layer, Role, layer, layers};
+pub use layer::{Drawn, Layer, Role, choosing, layer, layers};
 pub use summary::{Bucket, WaveformSummary};
 pub use tile::{
-    BYTES_PER_PIXEL, GridOverlay, Palette, Theme, Tile, TileSpec, render_tile,
+    BYTES_PER_PIXEL, GridLines, GridOverlay, Palette, Theme, Tile, TileSpec, render_tile,
     render_tile_with_grid,
 };
 

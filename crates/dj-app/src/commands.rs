@@ -984,6 +984,7 @@ pub fn put_on_deck(
         waveforms.set_analysed_grid(
             deck_id,
             analysis.tempo.as_ref().map(|tempo| dj_render::GridOverlay {
+                lines: dj_render::GridLines::all(),
                 grid: tempo.grid,
                 sample_rate,
                 phrase: analysis
@@ -1353,6 +1354,7 @@ fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(),
     waveforms.set_grid(
         deck,
         Some(dj_render::GridOverlay {
+            lines: dj_render::GridLines::all(),
             grid: edited,
             sample_rate: rate,
             // Measured against the old anchor, so it no longer describes this
@@ -2283,6 +2285,86 @@ mod tests {
                 dj_core::TrackId::from_bytes([1u8; 32]),
                 "a profile promoted a record three points behind"
             );
+        }
+    }
+
+    mod waveform_layers {
+        /// Every Svelte file that draws part of the waveform, with line endings
+        /// normalised.
+        ///
+        /// The `\r\n` is not paranoia: a scan of source text for a closing brace
+        /// at column zero passed on every machine here and failed only on
+        /// Windows CI, where git checks the repository out with CRLF.
+        fn strips() -> String {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src");
+            ["Waveform.svelte", "Overview.svelte"]
+                .iter()
+                .map(|name| {
+                    let path = root.join(name);
+                    std::fs::read_to_string(&path)
+                        .unwrap_or_else(|e| panic!("could not read {}: {e}", path.display()))
+                        .replace("\r\n", "\n")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+
+        /// **The load-bearing one: every layer the picker lets a DJ turn off is
+        /// one the waveform can actually stop drawing.**
+        ///
+        /// The house pattern, pointed at the join this feature lives across.
+        /// The two halves are drawn by two different things — the grid is
+        /// rasterised in Rust and travels in the tile URL, the rest are
+        /// elements in the interface — so a layer can be offered in the picker
+        /// and gated in neither, and the box would tick and nothing would
+        /// happen. That is the worst failure available here: a DJ would
+        /// conclude the whole picker is decorative.
+        #[test]
+        fn every_layer_a_dj_can_turn_off_is_one_the_strip_can_hide() {
+            let source = strips();
+            // The three the tile carries. They reach the renderer through the
+            // URL rather than through an `{#if}`, so what proves them is the
+            // slug being built from the chosen set.
+            let in_the_tile = ["beats", "downbeats", "phrases"];
+            assert!(
+                source.contains("gridSlug(remembers.layers)"),
+                "the tile URL no longer carries the chosen grid layers, so the \
+                 three grid boxes would tick and change nothing"
+            );
+
+            for layer in dj_render::layers().iter().filter(|l| l.choosable()) {
+                if in_the_tile.contains(&layer.name) {
+                    continue;
+                }
+                let gate = format!("showing(\"{}\")", layer.name);
+                assert!(
+                    source.contains(&gate),
+                    "`{}` can be turned off in the picker and nothing in the \
+                     strip consults it, so the box ticks and the layer stays",
+                    layer.name
+                );
+            }
+        }
+
+        /// **And the three the tile draws are exactly the three the slug has
+        /// letters for.**
+        ///
+        /// `gridSlug` spells `bdp` and `GridLines` parses it. A fourth grid
+        /// layer added to §25's table and left out of the slug would be a
+        /// preference stored, sent, and silently dropped at the URL.
+        #[test]
+        fn the_grid_slug_covers_every_grid_layer_the_tile_draws() {
+            let api = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/api.ts");
+            let source = std::fs::read_to_string(&api)
+                .unwrap_or_else(|e| panic!("could not read {}: {e}", api.display()))
+                .replace("\r\n", "\n");
+            for layer in ["beats", "downbeats", "phrases"] {
+                assert!(
+                    source.contains(&format!("on(\"{layer}\"")),
+                    "`{layer}` is a grid layer and the tile URL has no letter \
+                     for it"
+                );
+            }
         }
     }
 
@@ -3421,6 +3503,7 @@ mod mix_out_tests {
         state.waveforms().set_grid(
             deck(),
             Some(dj_render::GridOverlay {
+                lines: dj_render::GridLines::all(),
                 grid: Beatgrid::new(
                     FramePos::new(0.0),
                     Bpm::new(BPM).unwrap(),
@@ -3468,6 +3551,7 @@ mod mix_out_tests {
         state.waveforms().set_grid(
             deck(),
             Some(dj_render::GridOverlay {
+                lines: dj_render::GridLines::all(),
                 grid: Beatgrid::new(
                     FramePos::new(0.0),
                     Bpm::new(BPM).unwrap(),
@@ -3503,6 +3587,7 @@ mod grid_edit_tests {
         state.waveforms().set_analysed_grid(
             deck(),
             Some(dj_render::GridOverlay {
+                lines: dj_render::GridLines::all(),
                 grid: Beatgrid::new(
                     FramePos::new(anchor),
                     Bpm::new(bpm).unwrap(),
@@ -7652,6 +7737,7 @@ fn restore_deck_state(
                 state.waveforms().set_analysed_grid(
                     deck,
                     Some(dj_render::GridOverlay {
+                        lines: dj_render::GridLines::all(),
                         grid,
                         sample_rate: rate,
                         phrase: stored_phrase,
@@ -7805,6 +7891,7 @@ mod persistence_tests {
         state.waveforms().set_analysed_grid(
             deck(),
             Some(dj_render::GridOverlay {
+                lines: dj_render::GridLines::all(),
                 grid,
                 sample_rate: SR,
                 phrase: None,
@@ -9558,6 +9645,86 @@ pub fn set_kept_controls(state: State<'_, AppState>, controls: Vec<String>) -> V
     kept
 }
 
+/// One of §25's layers, as the picker offers it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LayerChoiceDto {
+    /// The slug stored and sent back — the same one the interface already puts
+    /// on screen as `data-layer`. `name` rather than `slug`, unlike the other
+    /// pickers here, because this table shipped with that spelling and a rename
+    /// would be churn in every test that reads a layer off the page.
+    pub name: String,
+    /// What a DJ would call it.
+    pub title: String,
+    /// What it encodes, in one line.
+    pub about: String,
+    /// What its colour means. §57's rule is over this.
+    pub role: dj_render::Role,
+    /// Which half of the renderer draws it, or that nothing does yet.
+    pub drawn: dj_render::Drawn,
+    /// False for the two that *are* the waveform, and for the eight nobody has
+    /// built. The box is shown either way and says which.
+    pub choosable: bool,
+    /// Why it cannot be turned off, for the rows that cannot. Empty otherwise.
+    pub why_not: String,
+}
+
+/// §25's twenty, in the shape the interface reads them.
+///
+/// A free function as well as a command, because the browser harness's golden
+/// file is blessed from it: the stub then answers the shape djmanzo really
+/// sends, which is the whole point of having the golden file at all.
+#[must_use]
+pub fn layer_choices() -> Vec<LayerChoiceDto> {
+    dj_render::layers()
+        .iter()
+        .map(|layer| LayerChoiceDto {
+            name: layer.name.to_owned(),
+            title: layer.title.to_owned(),
+            about: layer.about.to_owned(),
+            role: layer.role,
+            drawn: layer.drawn,
+            choosable: layer.choosable(),
+            why_not: if layer.choosable() {
+                String::new()
+            } else if layer.exists() {
+                "This is the waveform itself".to_owned()
+            } else {
+                "djmanzo cannot draw this yet".to_owned()
+            },
+        })
+        .collect()
+}
+
+/// The waveform layers the DJ has chosen, in §25's order.
+///
+/// §8 Level 1's *preferred waveform display*, which was the one row of that
+/// list djmanzo did not keep — because until §25's inventory could be chosen
+/// from there was no preference to keep.
+#[tauri::command]
+#[must_use]
+pub fn chosen_layers(state: State<'_, AppState>) -> Vec<String> {
+    dj_render::choosing(&state.waveform_layers())
+        .into_iter()
+        .map(|layer| layer.name.to_owned())
+        .collect()
+}
+
+/// Choose the layers, and take back what will actually be drawn.
+///
+/// The round trip every other picker here makes: a layer this build does not
+/// have is dropped, the two that are the waveform itself go back, and an empty
+/// ask is the whole instrumentation rather than an empty strip.
+#[tauri::command]
+#[must_use]
+pub fn set_chosen_layers(state: State<'_, AppState>, layers: Vec<String>) -> Vec<String> {
+    let chosen: Vec<String> = dj_render::choosing(&layers)
+        .into_iter()
+        .map(|layer| layer.name.to_owned())
+        .collect();
+    state.set_waveform_layers(&chosen);
+    chosen
+}
+
 /// One of §8 Level 1's nine, and whether djmanzo actually keeps it.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RememberedDto {
@@ -9691,14 +9858,15 @@ pub fn cockpit_locks() -> Vec<LockDto> {
 
 /// The waveform's semantic layers — §25's twenty, and which of them exist.
 ///
-/// Handed to the interface so that what is drawn and what is *named* come from
-/// one table. A browser test checks the other direction: everything on screen
-/// carries a `data-layer` that is in this list, so a layer drawn without being
-/// declared fails rather than quietly becoming a twenty-first.
+/// Handed to the interface so that what is drawn, what is *named* and what can
+/// be *turned off* come from one table. A browser test checks the other
+/// direction: everything on screen carries a `data-layer` that is in this list,
+/// so a layer drawn without being declared fails rather than quietly becoming a
+/// twenty-first.
 #[tauri::command]
 #[must_use]
-pub fn waveform_layers() -> &'static [dj_render::Layer] {
-    dj_render::layers()
+pub fn waveform_layers() -> Vec<LayerChoiceDto> {
+    layer_choices()
 }
 
 // -- the typed UI vocabulary -------------------------------------------------

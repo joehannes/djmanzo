@@ -14,12 +14,19 @@
     padPages,
     railControls,
     remembered,
+    waveformLayers,
     type LockOption,
     type PadPageDto,
     type RailControl,
     type Remembered,
+    type WaveformLayer,
   } from "./api";
-  import { remembers, starPage, keepControl } from "./remembers.svelte";
+  import {
+    remembers,
+    starPage,
+    keepControl,
+    showLayer,
+  } from "./remembers.svelte";
   import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import {
     addMusicFolder,
@@ -496,16 +503,19 @@
   let allPages = $state<PadPageDto[]>([]);
   /** Every control §74's rail can hold. */
   let allControls = $state<RailControl[]>([]);
+  /** §25's twenty, and which of them a DJ may turn off. */
+  let allLayers = $state<WaveformLayer[]>([]);
 
   $effect(() => {
     // Deck 1 because the *names* of the pages are the same on every deck — only
     // the action strings are addressed to a deck number, and none of those are
     // read here.
-    void Promise.all([remembered(), padPages(1), railControls()])
-      .then(([rows, pages, controls]) => {
+    void Promise.all([remembered(), padPages(1), railControls(), waveformLayers()])
+      .then(([rows, pages, controls, layers]) => {
         remembers_list = rows;
         allPages = pages;
         allControls = controls;
+        allLayers = layers;
       })
       .catch(() => {
         // The block draws nothing rather than a guess, on the same principle as
@@ -627,6 +637,32 @@
               onchange={(event) => void starPage(page.name, event.currentTarget.checked)}
             />
             <span class="pick-name">{page.name}</span>
+          </label>
+        </li>
+      {/each}
+    </ul>
+
+    <h4>What the waveform draws</h4>
+    <p class="hint">
+      §25's twenty semantic layers. Twelve exist; the rest are named rather than
+      offered empty, because a box that ticks and changes nothing teaches you
+      the wrong thing about the ones that work. Amplitude and spectral balance
+      are the waveform itself and cannot be turned off.
+    </p>
+    <ul class="picker" data-picker="waveform-layers">
+      {#each allLayers as layer (layer.name)}
+        <li data-layer-row={layer.name} class:unavailable={!layer.choosable}>
+          <label>
+            <input
+              type="checkbox"
+              checked={remembers.layers.includes(layer.name)}
+              disabled={!layer.choosable}
+              onchange={(event) => void showLayer(layer.name, event.currentTarget.checked)}
+            />
+            <span class="pick-name">{layer.title}</span>
+            <!-- The reason, where a disabled box would otherwise just look
+                 broken. The same posture §20's title column takes. -->
+            <span class="pick-about">{layer.choosable ? layer.about : layer.why_not}</span>
           </label>
         </li>
       {/each}
@@ -1650,5 +1686,14 @@
   .pick-about {
     color: var(--muted);
     font-size: 0.85em;
+  }
+
+  /* A row djmanzo cannot offer reads as unavailable rather than as broken. */
+  .picker li.unavailable .pick-name {
+    color: var(--muted);
+  }
+
+  .picker li.unavailable label {
+    cursor: default;
   }
 </style>

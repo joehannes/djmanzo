@@ -818,9 +818,9 @@ const ANSWERS: Record<string, unknown> = {
   /**
    * §8 Level 1's nine, as `dj_app::remembered` lists them.
    *
-   * All nine including the one djmanzo does not keep, because the claim the
-   * settings block makes is *"nine survive a restart and one does not"* and a
-   * stub with eight would make a test about that a test about nothing.
+   * All nine, and all nine kept — the waveform row said otherwise until §25's
+   * layers became something a DJ could choose from, and this fixture is what
+   * the settings block's claim is measured against.
    */
   remembered: [
     {
@@ -876,8 +876,8 @@ const ANSWERS: Record<string, unknown> = {
       slug: "waveform-display",
       about: "How the waveform is drawn",
       forgotten: "Whatever djmanzo draws by default",
-      kept: false,
-      why_not: "djmanzo draws one waveform style, so there is nothing to choose yet",
+      kept: true,
+      why_not: "",
     },
     {
       slug: "controls",
@@ -908,6 +908,15 @@ const ANSWERS: Record<string, unknown> = {
   /** A fresh install: nothing starred and nothing kept. */
   favourite_pad_pages: [],
   kept_controls: [],
+  /**
+   * Every layer djmanzo can draw, which is what an empty ask comes back as.
+   *
+   * Not `[]`: the chooser never returns nothing, and a stub that did would make
+   * every waveform spec a spec about a strip with no instrumentation on it.
+   */
+  chosen_layers: layers
+    .filter((l) => l.drawn !== "nowhere")
+    .map((l) => l.name),
   /** Artist, A to Z — what the browser has always opened on. */
   library_sort: { column: "artist", ascending: true },
   library_status: {
@@ -1259,6 +1268,33 @@ export async function openShell(
           }
           if (cmd === "kept_controls") {
             return Promise.resolve(win.__railKept ?? answers.kept_controls ?? []);
+          }
+          if (cmd === "set_chosen_layers") {
+            const known = (answers.waveform_layers ?? []) as {
+              name: string;
+              choosable: boolean;
+            }[];
+            const asked = (args.layers ?? []) as string[];
+            const everything = (answers.chosen_layers ?? []) as string[];
+            // Rust's three rules, mirrored: an empty ask is everything djmanzo
+            // draws, the two that *are* the waveform go back whether they were
+            // asked for or not, and the answer comes back in §25's own order
+            // rather than the order the boxes were ticked.
+            const out =
+              asked.length === 0
+                ? everything
+                : known
+                    .filter(
+                      (layer) =>
+                        everything.includes(layer.name) &&
+                        (!layer.choosable || asked.includes(layer.name)),
+                    )
+                    .map((layer) => layer.name);
+            win.__layers = out;
+            return Promise.resolve(out);
+          }
+          if (cmd === "chosen_layers") {
+            return Promise.resolve(win.__layers ?? answers.chosen_layers ?? []);
           }
           if (cmd === "keep_workspace") {
             const held = (win.__kept ??= []) as { name: string }[];

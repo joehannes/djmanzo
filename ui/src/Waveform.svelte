@@ -15,11 +15,13 @@
   import { onMount } from "svelte";
   import {
     playbackFramesPerSecond,
+    gridSlug,
     tileUrl,
     waveformInfo,
     type DeckState,
     type MixOutInfo,
   } from "./api";
+  import { remembers, showing } from "./remembers.svelte";
   import { theme } from "./theme.svelte";
 
   let {
@@ -316,6 +318,7 @@
           framesPerPixel,
           theme.resolved,
           epoch,
+          gridSlug(remembers.layers),
         ),
       };
     }).filter((t) => t.startFrame + tileSpanFrames > 0 && t.startFrame < totalFrames);
@@ -413,7 +416,7 @@
         everything else because it is context: the thing you notice without
         looking at it, which is what "how long have I got" should be.
       -->
-      {#if runway}
+      {#if runway && showing("runway")}
         <div
           class="runway"
           data-layer="runway"
@@ -430,7 +433,7 @@
         It spans the record and scrolls with it, so it ends where the record
         does — the claim is about this file, not about the lane.
       -->
-      {#if gridIsAGuess}
+      {#if gridIsAGuess && showing("confidence")}
         <div
           class="unsure"
           data-layer="confidence"
@@ -449,7 +452,7 @@
         gradient with no edges and this is a band with two, because a DJ reads
         an edge as a decision and a wash as a condition.
       -->
-      {#if mixOutBand}
+      {#if mixOutBand && showing("mix-out")}
         <div
           class="mix-out"
           class:on-phrase={mixOutBand.onPhrase}
@@ -468,7 +471,7 @@
         it starts and ends; this says what it covers, which is the question a
         DJ actually asks of a mix point.
       -->
-      {#if seamBand}
+      {#if seamBand && showing("seam")}
         <div
           class="seam-band"
           data-layer="seam"
@@ -476,7 +479,7 @@
           style:width="{seamBand.width}px"
         ></div>
       {/if}
-      {#if loopBand}
+      {#if loopBand && showing("loop")}
         <div
           class="loop-band"
           data-layer="loop"
@@ -518,7 +521,7 @@
           {/each}
         {/if}
       {/if}
-      {#each markers as marker (marker.slot)}
+      {#each showing("cues") ? markers : [] as marker (marker.slot)}
         {#if onMoveCue}
           <!--
             §26's first example: *cue marker — drag to move*. The same handle
@@ -561,7 +564,7 @@
           </div>
         {/if}
       {/each}
-      {#each marks as mark (mark.label)}
+      {#each showing("seam") ? marks : [] as mark (mark.label)}
         {#if mark.draggable}
           <!--
             A real handle: pointer events, a grab cursor, and a hit area wider

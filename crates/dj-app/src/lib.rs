@@ -617,6 +617,8 @@ pub fn run() {
             commands::kept_controls,
             commands::set_kept_controls,
             commands::remembered,
+            commands::chosen_layers,
+            commands::set_chosen_layers,
             commands::my_workspaces,
             commands::keep_workspace,
             commands::forget_workspace,

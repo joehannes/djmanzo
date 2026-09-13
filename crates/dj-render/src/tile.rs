@@ -237,6 +237,81 @@ impl Tile {
     }
 }
 
+/// Which of §25's three grid layers a tile draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GridLines {
+    /// Every beat. §25's `beats`.
+    pub beats: bool,
+    /// The bar line every fourth beat. §25's `downbeats`.
+    pub downbeats: bool,
+    /// Where a phrase begins. §25's `phrases`.
+    pub phrases: bool,
+}
+
+impl Default for GridLines {
+    /// All three, which is what djmanzo has always drawn.
+    fn default() -> Self {
+        Self::all()
+    }
+}
+
+impl GridLines {
+    /// Every line. The tile a DJ gets unless they have said otherwise.
+    #[must_use]
+    pub const fn all() -> Self {
+        Self {
+            beats: true,
+            downbeats: true,
+            phrases: true,
+        }
+    }
+
+    /// Whether any line at all would be drawn.
+    ///
+    /// Three `false`s is a grid overlay with nothing in it, and the tile server
+    /// passes `None` instead — so a DJ who turned the whole grid off gets tiles
+    /// that share a cache entry with everyone else who did, rather than a
+    /// separate rendering pass that draws nothing.
+    #[must_use]
+    pub const fn any(self) -> bool {
+        self.beats || self.downbeats || self.phrases
+    }
+
+    /// The three as a slug, for the tile URL. `bdp`, `b-p`, `--p`.
+    ///
+    /// Readable rather than a number, because a tile URL is the first thing
+    /// anybody looks at when the waveform is drawing the wrong thing, and
+    /// `5` says nothing about which two of the three are on.
+    #[must_use]
+    pub fn slug(self) -> String {
+        let mark = |on: bool, letter: char| if on { letter } else { '-' };
+        [
+            mark(self.beats, 'b'),
+            mark(self.downbeats, 'd'),
+            mark(self.phrases, 'p'),
+        ]
+        .iter()
+        .collect()
+    }
+
+    /// Read one back, or `None` for anything that is not three of `bdp-`.
+    #[must_use]
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        let mut chars = slug.chars();
+        let mut read = |on: char| match chars.next()? {
+            c if c == on => Some(true),
+            '-' => Some(false),
+            _ => None,
+        };
+        let lines = Self {
+            beats: read('b')?,
+            downbeats: read('d')?,
+            phrases: read('p')?,
+        };
+        chars.next().is_none().then_some(lines)
+    }
+}
+
 /// The beat grid, ready to draw over a tile.
 ///
 /// Drawn *here*, in the same pass as the waveform, rather than as an overlay in
@@ -249,6 +324,14 @@ impl Tile {
 pub struct GridOverlay {
     pub grid: Beatgrid,
     pub sample_rate: SampleRate,
+    /// Which of §25's three grid layers this tile carries.
+    ///
+    /// §8 Level 1 asks djmanzo to remember a DJ's *preferred waveform display*,
+    /// and §25 is the list of what that display is made of. A DJ who reads the
+    /// phrases and finds every beat line a distraction can say so, and the
+    /// three are separate because they answer separate questions: where the
+    /// pulse is, where the bar turns over, where the music starts again.
+    pub lines: GridLines,
     /// The phrase structure, when the analyser found one.
     ///
     /// Counted in beats from `grid.anchor`, so it travels with the grid it was
@@ -300,17 +383,27 @@ fn draw_grid(pixels: &mut [u8], spec: &TileSpec, overlay: &GridOverlay, palette:
     // Too dense even for the emphasised lines: draw nothing rather than a band
     // of grey over the waveform -- unless there are phrase lines, which are
     // sixteen or thirty-two beats apart and still legible where bars are not.
-    let phrase_px = overlay.phrase.map_or(0.0, |p| beat_px * f64::from(p.beats));
+    // A phrase the DJ has turned off is not a phrase for any purpose here --
+    // not for the density test, not for the colour, not for the line that
+    // survives an overview. Gating at the classification rather than at the
+    // draw is what keeps that true: with phrases off, the line that begins one
+    // is still a bar line and is drawn as one, in the bar line's own colour.
+    let phrases = overlay.lines.phrases;
+    let phrase_px = if phrases {
+        overlay.phrase.map_or(0.0, |p| beat_px * f64::from(p.beats))
+    } else {
+        0.0
+    };
     if emphasis_px < MIN_LINE_SPACING_PX && phrase_px < MIN_LINE_SPACING_PX {
         return;
     }
-    let draw_every_beat = beat_px >= MIN_LINE_SPACING_PX;
+    let draw_every_beat = overlay.lines.beats && beat_px >= MIN_LINE_SPACING_PX;
     // Bars have their own density test, separate from the early return above.
     // Without it, a track *with* phrases keeps the early return open -- phrase
     // lines are far enough apart to draw -- and the bar lines it was meant to
     // suppress come back with it. Which is how a 12-pixel picket fence appeared
     // on the overview the moment phrase detection started working.
-    let draw_bars = emphasis_px >= MIN_LINE_SPACING_PX;
+    let draw_bars = overlay.lines.downbeats && emphasis_px >= MIN_LINE_SPACING_PX;
 
     let confidence = overlay.grid.confidence.get().clamp(0.0, 1.0);
     let strength = UNSURE_ALPHA + (1.0 - UNSURE_ALPHA) * confidence;
@@ -326,8 +419,8 @@ fn draw_grid(pixels: &mut [u8], spec: &TileSpec, overlay: &GridOverlay, palette:
         // `rem_euclid`, not `%`: the anchor is a beat somewhere in the middle of
         // the track, so indices before it are negative, and `%` would emphasise
         // the wrong ones on that side.
-        let emphasised = index.rem_euclid(BEATS_PER_EMPHASIS) == 0;
-        let starts_phrase = overlay.phrase.is_some_and(|p| p.starts_at(index));
+        let emphasised = overlay.lines.downbeats && index.rem_euclid(BEATS_PER_EMPHASIS) == 0;
+        let starts_phrase = phrases && overlay.phrase.is_some_and(|p| p.starts_at(index));
         // A phrase line survives density that hides the others. At overview
         // zoom every beat and bar line is suppressed, and the phrase markers
         // are then the only structure left -- which is the zoom level where
@@ -815,6 +908,7 @@ mod tests {
 
     fn overlay(bpm: f64, anchor: f64, confidence: f64) -> GridOverlay {
         GridOverlay {
+            lines: GridLines::all(),
             grid: Beatgrid::new(
                 FramePos::new(anchor),
                 Bpm::new(bpm).unwrap(),
@@ -828,6 +922,7 @@ mod tests {
     /// The same, with a phrase structure hung on it.
     fn phrased(bpm: f64, anchor: f64, beats: u32, phrase_anchor: u32) -> GridOverlay {
         GridOverlay {
+            lines: GridLines::all(),
             phrase: Phrase::new(beats, phrase_anchor),
             ..overlay(bpm, anchor, 1.0)
         }

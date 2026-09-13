@@ -130,11 +130,7 @@ impl Remembered {
             Self::Sorting => Some("sort.json"),
             Self::PadPages => Some("pad-pages.json"),
             Self::Controls => Some("controls.json"),
-            // §25 has not shipped waveform styles, so there is no preference to
-            // keep -- not a file nobody wrote, a setting that does not exist.
-            // The row stays on the list saying exactly that, because a list of
-            // eight would read as the whole of §8.
-            Self::WaveformDisplay => None,
+            Self::WaveformDisplay => Some("layers.json"),
         }
     }
 
@@ -151,12 +147,12 @@ impl Remembered {
     /// thing from "no", and a DJ reading the list deserves to know which.
     #[must_use]
     pub const fn why_not(self) -> &'static str {
-        match self {
-            Self::WaveformDisplay => {
-                "djmanzo draws one waveform style, so there is nothing to choose yet"
-            }
-            _ => "",
-        }
+        // Nothing, for now. `WaveformDisplay` was the one row on this list
+        // djmanzo did not keep, and it said so here until §25's layer inventory
+        // became something a DJ could choose from. The method stays, and so do
+        // the two tests that hold it to the `kept_in` column: the next row that
+        // gets added ahead of what backs it has somewhere to admit that.
+        ""
     }
 }
 

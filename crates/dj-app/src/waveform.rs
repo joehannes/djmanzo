@@ -10,7 +10,9 @@
 //! thread, which is the pattern that collapses under WebKitGTK.
 
 use dj_core::DeckId;
-use dj_render::{GridOverlay, Theme, TileSpec, WaveformSummary, encode_png, render_tile_with_grid};
+use dj_render::{
+    GridLines, GridOverlay, Theme, TileSpec, WaveformSummary, encode_png, render_tile_with_grid,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -68,6 +70,13 @@ pub struct TileKey {
     /// would keep serving the dark tiles already in the cache and the waveform
     /// would simply not change.
     pub theme: Theme,
+    /// Which of §25's grid layers the tile carries.
+    ///
+    /// Part of the key for the same reason the theme is: tiles are cached hard,
+    /// `immutable` for a year, so a DJ turning the beat lines off would keep
+    /// being served the tiles already drawn with them and nothing on screen
+    /// would change.
+    pub lines: GridLines,
 }
 
 /// Bound on the tile cache.
@@ -211,12 +220,20 @@ impl WaveformStore {
             start_frame: key.start_frame as f64,
             frames_per_pixel: key.zoom_milli as f64 / 1000.0,
         };
-        let tile = render_tile_with_grid(
-            &summary,
-            &spec,
-            &key.theme.palette(),
-            self.grid(key.deck).as_ref(),
-        );
+        // The DJ's chosen lines, applied to the deck's own grid. `None` when
+        // they have turned all three off, rather than an overlay that draws
+        // nothing: that way everyone who wants no grid shares one cache entry
+        // instead of paying for a rendering pass that paints no pixels.
+        let overlay = key
+            .lines
+            .any()
+            .then(|| self.grid(key.deck))
+            .flatten()
+            .map(|grid| GridOverlay {
+                lines: key.lines,
+                ..grid
+            });
+        let tile = render_tile_with_grid(&summary, &spec, &key.theme.palette(), overlay.as_ref());
         let png = Arc::new(encode_png(&tile).ok()?);
 
         if let Ok(mut cache) = self.cache.lock() {
@@ -239,7 +256,8 @@ impl WaveformStore {
 
 /// Parse a `wave://` request path into a tile key.
 ///
-/// Shape: `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}/{theme}/{epoch}`
+/// Shape:
+/// `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}/{theme}/{epoch}/{lines}`
 ///
 /// Deliberately strict. A malformed URL returns `None` and the handler answers
 /// 400 rather than guessing, because a silently wrong tile is far harder to
@@ -261,6 +279,7 @@ pub fn parse_tile_path(path: &str) -> Option<TileKey> {
         zoom_milli: parts.next()?.parse().ok()?,
         theme: Theme::from_slug(parts.next()?)?,
         epoch: parts.next()?.parse().ok()?,
+        lines: GridLines::from_slug(parts.next()?)?,
     };
 
     // Nothing may follow, and the numbers must be drawable.
@@ -309,6 +328,7 @@ mod tests {
             zoom_milli: 128_000,
             theme: Theme::Dark,
             epoch: 0,
+            lines: GridLines::all(),
         }
     }
 
@@ -335,6 +355,7 @@ mod tests {
         let (store, deck) = store_with_track();
         let overlay = |anchor: f64| {
             Some(GridOverlay {
+                lines: GridLines::all(),
                 grid: Beatgrid::new(
                     FramePos::new(anchor),
                     Bpm::new(128.0).unwrap(),
@@ -366,6 +387,7 @@ mod tests {
 
         let (store, deck) = store_with_track();
         let original = GridOverlay {
+            lines: GridLines::all(),
             grid: Beatgrid::new(
                 FramePos::new(0.0),
                 Bpm::new(128.0).unwrap(),
@@ -449,7 +471,7 @@ mod tests {
 
     #[test]
     fn a_well_formed_path_parses() {
-        let key = parse_tile_path("/tile/2/512/128/48000/256000/dark/0").unwrap();
+        let key = parse_tile_path("/tile/2/512/128/48000/256000/dark/0/bdp").unwrap();
         assert_eq!(key.deck, 2);
         assert_eq!(key.width, 512);
         assert_eq!(key.height, 128);
@@ -461,7 +483,7 @@ mod tests {
     #[test]
     fn the_theme_comes_from_the_path() {
         assert_eq!(
-            parse_tile_path("/tile/1/512/128/0/256000/light/0")
+            parse_tile_path("/tile/1/512/128/0/256000/light/0/bdp")
                 .unwrap()
                 .theme,
             Theme::Light
@@ -490,12 +512,115 @@ mod tests {
         );
     }
 
+    /// **The reason the grid layers are in the key**, which is the theme's
+    /// reason exactly.
+    ///
+    /// Tiles are cached with a one-year immutable header. If a tile drawn with
+    /// beat lines and one drawn without shared a key, a DJ turning the grid off
+    /// would keep being served the tiles already drawn with it and nothing on
+    /// screen would change — which is how they would conclude the setting does
+    /// not work rather than that it has not reached the cache.
+    #[test]
+    fn a_tile_without_the_grid_is_a_different_tile() {
+        use dj_core::{Beatgrid, Bpm, Confidence, FramePos};
+
+        let (store, deck) = store_with_track();
+        store.set_analysed_grid(
+            deck,
+            Some(GridOverlay {
+                lines: GridLines::all(),
+                grid: Beatgrid::new(
+                    FramePos::new(0.0),
+                    Bpm::new(128.0).unwrap(),
+                    Confidence::CERTAIN,
+                ),
+                sample_rate: SampleRate::DEFAULT,
+                phrase: None,
+            }),
+        );
+
+        let mut bare = key(1);
+        bare.lines = GridLines {
+            beats: false,
+            downbeats: false,
+            phrases: false,
+        };
+
+        let with_grid = store.tile_png(key(1)).unwrap();
+        let without = store.tile_png(bare).unwrap();
+
+        assert_eq!(store.cached_tiles(), 2, "the two collided in the cache");
+        assert_ne!(
+            with_grid.as_ref(),
+            without.as_ref(),
+            "turning every grid line off drew the same pixels"
+        );
+
+        // And the middle case: bars only. Different from both, because the
+        // three layers are three separate answers rather than one switch.
+        let mut bars = key(1);
+        bars.lines = GridLines {
+            beats: false,
+            downbeats: true,
+            phrases: false,
+        };
+        let bars_png = store.tile_png(bars).unwrap();
+        assert_ne!(bars_png.as_ref(), with_grid.as_ref());
+        assert_ne!(bars_png.as_ref(), without.as_ref());
+
+        // **Every beat, and none of them emphasised.** This is the case the
+        // first version of this test missed, and a mutation found it: with the
+        // downbeats gate deleted the three assertions above all still passed,
+        // because turning the bars off *alone* only changes the colour a line
+        // is painted in — the line itself is drawn either way, by the beats
+        // layer. A DJ who turns the bar emphasis off and gets emphasised bars
+        // anyway has a switch that does nothing.
+        let mut flat = key(1);
+        flat.lines = GridLines {
+            beats: true,
+            downbeats: false,
+            phrases: false,
+        };
+        let flat_png = store.tile_png(flat).unwrap();
+        assert_ne!(
+            flat_png.as_ref(),
+            with_grid.as_ref(),
+            "turning off the bar emphasis drew the emphasised bars anyway"
+        );
+        assert_ne!(flat_png.as_ref(), without.as_ref());
+    }
+
+    /// The slug is a round trip, because it is the half of the key a human
+    /// reads when the waveform is drawing the wrong thing.
+    #[test]
+    fn every_combination_of_grid_lines_survives_the_url() {
+        for beats in [false, true] {
+            for downbeats in [false, true] {
+                for phrases in [false, true] {
+                    let lines = GridLines {
+                        beats,
+                        downbeats,
+                        phrases,
+                    };
+                    assert_eq!(
+                        GridLines::from_slug(&lines.slug()),
+                        Some(lines),
+                        "{:?} did not survive {:?}",
+                        lines,
+                        lines.slug()
+                    );
+                }
+            }
+        }
+        assert_eq!(GridLines::all().slug(), "bdp");
+    }
+
     #[test]
     fn negative_start_frames_parse() {
         // The strip extends before the track start while scrolled to the very
         // beginning, so those tiles are legitimately requested.
         assert_eq!(
-            parse_tile_path("/tile/1/512/128/-2048/256000/dark/0")
+            parse_tile_path("/tile/1/512/128/-2048/256000/dark/0/bdp")
                 .unwrap()
                 .start_frame,
             -2_048
@@ -508,15 +633,19 @@ mod tests {
             "",
             "/",
             "/nope/1/512/128/0/1000/dark/0",
-            "/tile/1/512/128/0/1000/0",            // no theme
-            "/tile/1/512/128/0/1000/dark",         // no epoch
-            "/tile/1/512/128/0/1000/dark/0/extra", // too many
-            "/tile/x/512/128/0/1000/dark/0",       // non-numeric deck
-            "/tile/1/0/128/0/1000/dark/0",         // zero width
-            "/tile/1/512/0/0/1000/dark/0",         // zero height
-            "/tile/1/512/128/0/0/dark/0",          // zero zoom
-            "/tile/1/512/128/0/1000/sepia/0",      // not a theme
-            "/tile/1/512/128/0/1000/Dark/0",       // themes are lower-case
+            "/tile/1/512/128/0/1000/0/bdp",            // no theme
+            "/tile/1/512/128/0/1000/dark/bdp",         // no epoch
+            "/tile/1/512/128/0/1000/dark/0",           // no grid
+            "/tile/1/512/128/0/1000/dark/0/bdp/extra", // too many
+            "/tile/1/512/128/0/1000/dark/0/bd",        // a two-letter grid
+            "/tile/1/512/128/0/1000/dark/0/bpd",       // out of order
+            "/tile/1/512/128/0/1000/dark/0/BDP",       // grids are lower-case
+            "/tile/x/512/128/0/1000/dark/0/bdp",       // non-numeric deck
+            "/tile/1/0/128/0/1000/dark/0/bdp",         // zero width
+            "/tile/1/512/0/0/1000/dark/0/bdp",         // zero height
+            "/tile/1/512/128/0/0/dark/0/bdp",          // zero zoom
+            "/tile/1/512/128/0/1000/sepia/0/bdp",      // not a theme
+            "/tile/1/512/128/0/1000/Dark/0/bdp",       // themes are lower-case
         ] {
             assert!(
                 parse_tile_path(bad).is_none(),
@@ -529,8 +658,8 @@ mod tests {
     /// single request.
     #[test]
     fn absurd_tile_sizes_are_refused() {
-        assert!(parse_tile_path("/tile/1/999999/128/0/1000/dark/0").is_none());
-        assert!(parse_tile_path("/tile/1/512/999999/0/1000/dark/0").is_none());
+        assert!(parse_tile_path("/tile/1/999999/128/0/1000/dark/0/bdp").is_none());
+        assert!(parse_tile_path("/tile/1/512/999999/0/1000/dark/0/bdp").is_none());
     }
 
     #[test]
@@ -568,6 +697,7 @@ mod tests {
         store.set_grid(
             deck,
             Some(GridOverlay {
+                lines: GridLines::all(),
                 grid: dj_core::Beatgrid::new(
                     dj_core::FramePos::new(0.0),
                     dj_core::Bpm::new(128.0).unwrap(),
@@ -594,6 +724,7 @@ mod tests {
     fn setting_the_same_grid_again_is_free() {
         let (store, deck) = store_with_track();
         let overlay = GridOverlay {
+            lines: GridLines::all(),
             grid: dj_core::Beatgrid::new(
                 dj_core::FramePos::new(0.0),
                 dj_core::Bpm::new(128.0).unwrap(),
@@ -625,6 +756,7 @@ mod tests {
         store.set_grid(
             deck,
             Some(GridOverlay {
+                lines: GridLines::all(),
                 grid: dj_core::Beatgrid::new(
                     dj_core::FramePos::new(0.0),
                     dj_core::Bpm::new(128.0).unwrap(),

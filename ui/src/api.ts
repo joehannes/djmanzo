@@ -1135,7 +1135,9 @@ export const waveformInfo = (deck: number) =>
  *
  * The theme is in the path rather than a header because tiles are cached by
  * URL, hard and for a year. Two themes sharing a URL would mean switching kept
- * serving whichever palette was rendered first.
+ * serving whichever palette was rendered first. §25's three grid layers are
+ * there for exactly the same reason: a DJ turning the beat lines off would
+ * otherwise keep being served the tiles already drawn with them.
  */
 export function tileUrl(
   deck: number,
@@ -1145,10 +1147,11 @@ export function tileUrl(
   framesPerPixel: number,
   theme: ResolvedTheme,
   epoch: number,
+  grid: string,
 ): string {
   const zoomMilli = Math.round(framesPerPixel * 1000);
   const start = Math.round(startFrame);
-  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}/${theme}/${epoch}`;
+  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}/${theme}/${epoch}/${grid}`;
   // Tauri rewrites custom schemes differently per platform: Linux/WebKitGTK
   // keeps `scheme://`, while Windows needs the `http://scheme.localhost` form.
   // macOS accepts the former.
@@ -3466,6 +3469,44 @@ export interface WaveformLayer {
   about: string;
   role: LayerRole;
   drawn: LayerDrawn;
+  /**
+   * Whether a DJ may turn it off.
+   *
+   * False for the two that *are* the waveform — a picker offering to remove
+   * them offers an empty strip — and for the eight nobody has built. Both are
+   * still on the list, with a box that is disabled and says which, on the same
+   * principle as §20's title column.
+   */
+  choosable: boolean;
+  /** Why it cannot be turned off. Empty for the ones that can. */
+  why_not: string;
+}
+
+/** The layers the DJ has chosen, in §25's order. */
+export const chosenLayers = () => invoke<string[]>("chosen_layers");
+
+/**
+ * Choose the layers, and take back what will actually be drawn.
+ *
+ * The round trip every other picker here makes: a layer this build does not
+ * have is dropped, the two that are the waveform itself go back, and an empty
+ * ask is the whole instrumentation rather than an empty strip.
+ */
+export const setChosenLayers = (layers: string[]) =>
+  invoke<string[]>("set_chosen_layers", { layers });
+
+/**
+ * The three grid layers, as the tile URL spells them.
+ *
+ * `bdp`, `b-p`, `---`. Readable rather than a number, because a tile URL is the
+ * first thing anybody looks at when the waveform is drawing the wrong thing and
+ * `5` says nothing about which two of the three are on. Rust parses exactly
+ * this; a mismatch is a 400 rather than a plausible wrong tile.
+ */
+export function gridSlug(layers: string[]): string {
+  const on = (name: string, letter: string) =>
+    layers.includes(name) ? letter : "-";
+  return on("beats", "b") + on("downbeats", "d") + on("phrases", "p");
 }
 
 /**

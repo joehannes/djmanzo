@@ -21,8 +21,10 @@
  */
 
 import {
+  chosenLayers,
   favouritePadPages,
   keptControls,
+  setChosenLayers,
   setFavouritePadPages,
   setKeptControls,
 } from "./api";
@@ -39,6 +41,16 @@ export const remembers = $state({
   pages: [] as string[],
   /** Controls the DJ keeps on §74's rail whatever the deck is doing. */
   controls: [] as string[],
+  /**
+   * §25's layers the waveform draws, in §25's order.
+   *
+   * Read by both halves of the renderer: the overlay elements check it
+   * directly, and the three grid layers travel in the tile URL, where they are
+   * part of the cache key. Empty only before Rust has answered — the chooser
+   * never returns nothing, because a waveform rebuilt layer by layer after one
+   * stray click would be a worse surface than one with no picker at all.
+   */
+  layers: [] as string[],
   /** True once Rust has answered, so a picker can tell empty from not-yet. */
   loaded: false,
 });
@@ -51,9 +63,14 @@ export const remembers = $state({
  */
 export async function loadRemembers(): Promise<void> {
   try {
-    const [pages, controls] = await Promise.all([favouritePadPages(), keptControls()]);
+    const [pages, controls, layers] = await Promise.all([
+      favouritePadPages(),
+      keptControls(),
+      chosenLayers(),
+    ]);
     remembers.pages = pages;
     remembers.controls = controls;
+    remembers.layers = layers;
   } catch {
     // Nothing starred and nothing kept — which is what djmanzo does when a DJ
     // has never set either, so a preferences file that cannot be read costs
@@ -92,4 +109,34 @@ export async function keepControl(control: string, on: boolean): Promise<void> {
   } catch {
     // As above.
   }
+}
+
+/** Show or hide one of §25's layers, and keep what Rust says will be drawn. */
+export async function showLayer(layer: string, on: boolean): Promise<void> {
+  const next = on
+    ? [...remembers.layers.filter((held) => held !== layer), layer]
+    : remembers.layers.filter((held) => held !== layer);
+  // Optimistic, like the pickers above — but the round trip matters more here
+  // than anywhere else, because Rust puts the two layers that *are* the
+  // waveform back whether they were asked for or not, and an empty ask comes
+  // back as the whole instrumentation.
+  remembers.layers = next;
+  try {
+    remembers.layers = await setChosenLayers(next);
+  } catch {
+    // Keeping what the DJ ticked, as everywhere else here.
+  }
+}
+
+/**
+ * Whether one of §25's layers is drawn.
+ *
+ * An empty list means **everything**, not nothing. It is empty for the one
+ * frame between a component mounting and Rust answering, and a waveform that
+ * flashed layer-less on every mount would be a worse surface than one that
+ * waited — and it is also what a DJ who has never opened the picker has, where
+ * the answer is plainly "all of them".
+ */
+export function showing(layer: string): boolean {
+  return remembers.layers.length === 0 || remembers.layers.includes(layer);
 }
