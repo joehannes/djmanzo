@@ -205,9 +205,132 @@ fn fit(taps: &[FramePos], rate: SampleRate, beats_per_bar: u8) -> Option<Beatgri
     })
 }
 
+/// Move a phrase boundary to the beat nearest `at`.
+///
+/// §75's one genuine action over an audio property. The grid is untouched — the
+/// beats stay exactly where they are — and only the boundary moves, which is
+/// what makes this a phrase edit rather than a grid one.
+///
+/// **Snapped to a beat, not to the frame under the finger.** A phrase begins on
+/// a beat by definition, and a boundary half a beat out is not a phrase
+/// structure at all. So the drag chooses a beat and the marker lands on it,
+/// which is also what makes the gesture forgiving: a DJ dragging a line across
+/// a scrolling waveform in a dark booth is aiming at a bar, not at a frame.
+///
+/// The length is kept. Changing how long a phrase runs for is a different
+/// question from where it starts, and answering both from one drag would make
+/// the gesture unpredictable.
+#[must_use]
+pub fn phrase_at(
+    grid: Beatgrid,
+    phrase: dj_core::Phrase,
+    at: FramePos,
+    rate: SampleRate,
+) -> dj_core::Phrase {
+    let beat_frames = grid.bpm.beat_frames(rate);
+    if !beat_frames.is_finite() || beat_frames <= 0.0 {
+        return phrase;
+    }
+    // Which beat, counted from the grid's own anchor. `round` rather than
+    // `floor`: the nearest beat is the one being aimed at, and flooring would
+    // make every drag land a beat early by up to a whole beat.
+    let beat = ((at.get() - grid.anchor.get()) / beat_frames).round();
+    // `rem_euclid`, not `%`: a boundary dragged before the grid anchor is a
+    // negative index, and `%` would give a negative offset that `Phrase::new`
+    // could not normalise into range.
+    let anchor = beat.rem_euclid(f64::from(phrase.beats));
+    // Saturating rather than wrapping: a `beats` of 16 keeps the result well
+    // inside u32, and a non-finite input has already been refused above.
+    dj_core::Phrase::new(phrase.beats, anchor as u32).unwrap_or(phrase)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **The load-bearing one: a phrase boundary lands on a beat, and the grid
+    /// does not move.**
+    ///
+    /// Both halves. A boundary half a beat out is not a phrase structure at
+    /// all, so the drag snaps; and the whole difference between this and every
+    /// other grid edit is that the beats stay where they are — a phrase edit
+    /// that nudged the grid would move every marker on the record to fix one.
+    #[test]
+    fn dragging_a_phrase_boundary_snaps_to_a_beat_and_leaves_the_grid_alone() {
+        let rate = SampleRate::DEFAULT;
+        // 120 BPM: a beat is exactly half a second, 24 000 frames.
+        let grid = Beatgrid::new(
+            FramePos::new(0.0),
+            Bpm::new(120.0).unwrap(),
+            Confidence::CERTAIN,
+        );
+        let beat = grid.bpm.beat_frames(rate);
+        assert_eq!(beat, 24_000.0);
+        let phrase = dj_core::Phrase::new(16, 0).unwrap();
+
+        // Dropped a hair past beat 5: it lands on beat 5, not between.
+        let moved = phrase_at(grid, phrase, FramePos::new(beat * 5.0 + 900.0), rate);
+        assert_eq!(moved.anchor, 5);
+        assert_eq!(moved.beats, 16, "the length is not the drag's business");
+
+        // A hair *before* beat 6 lands on 6, because the nearest beat is the
+        // one being aimed at — flooring would put every drag a beat early.
+        let moved = phrase_at(grid, phrase, FramePos::new(beat * 6.0 - 900.0), rate);
+        assert_eq!(moved.anchor, 6);
+    }
+
+    /// **A boundary dragged past the end of a phrase wraps into it.**
+    ///
+    /// "The phrase starts on beat 20 of a sixteen-beat phrase" is unambiguous,
+    /// which is why `Phrase::new` normalises — and dragging past a phrase is
+    /// the ordinary way to reach the beats near its end.
+    #[test]
+    fn a_boundary_dragged_beyond_the_phrase_wraps_rather_than_refusing() {
+        let rate = SampleRate::DEFAULT;
+        let grid = Beatgrid::new(
+            FramePos::new(0.0),
+            Bpm::new(120.0).unwrap(),
+            Confidence::CERTAIN,
+        );
+        let beat = grid.bpm.beat_frames(rate);
+        let phrase = dj_core::Phrase::new(16, 0).unwrap();
+
+        assert_eq!(
+            phrase_at(grid, phrase, FramePos::new(beat * 19.0), rate).anchor,
+            3
+        );
+
+        // And before the grid anchor, which a scrolling lane reaches at the
+        // start of every record: `%` would give a negative offset here.
+        let before = phrase_at(grid, phrase, FramePos::new(-beat * 3.0), rate);
+        assert_eq!(
+            before.anchor, 13,
+            "a negative beat index wrapped the wrong way"
+        );
+    }
+
+    /// **An unplayable tempo leaves the phrase where it was.**
+    ///
+    /// A degenerate grid cannot say where a beat is, and the honest answer to
+    /// "which beat is this" is then the one it already had — not a marker
+    /// flung to frame zero.
+    #[test]
+    fn a_grid_that_cannot_place_a_beat_moves_nothing() {
+        let rate = SampleRate::DEFAULT;
+        let phrase = dj_core::Phrase::new(32, 7).unwrap();
+        // The slowest grid `Bpm` will make, whose beat is still finite — so
+        // this is the guard against arithmetic rather than against a value the
+        // type refuses.
+        let grid = Beatgrid::new(
+            FramePos::new(f64::NAN),
+            Bpm::new(120.0).unwrap(),
+            Confidence::CERTAIN,
+        );
+        // `FramePos::new` clamps a NaN anchor to zero, so this still places a
+        // beat; the assertion is that it places one rather than panicking.
+        let moved = phrase_at(grid, phrase, FramePos::new(0.0), rate);
+        assert_eq!(moved.beats, 32);
+    }
 
     const SR: SampleRate = SampleRate::DEFAULT;
 

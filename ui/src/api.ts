@@ -3105,6 +3105,26 @@ export const controlMappings = () => invoke<MappingInfo[]>("control_mappings");
  * fill, and is already the case it is designed around.
  */
 export const controllerHands = () => invoke<Hands | null>("controller_hands");
+
+/* -- §75: phrase boundaries ------------------------------------------------ */
+
+/**
+ * Where a deck's phrase boundaries fall, as two numbers.
+ *
+ * Every boundary is `first_frame + n * spacing_frames`. Two numbers rather than
+ * a list, so the overlay can place one per pixel column without asking again —
+ * and the arithmetic that produced them is Rust's, because the grid anchor is
+ * not on the snapshot and putting it there would cost every consumer a field so
+ * that one overlay could multiply.
+ */
+export interface PhraseGrid {
+  first_frame: number;
+  spacing_frames: number;
+}
+
+/** `null` when the record has no phrase structure, which is a real answer. */
+export const phraseGrid = (deck: number) =>
+  invoke<PhraseGrid | null>("phrase_grid", { deck });
 export const keyboardKeys = () => invoke<KeyBinding[]>("keyboard_keys");
 export const setKeyboardEnabled = (on: boolean) =>
   invoke<void>("set_keyboard_enabled", { on });

@@ -6,7 +6,7 @@
 //! disk, and the performance history — fields the audio path has no business
 //! carrying through a lock-free queue.
 
-use dj_core::{Beatgrid, Bpm, Confidence, FramePos, Mode, MusicalKey, SampleRate, TrackId};
+use dj_core::{Beatgrid, Bpm, Confidence, FramePos, Mode, MusicalKey, Phrase, SampleRate, TrackId};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -107,6 +107,29 @@ impl StoredAnalysis {
     #[must_use]
     pub fn from_source(mut self, source: GridSource) -> Self {
         self.grid_source = Some(source);
+        self
+    }
+
+    /// The phrase structure, or `None` if either half is missing.
+    ///
+    /// Both or neither, the way the fields are documented: a length without a
+    /// starting beat is a marker in an unknown place.
+    #[must_use]
+    pub fn phrase(&self) -> Option<Phrase> {
+        Phrase::new(self.phrase_beats?, self.phrase_anchor?)
+    }
+
+    /// Flatten a phrase into the stored form.
+    ///
+    /// Deliberately does **not** touch `grid_source`: a DJ moving a phrase
+    /// boundary has corrected the phrase, not the grid, and marking the grid as
+    /// theirs would stop a later re-analysis from improving one nobody had
+    /// complained about. Confidence goes to certain, because a hand placed it.
+    #[must_use]
+    pub fn with_phrase(mut self, phrase: Phrase) -> Self {
+        self.phrase_beats = Some(phrase.beats);
+        self.phrase_anchor = Some(phrase.anchor);
+        self.phrase_confidence = Some(1.0);
         self
     }
 

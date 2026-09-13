@@ -265,6 +265,58 @@ describe("colour tokens", () => {
     expect(offenders.sort(), offenders.sort().join("\n")).toEqual([]);
   });
 
+  /**
+   * **§75: do not confuse visualization with control.**
+   *
+   * > Allow clicking/dragging where this maps to a genuine action. Do not
+   * > confuse visualization with control. Every interactive visual needs clear
+   * > semantics.
+   *
+   * §25 says which audio properties are drawn and §26 says which can be
+   * grabbed; this is the rule that keeps the two apart on the page. An element
+   * stamped with a `data-layer` that takes a pointer is a *control* and has to
+   * say what it does — a role and a label — and one that takes no pointer must
+   * not wear a grab cursor and invite a drag that does nothing.
+   *
+   * The check is over the markup of every waveform surface, because that is
+   * where §25's layers and §26's handles meet.
+   */
+  it("an interactive visual says what it does, and a passive one does not invite a drag", () => {
+    const STRIPS = ["Waveform.svelte", "Overview.svelte"];
+    const offenders: string[] = [];
+
+    for (const name of STRIPS) {
+      const source = readFileSync(join(SRC, name), "utf8");
+      const markup = source.slice(0, source.indexOf("<style>"));
+      // Each element opening tag that carries a data-layer.
+      for (const tag of markup.matchAll(/<(\w+)\b([^>]*?data-layer=[^>]*?)>/gs)) {
+        const [whole, , attrs] = tag;
+        const layer = /data-layer="([a-z-]+)"/.exec(attrs)?.[1] ?? "?";
+        const interactive =
+          /onpointerdown=|onclick=|onkeydown=/.test(attrs) || /grabbable/.test(attrs);
+        if (interactive) {
+          // A control: it must say what it is and what moving it does.
+          if (!/role="/.test(attrs)) {
+            offenders.push(`${name}: the ${layer} handle takes a pointer and has no role`);
+          }
+          if (!/aria-label="/.test(attrs)) {
+            offenders.push(`${name}: the ${layer} handle takes a pointer and has no label`);
+          }
+        } else if (/grabbable|cursor:\s*(grab|pointer)/.test(attrs)) {
+          offenders.push(
+            `${name}: the ${layer} layer invites a drag and handles none`,
+          );
+        }
+        void whole;
+      }
+    }
+    expect(
+      offenders.sort(),
+      "§75: every interactive visual needs clear semantics, and a passive one " +
+        `must not pretend to be one:\n${offenders.sort().join("\n")}`,
+    ).toEqual([]);
+  });
+
   it("the palette files are exempt, because that is where colours live", () => {
     for (const file of PALETTE_FILES) {
       const source = readFileSync(join(SRC, file), "utf8");

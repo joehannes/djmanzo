@@ -618,6 +618,7 @@ pub fn run() {
             commands::kept_controls,
             commands::set_kept_controls,
             commands::remembered,
+            commands::phrase_grid,
             commands::controller_hands,
             commands::setups,
             commands::apply_setup,

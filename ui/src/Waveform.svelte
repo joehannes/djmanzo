@@ -21,6 +21,7 @@
     type DeckState,
     type MixOutInfo,
   } from "./api";
+  import { phraseGrid, type PhraseGrid } from "./api";
   import { remembers, showing } from "./remembers.svelte";
   import { theme } from "./theme.svelte";
 
@@ -32,6 +33,7 @@
     onMoveMark,
     onMoveCue,
     onMoveLoopEdge,
+    onMovePhrase,
   }: {
     deck: DeckState;
     height?: number;
@@ -68,6 +70,17 @@
      * neither of them is "the" deck.
      */
     onMoveCue?: (slot: number, frame: number) => void;
+    /**
+     * A phrase boundary was dragged. Frames, in the file.
+     *
+     * §75's one genuine action over an audio property. Its own callback rather
+     * than a `marks` entry, because §75's rule is that *every interactive
+     * visual needs clear semantics*: a mark on this waveform means "a mix
+     * happens here" and a phrase boundary means "the music starts again here",
+     * and a handle that reported both through one channel would be the
+     * confusion the section warns against.
+     */
+    onMovePhrase?: (frame: number) => void;
     /**
      * A loop edge was dragged. Which end, and where it was let go, in frames.
      *
@@ -349,6 +362,61 @@
       })),
   );
 
+  /**
+   * §75's phrase boundaries, and where they are.
+   *
+   * Asked of Rust rather than worked out here: the grid anchor is not on the
+   * snapshot, and putting it there would cost every consumer a field so that
+   * one overlay could multiply. Two numbers come back and every boundary is
+   * `first + n * spacing`.
+   *
+   * Re-asked on the waveform epoch, which is what changes when a record is
+   * loaded or its grid is edited — the same key the tiles are invalidated by,
+   * so the handles and the lines they sit on cannot be from different grids.
+   */
+  let phrases = $state<PhraseGrid | null>(null);
+
+  $effect(() => {
+    // Named so the effect depends on them; the epoch is the invalidation and
+    // the deck number is which record.
+    const [which, when] = [deck.number, epoch];
+    void when;
+    void phraseGrid(which)
+      .then((found) => {
+        phrases = found;
+      })
+      .catch(() => {
+        // No handles rather than handles in the wrong place. A record with no
+        // phrase structure is the ordinary case this falls back to.
+        phrases = null;
+      });
+  });
+
+  /**
+   * The phrase boundaries inside the visible lane, as handles.
+   *
+   * Only the visible ones: a ten-minute record at sixteen beats a phrase has
+   * about seventy, and putting seventy sliders in the DOM to show four would be
+   * paying for the whole record on every frame of a scroll.
+   */
+  const phraseMarks = $derived.by(() => {
+    if (!phrases || !onMovePhrase || phrases.spacing_frames <= 0) return [];
+    const from = firstTile * tileSpanFrames;
+    // The same span the tiles cover, so a handle is never needed for a
+    // boundary whose line is not on screen.
+    const across = Math.ceil(laneWidth / TILE_WIDTH) + OVERSCAN * 2 + 1;
+    const to = from + across * tileSpanFrames;
+    const first = Math.ceil((from - phrases.first_frame) / phrases.spacing_frames);
+    const last = Math.floor((to - phrases.first_frame) / phrases.spacing_frames);
+    const out: { frame: number; index: number }[] = [];
+    for (let n = Math.max(0, first); n <= last; n += 1) {
+      const frame = phrases.first_frame + n * phrases.spacing_frames;
+      if (frame > totalFrames) break;
+      out.push({ frame, index: n });
+    }
+    return out;
+  });
+
   const loopBand = $derived.by(() => {
     const region = deck.active_loop;
     if (!region) return null;
@@ -521,6 +589,40 @@
           {/each}
         {/if}
       {/if}
+      <!--
+        §75: *allow clicking and dragging where this maps to a genuine action.*
+        The phrase boundary is the one audio property on this waveform that a
+        drag means something for — the analyser reads where the music starts
+        again, and it is wrong often enough to be worth a handle: a record with
+        a four-beat pickup and one without look identical to a structure
+        detector and put every marker a bar out.
+
+        A slider rather than a decorated div, so the keyboard reaches it, and
+        labelled with what moving it does rather than with what it is —
+        §75 closes with *every interactive visual needs clear semantics*, and
+        "phrase boundary" names the thing while "drag to where the music starts
+        again" names the act.
+      -->
+      {#each showing("phrases") ? phraseMarks : [] as boundary (boundary.index)}
+        <div
+          class="phrase-handle grabbable"
+          data-layer="phrases"
+          class:dragging={dragging?.key === `phrase ${boundary.index}`}
+          style:left="{(dragging?.key === `phrase ${boundary.index}`
+            ? dragging.frame
+            : boundary.frame) / framesPerPixel}px"
+          title="Phrase boundary — drag to where the music starts again"
+          role="slider"
+          tabindex="0"
+          aria-label="Phrase boundary, drag to where the music starts again"
+          aria-valuenow={Math.round(boundary.frame)}
+          aria-valuemin={0}
+          aria-valuemax={Math.round(totalFrames)}
+          onpointerdown={(e) =>
+            grab(e, `phrase ${boundary.index}`, (frame) => onMovePhrase?.(frame))}
+          onkeydown={(e) => nudge(e, boundary.frame, (frame) => onMovePhrase?.(frame))}
+        ></div>
+      {/each}
       {#each showing("cues") ? markers : [] as marker (marker.slot)}
         {#if onMoveCue}
           <!--
@@ -676,6 +778,41 @@
     opacity: 0.16;
     pointer-events: none;
     z-index: 2;
+  }
+
+  /*
+    A hit area wider than the line it sits on, like §26's other handles: a
+    two-pixel target in a dark booth is a target nobody hits. Transparent
+    rather than drawn — the boundary itself is already rasterised into the tile
+    by `dj_render`, and a second line over it would be the same fact twice and
+    a pixel out whenever the two rounded differently.
+  */
+  .phrase-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 11px;
+    margin-left: -5px;
+    background: transparent;
+    pointer-events: auto;
+    cursor: grab;
+    touch-action: none;
+    /*
+      Below the cue markers and the mix point, above the tiles. A DJ's own
+      marks win the pixel where they overlap a phrase boundary: a cue is
+      something they placed and a boundary is something djmanzo read, and the
+      one you meant to grab is the one you put there.
+    */
+    z-index: 2;
+  }
+
+  .phrase-handle.dragging {
+    cursor: grabbing;
+  }
+
+  .phrase-handle.dragging,
+  .phrase-handle:focus-visible {
+    background: color-mix(in srgb, var(--selected) 30%, transparent);
   }
 
   .cue-marker {

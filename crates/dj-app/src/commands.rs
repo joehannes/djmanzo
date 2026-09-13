@@ -1258,6 +1258,13 @@ enum GridEdit {
     SetBpm(f64),
     Tap,
     Reset,
+    /// §75's phrase handle: move the boundary to the beat nearest this frame.
+    ///
+    /// The one edit here that leaves the *grid* alone. Every other one moves
+    /// the beats, which is why they all clear the phrase — it counts from the
+    /// old anchor and would point at the wrong beat afterwards. This moves the
+    /// phrase itself, so clearing it would be the edit undoing itself.
+    Phrase(dj_core::FramePos),
 }
 
 fn grid_edit(action: dj_core::DeckAction) -> Option<GridEdit> {
@@ -1269,6 +1276,7 @@ fn grid_edit(action: dj_core::DeckAction) -> Option<GridEdit> {
         A::GridSetBpm(b) => GridEdit::SetBpm(b),
         A::GridTap => GridEdit::Tap,
         A::GridReset => GridEdit::Reset,
+        A::GridPhrase(at) => GridEdit::Phrase(at),
         _ => return None,
     })
 }
@@ -1278,6 +1286,32 @@ fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(),
 
     let waveforms = state.waveforms();
     let registry = state.registry();
+
+    // §75's phrase handle. Handled before everything below because it is not a
+    // grid edit at all: the beats stay exactly where they are and only the
+    // boundary moves, so none of the tempo arithmetic applies and the phrase
+    // must survive rather than be cleared.
+    if let GridEdit::Phrase(at) = edit {
+        let overlay = waveforms
+            .grid(deck.human_number())
+            .ok_or("no beat grid on this deck yet; wait for analysis or tap one in")?;
+        let phrase = waveforms
+            .grid(deck.human_number())
+            .and_then(|o| o.phrase)
+            .or_else(|| analysed_phrase(state, deck))
+            .ok_or("this record has no phrase structure to move")?;
+        let moved = grid::phrase_at(overlay.grid, phrase, at, overlay.sample_rate);
+        waveforms.set_grid(
+            deck,
+            Some(dj_render::GridOverlay {
+                lines: dj_render::GridLines::all(),
+                phrase: Some(moved),
+                ..overlay
+            }),
+        );
+        save_phrase(state, deck, moved);
+        return publish_grid(state, deck, Some(overlay.grid), Some(moved));
+    }
 
     // Reset is the one edit that does not need an existing grid to work from --
     // and it is also how a deck whose grid was cleared gets the analyser's back.
@@ -1346,7 +1380,9 @@ fn apply_grid_edit(state: &AppState, deck: DeckId, edit: GridEdit) -> Result<(),
                         .ok_or("that would leave the playable tempo range")?,
                     GridEdit::SetBpm(b) => grid::set_bpm(current, b)
                         .ok_or("that tempo is outside the playable range")?,
-                    GridEdit::Tap | GridEdit::Reset => unreachable!("handled above"),
+                    GridEdit::Tap | GridEdit::Reset | GridEdit::Phrase(_) => {
+                        unreachable!("handled above")
+                    }
                 }
             }
         };
@@ -1386,6 +1422,32 @@ fn analysed_phrase(state: &AppState, deck: DeckId) -> Option<dj_core::Phrase> {
         stored.analysis.phrase_beats?,
         stored.analysis.phrase_anchor?,
     )
+}
+
+/// Keep a phrase edit, so the correction is still there next time.
+///
+/// Beside [`save_grid`] rather than inside it, because the two write different
+/// columns and a phrase edit must not touch `grid_source`: marking the *grid*
+/// as the DJ's own because they moved a phrase boundary would stop a later
+/// re-analysis from improving a grid nobody had corrected.
+fn save_phrase(state: &AppState, deck: DeckId, phrase: dj_core::Phrase) {
+    let Some(track) = state.deck_track_id(deck) else {
+        return;
+    };
+    let Ok(db) = state.library().get() else {
+        return;
+    };
+    let stored = match db.track(track) {
+        Ok(Some(found)) => found.analysis,
+        Ok(None) => return,
+        Err(error) => {
+            tracing::warn!(%error, "could not read the track to save its phrase");
+            return;
+        }
+    };
+    if let Err(error) = db.set_analysis(track, &stored.with_phrase(phrase)) {
+        tracing::warn!(%error, "the phrase edit will not survive a restart");
+    }
 }
 
 /// Keep a grid edit, so the correction is still there next time this track is
@@ -9723,6 +9785,49 @@ pub fn set_chosen_layers(state: State<'_, AppState>, layers: Vec<String>) -> Vec
         .collect();
     state.set_waveform_layers(&chosen);
     chosen
+}
+
+/// Where this deck's phrase boundaries fall, as two numbers.
+///
+/// §75 asks for phrase boundaries to be exposed and, where it maps to a genuine
+/// action, to be draggable. The drawing is the interface's — it knows the
+/// window, the zoom and the pixels — and the arithmetic is Rust's, because the
+/// grid anchor is not on the snapshot and putting it there would be a field
+/// every consumer of the snapshot pays for so that one overlay can multiply.
+///
+/// Two numbers is the whole answer: the first boundary at or after frame zero,
+/// and the distance between them. Every other boundary is `first + n * spacing`,
+/// which the interface can do per frame without asking again.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct PhraseGridDto {
+    /// The first phrase boundary at or after the start of the record.
+    pub first_frame: f64,
+    /// Frames between boundaries — the phrase length in beats, in frames.
+    pub spacing_frames: f64,
+}
+
+/// Where the phrase boundaries are, or `None` when this record has no phrase
+/// structure — which is a real answer rather than a gap.
+#[tauri::command]
+#[must_use]
+pub fn phrase_grid(state: State<'_, AppState>, deck: u8) -> Option<PhraseGridDto> {
+    let id = DeckId::from_human(deck)?;
+    let overlay = state.waveforms().grid(deck)?;
+    let phrase = overlay.phrase.or_else(|| analysed_phrase(&state, id))?;
+    let beat_frames = overlay.grid.bpm.beat_frames(overlay.sample_rate);
+    if !beat_frames.is_finite() || beat_frames <= 0.0 {
+        return None;
+    }
+    let spacing_frames = beat_frames * f64::from(phrase.beats);
+    // The boundary the *phrase* anchor names, brought back to the first one at
+    // or after zero. A grid anchored mid-record puts its first boundary a long
+    // way negative otherwise, and the interface would draw from there.
+    let anchored = overlay.grid.anchor.get() + beat_frames * f64::from(phrase.anchor);
+    let first_frame = anchored - spacing_frames * (anchored / spacing_frames).floor();
+    Some(PhraseGridDto {
+        first_frame,
+        spacing_frames,
+    })
 }
 
 /// §53: what the controller now open puts under the DJ's hands.

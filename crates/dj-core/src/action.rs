@@ -406,6 +406,21 @@ pub enum DeckAction {
     GridTap,
     /// Throw the edits away and go back to what the analyser said.
     GridReset,
+    /// Move the phrase boundary to the beat nearest this frame.
+    ///
+    /// §75's one genuine action over an audio property: *allow clicking and
+    /// dragging where this maps to a genuine action*. A phrase boundary is
+    /// drawn from the analyser's reading of where the music starts again, and
+    /// that reading is wrong often enough to be worth a handle — a record with
+    /// a four-beat pickup and one without look identical to a structure
+    /// detector and put every phrase marker a bar out.
+    ///
+    /// A frame rather than a beat index, and for the reason `HotCueMove` takes
+    /// one: the DJ is dragging a thing across a waveform, and the beat it lands
+    /// on is arithmetic djmanzo should do rather than the interface. Unlike
+    /// every other grid edit this one leaves the *grid* alone — it is a phrase
+    /// edit, so it must not clear the phrase it is editing.
+    GridPhrase(FramePos),
 
     // -- saved loops --------------------------------------------------------
     //
@@ -1130,6 +1145,9 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "grid_bpm" => Ok(DeckAction::GridSetBpm(f64::from(parse_f32(argument)?))),
         "grid_tap" => bare(DeckAction::GridTap),
         "grid_reset" => bare(DeckAction::GridReset),
+        "grid_phrase" => Ok(DeckAction::GridPhrase(FramePos::new(f64::from(parse_f32(
+            argument,
+        )?)))),
         "loop_save" => Ok(DeckAction::LoopSave(parse_slot(argument)?)),
         "loop_recall" => Ok(DeckAction::LoopRecall(parse_slot(argument)?)),
         other => Err(ParseError::UnknownVerb(other.to_owned())),
@@ -1449,6 +1467,9 @@ impl fmt::Display for Action {
                 DeckAction::GridSetBpm(b) => write!(f, "deck {deck} grid_bpm {}", number(*b)),
                 DeckAction::GridTap => write!(f, "deck {deck} grid_tap"),
                 DeckAction::GridReset => write!(f, "deck {deck} grid_reset"),
+                DeckAction::GridPhrase(at) => {
+                    write!(f, "deck {deck} grid_phrase {}", number(at.get()))
+                }
                 DeckAction::LoopSave(slot) => write!(f, "deck {deck} loop_save {slot}"),
                 DeckAction::LoopRecall(slot) => write!(f, "deck {deck} loop_recall {slot}"),
             },

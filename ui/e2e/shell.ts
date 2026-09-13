@@ -348,6 +348,16 @@ const ANSWERS: Record<string, unknown> = {
    * never asked.
    */
   controller_hands: null,
+  /**
+   * §75: an eight-beat phrase starting on beat four, which is the fixture's
+   * own reading — `snapshot.json`'s first deck carries `phrase_beats: 8` and
+   * `phrase_anchor: 4`.
+   *
+   * At 120 BPM a beat is 24 000 frames, so the boundaries sit 192 000 apart
+   * beginning at 96 000. Written out rather than derived here, because a stub
+   * that computed it would be the interface's arithmetic tested against itself.
+   */
+  phrase_grid: { first_frame: 96000, spacing_frames: 192000 },
   peer_status: {
     running: false,
     address: null,

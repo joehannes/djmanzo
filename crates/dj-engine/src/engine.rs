@@ -717,6 +717,7 @@ impl Engine {
                     | DeckAction::GridSetBpm(_)
                     | DeckAction::GridTap
                     | DeckAction::GridReset
+                    | DeckAction::GridPhrase(_)
                     // Saved loops are the same shape: the region lives in the
                     // library with the track, so the host reads or writes it
                     // and a recall arrives here as `Command::SetLoop`.

@@ -471,6 +471,27 @@ every match, or djmanzo announces a cut it did not make on almost every query.
 Mutate the thing the comment claims, and when the mutation survives, suspect
 the comment first.
 
+**A Playwright drag on the waveform needs a stopped deck — and sometimes not
+even that.** The strip is translated under a clipping lane, so a handle can
+have a layout box, be off-screen, and still report one; `boundingBox` does not
+know. `cues.spec.ts` stops deck 1 first and drives `page.mouse`, which works for
+the cue markers. For the phrase handles even that raced, so `phrase.spec.ts`
+dispatches the real handler chain on the element instead —
+`pointerdown` on the handle, then `pointermove`/`pointerup` on the window,
+which is how `grab` listens on purpose. That tests the wiring without a
+coordinate race; whether the handle is *reachable* is a CSS question and the
+§75 rule in `theme-tokens.test.ts` answers it. A new overlay handle needs
+`pointer-events: auto`, a `z-index` and `touch-action: none`, copied from
+`.cue-marker.grabbable` — without them it is invisible to a pointer and the
+drag test fails in a way that looks like the handler being wrong.
+
+**`DJMANZO_DEMO` does not override decks the application remembers.** Restarting
+with a different demo folder leaves whatever `persist` restored on the decks, so
+a drive that needs a *particular* record cannot get one that way. The library
+database at `~/.config/app.djmanzo.desktop/library.db` is the quickest way to
+find out what the decks actually hold — and what analysis those records have,
+which is often the reason a feature appears not to work here.
+
 **A guessed verb is a rule that silently covers nothing.** §53's pad count
 listed `hotcue_set`, `sample_play` and `loop_recall` from memory; the
 vocabulary's actual spellings are `hotcue`, `sampler`, `slice` and `roll`, so a

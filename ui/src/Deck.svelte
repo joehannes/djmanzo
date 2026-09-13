@@ -612,6 +612,8 @@
       void send(`deck ${deck.number} hotcue_move ${slot} ${Math.round(frame)}`)}
     onMoveLoopEdge={(edge, frame) =>
       void send(`deck ${deck.number} loop_edge ${edge} ${Math.round(frame)}`)}
+    onMovePhrase={(frame) =>
+      void send(`deck ${deck.number} grid_phrase ${Math.round(frame)}`)}
   />
   {/snippet}
   {#snippet zoneOverview()}

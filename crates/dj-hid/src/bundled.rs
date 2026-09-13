@@ -440,6 +440,11 @@ mod tests {
         ("stem_filter", "continuous"),
         ("grid_scale", "continuous: a tempo multiplier"),
         ("grid_bpm", "continuous: a tempo, typed rather than pressed"),
+        (
+            "grid_phrase",
+            "a frame on the waveform: dragged, not pressed — the same reason \
+             `hotcue_move` has no key",
+        ),
         ("loop_move", "continuous: a distance"),
         ("slice_domain", "continuous: a length"),
         ("play", "covered by play_pause"),
