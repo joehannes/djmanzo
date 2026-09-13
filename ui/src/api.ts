@@ -1340,6 +1340,88 @@ export const chosenColumns = () => invoke<string[]>("chosen_columns");
 export const setChosenColumns = (columns: string[]) =>
   invoke<string[]>("set_chosen_columns", { columns });
 
+/* -- §8 Level 1: the things djmanzo remembers about you -------------------- */
+
+/** How the performance table is sorted. */
+export interface LibrarySort {
+  /** The column slug, as `libraryColumns` spells it. */
+  column: string;
+  /** Smallest first. */
+  ascending: boolean;
+}
+
+/**
+ * How the DJ last sorted the library.
+ *
+ * §8 Level 1's *sorting*. The browser used to start at artist, A to Z, on every
+ * mount — which is every time a panel closed and reopened, not only every
+ * launch.
+ */
+export const librarySort = () => invoke<LibrarySort>("library_sort");
+
+/** Remember how the library is sorted, and take back what will be used. */
+export const setLibrarySort = (column: string, ascending: boolean) =>
+  invoke<LibrarySort>("set_library_sort", { column, ascending });
+
+/**
+ * The pad pages the DJ has starred.
+ *
+ * §8 Level 1's *favorite pad pages*. A favourite, deliberately, and not "the
+ * page you were last on": the pad zone does not restore the page it was left
+ * on, because a DJ who left it on roll an hour ago does not want to come back
+ * to a deck whose cues are hidden.
+ */
+export const favouritePadPages = () => invoke<string[]>("favourite_pad_pages");
+
+/** Star the pad pages, and take back what will actually be used. */
+export const setFavouritePadPages = (pages: string[]) =>
+  invoke<string[]>("set_favourite_pad_pages", { pages });
+
+/** One control §74's rail can hold, as the picker offers it. */
+export interface RailControl {
+  /** The slug stored and sent back. */
+  slug: string;
+  /** What it does, in a sentence. */
+  about: string;
+}
+
+/** Every control §74's rail can hold. */
+export const railControls = () => invoke<RailControl[]>("rail_controls");
+
+/**
+ * The controls the DJ keeps within reach whatever the deck is doing.
+ *
+ * §8 Level 1's *preferred controls*. Empty is the ordinary case and means
+ * djmanzo judges the whole rail, which is what §74 describes.
+ */
+export const keptControls = () => invoke<string[]>("kept_controls");
+
+/** Keep these controls within reach, and take back what the rail will use. */
+export const setKeptControls = (controls: string[]) =>
+  invoke<string[]>("set_kept_controls", { controls });
+
+/** One of §8 Level 1's nine, and whether djmanzo actually keeps it. */
+export interface Remembered {
+  slug: string;
+  /** What it is, in the DJ's words. */
+  about: string;
+  /** What losing it would cost. */
+  forgotten: string;
+  /** Whether djmanzo keeps it at all. */
+  kept: boolean;
+  /** Why not, for the rows it does not. Empty for the rows it does. */
+  why_not: string;
+}
+
+/**
+ * What djmanzo remembers about you, and what it does not.
+ *
+ * §8 Level 1's own list, read off Rust rather than written out here, so a row
+ * cannot claim something no file backs — a test checks every claim against
+ * `state.rs`. The row djmanzo does *not* keep is on the list saying so.
+ */
+export const remembered = () => invoke<Remembered[]>("remembered");
+
 export interface FailedFile {
   path: string;
   reason: string;
@@ -3239,10 +3321,14 @@ export const learnedTendencies = () => invoke<Tendency[]>("learned_tendencies");
 
 /** One control on §74's contextual rail. */
 export interface AtHandControl {
+  /** Which control this is, whatever it currently says. */
+  reach: string;
   label: string;
   /** The action, exactly as the parser accepts it. */
   action: string;
   on: boolean;
+  /** True when it is here because the DJ kept it, not because djmanzo judged it. */
+  kept: boolean;
 }
 
 /**

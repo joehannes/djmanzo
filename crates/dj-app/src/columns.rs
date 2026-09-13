@@ -214,6 +214,51 @@ pub fn choose(asked: &[String]) -> Vec<Column> {
     out
 }
 
+/// How the performance table is sorted.
+///
+/// §8 Level 1 asks the software to remember *sorting*, and sorting is two
+/// facts rather than one: a DJ who put the table in order of BPM to find the
+/// slow records wants the slow end, and the same column descending is a
+/// different question. Kept together so neither can survive a restart without
+/// the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sort {
+    /// The column the rows are ordered by.
+    pub by: Column,
+    /// Smallest first. False is Z-to-A, newest, loudest, longest.
+    pub ascending: bool,
+}
+
+impl Default for Sort {
+    /// Artist, A to Z.
+    ///
+    /// What the browser has always opened on, and not an arbitrary pick: a
+    /// crate is thumbed through by artist, and a table sorted by title puts an
+    /// artist's records in five places.
+    fn default() -> Self {
+        Self {
+            by: Column::Artist,
+            ascending: true,
+        }
+    }
+}
+
+impl Sort {
+    /// What a stored or requested sort actually means.
+    ///
+    /// A column this build does not have falls back to the default rather than
+    /// refusing, for the reason [`choose`] gives about unknown slugs: a
+    /// preferences file written by a later djmanzo should cost a DJ their sort
+    /// order, not their browser.
+    #[must_use]
+    pub fn of(column: &str, ascending: bool) -> Self {
+        match Column::from_name(column) {
+            Some(by) => Self { by, ascending },
+            None => Self::default(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -350,5 +395,52 @@ mod tests {
                 column.name()
             );
         }
+    }
+
+    /// **The browser and this table agree about the default sort.**
+    ///
+    /// The browser seeds its own sort before Rust has answered, so that the
+    /// table has an order to draw in the first frame rather than a blank. Two
+    /// defaults is two descriptions of one decision, and the disagreement would
+    /// be silent and visible at once: the rows would draw one way and then jump
+    /// the moment `library_sort` came back.
+    #[test]
+    fn the_browser_and_this_table_agree_about_the_default_sort() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/Library.svelte");
+        let source = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("could not read the browser at {path}: {e}"))
+            .replace("\r\n", "\n");
+
+        let fallback = Sort::default();
+        let column = format!("let sortBy = $state<Column>(\"{}\");", fallback.by.name());
+        assert!(
+            source.contains(&column),
+            "Rust falls back to {} and the browser does not seed it that way",
+            fallback.by.name()
+        );
+        let direction = format!("let ascending = $state({});", fallback.ascending);
+        assert!(
+            source.contains(&direction),
+            "Rust falls back to ascending={} and the browser does not",
+            fallback.ascending
+        );
+    }
+
+    /// **A sort naming a column this build lost falls back rather than sticking.**
+    ///
+    /// A `sort.json` written by a later djmanzo can name a column this one has
+    /// never heard of. Storing it anyway would leave the browser ordered by a
+    /// field that does not exist, which sorts by nothing and looks like the
+    /// table ignoring the click.
+    #[test]
+    fn a_sort_by_a_column_this_build_does_not_have_falls_back() {
+        assert_eq!(Sort::of("mood", false), Sort::default());
+        assert_eq!(
+            Sort::of("bpm", false),
+            Sort {
+                by: Column::Bpm,
+                ascending: false
+            }
+        );
     }
 }

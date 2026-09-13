@@ -86,11 +86,22 @@
     </header>
     <div class="controls">
       {#each hand.controls as control (control.action)}
+        <!--
+          A kept control is marked, not hidden among the judged ones. §74's
+          promise is that the rail says *why* it holds what it holds, and
+          "because you asked for it" is a different answer from "because your
+          hand is on the platter" — a DJ who forgot they kept keylock should be
+          able to see that from the row rather than from Settings.
+        -->
         <button
           class:on={control.on}
+          class:kept={control.kept}
+          data-reach={control.reach}
           disabled={!enabled}
           onclick={() => send(control.action)}
-          title={control.action}
+          title={control.kept
+            ? `${control.action} — kept within reach`
+            : control.action}
           aria-pressed={control.on}
         >{control.label}</button>
       {/each}
@@ -149,6 +160,15 @@
   .controls button.on {
     background: var(--accent);
     color: var(--on-accent);
+  }
+
+  /*
+    A kept control is marked by its edge rather than its fill, because the fill
+    already means "this is on" and a second meaning on one channel is a button
+    a DJ has to stop and read.
+  */
+  .controls button.kept {
+    border-color: var(--accent);
   }
 
   .waiting,

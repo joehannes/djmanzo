@@ -445,6 +445,19 @@ arrived — and it is invisible to every gate, because a field that is serialise
 round-trips perfectly. When a section's row says something "is modelled",
 `grep` for a reader before believing it.
 
+**And the mirror image: a preference read by a component and stored by
+nobody.** §8's Level 1 turned up three, all the same shape — `let sortBy =
+$state("artist")`, `let ascending = $state(true)`, `let page = $state("cues")`.
+Each is a perfectly good initialiser and each resets on every **mount**, which
+is every time a panel closes and reopens, not only every launch. Nothing is
+wrong on either side of the join; it is only wrong across it, so
+`svelte-check`, `vitest` and every Rust test pass. The tell is a `$state`
+holding something a DJ *chose* rather than something the application is
+currently doing. `remembered::Remembered` is the list of what is supposed to
+survive, and its test reads `state.rs` and fails when a row claims a file
+nothing writes — so the next one of these is a failing test rather than a
+discovery.
+
 **A test of an ordering needs an input the old order gets wrong.** §58's
 palette ranking was first tested with the query `e`, and deleting the sort
 entirely left it green: the passes that generate the list already run verbs,
@@ -908,6 +921,25 @@ The largest of them, in the order they are worth doing:
    stem availability, transition suitability, request count, AI confidence)
    mostly waits on analysis that does not exist, which is the same wall §25's
    remaining layers are behind.
+
+11. **§8's Levels 2 to 6.** Level 1 ships — the nine things djmanzo remembers,
+   with the one it does not saying so. The levels above it are the harder half
+   and most of what they *describe* already exists under other sections: Level
+   2 is the postures' Suggest, Level 3 is §44's staging, Level 4 is the
+   assistant's reversible moves, Level 5 is the density bands and §31's theme,
+   Level 6 is the autopilot. What §8 asks that genuinely does not exist is the
+   **level itself as one axis** — a single control that says how far djmanzo
+   may go, with everything else derived from it, rather than six capabilities a
+   DJ has to find one at a time. Do that as a type before wiring anything to
+   it, and check it against §9's separation of autonomy from confidence: a
+   level is autonomy, and the certainty is a different number that must not be
+   folded into it.
+
+   **The waveform row cannot be closed from here.** §8 asks djmanzo to
+   remember the *preferred waveform display* and §25 has not shipped waveform
+   styles, so there is no preference to keep. It is on the list on screen
+   saying exactly that, which is the posture to copy: a list of eight would
+   have read as the whole of §8.
 
 Three older items are open and are not part of the 105:
 

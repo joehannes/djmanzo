@@ -23,6 +23,7 @@
     readAudioPreference,
     writeAudioPreference,
   } from "./audiopref";
+  import { loadRemembers } from "./remembers.svelte";
   import { publishAudio } from "./audiovars.svelte";
   import {
     chooseLayout,
@@ -969,6 +970,14 @@
 
   $effect(() => {
     void loadWorkspace();
+  });
+
+  // §8 Level 1's favourite pad pages and kept controls, read once for the whole
+  // application. Here rather than in the pad zone because four decks asking the
+  // same question would be four answers that can disagree, and a change made in
+  // Settings would not reach a pad zone already on screen.
+  $effect(() => {
+    void loadRemembers();
   });
 
   $effect(() => {

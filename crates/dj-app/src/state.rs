@@ -1030,6 +1030,96 @@ impl AppState {
         }
     }
 
+    /// The file the library's sort order lives in.
+    ///
+    /// Beside `columns.json` rather than in it, because they answer different
+    /// questions and change on different timescales: which columns a DJ reads
+    /// is how they think about their collection, and which one the rows are
+    /// ordered by is what they are looking for this minute.
+    fn sort_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("sort.json"))
+    }
+
+    /// How the DJ last sorted the library, or `None` for "however it ships".
+    #[must_use]
+    pub fn library_sort(&self) -> Option<crate::columns::Sort> {
+        let text = std::fs::read_to_string(self.sort_path()?).ok()?;
+        serde_json::from_str(&text).ok()
+    }
+
+    /// Remember how the library is sorted.
+    pub fn set_library_sort(&self, sort: crate::columns::Sort) {
+        let Some(path) = self.sort_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(&sort) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "your sort order will not survive a restart");
+        }
+    }
+
+    /// The file the DJ's favourite pad pages live in.
+    fn pad_pages_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("pad-pages.json"))
+    }
+
+    /// The pad pages the DJ has starred, in their order. Empty means none.
+    #[must_use]
+    pub fn favourite_pad_pages(&self) -> Vec<String> {
+        let Some(path) = self.pad_pages_path() else {
+            return Vec::new();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Vec::new();
+        };
+        serde_json::from_str(&text).unwrap_or_default()
+    }
+
+    /// Remember the favourite pad pages.
+    pub fn set_favourite_pad_pages(&self, pages: &[String]) {
+        let Some(path) = self.pad_pages_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(pages) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "your pad pages will not survive a restart");
+        }
+    }
+
+    /// The file the controls the DJ keeps within reach live in.
+    fn kept_controls_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("controls.json"))
+    }
+
+    /// The controls the DJ wants on §74's rail whatever the deck is doing.
+    #[must_use]
+    pub fn kept_controls(&self) -> Vec<String> {
+        let Some(path) = self.kept_controls_path() else {
+            return Vec::new();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Vec::new();
+        };
+        serde_json::from_str(&text).unwrap_or_default()
+    }
+
+    /// Remember the controls the DJ keeps within reach.
+    pub fn set_kept_controls(&self, controls: &[String]) {
+        let Some(path) = self.kept_controls_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(controls) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "your kept controls will not survive a restart");
+        }
+    }
+
     /// The file the DJ's own named arrangements live in.
     ///
     /// Beside `workspace.json` rather than inside it, and the distinction is

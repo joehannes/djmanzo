@@ -35,6 +35,8 @@
     setChosenColumns,
     chosenColumns,
     libraryColumns,
+    librarySort,
+    setLibrarySort,
     addToPlaylist,
     checkFilter,
     clearTrackField,
@@ -363,6 +365,15 @@
   );
 
   type Column = string;
+  /**
+   * How the table is sorted.
+   *
+   * §8 Level 1's *sorting*. These two used to be plain initialisers, which
+   * meant the order reset to artist A-to-Z on every mount — and a panel that
+   * closes and reopens mounts, so a DJ who sorted by BPM to find the slow
+   * records lost it the moment they looked at anything else. Seeded from Rust
+   * on mount and written back on every change, like the columns beside them.
+   */
   let sortBy = $state<Column>("artist");
   let ascending = $state(true);
 
@@ -827,6 +838,13 @@
       sortBy = column;
       ascending = true;
     }
+    // Optimistic, like the column picker above: the rows reorder now and the
+    // preferences file catches up. A sort that waited for a disk write would
+    // be a click with a pause in it, in the surface §20 asks to be *instant*.
+    void setLibrarySort(sortBy, ascending).catch(() => {
+      // Keeping what the DJ asked for. A preferences file that cannot be
+      // written is not a reason to put the table back the way it was.
+    });
   }
 
   const sorted = $derived.by(() => {
@@ -871,6 +889,17 @@
         // The table falls back to nothing rather than to a guess, and the
         // picker stays shut: a browser that invented its own six would be a
         // second description of a list Rust owns.
+      });
+    // §8 Level 1's *sorting*, restored. Separately from the columns because a
+    // browser that could not read its sort order should still draw its
+    // columns: the two are stored apart and they fail apart.
+    void librarySort()
+      .then((order) => {
+        sortBy = order.column;
+        ascending = order.ascending;
+      })
+      .catch(() => {
+        // Artist, A to Z — the same default Rust would have given.
       });
     void refresh();
     void refreshStatus();

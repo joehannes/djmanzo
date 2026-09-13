@@ -53,6 +53,7 @@ pub mod practice;
 pub mod presets;
 pub mod profile;
 pub mod rackcapture;
+pub mod remembered;
 pub mod remote;
 pub mod replay;
 pub mod response;
@@ -608,6 +609,14 @@ pub fn run() {
             commands::library_columns,
             commands::chosen_columns,
             commands::set_chosen_columns,
+            commands::library_sort,
+            commands::set_library_sort,
+            commands::favourite_pad_pages,
+            commands::set_favourite_pad_pages,
+            commands::rail_controls,
+            commands::kept_controls,
+            commands::set_kept_controls,
+            commands::remembered,
             commands::my_workspaces,
             commands::keep_workspace,
             commands::forget_workspace,

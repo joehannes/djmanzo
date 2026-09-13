@@ -232,11 +232,20 @@ const ANSWERS: Record<string, unknown> = {
     doing: "preparing",
     because: "this record is cued and waiting",
     controls: [
-      { label: "cue", action: "deck 2 cue", on: false },
-      { label: "mark", action: "deck 2 hotcue_set 1", on: false },
-      { label: "loop 4", action: "deck 2 loop 4", on: false },
-      { label: "sync", action: "deck 2 sync", on: true },
-      { label: "keylock", action: "deck 2 keylock_toggle", on: false },
+      { reach: "cue", label: "cue", action: "deck 2 cue", on: false, kept: false },
+      { reach: "mark", label: "mark", action: "deck 2 hotcue_set 1", on: false, kept: false },
+      { reach: "loop", label: "loop 4", action: "deck 2 loop 4", on: false, kept: false },
+      { reach: "sync", label: "sync", action: "deck 2 sync", on: true, kept: false },
+      {
+        reach: "keylock",
+        label: "keylock",
+        action: "deck 2 keylock_toggle",
+        on: false,
+        // §8 Level 1's *preferred controls*: this one is on the rail because
+        // the DJ asked for it, not because djmanzo judged it relevant, and the
+        // rail has to say which.
+        kept: true,
+      },
     ],
   },
   // Two mixes, the shape `dj_app::mixes` derives them in: a blend into a cut,
@@ -799,6 +808,101 @@ const ANSWERS: Record<string, unknown> = {
   ],
   /** What a fresh install draws: the six the browser has always had. */
   chosen_columns: ["title", "artist", "album", "bpm", "key", "duration"],
+  /**
+   * §8 Level 1's nine, as `dj_app::remembered` lists them.
+   *
+   * All nine including the one djmanzo does not keep, because the claim the
+   * settings block makes is *"nine survive a restart and one does not"* and a
+   * stub with eight would make a test about that a test about nothing.
+   */
+  remembered: [
+    {
+      slug: "workspace",
+      about: "The arrangement you last worked in",
+      forgotten: "You would set the room up again every night",
+      kept: true,
+      why_not: "",
+    },
+    {
+      slug: "density",
+      about: "How tightly the interface is packed",
+      forgotten: "A laptop screen would open at a club's spacing",
+      kept: true,
+      why_not: "",
+    },
+    {
+      slug: "columns",
+      about: "Which columns the browser carries",
+      forgotten: "The six columns djmanzo ships, not the ones you read",
+      kept: true,
+      why_not: "",
+    },
+    {
+      slug: "sorting",
+      about: "Which column the browser is ordered by, and which way",
+      forgotten: "Back to artist, A to Z, every time you open the browser",
+      kept: true,
+      why_not: "",
+    },
+    {
+      slug: "panels",
+      about: "Where each panel sits, and which are pinned open",
+      forgotten: "Every panel you pinned would be closed again",
+      kept: true,
+      why_not: "",
+    },
+    {
+      slug: "decks",
+      about: "How many decks are on screen",
+      forgotten: "Two decks, however many you play on",
+      kept: true,
+      why_not: "",
+    },
+    {
+      slug: "pad-pages",
+      about: "The pad pages you play from",
+      forgotten: "Cues first, even if you never touch them",
+      kept: true,
+      why_not: "",
+    },
+    {
+      slug: "waveform-display",
+      about: "How the waveform is drawn",
+      forgotten: "Whatever djmanzo draws by default",
+      kept: false,
+      why_not: "djmanzo draws one waveform style, so there is nothing to choose yet",
+    },
+    {
+      slug: "controls",
+      about: "The controls you keep within reach",
+      forgotten: "Only what djmanzo judges you need this second",
+      kept: true,
+      why_not: "",
+    },
+  ],
+  /** Every control §74's rail can hold, as `at_hand::Reach` lists them. */
+  rail_controls: [
+    { slug: "cue", about: "Jump to the cue point" },
+    { slug: "play", about: "Play, or stop" },
+    { slug: "loop", about: "Loop four beats, or leave the loop" },
+    { slug: "sync", about: "Match tempo and phase to the other record" },
+    { slug: "bass", about: "Pull the low band out, or put it back" },
+    { slug: "filter", about: "Sweep the filter, or return it to the middle" },
+    { slug: "keylock", about: "Hold the pitch while the tempo moves" },
+    { slug: "slip", about: "Keep the record running underneath" },
+    { slug: "reverse", about: "Run the record backwards" },
+    { slug: "censor", about: "Reverse while held, then drop back in place" },
+    { slug: "mark", about: "Set the first hot cue where you are" },
+    { slug: "stem-vocal", about: "Mute the vocal" },
+    { slug: "stem-drums", about: "Mute the drums" },
+    { slug: "stem-bass", about: "Mute the bass line" },
+    { slug: "stem-other", about: "Mute everything else" },
+  ],
+  /** A fresh install: nothing starred and nothing kept. */
+  favourite_pad_pages: [],
+  kept_controls: [],
+  /** Artist, A to Z — what the browser has always opened on. */
+  library_sort: { column: "artist", ascending: true },
   library_status: {
     tracks: 0,
     pending: 0,
@@ -1103,6 +1207,51 @@ export async function openShell(
             return Promise.resolve(
               win.__columns ?? answers.chosen_columns ?? ["title", "artist", "album", "bpm", "key", "duration"],
             );
+          }
+          // §8 Level 1, all three held between calls and for the same reason
+          // the columns are: the claim each one makes is that setting it
+          // *changes something*, and a fixed answer would make a preference
+          // that works and one that is thrown away look identical.
+          if (cmd === "set_library_sort") {
+            const known = (answers.library_columns ?? []) as { slug: string }[];
+            const asked = String(args.column ?? "");
+            // Rust's rule, mirrored: a column this build does not have falls
+            // back rather than being stored and silently ignored.
+            const settled = known.some((c) => c.slug === asked)
+              ? { column: asked, ascending: Boolean(args.ascending) }
+              : { column: "artist", ascending: true };
+            win.__sort = settled;
+            return Promise.resolve(settled);
+          }
+          if (cmd === "library_sort") {
+            return Promise.resolve(
+              win.__sort ?? answers.library_sort ?? { column: "artist", ascending: true },
+            );
+          }
+          if (cmd === "set_favourite_pad_pages") {
+            const known = (answers.pad_pages ?? []) as { name: string }[];
+            const out: string[] = [];
+            for (const name of (args.pages ?? []) as string[]) {
+              if (known.some((p) => p.name === name) && !out.includes(name)) out.push(name);
+            }
+            win.__pages = out;
+            return Promise.resolve(out);
+          }
+          if (cmd === "favourite_pad_pages") {
+            return Promise.resolve(win.__pages ?? answers.favourite_pad_pages ?? []);
+          }
+          if (cmd === "set_kept_controls") {
+            const known = (answers.rail_controls ?? []) as { slug: string }[];
+            const out: string[] = [];
+            for (const slug of (args.controls ?? []) as string[]) {
+              if (known.some((c) => c.slug === slug) && !out.includes(slug)) out.push(slug);
+            }
+            // §74's ceiling, mirrored: the rail holds eight.
+            win.__railKept = out.slice(0, 8);
+            return Promise.resolve(win.__railKept);
+          }
+          if (cmd === "kept_controls") {
+            return Promise.resolve(win.__railKept ?? answers.kept_controls ?? []);
           }
           if (cmd === "keep_workspace") {
             const held = (win.__kept ??= []) as { name: string }[];

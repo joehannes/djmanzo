@@ -92,11 +92,281 @@ impl Doing {
             Doing::Playing => "this record is playing",
         }
     }
+
+    /// The five controls this state reaches for, in the order a hand finds
+    /// them.
+    ///
+    /// The table §74 asks for, written once. It used to be five arms of
+    /// `Control::new` calls, which meant a control existed only as the label
+    /// it happened to be built with -- and so `loop 4` and `loop off` were two
+    /// different controls, and there was nothing for §8's *preferred controls*
+    /// to name.
+    #[must_use]
+    pub const fn reaches(self) -> [Reach; 5] {
+        match self {
+            // §74's list: jog, scratch mode, brake, reverse, cue. The jog is
+            // the platter itself and the scratch mode is a setting rather than
+            // a move, so what is left is the four things a hand reaches for
+            // *while* the other hand is on the record.
+            Doing::Scratching => [
+                Reach::Cue,
+                Reach::Reverse,
+                Reach::Censor,
+                Reach::Slip,
+                Reach::Play,
+            ],
+            // §74's list, minus the stem FX rack. Each stem is a mute rather
+            // than a fader because a rail is pressed, not swept.
+            Doing::Stems => [
+                Reach::StemVocal,
+                Reach::StemDrums,
+                Reach::StemBass,
+                Reach::StemOther,
+                Reach::Loop,
+            ],
+            // The moves a mix is actually made of. The bass is one entry
+            // rather than two, and what it says is what pressing it will do --
+            // a row with "bass out" and "bass in" side by side is a row where
+            // half the buttons are always wrong.
+            Doing::Mixing => [
+                Reach::Sync,
+                Reach::Bass,
+                Reach::Filter,
+                Reach::Keylock,
+                Reach::Loop,
+            ],
+            // §74's list, minus the three that belong to a record rather than
+            // a deck -- tags, rating and transition points are the browser's
+            // and the pair view's, and doing them here would be doing them
+            // where a DJ cannot see which record they are changing.
+            Doing::Preparing => [
+                Reach::Cue,
+                Reach::Mark,
+                Reach::Loop,
+                Reach::Sync,
+                Reach::Keylock,
+            ],
+            Doing::Playing => [
+                Reach::Cue,
+                Reach::Loop,
+                Reach::Sync,
+                Reach::Bass,
+                Reach::Slip,
+            ],
+        }
+    }
+}
+
+/// One control a DJ can reach for.
+///
+/// The *identity* of a control, which is not what it currently says. `bass in`
+/// and `bass out` are one control showing two faces, and until this existed
+/// they were two strings built in two arms -- so §8's *preferred controls* had
+/// nothing stable it could name, and neither did anything else.
+///
+/// Every entry the rail can hold is listed here once, and each [`Doing`] names
+/// five of them. That is what stops the mixing row and the playing row from
+/// spelling the same control two ways.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// Jump to the cue point.
+    Cue,
+    /// Play, or stop.
+    Play,
+    /// Start a four-beat loop, or leave the one that is running.
+    Loop,
+    /// Match this record's tempo and phase to the other one.
+    Sync,
+    /// Pull the low band out, or put it back.
+    Bass,
+    /// Sweep the filter, or return it to the middle.
+    Filter,
+    /// Hold the pitch where it is while the tempo moves.
+    Keylock,
+    /// Keep the record running underneath while you play over it.
+    Slip,
+    /// Run the record backwards.
+    Reverse,
+    /// Reverse while held, and drop back where it would have been.
+    Censor,
+    /// Set the first hot cue where the record is now.
+    Mark,
+    /// Mute the vocal.
+    StemVocal,
+    /// Mute the drums.
+    StemDrums,
+    /// Mute the bass line.
+    StemBass,
+    /// Mute everything the other three are not.
+    StemOther,
+}
+
+impl Reach {
+    /// Every control the rail can hold.
+    pub const ALL: [Self; 15] = [
+        Self::Cue,
+        Self::Play,
+        Self::Loop,
+        Self::Sync,
+        Self::Bass,
+        Self::Filter,
+        Self::Keylock,
+        Self::Slip,
+        Self::Reverse,
+        Self::Censor,
+        Self::Mark,
+        Self::StemVocal,
+        Self::StemDrums,
+        Self::StemBass,
+        Self::StemOther,
+    ];
+
+    /// The slug stored in `controls.json` and sent over the wire.
+    ///
+    /// Not the label: a label says what pressing it will do *now* and changes
+    /// under the DJ, which is exactly what a stored preference must not do.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Cue => "cue",
+            Self::Play => "play",
+            Self::Loop => "loop",
+            Self::Sync => "sync",
+            Self::Bass => "bass",
+            Self::Filter => "filter",
+            Self::Keylock => "keylock",
+            Self::Slip => "slip",
+            Self::Reverse => "reverse",
+            Self::Censor => "censor",
+            Self::Mark => "mark",
+            Self::StemVocal => "stem-vocal",
+            Self::StemDrums => "stem-drums",
+            Self::StemBass => "stem-bass",
+            Self::StemOther => "stem-other",
+        }
+    }
+
+    /// What it does, for the picker that offers it.
+    #[must_use]
+    pub const fn about(self) -> &'static str {
+        match self {
+            Self::Cue => "Jump to the cue point",
+            Self::Play => "Play, or stop",
+            Self::Loop => "Loop four beats, or leave the loop",
+            Self::Sync => "Match tempo and phase to the other record",
+            Self::Bass => "Pull the low band out, or put it back",
+            Self::Filter => "Sweep the filter, or return it to the middle",
+            Self::Keylock => "Hold the pitch while the tempo moves",
+            Self::Slip => "Keep the record running underneath",
+            Self::Reverse => "Run the record backwards",
+            Self::Censor => "Reverse while held, then drop back in place",
+            Self::Mark => "Set the first hot cue where you are",
+            Self::StemVocal => "Mute the vocal",
+            Self::StemDrums => "Mute the drums",
+            Self::StemBass => "Mute the bass line",
+            Self::StemOther => "Mute everything else",
+        }
+    }
+
+    /// The reach a stored slug means, or `None` for one this build lost.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|reach| reach.name() == name)
+    }
+
+    /// This control, as it stands on this deck right now.
+    ///
+    /// The label and the `on` light are both read from the snapshot, so a
+    /// control cannot say one thing and do another: `bass in` is offered
+    /// exactly when pressing it would put the bass back.
+    #[must_use]
+    pub fn build(self, deck: &DeckSnapshot) -> Control {
+        let n = deck.number;
+        let c = |label: &'static str, action: String, on: bool| Control {
+            reach: self,
+            label: label.to_owned(),
+            action,
+            on,
+            kept: false,
+        };
+        match self {
+            Self::Cue => c("cue", format!("deck {n} cue"), false),
+            Self::Play => c("play", format!("deck {n} play_pause"), deck.playing),
+            // One loop control whose label says what pressing it does.
+            Self::Loop => match deck.active_loop {
+                Some(_) => c("loop off", format!("deck {n} loop_off"), true),
+                None => c("loop 4", format!("deck {n} loop 4"), false),
+            },
+            Self::Sync => c("sync", format!("deck {n} sync"), deck.synced),
+            // And one for the low band, for the same reason.
+            Self::Bass => {
+                if deck.eq_low <= BAND_IS_OUT {
+                    c("bass in", format!("deck {n} eq_low 1"), true)
+                } else {
+                    c("bass out", format!("deck {n} eq_low 0"), false)
+                }
+            }
+            Self::Filter => c(
+                "filter",
+                format!(
+                    "deck {n} filter {}",
+                    if deck.filter.abs() > 0.01 { 0.0 } else { -0.6 }
+                ),
+                deck.filter.abs() > 0.01,
+            ),
+            Self::Keylock => c("keylock", format!("deck {n} keylock_toggle"), deck.keylock),
+            Self::Slip => c("slip", format!("deck {n} slip_toggle"), deck.slip),
+            Self::Reverse => c("reverse", format!("deck {n} reverse_toggle"), deck.reversed),
+            Self::Censor => c("censor", format!("deck {n} censor_on"), false),
+            Self::Mark => c("mark", format!("deck {n} hotcue_set 1"), false),
+            Self::StemVocal => c(
+                "vocal",
+                format!("deck {n} stem_mute vocal"),
+                deck.stem_mutes[0],
+            ),
+            Self::StemDrums => c(
+                "drums",
+                format!("deck {n} stem_mute drums"),
+                deck.stem_mutes[1],
+            ),
+            Self::StemBass => c(
+                "bass",
+                format!("deck {n} stem_mute bass"),
+                deck.stem_mutes[2],
+            ),
+            Self::StemOther => c(
+                "other",
+                format!("deck {n} stem_mute other"),
+                deck.stem_mutes[3],
+            ),
+        }
+    }
+}
+
+/// The controls a DJ has asked to keep, as the rail will actually read them.
+///
+/// The same round trip §20's columns make: a slug this build does not have is
+/// dropped, a repeat is collapsed, and more than a rail can hold is cut -- so
+/// what is stored and what is drawn cannot drift apart. Unlike the columns
+/// there is no floor. Keeping nothing is the ordinary case and means djmanzo
+/// judges the whole rail, which is what §74 describes.
+#[must_use]
+pub fn keeping(asked: &[String]) -> Vec<Reach> {
+    let mut kept: Vec<Reach> = Vec::new();
+    for reach in asked.iter().filter_map(|name| Reach::from_name(name)) {
+        if !kept.contains(&reach) {
+            kept.push(reach);
+        }
+    }
+    kept.truncate(MOST);
+    kept
 }
 
 /// One control on the rail.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Control {
+    /// Which control this is, whatever it happens to say at the moment.
+    pub reach: Reach,
     /// What it says. A word, because the rail is scanned rather than read.
     pub label: String,
     /// The action, exactly as `dj_core::Action::parse` accepts it.
@@ -107,16 +377,9 @@ pub struct Control {
     /// false. Both are on the same rail because a DJ reaching for *reverse*
     /// does not first ask which kind it is.
     pub on: bool,
-}
-
-impl Control {
-    fn new(label: impl Into<String>, action: impl Into<String>, on: bool) -> Self {
-        Self {
-            label: label.into(),
-            action: action.into(),
-            on,
-        }
-    }
+    /// True when it is here because the DJ asked for it rather than because
+    /// djmanzo judged it relevant.
+    pub kept: bool,
 }
 
 /// What is at hand on one deck.
@@ -152,13 +415,32 @@ const BAND_IS_OUT: f32 = 0.25;
 /// rail cannot see from its own deck — and the difference between *mixing*
 /// and merely *playing*.
 #[must_use]
-pub fn at_hand(deck: &DeckSnapshot, against: bool) -> AtHand {
+pub fn at_hand(deck: &DeckSnapshot, against: bool, kept: &[Reach]) -> AtHand {
     let doing = doing(deck, against);
+    // §8's *preferred controls*, first and whatever the deck is doing. A DJ
+    // who has said they want keylock within reach has said it about the whole
+    // night, not about the state djmanzo happens to read -- so a kept control
+    // displaces a judged one rather than waiting its turn, and a DJ who keeps
+    // eight has a rail that no longer moves. That is the point of asking.
+    let mut controls: Vec<Control> = Vec::new();
+    for reach in kept {
+        if !controls.iter().any(|c| c.reach == *reach) {
+            let mut control = reach.build(deck);
+            control.kept = true;
+            controls.push(control);
+        }
+    }
+    for reach in doing.reaches() {
+        if !controls.iter().any(|c| c.reach == reach) {
+            controls.push(reach.build(deck));
+        }
+    }
+    controls.truncate(MOST);
     AtHand {
         deck: deck.number,
         doing,
         because: doing.because(),
-        controls: controls(deck, doing),
+        controls,
     }
 }
 
@@ -239,103 +521,6 @@ fn stems_in_play(deck: &DeckSnapshot) -> bool {
     spread.1 - spread.0 > STEM_TOUCHED
 }
 
-fn controls(deck: &DeckSnapshot, doing: Doing) -> Vec<Control> {
-    let n = deck.number;
-    match doing {
-        // §74's list: jog, scratch mode, brake, reverse, cue. The jog is the
-        // platter itself and the scratch mode is a setting rather than a move,
-        // so what is left is the four things a hand reaches for *while* the
-        // other hand is on the record.
-        Doing::Scratching => vec![
-            Control::new("cue", format!("deck {n} cue"), false),
-            Control::new("reverse", format!("deck {n} reverse_toggle"), deck.reversed),
-            Control::new("censor", format!("deck {n} censor_on"), false),
-            Control::new("slip", format!("deck {n} slip_toggle"), deck.slip),
-            Control::new("play", format!("deck {n} play_pause"), deck.playing),
-        ],
-        // §74's list, minus the stem FX rack. Each stem is a mute rather than
-        // a fader because a rail is pressed, not swept.
-        Doing::Stems => vec![
-            Control::new(
-                "vocal",
-                format!("deck {n} stem_mute vocal"),
-                deck.stem_mutes[0],
-            ),
-            Control::new(
-                "drums",
-                format!("deck {n} stem_mute drums"),
-                deck.stem_mutes[1],
-            ),
-            Control::new(
-                "bass",
-                format!("deck {n} stem_mute bass"),
-                deck.stem_mutes[2],
-            ),
-            Control::new(
-                "other",
-                format!("deck {n} stem_mute other"),
-                deck.stem_mutes[3],
-            ),
-            looping(deck),
-        ],
-        // The moves a mix is actually made of. The bass is one entry rather
-        // than two, and what it says is what pressing it will do — a row with
-        // "bass out" and "bass in" side by side is a row where half the
-        // buttons are always wrong.
-        Doing::Mixing => vec![
-            Control::new("sync", format!("deck {n} sync"), deck.synced),
-            bass(deck),
-            Control::new(
-                "filter",
-                format!(
-                    "deck {n} filter {}",
-                    if deck.filter.abs() > 0.01 { 0.0 } else { -0.6 }
-                ),
-                deck.filter.abs() > 0.01,
-            ),
-            Control::new("keylock", format!("deck {n} keylock_toggle"), deck.keylock),
-            looping(deck),
-        ],
-        // §74's list, minus the three that belong to a record rather than a
-        // deck — tags, rating and transition points are the browser's and the
-        // pair view's, and doing them here would be doing them where a DJ
-        // cannot see which record they are changing.
-        Doing::Preparing => vec![
-            Control::new("cue", format!("deck {n} cue"), false),
-            Control::new("mark", format!("deck {n} hotcue_set 1"), false),
-            looping(deck),
-            Control::new("sync", format!("deck {n} sync"), deck.synced),
-            Control::new("keylock", format!("deck {n} keylock_toggle"), deck.keylock),
-        ],
-        Doing::Playing => vec![
-            Control::new("cue", format!("deck {n} cue"), false),
-            looping(deck),
-            Control::new("sync", format!("deck {n} sync"), deck.synced),
-            bass(deck),
-            Control::new("slip", format!("deck {n} slip_toggle"), deck.slip),
-        ],
-    }
-}
-
-/// One loop control whose label says what pressing it does.
-fn looping(deck: &DeckSnapshot) -> Control {
-    let n = deck.number;
-    match deck.active_loop {
-        Some(_) => Control::new("loop off", format!("deck {n} loop_off"), true),
-        None => Control::new("loop 4", format!("deck {n} loop 4"), false),
-    }
-}
-
-/// And one for the low band, for the same reason.
-fn bass(deck: &DeckSnapshot) -> Control {
-    let n = deck.number;
-    if deck.eq_low <= BAND_IS_OUT {
-        Control::new("bass in", format!("deck {n} eq_low 1"), true)
-    } else {
-        Control::new("bass out", format!("deck {n} eq_low 0"), false)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -363,6 +548,10 @@ mod tests {
     }
 
     fn every_state() -> Vec<AtHand> {
+        every_state_keeping(&[])
+    }
+
+    fn every_state_keeping(kept: &[Reach]) -> Vec<AtHand> {
         let scratching = DeckSnapshot {
             jog_touched: true,
             playing: true,
@@ -382,12 +571,12 @@ mod tests {
             ..deck()
         };
         vec![
-            at_hand(&scratching, false),
-            at_hand(&stems, false),
-            at_hand(&playing, true),
-            at_hand(&deck(), false),
-            at_hand(&playing, false),
-            at_hand(&empty, false),
+            at_hand(&scratching, false, kept),
+            at_hand(&stems, false, kept),
+            at_hand(&playing, true, kept),
+            at_hand(&deck(), false, kept),
+            at_hand(&playing, false, kept),
+            at_hand(&empty, false, kept),
         ]
     }
 
@@ -452,24 +641,24 @@ mod tests {
             stem_mutes: [true, false, false, false],
             ..deck()
         };
-        assert_eq!(at_hand(&busy, true).doing, Doing::Scratching);
+        assert_eq!(at_hand(&busy, true, &[]).doing, Doing::Scratching);
 
         // Take the hand off and the stems are what is left.
         let stems = DeckSnapshot {
             jog_touched: false,
             ..busy.clone()
         };
-        assert_eq!(at_hand(&stems, true).doing, Doing::Stems);
+        assert_eq!(at_hand(&stems, true, &[]).doing, Doing::Stems);
 
         // Un-mute it and it is a mix.
         let mixing = DeckSnapshot {
             stem_mutes: [false; 4],
             ..stems.clone()
         };
-        assert_eq!(at_hand(&mixing, true).doing, Doing::Mixing);
+        assert_eq!(at_hand(&mixing, true, &[]).doing, Doing::Mixing);
 
         // And with nothing else audible it is simply playing.
-        assert_eq!(at_hand(&mixing, false).doing, Doing::Playing);
+        assert_eq!(at_hand(&mixing, false, &[]).doing, Doing::Playing);
     }
 
     /// **A stem trimmed an hour ago is not "playing the stems".**
@@ -486,14 +675,14 @@ mod tests {
             stem_filters: [0.5; 4],
             ..deck()
         };
-        assert_eq!(at_hand(&shaped, false).doing, Doing::Playing);
+        assert_eq!(at_hand(&shaped, false, &[]).doing, Doing::Playing);
 
         // Pulling one stem down *is* playing them.
         let played = DeckSnapshot {
             stem_volumes: [0.0, 1.0, 1.0, 1.0],
             ..shaped.clone()
         };
-        assert_eq!(at_hand(&played, false).doing, Doing::Stems);
+        assert_eq!(at_hand(&played, false, &[]).doing, Doing::Stems);
 
         // And four stems the engine has not published yet — all zero, which is
         // every deck in the first second after launch — are not four stems
@@ -502,7 +691,7 @@ mod tests {
             stem_volumes: [0.0; 4],
             ..shaped
         };
-        assert_eq!(at_hand(&fresh, false).doing, Doing::Playing);
+        assert_eq!(at_hand(&fresh, false, &[]).doing, Doing::Playing);
     }
 
     /// **A control that latches says what pressing it will do.**
@@ -517,7 +706,7 @@ mod tests {
             eq_low: 0.0,
             ..deck()
         };
-        let control = at_hand(&out, true)
+        let control = at_hand(&out, true, &[])
             .controls
             .into_iter()
             .find(|c| c.action.contains("eq_low"))
@@ -527,7 +716,7 @@ mod tests {
         assert!(control.on);
 
         let flat = DeckSnapshot { eq_low: 1.0, ..out };
-        let control = at_hand(&flat, true)
+        let control = at_hand(&flat, true, &[])
             .controls
             .into_iter()
             .find(|c| c.action.contains("eq_low"))
@@ -589,7 +778,135 @@ mod tests {
             loaded: false,
             ..deck()
         };
-        assert_eq!(at_hand(&empty, false).doing, Doing::Preparing);
-        assert!(at_hand(&empty, false).controls.len() >= FEWEST);
+        assert_eq!(at_hand(&empty, false, &[]).doing, Doing::Preparing);
+        assert!(at_hand(&empty, false, &[]).controls.len() >= FEWEST);
+    }
+
+    /// **A control you keep is there whatever the deck is doing.**
+    ///
+    /// §8 Level 1's *preferred controls*, and the whole of it: a DJ who said
+    /// they want keylock within reach said it about the night, not about the
+    /// one state djmanzo happens to be reading. A rail that honoured the
+    /// preference in four states out of six would be worse than one that
+    /// ignored it, because the DJ would reach for it and find something else
+    /// under the finger.
+    #[test]
+    fn a_control_you_keep_is_on_the_rail_in_every_state() {
+        let kept = keeping(&["keylock".to_owned()]);
+        for hand in every_state_keeping(&kept) {
+            let found = hand
+                .controls
+                .iter()
+                .find(|c| c.reach == Reach::Keylock)
+                .unwrap_or_else(|| panic!("{} dropped a kept control", hand.doing.slug()));
+            assert!(
+                found.kept,
+                "{} offers keylock without saying the DJ asked for it",
+                hand.doing.slug()
+            );
+            assert_eq!(found.action, "deck 1 keylock_toggle");
+        }
+    }
+
+    /// **A kept control is not a second copy of one already there.**
+    ///
+    /// Mixing already offers keylock. Keeping it must mark that entry rather
+    /// than add another beside it — two identical buttons in a row reached for
+    /// without looking is worse than either of them alone.
+    #[test]
+    fn keeping_something_the_rail_already_offers_does_not_double_it() {
+        let mixing = DeckSnapshot {
+            playing: true,
+            ..deck()
+        };
+        let hand = at_hand(&mixing, true, &keeping(&["keylock".to_owned()]));
+        assert_eq!(hand.doing, Doing::Mixing);
+        let keylocks: Vec<&Control> = hand
+            .controls
+            .iter()
+            .filter(|c| c.reach == Reach::Keylock)
+            .collect();
+        assert_eq!(keylocks.len(), 1, "{:?}", hand.controls);
+        assert!(keylocks[0].kept);
+    }
+
+    /// **Kept controls displace judged ones rather than overflowing the rail.**
+    ///
+    /// §74's ceiling is eight and it is not negotiable: the rail is reached for
+    /// without looking, and a row that grew to thirteen is a row where nothing
+    /// is where it was. A DJ who keeps eight has said they want a rail that
+    /// does not move, which is a thing they are allowed to want.
+    #[test]
+    fn keeping_more_than_the_rail_holds_still_holds_eight() {
+        let asked: Vec<String> = Reach::ALL.iter().map(|r| r.name().to_owned()).collect();
+        let kept = keeping(&asked);
+        assert_eq!(kept.len(), MOST);
+        for hand in every_state_keeping(&kept) {
+            assert_eq!(hand.controls.len(), MOST, "{}", hand.doing.slug());
+            assert!(
+                hand.controls.iter().all(|c| c.kept),
+                "{} let a judged control onto a rail the DJ filled",
+                hand.doing.slug()
+            );
+        }
+    }
+
+    /// **A slug this build has never heard of costs the preference, not the
+    /// rail.**
+    ///
+    /// The same rule §20's columns follow: a `controls.json` written by a later
+    /// djmanzo should leave a DJ with the controls this one *does* have, rather
+    /// than with an error where the rail was.
+    #[test]
+    fn a_control_this_build_does_not_have_is_dropped_and_the_rest_kept() {
+        let asked = vec![
+            "spinback".to_owned(),
+            "sync".to_owned(),
+            "sync".to_owned(),
+            "".to_owned(),
+        ];
+        assert_eq!(keeping(&asked), vec![Reach::Sync]);
+    }
+
+    /// **Every control the picker can offer is one the rail can build.**
+    ///
+    /// The reaches are what a DJ ticks and what `controls.json` stores, so one
+    /// that produced an action the parser refuses would be a stored preference
+    /// for a button that does nothing.
+    #[test]
+    fn every_control_a_dj_can_keep_is_a_real_action() {
+        for reach in Reach::ALL {
+            let control = reach.build(&deck());
+            assert!(
+                Action::parse(&control.action).is_ok(),
+                "{} offers {:?}, which the parser refuses",
+                reach.name(),
+                control.action
+            );
+            assert!(!control.label.is_empty(), "{} has no label", reach.name());
+            assert!(!reach.about().is_empty());
+            assert_eq!(Reach::from_name(reach.name()), Some(reach));
+        }
+    }
+
+    /// **Every state's five are five different controls.**
+    ///
+    /// A [`Doing`] naming the same reach twice would draw four buttons where
+    /// §74 asks for five, and the duplicate would be invisible: both entries
+    /// build the same label.
+    #[test]
+    fn no_state_reaches_for_the_same_control_twice() {
+        for doing in [
+            Doing::Scratching,
+            Doing::Stems,
+            Doing::Mixing,
+            Doing::Preparing,
+            Doing::Playing,
+        ] {
+            let mut reaches = doing.reaches().to_vec();
+            reaches.sort_unstable_by_key(|r| r.name());
+            reaches.dedup();
+            assert_eq!(reaches.len(), 5, "{} repeats a control", doing.slug());
+        }
     }
 }

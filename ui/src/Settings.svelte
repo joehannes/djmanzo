@@ -9,7 +9,17 @@
    * refuses.
    */
   import Screens from "./Screens.svelte";
-  import { cockpitLocks, type LockOption } from "./api";
+  import {
+    cockpitLocks,
+    padPages,
+    railControls,
+    remembered,
+    type LockOption,
+    type PadPageDto,
+    type RailControl,
+    type Remembered,
+  } from "./api";
+  import { remembers, starPage, keepControl } from "./remembers.svelte";
   import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import {
     addMusicFolder,
@@ -474,6 +484,37 @@
     onLogoChange();
   }
 
+  /**
+   * §8 Level 1's own list, read off Rust.
+   *
+   * Nine rows including the one djmanzo does *not* keep, which says so. A list
+   * of eight would read as the whole of §8, and a preference that is silently
+   * forgotten looks exactly like one that was never set.
+   */
+  let remembers_list = $state<Remembered[]>([]);
+  /** Every pad page there is, so the stars have something to be set against. */
+  let allPages = $state<PadPageDto[]>([]);
+  /** Every control §74's rail can hold. */
+  let allControls = $state<RailControl[]>([]);
+
+  $effect(() => {
+    // Deck 1 because the *names* of the pages are the same on every deck — only
+    // the action strings are addressed to a deck number, and none of those are
+    // read here.
+    void Promise.all([remembered(), padPages(1), railControls()])
+      .then(([rows, pages, controls]) => {
+        remembers_list = rows;
+        allPages = pages;
+        allControls = controls;
+      })
+      .catch(() => {
+        // The block draws nothing rather than a guess, on the same principle as
+        // the column picker: a settings page that invented its own list of what
+        // djmanzo remembers would be the second description this table exists
+        // to prevent.
+      });
+  });
+
   const audioLabel = (source: Source) =>
     source.audio === "direct"
       ? "Mixable"
@@ -535,6 +576,80 @@
             />
             <span class="lock-name">{lock.slug}</span>
             <span class="lock-about">{lock.about}</span>
+          </label>
+        </li>
+      {/each}
+    </ul>
+  </div>
+
+  <!--
+    §8 Level 1, directly under §79's locks and on purpose: that block says what
+    djmanzo may change about itself, and this one says what it keeps about you.
+    They are the two halves of one question a DJ asks once — "will this be the
+    way I left it tomorrow" — and answering them ten sections apart would be
+    answering half of it.
+  -->
+  <div class="block remembers">
+    <h3>What djmanzo remembers</h3>
+    <p class="hint">
+      Nine things survive a restart, and one does not. The list is djmanzo's own
+      rather than a description of it: a test fails if a row here claims
+      something no file backs.
+    </p>
+    <ul class="remember-list">
+      {#each remembers_list as row (row.slug)}
+        <li data-remembers={row.slug} class:unkept={!row.kept}>
+          <span class="remember-about">{row.about}</span>
+          {#if row.kept}
+            <span class="remember-cost">Forgotten: {row.forgotten}</span>
+          {:else}
+            <!-- Said plainly, in the place a DJ would go looking. "Not yet, and
+                 here is what has to happen first" is a different thing from
+                 "no". -->
+            <span class="remember-not">Not yet — {row.why_not}</span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+
+    <h4>Pad pages you play from</h4>
+    <p class="hint">
+      Starred pages come first on every deck's pad zone. The rest stay where
+      they are — a page you never star is still a page you can reach.
+    </p>
+    <ul class="picker" data-picker="pad-pages">
+      {#each allPages as page (page.name)}
+        <li>
+          <label>
+            <input
+              type="checkbox"
+              checked={remembers.pages.includes(page.name)}
+              onchange={(event) => void starPage(page.name, event.currentTarget.checked)}
+            />
+            <span class="pick-name">{page.name}</span>
+          </label>
+        </li>
+      {/each}
+    </ul>
+
+    <h4>Controls to keep within reach</h4>
+    <p class="hint">
+      The rail holds the four to eight controls djmanzo judges you need this
+      second. Anything kept here is on it whatever the deck is doing — keep
+      eight and the rail stops moving altogether, which is a thing you are
+      allowed to want.
+    </p>
+    <ul class="picker" data-picker="rail-controls">
+      {#each allControls as control (control.slug)}
+        <li>
+          <label>
+            <input
+              type="checkbox"
+              checked={remembers.controls.includes(control.slug)}
+              onchange={(event) => void keepControl(control.slug, event.currentTarget.checked)}
+            />
+            <span class="pick-name">{control.slug}</span>
+            <span class="pick-about">{control.about}</span>
           </label>
         </li>
       {/each}
@@ -1449,6 +1564,90 @@
   }
 
   .lock-about {
+    color: var(--muted);
+    font-size: 0.85em;
+  }
+
+  .remembers h4 {
+    margin: 1rem 0 0;
+    font-size: 0.85em;
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+  }
+
+  .remember-list,
+  .picker {
+    list-style: none;
+    margin: 0.6rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .picker {
+    gap: 0.35rem;
+  }
+
+  /*
+    Wider between rows than within one. In a narrow dock every row wraps onto
+    two lines, and with one gap for both a reader cannot tell which cost belongs
+    to which thing -- the list reads as nine alternating claims instead of nine
+    pairs. Driving the panel was the only way to see it: at the width the
+    stylesheet was written against, every row fitted on one line.
+  */
+  .remember-list {
+    gap: 0.7rem;
+  }
+
+  .remember-list li {
+    display: block;
+  }
+
+  .remember-about {
+    display: block;
+  }
+
+  /* Indented under what it is about, for the same reason. */
+  .remember-cost,
+  .remember-not {
+    display: block;
+    padding-left: 0.9rem;
+  }
+
+  .remember-cost,
+  .remember-not {
+    color: var(--muted);
+    font-size: 0.85em;
+  }
+
+
+  /*
+    The one row djmanzo does not keep is dimmed and its sentence warned, so the
+    list can be read at a glance as "these survive, that one does not" without
+    reading nine lines of prose to find the exception.
+  */
+  .remember-list li.unkept .remember-about {
+    color: var(--muted);
+  }
+
+  .remember-not {
+    color: var(--warn);
+  }
+
+  .picker label {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+
+  .pick-name {
+    min-width: 6.5rem;
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+  }
+
+  .pick-about {
     color: var(--muted);
     font-size: 0.85em;
   }

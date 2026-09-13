@@ -13,6 +13,7 @@
    */
   import type { DeckState, Lit, PadPageDto, SamplerState } from "./api";
   import SvgButton from "./SvgButton.svelte";
+  import { remembers } from "./remembers.svelte";
 
   let {
     pages,
@@ -35,13 +36,19 @@
   } = $props();
 
   /**
-   * Which page is showing.
+   * Which page is showing, when the DJ has chosen one.
    *
-   * Local to the deck, and deliberately not persisted: a DJ who left the pads
-   * on the roll page an hour ago does not want to come back to a deck whose
-   * cues are hidden. Cues are the page you fall back to.
+   * `null` means "whatever this deck should open on", which is the first
+   * favourite and cues failing that. Still not the page it was *left* on, and
+   * that part of the original reasoning stands: a DJ who left the pads on roll
+   * an hour ago does not want to come back to a deck whose cues are hidden.
+   *
+   * §8 Level 1 asks for *favorite pad pages*, and a favourite is a different
+   * thing from a last-used — it is a deliberate statement about how this DJ
+   * plays, made once in Settings, rather than wherever a finger happened to
+   * leave the tabs.
    */
-  let page = $state("cues");
+  let page = $state<string | null>(null);
 
   /**
    * Pages worth showing for this track.
@@ -51,10 +58,32 @@
    * yet". Hidden rather than greyed out, on the same principle as the FX beat
    * control.
    */
-  const usable = $derived(
+  const playable = $derived(
     pages.filter((p) => !p.needs_grid || deck.analysis?.bpm != null),
   );
 
+  /**
+   * The pages, favourites first.
+   *
+   * Ordered rather than filtered: a page a DJ never stars is still a page they
+   * can reach, and hiding the slicer because it was not starred would be
+   * djmanzo deciding what is on the deck. The stars move the ones they play
+   * from to the front of the row, where a hand finds them.
+   */
+  const usable = $derived([
+    ...remembers.pages
+      .map((name) => playable.find((p) => p.name === name))
+      .filter((p): p is PadPageDto => p !== undefined),
+    ...playable.filter((p) => !remembers.pages.includes(p.name)),
+  ]);
+
+  /**
+   * The page on screen.
+   *
+   * Whatever the DJ clicked, else the first of what `usable` puts in front —
+   * the first favourite this track can actually use, and cues failing that,
+   * which is where the pad zone has always opened.
+   */
   const current = $derived(
     usable.find((p) => p.name === page) ?? usable[0] ?? null,
   );

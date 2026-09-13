@@ -1619,11 +1619,17 @@ pub struct MixDto {
 /// One control on §74's contextual rail.
 #[derive(Debug, Clone, Serialize)]
 pub struct AtHandControlDto {
+    /// Which control this is, whatever it currently says — the slug §8's
+    /// *preferred controls* are stored under.
+    pub reach: String,
     pub label: String,
     /// The action, exactly as the parser accepts it — so pressing it is the
     /// same event as typing it or mapping a controller to it.
     pub action: String,
     pub on: bool,
+    /// True when it is here because the DJ kept it rather than because djmanzo
+    /// judged it relevant.
+    pub kept: bool,
 }
 
 /// What is at hand on one deck.
@@ -1665,7 +1671,12 @@ pub fn at_hand(state: State<'_, AppState>, deck: Option<u8>) -> Result<AtHandDto
         .iter()
         .any(|other| other.number != deck && other.playing && other.pre_fader_level > 0.0);
 
-    let hand = crate::at_hand::at_hand(view, against);
+    // §8 Level 1's *preferred controls*. Read here rather than inside
+    // `at_hand` because that module judges a deck and nothing else: a
+    // preferences file is the host's business, and a rail that read one would
+    // be a rail that could not be tested without a config directory.
+    let kept = crate::at_hand::keeping(&state.kept_controls());
+    let hand = crate::at_hand::at_hand(view, against, &kept);
     Ok(AtHandDto {
         deck: hand.deck,
         doing: hand.doing.slug().to_owned(),
@@ -1674,9 +1685,11 @@ pub fn at_hand(state: State<'_, AppState>, deck: Option<u8>) -> Result<AtHandDto
             .controls
             .into_iter()
             .map(|c| AtHandControlDto {
+                reach: c.reach.name().to_owned(),
                 label: c.label,
                 action: c.action,
                 on: c.on,
+                kept: c.kept,
             })
             .collect(),
     })
@@ -9157,6 +9170,171 @@ pub fn set_chosen_columns(state: State<'_, AppState>, columns: Vec<String>) -> V
         .collect();
     state.set_chosen_columns(&chosen);
     chosen
+}
+
+/// How the performance table is sorted.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SortDto {
+    /// The column slug, as `library_columns` spells it.
+    pub column: String,
+    /// Smallest first.
+    pub ascending: bool,
+}
+
+/// How the DJ last sorted the library.
+///
+/// §8 Level 1's *sorting*. The browser used to start at artist, A to Z, every
+/// time it was mounted — including every time a panel closed and reopened —
+/// so a DJ who put the table in BPM order to find the slow records lost it the
+/// moment they looked at anything else.
+#[tauri::command]
+#[must_use]
+pub fn library_sort(state: State<'_, AppState>) -> SortDto {
+    let sort = state.library_sort().unwrap_or_default();
+    SortDto {
+        column: sort.by.name().to_owned(),
+        ascending: sort.ascending,
+    }
+}
+
+/// Remember how the library is sorted, and take back what will be used.
+///
+/// The round trip the columns and the workspace both make: a column this build
+/// does not have falls back to the default rather than being stored and
+/// silently ignored.
+#[tauri::command]
+#[must_use]
+pub fn set_library_sort(state: State<'_, AppState>, column: String, ascending: bool) -> SortDto {
+    let sort = crate::columns::Sort::of(&column, ascending);
+    state.set_library_sort(sort);
+    SortDto {
+        column: sort.by.name().to_owned(),
+        ascending: sort.ascending,
+    }
+}
+
+/// The pad pages the DJ has starred.
+///
+/// §8 Level 1's *favorite pad pages*, and the word is `favorite` rather than
+/// `last used` on purpose. The pad zone deliberately did not remember the page
+/// it was left on, and the reason was a good one: a DJ who left the pads on
+/// the roll page an hour ago does not want to come back to a deck whose cues
+/// are hidden. A favourite is not that — it is a deliberate choice about how
+/// this DJ plays, which is exactly what §8 Level 1 is a list of.
+#[tauri::command]
+#[must_use]
+pub fn favourite_pad_pages(state: State<'_, AppState>) -> Vec<String> {
+    keeping_pages(&state.favourite_pad_pages())
+}
+
+/// Star the pad pages, and take back what will actually be used.
+#[tauri::command]
+#[must_use]
+pub fn set_favourite_pad_pages(state: State<'_, AppState>, pages: Vec<String>) -> Vec<String> {
+    let kept = keeping_pages(&pages);
+    state.set_favourite_pad_pages(&kept);
+    kept
+}
+
+/// Drop pages this build does not have, and collapse repeats.
+///
+/// The same round trip as the columns'. A page name is stored text and a later
+/// djmanzo may have pages this one has never heard of.
+fn keeping_pages(asked: &[String]) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for page in asked
+        .iter()
+        .filter_map(|name| dj_core::PadPage::parse(name))
+    {
+        let name = page.name().to_owned();
+        if !kept.contains(&name) {
+            kept.push(name);
+        }
+    }
+    kept
+}
+
+/// One control §74's rail can hold, as the picker offers it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ReachDto {
+    /// The slug stored and sent back.
+    pub slug: String,
+    /// What it does, in a sentence.
+    pub about: String,
+}
+
+/// Every control the rail can hold.
+#[tauri::command]
+#[must_use]
+pub fn rail_controls() -> Vec<ReachDto> {
+    crate::at_hand::Reach::ALL
+        .iter()
+        .map(|reach| ReachDto {
+            slug: reach.name().to_owned(),
+            about: reach.about().to_owned(),
+        })
+        .collect()
+}
+
+/// The controls the DJ keeps within reach whatever the deck is doing.
+///
+/// §8 Level 1's *preferred controls*. Empty is the ordinary case and means
+/// djmanzo judges the whole rail, which is what §74 describes.
+#[tauri::command]
+#[must_use]
+pub fn kept_controls(state: State<'_, AppState>) -> Vec<String> {
+    crate::at_hand::keeping(&state.kept_controls())
+        .into_iter()
+        .map(|reach| reach.name().to_owned())
+        .collect()
+}
+
+/// Keep these controls within reach, and take back what the rail will use.
+#[tauri::command]
+#[must_use]
+pub fn set_kept_controls(state: State<'_, AppState>, controls: Vec<String>) -> Vec<String> {
+    let kept: Vec<String> = crate::at_hand::keeping(&controls)
+        .into_iter()
+        .map(|reach| reach.name().to_owned())
+        .collect();
+    state.set_kept_controls(&kept);
+    kept
+}
+
+/// One of §8 Level 1's nine, and whether djmanzo actually keeps it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RememberedDto {
+    pub slug: String,
+    /// What it is, in the DJ's words.
+    pub about: String,
+    /// What losing it would cost.
+    pub forgotten: String,
+    /// Whether djmanzo keeps it at all.
+    pub kept: bool,
+    /// Why not, for the rows it does not. Empty for the rows it does.
+    pub why_not: String,
+}
+
+/// What djmanzo remembers about you, and what it does not.
+///
+/// §8 Level 1's own list, read off `crate::remembered` rather than written out
+/// in the interface, so a row cannot claim something no file backs — a test
+/// checks every claim against `state.rs`. The row djmanzo does *not* keep is
+/// on the list saying so: a list of eight would read as the whole of §8, and a
+/// preference that is silently forgotten looks exactly like one never set.
+#[tauri::command]
+#[must_use]
+pub fn remembered() -> Vec<RememberedDto> {
+    crate::remembered::Remembered::ALL
+        .iter()
+        .map(|entry| RememberedDto {
+            slug: entry.name().to_owned(),
+            about: entry.about().to_owned(),
+            forgotten: entry.forgotten().to_owned(),
+            kept: entry.kept(),
+            why_not: entry.why_not().to_owned(),
+        })
+        .collect()
 }
 
 /// The arrangements the DJ has saved under names of their own.
