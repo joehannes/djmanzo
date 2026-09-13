@@ -31,6 +31,10 @@
   import { setAside } from "./prepare.svelte";
   import Cards from "./Cards.svelte";
   import {
+    type LibraryColumn,
+    setChosenColumns,
+    chosenColumns,
+    libraryColumns,
     addToPlaylist,
     checkFilter,
     clearTrackField,
@@ -306,9 +310,155 @@
   /** Path of the row being loaded, so it can say so. */
   let loading = $state<string | null>(null);
 
-  type Column = "title" | "artist" | "album" | "bpm" | "key" | "duration_seconds";
+  /**
+   * §20's columns, as Rust offers them.
+   *
+   * The list, the headings and the sentences are `dj_app::columns::Column`'s, so
+   * a column added there appears in the picker without this file being touched
+   * and the word a DJ reads in the picker is the word at the top of the column.
+   * What is *here* is the one thing that genuinely belongs to pixels: how each
+   * cell is drawn, in `cell` below — and a Rust test reads this file and fails
+   * when Rust offers a column the table has no cell for, which is the trap §7's
+   * presets fell into.
+   */
+  let columns = $state<LibraryColumn[]>([]);
+  let chosen = $state<string[]>([]);
+  /** Whether the column picker is open. */
+  let picking = $state(false);
+
+  /**
+   * The columns to draw, in order.
+   *
+   * Rust decides *which* — it drops a slug this build does not have and puts
+   * the title back — and this only pairs each with its heading. A column chosen
+   * and not offered is skipped rather than drawn blank, which is the same
+   * posture the workspace resolver takes towards a surface it cannot place.
+   */
+  /**
+   * Tick or untick one column, and take back what will be drawn.
+   *
+   * Through Rust rather than applied here: it drops a slug this build does not
+   * have and puts the title back, and a browser that decided either for itself
+   * would be the same judgement written twice. Optimistic first, because §20
+   * asks for *instant* and a round trip to a preferences file is not.
+   */
+  async function chooseColumn(slug: string, on: boolean) {
+    const next = on
+      ? [...chosen.filter((held) => held !== slug), slug]
+      : chosen.filter((held) => held !== slug);
+    chosen = next;
+    try {
+      chosen = await setChosenColumns(next);
+    } catch {
+      // Keeping what the DJ ticked. A preferences file that cannot be written
+      // is not a reason to un-tick a box under them — the same posture every
+      // other write in this application takes.
+    }
+  }
+
+  const drawn = $derived(
+    chosen
+      .map((slug) => columns.find((column) => column.slug === slug))
+      .filter((column): column is LibraryColumn => column !== undefined),
+  );
+
+  type Column = string;
   let sortBy = $state<Column>("artist");
   let ascending = $state(true);
+
+  /**
+   * What a column sorts by.
+   *
+   * The DTO field, which is not always the slug: a column is named for what a
+   * DJ calls it and a field for what it holds, and `duration` / `Time` /
+   * `duration_seconds` are three names for one number. Kept beside `cell` so
+   * the two cannot disagree about which field a column is.
+   */
+  function fieldOf(slug: string): keyof LibraryTrack {
+    switch (slug) {
+      case "duration":
+        return "duration_seconds";
+      case "plays":
+        return "play_count";
+      case "last-played":
+        return "last_played";
+      case "phrases":
+        return "phrase_beats";
+      case "loudness":
+        return "loudness_lufs";
+      default:
+        return slug as keyof LibraryTrack;
+    }
+  }
+
+  /**
+   * What one cell reads.
+   *
+   * A blank where djmanzo has nothing, never a zero or a guess: an empty cell
+   * says "not known" and a 0.0 says "measured, and it is zero", and a DJ
+   * scanning a hundred rows will not stop to wonder which.
+   *
+   * The title is not here: it carries the colour stripe and the "why" chips, so
+   * it is drawn as markup rather than as a string.
+   */
+  function cell(slug: string, track: LibraryTrack): string {
+    switch (slug) {
+      case "title":
+        return track.title;
+      case "artist":
+        return track.artist;
+      case "album":
+        return track.album ?? "";
+      case "genre":
+        return track.genre ?? "";
+      case "year":
+        return track.year != null ? String(track.year) : "";
+      case "bpm":
+        return track.bpm != null ? track.bpm.toFixed(1) : "";
+      case "key":
+        return track.key ?? "";
+      case "duration":
+        return formatTime(track.duration_seconds);
+      case "loudness":
+        return track.loudness_lufs != null ? `${track.loudness_lufs.toFixed(1)}` : "";
+      // Beats rather than bars, because that is what the analyser measures and
+      // what `phrase_beats` holds. A record whose structure is not clear enough
+      // to say has none, which is a real answer.
+      case "phrases":
+        return track.phrase_beats != null ? `${track.phrase_beats}` : "";
+      // Filled stars rather than a number: a rating is read at a glance and
+      // "4" and "4.0" both look like a measurement.
+      case "rating":
+        return track.rating != null ? "\u2605".repeat(track.rating) : "";
+      case "plays":
+        return track.play_count > 0 ? String(track.play_count) : "";
+      case "last-played":
+        return track.last_played != null ? howLongAgo(track.last_played) : "";
+      // A word rather than a tick: the row is already dimmed when a record is
+      // unanalysed, and this column is for a DJ who wants to sort by it.
+      case "analysed":
+        return track.analysed ? "yes" : "no";
+      default:
+        return "";
+    }
+  }
+
+  /**
+   * How long ago a record was last played, as a DJ would say it.
+   *
+   * Deliberately not `whenPlayed` below, which answers a different question for
+   * a different surface: the play history asks *when*, and a date is the answer;
+   * this column asks *was this in last weekend's set*, and "3 days" is.
+   */
+  function howLongAgo(unixSeconds: number): string {
+    const days = Math.floor((Date.now() / 1000 - unixSeconds) / 86_400);
+    if (days <= 0) return "today";
+    if (days === 1) return "yesterday";
+    if (days < 7) return `${days} days`;
+    if (days < 60) return `${Math.floor(days / 7)} wk`;
+    if (days < 730) return `${Math.floor(days / 30)} mo`;
+    return `${Math.floor(days / 365)} yr`;
+  }
 
   /**
    * How often the panel re-reads the identifier's progress.
@@ -688,8 +838,9 @@
     const rows = [...tracks];
     const direction = ascending ? 1 : -1;
     rows.sort((a, b) => {
-      const x = a[sortBy];
-      const y = b[sortBy];
+      const field = fieldOf(sortBy);
+      const x = a[field];
+      const y = b[field];
       // Nulls last whichever way the column is sorted. An unanalysed track has
       // no BPM, and burying those among the 60s or the 180s would be worse than
       // keeping them together at the end where they can be seen.
@@ -707,6 +858,20 @@
   const deckNumbers = $derived(Array.from({ length: deckCount }, (_, i) => i + 1));
 
   onMount(() => {
+    // §20's columns. Both, and in this order: the vocabulary first so a chosen
+    // slug has a heading to pair with, then the choice. A table drawn between
+    // the two answers would flicker through the shipped six on every open.
+    void libraryColumns()
+      .then((offered) => {
+        columns = offered;
+        return chosenColumns();
+      })
+      .then((held) => (chosen = held))
+      .catch(() => {
+        // The table falls back to nothing rather than to a guess, and the
+        // picker stays shut: a browser that invented its own six would be a
+        // second description of a list Rust owns.
+      });
     void refresh();
     void refreshStatus();
     void refreshPlaylists();
@@ -790,6 +955,26 @@
         onclick={() => (lens = !lens)}
       >AI lens</button>
     </span>
+    <!--
+      §20's *instant custom column configuration*. Beside the view switch and
+      the lens rather than in Settings, because "instant" is the instruction: a
+      DJ who wants to see the year of everything wants it now, not after
+      finding a preferences panel.
+
+      Only over the table. The cards view has no columns, and a control that
+      does nothing where it is drawn is worse than one that is absent.
+    -->
+    {#if showing === "table" && columns.length > 0}
+      <span class="views" role="group" aria-label="Columns">
+        <button
+          class:on={picking}
+          aria-pressed={picking}
+          data-testid="columns-toggle"
+          title="Which columns this table carries"
+          onclick={() => (picking = !picking)}
+        >Columns</button>
+      </span>
+    {/if}
     <IconButton icon="fa-solid fa-folder-plus" title="Add folder…" onClick={addFolder} disabled={busy} />
     <IconButton icon="fa-solid fa-repeat" title={busy ? "Scanning…" : "Rescan"} onClick={rescan} disabled={busy || !status?.folders.length} />
     <IconButton icon="fa-solid fa-file-import" title="Import a rekordbox, Traktor or iTunes library export" onClick={() => importFrom(false)} disabled={busy} />
@@ -1164,6 +1349,40 @@
         onDrag={startDrag}
       />
     {:else}
+    {#if picking}
+      <!--
+        The picker, above the table it changes, so a DJ sees the column appear
+        as they tick it. §20 asks for *instant*, and a panel that had to be
+        closed to see its own effect would not be.
+
+        Every column Rust offers, in Rust's order, with Rust's sentence. Ticking
+        appends to the end rather than slotting into the offered order, because
+        a DJ ticking Year while looking at the table is putting it *next*, and
+        a column that appeared six places to the left is one they then have to
+        find.
+      -->
+      <div class="column-picker" role="group" aria-label="Columns to show">
+        {#each columns as column (column.slug)}
+          <!--
+            The title's box is disabled rather than merely refused. Rust puts it
+            back whatever is asked — a table without titles is a list of BPMs
+            with no records attached — and a checkbox that silently re-ticks
+            itself is a DJ wondering whether the picker is broken. Saying so is
+            the difference between a rule and a glitch.
+          -->
+          <label data-column={column.slug} title={column.about}>
+            <input
+              type="checkbox"
+              checked={chosen.includes(column.slug)}
+              disabled={column.slug === "title"}
+              onchange={(event) =>
+                void chooseColumn(column.slug, event.currentTarget.checked)}
+            />
+            {column.heading}
+          </label>
+        {/each}
+      </div>
+    {/if}
     <div class="table-scroll">
       <table>
         <thead>
@@ -1175,14 +1394,20 @@
               BPM, and then a checkbox with no idea what ticking it does.
             -->
             <th class="pick"><span class="offscreen">Pick</span></th>
-            {#each [["title", "Title"], ["artist", "Artist"], ["album", "Album"], ["bpm", "BPM"], ["key", "Key"], ["duration_seconds", "Time"]] as [column, heading] (column)}
-              <th>
+            <!--
+              §20's *instant custom column configuration*. One list drives the
+              headings here and the cells below, because a header and a cell are
+              two descriptions of one column and every other place that was true
+              in this codebase has a scar.
+            -->
+            {#each drawn as column (column.slug)}
+              <th data-column={column.slug} title={column.about}>
                 <button
                   class="sort"
-                  class:active={sortBy === column}
-                  onclick={() => sort(column as Column)}
+                  class:active={sortBy === column.slug}
+                  onclick={() => sort(column.slug)}
                 >
-                  {heading}{#if sortBy === column}<span class="arrow">{ascending ? "▲" : "▼"}</span>{/if}
+                  {column.heading}{#if sortBy === column.slug}<span class="arrow">{ascending ? "▲" : "▼"}</span>{/if}
                 </button>
               </th>
             {/each}
@@ -1225,6 +1450,8 @@
                   aria-label="Select {track.title}"
                 />
               </td>
+              {#each drawn as column (column.slug)}
+                {#if column.slug === "title"}
               <td class="title" title={track.path}>
                 <!--
                   The colour is a stripe rather than a filled row: a DJ colours
@@ -1245,16 +1472,22 @@
                   >{/each}</span
                 >{/if}</td
               >
-              <td>{track.artist}</td>
-              <td>{track.album ?? ""}</td>
-              <!--
-                A blank rather than a zero when the analyser has not run. A
-                plausible-looking 0.0 is worse than an obvious gap, because a
-                DJ reads these at a glance and will not stop to wonder.
-              -->
-              <td class="mono">{track.bpm != null ? track.bpm.toFixed(1) : ""}</td>
-              <td class="mono">{track.key ?? ""}</td>
-              <td class="mono">{formatTime(track.duration_seconds)}</td>
+                {:else}
+                  <!--
+                    A blank rather than a zero wherever the analyser has not
+                    run. A plausible-looking 0.0 is worse than an obvious gap,
+                    because a DJ reads these at a glance and will not stop to
+                    wonder which it is. `cell` decides; this only places.
+                  -->
+                  <td
+                    class="mono"
+                    class:words={column.slug === "artist" ||
+                      column.slug === "album" ||
+                      column.slug === "genre"}
+                    data-column={column.slug}>{cell(column.slug, track)}</td
+                  >
+                {/if}
+              {/each}
               {#if lens}
                 <!--
                   A blank where djmanzo has nothing to say, never a zero. An
@@ -1367,6 +1600,31 @@
 </div>
 
 <style>
+  /*
+    §20's column picker. A wrapping row of checkboxes above the table rather
+    than a menu: fourteen of them fit on two lines, and a DJ choosing columns is
+    choosing several, which a menu that closes on each pick makes into fourteen
+    trips.
+  */
+  .column-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.1rem 0.75rem;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel-raised);
+    font-size: 0.78rem;
+  }
+
+  .column-picker label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
   /* §76's columns. Visually quieter than the ones djmanzo has always shown:
      they are an opinion beside the record, not a fact about it. */
   .lens {

@@ -3417,6 +3417,17 @@ pub struct LibraryTrackDto {
     pub rating: Option<u8>,
     /// `#rrggbb`, when the DJ has coloured it.
     pub colour: Option<String>,
+    /// Unix seconds, when the DJ has played it.
+    ///
+    /// §20 asks for a *last played* column and the library row has carried this
+    /// since M1; it was read off the disk and thrown away here.
+    pub last_played: Option<i64>,
+    /// How many beats a phrase runs for, when the structure is clear enough.
+    ///
+    /// §20's *phrase structure*. `None` is a real answer — a record with no
+    /// phrase structure is a thing that exists — so it is blank rather than
+    /// guessed at.
+    pub phrase_beats: Option<u32>,
 }
 
 impl From<dj_library::LibraryTrack> for LibraryTrackDto {
@@ -3437,6 +3448,8 @@ impl From<dj_library::LibraryTrack> for LibraryTrackDto {
             play_count: track.stats.play_count,
             rating: track.stats.rating,
             colour: track.colour.clone(),
+            last_played: track.stats.last_played,
+            phrase_beats: track.analysis.phrase_beats,
         }
     }
 }
@@ -8941,6 +8954,61 @@ pub fn assistant_appetite(state: State<'_, AppState>) -> AppetiteDto {
         taken: fatigue.taken(),
         says: fatigue.says(),
     }
+}
+
+/// One of §20's columns, as the picker offers it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ColumnDto {
+    /// The slug stored and sent back.
+    pub slug: String,
+    /// The word at the top of the column.
+    pub heading: String,
+    /// What it means, for the picker and for a hover.
+    pub about: String,
+}
+
+/// Every column §20's performance table can carry.
+///
+/// Listed by Rust, with its heading and its sentence, so a column added there
+/// appears in the picker without anybody editing the browser — and so the word
+/// a DJ reads in the picker is the word at the top of the column.
+#[tauri::command]
+#[must_use]
+pub fn library_columns() -> Vec<ColumnDto> {
+    crate::columns::Column::ALL
+        .iter()
+        .map(|column| ColumnDto {
+            slug: column.name().to_owned(),
+            heading: column.heading().to_owned(),
+            about: column.about().to_owned(),
+        })
+        .collect()
+}
+
+/// The columns the DJ has chosen, in their order.
+#[tauri::command]
+#[must_use]
+pub fn chosen_columns(state: State<'_, AppState>) -> Vec<String> {
+    crate::columns::choose(&state.chosen_columns())
+        .into_iter()
+        .map(|column| column.name().to_owned())
+        .collect()
+}
+
+/// Choose the columns, and take back what will actually be drawn.
+///
+/// The round trip is the point, the same as the workspace's: a column this
+/// build does not have is dropped and the title is put back, so what is stored
+/// and what is drawn cannot drift apart.
+#[tauri::command]
+#[must_use]
+pub fn set_chosen_columns(state: State<'_, AppState>, columns: Vec<String>) -> Vec<String> {
+    let chosen: Vec<String> = crate::columns::choose(&columns)
+        .into_iter()
+        .map(|column| column.name().to_owned())
+        .collect();
+    state.set_chosen_columns(&chosen);
+    chosen
 }
 
 /// The arrangements the DJ has saved under names of their own.

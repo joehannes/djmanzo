@@ -437,6 +437,14 @@ target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 **`pkill -f "something"` matches its own shell.** It kills the command that
 ran it. Use `pkill -x <name>`.
 
+**A default answer added to `e2e/shell.ts` overrides the one already there.**
+`ANSWERS` is one object literal, so a second `library_search:` key silently
+replaces the first — and the fixture that had two records became one, which
+failed five specs that had nothing to do with the change. Search the table for
+the command before adding an answer for it; the right move is usually to extend
+the rows that are there with the fields djmanzo now sends, because the harness
+is supposed to send the shape the application really sends.
+
 **A test that reads a source file must normalise line endings.** CI runs the
 suite on Windows, where git checks the repository out with CRLF, so a scan for
 `"\n}\n"` — a closing brace at column zero — finds nothing in a file whose lines

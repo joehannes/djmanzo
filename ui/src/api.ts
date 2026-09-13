@@ -1298,7 +1298,47 @@ export interface LibraryTrack {
   rating: number | null;
   /** `#rrggbb`, when the DJ has coloured it. */
   colour: string | null;
+  /** Unix seconds, when the DJ has played it. §20's *last played*. */
+  last_played: number | null;
+  /**
+   * How many beats a phrase runs for, when the structure is clear enough.
+   *
+   * §20's *phrase structure*. `null` is a real answer rather than a gap — a
+   * record with no phrase structure is a thing that exists.
+   */
+  phrase_beats: number | null;
 }
+
+/** One of §20's columns, as Rust offers it. */
+export interface LibraryColumn {
+  /** The slug stored and sent back. */
+  slug: string;
+  /** The word at the top of the column. */
+  heading: string;
+  /** What it means, for the picker and for a hover. */
+  about: string;
+}
+
+/**
+ * Every column §20's performance table can carry.
+ *
+ * Asked for rather than typed out here: the list, the headings and the
+ * sentences are `columns::Column`'s, so the word in the picker and the word at
+ * the top of the column are one word.
+ */
+export const libraryColumns = () => invoke<LibraryColumn[]>("library_columns");
+
+/** The columns the DJ has chosen, in their order. */
+export const chosenColumns = () => invoke<string[]>("chosen_columns");
+
+/**
+ * Choose the columns, and take back what will actually be drawn.
+ *
+ * The round trip is the point: a column this build does not have is dropped and
+ * the title is put back, so what is stored and what is drawn cannot drift.
+ */
+export const setChosenColumns = (columns: string[]) =>
+  invoke<string[]>("set_chosen_columns", { columns });
 
 export interface FailedFile {
   path: string;

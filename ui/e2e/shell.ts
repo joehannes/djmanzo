@@ -732,6 +732,12 @@ const ANSWERS: Record<string, unknown> = {
       play_count: 0,
       rating: null,
       colour: null,
+      // §20's two new readings, and neither is filled in here: this record has
+      // never been played and its phrase structure is not clear enough to say.
+      // Both are real answers, and a test about a blank cell needs a row that
+      // really is blank.
+      last_played: null,
+      phrase_beats: null,
     },
     // A second record, rated, so a test can tell a favourite from one that is
     // not — and so the card grid has more than one cell to lay out.
@@ -751,9 +757,35 @@ const ANSWERS: Record<string, unknown> = {
       play_count: 3,
       rating: 5,
       colour: null,
+      // And this one has both, so §20's columns have something to draw.
+      last_played: 1_700_000_000,
+      phrase_beats: 32,
     },
   ],
   default_music_folder: null,
+  /**
+   * §20's columns, as Rust offers them. All fourteen, so the picker draws the
+   * fourteen it draws in the application — a stub with a shorter list would
+   * make a test about ticking one a test about a control that is not there.
+   */
+  library_columns: [
+    { slug: "title", heading: "Title", about: "The record's name. Always shown." },
+    { slug: "artist", heading: "Artist", about: "Who made it." },
+    { slug: "album", heading: "Album", about: "The release it came from." },
+    { slug: "genre", heading: "Genre", about: "The tag on the file, as its own library wrote it." },
+    { slug: "year", heading: "Year", about: "When it came out." },
+    { slug: "bpm", heading: "BPM", about: "Tempo, from the analyser. Blank until it has run." },
+    { slug: "key", heading: "Key", about: "Camelot — the notation you mix by." },
+    { slug: "duration", heading: "Time", about: "How long it runs." },
+    { slug: "loudness", heading: "Loud", about: "Integrated loudness in LUFS." },
+    { slug: "phrases", heading: "Phrase", about: "How many beats a phrase runs for." },
+    { slug: "rating", heading: "Rating", about: "Your own, out of five." },
+    { slug: "plays", heading: "Plays", about: "How many times you have played it." },
+    { slug: "last-played", heading: "Played", about: "When you last played it." },
+    { slug: "analysed", heading: "Ready", about: "Whether it has what sync and harmonic mixing need." },
+  ],
+  /** What a fresh install draws: the six the browser has always had. */
+  chosen_columns: ["title", "artist", "album", "bpm", "key", "duration"],
   library_status: {
     tracks: 0,
     pending: 0,
@@ -1036,6 +1068,29 @@ export async function openShell(
           // The two refusals are Rust's rules, mirrored: an empty name and one
           // djmanzo ships. A Rust test keeps the sentences honest; what a
           // browser can prove is that the refusal reaches the screen.
+          // §20's columns, held between calls: the whole claim of the picker
+          // is that ticking a box changes the table, and a fixed answer would
+          // make a working picker and a broken one look identical.
+          if (cmd === "set_chosen_columns") {
+            const asked = ((args.columns ?? []) as string[]).map((c) => c.trim());
+            const known = (answers.library_columns ?? []) as { slug: string }[];
+            const out: string[] = [];
+            for (const slug of asked) {
+              if (known.some((c) => c.slug === slug) && !out.includes(slug)) out.push(slug);
+            }
+            // Rust's two rules, mirrored: nothing means the shipped six, and the
+            // title always survives. A Rust test keeps the rules honest; what a
+            // browser can prove is that the table follows.
+            const shipped = ["title", "artist", "album", "bpm", "key", "duration"];
+            const settled = out.length === 0 ? shipped : out.includes("title") ? out : ["title", ...out];
+            win.__columns = settled;
+            return Promise.resolve(settled);
+          }
+          if (cmd === "chosen_columns") {
+            return Promise.resolve(
+              win.__columns ?? answers.chosen_columns ?? ["title", "artist", "album", "bpm", "key", "duration"],
+            );
+          }
           if (cmd === "keep_workspace") {
             const held = (win.__kept ??= []) as { name: string }[];
             const name = String(args.name ?? "").trim();

@@ -988,6 +988,41 @@ impl AppState {
         Some(self.config_dir.lock().ok()?.clone()?.join("workspace.json"))
     }
 
+    /// The file the chosen library columns live in.
+    ///
+    /// Its own file rather than a field of the workspace: columns are a fact
+    /// about how this DJ reads their collection, and they should not change
+    /// because the night turned from a wedding into an open floor and the
+    /// arrangement did.
+    fn columns_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("columns.json"))
+    }
+
+    /// The columns the DJ has chosen, or empty for "whatever ships".
+    #[must_use]
+    pub fn chosen_columns(&self) -> Vec<String> {
+        let Some(path) = self.columns_path() else {
+            return Vec::new();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Vec::new();
+        };
+        serde_json::from_str(&text).unwrap_or_default()
+    }
+
+    /// Remember the chosen columns.
+    pub fn set_chosen_columns(&self, columns: &[String]) {
+        let Some(path) = self.columns_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(columns) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "your columns will not survive a restart");
+        }
+    }
+
     /// The file the DJ's own named arrangements live in.
     ///
     /// Beside `workspace.json` rather than inside it, and the distinction is

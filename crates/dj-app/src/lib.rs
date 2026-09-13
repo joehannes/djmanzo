@@ -29,6 +29,7 @@ pub mod autopilot;
 pub mod brand;
 pub mod clock;
 pub mod cockpit;
+pub mod columns;
 pub mod commands;
 pub mod control;
 pub mod ghost;
@@ -595,6 +596,9 @@ pub fn run() {
             commands::cockpit_surfaces,
             commands::cockpit_workspaces,
             commands::cockpit_locks,
+            commands::library_columns,
+            commands::chosen_columns,
+            commands::set_chosen_columns,
             commands::my_workspaces,
             commands::keep_workspace,
             commands::forget_workspace,
