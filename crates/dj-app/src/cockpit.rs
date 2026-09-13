@@ -1151,6 +1151,160 @@ impl Focus {
     }
 }
 
+// -- the lock ---------------------------------------------------------------
+
+/// One of the six things [§79](../../../docs/DIRECTIVE.md) lets a DJ lock.
+///
+/// The vocabulary is the directive's, verbatim, because that file wins where an
+/// implementation disagrees with it. Three of the six stop the same behaviour in
+/// today's djmanzo — the workspace, the panel arrangement and the assistant's
+/// layout behaviour are one thing with three names, since the only thing that
+/// rearranges panels *is* the assistant reading the night — and [`Lock::stops`]
+/// says so rather than pretending they are three switches.
+///
+/// A lock is a DJ's decision, so it is stored with the workspace. What it is
+/// **not** is a mode djmanzo enters: nothing here stops the context engine
+/// reading the room, planning a transition or offering a record. §79's own last
+/// sentence is the rule — *the AI can still use the underlying state without
+/// rearranging presentation* — and every one of these takes away a change to
+/// the **presentation** and nothing else.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Lock {
+    /// Which arrangement is in force.
+    Workspace,
+    /// Which panels are open, and where they are docked.
+    Arrangement,
+    /// How much is fitted onto the screen.
+    Density,
+    /// Which palette is worn.
+    Theme,
+    /// How the waveform and the controls answer the audio.
+    Waveform,
+    /// Whether the assistant may move anything.
+    Assistant,
+}
+
+impl Lock {
+    /// Every lock there is. §79's list, in §79's order.
+    pub const ALL: [Self; 6] = [
+        Self::Workspace,
+        Self::Arrangement,
+        Self::Density,
+        Self::Theme,
+        Self::Waveform,
+        Self::Assistant,
+    ];
+
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Workspace => "workspace",
+            Self::Arrangement => "arrangement",
+            Self::Density => "density",
+            Self::Theme => "theme",
+            Self::Waveform => "waveform",
+            Self::Assistant => "assistant",
+        }
+    }
+
+    /// What a DJ is told this takes away.
+    #[must_use]
+    pub const fn about(self) -> &'static str {
+        match self {
+            Self::Workspace => "The arrangement stays the one you chose.",
+            Self::Arrangement => "Nothing opens, closes or moves unless you do it.",
+            Self::Density => "The interface stops resizing itself to the window.",
+            Self::Theme => "The palette stays the one you are wearing.",
+            Self::Waveform => "The waveform and the controls stop answering the audio.",
+            Self::Assistant => "The assistant keeps working, and stops moving anything.",
+        }
+    }
+
+    /// Which of [§78](../../../docs/DIRECTIVE.md)'s freedoms this takes away.
+    ///
+    /// The table, in one place. §78 lists four things Freeze stops and §79 lists
+    /// six things a DJ may lock, and this is how the two lists meet — so a lock
+    /// that stops nothing is a test failure rather than a switch that looks like
+    /// it works.
+    #[must_use]
+    pub const fn stops(self) -> Freedom {
+        match self {
+            Self::Workspace | Self::Arrangement | Self::Assistant => Freedom::Rearrange,
+            Self::Density => Freedom::Resize,
+            Self::Theme => Freedom::Retheme,
+            Self::Waveform => Freedom::Restyle,
+        }
+    }
+}
+
+/// One of [§78](../../../docs/DIRECTIVE.md)'s four: something djmanzo may do to
+/// its own presentation without being asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Freedom {
+    /// Open, close or move a panel. §17's phase promotion, and the browser that
+    /// opens itself with a layout that asks for one.
+    Rearrange,
+    /// Fit the density to the window. §18's bands.
+    Resize,
+    /// Change the palette. §31's adaptation.
+    Retheme,
+    /// Answer the audio in the interface's own colours and motion. §75.
+    Restyle,
+}
+
+/// What djmanzo may still change about itself.
+///
+/// §78's four bullets as booleans, derived from the workspace's locks and never
+/// stored beside them: two descriptions of one decision is how they come to
+/// disagree, and this file has the scar. Published on [`Resolved`] so the
+/// interface asks once, at the moment the answer can change, rather than
+/// deciding for itself what a lock ought to mean.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Permits {
+    /// A panel may open, close or move without the DJ doing it.
+    pub rearrange: bool,
+    /// The density may follow the window.
+    pub resize: bool,
+    /// The palette may follow the night.
+    pub retheme: bool,
+    /// The interface may answer the audio.
+    pub restyle: bool,
+}
+
+impl Permits {
+    /// Nothing is locked, which is what a fresh install gets.
+    #[must_use]
+    pub const fn everything() -> Self {
+        Self {
+            rearrange: true,
+            resize: true,
+            retheme: true,
+            restyle: true,
+        }
+    }
+
+    /// Whether this freedom is still permitted.
+    #[must_use]
+    pub const fn allows(self, freedom: Freedom) -> bool {
+        match freedom {
+            Freedom::Rearrange => self.rearrange,
+            Freedom::Resize => self.resize,
+            Freedom::Retheme => self.retheme,
+            Freedom::Restyle => self.restyle,
+        }
+    }
+
+    fn deny(&mut self, freedom: Freedom) {
+        match freedom {
+            Freedom::Rearrange => self.rearrange = false,
+            Freedom::Resize => self.resize = false,
+            Freedom::Retheme => self.retheme = false,
+            Freedom::Restyle => self.restyle = false,
+        }
+    }
+}
+
 /// A saved arrangement of the cockpit.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Workspace {
@@ -1166,11 +1320,54 @@ pub struct Workspace {
     pub theme: String,
     /// Decks on screen.
     pub decks: u8,
-    /// When true, adaptation may not move anything -- the professional safety
-    /// valve. The context engine still runs and still suggests; it simply may
-    /// not rearrange.
+    /// What the DJ has decided djmanzo may not change by itself.
+    ///
+    /// This was `frozen: bool` and nothing read it. A single flag could not
+    /// express §79 at all -- that section asks for six separate locks, and a DJ
+    /// who wants the theme to stop moving has not asked for the browser to stop
+    /// opening itself. §78's Freeze is still one gesture: it is all six.
+    ///
+    /// Old workspace files carrying `frozen` deserialize cleanly and lose it,
+    /// which costs nothing, because nothing honoured it.
     #[serde(default)]
-    pub frozen: bool,
+    pub locked: Vec<Lock>,
+}
+
+impl Workspace {
+    /// Whether this particular lock is on.
+    #[must_use]
+    pub fn locked(&self, lock: Lock) -> bool {
+        self.locked.contains(&lock)
+    }
+
+    /// §78's Freeze: every lock, on.
+    ///
+    /// Derived rather than stored for the reason [`Permits`] gives. A separate
+    /// `frozen` flag beside the list is a second description of the same
+    /// decision, and the two would disagree the first time a lock was added.
+    #[must_use]
+    pub fn frozen(&self) -> bool {
+        Lock::ALL.iter().all(|lock| self.locked(*lock))
+    }
+
+    /// Turn every lock on, or every lock off.
+    pub fn freeze(&mut self, frozen: bool) {
+        self.locked = if frozen {
+            Lock::ALL.to_vec()
+        } else {
+            Vec::new()
+        };
+    }
+
+    /// What djmanzo may still do to itself under these locks.
+    #[must_use]
+    pub fn permits(&self) -> Permits {
+        let mut permits = Permits::everything();
+        for lock in &self.locked {
+            permits.deny(lock.stops());
+        }
+        permits
+    }
 }
 
 /// The arrangements that ship.
@@ -1210,7 +1407,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Beginner".to_owned(),
@@ -1237,7 +1434,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Learning,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Classic DJ".to_owned(),
@@ -1247,7 +1444,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Pro Performance".to_owned(),
@@ -1274,7 +1471,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "4 Deck".to_owned(),
@@ -1284,7 +1481,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 4,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "6 Deck".to_owned(),
@@ -1294,7 +1491,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 6,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Club".to_owned(),
@@ -1321,7 +1518,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "pkg-booth".to_owned(),
             decks: 4,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Mobile DJ".to_owned(),
@@ -1348,7 +1545,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Wedding / Event".to_owned(),
@@ -1376,7 +1573,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Preparing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Open Format".to_owned(),
@@ -1404,7 +1601,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Preparing,
             theme: "".to_owned(),
             decks: 4,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Latin / Caribbean".to_owned(),
@@ -1433,7 +1630,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "pkg-sunset".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Scratch / Turntablism".to_owned(),
@@ -1450,7 +1647,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Stem Performance".to_owned(),
@@ -1461,7 +1658,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Mashup / Remix".to_owned(),
@@ -1478,7 +1675,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 4,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Preparation".to_owned(),
@@ -1505,7 +1702,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Preparing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Set Planning".to_owned(),
@@ -1532,7 +1729,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Planning,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Practice / Learning".to_owned(),
@@ -1559,7 +1756,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Learning,
             theme: "pkg-studio".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Autopilot".to_owned(),
@@ -1586,7 +1783,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Supervising,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Read the room".to_owned(),
@@ -1615,7 +1812,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Preparing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Minimal".to_owned(),
@@ -1625,7 +1822,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "High Contrast".to_owned(),
@@ -1635,7 +1832,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "pkg-booth".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Laptop Compact".to_owned(),
@@ -1645,7 +1842,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Controller Focus".to_owned(),
@@ -1662,7 +1859,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "CDJ / External Mixer".to_owned(),
@@ -1679,7 +1876,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
         Workspace {
             name: "Karaoke / MC".to_owned(),
@@ -1706,7 +1903,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         },
     ]
 }
@@ -1730,6 +1927,15 @@ pub fn opening() -> Workspace {
 pub struct Resolved {
     pub workspace: Workspace,
     pub notes: Vec<String>,
+    /// What djmanzo may still change about itself, under this workspace's locks.
+    ///
+    /// Sent with the workspace rather than asked for separately, because the two
+    /// can only change together: a lock is a field of the workspace, and every
+    /// path that can alter one goes through [`resolve`]. Derived here so the
+    /// interface never has to know what a lock means -- §78's four freedoms are
+    /// a judgement, and a judgement written in `App.svelte` is a judgement
+    /// nobody can test.
+    pub permits: Permits,
 }
 
 /// Bring a workspace into what the cockpit can actually draw.
@@ -1804,9 +2010,18 @@ pub fn resolve(workspace: &Workspace) -> Resolved {
     kept.sort_by_key(|placement| placement.order);
     out.surfaces = kept;
 
+    // A lock named twice is one lock, and the order is the section's rather
+    // than whatever order a DJ happened to tick them in: the list goes into a
+    // preferences file and a file that reorders itself on every save is a file
+    // nobody can diff.
+    out.locked.sort_unstable();
+    out.locked.dedup();
+
+    let permits = out.permits();
     Resolved {
         workspace: out,
         notes,
+        permits,
     }
 }
 
@@ -2708,7 +2923,7 @@ mod tests {
             focus: Focus::Performing,
             theme: String::new(),
             decks: 2,
-            frozen: false,
+            locked: Vec::new(),
         }
     }
 
@@ -2829,5 +3044,182 @@ mod tests {
             assert_eq!(shape, TokenShape::Colour, "`{name}` is not a colour");
         }
         assert_eq!(semantic_tokens().len(), Role::ALL.len());
+    }
+
+    // -- §78 and §79 --------------------------------------------------------
+
+    fn unlocked() -> Workspace {
+        workspaces().into_iter().next().expect("something ships")
+    }
+
+    /// **The load-bearing one: a lock that takes nothing away is a switch that
+    /// lies.**
+    ///
+    /// Which is what this section was: `frozen` was stored, serialised, round
+    /// tripped, and read by nothing at all. §78 calls Freeze *the professional
+    /// safety valve*, and a safety valve that does not open is worse than an
+    /// absent one, because a DJ who believes the layout is pinned stops watching
+    /// it.
+    ///
+    /// Both directions, because either alone passes wrongly. A lock must take
+    /// something away, and it must take away only its own thing -- a "lock the
+    /// theme" that also stopped the browser opening would be a Freeze wearing a
+    /// narrower name, and §79's whole point is that the six are separate.
+    #[test]
+    fn every_lock_takes_exactly_one_freedom_away() {
+        for lock in Lock::ALL {
+            let mut workspace = unlocked();
+            workspace.locked = vec![lock];
+            let permits = workspace.permits();
+            let gone = lock.stops();
+
+            assert!(
+                !permits.allows(gone),
+                "`{}` is stored, serialised and read by nothing -- which is the \
+                 state §78 was in",
+                lock.name()
+            );
+            for freedom in [
+                Freedom::Rearrange,
+                Freedom::Resize,
+                Freedom::Retheme,
+                Freedom::Restyle,
+            ] {
+                if freedom == gone {
+                    continue;
+                }
+                assert!(
+                    permits.allows(freedom),
+                    "`{}` took away {freedom:?} as well as {gone:?}, so it is a \
+                     freeze under a narrower name",
+                    lock.name()
+                );
+            }
+        }
+    }
+
+    /// Each lock stops the thing its name promises.
+    ///
+    /// Written out rather than derived, which is the point: the test above
+    /// compares `permits()` against `stops()` and so cannot see the two agreeing
+    /// on the wrong answer. This one is the table a reader can check against
+    /// §78 and §79 by eye, and it is the only place the pairing is asserted
+    /// twice on purpose.
+    #[test]
+    fn each_lock_stops_the_thing_its_name_promises() {
+        use Freedom::{Rearrange, Resize, Restyle, Retheme};
+        assert_eq!(Lock::Workspace.stops(), Rearrange);
+        assert_eq!(Lock::Arrangement.stops(), Rearrange);
+        assert_eq!(Lock::Assistant.stops(), Rearrange);
+        assert_eq!(Lock::Density.stops(), Resize);
+        assert_eq!(Lock::Theme.stops(), Retheme);
+        assert_eq!(Lock::Waveform.stops(), Restyle);
+    }
+
+    /// Nothing locked is everything permitted, which is what a fresh install is.
+    #[test]
+    fn a_workspace_nobody_has_locked_stops_nothing() {
+        let permits = unlocked().permits();
+        assert_eq!(permits, Permits::everything());
+        assert!(!unlocked().frozen());
+    }
+
+    /// §78's Freeze is §79's six, and is derived rather than stored.
+    #[test]
+    fn freezing_is_every_lock_and_thawing_is_none() {
+        let mut workspace = unlocked();
+        workspace.freeze(true);
+        assert!(workspace.frozen());
+        assert_eq!(workspace.locked.len(), Lock::ALL.len());
+        for lock in Lock::ALL {
+            assert!(
+                workspace.locked(lock),
+                "`{}` survived a freeze",
+                lock.name()
+            );
+        }
+        let permits = workspace.permits();
+        assert_eq!(
+            permits,
+            Permits {
+                rearrange: false,
+                resize: false,
+                retheme: false,
+                restyle: false,
+            },
+            "§78 lists four things Freeze stops and this stops fewer"
+        );
+
+        workspace.freeze(false);
+        assert!(!workspace.frozen());
+        assert!(workspace.locked.is_empty());
+    }
+
+    /// Five of six is not frozen.
+    ///
+    /// Worth its own test because the tempting implementation of `frozen` is a
+    /// separate boolean somebody sets beside the list, and that one answers
+    /// `true` here.
+    #[test]
+    fn a_workspace_missing_one_lock_is_not_frozen() {
+        for missing in Lock::ALL {
+            let mut workspace = unlocked();
+            workspace.locked = Lock::ALL
+                .iter()
+                .copied()
+                .filter(|l| *l != missing)
+                .collect();
+            assert!(
+                !workspace.frozen(),
+                "a workspace that still lets djmanzo change the {} reads as frozen",
+                missing.name()
+            );
+        }
+    }
+
+    /// Every lock is spelled the same way stored as it is spoken.
+    #[test]
+    fn a_lock_is_spelled_the_same_way_stored_as_it_is_spoken() {
+        for lock in Lock::ALL {
+            let stored = serde_json::to_string(&lock).expect("a lock serialises");
+            assert_eq!(stored, format!("\"{}\"", lock.name()));
+            assert!(
+                !lock.about().is_empty(),
+                "`{}` has nothing to tell a DJ it does",
+                lock.name()
+            );
+        }
+    }
+
+    /// The resolver hands the permits back with the workspace, and tidies the
+    /// list on the way.
+    #[test]
+    fn the_resolver_answers_with_the_permits_and_one_of_each_lock() {
+        let mut workspace = unlocked();
+        workspace.locked = vec![Lock::Theme, Lock::Theme, Lock::Density];
+        let resolved = resolve(&workspace);
+        assert_eq!(resolved.workspace.locked, vec![Lock::Density, Lock::Theme]);
+        assert!(!resolved.permits.retheme);
+        assert!(!resolved.permits.resize);
+        assert!(
+            resolved.permits.rearrange,
+            "locking the theme stopped the panels moving as well"
+        );
+        assert_eq!(resolved.permits, resolved.workspace.permits());
+    }
+
+    /// Nothing that ships arrives locked.
+    ///
+    /// A workspace is a starting point (§7), and one that opened with the layout
+    /// pinned would be a preset a DJ cannot edit without first finding out why.
+    #[test]
+    fn no_shipped_workspace_arrives_locked() {
+        for workspace in workspaces() {
+            assert!(
+                workspace.locked.is_empty(),
+                "`{}` ships with a lock on it",
+                workspace.name
+            );
+        }
     }
 }

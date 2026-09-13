@@ -2234,11 +2234,37 @@ export interface Workspace {
   focus: Focus;
   theme: string;
   decks: number;
-  frozen: boolean;
+  /**
+   * §79's locks: what djmanzo may not change by itself.
+   *
+   * `workspace`, `arrangement`, `density`, `theme`, `waveform`, `assistant`.
+   * All six is §78's Freeze. What each one takes away is `cockpit::Lock::stops`
+   * and reaches here as {@link Permits} -- never worked out from this list,
+   * which would be the same judgement written twice.
+   */
+  locked: string[];
+}
+
+/**
+ * What djmanzo may still change about its own presentation.
+ *
+ * §78's four bullets, answered by Rust from the workspace's locks. Every
+ * automatic change in the interface asks one of these first.
+ */
+export interface Permits {
+  /** A panel may open, close or move without the DJ doing it. */
+  rearrange: boolean;
+  /** The density may follow the window. */
+  resize: boolean;
+  /** The palette may follow the night. */
+  retheme: boolean;
+  /** The interface may answer the audio. */
+  restyle: boolean;
 }
 
 export interface ResolvedWorkspace {
   workspace: Workspace;
+  permits: Permits;
   /** What was corrected or skipped, and why. Shown, not swallowed. */
   notes: string[];
 }
@@ -2264,6 +2290,23 @@ export const phasePriorities = () => invoke<string[]>("phase_priorities");
 
 export const cockpitSurfaces = () => invoke<Surface[]>("cockpit_surfaces");
 export const cockpitWorkspaces = () => invoke<Workspace[]>("cockpit_workspaces");
+
+/** One of §79's locks, and the sentence beside its switch. */
+export interface LockOption {
+  /** The slug stored in `Workspace.locked`. */
+  slug: string;
+  /** What a DJ is told it takes away. */
+  about: string;
+}
+
+/**
+ * The six things a DJ may lock, in §79's order.
+ *
+ * Asked for rather than typed out here: the list and the wording are
+ * `cockpit::Lock`'s, so a seventh appears in Settings without anybody
+ * remembering to add it.
+ */
+export const cockpitLocks = () => invoke<LockOption[]>("cockpit_locks");
 export const cockpitWorkspace = () => invoke<ResolvedWorkspace>("cockpit_workspace");
 /**
  * Store an arrangement and take back what was kept.

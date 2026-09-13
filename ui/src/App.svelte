@@ -45,6 +45,7 @@
     type Layout,
     type Placed,
     type SurfacePlacement,
+    type Permits,
     type Workspace,
   } from "./api";
   import Next from "./Next.svelte";
@@ -195,6 +196,27 @@
   let workspaceNotes = $state<string[]>([]);
 
   /**
+   * §78 and §79: what djmanzo may still change about itself.
+   *
+   * Rust's answer, not this file's. The workspace stores *locks* — six of them,
+   * which is §79's list — and `cockpit::Lock::stops` says what each takes away;
+   * working that out here would be the same judgement written a second time, in
+   * the one place it cannot be tested.
+   *
+   * Everything permitted until Rust says otherwise, which is what a fresh
+   * install is and what every automatic path below falls back to when the
+   * resolver cannot be reached. The safe default for a *lock* is the permissive
+   * one: a DJ who has locked nothing and finds the interface refusing to adapt
+   * has no way to work out why.
+   */
+  let permits = $state<Permits>({
+    rearrange: true,
+    resize: true,
+    retheme: true,
+    restyle: true,
+  });
+
+  /**
    * The surfaces this build can actually draw, and what each is called.
    *
    * `cockpit_surfaces()` lists twenty; these eight are the ones that were
@@ -310,6 +332,7 @@
       const resolved = await setCockpitWorkspace(preset);
       workspace = resolved.workspace;
       workspaceNotes = resolved.notes;
+      permits = resolved.permits;
       deckCount = resolved.workspace.decks;
     } catch {
       // Keeping the optimistic state, for the reason `toggleSurface` gives.
@@ -338,6 +361,33 @@
   }
 
   /**
+   * §79: store what djmanzo may not change by itself.
+   *
+   * Goes through the workspace like everything else on this surface, because a
+   * lock *is* a field of the workspace — stored with it, restored with it, and
+   * carried by the preset a DJ saves. A separate preference file would be a
+   * second place the answer lives, and the first thing to disagree with it
+   * would be the workspace a DJ shares with somebody else.
+   *
+   * Optimistic, then corrected, the same as every other write here: the panel's
+   * switches move on the press and the resolver's answer replaces them.
+   */
+  async function saveLocks(locked: string[]) {
+    const current = workspace;
+    if (!current) return;
+    const next = { ...current, locked };
+    workspace = next;
+    try {
+      const resolved = await setCockpitWorkspace(next);
+      workspace = resolved.workspace;
+      workspaceNotes = resolved.notes;
+      permits = resolved.permits;
+    } catch {
+      // Keeping the optimistic state, for the reason `toggleSurface` gives.
+    }
+  }
+
+  /**
    * Write the current arrangement, without changing it.
    *
    * `toggleSurface` saves as a side effect of opening a panel; this is for the
@@ -353,6 +403,7 @@
       const resolved = await setCockpitWorkspace(next);
       workspace = resolved.workspace;
       workspaceNotes = resolved.notes;
+      permits = resolved.permits;
     } catch {
       // Keeping the optimistic state, for the reason `toggleSurface` gives:
       // failing to write a preferences file is not a reason to undo what the
@@ -376,7 +427,7 @@
       focus: "performing" as const,
       theme: "",
       decks: deckCount,
-      frozen: false,
+      locked: [],
     };
     const already = current.surfaces.some((p) => p.surface === name);
     const surfaces: SurfacePlacement[] = already
@@ -409,6 +460,7 @@
       const resolved = await setCockpitWorkspace(workspace);
       workspace = resolved.workspace;
       workspaceNotes = resolved.notes;
+      permits = resolved.permits;
     } catch {
       // Keeping the optimistic state: the DJ pressed a button and the panel
       // opened, and failing to write a preferences file is not a reason to
@@ -445,6 +497,12 @@
   let densityName = $state("Standard");
 
   function fitDensity() {
+    // §78: *no automatic surface resizing*. The density band is the only thing
+    // in djmanzo that resizes a surface without being asked, so this is where
+    // that bullet lands. A DJ who has locked it keeps the size they set at a
+    // window edge they are about to drag, which is the whole point of locking
+    // it: the booth screen is the one they learned the layout on.
+    if (!permits.resize) return;
     if (chosenDensity !== null || bands.length === 0) return;
     const height = window.innerHeight;
     const band = bands.find(([least]) => height >= least) ?? bands[bands.length - 1];
@@ -510,6 +568,7 @@
       const resolved = await cockpitWorkspace();
       workspace = resolved.workspace;
       workspaceNotes = resolved.notes;
+      permits = resolved.permits;
       // A workspace remembers how many decks were on screen — `toggleSurface`
       // writes `decks: deckCount` into every one it saves — and nothing read
       // it back. So a DJ who arranged four decks, saved the workspace and
@@ -647,7 +706,12 @@
     chosenDensity = next.density;
     density = next.density;
     document.documentElement.style.setProperty("--density", String(next.density));
-    if (next.browser && !isOpen("library")) void toggleSurface("library");
+    // A layout naming a browser opens one, unless the DJ has pinned the
+    // arrangement: this is a panel appearing without anybody pressing anything,
+    // which is exactly what §78's first bullet is about.
+    if (next.browser && !isOpen("library") && permits.rearrange) {
+      void toggleSurface("library");
+    }
     // Not when restoring, or every start-up would rewrite the file it just
     // read — harmless, but it makes the file's timestamp a lie about when the
     // DJ last chose anything.
@@ -737,6 +801,7 @@
     const unwatchCockpit = onCockpit((applied) => {
       workspace = applied.workspace.workspace;
       workspaceNotes = applied.workspace.notes;
+      permits = applied.workspace.permits;
       deckCount = applied.workspace.workspace.decks;
       if (applied.focus !== null) focusDeck(applied.focus);
     });
@@ -770,7 +835,18 @@
      */
     const wardrobe = setInterval(() => {
       void themeNow()
-        .then((mood) => theme.adapt(mood.theme, mood.over_ms))
+        // §78: *no theme changes unless explicitly permitted*. Read at the
+        // moment of the tick rather than captured when the interval was made,
+        // so locking the theme stops the next one twenty seconds later instead
+        // of at the next restart.
+        //
+        // The question is still asked. `themeNow` is what §31 reads the night
+        // with, and a DJ who unlocks the theme an hour in should get the
+        // palette the night has earned rather than the one it had when they
+        // locked it -- so what stops here is the wearing, not the reading.
+        .then((mood) => {
+          if (permits.retheme) theme.adapt(mood.theme, mood.over_ms);
+        })
         .catch(() => {});
     }, 20_000);
 
@@ -914,7 +990,14 @@
     second. See `audiovars.svelte.ts` for the measurement this follows from.
   */
   $effect(() => {
-    publishAudio(snapshot?.context);
+    // §78's fourth bullet: *no surprise visual transitions*. These six
+    // properties are the whole of how the interface answers the audio, so
+    // handing them nothing is the interface sitting still -- `publishAudio`
+    // writes zeros for an absent context, which is the rest state rather than
+    // whatever pulse it happened to be mid-way through. Freezing them at their
+    // last value would pin a random frame of the music onto the booth screen
+    // for the rest of the night.
+    publishAudio(permits.restyle ? snapshot?.context : undefined);
   });
 
   /*
@@ -964,7 +1047,12 @@
 
   $effect(() => {
     const now = phaseNow;
-    const mayMove = snapshot?.attention.reflow ?? false;
+    // Two gates, and they answer different questions. `reflow` is §18's and is
+    // derived: *is this a bad moment* — false during every mix. `permits` is
+    // §79's and is chosen: *is this allowed at all*. A DJ who freezes the layout
+    // has decided something the context engine has no vote on, so neither gate
+    // substitutes for the other.
+    const mayMove = (snapshot?.attention.reflow ?? false) && permits.rearrange;
     if (!ready || !mayMove || now === promoted) return;
     promoted = now;
     void phasePriorities()
@@ -1758,7 +1846,12 @@
     {/if}
   {/snippet}
   {#snippet surfaceSettings()}
-    <Settings onLogoChange={refreshLogo} deviceChannels={active?.channels ?? null} />
+    <Settings
+      onLogoChange={refreshLogo}
+      deviceChannels={active?.channels ?? null}
+      locked={workspace?.locked ?? []}
+      onLock={saveLocks}
+    />
   {/snippet}
   {#snippet surfaceLog()}
     <div class="log">

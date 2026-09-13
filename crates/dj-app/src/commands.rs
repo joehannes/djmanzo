@@ -8755,6 +8755,33 @@ pub fn set_cockpit_workspace(
     resolved
 }
 
+/// One of §79's locks, and what a DJ is told it takes away.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LockDto {
+    /// The slug stored in the workspace.
+    pub slug: String,
+    /// The sentence beside the switch.
+    pub about: String,
+}
+
+/// The six things a DJ may lock, in §79's own order.
+///
+/// Listed by Rust rather than typed into the panel, for the reason every other
+/// table in this file is: a seventh lock added here should appear in Settings
+/// without anybody remembering to add it, and a lock whose sentence is written
+/// in two places is a lock that ends up meaning two things.
+#[tauri::command]
+#[must_use]
+pub fn cockpit_locks() -> Vec<LockDto> {
+    crate::cockpit::Lock::ALL
+        .iter()
+        .map(|lock| LockDto {
+            slug: lock.name().to_owned(),
+            about: lock.about().to_owned(),
+        })
+        .collect()
+}
+
 /// The waveform's semantic layers — §25's twenty, and which of them exist.
 ///
 /// Handed to the interface so that what is drawn and what is *named* come from
@@ -8813,6 +8840,38 @@ pub fn ui_request(
     state: &AppState,
     op: &crate::uiop::UiOp,
 ) -> Result<crate::uiop::Applied, String> {
+    // Read once and used twice: the check and the apply see the same
+    // arrangement, so a workspace written between them cannot let an operation
+    // through that the DJ had just locked out.
+    let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
+    assistant_may_rearrange(state, &stored)?;
+    Ok(carry_out(app, state, op, stored))
+}
+
+/// Whether the assistant may move anything at all right now.
+///
+/// Two questions with two different answers, and neither substitutes for the
+/// other:
+///
+/// - **§72's matrix.** What the machine is allowed to do at this posture. Its
+///   own capability row, `adapt_layout`, which is what lets "suggest records but
+///   never touch my layout" be a setting rather than a feature request.
+/// - **§78 and §79's locks.** What the *DJ* has pinned for the night. This beats
+///   every posture including autopilot: §78 calls it the professional safety
+///   valve, and a valve with an override is not one.
+///
+/// The lock has to be answered **here** rather than in the interface. This path
+/// applies the workspace in Rust, stores it, and *then* tells the window — so a
+/// permit consulted in `App.svelte` would be consulted after the arrangement had
+/// already changed and been written to disk.
+///
+/// # Errors
+/// A sentence saying which of the two refused, because a DJ whose assistant has
+/// gone quiet needs to know whether to change the posture or clear a lock.
+fn assistant_may_rearrange(
+    state: &AppState,
+    workspace: &crate::cockpit::Workspace,
+) -> Result<(), String> {
     let posture = state
         .conduct()
         .lock()
@@ -8833,7 +8892,10 @@ pub fn ui_request(
             posture.name()
         ));
     }
-    Ok(carry_out_ui(app, state, op))
+    if !workspace.permits().rearrange {
+        return Err("the layout is locked -- unlock it in Settings".to_owned());
+    }
+    Ok(())
 }
 
 /// Apply, store and announce. The one place an operation actually lands.
@@ -8843,6 +8905,16 @@ fn carry_out_ui(
     op: &crate::uiop::UiOp,
 ) -> crate::uiop::Applied {
     let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
+    carry_out(app, state, op, stored)
+}
+
+/// As [`carry_out_ui`], against an arrangement the caller has already read.
+fn carry_out(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    op: &crate::uiop::UiOp,
+    stored: crate::cockpit::Workspace,
+) -> crate::uiop::Applied {
     let applied = crate::uiop::apply(op, &stored);
     state.set_workspace(&applied.workspace.workspace);
     // Announced rather than returned only, because the interesting caller is
@@ -10181,3 +10253,57 @@ pub fn melody_progress(state: State<'_, AppState>) -> Result<MelodyProgressDto, 
 /// work rather than milliseconds, and a batch that returns is one the
 /// interface can report on and the DJ can stop.
 const MELODY_SWEEP: usize = 20;
+
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+
+    /// **The load-bearing one for §78: a lock the assistant cannot walk around.**
+    ///
+    /// `ui_request` applies the arrangement in Rust, stores it, and only then
+    /// announces it to the window — so a permit consulted in `App.svelte` is
+    /// consulted *after* the DJ's screen has already moved and the change has
+    /// been written to disk. The interface honours the same locks for its own
+    /// automatic paths; this is the one that has to be here.
+    ///
+    /// Asserted at **autopilot**, which is the posture where §72's matrix has
+    /// nothing left to refuse. §78 calls Freeze the professional safety valve,
+    /// and a valve every posture can open is not one.
+    #[test]
+    fn a_locked_layout_refuses_the_assistant_at_the_posture_that_allows_everything() {
+        let state = AppState::new(true);
+        if let Ok(mut guard) = state.conduct().lock() {
+            guard.posture = dj_assistant::Posture::Autopilot;
+        }
+
+        let mut workspace = crate::cockpit::opening();
+        assert_eq!(
+            assistant_may_rearrange(&state, &workspace),
+            Ok(()),
+            "the assistant is refused with nothing locked and autopilot on"
+        );
+
+        workspace.freeze(true);
+        let refused = assistant_may_rearrange(&state, &workspace)
+            .expect_err("a frozen layout let the assistant move a panel anyway");
+        assert!(
+            refused.contains("locked"),
+            "the refusal does not say a lock caused it, so a DJ whose assistant \
+             has gone quiet cannot tell whether to change the posture or clear \
+             a lock: {refused}"
+        );
+    }
+
+    /// Locking something else leaves the assistant alone.
+    ///
+    /// §79's six are separate, and a "lock the theme" that silently stopped the
+    /// assistant rearranging would be a freeze under a narrower name — which a
+    /// DJ would find out mid-set.
+    #[test]
+    fn a_lock_on_something_else_does_not_quiet_the_assistant() {
+        let state = AppState::new(true);
+        let mut workspace = crate::cockpit::opening();
+        workspace.locked = vec![crate::cockpit::Lock::Theme, crate::cockpit::Lock::Density];
+        assert_eq!(assistant_may_rearrange(&state, &workspace), Ok(()));
+    }
+}

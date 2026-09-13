@@ -9,6 +9,7 @@
    * refuses.
    */
   import Screens from "./Screens.svelte";
+  import { cockpitLocks, type LockOption } from "./api";
   import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import {
     addMusicFolder,
@@ -66,8 +67,21 @@
   let {
     onLogoChange,
     deviceChannels = null,
+    locked = [],
+    onLock,
   }: {
     onLogoChange: () => void;
+    /**
+     * §79's locks that are on, by slug.
+     *
+     * Passed in and handed back rather than read and written here, because a
+     * lock is a field of the workspace and the workspace belongs to the shell:
+     * two components writing `set_cockpit_workspace` from their own copies is
+     * how one of them silently drops what the other just saved.
+     */
+    locked?: string[];
+    /** Store a new set of locks. */
+    onLock?: (locked: string[]) => void;
     /**
      * How many outputs the open device has, or `null` for none.
      *
@@ -79,6 +93,32 @@
      */
     deviceChannels?: number | null;
   } = $props();
+
+  /**
+   * §78 and §79's switches.
+   *
+   * The list is Rust's — `cockpit::Lock::ALL`, with each one's sentence — so a
+   * lock added there appears here without this file being touched, and the
+   * wording a DJ reads is the wording the rule was written with.
+   */
+  let lockOptions = $state<LockOption[]>([]);
+  $effect(() => {
+    void cockpitLocks()
+      .then((got) => (lockOptions = got))
+      // A panel that cannot list the locks shows none rather than a broken row:
+      // every other setting on this surface still works.
+      .catch(() => {});
+  });
+
+  const frozen = $derived(
+    lockOptions.length > 0 && lockOptions.every((lock) => locked.includes(lock.slug)),
+  );
+
+  function toggleLock(slug: string, on: boolean) {
+    const next = locked.filter((held) => held !== slug);
+    if (on) next.push(slug);
+    onLock?.(next);
+  }
 
 
   let sources = $state<Source[]>([]);
@@ -453,6 +493,52 @@
   -->
   <div class="block">
     <Screens />
+  </div>
+
+  <!--
+    §78 and §79, above Appearance on purpose: everything below this point is a
+    thing djmanzo might otherwise change on its own, and this is the switch that
+    says it may not.
+  -->
+  <div class="block locks">
+    <h3>Lock my workflow</h3>
+    <p class="hint">
+      djmanzo adapts: it opens a panel when the night turns over, fits the
+      density to the window, wears a palette the set has earned, and answers the
+      audio in its own colours. Any of that can be turned off, and none of it
+      stops the assistant thinking — it keeps reading the room, planning and
+      offering; it just stops moving your screen.
+    </p>
+    <div class="row">
+      <button
+        class="freeze"
+        class:active={frozen}
+        aria-pressed={frozen}
+        onclick={() => onLock?.(frozen ? [] : lockOptions.map((lock) => lock.slug))}
+        title="Every lock at once — nothing about the interface changes unless you change it"
+      >
+        {frozen ? "Frozen" : "Freeze everything"}
+      </button>
+    </div>
+    <ul class="lock-list">
+      {#each lockOptions as lock (lock.slug)}
+        <!-- Named on the row rather than found by its words: two of §79's six
+             sentences contain another one's name ("The *arrangement* stays the
+             one you chose" is the workspace lock), so a test matching on text
+             matches two switches. -->
+        <li data-lock={lock.slug}>
+          <label>
+            <input
+              type="checkbox"
+              checked={locked.includes(lock.slug)}
+              onchange={(event) => toggleLock(lock.slug, event.currentTarget.checked)}
+            />
+            <span class="lock-name">{lock.slug}</span>
+            <span class="lock-about">{lock.about}</span>
+          </label>
+        </li>
+      {/each}
+    </ul>
   </div>
 
   <!--
@@ -1335,5 +1421,35 @@
     background: color-mix(in srgb, var(--warn) 12%, var(--panel));
     border: 1px solid var(--warn);
     color: var(--warn);
+  }
+
+  /* §79's six. A list rather than a row of chips: each one carries a sentence,
+     and a sentence is the difference between a switch a DJ can use and a switch
+     they leave alone because they cannot tell what it does. */
+  .lock-list {
+    list-style: none;
+    margin: 0.6rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .lock-list label {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+
+  .lock-name {
+    min-width: 6.5rem;
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+  }
+
+  .lock-about {
+    color: var(--muted);
+    font-size: 0.85em;
   }
 </style>

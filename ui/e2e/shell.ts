@@ -806,7 +806,7 @@ const ANSWERS: Record<string, unknown> = {
       focus: "performing",
       theme: "",
       decks: 2,
-      frozen: false,
+      locked: [],
     },
     {
       name: "Open Format",
@@ -819,7 +819,7 @@ const ANSWERS: Record<string, unknown> = {
       focus: "preparing",
       theme: "",
       decks: 4,
-      frozen: false,
+      locked: [],
     },
     {
       name: "High Contrast",
@@ -829,7 +829,7 @@ const ANSWERS: Record<string, unknown> = {
       focus: "performing",
       theme: "pkg-booth",
       decks: 2,
-      frozen: false,
+      locked: [],
     },
     {
       name: "Laptop Compact",
@@ -839,8 +839,22 @@ const ANSWERS: Record<string, unknown> = {
       focus: "performing",
       theme: "",
       decks: 2,
-      frozen: false,
+      locked: [],
     },
+  ],
+  /**
+   * §79's six, as Rust lists them. Answered here so the Settings panel draws
+   * the switches it draws in the application -- a panel handed `null` would
+   * show none, and a test asserting a lock does something would then be
+   * asserting it against a control that is not on screen.
+   */
+  cockpit_locks: [
+    { slug: "workspace", about: "The arrangement stays the one you chose." },
+    { slug: "arrangement", about: "Nothing opens, closes or moves unless you do it." },
+    { slug: "density", about: "The interface stops resizing itself to the window." },
+    { slug: "theme", about: "The palette stays the one you are wearing." },
+    { slug: "waveform", about: "The waveform and the controls stop answering the audio." },
+    { slug: "assistant", about: "The assistant keeps working, and stops moving anything." },
   ],
   cockpit_workspace: {
     workspace: {
@@ -851,9 +865,10 @@ const ANSWERS: Record<string, unknown> = {
       focus: "performing",
       theme: "",
       decks: 2,
-      frozen: false,
+      locked: [],
     },
     notes: [],
+    permits: { rearrange: true, resize: true, retheme: true, restyle: true },
   },
 };
 
@@ -1010,7 +1025,28 @@ export async function openShell(
             if (answers.set_cockpit_workspace === "reject") {
               return Promise.reject(new Error("the preferences file is read-only"));
             }
-            return Promise.resolve({ workspace: args.workspace, notes: [] });
+            // The permits come back with the workspace, derived the way
+            // `cockpit::Workspace::permits` derives them. Mirrored here rather
+            // than fixed at "everything permitted", because the whole of §78
+            // is that a lock the DJ just set takes effect now — a stub that
+            // always answered "permitted" would make a working freeze and a
+            // broken one look identical.
+            //
+            // The mapping is `Lock::stops`'s and a Rust test keeps the two
+            // spellings the same; what it must not do is grow a second opinion
+            // about which lock stops what.
+            const locked = ((args.workspace as { locked?: string[] }).locked ?? []) as string[];
+            const stops = (...names: string[]) => !names.some((n) => locked.includes(n));
+            return Promise.resolve({
+              workspace: args.workspace,
+              notes: [],
+              permits: {
+                rearrange: stops("workspace", "arrangement", "assistant"),
+                resize: stops("density"),
+                retheme: stops("theme"),
+                restyle: stops("waveform"),
+              },
+            });
           }
           // The transition object, held between calls the way djmanzo holds
           // it. Answered here rather than from the table above for the same

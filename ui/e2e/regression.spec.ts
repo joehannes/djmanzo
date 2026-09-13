@@ -49,9 +49,10 @@ async function open(page: Page, config: Configuration) {
         focus: config.focus,
         theme: config.theme,
         decks: config.decks,
-        frozen: false,
+        locked: [],
       },
       notes: [],
+      permits: { rearrange: true, resize: true, retheme: true, restyle: true },
     },
   });
   await expect(page.locator(DECK).first()).toBeVisible();
@@ -108,9 +109,10 @@ test("the deck count survives being saved and reopened", async ({ page }) => {
         focus: "performing",
         theme: "",
         decks: 4,
-        frozen: false,
+        locked: [],
       },
       notes: [],
+      permits: { rearrange: true, resize: true, retheme: true, restyle: true },
     },
   });
   await expect(

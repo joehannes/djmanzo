@@ -594,6 +594,7 @@ pub fn run() {
             commands::layout_tree,
             commands::cockpit_surfaces,
             commands::cockpit_workspaces,
+            commands::cockpit_locks,
             commands::density_bands,
             commands::cockpit_workspace,
             commands::set_cockpit_workspace,

@@ -63,9 +63,14 @@ test.describe("the typed interface vocabulary", () => {
           focus: "performing",
           theme: "",
           decks: 2,
-          frozen: false,
+          locked: [],
         },
         notes: [],
+        // §78's four freedoms, as Rust answers them for a workspace nothing is
+        // locked on. Present rather than omitted because the shell reads it
+        // straight off the event: a fixture that left it out would be sending a
+        // shape djmanzo never sends.
+        permits: { rearrange: true, resize: true, retheme: true, restyle: true },
       },
       focus: null,
       what: "opened next",
@@ -95,9 +100,14 @@ test.describe("the typed interface vocabulary", () => {
           focus: "performing",
           theme: "",
           decks: 2,
-          frozen: false,
+          locked: [],
         },
         notes: [],
+        // §78's four freedoms, as Rust answers them for a workspace nothing is
+        // locked on. Present rather than omitted because the shell reads it
+        // straight off the event: a fixture that left it out would be sending a
+        // shape djmanzo never sends.
+        permits: { rearrange: true, resize: true, retheme: true, restyle: true },
       },
       focus: 2,
       what: "focused deck 2",

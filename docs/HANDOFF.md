@@ -437,6 +437,16 @@ target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 **`pkill -f "something"` matches its own shell.** It kills the command that
 ran it. Use `pkill -x <name>`.
 
+**A gate in the interface is not a gate.** §78's locks are honoured in
+`App.svelte` for the four things the shell does to itself — the phase promotion,
+the density fitting, the theme adaptation, the audio-reactive properties — and
+that is the right place for those, because the shell is what does them. The
+assistant's path is not one of them: `ui_request` applies the arrangement in
+Rust, stores it to `workspace.json`, and *then* emits `cockpit` to the window.
+A permit consulted when that event arrives is consulted after the DJ's screen
+has moved and the change has been written. If a rule has to hold against the
+assistant, it goes where the assistant acts.
+
 **Do not hand-write a parameter the engine owns while the engine is running.**
 `Engine` republishes a block of deck state into the `ParameterRegistry` on every
 callback — `LoopActive`, `LoopStart`, `LoopEnd` among them, derived from
