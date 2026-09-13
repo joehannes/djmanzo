@@ -2287,7 +2287,17 @@ mod tests {
     }
 
     mod command_palette {
-        use super::super::{PALETTE_LIMIT, matches, palette};
+        use super::super::{PALETTE_LIMIT, PaletteEntryDto, matches, offered};
+
+        /// The palette with the whole hierarchy in reach.
+        ///
+        /// Every test below is about the ranking and the cut rather than about
+        /// §18's budget, so they ask for the budget that removes nothing —
+        /// which is the one the interface has whenever nobody is mixing, and
+        /// therefore the one these were all written against.
+        fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
+            offered(&query, decks, crate::tiers::Tier::Preparation).entries
+        }
 
         /// **The palette can only offer what djmanzo actually has.**
         ///
@@ -2485,6 +2495,165 @@ mod tests {
         #[test]
         fn it_stops_at_a_readable_number() {
             assert!(palette(String::new(), 6).len() <= PALETTE_LIMIT);
+        }
+
+        /// **The load-bearing one: mid-mix the palette offers the hands and
+        /// nothing else, and says so.**
+        ///
+        /// §18's `Attention::performing` has said *"Tier 1 and 2 only; nothing
+        /// else may take room"* since it was written. §58 gave the palette a
+        /// ranking; this is the budget actually spending it. The order matters
+        /// as much as the rule: cutting to twelve first and dropping the
+        /// paperwork afterwards would leave a DJ mid-mix with four rows,
+        /// because eight of their twelve were tags and settings.
+        #[test]
+        fn mid_mix_the_palette_offers_only_what_a_hand_needs() {
+            // `sh` and not a letter picked for looking plausible. Every
+            // single-character query already fills its twelve with tiers 1 and
+            // 2, because the vocabulary is mostly deck verbs — so a test
+            // written against one of those is green whether the rule is there
+            // or not. `sh` matches *Show <surface>* for every surface djmanzo
+            // has, which is eight rows of paperwork in the visible twelve.
+            // Before trusting a cut, find the input that is wrong without it.
+            let mixing = crate::cockpit::Attention::performing().room_for;
+            let quiet = offered("sh", 6, mixing);
+            assert!(!quiet.entries.is_empty(), "the palette went dark mid-mix");
+            for entry in &quiet.entries {
+                assert!(
+                    super::tier_of(entry).survives_a_mix(),
+                    "`{}` is {} and was offered during a mix",
+                    entry.label,
+                    entry.tier
+                );
+            }
+            let loud = offered("sh", 6, crate::tiers::Tier::Preparation);
+            assert!(
+                loud.entries
+                    .iter()
+                    .filter(|entry| !super::tier_of(entry).survives_a_mix())
+                    .count()
+                    >= 4,
+                "the query no longer fills its twelve with paperwork, so this \
+                 proves nothing: find one that does"
+            );
+            assert!(
+                quiet.entries.len() < loud.entries.len(),
+                "the mixing list is no shorter than the full one"
+            );
+            // And the cut is not a silent one.
+            assert!(
+                quiet.because.contains("type a name"),
+                "a list that halved itself said nothing about why: {:?}",
+                quiet.because
+            );
+            assert!(
+                loud.because.is_empty(),
+                "the full list claimed it had been shortened"
+            );
+        }
+
+        /// **A list that did not actually change says nothing.**
+        ///
+        /// Almost every query already fills its twelve with tiers 1 and 2,
+        /// because the vocabulary is mostly deck verbs — so the budget removes
+        /// something from the *match set* and nothing from what the DJ would
+        /// have seen. Announcing a cut there would be djmanzo describing a
+        /// decision it did not make, over a list identical to the full one.
+        ///
+        /// This is the assertion the first version of these tests was missing:
+        /// the note was computed over every match rather than over the visible
+        /// twelve, and the whole suite stayed green.
+        #[test]
+        fn a_list_the_budget_did_not_shorten_claims_nothing() {
+            let mixing = crate::cockpit::Attention::performing().room_for;
+            let quiet = offered("s", 6, mixing);
+            let loud = offered("s", 6, crate::tiers::Tier::Preparation);
+            assert_eq!(
+                quiet.entries.len(),
+                loud.entries.len(),
+                "pick a query whose visible twelve are already all hands"
+            );
+            assert!(
+                super::ranked("s", 6)
+                    .iter()
+                    .any(|entry| !super::tier_of(entry).survives_a_mix()),
+                "`s` matches no paperwork at all, so this proves nothing"
+            );
+            assert!(
+                quiet.because.is_empty(),
+                "djmanzo announced a cut it did not make: {:?}",
+                quiet.because
+            );
+        }
+
+        /// **A query that only matches paperwork still answers it.**
+        ///
+        /// §18 governs what djmanzo *offers*, never what a DJ asks for by name.
+        /// A palette that refused to find Settings during a mix would be
+        /// obeying §18 and breaking §98 — *everything one shortcut away* — and
+        /// the DJ would conclude djmanzo had lost the panel rather than that it
+        /// was being tactful.
+        #[test]
+        fn asking_for_paperwork_by_name_still_finds_it_mid_mix() {
+            let mixing = crate::cockpit::Attention::performing().room_for;
+            let asked = offered("settings", 2, mixing);
+            assert!(
+                asked
+                    .entries
+                    .iter()
+                    .any(|entry| entry.run == "settings" && entry.kind == "surface"),
+                "Settings is unreachable mid-mix: {:?}",
+                asked
+                    .entries
+                    .iter()
+                    .map(|e| e.label.as_str())
+                    .collect::<Vec<_>>()
+            );
+            assert!(
+                asked.because.is_empty(),
+                "nothing was cut, so nothing should be explained"
+            );
+
+            // `jo` is the whole of the fallback in three rows: everything it
+            // matches is the Journal, which is tier 4, so the cut would empty
+            // the list — and an empty palette is djmanzo saying it does not
+            // have a thing it plainly has.
+            let journal = offered("jo", 2, mixing);
+            assert!(
+                journal
+                    .entries
+                    .iter()
+                    .any(|entry| entry.run.contains("journal")),
+                "the Journal vanished mid-mix: {:?}",
+                journal
+                    .entries
+                    .iter()
+                    .map(|e| e.label.as_str())
+                    .collect::<Vec<_>>()
+            );
+            assert!(journal.because.is_empty());
+        }
+
+        /// **A typed action outranks the budget, whatever tier its verb is.**
+        ///
+        /// `grid_nudge` is tier 4 — the beat grid is work done before a night.
+        /// A DJ who has typed it in full during a mix has not asked to be
+        /// protected from it.
+        #[test]
+        fn a_line_typed_in_full_survives_the_budget() {
+            let mixing = crate::cockpit::Attention::performing().room_for;
+            let typed = "deck 1 grid_nudge 0.01";
+            assert_eq!(
+                crate::tiers::of_verb("grid_nudge"),
+                crate::tiers::Tier::Preparation
+            );
+            assert!(
+                offered(typed, 2, mixing)
+                    .entries
+                    .iter()
+                    .any(|entry| entry.run == typed),
+                "the palette refused a line the DJ typed in full"
+            );
         }
 
         /// **`d2p` finds `Deck 2 · play`.**
@@ -6959,9 +7128,103 @@ const PALETTE_LIMIT: usize = 12;
 ///
 /// Matching is a subsequence test rather than a substring one, because that is
 /// what a palette user expects: `d2p` finds `Deck 2 · play`.
+/// What the palette is offering, and why it is offering that much.
+#[derive(Debug, Clone, Serialize)]
+pub struct PaletteDto {
+    pub entries: Vec<PaletteEntryDto>,
+    /// Why the list is shorter than usual, or empty when it is not.
+    ///
+    /// Said rather than left to be noticed, for the reason §74's rail says
+    /// which deck it is following: a list that silently halved is a list a DJ
+    /// stops trusting, and the sentence also carries the way out of it.
+    pub because: String,
+}
+
+/// What the palette should offer for `query`, under §18's budget.
+///
+/// The judgement is read here rather than passed in, like every other reading
+/// of the night: one judgement, made in one place. What the interface owns is
+/// the drawing.
 #[tauri::command]
 #[must_use]
-pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
+pub fn palette(state: State<'_, AppState>, query: String, decks: u8) -> PaletteDto {
+    let snapshot = crate::Snapshot::capture(&state.registry(), state.deck_count());
+    offered(
+        &query,
+        decks,
+        crate::cockpit::Attention::for_context(&snapshot).room_for,
+    )
+}
+
+/// What survives §18's *"nothing else may take room"*.
+///
+/// §58 ranks the list and this cuts it. The first version of this said the
+/// order mattered -- that cutting to twelve before dropping the paperwork
+/// would leave a DJ with four rows -- and a mutation pass showed that it does
+/// not: the tiers *are* the sort key, so "everything at or above this tier" is
+/// a prefix of the sorted list and the two operations commute. It is written
+/// in the order the rule is stated in, not because the answer depends on it.
+///
+/// What does depend on an order is the **note**. It is computed over the
+/// twelve the DJ would otherwise have seen rather than over every match,
+/// because on most queries the twelve nearest the hands are already the twelve
+/// that fit: announcing a cut there would be djmanzo describing a decision it
+/// did not make, over a list identical to the full one.
+///
+/// **A query that only matches paperwork still answers.** An interface that
+/// refused to find Settings during a mix would be obeying §18 and breaking
+/// §98, which says a whole night's work is reachable from here. The budget
+/// governs what djmanzo *offers*, never what a DJ asks for by name — so when
+/// the cut would leave nothing, there was nothing being offered in the first
+/// place and the full list stands.
+#[must_use]
+fn offered(query: &str, decks: u8, room_for: crate::tiers::Tier) -> PaletteDto {
+    let all = ranked(query, decks);
+    let within: Vec<PaletteEntryDto> = all
+        .iter()
+        .filter(|entry| tier_of(entry) <= room_for)
+        .cloned()
+        .collect();
+    // Whether anything the DJ would otherwise have *seen* was removed, rather
+    // than whether anything was filtered: the list is cut to twelve either way,
+    // and on most queries the twelve nearest the hands are already the twelve
+    // that fit. Saying "this was shortened" over a list that is identical to
+    // the full one would be djmanzo describing a decision it did not make.
+    let dropped = all
+        .iter()
+        .take(PALETTE_LIMIT)
+        .any(|entry| tier_of(entry) > room_for);
+    let quietened = dropped && !within.is_empty();
+    let mut entries = if within.is_empty() { all } else { within };
+    entries.truncate(PALETTE_LIMIT);
+    PaletteDto {
+        entries,
+        because: if quietened {
+            "Only what your hands need right now — type a name to reach anything else.".to_owned()
+        } else {
+            String::new()
+        },
+    }
+}
+
+/// The tier an entry carries, back as a tier.
+///
+/// The DTO holds §58's slug because that is what the interface draws with; this
+/// is the one place it is read back, and an unknown one ranks last rather than
+/// panicking — the same posture every other lookup here takes towards a name it
+/// does not have.
+fn tier_of(entry: &PaletteEntryDto) -> crate::tiers::Tier {
+    crate::tiers::Tier::ALL
+        .into_iter()
+        .find(|tier| tier.name() == entry.tier)
+        .unwrap_or(crate::tiers::Tier::Preparation)
+}
+
+/// Every entry matching `query`, ranked by §58 and not yet cut.
+///
+/// Separate from the cut so the budget can be applied between the two.
+#[must_use]
+fn ranked(query: &str, decks: u8) -> Vec<PaletteEntryDto> {
     use dj_core::vocabulary::{Target, vocabulary};
 
     let needle = query.trim();
@@ -7086,13 +7349,7 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
     // §58, applied. Stable, so within a tier the passes' own order survives —
     // and the typed query keeps the top because it is pushed first and nothing
     // outranks `Glanceable`.
-    out.sort_by_key(|entry| {
-        crate::tiers::Tier::ALL
-            .into_iter()
-            .find(|tier| tier.name() == entry.tier)
-            .map_or(u8::MAX, crate::tiers::Tier::rank)
-    });
-    out.truncate(PALETTE_LIMIT);
+    out.sort_by_key(|entry| tier_of(entry).rank());
     out
 }
 
@@ -11069,7 +11326,8 @@ mod one_source_of_truth {
         );
         // And the palette offers it, which is the reader that used to disagree.
         assert!(
-            super::palette(written.clone(), 4)
+            super::offered(&written, 4, crate::tiers::Tier::Preparation)
+                .entries
                 .iter()
                 .any(|entry| entry.run == written),
             "the palette refuses a line the bus performs, so a DJ typing it is \

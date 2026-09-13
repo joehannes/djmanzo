@@ -16,6 +16,7 @@
     "suggestions": 5,
     "notices": 3,
     "reflow": true,
+    "room_for": "preparation",
     "motion": "normal"
   },
   "decks": [

@@ -122,14 +122,21 @@ test.describe("§8 Level 1: what djmanzo remembers", () => {
     // fixed set that proves each *kind* of entry runs; this is one answer
     // djmanzo really gives, for one query, which is what the override is for.
     await openShell(page, "/", {}, {
-      palette: [
-        {
-          label: "Show At hand",
-          about: "The four to eight controls that matter on the focused deck right now.",
-          kind: "surface",
-          run: "athand",
-        },
-      ],
+      palette: {
+        // Nothing was cut. §18's note is empty unless the budget actually
+        // removed something a DJ would otherwise have seen, and a fixture
+        // carrying it always would let a test about the quiet palette pass
+        // over a loud one.
+        because: "",
+        entries: [
+          {
+            label: "Show At hand",
+            about: "The four to eight controls that matter on the focused deck right now.",
+            kind: "surface",
+            run: "athand",
+          },
+        ],
+      },
     });
     await page.keyboard.press("Control+k");
     await page.getByRole("button", { name: /Show At hand/ }).first().click();

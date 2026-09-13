@@ -26,14 +26,21 @@ import { errorsThrown, openShell } from "./shell";
  */
 async function openMixes(page: import("@playwright/test").Page) {
   await openShell(page, "/", {}, {
-    palette: [
-      {
-        label: "Show Tonight's mixes",
-        about: "How tonight's records were joined, and what kind of mix each was.",
-        kind: "surface",
-        run: "mixes",
-      },
-    ],
+    palette: {
+      // Nothing was cut. §18's note is empty unless the budget actually
+      // removed something a DJ would otherwise have seen, and a fixture
+      // carrying it always would let a test about the quiet palette pass
+      // over a loud one.
+      because: "",
+      entries: [
+        {
+          label: "Show Tonight's mixes",
+          about: "How tonight's records were joined, and what kind of mix each was.",
+          kind: "surface",
+          run: "mixes",
+        },
+      ],
+    },
   });
   await page.keyboard.press("Control+k");
   await page.getByRole("button", { name: /Show Tonight's mixes/ }).first().click();

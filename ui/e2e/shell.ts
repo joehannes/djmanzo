@@ -624,36 +624,43 @@ const ANSWERS: Record<string, unknown> = {
   // Ordered by §58's hierarchy, the way Rust orders it before cutting to
   // twelve — a stub in some other order would let the interface pass a test
   // about the ranking by accident.
-  palette: [
-    {
-      label: "Run: deck 2 loop 8",
-      about: "The vocabulary accepts this exactly as typed.",
-      kind: "action",
-      run: "deck 2 loop 8",
-      tier: "glanceable",
-    },
-    {
-      label: "Deck 1 \u00b7 play",
-      about: "start playback",
-      kind: "action",
-      run: "deck 1 play",
-      tier: "glanceable",
-    },
-    {
-      label: "Deck 1 \u00b7 eq_low",
-      about: "set the low band",
-      kind: "action",
-      run: "deck 1 eq_low 1",
-      tier: "performable",
-    },
-    {
-      label: "Show Prepare",
-      about: "Records on their way to a deck, before they are on one.",
-      kind: "surface",
-      run: "prepare",
-      tier: "preparation",
-    },
-  ],
+  palette: {
+    // Nothing was cut. §18's note is empty unless the budget actually
+    // removed something a DJ would otherwise have seen, and a fixture
+    // carrying it always would let a test about the quiet palette pass
+    // over a loud one.
+    because: "",
+    entries: [
+      {
+        label: "Run: deck 2 loop 8",
+        about: "The vocabulary accepts this exactly as typed.",
+        kind: "action",
+        run: "deck 2 loop 8",
+        tier: "glanceable",
+      },
+      {
+        label: "Deck 1 \u00b7 play",
+        about: "start playback",
+        kind: "action",
+        run: "deck 1 play",
+        tier: "glanceable",
+      },
+      {
+        label: "Deck 1 \u00b7 eq_low",
+        about: "set the low band",
+        kind: "action",
+        run: "deck 1 eq_low 1",
+        tier: "performable",
+      },
+      {
+        label: "Show Prepare",
+        about: "Records on their way to a deck, before they are on one.",
+        kind: "surface",
+        run: "prepare",
+        tier: "preparation",
+      },
+    ],
+  },
   learned_taste: { favourites: [], plays: 0 },
   // A three-record plan whose middle seam needs a cut.
   //

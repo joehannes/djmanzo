@@ -22,14 +22,21 @@ import { errorsThrown, openShell } from "./shell";
 
 async function openAtHand(page: import("@playwright/test").Page) {
   await openShell(page, "/", {}, {
-    palette: [
-      {
-        label: "Show At hand",
-        about: "The four to eight controls that matter on the focused deck right now.",
-        kind: "surface",
-        run: "athand",
-      },
-    ],
+    palette: {
+      // Nothing was cut. §18's note is empty unless the budget actually
+      // removed something a DJ would otherwise have seen, and a fixture
+      // carrying it always would let a test about the quiet palette pass
+      // over a loud one.
+      because: "",
+      entries: [
+        {
+          label: "Show At hand",
+          about: "The four to eight controls that matter on the focused deck right now.",
+          kind: "surface",
+          run: "athand",
+        },
+      ],
+    },
   });
   await page.keyboard.press("Control+k");
   await page.getByRole("button", { name: /Show At hand/ }).first().click();

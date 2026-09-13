@@ -42,6 +42,16 @@
   let open = $state(false);
   let query = $state("");
   let entries = $state<PaletteEntry[]>([]);
+  /**
+   * Why the list is short, when it is.
+   *
+   * §18's budget, spent by Rust and reported here. The palette is cut to the
+   * hands during a mix, and a row of twelve that became a row of four with
+   * nothing said would read as djmanzo having lost half its vocabulary — so
+   * the sentence is on screen, and it carries the way out: anything asked for
+   * by name still answers.
+   */
+  let because = $state("");
   let chosen = $state(0);
   let field = $state<HTMLInputElement | null>(null);
   let error = $state<string | null>(null);
@@ -73,7 +83,8 @@
       .then((found) => {
         // A slower answer to an older query must not overwrite a newer one.
         if (asked !== query) return;
-        entries = found;
+        entries = found.entries;
+        because = found.because;
         chosen = 0;
         error = null;
         asking = false;
@@ -81,6 +92,7 @@
       .catch((e) => {
         if (asked !== query) return;
         entries = [];
+        because = "";
         error = String(e);
         asking = false;
       });
@@ -98,6 +110,7 @@
   function hide() {
     open = false;
     entries = [];
+    because = "";
     error = null;
   }
 
@@ -188,6 +201,9 @@
     {:else if entries.length === 0}
       <p class="empty">{asking ? "…" : "Nothing matches that."}</p>
     {:else}
+      {#if because}
+        <p class="because">{because}</p>
+      {/if}
       <ul class="entries">
         {#each entries as entry, i (entry.kind + entry.run)}
           <li>
@@ -231,6 +247,17 @@
     to learn it — the list is already in the right order — but after a night it
     is visible that the top of the palette is the hands.
   */
+  /*
+    Above the list rather than below it: it is the reason the list is the
+    length it is, and a note under twelve rows is a note read after the
+    decision it explains has already been made.
+  */
+  .because {
+    margin: 0 0 0.35rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+
   .entries button[data-tier] {
     border-left: 3px solid transparent;
   }

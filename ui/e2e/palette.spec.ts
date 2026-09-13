@@ -45,6 +45,59 @@ test.describe("the command palette", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * **A shortened list says why, and the sentence carries the way out.**
+   *
+   * §18's budget is spent in Rust — mid-mix the palette offers only what a hand
+   * needs — and `dj_app::commands` proves the cut. What only a browser can show
+   * is that the reason reaches the screen: a row of twelve that became a row of
+   * four with nothing said would read as djmanzo having lost half its
+   * vocabulary, and the DJ would stop reaching for the palette during the
+   * exact minutes it was built for.
+   */
+  test("a palette cut short by the budget says so", async ({ page }) => {
+    await openShell(page, "/", {}, {
+      palette: {
+        because:
+          "Only what your hands need right now — type a name to reach anything else.",
+        entries: [
+          {
+            label: "Deck 1 \u00b7 play",
+            about: "start playback",
+            kind: "action",
+            run: "deck 1 play",
+            tier: "glanceable",
+          },
+        ],
+      },
+    });
+    await page.keyboard.press("Control+k");
+    await expect(palette(page).locator(".because")).toContainText("type a name");
+    // Above the list, because it is the reason the list is the length it is.
+    const note = await palette(page).locator(".because").boundingBox();
+    const first = await palette(page).locator(".entries li").first().boundingBox();
+    expect(note).not.toBeNull();
+    expect(first).not.toBeNull();
+    expect(note!.y).toBeLessThan(first!.y);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **And a full list says nothing.**
+   *
+   * The shared stub answers with `because: ""`, which is what Rust sends
+   * whenever nothing a DJ would otherwise have seen was removed. A note that
+   * appeared over an untouched list would be djmanzo describing a decision it
+   * did not make.
+   */
+  test("a full palette claims nothing about its length", async ({ page }) => {
+    await openShell(page, "/");
+    await page.keyboard.press("Control+k");
+    await expect(palette(page).getByRole("button")).not.toHaveCount(0);
+    await expect(palette(page).locator(".because")).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** Cmd+K too, because half of DJ laptops are Macs. */
   test("opens on Cmd+K as well", async ({ page }) => {
     await openShell(page, "/");

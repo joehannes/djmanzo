@@ -666,6 +666,14 @@ export interface SessionContext {
 export type Motion = "none" | "low" | "normal" | "high";
 
 /**
+ * §58's information hierarchy, nearest the hands first.
+ *
+ * The order is the meaning: glanceable is what a DJ reads without looking away
+ * from the floor, and preparation is work done before a night or after it.
+ */
+export type Tier = "glanceable" | "performable" | "contextual" | "preparation";
+
+/**
  * How much the interface may ask of the DJ right now.
  *
  * Derived in Rust from the same context every other consumer reads, so no
@@ -677,6 +685,14 @@ export interface Attention {
   notices: number;
   /** False during a mix, always. Nothing may move while somebody reaches. */
   reflow: boolean;
+  /**
+   * The deepest tier of §58's hierarchy that may take room **unasked**.
+   *
+   * §18's "Tier 1 and 2 only; nothing else may take room", as data. It governs
+   * what djmanzo offers — the rows a palette puts in front of somebody who has
+   * typed three letters — never what a DJ asks for by name.
+   */
+  room_for: Tier;
   motion: Motion;
 }
 
@@ -1503,7 +1519,7 @@ export interface PaletteEntry {
    * so the interface never has to. Drawn as a mark on the row so a DJ can see
    * where the hands end and the paperwork begins.
    */
-  tier: string;
+  tier: Tier;
 }
 
 /**
@@ -1515,8 +1531,21 @@ export interface PaletteEntry {
  * for the same reason the suggester's is: a ranking that lives in two places is
  * two rankings.
  */
+export interface Palette {
+  entries: PaletteEntry[];
+  /**
+   * Why the list is shorter than usual, or empty when it is not.
+   *
+   * §18's budget spent: mid-mix the palette offers only what a hand needs, and
+   * says so rather than silently halving — a list that shortened without
+   * explanation is a list a DJ stops trusting. Anything asked for **by name**
+   * still answers, which is what the sentence tells them.
+   */
+  because: string;
+}
+
 export const palette = (query: string, decks: number) =>
-  invoke<PaletteEntry[]>("palette", { query, decks });
+  invoke<Palette>("palette", { query, decks });
 
 /** Where the DJ wants the next record to take the room. */
 export type Trajectory = "lift" | "hold" | "ease";

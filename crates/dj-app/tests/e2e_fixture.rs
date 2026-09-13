@@ -73,10 +73,16 @@ fn keys(value: &serde_json::Value) -> BTreeSet<String> {
 /// comparison fails whenever the captured state happens to differ from the one
 /// the comparison is built from. It would be a test of what was playing.
 ///
-/// These three objects are always present and carry every field a layout
+/// These four objects are always present and carry every field a layout
 /// depends on, which is the drift worth catching: a field added in Rust would
 /// otherwise leave the browser measuring a state djmanzo no longer produces,
 /// still green.
+///
+/// **The attention budget was not one of them until §18 grew a field**, and
+/// that is exactly how it was found: `room_for` went onto `Attention`, the
+/// browser kept measuring a budget without it, and every gate stayed green. It
+/// qualifies on the same ground the other three do -- it is never an `Option`
+/// and never absent -- so it is checked now.
 #[test]
 fn the_browser_fixture_has_the_shape_the_application_sends() {
     // The values here are meaningless -- a bare registry is all zeros -- but
@@ -94,6 +100,11 @@ fn the_browser_fixture_has_the_shape_the_application_sends() {
 
     for (what, fresh, stored) in [
         ("the snapshot", &fresh, &stored),
+        (
+            "the attention budget",
+            &fresh["attention"],
+            &stored["attention"],
+        ),
         ("a deck", &fresh["decks"][0], &stored["decks"][0]),
         ("the master", &fresh["master"], &stored["master"]),
     ] {
@@ -110,6 +121,47 @@ fn the_browser_fixture_has_the_shape_the_application_sends() {
              in the fixture but not the type: {extra:?}\n\n{recapture}\n"
         );
     }
+}
+
+/// **The fixture's attention budget is one djmanzo really produces.**
+///
+/// The shape test above compares *keys*, which is the right guard for a
+/// capture: the values are whatever was playing. The budget is the exception,
+/// because it is not a measurement — it is one of four constants, chosen by
+/// [`Attention::for_context`], and a fixture carrying five of its fields from a
+/// capture and a sixth from somebody's memory is a fixture the browser measures
+/// a state against that djmanzo has never been in.
+///
+/// That is not hypothetical: `room_for` was added to the budget and the field
+/// was written into this file by hand rather than by recapturing, because a
+/// recapture on different audio would have moved every number the layout budget
+/// is drawn against. This is what makes that safe — the block has to equal one
+/// of the four exactly, or the file is wrong.
+#[test]
+fn the_fixture_carries_a_budget_djmanzo_can_actually_be_in() {
+    use dj_app::cockpit::Attention;
+
+    let stored = fixture()["attention"].clone();
+    let real = [
+        ("performing", Attention::performing()),
+        ("preparing", Attention::preparing()),
+        ("learning", Attention::learning()),
+        ("emergency", Attention::emergency()),
+    ];
+    assert!(
+        real.iter().any(|(_, budget)| {
+            serde_json::to_value(budget).expect("a budget serialises") == stored
+        }),
+        "\nthe fixture's attention budget is not one djmanzo produces:\n  \
+         {stored:#}\n\nthe four it does produce are:\n{}\n",
+        real.iter()
+            .map(|(name, budget)| format!(
+                "  {name}: {:#}",
+                serde_json::to_value(budget).expect("a budget serialises")
+            ))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
 }
 
 /// The pad pages the interface asks for, as a golden file.

@@ -409,6 +409,21 @@ pub struct Attention {
     /// for it is the failure that makes adaptive interfaces feel hostile.
     pub reflow: bool,
     pub motion: Motion,
+    /// The deepest tier of §58's hierarchy that may take room **unasked**.
+    ///
+    /// [`Attention::performing`] has said *"Tier 1 and 2 only; nothing else may
+    /// take room"* since it was written, and for just as long that was a
+    /// sentence in a doc comment: the budget carried four numbers and a flag,
+    /// and nothing anywhere could be checked against the rule. This is the
+    /// rule, as data.
+    ///
+    /// **Unasked** is the whole of it. It governs what djmanzo *offers* — the
+    /// surfaces a phase opens by itself, the rows a palette puts in front of
+    /// somebody who has typed three letters. It never governs what a DJ asks
+    /// for by name: an interface that refused to find Settings mid-mix would be
+    /// obeying §18 and breaking §98, which says a whole night's work is
+    /// reachable from the palette.
+    pub room_for: crate::tiers::Tier,
 }
 
 impl Attention {
@@ -420,6 +435,9 @@ impl Attention {
             suggestions: 1,
             notices: 1,
             reflow: false,
+            // §18's own sentence: Tier 1 and 2 only. A record is playing against
+            // another and the hands are the only thing that matters.
+            room_for: crate::tiers::Tier::Performable,
             motion: Motion::Low,
         }
     }
@@ -432,6 +450,8 @@ impl Attention {
             suggestions: 5,
             notices: 3,
             reflow: true,
+            // Everything, because this is when the paperwork is the work.
+            room_for: crate::tiers::Tier::Preparation,
             motion: Motion::Normal,
         }
     }
@@ -444,6 +464,9 @@ impl Attention {
             suggestions: 3,
             notices: 3,
             reflow: true,
+            // Everything, for the same reason: an explanation is the point, and
+            // §58's contextual tier is where explanations live.
+            room_for: crate::tiers::Tier::Preparation,
             motion: Motion::Normal,
         }
     }
@@ -477,6 +500,10 @@ impl Attention {
             suggestions: self.suggestions.min(other.suggestions),
             notices: self.notices.min(other.notices),
             reflow: self.reflow && other.reflow,
+            // `min` is the shallower tier, because §58 numbers the hands first:
+            // the quieter of "everything may take room" and "Tier 1 and 2 only"
+            // is the second, which is the one-way rule this whole method is.
+            room_for: self.room_for.min(other.room_for),
             motion: self.motion.min(other.motion),
         }
     }
@@ -489,6 +516,12 @@ impl Attention {
             suggestions: 0,
             notices: 1,
             reflow: false,
+            // The controls, not the paperwork -- even though the thing that fixes
+            // a failed recording is in Settings. Promoting it would be djmanzo
+            // rearranging the screen around somebody who is already dealing with
+            // something going wrong; a DJ who wants Settings types its name, and
+            // the palette always answers a name.
+            room_for: crate::tiers::Tier::Performable,
             motion: Motion::None,
         }
     }
@@ -3506,6 +3539,7 @@ mod tests {
             suggestions: 5,
             notices: 3,
             reflow: true,
+            room_for: crate::tiers::Tier::Preparation,
             motion: Motion::High,
         };
         let quiet = Attention {
@@ -3513,6 +3547,7 @@ mod tests {
             suggestions: 0,
             notices: 1,
             reflow: false,
+            room_for: crate::tiers::Tier::Glanceable,
             motion: Motion::None,
         };
         assert_eq!(loud.quieter_of(quiet), quiet);
@@ -3528,6 +3563,7 @@ mod tests {
             suggestions: 0,
             notices: 3,
             reflow: false,
+            room_for: crate::tiers::Tier::Preparation,
             motion: Motion::High,
         };
         let other = Attention {
@@ -3535,6 +3571,7 @@ mod tests {
             suggestions: 5,
             notices: 1,
             reflow: true,
+            room_for: crate::tiers::Tier::Performable,
             motion: Motion::Low,
         };
         assert_eq!(
@@ -3544,6 +3581,7 @@ mod tests {
                 suggestions: 0,
                 notices: 1,
                 reflow: false,
+                room_for: crate::tiers::Tier::Performable,
                 motion: Motion::Low,
             }
         );

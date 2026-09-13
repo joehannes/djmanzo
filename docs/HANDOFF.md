@@ -458,6 +458,25 @@ survive, and its test reads `state.rs` and fails when a row claims a file
 nothing writes — so the next one of these is a failing test rather than a
 discovery.
 
+**A filter whose predicate is the sort key does nothing when you move it.**
+The palette ranks by §58's tier and then cuts to twelve; §18's budget cuts it
+again to what a hand needs. The first version of that said the order mattered —
+filter before the cut to twelve, or a DJ gets four rows — and a mutation moving
+the filter after the cut left every test green. It has to: "everything at or
+above this tier" is a *prefix* of a list sorted by tier, so the two operations
+commute. The claim was wrong, not the test. What did turn out to be
+load-bearing was smaller and had no test at all: the note saying the list was
+shortened must be computed over the twelve the DJ would have seen, not over
+every match, or djmanzo announces a cut it did not make on almost every query.
+Mutate the thing the comment claims, and when the mutation survives, suspect
+the comment first.
+
+**A rule that cannot fire is worse than no rule.** §58's row named a gap —
+the tiers do not gate what a phase may promote — and building it would have
+been a rule about nothing: every budget whose `room_for` is narrower than
+tier 4 also has `reflow: false`, so promotion is already forbidden there.
+Before implementing a gap a status row names, find the input that reaches it.
+
 **A test of an ordering needs an input the old order gets wrong.** §58's
 palette ranking was first tested with the query `e`, and deleting the sort
 entirely left it green: the passes that generate the list already run verbs,
@@ -468,6 +487,23 @@ performable *surface* (`stems`) after both. Before trusting a sort, find the
 input that is wrong without it; and note that an ordering test cannot see a
 single mis-ranked item that still happens to land in order, which is why the
 tiers are also asserted directly.
+
+**`e2e_fixture.rs` compares keys one level down, and `attention` was not one
+of the levels.** The shape guard walks the snapshot, one deck and the master —
+deliberately, because going deeper compares `Option` fields that are present or
+absent by state. That left every nested always-present object unguarded, and a
+field added to `Attention` reached the browser fixture-less with every gate
+green. It is checked now, on the same criterion the other three meet: never an
+`Option`, never absent. If you add a field to one of the other nested types,
+ask which side of that line it falls on.
+
+**Do not recapture `snapshot.json` on different audio to add one field.** The
+file is the baseline every layout budget is measured against, and a recapture
+moves every number in it — track lengths, loudness, which budget the engine was
+in. Adding `room_for` by hand was right; what makes it safe is a test that the
+fixture's attention block equals one of the four budgets djmanzo can actually
+be in, so a hand-written value cannot be a guess. Recapture when the *shape* of
+a deck or the master changes; hand-add when one constant gained a field.
 
 **A default answer added to `e2e/shell.ts` overrides the one already there.**
 `ANSWERS` is one object literal, so a second `library_search:` key silently

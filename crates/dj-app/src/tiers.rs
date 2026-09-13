@@ -30,7 +30,9 @@
 //! palette buried.
 
 /// One of §58's four.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum Tier {
     /// Play state, track identity, BPM, position, phase, level, next track.
@@ -245,6 +247,28 @@ mod tests {
         assert!(Tier::Performable.survives_a_mix());
         assert!(!Tier::Contextual.survives_a_mix());
         assert!(!Tier::Preparation.survives_a_mix());
+    }
+
+    /// **The budget and this predicate are one rule, not two.**
+    ///
+    /// `Attention::room_for` is the same sentence carried as data so something
+    /// can read it, and `survives_a_mix` is the same sentence as a question.
+    /// Two spellings of one rule is how they come to disagree — which is the
+    /// failure this codebase has met often enough to have a name for it — so
+    /// the mixing budget is checked against the predicate here rather than
+    /// left to be kept in step by whoever edits one of them.
+    #[test]
+    fn the_mixing_budget_leaves_room_for_exactly_what_survives_a_mix() {
+        let mixing = crate::cockpit::Attention::performing().room_for;
+        for tier in Tier::ALL {
+            assert_eq!(
+                tier <= mixing,
+                tier.survives_a_mix(),
+                "{} is on one side of §18's line by the budget and the other \
+                 by the predicate",
+                tier.name()
+            );
+        }
     }
 
     /// The obvious cases, written out, so the table can be read against §58.
