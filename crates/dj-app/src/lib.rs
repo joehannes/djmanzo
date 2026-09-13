@@ -55,6 +55,7 @@ pub mod practice;
 pub mod presets;
 pub mod profile;
 pub mod rackcapture;
+pub mod regress;
 pub mod remembered;
 pub mod remote;
 pub mod replay;

@@ -854,6 +854,33 @@ servers timed out and reconnected during this session. Plain `git push` is
 unaffected — it does not go through MCP — so if CI cannot be dispatched, push
 anyway and dispatch when the server is back rather than holding the work.
 
+**A counting allocator shared across parallel tests measures the wrong thing.**
+§90's snapshot ratchet copied `dj-engine/tests/rt_safety.rs`'s harness, where
+the counter is a process-wide `AtomicUsize` and only the *watching* flag is
+thread-local. Cargo runs the tests in a file on separate threads at once, so
+each measurement included whatever the others were allocating: the same capture
+read 52 alone and 86 in parallel. **The counter has to be thread-local too**,
+and it is in `snapshot_budget.rs`. `rt_safety.rs` has the same shape and has not
+been seen to misreport — it asserts *zero*, so cross-talk would make it fail
+rather than pass quietly — but if it ever flakes, this is why.
+
+**Write the determinism test first; it earns its place immediately.** The flake
+above was found by the test that asserts the figure is the same every time, and
+found again as a too-short warm-up (`[94, 52, 52, …]` — something behind the
+registry initialises lazily and not all in one call). Both would otherwise have
+shipped as a ratchet that failed at random, which is the kind of test that gets
+turned off. The shape that works: **warm, measure a tail, assert the tail is
+flat** — and make the failure message distinguish the two causes, because a
+short warm-up shows one high figure at the front and something growing per call
+shows a rising tail.
+
+**Set a ratchet against a measured regression, not against a feeling.** The
+first draft of `SNAPSHOT_ALLOCATIONS` was 600 against a real 52; the slack test
+caught that. The second was 65, and the mutation it exists to catch — one
+`format!` per deck and a `Vec`, thirteen allocations — slid underneath. A
+ratchet is only worth the headroom it denies: mutate first, then pick the
+number.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests
@@ -1208,7 +1235,27 @@ The largest of them, in the order they are worth doing:
    naming the blocker on screen is what made it obvious which section to do
    next.
 
-12. **§80 is the template for "learned, and therefore arguable".** §13's
+12. **§90 has one ratchet and four honest refusals, and the split is the
+   lesson.** A ratchet is only worth having where the number means the same
+   thing on two machines. Frame rate, memory and CPU do not — the argument §89
+   already makes about screenshot baselines — and an xrun count measured against
+   a null device is always nought, so a ratchet on it would pass for the wrong
+   reason. Allocation counts are the exception, and that is where the one real
+   ratchet went: the 60 Hz snapshot, held at 56 over six decks.
+
+   **If you add a field to the snapshot, that test is the one that will stop
+   you**, and it is meant to: it runs sixty times a second on the thread that
+   also serves the engine's controls. Raise `regress::SNAPSHOT_ALLOCATIONS`
+   deliberately and say in the commit what the field is worth, or take the cost
+   back out. Lower it whenever the real figure drops.
+
+   What is left: memory and worker utilization are not measured at all.
+   Instrumenting the decoder and analyser threads is its own piece of work, and
+   a resident-set figure on a container sharing a page cache with a build is
+   noise — which is why the allocation count is the part of "memory" that
+   means the same thing twice.
+
+13. **§80 is the template for "learned, and therefore arguable".** §13's
    tendencies and §81's profiles both learn and both are constructor-enforced;
    what neither did was let a DJ disagree, and that is half of what §80 asks
    for. `persona::Verdict` is the answer the DJ owns, and a rejection has to be
@@ -1228,7 +1275,7 @@ The largest of them, in the order they are worth doing:
    records `stem-changed` and not which stem, so it is a change to the
    vocabulary and to what the bus logs, and it belongs to §14 rather than here.
 
-13. **§48 is closed, and it is the template for "a priority nobody can see".**
+14. **§48 is closed, and it is the template for "a priority nobody can see".**
    The frame rate had been measured for a long time and the tier was consulted
    by the theme pipeline alone, so §48's closing sentence — AUDIO > CONTROL >
    VISUAL EFFECTS, never the reverse — existed only as prose. `thrift::Band` is
@@ -1242,7 +1289,7 @@ The largest of them, in the order they are worth doing:
    way to trust the claim. A priority that is enforced and invisible is one
    nobody will believe the first time their laptop stutters.
 
-14. **§32's remaining palettes are content, not format.** The architecture was
+15. **§32's remaining palettes are content, not format.** The architecture was
    always there — a package is a palette, a geometry generator, behaviours and
    effects, through one pipeline — and what shipped is the table that knows
    which themes there are supposed to be. Eight of §32's sixteen are palettes
@@ -1261,7 +1308,7 @@ The largest of them, in the order they are worth doing:
    not* clause, build the prohibition as its own assertion — the browser test
    here presses Booth first, precisely to prove that half.
 
-15. **§16's remaining packs are content, not format.** The format ships:
+16. **§16's remaining packs are content, not format.** The format ships:
    `dj_assistant::pack::Pack` selects from the genre map, the technique
    catalogue and §81's occasions rather than restating any of them, and
    `coach::next_lesson` teaches inside the chosen one. Eight of §16's thirty
