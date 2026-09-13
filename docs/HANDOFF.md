@@ -437,6 +437,21 @@ target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 **`pkill -f "something"` matches its own shell.** It kills the command that
 ran it. Use `pkill -x <name>`.
 
+**A polled panel is not a stream of offers.** Every panel here refreshes on a
+timer — the Next rail, the mission bar, the assistant. Anything that counts what
+the DJ was *shown* has to count the thing rather than the answers: §43's fatigue
+treats re-offering the same records as one offer, because counting each poll
+would reach its twenty in about a minute of nobody doing anything, and the
+assistant would go quiet at a DJ who had never looked at it. The same shape is
+waiting in anything that counts notices, warnings or suggestions.
+
+**A machine that goes quiet without saying so reads as broken.** §43's
+instruction is *do not spam*, and the obvious implementation — offer less, say
+nothing — gets reported as a bug, because a DJ whose rail has thinned cannot
+tell whether djmanzo took the hint, crashed, or ran out of library. Anything
+that reduces itself in response to the DJ needs a sentence saying what it
+counted and how to undo it. `Fatigue::says` is the pattern.
+
 **A gate in the interface is not a gate.** §78's locks are honoured in
 `App.svelte` for the four things the shell does to itself — the phase promotion,
 the density fitting, the theme adaptation, the audio-reactive properties — and

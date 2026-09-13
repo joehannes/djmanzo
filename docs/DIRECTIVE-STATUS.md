@@ -68,7 +68,7 @@ rather than taken.
 | 40 | Assistant sees everything important | 🟡 | `SessionContext` now carries the phase, its certainty, its basis and the drift, and the autopilot reads the certainty. Still narrower than `DJContext`: the music, hardware and behaviour contexts are not gathered |
 | 41 | AI can operate the GUI indirectly | ✅ | `dj_app::uiop` — `ui show prepare`, `ui pin room`, `ui focus 2`, generated from `cockpit::surfaces()` so a panel djmanzo does not have cannot be asked for. Gated by §72's `adapt_layout` row, applied in Rust and announced on an event, because a panel the assistant opened has to appear without anybody pressing anything. Reachable by hand from the palette too. Density is deliberately excluded: the interface measures its own |
 | 42 | Suggestions must be explainable | ✅ | The transition planner states where and how, with its reasoning |
-| 43 | Suggestion fatigue | 🟡 | `Attention::performing()` caps suggestions at one and the cap is now derived and published; no surface draws suggestions against it yet |
+| 43 | Suggestion fatigue | ✅ | **The rule, the number, and the sentence that stops it reading as a bug.** `dj_assistant::fatigue` counts what the rail offered and what the DJ played: twenty consecutive records that djmanzo did not suggest and the rate falls a step, again at forty, again at sixty, and one suggested record played puts it straight back to full. §43 says *consecutive*, so that reset is the rule rather than a kindness — staying quiet after a hit punishes the DJ for the machine's earlier noise. Three decisions carry the section. **Only a load resolves an offer**: the rail is polled, so counting each answer would reach twenty in about a minute of nobody doing anything and the assistant would go quiet at a DJ who had never looked at it; twenty ignored suggestions means twenty records *played*, which is an hour of a set and a real opinion. **A load with nothing standing is neither taken nor ignored**, so a DJ who works entirely from their own crates is not mistaken for one rejecting advice. And **the floor still offers one**: a rail that offers nothing can never be taken from, so the streak could never reset and the assistant would be off for the night with no way back. The hook is in `put_on_deck`, djmanzo's one load funnel, so a record dragged in, picked from a crate, sent by a controller, asked for by the assistant or brought by the automix all count the same — §87's *one source of state truth*, used. **It does not move the posture.** §43 lists six states and djmanzo has six, but those are the DJ's own setting and a machine that quietly demoted Suggest to Watch because it felt unwanted would be deciding something that is not its to decide; what falls is the rate. **And it says so**, in the assistant panel, always — the obvious implementation of *do not spam* is to go quiet and say nothing, and a DJ whose rail has thinned would then have no way to tell whether djmanzo had taken the hint, crashed, or run out of library. The line carries the count, the way back, and §33's non-colour mark. §18's budget is now read too, and deliberately only to **silence the rail in an emergency**: a rail that dropped from eight rows to one the moment a second deck became audible would look broken on a panel the DJ opened and is looking at, which is the failure §17 avoided by gating on `reflow` rather than second-guessing an open panel — but a failed recording is §18's own *the DJ needs the controls, not the advice*, and there the rail goes. Not persisted: fatigue is a fact about tonight, and a DJ who worked from their crates last Saturday should not open djmanzo on a Tuesday to a rail that has already given up on them |
 | 44 | Transactional AI actions | ✅ | `dj_app::staged`. The whole next transition — load, cue, trim, sync, mix — staged as one thing with Accept, Modify and Reject, in a strip under the top bar rather than a panel. Accepting runs every chosen move through the same `perform_step` the automatic tick uses, so there is no second execution path and the whole thing logs and replays. Partial success is reported as partial |
 | 45 | Instant manual takeover | ✅ | Per parameter. Touching a control wins |
 | 46 | Guardrails for autopilot | ✅ | Careful mode holds the controls that cannot be undone by pressing them again |
@@ -149,7 +149,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **44 done, 42 part, 0 open, 19 standing rules.**
+Of the 105 sections: **45 done, 41 part, 0 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -168,10 +168,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**44 of 86 deliverable sections are complete and 42 more are partly there.** Nothing is untouched: every deliverable section now has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it.
+**45 of 86 deliverable sections are complete and 41 more are partly there.** Nothing is untouched: every deliverable section now has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it.
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 44 whole plus 42 halves over 86 is 76%, and the phase view is stricter
+way: 45 whole plus 41 halves over 86 is 76%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

@@ -781,6 +781,16 @@ pub fn put_on_deck(
     let track_id = decoded.id;
     let sample_rate = decoded.buffer.sample_rate();
 
+    // §43. Here rather than in `load_track`, because this is djmanzo's one load
+    // funnel: a record dragged in, picked from a crate, sent by a controller,
+    // asked for by the assistant or brought by the automix all arrive at this
+    // line. A hook on the browser's own path would count a DJ who works from
+    // their crates as ignoring everything while a DJ using the same rail through
+    // a controller registered nothing at all.
+    if let Ok(mut fatigue) = state.fatigue().lock() {
+        fatigue.landed(track_id);
+    }
+
     // Into the library *before* the deck is playable.
     //
     // Two reasons for the ordering. A cue row has a foreign key to its track,
@@ -1376,6 +1386,16 @@ fn publish_grid(
 /// waiting for the engine to do something.
 #[tauri::command]
 pub fn get_snapshot(state: State<'_, AppState>) -> crate::Snapshot {
+    snapshot_now(&state)
+}
+
+/// The same frame, for callers holding an `&AppState` rather than a `State`.
+///
+/// Extracted so §43's suggestion cap can read the attention budget the
+/// interface is already drawing against. Deriving the budget a second way in
+/// the rail would be exactly the thing §11 exists to stop: one context engine
+/// underneath, not a copy of the judgement in each consumer.
+pub fn snapshot_now(state: &AppState) -> crate::Snapshot {
     let bridge = state.bridge();
     let tracks = state.deck_tracks();
     let samples = state.sample_names();
@@ -5643,6 +5663,31 @@ pub struct TransitionEstimateDto {
     pub says: String,
 }
 
+/// How many candidates a rail should carry.
+///
+/// Two sections meet here and they are not the same rule, so they are not
+/// applied the same way.
+///
+/// **§43's fatigue thins it.** That is a signal the DJ generated themselves —
+/// twenty records in a row that djmanzo did not suggest — so acting on it is
+/// the assistant taking the hint, which is the section's whole instruction.
+///
+/// **§18's budget only silences it, and only in an emergency.** The budget is a
+/// cap on what may be *put in front of* a DJ, and this panel is one they opened
+/// and are looking at: a rail that dropped from eight rows to one the moment a
+/// second deck became audible would look broken, and nothing on screen would say
+/// why. That is the failure §17 avoided by gating on `reflow` instead of
+/// second-guessing an open panel. The one case where the budget must win is
+/// `Attention::emergency` — a recording that has failed, a headphone card that
+/// has stopped — where §18's own words are that the DJ needs the controls, not
+/// the advice, and a rail re-ranking at them is exactly the advice.
+fn rail_size(asked: usize, budget: u8, fatigue: &dj_assistant::Fatigue) -> usize {
+    if budget == 0 {
+        return 0;
+    }
+    fatigue.allowance(asked.clamp(1, 100))
+}
+
 /// What to play after whatever is on `deck`.
 ///
 /// `trajectory` is `lift`, `hold` or `ease`; anything else is treated as
@@ -5726,9 +5771,23 @@ pub fn suggest_next(
         .and_then(|id| db.track(id).ok().flatten())
         .and_then(|track| outgoing_of(&state, deck_id, &track));
 
-    Ok(ranked
+    let budget = snapshot_now(&state).attention.suggestions;
+    let held = state.fatigue();
+    let want = held
+        .lock()
+        .map_or(limit, |fatigue| rail_size(limit, budget, &fatigue));
+    let rail: Vec<_> = ranked.into_iter().take(want).collect();
+
+    // What was put in front of the DJ, so that a record landing later can be
+    // told apart from one they found themselves. Recorded before the rows are
+    // built, because what matters is the set of records offered rather than
+    // whether every one of them had a library row to draw.
+    if let Ok(mut fatigue) = held.lock() {
+        fatigue.offering(&rail.iter().map(|(s, _)| s.track).collect::<Vec<_>>());
+    }
+
+    Ok(rail
         .into_iter()
-        .take(limit.clamp(1, 100))
         .filter_map(|(s, because)| {
             let track = pool.iter().find(|t| t.id == s.track)?;
             Some(SuggestionDto {
@@ -8755,6 +8814,50 @@ pub fn set_cockpit_workspace(
     resolved
 }
 
+/// §43: how much the assistant is offering, and why.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AppetiteDto {
+    /// `full`, `half`, `quarter` or `least`.
+    pub appetite: String,
+    /// Records played in a row that djmanzo did not suggest.
+    pub ignored_in_a_row: u32,
+    /// Rails put in front of the DJ this session.
+    pub offers: u64,
+    /// Of those, the ones they played from.
+    pub taken: u64,
+    /// The sentence. Why it is as loud as it is, and how to change it.
+    pub says: String,
+}
+
+/// What the assistant is offering, and why.
+///
+/// **Said out loud on purpose.** §43's instruction is *do not spam*, and the
+/// obvious implementation of it — go quiet and say nothing — reads as a broken
+/// feature: a DJ whose rail has thinned has no way to tell whether djmanzo has
+/// given up on them, crashed, or run out of library. This is the sentence that
+/// says which, and says that playing one suggested record undoes it.
+#[tauri::command]
+#[must_use]
+pub fn assistant_appetite(state: State<'_, AppState>) -> AppetiteDto {
+    let held = state.fatigue();
+    let Ok(fatigue) = held.lock() else {
+        return AppetiteDto {
+            appetite: dj_assistant::Appetite::Full.name().to_owned(),
+            ignored_in_a_row: 0,
+            offers: 0,
+            taken: 0,
+            says: String::new(),
+        };
+    };
+    AppetiteDto {
+        appetite: fatigue.appetite().name().to_owned(),
+        ignored_in_a_row: fatigue.ignored_in_a_row(),
+        offers: fatigue.offers(),
+        taken: fatigue.taken(),
+        says: fatigue.says(),
+    }
+}
+
 /// One of §79's locks, and what a DJ is told it takes away.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LockDto {
@@ -10305,5 +10408,70 @@ mod lock_tests {
         let mut workspace = crate::cockpit::opening();
         workspace.locked = vec![crate::cockpit::Lock::Theme, crate::cockpit::Lock::Density];
         assert_eq!(assistant_may_rearrange(&state, &workspace), Ok(()));
+    }
+}
+
+#[cfg(test)]
+mod rail_tests {
+    use super::*;
+    use dj_assistant::{Appetite, Fatigue};
+
+    fn id(byte: u8) -> dj_core::TrackId {
+        dj_core::TrackId::from_bytes([byte; 32])
+    }
+
+    /// A DJ who has been ignoring the rail gets a shorter one.
+    ///
+    /// The arithmetic is `Appetite::out_of` and is tested in `dj-assistant`;
+    /// this is the seam — that the rail actually asks, and asks with the number
+    /// the DJ requested rather than one of its own.
+    #[test]
+    fn the_rail_thins_as_the_dj_ignores_it() {
+        let mut fatigue = Fatigue::new();
+        assert_eq!(rail_size(8, 5, &fatigue), 8, "a fresh night is not thinned");
+
+        for _ in 0..dj_assistant::fatigue::IGNORED_BEFORE_QUIETER {
+            fatigue.offering(&[id(1)]);
+            fatigue.landed(id(99));
+        }
+        assert_eq!(fatigue.appetite(), Appetite::Half);
+        assert_eq!(rail_size(8, 5, &fatigue), 4);
+    }
+
+    /// **§18's emergency silences it, and nothing else does.**
+    ///
+    /// The distinction this function exists to draw. A mix is a small budget and
+    /// the rail keeps its length, because it is a panel the DJ opened and one
+    /// that shrank under them would look broken with nothing saying why. A
+    /// failed recording is a budget of none and the rail goes: §18's own words
+    /// are that the DJ needs the controls, not the advice.
+    #[test]
+    fn a_mix_leaves_the_rail_alone_and_an_emergency_empties_it() {
+        let fatigue = Fatigue::new();
+        let mixing = crate::cockpit::Attention::performing().suggestions;
+        assert_eq!(
+            rail_size(8, mixing, &fatigue),
+            8,
+            "the rail the DJ opened collapsed the moment a second deck became \
+             audible, and nothing on screen says why"
+        );
+
+        let emergency = crate::cockpit::Attention::emergency().suggestions;
+        assert_eq!(emergency, 0, "§18's emergency is no longer silent");
+        assert_eq!(
+            rail_size(8, emergency, &fatigue),
+            0,
+            "a recording has failed and djmanzo is still re-ranking records at \
+             the DJ trying to fix it"
+        );
+    }
+
+    /// What the caller asked for is still a ceiling, and still sane.
+    #[test]
+    fn the_rail_never_exceeds_what_was_asked_for_or_what_is_reasonable() {
+        let fatigue = Fatigue::new();
+        assert_eq!(rail_size(3, 5, &fatigue), 3);
+        assert_eq!(rail_size(0, 5, &fatigue), 1, "a rail of none is not a rail");
+        assert_eq!(rail_size(10_000, 5, &fatigue), 100);
     }
 }

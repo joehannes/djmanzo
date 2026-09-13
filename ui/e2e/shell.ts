@@ -848,6 +848,17 @@ const ANSWERS: Record<string, unknown> = {
    * show none, and a test asserting a lock does something would then be
    * asserting it against a control that is not on screen.
    */
+  /**
+   * §43's appetite. The state every fresh session is in: nothing offered yet,
+   * so nothing to go on, and the rate at full.
+   */
+  assistant_appetite: {
+    appetite: "full",
+    ignored_in_a_row: 0,
+    offers: 0,
+    taken: 0,
+    says: "Nothing offered yet, so nothing to go on.",
+  },
   cockpit_locks: [
     { slug: "workspace", about: "The arrangement stays the one you chose." },
     { slug: "arrangement", about: "Nothing opens, closes or moves unless you do it." },

@@ -38,6 +38,8 @@
     OCCASIONS,
     POSTURES,
     POSTURE_HELP,
+    assistantAppetite,
+    type Appetite,
     type AssistantPack,
     type LearnedTaste,
     type Profile,
@@ -50,6 +52,13 @@
   let { enabled }: { enabled: boolean } = $props();
 
   let conduct = $state<Conduct | null>(null);
+  /**
+   * §43's suggestion fatigue.
+   *
+   * On the same tick as the conduct, because it moves on the same scale: it
+   * changes when a record lands, which is every three to six minutes.
+   */
+  let appetite = $state<Appetite | null>(null);
   /** Why the last press produced no plan, or empty when it produced one. */
   let nothingToStage = $state("");
 
@@ -126,6 +135,13 @@
       profiles = await learnedProfiles();
     } catch {
       profiles = [];
+    }
+    try {
+      appetite = await assistantAppetite();
+    } catch {
+      // The line disappears rather than the panel: every other row here still
+      // says something true.
+      appetite = null;
     }
   }
 
@@ -247,6 +263,16 @@
     {/each}
   </div>
   <p class="hint">{POSTURE_HELP[conduct?.posture ?? "suggest"]}</p>
+  <!--
+    §43, under the posture rather than beside it, because it is a different kind
+    of fact: the posture is what the DJ chose and this is what djmanzo has made
+    of how they work. Drawn always, including at full, so a DJ who notices the
+    rail is short has somewhere to look — a line that only appears once the
+    assistant has gone quiet is a line nobody knows to look for.
+  -->
+  {#if appetite}
+    <p class="appetite" data-appetite={appetite.appetite}>{appetite.says}</p>
+  {/if}
 
   <h3>What the night is</h3>
   <select
@@ -464,6 +490,24 @@
     the general form is that a component restyling `.active` inherits half of a
     pair that was written as a pair.
   */
+  /* Quieter than the hint above it: this is a fact about the machine rather
+     than an instruction, and at full it says nothing a DJ has to act on. The
+     one that has to be noticed is the one that is not full, which is why the
+     colour is spent there and nowhere else -- and §33's rule applies, so the
+     step is on the element as well as in the colour. */
+  .appetite {
+    margin: 0.3rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+
+  .appetite:not([data-appetite="full"]) {
+    color: var(--warn);
+    border-left: 2px solid currentColor;
+    padding-left: 0.5rem;
+  }
+
   .ladder button.active,
   .packs button.active {
     background: var(--accent-soft, rgba(128, 128, 128, 0.28));

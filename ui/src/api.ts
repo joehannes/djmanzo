@@ -1836,6 +1836,30 @@ export const assistantPacks = () => invoke<AssistantPack[]>("assistant_packs");
 export const assistantConduct = () => invoke<Conduct>("assistant_conduct");
 export const assistantSetPosture = (posture: string) =>
   invoke<void>("assistant_set_posture", { posture });
+/** §43: how much the assistant is offering, and why. */
+export interface Appetite {
+  /** `full`, `half`, `quarter` or `least`. */
+  appetite: string;
+  /** Records played in a row that djmanzo did not suggest. */
+  ignored_in_a_row: number;
+  /** Rails put in front of the DJ this session. */
+  offers: number;
+  /** Of those, the ones they played from. */
+  taken: number;
+  /** The sentence: why it is as loud as it is, and how to change it. */
+  says: string;
+}
+
+/**
+ * What the assistant is offering, and why.
+ *
+ * Asked for rather than derived: the streak, the step it puts the rate on and
+ * the sentence are all `dj_assistant::fatigue`'s. §43's instruction is *do not
+ * spam*, and the obvious implementation of that — go quiet, say nothing — reads
+ * as a broken feature.
+ */
+export const assistantAppetite = () => invoke<Appetite>("assistant_appetite");
+
 export const assistantSetOccasion = (occasion: string) =>
   invoke<void>("assistant_set_occasion", { occasion });
 export const assistantApplyPack = (name: string) =>

@@ -90,6 +90,12 @@ pub struct AppState {
     /// autopilot tick and changed together when a pack is chosen, and separate
     /// locks would let a tick see a new posture against an old occasion.
     conduct: Arc<Mutex<Conduct>>,
+    /// §43: what has been suggested and what the DJ did with it.
+    ///
+    /// Not persisted. Fatigue is a fact about *this* night — a DJ who worked
+    /// from their own crates all of last Saturday should not open djmanzo on a
+    /// Tuesday to a rail that has already given up on them.
+    fatigue: Arc<Mutex<dj_assistant::Fatigue>>,
     registry: Arc<ParameterRegistry>,
     /// The network control server. Off until a DJ switches it on; see
     /// `crate::remote` for why that is not a preference.
@@ -442,6 +448,7 @@ impl AppState {
         Self {
             bus,
             conduct: Arc::new(Mutex::new(Conduct::default())),
+            fatigue: Arc::new(Mutex::new(dj_assistant::Fatigue::new())),
             registry,
             remote: Arc::new(crate::remote::Remote::default()),
             audience: Arc::new(crate::audience::Audience::default()),
@@ -1443,6 +1450,12 @@ impl AppState {
     #[must_use]
     pub fn conduct(&self) -> Arc<Mutex<Conduct>> {
         Arc::clone(&self.conduct)
+    }
+
+    /// §43's suggestion fatigue, for this night.
+    #[must_use]
+    pub fn fatigue(&self) -> Arc<Mutex<dj_assistant::Fatigue>> {
+        Arc::clone(&self.fatigue)
     }
 
     /// The context engine.
