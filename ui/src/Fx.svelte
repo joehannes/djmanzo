@@ -297,10 +297,14 @@
     font-weight: 600;
   }
 
+  /* A rack that is *running*, which is not the same as one the DJ picked --
+     the beat length below is the picked thing. They were both `--accent-2`
+     before the roles were applied, so the two states this panel has were one
+     colour. */
   .power.lit {
-    background: var(--accent-2);
-    border-color: var(--accent-2);
-    color: var(--on-accent);
+    background: var(--active);
+    border-color: var(--active);
+    color: var(--on-active);
   }
 
   .pick {
@@ -343,9 +347,9 @@
   }
 
   .lengths button.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
+    background: var(--selected);
+    border-color: var(--selected);
+    color: var(--on-selected);
   }
 
   .place {

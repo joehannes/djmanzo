@@ -449,7 +449,7 @@
               aria-label="More like {candidate.track.title}"
             >&asymp;</button>
             <button
-              class:on={pinned.includes(candidate.track.id)}
+              class:picked={pinned.includes(candidate.track.id)}
               onclick={() => togglePin(candidate)}
               title="Keep this one at the top"
               aria-label="Pin {candidate.track.title}"
@@ -578,9 +578,9 @@
   }
 
   .trajectory button.active {
-    background: var(--accent);
-    color: var(--on-accent);
-    border-color: var(--accent);
+    background: var(--selected);
+    color: var(--on-selected);
+    border-color: var(--selected);
   }
 
   .candidates {
@@ -720,10 +720,22 @@
     cursor: pointer;
   }
 
+  /*
+    Two states, two meanings, and they were one rule until §30's roles were
+    applied: a pinned candidate is one the DJ *chose* to keep at the top, and a
+    ghosting one is a preview that is *running* right now. Colouring them the
+    same made the row say that pinning something had started it.
+  */
+  .acts button.picked {
+    background: var(--selected);
+    color: var(--on-selected);
+    border-color: var(--selected);
+  }
+
   .acts button.on {
-    background: var(--accent);
-    color: var(--on-accent);
-    border-color: var(--accent);
+    background: var(--active);
+    color: var(--on-active);
+    border-color: var(--active);
   }
 
   .acts button:disabled {

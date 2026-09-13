@@ -266,7 +266,7 @@
   }
 
   .theme.active {
-    border-color: var(--accent);
+    border-color: var(--selected);
     background: var(--panel-raised);
   }
 

@@ -401,7 +401,7 @@
     stay two halves of one decision.
   */
   .arcs button.active {
-    border-color: var(--accent);
+    border-color: var(--selected);
   }
 
   .help,

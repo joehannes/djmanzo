@@ -284,7 +284,7 @@
   }
 
   .controllers.active {
-    border-color: var(--accent, #4a90a4);
+    border-color: var(--active);
   }
 
   header {

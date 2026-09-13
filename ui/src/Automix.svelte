@@ -260,7 +260,7 @@
   }
 
   .automix.running {
-    border-color: var(--accent, #4a90a4);
+    border-color: var(--active);
   }
 
   header {
@@ -284,8 +284,8 @@
   }
 
   .switch.active {
-    background: var(--accent, #4a90a4);
-    color: var(--panel);
+    background: var(--active);
+    color: var(--on-active);
   }
 
   .styles {

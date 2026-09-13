@@ -114,6 +114,22 @@
   --incoming: var(--accent);
   --selected: var(--accent-2);
   --active: var(--accent);
+
+  /* The readable colour *on* each of the two roles a control is filled with.
+   *
+   * A role used as a background needs a partner or the text on it is a guess.
+   * Both were that guess until now: every "this is on" button in the interface
+   * paired its fill with `--on-accent`, including the ones filled with
+   * `--accent-2`, which happened to read well on both only because the two
+   * accents sit at opposite ends of the same lightness range in every palette
+   * that ships. A palette that moved one would have found out the hard way.
+   *
+   * Aliases rather than new hues, on the same terms as the roles above: a
+   * palette that overrides `--selected` or `--active` overrides its partner
+   * with it, and a vitest rule fails a filled state that names one and not the
+   * other. */
+  --on-selected: var(--on-accent);
+  --on-active: var(--on-accent);
   --assistant: var(--accent-2);
   --uncertain: var(--text-dim);
   --audience: var(--accent);

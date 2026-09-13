@@ -345,8 +345,8 @@
      than by an outline, so it does not read as a focus ring on a control the
      keyboard is not actually on. */
   .entries button.chosen {
-    background: color-mix(in srgb, var(--accent) 22%, transparent);
-    border-color: var(--accent);
+    background: color-mix(in srgb, var(--selected) 22%, transparent);
+    border-color: var(--selected);
   }
 
   .entries button:disabled {

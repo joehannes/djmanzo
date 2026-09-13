@@ -446,7 +446,7 @@
   }
 
   .model-pick.chosen {
-    border-color: var(--accent);
+    border-color: var(--selected);
   }
 
   .cap {

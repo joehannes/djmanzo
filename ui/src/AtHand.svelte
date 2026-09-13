@@ -158,8 +158,8 @@
   }
 
   .controls button.on {
-    background: var(--accent);
-    color: var(--on-accent);
+    background: var(--active);
+    color: var(--on-active);
   }
 
   /*

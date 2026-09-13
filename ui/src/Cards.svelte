@@ -329,7 +329,8 @@
     margin-left: auto;
   }
 
+  /* A rating is a mark the DJ placed, not something the record is doing. */
   .star.on {
-    color: var(--accent);
+    color: var(--selected);
   }
 </style>

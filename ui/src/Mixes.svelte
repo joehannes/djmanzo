@@ -315,8 +315,8 @@
   }
 
   .keep.on {
-    background: var(--accent);
-    color: var(--on-accent);
+    background: var(--selected);
+    color: var(--on-selected);
   }
 
   /* The path it wrote, which is the whole point of having pressed it. Wrapped

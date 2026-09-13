@@ -247,8 +247,8 @@
 
   /* The held one, so trying an alternative cannot be mistaken for changing it. */
   .tries button.on {
-    border-color: var(--accent);
-    color: var(--accent);
+    border-color: var(--selected);
+    color: var(--selected);
   }
 
   /* Already rendered once — §30's `success`, which is simply "it worked". */

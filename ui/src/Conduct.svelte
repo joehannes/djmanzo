@@ -510,9 +510,9 @@
 
   .ladder button.active,
   .packs button.active {
-    background: var(--accent-soft, rgba(128, 128, 128, 0.28));
-    border-color: var(--accent, rgba(128, 128, 128, 0.7));
-    color: var(--on-accent);
+    background: var(--selected);
+    border-color: var(--selected);
+    color: var(--on-selected);
   }
 
   /* The two levels that move a live control are marked, so choosing one is

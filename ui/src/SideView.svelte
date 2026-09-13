@@ -277,9 +277,9 @@
   }
 
   .tabs button.active {
-    background: var(--accent-2);
-    color: var(--on-accent);
-    border-color: var(--accent-2);
+    background: var(--selected);
+    color: var(--on-selected);
+    border-color: var(--selected);
   }
 
   .count {

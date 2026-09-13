@@ -733,9 +733,9 @@
   }
 
   .group button.on {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
+    background: var(--selected);
+    border-color: var(--selected);
+    color: var(--on-selected);
   }
 
   .group button:disabled {

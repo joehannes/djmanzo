@@ -263,9 +263,9 @@
     cursor: not-allowed;
   }
   .listen.on {
-    background: var(--accent, #4ade80);
-    color: var(--on-accent, #06120a);
-    border-color: var(--accent-2, #22c55e);
+    background: var(--active);
+    color: var(--on-active);
+    border-color: var(--active);
   }
   .seen {
     font-size: 0.85rem;

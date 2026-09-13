@@ -977,7 +977,7 @@
     -->
     <span class="views" role="group" aria-label="djmanzo's opinion">
       <button
-        class:on={lens}
+        class:running={lens}
         aria-pressed={lens}
         data-testid="lens-toggle"
         title="Add djmanzo's opinion beside each record. The standard view is unchanged underneath."
@@ -1710,9 +1710,20 @@
     padding: 0 0.4rem;
   }
 
+  /*
+    The view switch is a choice between two ways of reading the collection; the
+    AI lens beside it is a mode that is *on*. One rule served both until §30's
+    roles were applied, which made turning the lens on look like picking a
+    third view -- and §76 is explicit that the lens is not a view.
+  */
   .views button.on {
-    background: var(--accent);
-    color: var(--on-accent);
+    background: var(--selected);
+    color: var(--on-selected);
+  }
+
+  .views button.running {
+    background: var(--active);
+    color: var(--on-active);
   }
 
   /*
@@ -1762,9 +1773,10 @@
     padding: 0.1rem 0.45rem;
   }
 
+  /* "More like this" is a mode that is running, not a row that was picked. */
   .alike.on {
-    border-color: var(--accent);
-    color: var(--accent);
+    border-color: var(--active);
+    color: var(--active);
   }
 
   .why {
@@ -1793,8 +1805,8 @@
 
   /* The open sheet belongs to one chip, and the chip says which. */
   .session.chosen {
-    border-color: var(--accent);
-    color: var(--accent);
+    border-color: var(--selected);
+    color: var(--selected);
   }
 
   .copy {
@@ -1816,7 +1828,7 @@
   }
 
   tbody tr.picked td {
-    background: color-mix(in srgb, var(--accent-2) 18%, transparent);
+    background: color-mix(in srgb, var(--selected) 18%, transparent);
   }
 
   .swatch {
@@ -2024,8 +2036,10 @@
     cursor: pointer;
   }
 
+  /* The column the table is ordered by. The arrow beside it is the redundant
+     channel §33 requires, so the colour may carry the meaning as well. */
   .sort.active {
-    color: var(--text);
+    color: var(--selected);
   }
 
   .arrow {

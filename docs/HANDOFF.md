@@ -471,6 +471,15 @@ every match, or djmanzo announces a cut it did not make on almost every query.
 Mutate the thing the comment claims, and when the mutation survives, suspect
 the comment first.
 
+**A token can exist, be correct, and be asked for by nobody.** §30's fourteen
+roles were defined, tested against `app.css`, and almost unused: thirty CSS
+rules painted a state with `--accent` directly. Nothing was visibly wrong,
+because `--active` *is* the accent — the meaning was simply not expressed, so a
+palette could not move one role without moving the brand colour with it. The
+tell is a token that only ever appears in the file that defines it. When you
+add a semantic layer, add the rule that makes something ask for it in the same
+commit.
+
 **A rule that cannot fire is worse than no rule.** §58's row named a gap —
 the tiers do not gate what a phase may promote — and building it would have
 been a rule about nothing: every budget whose `room_for` is narrower than

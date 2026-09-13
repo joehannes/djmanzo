@@ -1689,9 +1689,9 @@
   }
 
   .cue.on {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--on-accent);
+    background: var(--active);
+    border-color: var(--active);
+    color: var(--on-active);
   }
 
   .pfl-meter {

@@ -339,9 +339,9 @@
   }
 
   .kind button.on {
-    border-color: var(--accent);
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: var(--selected);
+    color: var(--selected);
+    background: color-mix(in srgb, var(--selected) 12%, transparent);
   }
 
   .hint {

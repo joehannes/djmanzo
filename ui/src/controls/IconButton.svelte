@@ -159,7 +159,11 @@
   */
   .icon-button.active {
     background: var(--active);
-    color: var(--on-accent);
+    /* `--on-active`, not `--on-accent`. They resolve to the same colour today
+       and that is the trap: this was the one control already asking for a role
+       and it still named the accent's partner, so a palette that moved
+       `--active` would have moved the fill and left the text behind. */
+    color: var(--on-active);
     border-color: var(--selected);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   }

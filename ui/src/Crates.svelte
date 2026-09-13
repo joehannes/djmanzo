@@ -445,8 +445,8 @@
 
   .entry.active,
   .row.active .entry {
-    background: var(--accent-2);
-    color: var(--on-accent);
+    background: var(--selected);
+    color: var(--on-selected);
   }
 
   .row .entry {
