@@ -1386,6 +1386,23 @@ pub struct Workspace {
     pub theme: String,
     /// Decks on screen.
     pub decks: u8,
+    /// The deck's own composition, by the name `layout::builtin()` gives it.
+    ///
+    /// Empty means "leave the deck alone", which is a real answer and the
+    /// default: most of §7's arrangements are about *which panels are open*,
+    /// and changing what a deck is made of under a DJ who only asked for the
+    /// browser would be the surprise §78 forbids.
+    ///
+    /// [§5B](../../../docs/DIRECTIVE.md) is why this exists. It asks that an
+    /// arrangement change *the deck itself* — "club mode: large central stacked
+    /// waveforms, compact decks" — and until this field a preset changed which
+    /// panels were open, the deck count, the density and the theme, and left
+    /// the deck's own composition at whatever the DJ last chose. A name rather
+    /// than a copy, exactly like `theme`: a DJ who has edited a layout wants
+    /// their edit, and a stored copy would hand them the version from whenever
+    /// this table was written.
+    #[serde(default)]
+    pub layout: String,
     /// What the DJ has decided djmanzo may not change by itself.
     ///
     /// This was `frozen: bool` and nothing read it. A single flag could not
@@ -1473,6 +1490,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1500,6 +1518,11 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Learning,
             theme: "".to_owned(),
             decks: 2,
+            // §5B's beginner case and `Starter`'s own description are the same
+            // sentence: two decks, big waveforms, everything you need and nothing
+            // else. An arrangement called Beginner that left a Pro deck composition
+            // in place would be named after something it did not do.
+            layout: "Starter".to_owned(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1510,6 +1533,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1537,6 +1561,9 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            // §5B's four-deck performance: readable decks with everything on screen.
+            // `Pro` is that composition by name and by description.
+            layout: "Pro".to_owned(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1547,6 +1574,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 4,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1557,6 +1585,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 6,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1584,6 +1613,11 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "pkg-booth".to_owned(),
             decks: 4,
+            // §5B's club mode: large central stacked waveforms, compact decks.
+            // `Starter` is the composition with the tallest waveform and the least
+            // paperwork on the deck, which is what "compact decks" means here — the
+            // deck count stays this arrangement's four.
+            layout: "Starter".to_owned(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1611,6 +1645,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1639,6 +1674,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Preparing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1667,6 +1703,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Preparing,
             theme: "".to_owned(),
             decks: 4,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1696,6 +1733,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "pkg-sunset".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1713,6 +1751,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1724,6 +1763,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1741,6 +1781,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 4,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1768,6 +1809,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Preparing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1795,6 +1837,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Planning,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1822,6 +1865,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Learning,
             theme: "pkg-studio".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1849,6 +1893,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Supervising,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1878,6 +1923,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Preparing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1888,6 +1934,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1898,6 +1945,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "pkg-booth".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1908,6 +1956,10 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            // §5B's laptop compact mode: dense controls optimised for limited screen
+            // height. `Performance` is the densest composition djmanzo ships, and it
+            // is the one §48's laptop mode is about the machine behind.
+            layout: "Performance".to_owned(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1925,6 +1977,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1942,6 +1995,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
         Workspace {
@@ -1969,6 +2023,7 @@ pub fn workspaces() -> Vec<Workspace> {
             focus: Focus::Performing,
             theme: "".to_owned(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         },
     ]
@@ -2712,6 +2767,64 @@ mod tests {
     // [`crate::theme`], where §32's table lives, rather than by grepping the
     // interface's source from here.
 
+    /// **The load-bearing one for §5B: an arrangement that names a deck
+    /// composition names one that ships.**
+    ///
+    /// §5B asks that an arrangement change *the deck itself* — "club mode:
+    /// large central stacked waveforms, compact decks" — and until `layout`
+    /// existed a preset changed which panels were open, the deck count, the
+    /// density and the theme, and left the deck's own composition at whatever
+    /// the DJ last chose. A name that nothing answers to fails in the worst
+    /// place: five of six things take and the sixth silently does not, which is
+    /// exactly what §54's own rule is about.
+    #[test]
+    fn an_arrangement_that_names_a_deck_composition_names_one_that_ships() {
+        let shipped: Vec<String> = crate::layout::builtin()
+            .into_iter()
+            .map(|l| l.name)
+            .collect();
+        for workspace in workspaces() {
+            if workspace.layout.is_empty() {
+                continue;
+            }
+            assert!(
+                shipped.contains(&workspace.layout),
+                "the `{}` arrangement asks for the `{}` deck composition, which \
+                 `layout::builtin()` does not have",
+                workspace.name,
+                workspace.layout
+            );
+        }
+    }
+
+    /// **And most of them name none, which is the right default.**
+    ///
+    /// Empty means *leave the deck alone*. Most of §7's arrangements are about
+    /// which panels are open, and changing what a deck is made of under a DJ
+    /// who only asked for the browser would be the surprise §78 forbids. A
+    /// table where every row named a composition would make every arrangement
+    /// a deck change, which is not what §5B asks for and is not what a DJ
+    /// pressing *Preparation* expects.
+    #[test]
+    fn an_arrangement_only_changes_the_deck_when_that_is_what_it_is_for() {
+        let named = workspaces()
+            .into_iter()
+            .filter(|w| !w.layout.is_empty())
+            .count();
+        let all = workspaces().len();
+        assert!(
+            named > 0,
+            "no arrangement changes the deck's composition, so §5B's ask is \
+             still a field nothing uses"
+        );
+        assert!(
+            named * 2 < all,
+            "{named} of {all} arrangements change the deck's composition — at \
+             that point the field is not the exception §5B describes, and a DJ \
+             pressing any preset would find their deck rebuilt"
+        );
+    }
+
     /// **§7's twenty-four, and the one djmanzo cannot express.**
     ///
     /// Written out so that dropping one is a decision somebody makes here
@@ -3049,6 +3162,7 @@ mod tests {
             focus: Focus::Performing,
             theme: String::new(),
             decks: 2,
+            layout: String::new(),
             locked: Vec::new(),
         }
     }

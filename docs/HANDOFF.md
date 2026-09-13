@@ -893,6 +893,34 @@ something, go and look at the action rather than at the derived gesture: the
 derivation is where information gets thrown away, and it throws it away on
 purpose.
 
+**A "what is left" clause can be wrong, and building it would have done harm.**
+§79's row said the waveform lock should pin the layers a DJ chose. Nothing
+automatic changes the layers — the DJ's own picker and their own preset press,
+and nothing else — and §78's four bullets are each about an *automatic* or
+*surprise* change, while §79's own sentence is that the AI may use the
+underlying state *without rearranging presentation*. Building the claimed
+behaviour would have made a preset refuse a change the DJ deliberately pressed,
+breaking the contract §7 and §54 both state. **Before building a named gap, read
+the section rather than the row**: the row is a summary somebody wrote, and this
+one had drifted into asking for the opposite of what the directive says.
+
+**Two tables that each carry a number will fight over it.** §5B lets an
+arrangement name a deck composition, and a `Layout` carries its own deck count
+and density — so applying one silently overwrote both. `Laptop Compact` states
+Ultra Dense and the `Performance` composition it names states 0.85. The rule
+that settles it: a composition is *what a deck is made of*; how many there are
+and how tightly they are packed stay the arrangement's. An existing browser test
+caught it, which is the argument for running the whole suite rather than the new
+file.
+
+**`npm run build` failing makes a mutation test lie, and it is easy to miss.**
+A mutation that removed a call left `densityOf` unused, `svelte-check` failed,
+`vite build` never ran, and the browser suite passed against the previous
+bundle — reported as "the mutation survived". `CLAUDE.md` warns about exactly
+this and it still happened, because the failure is one line above a wall of
+passing tests. **Confirm `✓ built` in the mutation run itself**, not only in the
+gate run; a mutation that does not compile has to be rewritten so it does.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests
@@ -1247,7 +1275,17 @@ The largest of them, in the order they are worth doing:
    naming the blocker on screen is what made it obvious which section to do
    next.
 
-12. **§90 has one ratchet and four honest refusals, and the split is the
+12. **§5B's remaining half needs a wider `Layout`, not a wire.** An arrangement
+   can now name a deck composition, which is what §5B asked for, and four of
+   the twenty-three do. The two compositions §5B also names — *scratch mode:
+   jog surfaces and turntable-oriented controls expand*, *stem performance:
+   stem controls become first-class* — cannot be expressed: `Layout` has
+   booleans for the pads, loops, effects and beat jump and a waveform height,
+   and no knob for a jog size or a stem prominence. Adding those is a widening
+   of `layout::Layout` and of `widgets::from_layout`, and then two more rows in
+   `cockpit::workspaces()` name them. Nothing is blocked on analysis.
+
+13. **§90 has one ratchet and four honest refusals, and the split is the
    lesson.** A ratchet is only worth having where the number means the same
    thing on two machines. Frame rate, memory and CPU do not — the argument §89
    already makes about screenshot baselines — and an xrun count measured against
@@ -1267,7 +1305,7 @@ The largest of them, in the order they are worth doing:
    noise — which is why the allocation count is the part of "memory" that
    means the same thing twice.
 
-13. **§80 is the template for "learned, and therefore arguable".** §13's
+14. **§80 is the template for "learned, and therefore arguable".** §13's
    tendencies and §81's profiles both learn and both are constructor-enforced;
    what neither did was let a DJ disagree, and that is half of what §80 asks
    for. `persona::Verdict` is the answer the DJ owns, and a rejection has to be
@@ -1287,7 +1325,7 @@ The largest of them, in the order they are worth doing:
    see the note above about checking that kind of claim — and reads the actions
    rather than §14's gestures, which stay coarse on purpose.
 
-14. **§48 is closed, and it is the template for "a priority nobody can see".**
+15. **§48 is closed, and it is the template for "a priority nobody can see".**
    The frame rate had been measured for a long time and the tier was consulted
    by the theme pipeline alone, so §48's closing sentence — AUDIO > CONTROL >
    VISUAL EFFECTS, never the reverse — existed only as prose. `thrift::Band` is
@@ -1301,7 +1339,7 @@ The largest of them, in the order they are worth doing:
    way to trust the claim. A priority that is enforced and invisible is one
    nobody will believe the first time their laptop stutters.
 
-15. **§32's remaining palettes are content, not format.** The architecture was
+16. **§32's remaining palettes are content, not format.** The architecture was
    always there — a package is a palette, a geometry generator, behaviours and
    effects, through one pipeline — and what shipped is the table that knows
    which themes there are supposed to be. Eight of §32's sixteen are palettes
@@ -1320,7 +1358,7 @@ The largest of them, in the order they are worth doing:
    not* clause, build the prohibition as its own assertion — the browser test
    here presses Booth first, precisely to prove that half.
 
-16. **§16's remaining packs are content, not format.** The format ships:
+17. **§16's remaining packs are content, not format.** The format ships:
    `dj_assistant::pack::Pack` selects from the genre map, the technique
    catalogue and §81's occasions rather than restating any of them, and
    `coach::next_lesson` teaches inside the chosen one. Eight of §16's thirty

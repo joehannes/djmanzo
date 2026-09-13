@@ -14,7 +14,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { openShell } from "./shell";
+import { errorsThrown, openShell } from "./shell";
 // The same table the interface applies, so "wearing the booth theme" is
 // measured against djmanzo's own colours rather than against a hex typed here.
 import { paletteFor } from "../src/controls/themes/colors";
@@ -220,5 +220,86 @@ test.describe("the workspace picker", () => {
     await expect(page.locator(".preset-about")).toHaveText(
       "Four decks and the whole collection, for a night that goes anywhere.",
     );
+  });
+});
+
+/**
+ * §5B: an arrangement changes what a deck is made of, not only which panels
+ * are open.
+ *
+ * > Club mode: large central stacked waveforms, compact decks. […] Laptop
+ * > compact mode: dense controls optimized for limited screen height.
+ *
+ * Which arrangement names which composition, and that every name it uses is one
+ * that ships, is `dj_app::cockpit` and is tested there against
+ * `layout::builtin()`. This says the thing only a browser can: that pressing
+ * the preset actually rebuilds the deck.
+ */
+test.describe("§5B's deck composition", () => {
+  /**
+   * **The load-bearing one: a preset that names a composition declares it, and
+   * does not overwrite what the arrangement itself states.**
+   *
+   * Until this field an arrangement changed which panels were open, the deck
+   * count, the density and the theme, and left the deck at whatever the DJ last
+   * chose — so the feature is that the composition is applied *and told to
+   * djmanzo*, the same pair the theme needs and for the same reason.
+   *
+   * The second half is a defect this test found. A layout carries its own deck
+   * count and density, and applying one silently overwrote both: `Laptop
+   * Compact` says Ultra Dense and the `Performance` composition it names says
+   * 0.85, so naming a composition moved a band the arrangement had stated. A
+   * layout named by an arrangement is *what a deck is made of*; how many there
+   * are and how tightly they are packed stay the arrangement's to say.
+   */
+  test("a preset that names a deck composition declares it and keeps its own band", async ({
+    page,
+  }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/");
+
+    await page.locator(PICKER).selectOption("Laptop Compact");
+
+    // Told, not only drawn. Without this the composition is painted and
+    // forgotten, which is the failure the theme had before `theme_chosen`.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as unknown as { __asked?: string[] }).__asked ?? [],
+        ),
+      )
+      .toContain("choose_layout");
+
+    // And the arrangement's own band survived the composition it named.
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Number(document.documentElement.style.getPropertyValue("--density")),
+        ),
+      )
+      .toBeCloseTo(0.8, 2);
+    expect(thrown).toEqual([]);
+  });
+
+  /**
+   * **An arrangement that names no composition does not touch the deck.**
+   *
+   * Most of §7's arrangements name none, because rebuilding the deck under a DJ
+   * who only asked for the browser is the surprise §78 forbids. The absence has
+   * to be real, not merely untested.
+   */
+  test("a preset with no composition leaves the deck alone", async ({ page }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/");
+
+    await page.locator(PICKER).selectOption("Perform");
+    const asked = await page.evaluate(
+      () => (window as unknown as { __asked?: string[] }).__asked ?? [],
+    );
+    expect(
+      asked.filter((cmd) => cmd === "choose_layout"),
+      "an arrangement that names no composition rebuilt the deck anyway",
+    ).toEqual([]);
+    expect(thrown).toEqual([]);
   });
 });

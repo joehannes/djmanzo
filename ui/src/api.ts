@@ -2695,6 +2695,16 @@ export interface Workspace {
   theme: string;
   decks: number;
   /**
+   * §5B: the deck's own composition, by the name `layout::builtin()` gives it.
+   *
+   * Empty means "leave the deck alone", which is the default and the right one:
+   * most of §7's arrangements are about which panels are open, and rebuilding
+   * the deck under a DJ who only asked for the browser would be the surprise
+   * §78 forbids. A name rather than a copy, exactly like `theme` — a DJ who has
+   * edited a layout wants their edit.
+   */
+  layout: string;
+  /**
    * §79's locks: what djmanzo may not change by itself.
    *
    * `workspace`, `arrangement`, `density`, `theme`, `waveform`, `assistant`.

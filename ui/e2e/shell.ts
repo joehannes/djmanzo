@@ -104,7 +104,31 @@ import styles from "./styles.json" with { type: "json" };
  */
 const ANSWERS: Record<string, unknown> = {
   pad_pages: padPages,
-  list_layouts: [],
+  /**
+   * The deck compositions that ship, as `layout::builtin()` gives them.
+   *
+   * Not empty any more: §5B lets an arrangement name one, and a shell that
+   * looked the name up in an empty list would skip it and look exactly like a
+   * shell that honoured it.
+   */
+  list_layouts: [
+    {
+      name: "Performance",
+      description: "Maximum control density for a controller-driven set.",
+      decks: 4,
+      waveform_height: 72,
+      overview: true,
+      progress: true,
+      pads: true,
+      loops: true,
+      fx: true,
+      beat_jump: true,
+      filter: true,
+      keylock: true,
+      browser: false,
+      density: 0.85,
+    },
+  ],
   chosen_layout: null,
   layout_folder: null,
   layout_tree: { name: "Test", about: "", tokens: {}, slots: {}, notes: [] },
@@ -1098,6 +1122,7 @@ const ANSWERS: Record<string, unknown> = {
       density: "standard",
       focus: "performing",
       theme: "",
+      layout: "",
       decks: 2,
       locked: [],
     },
@@ -1111,6 +1136,7 @@ const ANSWERS: Record<string, unknown> = {
       density: "compact",
       focus: "preparing",
       theme: "",
+      layout: "",
       decks: 4,
       locked: [],
     },
@@ -1121,6 +1147,7 @@ const ANSWERS: Record<string, unknown> = {
       density: "standard",
       focus: "performing",
       theme: "pkg-booth",
+      layout: "",
       decks: 2,
       locked: [],
     },
@@ -1131,6 +1158,11 @@ const ANSWERS: Record<string, unknown> = {
       density: "ultra-dense",
       focus: "performing",
       theme: "",
+      // §5B: this is the one arrangement in the fixture that rebuilds the deck,
+      // and it is the one §5B names — "laptop compact mode: dense controls
+      // optimised for limited screen height". A fixture where every row left
+      // the deck alone would let a shell that ignored the field pass.
+      layout: "Performance",
       decks: 2,
       locked: [],
     },

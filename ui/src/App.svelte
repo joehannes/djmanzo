@@ -384,6 +384,36 @@
       theme.setPackage(preset.theme);
       void themeChosen(preset.theme).catch(() => {});
     }
+    // §5B: an arrangement may also change what a *deck* is made of, not only
+    // which panels are open. Empty is a preset with no opinion, on the same
+    // rule as the theme — most of §7's arrangements are about panels, and
+    // rebuilding the deck under a DJ who only asked for the browser would be
+    // the surprise §78 forbids.
+    //
+    // The deck count and the density stay the arrangement's. `applyLayout`
+    // sets both, and a layout carries its own — so without this, naming a
+    // composition would silently override the two things the arrangement
+    // itself states. `Laptop Compact` says Ultra Dense and the `Performance`
+    // composition says 0.85, and the browser test that asserts the band caught
+    // exactly that: a layout named by an arrangement is *what a deck is made
+    // of*, and how many there are and how tightly they are packed are the
+    // arrangement's to say.
+    if (preset.layout) {
+      const named = layouts.find((l) => l.name === preset.layout);
+      // A name nothing answers to is skipped rather than guessed, the same as
+      // an unknown surface: the other five things the preset does still take,
+      // and `layoutNotes` is where a half-loaded arrangement already says so.
+      if (named) {
+        applyLayout({
+          ...named,
+          decks: preset.decks,
+          // The arrangement's band when it names one it has; otherwise the
+          // composition's own, which is the honest fallback rather than a
+          // guess.
+          density: densityOf(preset.density) ?? named.density,
+        });
+      }
+    }
     try {
       const resolved = await setCockpitWorkspace(preset);
       workspace = resolved.workspace;
@@ -405,6 +435,18 @@
    * spellings stay the same word, because a mismatch here is silent — the
    * preset would simply open at whatever density the window fitted.
    */
+  /**
+   * The scale factor a density band's name stands for, or `null`.
+   *
+   * Split out of `applyDensity` because §5B needs the number without the side
+   * effects: an arrangement that names a deck composition has to keep its own
+   * density, and `applyLayout` would otherwise write the composition's.
+   */
+  function densityOf(named: string): number | null {
+    const band = bands.find(([, name]) => name.toLowerCase().replace(/ /g, "-") === named);
+    return band ? band[2] : null;
+  }
+
   function applyDensity(named: string) {
     const band = bands.find(([, name]) => name.toLowerCase().replace(/ /g, "-") === named);
     if (!band) return;
@@ -528,6 +570,9 @@
       density: "standard" as const,
       focus: "performing" as const,
       theme: "",
+      // §5B: no opinion about the deck's composition. A fallback arrangement
+      // built because none was stored must not rebuild the deck.
+      layout: "",
       decks: deckCount,
       locked: [],
     };
