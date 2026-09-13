@@ -67,6 +67,13 @@ pub struct StoredAnalysis {
     pub key_mode: Option<Mode>,
     pub key_confidence: Option<f64>,
     pub loudness_lufs: Option<f64>,
+    /// §20's energy: how hard the record hits, 0..=1.
+    ///
+    /// Not loudness, and the reason for having both is that they disagree.
+    /// `None` for a track analysed before this existed as well as for one not
+    /// analysed at all, which are the same answer to a reader: nothing yet.
+    /// See `dj_analysis::energy` for the three readings behind the number.
+    pub energy: Option<f64>,
     /// Phrase length in beats, and the beat within it that starts a phrase.
     ///
     /// Both or neither: a length without its starting beat is a marker in an

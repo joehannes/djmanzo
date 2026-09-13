@@ -397,6 +397,8 @@
         return "phrase_beats";
       case "loudness":
         return "loudness_lufs";
+      case "energy":
+        return "energy";
       default:
         return slug as keyof LibraryTrack;
     }
@@ -432,6 +434,11 @@
         return formatTime(track.duration_seconds);
       case "loudness":
         return track.loudness_lufs != null ? `${track.loudness_lufs.toFixed(1)}` : "";
+      // Out of a hundred rather than a fraction of one. A DJ scanning a
+      // hundred rows reads "72" faster than "0.72", and the number has no unit
+      // to argue about — it is a position in djmanzo's own range.
+      case "energy":
+        return track.energy != null ? String(Math.round(track.energy * 100)) : "";
       // Beats rather than bars, because that is what the analyser measures and
       // what `phrase_beats` holds. A record whose structure is not clear enough
       // to say has none, which is a real answer.

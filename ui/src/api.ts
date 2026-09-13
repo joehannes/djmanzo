@@ -1310,6 +1310,13 @@ export interface LibraryTrack {
   /** Camelot notation, which is what a DJ mixes by. */
   key: string | null;
   loudness_lufs: number | null;
+  /**
+   * §20's energy, 0..=1: how hard the record hits.
+   *
+   * Not `loudness_lufs`, and both are here because they disagree. Null until
+   * the analyser has run, and for a track analysed before this was measured.
+   */
+  energy: number | null;
   /** True once the track has everything sync and harmonic mixing need. */
   analysed: boolean;
   play_count: number;

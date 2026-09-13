@@ -29,6 +29,7 @@
 //! the input moves the key round the wheel by a fifth, noise is never
 //! confident — rather than for numbers nobody can vouch for.
 
+pub mod energy;
 pub mod key;
 pub mod loudness;
 pub mod melody;
@@ -57,6 +58,13 @@ pub struct Analysis {
     pub tempo: Option<TempoAnalysis>,
     pub key: Option<KeyAnalysis>,
     pub loudness: Lufs,
+    /// How hard the record hits, which is not how loud it is.
+    ///
+    /// [§20](../../../docs/DIRECTIVE.md) asks the library for an energy column
+    /// and djmanzo showed loudness under that name until this existed. See
+    /// [`energy`] for what the three readings behind it are and why loudness
+    /// is not one of them.
+    pub energy: energy::Energy,
     /// The phrase structure, when the track has one.
     ///
     /// `None` for a track with no grid to hang it on, and `None` for a live
@@ -104,10 +112,21 @@ pub fn analyse(samples: &[f32], sample_rate: SampleRate) -> Analysis {
         .as_ref()
         .and_then(|t| structure::phrases(&banded, &t.grid, sample_rate, frames));
 
+    // One loudness pass, used twice: the integrated figure the auto-gain is
+    // built on, and the block curve §20's energy reading measures the record's
+    // dynamic range from.
+    let measured = loudness::measured(samples, rate);
+    let energy = energy::of(
+        &banded,
+        &measured.blocks,
+        tempo.as_ref().map(|t| t.grid.bpm.get()),
+    );
+
     Analysis {
         tempo,
         key: key::detect(samples, rate),
-        loudness: loudness::integrated(samples, rate),
+        loudness: measured.integrated,
+        energy,
         phrases,
     }
 }

@@ -107,6 +107,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 13,
         sql: MIGRATION_13,
     },
+    Migration {
+        version: 14,
+        sql: MIGRATION_14,
+    },
 ];
 
 /// The initial schema.
@@ -753,6 +757,24 @@ CREATE TABLE mix_responses (
 -- "After a blend at a club night" is the question every reading of this table
 -- asks, and it is asked once per answer rather than per row.
 CREATE INDEX mix_responses_by_setting ON mix_responses(setting, style, sense);
+"#;
+
+const MIGRATION_14: &str = r#"
+-- §20's energy, which is not §20's loudness.
+--
+-- `loudness_lufs` has been standing in for this column since the library
+-- existed, and `dj_analysis::energy` says in its own words why the two are
+-- different questions: a sparse, tense record can be quieter than a
+-- wall-of-sound filler and carry a room better.
+--
+-- One number rather than the three readings behind it. The parts are worth
+-- seeing while a DJ is deciding whether to believe the total, and they are
+-- cheap to recompute from audio that has to be decoded anyway; a column per
+-- part would be three more things for a re-analysis to leave half-written.
+--
+-- Null means "analysed before this column existed" as well as "not analysed",
+-- and both are the same thing to a reader: no answer yet.
+ALTER TABLE tracks ADD COLUMN energy REAL;
 "#;
 
 #[cfg(test)]

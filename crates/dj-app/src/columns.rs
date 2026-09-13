@@ -57,6 +57,7 @@ pub enum Column {
     Key,
     Duration,
     Loudness,
+    Energy,
     Phrases,
     Rating,
     Plays,
@@ -66,7 +67,7 @@ pub enum Column {
 
 impl Column {
     /// Every column there is, in the order the picker offers them.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Title,
         Self::Artist,
         Self::Album,
@@ -76,6 +77,7 @@ impl Column {
         Self::Key,
         Self::Duration,
         Self::Loudness,
+        Self::Energy,
         Self::Phrases,
         Self::Rating,
         Self::Plays,
@@ -111,6 +113,7 @@ impl Column {
             Self::Key => "key",
             Self::Duration => "duration",
             Self::Loudness => "loudness",
+            Self::Energy => "energy",
             Self::Phrases => "phrases",
             Self::Rating => "rating",
             Self::Plays => "plays",
@@ -136,6 +139,7 @@ impl Column {
             Self::Key => "Key",
             Self::Duration => "Time",
             Self::Loudness => "Loud",
+            Self::Energy => "Energy",
             Self::Phrases => "Phrase",
             Self::Rating => "Rating",
             Self::Plays => "Plays",
@@ -161,6 +165,12 @@ impl Column {
             // is a judgement about a record that nothing here has made.
             Self::Loudness => {
                 "Integrated loudness in LUFS — how loud it is mastered, not how hard it hits."
+            }
+            // And this is the one that says how hard it hits. Two columns
+            // rather than one renamed: they are different questions and they
+            // disagree, which is the entire reason for measuring the second.
+            Self::Energy => {
+                "How hard it hits: percussive drive, how much the spectrum moves, and how                  little it breathes. Not how loud it is."
             }
             Self::Phrases => {
                 "How many beats a phrase runs for, when the structure is clear enough to say."

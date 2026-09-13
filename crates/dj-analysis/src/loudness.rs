@@ -94,8 +94,33 @@ impl Lufs {
 /// long.
 #[must_use]
 pub fn integrated(samples: &[f32], sample_rate: u32) -> Lufs {
+    measured(samples, sample_rate).integrated
+}
+
+/// The integrated figure and the curve it was gated from.
+///
+/// Both, from one pass. The blocks are what §20's energy reading needs for its
+/// dynamic-range part -- a record whose loud moments sit close to its quiet
+/// ones is relentless -- and computing them a second time would mean running
+/// the K-weighting filters over the whole track twice for numbers this pass
+/// already had and threw away.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Measured {
+    pub integrated: Lufs,
+    /// One per overlapping 400 ms block, in order. Empty for silence or for a
+    /// track shorter than one block.
+    pub blocks: Vec<Lufs>,
+}
+
+/// Measure a track's loudness, keeping the block curve. See [`Measured`].
+#[must_use]
+pub fn measured(samples: &[f32], sample_rate: u32) -> Measured {
+    let quiet = |()| Measured {
+        integrated: Lufs::SILENCE,
+        blocks: Vec::new(),
+    };
     if samples.len() < 2 || sample_rate == 0 {
-        return Lufs::SILENCE;
+        return quiet(());
     }
     let rate = sample_rate as f32;
 
@@ -117,7 +142,7 @@ pub fn integrated(samples: &[f32], sample_rate: u32) -> Lufs {
     let block_frames = (BLOCK_SECONDS * f64::from(sample_rate)).round() as usize;
     let step_frames = (BLOCK_STEP * f64::from(sample_rate)).round() as usize;
     if block_frames == 0 || step_frames == 0 || frames < block_frames {
-        return Lufs::SILENCE;
+        return quiet(());
     }
 
     // Weight every sample once, keeping the squares. The gating pass then only
@@ -147,7 +172,10 @@ pub fn integrated(samples: &[f32], sample_rate: u32) -> Lufs {
         start += step_frames;
     }
 
-    gated_mean(&blocks, &squares, block_frames, step_frames)
+    Measured {
+        integrated: gated_mean(&blocks, &squares, block_frames, step_frames),
+        blocks: blocks.iter().copied().map(Lufs::new).collect(),
+    }
 }
 
 fn loudness_of(mean_square: f64) -> f64 {

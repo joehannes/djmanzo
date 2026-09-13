@@ -4129,6 +4129,8 @@ pub struct LibraryTrackDto {
     /// Camelot notation, which is what a DJ mixes by.
     pub key: Option<String>,
     pub loudness_lufs: Option<f64>,
+    /// §20's energy, 0..=1. Not the loudness above — see `dj_analysis::energy`.
+    pub energy: Option<f64>,
     /// True once the track has everything sync and harmonic mixing need.
     pub analysed: bool,
     pub play_count: i64,
@@ -4163,6 +4165,7 @@ impl From<dj_library::LibraryTrack> for LibraryTrackDto {
             bpm: track.analysis.bpm,
             key: track.analysis.key().map(|k| k.camelot()),
             loudness_lufs: track.analysis.loudness_lufs,
+            energy: track.analysis.energy,
             analysed: track.analysis.is_complete(),
             play_count: track.stats.play_count,
             rating: track.stats.rating,

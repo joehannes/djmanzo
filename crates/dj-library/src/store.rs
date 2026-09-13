@@ -266,7 +266,8 @@ impl Library {
                      bpm = ?2, grid_anchor = ?3, grid_beats_per_bar = ?4,
                      grid_confidence = ?5, key_hour = ?6, key_mode = ?7,
                      key_confidence = ?8, loudness_lufs = ?9, grid_source = ?10,
-                     phrase_beats = ?11, phrase_anchor = ?12, phrase_confidence = ?13
+                     phrase_beats = ?11, phrase_anchor = ?12, phrase_confidence = ?13,
+                     energy = ?14
                  WHERE id = ?1",
                 params![
                     id.to_hex(),
@@ -282,6 +283,7 @@ impl Library {
                     analysis.phrase_beats,
                     analysis.phrase_anchor,
                     analysis.phrase_confidence,
+                    analysis.energy,
                 ],
             )?;
             Ok(())
@@ -2176,7 +2178,12 @@ fn set_analysis_if_absent_on(
              -- analyser finds them again.
              phrase_beats = ?11,
              phrase_anchor = ?12,
-             phrase_confidence = ?13
+             phrase_confidence = ?13,
+             -- COALESCE with the key rather than with the grid: an importer
+             -- brings a grid and a key and has never measured energy, and
+             -- blanking a reading the analyser made would cost a column the
+             -- import had nothing to say about.
+             energy = COALESCE(?14, energy)
          WHERE id = ?1",
         params![
             id.to_hex(),
@@ -2192,6 +2199,7 @@ fn set_analysis_if_absent_on(
             analysis.phrase_beats,
             analysis.phrase_anchor,
             analysis.phrase_confidence,
+            analysis.energy,
         ],
     )?;
     Ok(written > 0)
@@ -2253,7 +2261,7 @@ const TRACK_COLUMNS: &str = "id, path, title, artist, album, album_artist, genre
      file_modified, added_at, bpm, grid_anchor, grid_beats_per_bar, \
      grid_confidence, key_hour, key_mode, key_confidence, loudness_lufs, \
      play_count, last_played, rating, grid_source, colour, \
-     phrase_beats, phrase_anchor, phrase_confidence";
+     phrase_beats, phrase_anchor, phrase_confidence, energy";
 
 /// The same list, qualified — needed wherever the query joins another table
 /// that has columns of the same name.
@@ -2265,7 +2273,8 @@ const TRACK_COLUMNS_QUALIFIED: &str = "tracks.id, tracks.path, tracks.title, tra
      tracks.grid_confidence, tracks.key_hour, tracks.key_mode, tracks.key_confidence, \
      tracks.loudness_lufs, tracks.play_count, tracks.last_played, tracks.rating, \
      tracks.grid_source, tracks.colour, \
-     tracks.phrase_beats, tracks.phrase_anchor, tracks.phrase_confidence";
+     tracks.phrase_beats, tracks.phrase_anchor, tracks.phrase_confidence, \
+     tracks.energy";
 
 /// Read one row.
 ///
@@ -2354,6 +2363,7 @@ fn read_track_from(row: &Row<'_>, base: usize) -> rusqlite::Result<Result<Librar
             phrase_beats: row.get(at(30))?,
             phrase_anchor: row.get(at(31))?,
             phrase_confidence: row.get(at(32))?,
+            energy: row.get(at(33))?,
         },
         stats: PlayStats {
             play_count: row.get(at(25))?,

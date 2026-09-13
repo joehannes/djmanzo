@@ -87,6 +87,62 @@ test.describe("§20's columns", () => {
   });
 
   /**
+   * **§20's energy is a different column from its loudness, and reads
+   * differently.**
+   *
+   * The two were one column under the wrong name for the whole life of the
+   * library: djmanzo measured integrated LUFS and the picker called it
+   * loudness precisely because nothing had measured energy yet. Now both are
+   * offered, and the test that matters is that the second is not the first
+   * wearing a new header — so the fixture's quietest record is its most
+   * energetic one, and a cell reading the wrong field would say so.
+   */
+  test("energy and loudness are two columns that disagree", async ({ page }) => {
+    await openColumns(page);
+
+    // Both, because the claim is about the two of them side by side and a
+    // fresh install shows neither.
+    await tick(page, "energy").check();
+    await tick(page, "loudness").check();
+    await expect(page.locator(HEAD("energy"))).toHaveCount(1);
+    await expect(page.locator(HEAD("loudness"))).toHaveCount(1);
+
+    const energies = await page.locator(CELL("energy")).allTextContents();
+    const louds = await page.locator(CELL("loudness")).allTextContents();
+    expect(energies.length).toBeGreaterThan(1);
+    expect(energies.length).toBe(louds.length);
+
+    // Out of a hundred, not a fraction: "72" is read faster than "0.72" down a
+    // column of a hundred rows.
+    for (const value of energies) {
+      expect(value, `energy read "${value}"`).toMatch(/^\d{1,3}$/);
+    }
+
+    // The fixture's own numbers, which is the assertion that pins the *field*.
+    // The ordering check below is weaker than it looks -- a cell rendering any
+    // decreasing function of loudness reverses the ranking and passes it, as a
+    // mutation showed -- so the values are checked too.
+    expect(
+      energies.slice().sort(),
+      "the energy cells are not `energy` out of a hundred",
+    ).toEqual(["31", "88"]);
+
+    // And the orders disagree, which is the claim about the two columns rather
+    // than about one cell.
+    const order = (values: string[]) =>
+      values
+        .map((value, index) => [Number(value), index] as const)
+        .sort((a, b) => b[0] - a[0])
+        .map(([, index]) => index);
+    expect(
+      order(energies),
+      "the energy column ranks the records exactly as loudness does, so it is " +
+        "loudness with a new header",
+    ).not.toEqual(order(louds));
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * §20's readings, drawn as readings rather than as numbers.
    *
    * A rating is stars because it is read at a glance and "4" looks like a

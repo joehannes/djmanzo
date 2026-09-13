@@ -1332,6 +1332,7 @@ mod tests {
                     alternative: MusicalKey::new(8, Mode::Major),
                 }),
                 loudness: Lufs::new(-11.0),
+                energy: dj_analysis::energy::Energy::default(),
                 phrases: None,
             },
         );
@@ -1385,6 +1386,7 @@ mod tests {
                 }),
                 key: None,
                 loudness: Lufs::new(-14.0),
+                energy: dj_analysis::energy::Energy::default(),
                 phrases: None,
             },
         );

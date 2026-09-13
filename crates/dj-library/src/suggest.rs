@@ -18,13 +18,17 @@
 //!
 //! # What this does *not* claim to know
 //!
-//! **Energy is approximated by loudness**, and they are not the same thing. A
+//! **The reason this ranks on is loudness, and loudness is not energy.** A
 //! sparse, tense record can be quieter than a wall-of-sound filler and carry a
-//! room better. Integrated LUFS is what the analyser measures and it is a
-//! defensible proxy for "how hard does this hit", but the honest name for the
-//! reason is loudness, and that is what it is called below. A real energy
-//! measure -- spectral flux over the track, percussive density, dynamic range --
-//! belongs in `dj-analysis` and is not here yet.
+//! room better. Integrated LUFS is a defensible proxy for "how hard does this
+//! hit" and it is not the thing itself, so the reason is called loudness here
+//! and not energy.
+//!
+//! The real measure now exists -- `dj_analysis::energy`, which is the spectral
+//! flux, percussive density and dynamic range this note used to ask for -- and
+//! ranking on it is a separate change from measuring it. A suggestion order is
+//! a thing a DJ has learnt the shape of, and swapping what it sorts by is a
+//! change to what djmanzo offers rather than to what it knows.
 //!
 //! **Phrase compatibility is nearly free.** Phrase lengths in practice are 8, 16
 //! and 32, and each divides the next, so two tracks that both have a phrase

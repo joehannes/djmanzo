@@ -287,6 +287,11 @@ pub fn stored_analysis(analysis: &dj_analysis::Analysis) -> dj_library::StoredAn
         // comparison it took part in. Absent is the honest encoding -- there is
         // no loudness to record.
         loudness_lufs: (!analysis.loudness.is_silent()).then(|| analysis.loudness.get()),
+        // §20's energy, beside the loudness it used to be mistaken for. The
+        // total only: the library column shows one number, and the three
+        // readings behind it are recomputed with the audio whenever the panel
+        // that draws them is open.
+        energy: Some(f64::from(analysis.energy.value)),
         ..dj_library::StoredAnalysis::default()
     };
     if let Some(tempo) = &analysis.tempo {
@@ -551,6 +556,7 @@ mod tests {
             tempo: None,
             key: None,
             loudness: dj_analysis::Lufs::SILENCE,
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
         };
         let stored = stored_analysis(&analysis);
@@ -564,6 +570,7 @@ mod tests {
             tempo: None,
             key: None,
             loudness: dj_analysis::Lufs::new(-9.5),
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
         };
         assert_eq!(stored_analysis(&analysis).loudness_lufs, Some(-9.5));
@@ -578,6 +585,7 @@ mod tests {
             tempo: None,
             key: None,
             loudness: dj_analysis::Lufs::new(-12.0),
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
         });
         assert_eq!(stored.bpm, None);

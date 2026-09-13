@@ -42,7 +42,7 @@ use std::sync::{Arc, Mutex};
 /// A cached record from an older version is discarded and recomputed rather
 /// than read, which is why this number exists: reading an old record with new
 /// code is how a library ends up full of confidently wrong BPMs.
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 3;
 
 /// What the analyser found, in a form that survives a restart.
 ///
@@ -72,6 +72,11 @@ struct CachedAnalysis {
     phrase_beats: Option<u32>,
     phrase_anchor: Option<u32>,
     phrase_confidence: Option<f32>,
+    /// §20's energy and the three readings behind it. `None` for a cache
+    /// written before this existed, which the version bump already invalidates
+    /// -- kept optional so a future reader of an old file gets absence rather
+    /// than a zero that would read as a record with nothing in it.
+    energy: Option<[f32; 4]>,
 }
 
 impl CachedAnalysis {
@@ -94,6 +99,12 @@ impl CachedAnalysis {
             key_alt_major: key
                 .and_then(|k| k.alternative)
                 .map(|a| a.mode() == dj_core::Mode::Major),
+            energy: Some([
+                analysis.energy.value,
+                analysis.energy.flux,
+                analysis.energy.drive,
+                analysis.energy.punch,
+            ]),
             lufs: analysis
                 .loudness
                 .get()
@@ -154,6 +165,15 @@ impl CachedAnalysis {
             tempo,
             key,
             loudness: self.lufs.map_or(Lufs::SILENCE, Lufs::new),
+            energy: self.energy.map_or_else(
+                dj_analysis::energy::Energy::default,
+                |[value, flux, drive, punch]| dj_analysis::energy::Energy {
+                    value,
+                    flux,
+                    drive,
+                    punch,
+                },
+            ),
             phrases,
         })
     }
@@ -362,6 +382,7 @@ mod tests {
                 alternative: MusicalKey::new(8, Mode::Minor),
             }),
             loudness: Lufs::new(-9.3),
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
         }
     }
@@ -411,6 +432,7 @@ mod tests {
             tempo: None,
             key: None,
             loudness: Lufs::SILENCE,
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
         };
         let restored = CachedAnalysis::from_analysis(&silent)
@@ -516,6 +538,7 @@ mod tests {
 
         let quiet = Analysis {
             loudness: Lufs::new(-20.0),
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
             ..analysis()
         };
@@ -526,6 +549,7 @@ mod tests {
 
         let loud = Analysis {
             loudness: Lufs::new(-8.0),
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
             ..analysis()
         };
@@ -542,6 +566,7 @@ mod tests {
         let deck = DeckId::from_human(1).unwrap();
         let already = Analysis {
             loudness: Lufs::new(-14.2),
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
             ..analysis()
         };
@@ -555,6 +580,7 @@ mod tests {
         let deck = DeckId::from_human(1).unwrap();
         let silent = Analysis {
             loudness: Lufs::SILENCE,
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
             ..analysis()
         };
@@ -568,6 +594,7 @@ mod tests {
         let deck = DeckId::from_human(2).unwrap();
         let quiet = Analysis {
             loudness: Lufs::new(-19.0),
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
             ..analysis()
         };
@@ -590,6 +617,7 @@ mod tests {
         let deck = DeckId::from_human(1).unwrap();
         let nearly_silent = Analysis {
             loudness: Lufs::new(-90.0),
+            energy: dj_analysis::energy::Energy::default(),
             phrases: None,
             ..analysis()
         };

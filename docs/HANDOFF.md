@@ -1393,6 +1393,30 @@ The largest of them, in the order they are worth doing:
    to_the_eye_in_every_palette`) applies to it and the colour-blind one does
    not. That asymmetry is deliberate and is the whole design.
 
+12e. **A measurement tuned on a signal that is not the thing it measures is
+   tuned on nothing.** `dj_analysis::energy` took four goes at its percussive
+   reading and three of the four failures were the test signal, not the code.
+   A "kick" with a 3 kHz click on every beat is a rimshot: it dumped so much
+   flux into the upper bands that the low-band reading was being measured
+   against a total it did not belong to, and every threshold picked against it
+   was right for nothing. A "pad" that was a dead sine had enough spectral
+   leakage in the low band to fire fourteen percussive events per beat -- a pad
+   reading as the most driving record in the collection.
+
+   With a low kick over a bass bed and a pad with a slow swell, one threshold
+   fits: a hit is a local peak in the low band above half the record's overall
+   flux, and a four-to-the-floor kick then measures 1.01 hits per beat at 128
+   BPM and 1.00 at 174, against a pad's 0.02. **Write the test signal like the
+   music first.**
+
+   The other lesson is about the two failure directions. Counting hops above a
+   line made a fast record look *less* driving (its beats hold fewer hops);
+   counting rising edges halved the error and did not fix it (a busier record
+   raises the threshold it is measured against); local peaks fixed it (a peak
+   is a peak whatever else is going on). Whenever a reading is meant to be
+   independent of something, test it at two values of that thing -- the
+   tempo-invariance test is what found all three.
+
 13. **§90 has one ratchet and four honest refusals, and the split is the
    lesson.** A ratchet is only worth having where the number means the same
    thing on two machines. Frame rate, memory and CPU do not — the argument §89
