@@ -38,6 +38,7 @@ pub mod handle;
 pub mod host;
 pub mod layout;
 pub mod lens;
+pub mod level;
 pub mod library;
 pub mod memory;
 pub mod mission;
@@ -619,6 +620,9 @@ pub fn run() {
             commands::kept_controls,
             commands::set_kept_controls,
             commands::remembered,
+            commands::adaptation_levels,
+            commands::standing,
+            commands::set_adaptation_level,
             commands::themes,
             commands::night_settings,
             commands::knowledge_packs,

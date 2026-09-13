@@ -1087,6 +1087,38 @@ impl AppState {
         }
     }
 
+    /// The file §8's adaptation level lives in.
+    ///
+    /// Its own file rather than a field of the workspace, for the reason the
+    /// pack has one: how far a DJ lets djmanzo go is a fact about them, not
+    /// about the shape they last dragged the panels into, and a DJ who switches
+    /// to the Club arrangement has not asked for the autopilot.
+    fn level_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("level.txt"))
+    }
+
+    /// §8's level the DJ last set, or `None` if they never have.
+    ///
+    /// `None` rather than a default, because "never chosen" and "chosen Static"
+    /// are different: djmanzo's shipped behaviour is not Level 0, and a fresh
+    /// install that reported Static would be describing itself wrongly.
+    #[must_use]
+    pub fn adaptation_level(&self) -> Option<String> {
+        let name = std::fs::read_to_string(self.level_path()?).ok()?;
+        let name = name.trim().to_owned();
+        (!name.is_empty()).then_some(name)
+    }
+
+    /// Remember the level.
+    pub fn set_adaptation_level(&self, slug: &str) {
+        let Some(path) = self.level_path() else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, slug) {
+            tracing::warn!(%error, ?path, "your adaptation level will not survive a restart");
+        }
+    }
+
     /// The file the chosen waveform layers live in.
     ///
     /// Its own file rather than a field of the workspace, on the same reasoning

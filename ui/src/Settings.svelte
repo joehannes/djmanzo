@@ -10,6 +10,7 @@
    */
   import Screens from "./Screens.svelte";
   import {
+    adaptationLevels,
     chosenPack,
     cockpitLocks,
     knowledgePacks,
@@ -17,15 +18,19 @@
     applySetup,
     railControls,
     remembered,
+    setAdaptationLevel,
     setChosenPack,
     setups,
+    standing,
     waveformLayers,
+    type AdaptationLevel,
     type KnowledgePack,
     type LockOption,
     type PadPageDto,
     type RailControl,
     type Remembered,
     type Setup,
+    type Standing,
     type WaveformLayer,
   } from "./api";
   import {
@@ -531,6 +536,38 @@
   let didSetUp = $state<{ title: string; changes: string[] } | null>(null);
 
   /**
+   * §8's seven levels, and where djmanzo stands on them.
+   *
+   * The one control §8 asks for: a single axis that says how far djmanzo may
+   * go, with the posture and §79's six locks derived from it rather than found
+   * one at a time in two panels. Read off Rust — the levels, what each one
+   * sets, and what about the current state has drifted from the one chosen.
+   */
+  let levels = $state<AdaptationLevel[]>([]);
+  /** Where djmanzo stands, and what no longer matches it. */
+  let stand = $state<Standing>({ level: "", departures: [], locked: [] });
+
+  /**
+   * Move the axis.
+   *
+   * Rust writes the posture and the locks and hands back what it actually did,
+   * which is why the locks go up to the shell afterwards: the shell owns the
+   * workspace, and without this the six checkboxes below would go on showing
+   * the state djmanzo was in before the press. The answer is what djmanzo is
+   * *at*, not what was asked for — the round trip every picker here makes, and
+   * it matters more in this one because a single press writes seven controls.
+   */
+  async function chooseLevel(slug: string) {
+    try {
+      stand = await setAdaptationLevel(slug);
+      onLock?.(stand.locked);
+      error = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /**
    * §16's knowledge packs, and the one in force.
    *
    * Read off Rust, every field of it. §16 ends *"Do not hard-code this logic
@@ -594,8 +631,10 @@
       setups(),
       knowledgePacks(),
       chosenPack(),
+      adaptationLevels(),
+      standing(),
     ])
-      .then(([rows, pages, controls, layers, nights, packs, chosen]) => {
+      .then(([rows, pages, controls, layers, nights, packs, chosen, axis, where]) => {
         remembers_list = rows;
         allPages = pages;
         allControls = controls;
@@ -603,6 +642,8 @@
         allSetups = nights;
         allPacks = packs;
         pack = chosen;
+        levels = axis;
+        stand = where;
       })
       .catch(() => {
         // The block draws nothing rather than a guess, on the same principle as
@@ -722,6 +763,58 @@
   -->
   <div class="block">
     <Screens />
+  </div>
+
+  <!--
+    §8's axis, directly above the locks and the posture it sets. The order is
+    the argument: this is one decision with a range, and the six switches below
+    it are what it moves. A DJ who wants "stage things for me but do not move my
+    screen" had to find the posture in one panel and six locks in another, know
+    which of the six mattered, and get both right.
+  -->
+  <div class="block levels">
+    <h3>How far djmanzo may go</h3>
+    <p class="hint">
+      One control for the whole range, from doing nothing to mixing. It sets the
+      assistant and the locks below together — and like every preset here, it is
+      a starting point: change anything afterwards and djmanzo says so rather
+      than putting it back.
+    </p>
+    <ul class="level-list">
+      {#each levels as step (step.slug)}
+        <li data-level={step.slug}>
+          <button
+            class:chosen={stand.level === step.slug}
+            aria-pressed={stand.level === step.slug}
+            onclick={() => void chooseLevel(step.slug)}
+          >
+            <span class="level-number">{step.number}</span>
+            <span class="level-name">{step.title}</span>
+            <span class="level-about">{step.about}</span>
+          </button>
+        </li>
+      {/each}
+    </ul>
+    {#if stand.level === ""}
+      <!--
+        Never chosen is not Level 0. djmanzo suggests, fits the density to the
+        window and adapts the theme out of the box, so a fresh install that
+        showed Static selected would be describing itself wrongly.
+      -->
+      <p class="hint" data-testid="level-unset">
+        You have not set one. djmanzo is running the way it shipped, which is
+        somewhere around Adaptive.
+      </p>
+    {:else if stand.departures.length > 0}
+      <!--
+        The half that makes a starting point honest. "Prepare, except the theme
+        still adapts" is a true sentence, and an interface that could not say it
+        would be one where the level quietly stopped meaning anything.
+      -->
+      <p class="drifted" role="status" data-testid="level-drifted">
+        Since you set it: {stand.departures.join("; ")}.
+      </p>
+    {/if}
   </div>
 
   <!--
@@ -1872,6 +1965,57 @@
   .pack-about,
   .pack-reach {
     color: var(--muted);
+    font-size: 0.85em;
+  }
+
+  .level-list {
+    list-style: none;
+    margin: 0.6rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .level-list > li > button {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    width: 100%;
+    text-align: left;
+    flex-wrap: wrap;
+  }
+
+  /* An outline, like the packs and the presets: which level you are at is a
+     standing state, and a block of colour reads as something that just
+     happened. The inset edge is what makes it findable in a list of seven. */
+  .level-list > li > button.chosen {
+    border-color: var(--selected);
+    box-shadow: inset 3px 0 0 var(--selected);
+  }
+
+  /* §8's own number, because that is what a DJ will call it and because seven
+     rows of prose need something to count by. */
+  .level-number {
+    min-width: 1.2rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+  }
+
+  .level-name {
+    min-width: 6rem;
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+  }
+
+  .level-about {
+    color: var(--muted);
+    font-size: 0.85em;
+  }
+
+  .drifted {
+    margin: 0.6rem 0 0;
+    color: var(--warn);
     font-size: 0.85em;
   }
 

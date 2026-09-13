@@ -74,6 +74,11 @@ import nightSettings from "./night-settings.json" with { type: "json" };
  *  The picker draws the ones that ship from the interface's own package list;
  *  this is the other half, the nine §32 asked for and djmanzo has not built. */
 import themeRows from "./themes.json" with { type: "json" };
+/** §8's seven, generated from `dj_app::level::Level::ALL` by the same Rust
+ *  test. One press on this axis writes the posture and all six of §79's locks,
+ *  so a hand-written stub would let the browser check that press against a
+ *  range djmanzo no longer has. */
+import levelRows from "./levels.json" with { type: "json" };
 import layers from "./layers.json" with { type: "json" };
 /**
  * The five transition styles and what each does, generated from
@@ -611,6 +616,10 @@ const ANSWERS: Record<string, unknown> = {
   theme_lock: null,
   theme_chosen: null,
   themes: themeRows,
+  adaptation_levels: levelRows,
+  /** Nothing chosen: djmanzo is running the way it shipped, which is the state
+   *  the axis exists to end and the one a fresh install is actually in. */
+  standing: { level: "", departures: [], locked: [] },
   /**
    * §32's Watershed Living can be *chosen* from the picker now, so the world
    * has to be answerable in a browser — it never was, because nothing in a
@@ -1385,6 +1394,35 @@ export async function openShell(
             const asked = (args.pack ?? "") as string;
             win.__pack = known.some((p) => p.id === asked) ? asked : "";
             return Promise.resolve(win.__pack);
+          }
+          // §8's axis. Held between calls, and it writes §79's locks, because
+          // the claim this makes is that one press reaches seven controls: a
+          // fixed answer would make a level that worked and one that did
+          // nothing look the same.
+          if (cmd === "set_adaptation_level") {
+            const known = (answers.adaptation_levels ?? []) as {
+              slug: string;
+              adapts: boolean;
+            }[];
+            const asked = args.level as string;
+            const step = known.find((l) => l.slug === asked);
+            if (!step) {
+              return Promise.reject(
+                new Error(`${JSON.stringify(asked)} is not one of §8's levels`),
+              );
+            }
+            // Rust's rule, mirrored: every lock on below Adaptive, none above.
+            const locks = (answers.cockpit_locks ?? []) as { slug: string }[];
+            const held = {
+              level: step.slug,
+              departures: [] as string[],
+              locked: step.adapts ? [] : locks.map((lock) => lock.slug),
+            };
+            win.__standing = held;
+            return Promise.resolve(held);
+          }
+          if (cmd === "standing") {
+            return Promise.resolve(win.__standing ?? answers.standing);
           }
           if (cmd === "chosen_pack") {
             return Promise.resolve(win.__pack ?? answers.chosen_pack ?? "");

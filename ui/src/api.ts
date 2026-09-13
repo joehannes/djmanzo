@@ -1858,6 +1858,66 @@ export interface ThemeRow {
   world: boolean;
 }
 
+/** One of §8's seven adaptation levels. */
+export interface AdaptationLevel {
+  /** §8's own number, which is what a DJ will call it. */
+  number: number;
+  /** The slug it is stored and chosen by. */
+  slug: string;
+  title: string;
+  /** What choosing it means, in the DJ's words. */
+  about: string;
+  /** The §10 posture it sets. */
+  posture: string;
+  /** Whether preferences survive a restart at this level. */
+  remembers: boolean;
+  /** Whether the interface may change itself at this level. */
+  adapts: boolean;
+}
+
+/** §8's seven, listed by Rust. */
+export const adaptationLevels = () =>
+  invoke<AdaptationLevel[]>("adaptation_levels");
+
+/** Where djmanzo stands on §8's axis, and what no longer matches it. */
+export interface Standing {
+  /**
+   * The level last set, or empty if a DJ never has.
+   *
+   * Empty rather than a default: "never chosen" and "chose Static" are
+   * different, and a fresh install reporting Level 0 would be describing itself
+   * wrongly — djmanzo's shipped behaviour is not Static.
+   */
+  level: string;
+  /**
+   * What about the current state departs from that level, in the DJ's words.
+   *
+   * A level is a starting point and a DJ may move any control it set, so
+   * djmanzo's job afterwards is to say what changed rather than spring it back.
+   */
+  departures: string[];
+  /**
+   * §79's locks now in force, by slug.
+   *
+   * Setting a level writes them and the shell holds the workspace, so without
+   * this the six checkboxes below the axis would go on showing the state
+   * djmanzo was in before the press.
+   */
+  locked: string[];
+}
+
+/** Where djmanzo stands, and what has drifted from it. */
+export const standing = () => invoke<Standing>("standing");
+
+/**
+ * Set §8's level, which sets the posture and §79's locks together.
+ *
+ * The one control §8 asks for. Everything it touches stays where a DJ can
+ * change it afterwards, and `standing` is what says so when they do.
+ */
+export const setAdaptationLevel = (level: string) =>
+  invoke<Standing>("set_adaptation_level", { level });
+
 /**
  * §32's themes, from Rust.
  *

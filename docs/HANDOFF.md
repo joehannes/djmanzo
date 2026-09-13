@@ -778,6 +778,31 @@ to open the watershed. That was a harness gap, but it exposed a real one too:
 showing the author already expected that read to be able to fail. Both take
 `?? emptyWorld()` now.
 
+**When the running application disagrees with a green browser test, instrument
+before theorising.** §8's level axis stored correctly in Rust — `level.txt` and
+`workspace.json` both held the press — and the picker went on showing *You have
+not set one*, while the Playwright test over the same gesture passed. Half an
+hour went into hypotheses about remounts, `$state` and prop plumbing. What
+settled it in two minutes was one temporary line in the markup printing the
+component's own state:
+
+```svelte
+<p class="hint">DEBUG stand={JSON.stringify(stand)} levels={levels.length}</p>
+```
+
+It showed the state was correct all along, and a clean rebuild-and-relaunch
+reproduced nothing. I could not establish which bundle that earlier window was
+serving — the working directory was correct and the hashes should have differed
+— so treat it as unexplained rather than as a fixed defect. The lesson that does
+generalise: **a screenshot cannot tell you what a component holds**, and a
+readout that can costs one line and one rebuild. Remove it before committing;
+`grep -c DEBUG` on the file is the check.
+
+**A `pkill -f` in this container returns exit 144 and kills the shell**, so a
+compound command stops there and the rest never runs — including the relaunch.
+Run it alone, or use `pgrep -f … | xargs -r kill -9`, and confirm with `pgrep`
+before launching, or you end up driving an old process and reading its window.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests
@@ -1101,18 +1126,29 @@ The largest of them, in the order they are worth doing:
    mostly waits on analysis that does not exist, which is the same wall §25's
    remaining layers are behind.
 
-11. **§8's Levels 2 to 6.** Level 1 ships — the nine things djmanzo remembers,
-   with the one it does not saying so. The levels above it are the harder half
-   and most of what they *describe* already exists under other sections: Level
-   2 is the postures' Suggest, Level 3 is §44's staging, Level 4 is the
-   assistant's reversible moves, Level 5 is the density bands and §31's theme,
-   Level 6 is the autopilot. What §8 asks that genuinely does not exist is the
-   **level itself as one axis** — a single control that says how far djmanzo
-   may go, with everything else derived from it, rather than six capabilities a
-   DJ has to find one at a time. Do that as a type before wiring anything to
-   it, and check it against §9's separation of autonomy from confidence: a
-   level is autonomy, and the certainty is a different number that must not be
-   folded into it.
+11. **§8 is closed, and the shape of how is worth copying.** Level 1 was the
+   nine things djmanzo remembers; Levels 2 to 6 were each already real under
+   another section's name, and what was missing was the *level* — one control
+   that says how far djmanzo may go. `dj_app::level` is it, and three decisions
+   in it are the ones to reuse elsewhere:
+
+   **It maps onto §10 rather than beside it.** §10 says its six postures are
+   the main autonomy axis and asks that they not be replaced, so a level *sets*
+   a posture. Two pairs of levels share one, and that is stated rather than
+   smoothed over — a test fails if any step becomes indistinguishable from its
+   neighbour, because an axis with a dead step has fewer notches than it claims.
+
+   **It sets and does not own.** One press writes the posture and all six of
+   §79's locks and then leaves them alone, and `standing` reports what has since
+   drifted. An axis that owned six switches would be the axis arguing with the
+   switches. Any future "one control for many" should copy that pair: write
+   them, then be able to say what changed.
+
+   **§9 is enforced rather than assumed.** A test asserts that every question a
+   level answers takes no reading, so there is no certainty it could consult.
+   The tempting version of that table is one where a confident djmanzo quietly
+   acts a level higher, which is §9's *low confidence + high autonomy =
+   invalid/unsafe* arriving through the back door.
 
    **The waveform row closed itself.** §8 asks djmanzo to remember the
    *preferred waveform display*, and the row said "not yet, and here is what

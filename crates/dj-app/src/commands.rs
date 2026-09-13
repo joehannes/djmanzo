@@ -3346,6 +3346,136 @@ mod stem_out_tests {
         );
     }
 
+    mod adaptation_level {
+        use super::*;
+
+        /// A state with somewhere to write, since the level is a file.
+        ///
+        /// The `TempDir` is returned rather than dropped: dropping it removes
+        /// the directory, and a state pointed at a directory that no longer
+        /// exists silently keeps nothing — which would make every assertion
+        /// here pass for the wrong reason.
+        fn state_with_a_config_dir() -> (AppState, tempfile::TempDir) {
+            let dir = tempfile::tempdir().unwrap();
+            let state = AppState::new(true);
+            state.set_config_dir(dir.path().to_path_buf());
+            (state, dir)
+        }
+
+        /// **The load-bearing one: one press reaches the posture and all six
+        /// locks.**
+        ///
+        /// §8's whole point is that this is one decision with a range. A DJ who
+        /// wanted "stage things for me but do not move my screen" had to find
+        /// the posture in one panel and six locks in another, know which of the
+        /// six mattered, and get both right. If setting a level reached only
+        /// one of the two, the control would look like it worked and do half
+        /// its job — the worst available failure, because the half that did not
+        /// happen is the half a DJ was worried about.
+        #[test]
+        fn one_press_sets_the_posture_and_the_locks_together() {
+            let (state, _dir) = state_with_a_config_dir();
+
+            let said = set_adaptation_level_of(&state, "prepare").unwrap();
+            assert_eq!(said.level, "prepare");
+            assert!(
+                said.departures.is_empty(),
+                "a level djmanzo just set reads as drifted from: {:?}",
+                said.departures
+            );
+            assert_eq!(
+                state.conduct().lock().unwrap().posture,
+                dj_assistant::Posture::Prepare
+            );
+            let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
+            assert_eq!(
+                stored.locked.len(),
+                crate::cockpit::Lock::ALL.len(),
+                "Prepare left the interface free to move itself"
+            );
+
+            // And the top of the axis gives every freedom back, so a level is
+            // a move in both directions rather than a one-way ratchet.
+            set_adaptation_level_of(&state, "autopilot").unwrap();
+            assert_eq!(
+                state.conduct().lock().unwrap().posture,
+                dj_assistant::Posture::Autopilot
+            );
+            let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
+            assert!(
+                stored.locked.is_empty(),
+                "Autopilot kept the locks Prepare put on"
+            );
+        }
+
+        /// **A control the DJ moved afterwards is reported, not undone.**
+        ///
+        /// The contract that makes a starting point honest, and the same one
+        /// §7's arrangements and §54's setups state. An axis that owned six
+        /// switches would be the axis arguing with the switches, and §79's
+        /// panel would be a row of controls that silently sprang back.
+        #[test]
+        fn moving_a_control_afterwards_is_said_rather_than_reversed() {
+            let (state, _dir) = state_with_a_config_dir();
+            set_adaptation_level_of(&state, "prepare").unwrap();
+
+            // The DJ unlocks the theme by hand, as §79's panel lets them.
+            let mut stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
+            stored
+                .locked
+                .retain(|lock| *lock != crate::cockpit::Lock::Theme);
+            state.set_workspace(&crate::cockpit::resolve(&stored).workspace);
+
+            let said = standing_of(&state).unwrap();
+            assert_eq!(
+                said.level, "prepare",
+                "the level was reset by a lock change"
+            );
+            assert_eq!(said.departures, ["the theme still follows the night"]);
+            assert!(
+                !state
+                    .workspace()
+                    .unwrap()
+                    .locked
+                    .contains(&crate::cockpit::Lock::Theme),
+                "djmanzo put the lock back on rather than saying it was off"
+            );
+        }
+
+        /// **Never chosen is not Static.**
+        ///
+        /// djmanzo's shipped behaviour is not Level 0 — it suggests, it fits
+        /// the density to the window, it adapts the theme — so a fresh install
+        /// reporting Static would be describing itself wrongly, and every
+        /// departure it then listed would be djmanzo telling a DJ they had
+        /// drifted from a decision they never made.
+        #[test]
+        fn a_dj_who_never_chose_is_not_reported_at_the_bottom_of_the_axis() {
+            let (state, _dir) = state_with_a_config_dir();
+            let said = standing_of(&state).unwrap();
+            assert_eq!(said.level, "");
+            assert!(said.departures.is_empty());
+        }
+
+        /// **A level djmanzo does not have is refused rather than guessed.**
+        ///
+        /// Both directions of wrong are dangerous here: falling back to Static
+        /// would quietly turn everything off, and falling back to the top would
+        /// hand a DJ the autopilot. Neither is a thing to do on a typo.
+        #[test]
+        fn an_unknown_level_is_refused() {
+            let (state, _dir) = state_with_a_config_dir();
+            assert!(set_adaptation_level_of(&state, "level-3").is_err());
+            assert!(set_adaptation_level_of(&state, "").is_err());
+            assert!(set_adaptation_level_of(&state, "Prepare").is_err());
+            assert_eq!(
+                standing_of(&state).unwrap().level,
+                "",
+                "a refused level was stored anyway"
+            );
+        }
+    }
+
     /// The panel has to distinguish "your interface is too narrow" from "this
     /// is off", because only one of them is something the DJ can act on.
     #[test]
@@ -10202,6 +10332,176 @@ pub fn forget_workspace(
     let kept = crate::cockpit::forget(&state.my_workspaces(), &name);
     state.set_my_workspaces(&kept);
     kept
+}
+
+/// One of §8's seven adaptation levels, as the picker offers it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LevelDto {
+    /// §8's own number, which is what a DJ will call it.
+    pub number: u8,
+    /// The slug it is stored and chosen by.
+    pub slug: String,
+    /// §8's own name for it.
+    pub title: String,
+    /// What choosing it means, in the DJ's words.
+    pub about: String,
+    /// The §10 posture it sets.
+    pub posture: String,
+    /// Whether preferences survive a restart at this level.
+    pub remembers: bool,
+    /// Whether the interface may change itself at this level.
+    pub adapts: bool,
+}
+
+/// Where djmanzo stands on §8's axis, and what no longer matches it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StandingDto {
+    /// The level last set, or empty if a DJ never has.
+    ///
+    /// Empty rather than a default: "never chosen" and "chose Static" are
+    /// different, and a fresh install reporting Level 0 would be describing
+    /// itself wrongly — djmanzo's shipped behaviour is not Static.
+    pub level: String,
+    /// What about the current state departs from that level, in the DJ's words.
+    ///
+    /// Empty when nothing does. A level is a starting point and a DJ may move
+    /// any control it set, so djmanzo's job afterwards is to say what changed
+    /// rather than to spring it back.
+    pub departures: Vec<String>,
+    /// §79's locks now in force, by slug.
+    ///
+    /// Handed back because setting a level writes them, and the interface holds
+    /// the workspace: without this the six checkboxes below the axis would go
+    /// on showing what they showed a second ago, which is the state djmanzo was
+    /// in before the press. Read off the workspace rather than re-derived from
+    /// the level, so a DJ who has since unlocked one sees that.
+    pub locked: Vec<String>,
+}
+
+/// §8's seven, listed by Rust.
+#[tauri::command]
+#[must_use]
+pub fn adaptation_levels() -> Vec<LevelDto> {
+    crate::level::Level::ALL
+        .iter()
+        .map(|level| LevelDto {
+            number: level.number(),
+            slug: level.slug().to_owned(),
+            title: level.title().to_owned(),
+            about: level.about().to_owned(),
+            posture: level.posture().name().to_owned(),
+            remembers: level.remembers(),
+            adapts: level.permits() == crate::cockpit::Permits::everything(),
+        })
+        .collect()
+}
+
+/// Where djmanzo stands, and what has drifted from it.
+///
+/// # Errors
+/// When the conduct lock is poisoned.
+#[tauri::command]
+pub fn standing(state: State<'_, AppState>) -> Result<StandingDto, String> {
+    standing_of(&state)
+}
+
+/// Where djmanzo stands, off a plain reference.
+///
+/// Split from the command so a test can reach it. Tauri's `State` cannot be
+/// built in a unit test, and the rule this file already follows is that the
+/// command is the thin half: `open_device_for` and `set_stem_out_for_test` are
+/// the same split.
+///
+/// # Errors
+/// When the conduct lock is poisoned.
+pub fn standing_of(state: &AppState) -> Result<StandingDto, String> {
+    let stored = state.adaptation_level().unwrap_or_default();
+    let Some(level) = crate::level::Level::parse(&stored) else {
+        // A level nobody recognises, or none set. Either way there is nothing
+        // to be a departure *from*, and inventing one would be djmanzo telling
+        // a DJ they had drifted from a decision they never made.
+        return Ok(StandingDto {
+            level: String::new(),
+            departures: Vec::new(),
+            locked: locks_now(state),
+        });
+    };
+    let posture = state
+        .conduct()
+        .lock()
+        .map_err(|_| "the conduct lock is poisoned".to_owned())?
+        .posture;
+    let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
+    let permits = crate::cockpit::resolve(&stored).permits;
+    Ok(StandingDto {
+        level: level.slug().to_owned(),
+        departures: level
+            .departures(posture, permits)
+            .into_iter()
+            .map(ToOwned::to_owned)
+            .collect(),
+        locked: locks_now(state),
+    })
+}
+
+/// §79's locks currently on the workspace, by slug.
+fn locks_now(state: &AppState) -> Vec<String> {
+    state
+        .workspace()
+        .unwrap_or_else(crate::cockpit::opening)
+        .locked
+        .iter()
+        .map(|lock| lock.name().to_owned())
+        .collect()
+}
+
+/// Set §8's level, which sets the posture and §79's locks together.
+///
+/// **The one control §8 asks for.** Everything it touches stays where a DJ can
+/// change it afterwards — the same contract §7's arrangements and §54's setups
+/// have — and `standing` is what says so when they do. A single axis that
+/// *owned* six switches would be the axis arguing with the switches, and §79's
+/// panel would be a row of controls that silently sprang back.
+///
+/// # Errors
+/// A slug djmanzo does not have, or a poisoned lock.
+#[tauri::command]
+pub fn set_adaptation_level(
+    state: State<'_, AppState>,
+    level: String,
+) -> Result<StandingDto, String> {
+    set_adaptation_level_of(&state, &level)
+}
+
+/// Set §8's level, off a plain reference. See [`standing_of`] for the split.
+///
+/// # Errors
+/// A slug djmanzo does not have, or a poisoned lock.
+pub fn set_adaptation_level_of(state: &AppState, level: &str) -> Result<StandingDto, String> {
+    let chosen = crate::level::Level::parse(level)
+        .ok_or_else(|| format!("{level:?} is not one of §8's levels"))?;
+
+    state
+        .conduct()
+        .lock()
+        .map_err(|_| "the conduct lock is poisoned".to_owned())?
+        .posture = chosen.posture();
+
+    // §79's six, from §78's four. The locks are the workspace's, so this is one
+    // write to the workspace rather than six — and `Lock::stops` is what maps
+    // a freedom back to the locks that take it away, so a seventh lock added
+    // there is honoured here without anybody remembering to come back.
+    let mut workspace = state.workspace().unwrap_or_else(crate::cockpit::opening);
+    let permits = chosen.permits();
+    workspace.locked = crate::cockpit::Lock::ALL
+        .iter()
+        .copied()
+        .filter(|lock| !permits.allows(lock.stops()))
+        .collect();
+    state.set_workspace(&crate::cockpit::resolve(&workspace).workspace);
+
+    state.set_adaptation_level(chosen.slug());
+    standing_of(state)
 }
 
 /// One of §79's locks, and what a DJ is told it takes away.

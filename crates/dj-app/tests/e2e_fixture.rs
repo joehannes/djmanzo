@@ -246,6 +246,46 @@ fn the_browser_fixture_has_the_packs_djmanzo_teaches_from() {
     );
 }
 
+/// §8's adaptation levels, as a golden file.
+///
+/// Generated from `dj_app::level::Level::ALL`, which holds each level's posture
+/// and freedoms against the tables that own them. A hand-written stub of seven
+/// would let the browser check a press against a range djmanzo no longer has —
+/// and this is the axis where that matters most, since one press writes the
+/// posture and all six of §79's locks.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_levels_djmanzo_offers() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/levels.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::adaptation_levels())
+        .expect("the levels serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the levels");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored levels are JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh levels are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe adaptation levels have changed, so the browser is checking a \
+         press against a range djmanzo no longer offers.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// §32's themes, as a golden file.
 ///
 /// Generated from `dj_app::theme::ALL`, which is itself checked against
