@@ -92,6 +92,16 @@ import layers from "./layers.json" with { type: "json" };
  * and the first of the three to drift.
  */
 import compositions from "./compositions.json" with { type: "json" };
+/**
+ * §40's twenty-six and which half the assistant sees, generated from
+ * `dj_app::sight::ALL` by the same Rust test.
+ *
+ * The unseen half especially: a hand-written copy would go on telling a DJ the
+ * assistant cannot see something it now can, which is the failure the panel
+ * exists to prevent, one file further out.
+ */
+import sight from "./sight.json" with { type: "json" };
+export { sight as sightRows };
 export { compositions };
 /**
  * The five transition styles and what each does, generated from
@@ -113,6 +123,7 @@ import styles from "./styles.json" with { type: "json" };
  */
 const ANSWERS: Record<string, unknown> = {
   pad_pages: padPages,
+  assistant_sight: sight,
   /**
    * The deck compositions that ship, as `layout::builtin()` gives them.
    *

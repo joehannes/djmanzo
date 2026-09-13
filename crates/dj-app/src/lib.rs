@@ -66,6 +66,7 @@ pub mod setting;
 pub mod setup;
 pub mod shape;
 pub mod share;
+pub mod sight;
 pub mod signals;
 pub mod snapshot;
 pub mod sources;
@@ -627,6 +628,7 @@ pub fn run() {
             commands::answer_persona,
             commands::under_load,
             commands::room_poll_ms,
+            commands::assistant_sight,
             commands::adaptation_levels,
             commands::standing,
             commands::set_adaptation_level,

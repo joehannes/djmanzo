@@ -1,0 +1,158 @@
+[
+  {
+    "name": "current tracks",
+    "about": "What is on each deck.",
+    "told": true,
+    "source": "each deck"
+  },
+  {
+    "name": "play positions",
+    "about": "How far through each record is.",
+    "told": true,
+    "source": "each deck"
+  },
+  {
+    "name": "BPM",
+    "about": "The tempo each deck is actually running at, pitch included.",
+    "told": true,
+    "source": "each deck"
+  },
+  {
+    "name": "beat grids",
+    "about": "Where the beat is, and how sure the analysis is of it.",
+    "told": true,
+    "source": "each deck"
+  },
+  {
+    "name": "key",
+    "about": "The camelot key of each record.",
+    "told": true,
+    "source": "each deck"
+  },
+  {
+    "name": "energy",
+    "about": "How loud the mix is, against tonight's own range.",
+    "told": true,
+    "source": "the night"
+  },
+  {
+    "name": "phrase structure",
+    "about": "How long a phrase is and where one starts.",
+    "told": true,
+    "source": "each deck"
+  },
+  {
+    "name": "stems",
+    "about": "Which of the four parts of each record are muted.",
+    "told": true,
+    "source": "each deck"
+  },
+  {
+    "name": "current transitions",
+    "about": "The mix in progress, as a thing with a shape and a length.",
+    "told": false,
+    "source": "a transition happens over time and the briefing is one instant. What it does carry is the crossfader and what each deck is doing, which is the evidence a transition is under way rather than the transition itself"
+  },
+  {
+    "name": "cue points",
+    "about": "The hot cues set on each deck.",
+    "told": true,
+    "source": "each deck"
+  },
+  {
+    "name": "loop state",
+    "about": "The loop in force on each deck, if any.",
+    "told": true,
+    "source": "each deck"
+  },
+  {
+    "name": "FX",
+    "about": "The effects running on each deck.",
+    "told": true,
+    "source": "each deck"
+  },
+  {
+    "name": "mixer state",
+    "about": "Where the crossfader is.",
+    "told": true,
+    "source": "the mixer"
+  },
+  {
+    "name": "library",
+    "about": "The whole collection.",
+    "told": false,
+    "source": "a collection is thousands of records and a briefing carrying it would be the database in a prompt. The assistant searches it instead, which is what a search is for"
+  },
+  {
+    "name": "prepared tracks",
+    "about": "What is staged and on its way to a deck.",
+    "told": false,
+    "source": "staged records are the browser's and the snapshot carries what the engine has. Gathering them is a second read the briefing does not yet make"
+  },
+  {
+    "name": "next candidates",
+    "about": "What the rail would offer next.",
+    "told": false,
+    "source": "the rail is computed from the library on demand and is not on the snapshot"
+  },
+  {
+    "name": "history",
+    "about": "What has already been played tonight.",
+    "told": false,
+    "source": "tonight's log is read back by a command rather than carried on the snapshot"
+  },
+  {
+    "name": "session plan",
+    "about": "The shape of the night, as a sequence.",
+    "told": false,
+    "source": "the plan is the planner's and is not on the snapshot"
+  },
+  {
+    "name": "user preferences",
+    "about": "What this DJ has been learnt to like.",
+    "told": false,
+    "source": "the profile is §12's and is read where suggestions are ranked, not here"
+  },
+  {
+    "name": "current venue/occasion",
+    "about": "What the DJ declared the night to be.",
+    "told": true,
+    "source": "what you set"
+  },
+  {
+    "name": "audience context",
+    "about": "What the room is doing.",
+    "told": false,
+    "source": "the room reading lives with the panel that opens the camera, and stops when it closes -- so a briefing carrying it would go on claiming a room nothing is looking at"
+  },
+  {
+    "name": "hardware",
+    "about": "What is plugged in and what it can reach.",
+    "told": false,
+    "source": "§53's controller profile is a command away rather than on the snapshot"
+  },
+  {
+    "name": "assistant posture",
+    "about": "How much the DJ has allowed it to do.",
+    "told": true,
+    "source": "what you set"
+  },
+  {
+    "name": "session phase",
+    "about": "Where the night is in its arc, and how sure djmanzo is.",
+    "told": true,
+    "source": "the night"
+  },
+  {
+    "name": "recent actions",
+    "about": "What the DJ has just done.",
+    "told": false,
+    "source": "the session log is a command away, and the last few gestures are a different question from the state they left behind"
+  },
+  {
+    "name": "current GUI focus",
+    "about": "Which arrangement is on screen and what it is for.",
+    "told": false,
+    "source": "the cockpit's workspace is a command away rather than on the snapshot"
+  }
+]

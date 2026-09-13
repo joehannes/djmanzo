@@ -10543,6 +10543,44 @@ pub struct StandingDto {
     pub locked: Vec<String>,
 }
 
+/// One of §40's twenty-six, for the panel.
+#[derive(Debug, Clone, Serialize)]
+pub struct SightDto {
+    /// §40's own word for it.
+    pub name: String,
+    pub about: String,
+    /// Whether the model is told this.
+    pub told: bool,
+    /// Where it comes from, or why it does not come at all. Never empty.
+    pub source: String,
+}
+
+/// §40's list, and which half of it the assistant actually sees.
+///
+/// Answered by Rust rather than typed into the panel because the *unseen* half
+/// is the part a DJ needs and the part nobody would keep true by hand. A panel
+/// listing what the assistant knows is a reassurance; a panel listing what it
+/// could not see is the thing that makes an answer arguable.
+#[tauri::command]
+#[must_use]
+pub fn assistant_sight() -> Vec<SightDto> {
+    crate::sight::ALL
+        .iter()
+        .map(|item| SightDto {
+            name: item.name.to_owned(),
+            about: item.about.to_owned(),
+            told: item.carrier.told(),
+            source: match item.carrier {
+                crate::sight::Carrier::Deck { .. } => "each deck".to_owned(),
+                crate::sight::Carrier::Master { .. } => "the mixer".to_owned(),
+                crate::sight::Carrier::Context { .. } => "the night".to_owned(),
+                crate::sight::Carrier::Conduct => "what you set".to_owned(),
+                crate::sight::Carrier::Unseen { because } => because.to_owned(),
+            },
+        })
+        .collect()
+}
+
 /// §8's seven, listed by Rust.
 #[tauri::command]
 #[must_use]

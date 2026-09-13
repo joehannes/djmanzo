@@ -695,3 +695,41 @@ fn the_browser_fixture_has_the_deck_compositions_5b_names() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
     );
 }
+
+/// §40's list and which half the assistant sees, as a golden file.
+///
+/// Generated from `dj_app::sight::ALL`. Hand-written in the harness it would be
+/// the copy the panel was just relieved of, one file further out — and the half
+/// that matters is the *unseen* half, where a stale copy would go on telling a
+/// DJ the assistant cannot see something it now can.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_what_the_assistant_can_and_cannot_see() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/sight.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::assistant_sight())
+        .expect("the list serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the list");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value = serde_json::from_str(&stored).expect("the stored list is JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh list is JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nWhat the assistant can see has changed, so the browser is checking a \
+         panel against a claim djmanzo no longer makes.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}

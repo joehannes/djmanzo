@@ -157,6 +157,8 @@ pub struct Assistant {
     pricing: Option<(f64, f64)>,
     /// A second vocabulary the caller owns — see [`system_prompt_with`].
     extra_commands: Vec<String>,
+    /// What is happening right now, as lines — see [`Self::with_context`].
+    context: Vec<String>,
 }
 
 impl Assistant {
@@ -172,6 +174,7 @@ impl Assistant {
             budget,
             pricing: None,
             extra_commands: Vec::new(),
+            context: Vec::new(),
         }
     }
 
@@ -184,6 +187,27 @@ impl Assistant {
     #[must_use]
     pub fn with_commands(mut self, extra: Vec<String>) -> Self {
         self.extra_commands = extra;
+        self
+    }
+
+    /// Tell the assistant what is happening. [§40](../../../docs/DIRECTIVE.md).
+    ///
+    /// Injected for the same reason the interface's vocabulary is: what is on
+    /// deck 2 and where the crossfader sits are facts about a DJ application,
+    /// and this crate has never heard of a deck. `dj_app::sight` assembles the
+    /// lines from the snapshot the interface is already being sent, and this
+    /// puts them in front of the model.
+    ///
+    /// Until this existed the model was told the vocabulary and the DJ's
+    /// sentence and nothing else, so "bring the next one in on the phrase" was
+    /// answered by something that could not see a phrase.
+    ///
+    /// Nothing here widens what the assistant may *do*: ADR-0005's rule is
+    /// about the actions coming back, and every one of them is still parsed
+    /// and validated before it reaches anything.
+    #[must_use]
+    pub fn with_context(mut self, lines: Vec<String>) -> Self {
+        self.context = lines;
         self
     }
 
@@ -255,10 +279,20 @@ impl Assistant {
             });
         }
 
-        let turns = [
-            Turn::system(system_prompt_with(&self.extra_commands)),
-            Turn::user(text),
-        ];
+        // One system turn rather than two. Providers disagree about what a
+        // second one means -- some carry the system prompt as a field rather
+        // than a message at all (see `native::anthropic`) -- and a briefing
+        // that arrived as a user turn would read as the DJ having typed it.
+        let mut system = system_prompt_with(&self.extra_commands);
+        if !self.context.is_empty() {
+            system.push_str("\n\nWhat is happening right now:\n");
+            for line in &self.context {
+                system.push_str("  ");
+                system.push_str(line);
+                system.push('\n');
+            }
+        }
+        let turns = [Turn::system(system), Turn::user(text)];
         let completion = self.provider.complete(&self.model, &turns).await?;
 
         let cost = self.pricing.map(|(input, output)| {

@@ -1999,6 +1999,24 @@ export const setAdaptationLevel = (level: string) =>
  */
 export const themes = () => invoke<ThemeRow[]>("themes");
 
+/**
+ * §40: one of the twenty-six things the AI context should include.
+ *
+ * Both halves arrive. A panel drawing only what the assistant *can* see is a
+ * reassurance; the half that makes an answer arguable is what it could not.
+ */
+export interface Sight {
+  /** §40's own word for it. */
+  name: string;
+  about: string;
+  /** Whether the model is told this. */
+  told: boolean;
+  /** Where it comes from, or — when it does not — why not. Never empty. */
+  source: string;
+}
+
+export const assistantSight = () => invoke<Sight[]>("assistant_sight");
+
 /** §29: what one control's gestures do. */
 export interface ControlHandle {
   control: string;

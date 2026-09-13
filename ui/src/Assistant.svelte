@@ -16,10 +16,12 @@
    * The `local` badge is worth watching: it means the answer cost nothing and
    * took no round trip, which is true for most of what gets typed here.
    */
+  import { onMount } from "svelte";
   import IconButton from "./controls/IconButton.svelte";
   import Conduct from "./Conduct.svelte";
   import {
     ask,
+    assistantSight,
     assistantState,
     listLlmModels,
     listLlmProviders,
@@ -32,6 +34,7 @@
     type AssistantState,
     type LlmModel,
     type LlmProvider,
+    type Sight,
   } from "./api";
 
   let { enabled }: { enabled: boolean } = $props();
@@ -53,6 +56,19 @@
   let loadingModels = $state(false);
   let draft = $state<Record<string, string>>({});
 
+  /**
+   * §40: what the assistant is told about the night, and what it is not.
+   *
+   * Read from Rust rather than written here. The unseen half is the reason
+   * this is on screen at all — an answer that ignored your history reads very
+   * differently once you know it could not see it — and a hand-written copy of
+   * that half is the one nobody would keep true.
+   */
+  let sight = $state<Sight[]>([]);
+  let showSight = $state(false);
+  const seen = $derived(sight.filter((item) => item.told));
+  const unseen = $derived(sight.filter((item) => !item.told));
+
   $effect(() => {
     void refresh();
   });
@@ -60,6 +76,19 @@
   async function refresh() {
     [providers, state_] = await Promise.all([listLlmProviders(), assistantState()]);
   }
+
+  onMount(async () => {
+    // Once, on mount: §40's list is a table in Rust and does not change while
+    // djmanzo is running. Asked here rather than in `refresh`, which runs on
+    // every answer.
+    try {
+      sight = await assistantSight();
+    } catch {
+      // A panel that cannot say what the assistant sees says nothing, rather
+      // than claiming it sees everything.
+      sight = [];
+    }
+  });
 
   async function loadModels(provider: string) {
     loadingModels = true;
@@ -299,6 +328,43 @@
     {/each}
   </div>
 
+  <!--
+    §40: what it is looking at while it answers.
+
+    Folded, and below the conversation rather than above it: this is what you
+    open when an answer surprised you, not something to read before asking.
+    Both halves, because the useful one is the second — "it could not see your
+    history" is the single most informative thing about an answer that ignored
+    your history.
+  -->
+  {#if sight.length > 0}
+    <details class="sight" bind:open={showSight}>
+      <summary>
+        What it can see
+        <span class="count">{seen.length} of {sight.length}</span>
+      </summary>
+      <ul class="seen">
+        {#each seen as item (item.name)}
+          <li title={item.about}>
+            <span class="what">{item.name}</span>
+            <span class="from">{item.source}</span>
+          </li>
+        {/each}
+      </ul>
+      {#if unseen.length > 0}
+        <p class="blind-heading">What it cannot see</p>
+        <ul class="blind">
+          {#each unseen as item (item.name)}
+            <li>
+              <span class="what">{item.name}</span>
+              <span class="why">{item.source}</span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </details>
+  {/if}
+
   <div class="compose">
     <input
       aria-label="Ask the assistant"
@@ -315,6 +381,52 @@
 </section>
 
 <style>
+  /* §40's two halves. The unseen one is not styled as an error: it is the
+     honest shape of an assistant that runs on a laptop, and colouring it red
+     would read as something being broken. */
+  .sight {
+    border-top: 1px solid var(--edge, rgba(255, 255, 255, 0.12));
+    padding: 0.4rem 0.6rem;
+    font-size: 0.78rem;
+  }
+  .sight > summary {
+    cursor: pointer;
+    color: var(--text-dim, rgba(255, 255, 255, 0.6));
+  }
+  .sight .count {
+    margin-left: 0.4rem;
+    opacity: 0.75;
+  }
+  .sight ul {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .sight li {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+  }
+  .sight .what {
+    flex: none;
+    min-width: 9rem;
+    color: var(--text, #e6e6e6);
+  }
+  .sight .from,
+  .sight .why {
+    color: var(--text-dim, rgba(255, 255, 255, 0.55));
+  }
+  .sight .blind-heading {
+    margin: 0.6rem 0 0;
+    color: var(--text-dim, rgba(255, 255, 255, 0.6));
+  }
+  .sight .blind li {
+    align-items: flex-start;
+  }
+
   .assistant {
     display: flex;
     flex-direction: column;

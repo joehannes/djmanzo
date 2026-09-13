@@ -157,6 +157,29 @@ pub fn reset_spend(state: State<'_, AppState>) -> AssistantStateDto {
 
 /// Ask the assistant to do something, and do it.
 ///
+/// What the model is told about the night, as lines.
+///
+/// A snapshot and two strings from the conduct state. Taken under the same lock
+/// the panel reads, and falling back to the neutral words rather than failing
+/// the whole question: an assistant that refused to answer because the posture
+/// was momentarily unreadable would be worse than one answering without it.
+fn context_lines(state: &AppState) -> Vec<String> {
+    let snapshot = crate::commands::snapshot_now(state);
+    let Ok(value) = serde_json::to_value(&snapshot) else {
+        return Vec::new();
+    };
+    let (posture, occasion) = state.conduct().lock().map_or_else(
+        |_| ("unknown".to_owned(), "unknown".to_owned()),
+        |conduct| {
+            (
+                conduct.posture.name().to_owned(),
+                conduct.occasion.name().to_owned(),
+            )
+        },
+    );
+    crate::sight::brief(&value, &posture, &occasion)
+}
+
 /// The two halves are deliberately separate: interpretation produces validated
 /// action *text*, and dispatch puts that text on the bus through the same door
 /// the interface uses. Nothing here can reach the engine directly.
@@ -179,7 +202,14 @@ pub async fn ask(
     // §41: the interface's own vocabulary, generated from the surfaces that
     // exist. Injected rather than known by `dj_assistant`, which has never
     // heard of a panel.
-    .with_commands(crate::uiop::as_prompt_lines(decks));
+    .with_commands(crate::uiop::as_prompt_lines(decks))
+    // §40: and what is actually happening. Built from the same snapshot the
+    // interface is looking at, so what the model is told and what the DJ can
+    // see cannot disagree. `sight::ALL` says which of §40's twenty-six this
+    // carries and which it does not, and the assistant panel draws both halves
+    // -- a DJ deciding whether to trust an answer needs to know what the thing
+    // answering could not see.
+    .with_context(context_lines(&state));
 
     let plan = assistant
         .interpret(&text)

@@ -1319,6 +1319,34 @@ The largest of them, in the order they are worth doing:
    That is why §5B's *transition* is carried by the assistant here. If you
    build that panel, the supervisory arrangement is where it belongs.
 
+12b. **The assistant had no idea what was happening, and nothing said so.**
+   `commands::ask` built a system prompt out of the action vocabulary, added
+   the DJ's sentence, and sent that. No deck, no tempo, no key, no position.
+   Every test passed, every answer parsed, and the panel looked exactly as it
+   does now — because what was missing was *context*, and nothing in a test
+   suite notices an answer that was merely uninformed.
+
+   **The shape of the fix is the part to copy.** `dj_app::sight::ALL` is §40's
+   own list of twenty-six, in §40's order and words, each with a JSON pointer
+   into the snapshot or a reason it is not gathered, and `brief` turns a
+   snapshot into the lines the model is handed. Three tests hold it together:
+   every gathered pointer resolves against a real capture (`ui/e2e/snapshot.json`,
+   not a fresh registry — a fresh one has nothing loaded, so every
+   `/analysis/...` pointer would resolve to nothing and the test would pass by
+   never looking); every item the table calls gathered appears in the briefing;
+   and every absence carries more than thirty characters of reason.
+
+   **The unseen half is on screen on purpose.** Eleven of the twenty-six are
+   not gathered, and the assistant panel lists them with the reason beside
+   each. A DJ deciding whether to trust an answer needs "it could not see your
+   history" far more than it needs the reassuring list. If you gather one of
+   the eleven, move it in `sight::ALL` and the panel, the fixture and the
+   browser test follow by themselves.
+
+   **Absence is said out loud rather than left out.** `loop state none` costs
+   two tokens and "there is no loop" and "nobody told me about the loop" are
+   different answers to "get out of the loop".
+
 13. **§90 has one ratchet and four honest refusals, and the split is the
    lesson.** A ratchet is only worth having where the number means the same
    thing on two machines. Frame rate, memory and CPU do not — the argument §89
