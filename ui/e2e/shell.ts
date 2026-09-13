@@ -79,6 +79,10 @@ import themeRows from "./themes.json" with { type: "json" };
  *  so a hand-written stub would let the browser check that press against a
  *  range djmanzo no longer has. */
 import levelRows from "./levels.json" with { type: "json" };
+/** §48's seven at Eco, generated from `dj_app::thrift::Spend::ALL` by the same
+ *  Rust test. Eco rather than Ultra because Eco is where the claim is: at Ultra
+ *  the list is all kept and would pass whatever the ordering said. */
+import spendRows from "./spends.json" with { type: "json" };
 import layers from "./layers.json" with { type: "json" };
 /**
  * The five transition styles and what each does, generated from
@@ -617,6 +621,11 @@ const ANSWERS: Record<string, unknown> = {
   theme_chosen: null,
   themes: themeRows,
   adaptation_levels: levelRows,
+  under_load: spendRows,
+  /** §48's audience-polling saving, as the panel asks for it. The stub answers
+   *  the healthy number: the browser runs at whatever frame rate the harness
+   *  gives it, and a test about the *list* must not depend on that. */
+  room_poll_ms: 2000,
   /** Nothing chosen: djmanzo is running the way it shipped, which is the state
    *  the axis exists to end and the one a fresh install is actually in. */
   standing: { level: "", departures: [], locked: [] },

@@ -1,0 +1,51 @@
+[
+  {
+    "what": "animation",
+    "about": "Controls stop pulsing and shimmering with the music.",
+    "band": "visual",
+    "paid": false,
+    "why_not": ""
+  },
+  {
+    "what": "visual layers",
+    "about": "The waveform draws fewer things at once.",
+    "band": "visual",
+    "paid": true,
+    "why_not": "The layers on the waveform are yours. §79 lets you lock the interface out of changing them, so djmanzo drops the answering rather than the layers: the strip stops reacting to the audio and still draws everything you asked for."
+  },
+  {
+    "what": "audience polling frequency",
+    "about": "The room is read less often — every eight seconds instead of two.",
+    "band": "visual",
+    "paid": false,
+    "why_not": ""
+  },
+  {
+    "what": "expensive previews",
+    "about": "Artwork and waveform overviews are drawn on demand.",
+    "band": "visual",
+    "paid": true,
+    "why_not": "djmanzo has no expensive previews to stop drawing. The overview is a cached tile and the artwork is whatever the file already carried."
+  },
+  {
+    "what": "theme effects",
+    "about": "Glow, chromatic aberration and blend modes come off.",
+    "band": "visual",
+    "paid": false,
+    "why_not": ""
+  },
+  {
+    "what": "CPU-heavy visual analysis",
+    "about": "The camera's optical flow stops being computed every tick.",
+    "band": "visual",
+    "paid": false,
+    "why_not": ""
+  },
+  {
+    "what": "the audio",
+    "about": "Never. The sound is what the other six are spent on.",
+    "band": "audio",
+    "paid": true,
+    "why_not": "The audio thread never allocates, locks or does I/O, and nothing the interface decides can reach it. There is no tier at which djmanzo spends the sound on the screen."
+  }
+]

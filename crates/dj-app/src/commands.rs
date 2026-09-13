@@ -10334,6 +10334,59 @@ pub fn forget_workspace(
     kept
 }
 
+/// One of §48's seven costs, and what djmanzo does about it under load.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SpendDto {
+    /// §48's own words for it.
+    pub what: String,
+    /// What a DJ would notice going.
+    pub about: String,
+    /// `audio`, `control` or `visual`.
+    pub band: String,
+    /// Whether djmanzo still pays for this at the tier asked about.
+    pub paid: bool,
+    /// Why it is never given up, or why djmanzo does not give it up. Empty for
+    /// the rows that simply are given up.
+    pub why_not: String,
+}
+
+/// What djmanzo gives up on a machine at this tier, and what it never gives up.
+///
+/// §48's priority is `AUDIO > CONTROL > VISUAL EFFECTS`, and the whole of this
+/// command is making that sayable: the frame rate has been measured for a long
+/// time and what consulted it was the theme pipeline and nothing else. An
+/// unknown tier is read as the healthiest, because a machine djmanzo cannot
+/// place is not one to start taking things away from.
+#[tauri::command]
+#[must_use]
+pub fn under_load(tier: String) -> Vec<SpendDto> {
+    let tier = crate::thrift::Tier::parse(&tier).unwrap_or(crate::thrift::Tier::Ultra);
+    crate::thrift::Spend::ALL
+        .iter()
+        .map(|spend| SpendDto {
+            what: spend.what.to_owned(),
+            about: spend.about.to_owned(),
+            band: spend.band.name().to_owned(),
+            paid: spend.paid_at(tier),
+            why_not: spend.why_not.to_owned(),
+        })
+        .collect()
+}
+
+/// How often the room may be read at this tier, in milliseconds.
+///
+/// §48's *reduce audience polling frequency*. One number rather than a rule the
+/// panel works out for itself: a second copy of "two seconds, or eight when
+/// struggling" is how the two come to disagree, and the priority decision
+/// belongs beside the rest of §48's table.
+#[tauri::command]
+#[must_use]
+pub fn room_poll_ms(tier: String) -> u32 {
+    crate::thrift::room_poll_ms(
+        crate::thrift::Tier::parse(&tier).unwrap_or(crate::thrift::Tier::Ultra),
+    )
+}
+
 /// One of §8's seven adaptation levels, as the picker offers it.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LevelDto {

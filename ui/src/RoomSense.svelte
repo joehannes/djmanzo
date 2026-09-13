@@ -34,12 +34,14 @@
   import {
     roomForget,
     roomHistory,
+    roomPollMs,
     roomRead,
     roomSaw,
     type RoomHistory,
     type RoomRead,
   } from "./api";
   import { onMount } from "svelte";
+  import { performance } from "./performance.svelte";
 
   interface Props {
     enabled: boolean;
@@ -48,13 +50,25 @@
   let { enabled }: Props = $props();
 
   /**
-   * How often the room is measured.
+   * How often the room is measured, from djmanzo.
    *
-   * Every two seconds. The near window is three minutes, so this fills it with
-   * ninety readings — enough for a median to mean something, rare enough that
-   * a laptop already mixing does not notice.
+   * Two seconds on a healthy machine — the near window is three minutes, so
+   * that fills it with ninety readings, enough for a median to mean something
+   * and rare enough that a laptop already mixing does not notice.
+   *
+   * **Eight when the machine is struggling.** §48 names *reduce audience
+   * polling frequency* among the things a laptop mode gives up, and this is the
+   * most expensive thing this panel does: a camera frame scaled down and
+   * optical-flowed against the last one, every tick. Twenty-two readings still
+   * fill the near window, which is the test of whether the saving costs a
+   * feature or only sharpness.
+   *
+   * The number is asked for rather than decided here. §48's priority is a
+   * table in `dj_app::thrift` and a second copy of "two seconds, or eight when
+   * struggling" is how the two come to disagree — a Rust test fails if this
+   * file grows its own again.
    */
-  const EVERY_MS = 2000;
+  let everyMs = $state(2000);
 
   /**
    * How small the frame is scaled before it is measured.
@@ -123,7 +137,7 @@
     canvas.height = HIGH;
     previous = null;
     looking = true;
-    timer = setInterval(() => void measure(), EVERY_MS);
+    timer = setInterval(() => void measure(), everyMs);
   }
 
   /**
@@ -257,6 +271,33 @@
   );
 
   onMount(() => stop);
+
+  /**
+   * Follow the governor.
+   *
+   * Re-asked when the tier changes rather than once at mount, because the whole
+   * point of §48 is that the machine's answer moves during a set: a laptop that
+   * started healthy and is now dropping frames has to actually slow down, and
+   * one that recovers has to speed back up. A running look is restarted, since
+   * `setInterval` keeps whatever period it was created with.
+   */
+  $effect(() => {
+    const tier = performance.resolved;
+    void roomPollMs(tier)
+      .then((ms) => {
+        if (ms === everyMs) return;
+        everyMs = ms;
+        if (looking && timer !== undefined) {
+          clearInterval(timer);
+          timer = setInterval(() => void measure(), everyMs);
+        }
+      })
+      .catch(() => {
+        // Keep the period we have. A room read at the wrong frequency is far
+        // better than one that stops, and this panel's whole job is to keep
+        // looking.
+      });
+  });
 
   $effect(() => {
     if (!enabled) return;

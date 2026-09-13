@@ -803,6 +803,26 @@ compound command stops there and the rest never runs — including the relaunch.
 Run it alone, or use `pgrep -f … | xargs -r kill -9`, and confirm with `pgrep`
 before launching, or you end up driving an old process and reading its window.
 
+**A house-pattern test that greps for an identifier is satisfied by the
+import.** §48's guard read `source.contains("roomPollMs")` against
+`RoomSense.svelte`, and a mutation replacing the actual call with a hard-coded
+`Promise.resolve(2000)` survived it — the import line and the doc comment still
+spelled the name. It now looks for `roomPollMs(tier)` and for
+`performance.resolved`, and both mutations die. **When you scan a foreign file
+for a call, scan for the call**: the name alone appears in at least two places
+that are not it, and a guard a dead call site satisfies is not a guard. This is
+the first of these tests in the repo that a mutation got past, which is also the
+argument for running the mutation every time rather than only when the test
+looks weak.
+
+**This container runs the interface at Eco.** The frame-rate governor really
+does step down here — *Currently rendering at Eco mode* is what the Performance
+panel says under Xvfb with no GPU — so §48's savings are exercised rather than
+merely configured when you drive it. That is a genuinely useful accident: a
+laptop-mode change can be seen working here in a way most adaptive behaviour
+cannot. It also means any measurement taken from a driven session is a
+worst-case one, and should be reported that way.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests
@@ -1157,7 +1177,21 @@ The largest of them, in the order they are worth doing:
    naming the blocker on screen is what made it obvious which section to do
    next.
 
-12. **§32's remaining palettes are content, not format.** The architecture was
+12. **§48 is closed, and it is the template for "a priority nobody can see".**
+   The frame rate had been measured for a long time and the tier was consulted
+   by the theme pipeline alone, so §48's closing sentence — AUDIO > CONTROL >
+   VISUAL EFFECTS, never the reverse — existed only as prose. `thrift::Band` is
+   that sentence as a type whose derived ordering *is* the priority, and three
+   tests hold the table to it.
+
+   Two things there generalise. **Put the ordering in the type**, so the test is
+   a comparison rather than a list somebody maintains. And **show it**: the
+   panel lists all seven with the three djmanzo keeps carrying their reasons,
+   because a DJ who sees a tier name and nothing about what it cost them has no
+   way to trust the claim. A priority that is enforced and invisible is one
+   nobody will believe the first time their laptop stutters.
+
+13. **§32's remaining palettes are content, not format.** The architecture was
    always there — a package is a palette, a geometry generator, behaviours and
    effects, through one pipeline — and what shipped is the table that knows
    which themes there are supposed to be. Eight of §32's sixteen are palettes
@@ -1176,7 +1210,7 @@ The largest of them, in the order they are worth doing:
    not* clause, build the prohibition as its own assertion — the browser test
    here presses Booth first, precisely to prove that half.
 
-13. **§16's remaining packs are content, not format.** The format ships:
+14. **§16's remaining packs are content, not format.** The format ships:
    `dj_assistant::pack::Pack` selects from the genre map, the technique
    catalogue and §81's occasions rather than restating any of them, and
    `coach::next_lesson` teaches inside the chosen one. Eight of §16's thirty

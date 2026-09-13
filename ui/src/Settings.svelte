@@ -20,6 +20,7 @@
     remembered,
     setAdaptationLevel,
     setChosenPack,
+    underLoad,
     setups,
     standing,
     waveformLayers,
@@ -30,6 +31,7 @@
     type RailControl,
     type Remembered,
     type Setup,
+    type Spend,
     type Standing,
     type WaveformLayer,
   } from "./api";
@@ -534,6 +536,24 @@
   let reading = $state<string | null>(null);
   /** What the last one actually did, so nothing is hidden after the fact. */
   let didSetUp = $state<{ title: string; changes: string[] } | null>(null);
+
+  /**
+   * §48's seven, at the tier the interface is actually running.
+   *
+   * Re-asked when the governor moves, because the whole point of §48 is that
+   * the answer changes during a set: a DJ looking at this panel on a laptop
+   * that has just started dropping frames should see what has already gone.
+   */
+  let spends = $state<Spend[]>([]);
+  $effect(() => {
+    const tier = performance.resolved;
+    void underLoad(tier)
+      .then((rows) => (spends = rows))
+      .catch(() => {
+        // Nothing rather than a guess. A list of savings this panel invented
+        // would be the second description the table exists to prevent.
+      });
+  });
 
   /**
    * §8's seven levels, and where djmanzo stands on them.
@@ -1047,6 +1067,32 @@
       <p class="hint">
         Currently rendering at {performance.resolved} mode.
       </p>
+    {/if}
+
+    <!--
+      §48's own priority, said rather than only obeyed: AUDIO > CONTROL >
+      VISUAL EFFECTS, never the reverse. The frame rate has been measured here
+      for a long time and what consulted it was the theme pipeline alone, so a
+      DJ could see a tier name and nothing about what it cost them. The list
+      comes off `dj_app::thrift`, which is also what the tests hold the
+      ordering to.
+    -->
+    {#if spends.length > 0}
+      <h4>What a struggling machine gives up</h4>
+      <ul class="spend-list">
+        {#each spends as spend (spend.what)}
+          <li data-spend={spend.band} class:kept={spend.paid}>
+            <span class="spend-what">{spend.what}</span>
+            <span class="spend-about">{spend.about}</span>
+            {#if spend.why_not}
+              <!-- Never given up, and here is why. Three of §48's seven are
+                   claims or decisions rather than savings, and a list that
+                   left them out would read as §48 being done. -->
+              <span class="spend-kept">Kept — {spend.why_not}</span>
+            {/if}
+          </li>
+        {/each}
+      </ul>
     {/if}
   </div>
 
@@ -2016,6 +2062,40 @@
   .drifted {
     margin: 0.6rem 0 0;
     color: var(--warn);
+    font-size: 0.85em;
+  }
+
+  .spend-list {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .spend-list li {
+    display: flex;
+    flex-direction: column;
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--edge);
+  }
+
+  /* The rows djmanzo never gives up carry the accent edge, because they are
+     the claim §48 is actually making. A DJ scanning this list is looking for
+     one thing: is the sound on it. */
+  .spend-list li.kept {
+    border-left-color: var(--active);
+  }
+
+  .spend-what {
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+  }
+
+  .spend-about,
+  .spend-kept {
+    color: var(--muted);
     font-size: 0.85em;
   }
 

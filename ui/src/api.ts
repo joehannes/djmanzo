@@ -1858,6 +1858,38 @@ export interface ThemeRow {
   world: boolean;
 }
 
+/** One of §48's seven costs, and what djmanzo does about it under load. */
+export interface Spend {
+  /** §48's own words for it. */
+  what: string;
+  /** What a DJ would notice going. */
+  about: string;
+  /** "audio", "control" or "visual". */
+  band: string;
+  /** Whether djmanzo still pays for this at the tier asked about. */
+  paid: boolean;
+  /** Why it is never given up. Empty for the rows that simply are. */
+  why_not: string;
+}
+
+/**
+ * What djmanzo gives up on a machine at this tier, and what it never gives up.
+ *
+ * §48's priority is AUDIO > CONTROL > VISUAL EFFECTS, and this is what makes it
+ * sayable: the frame rate has been measured here for a long time, and what
+ * consulted it was the theme pipeline and nothing else.
+ */
+export const underLoad = (tier: string) => invoke<Spend[]>("under_load", { tier });
+
+/**
+ * How often the room may be read at this tier, in milliseconds.
+ *
+ * §48's "reduce audience polling frequency". Asked rather than decided here: a
+ * second copy of "two seconds, or eight when struggling" is how the two come to
+ * disagree, and the priority decision belongs beside the rest of §48's table.
+ */
+export const roomPollMs = (tier: string) => invoke<number>("room_poll_ms", { tier });
+
 /** One of §8's seven adaptation levels. */
 export interface AdaptationLevel {
   /** §8's own number, which is what a DJ will call it. */

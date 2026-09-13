@@ -70,6 +70,7 @@ pub mod sources;
 pub mod staged;
 pub mod state;
 pub mod theme;
+pub mod thrift;
 pub mod tiers;
 pub mod timecode;
 pub mod transition;
@@ -620,6 +621,8 @@ pub fn run() {
             commands::kept_controls,
             commands::set_kept_controls,
             commands::remembered,
+            commands::under_load,
+            commands::room_poll_ms,
             commands::adaptation_levels,
             commands::standing,
             commands::set_adaptation_level,

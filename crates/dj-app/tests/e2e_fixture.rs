@@ -246,6 +246,46 @@ fn the_browser_fixture_has_the_packs_djmanzo_teaches_from() {
     );
 }
 
+/// §48's costs at Eco, as a golden file.
+///
+/// Generated from `dj_app::thrift::Spend::ALL`, which is held to §48's own
+/// priority — nothing in the audio band ever given up, nothing cheaper kept
+/// while something dearer goes. Eco rather than Ultra because Eco is where the
+/// claim is: at Ultra the list is all *kept* and would pass whatever the
+/// ordering said.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_what_a_struggling_machine_gives_up() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/spends.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::under_load("Eco".to_owned()))
+        .expect("the costs serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the costs");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored costs are JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh costs are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nWhat djmanzo gives up under load has changed, so the browser is \
+         checking a priority it no longer keeps.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// §8's adaptation levels, as a golden file.
 ///
 /// Generated from `dj_app::level::Level::ALL`, which holds each level's posture

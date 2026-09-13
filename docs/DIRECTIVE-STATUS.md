@@ -73,7 +73,7 @@ rather than taken.
 | 45 | Instant manual takeover | ✅ | Per parameter. Touching a control wins |
 | 46 | Guardrails for autopilot | ✅ | Careful mode holds the controls that cannot be undone by pressing them again |
 | 47 | Emergency UX | ✅ | **SAFE**, beside REC and Mark, and `safe` on the action bus so it is also on a controller and in a script. Takes every control back, drops anything staged, clears every rack, flattens the EQ and filter, restores master gain and the limiter. It never stops a record, moves a fader or touches the crossfader — asserted over the text of every action it expands into, because what it refuses to do is the part that matters |
-| 48 | Performance / laptop mode | 🟡 | The interface measures its own frame rate and says what a low one means. Density adapts |
+| 48 | Performance / laptop mode | ✅ | **The detection was there; the priority was not.** `performance.svelte.ts` has measured the interface's own frame rate for a long time — down a tier on a bad second, up after ten good ones — and what consulted that tier was the theme pipeline and nothing else: two of §48's seven bullets, both in the cheapest band. So the machine was detected, almost nothing was given up, and **the sentence §48 ends on had no expression anywhere**. `thrift::Spend` is §48's seven as a table with a band each, and `Band` is `AUDIO > CONTROL > VISUAL EFFECTS` as a type whose derived ordering *is* the priority. Three tests hold it: nothing in the audio band is ever given up, nothing cheaper is kept while something dearer goes, and a harder-pressed machine never pays for more. That is not ceremony — the failure §48 forbids is the one that ends a set, a laptop under load that keeps its glow and drops its sound, and it is exactly the failure a well-meaning edit produces, because the audio band is the only one where giving something up would buy much. **One saving is newly real**: §48 names *reduce audience polling frequency*, and the room read — a camera frame scaled down and optical-flowed against the last one — now runs every eight seconds at Eco instead of two. Twenty-two readings still fill §39's three-minute near window, which is the test of whether a saving costs a feature or only sharpness. The number lives beside the priority table and a test fails if the panel grows its own again. **Three of the seven are kept and say why**, which is §8's posture: the audio is a claim the architecture makes rather than an intention (ADR-0001 — the audio thread never allocates, locks or does I/O, and nothing the interface decides can reach it); §25's *visual layers* are a DJ's choice that §79 lets them lock, so djmanzo drops the **answering** rather than the layers; and there are no expensive previews to stop drawing, the overview being a cached tile. The whole list is on screen under Performance, because a DJ who can see a tier name and nothing about what it cost them cannot trust any of this. What is left for this row: nothing this container can build — the remaining savings are ones djmanzo does not currently pay for |
 | 49 | Professional workflow principle | ⚖️ | |
 | 50 | Don't over-modalize | ✅ | The dock manager is this section: panels stopped taking turns |
 | 51 | Command palette | ✅ | `Ctrl/Cmd + K`, assembled in Rust from `dj_core::vocabulary` and the cockpit's own surfaces rather than a written list, so it cannot offer a command djmanzo does not have. **What you type is an entry**: `deck 2 loop 8` parses, so the top row runs it — which is the only way the verbs taking an argument are reachable, and what §51 means by "the semantic interface exposed to voice/AI" |
@@ -152,7 +152,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **51 done, 35 part, 0 open, 19 standing rules.**
+Of the 105 sections: **52 done, 34 part, 0 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -171,10 +171,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**51 of 86 deliverable sections are complete and 35 more are partly there.** Nothing is untouched: every deliverable section now has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it.
+**52 of 86 deliverable sections are complete and 34 more are partly there.** Nothing is untouched: every deliverable section now has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it.
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 51 whole plus 35 halves over 86 is 80%, and the phase view is stricter
+way: 52 whole plus 34 halves over 86 is 80%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.
