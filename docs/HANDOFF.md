@@ -1375,6 +1375,24 @@ The largest of them, in the order they are worth doing:
    the representation is a proxy, and a proxy passes in exactly the cases worth
    catching. Ask what instrument measures the actual claim.
 
+12d. **Every theme djmanzo ships collapses for a colour-blind DJ, and that is
+   not fixable by fixing the themes.** Run all eighteen palettes through
+   protanopia, deuteranopia and tritanopia and the must-differ pairs land as
+   low as 1.6 apart -- the organic palette's *selected* and *active* are one
+   colour to roughly one man in twelve. Four hues that survive all three
+   dichromacies are not a palette anyone picks for a room, so making every
+   theme safe would mean deleting the themes.
+
+   The answer §33 actually asks for is that a DJ who needs one **has** one.
+   `pkg-legible` is chosen by measurement rather than for a room, and
+   `at_least_one_palette_holds_up_for_a_colour_blind_dj` keeps it that way; it
+   asserts on that palette by name, and on both its variants, because a theme
+   that exists in dark only leaves the same DJ with nothing in a bright room.
+
+   If you add a palette, the general rule (`the_pairs_that_must_differ_differ_
+   to_the_eye_in_every_palette`) applies to it and the colour-blind one does
+   not. That asymmetry is deliberate and is the whole design.
+
 13. **§90 has one ratchet and four honest refusals, and the split is the
    lesson.** A ratchet is only worth having where the number means the same
    thing on two machines. Frame rate, memory and CPU do not — the argument §89

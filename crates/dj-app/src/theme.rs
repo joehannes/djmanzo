@@ -73,7 +73,7 @@ pub struct Theme {
 }
 
 /// §32's sixteen, and the two djmanzo ships that §32 did not name.
-pub const ALL: [Theme; 18] = [
+pub const ALL: [Theme; 19] = [
     Theme {
         title: "Studio Neutral",
         about: "Long evenings at a desk. Easy on the eyes for hours at a time.",
@@ -226,6 +226,20 @@ pub const ALL: [Theme; 18] = [
         title: "Industrial Techno",
         about: "A dark room, hard music, and a screen that should look like the music.",
         pack: Some("pkg-industrial"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
+    // §33's, not §32's, and the third row here djmanzo ships that §32 did not
+    // name. Every other theme is designed for a room; this one is designed for
+    // an eye, and its four role colours are chosen by measurement rather than
+    // by mood -- see `cockpit::tests::at_least_one_palette_holds_up_for_a_
+    // colour_blind_dj`.
+    Theme {
+        title: "Colour-blind safe",
+        about: "Every colour djmanzo uses to mean something, chosen to stay apart for a \
+                colour-blind DJ.",
+        pack: Some("pkg-legible"),
         why_not: "",
         asked: false,
         world: false,
@@ -411,9 +425,15 @@ mod tests {
             "a row is marked as §32's and is not one of §32's sixteen"
         );
 
-        // And the two extras are honest about not being asked for.
+        // And the extras are honest about not being asked for. Three, and each
+        // for a different reason: two are rooms §32's list happens not to name,
+        // and the third is §33's -- a palette chosen by measurement rather than
+        // for a room at all.
         let extras: Vec<&str> = ALL.iter().filter(|t| !t.asked).map(|t| t.title).collect();
-        assert_eq!(extras, ["Organic Base", "Industrial Techno"]);
+        assert_eq!(
+            extras,
+            ["Organic Base", "Industrial Techno", "Colour-blind safe"]
+        );
     }
 
     /// **Exactly one theme is the metaphor.**

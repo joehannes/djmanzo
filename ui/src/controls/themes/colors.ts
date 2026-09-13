@@ -630,6 +630,57 @@ const palettes: Record<string, { dark: Palette; light: Palette }> = {
       "--scrim": "#fbfcfdcc",
     },
   },
+  /* §33's colour-blind-safe palette.
+   *
+   * The one palette in the set whose four role colours are chosen by
+   * measurement rather than by mood. §33 asks for one and djmanzo had none,
+   * and the reason that mattered is in the numbers: run every shipped palette
+   * through a deuteranopia simulation and the organic one's *selected* and
+   * *active* land 1.6 apart, the watershed's 1.8, cyber's 1.8. Those are the
+   * same colour to roughly one man in twelve.
+   *
+   * A theme cannot be fixed into this shape without ceasing to be itself --
+   * four hues that survive all three dichromacies are not a palette anyone
+   * picks for a room -- so this is a theme of its own rather than a rule
+   * imposed on the other seventeen, and
+   * `cockpit::tests::at_least_one_palette_holds_up_for_a_colour_blind_dj`
+   * keeps it honest. Dark: amber, pale yellow, red and blue. Light: blue,
+   * olive, crimson and rust. Worst pair, across normal vision and all three
+   * simulations, 27. */
+  "pkg-legible": {
+    dark: {
+      "--bg": "#0b0d10",
+      "--panel": "#15171c",
+      "--panel-raised": "#1e2128",
+      "--panel-hover": "#2a2e37",
+      "--border": "#2a2e37",
+      "--border-strong": "#414754",
+      "--text": "#f2f4f7",
+      "--text-dim": "#98a1ab",
+      "--accent": "#e69f00",
+      "--accent-2": "#3aa0ff",
+      "--warn": "#fff394",
+      "--danger": "#e63946",
+      "--on-accent": "#0b0d10",
+      "--scrim": "#0b0d10cc",
+    },
+    light: {
+      "--bg": "#fbfcfd",
+      "--panel": "#ffffff",
+      "--panel-raised": "#eef1f4",
+      "--panel-hover": "#e0e5ea",
+      "--border": "#dce1e7",
+      "--border-strong": "#aeb7c1",
+      "--text": "#0f1317",
+      "--text-dim": "#4c5661",
+      "--accent": "#0072b2",
+      "--accent-2": "#7a2f00",
+      "--warn": "#8a8000",
+      "--danger": "#b3003c",
+      "--on-accent": "#ffffff",
+      "--scrim": "#fbfcfdcc",
+    },
+  },
 };
 
 export function applyPackagePalette(pkgId: string, resolved: ResolvedTheme) {

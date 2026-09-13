@@ -142,5 +142,13 @@
     "why_not": "",
     "asked": false,
     "world": false
+  },
+  {
+    "title": "Colour-blind safe",
+    "about": "Every colour djmanzo uses to mean something, chosen to stay apart for a colour-blind DJ.",
+    "pack": "pkg-legible",
+    "why_not": "",
+    "asked": false,
+    "world": false
   }
 ]

@@ -2594,50 +2594,112 @@ mod tests {
     /// that were right already — Daylight 26, Industrial 28, Cyber 40 — and
     /// the five that failed it were all wrong in a way anyone would report as
     /// a bug on sight.
-    #[test]
-    fn the_pairs_that_must_differ_differ_to_the_eye_in_every_palette() {
-        /// Perceptual distance in CIE Lab, CIE76.
-        fn delta_e(a: &str, b: &str) -> f64 {
-            fn lab(hex: &str) -> [f64; 3] {
-                let hex = hex.trim_start_matches('#');
-                let channel = |at: usize| -> f64 {
-                    let raw = u8::from_str_radix(&hex[at..at + 2], 16).unwrap_or(0);
-                    let c = f64::from(raw) / 255.0;
-                    if c <= 0.04045 {
-                        c / 12.92
-                    } else {
-                        ((c + 0.055) / 1.055).powf(2.4)
-                    }
-                };
-                let (r, g, b) = (channel(0), channel(2), channel(4));
-                // sRGB D65 -> XYZ, then XYZ -> Lab.
-                let x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.950_47;
-                let y = r * 0.2126 + g * 0.7152 + b * 0.0722;
-                let z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.088_83;
-                let f = |t: f64| {
-                    if t > 0.008_856 {
-                        t.cbrt()
-                    } else {
-                        7.787 * t + 16.0 / 116.0
-                    }
-                };
-                let (fx, fy, fz) = (f(x), f(y), f(z));
-                [
-                    116.0f64.mul_add(fy, -16.0),
-                    500.0 * (fx - fy),
-                    200.0 * (fy - fz),
-                ]
-            }
-            let (one, two) = (lab(a), lab(b));
-            (0..3)
-                .map(|i| (one[i] - two[i]).powi(2))
-                .sum::<f64>()
-                .sqrt()
+    /// Perceptual distance in CIE Lab, CIE76.
+    ///
+    /// Shared by the two colour tests below. A WCAG contrast ratio is the wrong
+    /// instrument for "can these be told apart": it is about legibility of text
+    /// against a ground, and pure red and pure blue have nearly the same
+    /// luminance.
+    fn delta_e(a: &str, b: &str) -> f64 {
+        fn lab(hex: &str) -> [f64; 3] {
+            let hex = hex.trim_start_matches('#');
+            let channel = |at: usize| -> f64 {
+                let raw = u8::from_str_radix(&hex[at..at + 2], 16).unwrap_or(0);
+                let c = f64::from(raw) / 255.0;
+                if c <= 0.04045 {
+                    c / 12.92
+                } else {
+                    ((c + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            let (r, g, b) = (channel(0), channel(2), channel(4));
+            // sRGB D65 -> XYZ, then XYZ -> Lab.
+            let x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.950_47;
+            let y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+            let z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.088_83;
+            let f = |t: f64| {
+                if t > 0.008_856 {
+                    t.cbrt()
+                } else {
+                    7.787 * t + 16.0 / 116.0
+                }
+            };
+            let (fx, fy, fz) = (f(x), f(y), f(z));
+            [
+                116.0f64.mul_add(fy, -16.0),
+                500.0 * (fx - fy),
+                200.0 * (fy - fz),
+            ]
         }
+        let (one, two) = (lab(a), lab(b));
+        (0..3)
+            .map(|i| (one[i] - two[i]).powi(2))
+            .sum::<f64>()
+            .sqrt()
+    }
 
-        /// Obviously a different colour at a glance. See the note above.
-        const FLOOR: f64 = 20.0;
+    /// Obviously a different colour at a glance.
+    ///
+    /// Roughly the distance at which two small swatches read as two colours
+    /// rather than as one that might have been rendered twice. Comfortably
+    /// cleared by the palettes that were right already -- Daylight 26,
+    /// Industrial 28, Cyber 40.
+    const FLOOR: f64 = 20.0;
 
+    /// One colour as a dichromat sees it.
+    ///
+    /// Machado, Oliveira and Fernandes (2009), at full severity. Three
+    /// matrices rather than one: protanopia and deuteranopia both collapse the
+    /// red-green axis and do not collapse it identically, and tritanopia
+    /// collapses blue-yellow instead, so a palette safe for one can be useless
+    /// for another.
+    fn as_seen(hex: &str, matrix: [[f64; 3]; 3]) -> String {
+        let hex = hex.trim_start_matches('#');
+        let channel = |at: usize| -> f64 {
+            f64::from(u8::from_str_radix(&hex[at..at + 2], 16).unwrap_or(0)) / 255.0
+        };
+        let rgb = [channel(0), channel(2), channel(4)];
+        let mut out = String::from("#");
+        for row in matrix {
+            let value = (0..3).map(|i| row[i] * rgb[i]).sum::<f64>().clamp(0.0, 1.0);
+            out.push_str(&format!("{:02x}", (value * 255.0).round() as u8));
+        }
+        out
+    }
+
+    /// The three, named so a failure says which.
+    const DICHROMACIES: [(&str, [[f64; 3]; 3]); 3] = [
+        (
+            "protanopia",
+            [
+                [0.152_286, 1.052_583, -0.204_868],
+                [0.114_503, 0.786_281, 0.099_216],
+                [-0.003_882, -0.048_116, 1.051_998],
+            ],
+        ),
+        (
+            "deuteranopia",
+            [
+                [0.367_322, 0.860_646, -0.227_968],
+                [0.280_085, 0.672_501, 0.047_413],
+                [-0.011_820, 0.042_940, 0.968_881],
+            ],
+        ),
+        (
+            "tritanopia",
+            [
+                [1.255_528, -0.076_749, -0.178_779],
+                [-0.078_411, 0.930_809, 0.147_602],
+                [0.004_733, 0.691_367, 0.303_900],
+            ],
+        ),
+    ];
+
+    /// Each role's palette token, from the stylesheet's own derivation.
+    ///
+    /// `None` for a role defined as a literal colour: it is then the same in
+    /// every palette and cannot collide differently in one of them.
+    fn role_tokens() -> std::collections::BTreeMap<Role, String> {
         let sheet =
             std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/app.css"))
                 .expect("the stylesheet is in the tree")
@@ -2646,21 +2708,30 @@ mod tests {
             .split_once(":root {")
             .and_then(|(_, rest)| rest.split_once("\n}"))
             .map(|(inside, _)| inside)
-            .expect("`:root {` ... `\n}` is no longer how the stylesheet opens");
+            .expect("`:root {` ... `\n}` is no longer how the stylesheet opens")
+            .to_owned();
 
-        // A role's token, and the palette token it is derived from. A role
-        // defined as a literal colour is the same in every palette and so
-        // cannot collide differently in one of them.
-        let derived = |role: &Role| -> Option<String> {
+        let mut out = std::collections::BTreeMap::new();
+        for role in Role::ALL {
             let want = format!("--{}:", role.token());
-            let value = root.lines().find_map(|line| {
+            let Some(value) = root.lines().find_map(|line| {
                 let line = line.trim();
                 Some(line.strip_prefix(&want)?.trim().trim_end_matches(';'))
-            })?;
-            let inner = value.strip_prefix("var(")?.strip_suffix(')')?;
-            Some(inner.split(',').next()?.trim().to_owned())
-        };
+            }) else {
+                continue;
+            };
+            let Some(inner) = value.strip_prefix("var(").and_then(|v| v.strip_suffix(')')) else {
+                continue;
+            };
+            if let Some(token) = inner.split(',').next() {
+                out.insert(*role, token.trim().to_owned());
+            }
+        }
+        out
+    }
 
+    /// Every palette that ships, by id and variant, as token -> hex.
+    fn shipped_palettes() -> Vec<(String, std::collections::BTreeMap<String, String>)> {
         let colours = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../ui/src/controls/themes/colors.ts"
@@ -2668,7 +2739,6 @@ mod tests {
         .expect("the palettes are in the tree")
         .replace("\r\n", "\n");
 
-        // Every palette, by id and variant, as token -> hex.
         let mut palettes: Vec<(String, std::collections::BTreeMap<String, String>)> = Vec::new();
         let mut id = String::new();
         let mut variant = String::new();
@@ -2680,10 +2750,9 @@ mod tests {
                 && name.starts_with("pkg-")
                 && line.ends_with('{')
             {
-                // Flush first. Without this the variant that was being read
-                // lands under the *next* palette's id, and the failure message
-                // then names a theme that is not the broken one -- which is
-                // how this was found.
+                // Flush first. Without this the variant being read lands under
+                // the *next* palette's id, and a failure then names a theme
+                // that is not the broken one -- which is how this was found.
                 if !current.is_empty() {
                     palettes.push((format!("{id} {variant}"), std::mem::take(&mut current)));
                 }
@@ -2706,45 +2775,119 @@ mod tests {
         assert!(
             palettes.len() >= 16,
             "read {} palettes out of `colors.ts`, which is fewer than ship -- the \
-             parser above has stopped matching how they are written",
+             parser here has stopped matching how they are written",
             palettes.len()
         );
+        palettes
+    }
 
-        let mut checked = 0;
-        for (name, palette) in &palettes {
-            for one in Role::ALL {
-                for two in Role::ALL {
-                    if !one.must_differ_from(*two) || one.token() >= two.token() {
-                        continue;
-                    }
-                    let (Some(a), Some(b)) = (derived(one), derived(two)) else {
-                        continue;
-                    };
-                    let (Some(hex_a), Some(hex_b)) = (palette.get(&a), palette.get(&b)) else {
-                        continue;
-                    };
-                    // Hex with an alpha channel would measure as its opaque
-                    // form here; none of the role tokens carries one.
-                    if hex_a.len() < 7 || hex_b.len() < 7 {
-                        continue;
-                    }
-                    let distance = delta_e(hex_a, hex_b);
-                    assert!(
-                        distance >= FLOOR,
-                        "in `{name}`, {} ({hex_a}) and {} ({hex_b}) are {distance:.1} apart, \
-                         and a DJ has to tell them apart at a glance. They point at \
-                         different tokens -- `{a}` and `{b}` -- which is why the test above \
-                         passes; they are the same colour, which is what matters",
-                        one.about(),
-                        two.about(),
-                    );
-                    checked += 1;
+    /// Every pair of roles that has to be told apart, as their tokens.
+    fn must_differ_tokens() -> Vec<(Role, Role, String, String)> {
+        let tokens = role_tokens();
+        let mut out = Vec::new();
+        for one in Role::ALL {
+            for two in Role::ALL {
+                if !one.must_differ_from(*two) || one.token() >= two.token() {
+                    continue;
                 }
+                if let (Some(a), Some(b)) = (tokens.get(one), tokens.get(two)) {
+                    out.push((*one, *two, a.clone(), b.clone()));
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_pairs_that_must_differ_differ_to_the_eye_in_every_palette() {
+        let pairs = must_differ_tokens();
+        let mut checked = 0;
+        for (name, palette) in &shipped_palettes() {
+            for (one, two, a, b) in &pairs {
+                let (Some(hex_a), Some(hex_b)) = (palette.get(a), palette.get(b)) else {
+                    continue;
+                };
+                // Hex with an alpha channel would measure as its opaque form
+                // here; none of the role tokens carries one.
+                if hex_a.len() < 7 || hex_b.len() < 7 {
+                    continue;
+                }
+                let distance = delta_e(hex_a, hex_b);
+                assert!(
+                    distance >= FLOOR,
+                    "in `{name}`, {} ({hex_a}) and {} ({hex_b}) are {distance:.1} apart, \
+                     and a DJ has to tell them apart at a glance. They point at different \
+                     tokens -- `{a}` and `{b}` -- which is why the test below passes; they \
+                     are the same colour, which is what matters",
+                    one.about(),
+                    two.about(),
+                );
+                checked += 1;
             }
         }
         assert!(
             checked >= 100,
             "only {checked} pairs were measured, so this checked almost nothing"
+        );
+    }
+
+    /// **At least one palette holds up for a colour-blind DJ.**
+    ///
+    /// §33: *do not rely on colour alone*. djmanzo's answer for **state** is
+    /// that nothing is carried by colour alone -- an armed deck is also
+    /// labelled, a warning also has a word -- and the four stems are the
+    /// exception that rule cannot cover, because four labels in the space four
+    /// swatches occupy is not a design.
+    ///
+    /// Every shipped palette was measured under the three dichromacies and
+    /// every one of them collapses somewhere: the organic palette's *selected*
+    /// and *active* land 1.6 apart under deuteranopia, the watershed's 1.8,
+    /// cyber's 1.8. Those are one colour to roughly one man in twelve, in a
+    /// theme that passed every other test here.
+    ///
+    /// They are not all fixable. Four hues that survive protanopia,
+    /// deuteranopia *and* tritanopia are not a palette anybody picks for a
+    /// room, so forcing every theme into that shape would be deleting the
+    /// themes. What §33 asks for is that a DJ who needs one **has** one, and
+    /// this is the test that it exists and stays correct.
+    #[test]
+    fn at_least_one_palette_holds_up_for_a_colour_blind_dj() {
+        let pairs = must_differ_tokens();
+        let palettes = shipped_palettes();
+        let wanted = "pkg-legible";
+
+        let mut variants = 0;
+        for (name, palette) in &palettes {
+            if !name.starts_with(wanted) {
+                continue;
+            }
+            variants += 1;
+            for (kind, matrix) in DICHROMACIES {
+                for (one, two, a, b) in &pairs {
+                    let (Some(hex_a), Some(hex_b)) = (palette.get(a), palette.get(b)) else {
+                        continue;
+                    };
+                    if hex_a.len() < 7 || hex_b.len() < 7 {
+                        continue;
+                    }
+                    let distance = delta_e(&as_seen(hex_a, matrix), &as_seen(hex_b, matrix));
+                    assert!(
+                        distance >= FLOOR,
+                        "`{name}` is the palette a colour-blind DJ is meant to be able to \
+                         use, and under {kind} {} ({hex_a}) and {} ({hex_b}) are \
+                         {distance:.1} apart. Every other theme in djmanzo collapses \
+                         somewhere under one of the three; this is the one that must not",
+                        one.about(),
+                        two.about(),
+                    );
+                }
+            }
+        }
+        assert_eq!(
+            variants, 2,
+            "`{wanted}` should ship a dark and a light variant and {variants} were found. \
+             A theme that exists in one variant leaves a colour-blind DJ with nothing in \
+             the other kind of room"
         );
     }
 

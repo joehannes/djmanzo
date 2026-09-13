@@ -374,6 +374,34 @@ export const PkgStemLab: ThemePackage = {
   effects: [],
 };
 
+/**
+ * §33's colour-blind-safe theme.
+ *
+ * > Accessibility. […] Do not rely on colour alone.
+ *
+ * The rule djmanzo already follows is that no *state* is carried by colour
+ * alone -- an armed deck is also labelled, a warning also has a word. The four
+ * stems are the exception the rule cannot cover: they are four things read as a
+ * set, and four labels in the space four swatches occupy is not a design.
+ *
+ * So this is the palette where those four are chosen by measurement. Every
+ * other theme is designed for a room; this one is designed for an eye, and it
+ * says so in `when` rather than pretending to be about a venue.
+ */
+export const PkgLegible: ThemePackage = {
+  id: "pkg-legible",
+  name: "Colour-blind safe",
+  category: "minimalist",
+  setting: "booth",
+  when: "Every colour djmanzo uses to mean something, chosen to stay apart for a colour-blind DJ.",
+  geometry: GeometryCircle,
+  // Still, and not for a room's reason: a control whose stroke is driven by
+  // the audio is a control whose colour moves, and the whole claim here is
+  // that these colours are the ones that were measured.
+  behaviors: [],
+  effects: [],
+};
+
 export const themePackages = [
   PkgDaylight,
   PkgStudio,
@@ -391,4 +419,5 @@ export const themePackages = [
   PkgLounge,
   PkgScratch,
   PkgStemLab,
+  PkgLegible,
 ];
