@@ -14,7 +14,7 @@
    */
   import { clickOutside } from "./controls/clickOutside";
   import { theme } from "./theme.svelte";
-  import { themeChosen, themeLock, themeNow } from "./api";
+  import { themeChosen, themeLock, themeNow, themes, type ThemeRow } from "./api";
   import { themePackages } from "./controls/themes/packages";
   import type { ThemeSetting } from "./controls/themes/engine";
   import { paletteFor } from "./controls/themes/colors";
@@ -31,6 +31,48 @@
 
   let open = $state(false);
 
+  interface Props {
+    /**
+     * Open the watershed, for §32's one theme whose identity *is* the metaphor.
+     *
+     * A callback rather than a store: the watershed switch lives in the status
+     * strip and `App` owns it, and a second component writing that state from
+     * its own copy is how one silently drops what the other just saved. It is
+     * also one-directional on purpose — choosing Watershed Living opens the
+     * world, and nothing here closes it, because §32 asks for the metaphor as
+     * an identity a DJ can take and not as a cage the theme locks them into.
+     */
+    onWorld?: () => void;
+  }
+
+  let { onWorld }: Props = $props();
+
+  /**
+   * §32's list, read off Rust — including the themes djmanzo does not have.
+   *
+   * Only the absent ones are drawn from it: the themes that ship are drawn from
+   * `themePackages`, because the picker needs their real swatch and that is the
+   * interface's to know. This is the other half — what §32 asked for and
+   * djmanzo has not built — which nothing could say before the table existed.
+   */
+  let asked = $state<ThemeRow[]>([]);
+  /** The absent ones, in §32's own order. */
+  const missing = $derived(asked.filter((row) => row.asked && row.pack === ""));
+
+  /**
+   * Choose a theme, and open the watershed if that is what this theme *is*.
+   *
+   * Three steps rather than one, and each is load-bearing. `setPackage` paints
+   * the colours; `themeChosen` tells djmanzo a choice was made, without which
+   * §31 quietly replaces it within four minutes; and the world callback is
+   * §32's own second paragraph, for the one row that carries it.
+   */
+  function choose(id: string) {
+    theme.setPackage(id);
+    void themeChosen(id).catch(() => {});
+    if (asked.some((row) => row.pack === id && row.world)) onWorld?.();
+  }
+
   function toggle() {
     open = !open;
     // Read the lock from djmanzo rather than trusting what this component last
@@ -40,6 +82,18 @@
       void themeNow()
         .then((mood) => (locked = mood.locked))
         .catch(() => {});
+      // §32's list, once per opening. It is a static table, so asking again
+      // while the menu is open would be asking a question that cannot have
+      // moved.
+      if (asked.length === 0) {
+        void themes()
+          .then((rows) => (asked = rows))
+          .catch(() => {
+            // The section below draws nothing rather than a guess. A picker
+            // that invented its own list of what djmanzo is missing would be
+            // the second description this read exists to prevent.
+          });
+      }
     }
   }
 
@@ -145,14 +199,7 @@
                 <button
                   class="theme"
                   class:active={theme.activePackage.id === pkg.id}
-                  onclick={() => {
-                    theme.setPackage(pkg.id);
-                    // §31: the DJ has decided. Tell djmanzo, so its own
-                    // reading does not quietly replace this in four minutes —
-                    // an interface that overrode a deliberate choice would be
-                    // worse than one that never adapted at all.
-                    void themeChosen(pkg.id).catch(() => {});
-                  }}
+                  onclick={() => choose(pkg.id)}
                   title={pkg.when}
                 >
                   <span
@@ -173,6 +220,35 @@
           </div>
         {/if}
       {/each}
+
+      <!--
+        §32 asked for sixteen and djmanzo has seven. The other nine are here
+        saying why, rather than simply not being on the list — because a theme
+        that is absent looks exactly like one nobody asked for, and a picker of
+        seven reads as the whole of §32.
+
+        It is the posture §8 takes about what djmanzo remembers, and there it
+        worked: the row that admitted the waveform was not kept is what made it
+        obvious which section to do next, and that row now says it is.
+      -->
+      {#if missing.length > 0}
+        <div class="section absent">
+          <strong>Asked for, not built</strong>
+          <span class="group-hint">
+            {missing.length} of the themes the directive names. Each says what is
+            in the way.
+          </span>
+          <ul class="not-yet">
+            {#each missing as row (row.title)}
+              <li>
+                <span class="name">{row.title}</span>
+                <span class="when">{row.about}</span>
+                <span class="why">{row.why_not}</span>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -302,5 +378,35 @@
   .when {
     color: var(--text-dim);
     font-size: 0.7em;
+  }
+
+  /* Rows rather than buttons, and nothing that looks pressable: these are the
+     themes djmanzo does not have, and a control that cannot do anything is
+     worse than a sentence. */
+  .not-yet {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .not-yet li {
+    display: flex;
+    flex-direction: column;
+    padding-left: 0.6rem;
+    border-left: 2px solid var(--border);
+  }
+
+  .not-yet .why {
+    color: var(--text-dim);
+    font-size: 0.7em;
+    margin-top: 0.15rem;
+  }
+
+  .absent {
+    border-top: 1px solid var(--border);
+    padding-top: 0.7rem;
   }
 </style>

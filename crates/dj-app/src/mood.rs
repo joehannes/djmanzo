@@ -424,53 +424,16 @@ mod tests {
         );
     }
 
-    /// Every theme id the interface actually ships, read from its own source.
-    ///
-    /// Read rather than copied, the way `cockpit`'s band table is checked
-    /// against the browser harness. A list of ids maintained twice is a list
-    /// that will disagree, and this particular disagreement is **silent**: a
-    /// theme djmanzo asks for and no package answers to looks exactly like a
-    /// theme that decided not to change.
-    fn shipped() -> Vec<String> {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../ui/src/controls/themes/packages.ts"
-        );
-        let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the theme packages at {path}: {e}"))
-            .replace("\r\n", "\n");
-
-        let ids: Vec<String> = source
-            .lines()
-            .filter_map(|line| {
-                let rest = line.trim().strip_prefix("id: \"")?;
-                let end = rest.find('"')?;
-                Some(rest[..end].to_owned())
-            })
-            .collect();
-        assert!(
-            !ids.is_empty(),
-            "`id: \"...\"` is no longer how the packages are written, so this \
-             guard has silently stopped guarding"
-        );
-        ids
-    }
-
-    /// **Every setting and phase names a theme that exists.**
-    #[test]
-    fn every_reading_names_a_theme_that_ships() {
-        let shipped = shipped();
-        for setting in Setting::ALL {
-            for phase in SessionPhase::ALL {
-                let theme = wanted(setting, phase);
-                assert!(
-                    shipped.iter().any(|id| id == theme),
-                    "{setting:?} at {phase:?} wants {theme}, which no package in \
-                     ui/src/controls/themes/packages.ts answers to"
-                );
-            }
-        }
-    }
+    // **Every setting and phase names a theme that exists** is checked in
+    // [`crate::theme`], against §32's own table rather than against a grep of
+    // `packages.ts`.
+    //
+    // That guard lived here, and in `cockpit`, and in `setup`: three copies of
+    // one check, each reading the interface's source and asking *does this id
+    // exist*. None of them could answer what §32 actually asks — which themes
+    // there are supposed to be — and none could see a package the interface
+    // shipped that nothing named. The three are one table now, asked once and
+    // in both directions.
 
     /// **A night that turns is a night the theme follows.**
     ///

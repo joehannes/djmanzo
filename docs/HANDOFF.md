@@ -746,6 +746,38 @@ list was there. Check `uptime` and `pgrep -f target/debug/djmanzo` before
 diagnosing an empty list, and kill stray instances: `pkill` returns exit 144
 and aborts a compound command, so run it alone, then confirm with `pgrep`.
 
+**Three copies of one guard were each asking half the question.** §31's mood
+table, §7's arrangements and §54's setups all name theme ids, and each had its
+own test that read `packages.ts` and grepped for `id: "…"`. Every one of them
+asked *does this id exist* and none could ask *is every theme there is supposed
+to be here* — so six of §32's sixteen shipped and nothing anywhere said which
+ten were missing, and a package added to the interface that Rust never named
+was invisible. `dj_app::theme` is the table, the three greps are one check, and
+it runs in **both directions**. If you find two tests reading the same foreign
+file, that is the shape: the duplication is the symptom, and the missing
+direction is the defect.
+
+**Copy written in a doc-comment idiom reaches the screen as asterisks.** A
+`why_not` string in `theme.rs` said *built \*around\* them*, three lines below
+a doc comment where that emphasis is correct, and the picker drew the asterisks
+because a picker draws text. Nothing could catch it: no type-check and no
+browser test reads copy, and the fixture scan that would have caught it did not
+exist. It does now — `nothing_a_dj_reads_is_written_in_markup` in `theme.rs`
+holds that table, and every fixture under `ui/e2e/` was scanned for the same
+thing and is clean. **When a table's strings are shown rather than documented,
+test for the notation**, because the surrounding file will teach you to write
+it wrong.
+
+**An empty list in a browser test can be a missing stub rather than a bug.**
+§32 made the watershed reachable from the theme picker, and the first browser
+run of that threw `Cannot read properties of null (reading 'entities')` — the
+harness had no `world` answer, because until then nothing in a test had a way
+to open the watershed. That was a harness gap, but it exposed a real one too:
+`App` and `Detached` both read `world.entities` from a value they trusted
+`getWorld()` never to answer `null` for, with a `catch` on the very next line
+showing the author already expected that read to be able to fail. Both take
+`?? emptyWorld()` now.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests
@@ -1089,7 +1121,26 @@ The largest of them, in the order they are worth doing:
    naming the blocker on screen is what made it obvious which section to do
    next.
 
-12. **§16's remaining packs are content, not format.** The format ships:
+12. **§32's remaining palettes are content, not format.** The architecture was
+   always there — a package is a palette, a geometry generator, behaviours and
+   effects, through one pipeline — and what shipped is the table that knows
+   which themes there are supposed to be. Eight of §32's sixteen are palettes
+   somebody has to design, each named on screen with its reason, and two more
+   are deliberate refusals: *High Contrast* is an override the stylesheet
+   already applies over every theme from the operating system's own setting,
+   and *Minimal* is a density §5 already fits to the window. Adding one of the
+   eight is a palette in `colors.ts`, a package in `packages.ts` and a row in
+   `dj_app::theme`; the tests will tell you if you miss any of the three.
+
+   **The watershed is a theme now, and the shape of that is worth copying.**
+   §32 asks for the metaphor as one identity among others and, in the same
+   sentence, that it must not constrain a DJ who does not want it. So choosing
+   Watershed Living opens the world and nothing else touches the switch: the
+   theme is a starting point, not a mode. Where a feature has an *and it must
+   not* clause, build the prohibition as its own assertion — the browser test
+   here presses Booth first, precisely to prove that half.
+
+13. **§16's remaining packs are content, not format.** The format ships:
    `dj_assistant::pack::Pack` selects from the genre map, the technique
    catalogue and §81's occasions rather than restating any of them, and
    `coach::next_lesson` teaches inside the chosen one. Eight of §16's thirty

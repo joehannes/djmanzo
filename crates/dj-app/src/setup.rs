@@ -229,6 +229,33 @@ pub fn setup(setting: Setting) -> Setup {
 }
 
 impl Setup {
+    /// §16's knowledge pack for this kind of night, when there is exactly one.
+    ///
+    /// The last of §54's list that was named as absent rather than faked: it
+    /// asks a preset to select a *technique pack*, and until
+    /// `dj_assistant::pack` existed there was nothing a preset could name.
+    ///
+    /// **Derived rather than written down.** Every pack already names the
+    /// occasion its presentation pairs with, so a column here would be that
+    /// claim written twice — and the copy is the one that goes stale. It also
+    /// takes the judgement out: a pack added for weddings is wired in by
+    /// existing, and nobody has to remember this table.
+    ///
+    /// **Exactly one, or none.** Two packs name the club — house and techno —
+    /// and picking between them would be djmanzo deciding what kind of club
+    /// night this is, which nothing here knows. `None` is the honest answer and
+    /// leaves the whole catalogue on, which is what a DJ who has chosen no pack
+    /// already gets.
+    #[must_use]
+    pub fn pack(&self) -> Option<&'static dj_assistant::pack::Pack> {
+        let slug = self.setting.slug();
+        let mut found = dj_assistant::pack::ALL
+            .iter()
+            .filter(|p| p.setting == Some(slug));
+        let first = found.next()?;
+        found.next().is_none().then_some(first)
+    }
+
     /// What applying this would change, in the DJ's own words.
     ///
     /// Shown *before* it is applied as well as after. §54's presets touch six
@@ -248,6 +275,12 @@ impl Setup {
         // answer and a line saying so would be a change that did not happen.
         if !self.theme.is_empty() {
             said.insert(1, format!("Theme: {}", self.theme));
+        }
+        // And the pack on the same rule. A preset that narrowed what the coach
+        // teaches without saying so would be the silent extra change §54's own
+        // rule is about.
+        if let Some(pack) = self.pack() {
+            said.push(format!("Knowledge: {}", pack.title));
         }
         said
     }
@@ -320,37 +353,52 @@ mod tests {
         }
     }
 
-    /// **Every theme a preset names is one the interface ships.**
-    ///
-    /// The house pattern, and the one field of this table that crosses the
-    /// language boundary: the theme packages are the interface's, by id, and
-    /// nothing else in djmanzo would notice a typo. A preset naming
-    /// `pkg-sunsets` would apply five systems out of six and leave the sixth
-    /// silently on whatever the DJ already had.
-    #[test]
-    fn every_theme_a_setup_names_is_one_the_interface_ships() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../ui/src/controls/themes/packages.ts"
-        );
-        // Line endings normalised: CI checks the repository out with CRLF on
-        // Windows, and a scan of source text that does not allow for it fails
-        // there and only there.
-        let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the theme packages at {path}: {e}"))
-            .replace("\r\n", "\n");
+    // **Every theme a preset names is one the interface ships** is checked in
+    // [`crate::theme`], where §32's table lives, alongside the same check for
+    // §31's readings and §7's arrangements — three copies of one grep, asked
+    // once now and in both directions.
 
-        for preset in ALL {
-            if preset.theme.is_empty() {
-                continue;
-            }
-            assert!(
-                source.contains(&format!("id: \"{}\"", preset.theme)),
-                "{} names the theme `{}`, which the interface does not ship",
-                preset.setting.slug(),
-                preset.theme
-            );
-        }
+    /// **The knowledge pack is derived, and the tie is a real answer.**
+    ///
+    /// Two packs name the club, so the club preset must name neither: picking
+    /// between house and techno would be djmanzo deciding what kind of club
+    /// night this is. The three occasions that do have exactly one get it, and
+    /// the derivation is what makes a pack added for weddings wire itself in.
+    #[test]
+    fn a_setup_names_a_knowledge_pack_only_where_exactly_one_names_it() {
+        use crate::setting::Setting;
+        assert_eq!(setup(Setting::Latin).pack().map(|p| p.id), Some("latin"));
+        assert_eq!(
+            setup(Setting::Practice).pack().map(|p| p.id),
+            Some("beginner")
+        );
+        assert_eq!(
+            setup(Setting::OpenFormat).pack().map(|p| p.id),
+            Some("open-format")
+        );
+        assert_eq!(
+            setup(Setting::Club).pack(),
+            None,
+            "the club preset picked between house and techno"
+        );
+        assert_eq!(setup(Setting::Beach).pack(), None);
+        assert_eq!(setup(Setting::Wedding).pack(), None);
+
+        // And a preset that sets one says so before it does it.
+        assert!(
+            setup(Setting::Latin)
+                .changes()
+                .iter()
+                .any(|line| line.starts_with("Knowledge:")),
+            "the latin preset narrows what the coach teaches and does not say so"
+        );
+        assert!(
+            !setup(Setting::Club)
+                .changes()
+                .iter()
+                .any(|line| line.starts_with("Knowledge:")),
+            "the club preset claims a change it does not make"
+        );
     }
 
     /// **A preset says everything it will do, and nothing it will not.**
@@ -374,9 +422,16 @@ mod tests {
                 "{} does not say which arrangement it opens",
                 preset.setting.slug()
             );
+            // Five fixed lines, plus one for the theme when there is one and
+            // one for the pack when exactly one names this occasion. The count
+            // is here rather than a `>=` because the whole point of the list is
+            // that it is the changes: a seventh line nobody added deliberately
+            // is a preset claiming something.
+            let optional =
+                usize::from(!preset.theme.is_empty()) + usize::from(preset.pack().is_some());
             assert_eq!(
                 said.len(),
-                if preset.theme.is_empty() { 5 } else { 6 },
+                5 + optional,
                 "{} says {said:?}",
                 preset.setting.slug()
             );

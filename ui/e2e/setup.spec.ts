@@ -119,8 +119,13 @@ test.describe("§54's functional presets", () => {
     const open = night(page, "open-format");
     await open.getByRole("button").click();
     const will = open.locator(".will li");
-    await expect(will).toHaveCount(5);
+    // Five fixed lines plus §16's pack, and no theme line. Open format is the
+    // one occasion that names a knowledge pack and no palette, which makes it
+    // the sharpest case for the rule: the list has to be the changes, not a
+    // fixed shape with a gap in it.
+    await expect(will).toHaveCount(6);
     await expect(open.locator(".will")).not.toContainText("Theme:");
+    await expect(open.locator(".will")).toContainText("Knowledge: Open Format");
     expect(thrown).toEqual([]);
   });
 });

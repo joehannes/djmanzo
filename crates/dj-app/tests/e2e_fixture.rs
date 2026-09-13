@@ -246,6 +246,47 @@ fn the_browser_fixture_has_the_packs_djmanzo_teaches_from() {
     );
 }
 
+/// §32's themes, as a golden file.
+///
+/// Generated from `dj_app::theme::ALL`, which is itself checked against
+/// `packages.ts` in both directions. The browser needs it for the half of the
+/// picker that is *not* drawn from the interface's own package list: the nine
+/// themes §32 asked for and djmanzo has not built. Written by hand here, those
+/// nine would be a third copy of a list that already exists twice for good
+/// reasons.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_themes_djmanzo_accounts_for() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/themes.json");
+    let fresh =
+        serde_json::to_string_pretty(&dj_app::commands::themes()).expect("the themes serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the themes");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored themes are JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh themes are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe theme table has changed, so the browser is explaining a gap \
+         djmanzo no longer has.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// §81's six kinds of night, as a golden file.
 ///
 /// The Night panel used to carry these eighteen strings itself. Moving them to

@@ -1,0 +1,146 @@
+[
+  {
+    "title": "Studio Neutral",
+    "about": "Long evenings at a desk. Easy on the eyes for hours at a time.",
+    "pack": "pkg-studio",
+    "why_not": "",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Pro Dark",
+    "about": "Playing in the dark. Highest contrast, least motion, nothing to miss.",
+    "pack": "pkg-booth",
+    "why_not": "",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Daylight",
+    "about": "Preparing by a window, or an afternoon set outdoors.",
+    "pack": "pkg-daylight",
+    "why_not": "",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "High Contrast",
+    "about": "Everything pushed to the ends of the range.",
+    "pack": "",
+    "why_not": "Not a palette but an override. The stylesheet raises contrast on every theme under the operating system's own high-contrast setting, which is stronger than a seventeenth palette a DJ has to find: it works on the theme they already chose rather than replacing it.",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Minimal",
+    "about": "Nothing on screen that is not load-bearing.",
+    "pack": "",
+    "why_not": "Minimal is a density, not a palette, and djmanzo already has four of those — the interface fits its own spacing to the window. A theme by this name would be a second control for something §5 already does, and the two would disagree.",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Club",
+    "about": "A dark room with people in it.",
+    "pack": "",
+    "why_not": "Industrial Techno is the nearest thing djmanzo has and is deliberately not filed here: it is a harder, narrower room, and a DJ who asked for a club theme would get hard music's. This one is a palette somebody has to design.",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Festival",
+    "about": "Daylight, a big stage, and a screen nobody can shade.",
+    "pack": "",
+    "why_not": "A palette somebody has to design. Daylight covers the light half of it already, which is why this is a gap rather than a hole.",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Beach Sunset",
+    "about": "Golden hour on a terrace, when the room is neither light nor dark.",
+    "pack": "pkg-sunset",
+    "why_not": "",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Caribbean",
+    "about": "Warm, bright, and unhurried.",
+    "pack": "",
+    "why_not": "A palette somebody has to design.",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Latin",
+    "about": "The one §32 names after a genre rather than a room.",
+    "pack": "",
+    "why_not": "A palette somebody has to design.",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Wedding",
+    "about": "A room that is not there for the DJ.",
+    "pack": "",
+    "why_not": "A palette somebody has to design.",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Lounge",
+    "about": "Low light, low tempo, and nobody dancing yet.",
+    "pack": "",
+    "why_not": "A palette somebody has to design.",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Scratch",
+    "about": "Hands on the platters, eyes on two records.",
+    "pack": "",
+    "why_not": "A palette somebody has to design. What a scratch DJ actually needs from the screen is §7's arrangement and §74's rail, and both of those ship — this is the colours, which is the part that is missing.",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Stem Lab",
+    "about": "Four parts of one record, told apart at a glance.",
+    "pack": "",
+    "why_not": "A palette somebody has to design, and it is the one with a real constraint behind it: the four stem colours are §57's and are fixed across every theme, so a Stem Lab palette has to be built around them rather than choosing them.",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Cyber / Experimental",
+    "about": "Peak time. Everything moves; needs the machine to have it to spare.",
+    "pack": "pkg-cyber",
+    "why_not": "",
+    "asked": true,
+    "world": false
+  },
+  {
+    "title": "Watershed Living",
+    "about": "The mix as moving water: decks as rivers, the crossfader as a confluence.",
+    "pack": "pkg-watershed",
+    "why_not": "",
+    "asked": true,
+    "world": true
+  },
+  {
+    "title": "Organic Base",
+    "about": "The default. Calm, green, and readable in most rooms.",
+    "pack": "pkg-organic",
+    "why_not": "",
+    "asked": false,
+    "world": false
+  },
+  {
+    "title": "Industrial Techno",
+    "about": "A dark room, hard music, and a screen that should look like the music.",
+    "pack": "pkg-industrial",
+    "why_not": "",
+    "asked": false,
+    "world": false
+  }
+]

@@ -70,6 +70,10 @@ import packs from "./packs.json" with { type: "json" };
  *  the same Rust test. Hand-written here they would be the copy the panel was
  *  just relieved of, one file further out. */
 import nightSettings from "./night-settings.json" with { type: "json" };
+/** §32's themes, generated from `dj_app::theme::ALL` by the same Rust test.
+ *  The picker draws the ones that ship from the interface's own package list;
+ *  this is the other half, the nine §32 asked for and djmanzo has not built. */
+import themeRows from "./themes.json" with { type: "json" };
 import layers from "./layers.json" with { type: "json" };
 /**
  * The five transition styles and what each does, generated from
@@ -606,6 +610,23 @@ const ANSWERS: Record<string, unknown> = {
   theme_now: { theme: "pkg-organic", over_ms: 0, locked: false },
   theme_lock: null,
   theme_chosen: null,
+  themes: themeRows,
+  /**
+   * §32's Watershed Living can be *chosen* from the picker now, so the world
+   * has to be answerable in a browser — it never was, because nothing in a
+   * test had a way to open the watershed. An empty world rather than a
+   * populated one: what a browser can prove about the watershed is that
+   * choosing its theme opens it, and the drawing itself is `dj_world`'s and is
+   * tested there against real readings.
+   */
+  world: {
+    entities: [],
+    confluence: "Unknown",
+    strain: 0,
+    alarm: null,
+    beating: "Unknown",
+    unsurveyed: 0,
+  },
   // §81. Tonight opens unnamed, which is the state the picker exists to end —
   // and the state in which the hint has to be right.
   night_settings: nightSettings,
@@ -1203,8 +1224,19 @@ export async function openShell(
           // a distinction `__asked` cannot draw, because it keeps names and
           // throws the arguments away.
           if (cmd === "theme_chosen") {
-            win.__chosenTheme = args.theme;
-            return Promise.resolve(null);
+            // Rust's round trip, mirrored: an id nothing ships is refused
+            // rather than worn, because `applyPackagePalette` falls back to the
+            // organic palette and a typo would otherwise be worn silently as
+            // another theme's colours.
+            const known = (answers.themes ?? []) as { pack: string }[];
+            const asked = args.theme as string;
+            if (!known.some((row) => row.pack === asked)) {
+              return Promise.reject(
+                new Error(`djmanzo does not ship a theme called \`${asked}\``),
+              );
+            }
+            win.__chosenTheme = asked;
+            return Promise.resolve(asked);
           }
           // Echoed rather than tabulated: the application stores what this
           // hands back and draws that, so a stub returning a fixed answer

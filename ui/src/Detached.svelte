@@ -65,7 +65,10 @@
     const tick = async () => {
       while (alive) {
         try {
-          world = await getWorld();
+          // `?? emptyWorld()` for the reason `App` gives: a null answer is the
+          // same failure as a thrown one, arriving through the other door, and
+          // it used to reach `world.entities` and take the window down.
+          world = (await getWorld()) ?? emptyWorld();
         } catch {
           // A world we could not read is not worth an error in a booth; the
           // last one stays on screen until a read succeeds.

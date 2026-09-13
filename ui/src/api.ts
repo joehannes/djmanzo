@@ -1831,8 +1831,42 @@ export const themeLock = (locked: boolean) =>
   invoke<void>("theme_lock", { locked });
 
 /** Tell djmanzo the DJ chose one, so it stops deciding over them. */
+/**
+ * §31: the DJ decided. Answers with the theme now worn.
+ *
+ * An id djmanzo does not ship is **refused** rather than worn, which it could
+ * not be before §32's table existed: `applyPackagePalette` falls back to the
+ * organic palette, so a typo used to be worn silently as another theme's
+ * colours with nothing thrown and the picker simply appearing not to work.
+ */
 export const themeChosen = (theme: string) =>
-  invoke<void>("theme_chosen", { theme });
+  invoke<string>("theme_chosen", { theme });
+
+/** One of §32's themes, including the ones djmanzo does not have. */
+export interface ThemeRow {
+  /** What §32 calls it. */
+  title: string;
+  /** What kind of room or evening it is for. */
+  about: string;
+  /** The package id, or empty for a theme that does not ship. */
+  pack: string;
+  /** Why it does not ship. Empty for the ones that do. */
+  why_not: string;
+  /** Whether §32 named it, or djmanzo ships it anyway. */
+  asked: boolean;
+  /** Whether choosing it opens the watershed. */
+  world: boolean;
+}
+
+/**
+ * §32's themes, from Rust.
+ *
+ * The rows with no package are on the list saying why, which is the posture §8
+ * takes about what djmanzo remembers: a list of the seven that ship would read
+ * as the whole of §32, and a theme that is simply absent looks exactly like one
+ * nobody asked for.
+ */
+export const themes = () => invoke<ThemeRow[]>("themes");
 
 /** §29: what one control's gestures do. */
 export interface ControlHandle {

@@ -6712,22 +6712,72 @@ pub fn theme_lock(state: State<'_, AppState>, locked: bool) -> Result<(), String
 
 /// The DJ chose a theme. It takes effect now, and restarts the minimum.
 ///
+/// **An id nothing ships is refused rather than worn.** `applyPackagePalette`
+/// falls back to the organic palette for an id it does not have, so a typo used
+/// to be worn silently as a different theme's colours — nothing throws, and the
+/// picker simply appears not to work. §32's table is what makes refusing
+/// possible: before it there was no list in Rust to check against.
+///
+/// The answer is the theme now worn, so the interface shows what was kept
+/// rather than what was asked for.
+///
 /// # Errors
-/// When the lock is poisoned.
+/// When the lock is poisoned, or the id is not one djmanzo ships.
 #[tauri::command]
-pub fn theme_chosen(state: State<'_, AppState>, theme: String) -> Result<(), String> {
-    // Leaked rather than borrowed: `Weather` holds `&'static str` because the
-    // ids are compile-time constants everywhere else, and a theme a DJ chose
-    // lives as long as the application anyway. One small leak per manual
-    // choice, of which there are a handful a night.
-    let theme: &'static str = Box::leak(theme.into_boxed_str());
+pub fn theme_chosen(state: State<'_, AppState>, theme: String) -> Result<String, String> {
+    let known = crate::theme::for_pack(&theme)
+        .ok_or_else(|| format!("djmanzo does not ship a theme called `{theme}`"))?;
+    // The table's own `&'static str` rather than the argument. It was leaked
+    // here before, once per manual choice, because `Weather` holds a static —
+    // and there is no need now that the id has to be one of a fixed list.
+    let worn = known.pack.unwrap_or_default();
     let at = state.night().elapsed();
     state
         .weather()
         .lock()
         .map_err(|_| "the theme weather is poisoned".to_owned())?
-        .choose(theme, at);
-    Ok(())
+        .choose(worn, at);
+    Ok(worn.to_owned())
+}
+
+/// One of §32's themes, as the picker offers it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ThemeDto {
+    /// What §32 calls it.
+    pub title: String,
+    /// What kind of room or evening it is for.
+    pub about: String,
+    /// The package id, or empty for a theme that does not ship.
+    pub pack: String,
+    /// Why it does not ship. Empty for the ones that do.
+    pub why_not: String,
+    /// Whether §32 named it, or djmanzo ships it anyway.
+    pub asked: bool,
+    /// Whether choosing it opens the watershed.
+    pub world: bool,
+}
+
+/// §32's themes, including the ones djmanzo does not have.
+///
+/// The rows with no package are on the list saying why, the same posture §8's
+/// `remembered` takes: a list of the six that ship would read as the whole of
+/// §32, and a theme that is simply absent looks exactly like one nobody asked
+/// for. It is also what closed §8's own waveform row — the gap became obvious
+/// once it was somewhere a person could see it.
+#[tauri::command]
+#[must_use]
+pub fn themes() -> Vec<ThemeDto> {
+    crate::theme::ALL
+        .iter()
+        .map(|theme| ThemeDto {
+            title: theme.title.to_owned(),
+            about: theme.about.to_owned(),
+            pack: theme.pack.unwrap_or_default().to_owned(),
+            why_not: theme.why_not.to_owned(),
+            asked: theme.asked,
+            world: theme.world,
+        })
+        .collect()
 }
 
 /// One control's gestures, for the interface. §29.
@@ -10034,6 +10084,14 @@ pub fn apply_setup(state: State<'_, AppState>, setting: String) -> Result<SetupA
         guard.posture = setup.posture;
     }
     state.audience().front().set_open(setup.requests);
+    // §16's pack, for the occasions where exactly one names them. Derived from
+    // the pack table rather than written into the setup, so a pack added for a
+    // new kind of night is wired in by existing — and the presets that leave it
+    // alone leave the whole catalogue on, which is what a DJ who has chosen no
+    // pack already has.
+    if let Some(pack) = setup.pack() {
+        state.set_chosen_pack(pack.id);
+    }
 
     Ok(SetupApplied {
         workspace: setup.workspace.to_owned(),

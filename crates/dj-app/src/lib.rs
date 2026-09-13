@@ -68,6 +68,7 @@ pub mod snapshot;
 pub mod sources;
 pub mod staged;
 pub mod state;
+pub mod theme;
 pub mod tiers;
 pub mod timecode;
 pub mod transition;
@@ -618,6 +619,7 @@ pub fn run() {
             commands::kept_controls,
             commands::set_kept_controls,
             commands::remembered,
+            commands::themes,
             commands::night_settings,
             commands::knowledge_packs,
             commands::chosen_pack,

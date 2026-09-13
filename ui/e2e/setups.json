@@ -56,7 +56,8 @@
       "Waveform: 8 of §25's layers",
       "Pad pages: cues, loops, roll",
       "Assistant: suggest",
-      "Requests: on"
+      "Requests: on",
+      "Knowledge: Latin"
     ]
   },
   {
@@ -71,7 +72,8 @@
       "Waveform: 10 of §25's layers",
       "Pad pages: cues, loops, roll, slicer",
       "Assistant: watch",
-      "Requests: off"
+      "Requests: off",
+      "Knowledge: Beginner"
     ]
   },
   {
@@ -85,7 +87,8 @@
       "Waveform: 8 of §25's layers",
       "Pad pages: cues, loops, saved",
       "Assistant: suggest",
-      "Requests: on"
+      "Requests: on",
+      "Knowledge: Open Format"
     ]
   }
 ]

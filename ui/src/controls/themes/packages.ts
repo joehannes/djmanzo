@@ -226,6 +226,40 @@ export const PkgSunset: ThemePackage = {
 };
 
 /**
+ * §32's Watershed Living.
+ *
+ * > The existing watershed metaphor should become a theme/world pack, not the
+ * > only possible identity. It is a good visual language. It must not
+ * > constrain DJs who do not want metaphors.
+ *
+ * Both halves of that are the design. The watershed was a switch in the status
+ * strip beside the themes rather than one of them, which made it a mode — and
+ * a mode is exactly the thing §32 says it should stop being. It is a theme
+ * now: `dj_app::theme` marks this row as the one that wears the world, and
+ * choosing it opens the watershed.
+ *
+ * **And only opens it.** The switch is still there and still closes it, and no
+ * other theme touches it, so a DJ who wants the colours without the metaphor
+ * has them and a DJ who wants the metaphor under Booth keeps it. A theme that
+ * *enforced* its world would be the constraint §32 forbids in the same
+ * sentence that asks for the pack.
+ *
+ * The controls themselves are deliberately quiet under it. Everything moving
+ * on screen here should be the water; a knob that also pulsed would be a second
+ * thing asking to be watched.
+ */
+export const PkgWatershed: ThemePackage = {
+  id: "pkg-watershed",
+  name: "Watershed Living",
+  category: "organic",
+  setting: "venue",
+  when: "The mix drawn as moving water. Choosing it opens the watershed.",
+  geometry: GeometryCircle,
+  behaviors: [TimeReactivePulse],
+  effects: [],
+};
+
+/**
  * Every installed theme, in the order the picker lists them.
  *
  * Grouped by setting rather than sorted, so the list reads as a walk through a
@@ -239,4 +273,5 @@ export const themePackages = [
   PkgSunset,
   PkgIndustrial,
   PkgCyber,
+  PkgWatershed,
 ];

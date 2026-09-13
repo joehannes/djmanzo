@@ -1052,7 +1052,12 @@
     const tick = async () => {
       while (alive) {
         try {
-          world = await getWorld();
+          // `?? emptyWorld()` rather than trusting the answer. A backend that
+          // answered null here used to take the whole interface down on
+          // `world.entities`, and the `catch` right below shows the author of
+          // this loop already expected the read to be able to fail — a null is
+          // the same failure arriving through the other door.
+          world = (await getWorld()) ?? emptyWorld();
         } catch {
           // A world we could not read is not worth an error in a booth; the
           // last one stays on screen until the next read succeeds.
@@ -1402,7 +1407,13 @@
     </div>
 
     <div style="display:flex; gap:0.6rem; align-items:center;">
-      <ThemeSwitcher />
+      <!--
+        §32's one theme whose identity is the metaphor opens the watershed.
+        One-directional: nothing here closes it, because the metaphor must be
+        available to a DJ who wants it under any theme and must not be a cage
+        under its own.
+      -->
+      <ThemeSwitcher onWorld={() => (living = true)} />
     </div>
 
     <div class="device">

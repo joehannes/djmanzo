@@ -105,3 +105,88 @@ test.describe("theme adaptation", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+/**
+ * §32's theme packs: the list, and the one whose identity is the metaphor.
+ *
+ * Which themes there are supposed to be, which ship and which do not is
+ * `dj_app::theme`, and is checked there against `packages.ts` in both
+ * directions. These say the two things only a browser can.
+ */
+test.describe("§32's theme packs", () => {
+  /**
+   * **The load-bearing one: the picker says what djmanzo has not built.**
+   *
+   * §32 names sixteen themes and six of them ship. A picker of six reads as the
+   * whole of §32 — a theme that is absent looks exactly like a theme nobody
+   * asked for — and the ten that are missing were invisible everywhere until
+   * this table existed. It is the posture §8 takes about what djmanzo
+   * remembers, and there it worked: the row that admitted the waveform was not
+   * kept is what made it obvious which section to do next.
+   */
+  test("the themes it does not have are on the list, saying why", async ({ page }) => {
+    await openThemes(page);
+
+    const absent = page.locator(".switcher .not-yet li");
+    await expect(absent).toHaveCount(10);
+    // Every row carries its reason. A row that said only "Festival" would be a
+    // gap announced and not explained, which reads as an oversight rather than
+    // as a decision.
+    for (const row of await absent.all()) {
+      await expect(row.locator(".why")).not.toBeEmpty();
+    }
+    await expect(absent.filter({ hasText: "High Contrast" })).toContainText(
+      "raises contrast on every theme",
+    );
+    // And the ones that do ship are not in this list: it is the gap, not the
+    // catalogue. By the row's own name rather than by its text — Festival's
+    // reason mentions Daylight, and matching anywhere in the row would call
+    // that a hit.
+    await expect(
+      absent.locator(".name", { hasText: /^Daylight$/ }),
+    ).toHaveCount(0);
+    await expect(absent.locator(".name", { hasText: /^Festival$/ })).toHaveCount(1);
+    expect(errorsThrown(page), "the theme switcher threw").toEqual([]);
+  });
+
+  /**
+   * **Choosing Watershed Living opens the watershed, and nothing else does.**
+   *
+   * §32's second paragraph, both halves of it. The metaphor was a switch beside
+   * the themes rather than one of them, which made it a mode — the thing §32
+   * says it should stop being. And it must not constrain a DJ who does not want
+   * it, so no other theme touches the switch: a DJ who chose Booth keeps their
+   * watershed open if it was, and closed if it was not.
+   */
+  test("the watershed is a theme, and only its own theme opens it", async ({ page }) => {
+    await openThemes(page);
+
+    const watershed = page.getByRole("button", { name: "Watershed", exact: true });
+    await expect(
+      watershed,
+      "the watershed was already open before anything was chosen",
+    ).toHaveAttribute("aria-pressed", "false");
+
+    // Another theme first: it must leave the switch alone. This is the half of
+    // §32 that is a prohibition rather than a feature — the metaphor must not
+    // constrain a DJ who did not ask for it.
+    await page.locator(".switcher .theme").filter({ hasText: "Booth" }).click();
+    await expect(watershed, "choosing Booth opened the watershed").toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    // The menu stays open across a choice on purpose — picking a theme and
+    // deciding it was wrong is one gesture — so there is nothing to reopen.
+    await expect(page.locator(".switcher .menu")).toBeVisible();
+    await page
+      .locator(".switcher .theme")
+      .filter({ hasText: "Watershed Living" })
+      .click();
+    await expect(
+      watershed,
+      "choosing Watershed Living did not open the watershed",
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(errorsThrown(page), "the theme switcher threw").toEqual([]);
+  });
+});

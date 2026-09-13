@@ -2708,31 +2708,9 @@ mod tests {
         }
     }
 
-    /// A preset that names a theme names one that ships.
-    ///
-    /// The same failure the theme test in `dj_app::mood` guards: a package id
-    /// nothing can wear looks exactly like a workspace that decided not to
-    /// change the theme.
-    #[test]
-    fn a_preset_that_names_a_theme_names_one_that_exists() {
-        let packages = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../ui/src/controls/themes/packages.ts"),
-        )
-        .expect("the theme packages are beside the interface")
-        .replace("\r\n", "\n");
-        for workspace in workspaces() {
-            if workspace.theme.is_empty() {
-                continue;
-            }
-            assert!(
-                packages.contains(&format!("id: \"{}\"", workspace.theme)),
-                "{} asks for the theme `{}`, which does not ship",
-                workspace.name,
-                workspace.theme
-            );
-        }
-    }
+    // **A preset that names a theme names one that ships** is checked in
+    // [`crate::theme`], where §32's table lives, rather than by grepping the
+    // interface's source from here.
 
     /// **§7's twenty-four, and the one djmanzo cannot express.**
     ///

@@ -196,6 +196,50 @@ const palettes: Record<string, { dark: Palette; light: Palette }> = {
       "--scrim": "#fff4eccc",
     },
   },
+  // §32's Watershed Living. Slate and river blue, keyed to the water the
+  // renderer actually draws: `render/scene.ts` paints the body at hue 210-220,
+  // the murk at 30 and a seam at 40. A palette that fought those would put the
+  // chrome and the metaphor in two different rooms, which is the one thing a
+  // theme *about* the metaphor cannot do.
+  //
+  // The accents are deliberately the coolest in the set. Everything warm on
+  // screen under this theme is the watershed saying something — turbidity,
+  // strain, a key seam — and chrome that borrowed the same warmth would make
+  // those three readings compete with the furniture.
+  "pkg-watershed": {
+    dark: {
+      "--bg": "#070d13",
+      "--panel": "#0d151d",
+      "--panel-raised": "#141f2a",
+      "--panel-hover": "#1d2c3a",
+      "--border": "#1f2f3d",
+      "--border-strong": "#2e4356",
+      "--text": "#e6f1fa",
+      "--text-dim": "#93a8ba",
+      "--accent": "#5cb4e8",
+      "--accent-2": "#2f8fc9",
+      "--warn": "#e9a23b",
+      "--danger": "#ea5f60",
+      "--on-accent": "#04131d",
+      "--scrim": "#070d1399",
+    },
+    light: {
+      "--bg": "#f2f7fb",
+      "--panel": "#ffffff",
+      "--panel-raised": "#e8f1f8",
+      "--panel-hover": "#dbe9f4",
+      "--border": "#cbdeeb",
+      "--border-strong": "#a4c2d8",
+      "--text": "#0a1922",
+      "--text-dim": "#456175",
+      "--accent": "#12658f",
+      "--accent-2": "#0f4f73",
+      "--warn": "#8a5a05",
+      "--danger": "#b02a2a",
+      "--on-accent": "#ffffff",
+      "--scrim": "#f2f7fbcc",
+    },
+  },
   "pkg-industrial": {
     dark: {
       "--bg": "#0b0e12",
