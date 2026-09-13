@@ -437,6 +437,27 @@ target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 **`pkill -f "something"` matches its own shell.** It kills the command that
 ran it. Use `pkill -x <name>`.
 
+**Do not hand-write a parameter the engine owns while the engine is running.**
+`Engine` republishes a block of deck state into the `ParameterRegistry` on every
+callback — `LoopActive`, `LoopStart`, `LoopEnd` among them, derived from
+`deck.active_loop()`. A test that opens a device and then writes those slots is
+writing to a mirror: a deck with no decoded track has no loop, so the next tick
+puts zeros back. `commands::persistence_tests` did exactly that, passed on every
+platform for months, and then failed once on the Windows runner with a loop
+stored as starting at frame 0 — because `save_loop` checks `LoopActive` before
+it reads `LoopStart`, and the tick landed between the two. The fix is not a
+sleep or a retry: those tests exercise persistence and never needed a device, so
+they do not open one. If a test needs the engine to have a loop, give the deck a
+loop; if it needs a figure in the registry, do not also start the writer that
+owns it. The probe that settles it in ten seconds:
+
+```rust
+registry.set(ParamId::Deck(deck, DeckParam::LoopStart), 480_000.0);
+let now = registry.get(...);          // 480000
+std::thread::sleep(Duration::from_millis(120));
+let later = registry.get(...);        // 0, with a device open
+```
+
 **A component that restyles `.active` inherits half of a pair.** `app.css` sets
 `button.active { background: var(--accent-2); color: var(--on-accent) }` — a
 fill and a foreground written together, as §30 asks. A scoped rule in a

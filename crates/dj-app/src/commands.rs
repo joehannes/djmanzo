@@ -7177,11 +7177,26 @@ mod persistence_tests {
         dj_core::TrackId::from_bytes([byte; 32])
     }
 
-    /// An app with a device open and a track "on" deck 1: in the library, and
-    /// recorded as loaded, which is what the persistence paths key off.
+    /// An app with a track "on" deck 1: in the library, and recorded as loaded,
+    /// which is what the persistence paths key off.
+    ///
+    /// **The device is deliberately not opened.** It used to be, and the loop
+    /// tests below raced it: `Engine` publishes `LoopActive`, `LoopStart` and
+    /// `LoopEnd` into the registry from `deck.active_loop()` on every block, and
+    /// a deck with no decoded track has no loop -- so a tick landing between
+    /// `set_loop`'s write and `save_loop`'s read replaced the test's figures
+    /// with zeros. `save_loop` checks `LoopActive` before it reads `LoopStart`,
+    /// so the tick had a window in which the save went ahead and stored a loop
+    /// starting at 0. That is exactly what it did, once, on the Windows runner,
+    /// after passing on every platform for months.
+    ///
+    /// Nothing here needs a device: these are persistence paths, and what they
+    /// touch is the registry and the library. What the engine does with a real
+    /// loop is `dj-engine`'s to test, and is tested there. The rule in HANDOFF
+    /// is the same one that fixed three other tests: do not hand-write a
+    /// parameter the engine owns while the engine is running.
     fn app_with_track() -> AppState {
         let state = AppState::new(true);
-        state.host().open(None, None, 128).unwrap();
 
         let db = state.library().get().unwrap();
         db.upsert_track(&dj_library::LibraryTrack {
