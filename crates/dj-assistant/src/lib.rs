@@ -38,6 +38,7 @@ pub mod http;
 pub mod intent;
 pub mod native;
 pub mod openai_compat;
+pub mod pack;
 pub mod posture;
 pub mod provider;
 pub mod room;

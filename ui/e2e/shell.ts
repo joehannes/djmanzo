@@ -61,6 +61,15 @@ import surfaces from "./surfaces.json" with { type: "json" };
 /** §54's functional presets, generated from `dj_app::setup::ALL` by the same
  *  Rust test. */
 import setups from "./setups.json" with { type: "json" };
+/** §16's knowledge packs, generated from `dj_assistant::pack::ALL` and the
+ *  technique catalogue by the same Rust test. The `teaches` count comes from
+ *  the other side of the workspace, so a hand-written stub would report a
+ *  number nothing computes. */
+import packs from "./packs.json" with { type: "json" };
+/** §81's six kinds of night, generated from `dj_app::setting::Setting::ALL` by
+ *  the same Rust test. Hand-written here they would be the copy the panel was
+ *  just relieved of, one file further out. */
+import nightSettings from "./night-settings.json" with { type: "json" };
 import layers from "./layers.json" with { type: "json" };
 /**
  * The five transition styles and what each does, generated from
@@ -599,6 +608,7 @@ const ANSWERS: Record<string, unknown> = {
   theme_chosen: null,
   // §81. Tonight opens unnamed, which is the state the picker exists to end —
   // and the state in which the hint has to be right.
+  night_settings: nightSettings,
   night_now: {
     setting: null,
     density: null,
@@ -951,6 +961,11 @@ const ANSWERS: Record<string, unknown> = {
    * preset changed what it does.
    */
   setups,
+  /** §16's eight, from the same table Rust publishes. */
+  knowledge_packs: packs,
+  /** Nothing chosen: the whole catalogue, which is what a DJ who has not picked
+   *  a pack gets and the state the picker exists to change. */
+  chosen_pack: "",
   library_status: {
     tracks: 0,
     pending: 0,
@@ -1327,6 +1342,20 @@ export async function openShell(
           }
           if (cmd === "chosen_layers") {
             return Promise.resolve(win.__layers ?? answers.chosen_layers ?? []);
+          }
+          // §16's pack. Held between calls, and dropped rather than stored when
+          // it is a slug this build does not have — Rust's own round trip,
+          // mirrored, because a picker that showed what was *asked for* rather
+          // than what was *kept* would claim a curriculum the coach is not
+          // teaching from.
+          if (cmd === "set_chosen_pack") {
+            const known = (answers.knowledge_packs ?? []) as { id: string }[];
+            const asked = (args.pack ?? "") as string;
+            win.__pack = known.some((p) => p.id === asked) ? asked : "";
+            return Promise.resolve(win.__pack);
+          }
+          if (cmd === "chosen_pack") {
+            return Promise.resolve(win.__pack ?? answers.chosen_pack ?? "");
           }
           // §54's apply. Held between calls, like every other picker here: the
           // claim is that one press reaches six systems, and a fixed answer

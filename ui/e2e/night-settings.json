@@ -1,0 +1,32 @@
+[
+  {
+    "slug": "club",
+    "title": "Club",
+    "about": "A crowd that came to dance, and knows what it came for."
+  },
+  {
+    "slug": "beach",
+    "title": "Beach / sunset",
+    "about": "Warm, unhurried, and nobody is waiting for a drop."
+  },
+  {
+    "slug": "wedding",
+    "title": "Wedding",
+    "about": "A room that is not there for the DJ."
+  },
+  {
+    "slug": "latin",
+    "title": "Latin",
+    "about": "Where the technique is the genre's, not the format's."
+  },
+  {
+    "slug": "practice",
+    "title": "Practice",
+    "about": "Nobody is listening. What happens here is not a gig."
+  },
+  {
+    "slug": "open-format",
+    "title": "Open format",
+    "about": "Whatever the room turns out to want."
+  }
+]

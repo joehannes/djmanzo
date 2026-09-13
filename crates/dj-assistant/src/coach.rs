@@ -269,11 +269,23 @@ pub fn critique_lows(a: f32, b: f32) -> Option<Note> {
 /// Named techniques are what they have shown; the answer is the easiest thing
 /// they have not. Easiest, not most impressive: a learner sent at a flare
 /// scratch after two nights stops being a learner.
+///
+/// **Inside the chosen pack.** §16's packs are what turn this from a catalogue
+/// into a curriculum: without one the answer is the easiest unshown move in the
+/// whole table, so a bachata DJ was eventually sent to learn a transformer
+/// scratch and a turntablist was taught the bass swap they had been doing for
+/// years. `None` means the whole catalogue, which is what a DJ who has not
+/// chosen a pack gets and is the behaviour this had before.
 #[must_use]
-pub fn next_lesson(shown: &[&str], rig: technique::Rig) -> Option<&'static technique::Technique> {
+pub fn next_lesson(
+    shown: &[&str],
+    rig: technique::Rig,
+    pack: Option<&crate::pack::Pack>,
+) -> Option<&'static technique::Technique> {
     technique::catalogue()
         .iter()
         .filter(|t| rig.allows(t.needs))
+        .filter(|t| pack.is_none_or(|p| p.teaches_move(t)))
         .filter(|t| !shown.iter().any(|s| s.eq_ignore_ascii_case(t.name)))
         .min_by_key(|t| (t.difficulty, t.name))
 }
@@ -481,7 +493,7 @@ mod tests {
     /// two nights stops being a learner.
     #[test]
     fn the_next_thing_to_learn_is_the_easiest_one_left() {
-        let next = next_lesson(&[], technique::Rig::laptop()).expect("something to learn");
+        let next = next_lesson(&[], technique::Rig::laptop(), None).expect("something to learn");
         assert_eq!(next.difficulty, technique::Difficulty::First);
     }
 
@@ -489,8 +501,8 @@ mod tests {
     #[test]
     fn a_technique_already_shown_is_not_the_next_lesson() {
         let rig = technique::Rig::laptop();
-        let first = next_lesson(&[], rig).expect("something to learn");
-        let second = next_lesson(&[first.name], rig).expect("something else to learn");
+        let first = next_lesson(&[], rig, None).expect("something to learn");
+        let second = next_lesson(&[first.name], rig, None).expect("something else to learn");
         assert_ne!(first.name, second.name);
     }
 
@@ -505,7 +517,68 @@ mod tests {
             .filter(|t| rig.allows(t.needs))
             .map(|t| t.name)
             .collect();
-        assert_eq!(next_lesson(&shown, rig), None);
+        assert_eq!(next_lesson(&shown, rig, None), None);
+    }
+
+    /// **The load-bearing one: a pack changes what the coach teaches.**
+    ///
+    /// The whole of §16 arrives here. A pack stored and never consulted would
+    /// look identical from the outside — the picker would tick, the file would
+    /// be written, the coach would go on offering the same move — and this is
+    /// the one assertion that can tell the two apart.
+    ///
+    /// Both directions, because a filter that merely reordered would pass a
+    /// weaker test: the scratch pack must *reach* a move the general answer
+    /// does not (its ceiling is the top of the table), and the beginner pack
+    /// must refuse every move above its own.
+    #[test]
+    fn a_pack_is_what_makes_the_catalogue_a_curriculum() {
+        // Everything on: the pack, not the hardware, must be what narrows the
+        // answer, and a missing platter would do the scratch pack's filtering
+        // for it and hide a filter that never ran.
+        let rig = technique::Rig {
+            platter: true,
+            crossfader: true,
+            stems: true,
+            analysis: true,
+        };
+        let scratch = crate::pack::pack("scratch").expect("the scratch pack ships");
+
+        // Everything the scratch pack does *not* teach has been shown, so the
+        // unpacked answer and the packed one must now differ: without the pack
+        // the coach still has the rest of the table to offer.
+        let elsewhere: Vec<&str> = technique::catalogue()
+            .iter()
+            .filter(|t| !scratch.teaches_move(t))
+            .map(|t| t.name)
+            .collect();
+        let packed = next_lesson(&elsewhere, rig, Some(scratch)).expect("a scratch move to learn");
+        assert!(
+            scratch.teaches_move(packed),
+            "`{}` is not a move the scratch pack teaches",
+            packed.name
+        );
+
+        // And the ceiling holds downward. Everything at or below the beginner
+        // pack's own level has been shown, so an unfiltered coach would reach
+        // for something harder; the pack must answer nothing at all rather than
+        // send a beginner at a move they cannot do.
+        let beginner = crate::pack::pack("beginner").expect("the beginner pack ships");
+        let easy: Vec<&str> = technique::catalogue()
+            .iter()
+            .filter(|t| beginner.teaches_move(t))
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(
+            next_lesson(&easy, rig, Some(beginner)),
+            None,
+            "the beginner pack ran past its own ceiling once its own moves were done"
+        );
+        assert!(
+            next_lesson(&easy, rig, None).is_some(),
+            "the fixture is wrong: without a pack there must still be something \
+             left, or the test above proves nothing"
+        );
     }
 
     /// **A slow fader is a blend and a fast one is a cut.**

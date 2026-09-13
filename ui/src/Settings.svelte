@@ -10,13 +10,17 @@
    */
   import Screens from "./Screens.svelte";
   import {
+    chosenPack,
     cockpitLocks,
+    knowledgePacks,
     padPages,
     applySetup,
     railControls,
     remembered,
+    setChosenPack,
     setups,
     waveformLayers,
+    type KnowledgePack,
     type LockOption,
     type PadPageDto,
     type RailControl,
@@ -527,6 +531,35 @@
   let didSetUp = $state<{ title: string; changes: string[] } | null>(null);
 
   /**
+   * §16's knowledge packs, and the one in force.
+   *
+   * Read off Rust, every field of it. §16 ends *"Do not hard-code this logic
+   * into UI components"*, and the families, the techniques and the ceilings all
+   * live in tables Rust owns; a picker that spelled out "house, tech house,
+   * disco" here would be the second description of a table that already exists,
+   * and the copy is the one that goes stale.
+   */
+  let allPacks = $state<KnowledgePack[]>([]);
+  /** The chosen pack's id, or empty for all of djmanzo's knowledge. */
+  let pack = $state("");
+
+  /**
+   * Choose a pack, taking back what Rust will actually use.
+   *
+   * The round trip matters: a slug this build does not have is dropped rather
+   * than stored, and showing the stored value instead of the honoured one would
+   * leave the picker claiming a curriculum the coach is not teaching from.
+   */
+  async function choosePack(id: string) {
+    try {
+      pack = await setChosenPack(id === pack ? "" : id);
+      error = null;
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /**
    * Apply one of §54's presets.
    *
    * Rust does what Rust owns and hands back the two the shell does, which is
@@ -559,13 +592,17 @@
       railControls(),
       waveformLayers(),
       setups(),
+      knowledgePacks(),
+      chosenPack(),
     ])
-      .then(([rows, pages, controls, layers, nights]) => {
+      .then(([rows, pages, controls, layers, nights, packs, chosen]) => {
         remembers_list = rows;
         allPages = pages;
         allControls = controls;
         allLayers = layers;
         allSetups = nights;
+        allPacks = packs;
+        pack = chosen;
       })
       .catch(() => {
         // The block draws nothing rather than a guess, on the same principle as
@@ -635,6 +672,48 @@
         {didSetUp.title}: {didSetUp.changes.join(" · ")}
       </p>
     {/if}
+  </div>
+
+  <!--
+    §16, directly under §54, because they are the two halves of the same
+    evening: the setup is how djmanzo *looks* for this kind of night, the pack
+    is what it *knows* about it. Every word in this block comes off Rust — the
+    families, the ceiling and the count are read from the tables that own them,
+    because §16 ends "Do not hard-code this logic into UI components" and a
+    picker that spelled out a genre list would be exactly that.
+  -->
+  <div class="block packs">
+    <h3>What djmanzo knows</h3>
+    <p class="hint">
+      A pack narrows what the coach teaches you to the moves your kind of night
+      actually uses. Choosing none leaves the whole catalogue on, which is the
+      right answer if you play everything. Press the one you are on to turn it
+      off again.
+    </p>
+    <ul class="pack-list">
+      {#each allPacks as body (body.id)}
+        <li data-pack={body.id}>
+          <button
+            class:chosen={pack === body.id}
+            aria-pressed={pack === body.id}
+            onclick={() => void choosePack(body.id)}
+          >
+            <span class="pack-name">{body.title}</span>
+            <span class="pack-about">{body.about}</span>
+            <!--
+              The count is what choosing a pack *costs*. A pack is a narrowing,
+              and a DJ pressing one deserves to see how far it narrows before
+              the coach quietly stops mentioning half the catalogue.
+            -->
+            <span class="pack-reach">
+              {body.teaches} moves{body.families.length > 0
+                ? ` · ${body.families.join(", ")}`
+                : ""}
+            </span>
+          </button>
+        </li>
+      {/each}
+    </ul>
   </div>
 
   <!--
@@ -1751,6 +1830,49 @@
   .did {
     margin: 0.6rem 0 0;
     color: var(--active);
+  }
+
+  .pack-list {
+    list-style: none;
+    margin: 0.6rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .pack-list > li > button {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    width: 100%;
+    text-align: left;
+    flex-wrap: wrap;
+  }
+
+  /* An outline rather than a fill, the same as the preset above it: the chosen
+     pack is a standing state, and a block of colour in a settings list reads as
+     something that just happened.
+
+     The inset edge is there because the outline alone was not enough. On screen
+     the chosen row sat a hair brighter than the seven around it and had to be
+     hunted for — which is the wrong failure for a standing state, since the one
+     question a DJ opens this block with is *which pack am I on*. */
+  .pack-list > li > button.chosen {
+    border-color: var(--selected);
+    box-shadow: inset 3px 0 0 var(--selected);
+  }
+
+  .pack-name {
+    min-width: 7.5rem;
+    font-variant: small-caps;
+    letter-spacing: 0.04em;
+  }
+
+  .pack-about,
+  .pack-reach {
+    color: var(--muted);
+    font-size: 0.85em;
   }
 
   .remembers h4 {

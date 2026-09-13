@@ -1955,6 +1955,37 @@ pub fn night_now(state: State<'_, AppState>) -> Result<SettingDto, String> {
     })
 }
 
+/// One of §81's six kinds of night, as the panel offers it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NightSettingDto {
+    /// The slug it is stored and spoken as.
+    pub slug: String,
+    /// What a DJ would call it.
+    pub title: String,
+    /// What kind of evening it is, in one line.
+    pub about: String,
+}
+
+/// §81's six, read off the table that owns them.
+///
+/// The panel used to spell all eighteen of these strings itself. That is the
+/// second-description failure this codebase keeps meeting: `Setting` is what
+/// every other part of djmanzo files a night under, and a seventh occasion
+/// added there would have left the panel offering six — with no error anywhere,
+/// because a list that is merely short looks exactly like a list that is right.
+#[tauri::command]
+#[must_use]
+pub fn night_settings() -> Vec<NightSettingDto> {
+    crate::setting::Setting::ALL
+        .iter()
+        .map(|setting| NightSettingDto {
+            slug: setting.slug().to_owned(),
+            title: setting.title().to_owned(),
+            about: setting.about().to_owned(),
+        })
+        .collect()
+}
+
 /// §81's conditional profiles: how this DJ plays, per kind of night.
 ///
 /// Only the settings there is enough evidence for — see
@@ -4589,7 +4620,12 @@ pub fn coach_report(state: State<'_, AppState>) -> Result<CoachDto, String> {
     });
 
     let shown: Vec<&str> = observed.iter().map(|o| o.technique.as_str()).collect();
-    let next = dj_assistant::coach::next_lesson(&shown, rig(&state));
+    // §16: taught inside the chosen pack. Without one the answer is the
+    // easiest unshown move in the whole catalogue, which is how a bachata DJ
+    // was eventually sent to learn a transformer scratch.
+    let chosen = state.chosen_pack();
+    let pack = chosen.as_deref().and_then(dj_assistant::pack::pack);
+    let next = dj_assistant::coach::next_lesson(&shown, rig(&state), pack);
 
     Ok(CoachDto {
         observed,
@@ -9785,6 +9821,71 @@ pub fn set_chosen_layers(state: State<'_, AppState>, layers: Vec<String>) -> Vec
         .collect();
     state.set_waveform_layers(&chosen);
     chosen
+}
+
+/// One of §16's knowledge packs, as the picker offers it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct KnowledgePackDto {
+    pub id: String,
+    pub title: String,
+    pub about: String,
+    /// The genre families it turns on. Empty means all of them.
+    pub families: Vec<String>,
+    /// The hardest move it will send a DJ to learn.
+    pub ceiling: String,
+    /// The occasion whose presentation it pairs with, or empty.
+    pub setting: String,
+    /// How many of the catalogue's moves it would teach — the number that says
+    /// what choosing it costs, which is the thing a picker should show.
+    pub teaches: usize,
+}
+
+/// §16's packs, and which one is chosen.
+#[tauri::command]
+#[must_use]
+pub fn knowledge_packs() -> Vec<KnowledgePackDto> {
+    dj_assistant::pack::ALL
+        .iter()
+        .map(|pack| KnowledgePackDto {
+            id: pack.id.to_owned(),
+            title: pack.title.to_owned(),
+            about: pack.about.to_owned(),
+            families: pack.families.iter().map(|f| (*f).to_owned()).collect(),
+            ceiling: format!("{:?}", pack.ceiling).to_lowercase(),
+            setting: pack.setting.unwrap_or_default().to_owned(),
+            teaches: dj_assistant::technique::catalogue()
+                .iter()
+                .filter(|t| pack.teaches_move(t))
+                .count(),
+        })
+        .collect()
+}
+
+/// The pack the DJ has chosen, or empty for all of djmanzo's knowledge.
+#[tauri::command]
+#[must_use]
+pub fn chosen_pack(state: State<'_, AppState>) -> String {
+    state
+        .chosen_pack()
+        .filter(|id| dj_assistant::pack::pack(id).is_some())
+        .unwrap_or_default()
+}
+
+/// Choose a pack, and take back what will actually be used.
+///
+/// An empty string means "all of it", which is a real choice rather than a
+/// cleared setting: a DJ who plays everything wants the whole catalogue, and
+/// the coach teaching inside no pack is what that means.
+#[tauri::command]
+#[must_use]
+pub fn set_chosen_pack(state: State<'_, AppState>, pack: String) -> String {
+    // A slug this build does not have is dropped rather than stored, the same
+    // round trip every other picker here makes.
+    let kept = dj_assistant::pack::pack(&pack)
+        .map(|p| p.id.to_owned())
+        .unwrap_or_default();
+    state.set_chosen_pack(&kept);
+    kept
 }
 
 /// Where this deck's phrase boundaries fall, as two numbers.

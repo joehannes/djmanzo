@@ -1481,6 +1481,74 @@ export interface Remembered {
  */
 export const remembered = () => invoke<Remembered[]>("remembered");
 
+/**
+ * One of §16's domain knowledge packs.
+ *
+ * A pack *selects* from tables that already exist — `dj_core::genre`'s
+ * families, the technique catalogue, §81's occasions — rather than restating
+ * them, which is why every field here is a name or a count and none of them is
+ * a body of musical knowledge. §16 is explicit that this logic must not be
+ * hard-coded into UI components, and a vitest holds the interface to it: no
+ * Svelte file names a genre family or a technique.
+ */
+export interface KnowledgePack {
+  /** The slug it is stored and chosen by. */
+  id: string;
+  title: string;
+  /** What kind of DJing it is, in one line. */
+  about: string;
+  /** The genre families it turns on. Empty means all of them. */
+  families: string[];
+  /** The hardest move it will send a DJ to learn. */
+  ceiling: string;
+  /** The occasion whose presentation it pairs with, or empty. */
+  setting: string;
+  /**
+   * How many of the catalogue's moves it would teach.
+   *
+   * The number that says what choosing a pack *costs*, which is the thing a
+   * picker should show: a pack is a narrowing, and a DJ choosing one deserves
+   * to see how far it narrows before they press it.
+   */
+  teaches: number;
+}
+
+/** One of §81's six kinds of night, read off the table that owns it. */
+export interface NightKind {
+  /** The slug it is stored and spoken as. */
+  slug: string;
+  title: string;
+  /** What kind of evening it is, in one line. */
+  about: string;
+}
+
+/**
+ * §81's six, from Rust.
+ *
+ * The Night panel used to spell all eighteen of these strings itself, which is
+ * the second description this codebase keeps finding: a seventh occasion added
+ * to `dj_app::setting` would have left the panel offering six, with no error
+ * anywhere — a list that is merely short looks exactly like a list that is
+ * right.
+ */
+export const nightSettings = () => invoke<NightKind[]>("night_settings");
+
+/** §16's packs, as the picker offers them. */
+export const knowledgePacks = () => invoke<KnowledgePack[]>("knowledge_packs");
+
+/** The pack the DJ has chosen, or empty for all of djmanzo's knowledge. */
+export const chosenPack = () => invoke<string>("chosen_pack");
+
+/**
+ * Choose a pack, and take back what will actually be used.
+ *
+ * An empty string is a real choice rather than a cleared setting: a DJ who
+ * plays everything wants the whole catalogue, and the coach teaching inside no
+ * pack is what that means.
+ */
+export const setChosenPack = (pack: string) =>
+  invoke<string>("set_chosen_pack", { pack });
+
 export interface FailedFile {
   path: string;
   reason: string;

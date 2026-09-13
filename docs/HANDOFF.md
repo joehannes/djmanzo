@@ -705,6 +705,47 @@ a sound card — so the six nameless `select`s it found were six of twenty-four.
 `ui/src/access.test.ts` reads the source instead: it knows nothing about
 contrast or computed roles, and it reaches every component. Both, not either.
 
+**A fifth table was found read by nobody, and a fourth copy was found written
+by hand.** The pattern is now the single most reliable source of defects here.
+`Night.svelte` carried all eighteen strings of §81's six occasions — slug, title
+and blurb — beside `dj_app::setting::Setting`, which already owned them and
+which every other part of djmanzo files a night under. Nothing was wrong on
+screen, and nothing would have been wrong on screen after a seventh occasion was
+added either: the panel would simply have gone on offering six, and a list that
+is merely short looks exactly like a list that is right. It is read off Rust
+now, through a `night_settings` command, with a golden fixture so the browser
+stub cannot become the copy one file further out. **Look for this shape
+first in any new work: a table in Rust and a list in Svelte that agree today.**
+
+**A test that scans the interface for hard-coded knowledge has to be narrow to
+survive.** §16 ends *do not hard-code this logic into UI components*, and the
+obvious test — no Svelte file names a genre family or a technique — is wrong in
+both directions. Technique names are ordinary control labels (`SYNC`, `Censor`,
+`Brake`, a `cut` transition) and a scan for them fails on four files that are
+doing nothing wrong. Genre families are safe, but only as *exact string
+literals*: a comment explaining that bachata turns over on the phrase is
+documentation, and a search placeholder reading "bachata with a piano hook" is
+an example of what to type. A test that failed on those would be turned off
+within a week, and a test that is turned off guards nothing. The one in
+`pack.rs` scans for `"family"`, `'family'` and `` `family` `` only.
+
+**`rnb` renders as `mb`.** The rn/m collision, in every proportional face the
+interface wears. It sat in `dj_core::genre` for a long time and reached the
+screen the first time a picker printed a family list — a genre nobody plays,
+in an interface nobody had looked at closely. These names are shown to people,
+not just matched against tags, so the family is `r&b` now with `rnb` kept as an
+alias, and `genre.rs` has a test that bans a bare `rn` in any family name.
+`normalise` reads `&` as *and*, so both spellings still match a ripper's tag.
+
+**The container gets slow enough to look like a bug.** With three app instances
+and a `cargo build` running, djmanzo showed *Interface running at 4 fps* and
+every list in the Settings surface was empty — setups, packs, screens, locks —
+while the polled panels kept updating. It read exactly like a broken `invoke`
+bridge. It was the promises not having resolved yet; ten seconds later every
+list was there. Check `uptime` and `pgrep -f target/debug/djmanzo` before
+diagnosing an empty list, and kill stray instances: `pkill` returns exit 144
+and aborts a compound command, so run it alone, then confirm with `pgrep`.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests
@@ -1047,6 +1088,23 @@ The largest of them, in the order they are worth doing:
    the posture to copy: a list of eight would have read as the whole of §8, and
    naming the blocker on screen is what made it obvious which section to do
    next.
+
+12. **§16's remaining packs are content, not format.** The format ships:
+   `dj_assistant::pack::Pack` selects from the genre map, the technique
+   catalogue and §81's occasions rather than restating any of them, and
+   `coach::next_lesson` teaches inside the chosen one. Eight of §16's thirty
+   are written, and the twenty-two that are not are deliberately absent: a
+   *Karaoke / MC* pack asserting a technique list nobody checked is a
+   curriculum that teaches the wrong thing with confidence, which is worse than
+   an honest gap. Adding one is cheap and is the right work for somebody who
+   actually does that kind of night; inventing one from the directive's section
+   heading is not.
+
+   Seven of §16's fifteen fields still have no table to select from — energy
+   curves, allowed BPM relationships, suggestion weighting — and the rule that
+   got this section right applies to each: build the table where it belongs
+   first, then let a pack *name* it. A pack that grew its own copy of a curve
+   would be the fifth duplicated table this project has had to remove.
 
 Three older items are open and are not part of the 105:
 

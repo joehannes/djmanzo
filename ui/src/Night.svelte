@@ -25,7 +25,9 @@
   import {
     nightNow,
     nightRead,
+    nightSettings,
     noteNight,
+    type NightKind,
     type NightRead,
     type NightSetting,
   } from "./api";
@@ -60,15 +62,17 @@
    *
    * It lives in this panel because this is where the night is. Two homes for
    * "what is tonight" would be two places to go and check.
+   *
+   * # Read off Rust, not written here
+   *
+   * The six used to be eighteen strings in this file, beside a table
+   * `dj_app::setting` already owned. That is the second-description failure
+   * this codebase keeps finding, and it fails in the worst direction: a seventh
+   * occasion added to `Setting` would have left this panel offering six, and a
+   * list that is merely short looks exactly like a list that is right. It is a
+   * static table, so one read at mount is the whole cost.
    */
-  const SETTINGS: { slug: string; title: string; about: string }[] = [
-    { slug: "club", title: "Club", about: "A crowd that came to dance, and knows what it came for." },
-    { slug: "beach", title: "Beach / sunset", about: "Warm, unhurried, and nobody is waiting for a drop." },
-    { slug: "wedding", title: "Wedding", about: "A room that is not there for the DJ." },
-    { slug: "latin", title: "Latin", about: "Where the technique is the genre's, not the format's." },
-    { slug: "practice", title: "Practice", about: "Nobody is listening. What happens here is not a gig." },
-    { slug: "open-format", title: "Open format", about: "Whatever the room turns out to want." },
-  ];
+  let settings = $state<NightKind[]>([]);
 
   let tonight = $state<NightSetting | null>(null);
   let saying = $state(false);
@@ -128,6 +132,15 @@
 
   onMount(() => {
     void refresh();
+    // Not in `refresh`: the occasions do not change while djmanzo is running,
+    // and asking every two seconds for an answer that cannot have moved is the
+    // thing every other poll here is written to avoid.
+    void nightSettings()
+      .then((kinds) => (settings = kinds))
+      .catch(() => {
+        // Nothing rather than a guess. A panel that invented its own six would
+        // be the copy this read exists to remove.
+      });
     timer = setInterval(tick, EVERY_MS);
     return () => clearInterval(timer);
   });
@@ -183,7 +196,7 @@
     -->
     <div class="kind" role="group" aria-label="What kind of night this is">
       <span class="label">Tonight is</span>
-      {#each SETTINGS as setting (setting.slug)}
+      {#each settings as setting (setting.slug)}
         <button
           class:on={tonight?.setting === setting.slug}
           disabled={!enabled || saying}

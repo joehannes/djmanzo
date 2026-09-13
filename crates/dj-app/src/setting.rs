@@ -169,4 +169,41 @@ mod tests {
         assert_eq!(slugs.len(), Setting::ALL.len());
         assert_eq!(titles.len(), Setting::ALL.len());
     }
+
+    /// **Every §16 pack that names an occasion names one of these six.**
+    ///
+    /// The check lives here rather than beside the packs because `dj-assistant`
+    /// is below this crate and cannot see the table; checking there would mean
+    /// copying six slugs into a test, which is the second description the
+    /// field exists as a *name* to avoid. A pack pointing at an occasion
+    /// djmanzo does not have would pair its knowledge with a presentation
+    /// nobody can apply, and nothing on screen would say so.
+    #[test]
+    fn every_pack_that_names_an_occasion_names_one_of_these() {
+        for pack in dj_assistant::pack::ALL {
+            let Some(slug) = pack.setting else { continue };
+            assert!(
+                Setting::parse(slug).is_some(),
+                "the `{}` pack pairs with `{slug}`, which is not one of §81's six",
+                pack.id
+            );
+        }
+    }
+
+    /// **And §54's presets cover every one of them.**
+    ///
+    /// The other direction. §54 promises one functional preset per kind of
+    /// night; a seventh occasion added above would otherwise ship with no way
+    /// to set up for it, and the gap would be invisible — the picker would
+    /// simply have six rows, which is what it has always had.
+    #[test]
+    fn every_occasion_has_a_setup_to_go_with_it() {
+        for setting in Setting::ALL {
+            assert!(
+                crate::setup::ALL.iter().any(|s| s.setting == setting),
+                "{} has no §54 setup, so there is no way to set up for it",
+                setting.slug()
+            );
+        }
+    }
 }

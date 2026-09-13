@@ -1060,6 +1060,33 @@ impl AppState {
         }
     }
 
+    /// The file the chosen knowledge pack's name lives in.
+    ///
+    /// A name rather than a copy, for the reason `chosen_layout` gives: a pack
+    /// is a table djmanzo ships and a stored copy would hand a DJ the version
+    /// from whenever they last picked it.
+    fn pack_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("pack.txt"))
+    }
+
+    /// §16's pack the DJ has chosen, or `None` for all of djmanzo's knowledge.
+    #[must_use]
+    pub fn chosen_pack(&self) -> Option<String> {
+        let name = std::fs::read_to_string(self.pack_path()?).ok()?;
+        let name = name.trim().to_owned();
+        (!name.is_empty()).then_some(name)
+    }
+
+    /// Remember the chosen pack.
+    pub fn set_chosen_pack(&self, id: &str) {
+        let Some(path) = self.pack_path() else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, id) {
+            tracing::warn!(%error, ?path, "your knowledge pack will not survive a restart");
+        }
+    }
+
     /// The file the chosen waveform layers live in.
     ///
     /// Its own file rather than a field of the workspace, on the same reasoning

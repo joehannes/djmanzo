@@ -340,12 +340,17 @@ static FAMILIES: &[Family] = &[
         aliases: &["juke", "ghetto house"],
     },
     Family {
-        name: "rnb",
+        // Spelled with the ampersand because this name is shown to people, and
+        // "rnb" set in almost any proportional face reads as "mb" — the rn/m
+        // collision. It was on screen in the pack picker for a while before
+        // anybody looked at it. Matching is unaffected: `normalise` reads `&`
+        // as "and", and the bare "rnb" a ripper might have written is an alias.
+        name: "r&b",
         region: Region::NorthAmerica,
         bpm: (60.0, 100.0),
         feel: Feel::Straight,
         grammar: Grammar::Boombap,
-        aliases: &["r&b", "rhythm and blues", "contemporary r&b"],
+        aliases: &["rnb", "rhythm and blues", "contemporary r&b"],
     },
     // -- Europe -----------------------------------------------------------
     Family {
@@ -488,6 +493,31 @@ mod tests {
 
     fn family(name: &str) -> &'static Family {
         family_for(name).unwrap_or_else(|| panic!("no family called {name:?}"))
+    }
+
+    /// **Every family name is one a person can read off a screen.**
+    ///
+    /// These names are not keys; they are shown, in the pack picker and
+    /// wherever else a family is named. "rnb" was in this table for a long
+    /// time and rendered as *mb* in every proportional face the interface
+    /// wears — the rn/m collision — which is a genre nobody plays. The rule is
+    /// narrow on purpose: a bare `rn` inside a name is the one pair that
+    /// reliably fails, so it is the one pair that is banned.
+    #[test]
+    fn no_family_is_spelled_in_a_way_that_reads_as_another_word() {
+        for family in FAMILIES {
+            assert!(
+                !family.name.contains("rn"),
+                "`{}` contains `rn`, which sets as `m` in most faces — spell it \
+                 for a reader and keep the machine-readable form as an alias",
+                family.name
+            );
+            assert!(
+                family_for(family.name).is_some(),
+                "`{}` does not match itself, so nothing tagged with it is found",
+                family.name
+            );
+        }
     }
 
     /// **Trap mixes with hip-hop, not with house.**

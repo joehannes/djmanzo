@@ -1,0 +1,101 @@
+[
+  {
+    "id": "general",
+    "title": "General",
+    "about": "Everything djmanzo knows, with nothing emphasised.",
+    "families": [],
+    "ceiling": "hard",
+    "setting": "",
+    "teaches": 27
+  },
+  {
+    "id": "beginner",
+    "title": "Beginner",
+    "about": "The moves that work the first time you try them.",
+    "families": [],
+    "ceiling": "first",
+    "setting": "practice",
+    "teaches": 7
+  },
+  {
+    "id": "open-format",
+    "title": "Open Format",
+    "about": "Whatever the room turns out to want, and the moves that cross.",
+    "families": [],
+    "ceiling": "practised",
+    "setting": "open-format",
+    "teaches": 18
+  },
+  {
+    "id": "house",
+    "title": "House",
+    "about": "Four to the floor, long blends, and the patience for them.",
+    "families": [
+      "house",
+      "tech house",
+      "disco",
+      "afro house"
+    ],
+    "ceiling": "practised",
+    "setting": "club",
+    "teaches": 13
+  },
+  {
+    "id": "techno",
+    "title": "Techno",
+    "about": "Long, dark and mechanical. The mix is the arrangement.",
+    "families": [
+      "techno",
+      "tech house",
+      "hardstyle",
+      "trance"
+    ],
+    "ceiling": "practised",
+    "setting": "club",
+    "teaches": 13
+  },
+  {
+    "id": "hip-hop",
+    "title": "Hip-Hop",
+    "about": "Short records, quick exits, and a hand on the platter.",
+    "families": [
+      "hip hop",
+      "trap",
+      "r&b",
+      "jersey club"
+    ],
+    "ceiling": "hard",
+    "setting": "",
+    "teaches": 15
+  },
+  {
+    "id": "latin",
+    "title": "Latin",
+    "about": "Records that turn over on the phrase, and the ear for where.",
+    "families": [
+      "bachata",
+      "merengue",
+      "salsa",
+      "reggaeton",
+      "dembow",
+      "cumbia",
+      "guaracha"
+    ],
+    "ceiling": "practised",
+    "setting": "latin",
+    "teaches": 15
+  },
+  {
+    "id": "scratch",
+    "title": "Scratch / Turntablism",
+    "about": "The record as an instrument. The hardest table djmanzo has.",
+    "families": [
+      "hip hop",
+      "trap",
+      "footwork"
+    ],
+    "ceiling": "hard",
+    "setting": "",
+    "teaches": 11
+  }
+]
