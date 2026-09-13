@@ -437,6 +437,21 @@ target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 **`pkill -f "something"` matches its own shell.** It kills the command that
 ran it. Use `pkill -x <name>`.
 
+**`setViewportSize` returning is not the resize handler having run.** The
+density follows the window on the window's own `resize` event, so a test that
+sets the size and reads `--density` on the next line passes alone and fails
+about one run in ten under the full parallel suite. `expect.poll` for the change
+you expect; a plain sleep is right only where the assertion is that *nothing*
+happens, because then there is no condition to wait for.
+
+**Naming a thing is not the same as being in it.** §7's save writes the
+arrangement into the DJ's own collection *and* stores it as the current
+workspace, and the second half was missing at first: the picker showed the new
+name, and after a restart it read the shipped name it had been saved from. A DJ
+being told they are in an arrangement they are not. Every test was green — it
+was found by restarting the application, which is the check a browser test
+cannot make.
+
 **A socket that reaches the engine has not reached the application.** The
 network protocol dispatched straight at `ActionBus`, which is *not* where an
 action finishes: `deck 1 eject` has to clear the deck's name and its analysis,

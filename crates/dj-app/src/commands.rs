@@ -8943,6 +8943,74 @@ pub fn assistant_appetite(state: State<'_, AppState>) -> AppetiteDto {
     }
 }
 
+/// The arrangements the DJ has saved under names of their own.
+///
+/// Separate from [`cockpit_workspaces`], which is what djmanzo ships. The picker
+/// shows both and says which is which: a DJ looking for the layout they built
+/// for their Saturday residency should not have to pick it out of twenty-three
+/// they have never opened.
+#[tauri::command]
+#[must_use]
+pub fn my_workspaces(state: State<'_, AppState>) -> Vec<crate::cockpit::Workspace> {
+    state.my_workspaces()
+}
+
+/// Save the arrangement on screen under a name.
+///
+/// §7 calls the shipped arrangements *starting points, not rigid identities*,
+/// and that was only half true: a DJ could pick one and move what they liked,
+/// and the edit survived a restart — but it could not be **named**, so a DJ with
+/// a wedding layout and a club layout had one of them and a memory of the other.
+/// §103's *Modularity* criterion is the same gap in other words.
+///
+/// The workspace is resolved first, so what is kept is what can actually be
+/// drawn rather than what was asked for — the same round trip
+/// [`set_cockpit_workspace`] makes, and for the same reason.
+///
+/// # Errors
+/// When the name is empty or is one djmanzo ships. See `cockpit::keep`.
+#[tauri::command]
+pub fn keep_workspace(
+    state: State<'_, AppState>,
+    name: String,
+    workspace: crate::cockpit::Workspace,
+) -> Result<Vec<crate::cockpit::Workspace>, String> {
+    let resolved = crate::cockpit::resolve(&workspace);
+    let kept = crate::cockpit::keep(
+        &state.my_workspaces(),
+        &crate::cockpit::workspaces(),
+        &resolved.workspace,
+        &name,
+    )?;
+    state.set_my_workspaces(&kept);
+
+    // And the cockpit is now *in* that arrangement, which is the half driving
+    // it found missing. Without this the picker read the new name until the
+    // next restart and then went back to the shipped one it was saved from —
+    // the DJ's own arrangement was in the list, and the application did not
+    // think it was wearing it. Naming what is on screen means what is on screen
+    // is now called that.
+    if let Some(saved) = kept
+        .iter()
+        .find(|held| held.name.trim().eq_ignore_ascii_case(name.trim()))
+    {
+        state.set_workspace(saved);
+    }
+    Ok(kept)
+}
+
+/// Take one of the DJ's own arrangements out of the collection.
+#[tauri::command]
+#[must_use]
+pub fn forget_workspace(
+    state: State<'_, AppState>,
+    name: String,
+) -> Vec<crate::cockpit::Workspace> {
+    let kept = crate::cockpit::forget(&state.my_workspaces(), &name);
+    state.set_my_workspaces(&kept);
+    kept
+}
+
 /// One of §79's locks, and what a DJ is told it takes away.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LockDto {

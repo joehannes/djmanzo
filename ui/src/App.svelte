@@ -35,6 +35,9 @@
     cockpitSurfaces,
     onCockpit,
     cockpitWorkspace,
+    forgetWorkspace,
+    keepWorkspace,
+    myWorkspaces,
     cockpitWorkspaces,
     densityBands,
     phasePriorities,
@@ -294,6 +297,28 @@
   let presets = $state<Workspace[]>([]);
 
   /**
+   * §7 and §103's *modularity*: the arrangements this DJ has kept.
+   *
+   * Held apart from the shipped list rather than merged into it, because the
+   * picker says which is which. A DJ looking for the layout they built for
+   * their Saturday residency should not have to find it among twenty-three they
+   * have never opened.
+   */
+  let mine = $state<Workspace[]>([]);
+  /**
+   * The picker's one entry that is not an arrangement.
+   *
+   * A sentinel rather than an empty value or a control character: the value has
+   * to be something no arrangement can be called, and "no arrangement is called
+   * this" is a claim about a name a DJ types, so it may as well be readable in
+   * the markup and in a test.
+   */
+  const KEEP = "__keep__";
+  /** The name being typed, or `null` when nobody is naming anything. */
+  let naming = $state<string | null>(null);
+  let namingError = $state<string | null>(null);
+
+  /**
    * Apply a preset, and then forget it is one.
    *
    * §7: *make these starting points, not rigid identities. Every preset should
@@ -358,6 +383,52 @@
     density = band[2];
     densityName = band[1];
     document.documentElement.style.setProperty("--density", String(band[2]));
+  }
+
+  /**
+   * §7: keep this arrangement under a name.
+   *
+   * The whole of §7's *starting points, not rigid identities* was true except
+   * for the last step: a DJ could pick an arrangement, move what they liked, and
+   * the edit survived a restart — it simply had no name, so the second layout
+   * they built replaced the first. What is kept is the arrangement on screen,
+   * resolved by Rust first, so a DJ reopening it gets what can be drawn rather
+   * than what was asked for.
+   *
+   * The refusal is shown rather than swallowed. "djmanzo already ships an
+   * arrangement called Club" is a sentence a DJ can act on in one press; a save
+   * that quietly did nothing is one they discover an hour later.
+   */
+  async function keepThis() {
+    const current = workspace;
+    const name = (naming ?? "").trim();
+    if (!current) return;
+    try {
+      mine = await keepWorkspace(name, { ...current, decks: deckCount });
+      naming = null;
+      namingError = null;
+      // Named, so the picker shows it as chosen: the arrangement on screen and
+      // the row the DJ just made are the same thing, and a picker that went
+      // back to reading "Workspace…" would suggest otherwise.
+      //
+      // Rust stores the rename as well, so this survives a restart. It did not
+      // at first — the row was in the list and the picker went back to the
+      // shipped name it had been saved from, which is a DJ being told they are
+      // in an arrangement they are not. Found by restarting the application.
+      workspace = { ...current, name };
+    } catch (e) {
+      namingError = String(e);
+    }
+  }
+
+  /** Take one of the DJ's own arrangements out of the collection. */
+  async function forgetThis(name: string) {
+    try {
+      mine = await forgetWorkspace(name);
+    } catch {
+      // The row stays until djmanzo says it is gone, which is the same posture
+      // every other write on this surface takes.
+    }
   }
 
   /**
@@ -556,6 +627,12 @@
     } catch {
       // A surface with no title falls back to its name, which is still a word
       // a DJ can read -- worse than "Session log", better than an empty header.
+    }
+    try {
+      mine = await myWorkspaces();
+    } catch {
+      // An empty collection rather than a broken picker: the shipped
+      // arrangements are still there and still work.
     }
     try {
       presets = await cockpitWorkspaces();
@@ -1511,28 +1588,103 @@
             class="workspace-preset"
             aria-label="Workspace"
             onchange={(event) => {
-              const chosen = presets.find((w) => w.name === event.currentTarget.value);
+              const value = event.currentTarget.value;
+              if (value === KEEP) {
+                // Naming, rather than a dialog. The field appears in the slot
+                // the description occupies, so the row does not grow and the
+                // two buttons at the end of it do not move — which §39's
+                // fourteenth panel button already proved they must not.
+                naming = workspace?.name ?? "";
+                namingError = null;
+                event.currentTarget.value = "";
+                return;
+              }
+              const chosen = [...mine, ...presets].find((w) => w.name === value);
               if (chosen) void applyWorkspace(chosen);
             }}
           >
             <option value="">Workspace…</option>
-            {#each presets as option (option.name)}
-              <option
-                value={option.name}
-                title={option.about}
-                selected={workspace?.name === option.name}
-              >
-                {option.name}
-              </option>
-            {/each}
+            <!--
+              §7 and §103's modularity. Theirs first: a DJ who has saved a
+              layout is looking for that one, and reading past twenty-three
+              they have never opened to reach it is the thing having saved it
+              was supposed to avoid.
+            -->
+            {#if mine.length > 0}
+              <optgroup label="Yours">
+                {#each mine as option (option.name)}
+                  <option
+                    value={option.name}
+                    title={option.about}
+                    selected={workspace?.name === option.name}
+                  >
+                    {option.name}
+                  </option>
+                {/each}
+              </optgroup>
+            {/if}
+            <optgroup label="djmanzo's">
+              {#each presets as option (option.name)}
+                <option
+                  value={option.name}
+                  title={option.about}
+                  selected={workspace?.name === option.name}
+                >
+                  {option.name}
+                </option>
+              {/each}
+            </optgroup>
+            <optgroup label="This one">
+              <option value={KEEP}>Save this arrangement…</option>
+            </optgroup>
           </select>
-          <!--
-            What the chosen one is for. The select shows twenty-three names and
-            a name is not a description: "Open Format" and "Club" are both
-            plausible at midnight, and this is the line that says which one
-            gives you four decks.
-          -->
-          {#if workspace?.about}
+          {#if naming !== null}
+            <!--
+              In the description's slot, so the row keeps its width. Enter
+              saves and Escape gives up, because a DJ naming a layout between
+              two records has a hand on the keyboard and not on the mouse.
+            -->
+            <input
+              class="naming"
+              aria-label="Name for this arrangement"
+              placeholder="Name this arrangement"
+              bind:value={naming}
+              onkeydown={(event) => {
+                if (event.key === "Enter") void keepThis();
+                if (event.key === "Escape") {
+                  naming = null;
+                  namingError = null;
+                }
+              }}
+            />
+            <button class="naming-keep" onclick={() => void keepThis()} title="Keep it">
+              Keep
+            </button>
+            {#if workspace && mine.some((w) => w.name === workspace?.name)}
+              <button
+                class="naming-forget"
+                onclick={() => void forgetThis(workspace?.name ?? "")}
+                title="Take this arrangement out of your collection"
+              >
+                Forget
+              </button>
+            {/if}
+            {#if namingError}
+              <!--
+                Shown, not swallowed. "djmanzo already ships an arrangement
+                called Club" is a sentence a DJ acts on in one press; a save
+                that quietly did nothing is one they find out about an hour
+                later, looking for a layout that was never kept.
+              -->
+              <span class="naming-error" role="alert">{namingError}</span>
+            {/if}
+          {:else if workspace?.about}
+            <!--
+              What the chosen one is for. The select shows twenty-three names and
+              a name is not a description: "Open Format" and "Club" are both
+              plausible at midnight, and this is the line that says which one
+              gives you four decks.
+            -->
             <span class="preset-about" title={workspace.about}>{workspace.about}</span>
           {/if}
         {/if}
@@ -2415,6 +2567,42 @@
       they are.
     */
     max-width: 13rem;
+  }
+
+  /*
+    Naming an arrangement, in the width the description was using.
+
+    Capped to the same 18rem for the reason that one is: the two buttons at the
+    end of this row are the two that must never move, and §39's fourteenth panel
+    button is the standing proof that one more control here wraps the line and
+    takes forty pixels out of every deck.
+  */
+  .naming {
+    max-width: 12rem;
+    padding: 0.25rem 0.45rem;
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    background: var(--panel-raised);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.78rem;
+  }
+
+  /* §33: the refusal is a sentence, not a red border. */
+  .naming-error {
+    max-width: 20rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--danger);
+    font-size: 0.78rem;
+  }
+
+  .naming-keep,
+  .naming-forget {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.78rem;
+    white-space: nowrap;
   }
 
   .preset-about {

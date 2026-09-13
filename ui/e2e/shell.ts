@@ -849,6 +849,14 @@ const ANSWERS: Record<string, unknown> = {
    * asserting it against a control that is not on screen.
    */
   /**
+   * §7 and §103's modularity: the arrangements this DJ has kept.
+   *
+   * Empty, which is what a fresh install has. `keep_workspace` and
+   * `forget_workspace` are answered by the handler below rather than from this
+   * table, because their answer depends on what was asked.
+   */
+  my_workspaces: [],
+  /**
    * §43's appetite. The state every fresh session is in: nothing offered yet,
    * so nothing to go on, and the rate at full.
    */
@@ -1019,6 +1027,43 @@ export async function openShell(
                 Number(args.at),
               )}s.wav`,
             );
+          }
+          // §7's keep. Answered here rather than from the table because the
+          // collection is *held between calls*: a fixed answer would make a
+          // save that worked and one that did nothing look identical, and the
+          // whole claim of the picker is that the row appears.
+          //
+          // The two refusals are Rust's rules, mirrored: an empty name and one
+          // djmanzo ships. A Rust test keeps the sentences honest; what a
+          // browser can prove is that the refusal reaches the screen.
+          if (cmd === "keep_workspace") {
+            const held = (win.__kept ??= []) as { name: string }[];
+            const name = String(args.name ?? "").trim();
+            if (!name) {
+              return Promise.reject(new Error("an arrangement needs a name to be found by"));
+            }
+            const shipped = (answers.cockpit_workspaces ?? []) as { name: string }[];
+            const clash = shipped.find(
+              (w) => w.name.trim().toLowerCase() === name.toLowerCase(),
+            );
+            if (clash) {
+              return Promise.reject(
+                new Error(
+                  `djmanzo already ships an arrangement called "${clash.name}" — pick another name`,
+                ),
+              );
+            }
+            const next = held.filter((w) => w.name.toLowerCase() !== name.toLowerCase());
+            next.push({ ...(args.workspace as object), name } as { name: string });
+            next.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+            win.__kept = next;
+            return Promise.resolve(next);
+          }
+          if (cmd === "forget_workspace") {
+            const held = (win.__kept ??= []) as { name: string }[];
+            const name = String(args.name ?? "").trim().toLowerCase();
+            win.__kept = held.filter((w) => w.name.trim().toLowerCase() !== name);
+            return Promise.resolve(win.__kept);
           }
           if (cmd === "set_cockpit_workspace") {
             // Recorded as well as echoed. What a test needs to know about a

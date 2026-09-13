@@ -2315,6 +2315,28 @@ export const phasePriorities = () => invoke<string[]>("phase_priorities");
 export const cockpitSurfaces = () => invoke<Surface[]>("cockpit_surfaces");
 export const cockpitWorkspaces = () => invoke<Workspace[]>("cockpit_workspaces");
 
+/**
+ * The arrangements the DJ has saved under names of their own.
+ *
+ * Separate from the shipped ones, and shown separately: a DJ looking for the
+ * layout they built for their Saturday residency should not have to pick it out
+ * of twenty-three they have never opened.
+ */
+export const myWorkspaces = () => invoke<Workspace[]>("my_workspaces");
+
+/**
+ * Save the arrangement on screen under a name, and take back the collection.
+ *
+ * Rejects an empty name and one djmanzo already ships — with the sentence to
+ * show, because "two arrangements called Club" is a menu a DJ cannot use and
+ * the reason has to reach them.
+ */
+export const keepWorkspace = (name: string, workspace: Workspace) =>
+  invoke<Workspace[]>("keep_workspace", { name, workspace });
+
+export const forgetWorkspace = (name: string) =>
+  invoke<Workspace[]>("forget_workspace", { name });
+
 /** One of §79's locks, and the sentence beside its switch. */
 export interface LockOption {
   /** The slug stored in `Workspace.locked`. */

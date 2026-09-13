@@ -137,25 +137,39 @@ test.describe("§78's freeze and §79's locks", () => {
     await page.setViewportSize({ width: 1280, height: 1200 });
     const roomy = await scale();
     await page.setViewportSize({ width: 1280, height: 1000 });
+    // Waited for rather than read: the resize handler runs on the window's own
+    // event, and under a full parallel suite that can be a frame or two after
+    // `setViewportSize` returns. Reading straight away passed alone and failed
+    // about one run in ten together, which is the shape every flake in this
+    // repository has had.
+    await expect
+      .poll(scale, {
+        message:
+          "the density does not follow the window at all, so there is nothing " +
+          "here for a lock to stop",
+      })
+      .not.toBe(roomy);
     const cramped = await scale();
-    expect(
-      cramped,
-      "the density does not follow the window at all, so there is nothing here " +
-        "for a lock to stop",
-    ).not.toBe(roomy);
 
     await page.setViewportSize({ width: 1280, height: 1200 });
     await openLocks(page);
     await lock(page, "density").check();
     await expect(page.locator(".locks .freeze")).toHaveAttribute("aria-pressed", "false");
 
+    // Back to the roomy size, and waited for, so the "before" below is the
+    // settled figure rather than one caught mid-change.
+    await expect.poll(scale).toBe(roomy);
     const before = await scale();
     await page.setViewportSize({ width: 1280, height: 1000 });
-    await page.waitForTimeout(200);
+    // A sleep here and not a poll, deliberately: what is being asserted is that
+    // *nothing happens*, and there is no condition to wait for. Long enough for
+    // the resize handler to have run several times over.
+    await page.waitForTimeout(400);
     expect(
       await scale(),
       "the interface resized itself under a DJ who had told it not to",
     ).toBe(before);
+    expect(cramped, "the two window sizes fit the same band").not.toBe(roomy);
   });
 
   /**

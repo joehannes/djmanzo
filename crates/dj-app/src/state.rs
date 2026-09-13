@@ -988,6 +988,57 @@ impl AppState {
         Some(self.config_dir.lock().ok()?.clone()?.join("workspace.json"))
     }
 
+    /// The file the DJ's own named arrangements live in.
+    ///
+    /// Beside `workspace.json` rather than inside it, and the distinction is
+    /// §7's: that file is the shape the cockpit was last dragged into, which
+    /// changes every time a panel opens; this is the handful a DJ has decided
+    /// to keep and will go looking for by name.
+    fn my_workspaces_path(&self) -> Option<std::path::PathBuf> {
+        Some(
+            self.config_dir
+                .lock()
+                .ok()?
+                .clone()?
+                .join("my-workspaces.json"),
+        )
+    }
+
+    /// The arrangements the DJ has saved under names of their own.
+    ///
+    /// Empty rather than absent when there is nothing stored or the file cannot
+    /// be read, for the same reason `workspace` starts fresh on a corrupt file:
+    /// a list of saved layouts is not worth refusing to open over.
+    #[must_use]
+    pub fn my_workspaces(&self) -> Vec<crate::cockpit::Workspace> {
+        let Some(path) = self.my_workspaces_path() else {
+            return Vec::new();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Vec::new();
+        };
+        match serde_json::from_str(&text) {
+            Ok(kept) => kept,
+            Err(error) => {
+                tracing::warn!(%error, ?path, "your saved arrangements could not be read");
+                Vec::new()
+            }
+        }
+    }
+
+    /// Remember the DJ's own arrangements.
+    pub fn set_my_workspaces(&self, kept: &[crate::cockpit::Workspace]) {
+        let Some(path) = self.my_workspaces_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(kept) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "your saved arrangements will not survive a restart");
+        }
+    }
+
     /// How the cockpit was arranged when djmanzo last closed.
     ///
     /// `None` when there is nothing stored or what is stored cannot be read.

@@ -1938,6 +1938,81 @@ pub struct Resolved {
     pub permits: Permits,
 }
 
+// -- the DJ's own arrangements ----------------------------------------------
+
+/// Put an arrangement into the DJ's own collection, under a name they chose.
+///
+/// §7's promise is that the shipped arrangements are *starting points, not rigid
+/// identities* — a DJ picks one, moves what they like, and that is the point. It
+/// was only half kept: the edit survived a restart, because the cockpit stores
+/// whatever shape it was last dragged into, but it could not be **named**, so a
+/// DJ with a wedding layout and a club layout had one of them and a memory of
+/// the other. §103's *Modularity* criterion is the same gap said another way: *a
+/// user can construct a personal workflow*.
+///
+/// Pure, and taking both lists rather than reading them, so every rule here is
+/// testable without a config directory — which a test process does not have.
+///
+/// # Errors
+/// With the sentence a DJ reads. Two refusals, and both are about the picker
+/// being readable:
+///
+/// - **A name is required.** An arrangement called "" is a blank row in a menu.
+/// - **A shipped name may not be taken.** Two rows reading "Club" is a DJ
+///   choosing one of them and finding out afterwards which; there are
+///   twenty-three other words. Compared without case or surrounding space,
+///   because "club" and "Club " are the same word to everyone except a string
+///   comparison.
+///
+/// Saving over one of the DJ's **own** names is not a refusal — that is what
+/// saving is, and asking them to confirm it is a dialog in the middle of setting
+/// up.
+pub fn keep(
+    kept: &[Workspace],
+    shipped: &[Workspace],
+    workspace: &Workspace,
+    name: &str,
+) -> Result<Vec<Workspace>, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("an arrangement needs a name to be found by".to_owned());
+    }
+    let same = |a: &str, b: &str| a.trim().eq_ignore_ascii_case(b.trim());
+    if let Some(clash) = shipped.iter().find(|s| same(&s.name, name)) {
+        return Err(format!(
+            "djmanzo already ships an arrangement called {:?} — pick another name",
+            clash.name
+        ));
+    }
+
+    let mut out: Vec<Workspace> = kept
+        .iter()
+        .filter(|held| !same(&held.name, name))
+        .cloned()
+        .collect();
+    let mut saved = workspace.clone();
+    saved.name = name.to_owned();
+    out.push(saved);
+    // Sorted, so the picker does not reorder itself every time a DJ saves. Case
+    // insensitively, because a menu that puts "club" after "Wedding" is a menu
+    // whose order nobody can predict.
+    out.sort_by_key(|held| held.name.to_lowercase());
+    Ok(out)
+}
+
+/// Take one of the DJ's own arrangements out of the collection.
+///
+/// Silent about a name that is not there: forgetting something twice is the
+/// same as forgetting it once, and an error for it would only ever be seen by
+/// somebody who pressed a button that had already worked.
+#[must_use]
+pub fn forget(kept: &[Workspace], name: &str) -> Vec<Workspace> {
+    kept.iter()
+        .filter(|held| !held.name.trim().eq_ignore_ascii_case(name.trim()))
+        .cloned()
+        .collect()
+}
+
 /// Bring a workspace into what the cockpit can actually draw.
 ///
 /// Clamped and skipped rather than refused -- a workspace is a preference, and
@@ -3206,6 +3281,143 @@ mod tests {
             "locking the theme stopped the panels moving as well"
         );
         assert_eq!(resolved.permits, resolved.workspace.permits());
+    }
+
+    // -- §7 and §103's modularity ------------------------------------------
+
+    fn named(name: &str) -> Workspace {
+        let mut workspace = unlocked();
+        workspace.name = name.to_owned();
+        workspace
+    }
+
+    /// **The load-bearing one: saving under a name a DJ already used replaces
+    /// it, and saving under a name djmanzo ships does not.**
+    ///
+    /// Both, because each alone is a plausible implementation and each alone is
+    /// wrong. A save that always appended would give a DJ four rows called
+    /// "Wedding" after four evenings of adjusting one; a save that refused a
+    /// name already theirs would make "save" mean "save once" and put a delete
+    /// in front of every edit.
+    ///
+    /// And the shipped names are not theirs to take. Two rows reading "Club" is
+    /// a DJ choosing one of them and finding out afterwards which, in a menu
+    /// they reach for when the night changes.
+    #[test]
+    fn saving_replaces_your_own_name_and_refuses_one_djmanzo_ships() {
+        let shipped = workspaces();
+        let mine = keep(&[], &shipped, &named("x"), "Wedding").expect("a free name");
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].name, "Wedding");
+
+        let mut moved = named("x");
+        moved.decks = 4;
+        let after = keep(&mine, &shipped, &moved, "Wedding").expect("saving again");
+        assert_eq!(
+            after.len(),
+            1,
+            "a second save under the same name made a second arrangement, so \
+             four evenings of adjusting one leaves four rows called Wedding"
+        );
+        assert_eq!(after[0].decks, 4, "the save kept the old arrangement");
+
+        let taken = shipped[1].name.clone();
+        let refused =
+            keep(&mine, &shipped, &named("x"), &taken).expect_err("a shipped name was taken");
+        assert!(
+            refused.contains(&taken),
+            "the refusal does not say which name is taken: {refused}"
+        );
+    }
+
+    /// The comparison is on the word, not on the bytes.
+    ///
+    /// "club", "Club" and "Club " are one name to everybody except a string
+    /// comparison, and a DJ who typed the second is not asking for a second row.
+    #[test]
+    fn a_name_is_the_same_name_whatever_its_case_and_spacing() {
+        let shipped = workspaces();
+        let mine = keep(&[], &shipped, &named("x"), "Back Room").expect("a free name");
+        let again = keep(&mine, &shipped, &named("x"), "  back room  ").expect("the same name");
+        assert_eq!(again.len(), 1);
+        assert_eq!(
+            again[0].name, "back room",
+            "the name a DJ typed last is the one they get"
+        );
+        assert!(
+            keep(
+                &mine,
+                &shipped,
+                &named("x"),
+                &shipped[1].name.to_lowercase()
+            )
+            .is_err()
+        );
+    }
+
+    /// A name is required, and whitespace is not one.
+    #[test]
+    fn an_arrangement_with_no_name_is_refused_rather_than_stored_blank() {
+        let shipped = workspaces();
+        for nothing in ["", "   ", "\t"] {
+            assert!(
+                keep(&[], &shipped, &named("x"), nothing).is_err(),
+                "{nothing:?} was accepted as a name, so the picker has a blank row"
+            );
+        }
+    }
+
+    /// The picker's order does not depend on the order things were saved in.
+    #[test]
+    fn the_collection_is_sorted_so_the_picker_settles() {
+        let shipped = workspaces();
+        let mut mine = Vec::new();
+        for name in ["zulu", "Alpha", "mike"] {
+            mine = keep(&mine, &shipped, &named("x"), name).expect("a free name");
+        }
+        let order: Vec<&str> = mine.iter().map(|w| w.name.as_str()).collect();
+        assert_eq!(
+            order,
+            vec!["Alpha", "mike", "zulu"],
+            "a menu that puts `mike` after `zulu` is a menu whose order nobody \
+             can predict"
+        );
+    }
+
+    /// Forgetting takes one out, and forgetting twice is not an error.
+    #[test]
+    fn forgetting_removes_one_and_says_nothing_the_second_time() {
+        let shipped = workspaces();
+        let mine = keep(&[], &shipped, &named("x"), "Wedding").expect("a free name");
+        let mine = keep(&mine, &shipped, &named("x"), "Club Night").expect("a free name");
+        assert_eq!(mine.len(), 2);
+
+        let after = forget(&mine, " wedding ");
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].name, "Club Night");
+        assert_eq!(
+            forget(&after, "Wedding").len(),
+            1,
+            "forgetting something already gone removed something else"
+        );
+    }
+
+    /// What is saved is the arrangement, not the name it was saved from.
+    #[test]
+    fn saving_keeps_the_arrangement_and_takes_the_new_name() {
+        let shipped = workspaces();
+        let mut edited = shipped
+            .iter()
+            .find(|w| !w.surfaces.is_empty())
+            .cloned()
+            .expect("something ships with a panel in it");
+        edited.decks = 4;
+        let was = edited.surfaces.clone();
+
+        let mine = keep(&[], &shipped, &edited, "Mine").expect("a free name");
+        assert_eq!(mine[0].name, "Mine", "the preset's name came with it");
+        assert_eq!(mine[0].surfaces, was, "the panels did not come with it");
+        assert_eq!(mine[0].decks, 4);
     }
 
     /// Nothing that ships arrives locked.
