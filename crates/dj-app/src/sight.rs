@@ -43,9 +43,8 @@ pub enum Carrier {
     Master { pointer: &'static str },
     /// A field of the session context, relative to `/context`.
     Context { pointer: &'static str },
-    /// Held beside the assistant rather than on the snapshot: the posture the
-    /// DJ set and the occasion they declared.
-    Conduct,
+    /// Read beside the snapshot -- see [`Beside`].
+    Beside { held: Held },
     /// Not told, and why not. Never an empty string -- see the module note.
     Unseen { because: &'static str },
 }
@@ -56,6 +55,47 @@ impl Carrier {
     pub const fn told(self) -> bool {
         !matches!(self, Self::Unseen { .. })
     }
+}
+
+/// One of the things the briefing reads from somewhere other than the snapshot.
+///
+/// An enum rather than a field name in a string, so adding one is a match arm
+/// the compiler asks for rather than a lookup that silently finds nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Held {
+    Posture,
+    Occasion,
+    /// What has been played tonight.
+    History,
+    /// The last few things the DJ did.
+    Recent,
+    /// What is plugged in and what it can reach.
+    Hardware,
+    /// The arrangement on screen and what it is for.
+    Focus,
+}
+
+/// What the app reads for the briefing that the snapshot does not carry.
+///
+/// Assembled by the caller, because every one of these is a different lock and
+/// `sight` is a table and a formatter rather than a reader. Each is a `Vec` or
+/// a `String` that is allowed to be empty, and an empty one means the same
+/// thing as an absent snapshot field: `none`, said out loud.
+#[derive(Debug, Default, Clone)]
+pub struct Beside {
+    /// How much the DJ has allowed the assistant to do.
+    pub posture: String,
+    /// What the DJ declared the night to be.
+    pub occasion: String,
+    /// The records played tonight, oldest first.
+    pub history: Vec<String>,
+    /// The last few things the DJ did, oldest first.
+    pub recent: Vec<String>,
+    /// What is plugged in, in one line.
+    pub hardware: String,
+    /// The arrangement on screen.
+    pub focus: String,
 }
 
 /// One of the twenty-six things §40 says the AI context should include.
@@ -196,11 +236,14 @@ pub const ALL: &[Item] = &[
         "What the rail would offer next.",
         "the rail is computed from the library on demand and is not on the snapshot",
     ),
-    unseen(
-        "history",
-        "What has already been played tonight.",
-        "tonight's log is read back by a command rather than carried on the snapshot",
-    ),
+    Item {
+        name: "history",
+        about: "What has already been played tonight, oldest first.",
+        unit: "",
+        carrier: Carrier::Beside {
+            held: Held::History,
+        },
+    },
     unseen(
         "session plan",
         "The shape of the night, as a sequence.",
@@ -215,7 +258,9 @@ pub const ALL: &[Item] = &[
         name: "current venue/occasion",
         about: "What the DJ declared the night to be.",
         unit: "",
-        carrier: Carrier::Conduct,
+        carrier: Carrier::Beside {
+            held: Held::Occasion,
+        },
     },
     unseen(
         "audience context",
@@ -224,16 +269,21 @@ pub const ALL: &[Item] = &[
          when it closes -- so a briefing carrying it would go on claiming a room \
          nothing is looking at",
     ),
-    unseen(
-        "hardware",
-        "What is plugged in and what it can reach.",
-        "§53's controller profile is a command away rather than on the snapshot",
-    ),
+    Item {
+        name: "hardware",
+        about: "What is plugged in and what it can reach.",
+        unit: "",
+        carrier: Carrier::Beside {
+            held: Held::Hardware,
+        },
+    },
     Item {
         name: "assistant posture",
         about: "How much the DJ has allowed it to do.",
         unit: "",
-        carrier: Carrier::Conduct,
+        carrier: Carrier::Beside {
+            held: Held::Posture,
+        },
     },
     Item {
         name: "session phase",
@@ -243,17 +293,18 @@ pub const ALL: &[Item] = &[
             pointer: "/session",
         },
     },
-    unseen(
-        "recent actions",
-        "What the DJ has just done.",
-        "the session log is a command away, and the last few gestures are a \
-         different question from the state they left behind",
-    ),
-    unseen(
-        "current GUI focus",
-        "Which arrangement is on screen and what it is for.",
-        "the cockpit's workspace is a command away rather than on the snapshot",
-    ),
+    Item {
+        name: "recent actions",
+        about: "The last few things the DJ did.",
+        unit: "",
+        carrier: Carrier::Beside { held: Held::Recent },
+    },
+    Item {
+        name: "current GUI focus",
+        about: "Which arrangement is on screen and what it is for.",
+        unit: "",
+        carrier: Carrier::Beside { held: Held::Focus },
+    },
 ];
 
 /// What the assistant is told, as lines.
@@ -271,7 +322,7 @@ pub const ALL: &[Item] = &[
 /// "nobody told me about the loop" are different answers to "get out of the
 /// loop", and only one of them is true.
 #[must_use]
-pub fn brief(snapshot: &serde_json::Value, posture: &str, occasion: &str) -> Vec<String> {
+pub fn brief(snapshot: &serde_json::Value, beside: &Beside) -> Vec<String> {
     let mut lines = Vec::new();
 
     let decks = snapshot
@@ -311,9 +362,52 @@ pub fn brief(snapshot: &serde_json::Value, posture: &str, occasion: &str) -> Vec
         }
     }
 
-    lines.push(format!("assistant posture: {posture}"));
-    lines.push(format!("current venue/occasion: {occasion}"));
+    for item in ALL {
+        let Carrier::Beside { held } = item.carrier else {
+            continue;
+        };
+        // Exhaustive on purpose: a new `Held` is a compiler error here rather
+        // than a line that silently never appears.
+        let value = match held {
+            Held::Posture => one(&beside.posture),
+            Held::Occasion => one(&beside.occasion),
+            Held::Hardware => one(&beside.hardware),
+            Held::Focus => one(&beside.focus),
+            Held::History => many(&beside.history),
+            Held::Recent => many(&beside.recent),
+        };
+        lines.push(format!("{}: {value}", item.name));
+    }
     lines
+}
+
+/// One string, or the absence said out loud.
+fn one(value: &str) -> String {
+    if value.trim().is_empty() {
+        "none".to_owned()
+    } else {
+        value.trim().to_owned()
+    }
+}
+
+/// A list, oldest first, with a ceiling.
+///
+/// Twelve, and the *last* twelve. A night is hours long and its log is
+/// thousands of lines; what a question like "what have I been doing" is about
+/// is the recent end of it, and sending the whole thing would spend the
+/// context window on the warm-up.
+fn many(values: &[String]) -> String {
+    const KEEP: usize = 12;
+    if values.is_empty() {
+        return "none".to_owned();
+    }
+    let start = values.len().saturating_sub(KEEP);
+    let kept = values[start..].join("; ");
+    if start > 0 {
+        format!("(the last {KEEP} of {}) {kept}", values.len())
+    } else {
+        kept
+    }
 }
 
 /// An item's unit, ready to follow its name.
@@ -443,7 +537,7 @@ mod tests {
                     snapshot.pointer(&format!("/context{pointer}")).is_some()
                 }
                 // Not on the snapshot by definition.
-                Carrier::Conduct | Carrier::Unseen { .. } => continue,
+                Carrier::Beside { .. } | Carrier::Unseen { .. } => continue,
             };
             assert!(
                 found,
@@ -542,7 +636,17 @@ mod tests {
     /// repository has recorded most often.
     #[test]
     fn every_item_the_table_calls_gathered_reaches_the_briefing() {
-        let lines = brief(&captured(), "suggest", "club");
+        let lines = brief(
+            &captured(),
+            &Beside {
+                posture: "suggest".to_owned(),
+                occasion: "club".to_owned(),
+                history: vec!["one".to_owned()],
+                recent: vec!["deck 1 play".to_owned()],
+                hardware: "a controller with 2 jogs".to_owned(),
+                focus: "Autopilot".to_owned(),
+            },
+        );
         let text = lines.join("\n");
         for item in ALL {
             if !item.carrier.told() {
@@ -573,7 +677,14 @@ mod tests {
             "master": { "crossfader": 0.5 },
             "context": { "audio": { "loudness": 0.4 }, "session": null },
         });
-        let lines = brief(&snapshot, "watch", "wedding");
+        let lines = brief(
+            &snapshot,
+            &Beside {
+                posture: "watch".to_owned(),
+                occasion: "wedding".to_owned(),
+                ..Beside::default()
+            },
+        );
         let text = lines.join("\n");
 
         assert!(text.contains("deck 1: current tracks Something"), "{text}");
@@ -587,6 +698,67 @@ mod tests {
         assert!(text.contains("current venue/occasion: wedding"), "{text}");
     }
 
+    /// **What the caller gathered reaches the model, not just its name.**
+    ///
+    /// The names are checked above; this is the value. A `Beside` field that
+    /// was assembled, passed in and then dropped on the floor would leave the
+    /// panel saying the assistant can see the history and the model reading
+    /// the word "history" with nothing after it.
+    #[test]
+    fn what_the_caller_gathered_reaches_the_model() {
+        let beside = Beside {
+            posture: "assist".to_owned(),
+            occasion: "wedding".to_owned(),
+            history: vec!["deck 1 into deck 2 (blend)".to_owned()],
+            recent: vec!["deck 2 cue".to_owned()],
+            hardware: "DDJ: 2 decks, 2 jogs".to_owned(),
+            focus: "Autopilot (watching)".to_owned(),
+        };
+        let text = brief(&serde_json::json!({}), &beside).join("\n");
+
+        for wanted in [
+            "assist",
+            "wedding",
+            "deck 1 into deck 2 (blend)",
+            "deck 2 cue",
+            "DDJ: 2 decks, 2 jogs",
+            "Autopilot (watching)",
+        ] {
+            assert!(
+                text.contains(wanted),
+                "`{wanted}` never reached the model:\n{text}"
+            );
+        }
+    }
+
+    /// A six-hour night does not arrive whole.
+    #[test]
+    fn a_long_night_arrives_as_its_recent_end_and_says_so() {
+        let recent: Vec<String> = (1..=40).map(|n| format!("deck 1 cue {n}")).collect();
+        let text = brief(
+            &serde_json::json!({}),
+            &Beside {
+                recent,
+                ..Beside::default()
+            },
+        )
+        .join("\n");
+
+        assert!(
+            text.contains("deck 1 cue 40"),
+            "the newest is missing:\n{text}"
+        );
+        assert!(
+            !text.contains("deck 1 cue 28"),
+            "twenty-nine entries arrived, so the cap is not holding:\n{text}"
+        );
+        assert!(
+            text.contains("the last 12 of 40"),
+            "the briefing was cut and did not say so, which reads as a night with \
+             twelve actions in it:\n{text}"
+        );
+    }
+
     /// Numbers arrive short.
     #[test]
     fn a_tempo_is_two_decimals_and_a_whole_number_has_none() {
@@ -595,7 +767,7 @@ mod tests {
             "master": {},
             "context": {},
         });
-        let text = brief(&snapshot, "off", "club").join("\n");
+        let text = brief(&snapshot, &Beside::default()).join("\n");
         assert!(text.contains("BPM 128.50"), "{text}");
         assert!(text.contains("beat grids 0"), "{text}");
     }

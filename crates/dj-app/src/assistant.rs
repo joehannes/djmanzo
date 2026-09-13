@@ -169,7 +169,7 @@ fn context_lines(state: &AppState) -> Vec<String> {
         return Vec::new();
     };
     let (posture, occasion) = state.conduct().lock().map_or_else(
-        |_| ("unknown".to_owned(), "unknown".to_owned()),
+        |_| (String::new(), String::new()),
         |conduct| {
             (
                 conduct.posture.name().to_owned(),
@@ -177,7 +177,87 @@ fn context_lines(state: &AppState) -> Vec<String> {
             )
         },
     );
-    crate::sight::brief(&value, &posture, &occasion)
+
+    // Tonight, from the same log the Mixes panel reads. Derived rather than
+    // recorded beside the log, so a night that started before any of this
+    // existed has a history too -- and so this and that panel cannot disagree
+    // about what was played.
+    let log = state.bus().log();
+    let history: Vec<String> = crate::mixes::handovers(&log)
+        .iter()
+        .map(|mix| {
+            format!(
+                "deck {} into deck {} ({})",
+                mix.out.human_number(),
+                mix.into.human_number(),
+                mix.style.as_str()
+            )
+        })
+        .collect();
+
+    // What the DJ just did, in the action text a mapping or a script would
+    // use. The same words everywhere: a model reading a line it could emit
+    // back is the whole of ADR-0003's argument for one vocabulary.
+    let mut recent: Vec<String> = log
+        .iter()
+        .rev()
+        .take(12)
+        .map(|entry| entry.event.to_line())
+        .collect();
+    recent.reverse();
+
+    let hardware = hands_line(state);
+
+    // §41 already lets the assistant ask for an arrangement; §40 is the other
+    // half -- knowing which one is on screen before asking for another.
+    let focus = state.workspace().map_or_else(String::new, |workspace| {
+        format!("{} ({})", workspace.name, workspace.about)
+    });
+
+    crate::sight::brief(
+        &value,
+        &crate::sight::Beside {
+            posture,
+            occasion,
+            history,
+            recent,
+            hardware,
+            focus,
+        },
+    )
+}
+
+/// §53's controller profile, as one line.
+///
+/// The counts rather than the mapping: what matters to an answer is whether
+/// there is a jog to nudge and whether the stems can be reached by hand, and a
+/// list of every binding would be the mapping file in a prompt.
+fn hands_line(state: &AppState) -> String {
+    let control = state.control();
+    let Some(open) = control.status(None).open_mapping else {
+        return String::new();
+    };
+    let Some(mapping) = control
+        .mappings()
+        .into_iter()
+        .find(|mapping| mapping.name == open)
+    else {
+        return String::new();
+    };
+    let hands = mapping.hands;
+    format!(
+        "{}: {} decks, {} jogs, {} pads, {} knobs, {}",
+        mapping.name,
+        hands.decks,
+        hands.jogs,
+        hands.pads,
+        hands.knobs,
+        if hands.stems {
+            "reaches the stems"
+        } else {
+            "no stem controls"
+        }
+    )
 }
 
 /// The two halves are deliberately separate: interpretation produces validated

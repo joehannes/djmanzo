@@ -97,9 +97,9 @@
   },
   {
     "name": "history",
-    "about": "What has already been played tonight.",
-    "told": false,
-    "source": "tonight's log is read back by a command rather than carried on the snapshot"
+    "about": "What has already been played tonight, oldest first.",
+    "told": true,
+    "source": "tonight so far"
   },
   {
     "name": "session plan",
@@ -128,8 +128,8 @@
   {
     "name": "hardware",
     "about": "What is plugged in and what it can reach.",
-    "told": false,
-    "source": "§53's controller profile is a command away rather than on the snapshot"
+    "told": true,
+    "source": "what is plugged in"
   },
   {
     "name": "assistant posture",
@@ -145,14 +145,14 @@
   },
   {
     "name": "recent actions",
-    "about": "What the DJ has just done.",
-    "told": false,
-    "source": "the session log is a command away, and the last few gestures are a different question from the state they left behind"
+    "about": "The last few things the DJ did.",
+    "told": true,
+    "source": "what you just did"
   },
   {
     "name": "current GUI focus",
     "about": "Which arrangement is on screen and what it is for.",
-    "told": false,
-    "source": "the cockpit's workspace is a command away rather than on the snapshot"
+    "told": true,
+    "source": "what is on screen"
   }
 ]

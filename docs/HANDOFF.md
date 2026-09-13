@@ -1336,16 +1336,20 @@ The largest of them, in the order they are worth doing:
    never looking); every item the table calls gathered appears in the briefing;
    and every absence carries more than thirty characters of reason.
 
-   **The unseen half is on screen on purpose.** Eleven of the twenty-six are
+   **The unseen half is on screen on purpose.** Seven of the twenty-six are
    not gathered, and the assistant panel lists them with the reason beside
    each. A DJ deciding whether to trust an answer needs "it could not see your
-   history" far more than it needs the reassuring list. If you gather one of
-   the eleven, move it in `sight::ALL` and the panel, the fixture and the
-   browser test follow by themselves.
+   history" far more than it needs the reassuring list. Gathering one is a
+   `Held` variant and a match arm -- the compiler asks for the arm -- plus a
+   read in `dj_app::assistant::context_lines`; the panel, the fixture and the
+   browser test then follow by themselves, which is how four of the original
+   eleven were closed in the commit after the first.
 
    **Absence is said out loud rather than left out.** `loop state none` costs
    two tokens and "there is no loop" and "nobody told me about the loop" are
-   different answers to "get out of the loop".
+   different answers to "get out of the loop". A list that was *cut* says so too
+   -- `(the last 12 of 40)` -- because a briefing silently truncated reads as a
+   night with twelve actions in it.
 
 13. **§90 has one ratchet and four honest refusals, and the split is the
    lesson.** A ratchet is only worth having where the number means the same

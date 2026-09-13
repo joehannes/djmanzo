@@ -10574,7 +10574,15 @@ pub fn assistant_sight() -> Vec<SightDto> {
                 crate::sight::Carrier::Deck { .. } => "each deck".to_owned(),
                 crate::sight::Carrier::Master { .. } => "the mixer".to_owned(),
                 crate::sight::Carrier::Context { .. } => "the night".to_owned(),
-                crate::sight::Carrier::Conduct => "what you set".to_owned(),
+                crate::sight::Carrier::Beside { held } => match held {
+                    crate::sight::Held::Posture | crate::sight::Held::Occasion => {
+                        "what you set".to_owned()
+                    }
+                    crate::sight::Held::History => "tonight so far".to_owned(),
+                    crate::sight::Held::Recent => "what you just did".to_owned(),
+                    crate::sight::Held::Hardware => "what is plugged in".to_owned(),
+                    crate::sight::Held::Focus => "what is on screen".to_owned(),
+                },
                 crate::sight::Carrier::Unseen { because } => because.to_owned(),
             },
         })
