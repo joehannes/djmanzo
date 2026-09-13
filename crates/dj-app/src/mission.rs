@@ -807,7 +807,8 @@ mod tests {
     fn the_harness_and_rust_agree_about_an_unopened_bar() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/e2e/shell.ts");
         let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the browser harness at {path}: {e}"));
+            .unwrap_or_else(|e| panic!("could not read the browser harness at {path}: {e}"))
+            .replace("\r\n", "\n");
         let table = source
             .split_once("mission_bar: [")
             .and_then(|(_, rest)| rest.split_once("\n  ],"))
@@ -915,7 +916,8 @@ mod tests {
             "/../../ui/src/MissionBar.svelte"
         );
         let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the mission bar at {path}: {e}"));
+            .unwrap_or_else(|e| panic!("could not read the mission bar at {path}: {e}"))
+            .replace("\r\n", "\n");
         let table = source
             .split_once("const MARK: Record<string, string> = {")
             .and_then(|(_, rest)| rest.split_once("};"))
@@ -947,7 +949,8 @@ mod tests {
             "/../../ui/src/MissionBar.svelte"
         );
         let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the mission bar at {path}: {e}"));
+            .unwrap_or_else(|e| panic!("could not read the mission bar at {path}: {e}"))
+            .replace("\r\n", "\n");
 
         for level in Level::ALL {
             if level == Level::Quiet {

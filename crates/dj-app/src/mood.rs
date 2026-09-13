@@ -437,7 +437,8 @@ mod tests {
             "/../../ui/src/controls/themes/packages.ts"
         );
         let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the theme packages at {path}: {e}"));
+            .unwrap_or_else(|e| panic!("could not read the theme packages at {path}: {e}"))
+            .replace("\r\n", "\n");
 
         let ids: Vec<String> = source
             .lines()

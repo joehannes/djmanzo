@@ -2299,7 +2299,8 @@ mod tests {
     fn the_harness_and_rust_agree_about_the_bands() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/e2e/shell.ts");
         let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the browser harness at {path}: {e}"));
+            .unwrap_or_else(|e| panic!("could not read the browser harness at {path}: {e}"))
+            .replace("\r\n", "\n");
 
         // The outer array closes on a line of its own; every inner one closes
         // mid-line. Splitting on the first `],` would stop after one row.
@@ -2412,7 +2413,8 @@ mod tests {
     fn every_role_has_a_colour_and_the_pairs_that_must_differ_do() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/app.css");
         let sheet = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the stylesheet at {path}: {e}"));
+            .unwrap_or_else(|e| panic!("could not read the stylesheet at {path}: {e}"))
+            .replace("\r\n", "\n");
 
         // The first `:root` block is where the derived tokens live; a later
         // block redefines the palette for the light theme and must not be read
@@ -2475,6 +2477,7 @@ mod tests {
         let drawn: String = components
             .iter()
             .filter_map(|path| std::fs::read_to_string(path).ok())
+            .map(|source| source.replace("\r\n", "\n"))
             .collect();
         for role in Role::ALL {
             assert!(
@@ -2650,7 +2653,8 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../ui/src/controls/themes/packages.ts"),
         )
-        .expect("the theme packages are beside the interface");
+        .expect("the theme packages are beside the interface")
+        .replace("\r\n", "\n");
         for workspace in workspaces() {
             if workspace.theme.is_empty() {
                 continue;
@@ -2731,7 +2735,8 @@ mod tests {
     fn every_preset_places_only_surfaces_the_shell_draws() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/App.svelte");
         let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the shell at {path}: {e}"));
+            .unwrap_or_else(|e| panic!("could not read the shell at {path}: {e}"))
+            .replace("\r\n", "\n");
         let table = source
             .split_once("const DRAWN = [")
             .and_then(|(_, rest)| rest.split_once("] as const;"))
@@ -2775,7 +2780,8 @@ mod tests {
     fn the_harness_and_rust_agree_about_the_presets() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/e2e/shell.ts");
         let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the browser harness at {path}: {e}"));
+            .unwrap_or_else(|e| panic!("could not read the browser harness at {path}: {e}"))
+            .replace("\r\n", "\n");
         let table = source
             .split_once("cockpit_workspaces: [")
             .and_then(|(_, rest)| rest.split_once("\n  ],"))
@@ -2844,7 +2850,8 @@ mod tests {
     fn every_phase_promotes_only_surfaces_the_shell_draws() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/App.svelte");
         let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the shell at {path}: {e}"));
+            .unwrap_or_else(|e| panic!("could not read the shell at {path}: {e}"))
+            .replace("\r\n", "\n");
         let table = source
             .split_once("const DRAWN = [")
             .and_then(|(_, rest)| rest.split_once("] as const;"))

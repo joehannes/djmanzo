@@ -437,6 +437,15 @@ target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 **`pkill -f "something"` matches its own shell.** It kills the command that
 ran it. Use `pkill -x <name>`.
 
+**A test that reads a source file must normalise line endings.** CI runs the
+suite on Windows, where git checks the repository out with CRLF, so a scan for
+`"\n}\n"` — a closing brace at column zero — finds nothing in a file whose lines
+end `\r\n`. §87's guard failed there and only there, reporting that `put_on_deck`
+had moved when it had not. The house-pattern tests that came before it all
+happen to search for `"\n}"`, which *is* a substring of `"\r\n}"`, which is why
+this took until the twelfth one to bite. Every source-reading test in `dj-app`
+now does `.replace("\r\n", "\n")` on the way in; the next one should too.
+
 **`setViewportSize` returning is not the resize handler having run.** The
 density follows the window on the window's own `resize` event, so a test that
 sets the size and reads `--density` on the next line passes alone and fails

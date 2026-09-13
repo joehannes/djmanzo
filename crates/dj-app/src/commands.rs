@@ -10686,8 +10686,19 @@ mod one_source_of_truth {
     #[test]
     fn only_the_load_funnel_says_what_is_on_a_deck() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        // Line endings normalised before anything looks for one.
+        //
+        // This is a test that reads Rust source, and CI checks the repository
+        // out on Windows, where git hands it over with CRLF. The search below is
+        // for a closing brace at column zero -- `"\n}\n"` -- which is simply not
+        // in a file whose lines end `\r\n`, so the test failed there and only
+        // there, with a message about `put_on_deck` having moved when it had
+        // not. Every other house-pattern test in this workspace happens to
+        // search for `"\n}"`, which *is* a substring of `"\r\n}"`, which is why
+        // this is the first one to hit it.
         let funnel = std::fs::read_to_string(root.join("commands.rs"))
-            .expect("this file is beside the others");
+            .expect("this file is beside the others")
+            .replace("\r\n", "\n");
 
         // `put_on_deck`'s body: from its signature to the next line that closes
         // a top-level item. Crude and sufficient — a function that stopped
@@ -10735,7 +10746,9 @@ mod one_source_of_truth {
             {
                 continue;
             }
-            let source = std::fs::read_to_string(&path).expect("a readable source");
+            let source = std::fs::read_to_string(&path)
+                .expect("a readable source")
+                .replace("\r\n", "\n");
             let production = source
                 .split("#[cfg(test)]")
                 .next()
