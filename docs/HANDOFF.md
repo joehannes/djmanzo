@@ -437,6 +437,25 @@ target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 **`pkill -f "something"` matches its own shell.** It kills the command that
 ran it. Use `pkill -x <name>`.
 
+**A socket that reaches the engine has not reached the application.** The
+network protocol dispatched straight at `ActionBus`, which is *not* where an
+action finishes: `deck 1 eject` has to clear the deck's name and its analysis,
+which live in `dj_app`, and `record on` has to open a file, which the engine
+cannot do at all. So a socket ejected the audio and left the header showing the
+record, and answered "accepted" to a recording it had not started. Anything that
+takes actions from outside goes through `commands::perform`, which is why
+`dj_net::Carry` is a required argument rather than an optional one: the way this
+breaks is a caller forgetting it.
+
+**A seam tested only in the type it expects cannot see a verb that is not one.**
+djmanzo's grammar is wider than `Action` — `load deck 1 <track-id>` is in every
+session file and `Action::parse` has never accepted it. `dj_net::Carry` first
+took an `Action`, so dj-net parsed each line before the host saw it and refused,
+at its own door, the one verb that had just been added for every origin to
+share. Both sides of the seam were green, because every test on both sides was
+asking about actions. It was found by opening the port and sending the line.
+When a boundary converts, test it with something that does not convert.
+
 **A polled panel is not a stream of offers.** Every panel here refreshes on a
 timer — the Next rail, the mission bar, the assistant. Anything that counts what
 the DJ was *shown* has to count the thing rather than the answers: §43's fatigue

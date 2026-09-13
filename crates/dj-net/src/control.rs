@@ -44,6 +44,15 @@ pub enum ErrorCode {
     /// Too many requests too quickly. The connection stays open: this is a
     /// client to slow down, not one to throw out.
     TooFast,
+    /// The action was in the grammar and the application would not carry it
+    /// out.
+    ///
+    /// Distinct from [`ErrorCode::BadAction`] on purpose: that one means the
+    /// client sent something djmanzo has never understood and should be fixed;
+    /// this one means a verb that usually works did not this time — no device
+    /// open, a deck that is not there, a recording that cannot be started — and
+    /// the same frame sent a minute later may be accepted.
+    Refused,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -68,6 +77,59 @@ pub enum ControlError {
     Action(#[from] dj_core::action::ParseError),
     #[error("the action queue is full")]
     QueueFull,
+    #[error("{0}")]
+    Refused(String),
+}
+
+/// Where a parsed action goes.
+///
+/// **The bus is not always the right answer, and that was a defect.** Several
+/// verbs in the vocabulary mean something *outside* the engine: `deck 1 eject`
+/// has to clear the deck's name and its analysis, which live in the
+/// application, and `record on` has to open a file, which the engine cannot do
+/// at all. A socket that dispatched straight at the bus therefore ejected in
+/// the engine and left the interface showing a record that was no longer on the
+/// deck, and started no recording while answering `accepted`.
+///
+/// §87 is the section that names this: *if track loading originates from
+/// browser, assistant, preset, controller, keyboard, network or drag & drop,
+/// the resulting UI must look identical*. It was not identical, and it was the
+/// network that differed, because that origin was the only one not going
+/// through the application's own entry point.
+///
+/// So the service is handed somewhere to put an action rather than assuming it.
+/// `dj-net` keeps the bus as its own default — it has no application to ask —
+/// and djmanzo passes `commands::perform`.
+pub trait Carry: std::fmt::Debug + Send + Sync {
+    /// Carry out one action.
+    ///
+    /// # Errors
+    /// [`ControlError::Refused`] with the application's own sentence, or
+    /// [`ControlError::QueueFull`].
+    fn carry(&self, action: Action) -> Result<(), ControlError>;
+
+    /// Carry out one **line** of the public grammar.
+    ///
+    /// Separate from [`Carry::carry`] because the host's vocabulary can be
+    /// wider than [`Action`]'s, and djmanzo's is: `load deck 1 <track-id>` is a
+    /// line every session file contains and `Action::parse` has never accepted
+    /// it, on purpose — a load carries an `Arc` and nothing external should be
+    /// inventing one, so it is a *command* rather than an action.
+    ///
+    /// Parsing here and handing over an `Action` therefore refused, at dj-net's
+    /// door, a line the application performs perfectly well — which is how §87's
+    /// network origin came to be the one that could not load. It was found by
+    /// opening the port and sending the line, and not by any test: every test
+    /// on both sides of this seam was asking about actions.
+    ///
+    /// The default is what a host with no wider vocabulary wants.
+    ///
+    /// # Errors
+    /// As [`Carry::carry`], plus a parse error when the line is not in the
+    /// grammar at all.
+    fn carry_line(&self, line: &str) -> Result<(), ControlError> {
+        self.carry(Action::parse(line)?)
+    }
 }
 
 /// Applies control requests through the public action bus and registry only.
@@ -83,6 +145,8 @@ pub enum ControlError {
 pub struct ControlService<C> {
     bus: Arc<ActionBus<C>>,
     registry: Arc<ParameterRegistry>,
+    /// Where actions go, when the host has somewhere better than the bus.
+    carrier: Option<Arc<dyn Carry>>,
 }
 
 impl<C> ControlService<C>
@@ -91,7 +155,44 @@ where
 {
     #[must_use]
     pub fn new(bus: Arc<ActionBus<C>>, registry: Arc<ParameterRegistry>) -> Self {
-        Self { bus, registry }
+        Self {
+            bus,
+            registry,
+            carrier: None,
+        }
+    }
+
+    /// Send actions here instead of straight at the bus.
+    ///
+    /// See [`Carry`]. The registry is still read directly — a parameter read is
+    /// a read, and there is nothing for an application to intercept in it.
+    #[must_use]
+    pub fn carried_by(mut self, carrier: Arc<dyn Carry>) -> Self {
+        self.carrier = Some(carrier);
+        self
+    }
+
+    /// One place an already-parsed action goes. OSC's road.
+    fn send(&self, action: Action) -> Result<(), ControlError> {
+        match &self.carrier {
+            Some(carrier) => carrier.carry(action),
+            None => self
+                .bus
+                .dispatch(action)
+                .map_err(|_: BusFull| ControlError::QueueFull),
+        }
+    }
+
+    /// One place a line of the grammar goes.
+    ///
+    /// Unparsed when there is a carrier, so the host's vocabulary decides what
+    /// the line means. Parsed here when there is not, because the bus takes
+    /// actions and nothing else.
+    fn send_line(&self, line: &str) -> Result<(), ControlError> {
+        match &self.carrier {
+            Some(carrier) => carrier.carry_line(line),
+            None => self.send(Action::parse(line)?),
+        }
     }
 
     /// Handles one frame. Transport implementations supply their own framing,
@@ -121,17 +222,13 @@ where
     /// # Errors
     /// When the engine's queue is full.
     pub fn dispatch(&self, action: Action) -> Result<(), ControlError> {
-        self.bus
-            .dispatch(action)
-            .map_err(|_: BusFull| ControlError::QueueFull)
+        self.send(action)
     }
 
     pub fn handle(&self, request: ControlRequest) -> Result<ControlResponse, ControlError> {
         match request {
             ControlRequest::Action { action } => {
-                self.bus
-                    .dispatch(Action::parse(&action)?)
-                    .map_err(|_: BusFull| ControlError::QueueFull)?;
+                self.send_line(&action)?;
                 Ok(ControlResponse::Accepted)
             }
             // Answered rather than refused so a client may greet a server that
@@ -158,6 +255,7 @@ impl ControlError {
             Self::Json(_) => ErrorCode::BadRequest,
             Self::Action(_) => ErrorCode::BadAction,
             Self::QueueFull => ErrorCode::QueueFull,
+            Self::Refused(_) => ErrorCode::Refused,
         }
     }
 }
@@ -182,6 +280,133 @@ mod tests {
             ControlService::new(Arc::new(bus), Arc::new(ParameterRegistry::new())),
             consumer,
         )
+    }
+
+    /// **The load-bearing one for §87: a host can say where actions go.**
+    ///
+    /// Before this the service dispatched straight at the bus, and so skipped
+    /// everything djmanzo does around an action — `eject` left the interface
+    /// showing a record that was no longer on the deck, and `record on` was
+    /// answered "accepted" having started nothing, because the engine cannot
+    /// open a file. The network was the one of §87's seven origins not going
+    /// through the application's own entry point, which is exactly why it was
+    /// the one whose resulting state differed.
+    ///
+    /// Both halves are asserted. The carrier gets the action, and **the bus does
+    /// not** — a service that helpfully did both would double every action a
+    /// socket sent.
+    #[test]
+    fn a_carrier_gets_the_action_instead_of_the_bus() {
+        #[derive(Debug, Default)]
+        struct Held(std::sync::Mutex<Vec<Action>>);
+        impl Carry for Held {
+            fn carry(&self, action: Action) -> Result<(), ControlError> {
+                self.0.lock().unwrap().push(action);
+                Ok(())
+            }
+        }
+
+        let (bus, mut consumer) = ActionBus::<Command>::new(4);
+        let held = Arc::new(Held::default());
+        let service = ControlService::new(Arc::new(bus), Arc::new(ParameterRegistry::new()))
+            .carried_by(held.clone());
+
+        assert_eq!(
+            service.handle_json(r#"{"type":"action","action":"deck 1 eject"}"#),
+            ControlResponse::Accepted
+        );
+        assert_eq!(
+            held.0.lock().unwrap().as_slice(),
+            &[Action::parse("deck 1 eject").unwrap()],
+            "the host was handed nowhere to put the action and it went to the \
+             bus anyway, which is the state §87 found"
+        );
+        assert!(
+            consumer.pop().is_err(),
+            "the action reached the bus as well as the host, so a socket sends \
+             everything twice"
+        );
+
+        // And OSC, which arrives already parsed, takes the same road.
+        service
+            .dispatch(Action::parse("deck 2 play").unwrap())
+            .unwrap();
+        assert_eq!(held.0.lock().unwrap().len(), 2);
+        assert!(consumer.pop().is_err());
+    }
+
+    /// **A host whose vocabulary is wider than `Action`'s gets the line.**
+    ///
+    /// The defect the tests on both sides of this seam could not see, because
+    /// every one of them was asking about *actions*. djmanzo's grammar has one
+    /// verb that is not an action — `load deck 1 <track-id>`, which is in every
+    /// session file — and parsing here refused it at dj-net's door while the
+    /// application would have performed it. §87's network origin was therefore
+    /// the one origin that could not load, after all the work to make sure it
+    /// could. It was found by opening the port and sending the line.
+    #[test]
+    fn a_line_the_grammar_refuses_still_reaches_a_host_that_understands_it() {
+        #[derive(Debug, Default)]
+        struct Wider(std::sync::Mutex<Vec<String>>);
+        impl Carry for Wider {
+            fn carry(&self, _: Action) -> Result<(), ControlError> {
+                unreachable!("the line should not have been parsed first")
+            }
+            fn carry_line(&self, line: &str) -> Result<(), ControlError> {
+                self.0.lock().unwrap().push(line.to_owned());
+                Ok(())
+            }
+        }
+
+        let (bus, _consumer) = ActionBus::<Command>::new(4);
+        let wider = Arc::new(Wider::default());
+        let service = ControlService::new(Arc::new(bus), Arc::new(ParameterRegistry::new()))
+            .carried_by(wider.clone());
+
+        let line = "load deck 1 abababababababababababababababababababababababababababababababab";
+        assert!(
+            Action::parse(line).is_err(),
+            "this line is now an action, so this test is measuring nothing"
+        );
+        assert_eq!(
+            service.handle_json(
+                &serde_json::to_string(&ControlRequest::Action {
+                    action: line.to_owned()
+                })
+                .unwrap()
+            ),
+            ControlResponse::Accepted,
+            "the service parsed the line itself and refused a verb the host has"
+        );
+        assert_eq!(wider.0.lock().unwrap().as_slice(), &[line.to_owned()]);
+    }
+
+    /// A refusal reaches the client as a refusal, with the reason.
+    ///
+    /// Its own code rather than `bad_action`: the client did not send something
+    /// wrong, the application would not do it *now*. A socket told its verb is
+    /// not in the grammar goes looking for a bug in itself.
+    #[test]
+    fn an_application_that_refuses_says_so_and_says_why() {
+        #[derive(Debug)]
+        struct No;
+        impl Carry for No {
+            fn carry(&self, _: Action) -> Result<(), ControlError> {
+                Err(ControlError::Refused("no device is open".to_owned()))
+            }
+        }
+
+        let (bus, _consumer) = ActionBus::<Command>::new(4);
+        let service = ControlService::new(Arc::new(bus), Arc::new(ParameterRegistry::new()))
+            .carried_by(Arc::new(No));
+
+        assert_eq!(
+            service.handle_json(r#"{"type":"action","action":"deck 1 play"}"#),
+            ControlResponse::Error {
+                code: ErrorCode::Refused,
+                message: "no device is open".to_owned(),
+            }
+        );
     }
 
     #[test]

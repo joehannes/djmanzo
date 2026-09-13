@@ -709,6 +709,41 @@ pub async fn load_sample(
     Ok(dto)
 }
 
+/// `<deck> <track-id>` — §87's load, from wherever it came.
+///
+/// Decoded on the calling thread. That is `djmanzo-control` for a controller,
+/// which is djmanzo's own thread and exists to keep actions in the order they
+/// were played — so a load blocking it for the length of a file read blocks
+/// the next action on that controller, which is the ordering the thread is for.
+/// It is never the audio thread and never the interface's.
+///
+/// # Errors
+/// A sentence naming which half is wrong: the deck, the id, the library row or
+/// the file. A controller button bound to a record that has been moved off the
+/// disk should say which record, not "load failed".
+fn load_by_id(state: &AppState, rest: &str) -> Result<LoadedTrackDto, String> {
+    let (deck, track) = rest
+        .trim()
+        .split_once(char::is_whitespace)
+        .ok_or_else(|| format!("a load needs a deck and a track id: {rest:?}"))?;
+    let deck_id = deck
+        .trim()
+        .parse::<u8>()
+        .ok()
+        .and_then(dj_core::DeckId::from_human)
+        .ok_or_else(|| format!("not a deck: {:?}", deck.trim()))?;
+    let id = dj_core::TrackId::from_hex(track.trim())
+        .ok_or_else(|| format!("not a track id: {:?}", track.trim()))?;
+
+    let db = library(state)?;
+    let found = db
+        .track(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no track {} in the library", id.to_hex()))?;
+    let decoded = decode_file(&found.path).map_err(|e| e.to_string())?;
+    put_on_deck(state, deck_id, decoded)
+}
+
 /// A sample, as the interface names it after a load.
 #[derive(Debug, Clone, Serialize)]
 pub struct LoadedSampleDto {
@@ -1019,8 +1054,51 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
 /// When the text is not in the vocabulary, or the engine is not accepting
 /// commands because no device is open.
 pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
-    let parsed = Action::parse(action).map_err(|e| format!("{action:?}: {e}"))?;
+    // §87's missing origins, before anything else, because a load is not an
+    // `Action` and `Action::parse` would refuse it.
+    //
+    // §87 lists seven places a load can come from and requires the resulting
+    // state to be identical. Five of them already arrived at `put_on_deck` --
+    // the browser, a drop, the Next rail, the assistant's staging, the automix.
+    // **A controller and the line protocol could not load at all**, because
+    // loading is deliberately outside the action vocabulary
+    // ([ADR-0003](../../../docs/adr/0003-action-bus-and-parameter-registry.md):
+    // it carries an `Arc`, and nothing external should be inventing one).
+    //
+    // The vocabulary for it already existed, in the one place a load has always
+    // had to be written down: `dj_control::SessionEvent::to_line` writes
+    // `load deck 1 <track-id>` into every session file, and `parse_line` reads
+    // it back. This is the same line, live. So a set replayed from its log and
+    // a set driven from a controller speak one language, and there is no second
+    // spelling to keep in step.
+    //
+    // **By id, never by path.** A track id names a record in the DJ's own
+    // library and the path comes from the row; accepting a path here would hand
+    // anything that can reach the bus -- including a socket -- a way to make
+    // djmanzo read an arbitrary file. That is a different feature with a
+    // different conversation attached to it, and §87 does not ask for it.
+    if let Some(rest) = action.trim().strip_prefix("load deck ") {
+        return load_by_id(state, rest).map(|_| ());
+    }
 
+    let parsed = Action::parse(action).map_err(|e| format!("{action:?}: {e}"))?;
+    perform_action(state, parsed)
+}
+
+/// The body of [`perform`], for a caller that has an [`Action`] already.
+///
+/// Split out for the network, which parses before it reaches djmanzo: a socket
+/// used to dispatch straight at the bus, and so skipped every interception
+/// below. `deck 1 eject` ejected in the engine and left the interface showing a
+/// record that was no longer on the deck; `record on` was forwarded to an engine
+/// that cannot open a file, and answered "accepted" having started nothing. §87
+/// is the section that names it — the network was the one origin not going
+/// through the application's own entry point, so it was the one whose resulting
+/// state differed.
+///
+/// # Errors
+/// As [`perform`], minus the parse.
+pub fn perform_action(state: &AppState, parsed: Action) -> Result<(), String> {
     // A hand arrived on a control. Recorded before the action is carried out,
     // so an autopilot tick that lands between the two still sees the takeover
     // -- the wrong order here would let the assistant move a fader in the
@@ -6737,8 +6815,15 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
     let needle = query.trim();
     let mut out = Vec::new();
 
-    // Tier 1: the query itself, when the parser accepts it.
-    if !needle.is_empty() && dj_core::Action::parse(needle).is_ok() {
+    // Tier 1: the query itself, when djmanzo can perform it.
+    //
+    // `SessionEvent::parse_line` rather than `Action::parse`, because a load is
+    // not an action and the palette would otherwise refuse a line `perform`
+    // accepts — a DJ typing `load deck 1 <id>` would be told the vocabulary does
+    // not have it, and then find that it does. That parser is the session log's,
+    // which makes the three readers of this language one language: what a set
+    // file records, what the palette offers, and what the bus performs.
+    if !needle.is_empty() && dj_control::SessionEvent::parse_line(needle).is_ok() {
         out.push(PaletteEntryDto {
             label: format!("Run: {needle}"),
             about: "The vocabulary accepts this exactly as typed.".to_owned(),
@@ -9374,6 +9459,7 @@ pub fn remote_status(state: State<'_, AppState>) -> crate::remote::RemoteStatus 
 /// with no token.
 #[tauri::command]
 pub fn start_remote(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     address: String,
     token: Option<String>,
@@ -9386,6 +9472,7 @@ pub fn start_remote(
         token.filter(|t| !t.is_empty()),
         Arc::clone(state.bus()),
         state.registry(),
+        crate::remote::booth(app),
     )
 }
 
@@ -9399,15 +9486,19 @@ pub fn start_remote(
 /// When the address cannot be parsed or bound, or is not loopback.
 #[tauri::command]
 pub fn start_osc(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     address: String,
 ) -> Result<crate::remote::RemoteStatus, String> {
     let parsed: std::net::SocketAddr = address
         .parse()
         .map_err(|_| format!("{address:?} is not an address and port, like 127.0.0.1:9000"))?;
-    state
-        .remote()
-        .start_osc(parsed, Arc::clone(state.bus()), state.registry())
+    state.remote().start_osc(
+        parsed,
+        Arc::clone(state.bus()),
+        state.registry(),
+        crate::remote::booth(app),
+    )
 }
 
 /// Close the OSC port.
@@ -10473,5 +10564,119 @@ mod rail_tests {
         assert_eq!(rail_size(3, 5, &fatigue), 3);
         assert_eq!(rail_size(0, 5, &fatigue), 1, "a rail of none is not a rail");
         assert_eq!(rail_size(10_000, 5, &fatigue), 100);
+    }
+}
+
+#[cfg(test)]
+mod one_source_of_truth {
+    /// **§87's second sentence, as a rule: *one source of state truth*.**
+    ///
+    /// `load_origins.rs` proves two origins agree today. This is what stops the
+    /// third from disagreeing, and it is the half that matters more, because
+    /// the way this breaks is not a redesign — it is somebody adding an origin
+    /// and setting the deck's name themselves, which is two lines and looks
+    /// obviously correct. The deck would then have a title and no waveform, no
+    /// library row, and nothing in the session log: a set that replays as
+    /// silence, found weeks later.
+    ///
+    /// Two facts are guarded, and they are the two a load leaves outside the
+    /// engine: **what is on the deck**, and **that it was**. Everything else a
+    /// load does — the summary, the library row, the restored cues — follows
+    /// from being inside `put_on_deck` at all.
+    /// The bus, the session log and the palette spell a load the same way.
+    ///
+    /// Three readers of one language. `SessionEvent::to_line` writes it into
+    /// every set file, `parse_line` reads it back and is what the palette offers
+    /// from, and `perform` carries it out — so a line copied out of a session
+    /// file into a controller mapping is a line that works, and a DJ who typed
+    /// one into the palette is not told the vocabulary lacks a verb it has.
+    #[test]
+    fn a_load_is_spelled_the_same_way_in_the_log_as_it_is_on_the_bus() {
+        let deck = dj_core::DeckId::from_human(2).unwrap();
+        let track = dj_core::TrackId::from_bytes([0xab; 32]);
+        let written = dj_control::SessionEvent::Load { deck, track }.to_line();
+
+        assert!(
+            written.starts_with("load deck "),
+            "the log writes a load as {written:?} and the bus reads `load deck `"
+        );
+        assert_eq!(
+            dj_control::SessionEvent::parse_line(&written),
+            Ok(dj_control::SessionEvent::Load { deck, track }),
+            "the log cannot read back what it wrote"
+        );
+        // And the palette offers it, which is the reader that used to disagree.
+        assert!(
+            super::palette(written.clone(), 4)
+                .iter()
+                .any(|entry| entry.run == written),
+            "the palette refuses a line the bus performs, so a DJ typing it is \
+             told the vocabulary does not have it and then finds that it does"
+        );
+    }
+
+    #[test]
+    fn only_the_load_funnel_says_what_is_on_a_deck() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let funnel = std::fs::read_to_string(root.join("commands.rs"))
+            .expect("this file is beside the others");
+
+        // `put_on_deck`'s body: from its signature to the next line that closes
+        // a top-level item. Crude and sufficient — a function that stopped
+        // being top-level would fail this loudly rather than quietly widening
+        // the exemption.
+        let start = funnel
+            .find("pub fn put_on_deck(")
+            .expect("the load funnel is no longer called that");
+        let end = start
+            + funnel[start..]
+                .find("\n}\n")
+                .expect("`put_on_deck` no longer ends at column zero");
+        let inside = start..end;
+
+        // Where the tests begin. Everything after it builds state directly,
+        // which is what a unit test is for.
+        let tests = funnel.find("\n#[cfg(test)]").unwrap_or(funnel.len());
+
+        for (verb, what) in [
+            (".set_deck_track(", "says what record is on a deck"),
+            (".record_load(", "tells the session log a record was loaded"),
+        ] {
+            let mut outside = Vec::new();
+            for (offset, _) in funnel.match_indices(verb) {
+                if inside.contains(&offset) || offset > tests {
+                    continue;
+                }
+                outside.push(funnel[..offset].lines().count() + 1);
+            }
+            assert!(
+                outside.is_empty(),
+                "`{verb}` -- which {what} -- is called outside `put_on_deck` at \
+                 line(s) {outside:?}. §87 asks for one source of state truth, and \
+                 a load that sets the deck's name without going through the \
+                 funnel gets a title with no waveform, no library row and \
+                 nothing in the session log."
+            );
+        }
+
+        // And nowhere else in the crate either.
+        for entry in std::fs::read_dir(&root).expect("the crate's sources") {
+            let path = entry.expect("a readable entry").path();
+            if path.extension().is_none_or(|kind| kind != "rs")
+                || path.file_name().is_some_and(|name| name == "commands.rs")
+            {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).expect("a readable source");
+            let production = source
+                .split("#[cfg(test)]")
+                .next()
+                .expect("split always yields one");
+            assert!(
+                !production.contains(".set_deck_track("),
+                "{} sets the deck's name outside the load funnel",
+                path.display()
+            );
+        }
     }
 }

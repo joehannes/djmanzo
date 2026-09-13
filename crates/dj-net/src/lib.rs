@@ -18,7 +18,9 @@ pub mod sticker;
 pub mod tempo;
 pub mod web;
 
-pub use control::{ControlError, ControlRequest, ControlResponse, ControlService, ErrorCode};
+pub use control::{
+    Carry, ControlError, ControlRequest, ControlResponse, ControlService, ErrorCode,
+};
 pub use midi_clock::{MIDI_CLOCK_TICKS_PER_BEAT, MidiClockIn, MidiClockOut};
 pub use osc::{OscError, OscServer};
 pub use peer::{Announcement, PeerSync};

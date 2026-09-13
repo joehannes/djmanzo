@@ -12,9 +12,71 @@
 //!   it cannot be forgotten here.
 
 use dj_engine::Command;
-use dj_net::{ControlServer, ControlService};
+use dj_net::{Carry, ControlServer, ControlService};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+
+/// Where an action from a socket goes: djmanzo's own entry point.
+///
+/// **Not the bus.** `commands::perform_action` is where several verbs stop
+/// meaning what the engine thinks they mean — `eject` clears the deck's name
+/// and its analysis, which live in the application; `record on` opens a file,
+/// which the engine cannot do at all. Dispatching straight at the bus, which is
+/// what this did, ejected in the engine and left the interface showing a record
+/// that was no longer on the deck, and answered "accepted" to a recording it had
+/// not started.
+///
+/// §87 names it: the resulting state must be identical whichever origin a
+/// command came from, and the network was the one origin not going through the
+/// application. It goes through it now, which also means a socket obeys §72's
+/// takeover and every other interception that path carries, for free.
+#[derive(Debug)]
+struct Booth(tauri::AppHandle);
+
+/// Somewhere for a socket to put an action: this application.
+#[must_use]
+pub fn booth(app: tauri::AppHandle) -> Arc<dyn Carry> {
+    Arc::new(Booth(app))
+}
+
+/// A carrier for tests that are about the socket rather than about the action.
+///
+/// Accepts and drops. These tests ask whether a port opens, closes and rebinds;
+/// what an action then does is `commands`' business and is tested there.
+#[cfg(test)]
+#[derive(Debug)]
+struct Nowhere;
+
+#[cfg(test)]
+impl Carry for Nowhere {
+    fn carry(&self, _: dj_core::Action) -> Result<(), dj_net::ControlError> {
+        Ok(())
+    }
+}
+
+impl Carry for Booth {
+    fn carry(&self, action: dj_core::Action) -> Result<(), dj_net::ControlError> {
+        use tauri::Manager as _;
+        let state = self.0.state::<crate::state::AppState>();
+        crate::commands::perform_action(&state, action).map_err(dj_net::ControlError::Refused)
+    }
+
+    /// The whole line, because djmanzo's vocabulary is wider than `Action`'s.
+    ///
+    /// `load deck 1 <track-id>` is in every session file and `Action::parse`
+    /// has never accepted it — a load carries an `Arc`, so it is a command
+    /// rather than an action. Parsing before handing over therefore refused, at
+    /// the door, the one verb §87 exists to make available from every origin.
+    ///
+    /// **Found by opening the port and sending the line**, after both sides of
+    /// this seam were green: every test on either side was asking about
+    /// actions, so none of them could see a verb that is not one.
+    fn carry_line(&self, line: &str) -> Result<(), dj_net::ControlError> {
+        use tauri::Manager as _;
+        let state = self.0.state::<crate::state::AppState>();
+        crate::commands::perform(&state, line).map_err(dj_net::ControlError::Refused)
+    }
+}
 
 /// What the interface shows and sets.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -53,13 +115,18 @@ impl Remote {
         token: Option<String>,
         bus: Arc<dj_control::ActionBus<Command>>,
         registry: Arc<dj_control::ParameterRegistry>,
+        // Where actions go. Required rather than optional, because the way this
+        // breaks is a caller forgetting it and silently reopening the hole §87
+        // found -- a socket that reaches the engine without reaching the
+        // application.
+        carrier: Arc<dyn Carry>,
     ) -> Result<RemoteStatus, String> {
         // Stopped first, so restarting on the same port does not fail to bind
         // against the copy of itself that is still listening.
         self.stop();
 
         let token_set = token.as_deref().is_some_and(|t| !t.is_empty());
-        let service = Arc::new(ControlService::new(bus, registry));
+        let service = Arc::new(ControlService::new(bus, registry).carried_by(carrier));
         match ControlServer::start(address, token, service) {
             Ok(server) => {
                 let status = RemoteStatus {
@@ -123,9 +190,14 @@ impl Remote {
         address: SocketAddr,
         bus: Arc<dj_control::ActionBus<Command>>,
         registry: Arc<dj_control::ParameterRegistry>,
+        // Where actions go. Required rather than optional, because the way this
+        // breaks is a caller forgetting it and silently reopening the hole §87
+        // found -- a socket that reaches the engine without reaching the
+        // application.
+        carrier: Arc<dyn Carry>,
     ) -> Result<RemoteStatus, String> {
         *self.osc.lock().unwrap() = None;
-        let service = Arc::new(ControlService::new(bus, registry));
+        let service = Arc::new(ControlService::new(bus, registry).carried_by(carrier));
         match dj_net::OscServer::start(address, service) {
             Ok(server) => {
                 *self.osc.lock().unwrap() = Some(server);
@@ -187,6 +259,7 @@ mod tests {
                 None,
                 bus,
                 registry,
+                Arc::new(Nowhere),
             )
             .expect("loopback needs no token");
         assert!(started.running);
@@ -213,11 +286,12 @@ mod tests {
                 None,
                 Arc::clone(&bus),
                 Arc::clone(&registry),
+                Arc::new(Nowhere),
             )
             .expect("first start");
         let address: SocketAddr = first.address.unwrap().parse().expect("an address");
 
-        let again = remote.start(address, None, bus, registry);
+        let again = remote.start(address, None, bus, registry, Arc::new(Nowhere));
         assert!(
             again.is_ok(),
             "restarting on the same port failed: {again:?}"
@@ -239,6 +313,7 @@ mod tests {
                 SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
                 Arc::clone(&bus),
                 Arc::clone(&registry),
+                Arc::new(Nowhere),
             )
             .expect("loopback binds");
         let osc = started.osc.clone().expect("an OSC address");
@@ -259,7 +334,12 @@ mod tests {
         let remote = Remote::default();
         let (bus, registry, _engine) = parts();
         let why = remote
-            .start_osc(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)), bus, registry)
+            .start_osc(
+                SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)),
+                bus,
+                registry,
+                Arc::new(Nowhere),
+            )
             .expect_err("a public OSC bind should be refused");
         assert!(why.contains("token") || why.contains("loopback"), "{why}");
         assert_eq!(remote.status().osc, None, "it opened anyway");
@@ -278,6 +358,7 @@ mod tests {
                 None,
                 bus,
                 registry,
+                Arc::new(Nowhere),
             )
             .expect_err("a public bind with no token should be refused");
         assert!(why.contains("token"), "unhelpful message: {why}");
