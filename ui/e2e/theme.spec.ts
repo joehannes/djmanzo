@@ -117,18 +117,22 @@ test.describe("§32's theme packs", () => {
   /**
    * **The load-bearing one: the picker says what djmanzo has not built.**
    *
-   * §32 names sixteen themes and six of them ship. A picker of six reads as the
-   * whole of §32 — a theme that is absent looks exactly like a theme nobody
-   * asked for — and the ten that are missing were invisible everywhere until
-   * this table existed. It is the posture §8 takes about what djmanzo
-   * remembers, and there it worked: the row that admitted the waveform was not
-   * kept is what made it obvious which section to do next.
+   * §32's palettes all ship now, and the two rows that remain are the two that
+   * are deliberately *not* palettes: High Contrast is an override the
+   * stylesheet already applies over every theme, and Minimal is a density §5
+   * already fits to the window. Building either as a seventeenth palette would
+   * be a second control for something that already has one.
+   *
+   * The list stays, and the count is asserted rather than the emptiness: a
+   * picker that showed only what ships reads as the whole of §32 — a theme that
+   * is absent looks exactly like a theme nobody asked for — and the next time
+   * §32 grows a name djmanzo has not built, this is where it will say so.
    */
   test("the themes it does not have are on the list, saying why", async ({ page }) => {
     await openThemes(page);
 
     const absent = page.locator(".switcher .not-yet li");
-    await expect(absent).toHaveCount(10);
+    await expect(absent).toHaveCount(2);
     // Every row carries its reason. A row that said only "Festival" would be a
     // gap announced and not explained, which reads as an oversight rather than
     // as a decision.
@@ -139,13 +143,16 @@ test.describe("§32's theme packs", () => {
       "raises contrast on every theme",
     );
     // And the ones that do ship are not in this list: it is the gap, not the
-    // catalogue. By the row's own name rather than by its text — Festival's
-    // reason mentions Daylight, and matching anywhere in the row would call
-    // that a hit.
-    await expect(
-      absent.locator(".name", { hasText: /^Daylight$/ }),
-    ).toHaveCount(0);
-    await expect(absent.locator(".name", { hasText: /^Festival$/ })).toHaveCount(1);
+    // catalogue. By the row's own name rather than by its text, because a
+    // reason may mention another theme and matching anywhere in the row would
+    // call that a hit.
+    for (const shipped of ["Daylight", "Festival", "Stem Lab", "Wedding"]) {
+      await expect(
+        absent.locator(".name", { hasText: new RegExp(`^${shipped}$`) }),
+        `${shipped} ships and is still listed as missing`,
+      ).toHaveCount(0);
+    }
+    await expect(absent.locator(".name", { hasText: /^Minimal$/ })).toHaveCount(1);
     expect(errorsThrown(page), "the theme switcher threw").toEqual([]);
   });
 

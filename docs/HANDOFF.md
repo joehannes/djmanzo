@@ -1351,6 +1351,30 @@ The largest of them, in the order they are worth doing:
    -- `(the last 12 of 40)` -- because a briefing silently truncated reads as a
    night with twelve actions in it.
 
+12c. **Two things can differ by name and not by sight, and a test that
+   checks the name will say they differ.** `Role::must_differ_from` names the
+   pairs a DJ has to tell apart -- the mix pair, the four stems, who-did-it,
+   the severity ladder, selected against active -- and
+   `every_role_has_a_colour_and_the_pairs_that_must_differ_do` checks that each
+   pair points at *different tokens*. It passed for months while the organic
+   palette's light variant defined `--accent` as `#0f7b57` and `--accent-2` as
+   `#057a5f`: two names, one green. Selected and active were one colour. The
+   assistant and the room were one colour. The vocal stem and the other stem
+   were one colour.
+
+   **The fix is to measure the thing the DJ sees.**
+   `the_pairs_that_must_differ_differ_to_the_eye_in_every_palette` resolves
+   role -> token -> the hex each palette gives it, and computes CIE76 ΔE in
+   Lab. A WCAG contrast ratio is the wrong instrument: it is about legibility
+   of text, and pure red and pure blue have nearly the same luminance. The
+   floor is 20, which is about "obviously a different colour in a glance at a
+   small swatch" and which the palettes that were right already cleared
+   comfortably. Five themes needed repairing.
+
+   The general form: when a rule is about what somebody perceives, a test on
+   the representation is a proxy, and a proxy passes in exactly the cases worth
+   catching. Ask what instrument measures the actual claim.
+
 13. **§90 has one ratchet and four honest refusals, and the split is the
    lesson.** A ratchet is only worth having where the number means the same
    thing on two machines. Frame rate, memory and CPU do not — the argument §89

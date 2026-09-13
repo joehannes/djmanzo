@@ -128,21 +128,16 @@ pub const ALL: [Theme; 18] = [
     Theme {
         title: "Club",
         about: "A dark room with people in it.",
-        pack: None,
-        why_not: "Industrial Techno is the nearest thing djmanzo has and is \
-                  deliberately not filed here: it is a harder, narrower room, \
-                  and a DJ who asked for a club theme would get hard music's. \
-                  This one is a palette somebody has to design.",
+        pack: Some("pkg-club"),
+        why_not: "",
         asked: true,
         world: false,
     },
     Theme {
         title: "Festival",
         about: "Daylight, a big stage, and a screen nobody can shade.",
-        pack: None,
-        why_not: "A palette somebody has to design. Daylight covers the light \
-                  half of it already, which is why this is a gap rather than a \
-                  hole.",
+        pack: Some("pkg-festival"),
+        why_not: "",
         asked: true,
         world: false,
     },
@@ -157,54 +152,48 @@ pub const ALL: [Theme; 18] = [
     Theme {
         title: "Caribbean",
         about: "Warm, bright, and unhurried.",
-        pack: None,
-        why_not: "A palette somebody has to design.",
+        pack: Some("pkg-caribbean"),
+        why_not: "",
         asked: true,
         world: false,
     },
     Theme {
         title: "Latin",
         about: "The one §32 names after a genre rather than a room.",
-        pack: None,
-        why_not: "A palette somebody has to design.",
+        pack: Some("pkg-latin"),
+        why_not: "",
         asked: true,
         world: false,
     },
     Theme {
         title: "Wedding",
         about: "A room that is not there for the DJ.",
-        pack: None,
-        why_not: "A palette somebody has to design.",
+        pack: Some("pkg-wedding"),
+        why_not: "",
         asked: true,
         world: false,
     },
     Theme {
         title: "Lounge",
         about: "Low light, low tempo, and nobody dancing yet.",
-        pack: None,
-        why_not: "A palette somebody has to design.",
+        pack: Some("pkg-lounge"),
+        why_not: "",
         asked: true,
         world: false,
     },
     Theme {
         title: "Scratch",
         about: "Hands on the platters, eyes on two records.",
-        pack: None,
-        why_not: "A palette somebody has to design. What a scratch DJ actually \
-                  needs from the screen is §7's arrangement and §74's rail, and \
-                  both of those ship — this is the colours, which is the part \
-                  that is missing.",
+        pack: Some("pkg-scratch"),
+        why_not: "",
         asked: true,
         world: false,
     },
     Theme {
         title: "Stem Lab",
         about: "Four parts of one record, told apart at a glance.",
-        pack: None,
-        why_not: "A palette somebody has to design, and it is the one with a \
-                  real constraint behind it: the four stem colours are §57's \
-                  and are fixed across every theme, so a Stem Lab palette has \
-                  to be built around them rather than choosing them.",
+        pack: Some("pkg-stemlab"),
+        why_not: "",
         asked: true,
         world: false,
     },

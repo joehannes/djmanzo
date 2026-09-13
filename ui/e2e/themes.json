@@ -42,16 +42,16 @@
   {
     "title": "Club",
     "about": "A dark room with people in it.",
-    "pack": "",
-    "why_not": "Industrial Techno is the nearest thing djmanzo has and is deliberately not filed here: it is a harder, narrower room, and a DJ who asked for a club theme would get hard music's. This one is a palette somebody has to design.",
+    "pack": "pkg-club",
+    "why_not": "",
     "asked": true,
     "world": false
   },
   {
     "title": "Festival",
     "about": "Daylight, a big stage, and a screen nobody can shade.",
-    "pack": "",
-    "why_not": "A palette somebody has to design. Daylight covers the light half of it already, which is why this is a gap rather than a hole.",
+    "pack": "pkg-festival",
+    "why_not": "",
     "asked": true,
     "world": false
   },
@@ -66,48 +66,48 @@
   {
     "title": "Caribbean",
     "about": "Warm, bright, and unhurried.",
-    "pack": "",
-    "why_not": "A palette somebody has to design.",
+    "pack": "pkg-caribbean",
+    "why_not": "",
     "asked": true,
     "world": false
   },
   {
     "title": "Latin",
     "about": "The one §32 names after a genre rather than a room.",
-    "pack": "",
-    "why_not": "A palette somebody has to design.",
+    "pack": "pkg-latin",
+    "why_not": "",
     "asked": true,
     "world": false
   },
   {
     "title": "Wedding",
     "about": "A room that is not there for the DJ.",
-    "pack": "",
-    "why_not": "A palette somebody has to design.",
+    "pack": "pkg-wedding",
+    "why_not": "",
     "asked": true,
     "world": false
   },
   {
     "title": "Lounge",
     "about": "Low light, low tempo, and nobody dancing yet.",
-    "pack": "",
-    "why_not": "A palette somebody has to design.",
+    "pack": "pkg-lounge",
+    "why_not": "",
     "asked": true,
     "world": false
   },
   {
     "title": "Scratch",
     "about": "Hands on the platters, eyes on two records.",
-    "pack": "",
-    "why_not": "A palette somebody has to design. What a scratch DJ actually needs from the screen is §7's arrangement and §74's rail, and both of those ship — this is the colours, which is the part that is missing.",
+    "pack": "pkg-scratch",
+    "why_not": "",
     "asked": true,
     "world": false
   },
   {
     "title": "Stem Lab",
     "about": "Four parts of one record, told apart at a glance.",
-    "pack": "",
-    "why_not": "A palette somebody has to design, and it is the one with a real constraint behind it: the four stem colours are §57's and are fixed across every theme, so a Stem Lab palette has to be built around them rather than choosing them.",
+    "pack": "pkg-stemlab",
+    "why_not": "",
     "asked": true,
     "world": false
   },

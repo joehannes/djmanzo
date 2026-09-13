@@ -265,6 +265,115 @@ export const PkgWatershed: ThemePackage = {
  * Grouped by setting rather than sorted, so the list reads as a walk through a
  * day: desk, evening, booth, room.
  */
+
+// -----------------------------------------------------------------------------
+// §32's remaining eight
+// -----------------------------------------------------------------------------
+//
+// The list §32 gives is a list of *rooms and nights*, not of aesthetics, which
+// is why each of these says `when` in terms of where a DJ is standing. Three of
+// them had a reason recorded for not shipping and two of those reasons still
+// stand and are unchanged: High Contrast is an override the stylesheet already
+// applies over every theme, and Minimal is a density §5 already fits to the
+// window. The rest were "a palette somebody has to design", which is what these
+// are.
+
+export const PkgClub: ThemePackage = {
+  id: "pkg-club",
+  name: "Club",
+  category: "minimalist",
+  setting: "venue",
+  when: "A dark room that plays everything, rather than one genre loudly.",
+  geometry: GeometryCircle,
+  // Motion, but not Cyber's. A club screen is read in glances between mixes.
+  behaviors: [AudioReactiveStroke],
+  effects: [],
+};
+
+export const PkgFestival: ThemePackage = {
+  id: "pkg-festival",
+  name: "Festival",
+  category: "organic",
+  setting: "daylight",
+  when: "A main stage, outdoors, with the sun still on the screen.",
+  geometry: GeometryCircle,
+  // Nothing reactive, for Daylight's reason: in bright light the eye is
+  // already working, and a control that shimmers competes with the sun.
+  behaviors: [],
+  effects: [],
+};
+
+export const PkgCaribbean: ThemePackage = {
+  id: "pkg-caribbean",
+  name: "Caribbean",
+  category: "organic",
+  setting: "daylight",
+  when: "A beach bar in the afternoon, where the screen is in the open.",
+  geometry: GeometryCircle,
+  behaviors: [TimeReactivePulse],
+  effects: [],
+};
+
+export const PkgLatin: ThemePackage = {
+  id: "pkg-latin",
+  name: "Latin",
+  category: "organic",
+  setting: "venue",
+  when: "A Latin night: warm, dark enough for a room, and never clinical.",
+  geometry: GeometryCircle,
+  behaviors: [AudioReactiveStroke, TimeReactivePulse],
+  effects: [],
+};
+
+export const PkgWedding: ThemePackage = {
+  id: "pkg-wedding",
+  name: "Wedding",
+  category: "minimalist",
+  setting: "venue",
+  when: "A room with tablecloths, where the guests can see your screen.",
+  geometry: GeometryCircle,
+  // Still. A screen visible to a hundred guests during a first dance should
+  // not be the thing moving in the corner of the photographs.
+  behaviors: [],
+  effects: [],
+};
+
+export const PkgLounge: ThemePackage = {
+  id: "pkg-lounge",
+  name: "Lounge",
+  category: "minimalist",
+  setting: "venue",
+  when: "Low light and slow music, where the screen should recede.",
+  geometry: GeometryCircle,
+  behaviors: [TimeReactivePulse],
+  effects: [],
+};
+
+export const PkgScratch: ThemePackage = {
+  id: "pkg-scratch",
+  name: "Scratch",
+  category: "minimalist",
+  setting: "booth",
+  when: "Hands on the records, where the screen is glanced at and not read.",
+  geometry: GeometryCircle,
+  // Deliberately still, and for a stronger reason than Booth's: a turntablist
+  // looks up for a fraction of a second, and anything that moves costs part of
+  // that fraction.
+  behaviors: [],
+  effects: [],
+};
+
+export const PkgStemLab: ThemePackage = {
+  id: "pkg-stemlab",
+  name: "Stem Lab",
+  category: "minimalist",
+  setting: "home",
+  when: "Working on the four parts of a record, where telling them apart is the job.",
+  geometry: GeometryCircle,
+  behaviors: [TimeReactivePulse],
+  effects: [],
+};
+
 export const themePackages = [
   PkgDaylight,
   PkgStudio,
@@ -274,4 +383,12 @@ export const themePackages = [
   PkgIndustrial,
   PkgCyber,
   PkgWatershed,
+  PkgClub,
+  PkgFestival,
+  PkgCaribbean,
+  PkgLatin,
+  PkgWedding,
+  PkgLounge,
+  PkgScratch,
+  PkgStemLab,
 ];

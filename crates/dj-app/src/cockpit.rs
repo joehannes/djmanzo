@@ -2571,6 +2571,183 @@ mod tests {
     /// sixty-eight numbers true. Two roles outside a must-differ pair are free
     /// to share one: `active`, `incoming` and `success` are all the accent, and
     /// a control being on is never mistaken for a record arriving.
+    /// **And they have to differ to the eye, not only to the parser.**
+    ///
+    /// `every_role_has_a_colour_and_the_pairs_that_must_differ_do` checks that
+    /// two roles in a must-differ group point at *different tokens*. That is a
+    /// necessary condition and not a sufficient one, and the gap between the
+    /// two is where a real defect lived: in the organic palette's light
+    /// variant `--accent` was `#0f7b57` and `--accent-2` was `#057a5f`, two
+    /// tokens with different names and the same green. So *selected* and
+    /// *active* were one colour, *the assistant did it* and *the room did it*
+    /// were one colour, and the vocal stem and the other stem were one colour
+    /// — in a theme that had passed every test in this file for months.
+    ///
+    /// This resolves each role to its token, each token to the hex every
+    /// shipped palette gives it, and measures. CIE76 ΔE in Lab rather than a
+    /// WCAG ratio, because a ratio is about *legibility of text* and answers
+    /// the wrong question here: pure red and pure blue have almost the same
+    /// luminance and nobody confuses them.
+    ///
+    /// Twenty is the floor. It is roughly "obviously a different colour in a
+    /// glance at a small swatch", it is comfortably cleared by the palettes
+    /// that were right already — Daylight 26, Industrial 28, Cyber 40 — and
+    /// the five that failed it were all wrong in a way anyone would report as
+    /// a bug on sight.
+    #[test]
+    fn the_pairs_that_must_differ_differ_to_the_eye_in_every_palette() {
+        /// Perceptual distance in CIE Lab, CIE76.
+        fn delta_e(a: &str, b: &str) -> f64 {
+            fn lab(hex: &str) -> [f64; 3] {
+                let hex = hex.trim_start_matches('#');
+                let channel = |at: usize| -> f64 {
+                    let raw = u8::from_str_radix(&hex[at..at + 2], 16).unwrap_or(0);
+                    let c = f64::from(raw) / 255.0;
+                    if c <= 0.04045 {
+                        c / 12.92
+                    } else {
+                        ((c + 0.055) / 1.055).powf(2.4)
+                    }
+                };
+                let (r, g, b) = (channel(0), channel(2), channel(4));
+                // sRGB D65 -> XYZ, then XYZ -> Lab.
+                let x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.950_47;
+                let y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+                let z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.088_83;
+                let f = |t: f64| {
+                    if t > 0.008_856 {
+                        t.cbrt()
+                    } else {
+                        7.787 * t + 16.0 / 116.0
+                    }
+                };
+                let (fx, fy, fz) = (f(x), f(y), f(z));
+                [
+                    116.0f64.mul_add(fy, -16.0),
+                    500.0 * (fx - fy),
+                    200.0 * (fy - fz),
+                ]
+            }
+            let (one, two) = (lab(a), lab(b));
+            (0..3)
+                .map(|i| (one[i] - two[i]).powi(2))
+                .sum::<f64>()
+                .sqrt()
+        }
+
+        /// Obviously a different colour at a glance. See the note above.
+        const FLOOR: f64 = 20.0;
+
+        let sheet =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/app.css"))
+                .expect("the stylesheet is in the tree")
+                .replace("\r\n", "\n");
+        let root = sheet
+            .split_once(":root {")
+            .and_then(|(_, rest)| rest.split_once("\n}"))
+            .map(|(inside, _)| inside)
+            .expect("`:root {` ... `\n}` is no longer how the stylesheet opens");
+
+        // A role's token, and the palette token it is derived from. A role
+        // defined as a literal colour is the same in every palette and so
+        // cannot collide differently in one of them.
+        let derived = |role: &Role| -> Option<String> {
+            let want = format!("--{}:", role.token());
+            let value = root.lines().find_map(|line| {
+                let line = line.trim();
+                Some(line.strip_prefix(&want)?.trim().trim_end_matches(';'))
+            })?;
+            let inner = value.strip_prefix("var(")?.strip_suffix(')')?;
+            Some(inner.split(',').next()?.trim().to_owned())
+        };
+
+        let colours = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../ui/src/controls/themes/colors.ts"
+        ))
+        .expect("the palettes are in the tree")
+        .replace("\r\n", "\n");
+
+        // Every palette, by id and variant, as token -> hex.
+        let mut palettes: Vec<(String, std::collections::BTreeMap<String, String>)> = Vec::new();
+        let mut id = String::new();
+        let mut variant = String::new();
+        let mut current = std::collections::BTreeMap::new();
+        for line in colours.lines() {
+            let line = line.trim();
+            if let Some(rest) = line.strip_prefix('"')
+                && let Some((name, _)) = rest.split_once('"')
+                && name.starts_with("pkg-")
+                && line.ends_with('{')
+            {
+                // Flush first. Without this the variant that was being read
+                // lands under the *next* palette's id, and the failure message
+                // then names a theme that is not the broken one -- which is
+                // how this was found.
+                if !current.is_empty() {
+                    palettes.push((format!("{id} {variant}"), std::mem::take(&mut current)));
+                }
+                id = name.to_owned();
+            } else if (line == "dark: {" || line == "light: {") && !id.is_empty() {
+                if !current.is_empty() {
+                    palettes.push((format!("{id} {variant}"), std::mem::take(&mut current)));
+                }
+                variant = line.trim_end_matches(": {").to_owned();
+            } else if let Some(rest) = line.strip_prefix("\"--")
+                && let Some((token, tail)) = rest.split_once("\":")
+                && let Some(hex) = tail.trim().trim_end_matches(',').trim().strip_prefix('"')
+            {
+                current.insert(format!("--{token}"), hex.trim_end_matches('"').to_owned());
+            }
+        }
+        if !current.is_empty() {
+            palettes.push((format!("{id} {variant}"), current));
+        }
+        assert!(
+            palettes.len() >= 16,
+            "read {} palettes out of `colors.ts`, which is fewer than ship -- the \
+             parser above has stopped matching how they are written",
+            palettes.len()
+        );
+
+        let mut checked = 0;
+        for (name, palette) in &palettes {
+            for one in Role::ALL {
+                for two in Role::ALL {
+                    if !one.must_differ_from(*two) || one.token() >= two.token() {
+                        continue;
+                    }
+                    let (Some(a), Some(b)) = (derived(one), derived(two)) else {
+                        continue;
+                    };
+                    let (Some(hex_a), Some(hex_b)) = (palette.get(&a), palette.get(&b)) else {
+                        continue;
+                    };
+                    // Hex with an alpha channel would measure as its opaque
+                    // form here; none of the role tokens carries one.
+                    if hex_a.len() < 7 || hex_b.len() < 7 {
+                        continue;
+                    }
+                    let distance = delta_e(hex_a, hex_b);
+                    assert!(
+                        distance >= FLOOR,
+                        "in `{name}`, {} ({hex_a}) and {} ({hex_b}) are {distance:.1} apart, \
+                         and a DJ has to tell them apart at a glance. They point at \
+                         different tokens -- `{a}` and `{b}` -- which is why the test above \
+                         passes; they are the same colour, which is what matters",
+                        one.about(),
+                        two.about(),
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(
+            checked >= 100,
+            "only {checked} pairs were measured, so this checked almost nothing"
+        );
+    }
+
     #[test]
     fn every_role_has_a_colour_and_the_pairs_that_must_differ_do() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/app.css");
