@@ -657,6 +657,44 @@ const ANSWERS: Record<string, unknown> = {
   },
   // Three wedding nights and three club nights, which is what §81 is about:
   // the same DJ, two different answers, and never their average.
+  /**
+   * §80's four, in the state that makes the claim testable: one offered, one
+   * already accepted, one djmanzo has not seen enough of, and the one it cannot
+   * see at all. A stub where every row looked the same would let a panel that
+   * drew one shape for all four pass.
+   */
+  learned_persona: [
+    {
+      slug: "density",
+      says: "You keep the layout at dense.",
+      because: "On all 2 kinds of night djmanzo has enough of, you run dense.",
+      why_not: "",
+      verdict: "offered",
+    },
+    {
+      slug: "automix-at-peak",
+      says: "You keep the assistant on prepare.",
+      because:
+        "On all 2 kinds of night djmanzo has enough of, it has been on prepare.",
+      why_not: "",
+      verdict: "accepted",
+    },
+    {
+      slug: "blend-length",
+      says: "",
+      because: "",
+      why_not: "",
+      verdict: "offered",
+    },
+    {
+      slug: "stems-for-vocals",
+      says: "",
+      because: "",
+      why_not:
+        "djmanzo's log records that you reached for the stems and not which stem it was, so it cannot tell a vocal ride from a drum swap. Saying this anyway would be inventing the half of the sentence that means anything.",
+      verdict: "offered",
+    },
+  ],
   learned_profiles: [
     {
       setting: "wedding",
@@ -1408,6 +1446,30 @@ export async function openShell(
           // the claim this makes is that one press reaches seven controls: a
           // fixed answer would make a level that worked and one that did
           // nothing look the same.
+          // §80's answer. Held between calls, and a rejection takes the claim
+          // off the row rather than only marking it — that is the whole of what
+          // "reject" has to mean, and a stub that only flipped a flag would let
+          // an interface which re-offered a refused claim pass.
+          if (cmd === "answer_persona") {
+            const rows = (win.__persona ??
+              answers.learned_persona ??
+              []) as Record<string, unknown>[];
+            const next = rows.map((row) =>
+              row.slug === args.slug
+                ? {
+                    ...row,
+                    verdict: args.verdict,
+                    says: args.verdict === "rejected" ? "" : row.says,
+                    because: args.verdict === "rejected" ? "" : row.because,
+                  }
+                : row,
+            );
+            win.__persona = next;
+            return Promise.resolve(next);
+          }
+          if (cmd === "learned_persona") {
+            return Promise.resolve(win.__persona ?? answers.learned_persona);
+          }
           if (cmd === "set_adaptation_level") {
             const known = (answers.adaptation_levels ?? []) as {
               slug: string;

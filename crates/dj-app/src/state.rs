@@ -1087,6 +1087,61 @@ impl AppState {
         }
     }
 
+    /// The file §80's verdicts on learned claims live in.
+    ///
+    /// One line per trait, `slug=verdict`. Its own file rather than a field of
+    /// anything: what a DJ has agreed djmanzo may believe about them is a fact
+    /// about the DJ, and it must outlive a workspace, a night and a library.
+    fn persona_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("persona.txt"))
+    }
+
+    /// What the DJ has said about each of §80's claims.
+    ///
+    /// Anything unreadable is simply absent, which reads as `Offered` — the
+    /// quiet end. A corrupt line must never become an agreement, because that
+    /// would be djmanzo acting on a claim nobody made.
+    #[must_use]
+    pub fn persona_verdicts(&self) -> Vec<(String, String)> {
+        let Some(path) = self.persona_path() else {
+            return Vec::new();
+        };
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return Vec::new();
+        };
+        text.lines()
+            .filter_map(|line| {
+                let (slug, verdict) = line.split_once('=')?;
+                Some((slug.trim().to_owned(), verdict.trim().to_owned()))
+            })
+            .collect()
+    }
+
+    /// Record what the DJ said about one claim.
+    ///
+    /// Rewrites the whole file, which is two lines of code and correct: the
+    /// list is four rows long and an append-only log would need reading
+    /// backwards to answer the only question anybody asks of it.
+    pub fn set_persona_verdict(&self, slug: &str, verdict: &str) {
+        let Some(path) = self.persona_path() else {
+            return;
+        };
+        let mut kept: Vec<(String, String)> = self
+            .persona_verdicts()
+            .into_iter()
+            .filter(|(held, _)| held != slug)
+            .collect();
+        kept.push((slug.to_owned(), verdict.to_owned()));
+        kept.sort_by(|a, b| a.0.cmp(&b.0));
+        let text: String = kept
+            .iter()
+            .map(|(slug, verdict)| format!("{slug}={verdict}\n"))
+            .collect();
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "your answer will not survive a restart");
+        }
+    }
+
     /// The file §8's adaptation level lives in.
     ///
     /// Its own file rather than a field of the workspace, for the reason the

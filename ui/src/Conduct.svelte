@@ -26,6 +26,8 @@
   import {
     assistantApplyPack,
     learnedTaste,
+    answerPersona,
+    learnedPersona,
     learnedProfiles,
     learnedTendencies,
     assistantConduct,
@@ -42,6 +44,7 @@
     type Appetite,
     type AssistantPack,
     type LearnedTaste,
+    type Learned,
     type Profile,
     type Tendency,
     type Conduct,
@@ -105,6 +108,31 @@
   let profiles = $state<Profile[]>([]);
 
   /**
+   * §80's four, and what the DJ said about each.
+   *
+   * All four rows always, including the one djmanzo cannot see at all and the
+   * ones there is not yet enough evidence for: a list of what djmanzo happens
+   * to believe today would read as the whole of §80, and a trait that is merely
+   * quiet looks exactly like one that does not exist.
+   */
+  let persona = $state<Learned[]>([]);
+
+  /**
+   * Answer a claim, and take back the whole list.
+   *
+   * The list rather than the one row, because a rejection changes what djmanzo
+   * will *say* as well as what it may do — a refused claim stops being repeated
+   * — and re-reading is how the panel shows that rather than assuming it.
+   */
+  async function answer(slug: string, verdict: string) {
+    try {
+      persona = await answerPersona(slug, verdict);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  /**
    * How often the panel re-reads what the assistant would do.
    *
    * Two seconds. The answer changes on the scale of a record ending, not a
@@ -135,6 +163,11 @@
       profiles = await learnedProfiles();
     } catch {
       profiles = [];
+    }
+    try {
+      persona = await learnedPersona();
+    } catch {
+      persona = [];
     }
     try {
       appetite = await assistantAppetite();
@@ -377,6 +410,56 @@
     </ul>
   {/if}
 
+  <!--
+    §80: the same learning, in the register §80 asks for — and answerable.
+
+    §13's tendencies above are written as observations on purpose ("you often
+    sweep the filter when the night is peaking", never "you like filter
+    sweeps"). §80 asks for the second register, and the second register is only
+    honest if a DJ can disagree with it: a learned claim they cannot reject is
+    one djmanzo may go on acting on after being told it is wrong.
+
+    All four rows, always. The one djmanzo cannot see at all says so, and so
+    does a row it has not seen enough for — a list of what it happens to
+    believe today would read as the whole of §80.
+  -->
+  {#if persona.length > 0}
+    <h3>What djmanzo thinks it has learned</h3>
+    <ul class="persona" data-testid="persona">
+      {#each persona as claim (claim.slug)}
+        <li data-persona={claim.slug} class:refused={claim.verdict === "rejected"}>
+          {#if claim.why_not}
+            <span class="says">djmanzo cannot tell this yet.</span>
+            <span class="why">{claim.why_not}</span>
+          {:else if claim.verdict === "rejected"}
+            <!-- Not repeated at them. The row stays so the answer can be
+                 changed; the claim does not, because re-offering something
+                 refused is a rejection that did not take. -->
+            <span class="says">You said no to this one.</span>
+            <span class="why">djmanzo is not using it and will not raise it again.</span>
+            <span class="answer">
+              <button onclick={() => void answer(claim.slug, "offered")}>Ask me again</button>
+            </span>
+          {:else if claim.says}
+            <span class="learned">Learned preference</span>
+            <span class="says">{claim.says}</span>
+            <span class="why">{claim.because}</span>
+            <span class="answer">
+              <button
+                class:on={claim.verdict === "accepted"}
+                aria-pressed={claim.verdict === "accepted"}
+                onclick={() => void answer(claim.slug, "accepted")}
+              >That is right</button>
+              <button onclick={() => void answer(claim.slug, "rejected")}>No</button>
+            </span>
+          {:else}
+            <span class="says">Not enough nights yet.</span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
   {#if error}
     <p class="error">{error}</p>
   {/if}
@@ -556,6 +639,66 @@
   .profiles .how {
     font-size: 0.68rem;
     opacity: 0.75;
+  }
+
+  .persona {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: var(--text-dim);
+  }
+
+  .persona li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding-left: 0.5rem;
+    border-left: 2px solid var(--edge, rgba(128, 128, 128, 0.25));
+  }
+
+  /* A refused claim reads as settled rather than as a warning: the DJ answered,
+     djmanzo agreed, and nothing here is wrong. */
+  .persona li.refused {
+    opacity: 0.6;
+  }
+
+  /* §80's own words, and the reason the label exists: this is a thing djmanzo
+     worked out, not a thing it was told, and a DJ has to be able to see the
+     difference before they can judge it. */
+  .persona .learned {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    opacity: 0.75;
+  }
+
+  .persona .says {
+    color: var(--fg, inherit);
+  }
+
+  .persona .why {
+    font-size: 0.68rem;
+    opacity: 0.75;
+  }
+
+  .persona .answer {
+    display: flex;
+    gap: 0.3rem;
+    margin-top: 0.2rem;
+  }
+
+  .persona .answer button {
+    font-size: 0.68rem;
+    padding: 0.15rem 0.45rem;
+  }
+
+  .persona .answer button.on {
+    border-color: var(--selected);
   }
 
   .taste {

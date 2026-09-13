@@ -2062,7 +2062,24 @@
     />
   {/snippet}
   {#snippet surfaceLog()}
-    <div class="log">
+    <!--
+      `tabindex` and a name because this scrolls. §33 asks for keyboard
+      operation, and a region that overflows and cannot be focused is one a
+      keyboard cannot reach the bottom of — axe calls it
+      `scrollable-region-focusable` and it is right. It went unnoticed until a
+      taller Assistant panel pushed this one into overflowing: the defect was
+      always here, and the layout was hiding it.
+
+      The `svelte-ignore` is the two rules disagreeing rather than a shortcut.
+      Svelte's `a11y_no_noninteractive_tabindex` is a good general heuristic —
+      do not make static things focusable — and it has no way to know this one
+      scrolls. A focusable scroll container is the documented fix for the axe
+      rule, and the `role` and name are what keep it from being a bare
+      focusable div: a screen reader announces a named region rather than
+      landing somewhere with nothing to say.
+    -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div class="log" tabindex="0" role="region" aria-label="Session log">
       <p class="hint">
         Every action, in order, with its timestamp. This log is what makes a set
         replayable — see ADR-0003.

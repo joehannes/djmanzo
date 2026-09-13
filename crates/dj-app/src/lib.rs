@@ -48,6 +48,7 @@ pub mod mood;
 pub mod night;
 pub mod peersync;
 pub mod persist;
+pub mod persona;
 pub mod plan;
 pub mod plugins;
 pub mod practice;
@@ -621,6 +622,8 @@ pub fn run() {
             commands::kept_controls,
             commands::set_kept_controls,
             commands::remembered,
+            commands::learned_persona,
+            commands::answer_persona,
             commands::under_load,
             commands::room_poll_ms,
             commands::adaptation_levels,

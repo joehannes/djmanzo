@@ -2024,6 +2024,105 @@ pub fn learned_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileDto>, S
         .collect())
 }
 
+/// One of §80's four learnable traits, as the panel offers it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LearnedDto {
+    /// The slug the verdict is stored under.
+    pub slug: String,
+    /// The claim, in §80's own register: a preference, not an observation.
+    ///
+    /// Empty for a trait djmanzo cannot claim — either because it has not seen
+    /// enough, or because it cannot see the thing at all.
+    pub says: String,
+    /// The evidence, in the DJ's words. Empty where there is no claim.
+    pub because: String,
+    /// Why djmanzo cannot claim this at all. Empty where it could.
+    pub why_not: String,
+    /// `offered`, `accepted` or `rejected`.
+    pub verdict: String,
+}
+
+/// What djmanzo believes about how this DJ plays, and what they said about it.
+///
+/// §80 asks for learned behaviour expressed as **editable preferences** — shown
+/// as a learned preference, rejectable and modifiable. §13's tendencies and
+/// §81's profiles already learn; what neither did is let a DJ disagree, and a
+/// learned claim a DJ cannot reject is one djmanzo may go on acting on after
+/// being told it is wrong.
+///
+/// All four of §80's rows come back, including the one that cannot be claimed
+/// and the ones there is not enough evidence for yet: a list of what djmanzo
+/// happens to believe today would read as the whole of §80, and a trait that is
+/// merely quiet looks exactly like one that does not exist.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn learned_persona(state: State<'_, AppState>) -> Result<Vec<LearnedDto>, String> {
+    let db = library(&state)?;
+    let mut nights = Vec::new();
+    for setting in crate::setting::Setting::ALL {
+        nights.extend(db.nights_in(setting.slug()).map_err(|e| e.to_string())?);
+    }
+    let genres =
+        |setting: crate::setting::Setting| db.genres_in(setting.slug()).unwrap_or_default();
+    let profiles = crate::profile::profiles(&nights, &genres);
+    let claims = crate::persona::learned(&profiles);
+    let verdicts = state.persona_verdicts();
+
+    Ok(crate::persona::Trait::ALL
+        .iter()
+        .map(|which| {
+            let verdict = verdicts
+                .iter()
+                .find(|(slug, _)| slug == which.slug())
+                .map_or(crate::persona::Verdict::Offered, |(_, said)| {
+                    crate::persona::Verdict::parse(said)
+                });
+            // A rejected claim is not raised again. The rule is
+            // `persona::offering`, where it is tested, rather than an `if` here
+            // — this command is the thin half.
+            let claim = crate::persona::offering(&claims, *which, verdict);
+            LearnedDto {
+                slug: which.slug().to_owned(),
+                says: claim.map(|c| c.says.clone()).unwrap_or_default(),
+                because: claim.map(|c| c.because.clone()).unwrap_or_default(),
+                why_not: which.why_not().to_owned(),
+                verdict: verdict.slug().to_owned(),
+            }
+        })
+        .collect())
+}
+
+/// Agree with a learned claim, or refuse it.
+///
+/// `accepted` lets djmanzo act on it; `rejected` stops it acting **and** stops
+/// it raising the claim again. Either half alone is a rejection that did not
+/// take: a DJ asked the same thing every week has not been heard, and one whose
+/// "no" is recorded and then ignored has been lied to.
+///
+/// # Errors
+/// A trait or a verdict djmanzo does not have.
+#[tauri::command]
+pub fn answer_persona(
+    state: State<'_, AppState>,
+    slug: String,
+    verdict: String,
+) -> Result<Vec<LearnedDto>, String> {
+    let which = crate::persona::Trait::parse(&slug)
+        .ok_or_else(|| format!("{slug:?} is not one of §80's traits"))?;
+    // Parsed rather than stored raw, so a word djmanzo does not know cannot be
+    // written to the file and read back later as something it does know.
+    let said = match verdict.as_str() {
+        "accepted" => crate::persona::Verdict::Accepted,
+        "rejected" => crate::persona::Verdict::Rejected,
+        "offered" => crate::persona::Verdict::Offered,
+        other => return Err(format!("{other:?} is not an answer djmanzo understands")),
+    };
+    state.set_persona_verdict(which.slug(), said.slug());
+    learned_persona(state)
+}
+
 /// Keep one of tonight's mixes: §24's "Save this transition".
 ///
 /// The only thing written to `kept_pairs`. Every mix a night contained is

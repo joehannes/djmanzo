@@ -1858,6 +1858,45 @@ export interface ThemeRow {
   world: boolean;
 }
 
+/** One of §80's four learnable traits, and what the DJ said about it. */
+export interface Learned {
+  /** The slug the verdict is stored under. */
+  slug: string;
+  /**
+   * The claim, in §80's own register: a preference, not an observation.
+   *
+   * Empty for a trait djmanzo cannot claim — either because it has not seen
+   * enough, or because it cannot see the thing at all.
+   */
+  says: string;
+  /** The evidence, in the DJ's words. Empty where there is no claim. */
+  because: string;
+  /** Why djmanzo cannot claim this at all. Empty where it could. */
+  why_not: string;
+  /** "offered", "accepted" or "rejected". */
+  verdict: string;
+}
+
+/**
+ * What djmanzo believes about how this DJ plays, and what they said about it.
+ *
+ * §80 asks for learned behaviour expressed as editable preferences — shown as a
+ * learned preference, rejectable and modifiable. §13's tendencies and §81's
+ * profiles already learn; what neither did is let a DJ disagree, and a learned
+ * claim a DJ cannot reject is one djmanzo may go on acting on after being told
+ * it is wrong.
+ */
+export const learnedPersona = () => invoke<Learned[]>("learned_persona");
+
+/**
+ * Agree with a learned claim, or refuse it.
+ *
+ * "accepted" lets djmanzo act on it; "rejected" stops it acting and stops it
+ * raising the claim again. Either half alone is a rejection that did not take.
+ */
+export const answerPersona = (slug: string, verdict: string) =>
+  invoke<Learned[]>("answer_persona", { slug, verdict });
+
 /** One of §48's seven costs, and what djmanzo does about it under load. */
 export interface Spend {
   /** §48's own words for it. */

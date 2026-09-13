@@ -823,6 +823,37 @@ laptop-mode change can be seen working here in a way most adaptive behaviour
 cannot. It also means any measurement taken from a driven session is a
 worst-case one, and should be reported that way.
 
+**Generated copy gets its grammar wrong where nothing automated can see it.**
+§80's first sentence came out as *"You like a Ultra Dense layout."* — the
+density names are the interface's own and capitalised, so the article has to be
+chosen per name — and its evidence line read *"every kind of night djmanzo has
+enough of … 1 of them"*, which is true and reads like a machine counting. Both
+were found in the first minute of driving it, and neither a type-check nor a
+browser test could have: **nothing automated reads copy**. Two lessons that
+generalise: shape a generated sentence so no article is needed rather than
+choosing one, and **test the n=1 case**, because a profile needs three nights of
+a kind before that kind exists at all, so every DJ's first persona claim rests
+on exactly one kind of night and the plural wording is what they see first.
+
+**Adding to a panel can push a neighbour into failing its accessibility audit.**
+§80's block made the Assistant panel tall enough that its conversation region
+started overflowing, and axe's `scrollable-region-focusable` fired — correctly,
+and about a defect that was always there. Two `.log` elements exist (`App.svelte`
+and `Assistant.svelte`) and the first fix went to the wrong one. Both now carry
+`tabindex="0"`, a `role="region"` and a name.
+
+That fix needs `<!-- svelte-ignore a11y_no_noninteractive_tabindex -->`, which is
+two rules disagreeing rather than a shortcut: Svelte's heuristic is right in
+general and has no way to know the element scrolls, and a focusable scroll
+container is the documented fix for the axe rule. The `role` and the name are
+what stop it being a bare focusable div. **Note also that `svelte-check` exits 0
+on warnings**, so a warning does not fail the gate and has to be looked at.
+
+**The MCP servers can drop mid-session.** Both the GitHub and Claude Code Remote
+servers timed out and reconnected during this session. Plain `git push` is
+unaffected — it does not go through MCP — so if CI cannot be dispatched, push
+anyway and dispatch when the server is back rather than holding the work.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests
@@ -1177,7 +1208,27 @@ The largest of them, in the order they are worth doing:
    naming the blocker on screen is what made it obvious which section to do
    next.
 
-12. **§48 is closed, and it is the template for "a priority nobody can see".**
+12. **§80 is the template for "learned, and therefore arguable".** §13's
+   tendencies and §81's profiles both learn and both are constructor-enforced;
+   what neither did was let a DJ disagree, and that is half of what §80 asks
+   for. `persona::Verdict` is the answer the DJ owns, and a rejection has to be
+   both halves — not acted on **and** not raised again. Either alone is a
+   rejection that did not take.
+
+   The register is the other half worth copying. §13 deliberately writes
+   observations ("you often sweep the filter when the night is peaking") and
+   never preferences, because a preference learned from four gestures is a
+   claim djmanzo cannot support. §80 asks for the preference register, and it
+   is only honest with an answer attached — which is why the label on screen is
+   §80's own words, *Learned preference*. **If you find yourself writing a
+   sentence about a DJ in the second register, the answer buttons are part of
+   the feature, not a follow-up.**
+
+   What is left there is one trait: *stems mostly for vocals*. §14's `Did`
+   records `stem-changed` and not which stem, so it is a change to the
+   vocabulary and to what the bus logs, and it belongs to §14 rather than here.
+
+13. **§48 is closed, and it is the template for "a priority nobody can see".**
    The frame rate had been measured for a long time and the tier was consulted
    by the theme pipeline alone, so §48's closing sentence — AUDIO > CONTROL >
    VISUAL EFFECTS, never the reverse — existed only as prose. `thrift::Band` is
@@ -1191,7 +1242,7 @@ The largest of them, in the order they are worth doing:
    way to trust the claim. A priority that is enforced and invisible is one
    nobody will believe the first time their laptop stutters.
 
-13. **§32's remaining palettes are content, not format.** The architecture was
+14. **§32's remaining palettes are content, not format.** The architecture was
    always there — a package is a palette, a geometry generator, behaviours and
    effects, through one pipeline — and what shipped is the table that knows
    which themes there are supposed to be. Eight of §32's sixteen are palettes
@@ -1210,7 +1261,7 @@ The largest of them, in the order they are worth doing:
    not* clause, build the prohibition as its own assertion — the browser test
    here presses Booth first, precisely to prove that half.
 
-14. **§16's remaining packs are content, not format.** The format ships:
+15. **§16's remaining packs are content, not format.** The format ships:
    `dj_assistant::pack::Pack` selects from the genre map, the technique
    catalogue and §81's occasions rather than restating any of them, and
    `coach::next_lesson` teaches inside the chosen one. Eight of §16's thirty

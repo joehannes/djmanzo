@@ -238,7 +238,22 @@
     </div>
   {/if}
 
-  <div class="log">
+  <!--
+    `tabindex` and a name because this scrolls. §33 asks for keyboard operation,
+    and a conversation that overflows and cannot be focused is one a keyboard
+    cannot read the top of — axe calls it `scrollable-region-focusable`. It went
+    unnoticed until §80's learned preferences made this panel tall enough to
+    overflow in the audit's window: the defect was always here and the layout
+    was hiding it.
+
+    The `svelte-ignore` is two rules disagreeing rather than a shortcut.
+    Svelte's `a11y_no_noninteractive_tabindex` is a good general heuristic and
+    has no way to know this one scrolls; a focusable scroll container is the
+    documented fix for the axe rule, and the `role` and name are what keep it
+    from being a bare focusable div.
+  -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="log" tabindex="0" role="region" aria-label="Assistant conversation">
     {#if history.length === 0}
       <p class="empty">
         Try <em>“play deck 2”</em>, <em>“kill the bass on deck 1”</em>, or
