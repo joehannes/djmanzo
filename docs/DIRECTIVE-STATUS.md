@@ -83,7 +83,7 @@ rather than taken.
 | 55 | Visual language architecture | ✅ | ADR-0009 and a validated token set |
 | 56 | Visual feedback should be functional | ⚖️ | |
 | 57 | Waveform colour must be semantic | ✅ | Every drawn layer declares what its colour *means*, and a test refuses two unrelated layers on one meaning — a property of the set, which is why the set exists. Grouped roles are named and counted: the three grid layers are one meaning at three weights, which is texture rather than a second colour. An unbuilt layer reserves nothing |
-| 58 | Information hierarchy (tiers) | 🟡 | The four tiers are modelled; the rail that would use them is not built |
+| 58 | Information hierarchy (tiers) | ✅ | **Stale as 🟡 on both halves.** The tiers were *not* modelled — there was no type, only the words in §18's doc comment — and the rail that would use them, §74's, has shipped since. `tiers::Tier` is the four now, with every verb of the action vocabulary and every dockable surface placed in one, and a test walks both lists so a verb added to `dj_core::vocabulary` and left unplaced fails rather than defaulting quietly: the failure mode of a default is the worst one available, because the new verb is the one a DJ has not learned the position of and it would be the one buried. **What reads it is the command palette**, which is where §98 says a whole night's work should be reachable from. It answers a query with every matching verb, surface and interface operation and then cuts to twelve; the order was whichever order the passes generated in, so a DJ who typed three letters mid-mix could be offered *Pin the Journal* above *deck 2 cue*. Ranked by tier now, stably, before the cut — and the ordering is drawn as a line down the left edge of each row, so the boundary between the hands, what djmanzo has to say, and the paperwork is visible rather than merely true. §18's own sentence becomes a rule with it: `Attention::performing` has said *Tier 1 and 2 only; nothing else may take room* since it was written, and `Tier::survives_a_mix` is the first thing that can be checked against it. What is *not* here: the tiers do not yet gate what a phase may promote — §17's priorities are still a list of surfaces rather than a list filtered by tier — and that is named rather than done |
 | 59 | Density system | ✅ | Five bands, and the fixed-pixel blocks that ignored them are fixed — density moves a deck 122 px now, against 68 before |
 | 60 | Resizability | ✅ | The band follows the window, with a test at five heights |
 | 61 | Phone as a secondary surface | ✅ | Room sensor and audience requests over LAN |
@@ -123,7 +123,7 @@ rather than taken.
 | 95 | The assistant is a second DJ, not a chatbot | ⚖️ | |
 | 96 | "Listening to the room with me" | ⚖️ | Confidence is explicit where the room is read |
 | 97 | Theme is atmosphere; semantics are sacred | ⚖️ | The token whitelist enforces the boundary in code |
-| 98 | A whole night without hunting through menus | 🟡 | Better — every performing control is one screen away — but the command palette and the rail are what finish it |
+| 98 | A whole night without hunting through menus | ✅ | Every performing control is one screen away at 1280×800 and a test says so; §74's contextual rail offers what the hands are doing; and the command palette reaches **the whole vocabulary by typing it**, including every verb that takes an argument and, since §87, `load deck 1 <track-id>` — so a record can be put on a deck without opening the browser at all. §58's ranking is what finishes it: the twelve entries a palette can show are now the twelve *nearest the hands* rather than the twelve that happened to be generated first. §98's five ways are each real — visible (one screen), near (the rail), one gesture (a panel button), one shortcut (Ctrl+K, and the keyboard reaches every handle §26 added), one contextual reveal (the lens, the room chip, the at-hand rail) |
 | 99 | Analysis before code | ✅ | 24 sections and 700 lines, written before any `.svelte` file was touched |
 | 100 | Use existing functionality aggressively | ✅ | The audit's own finding: this is mostly an integration problem, exactly as this section predicts |
 | 101 | The feature set is a hidden engine | ✅ | |
@@ -152,7 +152,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **46 done, 40 part, 0 open, 19 standing rules.**
+Of the 105 sections: **48 done, 38 part, 0 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -171,10 +171,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**46 of 86 deliverable sections are complete and 40 more are partly there.** Nothing is untouched: every deliverable section now has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it.
+**48 of 86 deliverable sections are complete and 38 more are partly there.** Nothing is untouched: every deliverable section now has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it.
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 46 whole plus 40 halves over 86 is 77%, and the phase view is stricter
+way: 48 whole plus 38 halves over 86 is 78%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

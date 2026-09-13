@@ -2352,6 +2352,118 @@ mod tests {
         }
 
         /// **A palette is read, not scrolled.**
+        /// **The load-bearing one for §58: the hands come before the
+        /// paperwork, and the cut takes the paperwork.**
+        ///
+        /// A palette is read, not scrolled, so twelve entries is the whole of
+        /// it — and before this the twelve were whichever twelve the passes
+        /// happened to generate first. A DJ who typed three letters mid-mix
+        /// could be offered *Pin the Journal* above *deck 2 cue*, and on a
+        /// six-deck layout the cut could take the performing controls off the
+        /// bottom entirely.
+        ///
+        /// Asserted on the ranks rather than on particular rows, because the
+        /// claim is the ordering and a test naming two entries would pass a
+        /// palette that happened to put those two in order and everything else
+        /// backwards.
+        #[test]
+        fn the_palette_offers_the_hands_before_the_paperwork() {
+            use crate::tiers::Tier;
+            let rank = |entry: &super::super::PaletteEntryDto| {
+                Tier::ALL
+                    .into_iter()
+                    .find(|tier| tier.name() == entry.tier)
+                    .unwrap_or_else(|| panic!("`{}` has no tier", entry.label))
+                    .rank()
+            };
+
+            // **Queries chosen because they break without the sort.**
+            //
+            // Most do not, and that is worth writing down: the passes below
+            // generate verbs before surfaces before §41's operations, which is
+            // *already* roughly §58's order, so a test on a convenient query
+            // passes against an unsorted palette. These two interleave —
+            // `ss` puts a surface, then a pin, then a surface, then three
+            // channel-strip verbs — and the first version of this test used `e`
+            // and survived deleting the sort entirely.
+            for query in ["ss", "sa", "st", "rs"] {
+                let offered = palette(query.to_owned(), 4);
+                assert!(offered.len() > 3, "{query:?} matches too little to rank");
+                let ranks: Vec<u8> = offered.iter().map(rank).collect();
+                assert!(
+                    ranks.windows(2).all(|pair| pair[0] <= pair[1]),
+                    "{query:?} is not ordered by §58's hierarchy: {:?}",
+                    offered
+                        .iter()
+                        .map(|e| (e.label.as_str(), e.tier))
+                        .collect::<Vec<_>>()
+                );
+            }
+
+            // And the cut takes the far end rather than whatever was last.
+            let crowded = palette("s".to_owned(), 6);
+            assert_eq!(crowded.len(), PALETTE_LIMIT);
+            assert!(
+                crowded.iter().map(rank).all(|rank| rank <= 2),
+                "the cut kept preparation entries while dropping performing \
+                 ones, which is the failure §58 exists to rank away: {:?}",
+                crowded
+                    .iter()
+                    .map(|e| (e.label.as_str(), e.tier))
+                    .collect::<Vec<_>>()
+            );
+        }
+
+        /// The operations are placed where §58 puts them, checked directly.
+        ///
+        /// An ordering test cannot see this: a pin mis-ranked as *performable*
+        /// still sorts before the surfaces it is generated after, so the list
+        /// stays in order and the rank is wrong. Written out, so the table can
+        /// be read against the section.
+        #[test]
+        fn an_arrangement_gesture_is_paperwork_and_a_deck_gesture_is_not() {
+            let tier_of = |needle: &str, label_starts: &str| {
+                palette(needle.to_owned(), 2)
+                    .into_iter()
+                    .find(|entry| entry.label.starts_with(label_starts))
+                    .unwrap_or_else(|| panic!("the palette no longer offers {label_starts:?}"))
+                    .tier
+            };
+            assert_eq!(
+                tier_of("pin library", "Pin "),
+                crate::tiers::Tier::Preparation.name(),
+                "pinning a panel ranks as something done with a record"
+            );
+            assert_eq!(
+                tier_of("focus deck 1", "Focus deck"),
+                crate::tiers::Tier::Performable.name(),
+                "marking a deck ranks as paperwork"
+            );
+            assert_eq!(
+                tier_of("deck 1 play", "Deck 1"),
+                crate::tiers::Tier::Glanceable.name()
+            );
+        }
+
+        /// Every entry carries a tier, and it is one of §58's four.
+        #[test]
+        fn every_entry_the_palette_offers_is_placed_in_the_hierarchy() {
+            for entry in palette(String::new(), 6)
+                .into_iter()
+                .chain(palette("s".to_owned(), 2))
+                .chain(palette("deck 1 play".to_owned(), 2))
+            {
+                assert!(
+                    crate::tiers::Tier::ALL
+                        .iter()
+                        .any(|tier| tier.name() == entry.tier),
+                    "`{}` is offered with tier {:?}, which is not one of §58's",
+                    entry.label,
+                    entry.tier
+                );
+            }
+        }
+
         #[test]
         fn it_stops_at_a_readable_number() {
             assert!(palette(String::new(), 6).len() <= PALETTE_LIMIT);
@@ -6791,6 +6903,9 @@ pub struct PaletteEntryDto {
     pub kind: &'static str,
     /// The action text, the surface name, or the interface operation.
     pub run: String,
+    /// §58's information hierarchy: `glanceable`, `performable`, `contextual`
+    /// or `preparation`. What the list is ordered by.
+    pub tier: &'static str,
 }
 
 /// How many entries one query may return.
@@ -6804,22 +6919,28 @@ const PALETTE_LIMIT: usize = 12;
 ///
 /// # Ranking, and why it is here rather than in the interface
 ///
-/// Three tiers, and the first is the one that makes this more than a menu:
+/// **What you typed comes first, if it is a real action.** `deck 2 loop 8`
+/// parses, so the top entry runs it verbatim. This is what turns the palette
+/// into the semantic interface §51 asks for -- the whole vocabulary is reachable
+/// by typing it, including every verb that takes an argument, which a list of
+/// buttons could never offer without inventing numbers. It stays at the top
+/// whatever it is: a DJ who typed a thing is not asking to be ranked.
 ///
-/// 1. **What you typed, if it is a real action.** `deck 2 loop 8` parses, so
-///    the top entry runs it verbatim. This is what turns the palette into the
-///    semantic interface §51 asks for -- the whole 82-verb vocabulary is
-///    reachable by typing it, including every verb that takes an argument,
-///    which a list of buttons could never offer without inventing numbers.
-/// 2. **Verbs that need no argument**, one per deck in use. `play`, `cue`,
-///    `sync`, `eject` -- the things a palette is actually reached for.
-/// 3. **Surfaces**, so "show prepare" and "show plan" work as words.
+/// **Everything else is ordered by [§58's information
+/// hierarchy](crate::tiers)** -- glanceable, then performable, then contextual,
+/// then preparation -- and the cut to [`PALETTE_LIMIT`] happens after. Before
+/// this the order was the order the passes below happened to generate in, so a
+/// DJ who typed three letters mid-mix could be offered *Pin the Journal* above
+/// *deck 2 cue*, and on a six-deck layout the cut could take the performing
+/// controls off the bottom entirely. §58 is a ranking, and a ranking nothing
+/// reads is a paragraph.
+///
+/// The sort is **stable**, so within a tier the order stays the one the passes
+/// gave it: the vocabulary is written grouped by what the verbs do, so an empty
+/// query opens on transport rather than on whatever sorts first alphabetically.
 ///
 /// Matching is a subsequence test rather than a substring one, because that is
-/// what a palette user expects: `d2p` finds `Deck 2 · play`. Within a tier the
-/// order is the vocabulary's own, which is grouped by what the verbs do, so an
-/// empty query opens on transport rather than on whatever sorts first
-/// alphabetically.
+/// what a palette user expects: `d2p` finds `Deck 2 · play`.
 #[tauri::command]
 #[must_use]
 pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
@@ -6828,7 +6949,8 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
     let needle = query.trim();
     let mut out = Vec::new();
 
-    // Tier 1: the query itself, when djmanzo can perform it.
+    // The query itself, when djmanzo can perform it. Kept at the top by the
+    // sort below rather than by being pushed first.
     //
     // `SessionEvent::parse_line` rather than `Action::parse`, because a load is
     // not an action and the palette would otherwise refuse a line `perform`
@@ -6842,13 +6964,16 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
             about: "The vocabulary accepts this exactly as typed.".to_owned(),
             kind: "action",
             run: needle.to_owned(),
+            // Whatever it is, it is what the DJ typed, and the sort below keeps
+            // it at the top regardless.
+            tier: crate::tiers::Tier::Glanceable.name(),
         });
     }
 
     let decks = decks.clamp(1, 6);
     for spec in vocabulary() {
         // A verb needing an argument cannot be offered as a press: the palette
-        // would have to invent the number. Tier 1 is how those are reached.
+        // would have to invent the number. Typing it is how those are reached.
         if spec.argument.takes_argument() {
             continue;
         }
@@ -6863,6 +6988,7 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
                             about: spec.help.to_owned(),
                             kind: "action",
                             run,
+                            tier: crate::tiers::of_verb(spec.verb).name(),
                         });
                     }
                 }
@@ -6875,13 +7001,14 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
                         about: spec.help.to_owned(),
                         kind: "action",
                         run: spec.example.to_owned(),
+                        tier: crate::tiers::of_verb(spec.verb).name(),
                     });
                 }
             }
         }
     }
 
-    // Tier 3: the surfaces, by the words a DJ would reach for them with.
+    // The surfaces, by the words a DJ would reach for them with.
     for surface in crate::cockpit::surfaces() {
         let label = format!("Show {}", surface.title);
         if matches(needle, &label) || matches(needle, surface.name) {
@@ -6890,11 +7017,12 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
                 about: surface.about.to_owned(),
                 kind: "surface",
                 run: surface.name.to_owned(),
+                tier: crate::tiers::of_surface(surface.name).name(),
             });
         }
     }
 
-    // Tier 4: the rest of §41's interface vocabulary.
+    // The rest of §41's interface vocabulary.
     //
     // Here because the palette is what §51 calls "the semantic interface", and
     // an operation only the assistant could reach would be a control a DJ has
@@ -6914,6 +7042,10 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
                     },
                     kind: "ui",
                     run,
+                    // Pinning a surface is arrangement, whatever the surface is
+                    // for: it is a thing done to a layout rather than with a
+                    // record. §58's tier 4.
+                    tier: crate::tiers::Tier::Preparation.name(),
                 });
             }
         }
@@ -6927,10 +7059,21 @@ pub fn palette(query: String, decks: u8) -> Vec<PaletteEntryDto> {
                 about: "Mark this deck for a moment.".to_owned(),
                 kind: "ui",
                 run,
+                // Focus is a gesture made with a hand on a deck, not paperwork.
+                tier: crate::tiers::Tier::Performable.name(),
             });
         }
     }
 
+    // §58, applied. Stable, so within a tier the passes' own order survives —
+    // and the typed query keeps the top because it is pushed first and nothing
+    // outranks `Glanceable`.
+    out.sort_by_key(|entry| {
+        crate::tiers::Tier::ALL
+            .into_iter()
+            .find(|tier| tier.name() == entry.tier)
+            .map_or(u8::MAX, crate::tiers::Tier::rank)
+    });
     out.truncate(PALETTE_LIMIT);
     out
 }

@@ -137,4 +137,59 @@ test.describe("the command palette", () => {
     await expect(palette(page), "a plain k opened the palette").toHaveCount(0);
     await expect(search).toHaveValue("k");
   });
+
+  /**
+   * §58's hierarchy, on the rows.
+   *
+   * Rust orders the list and cuts it to twelve; this is the half that is only
+   * true on screen — that the boundary between the hands and the paperwork is
+   * *visible*, so after a night a DJ knows the top of the palette is where the
+   * performing controls are without having to read twelve labels.
+   *
+   * A line down the edge rather than a word, because twelve rows each carrying
+   * "performable" would be a column of one adjective; §33's rule then applies
+   * to the line, which is why the tier is also in the row's title.
+   */
+  test("each row is marked with the tier it belongs to", async ({ page }) => {
+    await openShell(page, "/");
+    await page.keyboard.press("Control+k");
+    const rows = page.locator(".entries button");
+    await expect(rows.first()).toBeVisible();
+
+    await expect(
+      rows.nth(1),
+      "the rows carry no tier, so §58's hierarchy is an ordering nobody can see",
+    ).toHaveAttribute("data-tier", "glanceable");
+    await expect(rows.nth(2)).toHaveAttribute("data-tier", "performable");
+    await expect(rows.nth(3)).toHaveAttribute("data-tier", "preparation");
+
+    // The mark is a real difference, not a class nothing draws.
+    const edge = (n: number) =>
+      rows.nth(n).evaluate((el) => getComputedStyle(el).borderLeftColor);
+    expect(
+      await edge(1),
+      "the hands and the paperwork are marked the same, so the mark says nothing",
+    ).not.toBe(await edge(3));
+  });
+
+  /**
+   * And the order is Rust's, drawn as it came.
+   *
+   * The interface must not re-sort: Rust ranks *and then cuts to twelve*, so a
+   * browser that reordered would be showing the right twelve in the wrong
+   * order, and one that ranked for itself would eventually disagree about what
+   * a tier is.
+   */
+  test("the palette draws the order it was given", async ({ page }) => {
+    await openShell(page, "/");
+    await page.keyboard.press("Control+k");
+    await expect(
+      page.locator(".entries button .label"),
+    ).toHaveText([
+      "Run: deck 2 loop 8",
+      "Deck 1 \u00b7 play",
+      "Deck 1 \u00b7 eq_low",
+      "Show Prepare",
+    ]);
+  });
 });

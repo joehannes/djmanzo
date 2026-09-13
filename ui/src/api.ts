@@ -1413,6 +1413,15 @@ export interface PaletteEntry {
   kind: "action" | "surface" | "ui";
   /** The action text, the surface name, or the interface operation. */
   run: string;
+  /**
+   * §58's information hierarchy: `glanceable`, `performable`, `contextual` or
+   * `preparation`.
+   *
+   * What the list is already ordered by — Rust sorts before it cuts to twelve,
+   * so the interface never has to. Drawn as a mark on the row so a DJ can see
+   * where the hands end and the paperwork begins.
+   */
+  tier: string;
 }
 
 /**

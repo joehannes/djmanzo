@@ -66,6 +66,7 @@ pub mod snapshot;
 pub mod sources;
 pub mod staged;
 pub mod state;
+pub mod tiers;
 pub mod timecode;
 pub mod transition;
 pub mod uiop;

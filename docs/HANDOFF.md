@@ -437,6 +437,17 @@ target/debug/incremental` recovers several gigabytes and cargo rebuilds it.
 **`pkill -f "something"` matches its own shell.** It kills the command that
 ran it. Use `pkill -x <name>`.
 
+**A test of an ordering needs an input the old order gets wrong.** §58's
+palette ranking was first tested with the query `e`, and deleting the sort
+entirely left it green: the passes that generate the list already run verbs,
+then surfaces, then interface operations, which is roughly §58's order anyway.
+Four queries do interleave — `ss`, `sa`, `st`, `rs` — because a preparation
+*verb* (`grid_*`) is generated before a performable one (`crossfader`) and a
+performable *surface* (`stems`) after both. Before trusting a sort, find the
+input that is wrong without it; and note that an ordering test cannot see a
+single mis-ranked item that still happens to land in order, which is why the
+tiers are also asserted directly.
+
 **A default answer added to `e2e/shell.ts` overrides the one already there.**
 `ANSWERS` is one object literal, so a second `library_search:` key silently
 replaces the first — and the fixture that had two records became one, which

@@ -191,8 +191,21 @@
       <ul class="entries">
         {#each entries as entry, i (entry.kind + entry.run)}
           <li>
+            <!--
+              §58's tier, on the row. Rust has already ordered the list by it
+              and cut to twelve, so this decides nothing — it says where the
+              hands end and the paperwork begins, which is what turns an ordered
+              list into a hierarchy somebody can see.
+
+              A line down the edge rather than a word: twelve rows each carrying
+              "performable" would be a column of the same adjective, and the
+              thing worth seeing is the boundary, not the label. The word is in
+              the title for anyone who wants it.
+            -->
             <button
               class:chosen={i === chosen}
+              data-tier={entry.tier}
+              title="{entry.about} ({entry.tier})"
               disabled={!enabled && entry.kind === "action"}
               onclick={() => run(entry)}
               onmouseenter={() => (chosen = i)}
@@ -209,6 +222,31 @@
 {/if}
 
 <style>
+  /*
+    §58's four, as four weights of one edge rather than four colours.
+
+    Colour would put a second meaning on a list that is already using it for
+    the chosen row, and §33's rule applies: the tier is a *position* in an
+    ordered list, and the edge marks where the boundaries fall. A DJ never has
+    to learn it — the list is already in the right order — but after a night it
+    is visible that the top of the palette is the hands.
+  */
+  .entries button[data-tier] {
+    border-left: 3px solid transparent;
+  }
+  .entries button[data-tier="glanceable"] {
+    border-left-color: var(--accent);
+  }
+  .entries button[data-tier="performable"] {
+    border-left-color: var(--accent-2);
+  }
+  .entries button[data-tier="contextual"] {
+    border-left-color: var(--border-strong);
+  }
+  .entries button[data-tier="preparation"] {
+    border-left-color: transparent;
+  }
+
   .scrim {
     position: fixed;
     inset: 0;
