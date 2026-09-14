@@ -11966,6 +11966,67 @@ pub fn mission_bar(state: State<'_, AppState>) -> Vec<crate::mission::Item> {
     })
 }
 
+/// §11's `DJContext`, gathered in one pass.
+///
+/// **One question, one moment.** The five fields that were already real were
+/// published by five different things on five different schedules, so a
+/// consumer wanting three of them asked three questions and got three answers
+/// about three different instants. §11's own instruction is *do not duplicate
+/// context logic inside each component*, and a component assembling the
+/// context out of three polls is the same failure with a clock in it.
+///
+/// Nothing here decides anything: every field comes from the thing that owns
+/// it, and `crate::context` says which. The three that had no gatherer at all
+/// — `musicContext`, `hardwareContext`, `djBehaviorContext` — have one now.
+///
+/// # Errors
+/// When the assistant's or the rail's state is poisoned. The room being
+/// unreadable is not an error: nothing is watching in most installations, and
+/// an absent reading is the honest answer rather than a failure.
+#[tauri::command]
+pub fn dj_context(state: State<'_, AppState>) -> Result<crate::context::DjContext, String> {
+    let snapshot = snapshot_now(&state);
+
+    let occasion = state
+        .conduct()
+        .lock()
+        .map_err(|_| "the conduct lock is poisoned".to_owned())?
+        .occasion
+        .name()
+        .to_owned();
+
+    // §14's gestures over tonight's log, which is the only window there is:
+    // the log does not outlive the run that made it.
+    let night = state.night();
+    let log = state.bus().log();
+    let signals = crate::signals::signals(&log, &|at| night.phase_at(at));
+
+    let (taken, ignored) = state
+        .fatigue()
+        .lock()
+        .map_or((0, 0), |fatigue| (fatigue.taken(), fatigue.ignored()));
+
+    // A room nothing is watching has not been read. `Glance` is already `None`
+    // in that case, so this needs no second rule about it.
+    let audience = state
+        .room()
+        .lock()
+        .ok()
+        .and_then(|room| room.glance())
+        .map(|glance| glance.because);
+
+    Ok(crate::context::DjContext {
+        session_phase: snapshot.context.session.map(|read| read.phase),
+        occasion,
+        music: crate::context::music(&snapshot),
+        hardware: crate::context::hardware(&snapshot, &state.control().status(None)),
+        audience,
+        behaviour: crate::context::behaviour(&signals, night.elapsed(), taken, ignored),
+        attention: snapshot.attention,
+        health: crate::context::health(&snapshot),
+    })
+}
+
 /// What the room has been doing, and whether it matches the night.
 #[tauri::command]
 pub fn room_read(state: State<'_, AppState>) -> Result<RoomDto, String> {

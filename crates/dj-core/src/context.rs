@@ -233,6 +233,102 @@ impl AudioMetrics {
     }
 }
 
+/// What is on the decks, as a judgement rather than as a list of them.
+///
+/// §11's `musicContext`. Distinct from [`AudioMetrics`], which is the master
+/// bus: this is about the *records*, and the difference matters — a bus can be
+/// loud while nothing is loaded, and two records can be four BPM apart while
+/// the bus reads exactly as it did a minute ago.
+///
+/// Every field is `Option` or a count, and an absence is a real answer: a deck
+/// with nothing on it has no tempo, and a record nobody has analysed has no
+/// key. A zero here would say "no beats per minute", which is a claim about
+/// silence rather than about an empty deck.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct MusicContext {
+    /// The tempo the room is hearing, from the deck carrying the mix.
+    pub bpm: Option<f32>,
+    /// Its key, spelled the way the interface spells one.
+    pub key: Option<String>,
+    /// How many decks are playing at once.
+    pub playing: usize,
+    /// How many are loaded and not playing — what is ready to come in.
+    pub ready: usize,
+    /// The widest gap between any two playing tempos, in BPM.
+    ///
+    /// `None` with fewer than two of them, which is not the same as nought:
+    /// one record is perfectly in time with itself and says nothing about how
+    /// hard the next mix will be.
+    pub bpm_spread: Option<f32>,
+}
+
+/// The machine, and what is plugged into it.
+///
+/// §11's `hardwareContext`. What a DJ would find out by looking at the back of
+/// the laptop, which is exactly what they cannot do mid-set.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct HardwareContext {
+    pub sample_rate: f32,
+    /// What the output chain adds after the decks, in milliseconds.
+    pub output_latency_ms: f32,
+    /// The open controller, by the port's name. `None` for laptop-only.
+    pub controller: Option<String>,
+    /// Whether this machine has a MIDI service at all.
+    ///
+    /// Different from having no controller plugged in, and the difference is
+    /// the one a DJ needs: plugging something in will not help with the first.
+    pub midi: bool,
+    /// Whether there is anywhere to send a headphone cue.
+    pub cue: bool,
+}
+
+/// How the DJ is working tonight.
+///
+/// §11's `djBehaviorContext`, and §12's list of what to learn from — recency,
+/// frequency, acceptance and rejection feedback — read as *tonight* rather
+/// than as a profile. A profile is who this DJ is; this is what they are doing
+/// in the next ten minutes, and the two are different questions.
+///
+/// §13 applies here as much as anywhere: these are counts and rates, never
+/// preferences. "Forty gestures a minute" is a fact; "this DJ is frantic" is a
+/// claim nothing has earned.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct BehaviourContext {
+    /// Gestures a minute over the night so far.
+    ///
+    /// Nought before anything has been done, which is true rather than absent:
+    /// a night that has had no gestures has had no gestures.
+    pub gestures_per_minute: f32,
+    /// The gesture made most often, in §14's own words.
+    ///
+    /// `None` until one of them clears §13's threshold, because a thing done
+    /// twice is not the thing this DJ does.
+    pub commonest: Option<String>,
+    /// Suggestions the DJ took, and let pass. §87's appetite comes from these.
+    pub taken: u64,
+    pub ignored: u64,
+}
+
+/// Whether djmanzo is keeping up with itself.
+///
+/// §11's `performanceHealth`. The audio thread's own load and the gaps the
+/// room actually heard, rather than a frame rate: a slow interface is
+/// annoying and a dropout is the set stopping, and §103 puts audio above
+/// everything the screen does.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub struct HealthContext {
+    /// Share of its time the audio thread is using, 0..=1.
+    pub cpu_load: f32,
+    /// Underruns since the device opened. Each one is a gap the room heard.
+    pub dropouts: u32,
+    /// How hard the master limiter is working, in positive decibels.
+    ///
+    /// Here rather than with the music because it is a fact about the output
+    /// chain: a mix driven past the limiter is a machine problem the room
+    /// hears as a musical one.
+    pub limiter_reduction_db: f32,
+}
+
 /// Somebody's reading of the room.
 ///
 /// `None` at the top level until M9 puts something behind it. Grouped into one

@@ -31,6 +31,7 @@ pub mod clock;
 pub mod cockpit;
 pub mod columns;
 pub mod commands;
+pub mod context;
 pub mod control;
 pub mod ghost;
 pub mod grid;
@@ -483,6 +484,7 @@ pub fn run() {
             commands::mission_bar,
             commands::phase_priorities,
             commands::room_read,
+            commands::dj_context,
             commands::night_read,
             commands::staged_prepare,
             commands::staged_current,

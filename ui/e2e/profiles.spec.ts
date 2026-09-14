@@ -267,3 +267,61 @@ test.describe("what a profile fits", () => {
     expect(errorsThrown(page), "the night panel threw").toEqual([]);
   });
 });
+
+/**
+ * §11's `DJContext`, gathered.
+ *
+ * > Build an explicit internal concept … The context engine should become the
+ * > common input to [nine things]. **Do not duplicate context logic inside
+ * > each component.**
+ *
+ * Five of the eight were already real and were published by five different
+ * things on five different schedules — so "the context engine" was a phrase
+ * rather than an object, and a panel wanting three of them showed three
+ * different moments at once. The eight names and the gathering are Rust's
+ * (`dj_app::context`, which holds them against §11's own list in both
+ * directions). What a browser can prove is that all eight reach a DJ, and that
+ * the ones nothing has measured say so rather than reading as a measurement.
+ */
+test.describe("what djmanzo has in view", () => {
+  test("all eight of §11's fields reach the night panel", async ({ page }) => {
+    await nightOpen(page);
+    const context = page.getByTestId("dj-context");
+    await expect(context).toBeVisible();
+    for (const label of [
+      "Phase",
+      "Occasion",
+      "Music",
+      "Hardware",
+      "Room",
+      "You",
+      "Attention",
+      "Health",
+    ]) {
+      await expect(context).toContainText(label);
+    }
+    expect(errorsThrown(page), "the night panel threw").toEqual([]);
+  });
+
+  /**
+   * **An absence reads as an absence.**
+   *
+   * The half worth having, and the one a neutral default would destroy. A room
+   * with no camera has not been read; a deck with nothing on it has no tempo;
+   * a machine with no MIDI service is not a machine with nothing plugged in.
+   * All three are true of this container, and all three have to look different
+   * from a measurement that happened to come out low.
+   */
+  test("what nothing has measured says so rather than reading as nought", async ({
+    page,
+  }) => {
+    await nightOpen(page);
+    const context = page.getByTestId("dj-context");
+    await expect(context).toContainText("not read");
+    await expect(context).toContainText("nothing playing");
+    await expect(context).toContainText("no MIDI service");
+    // And the things that *are* measured are there as numbers.
+    await expect(context).toContainText("48 kHz");
+    expect(errorsThrown(page), "the night panel threw").toEqual([]);
+  });
+});

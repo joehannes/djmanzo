@@ -807,6 +807,42 @@ const ANSWERS: Record<string, unknown> = {
     posture: null,
     withheld: [],
   },
+  /**
+   * §11's eight fields, as this container answers them: nothing playing, no
+   * MIDI service, nobody watching the room.
+   *
+   * Every absent field is `null` rather than a neutral value, because that is
+   * what djmanzo sends and it is the whole design — a room with no camera has
+   * not been read, and a zero there would be a measurement nobody took.
+   */
+  dj_context: {
+    session_phase: null,
+    occasion: "open",
+    music: { bpm: null, key: null, playing: 0, ready: 0, bpm_spread: null },
+    hardware: {
+      sample_rate: 48000,
+      output_latency_ms: 11.6,
+      controller: null,
+      midi: false,
+      cue: false,
+    },
+    audience: null,
+    behaviour: {
+      gestures_per_minute: 0,
+      commonest: null,
+      taken: 0,
+      ignored: 0,
+    },
+    attention: {
+      promoted_controls: 5,
+      suggestions: 5,
+      notices: 3,
+      reflow: true,
+      tier: "preparation",
+      motion: "full",
+    },
+    health: { cpu_load: 0.03, dropouts: 0, limiter_reduction_db: 0 },
+  },
   // Three wedding nights and three club nights, which is what §81 is about:
   // the same DJ, two different answers, and never their average.
   /**

@@ -1004,6 +1004,15 @@ one guarded and one not, and the unguarded one was written first. When a test
 fails intermittently, read what it claims rather than re-running it: this one
 had been describing its own bug for months.
 
+**"It already ships" and "it is one thing" are different claims.** §11's
+context had five of its eight fields real for a long time, and the row said so
+— which read as most of the section being done. They were published by five
+different things on five different schedules, so nothing could ask for the
+context and get *one moment*: the fields existed and the object did not, and
+the directive's actual sentence is about the object. Worth the check on any
+row that counts fields: are they in one place, at one instant, or is that a
+list of things that happen to exist?
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests

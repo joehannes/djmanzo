@@ -24,11 +24,13 @@
   import { onMount } from "svelte";
   import {
     assistantSetPosture,
+    djContext,
     nightFits,
     nightNow,
     nightRead,
     nightSettings,
     noteNight,
+    type DjContext,
     type Fits,
     type NightKind,
     type NightRead,
@@ -118,6 +120,67 @@
   let fits = $state<Fits | null>(null);
 
   /**
+   * §11's eight fields, in one question.
+   *
+   * Drawn here because this panel is already where the night's reading shows
+   * its working, and §11's object is that reading with the other seven things
+   * beside it. One call rather than eight: the five that were already real
+   * were published by five different things on five different schedules, and a
+   * panel assembling them from five polls would be showing five moments at
+   * once.
+   *
+   * Every field that can be absent is drawn as absent. A room nothing is
+   * watching has not been read, and a neutral reading would be an invention.
+   */
+  let context = $state<DjContext | null>(null);
+
+  /** "1 notice", "3 notices". A readout that says "1 suggestions" is one a DJ
+   *  reads as a machine talking rather than as a sentence. */
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+  /** §11's eight, in §11's order, as the panel says them. */
+  const eight = $derived.by(() => {
+    if (!context) return [];
+    const c = context;
+    const said = (value: string | null | undefined) => value ?? "not read";
+    return [
+      ["Phase", said(c.session_phase)],
+      ["Occasion", c.occasion],
+      [
+        "Music",
+        c.music.bpm === null
+          ? "nothing playing"
+          : `${c.music.bpm.toFixed(1)} BPM${c.music.key ? ` · ${c.music.key}` : ""}` +
+            ` · ${c.music.playing} playing, ${c.music.ready} ready`,
+      ],
+      [
+        "Hardware",
+        `${(c.hardware.sample_rate / 1000).toFixed(0)} kHz · ` +
+          `${c.hardware.output_latency_ms.toFixed(1)} ms · ` +
+          (c.hardware.controller ??
+            (c.hardware.midi ? "no controller" : "no MIDI service")),
+      ],
+      ["Room", said(c.audience)],
+      [
+        "You",
+        `${c.behaviour.gestures_per_minute.toFixed(1)} gestures a minute` +
+          (c.behaviour.commonest ? ` · mostly ${c.behaviour.commonest}` : "") +
+          ` · ${c.behaviour.taken} taken, ${c.behaviour.ignored} passed`,
+      ],
+      [
+        "Attention",
+        `${plural(c.attention.suggestions, "suggestion")} · ` +
+          plural(c.attention.notices, "notice"),
+      ],
+      [
+        "Health",
+        `${(c.health.cpu_load * 100).toFixed(0)}% CPU · ` +
+          plural(c.health.dropouts, "dropout"),
+      ],
+    ] as [string, string][];
+  });
+
+  /**
    * The setting the one-shot has already been run for.
    *
    * **It sets; it does not own** — the contract §7's arrangements and §54's
@@ -186,6 +249,7 @@
         ? await noteNight(undefined, density)
         : await nightNow();
       read = await nightRead();
+      context = await djContext();
       error = "";
       // Kept current so an offer disappears when it is taken and reappears if
       // the DJ moves away from it. The *applying* is once per night; see
@@ -299,6 +363,30 @@
       the only way a posture ever goes *up* — see `dj_app::profile::fits` for
       why that direction is never taken unasked.
     -->
+    <!--
+      §11's eight fields, gathered in one pass and drawn in §11's own order.
+
+      Here because this panel is already where the night's reading shows its
+      working, and the object is that reading with the other seven beside it.
+      **Absence is drawn as absence**: a room nothing is watching reads "not
+      read", and a deck with nothing on it reads "nothing playing", because a
+      neutral value in either place would be an invention that looks exactly
+      like a measurement.
+    -->
+    {#if eight.length}
+      <details class="context" data-testid="dj-context">
+        <summary>What djmanzo has in view</summary>
+        <dl>
+          {#each eight as [label, value] (label)}
+            <div>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          {/each}
+        </dl>
+      </details>
+    {/if}
+
     {#if fits?.density || fits?.posture || fits?.withheld.length}
       <div class="fits" data-testid="night-fits">
         {#if fits.density}
@@ -475,6 +563,40 @@
     font-size: 0.68rem;
     line-height: 1.45;
     color: var(--muted);
+  }
+
+  /*
+    §11's object. Folded by default and quiet when open: it is evidence for the
+    sentences above rather than a thing to read every night, and a panel that
+    led with eight rows of machine state would be the AI dashboard §4 forbids.
+  */
+  .context {
+    font-size: 0.68rem;
+  }
+
+  .context summary {
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .context dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.15rem 0.5rem;
+    margin: 0.3rem 0 0;
+  }
+
+  .context dl > div {
+    display: contents;
+  }
+
+  .context dt {
+    color: var(--muted);
+  }
+
+  .context dd {
+    margin: 0;
+    color: var(--text);
   }
 
   /*

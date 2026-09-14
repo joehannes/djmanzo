@@ -2257,6 +2257,73 @@ export const noteNight = (setting?: string, density?: string) =>
     density: density ?? null,
   });
 
+/** §11's `musicContext`: what is on the decks, not what the bus sounds like. */
+export interface MusicContext {
+  /** The tempo the room is hearing, from the deck carrying the mix. */
+  bpm: number | null;
+  key: string | null;
+  playing: number;
+  ready: number;
+  /** The widest gap between two playing tempos. Null with fewer than two. */
+  bpm_spread: number | null;
+}
+
+/** §11's `hardwareContext`: the machine, and what is plugged into it. */
+export interface HardwareContext {
+  sample_rate: number;
+  output_latency_ms: number;
+  controller: string | null;
+  /**
+   * Whether the machine has a MIDI service at all — different from having
+   * nothing plugged in, and only one of the two is fixed by plugging
+   * something in.
+   */
+  midi: boolean;
+  cue: boolean;
+}
+
+/** §11's `djBehaviorContext`: how the DJ is working tonight. Counts, never a
+ *  judgement — see `dj_app::context`. */
+export interface BehaviourContext {
+  gestures_per_minute: number;
+  /** The commonest gesture, once §13's threshold clears it. */
+  commonest: string | null;
+  taken: number;
+  ignored: number;
+}
+
+/** §11's `performanceHealth`. */
+export interface HealthContext {
+  cpu_load: number;
+  dropouts: number;
+  limiter_reduction_db: number;
+}
+
+/** §11's `DJContext`, gathered in one pass. */
+export interface DjContext {
+  session_phase: string | null;
+  occasion: string;
+  music: MusicContext;
+  hardware: HardwareContext;
+  /** The room's own sentence, or null when nothing is watching. */
+  audience: string | null;
+  behaviour: BehaviourContext;
+  attention: Attention;
+  health: HealthContext;
+}
+
+/**
+ * §11's eight fields, in one question.
+ *
+ * The five that were already real were published by five different things on
+ * five different schedules, so a panel wanting three of them asked three
+ * questions and got three answers about three different moments. §11's own
+ * instruction is *do not duplicate context logic inside each component*, and
+ * assembling the context out of three polls is that failure with a clock in
+ * it.
+ */
+export const djContext = () => invoke<DjContext>("dj_context");
+
 /** Tonight's row, without writing anything. */
 export const nightNow = () => invoke<NightSetting>("night_now");
 
