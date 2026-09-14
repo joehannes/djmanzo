@@ -353,6 +353,155 @@ fn shares(counts: Vec<(String, u32)>) -> Vec<(String, f64)> {
         .collect()
 }
 
+// -- what a profile may do about it ------------------------------------------
+
+/// Whether djmanzo may act on a fit by itself, or has to be asked.
+///
+/// The distinction is §78's, not a preference. That section's whole subject is
+/// *what the software may change about itself without being asked*, and a
+/// profile is the strongest thing djmanzo has to say about a DJ — which makes
+/// it exactly the thing most likely to be applied too eagerly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Doing {
+    /// Safe unasked: it changes how much fits on a screen, and §78 names that
+    /// as a freedom the DJ can withdraw with one lock.
+    ItsOwn,
+    /// Offered, and nothing happens until the DJ presses it.
+    IfAsked,
+}
+
+impl Doing {
+    #[must_use]
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::ItsOwn => "its-own",
+            Self::IfAsked => "if-asked",
+        }
+    }
+}
+
+/// One thing a profile would have djmanzo change.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Fit<T> {
+    /// What it would be changed to.
+    pub to: T,
+    pub doing: Doing,
+    /// The evidence, in Rust's words. See [`Profile::words`] for why here.
+    pub because: String,
+}
+
+/// What tonight's profile would fit, and what it is deliberately not offering.
+///
+/// Both halves matter. A profile that silently declined to act on a lock would
+/// look exactly like one with nothing to say, and a DJ who locked the density
+/// months ago is entitled to know that is why the interface is not moving.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Fits {
+    pub density: Option<Fit<crate::cockpit::Density>>,
+    pub posture: Option<Fit<Posture>>,
+    /// Where the profile had an answer and djmanzo is not offering it, and why.
+    pub withheld: Vec<String>,
+}
+
+/// What this kind of night's profile would fit the cockpit and the assistant to.
+///
+/// **The other half of §81.** A profile has been a thing djmanzo could *say*
+/// about a DJ since it was written; §81 lists density and automation tolerance
+/// among the five things a conditional profile differs in, and until this the
+/// only one of the five anything acted on was the genre weights — see §12's
+/// row. This is the doing, for the other two.
+///
+/// # Two different kinds of change, and why they are not treated alike
+///
+/// **Density is presentation.** §78 names *no automatic surface resizing* as
+/// one of its four freedoms and §79 gives it a lock of its own, so a DJ who
+/// does not want it has already said so in the one place made for saying it.
+/// With the lock off, a profile moving the band is the same kind of act as the
+/// window moving it — and the profile has better evidence, because it is three
+/// or more nights of what this DJ actually ran at rather than one window
+/// height.
+///
+/// **Posture is autonomy**, which is not presentation and has no lock because
+/// it has its own control. §9's rule is that autonomy above confidence is
+/// unsafe, and a profile is a statement about *past* nights: it is evidence
+/// about a habit and not about tonight's certainty. So the rule here is
+/// asymmetric and deliberately so — djmanzo may turn its own autonomy **down**
+/// on a profile, and may only ever *offer* to turn it up. Quieting itself
+/// without being asked costs the DJ nothing they cannot undo in one press;
+/// the other direction hands a machine the mix because of what happened on
+/// three previous evenings.
+///
+/// A field the profile has no answer for produces nothing at all, and a field
+/// already where the profile wants it produces nothing either: a panel
+/// offering to change something to what it already is is noise with a button
+/// on it.
+#[must_use]
+pub fn fits(
+    profile: &Profile,
+    density_now: Option<crate::cockpit::Density>,
+    posture_now: Posture,
+    permits: crate::cockpit::Permits,
+) -> Fits {
+    use crate::cockpit::{Density, Freedom};
+
+    let mut out = Fits::default();
+    let over = format!(
+        "over {} {} night{}",
+        profile.nights(),
+        profile.setting().title().to_lowercase(),
+        if profile.nights() == 1 { "" } else { "s" }
+    );
+
+    if let Some(wants) = profile.density().and_then(Density::named) {
+        if density_now == Some(wants) {
+            // Already there. Nothing to say.
+        } else if permits.allows(Freedom::Resize) {
+            out.density = Some(Fit {
+                to: wants,
+                doing: Doing::ItsOwn,
+                because: format!("You run {} {over}.", wants.name()),
+            });
+        } else {
+            out.withheld.push(format!(
+                "You run {} {over}. The density is locked, so djmanzo is leaving it.",
+                wants.name()
+            ));
+        }
+    }
+
+    if let Some(wants) = profile.automation()
+        && wants != posture_now
+    {
+        // Quieter than the assistant is now, on the axis `Posture::ALL` states.
+        let quieter = rank(wants) < rank(posture_now);
+        out.posture = Some(Fit {
+            to: wants,
+            doing: if quieter {
+                Doing::ItsOwn
+            } else {
+                Doing::IfAsked
+            },
+            because: format!("You keep the assistant on {} {over}.", wants.name()),
+        });
+    }
+
+    out
+}
+
+/// Where a posture sits on the autonomy axis.
+///
+/// [`Posture::ALL`] is documented as quietest first, so its position in that
+/// list *is* the ordering. Read from it rather than written out again here,
+/// because a seventh posture added to the enum would otherwise be ranked by a
+/// table nobody remembered to update — and it would be ranked as the quietest,
+/// which is the direction djmanzo acts on unasked.
+fn rank(posture: Posture) -> usize {
+    Posture::ALL
+        .iter()
+        .position(|p| *p == posture)
+        .unwrap_or(usize::MAX)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -390,6 +539,171 @@ mod tests {
             .into_iter()
             .next()
             .expect("enough nights for a profile")
+    }
+
+    /// A profile whose nights all ran at one density and one posture.
+    fn settled(setting: &str, density: &str, posture: Posture) -> Profile {
+        let mut seen = nights(setting, ENOUGH_NIGHTS);
+        for night in &mut seen {
+            night.density = Some(density.to_owned());
+            night.posture = Some(posture.name().to_owned());
+        }
+        profiles(&seen, &nothing)
+            .into_iter()
+            .next()
+            .expect("enough nights for a profile")
+    }
+
+    /// **djmanzo may quiet itself on a profile; it may never let itself loose
+    /// on one.**
+    ///
+    /// The load-bearing rule of this half of §81, and the one worth a test of
+    /// its own: a profile is evidence about *past* nights, and §9's rule is
+    /// that autonomy above confidence is unsafe. Turning the assistant down
+    /// costs a DJ one press to undo. Turning it up because of what happened on
+    /// three previous evenings hands a machine the mix.
+    #[test]
+    fn a_profile_turns_the_assistant_down_by_itself_and_only_ever_offers_to_turn_it_up() {
+        let quiet = settled("wedding", "Standard", Posture::Watch);
+        let loud = settled("club", "Standard", Posture::Autopilot);
+
+        let down = fits(
+            &quiet,
+            Some(crate::cockpit::Density::Standard),
+            Posture::Autopilot,
+            crate::cockpit::Permits::everything(),
+        );
+        let up = fits(
+            &loud,
+            Some(crate::cockpit::Density::Standard),
+            Posture::Watch,
+            crate::cockpit::Permits::everything(),
+        );
+
+        let down = down.posture.expect("a quieter posture was not offered");
+        assert_eq!(down.to, Posture::Watch);
+        assert_eq!(
+            down.doing,
+            Doing::ItsOwn,
+            "djmanzo asked permission to make itself quieter"
+        );
+
+        let up = up.posture.expect("a louder posture was not offered at all");
+        assert_eq!(up.to, Posture::Autopilot);
+        assert_eq!(
+            up.doing,
+            Doing::IfAsked,
+            "a profile handed the machine the mix without being asked"
+        );
+    }
+
+    /// **A locked density is not moved, and the DJ is told that is why.**
+    ///
+    /// §79's lock, honoured at the one place a profile could ignore it. The
+    /// silent version of this is worse than not building it: an interface that
+    /// declined to act and said nothing looks exactly like one with nothing to
+    /// say, and a DJ who locked the density months ago has no way to connect
+    /// the two.
+    #[test]
+    fn a_locked_density_is_left_alone_and_the_reason_is_said() {
+        let profile = settled("club", "Pro Dense", Posture::Suggest);
+        let mut locked = crate::cockpit::Permits::everything();
+        locked.resize = false;
+
+        let free = fits(
+            &profile,
+            Some(crate::cockpit::Density::Standard),
+            Posture::Suggest,
+            crate::cockpit::Permits::everything(),
+        );
+        let held = fits(
+            &profile,
+            Some(crate::cockpit::Density::Standard),
+            Posture::Suggest,
+            locked,
+        );
+
+        assert_eq!(
+            free.density.as_ref().map(|fit| fit.to),
+            Some(crate::cockpit::Density::ProDense),
+        );
+        assert!(free.withheld.is_empty());
+        assert!(held.density.is_none(), "a locked density was moved anyway");
+        assert_eq!(held.withheld.len(), 1, "it was withheld without a word");
+        assert!(
+            held.withheld[0].contains("Pro Dense") && held.withheld[0].contains("locked"),
+            "the reason does not say what was withheld or why: {}",
+            held.withheld[0]
+        );
+    }
+
+    /// **Nothing is offered where nothing would change.**
+    ///
+    /// A panel offering to set something to what it already is is noise with a
+    /// button on it, and a DJ who pressed it and saw nothing happen would stop
+    /// reading the panel.
+    #[test]
+    fn a_profile_that_already_has_what_it_wants_offers_nothing() {
+        let profile = settled("wedding", "Compact", Posture::Prepare);
+        let nothing_to_do = fits(
+            &profile,
+            Some(crate::cockpit::Density::Compact),
+            Posture::Prepare,
+            crate::cockpit::Permits::everything(),
+        );
+        assert_eq!(nothing_to_do, Fits::default());
+    }
+
+    /// A profile with no answer for a field says nothing about it, which is
+    /// not the same as having nothing to say at all.
+    #[test]
+    fn a_profile_silent_on_one_field_still_speaks_on_the_other() {
+        let mut seen = nights("club", ENOUGH_NIGHTS);
+        // Every night agrees about the density and no two agree about the
+        // posture, so the profile has one answer and not the other.
+        for (night, posture) in
+            seen.iter_mut()
+                .zip([Posture::Autopilot, Posture::Off, Posture::Prepare])
+        {
+            night.density = Some("Ultra Dense".to_owned());
+            night.posture = Some(posture.name().to_owned());
+        }
+        let profile = profiles(&seen, &nothing)
+            .into_iter()
+            .next()
+            .expect("enough nights");
+        assert!(
+            profile.automation().is_none(),
+            "three nights that disagreed became a habit"
+        );
+
+        let fit = fits(
+            &profile,
+            Some(crate::cockpit::Density::Standard),
+            Posture::Suggest,
+            crate::cockpit::Permits::everything(),
+        );
+        assert_eq!(
+            fit.density.map(|f| f.to),
+            Some(crate::cockpit::Density::UltraDense)
+        );
+        assert!(fit.posture.is_none());
+    }
+
+    /// The autonomy order is read from `Posture::ALL` rather than written out
+    /// again, so this asserts the property that makes that safe.
+    #[test]
+    fn the_quietest_posture_ranks_lowest_and_the_loudest_highest() {
+        assert_eq!(rank(Posture::Off), 0);
+        assert_eq!(rank(Posture::Autopilot), Posture::ALL.len() - 1);
+        for pair in Posture::ALL.windows(2) {
+            assert!(
+                rank(pair[0]) < rank(pair[1]),
+                "{} does not rank below {}",
+                pair[0].name(),
+                pair[1].name()
+            );
+        }
     }
 
     /// **A profile breaks ties; it cannot overrule the mixing.**

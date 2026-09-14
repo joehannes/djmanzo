@@ -345,6 +345,24 @@ impl Density {
             Density::UltraDense => "Ultra Dense",
         }
     }
+
+    /// The band with this spoken name, if it is one djmanzo has.
+    ///
+    /// §81 stores a night's density as the name the interface is wearing —
+    /// that side is the only thing that knows which band the window fitted —
+    /// so reading a profile back means turning `Pro Dense` into a band again.
+    /// Case-insensitive, because the string has been through a database and a
+    /// JSON round trip since anything typed it; unknown names are `None`
+    /// rather than a default, since a night recorded by a build with a sixth
+    /// band should read as *a density djmanzo does not have* instead of
+    /// quietly becoming Standard.
+    #[must_use]
+    pub fn named(word: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|density| density.name().eq_ignore_ascii_case(word))
+    }
 }
 
 // -- motion -----------------------------------------------------------------

@@ -6773,6 +6773,89 @@ pub fn profile_tonight(state: State<'_, AppState>) -> Result<Option<ProfileDto>,
         }))
 }
 
+/// One thing tonight's profile would change, as the interface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct FitDto {
+    /// What it would be changed to, in the spelling the interface applies:
+    /// a density band's slug, or a posture's name.
+    pub to: String,
+    /// The same thing as a DJ says it, for the sentence on the button.
+    pub name: String,
+    /// `its-own` or `if-asked`. See `crate::profile::Doing`.
+    pub doing: String,
+    /// The evidence, written in Rust.
+    pub because: String,
+}
+
+/// What tonight's profile would fit, and what it is deliberately withholding.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct FitsDto {
+    pub density: Option<FitDto>,
+    pub posture: Option<FitDto>,
+    /// Where the profile had an answer and djmanzo is not offering it, and why.
+    pub withheld: Vec<String>,
+}
+
+/// §81's other two: what this kind of night's profile would fit.
+///
+/// §81 lists five things a conditional profile may differ in — density,
+/// technique preferences, genre weights, transition style, automation
+/// tolerance — and until this only the genre weights reached anything, through
+/// §12's rail. The density and the automation tolerance were learned, shown,
+/// and acted on by nothing.
+///
+/// `crate::profile::fits` holds the rules and the reasons for them; this is the
+/// layer with a database and a running assistant, and it does three things the
+/// pure function cannot: it finds tonight's profile, it reads the posture the
+/// assistant is actually on, and it resolves §79's locks off the stored
+/// workspace.
+///
+/// **The density in force is the interface's own**, passed in rather than
+/// looked up, for the same reason `night_setting` takes it: the band is chosen
+/// from the window's height and that side is the only thing that knows it.
+/// Absent when the shell has not settled on one yet, which reads as *not this
+/// band* rather than as any particular band.
+///
+/// Empty rather than an error when there is no profile: most nights, for most
+/// DJs, for a long time.
+///
+/// # Errors
+/// Whatever the database says.
+#[tauri::command]
+pub fn night_fits(state: State<'_, AppState>, density: Option<String>) -> Result<FitsDto, String> {
+    let db = library(&state)?;
+    let Some(profile) = tonight_profile(&state, &db) else {
+        return Ok(FitsDto::default());
+    };
+    let posture = state
+        .conduct()
+        .lock()
+        .map_err(|_| "the conduct lock is poisoned".to_owned())?
+        .posture;
+    let stored = state.workspace().unwrap_or_else(crate::cockpit::opening);
+    let permits = crate::cockpit::resolve(&stored).permits;
+    let now = density.as_deref().and_then(crate::cockpit::Density::named);
+
+    let fits = crate::profile::fits(&profile, now, posture, permits);
+    Ok(FitsDto {
+        density: fits.density.map(|fit| FitDto {
+            // The slug serde writes, which is the spelling the shell matches a
+            // band by — see `a_density_is_spelled_the_same_way_stored_as_it_is_spoken`.
+            to: fit.to.name().to_lowercase().replace(' ', "-"),
+            name: fit.to.name().to_owned(),
+            doing: fit.doing.slug().to_owned(),
+            because: fit.because,
+        }),
+        posture: fits.posture.map(|fit| FitDto {
+            to: fit.to.name().to_owned(),
+            name: fit.to.name().to_owned(),
+            doing: fit.doing.slug().to_owned(),
+            because: fit.because,
+        }),
+        withheld: fits.withheld,
+    })
+}
+
 /// Tonight's profile, when the DJ has said what kind of night it is.
 ///
 /// `None` until they have — §81's settings are **told, never inferred**, and

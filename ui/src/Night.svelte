@@ -23,10 +23,13 @@
    */
   import { onMount } from "svelte";
   import {
+    assistantSetPosture,
+    nightFits,
     nightNow,
     nightRead,
     nightSettings,
     noteNight,
+    type Fits,
     type NightKind,
     type NightRead,
     type NightSetting,
@@ -46,9 +49,20 @@
      * side is the only thing that knows it.
      */
     density?: string;
+    /**
+     * Wear a density band, by slug.
+     *
+     * §81's profiles know which band this DJ actually runs at for this kind of
+     * night, and nothing could act on it: the shell owns the `--density`
+     * property and this panel owns the setting. Passed in rather than reached
+     * for, so the one function that applies a density stays the one function
+     * that applies a density — a second copy here would be the band the window
+     * fitted and the band a profile asked for disagreeing silently.
+     */
+    onDensity?: (slug: string) => void;
   }
 
-  let { enabled, density }: Props = $props();
+  let { enabled, density, onDensity }: Props = $props();
 
   /**
    * §81: what kind of night this is.
@@ -82,10 +96,70 @@
     try {
       tonight = await noteNight(setting, density);
       error = "";
+      // §81's other two, at the moment the night is named. This is the one
+      // place djmanzo knows *which kind of night* it is and has not yet acted
+      // on what it knows about that kind.
+      await fit();
     } catch (problem) {
       error = String(problem);
     } finally {
       saying = false;
+    }
+  }
+
+  /**
+   * §81's other two: what this kind of night's profile would fit.
+   *
+   * The rules are Rust's — `dj_app::profile::fits` — including the one that
+   * matters: djmanzo may quiet its own assistant on a profile and may only
+   * ever *offer* to make it louder, because a profile is evidence about past
+   * nights and §9 forbids autonomy above confidence.
+   */
+  let fits = $state<Fits | null>(null);
+
+  /**
+   * The setting the one-shot has already been run for.
+   *
+   * **It sets; it does not own** — the contract §7's arrangements and §54's
+   * setups both state. djmanzo fits the cockpit to a profile at the moment the
+   * night is named and then leaves it alone; a version that applied on every
+   * poll would spring back the instant a DJ moved the density themselves,
+   * which is the interface arguing with its own switches.
+   *
+   * What is still offered afterwards is the *offer*: the rows below stay, so a
+   * DJ who moved away can take it again deliberately.
+   */
+  let fittedFor = $state<string | null>(null);
+
+  async function fit() {
+    try {
+      const got = await nightFits(density);
+      fits = got;
+      const once = tonight?.setting ?? null;
+      if (!once || fittedFor === once) return;
+      fittedFor = once;
+      if (got.density?.doing === "its-own") onDensity?.(got.density.to);
+      if (got.posture?.doing === "its-own") await assistantSetPosture(got.posture.to);
+    } catch {
+      // A profile that cannot be read changes nothing, which is the same
+      // answer as a DJ with no history — and the great majority of nights.
+      fits = null;
+    }
+  }
+
+  /** Take an offer djmanzo would not take by itself. */
+  async function take(what: "density" | "posture") {
+    const offer = what === "density" ? fits?.density : fits?.posture;
+    if (!offer) return;
+    try {
+      if (what === "density") onDensity?.(offer.to);
+      else await assistantSetPosture(offer.to);
+      // Ask again rather than clearing the row here: the answer is Rust's, and
+      // a panel that hid an offer it had not actually applied would be the one
+      // place this feature could lie.
+      await fit();
+    } catch (problem) {
+      error = String(problem);
     }
   }
 
@@ -113,6 +187,10 @@
         : await nightNow();
       read = await nightRead();
       error = "";
+      // Kept current so an offer disappears when it is taken and reappears if
+      // the DJ moves away from it. The *applying* is once per night; see
+      // `fittedFor`.
+      if (tonight?.setting) await fit();
     } catch (problem) {
       error = String(problem);
     }
@@ -210,6 +288,41 @@
         Say what kind of night this is and djmanzo keeps what it learns under
         that heading, rather than averaging your weddings with your club nights.
       </p>
+    {/if}
+
+    <!--
+      §81's density and automation tolerance, which nothing acted on until now.
+
+      Every row says the evidence before it says the change, because that is
+      the order a DJ can argue with it in: "you run Pro Dense over 6 club
+      nights" is checkable and "djmanzo set the density" is not. The button is
+      the only way a posture ever goes *up* — see `dj_app::profile::fits` for
+      why that direction is never taken unasked.
+    -->
+    {#if fits?.density || fits?.posture || fits?.withheld.length}
+      <div class="fits" data-testid="night-fits">
+        {#if fits.density}
+          <p class="fit" data-fit="density">
+            <span class="because">{fits.density.because}</span>
+            <button
+              disabled={!enabled}
+              onclick={() => take("density")}
+            >Use {fits.density.name}</button>
+          </p>
+        {/if}
+        {#if fits.posture}
+          <p class="fit" data-fit="posture">
+            <span class="because">{fits.posture.because}</span>
+            <button
+              disabled={!enabled}
+              onclick={() => take("posture")}
+            >Set the assistant to <span class="posture">{fits.posture.name}</span></button>
+          </p>
+        {/if}
+        {#each fits.withheld as why (why)}
+          <p class="fit withheld" data-fit="withheld">{why}</p>
+        {/each}
+      </div>
     {/if}
 
     {#if read.phase}
@@ -362,6 +475,65 @@
     font-size: 0.68rem;
     line-height: 1.45;
     color: var(--muted);
+  }
+
+  /*
+    What a profile would fit. Quiet by design: this is djmanzo saying what it
+    worked out about the DJ, which belongs in the same register as the hint
+    above rather than competing with the arc.
+  */
+  .fits {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .fit {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem;
+    margin: 0;
+    font-size: 0.68rem;
+    line-height: 1.45;
+  }
+
+  .fit .because {
+    color: var(--muted);
+  }
+
+  .fit button {
+    font: inherit;
+    padding: 0.1rem 0.45rem;
+    border: 1px solid var(--line);
+    border-radius: 0.25rem;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .fit button:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .fit button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  /* The six postures are stored lower-case; this is where they are spoken. */
+  .fit .posture {
+    text-transform: capitalize;
+  }
+
+  /*
+    A withheld fit reads as an absence rather than as an offer, because that is
+    what it is: djmanzo has something to say and a lock saying not to act on it.
+  */
+  .fit.withheld {
+    color: var(--muted);
+    font-style: italic;
   }
 
   .arc {

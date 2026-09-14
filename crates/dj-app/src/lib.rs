@@ -549,6 +549,7 @@ pub fn run() {
             commands::ghost_preview,
             commands::room_history,
             commands::profile_tonight,
+            commands::night_fits,
             commands::control_handles,
             commands::theme_now,
             commands::theme_lock,

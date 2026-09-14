@@ -2026,7 +2026,7 @@
   {/snippet}
 
   {#snippet surfaceNight()}
-    <Night enabled={ready} density={densityName} />
+    <Night enabled={ready} density={densityName} onDensity={applyDensity} />
   {/snippet}
 
   {#snippet surfaceRoom()}

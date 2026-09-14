@@ -931,6 +931,28 @@ script print the match count, or grep the file for the mutated text, **before**
 believing a green run. A mutation that did not land proves nothing at all, and
 it fails in the direction that makes a weak test look strong.
 
+**A rule about autonomy belongs in Rust, not in the panel that acts on it.**
+§81's profiles can move two things: the density and the assistant's posture.
+The tempting build is one `if` in the component — *apply what the profile
+says* — and it is wrong in a way no type would catch: turning the assistant
+**up** because of three previous evenings is §9's *autonomy above confidence*
+arriving through the back door, while turning it **down** costs a DJ one press
+to undo. `profile::fits` answers each fit with `ItsOwn` or `IfAsked` and the
+panel obeys, so the asymmetry is testable, is stated once, and is still there
+in the second place something acts on a profile. The same shape as §9's own
+`Grounds` and §13's `Tendency`: a rule a constructor enforces is a rule that
+survives the seventh caller.
+
+**"It sets; it does not own" applies to anything that adapts on a poll.** The
+first version of the profile fit ran on the panel's two-second refresh, which
+is correct exactly once and wrong forever after: a DJ who moved the density
+back would have watched it spring to the profile's answer again, which is the
+interface arguing with its own switches. It fits when the night is *named* and
+then leaves both alone; what stays on screen afterwards is the offer, so
+taking it again is a decision rather than a struggle. §7's arrangements and
+§54's setups already state this contract — it is worth re-reading before
+building anything that applies a learned answer.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests

@@ -778,6 +778,17 @@ const ANSWERS: Record<string, unknown> = {
     posture: null,
     techniques: [],
   },
+  /**
+   * §81's other two: what tonight's profile would fit.
+   *
+   * Nothing by default, which is what most nights answer — there is no profile
+   * until three nights of a setting. A test that wants one overrides this.
+   */
+  night_fits: {
+    density: null,
+    posture: null,
+    withheld: [],
+  },
   // Three wedding nights and three club nights, which is what §81 is about:
   // the same DJ, two different answers, and never their average.
   /**
@@ -1893,6 +1904,47 @@ export async function openShell(
           }
           if (cmd === "night_now") {
             return Promise.resolve(win.__night ?? answers.night_now);
+          }
+          // The assistant's posture, held between calls so a press is visible
+          // to the next question rather than vanishing into a stub.
+          if (cmd === "assistant_set_posture") {
+            win.__posture = args.posture;
+            return Promise.resolve(null);
+          }
+          /**
+           * §81's fits, answered the way Rust answers them: **nothing is
+           * offered where nothing would change.** That rule is the reason the
+           * panel can be read at all — an offer that stayed up after being
+           * taken would look identical to one that did nothing — so the stub
+           * mirrors it rather than answering a fixed pair forever, the same
+           * way `night_setting` mirrors `note_night`.
+           */
+          if (cmd === "night_fits") {
+            const offered = (answers.night_fits ?? {
+              density: null,
+              posture: null,
+              withheld: [],
+            }) as Record<string, { to: string } | null | string[]>;
+            const bands = (answers.density_bands ?? []) as [
+              number,
+              string,
+              number,
+            ][];
+            const density = offered.density as { to: string } | null;
+            const posture = offered.posture as { to: string } | null;
+            const wearing = document.documentElement.style.getPropertyValue(
+              "--density",
+            );
+            const wanted = bands.find(
+              ([, name]) =>
+                name.toLowerCase().replace(/ /g, "-") === density?.to,
+            );
+            return Promise.resolve({
+              density:
+                wanted && String(wanted[2]) === wearing ? null : density,
+              posture: win.__posture === posture?.to ? null : posture,
+              withheld: offered.withheld ?? [],
+            });
           }
           // A rehearsal, answered per style. Fixed answers would make four
           // renders of the same pair indistinguishable, and telling them apart

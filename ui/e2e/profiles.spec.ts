@@ -122,3 +122,148 @@ test.describe("how you play, by the kind of night", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+/**
+ * §81's other two: the density and the automation tolerance, acted on.
+ *
+ * §81 lists five things a conditional profile may differ in — density,
+ * technique preferences, genre weights, transition style, automation tolerance
+ * — and for a long time only the genre weights reached anything, through §12's
+ * rail. The other four were learned, drawn, and acted on by nothing.
+ *
+ * The rules and the reasons are Rust's (`dj_app::profile::fits`), including
+ * the asymmetry that matters: djmanzo may quiet its own assistant on a profile
+ * and may only ever *offer* to make it louder. What a browser can prove is
+ * that the unasked half actually happens, the asked half actually does not,
+ * and a lock is visible as a lock rather than as silence.
+ */
+test.describe("what a profile fits", () => {
+  /** A profile that runs denser than the window fitted, and louder than now. */
+  const FITS = {
+    night_fits: {
+      density: {
+        to: "pro-dense",
+        name: "Pro Dense",
+        doing: "its-own",
+        because: "You run Pro Dense over 6 club nights.",
+      },
+      posture: {
+        to: "autopilot",
+        name: "autopilot",
+        doing: "if-asked",
+        because: "You keep the assistant on autopilot over 6 club nights.",
+      },
+      withheld: [],
+    },
+  };
+
+  async function named(page: import("@playwright/test").Page, answers = FITS) {
+    await openShell(page, "/", {}, answers);
+    await page.getByRole("button", { name: "Night", exact: true }).click();
+    await expect(page.locator(NIGHT)).toBeVisible();
+    await page
+      .locator(`${NIGHT} .kind button`)
+      .filter({ hasText: /^Club$/ })
+      .click();
+  }
+
+  /**
+   * **The density djmanzo may move, it moves — and then stops offering it.**
+   *
+   * §78 names *no automatic surface resizing* as one of four freedoms the DJ
+   * can withdraw, and with it left on, a profile is better evidence about what
+   * this DJ runs at than one window height is. So this is the one of the two
+   * that happens without a press, and the proof it happened is the property
+   * the whole interface is measured in.
+   */
+  test("naming the night wears the density that kind of night runs at", async ({
+    page,
+  }) => {
+    await named(page);
+
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document.documentElement.style.getPropertyValue("--density"),
+        ),
+      )
+      .toBe("0.86");
+    // And the row is gone, because there is nothing left to offer.
+    await expect(page.locator(`${NIGHT} [data-fit="density"]`)).toHaveCount(0);
+    expect(errorsThrown(page), "the night panel threw").toEqual([]);
+  });
+
+  /**
+   * **A louder assistant is offered and never taken.**
+   *
+   * The load-bearing half. §9's rule is that autonomy above confidence is
+   * unsafe, and a profile is evidence about *past* nights — it says nothing
+   * about tonight's certainty. A version that turned the autopilot on because
+   * of six previous club nights would be handing a machine the mix on
+   * yesterday's evidence.
+   */
+  test("a louder assistant waits for the press that asks for it", async ({
+    page,
+  }) => {
+    await named(page);
+
+    const offer = page.locator(`${NIGHT} [data-fit="posture"]`);
+    await expect(offer).toContainText("over 6 club nights");
+    // Still there after the panel has polled several times: an offer nobody
+    // took is an offer nobody took.
+    await page.waitForTimeout(2500);
+    await expect(offer).toBeVisible();
+
+    await offer.getByRole("button").click();
+    await expect(offer).toHaveCount(0);
+    expect(errorsThrown(page), "the night panel threw").toEqual([]);
+  });
+
+  /**
+   * **A locked density is not moved, and the panel says that is why.**
+   *
+   * §79's lock, at the one place a profile could walk past it. The silent
+   * version is worse than not building it at all: an interface that declined
+   * to act and said nothing looks exactly like one with nothing to say.
+   */
+  test("a withheld fit reads as withheld rather than as silence", async ({
+    page,
+  }) => {
+    await named(page, {
+      night_fits: {
+        density: null,
+        posture: null,
+        withheld: [
+          "You run Pro Dense over 6 club nights. The density is locked, so djmanzo is leaving it.",
+        ],
+      },
+    });
+
+    const held = page.locator(`${NIGHT} [data-fit="withheld"]`);
+    await expect(held).toContainText("The density is locked");
+    await expect(held.getByRole("button")).toHaveCount(0);
+    // And nothing moved.
+    expect(
+      await page.evaluate(() =>
+        document.documentElement.style.getPropertyValue("--density"),
+      ),
+    ).not.toBe("0.86");
+    expect(errorsThrown(page), "the night panel threw").toEqual([]);
+  });
+
+  /**
+   * **Most nights have no profile, and the panel shows nothing at all.**
+   *
+   * There is no profile until three nights of a setting, which is the common
+   * case for a long time. A block that drew an empty frame would be the blank
+   * panel this whole design argues against.
+   */
+  test("a night with no profile behind it offers nothing", async ({ page }) => {
+    await named(page, {
+      night_fits: { density: null, posture: null, withheld: [] },
+    });
+
+    await expect(page.getByTestId("night-fits")).toHaveCount(0);
+    expect(errorsThrown(page), "the night panel threw").toEqual([]);
+  });
+});

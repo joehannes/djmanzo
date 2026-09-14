@@ -2249,6 +2249,44 @@ export const profileTonight = () =>
 
 export const learnedProfiles = () => invoke<Profile[]>("learned_profiles");
 
+/** One thing tonight's profile would change. */
+export interface Fit {
+  /** The spelling to apply: a density band's slug, or a posture's name. */
+  to: string;
+  /** The same thing as a DJ says it, for the sentence on the button. */
+  name: string;
+  /**
+   * `its-own` when djmanzo may do it unasked, `if-asked` when it may only
+   * offer. The rule is Rust's and the reason is §78's — see
+   * `dj_app::profile::fits`.
+   */
+  doing: "its-own" | "if-asked";
+  /** The evidence, written in Rust. */
+  because: string;
+}
+
+/** What tonight's profile would fit, and what it is withholding. */
+export interface Fits {
+  density: Fit | null;
+  posture: Fit | null;
+  /** Where the profile had an answer and djmanzo is not offering it, and why. */
+  withheld: string[];
+}
+
+/**
+ * §81's other two: what this kind of night's profile would fit.
+ *
+ * §81 lists five things a conditional profile may differ in, and until this
+ * only the genre weights reached anything. The density and the automation
+ * tolerance were learned, shown, and acted on by nothing.
+ *
+ * The density in force goes with the question for the same reason
+ * `noteNight` takes it: the band comes from the window's own height and this
+ * side is the only thing that knows it.
+ */
+export const nightFits = (density?: string) =>
+  invoke<Fits>("night_fits", { density: density ?? null });
+
 /** One rehearsal: a mix that was never played, as a file you can hear. */
 export interface Rehearsal {
   style: string;
