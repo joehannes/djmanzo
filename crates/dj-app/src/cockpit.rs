@@ -1322,6 +1322,119 @@ impl Lock {
     }
 }
 
+// -- §3's eleven -------------------------------------------------------------
+
+/// What §3 says a surface must be able to be, and what does it.
+///
+/// > The UI consists of composable surfaces and zones that can be: docked,
+/// > resized, collapsed, expanded, stacked, detached, temporarily surfaced,
+/// > pinned, contextually promoted, contextually demoted, or automatically
+/// > rearranged.
+///
+/// Eleven verbs, and the row that summarised §3 said something else entirely —
+/// *the interface picks its density from the window* — which is §18. A summary
+/// somebody wrote is not the section, and this one had drifted so far that
+/// nothing was checking the list at all.
+///
+/// Writing it down found three verbs that did not work. `Placement` carried
+/// `size`, `collapsed` and `pinned`; Rust stored them, serialised them and
+/// resolved them; and **the interface read none of the three**. A DJ could
+/// collapse nothing, resize nothing and pin nothing, and the workspace file
+/// faithfully recorded all three. The fifth table in this codebase found in
+/// that state, and the reason this one exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shaping {
+    Docked,
+    Resized,
+    Collapsed,
+    Expanded,
+    Stacked,
+    Detached,
+    TemporarilySurfaced,
+    Pinned,
+    ContextuallyPromoted,
+    ContextuallyDemoted,
+    AutomaticallyRearranged,
+}
+
+/// Whether a verb is something djmanzo does, and what does it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Does {
+    /// It happens, and this is what makes it happen.
+    By(&'static str),
+    /// It does not, and this is why — a decision rather than a gap.
+    Not(&'static str),
+}
+
+impl Shaping {
+    /// §3's eleven, in §3's order and §3's words.
+    pub const ALL: [Shaping; 11] = [
+        Shaping::Docked,
+        Shaping::Resized,
+        Shaping::Collapsed,
+        Shaping::Expanded,
+        Shaping::Stacked,
+        Shaping::Detached,
+        Shaping::TemporarilySurfaced,
+        Shaping::Pinned,
+        Shaping::ContextuallyPromoted,
+        Shaping::ContextuallyDemoted,
+        Shaping::AutomaticallyRearranged,
+    ];
+
+    /// The word §3 uses.
+    #[must_use]
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::Docked => "docked",
+            Self::Resized => "resized",
+            Self::Collapsed => "collapsed",
+            Self::Expanded => "expanded",
+            Self::Stacked => "stacked",
+            Self::Detached => "detached",
+            Self::TemporarilySurfaced => "temporarily surfaced",
+            Self::Pinned => "pinned",
+            Self::ContextuallyPromoted => "contextually promoted",
+            Self::ContextuallyDemoted => "contextually demoted",
+            Self::AutomaticallyRearranged => "automatically rearranged",
+        }
+    }
+
+    /// What does it, or why nothing does.
+    #[must_use]
+    pub const fn does(self) -> Does {
+        match self {
+            Self::Docked => Does::By("Placement::dock, one of Left, Right or Bottom"),
+            Self::Resized => Does::By("Placement::size, along the dock's own axis"),
+            Self::Collapsed | Self::Expanded => Does::By("Placement::collapsed"),
+            // Order within a dock *is* the stack: several surfaces share one
+            // side and the order decides which is above which. A separate
+            // notion of stacking would be a second way to say the same thing.
+            Self::Stacked => Does::By("Placement::order, within one dock"),
+            Self::Detached => Does::By("Dock::Detached, and crate::monitors"),
+            Self::TemporarilySurfaced => {
+                Does::By("Dock::Overlay, dismissed by the next thing the DJ does")
+            }
+            Self::Pinned => Does::By("Placement::pinned, which an arrangement may not overrule"),
+            Self::ContextuallyPromoted => Does::By("cockpit::priorities, on the night's phase"),
+            // The one §3 asks for that djmanzo deliberately does not do, and
+            // the reason is another section's. §78 forbids surprise changes
+            // and §17 is built to *only ever add*, so that nothing a DJ opened
+            // is taken away by a phase turning over. Demotion is exactly that
+            // taking-away, and building it would break the contract §17's own
+            // row states. A DJ closes what they do not want; djmanzo does not
+            // close things for them.
+            Self::ContextuallyDemoted => Does::Not(
+                "§78 forbids surprise changes and §17 only ever adds, so nothing \
+                 the DJ opened is closed or shrunk by a phase turning over",
+            ),
+            Self::AutomaticallyRearranged => {
+                Does::By("the shell opening what cockpit::priorities asks for, gated on reflow")
+            }
+        }
+    }
+}
+
 /// One of [§78](../../../docs/DIRECTIVE.md)'s four: something djmanzo may do to
 /// its own presentation without being asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2509,6 +2622,104 @@ mod tests {
              are, so a stale copy is a sweep measuring an application that does \
              not exist -- update `density_bands` in ui/e2e/shell.ts",
         );
+    }
+
+    // -- §3's eleven -------------------------------------------------------
+
+    /// **Every one of §3's eleven is answered, and none of them twice.**
+    ///
+    /// The guard the table exists for. §3's row had drifted into describing
+    /// §18 — *the interface picks its density from the window* — so nothing
+    /// anywhere was checking the list, and three of the eleven turned out to
+    /// be fields the interface never read.
+    #[test]
+    fn every_shaping_section_three_names_has_an_answer_of_its_own() {
+        let mut seen = std::collections::BTreeSet::new();
+        for shaping in Shaping::ALL {
+            assert!(
+                seen.insert(shaping.word()),
+                "two of §3's verbs are spelled `{}`",
+                shaping.word()
+            );
+            match shaping.does() {
+                Does::By(how) => assert!(
+                    !how.is_empty(),
+                    "`{}` claims to happen and does not say what does it",
+                    shaping.word()
+                ),
+                Does::Not(why) => assert!(
+                    why.contains('§'),
+                    "`{}` does not happen and the reason names no section: {why}",
+                    shaping.word()
+                ),
+            }
+        }
+        assert_eq!(seen.len(), 11, "§3 lists eleven");
+    }
+
+    /// **The three that were fields nothing read are `By` now, not `Not`.**
+    ///
+    /// Named individually rather than counted, because a count would pass
+    /// again the moment one of them went back to being a stored field the
+    /// interface ignores — which is the exact state all three were found in.
+    /// `Placement` carries them; a browser test asserts the interface honours
+    /// them; and this is the seam between the two.
+    #[test]
+    fn resizing_collapsing_and_pinning_are_things_djmanzo_does() {
+        for shaping in [
+            Shaping::Resized,
+            Shaping::Collapsed,
+            Shaping::Expanded,
+            Shaping::Pinned,
+        ] {
+            assert!(
+                matches!(shaping.does(), Does::By(_)),
+                "`{}` is back to being a field nothing reads",
+                shaping.word()
+            );
+        }
+        // And every one of them is a field a workspace actually round-trips,
+        // which is the other half: a verb whose field the resolver dropped
+        // would be a promise the picker could not keep.
+        let mut workspace = opening();
+        workspace.surfaces = vec![Placement {
+            surface: "library".to_owned(),
+            dock: Dock::Left,
+            order: 0,
+            size: Some(420),
+            collapsed: true,
+            pinned: true,
+        }];
+        let kept = resolve(&workspace).workspace.surfaces;
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].size, Some(420), "the resolver dropped the size");
+        assert!(kept[0].collapsed, "the resolver dropped the fold");
+        assert!(kept[0].pinned, "the resolver dropped the pin");
+    }
+
+    /// **The one §3 asks for that djmanzo does not do says which section
+    /// forbids it.**
+    ///
+    /// *Contextually demoted* is the only `Not` in the table, and it is a
+    /// decision rather than a gap: §78 forbids surprise changes and §17 is
+    /// built to only ever add, so that nothing a DJ opened is taken away by a
+    /// phase turning over. A row saying "not built yet" would invite somebody
+    /// to build the thing two other sections forbid.
+    #[test]
+    fn the_one_thing_djmanzo_will_not_do_names_the_rule_that_stops_it() {
+        let refused: Vec<Shaping> = Shaping::ALL
+            .into_iter()
+            .filter(|s| matches!(s.does(), Does::Not(_)))
+            .collect();
+        assert_eq!(
+            refused,
+            vec![Shaping::ContextuallyDemoted],
+            "the list of things djmanzo will not do has changed"
+        );
+        let Does::Not(why) = Shaping::ContextuallyDemoted.does() else {
+            panic!("it is a refusal");
+        };
+        assert!(why.contains("§78") && why.contains("§17"), "{why}");
     }
 
     /// A density is spelled the same way stored as it is spoken.

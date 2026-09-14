@@ -362,7 +362,143 @@
     }
   }
 
-  async function applyWorkspace(preset: Workspace) {
+  /**
+   * Change one thing about one placement, and keep it.
+   *
+   * §3's list of what a surface must be able to do is eleven verbs, and three
+   * of them — **resized**, **collapsed/expanded** and **pinned** — were fields
+   * on `Placement` that Rust stored, serialised and resolved, and that nothing
+   * on this side ever read. The fifth table in this codebase found in that
+   * state. A DJ could collapse nothing, resize nothing and pin nothing, and
+   * the workspace file faithfully recorded all three.
+   *
+   * Through Rust and back, like every other write here: the resolver may
+   * correct a placement, and drawing the request while storing the answer is
+   * how the two drift.
+   */
+  async function setPlacement(name: string, change: Partial<SurfacePlacement>) {
+    if (!workspace) return;
+    const next = {
+      ...workspace,
+      surfaces: workspace.surfaces.map((p) =>
+        p.surface === name ? { ...p, ...change } : p,
+      ),
+    };
+    workspace = next;
+    try {
+      const resolved = await setCockpitWorkspace(next);
+      workspace = resolved.workspace;
+      workspaceNotes = resolved.notes;
+      permits = resolved.permits;
+    } catch {
+      // Keeping the optimistic state, for the reason `toggleSurface` gives.
+    }
+  }
+
+  /**
+   * The size a placement asks for, as a style on its own axis.
+   *
+   * **The axis is the one the dock stacks along**, which is `Placement::size`'s
+   * own words and is the only axis a single surface can vary: a side dock is a
+   * column, so its surfaces share one width and differ in height; the bottom
+   * dock is a row, so they share one height and differ in width. Setting the
+   * other axis makes a panel wider than the dock holding it, which is what the
+   * first version of this did — the surface grew and the dock did not, so it
+   * simply overflowed. A browser test measuring the surface passed; driving it
+   * showed the panel had not moved.
+   *
+   * `null` is "no opinion" and takes the surface's own preference, which is
+   * what every placement said before anything read this.
+   */
+  function sizeStyle(placement: SurfacePlacement): string {
+    if (placement.size == null) return "";
+    return placement.dock === "bottom"
+      ? `width: ${placement.size}px; flex: none;`
+      : `height: ${placement.size}px; flex: none;`;
+  }
+
+  /** Which way a dock stacks, which is the axis a surface can vary along. */
+  const alongY = (placement: SurfacePlacement) => placement.dock !== "bottom";
+
+  /** Each open surface's own element, so a drag can measure and set it. */
+  let boxes = $state<Record<string, HTMLElement | undefined>>({});
+
+  /** Where a drag on a surface's edge is now, in pixels along its own axis. */
+  let dragging = $state<{ surface: string; from: number; was: number } | null>(
+    null,
+  );
+
+  function startResize(event: PointerEvent, placement: SurfacePlacement, box: HTMLElement) {
+    const along = alongY(placement) ? box.offsetHeight : box.offsetWidth;
+    dragging = {
+      surface: placement.surface,
+      from: alongY(placement) ? event.clientY : event.clientX,
+      was: along,
+    };
+    // Capture so a fast drag that leaves the six-pixel handle keeps going.
+    // Wrapped because a pointer that is no longer down throws here, and a
+    // resize that fails is not a reason to stop the interface.
+    try {
+      (event.target as HTMLElement).setPointerCapture(event.pointerId);
+    } catch {
+      // Without capture the drag still works while the pointer is over the
+      // handle, which is the common case.
+    }
+    event.preventDefault();
+  }
+
+  function onResize(event: PointerEvent, placement: SurfacePlacement, box: HTMLElement) {
+    if (dragging?.surface !== placement.surface) return;
+    // The handle is on the surface's trailing edge along the stacking axis —
+    // the bottom of a panel in a side dock, the right of one along the bottom
+    // — so dragging away from the surface always grows it. One rule for all
+    // three docks, rather than three that have to be got the right way round.
+    const now = alongY(placement) ? event.clientY : event.clientX;
+    const wanted = Math.round(dragging.was + (now - dragging.from));
+    box.style.setProperty("flex", "none");
+    box.style.setProperty(
+      alongY(placement) ? "height" : "width",
+      `${Math.max(MIN_SURFACE, wanted)}px`,
+    );
+  }
+
+  function endResize(event: PointerEvent, placement: SurfacePlacement, box: HTMLElement) {
+    if (dragging?.surface !== placement.surface) return;
+    dragging = null;
+    const along = alongY(placement) ? box.offsetHeight : box.offsetWidth;
+    try {
+      (event.target as HTMLElement).releasePointerCapture(event.pointerId);
+    } catch {
+      // Never captured, or already released. Either way there is nothing to do.
+    }
+    void setPlacement(placement.surface, { size: Math.round(along) });
+  }
+
+  /**
+   * The smallest a surface may be dragged to.
+   *
+   * A panel narrower than this is one whose own header does not fit, and a DJ
+   * who drags it there has lost the handle to drag it back.
+   */
+  const MIN_SURFACE = 160;
+
+  async function applyWorkspace(asked: Workspace) {
+    // §3's *pinned*, honoured where it means something. A pinned surface is
+    // "never moved, resized or closed by adaptation", and an arrangement is
+    // the loudest adaptation there is: it replaces every placement at once.
+    // So a pinned one is carried across unchanged, and one the preset also
+    // names loses the preset's version rather than the DJ's — which is the
+    // whole of what pinning it said.
+    const kept = (workspace?.surfaces ?? []).filter((p) => p.pinned);
+    const preset = {
+      ...asked,
+      surfaces: [
+        ...kept,
+        ...asked.surfaces.filter(
+          (p) => !kept.some((k) => k.surface === p.surface),
+        ),
+      ],
+    };
     // Optimistic, then corrected — the same posture as `toggleSurface`, and
     // for the same reason: the panels appear on the press.
     workspace = preset;
@@ -2228,9 +2364,54 @@
       -- otherwise "close the assistant" means finding the right toolbar button
       again, which is a trip to the other end of the window mid-set.
     -->
-    <section class="surface" data-surface={placement.surface}>
+    <section
+      class="surface"
+      class:collapsed={placement.collapsed}
+      class:pinned={placement.pinned}
+      data-surface={placement.surface}
+      data-collapsed={placement.collapsed}
+      data-pinned={placement.pinned}
+      bind:this={boxes[placement.surface]}
+      style={placement.collapsed ? "" : sizeStyle(placement)}
+    >
       <header class="surface-head">
         <h2>{titleOf(placement.surface)}</h2>
+        <!--
+          §3's *collapsed* and *expanded*. Two of the eleven verbs it lists,
+          and the field behind them was stored, serialised and resolved by Rust
+          while nothing on this side read it — so a workspace faithfully
+          recorded a fold nobody could make.
+        -->
+        <button
+          class="fold"
+          title={placement.collapsed
+            ? `Expand ${titleOf(placement.surface)}`
+            : `Collapse ${titleOf(placement.surface)}`}
+          aria-label={placement.collapsed
+            ? `Expand ${titleOf(placement.surface)}`
+            : `Collapse ${titleOf(placement.surface)}`}
+          aria-expanded={!placement.collapsed}
+          onclick={() =>
+            setPlacement(placement.surface, { collapsed: !placement.collapsed })}
+        >{placement.collapsed ? "+" : "–"}</button>
+        <!--
+          §3's *pinned*, which is the per-surface half of §78's freeze: an
+          arrangement may not move, resize or close it. A DJ who has put the
+          room panel where they want it keeps it when they press a preset.
+        -->
+        <button
+          class="pin"
+          class:on={placement.pinned}
+          title={placement.pinned
+            ? `Unpin ${titleOf(placement.surface)}`
+            : `Pin ${titleOf(placement.surface)} where it is`}
+          aria-label={placement.pinned
+            ? `Unpin ${titleOf(placement.surface)}`
+            : `Pin ${titleOf(placement.surface)}`}
+          aria-pressed={placement.pinned}
+          onclick={() =>
+            setPlacement(placement.surface, { pinned: !placement.pinned })}
+        >&#9679;</button>
         <button
           class="shut"
           title="Close {titleOf(placement.surface)}"
@@ -2238,7 +2419,33 @@
           onclick={() => toggleSurface(placement.surface as Drawn)}
         >&times;</button>
       </header>
-      <div class="surface-body">
+      <!--
+        §3's *resized*. On the dock's own axis, and on the edge that faces the
+        performance zone: the left dock grows to the right, the right dock to
+        the left, and the bottom one upwards. A handle on the wrong edge makes
+        the panel run away from the pointer.
+      -->
+      {#if !placement.collapsed}
+        <div
+          class="grip"
+          role="separator"
+          aria-label="Resize {titleOf(placement.surface)}"
+          aria-orientation={placement.dock === "bottom" ? "vertical" : "horizontal"}
+          onpointerdown={(e) =>
+            boxes[placement.surface] &&
+            startResize(e, placement, boxes[placement.surface]!)}
+          onpointermove={(e) =>
+            boxes[placement.surface] &&
+            onResize(e, placement, boxes[placement.surface]!)}
+          onpointerup={(e) =>
+            boxes[placement.surface] &&
+            endResize(e, placement, boxes[placement.surface]!)}
+          onpointercancel={(e) =>
+            boxes[placement.surface] &&
+            endResize(e, placement, boxes[placement.surface]!)}
+        ></div>
+      {/if}
+      <div class="surface-body" hidden={placement.collapsed}>
         {#if placement.surface === "library"}{@render surfaceLibrary()}
         {:else if placement.surface === "prepare"}{@render surfacePrepare()}
         {:else if placement.surface === "next"}{@render surfaceNext()}
@@ -2833,6 +3040,35 @@
     min-height: 8rem;
   }
 
+  /*
+    And a collapsed one is exempt from it.
+
+    Found by driving the application: the fold hid the body and the panel kept
+    its eight rems, so folding the night left a header above a hand's width of
+    empty panel — which is not a fold, it is a blank. The browser test asserted
+    the body was hidden and the attribute was set, both of which were true.
+  */
+  .dock.side > .surface.collapsed,
+  .dock.bottom > .surface.collapsed {
+    min-height: 0;
+    flex: none;
+  }
+
+  /*
+    A bottom dock whose every surface is folded gives its own floor up too.
+
+    Written as a negated `:has` on purpose: where the selector is not
+    understood the rule is dropped and the floor stays, which is the behaviour
+    that was there before and the one that keeps a half-open dock from becoming
+    a sliver.
+  */
+  .dock.bottom:not(:has(> .surface:not(.collapsed))) {
+    min-height: 0;
+    /* The basis as well as the floor: the dock asks for 45% and grows, so
+       zeroing only the minimum leaves it exactly as tall as it was. */
+    flex: none;
+  }
+
   .dock.bottom {
     flex-direction: row;
     flex-wrap: wrap;
@@ -2886,7 +3122,15 @@
     color: var(--text-dim);
   }
 
-  .surface-head .shut {
+  .surface-head h2 {
+    /* The title takes the room, so the three controls sit together at the
+       right rather than drifting apart as a panel is resized. */
+    margin-right: auto;
+  }
+
+  .surface-head .shut,
+  .surface-head .fold,
+  .surface-head .pin {
     background: transparent;
     border: none;
     color: var(--text-dim);
@@ -2896,8 +3140,78 @@
     cursor: pointer;
   }
 
-  .surface-head .shut:hover {
+  .surface-head .shut:hover,
+  .surface-head .fold:hover,
+  .surface-head .pin:hover {
     color: var(--text);
+  }
+
+  /* A pin that is in reads as in, and §33's rule applies: the pressed state is
+     carried by `aria-pressed` as well as by the colour. */
+  .surface-head .pin {
+    font-size: 0.7em;
+  }
+
+  /*
+    §30: a state is painted with the role it means. Pinning is the DJ choosing
+    this surface to be held, which is exactly `Role::Selected` — not the
+    accent, which is a colour rather than a meaning. An existing token guard
+    refused the accent the moment it was written, which is the guard working.
+  */
+  .surface-head .pin.on {
+    color: var(--selected);
+  }
+
+  /*
+    §3's *resized*. On the edge that faces the performance zone, so the handle
+    is where a hand reaches for it, and wide enough to hit in a dark booth
+    without being a visible bar down the side of every panel.
+  */
+  .surface {
+    position: relative;
+  }
+
+  .surface .grip {
+    position: absolute;
+    z-index: 5;
+    touch-action: none;
+  }
+
+  .dock.side .surface .grip {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 6px;
+    cursor: ns-resize;
+  }
+
+  .dock.bottom .surface .grip {
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 6px;
+    cursor: ew-resize;
+  }
+
+  .surface .grip:hover {
+    background: var(--accent);
+    opacity: 0.4;
+  }
+
+  /* A collapsed surface is its own header and nothing else. */
+  .surface.collapsed {
+    flex: none;
+    min-height: 0;
+  }
+
+  /*
+    A collapsed surface's body is hidden with the attribute, and a rule that
+    sets `display` wins over it. The reset in the head carries
+    `[hidden]{display:none!important}` for exactly this; the shell has its own
+    stylesheet and needs its own.
+  */
+  .surface-body[hidden] {
+    display: none;
   }
 
   .surface-body {

@@ -125,7 +125,12 @@ test.describe("§17's phase priorities", () => {
 
     // The override: close it, and stay closed through another frame of the
     // same phase.
-    await page.locator(`${ROOM} .surface-head button`).first().click();
+    // Named rather than counted. This was `.first()` until the surface header
+    // grew §3's fold and pin beside the close, at which point "the first
+    // button in the header" quietly became the fold and the test folded the
+    // panel it meant to close. A control picked by position in a row is one
+    // that changes meaning when the row does.
+    await page.locator(`${ROOM} .surface-head .shut`).click();
     await expect(page.locator(ROOM)).toHaveCount(0);
     await nightReads(page, "peak", true);
     await page.waitForTimeout(400);

@@ -219,3 +219,180 @@ test.describe("the dock manager", () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * §3's eleven, and the three of them that were fields nothing read.
+ *
+ * > The UI consists of composable surfaces and zones that can be: docked,
+ * > **resized**, **collapsed**, **expanded**, stacked, detached, temporarily
+ * > surfaced, **pinned**, contextually promoted, contextually demoted, or
+ * > automatically rearranged.
+ *
+ * `Placement` carried `size`, `collapsed` and `pinned`; Rust stored them,
+ * serialised them and resolved them; and this side read none of the three. A
+ * DJ could collapse nothing, resize nothing and pin nothing, and the workspace
+ * file faithfully recorded all three. The table and its reasons are
+ * `dj_app::cockpit::Shaping`; these are the three verbs actually happening.
+ */
+test.describe("what a surface can be", () => {
+  /** What the shell has written, most recent last. */
+  async function saved(page: import("@playwright/test").Page) {
+    return page.evaluate(
+      () => (window as unknown as { __saved?: unknown[] }).__saved ?? [],
+    );
+  }
+
+  const LIBRARY = '.surface[data-surface="library"]';
+
+  async function openLibrary(page: import("@playwright/test").Page) {
+    await openShell(page, "/");
+    await page.getByRole("button", { name: "Browse", exact: true }).click();
+    await expect(page.locator(LIBRARY)).toBeVisible();
+  }
+
+  /**
+   * **Collapsed and expanded, which are two of §3's eleven.**
+   *
+   * A collapsed surface keeps its header — that is the difference from a
+   * closed one, and the whole reason §3 lists both verbs: a DJ folding the
+   * browser away still wants to know it is there and to get it back without
+   * finding the right button in the top bar again.
+   */
+  test("a surface folds to its own header and comes back", async ({ page }) => {
+    await openLibrary(page);
+    const body = page.locator(`${LIBRARY} .surface-body`);
+    await expect(body).toBeVisible();
+
+    const open = (await page.locator(LIBRARY).boundingBox())!.height;
+    await page.getByRole("button", { name: "Collapse Library" }).click();
+    await expect(page.locator(LIBRARY)).toHaveAttribute("data-collapsed", "true");
+    await expect(body).toBeHidden();
+    // **And the panel gives the room back**, which is a different claim from
+    // the body being hidden and is the one a DJ actually wants. Found by
+    // driving the application: the first version hid the body and kept the
+    // dock's eight-rem floor, so folding a panel left a header above a hand's
+    // width of empty panel. The attribute was set and the body was hidden, and
+    // this test passed.
+    await expect
+      .poll(async () => (await page.locator(LIBRARY).boundingBox())!.height)
+      .toBeLessThan(open / 2);
+    // The header is still there, which is what makes this a fold and not a
+    // close.
+    await expect(page.getByRole("button", { name: "Expand Library" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Expand Library" }).click();
+    await expect(body).toBeVisible();
+    expect(errorsThrown(page), "the shell threw").toEqual([]);
+  });
+
+  /** And the fold is kept, or it is a fold that lasts until the next restart. */
+  test("a fold is written to the workspace", async ({ page }) => {
+    await openLibrary(page);
+    await page.getByRole("button", { name: "Collapse Library" }).click();
+    await expect
+      .poll(async () => {
+        const writes = (await saved(page)) as {
+          surfaces: { surface: string; collapsed: boolean }[];
+        }[];
+        return writes
+          .at(-1)
+          ?.surfaces.find((p) => p.surface === "library")?.collapsed;
+      })
+      .toBe(true);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **Resized, on the dock's own axis.**
+   *
+   * The handle is on the edge that faces the performance zone, so the left
+   * dock grows to the right. A handle on the wrong edge is not a subtle bug:
+   * the panel runs away from the pointer.
+   */
+  test("a surface is resized by dragging its edge, and the size is kept", async ({
+    page,
+  }) => {
+    // The assistant, because it lives in a side dock: a side dock is a column,
+    // so its surfaces share one width and what a single one can vary is its
+    // height. Choosing the axis deliberately matters — the first version
+    // resized the *other* one, and a panel made wider than the dock holding it
+    // simply overflows.
+    await openShell(page, "/");
+    await page.getByRole("button", { name: "Assistant", exact: true }).click();
+    const surface = page.locator('.surface[data-surface="assistant"]');
+    await expect(surface).toBeVisible();
+    const before = (await surface.boundingBox())!;
+
+    const grip = page.getByRole("separator", { name: "Resize Assistant" });
+    const handle = (await grip.boundingBox())!;
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    // Downwards: the handle is on the surface's trailing edge along the axis
+    // its dock stacks on, so dragging away from the surface grows it.
+    await page.mouse.move(
+      handle.x + handle.width / 2,
+      handle.y + handle.height / 2 + 120,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+
+    const after = (await surface.boundingBox())!;
+    expect(
+      after.height,
+      "dragging the edge outwards did not grow the panel",
+    ).toBeGreaterThan(before.height + 40);
+
+    await expect
+      .poll(async () => {
+        const writes = (await saved(page)) as {
+          surfaces: { surface: string; size: number | null }[];
+        }[];
+        return writes.at(-1)?.surfaces.find((p) => p.surface === "assistant")?.size;
+      })
+      .toBeGreaterThan(before.height + 40);
+
+    // **And the panel wears the size it stored**, which is a different claim
+    // from the drag having worked. During a drag the handler writes the width
+    // straight onto the element, so a shell that stored the size and never
+    // read it back would pass everything above and come up at the default
+    // width on the next launch. A fold and an unfold is the cheapest thing
+    // that makes the placement re-render from what was kept.
+    const dragged = (await surface.boundingBox())!.height;
+    await page.getByRole("button", { name: "Collapse Assistant" }).click();
+    await expect(surface).toHaveAttribute("data-collapsed", "true");
+    await page.getByRole("button", { name: "Expand Assistant" }).click();
+    await expect
+      .poll(async () => (await surface.boundingBox())!.height)
+      .toBeCloseTo(dragged, 0);
+    expect(errorsThrown(page), "the shell threw").toEqual([]);
+  });
+
+  /**
+   * **Pinned, which is the per-surface half of §78's freeze.**
+   *
+   * "Never moved, resized or closed by adaptation" — and an arrangement is the
+   * loudest adaptation there is, because it replaces every placement at once.
+   * A DJ who has put a panel where they want it keeps it when they press a
+   * preset; that is the whole of what pinning said.
+   */
+  test("a pinned surface survives an arrangement that does not name it", async ({
+    page,
+  }) => {
+    await openLibrary(page);
+    await page.getByRole("button", { name: "Pin Library" }).click();
+    await expect(page.locator(LIBRARY)).toHaveAttribute("data-pinned", "true");
+
+    // An arrangement. Whichever djmanzo ships first — the point is that it is
+    // not this DJ's own and says nothing about the library.
+    const picker = page.getByRole("combobox", { name: /workspace/i }).first();
+    const options = await picker.locator("option").allTextContents();
+    const other = options.find((o) => o && !/workspace|keep/i.test(o));
+    await picker.selectOption({ label: other! });
+
+    await expect(
+      page.locator(LIBRARY),
+      "an arrangement closed a panel the DJ had pinned",
+    ).toBeVisible();
+    expect(errorsThrown(page), "the shell threw").toEqual([]);
+  });
+});

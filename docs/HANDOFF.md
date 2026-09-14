@@ -1013,6 +1013,29 @@ the directive's actual sentence is about the object. Worth the check on any
 row that counts fields: are they in one place, at one instant, or is that a
 list of things that happen to exist?
 
+**A browser test can pass against a panel that has not moved.** §3's resize
+drag wrote the new width straight onto the element, and the test measured the
+element — so it passed while the panel overflowed the dock holding it, because
+a side dock is a *column* and its surfaces share one width. Driving it showed
+nothing had moved. Two lessons: the axis a surface can vary is the one its
+dock **stacks** along (height in a side dock, width along the bottom), and a
+test that measures the thing the handler just wrote to is measuring the
+handler, not the layout. The fix was to fold and unfold afterwards, so the
+placement re-renders from what was *stored* — and that version killed a
+mutation the first one survived.
+
+**The same drive found the fold leaving a blank.** The body was hidden and the
+attribute was set, both asserted, and the panel kept the dock's eight-rem floor
+— so folding a surface gave a header above a hand's width of empty panel. A
+fold that does not give the room back is not a fold. `toBeHidden` on the body
+is not the claim; the claim is the height.
+
+**And a third thing, from the same change.** An existing test clicked
+`.surface-head button` and took `.first()`. The header grew a fold and a pin
+beside the close, and the test quietly started folding the panel it meant to
+close. It failed loudly, which is the good case — but a control picked by
+position in a row is one that changes meaning when the row does. Name it.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests
