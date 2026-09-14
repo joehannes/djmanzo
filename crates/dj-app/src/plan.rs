@@ -317,6 +317,115 @@ pub fn mix_out(record: &Record) -> Option<MixOut> {
     })
 }
 
+/// The stretch of a record in which a mix **into** it can begin.
+///
+/// §25's `mix-in` layer — *where a record could be brought in* — and the other
+/// half of [`MixOut`]. Both are properties of the **record**: one says where it
+/// can be left, this says where it can be joined, and neither moves with the
+/// playhead or with whatever is on the other deck.
+///
+/// # Where the two edges come from
+///
+/// It **opens** at the record's first phrase boundary at or after the grid
+/// anchor. Bringing a record in against the middle of its first musical idea is
+/// the same mistake [`plan`] exists to avoid at the other end, and there is no
+/// audio before the anchor to open on.
+///
+/// It **closes** at the record's **first drop**, snapped back to a phrase. A
+/// mix that starts after the drop has thrown the drop away, and the drop is
+/// usually the thing the whole transition was building towards. Where there is
+/// no drop — a record that never has one, or one nobody has analysed — the
+/// close is the longest transition the planner will propose, measured from the
+/// opening: *its first eight bars*, which is arithmetic rather than structure.
+/// [`MixIn::before_a_drop`] says which of the two it is, for the same reason
+/// [`MixOut::on_phrase`] says whether the opening is real structure. A window
+/// that dressed the arithmetic as the music would be the confident lie this
+/// module is written not to tell.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MixIn {
+    /// Beat index where the window opens, counted from the grid anchor.
+    pub opens_beat: i64,
+    /// Frame position of that beat.
+    pub opens_frame: f64,
+    /// Frame position of the last beat a mix into this record may begin on.
+    pub closes_frame: f64,
+    /// True when the opening is a phrase boundary rather than merely a beat.
+    pub on_phrase: bool,
+    /// True when the close is the record's first drop rather than arithmetic.
+    pub before_a_drop: bool,
+}
+
+/// Where a mix into `record` can begin.
+///
+/// `first_drop` is a frame position from `dj_analysis::energy::Trajectory`, or
+/// `None` where nothing has found one — see [`MixIn`] for what each answer
+/// makes the window mean.
+///
+/// `None` for a record with no usable grid, and for one whose window would
+/// close before it opened: a record whose drop is in its first phrase has no
+/// stretch to be brought in over, and a band drawn backwards is worse than no
+/// band.
+#[must_use]
+pub fn mix_in(record: &Record, first_drop: Option<f64>) -> Option<MixIn> {
+    let beat_frames = beat_frames(record.bpm, record.sample_rate)?;
+    let last_beat = (record.length - record.grid_anchor) / beat_frames;
+    if !last_beat.is_finite() || last_beat <= 0.0 {
+        return None;
+    }
+
+    // Forward, not back: the opening is where the record's structure starts,
+    // and snapping back would open the window before the grid.
+    let (opens_beat, on_phrase) = match record.phrase {
+        Some(phrase) => {
+            let within = i64::from(phrase.beat_within(0));
+            if within == 0 {
+                (0, true)
+            } else {
+                (i64::from(phrase.beats) - within, true)
+            }
+        }
+        None => (0, false),
+    };
+
+    let longest = f64::from(LENGTHS[0]);
+    #[allow(clippy::cast_precision_loss)]
+    let by_arithmetic = opens_beat as f64 + longest;
+    let closes_beat = match first_drop {
+        // Snapped back to a phrase, so the window closes on structure rather
+        // than a beat or two into it — the same rule the opening follows.
+        Some(frame) => {
+            let at = (frame - record.grid_anchor) / beat_frames;
+            if !at.is_finite() {
+                return None;
+            }
+            #[allow(clippy::cast_possible_truncation)]
+            let at = at.floor() as i64;
+            match record.phrase {
+                Some(phrase) => at - i64::from(phrase.beat_within(at)),
+                None => at,
+            }
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        None => by_arithmetic.floor() as i64,
+    };
+
+    // Never past the end of the record, and never at or before the opening.
+    #[allow(clippy::cast_possible_truncation)]
+    let closes_beat = closes_beat.min(last_beat.floor() as i64);
+    if closes_beat <= opens_beat {
+        return None;
+    }
+
+    #[allow(clippy::cast_precision_loss)]
+    Some(MixIn {
+        opens_beat,
+        opens_frame: record.grid_anchor + opens_beat as f64 * beat_frames,
+        closes_frame: record.grid_anchor + closes_beat as f64 * beat_frames,
+        on_phrase,
+        before_a_drop: first_drop.is_some(),
+    })
+}
+
 /// Say what a *particular* transition means, rather than choosing one.
 ///
 /// [`plan`] decides where the mix starts, how long it runs and which way to do
@@ -790,6 +899,120 @@ mod tests {
         // And the three that are taste are all there, so the list cannot
         // quietly shrink to one.
         assert_eq!(STYLE_IS_TASTE.len(), 3);
+    }
+
+    /// An outgoing-shaped record, as a `Record` rather than an `Outgoing`.
+    fn record(total_beats: f64, anchor_beats: f64) -> Record {
+        Record {
+            length: total_beats * beat(),
+            bpm: BPM,
+            phrase: Phrase::new(16, 0),
+            sample_rate: SR,
+            grid_anchor: anchor_beats * beat(),
+        }
+    }
+
+    /// **The load-bearing one: a mix into a record ends before its drop.**
+    ///
+    /// §25's `mix-in` layer, and the whole reason it is worth drawing. A mix
+    /// started after the drop has thrown the drop away, and the drop is usually
+    /// the thing the transition was building towards — so the window closes
+    /// there, snapped back to a phrase, because landing a record against the
+    /// middle of a musical idea is the mistake this module exists to avoid at
+    /// both ends.
+    #[test]
+    fn the_window_to_come_in_closes_at_the_records_own_drop() {
+        let rec = record(400.0, 0.0);
+        // A drop 70 beats in: not on a phrase boundary, so the close must snap
+        // back to beat 64 rather than sitting four beats into the fifth phrase.
+        let drop = 70.0 * beat();
+        let window = mix_in(&rec, Some(drop)).expect("a record with a grid has a window");
+
+        assert!(window.before_a_drop, "the close came from arithmetic");
+        assert!(window.on_phrase);
+        assert!(
+            (window.opens_frame - 0.0).abs() < 1.0,
+            "a grid anchored on a phrase opens at its own beginning"
+        );
+        assert!(
+            (window.closes_frame - 64.0 * beat()).abs() < 1.0,
+            "the close did not snap back to a phrase: {} beats",
+            window.closes_frame / beat()
+        );
+        assert!(
+            window.closes_frame < drop,
+            "the window reaches past the drop"
+        );
+    }
+
+    /// **A record nobody has found a drop in gets arithmetic, and says so.**
+    ///
+    /// The same honesty `MixOut::on_phrase` carries. A window closed by the
+    /// longest transition the planner proposes is a real answer — *its first
+    /// eight bars* — and dressing it as the record's structure would be the
+    /// confident lie this module is written not to tell.
+    #[test]
+    fn a_record_with_no_drop_gets_the_planners_own_longest_mix() {
+        let rec = record(400.0, 0.0);
+        let window = mix_in(&rec, None).expect("a window");
+
+        assert!(
+            !window.before_a_drop,
+            "arithmetic was reported as structure"
+        );
+        assert!(
+            (window.closes_frame - f64::from(LENGTHS[0]) * beat()).abs() < 1.0,
+            "the close is not the longest transition: {} beats",
+            window.closes_frame / beat()
+        );
+    }
+
+    /// **The window opens on the record's first phrase, never before its
+    /// grid.**
+    ///
+    /// Snapped *forward* rather than back, which is the opposite of
+    /// [`mix_out`] and is right: there is audio after the anchor and none
+    /// before it, so a window that snapped back would open on nothing.
+    #[test]
+    fn the_window_opens_forward_onto_the_first_whole_phrase() {
+        // A grid whose phrases start on beat 4 — so the boundaries are 4, 20,
+        // 36, and the first whole phrase after the anchor begins four beats in.
+        let mut rec = record(400.0, 0.0);
+        rec.phrase = Phrase::new(16, 4);
+        let window = mix_in(&rec, None).expect("a window");
+
+        assert!(window.on_phrase);
+        assert!(
+            window.opens_frame > 0.0,
+            "the window opened before the record's first whole phrase"
+        );
+        assert!(
+            (window.opens_frame - 4.0 * beat()).abs() < 1.0,
+            "the window did not open on the next phrase: {} beats",
+            window.opens_frame / beat()
+        );
+        // And it is a real boundary rather than a number that happens to fit:
+        // the phrase detector agrees there is one there.
+        assert_eq!(
+            rec.phrase.expect("a phrase").beat_within(4),
+            0,
+            "beat 4 is not a phrase boundary, so this test proves nothing"
+        );
+    }
+
+    /// **A record whose drop is in its first phrase has no window at all.**
+    ///
+    /// A band drawn backwards is worse than no band, and "you may bring this in
+    /// nowhere" is a true and useful thing to say about a record that is all
+    /// chorus from the first bar.
+    #[test]
+    fn a_record_that_drops_immediately_has_nowhere_to_be_brought_in() {
+        let rec = record(400.0, 0.0);
+        assert_eq!(mix_in(&rec, Some(4.0 * beat())), None);
+        // And a record with no usable grid has none either.
+        let mut nonsense = record(400.0, 0.0);
+        nonsense.bpm = 0.0;
+        assert_eq!(mix_in(&nonsense, None), None);
     }
 
     #[test]

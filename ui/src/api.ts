@@ -1114,6 +1114,16 @@ export interface WaveformInfo {
    */
   mix_out: MixOutInfo | null;
   /**
+   * §25's mix-in layer: the stretch in which a mix **into** this record can
+   * begin, from `plan::mix_in`.
+   *
+   * The other half of `mix_out` and here for the same reasons. `null` for an
+   * empty deck, a record with no grid, and one whose drop is inside its first
+   * phrase — a record that is all chorus from the first bar has nowhere to be
+   * brought in over, and a band drawn backwards is worse than no band.
+   */
+  mix_in: MixInInfo | null;
+  /**
    * §75's energy trajectory, and the breakdowns and drops in it.
    *
    * Empty for a deck with nothing on it, one still being analysed, and a
@@ -1145,6 +1155,21 @@ export interface MixOutInfo {
   closes_frame: number;
   /** Whether the window opens on a phrase boundary or merely on a beat. */
   on_phrase: boolean;
+}
+
+export interface MixInInfo {
+  opens_frame: number;
+  closes_frame: number;
+  /** Whether the window opens on a phrase boundary or merely on a beat. */
+  on_phrase: boolean;
+  /**
+   * Whether the window closes at the record's own first drop, or at the
+   * longest transition djmanzo would propose measured from the opening.
+   *
+   * Two different promises, and the band says which: one is the music and one
+   * is arithmetic about a record nobody has found a drop in.
+   */
+  before_a_drop: boolean;
 }
 
 export const waveformInfo = (deck: number) =>

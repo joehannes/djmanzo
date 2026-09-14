@@ -111,10 +111,10 @@
     "name": "mix-in",
     "title": "Likely mix-in",
     "about": "Where a record could be brought in.",
-    "role": "unassigned",
-    "drawn": "nowhere",
-    "choosable": false,
-    "why_not": "djmanzo cannot draw this yet"
+    "role": "proposed",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
   },
   {
     "name": "breakdowns",

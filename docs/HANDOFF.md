@@ -921,6 +921,31 @@ this and it still happened, because the failure is one line above a wall of
 passing tests. **Confirm `✓ built` in the mutation run itself**, not only in the
 gate run; a mutation that does not compile has to be rewritten so it does.
 
+**Sixth stale reason, same shape: §25's `mix-in` was filed under "needs an
+analysis nobody has written" and needed `plan::mix_out` read backwards.** The
+first drop it closes on has been coming out of `energy::trajectory` since §75.
+Two of §25's remaining four are still real blockers (vocal and stem presence
+need separation; the crowd needs a camera) and **`saved-loops` is neither** —
+`dj_library::StoredLoop` has held them per track all along and nothing carries
+them to the waveform. What it actually needs is a decision: a saved loop and a
+hot cue are both somewhere a human marked, so §57's one-colour-one-meaning
+rule has to be argued either way before it can be drawn.
+
+**The layer guards are worth trusting.** Turning `mix-in` on failed two tests
+immediately — the role-sharing list and the built-count list — and both
+failures were the right ones: adding a layer to a shared colour is a decision
+somebody makes in `layer.rs` where §57's rule lives, and "fifteen of twenty"
+cannot drift. `ui/e2e/layers.json` is blessed from Rust, so a layer that
+changes `drawn` needs `DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture`
+or the browser keeps offering the old set.
+
+**A fixture whose window opens at frame 0 cannot test a width.** The first
+`mix_in` fixture opened at 0, which made `closes_frame - opens_frame` and
+`closes_frame` the same number — so a lane drawing the closing frame as the
+width passed. Mutation testing caught it. **Pick fixture values where every
+arithmetic mistake produces a different answer**, which usually means no
+zeroes and no two fields that happen to be equal.
+
 **"It has no older evidence yet" was the fifth stale reason, and the pattern
 is now unmistakable.** §12's and §14's rows both said decay had to wait until
 sessions were read back across nights. What was true is that the *action log*

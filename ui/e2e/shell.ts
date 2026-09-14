@@ -345,6 +345,22 @@ const ANSWERS: Record<string, unknown> = {
     total_frames: 12_000_000,
     epoch: 1,
     mix_out: { opens_frame: 10_800_000, closes_frame: 11_600_000, on_phrase: true },
+    // And the other end: where a mix into this record could begin. Opening on
+    // its first phrase and closing before the drop the trajectory below
+    // records, which is what `plan::mix_in` produces for a record shaped like
+    // this one — a fixture whose two bands overlapped would let a lane that
+    // drew one of them twice pass.
+    // Opening at a non-zero frame on purpose, and the reason is worth keeping:
+    // the first version of this fixture opened at 0, which made the band's
+    // width and its closing frame the same number — so a lane that drew
+    // `closes_frame` as the width passed. A record whose first whole phrase is
+    // a few seconds in is also the commoner shape.
+    mix_in: {
+      opens_frame: 300_000,
+      closes_frame: 2_400_000,
+      on_phrase: true,
+      before_a_drop: true,
+    },
     // §75's trajectory, on the same twelve-million-frame record. Four windows
     // with the third thinned out and the fourth back, which is the shape the
     // detector is written to find -- a fixture whose energy never moved would

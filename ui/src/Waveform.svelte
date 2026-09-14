@@ -19,6 +19,7 @@
     tileUrl,
     waveformInfo,
     type DeckState,
+    type MixInInfo,
     type MixOutInfo,
   } from "./api";
   import { phraseGrid, type PhraseGrid } from "./api";
@@ -154,6 +155,23 @@
   });
 
   /**
+   * §25's mix-in band: where a mix into this record can begin.
+   *
+   * Rust's answer for the same reason the mix-out band is — `plan::mix_in`
+   * derives it from the planner's own constants and from the record's first
+   * drop, and a second opinion worked out here would sit a beat off the one
+   * the rail and the ghost are drawn from.
+   */
+  const mixInBand = $derived.by(() => {
+    if (!mixIn) return null;
+    const left = mixIn.opens_frame / framesPerPixel;
+    const width = (mixIn.closes_frame - mixIn.opens_frame) / framesPerPixel;
+    return width > 1
+      ? { left, width, onPhrase: mixIn.on_phrase, beforeADrop: mixIn.before_a_drop }
+      : null;
+  });
+
+  /**
    * §25's uncertainty layer: that the beat grid under all this is a guess.
    *
    * The rasteriser already fades beat lines by the grid's confidence, and that
@@ -261,6 +279,7 @@
   /** Which generation of this deck's content the tiles belong to. */
   let epoch = $state(0);
   let mixOut = $state<MixOutInfo | null>(null);
+  let mixIn = $state<MixInInfo | null>(null);
 
   // Interpolation state. Updated from snapshots, read every animation frame.
   let anchorFrame = 0;
@@ -281,6 +300,7 @@
         // `?? null` rather than `info.mix_out`: an older answer with no such
         // field would otherwise leave the previous record's band on screen.
         mixOut = info.mix_out ?? null;
+        mixIn = info.mix_in ?? null;
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -532,6 +552,30 @@
             : "Mix out anywhere in here and any transition djmanzo would propose still fits. No phrase structure, so it opens on a beat."}
         >
           <span class="mix-out-flag">mix out</span>
+        </div>
+      {/if}
+      <!--
+        §25's mix-in layer: where a mix into this record can begin.
+
+        The same colour as the band above and deliberately so — both are
+        djmanzo saying *could* about the same mix, read from the two ends — and
+        `layer.rs` holds that decision where §57's rule is enforced. It sits at
+        the other end of the lane, so the two never overlap on one record and a
+        DJ reading two lanes sees one question answered twice.
+      -->
+      {#if mixInBand && showing("mix-in")}
+        <div
+          class="mix-in"
+          class:on-phrase={mixInBand.onPhrase}
+          class:before-a-drop={mixInBand.beforeADrop}
+          data-layer="mix-in"
+          style:left="{mixInBand.left}px"
+          style:width="{mixInBand.width}px"
+          title={mixInBand.beforeADrop
+            ? "Bring this record in anywhere in here and its first drop is still ahead of you."
+            : "Bring this record in anywhere in here. Nobody has found a drop in it, so this is the longest transition djmanzo would propose rather than the record's own shape."}
+        >
+          <span class="mix-in-flag">mix in</span>
         </div>
       {/if}
       <!--
@@ -939,6 +983,52 @@
   .mix-out:not(.on-phrase) {
     border-left-style: dashed;
     opacity: 0.6;
+  }
+
+  /*
+    The same colour as the mix-out band, because it is the same claim read from
+    the other end — see `dj_render::layer`, where §57's rule about one colour
+    per meaning is enforced. The border sides are mirrored: the solid edge is
+    the one that is a decision, and for coming in that is the *close*, because
+    what a DJ is judging is how long they have before the drop.
+  */
+  .mix-in {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--assistant) 10%, transparent);
+    border-left: 2px dashed color-mix(in srgb, var(--assistant) 40%, transparent);
+    border-right: 2px solid color-mix(in srgb, var(--assistant) 55%, transparent);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /*
+    Dimmed when the close is arithmetic rather than the record's own drop, on
+    exactly the argument the mix-out band makes about its opening: a weaker
+    claim is drawn as one, and hiding it would leave the record with no answer
+    at all.
+  */
+  .mix-in:not(.before-a-drop) {
+    opacity: 0.6;
+  }
+
+  .mix-in:not(.on-phrase) {
+    border-right-style: dashed;
+    opacity: 0.6;
+  }
+
+  .mix-in-flag {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 0 0.25rem;
+    font-size: 0.6rem;
+    line-height: 1.3;
+    color: var(--assistant);
+    background: var(--panel);
+    border-radius: 3px 0 0 3px;
+    white-space: nowrap;
   }
 
   .mix-out-flag {

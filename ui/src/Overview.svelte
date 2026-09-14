@@ -19,6 +19,7 @@
     tileUrl,
     waveformInfo,
     type DeckState,
+    type MixInInfo,
     type MixOutInfo,
     type EnergyTrajectory,
   } from "./api";
@@ -78,6 +79,7 @@
   let epoch = $state(0);
   let ready = $state(false);
   let mixOut = $state<MixOutInfo | null>(null);
+  let mixIn = $state<MixInInfo | null>(null);
   /**
    * §75's trajectory, and §25's `breakdowns`, `drops` and `energy` layers.
    *
@@ -117,6 +119,7 @@
         totalFrames = info.total_frames;
         epoch = info.epoch;
         mixOut = info.mix_out ?? null;
+        mixIn = info.mix_in ?? null;
         trajectory = info.trajectory ?? null;
       })
       // `ready` stays false, which is the "no tiles yet" state this component
@@ -184,6 +187,29 @@
    * the moment the record loads, which is the question this view exists to
    * answer.
    */
+  /**
+   * §25's mix-in band, over the whole record.
+   *
+   * Here as well as on the lane, and for the reason the mix-out band is over
+   * here: on the lane the window is only visible once the playhead is near it,
+   * and the whole point of a window at the *start* of a record is to be read
+   * while deciding whether to load the record at all. Floored to the same
+   * minimum width, because a hairline nobody can see is not an answer.
+   */
+  const mixInBand = $derived.by(() => {
+    if (!mixIn || totalFrames <= 0) return null;
+    const left = fraction(mixIn.opens_frame) * 100;
+    const right = fraction(mixIn.closes_frame) * 100;
+    return right > left
+      ? {
+          left,
+          width: Math.max(right - left, 0.8),
+          onPhrase: mixIn.on_phrase,
+          beforeADrop: mixIn.before_a_drop,
+        }
+      : null;
+  });
+
   const mixOutBand = $derived.by(() => {
     if (!mixOut || totalFrames <= 0) return null;
     const left = fraction(mixOut.opens_frame) * 100;
@@ -331,6 +357,24 @@
       see this view at all — and the loop and the cues drawn here are the same
       two layers of §25's twenty, drawn in a second place.
     -->
+    <!--
+      §25's mix-in layer: the stretch this record can be joined in. The same
+      colour as the band below on purpose — one claim read from two ends, and
+      `dj_render::layer` holds that decision where §57's rule lives.
+    -->
+    {#if mixInBand && showing("mix-in")}
+      <div
+        class="mix-in"
+        class:on-phrase={mixInBand.onPhrase}
+        class:before-a-drop={mixInBand.beforeADrop}
+        data-layer="mix-in"
+        style:left="{mixInBand.left}%"
+        style:width="{mixInBand.width}%"
+        title={mixInBand.beforeADrop
+          ? "Bring this record in anywhere in here and its first drop is still ahead of you."
+          : "Bring this record in anywhere in here. Nobody has found a drop in it, so this is the longest transition djmanzo would propose rather than the record's own shape."}
+      ></div>
+    {/if}
     {#if mixOutBand && showing("mix-out")}
       <div
         class="mix-out"
@@ -554,6 +598,26 @@
     border-left: 2px solid color-mix(in srgb, var(--assistant) 75%, transparent);
     border-right: 2px dashed color-mix(in srgb, var(--assistant) 55%, transparent);
     pointer-events: none;
+  }
+
+  /*
+    The same colour, mirrored: the solid edge is the one that is a decision,
+    and for coming in that is the close — what a DJ is judging is how long they
+    have before the drop.
+  */
+  .mix-in {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--assistant) 22%, transparent);
+    border-left: 2px dashed color-mix(in srgb, var(--assistant) 55%, transparent);
+    border-right: 2px solid color-mix(in srgb, var(--assistant) 75%, transparent);
+    pointer-events: none;
+  }
+
+  .mix-in:not(.before-a-drop),
+  .mix-in:not(.on-phrase) {
+    opacity: 0.6;
   }
 
   .mix-out:not(.on-phrase) {

@@ -310,8 +310,8 @@ static LAYERS: [Layer; 20] = [
         name: "mix-in",
         title: "Likely mix-in",
         about: "Where a record could be brought in.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        role: Role::Proposed,
+        drawn: Drawn::Overlay,
     },
     // An estimate about the music, which is what `Uncertain` is for: the
     // detector reads where the low band falls away and a record with a
@@ -512,14 +512,21 @@ mod tests {
             "the record's own sound"
         );
         assert_eq!(grouped.get("grid").map(Vec::len), Some(3), "the pulse");
-        // `proposed` carries the mix-out window and §27's ghost. Both are
-        // djmanzo saying *could*, about the same mix, at two scales -- where a
-        // record can be left, and what happens if this one comes in there. One
-        // colour for both is the distinction §57 asks for holding, not losing:
-        // what must never share it is anything that is so.
+        // `proposed` carries both mix windows and §27's ghost. All three are
+        // djmanzo saying *could*, about the same mix, at three scales -- where
+        // a record can be left, where one can be joined, and what happens if
+        // this one comes in there. One colour for all three is the distinction
+        // §57 asks for holding, not losing: what must never share it is
+        // anything that is so.
+        //
+        // `mix-in` joining them is the clearest case there is rather than a
+        // stretch. It is the same sentence as `mix-out` read from the other
+        // end, and a DJ looking at two lanes is reading one question -- can
+        // these two meet -- with an answer drawn on each. Two colours for the
+        // two ends would say they were different kinds of claim.
         assert_eq!(
             grouped.get("proposed"),
-            Some(&vec!["mix-out", "suggestion"]),
+            Some(&vec!["mix-out", "mix-in", "suggestion"]),
             "the proposed colour is for what djmanzo suggests, and only that"
         );
         // §75's three, and the same argument as `proposed` above: the
@@ -578,6 +585,7 @@ mod tests {
                 "loop",
                 "seam",
                 "mix-out",
+                "mix-in",
                 "breakdowns",
                 "drops",
                 "energy",

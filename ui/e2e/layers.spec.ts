@@ -32,6 +32,9 @@ const DECLARED = new Set(layers.map((layer) => layer.name));
 const RECORD_FRAMES = 12_000_000;
 const OPENS_FRAME = 10_800_000;
 const CLOSES_FRAME = 11_600_000;
+/** The other end: where a mix *into* the fixture's record could begin. */
+const IN_OPENS_FRAME = 300_000;
+const IN_CLOSES_FRAME = 2_400_000;
 
 /**
  * Where an element sits inside its scrolling strip, in pixels of lane.
@@ -279,6 +282,46 @@ test.describe("the waveform's layers", () => {
   });
 
   /**
+   * **The mix-in band is drawn at the other end, at the frames Rust chose.**
+   *
+   * §25's `mix-in` layer. The arithmetic — the first whole phrase, and the
+   * record's own first drop — is `plan::mix_in` and is tested in Rust. What a
+   * browser can prove is the conversion and, more usefully, that the two
+   * windows are drawn as two: they share a colour on purpose, because both are
+   * djmanzo saying *could* about the same mix from opposite ends, and a lane
+   * that drew one of them twice would look exactly right at a glance.
+   */
+  test("the mix-in band lands where the record can be joined", async ({ page }) => {
+    await openShell(page, "/");
+
+    const runway = await inStrip(page, '[data-layer="runway"]');
+    expect(runway, "no runway to measure the record against").not.toBeNull();
+    const record = runway!.left + runway!.width;
+
+    const band = await inStrip(page, '[data-layer="mix-in"]');
+    expect(band, "the mix-in layer is not drawn at all").not.toBeNull();
+
+    expect(band!.left / record, "the band does not open where Rust said").toBeCloseTo(
+      IN_OPENS_FRAME / RECORD_FRAMES,
+      2,
+    );
+    expect(band!.width / record, "the band does not close where Rust said").toBeCloseTo(
+      (IN_CLOSES_FRAME - IN_OPENS_FRAME) / RECORD_FRAMES,
+      2,
+    );
+
+    // And it is at the *other* end from the mix-out band, which is the half a
+    // colour they share cannot say for itself.
+    const out = await inStrip(page, '[data-layer="mix-out"]');
+    expect(out, "no mix-out band to compare against").not.toBeNull();
+    expect(
+      band!.left + band!.width,
+      "the two windows overlap, so one record is claiming it can be joined where it can be left",
+    ).toBeLessThan(out!.left);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **The lane says when the grid under it is a guess.**
    *
    * The rasteriser has always faded beat lines by the grid's confidence, and
@@ -402,6 +445,12 @@ test.describe("the waveform's layers", () => {
     expect(built).toContain("energy");
     expect(built).toContain("breakdowns");
     expect(built).toContain("drops");
-    expect(built).toHaveLength(15);
+    // §25's `mix-in`: the sixteenth, and the other end of the one window
+    // djmanzo had already been drawing. It was listed as needing an analysis
+    // nobody had written, and what it actually needed was `plan::mix_out` read
+    // from the other end plus the first drop `energy::trajectory` already
+    // finds.
+    expect(built).toContain("mix-in");
+    expect(built).toHaveLength(16);
   });
 });

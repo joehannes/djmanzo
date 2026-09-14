@@ -1617,6 +1617,13 @@ pub struct WaveformInfo {
     /// those two events. Sixty times a second for a number that changes twice
     /// a track would be the snapshot pump carrying furniture.
     pub mix_out: Option<MixOutInfo>,
+    /// Where a mix into this record could begin, from `plan::mix_in`.
+    ///
+    /// The other half of `mix_out`, here for the same reasons and read from the
+    /// same grid. A DJ reading two lanes sees where the outgoing record can be
+    /// left and where the incoming one can be joined, which between them is the
+    /// whole of what §25 means by a *likely* mix.
+    pub mix_in: Option<MixInInfo>,
     /// §75's trajectory, and the breakdowns and drops in it.
     ///
     /// Here for the same reason `mix_out` is: it is a property of the record,
@@ -1629,6 +1636,19 @@ pub struct WaveformInfo {
     /// record with no grid to count phrases against. The overview draws
     /// nothing for all three, which is the honest answer to each.
     pub trajectory: dj_analysis::energy::Trajectory,
+}
+
+/// §25's `mix-in` layer, as the waveform draws it.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct MixInInfo {
+    pub opens_frame: f64,
+    pub closes_frame: f64,
+    /// Whether the opening is a phrase boundary or merely a beat.
+    pub on_phrase: bool,
+    /// Whether the close is the record's own first drop or the planner's
+    /// longest transition measured from the opening. The band says which,
+    /// because they are not the same promise — see `plan::MixIn`.
+    pub before_a_drop: bool,
 }
 
 /// §25's `mix-out` layer, as the waveform draws it.
@@ -1649,6 +1669,7 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         total_frames: state.waveforms().total_frames(deck).unwrap_or(0) as u64,
         epoch: state.waveforms().epoch(deck),
         mix_out: mix_out_of(&state, deck),
+        mix_in: mix_in_of(&state, deck),
         // From the analysis rather than from the waveform store, unlike
         // `mix_out` above, and the difference is deliberate: a mix-out band has
         // to line up with the beat lines beside it, and a breakdown is where
@@ -1682,6 +1703,42 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
 /// `None` covers a deck with nothing on it, one still being analysed, and a
 /// record too short to leave. The waveform draws no band for any of them,
 /// which is the honest answer to all three.
+/// Where a mix into this deck's record could begin.
+///
+/// Read from the deck's own grid for the two reasons `mix_out_of` gives at
+/// length, and from the analysis for the drop — which is the same split
+/// `waveform_info` already makes between the band and the trajectory: a band
+/// has to line up with the beat lines beside it, and a drop is where the music
+/// comes back. Editing the grid moves the lines and does not move the drop.
+fn mix_in_of(state: &AppState, deck: u8) -> Option<MixInInfo> {
+    let overlay = state.waveforms().grid(deck)?;
+    let length = state.waveforms().total_frames(deck)?;
+    // The record's own first drop, when something has found one. `None` here
+    // is not an error: it is a record nobody has analysed, or one that never
+    // drops, and `plan::mix_in` answers differently and says so.
+    let first_drop = state
+        .analysis()
+        .for_deck(deck)
+        .and_then(|found| found.trajectory.drops.first().copied());
+    #[allow(clippy::cast_precision_loss)]
+    let window = crate::plan::mix_in(
+        &crate::plan::Record {
+            length: length as f64,
+            bpm: overlay.grid.bpm.get(),
+            phrase: overlay.phrase,
+            sample_rate: overlay.sample_rate,
+            grid_anchor: overlay.grid.anchor.get(),
+        },
+        first_drop,
+    )?;
+    Some(MixInInfo {
+        opens_frame: window.opens_frame,
+        closes_frame: window.closes_frame,
+        on_phrase: window.on_phrase,
+        before_a_drop: window.before_a_drop,
+    })
+}
+
 fn mix_out_of(state: &AppState, deck: u8) -> Option<MixOutInfo> {
     let overlay = state.waveforms().grid(deck)?;
     let length = state.waveforms().total_frames(deck)?;
