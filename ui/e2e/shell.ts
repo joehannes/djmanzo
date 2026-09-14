@@ -661,6 +661,13 @@ const ANSWERS: Record<string, unknown> = {
   // `Next.svelte` reads it and an unstubbed command is the failure the
   // `stems_status` note above documents.
   profile_tonight: null,
+  // §17: what the phase of the night asks of the ranking. Warm-up by default,
+  // because that is what the captured snapshot's night reads as and because a
+  // fixture that started at the one phase asking for nothing would let a rail
+  // that never followed anything pass. `phase_asks` answers whatever this says
+  // and a test may vary it, the same discipline every other answer here
+  // follows.
+  phase_asks: { trajectory: "lift", words: "gradual energy", prefer: null },
   // What the pair view is handed: two records and the seam between them.
   //
   // §68's transition object, in the shape `dj_app::commands::TransitionDto`
@@ -1558,6 +1565,16 @@ export async function openShell(
           // can check *which* mix was kept: the panel holds a timestamp per
           // row, and keeping the wrong row would store a plausible pair of the
           // wrong two records.
+          // §17: which direction the rail actually asked for. Recorded rather
+          // than inferred from the highlighted button, because those are two
+          // different claims: a rail that lit *Lift* and sent "hold" would look
+          // exactly like one that worked, and the direction is an input to the
+          // ranking rather than a decoration on it. Answered from the table
+          // afterwards, like everything else.
+          if (cmd === "suggest_next") {
+            ((win.__ranked ??= []) as string[]).push(String(args.trajectory));
+            return Promise.resolve(answers.suggest_next ?? []);
+          }
           if (cmd === "keep_mix") {
             win.__keptAt = args.at;
             return Promise.resolve(1);

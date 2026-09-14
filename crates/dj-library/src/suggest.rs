@@ -166,6 +166,14 @@ pub enum Reason {
     /// the same place everything else is: it reorders records that would all
     /// work and cannot lift one that would not.
     InPack(&'static str),
+    /// The phase of the night asked for something, and this record is it.
+    ///
+    /// §17's *harmonic resolution* and *known anchors* — the two entries in its
+    /// six lists that are instructions about what djmanzo should **offer**
+    /// rather than what it should show. The words are the caller's, because
+    /// which phase asks for what is `dj_app::asks`'s table and not a fact about
+    /// ranking; this crate carries the claim to the row that displays it.
+    PhaseAsks(&'static str),
     /// The pack says this music does not pair across half and double time.
     ///
     /// §16's *half/double-time relationships*. A 140 record over a 70 one is an
@@ -239,6 +247,13 @@ impl Reason {
             // doing something deliberate, and a rail that had buried the rest
             // of the library would be arguing with them.
             Self::InPack(_) => 0.75,
+            // The same three quarters, and the fourth thing on one score
+            // quoted from that scale. It is the smallest claim on a rail on
+            // purpose: a phase is a reading djmanzo made about the night, which
+            // is weaker evidence than what the DJ plays, what they chose and
+            // what they kept — and it is the only one of the four they did not
+            // say. A phase asks. It does not overrule the mixing.
+            Self::PhaseAsks(_) => 0.75,
             // Nothing of its own: it is the *removal* of a credit, and the
             // removal happens in `also_in_pack` where the credit can be seen.
             // A weight here as well would take it away twice.
@@ -350,6 +365,24 @@ pub fn also_in_pack(
     {
         suggestion.score -= given.weight();
         suggestion.reasons.push(Reason::HalfTimeUnusual);
+    }
+    suggestion
+}
+
+/// §17: what the phase of the night asked for, when this record is it.
+///
+/// A string rather than a phase, for the reason [`also_in_pack`] takes booleans
+/// rather than a pack: which phase asks for what is three crates away, and a
+/// scorer that knew about session phases would be the second place that answer
+/// lives. `None` for every candidate is four of §17's six phases, and it is a
+/// real answer rather than a missing one — most of the night, the direction is
+/// the whole of what the phase has to say, and [`rank`] already has that.
+#[must_use]
+pub fn also_asked(mut suggestion: Suggestion, asked: Option<&'static str>) -> Suggestion {
+    if let Some(words) = asked {
+        let reason = Reason::PhaseAsks(words);
+        suggestion.score += reason.weight();
+        suggestion.reasons.push(reason);
     }
     suggestion
 }

@@ -112,6 +112,33 @@ pub enum Trajectory {
     Ease,
 }
 
+impl Trajectory {
+    /// The three, in the order a DJ reads them: up, level, down.
+    pub const ALL: [Self; 3] = [Self::Lift, Self::Hold, Self::Ease];
+
+    /// The stable name the interface and the stored files use.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Lift => "lift",
+            Self::Hold => "hold",
+            Self::Ease => "ease",
+        }
+    }
+
+    /// The trajectory a stored or sent name means.
+    ///
+    /// `None` rather than falling back to [`Trajectory::Hold`]: a name nobody
+    /// recognises is a bug somewhere, and quietly answering "hold" would make
+    /// a misspelled trajectory behave exactly like the commonest real one —
+    /// which is the failure that never gets found. Callers that want a default
+    /// say so themselves, where the reader can see it.
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|t| t.name() == name)
+    }
+}
+
 /// A track's phrase structure: how long a phrase is, and which beat starts one.
 ///
 /// Dance music is built in phrases -- usually 16 or 32 beats -- and a DJ mixes

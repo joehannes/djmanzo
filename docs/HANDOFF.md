@@ -921,6 +921,16 @@ this and it still happened, because the failure is one line above a wall of
 passing tests. **Confirm `✓ built` in the mutation run itself**, not only in the
 gate run; a mutation that does not compile has to be rewritten so it does.
 
+**A comment saying "this cannot be inferred" is a claim about the codebase,
+and the codebase moves.** `Next.svelte` said lift/hold/ease was *the one thing
+the ranking cannot infer*, and by the time anybody read it again `dj_core`
+had a context engine reading a phase off the music and §17 had a list of what
+each phase wants. The sentence was true when it was written and had become the
+reason nobody built the thing. This is the same shape as §29's AI hover and
+five of §40's seven absences, and it is now the third time it has cost a
+session: **when a doc comment explains why something is absent, check the
+claim before trusting the conclusion.**
+
 **Restoring a mutated Svelte file does not restore the bundle, and the *next*
 test you run is the one that lies.** The other direction of the trap above, and
 it is worse because the failure lands on innocent work: a mutation was applied
@@ -1693,17 +1703,24 @@ The largest of them, in the order they are worth doing:
    claim. Taking the credit back leaves it scoring what an unrelated tempo
    scores, which is what "not part of this music" means.
 
+   **There are four tilts now, not three, and the fourth is §17's.**
+   `asks::asks` is what each phase of the night asks of the ranking — the half
+   of §17 that is not surfaces — and until it existed the rail opened on *Hold*
+   at every hour of every night. Two of the six phases ask for something and
+   four ask for nothing, which is the honest table rather than a thin one.
+
    **Adding a third tilt is what made the bound a group problem.** Taste, §81's
    profile and now the pack are each worth three quarters of a point, each
    bounded in prose in its own file against the same scale — a same-key match
    is three, a key clash minus two and a half — and nothing checked what they
    do when all three point the same way, which is the ordinary case. A Latin DJ
    at a Latin night with the Latin pack chosen gets every one of them.
-   `taste_the_night_and_the_pack_together_cannot_cross_a_key_relation` holds
-   the sum below that gap, and `Learned::MOST_IT_MAY_MOVE` was made public so
-   the test can read the number instead of restating it. **If you add a fourth
-   tilt, that test is the one to extend**, and it will fail rather than let the
-   rail start promoting key clashes.
+   `every_tilt_at_once_still_cannot_cross_a_key_relation` holds the sum below
+   that gap, and `Learned::MOST_IT_MAY_MOVE` was made public so the test can
+   read the number instead of restating it. It carries four now — §17's phase
+   was the fourth, added an hour later. **If you add a fifth, that test is the
+   one to extend**, and it will fail rather than let the rail start promoting
+   key clashes.
 
    Three of §16's fifteen fields still have no table to select from — energy
    curves, allowed BPM relationships, transition preferences — and the rule

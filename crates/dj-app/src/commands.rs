@@ -4241,16 +4241,20 @@ mod chosen_pack_tests {
         );
     }
 
-    /// **The load-bearing bound: the three tilts together still cannot
-    /// overrule the mixing.**
+    /// **The load-bearing bound: the four tilts together still cannot overrule
+    /// the mixing.**
     ///
-    /// §16's pack is the *third* thing added on top of a suggestion's score —
-    /// taste learned from what the DJ plays, §81's profile for the night they
-    /// named, and now the pack they chose — and each of the three is bounded
-    /// on its own in its own file, in prose, in three places. What none of
-    /// those said is what happens when all three point the same way at once,
-    /// which is the ordinary case: a Latin DJ at a Latin night with the Latin
-    /// pack chosen gets every one of them.
+    /// Four things are added on top of a suggestion's score — taste learned
+    /// from what the DJ plays, §81's profile for the night they named, §16's
+    /// pack they chose, and §17's reading of what phase the night is in — and
+    /// each is bounded on its own in its own file, in prose, in four places.
+    /// What none of those says is what happens when all four point the same way
+    /// at once, which is the ordinary case: a Latin DJ at a Latin night with
+    /// the Latin pack chosen, an hour into the come-down, gets every one of
+    /// them.
+    ///
+    /// **This is the test to extend when a fifth is added**, and it will fail
+    /// rather than let the rail start promoting key clashes.
     ///
     /// The rule they are all quoted against is the scoring scale itself: a
     /// same-key match is worth three and a key clash minus two and a half, so
@@ -4264,7 +4268,7 @@ mod chosen_pack_tests {
     /// three past what the other two leave room for fails here rather than in
     /// a rail that has quietly started promoting key clashes.
     #[test]
-    fn taste_the_night_and_the_pack_together_cannot_cross_a_key_relation() {
+    fn every_tilt_at_once_still_cannot_cross_a_key_relation() {
         use dj_core::{Mode, MusicalKey};
         use dj_library::suggest::Reason;
 
@@ -4282,12 +4286,13 @@ mod chosen_pack_tests {
 
         let tilts = dj_library::learned::Learned::MOST_IT_MAY_MOVE
             + crate::profile::MOST_IT_MAY_MOVE
-            + Reason::InPack("bachata").weight();
+            + Reason::InPack("bachata").weight()
+            + Reason::PhaseAsks("a key that settles").weight();
         assert!(
             tilts < best - worst,
-            "taste, the night and the pack together move a record by {tilts}, \
-             which crosses the {} between a key match and a key clash: one of \
-             the three has outgrown the scale they are all quoted from",
+            "taste, the night, the pack and the phase together move a record by \
+             {tilts}, which crosses the {} between a key match and a key clash: \
+             one of the four has outgrown the scale they are all quoted from",
             best - worst
         );
     }
@@ -4321,6 +4326,227 @@ mod chosen_pack_tests {
             ]),
             "half-time \u{b7} unusual here \u{b7} your pack"
         );
+    }
+}
+
+/// §17's phase, where it meets the rail.
+///
+/// The seam between `crate::asks`, which owns what each phase asks for, and the
+/// ranking, which owns what a record is worth. Worth its own tests for the
+/// reason the other two folds have them: a fold that scores correctly and
+/// forgets to re-sort looks exactly like one that works.
+#[cfg(test)]
+mod phase_tests {
+    use super::*;
+    use crate::asks::{Prefer, asks};
+    use dj_core::{Mode, MusicalKey, SessionPhase};
+    use dj_library::suggest::{Reason, Suggestion};
+
+    fn id(byte: u8) -> dj_core::TrackId {
+        dj_core::TrackId::from_bytes([byte; 32])
+    }
+
+    fn key(hour: u8) -> MusicalKey {
+        MusicalKey::new(hour, Mode::Minor).expect("a real key")
+    }
+
+    fn scored(byte: u8, score: f64, reasons: Vec<Reason>) -> Suggestion {
+        Suggestion {
+            track: id(byte),
+            score,
+            reasons,
+        }
+    }
+
+    /// **The load-bearing one: a phase that asks for something moves the rail.**
+    ///
+    /// §17's *harmonic resolution*, at the phase that names it. Not "the score
+    /// went up" — a lifted score that leaves the row where it was shows a
+    /// higher number further down the list, which reads as the ranking being
+    /// broken rather than as the feature.
+    ///
+    /// The phase is read from the table rather than named here, so a release
+    /// that stopped asking for resolution fails this instead of quietly
+    /// behaving like every other hour of the night.
+    #[test]
+    fn a_release_moves_a_settling_key_up_the_rail() {
+        let release = asks(Some(SessionPhase::Cooldown));
+        assert_eq!(
+            release.prefer,
+            Prefer::Resolution,
+            "the fixture is wrong: release was meant to ask for resolution"
+        );
+
+        let ranked = vec![
+            scored(1, 5.0, vec![Reason::PhraseUnknown]),
+            scored(2, 4.9, vec![Reason::SameKey(key(8))]),
+        ];
+        let out = with_phase(ranked, release, &|_| 0);
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(2), id(1)],
+            "the settling key scored higher but stayed where it was"
+        );
+        assert!(
+            out[0]
+                .reasons
+                .contains(&Reason::PhaseAsks("a key that settles"))
+        );
+        // And the row it did not credit is untouched, reasons included.
+        assert_eq!(out[1].reasons, vec![Reason::PhraseUnknown]);
+    }
+
+    /// **A harmonic key settles too; a clash does not.**
+    ///
+    /// Read off the scorer's own answer rather than recomputed, which is the
+    /// point: a rail with its own opinion of whether two keys agree would
+    /// eventually disagree with the chip sitting next to it on the same row.
+    #[test]
+    fn resolution_means_the_keys_the_scorer_already_said_agree() {
+        let release = asks(Some(SessionPhase::Cooldown));
+        let out = with_phase(
+            vec![
+                scored(
+                    1,
+                    5.0,
+                    vec![Reason::Harmonic {
+                        from: key(8),
+                        to: key(9),
+                    }],
+                ),
+                scored(
+                    2,
+                    5.0,
+                    vec![Reason::KeyClash {
+                        from: key(8),
+                        to: key(2),
+                    }],
+                ),
+            ],
+            release,
+            &|_| 0,
+        );
+        let credited: Vec<_> = out
+            .iter()
+            .filter(|s| s.reasons.iter().any(|r| matches!(r, Reason::PhaseAsks(_))))
+            .map(|s| s.track)
+            .collect();
+        assert_eq!(credited, vec![id(1)], "a key clash was called a resolution");
+    }
+
+    /// **A close prefers a record this DJ has actually played.**
+    ///
+    /// §17's *known anchors*. Played at all rather than played often: the
+    /// question is whether this room has heard this DJ play it, and a threshold
+    /// would be djmanzo deciding how many times counts as known.
+    #[test]
+    fn a_close_moves_a_record_the_dj_plays_up_the_rail() {
+        let closing = asks(Some(SessionPhase::ChillOut));
+        assert_eq!(closing.prefer, Prefer::Anchors);
+
+        let plays = std::collections::HashMap::from([(id(2), 1i64)]);
+        let out = with_phase(
+            vec![
+                scored(1, 5.0, vec![Reason::PhraseUnknown]),
+                scored(2, 4.9, vec![Reason::PhraseUnknown]),
+            ],
+            closing,
+            &|t| plays.get(&t).copied().unwrap_or(0),
+        );
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(2), id(1)]
+        );
+        assert!(
+            out[0]
+                .reasons
+                .contains(&Reason::PhaseAsks("a record you play"))
+        );
+    }
+
+    /// **Four of the six phases ask the ranking for nothing, and change
+    /// nothing.**
+    ///
+    /// Most of a night. A fold that shifted every candidate when the phase had
+    /// nothing to say would put a chip on every row of every rail saying
+    /// nothing — and the direction, which is what those phases *do* ask for, is
+    /// already in the ranking because it is what the scorer was asked for.
+    #[test]
+    fn a_phase_with_nothing_to_ask_leaves_the_ranking_exactly_as_it_was() {
+        let ranked = vec![
+            scored(1, 5.0, vec![Reason::SameKey(key(8))]),
+            scored(2, 4.0, vec![Reason::PhraseUnknown]),
+        ];
+        for phase in [
+            None,
+            Some(SessionPhase::WarmUp),
+            Some(SessionPhase::Heat),
+            Some(SessionPhase::Peak),
+        ] {
+            assert_eq!(
+                with_phase(ranked.clone(), asks(phase), &|_| 3),
+                ranked,
+                "{phase:?} moved a rail it had nothing to say about"
+            );
+        }
+    }
+
+    /// The tie-break is the suggester's own, so two equal candidates cannot
+    /// come out of here in a different order from the one that produced them.
+    #[test]
+    fn equal_candidates_keep_the_order_the_suggester_gave_them() {
+        let out = with_phase(
+            vec![
+                scored(9, 4.0, vec![Reason::PhraseUnknown]),
+                scored(2, 4.0, vec![Reason::PhraseUnknown]),
+            ],
+            asks(Some(SessionPhase::ChillOut)),
+            &|_| 0,
+        );
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(2), id(9)],
+            "the tie-break differs from the suggester's"
+        );
+    }
+
+    /// **The phase's ask reaches the words the DJ reads, and sits last.**
+    ///
+    /// Last among the reasons that carry weight, because it is the weakest of
+    /// the four and the only one the DJ did not say: what they play, what they
+    /// chose and what they kept all outrank a reading djmanzo made on its own.
+    #[test]
+    fn the_night_says_what_it_asked_for_and_says_it_last() {
+        assert_eq!(
+            describe_reason(&Reason::PhaseAsks("a record you play")),
+            "the night asks for a record you play"
+        );
+        assert_eq!(
+            summarise_reasons(&[
+                Reason::PhaseAsks("a key that settles"),
+                Reason::InPack("bachata"),
+                Reason::SameKey(key(8)),
+            ]),
+            "8A \u{b7} your pack \u{b7} a key that settles"
+        );
+    }
+
+    /// **A trajectory survives the round trip it actually makes.**
+    ///
+    /// The rail sends a word and Rust reads it back, and until §17 there were
+    /// two spellings of those three words in two crates with nothing holding
+    /// them together. An unrecognised one holds rather than being refused,
+    /// because a rail asked for a direction nobody has heard of should still
+    /// rank.
+    #[test]
+    fn the_three_directions_survive_being_written_down() {
+        for trajectory in dj_core::Trajectory::ALL {
+            assert_eq!(
+                dj_core::Trajectory::from_name(trajectory.name()),
+                Some(trajectory)
+            );
+        }
+        assert_eq!(dj_core::Trajectory::from_name("sideways"), None);
     }
 }
 
@@ -7060,11 +7286,11 @@ pub fn suggest_next(
         .and_then(|id| db.track(id).ok().flatten())
         .map_or_else(Playing::nothing, |t| Playing::of(&t));
 
-    let trajectory = match trajectory.as_str() {
-        "lift" => Trajectory::Lift,
-        "ease" => Trajectory::Ease,
-        _ => Trajectory::Hold,
-    };
+    // Holding is what an unrecognised name gets here, and it is said here
+    // rather than in `from_name`: a rail asked for a direction it has never
+    // heard of should still rank, and holding is the one answer that adds
+    // nothing of its own.
+    let trajectory = Trajectory::from_name(&trajectory).unwrap_or(Trajectory::Hold);
 
     // A generous pool, then ranked and cut. Ranking is cheap arithmetic per
     // track; reading the rows is the part that costs, so the limit is applied
@@ -7122,6 +7348,26 @@ pub fn suggest_next(
                 .map(|family| family.name)
         },
     );
+
+    // §17. What the phase of the night asks of the ranking, which until now
+    // reached the cockpit and stopped there: `cockpit::priorities` opened
+    // panels, and §17's *harmonic resolution* and *known anchors* — the two
+    // entries in its six lists that are about what djmanzo should **offer** —
+    // were named in a doc comment as belonging to the planner and belonged to
+    // nobody.
+    //
+    // The play counts come off the pool rows that are already here rather than
+    // from a second query, and only when the phase is one that asks: reading
+    // five thousand counts to answer a question nobody put is the cheap-looking
+    // mistake.
+    let asks = crate::asks::asks(state.night().read().map(|read| read.phase));
+    let plays: std::collections::HashMap<dj_core::TrackId, i64> =
+        if matches!(asks.prefer, crate::asks::Prefer::Anchors) {
+            pool.iter().map(|t| (t.id, t.stats.play_count)).collect()
+        } else {
+            std::collections::HashMap::new()
+        };
+    let ranked = with_phase(ranked, asks, &|id| plays.get(&id).copied().unwrap_or(0));
 
     // §12's other half: tonight's profile, when the DJ has named the night.
     // Read once for the whole rail — it is two queries and a fold, and five
@@ -7399,6 +7645,65 @@ fn with_pack(
             // rule still applies, because open format has one.
             let in_family = family_of(s.track).filter(|name| pack.families.contains(name));
             dj_library::suggest::also_in_pack(s, in_family, pack.half_time)
+        })
+        .collect();
+    // The same tie-break `suggest::rank` uses, so a re-sort here cannot put
+    // two equal candidates in a different order from the one that produced
+    // them.
+    out.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.track.cmp(&b.track))
+    });
+    out
+}
+
+/// Fold §17's phase into a ranking, and re-sort.
+///
+/// The third of the three folds the rail applies over the scorer's answer, and
+/// the last, because it is the weakest: taste and §81's profile are what this
+/// DJ does, §16's pack is what they chose, §24's keeps are what they did with
+/// these two records — and this is a reading djmanzo made about the night on
+/// its own. When the four disagree the ordering above should win, and applying
+/// this last is not what makes that true (the folds are additive and each
+/// re-sorts on the same tie-break, so the order of application cannot change
+/// the result) — the weight is. It is here because reading the file top to
+/// bottom should say which is which.
+///
+/// `Prefer::Nothing` returns the ranking untouched, which is four of §17's six
+/// phases: most of the night the direction is the whole of what the phase has
+/// to say, and the direction is already in the ranking because it is what the
+/// scorer was asked for.
+fn with_phase(
+    ranked: Vec<dj_library::suggest::Suggestion>,
+    asks: crate::asks::Asks,
+    played: &dyn Fn(dj_core::TrackId) -> i64,
+) -> Vec<dj_library::suggest::Suggestion> {
+    use dj_library::suggest::Reason;
+
+    let Some(words) = asks.prefer.words() else {
+        return ranked;
+    };
+    let mut out: Vec<_> = ranked
+        .into_iter()
+        .map(|s| {
+            let asked = match asks.prefer {
+                crate::asks::Prefer::Nothing => false,
+                // §17's *harmonic resolution*, read off the scorer's own answer
+                // rather than recomputed: a rail with its own opinion of
+                // whether two keys agree would eventually disagree with the
+                // chip sitting next to it on the same row.
+                crate::asks::Prefer::Resolution => s
+                    .reasons
+                    .iter()
+                    .any(|r| matches!(r, Reason::SameKey(_) | Reason::Harmonic { .. })),
+                // §17's *known anchors*. Played at all, not played often: the
+                // question is whether this room has heard this DJ play it, and
+                // a threshold would be djmanzo deciding how many times counts.
+                crate::asks::Prefer::Anchors => played(s.track) > 0,
+            };
+            dj_library::suggest::also_asked(s, asked.then_some(words))
         })
         .collect();
     // The same tie-break `suggest::rank` uses, so a re-sort here cannot put
@@ -8250,6 +8555,11 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
         // the picker they chose it in; what is worth saying beside the row is
         // that this record is the music they said tonight was made of.
         Reason::InPack(family) => format!("your pack ({family})"),
+        // §17, in the one place a phase reading is worth reading: beside the
+        // record it moved. "The night" rather than the phase's name, because
+        // the name is already in the mission bar and what is new here is that
+        // it changed the answer.
+        Reason::PhaseAsks(words) => format!("the night asks for {words}"),
         Reason::HalfTimeUnusual => "half/double is unusual here".to_owned(),
         // §24's answer to "why do I keep seeing these two together?", in the
         // place a DJ asks it: beside the suggestion itself.
@@ -8329,7 +8639,10 @@ pub(crate) fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> Stri
             // After the family, for the same reason: the family is the fact and
             // the pack is what the DJ makes of it.
             Reason::InPack(_) => 6,
-            Reason::PhraseKnown { .. } | Reason::PhraseUnknown | Reason::Unanalysed => 7,
+            // And last of the reasons that carry weight, because it is the
+            // weakest of the four and the only one the DJ did not say.
+            Reason::PhaseAsks(_) => 7,
+            Reason::PhraseKnown { .. } | Reason::PhraseUnknown | Reason::Unanalysed => 8,
         }
     }
 
@@ -8387,6 +8700,10 @@ pub(crate) fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> Stri
             // whenever both records name one. Repeating it here would be the
             // same word twice; what the pack adds is that it is *tonight's*.
             Reason::InPack(_) => Some("your pack".to_owned()),
+            // The words themselves here: they are already short, they are
+            // §17's, and "the night" without them would say that something
+            // about the phase mattered without saying what.
+            Reason::PhaseAsks(words) => Some((*words).to_owned()),
             Reason::HalfTimeUnusual => Some("unusual here".to_owned()),
             Reason::Unanalysed => Some("not analysed".to_owned()),
         })
@@ -12698,6 +13015,40 @@ pub fn night_read(state: State<'_, AppState>) -> Result<NightDto, String> {
         notes: night.notes(),
         warrant: warrant.name().to_owned(),
     })
+}
+
+/// §17's ask, for the rail that starts from it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AsksDto {
+    /// `lift`, `hold` or `ease` — the direction the rail starts from.
+    pub trajectory: String,
+    /// §17's own words for this phase's ask, for the line beside the rail.
+    pub words: String,
+    /// What the phase asks the ranking to prefer beyond that, when it asks
+    /// anything, in the words that appear on the row it credits.
+    pub prefer: Option<String>,
+}
+
+/// What the phase of the night asks of the ranking.
+///
+/// §17: *the system may infer phase, but the DJ must always be able to override
+/// it*. This is the inferring half and it is deliberately only that — a
+/// starting point, handed to the rail, which follows it until the DJ presses a
+/// direction and never again after that.
+///
+/// Separate from [`night_read`] rather than three more fields on `NightDto`,
+/// because the two are asked for at different moments by different surfaces:
+/// the Night panel asks when it is open, and the rail asks when it ranks. A
+/// rail pulling a thirty-field reading of the night to learn one word would be
+/// paying for the panel's question.
+#[tauri::command]
+pub fn phase_asks(state: State<'_, AppState>) -> AsksDto {
+    let asks = crate::asks::asks(state.night().read().map(|read| read.phase));
+    AsksDto {
+        trajectory: asks.trajectory.name().to_owned(),
+        words: asks.words.to_owned(),
+        prefer: asks.prefer.words().map(str::to_owned),
+    }
 }
 
 /// Forget the night's readings.

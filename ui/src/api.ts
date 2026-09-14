@@ -2342,6 +2342,29 @@ export const profileTonight = () =>
 
 export const learnedProfiles = () => invoke<Profile[]>("learned_profiles");
 
+/**
+ * §17: what the phase of the night asks of the ranking.
+ *
+ * A **starting point**, not a setting. §17's own last line is that the system
+ * may infer phase but the DJ must always be able to override it, so the rail
+ * follows this until a direction is pressed and never again after that.
+ */
+export interface PhaseAsks {
+  /** The direction the rail starts from. */
+  trajectory: Trajectory;
+  /** §17's own words for this phase's ask, for the line beside the rail. */
+  words: string;
+  /**
+   * What the phase asks for beyond a direction, when it asks anything, in the
+   * words that appear on the row it credits. `null` for four of the six
+   * phases, which is a real answer: most of the night the direction is the
+   * whole of it.
+   */
+  prefer: string | null;
+}
+
+export const phaseAsks = () => invoke<PhaseAsks>("phase_asks");
+
 /** One thing tonight's profile would change. */
 export interface Fit {
   /** The spelling to apply: a density band's slug, or a posture's name. */

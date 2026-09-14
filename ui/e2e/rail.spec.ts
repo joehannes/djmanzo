@@ -427,6 +427,109 @@ test.describe("the rail following its deck", () => {
   });
 
   /**
+   * **§17: the rail starts from the phase djmanzo reads the night as.**
+   *
+   * > Warm-up. Prioritize: next-track candidates, **gradual energy** […]
+   *
+   * Until this, the rail opened on *Hold* at every hour of every night and
+   * §17's energy words reached nothing. The direction is an input to the
+   * ranking, so the check that matters is not the highlighted button — it is
+   * that the question djmanzo was actually asked carried the night's answer.
+   */
+  test("opens on the direction the night is going", async ({ page }) => {
+    const thrown = errorsThrown(page);
+    await railOpen(page);
+    await expect(page.locator('.surface[data-surface="next"] li').first()).toBeVisible();
+
+    const rail = page.locator('.surface[data-surface="next"]');
+    await expect(rail.getByRole("radio", { name: "Lift" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(rail.locator(".following")).toContainText("gradual energy");
+
+    // And the ranking was asked for in that direction, which is the half a
+    // highlighted button does not prove: a rail that lit Lift and sent "hold"
+    // would look identical on screen and rank the whole night wrongly.
+    const ranked = await page.evaluate(
+      () => (window as unknown as { __ranked?: string[] }).__ranked ?? [],
+    );
+    expect(ranked.length, "the rail never asked for a ranking").toBeGreaterThan(0);
+    expect(
+      ranked.at(-1),
+      "the rail showed the night's direction and asked for another",
+    ).toBe("lift");
+    expect(thrown).toEqual([]);
+  });
+
+  /**
+   * **And pressing a direction takes it over for the rest of the night.**
+   *
+   * §17's own last line: *the system may infer phase, but the DJ must always be
+   * able to override it*. One press, no dialog, and one-way — a rail that went
+   * back to following an hour after being corrected would be overriding the DJ.
+   *
+   * The second half is what only a browser can say: the phase is re-read on
+   * every refresh, so the test forces a refresh *after* the press and checks
+   * the night did not take the wheel back.
+   */
+  test("a pressed direction is not taken back by the night", async ({ page }) => {
+    await railOpen(page);
+    const rail = page.locator('.surface[data-surface="next"]');
+    await expect(rail.locator(".following")).toBeVisible();
+
+    await rail.getByRole("radio", { name: "Ease" }).click();
+    await expect(rail.getByRole("radio", { name: "Ease" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(
+      rail.locator(".following"),
+      "the rail still claims to be following the night after being steered",
+    ).toHaveCount(0);
+
+    // A refresh, which is where the phase would be read again.
+    await rail.getByRole("button", { name: "Refresh the rail" }).click();
+    await expect(rail.locator('li').first()).toBeVisible();
+    await expect(
+      rail.getByRole("radio", { name: "Ease" }),
+      "the night took the direction back off the DJ",
+    ).toHaveAttribute("aria-checked", "true");
+    await expect(rail.locator(".following")).toHaveCount(0);
+    // And the refreshed ranking was asked for in the DJ's direction, not the
+    // night's — the half the highlighted button does not prove.
+    const ranked = await page.evaluate(
+      () => (window as unknown as { __ranked?: string[] }).__ranked ?? [],
+    );
+    expect(ranked.at(-1), "the rail ranked for the night after being steered").toBe("ease");
+  });
+
+  /**
+   * **A phase that asks for nothing says nothing.**
+   *
+   * Four of §17's six. The line is a claim about the ranking, so a rail that
+   * drew it whatever the night said would be the sort of decoration a DJ stops
+   * reading — and the direction still comes from the night, which is why the
+   * button is checked too.
+   */
+  test("a phase with nothing to say still sets the direction and adds no line", async ({
+    page,
+  }) => {
+    await openShell(page, "/", {}, {
+      phase_asks: { trajectory: "hold", words: "holding the top", prefer: null },
+    });
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    const rail = page.locator('.surface[data-surface="next"]');
+    await expect(rail.locator("li").first()).toBeVisible();
+
+    await expect(rail.getByRole("radio", { name: "Hold" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(rail.locator(".following")).toContainText("holding the top");
+  });
+
+  /**
    * And it does not ask on every snapshot. The prop carrying the decks is a
    * fresh array sixty times a second; an effect reading it directly would
    * re-run at that rate, which is §29's trap — it remounted every knob in the

@@ -35,6 +35,7 @@
   import {
     ghostPreview,
     loadTrack,
+    phaseAsks,
     profileTonight,
     sidelistAdd,
     similarTo,
@@ -71,7 +72,34 @@
   const deckNumbers = $derived(Array.from({ length: deckCount }, (_, i) => i + 1));
 
   let candidates = $state<Suggestion[]>([]);
+  /**
+   * Which way the rail is ranking.
+   *
+   * Starts from §17's reading of the night and follows it until the DJ presses
+   * a direction — see [`steered`]. Hold is what it starts at before the first
+   * answer comes back, because holding is the one direction that adds nothing
+   * of its own.
+   */
   let trajectory = $state<Trajectory>("hold");
+  /**
+   * **True once the DJ has pressed a direction, and true for the rest of the
+   * night.**
+   *
+   * §17's own last line: *the system may infer phase, but the DJ must always be
+   * able to override it*. The override is the control that was already here —
+   * no dialog, no setting to find — and it is one-way on purpose. A rail that
+   * went back to following the night an hour after being corrected would be
+   * overriding the DJ, which is the sentence read backwards.
+   */
+  let steered = $state(false);
+  /**
+   * §17's words for what the night is asking for, while the rail is following.
+   *
+   * `null` once the DJ has steered, because there is then nothing being
+   * followed and a line still claiming otherwise would be lying about the
+   * ranking on screen.
+   */
+  let asking = $state<string | null>(null);
 
   /**
    * Which deck the rail follows, once the DJ has said.
@@ -130,6 +158,19 @@
     working = true;
     try {
       profile = await profileTonight().catch(() => null);
+      // §17, before the candidates rather than beside them: the direction is
+      // an *input* to the ranking, so a rail that read it afterwards would
+      // show the night's words over the previous night's order.
+      //
+      // Asked for on every refresh rather than watched, and that is the whole
+      // of how a phase turning over reaches the rail: mid-record it does not,
+      // because §78 forbids the list reshuffling under a DJ's cursor, and the
+      // next record is soon enough for something measured in hours.
+      const night = await phaseAsks().catch(() => null);
+      if (night && !steered) {
+        trajectory = night.trajectory;
+        asking = night.words;
+      }
       candidates = like
         ? await similarTo(like.track.id, ROWS * 2, from)
         : await suggestNext(from, trajectory, ROWS * 2);
@@ -375,9 +416,14 @@
         </select>
       </label>
       <!--
-        Lift, hold, ease: the one thing the ranking cannot infer, because the
-        same two records are the right and the wrong answer depending on where
-        the night is going.
+        Lift, hold, ease. §17 infers this from the phase of the night and the
+        rail starts there; pressing one takes it over for good.
+
+        The comment that stood here said this was the one thing the ranking
+        could not infer, and it had stopped being true: `dj_core::context`
+        reads a phase, §17 says what each phase asks for, and the reason the
+        control exists is now that the DJ must be able to *override* the
+        reading rather than that there is no reading to override.
       -->
       <div class="trajectory" role="radiogroup" aria-label="Where to take the room">
         {#each [["lift", "Lift"], ["hold", "Hold"], ["ease", "Ease"]] as [id, label] (id)}
@@ -387,6 +433,11 @@
             class:active={trajectory === id}
             onclick={() => {
               trajectory = id as Trajectory;
+              // §17's override, and it is one press. Pressing the direction
+              // the night had already chosen still counts: the DJ has said it
+              // themselves, and from here the rail stops guessing.
+              steered = true;
+              asking = null;
               void refresh();
             }}>{label}</button
           >
@@ -412,6 +463,14 @@
     sentence is Rust's — §81's `Profile::words` — so the rail cannot make a
     claim about this DJ that djmanzo would not.
   -->
+  {#if asking}
+    <p
+      class="following"
+      title="§17: the rail starts from the phase djmanzo reads the night as. Press a direction to take it over — it will not go back to following on its own."
+    >
+      Following the night: {asking}
+    </p>
+  {/if}
   {#if profile}
     <p class="profile" title="Records you play at this kind of night are nudged up the list. It can reorder records that all work; it can never lift one that does not mix.">
       Ranked for tonight: {profile.says}
@@ -682,6 +741,7 @@
   }
 
   /* §12: what the whole rail is conditioned on, once rather than per row. */
+  .following,
   .profile {
     margin: 0;
     font-size: 0.7rem;

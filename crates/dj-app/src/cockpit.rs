@@ -232,10 +232,12 @@ impl Role {
 /// to work without a dialog.
 ///
 /// Several of §17's priorities are not surfaces at all. *Gradual energy*,
-/// *longer transitions* and *harmonic resolution* are how djmanzo should
-/// **suggest**, not what it should show, and they belong to the planner rather
-/// than to the cockpit; *stems* and *FX* are drawn on the deck itself and have
-/// nowhere to be promoted to. Those are named in the tests rather than turned
+/// *energy trajectory*, *harmonic resolution*, *crowd cooling* and *known
+/// anchors* are how djmanzo should **suggest**, not what it should show, and
+/// [`crate::asks`] is that half — the table the Next rail starts its direction
+/// from and folds into its ranking. This one opens panels; that one decides
+/// what is in them. *Stems* and *FX* are drawn on the deck itself and have
+/// nowhere to be promoted to, and are named in the tests rather than turned
 /// into panels that do not exist.
 ///
 /// # Peak is the short one on purpose

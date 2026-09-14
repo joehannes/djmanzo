@@ -21,6 +21,7 @@
 
 pub mod analysis;
 pub mod art;
+pub mod asks;
 pub mod assistant;
 pub mod at_hand;
 pub mod audience;
@@ -552,6 +553,7 @@ pub fn run() {
             commands::room_history,
             commands::profile_tonight,
             commands::night_fits,
+            commands::phase_asks,
             commands::control_handles,
             commands::control_suggestions,
             commands::theme_now,
