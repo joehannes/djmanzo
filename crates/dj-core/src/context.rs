@@ -327,6 +327,33 @@ pub struct HealthContext {
     /// chain: a mix driven past the limiter is a machine problem the room
     /// hears as a musical one.
     pub limiter_reduction_db: f32,
+    /// §90's *worker utilization*, for the background threads that have one.
+    ///
+    /// Here rather than in a section of its own because §11's question about
+    /// this field is *is djmanzo keeping up with itself*, and a thread that
+    /// spends its whole life working is the most direct answer there is.
+    pub workers: WorkerLoad,
+}
+
+/// How hard djmanzo's background threads are working, each as a share of its
+/// own time.
+///
+/// **Two numbers rather than one, because they mean opposite things.** A high
+/// share on the interface builder is §90's warning — *do not let visually
+/// sophisticated changes compromise realtime audio* — and a high share on the
+/// library worker is healthy, because it means a queue is being got through. A
+/// single "busiest worker" figure would alarm during an import and say nothing
+/// at all about the thing §90 is worried about.
+///
+/// `None` means the thread has not accounted for any time yet, which is not
+/// the same as idle: *nothing to do* and *never ran* look identical as zero and
+/// only one of them is fine.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+pub struct WorkerLoad {
+    /// The thread that builds the 60 Hz snapshot, 0..=1.
+    pub interface: Option<f32>,
+    /// The thread that decodes and analyses imported files, 0..=1.
+    pub library: Option<f32>,
 }
 
 /// Somebody's reading of the room.

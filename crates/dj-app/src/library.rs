@@ -98,6 +98,15 @@ pub struct IdentifyProgress {
     pub failed: AtomicUsize,
     /// True while a file is actually being decoded, as opposed to waiting.
     pub working: AtomicBool,
+    /// §90's *worker utilization*: how much of its own life this worker has
+    /// spent decoding rather than waiting for something to decode.
+    ///
+    /// Beside `working` rather than instead of it, because they answer
+    /// different questions. `working` is a light — is it doing something right
+    /// now — and drives the spinner. This is the measurement, and on **this**
+    /// worker a high number is healthy: it means a queue is being got through.
+    /// See `crate::workers`.
+    pub work: crate::workers::Worker,
 }
 
 /// The background worker that turns scanned files into tracks.
@@ -185,7 +194,12 @@ fn run<F>(
             // the database across the idle wait would keep a swapped-out
             // in-memory library alive for as long as the application runs.
             drop(db);
+            let waited = std::time::Instant::now();
             std::thread::sleep(IDLE_SLEEP);
+            // Measured rather than assumed to be `IDLE_SLEEP`: a sleep is a
+            // floor and a loaded machine can overshoot it by a lot, which is
+            // exactly the case where the share matters.
+            progress.work.waited(waited.elapsed());
             continue;
         }
 
@@ -194,6 +208,7 @@ fn run<F>(
             if stop.load(Ordering::Relaxed) {
                 return;
             }
+            let working = std::time::Instant::now();
             match decode(&file) {
                 Ok(Identified { mut track, found }) => {
                     track.added_at = now();
@@ -209,6 +224,11 @@ fn run<F>(
                     progress.failed.fetch_add(1, Ordering::Relaxed);
                 }
             }
+            // Counted whichever way the file went: a file that failed to
+            // decode still cost the time it took to find that out, and a share
+            // that only counted successes would read a worker grinding through
+            // a folder of broken files as idle.
+            progress.work.worked(working.elapsed());
         }
     }
 }
@@ -446,6 +466,60 @@ mod tests {
         );
         assert_eq!(db.pending_count().unwrap(), 0);
         assert_eq!(db.track_count().unwrap(), 3);
+    }
+
+    /// **The load-bearing one: the worker accounts for the time it spends
+    /// decoding, and for the time it spends waiting.**
+    ///
+    /// §90's *worker utilization*, which this row of `crate::regress` read
+    /// "not measured" for as long as it existed. `working` is a light — is it
+    /// doing something right now — and a light cannot answer *how hard*: a
+    /// worker that flickers busy once a minute and one pegged for an hour both
+    /// show it.
+    ///
+    /// Both halves are asserted because only having one is the shape this
+    /// fails in: busy-time alone would read as 100% forever, and idle-time
+    /// alone as nought.
+    #[test]
+    fn the_worker_accounts_for_both_the_decoding_and_the_waiting() {
+        let handle = handle();
+        let db = handle.get().unwrap();
+        db.record_pending(&scanned("/music/a.mp3"), 0).unwrap();
+
+        let worker = Identifier::start(
+            Arc::clone(&handle),
+            || 0,
+            |file| {
+                // Long enough to be unambiguously above the clock's resolution,
+                // short enough that the test is not a sleep.
+                std::thread::sleep(Duration::from_millis(20));
+                Ok(identified(file))
+            },
+        );
+        let progress = worker.progress();
+
+        assert!(
+            until(2000, || progress.done.load(Ordering::Relaxed) == 1),
+            "the worker must identify the queued file"
+        );
+        let share = progress
+            .work
+            .share()
+            .expect("a worker that has decoded a file has accounted for time");
+        assert!(
+            share > 0.0,
+            "the decode was not counted: the worker reads as never having worked"
+        );
+
+        // And then it waits, and the waiting is counted too — which is the
+        // half that makes the number a *share* rather than a stopwatch.
+        assert!(
+            until(4000, || progress
+                .work
+                .share()
+                .is_some_and(|later| later < share)),
+            "the idle wait was not counted: the share never came down from {share}"
+        );
     }
 
     #[test]

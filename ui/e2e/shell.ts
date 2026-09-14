@@ -848,7 +848,17 @@ const ANSWERS: Record<string, unknown> = {
       tier: "preparation",
       motion: "full",
     },
-    health: { cpu_load: 0.03, dropouts: 0, limiter_reduction_db: 0 },
+    health: {
+      cpu_load: 0.03,
+      dropouts: 0,
+      limiter_reduction_db: 0,
+      // §90's worker utilisation, in the two states that make the claim
+      // testable: one thread that has accounted for time and one that never
+      // ran. A fixture where both were numbers would let a panel that drew
+      // `0%` for an absent thread pass, and an absent thread is the state a
+      // build with no library open is actually in.
+      workers: { interface: 0.31, library: null },
+    },
   },
   // Three wedding nights and three club nights, which is what §81 is about:
   // the same DJ, two different answers, and never their average.

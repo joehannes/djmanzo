@@ -12868,7 +12868,7 @@ pub fn dj_context(state: State<'_, AppState>) -> Result<crate::context::DjContex
         audience,
         behaviour: crate::context::behaviour(&signals, night.elapsed(), taken, ignored),
         attention: snapshot.attention,
-        health: crate::context::health(&snapshot),
+        health: crate::context::health(&snapshot, state.worker_load()),
     })
 }
 

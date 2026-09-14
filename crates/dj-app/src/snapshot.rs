@@ -955,6 +955,8 @@ pub struct Sources {
 #[derive(Debug)]
 pub struct SnapshotPump {
     alive: Arc<AtomicBool>,
+    /// §90's *worker utilization* for this thread. See [`SnapshotPump::work`].
+    work: Arc<crate::workers::Worker>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -1012,8 +1014,15 @@ impl SnapshotPump {
             focus,
         } = sources;
         let alive = Arc::new(AtomicBool::new(true));
+        // §90's *worker utilization* for the thread §90's last sentence is
+        // about. Every field the interface wants is assembled here, sixty
+        // times a second, on the thread that also serves the engine's
+        // controls; a share creeping up is *visual sophistication taxing the
+        // machine*, arriving one harmless-looking field at a time.
+        let work = Arc::new(crate::workers::Worker::new());
         let thread = {
             let alive = Arc::clone(&alive);
+            let work = Arc::clone(&work);
             std::thread::Builder::new()
                 .name("dj-snapshot".to_owned())
                 .spawn(move || {
@@ -1021,6 +1030,7 @@ impl SnapshotPump {
                     let mut previous: Option<Snapshot> = None;
                     let mut last_emit = std::time::Instant::now();
                     while alive.load(Ordering::Relaxed) {
+                        let building = std::time::Instant::now();
                         // Re-read through the handle every tick: the bridge is
                         // replaced whenever a device is opened.
                         let current = bridge.as_ref().and_then(|slot| slot.lock().ok()?.clone());
@@ -1058,7 +1068,15 @@ impl SnapshotPump {
                             previous = Some(snapshot);
                             last_emit = std::time::Instant::now();
                         }
+                        // The emit is inside the measurement on purpose: from
+                        // this thread's side, handing a frame to the webview is
+                        // work it did rather than time it had spare, and a
+                        // share that stopped the clock before it would hide
+                        // exactly the cost a richer interface adds.
+                        work.worked(building.elapsed());
+                        let waiting = std::time::Instant::now();
                         std::thread::sleep(period);
+                        work.waited(waiting.elapsed());
                     }
                 })
                 .expect("failed to spawn snapshot thread")
@@ -1066,8 +1084,18 @@ impl SnapshotPump {
 
         Self {
             alive,
+            work,
             thread: Some(thread),
         }
+    }
+
+    /// §90's *worker utilization* for the interface builder.
+    ///
+    /// A handle rather than a number, because the reading is taken whenever
+    /// somebody asks and the pump has no idea when that is.
+    #[must_use]
+    pub fn work(&self) -> Arc<crate::workers::Worker> {
+        Arc::clone(&self.work)
     }
 }
 
@@ -1277,6 +1305,44 @@ mod tests {
         assert!(
             count.load(Ordering::Relaxed) >= 2,
             "expected at least one heartbeat beyond the initial snapshot"
+        );
+    }
+
+    /// **§90's worker utilization for the thread §90's last sentence is
+    /// about.**
+    ///
+    /// > Do not let visually sophisticated changes compromise realtime audio.
+    ///
+    /// Every field the interface wants is assembled on this thread, sixty times
+    /// a second, alongside the engine's controls. Until this, nothing anywhere
+    /// could say how much of its loop that took — so a snapshot that grew from
+    /// cheap to expensive one harmless-looking field at a time would look
+    /// exactly like one that had not.
+    ///
+    /// Both bounds are asserted rather than only the lower one. A share pinned
+    /// at 1.0 would mean the sleep was not being counted, which is the shape
+    /// this fails in and is indistinguishable from a genuinely saturated pump
+    /// if only "greater than nought" is checked.
+    #[test]
+    fn the_pump_accounts_for_its_own_time_on_both_sides_of_the_sleep() {
+        let registry = Arc::new(ParameterRegistry::new());
+        let pump = SnapshotPump::start(Arc::clone(&registry), 2, |_| {});
+        let work = pump.work();
+
+        std::thread::sleep(Duration::from_millis(120));
+        let share = work
+            .share()
+            .expect("a pump that has run has accounted for time");
+        drop(pump);
+
+        assert!(
+            share > 0.0,
+            "the building was not counted: the pump reads as never having worked"
+        );
+        assert!(
+            share < 1.0,
+            "the sleep was not counted: the pump reads as saturated at {share}, \
+             which is what a stopwatch that only ever starts looks like"
         );
     }
 

@@ -138,6 +138,16 @@
    *  reads as a machine talking rather than as a sentence. */
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+  /**
+   * §90's worker utilisation for one thread, or nothing at all.
+   *
+   * Nothing rather than "0%" for a thread that has not accounted for any time:
+   * a build with no library open has no library worker, and a nought there
+   * would say there was one and that it was idle.
+   */
+  const worker = (what: string, share: number | null) =>
+    share === null ? "" : ` · ${what} ${(share * 100).toFixed(0)}%`;
+
   /** §11's eight, in §11's order, as the panel says them. */
   const eight = $derived.by(() => {
     if (!context) return [];
@@ -175,7 +185,14 @@
       [
         "Health",
         `${(c.health.cpu_load * 100).toFixed(0)}% CPU · ` +
-          plural(c.health.dropouts, "dropout"),
+          plural(c.health.dropouts, "dropout") +
+          // §90's worker utilisation. Named per thread rather than summed,
+          // because a busy library worker is a queue being got through and a
+          // busy interface builder is the thing §90's last sentence warns
+          // about. A thread that does not exist is left out rather than drawn
+          // as nought, on the same rule the rest of this block follows.
+          worker("interface", c.health.workers.interface) +
+          worker("library", c.health.workers.library),
       ],
     ] as [string, string][];
   });

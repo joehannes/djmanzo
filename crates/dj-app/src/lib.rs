@@ -83,6 +83,7 @@ pub mod uiop;
 pub mod wav;
 pub mod waveform;
 pub mod widgets;
+pub mod workers;
 pub mod world;
 
 pub use host::{AudioHost, HostError};
@@ -402,6 +403,15 @@ pub fn run() {
                     }
                 },
             );
+            // §90: the interface builder's account of its own time, where the
+            // context can read it. Taken before the pump is handed away,
+            // because after that it belongs to Tauri. Through the handle for
+            // the reason §77's focus is read that way a few lines up — the
+            // state was managed before this closure ran.
+            {
+                let state: tauri::State<'_, AppState> = app.state();
+                state.watch_interface_work(pump.work());
+            }
             // Hand the pump to Tauri so it lives as long as the app does.
             app.manage(pump);
 

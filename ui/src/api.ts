@@ -2293,10 +2293,25 @@ export interface BehaviourContext {
 }
 
 /** §11's `performanceHealth`. */
+/**
+ * §90's *worker utilization*, per background thread, as a share of its own
+ * time.
+ *
+ * Two numbers rather than one because they mean opposite things: a high share
+ * on the interface builder is §90's warning, and a high share on the library
+ * worker means a queue is being got through. `null` is *no such thread yet*,
+ * which is not the same as idle.
+ */
+export interface WorkerLoad {
+  interface: number | null;
+  library: number | null;
+}
+
 export interface HealthContext {
   cpu_load: number;
   dropouts: number;
   limiter_reduction_db: number;
+  workers: WorkerLoad;
 }
 
 /** §11's `DJContext`, gathered in one pass. */

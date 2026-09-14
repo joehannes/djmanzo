@@ -5,22 +5,29 @@
 //!
 //! # The last line is the deliverable; the five are how you would notice
 //!
-//! djmanzo measures two of §90's five and shows both: the Mission Bar carries
-//! the master bus's CPU and its dropout count, and `report_bench` logs the
-//! interface's own frame timing. None of the five is *ratcheted* — nothing
-//! fails when a change makes one worse — which is the difference between
-//! measuring and regressing.
+//! djmanzo measures four of §90's five: the Mission Bar carries the master
+//! bus's CPU and its dropout count, `report_bench` logs the interface's own
+//! frame timing, and `crate::workers` times both background threads' loops so
+//! §11's health context can carry what share of its life each has spent
+//! working. Only one is *ratcheted* — nothing else fails when a change makes it
+//! worse — which is the difference between measuring and regressing.
 //!
-//! # Why three of them cannot be ratcheted here, and saying so is the point
+//! # Why four of them cannot be ratcheted here, and saying so is the point
 //!
 //! A ratchet is a number a test refuses to let grow, so it is only worth having
-//! where the number means the same thing on two machines. Three of §90's five
-//! do not: frame rate, memory and CPU are properties of the machine at least as
-//! much as of the code, CI installs its own Chromium and this container has no
-//! GPU at all. `docs/HANDOFF.md` records the same argument for §89's screenshot
-//! baselines, and the conclusion is the same — a suite that has to be
-//! re-blessed every run has stopped being a test, and one re-blessed
-//! automatically never was one.
+//! where the number means the same thing on two machines. Four of §90's five do
+//! not: frame rate, memory, CPU and worker utilisation are properties of the
+//! machine at least as much as of the code, CI installs its own Chromium and
+//! this container has no GPU at all. `docs/HANDOFF.md` records the same
+//! argument for §89's screenshot baselines, and the conclusion is the same — a
+//! suite that has to be re-blessed every run has stopped being a test, and one
+//! re-blessed automatically never was one.
+//!
+//! **Measured and not ratcheted is a real place to be**, and it is where four
+//! of these five sit. A number nobody can hold down is still a number somebody
+//! can read, and a reading that is absent is one nobody can even argue with.
+//! What each row below says is which of the three it is: ratcheted, measured,
+//! or neither — and the last of those now has one occupant rather than two.
 //!
 //! # What *is* machine-independent, and is §90's own sentence
 //!
@@ -92,11 +99,20 @@ pub const ALL: [Measure; 5] = [
     },
     Measure {
         what: "worker utilization",
-        measured: "",
+        measured: "Both background threads time their own loops. The interface \
+                   builder and the library worker each report the share of \
+                   their own life spent working, and §11's health context \
+                   carries both.",
         ratcheted: false,
-        why_not: "Not measured. The decoder and analyser threads report whether \
-                  they are working, not how hard, and instrumenting them is its \
-                  own piece of work rather than a line here.",
+        why_not: "The two mean opposite things, so neither is a number to hold \
+                  down. A high share on the library worker is healthy — a queue \
+                  is being got through — and the interface builder's share \
+                  depends on how fast the machine building the frame is, which \
+                  is the same objection as the frame rate above. What it is for \
+                  is being read: a builder that used to sit at a tenth of its \
+                  loop and now sits at half has been taxed by something, and \
+                  that is §90's last sentence arriving where it actually \
+                  arrives.",
     },
 ];
 

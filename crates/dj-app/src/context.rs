@@ -163,13 +163,22 @@ pub fn hardware(
 }
 
 /// Whether djmanzo is keeping up with itself.
+///
+/// `workers` is §90's *worker utilization*, passed in rather than read off the
+/// snapshot: the interface builder cannot put its own share into the frame it
+/// is building without reporting the previous one, and a number labelled "now"
+/// that is a frame old is the kind of small lie that gets a real measurement
+/// disbelieved. Both are `None` where the thread does not exist — a build with
+/// no library open has no library worker, which is not the same as one that is
+/// idle.
 #[must_use]
-pub fn health(snapshot: &crate::Snapshot) -> HealthContext {
+pub fn health(snapshot: &crate::Snapshot, workers: dj_core::WorkerLoad) -> HealthContext {
     HealthContext {
         cpu_load: snapshot.master.cpu_load,
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         dropouts: snapshot.master.xruns.max(0.0) as u32,
         limiter_reduction_db: snapshot.master.limiter_reduction_db,
+        workers,
     }
 }
 
@@ -453,5 +462,35 @@ mod tests {
         let read = behaviour(&[], std::time::Duration::ZERO, 0, 0);
         assert!(read.gestures_per_minute.is_finite());
         assert_eq!(read.gestures_per_minute, 0.0);
+    }
+
+    /// **§90's worker utilization reaches §11's health, per thread, and an
+    /// absent thread stays absent.**
+    ///
+    /// The seam: `crate::workers` times the loops and this is the field that
+    /// carries the numbers to anybody who asks. Both states are asserted
+    /// because the interesting one is the absence — a build with no library
+    /// open has no library worker, and reporting nought for it would say there
+    /// was one and that it was idle, which are two different pieces of news.
+    #[test]
+    fn the_worker_load_reaches_the_health_context_without_inventing_a_thread() {
+        let none = health(&frame(), dj_core::WorkerLoad::default());
+        assert_eq!(none.workers.interface, None);
+        assert_eq!(
+            none.workers.library, None,
+            "a thread that does not exist was reported as an idle one"
+        );
+
+        let measured = health(
+            &frame(),
+            dj_core::WorkerLoad {
+                interface: Some(0.31),
+                library: None,
+            },
+        );
+        assert_eq!(measured.workers.interface, Some(0.31));
+        assert_eq!(measured.workers.library, None);
+        // And the rest of the reading is untouched by it.
+        assert_eq!(measured.dropouts, none.dropouts);
     }
 }

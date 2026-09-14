@@ -221,6 +221,15 @@ pub struct AppState {
     /// could not be opened at all, which is the one case where there is nothing
     /// for it to do.
     identifier: Mutex<Option<crate::library::Identifier>>,
+    /// §90's *worker utilization* for the interface builder, once it exists.
+    ///
+    /// A slot filled after start-up rather than a field built with the state,
+    /// for the reason the identifier above is one: the snapshot pump cannot
+    /// exist until there is a registry and a window to emit into, and the state
+    /// is what both are built from. `None` in every test and in any build that
+    /// never starts a pump, which reads as *no such thread* rather than as an
+    /// idle one.
+    interface_work: Mutex<Option<Arc<crate::workers::Worker>>>,
     /// Writes deck state to the library, off the thread that noticed it.
     library_writer: crate::persist::LibraryWriter,
     /// Last saved cue set per deck. Shared with the snapshot pump, which is
@@ -500,6 +509,7 @@ impl AppState {
             session_id: format!("session-{}", crate::library::now_seconds()),
             library,
             identifier: Mutex::new(None),
+            interface_work: Mutex::new(None),
             deck_tracks: Arc::new(Mutex::new(HashMap::new())),
             control: Arc::new(control),
             detached: Arc::new(Mutex::new(crate::monitors::Detached::default())),
@@ -1363,6 +1373,36 @@ impl AppState {
         };
         if let Err(error) = std::fs::write(&path, text) {
             tracing::warn!(%error, ?path, "the cockpit arrangement will not survive a restart");
+        }
+    }
+
+    /// Hold the interface builder's account of its own time.
+    ///
+    /// Called once, by whoever started the pump. A second call replaces the
+    /// handle rather than adding one: there is one pump.
+    pub fn watch_interface_work(&self, work: Arc<crate::workers::Worker>) {
+        if let Ok(mut slot) = self.interface_work.lock() {
+            *slot = Some(work);
+        }
+    }
+
+    /// §90's *worker utilization*, for both background threads that have one.
+    ///
+    /// Read on demand rather than sampled, because the counters are the truth
+    /// and a cached copy would be a second one. `None` per thread where that
+    /// thread does not exist — a build with no library open has no library
+    /// worker, and reporting nought for it would say it was idle.
+    #[must_use]
+    pub fn worker_load(&self) -> dj_core::WorkerLoad {
+        dj_core::WorkerLoad {
+            interface: self
+                .interface_work
+                .lock()
+                .ok()
+                .and_then(|slot| slot.as_ref().and_then(|work| work.share())),
+            library: self
+                .identify_progress()
+                .and_then(|progress| progress.work.share()),
         }
     }
 

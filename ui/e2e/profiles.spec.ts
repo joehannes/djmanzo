@@ -324,4 +324,33 @@ test.describe("what djmanzo has in view", () => {
     await expect(context).toContainText("48 kHz");
     expect(errorsThrown(page), "the night panel threw").toEqual([]);
   });
+
+  /**
+   * **§90's worker utilization, per thread, with an absent thread absent.**
+   *
+   * §90 asks for five measurements and this was one of the two that read "not
+   * measured": the background threads reported whether they were working,
+   * which is a light, and not how much of their lives they spend working,
+   * which is the measurement.
+   *
+   * Per thread and not summed, because the two mean opposite things — a busy
+   * library worker is a queue being got through and a busy interface builder
+   * is what §90's last sentence warns about — and the fixture gives one of
+   * each state so a panel that drew `0%` for a thread that never ran would
+   * fail here. That distinction is the whole reason the reading is nullable:
+   * "nothing to do" and "never ran" look identical as nought and only one of
+   * them is fine.
+   */
+  test("§90's worker load is named per thread, and an absent thread is absent", async ({
+    page,
+  }) => {
+    await nightOpen(page);
+    const context = page.getByTestId("dj-context");
+    await expect(context).toContainText("interface 31%");
+    await expect(
+      context,
+      "a thread that never ran was drawn as an idle one",
+    ).not.toContainText("library");
+    expect(errorsThrown(page), "the night panel threw").toEqual([]);
+  });
 });

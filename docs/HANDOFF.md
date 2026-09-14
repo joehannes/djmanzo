@@ -1605,8 +1605,8 @@ The largest of them, in the order they are worth doing:
    guard now asserts the painting order rather than the visibility, and it is
    the assertion to copy for any new overlay.
 
-13. **§90 has one ratchet and four honest refusals, and the split is the
-   lesson.** A ratchet is only worth having where the number means the same
+13. **§90 has one ratchet, three measurements nobody can hold down, and one
+   honest refusal — and the split is the lesson.** A ratchet is only worth having where the number means the same
    thing on two machines. Frame rate, memory and CPU do not — the argument §89
    already makes about screenshot baselines — and an xrun count measured against
    a null device is always nought, so a ratchet on it would pass for the wrong
@@ -1619,11 +1619,29 @@ The largest of them, in the order they are worth doing:
    deliberately and say in the commit what the field is worth, or take the cost
    back out. Lower it whenever the real figure drops.
 
-   What is left: memory and worker utilization are not measured at all.
-   Instrumenting the decoder and analyser threads is its own piece of work, and
-   a resident-set figure on a container sharing a page cache with a build is
-   noise — which is why the allocation count is the part of "memory" that
-   means the same thing twice.
+   **Measured and not ratcheted is a real place to be**, and four of the five
+   now sit there rather than two. *Worker utilization* used to read "not
+   measured", and the reason it had stayed that way is worth knowing: both
+   background threads reported whether they were `working`, and a light looks
+   enough like a measurement to stop anybody asking. It is not — a worker that
+   flickers busy once a minute and one pegged for an hour both show it.
+   `workers::Worker` is each thread's account of its own time, kept by the 60 Hz
+   interface builder and by the library worker.
+
+   Three things about it are worth copying if you instrument a fifth thread.
+   It is a **share of the thread's own loop**, never of a core, which is the
+   only reason a number like this is worth having in a container with no GPU.
+   The two are **reported separately and never summed**, because they mean
+   opposite things — busy on the library worker is a queue being got through,
+   busy on the interface builder is §90's own warning — and a "busiest worker"
+   figure would alarm during an import and say nothing about the real risk.
+   And `None` is **no such thread**, not an idle one: *nothing to do* and
+   *never ran* look identical as nought and only one of them is fine.
+
+   What is left: memory, and that is a refusal rather than a gap. A
+   resident-set figure on a container sharing a page cache with a build is
+   noise, which is why the allocation count is the part of "memory" that means
+   the same thing twice.
 
 14. **§80 is the template for "learned, and therefore arguable".** §13's
    tendencies and §81's profiles both learn and both are constructor-enforced;

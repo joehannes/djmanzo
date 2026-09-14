@@ -29,7 +29,7 @@ pub use action::{Action, DeckAction, EqBand, MixerAction, Stem, StemChange};
 pub use context::{
     AudioMetrics, Basis, BehaviourContext, Certainty, ContextEngine, Drift, EnvironmentContext,
     HardwareContext, HealthContext, MusicContext, Observation, SessionContext, SessionPhase,
-    SessionRead, Spread, TimeOfDay,
+    SessionRead, Spread, TimeOfDay, WorkerLoad,
 };
 pub use deck::{CrossfaderAssign, DeckId, MAX_DECKS};
 pub use fx::{EffectKind, FX_SLOTS, FxChange, Placement};
