@@ -737,6 +737,15 @@ const ANSWERS: Record<string, unknown> = {
   // §29's gestures, answered per deck below so a test can prove the menu acts
   // on the deck it was opened on.
   control_handles: [],
+  /**
+   * §29's AI hover.
+   *
+   * Nothing by default, which is what djmanzo answers whenever no transition
+   * is armed — most of the time. A test that wants one overrides this, and the
+   * handler below stamps the deck number in so a suggestion cannot be read as
+   * being about the other deck.
+   */
+  control_suggestions: [],
   // §31. Steady by default — which is what djmanzo answers on almost every
   // tick, and is the whole point of the section.
   theme_now: { theme: "pkg-organic", over_ms: 0, locked: false },
@@ -1857,6 +1866,27 @@ export async function openShell(
                 ["Low-pass", `deck ${n} filter -0.6`],
               ]),
             ]);
+          }
+          /**
+           * §29's AI hover, answered per deck for the same reason the handles
+           * are: the one thing a browser can prove about a suggestion is that
+           * the action it offers names the deck it was drawn on. `deck N` in
+           * the override is rewritten to the deck actually asked about.
+           */
+          if (cmd === "control_suggestions") {
+            const n = Number(args.deck ?? 1);
+            const offered = (answers.control_suggestions ?? []) as {
+              control: string;
+              to: number | null;
+              action: string;
+              because: string;
+            }[];
+            return Promise.resolve(
+              offered.map((found) => ({
+                ...found,
+                action: found.action.replace(/^deck \d+ /, `deck ${n} `),
+              })),
+            );
           }
           // §76's lens: one row per id it is handed, and *only* the ids it is
           // handed. Answered here rather than fixed above because the whole

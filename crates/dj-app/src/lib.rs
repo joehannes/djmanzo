@@ -551,6 +551,7 @@ pub fn run() {
             commands::profile_tonight,
             commands::night_fits,
             commands::control_handles,
+            commands::control_suggestions,
             commands::theme_now,
             commands::theme_lock,
             commands::theme_chosen,

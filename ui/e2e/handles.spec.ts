@@ -132,3 +132,134 @@ test.describe("a control's gestures", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+/**
+ * §29's last gesture: **AI hover = suggestion**.
+ *
+ * The one item on §29's list that had nothing behind it, on the reasoning that
+ * the assistant stages whole moves rather than single parameter values. §68's
+ * transition object and `dj_app::shape` between them make that false: a style
+ * says what it does beyond the two faders, in the values the automix sends, so
+ * the answer exists per control.
+ *
+ * The table and its silences are Rust's (`dj_app::handle::suggested`). What a
+ * browser can prove is that the mark is only drawn where there is something to
+ * say, that the sentence is djmanzo's own, and that taking it sends the action
+ * about the deck it was drawn on.
+ */
+test.describe("what the assistant would do to a control", () => {
+  const PLANNED = {
+    control_suggestions: [
+      {
+        control: "eq_low",
+        to: 0,
+        action: "deck 1 eq_low 0",
+        because:
+          "The low end is handed out of this deck by 50% through, then put back.",
+      },
+    ],
+  };
+
+  /**
+   * **The mark is only there when there is something to say.**
+   *
+   * Four of the six controls get nothing from every style djmanzo performs,
+   * and no deck gets anything at all until a mix is armed. A dot on every knob
+   * of every deck would be how a DJ learns to stop looking at the dots.
+   */
+  test("a knob the plan says nothing about carries no mark", async ({
+    page,
+  }) => {
+    await openShell(page, "/");
+    await expect(lowKnob(page, 1).getByTestId("knob-suggested")).toHaveCount(0);
+
+    await openShell(page, "/", {}, PLANNED);
+    await expect(lowKnob(page, 1).getByTestId("knob-suggested")).toHaveCount(1);
+    // The other bands still say nothing, because no style touches them.
+    await expect(
+      page
+        .locator('.deck[data-deck="1"] [role="slider"][aria-label="MID"]')
+        .first()
+        .getByTestId("knob-suggested"),
+    ).toHaveCount(0);
+    expect(errorsThrown(page), "a deck threw").toEqual([]);
+  });
+
+  /**
+   * **Hovering says what djmanzo would do, in djmanzo's words.**
+   *
+   * The sentence comes from Rust with the percentage already in it, so a
+   * tooltip cannot describe a bass swap the automix does not perform — the
+   * same one-table rule `shape` exists for.
+   */
+  test("hovering a marked knob says what the plan does to it", async ({
+    page,
+  }) => {
+    await openShell(page, "/", {}, PLANNED);
+
+    const knob = lowKnob(page, 1);
+    await expect(page.getByTestId("knob-suggestion")).toHaveCount(0);
+    await knob.hover();
+    await expect(knob.getByTestId("knob-suggestion")).toContainText(
+      "handed out of this deck by 50% through",
+    );
+    expect(errorsThrown(page), "a deck threw").toEqual([]);
+  });
+
+  /**
+   * **Taking it sends an action, about the deck it was drawn on.**
+   *
+   * §29's last bullet is that a drag, a menu entry and a MIDI CC end up as one
+   * parameter; a hover a DJ can act on has to join them rather than becoming a
+   * seventh path. And the deck number is the accident worth guarding: a
+   * suggestion drawn on deck 2 that moved deck 1 is the one mistake nobody can
+   * risk in front of a room.
+   */
+  test("taking a suggestion sends djmanzo's own action for that deck", async ({
+    page,
+  }) => {
+    await openShell(page, "/", {}, PLANNED);
+
+    const knob = lowKnob(page, 2);
+    await knob.hover();
+    await knob.getByTestId("knob-suggestion").getByRole("button").click();
+
+    expect(await sent(page)).toContain("deck 2 eq_low 0");
+    expect(errorsThrown(page), "a deck threw").toEqual([]);
+  });
+
+  /**
+   * **The fader is a control too.**
+   *
+   * The channel faders *are* the transition, so the suggestion that matters
+   * most is the one on them. It is the same prop and the same sentence, drawn
+   * on a fader rather than a knob.
+   */
+  test("the volume fader carries the plan's fade", async ({ page }) => {
+    await openShell(
+      page,
+      "/",
+      {},
+      {
+        control_suggestions: [
+          {
+            control: "volume",
+            to: 0,
+            action: "deck 1 volume 0",
+            because: "The assistant brings this fader down over 32 beats.",
+          },
+        ],
+      },
+    );
+
+    const fader = page
+      .locator('.deck[data-deck="1"] [role="slider"][aria-label="Volume"]')
+      .first();
+    await expect(fader.getByTestId("fader-suggested")).toHaveCount(1);
+    await fader.hover();
+    await expect(fader.getByTestId("fader-suggestion")).toContainText(
+      "brings this fader down over 32 beats",
+    );
+    expect(errorsThrown(page), "a deck threw").toEqual([]);
+  });
+});

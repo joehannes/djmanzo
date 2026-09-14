@@ -19,7 +19,12 @@
   import Overview from "./Overview.svelte";
   import Waveform from "./Waveform.svelte";
   import SvgKnob from "./controls/SvgKnob.svelte";
-  import { controlHandles, type ControlHandle } from "./api";
+  import {
+    controlHandles,
+    controlSuggestions,
+    type ControlHandle,
+    type ControlSuggestion,
+  } from "./api";
   import SvgFader from "./controls/SvgFader.svelte";
   import SvgPad from "./controls/SvgPad.svelte";
   import IconButton from "./controls/IconButton.svelte";
@@ -37,6 +42,18 @@
    * empty is worse than no menu.
    */
   let handles = $state<Record<string, ControlHandle>>({});
+
+  /**
+   * §29's AI hover, from Rust — see `dj_app::handle::suggested`.
+   *
+   * Unlike `handles` this is *not* a fixed table: it is about the transition
+   * djmanzo is holding, so it changes when a mix is armed, adjusted or
+   * cleared, and it is empty whenever nothing is armed — which is most of the
+   * time. Polled rather than pushed, on the same reasoning every other poll
+   * here follows: the answer can only move when a DJ presses something, and a
+   * couple of seconds late is invisible on a knob nobody is hovering.
+   */
+  let suggestions = $state<Record<string, ControlSuggestion>>({});
 
   let {
     deck,
@@ -111,7 +128,34 @@
       .catch(() => {
         handles = {};
       });
+
+    const askSuggestions = () => {
+      void controlSuggestions(deck.number)
+        .then((got) => {
+          const next: Record<string, ControlSuggestion> = {};
+          for (const found of got) next[found.control] = found;
+          suggestions = next;
+        })
+        .catch(() => {
+          // Nothing rather than the last answer: a suggestion about a mix
+          // djmanzo can no longer describe is the one failure mode worth
+          // avoiding here, and it looks exactly like a current one.
+          suggestions = {};
+        });
+    };
+    askSuggestions();
+    const timer = setInterval(askSuggestions, SUGGEST_MS);
+    return () => clearInterval(timer);
   });
+
+  /**
+   * How often the hover is refreshed.
+   *
+   * Two seconds. It can only change when a DJ arms, adjusts or clears a
+   * transition, or a record leaves a deck — all of them presses — so anything
+   * faster is asking a question whose answer cannot have moved.
+   */
+  const SUGGEST_MS = 2000;
 
   /**
    * The deck to draw when nothing has said otherwise.
@@ -994,6 +1038,7 @@
           oninput={(val) => send(`deck ${deck.number} ${band.id} ${val}`)}
           ondblclick={() => send(handles[band.id]?.reset ?? `deck ${deck.number} ${band.id} 1`)}
           options={handles[band.id]?.options}
+          suggestion={suggestions[band.id] ?? null}
           onoption={(action) => send(action)}
         />
         <button
@@ -1027,6 +1072,7 @@
       oninput={(val) => send(`deck ${deck.number} filter ${val}`)}
       ondblclick={() => send(handles.filter?.reset ?? `deck ${deck.number} filter 0`)}
       options={handles.filter?.options}
+      suggestion={suggestions.filter ?? null}
       onoption={(action) => send(action)}
     />
   </label>
@@ -1045,6 +1091,8 @@
       height={140}
       width={40}
       oninput={(val) => send(`deck ${deck.number} volume ${val}`)}
+      suggestion={suggestions.volume ?? null}
+      onoption={(action) => send(action)}
     />
   </label>
   {/snippet}

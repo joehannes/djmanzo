@@ -7253,6 +7253,85 @@ pub fn control_handles(deck: u8) -> Result<Vec<HandleDto>, String> {
         .collect())
 }
 
+/// What the assistant's plan would do to one control. §29's AI hover.
+#[derive(Debug, Clone, Serialize)]
+pub struct SuggestedDto {
+    /// The verb, so the interface can match it to the knob it is drawing.
+    pub control: String,
+    /// The value the plan takes it to at its furthest, or null for a gesture
+    /// with no position — sync is a switch.
+    pub to: Option<f64>,
+    /// The action that gets there, exactly as the parser takes it.
+    pub action: String,
+    /// What the plan does, and why, in Rust's words.
+    pub because: String,
+}
+
+/// §29's *AI hover = suggestion*, for one deck.
+///
+/// The last of §29's seven gestures. Its row said there was nothing for a
+/// hover to read, because the assistant stages whole moves rather than single
+/// parameter values — and that stopped being true when §68's transition object
+/// gained a style and `crate::shape` became the one table saying what a style
+/// does beyond the two channel faders, in the values the automix sends.
+///
+/// **It answers about a mix djmanzo has actually planned**, never in general:
+/// the held transition, and only while it still describes what is on the
+/// decks. A general opinion about where an EQ band should be is not a thing
+/// any software has, and a hover that offered one would be the most confident
+/// invention in the interface.
+///
+/// Empty for a deck the plan does not name, and empty whenever nothing is
+/// armed — which is most of the time, and is why this is a separate question
+/// from `control_handles`: the gestures are a fixed table fetched once, and
+/// this changes with the mix.
+///
+/// # Errors
+/// A deck djmanzo does not have.
+#[tauri::command]
+pub fn control_suggestions(
+    state: State<'_, AppState>,
+    deck: u8,
+) -> Result<Vec<SuggestedDto>, String> {
+    let asked = dj_core::DeckId::from_human(deck).ok_or("no such deck")?;
+    let Some(transition) = state.transition() else {
+        return Ok(Vec::new());
+    };
+    // The same staleness rule `transition_current` states, for the same
+    // reason: a confident suggestion about a record that left the deck four
+    // minutes ago looks exactly like a current one.
+    let loaded = |deck| current_track(&state, deck);
+    if !transition.describes(
+        loaded(transition.outgoing_deck),
+        loaded(transition.incoming_deck),
+    ) {
+        return Ok(Vec::new());
+    }
+
+    let side = if asked == transition.outgoing_deck {
+        crate::handle::Side::Leaving
+    } else if asked == transition.incoming_deck {
+        crate::handle::Side::Arriving
+    } else {
+        return Ok(Vec::new());
+    };
+
+    Ok(crate::handle::suggested(
+        asked,
+        side,
+        transition.plan.style,
+        transition.plan.length_beats,
+    )
+    .into_iter()
+    .map(|found| SuggestedDto {
+        control: found.control.verb().to_owned(),
+        to: found.to,
+        action: found.action,
+        because: found.because,
+    })
+    .collect())
+}
+
 /// One record through §76's lens.
 ///
 /// Every field may be absent, and an absence is drawn as one: a lens that

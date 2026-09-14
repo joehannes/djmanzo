@@ -2073,6 +2073,32 @@ export interface ControlHandle {
 export const controlHandles = (deck: number) =>
   invoke<ControlHandle[]>("control_handles", { deck });
 
+/** §29's *AI hover*: what the assistant's plan does to one control. */
+export interface ControlSuggestion {
+  control: string;
+  /** Where the plan takes it, or null for a gesture with no position. */
+  to: number | null;
+  /** The action that gets there, exactly as the parser takes it. */
+  action: string;
+  /** What the plan does, and why, in Rust's words. */
+  because: string;
+}
+
+/**
+ * §29's last gesture, for one deck.
+ *
+ * About a mix djmanzo has actually planned — the held transition — never in
+ * general: a general opinion about where an EQ band should be is not a thing
+ * any software has, and a hover offering one would be the most confident
+ * invention in the interface. Empty when nothing is armed, which is most of
+ * the time, and empty for a deck the plan does not name.
+ *
+ * Separate from {@link controlHandles} because the gestures are a fixed table
+ * and this changes with the mix.
+ */
+export const controlSuggestions = (deck: number) =>
+  invoke<ControlSuggestion[]>("control_suggestions", { deck });
+
 /**
  * One record through §76's AI lens.
  *

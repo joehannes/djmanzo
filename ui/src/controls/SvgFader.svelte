@@ -15,6 +15,17 @@
     readout?: string;
     oninput?: (value: number) => void;
     ondblclick?: () => void;
+    /**
+     * §29's *AI hover = suggestion*, from `dj_app::handle::suggested`.
+     *
+     * The same prop the knob takes, because a fader is a control with the same
+     * gestures on it — §29's example is a knob and its list is about controls.
+     * Absent means the plan says nothing about this fader, and then nothing is
+     * drawn: a mark that is always there says nothing.
+     */
+    suggestion?: { to: number | null; action: string; because: string } | null;
+    /** Send the suggestion's action, when a DJ takes it. */
+    onoption?: (action: string) => void;
     disabled?: boolean;
     width?: number;
     height?: number;
@@ -30,6 +41,8 @@
     readout,
     oninput,
     ondblclick,
+    suggestion = null,
+    onoption,
     disabled = false,
     width = 30,
     height = 120,
@@ -40,6 +53,9 @@
   let startMouse = $state(0);
   let startVal = $state(0);
   let container: HTMLElement;
+
+  /** Whether the suggestion is showing. Hover and focus, as on the knob. */
+  let showing = $state(false);
 
   let normalized = $derived((value - min) / (max - min));
   
@@ -117,6 +133,10 @@
   onpointercancel={handlePointerUp}
   ondblclick={ondblclick}
   onkeydown={handleKeyDown}
+  onpointerenter={() => (showing = true)}
+  onpointerleave={() => (showing = false)}
+  onfocusin={() => (showing = true)}
+  onfocusout={() => (showing = false)}
 >
   {#if label && orientation === "vertical"}
     <span class="label">{label}{#if readout}&nbsp;<em class="mono">{readout}</em>{/if}</span>
@@ -127,10 +147,30 @@
   {#if label && orientation === "horizontal"}
     <span class="label">{label}{#if readout}&nbsp;<em class="mono">{readout}</em>{/if}</span>
   {/if}
+
+  <!-- §29's AI hover. See `SvgKnob` for why the mark is drawn at all. -->
+  {#if suggestion}
+    <span class="proposed" data-testid="fader-suggested" aria-hidden="true"></span>
+    {#if showing}
+      <div class="suggestion" role="note" data-testid="fader-suggestion">
+        <p>{suggestion.because}</p>
+        <button
+          type="button"
+          disabled={disabled}
+          onclick={() => onoption?.(suggestion.action)}
+        >
+          Do it{#if suggestion.to !== null}&nbsp;<em class="mono"
+              >{suggestion.to.toFixed(2)}</em
+            >{/if}
+        </button>
+      </div>
+    {/if}
+  {/if}
 </div>
 
 <style>
   .fader-container {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -138,6 +178,63 @@
     user-select: none;
     cursor: pointer;
     outline: none;
+  }
+
+  /* The same two pieces the knob draws, for the same reasons. */
+  .proposed {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--assistant);
+    pointer-events: none;
+  }
+
+  .suggestion {
+    position: absolute;
+    z-index: 45;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 13rem;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--assistant);
+    border-radius: 5px;
+    background: var(--panel, var(--surface));
+    box-shadow: 0 4px 14px rgb(0 0 0 / 0.45);
+    text-align: left;
+    cursor: default;
+  }
+
+  .suggestion p {
+    margin: 0 0 0.25rem;
+    font-size: 0.68rem;
+    line-height: 1.35;
+    color: var(--text);
+  }
+
+  .suggestion button {
+    font: inherit;
+    font-size: 0.68rem;
+    padding: 0.15rem 0.4rem;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .suggestion button:hover:not(:disabled) {
+    border-color: var(--assistant);
+    color: var(--assistant);
+  }
+
+  .suggestion button:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .disabled {
     opacity: 0.5;

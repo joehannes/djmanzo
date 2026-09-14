@@ -42,6 +42,7 @@
 //! twelve is a widget that grew.
 
 use dj_core::DeckId;
+use dj_core::action::TransitionStyle;
 
 /// How much finer a shift-drag is than a drag.
 ///
@@ -179,6 +180,128 @@ pub fn handle(deck: DeckId, control: Control) -> Handle {
     }
 }
 
+// -- §29's AI hover ----------------------------------------------------------
+
+/// Which side of a planned mix a deck is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    /// The record the room is hearing, on its way out.
+    Leaving,
+    /// The record coming in.
+    Arriving,
+}
+
+/// §29's *AI hover = suggestion*: what the assistant's plan does to one control.
+///
+/// Every field is about a mix djmanzo has already planned — see
+/// [`crate::transition`] — rather than about a general opinion, because a
+/// general opinion about where an EQ band should be is not a thing any
+/// software has. A knob nothing in the plan touches produces no suggestion at
+/// all; see [`suggested`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Suggested {
+    pub control: Control,
+    /// The value the plan takes it to at its furthest, when it names one.
+    ///
+    /// `None` for a gesture with no position: sync is a switch, and a number
+    /// beside it would be an invention.
+    pub to: Option<f64>,
+    /// The action that gets there, exactly as [`dj_core::action::Action::parse`]
+    /// takes it — so §29's last bullet holds for the hover as well as for the
+    /// drag and the menu. A DJ who wants the plan's answer now can have it,
+    /// and it goes through the bus like anything else.
+    pub action: String,
+    /// What the plan does, and why, in Rust's words.
+    pub because: String,
+}
+
+/// What the assistant's plan would do to this deck's controls.
+///
+/// **§29's last unbuilt gesture.** Its list for a knob is drag, shift-drag,
+/// double-click, right-click, long hold, *AI hover*, MIDI — and the hover was
+/// the one thing missing, on the reasoning that the assistant stages whole
+/// moves rather than single parameter values. That is no longer true. §68's
+/// transition object carries a style, and [`crate::shape`] is the one table
+/// saying what a style does beyond the two channel faders, in the values the
+/// automix actually sends. So the answer exists; it only had to be asked per
+/// control.
+///
+/// # Sparse on purpose
+///
+/// Four of the six controls get nothing, every time, and that is the honest
+/// answer rather than a gap: no transition style djmanzo performs touches the
+/// mid band, the high band or the filter. A hover that said *"the assistant
+/// would leave this where it is"* on every knob of every deck would be six
+/// tooltips saying nothing, which is how a DJ learns to stop reading tooltips.
+///
+/// # What is deliberately not here
+///
+/// The gain trim. `autopilot::Step::MatchGain` is a real value the assistant
+/// would set, and it is a *trim*, not one of §29's six knobs — the channel
+/// fader is `volume` and they are different parameters. A hover that put a
+/// trim figure on the volume knob would be pointing at the wrong control while
+/// looking authoritative.
+///
+/// Stems and effects are the same story from the other end: a style moves both
+/// and neither is a knob. The pair view says what the style does to them, in
+/// [`crate::shape::Shape::words`], which is the same table read for a panel
+/// rather than for a knob.
+#[must_use]
+pub fn suggested(deck: DeckId, side: Side, style: TransitionStyle, beats: u32) -> Vec<Suggested> {
+    let n = deck.human_number();
+    let shape = crate::shape::shape(style);
+    let mut out = Vec::new();
+
+    // The channel faders, which are the transition. Only where there is an
+    // overlap for them to move across: a cut stops one deck on the tick the
+    // other starts, and there is no fade in it to describe.
+    if shape.overlaps {
+        let (to, word) = match side {
+            Side::Leaving => (0.0, "down"),
+            Side::Arriving => (1.0, "up"),
+        };
+        out.push(Suggested {
+            control: Control::Volume,
+            to: Some(to),
+            action: format!("deck {n} volume {to}"),
+            because: format!("The assistant brings this fader {word} over {beats} beats."),
+        });
+    }
+
+    // The bass swap, where the style has one.
+    if let crate::shape::Eq::HandOverLows { done_by } = shape.eq {
+        #[allow(clippy::cast_possible_truncation)]
+        let percent = (done_by * 100.0).round() as i64;
+        let (to, word) = match side {
+            Side::Leaving => (0.0, "out of"),
+            Side::Arriving => (1.0, "into"),
+        };
+        out.push(Suggested {
+            control: Control::EqLow,
+            to: Some(to),
+            action: format!("deck {n} eq_low {to}"),
+            because: format!(
+                "The low end is handed {word} this deck by {percent}% through, then put back."
+            ),
+        });
+    }
+
+    // Sync, which is what the pitch fader is for at the moment a record comes
+    // in. Only the arriving deck: the record the room is already hearing is
+    // the tempo reference, and syncing it to the one that has not started is
+    // the wrong way round.
+    if side == Side::Arriving {
+        out.push(Suggested {
+            control: Control::Pitch,
+            to: None,
+            action: format!("deck {n} sync"),
+            because: "The assistant engages sync so this record comes in on the beat.".to_owned(),
+        });
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,6 +309,147 @@ mod tests {
 
     fn deck(n: u8) -> DeckId {
         DeckId::from_human(n).expect("a deck")
+    }
+
+    /// **The hover's actions are actions too.**
+    ///
+    /// The same guard as the menu's, for the same reason: §29's last bullet
+    /// says a drag, a MIDI CC and everything else must end up as one
+    /// parameter, and a hover offering a verb the parser rejects is that
+    /// promise broken in the newest place.
+    #[test]
+    fn every_suggestion_parses_as_an_action() {
+        for style in TransitionStyle::ALL {
+            for side in [Side::Leaving, Side::Arriving] {
+                for found in suggested(deck(2), side, style, 32) {
+                    assert!(
+                        Action::parse(&found.action).is_ok(),
+                        "{style:?} on the {side:?} deck suggests `{}`, which is not an action",
+                        found.action
+                    );
+                    assert!(
+                        !found.because.is_empty(),
+                        "a suggestion for {:?} says nothing",
+                        found.control
+                    );
+                }
+            }
+        }
+    }
+
+    /// **The hover only speaks about controls the plan actually moves.**
+    ///
+    /// The load-bearing rule of this gesture. No style djmanzo performs
+    /// touches the mid band, the high band or the filter, and a hover that
+    /// said "the assistant would leave this where it is" on every knob of
+    /// every deck would be six tooltips saying nothing — which is how a DJ
+    /// learns to stop reading tooltips. Silence here is an answer.
+    #[test]
+    fn the_knobs_no_style_touches_are_never_given_a_suggestion() {
+        for style in TransitionStyle::ALL {
+            for side in [Side::Leaving, Side::Arriving] {
+                let touched: Vec<Control> = suggested(deck(1), side, style, 32)
+                    .into_iter()
+                    .map(|s| s.control)
+                    .collect();
+                for quiet in [Control::EqMid, Control::EqHigh, Control::Filter] {
+                    assert!(
+                        !touched.contains(&quiet),
+                        "{style:?} claims to move {quiet:?}, which no style does"
+                    );
+                }
+            }
+        }
+    }
+
+    /// **A cut has no fade, and the hover does not invent one.**
+    ///
+    /// `Shape::overlaps` is false for exactly one style because a cut stops
+    /// one deck on the tick the other starts. A volume suggestion there would
+    /// be describing a fader travel that never happens — and it would look
+    /// exactly as confident as the four that do.
+    #[test]
+    fn a_cut_suggests_nothing_about_the_faders() {
+        for side in [Side::Leaving, Side::Arriving] {
+            let cut: Vec<Control> = suggested(deck(1), side, TransitionStyle::Cut, 8)
+                .into_iter()
+                .map(|s| s.control)
+                .collect();
+            assert!(
+                !cut.contains(&Control::Volume),
+                "a cut suggested a fader move on the {side:?} deck"
+            );
+            let blend: Vec<Control> = suggested(deck(1), side, TransitionStyle::Blend, 8)
+                .into_iter()
+                .map(|s| s.control)
+                .collect();
+            assert!(blend.contains(&Control::Volume), "a blend has no fade");
+        }
+    }
+
+    /// **The two sides are opposite, and neither is the other's copy.**
+    ///
+    /// The fader comes down on the record leaving and up on the one arriving,
+    /// and the low end goes the same way. A version that answered the same
+    /// thing for both decks would be right half the time and look right all of
+    /// it.
+    #[test]
+    fn the_deck_going_out_and_the_deck_coming_in_are_told_apart() {
+        let out = suggested(deck(1), Side::Leaving, TransitionStyle::Blend, 32);
+        let into = suggested(deck(2), Side::Arriving, TransitionStyle::Blend, 32);
+
+        let value = |found: &[Suggested], control: Control| {
+            found
+                .iter()
+                .find(|s| s.control == control)
+                .and_then(|s| s.to)
+        };
+        assert_eq!(value(&out, Control::Volume), Some(0.0));
+        assert_eq!(value(&into, Control::Volume), Some(1.0));
+        // A blend hands the low end over, so the two decks are opposite there
+        // as well. `Fade` does not, and says nothing about it at all.
+        assert_eq!(value(&out, Control::EqLow), Some(0.0));
+        assert_eq!(value(&into, Control::EqLow), Some(1.0));
+        assert_eq!(
+            suggested(deck(1), Side::Leaving, TransitionStyle::Fade, 32)
+                .iter()
+                .find(|s| s.control == Control::EqLow),
+            None,
+            "a fade claimed to move the low band, which `shape` says it does not"
+        );
+        // And the deck number in the action is the deck asked about.
+        assert!(
+            out.iter().all(|s| s.action.starts_with("deck 1 ")),
+            "a suggestion for deck 1 names another deck"
+        );
+        assert!(into.iter().all(|s| s.action.starts_with("deck 2 ")));
+    }
+
+    /// **Sync is offered to the record coming in, and to nothing else.**
+    ///
+    /// The record the room is already hearing is the tempo reference; syncing
+    /// it to the one that has not started is the wrong way round, and it is
+    /// the kind of wrong that is only obvious once it has happened to a full
+    /// dancefloor. It carries no value, because sync is a switch and a number
+    /// beside it would be an invention.
+    #[test]
+    fn only_the_arriving_deck_is_offered_sync_and_it_carries_no_number() {
+        for style in TransitionStyle::ALL {
+            let arriving = suggested(deck(2), Side::Arriving, style, 16);
+            let pitch = arriving
+                .iter()
+                .find(|s| s.control == Control::Pitch)
+                .unwrap_or_else(|| panic!("{style:?} did not offer sync to the arriving deck"));
+            assert_eq!(pitch.to, None, "sync was given a position");
+            assert_eq!(pitch.action, "deck 2 sync");
+
+            assert!(
+                suggested(deck(1), Side::Leaving, style, 16)
+                    .iter()
+                    .all(|s| s.control != Control::Pitch),
+                "{style:?} offered to sync the record that is already playing"
+            );
+        }
     }
 
     /// **Every gesture is an action djmanzo already accepts.**

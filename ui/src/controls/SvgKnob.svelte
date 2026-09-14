@@ -27,6 +27,17 @@
      */
     options?: [string, string][];
     onoption?: (action: string) => void;
+    /**
+     * §29's *AI hover = suggestion*: what the assistant's plan does to this
+     * control, from `dj_app::handle::suggested`.
+     *
+     * Absent means the plan says nothing about this knob — which is the answer
+     * for four of the six, every time, because no transition style djmanzo
+     * performs touches the mid band, the high band or the filter. Nothing is
+     * drawn then, deliberately: a mark on every knob saying "the assistant
+     * would leave this alone" is how a DJ learns to stop looking at the marks.
+     */
+    suggestion?: { to: number | null; action: string; because: string } | null;
     disabled?: boolean;
     size?: number;
     // Injectable theme, falls back to BaseTheme
@@ -44,6 +55,7 @@
     ondblclick,
     options,
     onoption,
+    suggestion = null,
     disabled = false,
     size = 48
   }: Props = $props();
@@ -191,6 +203,15 @@
     menu = false;
     onoption?.(action);
   }
+
+  /**
+   * Whether the suggestion is showing.
+   *
+   * Hover *and* focus, because a hover-only affordance is one a DJ working
+   * from the keyboard — or from a controller with the screen at arm's length —
+   * cannot reach at all. It is the same content either way.
+   */
+  let showing = $state(false);
 </script>
 
 <div 
@@ -213,6 +234,10 @@
     openMenu();
   }}
   onkeydown={handleKeyDown}
+  onpointerenter={() => (showing = true)}
+  onpointerleave={() => (showing = false)}
+  onfocusin={() => (showing = true)}
+  onfocusout={() => (showing = false)}
   style="width: {size}px;"
 >
   {#if label}
@@ -220,6 +245,30 @@
   {/if}
   
   <SvgRenderer {renderState} width={size} height={size} />
+
+  <!--
+    §29's AI hover. The mark is always there when there is a suggestion, so the
+    gesture is discoverable: a hover nobody knows to make is a feature nobody
+    has. It wears `--assistant`, the role §57 gives to "the machine did this",
+    because that is what the sentence under it is about.
+  -->
+  {#if suggestion}
+    <span class="proposed" data-testid="knob-suggested" aria-hidden="true"></span>
+    {#if showing}
+      <div class="suggestion" role="note" data-testid="knob-suggestion">
+        <p>{suggestion.because}</p>
+        <button
+          type="button"
+          disabled={disabled}
+          onclick={() => onoption?.(suggestion.action)}
+        >
+          Do it{#if suggestion.to !== null}&nbsp;<em class="mono"
+              >{suggestion.to.toFixed(2)}</em
+            >{/if}
+        </button>
+      </div>
+    {/if}
+  {/if}
 
   <!--
     §29's level three. Drawn only when it is open and only when there is
@@ -273,6 +322,68 @@
   /* §29's level three, over the control it belongs to rather than beside it:
      a menu that pushed the deck's layout around would move every other control
      out from under the DJ's hand. */
+  /*
+    The mark that says there is something to hover. Small and in the
+    assistant's own colour: it is a proposal, not a state of the control, and
+    §33's rule applies — the sentence it opens is the channel that carries the
+    meaning, and this is only the pointer to it.
+  */
+  .proposed {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--assistant);
+    pointer-events: none;
+  }
+
+  .suggestion {
+    position: absolute;
+    z-index: 45;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 13rem;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--assistant);
+    border-radius: 5px;
+    background: var(--panel, var(--surface));
+    box-shadow: 0 4px 14px rgb(0 0 0 / 0.45);
+    text-align: left;
+    cursor: default;
+  }
+
+  .suggestion p {
+    margin: 0 0 0.25rem;
+    font-size: 0.68rem;
+    line-height: 1.35;
+    color: var(--text);
+  }
+
+  .suggestion button {
+    font: inherit;
+    font-size: 0.68rem;
+    padding: 0.15rem 0.4rem;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .suggestion button:hover:not(:disabled) {
+    border-color: var(--assistant);
+    color: var(--assistant);
+  }
+
+  .suggestion button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
   .options {
     position: absolute;
     z-index: 40;

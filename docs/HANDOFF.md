@@ -953,6 +953,16 @@ taking it again is a decision rather than a struggle. §7's arrangements and
 §54's setups already state this contract — it is worth re-reading before
 building anything that applies a learned answer.
 
+**A "there is nothing to read" clause is a claim about the codebase, and the
+codebase moves.** §29's row said the AI hover could not be built because the
+assistant stages whole moves rather than single parameter values. That was
+true when it was written and stopped being true two sections later, when §68's
+transition object gained a style and `shape` became the one table saying what
+a style does in the values the automix sends. Nothing reported the change —
+the row went on saying it, correctly-shaped and wrong. Worth re-reading the
+blocked rows whenever something they named as missing gets built: the gap this
+one described had been closed by a commit that never mentioned §29.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests
