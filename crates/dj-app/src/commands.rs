@@ -4073,6 +4073,257 @@ mod kept_pair_tests {
     }
 }
 
+/// §16's knowledge pack, where it meets the rail.
+///
+/// The seam between two things that are each tested elsewhere: `dj-assistant`
+/// owns the packs and `dj-library` owns what a pack is worth. This is the join,
+/// and until it existed `Pack::families` was parsed, stored, sent to the
+/// interface and read by nothing — a table describing music that changed no
+/// decision djmanzo made. Worth its own tests for the same reason the kept-pair
+/// join is: a fold that scores correctly and forgets to re-sort looks exactly
+/// like one that works.
+#[cfg(test)]
+mod chosen_pack_tests {
+    use super::*;
+    use dj_library::suggest::{Reason, Suggestion};
+
+    fn id(byte: u8) -> dj_core::TrackId {
+        dj_core::TrackId::from_bytes([byte; 32])
+    }
+
+    fn scored(byte: u8, score: f64, reasons: Vec<Reason>) -> Suggestion {
+        Suggestion {
+            track: id(byte),
+            score,
+            reasons,
+        }
+    }
+
+    /// **The load-bearing one: choosing a pack changes the order of the rail.**
+    ///
+    /// Not "the score went up" — the score going up while the row stays put is
+    /// the defect this join is written to avoid, and it is invisible until a
+    /// DJ notices the second row scoring higher than the first.
+    ///
+    /// The families are read off the shipped pack rather than written here, so
+    /// a pack whose families were renamed or misspelled fails this test instead
+    /// of quietly behaving like open format.
+    #[test]
+    fn choosing_a_pack_moves_its_own_music_up_the_rail() {
+        let latin = dj_assistant::pack::pack("latin").expect("the latin pack ships");
+        let mine = *latin
+            .families
+            .first()
+            .expect("the latin pack names families");
+
+        let ranked = vec![
+            scored(1, 5.0, vec![Reason::PhraseUnknown]),
+            scored(2, 4.9, vec![Reason::PhraseUnknown]),
+        ];
+        let families = std::collections::HashMap::from([(id(2), mine)]);
+
+        let out = with_pack(ranked, Some(latin), &|t| families.get(&t).copied());
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(2), id(1)],
+            "the pack's own music scored higher but stayed where it was"
+        );
+        assert!(out[0].reasons.contains(&Reason::InPack(mine)));
+        // And the record that is not in it is untouched, reasons included.
+        assert_eq!(out[1].reasons, vec![Reason::PhraseUnknown]);
+    }
+
+    /// **A pack that does not pair across half time drops the pairing back to
+    /// where an unrelated tempo sits, and the rail re-sorts around that.**
+    ///
+    /// §16's *half/double-time relationships*, at the place a DJ sees them.
+    /// `house` is the pack that says no, and it says so in the table rather
+    /// than here.
+    #[test]
+    fn a_house_night_stops_seeing_half_time_pairings_at_the_top() {
+        let house = dj_assistant::pack::pack("house").expect("the house pack ships");
+        assert!(
+            !house.half_time,
+            "the fixture is wrong: house was meant to be the pack that says no"
+        );
+
+        let halved = scored(
+            1,
+            5.0,
+            vec![Reason::TempoHalfOrDouble {
+                from: 128.0,
+                to: 64.0,
+            }],
+        );
+        let plain = scored(2, 4.5, vec![Reason::PhraseUnknown]);
+
+        let out = with_pack(vec![halved, plain], Some(house), &|_| None);
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(2), id(1)],
+            "a house night still had the half-time pairing at the top"
+        );
+        assert!(out[1].reasons.contains(&Reason::HalfTimeUnusual));
+
+        // The same rail on a pack that *does* cross keeps it where it was.
+        let latin = dj_assistant::pack::pack("latin").expect("the latin pack ships");
+        assert!(latin.half_time, "the fixture is wrong: latin crosses");
+        let kept = with_pack(
+            vec![
+                scored(
+                    1,
+                    5.0,
+                    vec![Reason::TempoHalfOrDouble {
+                        from: 128.0,
+                        to: 64.0,
+                    }],
+                ),
+                scored(2, 4.5, vec![Reason::PhraseUnknown]),
+            ],
+            Some(latin),
+            &|_| None,
+        );
+        assert_eq!(
+            kept.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(1), id(2)]
+        );
+    }
+
+    /// **No pack chosen is djmanzo's own ranking, untouched.**
+    ///
+    /// Most rails. A fold that shifted every candidate when nobody had said
+    /// anything would put a chip on every row saying nothing.
+    #[test]
+    fn a_rail_with_no_pack_chosen_is_exactly_the_ranking_it_was() {
+        let ranked = vec![
+            scored(1, 5.0, vec![Reason::PhraseUnknown]),
+            scored(2, 4.0, vec![Reason::PhraseUnknown]),
+        ];
+        assert_eq!(with_pack(ranked.clone(), None, &|_| Some("house")), ranked);
+    }
+
+    /// **Open format names no families, and that is an answer rather than a
+    /// gap.**
+    ///
+    /// A DJ who plays everything has no family to centre on. The pack must
+    /// therefore credit nothing — not credit everything, which would be the
+    /// same ranking with a meaningless chip on every row.
+    #[test]
+    fn open_format_credits_nothing_because_it_centres_on_nothing() {
+        let open = dj_assistant::pack::pack("open-format").expect("the open-format pack ships");
+        assert!(
+            open.families.is_empty(),
+            "the fixture is wrong: open format was meant to name no families"
+        );
+
+        let ranked = vec![
+            scored(1, 5.0, vec![Reason::PhraseUnknown]),
+            scored(2, 4.0, vec![Reason::PhraseUnknown]),
+        ];
+        let out = with_pack(ranked.clone(), Some(open), &|_| Some("house"));
+        assert_eq!(out, ranked);
+    }
+
+    /// The tie-break is the suggester's own, so two equal candidates cannot
+    /// come out of here in a different order from the one that produced them.
+    #[test]
+    fn equal_candidates_keep_the_order_the_suggester_gave_them() {
+        let house = dj_assistant::pack::pack("house").expect("the house pack ships");
+        let ranked = vec![
+            scored(9, 4.0, vec![Reason::PhraseUnknown]),
+            scored(2, 4.0, vec![Reason::PhraseUnknown]),
+        ];
+        let out = with_pack(ranked, Some(house), &|_| None);
+        assert_eq!(
+            out.iter().map(|s| s.track).collect::<Vec<_>>(),
+            vec![id(2), id(9)],
+            "the tie-break differs from the suggester's"
+        );
+    }
+
+    /// **The load-bearing bound: the three tilts together still cannot
+    /// overrule the mixing.**
+    ///
+    /// §16's pack is the *third* thing added on top of a suggestion's score —
+    /// taste learned from what the DJ plays, §81's profile for the night they
+    /// named, and now the pack they chose — and each of the three is bounded
+    /// on its own in its own file, in prose, in three places. What none of
+    /// those said is what happens when all three point the same way at once,
+    /// which is the ordinary case: a Latin DJ at a Latin night with the Latin
+    /// pack chosen gets every one of them.
+    ///
+    /// The rule they are all quoted against is the scoring scale itself: a
+    /// same-key match is worth three and a key clash minus two and a half, so
+    /// the gap between the best key relation and the worst is what a tilt must
+    /// never be able to cross. They break ties. They do not overrule the
+    /// mixing — and the pack is the one that made that a question worth
+    /// asking, because before it there were two of them and now there are
+    /// three.
+    ///
+    /// Read from the constants rather than restated, so raising any of the
+    /// three past what the other two leave room for fails here rather than in
+    /// a rail that has quietly started promoting key clashes.
+    #[test]
+    fn taste_the_night_and_the_pack_together_cannot_cross_a_key_relation() {
+        use dj_core::{Mode, MusicalKey};
+        use dj_library::suggest::Reason;
+
+        let key = |hour| MusicalKey::new(hour, Mode::Minor).expect("a real key");
+        let best = Reason::SameKey(key(8)).weight();
+        let worst = Reason::KeyClash {
+            from: key(8),
+            to: key(2),
+        }
+        .weight();
+        assert!(
+            best > worst,
+            "the scale this is quoted against has changed: {best} against {worst}"
+        );
+
+        let tilts = dj_library::learned::Learned::MOST_IT_MAY_MOVE
+            + crate::profile::MOST_IT_MAY_MOVE
+            + Reason::InPack("bachata").weight();
+        assert!(
+            tilts < best - worst,
+            "taste, the night and the pack together move a record by {tilts}, \
+             which crosses the {} between a key match and a key clash: one of \
+             the three has outgrown the scale they are all quoted from",
+            best - worst
+        );
+    }
+
+    /// **Both new reasons reach the words the DJ actually reads.**
+    ///
+    /// A reason that scores and is never rendered is half a feature: the rail
+    /// would reorder itself for a cause nothing on screen names, which reads as
+    /// the ranking being wrong.
+    #[test]
+    fn the_pack_says_why_in_the_chip_and_on_the_summary_line() {
+        assert_eq!(
+            describe_reason(&Reason::InPack("bachata")),
+            "your pack (bachata)"
+        );
+        assert_eq!(
+            describe_reason(&Reason::HalfTimeUnusual),
+            "half/double is unusual here"
+        );
+
+        // And on the line, the half-time verdict sits beside the tempo it
+        // qualifies rather than off at the end.
+        assert_eq!(
+            summarise_reasons(&[
+                Reason::InPack("bachata"),
+                Reason::HalfTimeUnusual,
+                Reason::TempoHalfOrDouble {
+                    from: 128.0,
+                    to: 64.0,
+                },
+            ]),
+            "half-time \u{b7} unusual here \u{b7} your pack"
+        );
+    }
+}
+
 #[cfg(test)]
 mod mix_out_tests {
     use super::*;
@@ -6845,14 +7096,37 @@ pub fn suggest_next(
         &kept,
     );
 
-    // §12's other half: tonight's profile, when the DJ has named the night.
-    // Read once for the whole rail — it is two queries and a fold, and five
-    // thousand candidates would be ten thousand queries.
-    let profile = tonight_profile(&state, &db);
+    // The genre tag off each pool row, once. Two folds want it — §16's pack
+    // asks which family it is, §12's profile asks what the DJ plays — and
+    // reading `tags.genre` twice over five thousand rows to answer two
+    // questions about the same string would be the cheaper-looking mistake.
     let genres: std::collections::HashMap<dj_core::TrackId, String> = pool
         .iter()
         .filter_map(|t| Some((t.id, t.tags.genre.clone()?)))
         .collect();
+
+    // §16. The knowledge pack the DJ chose, which until now reached the coach
+    // and nothing else: `families` was parsed, stored, sent to the interface
+    // and acted on by no part of djmanzo. A pack is a narrowing the DJ *said* —
+    // pressing *Latin* is a statement about what tonight is made of — and the
+    // rail is where a statement about what tonight is made of has somewhere to
+    // go.
+    let chosen = state.chosen_pack();
+    let ranked = with_pack(
+        ranked,
+        chosen.as_deref().and_then(dj_assistant::pack::pack),
+        &|id| {
+            genres
+                .get(&id)
+                .and_then(|tag| dj_core::genre::family_for(tag))
+                .map(|family| family.name)
+        },
+    );
+
+    // §12's other half: tonight's profile, when the DJ has named the night.
+    // Read once for the whole rail — it is two queries and a fold, and five
+    // thousand candidates would be ten thousand queries.
+    let profile = tonight_profile(&state, &db);
     let ranked = with_profile(
         ranked.into_iter().map(|s| (s, None)).collect(),
         profile.as_ref(),
@@ -7087,6 +7361,54 @@ fn with_profile(
             .partial_cmp(&a.0.score)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.0.track.cmp(&b.0.track))
+    });
+    out
+}
+
+/// Fold §16's chosen knowledge pack into a ranking, and re-sort.
+///
+/// Separate from the command for the reason the other two folds are: the
+/// command needs an `AppState` and a database, and this is the part with the
+/// decision in it. The decision is the re-sort — a rail that lifted a score
+/// without moving the row would show a higher number further down the list,
+/// which reads as a bug in the ranking rather than as the feature.
+///
+/// `None` for the pack returns the ranking untouched, which is what *no pack
+/// chosen* has to mean: djmanzo's own ranking, with nobody having said what
+/// tonight is made of.
+///
+/// The family lookup is passed in rather than taken from the pool, because
+/// `dj_core::genre::family_for` normalises and walks a table per call and the
+/// caller already holds the genre tags — this way a pack that names no
+/// families still costs one `contains` against an empty slice per row rather
+/// than five thousand table walks.
+fn with_pack(
+    ranked: Vec<dj_library::suggest::Suggestion>,
+    pack: Option<&dj_assistant::pack::Pack>,
+    family_of: &dyn Fn(dj_core::TrackId) -> Option<&'static str>,
+) -> Vec<dj_library::suggest::Suggestion> {
+    let Some(pack) = pack else {
+        return ranked;
+    };
+    let mut out: Vec<_> = ranked
+        .into_iter()
+        .map(|s| {
+            // Empty `families` is *open format* and a real answer: no record is
+            // in the pack's music because the pack has not named any, so none
+            // is credited and the ranking is djmanzo's own. The half/double
+            // rule still applies, because open format has one.
+            let in_family = family_of(s.track).filter(|name| pack.families.contains(name));
+            dj_library::suggest::also_in_pack(s, in_family, pack.half_time)
+        })
+        .collect();
+    // The same tie-break `suggest::rank` uses, so a re-sort here cannot put
+    // two equal candidates in a different order from the one that produced
+    // them.
+    out.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.track.cmp(&b.track))
     });
     out
 }
@@ -7923,6 +8245,12 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
         Reason::PhraseUnknown => "no phrase structure".to_owned(),
         Reason::SameFamily(name) => format!("same family ({name})"),
         Reason::OtherFamily { from, to } => format!("{from} to {to}"),
+        // §16, in the DJ's own terms: they chose the pack, so the chip says
+        // *yours* rather than naming it. Which pack is on screen already, in
+        // the picker they chose it in; what is worth saying beside the row is
+        // that this record is the music they said tonight was made of.
+        Reason::InPack(family) => format!("your pack ({family})"),
+        Reason::HalfTimeUnusual => "half/double is unusual here".to_owned(),
         // §24's answer to "why do I keep seeing these two together?", in the
         // place a DJ asks it: beside the suggestion itself.
         Reason::KeptBefore { times, on_loop } => {
@@ -7988,10 +8316,20 @@ pub(crate) fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> Stri
             Reason::TempoFits { .. }
             | Reason::TempoHalfOrDouble { .. }
             | Reason::TempoFar { .. } => 1,
-            Reason::SameKey(_) | Reason::Harmonic { .. } | Reason::KeyClash { .. } => 2,
-            Reason::Loudness { .. } => 3,
-            Reason::SameFamily(_) | Reason::OtherFamily { .. } => 4,
-            Reason::PhraseKnown { .. } | Reason::PhraseUnknown | Reason::Unanalysed => 5,
+            // Immediately after the tempo it qualifies, and on a rank of its
+            // own rather than sharing the tempo's: "half-time" and the pack's
+            // opinion of half-time are one statement, and a sort that left
+            // their order to whichever was pushed first would print the verdict
+            // before the thing it is a verdict on whenever a caller assembled
+            // the reasons in a different order.
+            Reason::HalfTimeUnusual => 2,
+            Reason::SameKey(_) | Reason::Harmonic { .. } | Reason::KeyClash { .. } => 3,
+            Reason::Loudness { .. } => 4,
+            Reason::SameFamily(_) | Reason::OtherFamily { .. } => 5,
+            // After the family, for the same reason: the family is the fact and
+            // the pack is what the DJ makes of it.
+            Reason::InPack(_) => 6,
+            Reason::PhraseKnown { .. } | Reason::PhraseUnknown | Reason::Unanalysed => 7,
         }
     }
 
@@ -8045,6 +8383,11 @@ pub(crate) fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> Stri
             Reason::PhraseUnknown => Some("no phrase".to_owned()),
             Reason::SameFamily(name) => Some((*name).to_owned()),
             Reason::OtherFamily { to, .. } => Some(format!("\u{2192}{to}")),
+            // The family is already on this line, as `bachata` or `\u{2192}bachata`,
+            // whenever both records name one. Repeating it here would be the
+            // same word twice; what the pack adds is that it is *tonight's*.
+            Reason::InPack(_) => Some("your pack".to_owned()),
+            Reason::HalfTimeUnusual => Some("unusual here".to_owned()),
             Reason::Unanalysed => Some("not analysed".to_owned()),
         })
         .collect::<Vec<_>>()

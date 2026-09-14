@@ -68,6 +68,20 @@ pub struct Pack {
     /// teaching: a learner sent at a flare scratch after two nights stops being
     /// a learner, and a turntablist offered the bass swap stops reading.
     pub ceiling: Difficulty,
+    /// Whether this kind of DJing pairs across half and double time.
+    ///
+    /// §16's *half/double-time relationships*. A 140 record over a 70 one is
+    /// an ordinary move in some rooms and a mistake in others: dembow at 95
+    /// sits under house at 128 by design and a Latin DJ crosses that gap all
+    /// night, while a techno set that jumped to half time would have stopped
+    /// being a techno set. The scorer cannot tell which room it is in and the
+    /// pack the DJ chose can.
+    ///
+    /// False takes the credit back rather than adding a penalty — see
+    /// `dj_library::suggest::also_in_pack` — so a pairing this pack is quiet
+    /// about scores what an unrelated tempo scores, which is what "not part of
+    /// this music" means.
+    pub half_time: bool,
     /// The occasion whose presentation this pairs with, by §81's slug.
     ///
     /// A name rather than a copy: §54's setups own the theme, the density, the
@@ -91,6 +105,11 @@ pub const ALL: [Pack; 8] = [
             Kind::Structure,
         ],
         ceiling: Difficulty::Hard,
+        // §16's half/double-time relationship for this pack.
+        // Everything djmanzo knows, which includes the rooms where a
+        // half-time pairing is ordinary. A pack that emphasises nothing should
+        // not quietly rule something out.
+        half_time: true,
         setting: None,
     },
     Pack {
@@ -102,6 +121,11 @@ pub const ALL: [Pack; 8] = [
         // list half of which is out of reach is a list that gets ignored.
         teaches: &[Kind::Blend, Kind::Exit, Kind::Shape],
         ceiling: Difficulty::First,
+        // §16's half/double-time relationship for this pack.
+        // A first-year DJ pairing 70 against 140 is usually a grid that was
+        // read at the wrong octave rather than a move they meant, and a rail
+        // that encouraged it would be teaching the mistake.
+        half_time: false,
         setting: Some("practice"),
     },
     Pack {
@@ -111,6 +135,10 @@ pub const ALL: [Pack; 8] = [
         families: &[],
         teaches: &[Kind::Blend, Kind::Exit, Kind::Shape, Kind::Structure],
         ceiling: Difficulty::Practised,
+        // §16's half/double-time relationship for this pack.
+        // Crossing is the whole of open format, and the widest crossing there
+        // is is the one between half and double time.
+        half_time: true,
         setting: Some("open-format"),
     },
     Pack {
@@ -120,6 +148,10 @@ pub const ALL: [Pack; 8] = [
         families: &["house", "tech house", "disco", "afro house"],
         teaches: &[Kind::Blend, Kind::Shape, Kind::Structure],
         ceiling: Difficulty::Practised,
+        // §16's half/double-time relationship for this pack.
+        // A house set that jumped to half time has stopped being a house set.
+        // The floor is the four on it.
+        half_time: false,
         setting: Some("club"),
     },
     Pack {
@@ -129,6 +161,9 @@ pub const ALL: [Pack; 8] = [
         families: &["techno", "tech house", "hardstyle", "trance"],
         teaches: &[Kind::Blend, Kind::Shape, Kind::Structure],
         ceiling: Difficulty::Practised,
+        // §16's half/double-time relationship for this pack.
+        // The same, harder: techno is a tempo held for an hour.
+        half_time: false,
         setting: Some("club"),
     },
     Pack {
@@ -138,6 +173,10 @@ pub const ALL: [Pack; 8] = [
         families: &["hip hop", "trap", "r&b", "jersey club"],
         teaches: &[Kind::Exit, Kind::Perform, Kind::Structure],
         ceiling: Difficulty::Hard,
+        // §16's half/double-time relationship for this pack.
+        // Doubling a boom-bap record against a trap one at twice the tempo is
+        // the ordinary way the two sit together.
+        half_time: true,
         setting: None,
     },
     Pack {
@@ -160,6 +199,10 @@ pub const ALL: [Pack; 8] = [
         // mix that lands off one is audibly wrong in a way a house mix is not.
         teaches: &[Kind::Structure, Kind::Exit, Kind::Blend],
         ceiling: Difficulty::Practised,
+        // §16's half/double-time relationship for this pack.
+        // Dembow at 95 under house at 128, and a merengue over a bachata at
+        // double: crossing that gap is what this music does all night.
+        half_time: true,
         setting: Some("latin"),
     },
     Pack {
@@ -169,6 +212,10 @@ pub const ALL: [Pack; 8] = [
         families: &["hip hop", "trap", "footwork"],
         teaches: &[Kind::Perform, Kind::Exit],
         ceiling: Difficulty::Hard,
+        // §16's half/double-time relationship for this pack.
+        // A turntablist works against whatever is on the other deck, and
+        // half-time is one of the places the scratch sits.
+        half_time: true,
         setting: None,
     },
 ];

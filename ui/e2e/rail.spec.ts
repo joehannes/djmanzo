@@ -350,6 +350,83 @@ test.describe("the rail following its deck", () => {
   });
 
   /**
+   * **And again when the DJ says what kind of night this is.**
+   *
+   * §16's knowledge pack reaches the ranking: it prefers the music the night is
+   * made of, and where the pack says this music does not pair across half and
+   * double time it takes back the credit the scorer gave for exactly that. Both
+   * change the order of this rail — and none of it is visible until the rail
+   * asks again, because the rail deliberately does not poll.
+   *
+   * The panel that sets the pack is a different surface from the rail, so this
+   * is the seam: Settings tells the shell what Rust honoured, and the shell
+   * hands it down. `__asked` is emptied **after** Settings is on screen, so the
+   * ask being counted cannot be a remount from opening the panel — and the rail
+   * is checked to be still showing the rows it had, for the same reason.
+   */
+  test("asks again when the DJ chooses a knowledge pack", async ({ page }) => {
+    await railOpen(page);
+    const rows = page.locator('.surface[data-surface="next"] li');
+    await expect(rows.first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(page.locator(".packs")).toBeVisible();
+    await expect(rows.first()).toBeVisible();
+
+    const asked = await watch(page);
+    await page.locator('.packs li[data-pack="techno"]').getByRole("button").click();
+    await expect(
+      page.locator('.packs li[data-pack="techno"]').getByRole("button"),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    await expect
+      .poll(async () => (await asked()).filter((c) => c === "suggest_next").length)
+      .toBeGreaterThan(0);
+    // Still the same rail, not a fresh one: a remount would ask too, and would
+    // mean this test proved nothing about the pack.
+    await expect(rows.first()).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **And putting down a pack that was already chosen when djmanzo started.**
+   *
+   * The other direction, and the one that needs Settings to report the pack on
+   * *load* as well as on every press. A pack survives a restart, so the DJ can
+   * open djmanzo with Techno already chosen; the shell starts empty because
+   * nothing has told it otherwise. Press Techno to put it down and Rust answers
+   * `""` — which is what the shell already had, so a rail watching for change
+   * sees none and keeps offering a techno night to a DJ who has just said
+   * tonight is not one.
+   *
+   * Staged with a fixture that answers `chosen_pack` the way a restart does,
+   * rather than by pressing the pack first: pressing it first would put the
+   * shell's copy in step by the very path this is testing the absence of, and
+   * the test would pass with the load-time report removed. The first draft did
+   * exactly that and survived the mutation.
+   */
+  test("asks again when a pack chosen before start-up is put down", async ({ page }) => {
+    await openShell(page, "/", {}, { chosen_pack: "techno" });
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(page.locator('.surface[data-surface="next"] li').first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const techno = page.locator('.packs li[data-pack="techno"]').getByRole("button");
+    await expect(
+      techno,
+      "the fixture is wrong: the pack was meant to be chosen already",
+    ).toHaveAttribute("aria-pressed", "true");
+
+    const asked = await watch(page);
+    await techno.click();
+    await expect(techno).toHaveAttribute("aria-pressed", "false");
+    await expect
+      .poll(async () => (await asked()).filter((c) => c === "suggest_next").length)
+      .toBeGreaterThan(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * And it does not ask on every snapshot. The prop carrying the decks is a
    * fresh array sixty times a second; an effect reading it directly would
    * re-run at that rate, which is §29's trap — it remounted every knob in the

@@ -921,6 +921,17 @@ this and it still happened, because the failure is one line above a wall of
 passing tests. **Confirm `✓ built` in the mutation run itself**, not only in the
 gate run; a mutation that does not compile has to be rewritten so it does.
 
+**Restoring a mutated Svelte file does not restore the bundle, and the *next*
+test you run is the one that lies.** The other direction of the trap above, and
+it is worse because the failure lands on innocent work: a mutation was applied
+to `Settings.svelte`, the suite was run, the backup was copied back — and
+nothing rebuilt. `dist/` still held the mutated bundle, so the next browser run
+failed a brand-new test that was in fact correct, and the twenty minutes after
+that went into debugging a component that was already right. **Rebuild as part
+of the restore, in the same command as the `cp`**, exactly as the backup itself
+is made in the same command as the mutation. A green run after a restore proves
+nothing unless a `✓ built` sits between them.
+
 **A mutation applied by text substitution can silently fail to apply, and the
 test then passes for the wrong reason.** `cargo fmt` had collapsed a
 `rusqlite::params![…]` call from six lines onto one between the edit that wrote
@@ -1668,11 +1679,41 @@ The largest of them, in the order they are worth doing:
    actually does that kind of night; inventing one from the directive's section
    heading is not.
 
-   Seven of §16's fifteen fields still have no table to select from — energy
-   curves, allowed BPM relationships, suggestion weighting — and the rule that
-   got this section right applies to each: build the table where it belongs
-   first, then let a pack *name* it. A pack that grew its own copy of a curve
-   would be the fifth duplicated table this project has had to remove.
+   **The pack now reaches the ranking, and that was the half that was
+   missing.** `families` was parsed, stored, published to the interface and
+   read by no part of djmanzo — the sixth table found in that state, and the
+   reason to keep asking *who consults this?* of every table you meet.
+   `commands::with_pack` folds it into the Next rail beside §24's kept pairs
+   and §12's profile, and the fold is worth reading before you write the next
+   one: it credits a record in the pack's own families, and where the pack says
+   this music does not pair across half and double time it **takes back** the
+   credit the scorer gave for exactly that rather than adding a penalty. The
+   difference is not pedantry — a penalty would rank a half-time pairing
+   *below* a record with nothing in common, which is a different and wrong
+   claim. Taking the credit back leaves it scoring what an unrelated tempo
+   scores, which is what "not part of this music" means.
+
+   **Adding a third tilt is what made the bound a group problem.** Taste, §81's
+   profile and now the pack are each worth three quarters of a point, each
+   bounded in prose in its own file against the same scale — a same-key match
+   is three, a key clash minus two and a half — and nothing checked what they
+   do when all three point the same way, which is the ordinary case. A Latin DJ
+   at a Latin night with the Latin pack chosen gets every one of them.
+   `taste_the_night_and_the_pack_together_cannot_cross_a_key_relation` holds
+   the sum below that gap, and `Learned::MOST_IT_MAY_MOVE` was made public so
+   the test can read the number instead of restating it. **If you add a fourth
+   tilt, that test is the one to extend**, and it will fail rather than let the
+   rail start promoting key clashes.
+
+   Three of §16's fifteen fields still have no table to select from — energy
+   curves, allowed BPM relationships, transition preferences — and the rule
+   that got this section right applies to each: build the table where it
+   belongs first, then let a pack *name* it. A pack that grew its own copy of a
+   curve would be the fifth duplicated table this project has had to remove.
+   *Transition preferences* in particular was left unowned on purpose rather
+   than threaded through `plan::choose_style`: that function's refusal to blend
+   records that cannot be blended is a rule about the music, and a pack must
+   not be able to override it.
 
 Three older items are open and are not part of the 105:
 

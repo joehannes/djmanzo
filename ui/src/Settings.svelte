@@ -102,6 +102,7 @@
     locked = [],
     onLock,
     onSetUp,
+    onPackChange,
   }: {
     onLogoChange: () => void;
     /**
@@ -124,6 +125,22 @@
      * silently drops what the other just saved.
      */
     onSetUp?: (workspace: string, theme: string) => void;
+    /**
+     * The knowledge pack Rust is actually holding, whenever that changes.
+     *
+     * §16's pack reaches more than this panel: since it reaches the Next rail
+     * it decides what the rail offers, and the rail asks Rust once and then
+     * only when the record it follows changes. Without this the DJ presses
+     * *Latin* and keeps reading a ranking made for a night they have just said
+     * this is not, until a deck happens to move.
+     *
+     * The **honoured** value, sent on load as well as on every press, so the
+     * shell's copy is always what Rust holds rather than what was asked for. A
+     * signal sent only on a press cannot say "the pack was put down again" the
+     * first time, because the shell would have started at the same empty value
+     * it was being told about.
+     */
+    onPackChange?: (pack: string) => void;
     /**
      * How many outputs the open device has, or `null` for none.
      *
@@ -610,6 +627,7 @@
   async function choosePack(id: string) {
     try {
       pack = await setChosenPack(id === pack ? "" : id);
+      onPackChange?.(pack);
       error = null;
     } catch (e) {
       error = String(e);
@@ -662,6 +680,7 @@
         allSetups = nights;
         allPacks = packs;
         pack = chosen;
+        onPackChange?.(chosen);
         levels = axis;
         stand = where;
       })

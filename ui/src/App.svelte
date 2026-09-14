@@ -337,6 +337,23 @@
    * picker where those two do the same thing is a picker nobody presses twice.
    */
   /**
+   * §16's chosen knowledge pack, as the shell's copy of what Rust holds.
+   *
+   * Here rather than in the panel that sets it because two surfaces need it and
+   * neither owns it: Settings is where a DJ presses it, and the Next rail is
+   * where it changes what they are offered. The rail asks Rust once and then
+   * only when the record it follows changes, so without a value it can watch,
+   * pressing *Latin* leaves a ranking made for another night on screen until a
+   * deck happens to move.
+   *
+   * Empty until Settings has been opened at least once, and that is honest
+   * rather than a gap: the rail's first question already carried whatever Rust
+   * had stored, and what this exists to catch is the pack *changing* under a
+   * rail that has already asked.
+   */
+  let chosenPack = $state("");
+
+  /**
    * §54's half of a functional preset that the shell owns.
    *
    * The arrangement and the theme, and nothing else: Rust has already set the
@@ -2146,7 +2163,7 @@
   {/snippet}
 
   {#snippet surfaceNext()}
-    <Next enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
+    <Next enabled={ready} {deckCount} decks={snapshot?.decks ?? []} pack={chosenPack} />
   {/snippet}
 
   {#snippet surfacePlan()}
@@ -2240,6 +2257,7 @@
       locked={workspace?.locked ?? []}
       onLock={saveLocks}
       onSetUp={setUpForTonight}
+      onPackChange={(id) => (chosenPack = id)}
     />
   {/snippet}
   {#snippet surfaceLog()}

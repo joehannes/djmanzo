@@ -157,6 +157,24 @@ pub enum Reason {
     /// DJ kept the pair, with it, what they kept it *on*. It carries no weight
     /// of its own — a keep is a keep — it tells the DJ how to repeat it.
     KeptBefore { times: u32, on_loop: Option<f64> },
+    /// The candidate is in a family the chosen knowledge pack turns on.
+    ///
+    /// §16's *genre relationships* and *suggestion weighting*, at the one place
+    /// suggestions are made. A pack is a **narrowing the DJ chose** — pressing
+    /// *Bachata* is saying what tonight is made of — so it is a stronger
+    /// statement than anything djmanzo worked out, and it is still bounded at
+    /// the same place everything else is: it reorders records that would all
+    /// work and cannot lift one that would not.
+    InPack(&'static str),
+    /// The pack says this music does not pair across half and double time.
+    ///
+    /// §16's *half/double-time relationships*. A 140 record over a 70 one is an
+    /// ordinary move in some rooms and a mistake in others, and the scorer
+    /// cannot tell which room it is in — the chosen pack can. It takes back the
+    /// credit the scorer gave rather than adding a penalty of its own, so a
+    /// pairing the pack is quiet about scores exactly what an unrelated tempo
+    /// scores, which is what "not part of this music" means.
+    HalfTimeUnusual,
     /// Both records name a genre and they are the same family.
     SameFamily(&'static str),
     /// Both name a genre and the families differ.
@@ -212,6 +230,19 @@ impl Reason {
             // to notice, and one who wants the pair again has it near the top
             // rather than pinned to it.
             Self::KeptBefore { times, .. } => f64::from(times).min(3.0),
+            // Three quarters of a point, the same bound taste and §81's
+            // profile get and quoted from the same scale: a same-key match is
+            // worth three and a key clash minus two and a half. A pack can
+            // therefore prefer the bachata among two records that both mix and
+            // can never promote one that does not. **A narrowing is not an
+            // override**: a DJ who chose a pack and then reached outside it is
+            // doing something deliberate, and a rail that had buried the rest
+            // of the library would be arguing with them.
+            Self::InPack(_) => 0.75,
+            // Nothing of its own: it is the *removal* of a credit, and the
+            // removal happens in `also_in_pack` where the credit can be seen.
+            // A weight here as well would take it away twice.
+            Self::HalfTimeUnusual => 0.0,
             // Both zero on purpose; see `OtherFamily`.
             Self::SameFamily(_) | Self::OtherFamily { .. } => 0.0,
             Self::Unanalysed => -10.0,
@@ -279,6 +310,47 @@ pub fn also_kept_before(
     let reason = Reason::KeptBefore { times, on_loop };
     suggestion.score += reason.weight();
     suggestion.reasons.push(reason);
+    suggestion
+}
+
+/// §16: what the chosen knowledge pack makes of a candidate.
+///
+/// Separate from [`score`] for the same reason [`also_kept_before`] is: the
+/// scorer is a pure function over two records, and a pack is a thing the DJ
+/// chose that lives three crates away. Booleans rather than the pack itself,
+/// so `dj-library` stays unaware that knowledge packs exist at all.
+///
+/// `in_family` is whether this record is in one of the families the pack turns
+/// on — false for every record when the pack names none, which is what *open
+/// format* means and is a real answer rather than a missing one.
+///
+/// `half_time` is whether this kind of DJing pairs across half and double
+/// time. When it does not, the credit the scorer gave for such a pairing is
+/// **taken back and said**, rather than a penalty being added: the result is
+/// that the pairing scores what an unrelated tempo scores, which is exactly
+/// what "not part of this music" means, and the rail says why rather than
+/// quietly ranking it lower.
+#[must_use]
+pub fn also_in_pack(
+    mut suggestion: Suggestion,
+    in_family: Option<&'static str>,
+    half_time: bool,
+) -> Suggestion {
+    if let Some(family) = in_family {
+        let reason = Reason::InPack(family);
+        suggestion.score += reason.weight();
+        suggestion.reasons.push(reason);
+    }
+    if !half_time
+        && let Some(given) = suggestion
+            .reasons
+            .iter()
+            .find(|r| matches!(r, Reason::TempoHalfOrDouble { .. }))
+            .copied()
+    {
+        suggestion.score -= given.weight();
+        suggestion.reasons.push(Reason::HalfTimeUnusual);
+    }
     suggestion
 }
 
@@ -916,6 +988,106 @@ mod tests {
             times: 2,
             on_loop: None
         }));
+    }
+
+    /// **The chosen pack reorders records that would all work.**
+    ///
+    /// §16's *suggestion weighting*, and the bound on it. A pack is worth three
+    /// quarters of a point — the same as taste and §81's profile, quoted from
+    /// the same scale a key match is worth three on — so it can lift the
+    /// bachata above the house record when both mix, and cannot lift a key
+    /// clash above either. A pack that overrode the music would be a filter
+    /// wearing a ranking's clothes.
+    #[test]
+    fn a_pack_prefers_its_own_music_without_promoting_music_that_does_not_work() {
+        let fits = track(2, Some(128.0), Some(key(8, Mode::Minor)), Some(-8.0));
+        let clashes = track(3, Some(128.0), Some(key(1, Mode::Major)), Some(-8.0));
+
+        let fitting = score(&playing(), Trajectory::Hold, &fits);
+        let clashing = score(&playing(), Trajectory::Hold, &clashes);
+        assert!(
+            clashing.score < fitting.score,
+            "the fixture is wrong: the clash was meant to score below the match"
+        );
+
+        let outside = also_in_pack(fitting.clone(), None, true);
+        assert_eq!(outside, fitting, "a record outside the pack was moved");
+
+        let inside = also_in_pack(fitting.clone(), Some("bachata"), true);
+        assert!(inside.score > fitting.score);
+        assert!(inside.reasons.contains(&Reason::InPack("bachata")));
+
+        // The bound, stated as the thing that must stay true: the pack can
+        // reorder two records that both work and cannot rescue one that does
+        // not.
+        let rescued = also_in_pack(clashing, Some("bachata"), true);
+        assert!(
+            rescued.score < fitting.score,
+            "a pack promoted a key clash above a key match: {} against {}",
+            rescued.score,
+            fitting.score
+        );
+    }
+
+    /// **A pack that does not pair across half time takes the credit back, and
+    /// says so.**
+    ///
+    /// §16's *half/double-time relationships*. A house set that jumped to half
+    /// time has stopped being a house set, and the scorer cannot tell which
+    /// room it is in. Taking the credit back rather than adding a penalty is
+    /// the whole design: the pairing then scores exactly what an unrelated
+    /// tempo scores, which is what "not part of this music" means. A penalty
+    /// would rank it *below* a record with nothing in common, which is a
+    /// different and wrong claim.
+    #[test]
+    fn a_pack_without_half_time_scores_it_as_an_unrelated_tempo_rather_than_worse() {
+        // 64 against 128: half time, and the scorer credits it.
+        let halved = track(4, Some(64.0), Some(key(8, Mode::Minor)), Some(-8.0));
+        let scored = score(&playing(), Trajectory::Hold, &halved);
+        assert!(
+            scored
+                .reasons
+                .iter()
+                .any(|r| matches!(r, Reason::TempoHalfOrDouble { .. })),
+            "the fixture is wrong: 64 against 128 was meant to be half time"
+        );
+
+        let kept = also_in_pack(scored.clone(), None, true);
+        assert_eq!(kept, scored, "a pack that pairs across half time moved it");
+
+        let taken = also_in_pack(scored.clone(), None, false);
+        assert!(taken.reasons.contains(&Reason::HalfTimeUnusual));
+        assert!(
+            (taken.score
+                - (scored.score
+                    - Reason::TempoHalfOrDouble {
+                        from: 128.0,
+                        to: 64.0
+                    }
+                    .weight()))
+            .abs()
+                < f64::EPSILON,
+            "the credit was not taken back exactly: {} against {}",
+            taken.score,
+            scored.score
+        );
+
+        // And it is the *credit* that goes, not a penalty on top: an unrelated
+        // tempo, which the scorer gave nothing for, is left where it was.
+        let far = track(5, Some(101.0), Some(key(8, Mode::Minor)), Some(-8.0));
+        let unrelated = score(&playing(), Trajectory::Hold, &far);
+        assert!(
+            unrelated
+                .reasons
+                .iter()
+                .any(|r| matches!(r, Reason::TempoFar { .. })),
+            "the fixture is wrong: 101 against 128 was meant to be a stretch"
+        );
+        assert_eq!(
+            also_in_pack(unrelated.clone(), None, false),
+            unrelated,
+            "a pack without half time penalised a tempo that was not one"
+        );
     }
 
     /// **The loop qualifies the keep; it does not strengthen it.**

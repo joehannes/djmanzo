@@ -50,11 +50,22 @@
     enabled,
     deckCount = 2,
     decks = [],
+    pack = "",
   }: {
     enabled: boolean;
     deckCount?: number;
     /** Live deck state, so the rail can follow whatever is actually playing. */
     decks?: DeckState[];
+    /**
+     * §16's chosen knowledge pack, as the shell holds it.
+     *
+     * Not read here for anything but *change*: what a pack does to the ranking
+     * is Rust's, in `with_pack`, and a rail that re-derived any of it would be
+     * §16's own "do not hard-code this logic into UI components" in the one
+     * component it most obviously applies to. This is the second of the two
+     * inputs the answer depends on, beside the record being followed.
+     */
+    pack?: string;
   } = $props();
 
   const deckNumbers = $derived(Array.from({ length: deckCount }, (_, i) => i + 1));
@@ -185,6 +196,33 @@
     const now = following;
     if (!enabled || !asked || now === followed) return;
     followed = now;
+    void refresh();
+  });
+
+  /**
+   * **And ask again when the DJ says what kind of night this is.**
+   *
+   * §16's pack is the other input the ranking depends on: it prefers the music
+   * the night is made of and, where the pack says this music does not pair
+   * across half and double time, takes back the credit the scorer gave for
+   * exactly that. Both of those change the order of this rail, and none of it
+   * is visible until the rail asks again.
+   *
+   * Same shape as the deck effect above, and for the same two reasons: a mirror
+   * rather than a comparison against the prop, so the first render does not
+   * count as a change and fetch twice; and `asked` in the guard, so a pack that
+   * arrives before the rail is enabled does not race the first question.
+   */
+  let packed = $state<string | null>(null);
+  $effect(() => {
+    const now = pack;
+    if (!enabled || !asked) return;
+    if (packed === null) {
+      packed = now;
+      return;
+    }
+    if (now === packed) return;
+    packed = now;
     void refresh();
   });
 

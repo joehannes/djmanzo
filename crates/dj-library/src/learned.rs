@@ -120,7 +120,14 @@ impl Learned {
     /// would have to cross is more than seven times this.
     ///
     /// Taste breaks ties. It does not overrule the mixing.
-    const MOST_IT_MAY_MOVE: f64 = 0.75;
+    ///
+    /// Public because it is no longer the only tilt: §81's profile and §16's
+    /// knowledge pack are quoted from this same scale and are **added on top**
+    /// of it, so the bound that matters is the one on all three together and
+    /// the place that checks it has to be able to see this number. A sentence
+    /// in three doc comments saying "three quarters" is three descriptions of
+    /// one decision, and the copies are what go stale.
+    pub const MOST_IT_MAY_MOVE: f64 = 0.75;
 
     /// How much this track's family should move its score, up or down.
     ///
