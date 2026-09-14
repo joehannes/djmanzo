@@ -43,7 +43,14 @@ use std::collections::BTreeMap;
 /// and most do -- still has last summer counted, and short enough that a phase
 /// two years ago has faded to a sixteenth. Ninety days would erase a whole
 /// season every time one turned over.
-const HALF_LIFE_DAYS: f64 = 180.0;
+///
+/// Public because taste is no longer the only thing djmanzo lets fade: §12
+/// asks for decay across everything it learns, and §81's per-night profile now
+/// weights its evidence by the same curve. One number and one function, quoted
+/// from here, rather than two half-lives that drift apart -- a DJ whose taste
+/// had half-forgotten last spring while their profile still counted it in full
+/// would be djmanzo disagreeing with itself about how long ago that was.
+pub const HALF_LIFE_DAYS: f64 = 180.0;
 
 /// The fewest plays worth drawing a conclusion from.
 ///
@@ -173,8 +180,14 @@ impl Learned {
     }
 }
 
-/// How much a play that happened `at` still counts, at `now`.
-fn recency(at: i64, now: i64) -> f64 {
+/// How much something that happened `at` still counts, at `now`.
+///
+/// Both are unix seconds. Public for the reason [`HALF_LIFE_DAYS`] is: §81's
+/// profile fades its nights on this curve, and a second implementation of one
+/// exponential is a second place for the clock-skew guard below to be
+/// forgotten.
+#[must_use]
+pub fn recency(at: i64, now: i64) -> f64 {
     // A play stamped in the future -- a clock that ran fast, an imported
     // history -- counts as fully current rather than more than current.
     let days = ((now - at).max(0) as f64) / 86_400.0;

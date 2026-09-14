@@ -256,7 +256,11 @@ impl Profile {
 /// not an empty profile, which an interface would draw as a profile that knows
 /// nothing rather than as one that does not exist yet.
 #[must_use]
-pub fn profiles(nights: &[Night], genres: &dyn Fn(Setting) -> Vec<(String, u32)>) -> Vec<Profile> {
+pub fn profiles(
+    nights: &[Night],
+    genres: &dyn Fn(Setting) -> Vec<(String, u32)>,
+    now: i64,
+) -> Vec<Profile> {
     let mut per_setting: BTreeMap<Setting, Vec<&Night>> = BTreeMap::new();
     for night in nights {
         // A stored setting nobody recognises is skipped rather than folded
@@ -272,44 +276,86 @@ pub fn profiles(nights: &[Night], genres: &dyn Fn(Setting) -> Vec<(String, u32)>
         .map(|(setting, seen)| Profile {
             setting,
             nights: seen.len(),
-            density: agreed(seen.iter().map(|n| n.density.clone())),
-            style: agreed(seen.iter().map(|n| n.style.clone()))
+            density: agreed(seen.iter().map(|n| (n.density.clone(), weight(n, now)))),
+            style: agreed(seen.iter().map(|n| (n.style.clone(), weight(n, now))))
                 .and_then(|word| TransitionStyle::parse(&word)),
-            automation: agreed(seen.iter().map(|n| n.posture.clone()))
+            automation: agreed(seen.iter().map(|n| (n.posture.clone(), weight(n, now))))
                 .and_then(|word| Posture::ALL.into_iter().find(|p| p.name() == word)),
-            techniques: usual(&seen),
+            techniques: usual(&seen, now),
             genres: shares(genres(setting)),
         })
         .collect()
 }
 
-/// The commonest answer, if enough of those who answered agree.
+/// The wall clock, as unix seconds.
+///
+/// Here rather than taken from the caller at every site, and passed *in* to
+/// [`profiles`] rather than read there: a profile built from six nights has to
+/// judge all six against one instant, and a function that read the clock per
+/// night would fade the first of them slightly more than the last for no
+/// reason anybody could explain. It also lets a test run a two-year-old night
+/// in a millisecond.
+#[must_use]
+pub fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+        })
+}
+
+/// How much a night still counts, at `now`.
+///
+/// §12's *decay*, on `dj_library::learned`'s own curve rather than a second
+/// one: a night is halved every hundred and eighty days, so last month
+/// outweighs last year without a cliff-edge where an evening stops mattering
+/// overnight.
+///
+/// **It never reaches nought.** A DJ's oldest night still counts for
+/// something, which is why decay changes an answer only where old evidence and
+/// new evidence *disagree* — and that is exactly the case §12 asks for. A
+/// profile built entirely from old nights keeps saying what it said, because
+/// nothing has come along to say otherwise, and that is right: djmanzo has no
+/// newer evidence, not contrary evidence.
+fn weight(night: &Night, now: i64) -> f64 {
+    dj_library::learned::recency(night.began_at, now)
+}
+
+/// The commonest answer, if enough of the evidence that answered agrees.
 ///
 /// Counted over the nights that said *something*, not over all of them: a
 /// night with no transitions has no opinion about transition style, and
 /// counting it as a vote against would make a habit disappear as soon as the
 /// DJ had a quiet evening.
-fn agreed(values: impl Iterator<Item = Option<String>>) -> Option<String> {
-    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-    let mut answered = 0;
-    for value in values.flatten() {
+///
+/// **Weighted rather than counted**, which is §12's decay: six nights of
+/// looping two years ago no longer outvote four nights of not looping last
+/// month. The share is still a share — weight of the winner over weight of
+/// everything that answered — so [`AGREE`] means the same thing it always did,
+/// and a profile whose evidence is all equally old behaves exactly as it did
+/// before this existed.
+fn agreed(values: impl Iterator<Item = (Option<String>, f64)>) -> Option<String> {
+    let mut counts: BTreeMap<String, f64> = BTreeMap::new();
+    let mut answered = 0.0;
+    for (value, weight) in values {
+        let Some(value) = value else { continue };
         if value.is_empty() {
             continue;
         }
-        answered += 1;
-        *counts.entry(value).or_default() += 1;
+        answered += weight;
+        *counts.entry(value).or_default() += weight;
     }
-    if answered == 0 {
+    if answered <= 0.0 {
         return None;
     }
     // Ties break by the name, which is arbitrary and stable — an answer that
     // changed each time it was asked would be worse than either.
-    let (best, count) = counts
-        .into_iter()
-        .max_by_key(|(name, n)| (*n, name.clone()))?;
-    #[allow(clippy::cast_precision_loss)]
-    let share = count as f64 / answered as f64;
-    (share >= AGREE).then_some(best)
+    let (best, count) = counts.into_iter().max_by(|a, b| {
+        a.1.partial_cmp(&b.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    })?;
+    (count / answered >= AGREE).then_some(best)
 }
 
 /// The gestures that turn up on most of the nights.
@@ -317,9 +363,15 @@ fn agreed(values: impl Iterator<Item = Option<String>>) -> Option<String> {
 /// Per *night*, not per occurrence: a DJ who looped forty times in one evening
 /// and never again has done a thing once, and counting the forty would make it
 /// their signature.
-fn usual(nights: &[&Night]) -> Vec<Did> {
-    let mut counts: BTreeMap<Did, usize> = BTreeMap::new();
+fn usual(nights: &[&Night], now: i64) -> Vec<Did> {
+    let mut counts: BTreeMap<Did, f64> = BTreeMap::new();
+    let mut lived = 0.0;
     for night in nights {
+        // §12's decay: an old night still votes, and votes for less. Counted
+        // into the floor whether or not it named a gesture, because a night
+        // that named none is a night this DJ did not do the thing.
+        let weight = weight(night, now);
+        lived += weight;
         let Some(list) = night.techniques.as_deref() else {
             continue;
         };
@@ -328,16 +380,16 @@ fn usual(nights: &[&Night]) -> Vec<Did> {
         seen.sort_by_key(|d| d.slug());
         seen.dedup();
         for did in seen {
-            *counts.entry(did).or_default() += 1;
+            *counts.entry(did).or_default() += weight;
         }
     }
-    #[allow(clippy::cast_precision_loss)]
-    let floor = (nights.len() as f64 * AGREE).ceil() as usize;
-    let mut out: Vec<(Did, usize)> = counts
-        .into_iter()
-        .filter(|(_, n)| *n >= floor.max(1))
-        .collect();
-    out.sort_by_key(|(did, n)| (std::cmp::Reverse(*n), did.slug()));
+    let floor = lived * AGREE;
+    let mut out: Vec<(Did, f64)> = counts.into_iter().filter(|(_, n)| *n >= floor).collect();
+    out.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.slug().cmp(b.0.slug()))
+    });
     out.into_iter().map(|(did, _)| did).collect()
 }
 
@@ -506,6 +558,14 @@ fn rank(posture: Posture) -> usize {
 mod tests {
     use super::*;
 
+    /// The instant every fixture night is judged against.
+    ///
+    /// Zero, which is also every fixture's `began_at`, so each night weighs
+    /// exactly one and §12's decay is a no-op: every assertion below measures
+    /// what it measured before decay existed. The tests that are *about* decay
+    /// set an age deliberately, which is the only way to tell the two apart.
+    const NOW: i64 = 0;
+
     fn night(id: &str, setting: &str) -> Night {
         Night {
             session_id: id.to_owned(),
@@ -535,7 +595,7 @@ mod tests {
             .map(|(name, n)| ((*name).to_owned(), *n))
             .collect();
         let genres = |_: Setting| counted.clone();
-        profiles(&nights(setting, ENOUGH_NIGHTS), &genres)
+        profiles(&nights(setting, ENOUGH_NIGHTS), &genres, NOW)
             .into_iter()
             .next()
             .expect("enough nights for a profile")
@@ -548,7 +608,7 @@ mod tests {
             night.density = Some(density.to_owned());
             night.posture = Some(posture.name().to_owned());
         }
-        profiles(&seen, &nothing)
+        profiles(&seen, &nothing, NOW)
             .into_iter()
             .next()
             .expect("enough nights for a profile")
@@ -668,7 +728,7 @@ mod tests {
             night.density = Some("Ultra Dense".to_owned());
             night.posture = Some(posture.name().to_owned());
         }
-        let profile = profiles(&seen, &nothing)
+        let profile = profiles(&seen, &nothing, NOW)
             .into_iter()
             .next()
             .expect("enough nights");
@@ -841,7 +901,7 @@ mod tests {
             Setting::Club => vec![("Techno".to_owned(), 10)],
             _ => Vec::new(),
         };
-        let built = profiles(&rows, &genres);
+        let built = profiles(&rows, &genres, NOW);
 
         assert_eq!(built.len(), 2, "two settings collapsed into {built:#?}");
         let wedding = built
@@ -880,11 +940,11 @@ mod tests {
         // is not a habit and neither is two.**
         for count in [0, 1, 2] {
             assert!(
-                profiles(&nights("beach", count), &nothing).is_empty(),
+                profiles(&nights("beach", count), &nothing, NOW).is_empty(),
                 "{count} night(s) was enough to generalise about a whole setting"
             );
         }
-        assert_eq!(profiles(&nights("beach", 3), &nothing).len(), 1);
+        assert_eq!(profiles(&nights("beach", 3), &nothing, NOW).len(), 1);
         assert_eq!(
             ENOUGH_NIGHTS, 3,
             "the threshold moved; the three cases above are the claim"
@@ -903,12 +963,12 @@ mod tests {
         rows[2].style = Some("cut".to_owned());
         rows[3].style = Some("fade".to_owned());
         rows[4].style = Some("echo".to_owned());
-        assert_eq!(profiles(&rows, &nothing)[0].style(), None);
+        assert_eq!(profiles(&rows, &nothing, NOW)[0].style(), None);
 
         // Three of five agreeing is enough.
         rows[3].style = Some("blend".to_owned());
         assert_eq!(
-            profiles(&rows, &nothing)[0].style(),
+            profiles(&rows, &nothing, NOW)[0].style(),
             Some(TransitionStyle::Blend)
         );
     }
@@ -925,7 +985,7 @@ mod tests {
         rows[1].style = Some("blend".to_owned());
         // rows[2] and rows[3] said nothing at all.
         assert_eq!(
-            profiles(&rows, &nothing)[0].style(),
+            profiles(&rows, &nothing, NOW)[0].style(),
             Some(TransitionStyle::Blend),
             "two silent nights outvoted two that spoke"
         );
@@ -943,7 +1003,7 @@ mod tests {
         rows[2].techniques = Some("eq-moved".to_owned());
         rows[3].techniques = Some("eq-moved".to_owned());
 
-        let built = profiles(&rows, &nothing);
+        let built = profiles(&rows, &nothing, NOW);
         assert_eq!(
             built[0].techniques(),
             &[Did::EqMoved],
@@ -957,7 +1017,7 @@ mod tests {
     fn a_night_of_an_unknown_setting_joins_nothing() {
         let mut rows = nights("bar-mitzvah", 5);
         rows.extend(nights("club", 3));
-        let built = profiles(&rows, &nothing);
+        let built = profiles(&rows, &nothing, NOW);
         assert_eq!(built.len(), 1);
         assert_eq!(built[0].setting(), Setting::Club);
         assert_eq!(built[0].nights(), 3, "unknown nights were counted as club");
@@ -976,7 +1036,7 @@ mod tests {
             row.style = Some("fade".to_owned());
             row.posture = Some("prepare".to_owned());
         }
-        let said = profiles(&rows, &|_| vec![("Bachata".to_owned(), 4)])[0].words();
+        let said = profiles(&rows, &|_| vec![("Bachata".to_owned(), 4)], NOW)[0].words();
         assert!(said.contains("Wedding"), "{said}");
         assert!(said.contains("3 nights"), "{said}");
         assert!(said.contains("fade"), "{said}");
@@ -988,7 +1048,7 @@ mod tests {
     /// leaving a sentence that reads as though it had.
     #[test]
     fn it_admits_when_it_cannot_say_how_you_mix() {
-        let said = profiles(&nights("practice", 3), &nothing)[0].words();
+        let said = profiles(&nights("practice", 3), &nothing, NOW)[0].words();
         assert!(said.contains("too varied"), "{said}");
         assert!(said.contains("Practice"), "{said}");
     }
@@ -997,11 +1057,183 @@ mod tests {
     #[test]
     fn genre_weights_are_shares_of_what_was_played() {
         let genres = |_| vec![("Bachata".to_owned(), 3), ("Salsa".to_owned(), 1)];
-        let built = profiles(&nights("latin", 3), &genres);
+        let built = profiles(&nights("latin", 3), &genres, NOW);
         let shares = built[0].genres();
         assert_eq!(shares[0], ("Bachata".to_owned(), 0.75));
         assert_eq!(shares[1], ("Salsa".to_owned(), 0.25));
         let total: f64 = shares.iter().map(|(_, s)| s).sum();
         assert!((total - 1.0).abs() < 1e-9);
+    }
+
+    /// A day, in seconds. The unit `Night::began_at` is in.
+    const DAY: i64 = 86_400;
+
+    /// **The load-bearing one: what a DJ does now outvotes what they used to
+    /// do.**
+    ///
+    /// §12 asks for decay and this row said it was missing. The failure it
+    /// prevents is a specific and quietly insulting one: a DJ who spent a
+    /// season fading and has cut every night since is still told "you mostly
+    /// fade", and the planner is still handed `Fade` — for as long as the old
+    /// season is one night more numerous than the new one.
+    ///
+    /// Four old nights against three new ones. Unweighted, the old habit wins
+    /// on the count. Weighted on `learned`'s own hundred-and-eighty-day curve,
+    /// the four have faded to well under the three.
+    #[test]
+    fn the_recent_nights_outvote_the_old_ones_even_when_there_are_fewer() {
+        let now = 800 * DAY;
+        let mut rows = Vec::new();
+        for n in 0..4 {
+            let mut old = night(&format!("old-{n}"), "wedding");
+            old.began_at = 30 * DAY;
+            old.style = Some("fade".to_owned());
+            rows.push(old);
+        }
+        for n in 0..3 {
+            let mut recent = night(&format!("new-{n}"), "wedding");
+            recent.began_at = now - 20 * DAY;
+            recent.style = Some("cut".to_owned());
+            rows.push(recent);
+        }
+
+        // The fixture is only interesting if the old habit would otherwise win.
+        let counted = profiles(&rows, &nothing, NOW);
+        assert_eq!(
+            counted[0].style(),
+            Some(TransitionStyle::Fade),
+            "the fixture is wrong: judged all at one age, the old habit must win"
+        );
+
+        let faded = profiles(&rows, &nothing, now);
+        assert_eq!(
+            faded[0].style(),
+            Some(TransitionStyle::Cut),
+            "two years of silence still outvoted the last three weeks"
+        );
+        // And the count of nights is untouched: how much evidence there is is a
+        // fact, and fading it would make djmanzo understate its own history.
+        assert_eq!(faded[0].nights(), 7);
+    }
+
+    /// **Old evidence with nothing to disagree with it still counts.**
+    ///
+    /// The half that keeps decay honest. `recency` never reaches nought, so a
+    /// DJ who has not worked since last year is told what they used to do
+    /// rather than told nothing — djmanzo has no *newer* evidence, which is a
+    /// different thing from having contrary evidence, and a profile that went
+    /// silent with age would be the machine forgetting somebody who had simply
+    /// been away.
+    #[test]
+    fn a_profile_of_only_old_nights_still_says_what_it_saw() {
+        let now = 900 * DAY;
+        let rows: Vec<Night> = (0..3)
+            .map(|n| {
+                let mut old = night(&format!("old-{n}"), "wedding");
+                old.began_at = 10 * DAY;
+                old.style = Some("fade".to_owned());
+                old.techniques = Some("looped".to_owned());
+                old
+            })
+            .collect();
+
+        let faded = profiles(&rows, &nothing, now);
+        assert_eq!(faded[0].style(), Some(TransitionStyle::Fade));
+        assert_eq!(faded[0].techniques(), [Did::Looped]);
+    }
+
+    /// **A gesture stopped is a gesture forgotten, and a night that named none
+    /// is a vote against.**
+    ///
+    /// §14's gestures on the same curve. The second half is the subtle one and
+    /// it predates decay: the floor counts *every* night, not only the ones
+    /// that named something, because a night with no loops in it is evidence
+    /// that this DJ does not always loop.
+    #[test]
+    fn a_habit_given_up_fades_out_of_the_profile() {
+        let now = 700 * DAY;
+        let mut rows = Vec::new();
+        for n in 0..4 {
+            let mut old = night(&format!("old-{n}"), "club");
+            old.began_at = 20 * DAY;
+            old.techniques = Some("looped".to_owned());
+            rows.push(old);
+        }
+        for n in 0..3 {
+            let mut recent = night(&format!("new-{n}"), "club");
+            recent.began_at = now - 15 * DAY;
+            recent.techniques = Some("eq-moved".to_owned());
+            rows.push(recent);
+        }
+
+        let counted = profiles(&rows, &nothing, NOW);
+        assert!(
+            counted[0].techniques().contains(&Did::Looped),
+            "the fixture is wrong: judged all at one age, looping must still be in"
+        );
+
+        let faded = profiles(&rows, &nothing, now);
+        assert!(
+            !faded[0].techniques().contains(&Did::Looped),
+            "a habit given up two years ago is still being called a signature"
+        );
+        assert!(faded[0].techniques().contains(&Did::EqMoved));
+    }
+
+    /// **A quiet night is a vote, not an abstention — for gestures.**
+    ///
+    /// This predates decay and nothing was holding it: the floor `usual` uses
+    /// counts *every* night, including the ones that named no gesture at all,
+    /// because an evening with no loops in it is evidence that this DJ does not
+    /// always loop. Counting only the nights that spoke would make any gesture
+    /// done twice ever into a signature, as long as the DJ was quiet the rest
+    /// of the time.
+    ///
+    /// It is deliberately the opposite of [`agreed`], which counts only the
+    /// nights that answered — and the difference is real rather than an
+    /// inconsistency. A night with no transitions has no *opinion* about
+    /// transition style; a night with no loops has demonstrated not looping.
+    #[test]
+    fn a_night_that_named_no_gesture_still_counts_against_one() {
+        let mut rows: Vec<Night> = (0..5).map(|n| night(&format!("n-{n}"), "club")).collect();
+        rows[0].techniques = Some("looped".to_owned());
+        rows[1].techniques = Some("looped".to_owned());
+
+        let built = profiles(&rows, &nothing, NOW);
+        assert!(
+            !built[0].techniques().contains(&Did::Looped),
+            "two loud nights out of five became a signature because the other \
+             three said nothing"
+        );
+
+        // And three out of five clears it, which is what makes the floor a
+        // floor rather than a refusal.
+        rows[2].techniques = Some("looped".to_owned());
+        let built = profiles(&rows, &nothing, NOW);
+        assert!(built[0].techniques().contains(&Did::Looped));
+    }
+
+    /// **One curve, not two.**
+    ///
+    /// The profile fades on `dj_library::learned`'s own half-life. Two
+    /// half-lives that drifted apart would be djmanzo disagreeing with itself
+    /// about how long ago last spring was — the taste tilt half-forgetting it
+    /// while the profile still counted it in full.
+    #[test]
+    fn a_night_fades_on_the_same_curve_a_play_does() {
+        let now = 400 * DAY;
+        let mut half_a_life_ago = night("a", "club");
+        half_a_life_ago.began_at = now - (dj_library::learned::HALF_LIFE_DAYS as i64) * DAY;
+        assert!(
+            (weight(&half_a_life_ago, now) - 0.5).abs() < 1e-6,
+            "a night one half-life old does not weigh a half"
+        );
+
+        // And a night stamped in the future counts as current rather than as
+        // more than current, which is `learned`'s own guard against a clock
+        // that ran fast.
+        let mut ahead = night("b", "club");
+        ahead.began_at = now + 90 * DAY;
+        assert!((weight(&ahead, now) - 1.0).abs() < 1e-6);
     }
 }

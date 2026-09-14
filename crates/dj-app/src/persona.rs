@@ -336,7 +336,7 @@ mod tests {
                 })
             })
             .collect();
-        crate::profile::profiles(&nights, &|_| Vec::new())
+        crate::profile::profiles(&nights, &|_| Vec::new(), 0)
     }
 
     /// **The load-bearing one: a rejected claim is neither raised again nor

@@ -921,6 +921,29 @@ this and it still happened, because the failure is one line above a wall of
 passing tests. **Confirm `✓ built` in the mutation run itself**, not only in the
 gate run; a mutation that does not compile has to be rewritten so it does.
 
+**"It has no older evidence yet" was the fifth stale reason, and the pattern
+is now unmistakable.** §12's and §14's rows both said decay had to wait until
+sessions were read back across nights. What was true is that the *action log*
+does not outlive its run; what was false is the conclusion, because the
+gestures that generalised are written to the `nights` table at the end of
+every night and `Profile::techniques` has been reading them the whole time.
+The real gap was one line of arithmetic: `profile::profiles` counted nights
+and never looked at `began_at`.
+
+Five of these now (§29's AI hover, five of §40's seven absences, §17's
+"cannot be inferred", §81's "nothing consults one", and this). **The check is
+cheap and should be automatic: when a row says something is missing, grep for
+the thing it says is missing before believing the sentence.** Twice now the
+data was already there and only the consuming arithmetic was absent.
+
+**One curve, quoted once.** `learned::HALF_LIFE_DAYS` and `learned::recency`
+are public so §81's profile fades on exactly what taste fades on. If a third
+thing learns, quote them again rather than picking a number: two half-lives
+that drift apart are djmanzo disagreeing with itself about how long ago last
+spring was. And decay **never reaches nought** on purpose — it changes an
+answer only where old and new evidence disagree, so a DJ who has been away is
+told what they used to do rather than told nothing.
+
 **A Playwright text assertion passes against an element nobody can see.**
 `toContainText` reads `textContent`, and `textContent` is perfectly happy on a
 node with `hidden` on it. A test asserting that the coach *says* why it is
