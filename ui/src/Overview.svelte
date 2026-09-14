@@ -57,6 +57,15 @@
       to: number;
       /** Where the candidate's first full phrase would land. */
       landing?: number | null;
+      /**
+       * §27's *drop*: where the candidate's first one would land, in frames on
+       * *this* record.
+       *
+       * Drawn as a mark on the ghost rather than beside it. §27 asks for the
+       * drop to be part of the overlay, and a number in a line of text under
+       * the rail is a number about a place the eye then has to find.
+       */
+      drop?: number | null;
       /** What the band means, for the hover. */
       title?: string;
     } | null;
@@ -186,6 +195,20 @@
     return right > left
       ? { left, width: Math.max(right - left, 0.8), onPhrase: mixOut.on_phrase }
       : null;
+  });
+
+  /**
+   * §27's drop, where the candidate has one inside the stretch it would cover.
+   *
+   * Clamped to the record and dropped when it falls outside the mix: a mark at
+   * ninety-eight per cent for a drop that lands after the outgoing record ends
+   * is a promise about a moment nobody will hear.
+   */
+  const ghostDrop = $derived.by(() => {
+    const at = ghost?.drop;
+    if (at == null || !ghost || totalFrames <= 0) return null;
+    if (at < ghost.from || at > ghost.to) return null;
+    return { left: fraction(at) * 100 };
   });
 
   /**
@@ -343,6 +366,14 @@
         title="Where the candidate's first full phrase would land"
       ></div>
     {/if}
+    {#if ghostDrop && showing("suggestion")}
+      <div
+        class="ghost-drop"
+        data-layer="suggestion"
+        style:left="{ghostDrop.left}%"
+        title="Where the candidate drops, if it came in here"
+      ></div>
+    {/if}
     {#if loopBand && showing("loop")}
       <div
         class="loop-band"
@@ -434,6 +465,28 @@
     margin-left: -1px;
     background: var(--shape, var(--text-dim));
     opacity: 0.85;
+    pointer-events: none;
+  }
+
+  /* §27's drop, on the ghost's own colour rather than the shape colour: this
+     is a *proposal* about a record that is not loaded, and the layer table
+     says so -- `suggestion` is "what djmanzo would do, drawn as a ghost rather
+     than as a fact". The breakdown marks on the record that *is* loaded are
+     the other thing and wear the other colour.
+
+     `--assistant` rather than a `--proposed` that does not exist: §30's role
+     tokens are the ones defined, the landing line beside this uses the same
+     one, and `theme-tokens.test.ts` fails on a token nothing defines -- which
+     is how the first version of this rule was caught, asking for a hue it
+     would have fallen back from. */
+  .ghost-drop {
+    position: absolute;
+    z-index: 1;
+    inset-block: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--assistant);
+    opacity: 0.9;
     pointer-events: none;
   }
 

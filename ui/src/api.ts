@@ -2162,6 +2162,14 @@ export interface Ghost {
   /** Where the outgoing record becomes weak, in frames. */
   weakens_from: number | null;
   weakens_to: number | null;
+  /**
+   * §27's *drop*: where the candidate's first one would land, in frames on the
+   * outgoing record.
+   *
+   * Null for a candidate djmanzo has not analysed, one with no grid, and one
+   * that never thins out — all three are records with no drop to promise.
+   */
+  drop_frame: number | null;
   reasons: string[];
   /** §27's seven, in its order, each saying whether it is answered. */
   asked: GhostAsked[];

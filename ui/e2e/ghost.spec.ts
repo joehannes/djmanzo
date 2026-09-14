@@ -138,9 +138,14 @@ test.describe("§27's ghost", () => {
   /**
    * **The two djmanzo cannot see are named.**
    *
-   * §27 asks for seven things and nothing in `dj_analysis` finds a vocal entry
-   * or a drop. Saying so is the difference between an honest overlay and one
-   * that reads as a record with neither.
+   * §27 asks for seven things and nothing in `dj_analysis` finds a vocal
+   * entry. Saying so is the difference between an honest overlay and one that
+   * reads as a record with no vocal in it.
+   *
+   * It was two until §75's trajectory shipped: *where the drop occurs* is
+   * answered now, and the assertion that it is **not** in this line is the
+   * half worth keeping — a panel that went on naming an answered question as
+   * missing would be exactly as wrong as one that dropped an unanswered one.
    */
   test("says which of the seven it cannot answer", async ({ page }) => {
     await railOpen(page);
@@ -152,9 +157,34 @@ test.describe("§27's ghost", () => {
     expect(said, "the vocal entry is dropped silently").toContain(
       "where the vocal enters",
     );
-    expect(said, "the drop is dropped silently").toContain(
-      "where the drop occurs",
-    );
+    expect(
+      said,
+      "the drop is still listed as unanswerable, and §75 answers it",
+    ).not.toContain("where the drop occurs");
+  });
+
+  /**
+   * **And the drop is drawn on the ghost rather than described beside it.**
+   *
+   * §27 asks for the drop as part of the *overlay*. A number in a line of text
+   * under the rail is a number about a place the eye then has to go and find,
+   * which is the difference between an overlay and a caption.
+   */
+  test("the candidate's drop is marked on the ghost", async ({ page }) => {
+    await railOpen(page);
+    await ask(page).click();
+
+    const overview = page.locator(`${RAIL} .ghost .overview`);
+    await expect(overview).toBeVisible();
+    const mark = overview.locator(".ghost-drop");
+    await expect(mark, "§27's drop is answered and nothing draws it").toHaveCount(1);
+
+    // On the record, where the fixture puts it: 10,992,000 of 12,000,000.
+    const box = await overview.boundingBox();
+    const at = await mark.boundingBox();
+    expect(box).not.toBeNull();
+    expect(at).not.toBeNull();
+    expect((at!.x - box!.x) / box!.width).toBeCloseTo(10_992_000 / 12_000_000, 1);
   });
 
   /**

@@ -533,10 +533,10 @@ const ANSWERS: Record<string, unknown> = {
   // 32-beat blend starting where the mix-out window opens, with the
   // candidate's first full phrase eight beats into it.
   //
-  // Five of §27's seven answered and two not, in the shape and the order Rust
-  // sends them. The two that are not are the point of the fixture as much as
-  // the five that are: the panel has to say so, and a stub carrying only the
-  // answered ones would let it ship silently dropping them.
+  // Six of §27's seven answered and one not, in the shape and the order Rust
+  // sends them. The one that is not is the point of the fixture as much as the
+  // six that are: the panel has to say so, and a stub carrying only the
+  // answered ones would let it ship silently dropping it.
   ghost_preview: {
     track: "b".repeat(64),
     deck: 1,
@@ -553,6 +553,9 @@ const ANSWERS: Record<string, unknown> = {
     landing: { frame: 10_992_000, lead_beats: 8, within_mix: true },
     weakens_from: 10_800_000,
     weakens_to: 11_600_000,
+    // §27's drop, inside the stretch the mix would cover: a quarter of the way
+    // into a 32-beat blend. Six of the seven are answered now.
+    drop_frame: 10_992_000,
     reasons: ["phrase start (beat 450)", "128 into 131 BPM", "96 beats left"],
     asked: [
       {
@@ -561,7 +564,7 @@ const ANSWERS: Record<string, unknown> = {
         answered: true,
       },
       { slug: "vocal-entry", about: "where the vocal enters", answered: false },
-      { slug: "drop", about: "where the drop occurs", answered: false },
+      { slug: "drop", about: "where the drop occurs", answered: true },
       {
         slug: "outgoing-weakens",
         about: "where the outgoing track becomes weak",

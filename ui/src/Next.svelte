@@ -483,6 +483,7 @@
                     from: ghost.start_frame,
                     to: ghost.end_frame,
                     landing: ghost.landing?.frame ?? null,
+                    drop: ghost.drop_frame,
                     title: `If this came in here: a ${ghost.says} — ${ghost.reasons.join(" · ")}`,
                   }}
                 />

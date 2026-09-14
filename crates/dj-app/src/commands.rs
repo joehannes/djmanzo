@@ -7238,6 +7238,14 @@ pub struct GhostDto {
     /// lane already draws, not a second opinion about it.
     pub weakens_from: Option<f64>,
     pub weakens_to: Option<f64>,
+    /// §27's *drop*: where the candidate's first one would land, in frames on
+    /// the outgoing record.
+    ///
+    /// `None` for a candidate djmanzo has not analysed, one with no grid, and
+    /// one that never thins out -- all three are records with no drop to
+    /// promise, and the ghost says nothing for any of them rather than
+    /// drawing a mark somewhere plausible.
+    pub drop_frame: Option<f64>,
     pub reasons: Vec<String>,
     /// The mix in one phrase — `32-beat blend at 2:09`. Worded here rather
     /// than in the panel, because §22's rail draws the same phrase and two
@@ -7339,6 +7347,7 @@ pub fn ghost_preview(
         }),
         weakens_from: ghost.weakens.map(|w| w.opens_frame),
         weakens_to: ghost.weakens.map(|w| w.closes_frame),
+        drop_frame: ghost.drop,
         reasons: ghost
             .plan
             .reasons
