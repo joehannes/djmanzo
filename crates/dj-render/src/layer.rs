@@ -56,6 +56,13 @@ pub enum Role {
     /// Somewhere a human put a mark and can return to.
     Placed,
     /// A stretch of the record that repeats.
+    ///
+    /// Shared by the loop that is running and the loops kept for later, which
+    /// is the tightest case for sharing in this table: they are one kind of
+    /// thing in two states, and §30's rule is that a *state* is painted with
+    /// the role it means rather than with a colour of its own. The armed loop
+    /// is solid and the kept ones are quiet; a second hue for "the same span,
+    /// not firing" would say they were different kinds of thing.
     Looping,
     /// A mix: where it starts, where it ends, what it covers.
     Seam,
@@ -275,8 +282,8 @@ static LAYERS: [Layer; 20] = [
         name: "saved-loops",
         title: "Saved loops",
         about: "Loops kept for later, drawn where they would fire.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        role: Role::Looping,
+        drawn: Drawn::Overlay,
     },
     Layer {
         name: "vocal",
@@ -512,6 +519,16 @@ mod tests {
             "the record's own sound"
         );
         assert_eq!(grouped.get("grid").map(Vec::len), Some(3), "the pulse");
+        // `looping` carries the loop that is running and the ones kept for
+        // later. One kind of thing in two states, and §30 says a state is
+        // painted with the role it means: the armed one is solid, the kept
+        // ones are quiet, and a second hue would say they were different kinds
+        // of thing rather than the same thing not firing.
+        assert_eq!(
+            grouped.get("looping"),
+            Some(&vec!["loop", "saved-loops"]),
+            "the looping colour is for a stretch that repeats, and only that"
+        );
         // `proposed` carries both mix windows and §27's ghost. All three are
         // djmanzo saying *could*, about the same mix, at three scales -- where
         // a record can be left, where one can be joined, and what happens if
@@ -539,7 +556,7 @@ mod tests {
             Some(&vec!["breakdowns", "drops", "energy"]),
             "the shape colour is for where the record goes, and only that"
         );
-        for role in ["placed", "looping", "seam", "runway", "uncertain"] {
+        for role in ["placed", "seam", "runway", "uncertain"] {
             assert_eq!(
                 grouped.get(role).map(Vec::len),
                 Some(1),
@@ -583,6 +600,7 @@ mod tests {
                 "downbeats",
                 "cues",
                 "loop",
+                "saved-loops",
                 "seam",
                 "mix-out",
                 "mix-in",

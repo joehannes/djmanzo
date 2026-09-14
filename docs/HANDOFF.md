@@ -924,12 +924,27 @@ gate run; a mutation that does not compile has to be rewritten so it does.
 **Sixth stale reason, same shape: §25's `mix-in` was filed under "needs an
 analysis nobody has written" and needed `plan::mix_out` read backwards.** The
 first drop it closes on has been coming out of `energy::trajectory` since §75.
-Two of §25's remaining four are still real blockers (vocal and stem presence
-need separation; the crowd needs a camera) and **`saved-loops` is neither** —
-`dj_library::StoredLoop` has held them per track all along and nothing carries
-them to the waveform. What it actually needs is a decision: a saved loop and a
-hot cue are both somewhere a human marked, so §57's one-colour-one-meaning
-rule has to be argued either way before it can be drawn.
+**`saved-loops` was the same story an hour later** and is built now: the rows
+were in `dj_library::StoredLoop` all along and the colour question had an
+answer already — `Role::Looping` is what an armed loop and a kept one both
+are, and §30 says a *state* is painted with the role it means, so the armed
+band is solid and the kept ones are quiet. Three of §25's twenty are still
+real blockers: vocal and stem presence need separation, and the crowd needs a
+camera.
+
+**Mutation testing found a sort that did nothing.** `saved_loops_of` sorted
+its rows by slot, and deleting the sort changed no test — because
+`Library::loops` has selected `ORDER BY slot` the whole time. The sort came
+out; the test stayed, holding the store's contract from the consumer's side.
+**A mutation that survives is as often a duplicated decision as a missing
+test**, and the question to ask first is which.
+
+**Two fixtures in a row could not test what they claimed**, both caught the
+same way. A window opening at frame 0 makes width and closing-frame the same
+number. An empty-deck assertion passes against a fallback when no deck has
+anything either way — it needs *another* deck to have loops before "this one
+has none" means anything. Pick fixture values where every plausible mistake
+gives a different answer.
 
 **The layer guards are worth trusting.** Turning `mix-in` on failed two tests
 immediately — the role-sharing list and the built-count list — and both

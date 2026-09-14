@@ -1624,6 +1624,20 @@ pub struct WaveformInfo {
     /// left and where the incoming one can be joined, which between them is the
     /// whole of what §25 means by a *likely* mix.
     pub mix_in: Option<MixInInfo>,
+    /// §25's `saved-loops` layer: the loops this record has kept, in slot
+    /// order.
+    ///
+    /// From the **library**, unlike the two bands above, and the difference is
+    /// deliberate for once rather than an inconsistency. A mix window is beats
+    /// counted from a grid, so it has to come from the grid the beat lines are
+    /// drawn from or it sits a fraction of a beat off them. A saved loop is two
+    /// frame positions in a file: editing the grid moves the lines and does not
+    /// move the loop, which is exactly what a DJ who saved one expects.
+    ///
+    /// Empty for a deck with nothing on it, a record nobody has saved a loop
+    /// in, and a build with no library — all three draw nothing, which is the
+    /// honest answer to each.
+    pub saved_loops: Vec<SavedLoopInfo>,
     /// §75's trajectory, and the breakdowns and drops in it.
     ///
     /// Here for the same reason `mix_out` is: it is a property of the record,
@@ -1636,6 +1650,17 @@ pub struct WaveformInfo {
     /// record with no grid to count phrases against. The overview draws
     /// nothing for all three, which is the honest answer to each.
     pub trajectory: dj_analysis::energy::Trajectory,
+}
+
+/// One of §25's `saved-loops`, as the waveform draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct SavedLoopInfo {
+    /// Which slot recalls it — the number the DJ presses, drawn on the band.
+    pub slot: u8,
+    pub start_frame: f64,
+    pub end_frame: f64,
+    /// What the DJ called it, when they called it anything.
+    pub label: Option<String>,
 }
 
 /// §25's `mix-in` layer, as the waveform draws it.
@@ -1670,6 +1695,7 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         epoch: state.waveforms().epoch(deck),
         mix_out: mix_out_of(&state, deck),
         mix_in: mix_in_of(&state, deck),
+        saved_loops: saved_loops_of(&state, deck),
         // From the analysis rather than from the waveform store, unlike
         // `mix_out` above, and the difference is deliberate: a mix-out band has
         // to line up with the beat lines beside it, and a breakdown is where
@@ -1703,6 +1729,45 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
 /// `None` covers a deck with nothing on it, one still being analysed, and a
 /// record too short to leave. The waveform draws no band for any of them,
 /// which is the honest answer to all three.
+/// The loops this deck's record has kept.
+///
+/// §25 has listed `saved-loops` since the table existed and nothing drew them,
+/// which made saving one a thing a DJ could do and never see: eight slots, a
+/// recall button per slot, and no way to know where any of them were without
+/// pressing one.
+///
+/// Empty rather than `None` for every failure — no deck, no library, a
+/// database that will not answer — because the three are the same thing to a
+/// waveform and an `Option<Vec<_>>` would be two ways of drawing nothing.
+///
+/// They arrive in slot order, which is pad order, because the store selects
+/// them that way.
+fn saved_loops_of(state: &AppState, deck: u8) -> Vec<SavedLoopInfo> {
+    let Some(id) = dj_core::DeckId::from_human(deck).and_then(|d| state.deck_track_id(d)) else {
+        return Vec::new();
+    };
+    let Ok(db) = state.library().get() else {
+        return Vec::new();
+    };
+    // Slot order is the store's — `Library::loops` selects `ORDER BY slot` —
+    // and re-sorting here would be a second description of an ordering that
+    // already has an owner. Mutation testing found exactly that: the sort was
+    // written here first, and deleting it changed nothing because the query had
+    // been doing the work all along. The test below holds the contract from
+    // this side, so dropping the `ORDER BY` fails here rather than silently
+    // putting the wrong number on a band.
+    db.loops(id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|region| SavedLoopInfo {
+            slot: region.slot,
+            start_frame: region.start_frame,
+            end_frame: region.end_frame,
+            label: region.label,
+        })
+        .collect()
+}
+
 /// Where a mix into this deck's record could begin.
 ///
 /// Read from the deck's own grid for the two reasons `mix_out_of` gives at
@@ -9769,6 +9834,96 @@ mod persistence_tests {
             },
         );
         state
+    }
+
+    /// **§25's saved loops reach the waveform, in the order the pads are in.**
+    ///
+    /// The half a browser cannot prove: a stub that delivered them sorted would
+    /// only prove the stub was sorted. Slot order is pad order, and the number
+    /// drawn on a band is the number a DJ presses — one drawn against the wrong
+    /// loop sends them to the wrong pad, which is worse than not drawing it.
+    ///
+    /// They are written out of order on purpose. The ordering is the store's —
+    /// `Library::loops` selects `ORDER BY slot` — and this holds that contract
+    /// from the side that depends on it, so dropping the clause fails here
+    /// rather than silently putting the wrong number on a band.
+    ///
+    /// Worth recording how this test got its shape: `saved_loops_of` sorted the
+    /// rows itself at first, and deleting that sort changed nothing, because
+    /// the query had been doing the work the whole time. The sort came out.
+    #[test]
+    fn the_saved_loops_reach_the_waveform_in_pad_order() {
+        let state = app_with_track();
+        let db = state.library().get().unwrap();
+        db.set_loops(
+            id(1),
+            &[
+                dj_library::StoredLoop {
+                    slot: 4,
+                    start_frame: 800_000.0,
+                    end_frame: 900_000.0,
+                    label: None,
+                },
+                dj_library::StoredLoop {
+                    slot: 2,
+                    start_frame: 100_000.0,
+                    end_frame: 200_000.0,
+                    label: Some("the break".to_owned()),
+                },
+            ],
+        )
+        .unwrap();
+
+        let kept = saved_loops_of(&state, 1);
+        assert_eq!(
+            kept.iter().map(|l| l.slot).collect::<Vec<_>>(),
+            vec![2, 4],
+            "the loops did not arrive in pad order"
+        );
+        // And each band keeps its own frames and its own label, which is the
+        // failure a sort can introduce: two loops that swapped their spans
+        // would still be in the right order.
+        assert!((kept[0].start_frame - 100_000.0).abs() < f64::EPSILON);
+        assert_eq!(kept[0].label.as_deref(), Some("the break"));
+        assert!((kept[1].start_frame - 800_000.0).abs() < f64::EPSILON);
+        assert_eq!(kept[1].label, None);
+    }
+
+    /// **A deck with nothing on it has no loops, and neither has a record
+    /// nobody saved one in.**
+    ///
+    /// Empty rather than an error for both, because they draw the same thing —
+    /// and a waveform that had to tell them apart would be a waveform with a
+    /// failure state for the commonest case there is.
+    #[test]
+    fn a_record_with_no_saved_loops_draws_nothing_rather_than_failing() {
+        let state = app_with_track();
+        assert!(saved_loops_of(&state, 1).is_empty());
+
+        // And a deck with nothing on it answers with nothing even while
+        // another deck has loops — which is the version of this that fails
+        // when the lookup falls back to whatever track it can find. The first
+        // draft asserted only against an application where no deck had any,
+        // and a fallback to deck 1 passed it.
+        state
+            .library()
+            .get()
+            .unwrap()
+            .set_loops(
+                id(1),
+                &[dj_library::StoredLoop {
+                    slot: 1,
+                    start_frame: 10.0,
+                    end_frame: 20.0,
+                    label: None,
+                }],
+            )
+            .unwrap();
+        assert_eq!(saved_loops_of(&state, 1).len(), 1);
+        assert!(
+            saved_loops_of(&state, 4).is_empty(),
+            "an empty deck answered with another deck's loops"
+        );
     }
 
     fn grid_on_deck(state: &AppState, grid: Beatgrid) {

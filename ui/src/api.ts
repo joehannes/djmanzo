@@ -1124,6 +1124,18 @@ export interface WaveformInfo {
    */
   mix_in: MixInInfo | null;
   /**
+   * §25's saved-loops layer: the loops this record has kept, in slot order.
+   *
+   * From the library rather than from the deck's grid, and the difference
+   * matters: a mix window is beats counted from a grid, and a saved loop is two
+   * frame positions in a file. Editing the grid moves the beat lines and does
+   * not move the loop, which is what a DJ who saved one expects.
+   *
+   * Empty for a deck with nothing on it and for a record nobody has saved a
+   * loop in, which draw the same thing — nothing.
+   */
+  saved_loops: SavedLoopInfo[];
+  /**
    * §75's energy trajectory, and the breakdowns and drops in it.
    *
    * Empty for a deck with nothing on it, one still being analysed, and a
@@ -1170,6 +1182,14 @@ export interface MixInInfo {
    * is arithmetic about a record nobody has found a drop in.
    */
   before_a_drop: boolean;
+}
+
+export interface SavedLoopInfo {
+  /** The slot that recalls it — the number a DJ presses, drawn on the band. */
+  slot: number;
+  start_frame: number;
+  end_frame: number;
+  label: string | null;
 }
 
 export const waveformInfo = (deck: number) =>

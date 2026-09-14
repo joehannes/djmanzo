@@ -322,6 +322,44 @@ test.describe("the waveform's layers", () => {
   });
 
   /**
+   * **Saved loops are drawn where they would fire, and say which pad fires
+   * them.**
+   *
+   * §25 has listed `saved-loops` since the table existed and nothing drew them,
+   * which made saving one a thing a DJ could do and never see: eight slots, a
+   * recall per slot, and no way to know where any of them were without pressing
+   * one.
+   *
+   * The slot number is the assertion that matters: a band in the right place
+   * with the wrong number on it sends a DJ to the wrong pad. That the loops
+   * arrive in slot order is `saved_loops_of`'s and is tested in Rust — a stub
+   * that delivered them sorted could only prove the stub was sorted.
+   */
+  test("every saved loop is drawn, with the pad that recalls it", async ({ page }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/");
+
+    const bands = page.locator('.strip [data-layer="saved-loops"]').first();
+    await expect(bands).toBeVisible();
+    const slots = await page.evaluate(() =>
+      [...document.querySelectorAll('.strip [data-layer="saved-loops"]')]
+        .slice(0, 2)
+        .map((el) => el.textContent?.trim()),
+    );
+    expect(slots, "the bands do not carry the slot that recalls them").toEqual(["1", "3"]);
+
+    // And the first one is where Rust put it, not where it arrived.
+    const runway = await inStrip(page, '[data-layer="runway"]');
+    const record = runway!.left + runway!.width;
+    const band = await inStrip(page, '[data-layer="saved-loops"]');
+    expect(band!.left / record, "the band is not where the loop was saved").toBeCloseTo(
+      4_000_000 / RECORD_FRAMES,
+      2,
+    );
+    expect(thrown).toEqual([]);
+  });
+
+  /**
    * **The lane says when the grid under it is a guess.**
    *
    * The rasteriser has always faded beat lines by the grid's confidence, and
@@ -451,6 +489,10 @@ test.describe("the waveform's layers", () => {
     // from the other end plus the first drop `energy::trajectory` already
     // finds.
     expect(built).toContain("mix-in");
-    expect(built).toHaveLength(16);
+    // §25's `saved-loops`: the seventeenth, and the one that needed no
+    // analysis at all — `dj_library::StoredLoop` has held them per track for as
+    // long as the library has, and nothing carried them to the waveform.
+    expect(built).toContain("saved-loops");
+    expect(built).toHaveLength(17);
   });
 });

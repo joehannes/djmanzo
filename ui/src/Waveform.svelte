@@ -20,6 +20,7 @@
     waveformInfo,
     type DeckState,
     type MixInInfo,
+    type SavedLoopInfo,
     type MixOutInfo,
   } from "./api";
   import { phraseGrid, type PhraseGrid } from "./api";
@@ -280,6 +281,7 @@
   let epoch = $state(0);
   let mixOut = $state<MixOutInfo | null>(null);
   let mixIn = $state<MixInInfo | null>(null);
+  let savedLoops = $state<SavedLoopInfo[]>([]);
 
   // Interpolation state. Updated from snapshots, read every animation frame.
   let anchorFrame = 0;
@@ -290,6 +292,15 @@
     // Touch both so this re-runs whenever the deck's content changes: a new
     // track changes the length, and analysis finishing changes the grid without
     // touching the length at all.
+    //
+    // **A loop saved mid-set is the one thing this does not catch.** Saving one
+    // writes a library row and changes neither of these, so its band appears
+    // when the record is next loaded rather than the moment it is kept. Naming
+    // it here rather than papering over it: the fix is a third thing to touch —
+    // something that changes when the stored loops do — and inventing one by
+    // polling this call would be the snapshot pump carrying furniture, which is
+    // the argument `waveform_info` itself makes about why it is not on the
+    // snapshot.
     deck.length_frames;
     deck.analysis;
     void waveformInfo(deck.number)
@@ -301,6 +312,7 @@
         // field would otherwise leave the previous record's band on screen.
         mixOut = info.mix_out ?? null;
         mixIn = info.mix_in ?? null;
+        savedLoops = info.saved_loops ?? [];
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -436,6 +448,22 @@
     }
     return out;
   });
+
+  /**
+   * §25's saved-loops layer: every loop kept on this record, where it fires.
+   *
+   * Floored to the same hairline the armed band is, and for the same reason —
+   * a sixteenth of a beat zoomed out is under a pixel, and a loop nobody can
+   * see is one nobody can aim a pad at.
+   */
+  const savedLoopBands = $derived(
+    savedLoops.map((region) => ({
+      slot: region.slot,
+      label: region.label,
+      left: region.start_frame / framesPerPixel,
+      width: Math.max((region.end_frame - region.start_frame) / framesPerPixel, 2),
+    })),
+  );
 
   const loopBand = $derived.by(() => {
     const region = deck.active_loop;
@@ -591,6 +619,29 @@
           style:width="{seamBand.width}px"
         ></div>
       {/if}
+      <!--
+        §25's saved-loops layer, under the armed band on purpose.
+
+        The same colour as the loop that is running, because they are one kind
+        of thing in two states and §30's rule is that a state is painted with
+        the role it means — `dj_render::layer` holds that decision where §57's
+        rule lives. The difference a DJ reads is weight: the armed one is
+        solid, these are quiet and carry the slot number, which is the number
+        they would press to fire one.
+      -->
+      {#each showing("saved-loops") ? savedLoopBands : [] as kept (kept.slot)}
+        <div
+          class="saved-loop"
+          data-layer="saved-loops"
+          style:left="{kept.left}px"
+          style:width="{kept.width}px"
+          title={kept.label
+            ? `Loop ${kept.slot}: ${kept.label}`
+            : `Loop ${kept.slot}, saved here`}
+        >
+          <span class="saved-loop-slot">{kept.slot}</span>
+        </div>
+      {/each}
       {#if loopBand && showing("loop")}
         <div
           class="loop-band"
@@ -992,6 +1043,35 @@
     the one that is a decision, and for coming in that is the *close*, because
     what a DJ is judging is how long they have before the drop.
   */
+  /*
+    A kept loop: the same colour as the armed band, drawn quietly. Dashed edges
+    rather than solid, because a solid edge is a decision and a saved loop is
+    somewhere a decision *could* be made again — and no fill beyond a wash, so
+    eight of them on one record do not bury the waveform under the loops.
+  */
+  .saved-loop {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--accent-2) 12%, transparent);
+    border-left: 1px dashed color-mix(in srgb, var(--accent-2) 45%, transparent);
+    border-right: 1px dashed color-mix(in srgb, var(--accent-2) 45%, transparent);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .saved-loop-slot {
+    position: absolute;
+    bottom: 0;
+    left: 1px;
+    padding: 0 0.2rem;
+    font-size: 0.55rem;
+    line-height: 1.2;
+    color: var(--accent-2);
+    background: var(--panel);
+    border-radius: 2px 2px 0 0;
+  }
+
   .mix-in {
     position: absolute;
     top: 0;

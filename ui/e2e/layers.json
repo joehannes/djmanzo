@@ -66,10 +66,10 @@
     "name": "saved-loops",
     "title": "Saved loops",
     "about": "Loops kept for later, drawn where they would fire.",
-    "role": "unassigned",
-    "drawn": "nowhere",
-    "choosable": false,
-    "why_not": "djmanzo cannot draw this yet"
+    "role": "looping",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
   },
   {
     "name": "vocal",

@@ -361,6 +361,16 @@ const ANSWERS: Record<string, unknown> = {
       on_phrase: true,
       before_a_drop: true,
     },
+    // §25's saved loops, in the order `saved_loops_of` delivers them: slot
+    // order, which is pad order. The *sorting* is Rust's and is tested there —
+    // a stub could only prove the stub — so what this fixture is for is the
+    // half a browser can prove: that both bands are drawn, at the frames they
+    // were saved at, carrying the number a DJ would press. One labelled and one
+    // not, which are the two states the title has to handle.
+    saved_loops: [
+      { slot: 1, start_frame: 4_000_000, end_frame: 4_600_000, label: "the break" },
+      { slot: 3, start_frame: 7_200_000, end_frame: 7_800_000, label: null },
+    ],
     // §75's trajectory, on the same twelve-million-frame record. Four windows
     // with the third thinned out and the fourth back, which is the shape the
     // detector is written to find -- a fixture whose energy never moved would
