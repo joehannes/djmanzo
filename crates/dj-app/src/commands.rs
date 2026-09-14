@@ -2196,8 +2196,17 @@ pub fn keep_mix(state: State<'_, AppState>, at: f64) -> Result<u32, String> {
         .and_then(|t| t.analysis.bpm)
         .and_then(|bpm| found.beats(bpm));
 
-    db.keep_pair(from, into, Some(found.style.as_str()), beats)
-        .map_err(|e| e.to_string())
+    // §24's "works only with an 8-beat loop". The loop is read off the same log
+    // the mix itself was read off — see `mixes::Handover::loop_beats` — so a
+    // set recorded long before this column existed still answers it.
+    db.keep_pair(
+        from,
+        into,
+        Some(found.style.as_str()),
+        beats,
+        found.loop_beats.map(f64::from),
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// The mixes tonight, read back out of the action log.
@@ -3792,7 +3801,7 @@ mod kept_pair_tests {
     #[test]
     fn a_kept_pair_moves_up_the_rail_rather_than_only_scoring_higher() {
         let ranked = vec![scored(1, 5.0), scored(2, 4.0), scored(3, 3.0)];
-        let kept = std::collections::HashMap::from([(id(3), 3u32)]);
+        let kept = std::collections::HashMap::from([(id(3), (3u32, None))]);
 
         let out = with_kept(ranked, &kept);
         assert_eq!(
@@ -3800,9 +3809,74 @@ mod kept_pair_tests {
             vec![id(3), id(1), id(2)],
             "a kept pair scored higher but stayed where it was"
         );
-        assert!(out[0].reasons.contains(&Reason::KeptBefore { times: 3 }));
+        assert!(out[0].reasons.contains(&Reason::KeptBefore {
+            times: 3,
+            on_loop: None
+        }));
         // And the ones nobody kept are untouched, reasons included.
         assert_eq!(out[1].reasons, vec![Reason::PhraseUnknown]);
+    }
+
+    /// **The loop the pair was kept on reaches the rail, and is said.**
+    ///
+    /// §24's example is "A into C works only with an 8-beat loop", and a rail
+    /// that carried the keep but dropped the loop would offer the pair without
+    /// the one instruction that makes it work. The store remembers it and the
+    /// scorer carries it; this is the join that has to pass it along.
+    #[test]
+    fn the_loop_a_pair_was_kept_on_reaches_the_reason_the_dj_reads() {
+        let ranked = vec![scored(1, 5.0), scored(3, 3.0)];
+        let kept = std::collections::HashMap::from([(id(3), (1u32, Some(8.0)))]);
+
+        let out = with_kept(ranked, &kept);
+        let reason = out
+            .iter()
+            .flat_map(|s| &s.reasons)
+            .find(|r| matches!(r, Reason::KeptBefore { .. }))
+            .expect("the kept pair lost its reason");
+        assert_eq!(
+            *reason,
+            Reason::KeptBefore {
+                times: 1,
+                on_loop: Some(8.0)
+            }
+        );
+        assert_eq!(
+            describe_reason(reason),
+            "you kept this mix, on an 8-beat loop"
+        );
+        assert_eq!(
+            summarise_reasons(std::slice::from_ref(reason)),
+            "kept \u{00b7} 8-beat loop"
+        );
+    }
+
+    /// **A pair kept on no loop says nothing about loops.**
+    ///
+    /// The absence is the common case, and a rail that wrote "on a 0-beat
+    /// loop" beside every other suggestion would be noise with a number in it.
+    #[test]
+    fn a_pair_kept_on_no_loop_is_described_exactly_as_it_was_before() {
+        let reason = Reason::KeptBefore {
+            times: 2,
+            on_loop: None,
+        };
+        assert_eq!(describe_reason(&reason), "you kept this mix 2 times");
+        assert_eq!(summarise_reasons(&[reason]), "kept \u{00d7}2");
+    }
+
+    /// The deck renders a half-beat loop as `1/2`, and so does this.
+    #[test]
+    fn a_loop_shorter_than_a_beat_is_spelled_the_way_the_deck_spells_it() {
+        assert_eq!(beat_count(0.5), "1/2-beat");
+        assert_eq!(beat_count(0.25), "1/4-beat");
+        assert_eq!(beat_count(8.0), "8-beat");
+        assert_eq!(beat_count(32.0), "32-beat");
+        // The article follows the number that is actually said.
+        assert_eq!(article_for("8-beat"), "an");
+        assert_eq!(article_for("4-beat"), "a");
+        assert_eq!(article_for("16-beat"), "a");
+        assert_eq!(article_for("1/2-beat"), "a");
     }
 
     /// **Nothing kept changes nothing**, which is most rails.
@@ -6579,11 +6653,11 @@ pub fn suggest_next(
     // Applied after scoring rather than inside it: the scorer is a pure
     // function over two records and its whole test suite rests on that. This
     // is the layer that has a database.
-    let kept: std::collections::HashMap<dj_core::TrackId, u32> = playing_now
+    let kept: std::collections::HashMap<dj_core::TrackId, (u32, Option<f64>)> = playing_now
         .and_then(|from| db.kept_after(from).ok())
         .unwrap_or_default()
         .into_iter()
-        .map(|pair| (pair.into, pair.kept))
+        .map(|pair| (pair.into, (pair.kept, pair.loop_beats)))
         .collect();
 
     let ranked = with_kept(
@@ -6765,13 +6839,13 @@ fn with_profile(
 /// a bug in the ranking rather than as the feature it is.
 fn with_kept(
     ranked: Vec<dj_library::suggest::Suggestion>,
-    kept: &std::collections::HashMap<dj_core::TrackId, u32>,
+    kept: &std::collections::HashMap<dj_core::TrackId, (u32, Option<f64>)>,
 ) -> Vec<dj_library::suggest::Suggestion> {
     let mut out: Vec<_> = ranked
         .into_iter()
         .map(|s| {
-            let times = kept.get(&s.track).copied().unwrap_or(0);
-            dj_library::suggest::also_kept_before(s, times)
+            let (times, on_loop) = kept.get(&s.track).copied().unwrap_or((0, None));
+            dj_library::suggest::also_kept_before(s, times, on_loop)
         })
         .collect();
     // The same tie-break `suggest::rank` uses, so a re-sort here cannot put
@@ -7446,6 +7520,44 @@ fn current_track(state: &AppState, deck: dj_core::DeckId) -> Option<dj_core::Tra
     map.get(&deck.human_number()).map(|t| t.id)
 }
 
+/// A loop length, said the way the deck says it.
+///
+/// `Deck.svelte` renders an active loop as `8` or `1/2`; this is the same
+/// spelling with the unit attached, so the reason beside a suggestion and the
+/// readout on the deck agree about what an eight-beat loop is called. A DJ who
+/// reads "on an 8-beat loop" and then looks at the deck should see `8`.
+fn beat_count(beats: f64) -> String {
+    if beats >= 1.0 {
+        let rounded = (beats * 100.0).round() / 100.0;
+        // `8-beat`, not `8.00-beat`: every loop a deck button sets is whole,
+        // and the fractional form is for the ones a DJ halved into place.
+        if (rounded - rounded.round()).abs() < f64::EPSILON {
+            format!("{}-beat", rounded.round())
+        } else {
+            format!("{rounded}-beat")
+        }
+    } else if beats > 0.0 {
+        format!("1/{}-beat", (1.0 / beats).round())
+    } else {
+        // Not reachable from the engine, which refuses a loop of no length,
+        // but a database column is a database column and a row saying zero
+        // should read as nonsense rather than divide.
+        "0-beat".to_owned()
+    }
+}
+
+/// `a` or `an`, for a loop length that is about to be spoken.
+///
+/// Worth the three lines: §24's own words are "works only with an 8-beat
+/// loop", and "a 8-beat loop" in the place that quotes it would read as a
+/// program that does not speak the language its user does.
+const fn article_for(count: &str) -> &'static str {
+    match count.as_bytes() {
+        [b'8', ..] | [b'1', b'1', ..] | [b'1', b'8', ..] => "an",
+        _ => "a",
+    }
+}
+
 /// Render one reason for the interface.
 ///
 /// Deliberately terse: these are chips beside a table row, not prose. A DJ
@@ -7472,8 +7584,24 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
         Reason::OtherFamily { from, to } => format!("{from} to {to}"),
         // §24's answer to "why do I keep seeing these two together?", in the
         // place a DJ asks it: beside the suggestion itself.
-        Reason::KeptBefore { times: 1 } => "you kept this mix".to_owned(),
-        Reason::KeptBefore { times } => format!("you kept this mix {times} times"),
+        Reason::KeptBefore { times, on_loop } => {
+            let kept = if *times == 1 {
+                "you kept this mix".to_owned()
+            } else {
+                format!("you kept this mix {times} times")
+            };
+            // §24's example in full: "A into C works only with an 8-beat
+            // loop". The count says the DJ meant it; the loop says how to do
+            // it again, which is the half that is actually actionable when the
+            // record is eight bars from the end.
+            match on_loop {
+                Some(beats) => {
+                    let count = beat_count(*beats);
+                    format!("{kept}, on {} {count} loop", article_for(&count))
+                }
+                None => kept,
+            }
+        }
         Reason::Unanalysed => "not analysed yet".to_owned(),
     }
 }
@@ -7534,8 +7662,19 @@ fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
         .filter_map(|reason| match reason {
             // On the summary line too, and first: it is the one thing on it a
             // DJ said rather than djmanzo worked out.
-            Reason::KeptBefore { times: 1 } => Some("kept".to_owned()),
-            Reason::KeptBefore { times } => Some(format!("kept \u{00d7}{times}")),
+            Reason::KeptBefore { times, on_loop } => {
+                let kept = if *times == 1 {
+                    "kept".to_owned()
+                } else {
+                    format!("kept \u{00d7}{times}")
+                };
+                Some(match on_loop {
+                    // The chip is beside a table row rather than in a
+                    // sentence, so the loop is said the way a deck says it.
+                    Some(beats) => format!("{kept} \u{00b7} {} loop", beat_count(*beats)),
+                    None => kept,
+                })
+            }
             Reason::SameKey(k) => Some(k.camelot()),
             Reason::Harmonic { from, to } | Reason::KeyClash { from, to } => {
                 let arrow = format!("{}\u{2192}{}", from.camelot(), to.camelot());

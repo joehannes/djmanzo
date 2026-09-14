@@ -150,7 +150,13 @@ pub enum Reason {
     ///
     /// Directional, like the thing it comes from. A into B says nothing about
     /// B into A.
-    KeptBefore { times: u32 },
+    ///
+    /// `on_loop` is the loop that was running as the kept mix began, in beats.
+    /// §24's example of a learned relationship is "A into C works only with an
+    /// 8-beat loop", and this is that clause: without it the reason says a
+    /// DJ kept the pair, with it, what they kept it *on*. It carries no weight
+    /// of its own — a keep is a keep — it tells the DJ how to repeat it.
+    KeptBefore { times: u32, on_loop: Option<f64> },
     /// Both records name a genre and they are the same family.
     SameFamily(&'static str),
     /// Both name a genre and the families differ.
@@ -205,7 +211,7 @@ impl Reason {
             // and not an override: a DJ whose set has moved on wants the rail
             // to notice, and one who wants the pair again has it near the top
             // rather than pinned to it.
-            Self::KeptBefore { times } => f64::from(times).min(3.0),
+            Self::KeptBefore { times, .. } => f64::from(times).min(3.0),
             // Both zero on purpose; see `OtherFamily`.
             Self::SameFamily(_) | Self::OtherFamily { .. } => 0.0,
             Self::Unanalysed => -10.0,
@@ -256,12 +262,21 @@ impl Suggestion {
 ///
 /// `times` of zero is a pair nobody has kept, which is most of them, and
 /// changes nothing.
+///
+/// `on_loop` qualifies the keep rather than strengthening it: a pair kept on
+/// an 8-beat loop scores exactly what the same pair kept on nothing scores,
+/// because the DJ said the same thing about it either way. What changes is
+/// what the rail can tell them.
 #[must_use]
-pub fn also_kept_before(mut suggestion: Suggestion, times: u32) -> Suggestion {
+pub fn also_kept_before(
+    mut suggestion: Suggestion,
+    times: u32,
+    on_loop: Option<f64>,
+) -> Suggestion {
     if times == 0 {
         return suggestion;
     }
-    let reason = Reason::KeptBefore { times };
+    let reason = Reason::KeptBefore { times, on_loop };
     suggestion.score += reason.weight();
     suggestion.reasons.push(reason);
     suggestion
@@ -853,9 +868,21 @@ mod tests {
     /// is a strong reason, not an override.
     #[test]
     fn keeping_a_pair_lifts_it_without_letting_it_win_outright() {
-        let one = Reason::KeptBefore { times: 1 }.weight();
-        let four = Reason::KeptBefore { times: 4 }.weight();
-        let twenty = Reason::KeptBefore { times: 20 }.weight();
+        let one = Reason::KeptBefore {
+            times: 1,
+            on_loop: None,
+        }
+        .weight();
+        let four = Reason::KeptBefore {
+            times: 4,
+            on_loop: None,
+        }
+        .weight();
+        let twenty = Reason::KeptBefore {
+            times: 20,
+            on_loop: None,
+        }
+        .weight();
 
         assert!(one > 0.0, "keeping a pair counted for nothing");
         assert!(four > one, "keeping it more said nothing more");
@@ -881,10 +908,44 @@ mod tests {
         let candidate = track(2, Some(128.0), Some(key(8, Mode::Minor)), Some(-8.0));
         let scored = score(&playing(), Trajectory::Hold, &candidate);
 
-        assert_eq!(also_kept_before(scored.clone(), 0), scored);
+        assert_eq!(also_kept_before(scored.clone(), 0, None), scored);
 
-        let lifted = also_kept_before(scored.clone(), 2);
+        let lifted = also_kept_before(scored.clone(), 2, None);
         assert!(lifted.score > scored.score);
-        assert!(lifted.reasons.contains(&Reason::KeptBefore { times: 2 }));
+        assert!(lifted.reasons.contains(&Reason::KeptBefore {
+            times: 2,
+            on_loop: None
+        }));
+    }
+
+    /// **The loop qualifies the keep; it does not strengthen it.**
+    ///
+    /// §24 asks for "works only with an 8-beat loop" to be carried, and a
+    /// clause about *how* is not a second vote for *whether*. Two DJs who each
+    /// kept a pair once have said the same thing about it, and a rail that
+    /// ranked the one who happened to be looping above the one who was not
+    /// would be inventing a preference neither expressed.
+    #[test]
+    fn the_loop_a_pair_was_kept_on_is_carried_without_moving_the_score() {
+        let candidate = track(2, Some(128.0), Some(key(8, Mode::Minor)), Some(-8.0));
+        let scored = score(&playing(), Trajectory::Hold, &candidate);
+
+        let plain = also_kept_before(scored.clone(), 1, None);
+        let looped = also_kept_before(scored, 1, Some(8.0));
+
+        assert!(
+            (plain.score - looped.score).abs() < f64::EPSILON,
+            "the loop changed the score: {} against {}",
+            plain.score,
+            looped.score
+        );
+        assert!(looped.reasons.contains(&Reason::KeptBefore {
+            times: 1,
+            on_loop: Some(8.0)
+        }));
+        assert!(!looped.reasons.contains(&Reason::KeptBefore {
+            times: 1,
+            on_loop: None
+        }));
     }
 }

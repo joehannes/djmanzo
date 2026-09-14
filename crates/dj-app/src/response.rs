@@ -529,6 +529,7 @@ mod tests {
             began: Duration::from_secs(began),
             ended: Duration::from_secs(ended),
             style: dj_core::action::TransitionStyle::Blend,
+            loop_beats: None,
         }
     }
 

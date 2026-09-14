@@ -62,6 +62,13 @@ pub struct KeptPair {
     /// What the mix was, the last time it was kept.
     pub style: Option<String>,
     pub beats: Option<f64>,
+    /// The loop that was running on the outgoing record as the mix began, in
+    /// beats, or `None` for a mix held on no loop.
+    ///
+    /// §24's example of a learned relationship is "A into C works only with an
+    /// 8-beat loop", and this is the qualification in it. Without it the pair
+    /// records that a mix happened; with it, how.
+    pub loop_beats: Option<f64>,
 }
 
 /// What has been read off tonight's action log so far.
@@ -1435,20 +1442,22 @@ impl Library {
         into: TrackId,
         style: Option<&str>,
         beats: Option<f64>,
+        loop_beats: Option<f64>,
     ) -> Result<u32> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs() as i64);
         self.with(|conn| {
             conn.execute(
-                "INSERT INTO kept_pairs (from_id, into_id, kept, style, beats, last_at)
-                 VALUES (?1, ?2, 1, ?3, ?4, ?5)
+                "INSERT INTO kept_pairs (from_id, into_id, kept, style, beats, loop_beats, last_at)
+                 VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6)
                  ON CONFLICT(from_id, into_id) DO UPDATE SET
                      kept = kept + 1,
                      style = excluded.style,
                      beats = excluded.beats,
+                     loop_beats = excluded.loop_beats,
                      last_at = excluded.last_at",
-                rusqlite::params![from.to_hex(), into.to_hex(), style, beats, now],
+                rusqlite::params![from.to_hex(), into.to_hex(), style, beats, loop_beats, now],
             )?;
             conn.query_row(
                 "SELECT kept FROM kept_pairs WHERE from_id = ?1 AND into_id = ?2",
@@ -1490,7 +1499,7 @@ impl Library {
     pub fn kept_after(&self, from: TrackId) -> Result<Vec<KeptPair>> {
         self.with(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT into_id, kept, style, beats FROM kept_pairs
+                "SELECT into_id, kept, style, beats, loop_beats FROM kept_pairs
                  WHERE from_id = ?1 ORDER BY kept DESC, last_at DESC",
             )?;
             let rows = stmt.query_map([from.to_hex()], |row| {
@@ -1499,11 +1508,12 @@ impl Library {
                     row.get::<_, i64>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, Option<f64>>(3)?,
+                    row.get::<_, Option<f64>>(4)?,
                 ))
             })?;
             let mut found = Vec::new();
             for row in rows {
-                let (hex, kept, style, beats) = row?;
+                let (hex, kept, style, beats, loop_beats) = row?;
                 // A row whose id will not parse is a corrupt one, and skipping
                 // it is right: the alternative is refusing to answer "what have
                 // I put after this" at all because of one bad byte.
@@ -1513,6 +1523,7 @@ impl Library {
                         kept: u32::try_from(kept).unwrap_or(u32::MAX),
                         style,
                         beats,
+                        loop_beats,
                     });
                 }
             }
@@ -2894,12 +2905,12 @@ mod tests {
 
         assert_eq!(lib.pair_kept(id(1), id(2)).unwrap(), 0, "nothing kept yet");
         assert_eq!(
-            lib.keep_pair(id(1), id(2), Some("blend"), Some(32.0))
+            lib.keep_pair(id(1), id(2), Some("blend"), Some(32.0), None)
                 .unwrap(),
             1
         );
         assert_eq!(
-            lib.keep_pair(id(1), id(2), Some("echo"), Some(16.0))
+            lib.keep_pair(id(1), id(2), Some("echo"), Some(16.0), Some(8.0))
                 .unwrap(),
             2
         );
@@ -2910,6 +2921,54 @@ mod tests {
         // The most recent keep is the version meant.
         assert_eq!(kept[0].style.as_deref(), Some("echo"));
         assert_eq!(kept[0].beats, Some(16.0));
+        assert_eq!(
+            kept[0].loop_beats,
+            Some(8.0),
+            "the second keep was held on a loop and the first was not; \
+             the version meant is the most recent one"
+        );
+    }
+
+    /// **"A into C works only with an 8-beat loop" survives the round trip.**
+    ///
+    /// §24's own example of a learned relationship, and the qualification is
+    /// the content of it: a pair kept with a loop is a technique, a pair kept
+    /// without one is a note that a mix happened. A store that dropped the
+    /// loop would keep the note and throw away the technique.
+    #[test]
+    fn the_loop_a_pair_was_held_on_comes_back_with_the_pair() {
+        let lib = library();
+        for byte in 1..=3u8 {
+            lib.upsert_track(&track(byte, &format!("t{byte}"), "a"))
+                .unwrap();
+        }
+        // A into B on no loop; A into C on eight beats.
+        lib.keep_pair(id(1), id(2), Some("blend"), Some(32.0), None)
+            .unwrap();
+        lib.keep_pair(id(1), id(3), Some("blend"), Some(32.0), Some(8.0))
+            .unwrap();
+
+        let kept = lib.kept_after(id(1)).unwrap();
+        let into_b = kept.iter().find(|p| p.into == id(2)).unwrap();
+        let into_c = kept.iter().find(|p| p.into == id(3)).unwrap();
+        assert_eq!(into_b.loop_beats, None, "that one was held on no loop");
+        assert_eq!(into_c.loop_beats, Some(8.0));
+        // The two pairs are otherwise identical, so the loop is the only thing
+        // that can tell them apart — which is the claim.
+        assert_eq!(into_b.style, into_c.style);
+        assert_eq!(into_b.beats, into_c.beats);
+    }
+
+    /// A loop shorter than a beat is a loop a DJ can set, so the column is a
+    /// real rather than an integer and this is the test that says so.
+    #[test]
+    fn a_loop_of_less_than_a_beat_is_kept_as_it_was_set() {
+        let lib = library();
+        lib.upsert_track(&track(1, "one", "a")).unwrap();
+        lib.upsert_track(&track(2, "two", "b")).unwrap();
+        lib.keep_pair(id(1), id(2), None, None, Some(0.25)).unwrap();
+
+        assert_eq!(lib.kept_after(id(1)).unwrap()[0].loop_beats, Some(0.25));
     }
 
     /// **A into B says nothing about B into A.**
@@ -2922,7 +2981,7 @@ mod tests {
         let lib = library();
         lib.upsert_track(&track(1, "one", "a")).unwrap();
         lib.upsert_track(&track(2, "two", "b")).unwrap();
-        lib.keep_pair(id(1), id(2), None, None).unwrap();
+        lib.keep_pair(id(1), id(2), None, None, None).unwrap();
 
         assert_eq!(lib.pair_kept(id(1), id(2)).unwrap(), 1);
         assert_eq!(lib.pair_kept(id(2), id(1)).unwrap(), 0);
@@ -2938,9 +2997,9 @@ mod tests {
             lib.upsert_track(&track(byte, &format!("t{byte}"), "a"))
                 .unwrap();
         }
-        lib.keep_pair(id(1), id(2), None, None).unwrap();
-        lib.keep_pair(id(1), id(3), None, None).unwrap();
-        lib.keep_pair(id(1), id(3), None, None).unwrap();
+        lib.keep_pair(id(1), id(2), None, None, None).unwrap();
+        lib.keep_pair(id(1), id(3), None, None, None).unwrap();
+        lib.keep_pair(id(1), id(3), None, None, None).unwrap();
 
         let kept = lib.kept_after(id(1)).unwrap();
         assert_eq!(kept.len(), 2);
@@ -2957,7 +3016,7 @@ mod tests {
     fn a_pair_about_a_record_the_library_lacks_is_refused() {
         let lib = library();
         lib.upsert_track(&track(1, "one", "a")).unwrap();
-        assert!(lib.keep_pair(id(1), id(9), None, None).is_err());
+        assert!(lib.keep_pair(id(1), id(9), None, None, None).is_err());
         assert_eq!(lib.kept_after(id(1)).unwrap(), vec![]);
     }
 

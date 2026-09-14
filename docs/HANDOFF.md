@@ -921,6 +921,16 @@ this and it still happened, because the failure is one line above a wall of
 passing tests. **Confirm `✓ built` in the mutation run itself**, not only in the
 gate run; a mutation that does not compile has to be rewritten so it does.
 
+**A mutation applied by text substitution can silently fail to apply, and the
+test then passes for the wrong reason.** `cargo fmt` had collapsed a
+`rusqlite::params![…]` call from six lines onto one between the edit that wrote
+it and the mutation that tried to break it, so the replacement matched nothing,
+the file was unchanged, and the test reported *ok* — which reads exactly like a
+mutation that survived. The fix is cheap and should be habitual: have the
+script print the match count, or grep the file for the mutated text, **before**
+believing a green run. A mutation that did not land proves nothing at all, and
+it fails in the direction that makes a weak test look strong.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests

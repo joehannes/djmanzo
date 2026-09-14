@@ -96,6 +96,16 @@ pub struct Handover {
     pub ended: Duration,
     /// What kind of mix it was, from what was done during it.
     pub style: TransitionStyle,
+    /// The loop running on the outgoing deck as the mix began, in beats.
+    ///
+    /// [§24](../../../docs/DIRECTIVE.md)'s third example -- *Track A → Track C
+    /// works only with an 8-beat loop* -- is a relationship qualified by
+    /// something that was *done*, and this is the doing. The outgoing deck
+    /// rather than the incoming one, because that is the record being held
+    /// while the other arrives, which is what the phrase describes.
+    ///
+    /// `None` for a mix with no loop running, which is most of them.
+    pub loop_beats: Option<f32>,
 }
 
 impl Handover {
@@ -146,8 +156,8 @@ const LOW_IS_OUT: f32 = 0.25;
 /// The mixes in a night, in the order they happened.
 #[must_use]
 pub fn handovers(events: &[TimedEvent]) -> Vec<Handover> {
-    let (crossings, signals) = walk(events);
-    pair(&crossings, &signals)
+    let (crossings, signals, loops) = walk(events);
+    pair(&crossings, &signals, &loops)
 }
 
 /// One pass over the log, gathering everything the second pass needs.
@@ -156,7 +166,13 @@ pub fn handovers(events: &[TimedEvent]) -> Vec<Handover> {
 /// three separate controls and a deck can become inaudible without anything
 /// happening to *it*: another deck's assignment does not move the crossfader,
 /// but the crossfader moves every assigned deck at once.
-fn walk(events: &[TimedEvent]) -> (Vec<Crossing>, Vec<(Duration, DeckId, Signal)>) {
+type Walked = (
+    Vec<Crossing>,
+    Vec<(Duration, DeckId, Signal)>,
+    Vec<(Duration, DeckId, Option<f32>)>,
+);
+
+fn walk(events: &[TimedEvent]) -> Walked {
     let mut volume: BTreeMap<DeckId, f32> = BTreeMap::new();
     let mut assign: BTreeMap<DeckId, CrossfaderAssign> = BTreeMap::new();
     let mut track: BTreeMap<DeckId, TrackId> = BTreeMap::new();
@@ -166,6 +182,11 @@ fn walk(events: &[TimedEvent]) -> (Vec<Crossing>, Vec<(Duration, DeckId, Signal)
 
     let mut crossings = Vec::new();
     let mut signals = Vec::new();
+    // Every change to a deck's loop length, in order. Kept as a history rather
+    // than as a final value because the question is what was running *at* a
+    // moment, and a loop set after a mix says nothing about that mix.
+    let mut loops: Vec<(Duration, DeckId, Option<f32>)> = Vec::new();
+    let mut running: BTreeMap<DeckId, f32> = BTreeMap::new();
 
     for entry in events {
         match entry.event {
@@ -193,6 +214,35 @@ fn walk(events: &[TimedEvent]) -> (Vec<Crossing>, Vec<(Duration, DeckId, Signal)
                 }
                 DeckAction::SetEqLow(level) if *level <= LOW_IS_OUT => {
                     signals.push((entry.at, deck, Signal::BassOut));
+                }
+                // §24's loop. Tracked as a length rather than as a flag: "works
+                // only with an 8-beat loop" is a statement about how long, and
+                // a boolean would make one and thirty-two the same relationship.
+                DeckAction::LoopBeats(beats) if *beats > 0.0 => {
+                    running.insert(deck, *beats);
+                    loops.push((entry.at, deck, Some(*beats)));
+                }
+                DeckAction::LoopPhrases(phrases) if *phrases > 0.0 => {
+                    // A phrase length the log does not carry, so this records
+                    // that a loop is running without claiming how long. Absent
+                    // is the honest answer to "how many beats"; zero would be a
+                    // measurement.
+                    running.remove(&deck);
+                    loops.push((entry.at, deck, None));
+                }
+                DeckAction::LoopHalve | DeckAction::LoopDouble => {
+                    if let Some(beats) = running.get_mut(&deck) {
+                        *beats *= if matches!(action, DeckAction::LoopHalve) {
+                            0.5
+                        } else {
+                            2.0
+                        };
+                        loops.push((entry.at, deck, Some(*beats)));
+                    }
+                }
+                DeckAction::LoopOff => {
+                    running.remove(&deck);
+                    loops.push((entry.at, deck, None));
                 }
                 DeckAction::Fx { slot, change } => match change {
                     FxChange::Select(kind) => {
@@ -231,7 +281,19 @@ fn walk(events: &[TimedEvent]) -> (Vec<Crossing>, Vec<(Duration, DeckId, Signal)
         }
     }
 
-    (crossings, signals)
+    (crossings, signals, loops)
+}
+
+/// The loop running on `deck` at `when`, if one was.
+///
+/// The last change at or before the moment, which is what "running" means in a
+/// log: a loop set two minutes earlier and never turned off is still running,
+/// and one set a second after the mix began was not running when it began.
+fn looping(deck: DeckId, when: Duration, loops: &[(Duration, DeckId, Option<f32>)]) -> Option<f32> {
+    loops
+        .iter()
+        .rfind(|(at, on, _)| *on == deck && *at <= when)
+        .and_then(|(_, _, beats)| *beats)
 }
 
 /// What the room hears from one deck, on the engine's own arithmetic.
@@ -267,7 +329,11 @@ fn gain(
 }
 
 /// Pair each record leaving with the one that replaced it.
-fn pair(crossings: &[Crossing], signals: &[(Duration, DeckId, Signal)]) -> Vec<Handover> {
+fn pair(
+    crossings: &[Crossing],
+    signals: &[(Duration, DeckId, Signal)],
+    loops: &[(Duration, DeckId, Option<f32>)],
+) -> Vec<Handover> {
     let mut used = vec![false; crossings.len()];
     let mut found = Vec::new();
 
@@ -302,6 +368,7 @@ fn pair(crossings: &[Crossing], signals: &[(Duration, DeckId, Signal)]) -> Vec<H
             began,
             ended,
             style: style(leaving.deck, began, ended, signals),
+            loop_beats: looping(leaving.deck, began, loops),
         });
     }
 
@@ -444,6 +511,71 @@ mod tests {
             mix.took()
         );
         assert!(mix.began >= Duration::from_secs(119));
+    }
+
+    /// **§24's third example: the loop a mix was held on is part of the mix.**
+    ///
+    /// > Track A → Track C works only with an 8-beat loop.
+    ///
+    /// A relationship qualified by something that was *done*, which nothing
+    /// recorded until this: `kept_pairs` stored the style and the length and
+    /// the loop was in the log the whole time, one field away.
+    #[test]
+    fn a_mix_held_on_a_loop_records_how_long_the_loop_was() {
+        let mut log = vec![load(0.0, 1, 1), xf(1.0, -1.0), load(60.0, 2, 2)];
+        // Set well before the mix and never turned off, which is what running
+        // means: a loop is a state, not an event at the moment of the mix.
+        log.push(deck_action(100.0, 1, DeckAction::LoopBeats(8.0)));
+        log.extend(sweep(120.0, 20.0, -1.0, 1.0));
+
+        let found = handovers(&log);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(
+            found[0].loop_beats,
+            Some(8.0),
+            "the mix was held on an eight-beat loop and nothing recorded it"
+        );
+    }
+
+    /// A loop turned off before the mix is not a loop the mix was held on.
+    #[test]
+    fn a_loop_released_before_the_mix_is_not_part_of_it() {
+        let mut log = vec![load(0.0, 1, 1), xf(1.0, -1.0), load(60.0, 2, 2)];
+        log.push(deck_action(90.0, 1, DeckAction::LoopBeats(8.0)));
+        log.push(deck_action(100.0, 1, DeckAction::LoopOff));
+        log.extend(sweep(120.0, 20.0, -1.0, 1.0));
+
+        assert_eq!(handovers(&log)[0].loop_beats, None);
+    }
+
+    /// And halving one is a four-beat loop rather than an eight-beat one.
+    ///
+    /// The reason the length is tracked as a running value rather than read
+    /// off the last `LoopBeats`: a DJ tightening a loop into a mix is the
+    /// gesture §24's example is about, and the last thing they *typed* was
+    /// "halve".
+    #[test]
+    fn halving_a_loop_changes_what_the_mix_was_held_on() {
+        let mut log = vec![load(0.0, 1, 1), xf(1.0, -1.0), load(60.0, 2, 2)];
+        log.push(deck_action(90.0, 1, DeckAction::LoopBeats(8.0)));
+        log.push(deck_action(110.0, 1, DeckAction::LoopHalve));
+        log.extend(sweep(120.0, 20.0, -1.0, 1.0));
+
+        assert_eq!(handovers(&log)[0].loop_beats, Some(4.0));
+    }
+
+    /// A loop on the *incoming* deck is not what the mix was held on.
+    ///
+    /// §24's phrase is about the record being held while the other arrives.
+    /// Reading either deck's loop would make a DJ looping the intro of the new
+    /// record look like a DJ holding the old one.
+    #[test]
+    fn the_loop_that_counts_is_the_one_on_the_record_going_out() {
+        let mut log = vec![load(0.0, 1, 1), xf(1.0, -1.0), load(60.0, 2, 2)];
+        log.push(deck_action(100.0, 2, DeckAction::LoopBeats(16.0)));
+        log.extend(sweep(120.0, 20.0, -1.0, 1.0));
+
+        assert_eq!(handovers(&log)[0].loop_beats, None);
     }
 
     /// **Two channel faders crossing is the same event.**

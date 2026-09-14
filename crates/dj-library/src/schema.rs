@@ -111,6 +111,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 14,
         sql: MIGRATION_14,
     },
+    Migration {
+        version: 15,
+        sql: MIGRATION_15,
+    },
 ];
 
 /// The initial schema.
@@ -775,6 +779,28 @@ const MIGRATION_14: &str = r#"
 -- Null means "analysed before this column existed" as well as "not analysed",
 -- and both are the same thing to a reader: no answer yet.
 ALTER TABLE tracks ADD COLUMN energy REAL;
+"#;
+
+const MIGRATION_15: &str = r#"
+-- §24's "works only with an 8-beat loop".
+--
+-- The directive's own example of a learned relationship is not "A goes into
+-- B"; it is "A into C works only with an 8-beat loop". The qualification is
+-- the content. A pair kept without it says a mix happened; a pair kept with it
+-- says how, and that is the difference between a note and a technique.
+--
+-- Beats rather than seconds or bars, for the same reason `beats` above is:
+-- a loop is set in beats on every deck djmanzo has, a DJ asks for it in beats,
+-- and seconds would have to be un-converted through a tempo the row does not
+-- carry. Real rather than integer because halving twice from three beats is a
+-- loop a DJ can set and 0.75 is what it is.
+--
+-- Null is the common case and means "no loop was running", which is a fact
+-- about the mix rather than a gap in the record. A mix held on no loop and a
+-- mix whose loop nobody wrote down are indistinguishable here, and for a row
+-- written by djmanzo itself off its own action log that distinction cannot
+-- arise: the log has every loop gesture in it.
+ALTER TABLE kept_pairs ADD COLUMN loop_beats REAL;
 "#;
 
 #[cfg(test)]
