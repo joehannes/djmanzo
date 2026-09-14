@@ -4297,7 +4297,7 @@ pub struct FailedFileDto {
     pub reason: String,
 }
 
-fn library(state: &AppState) -> Result<Arc<dj_library::Library>, String> {
+pub(crate) fn library(state: &AppState) -> Result<Arc<dj_library::Library>, String> {
     state.library().get().map_err(|e| e.to_string())
 }
 
@@ -6862,7 +6862,10 @@ pub fn night_fits(state: State<'_, AppState>, density: Option<String>) -> Result
 /// a rail that guessed the setting in order to rank by it would be ranking by
 /// a guess. `None` too until there are enough nights of that setting for a
 /// profile to exist at all, which `profile::profiles` decides.
-fn tonight_profile(state: &AppState, db: &dj_library::Library) -> Option<crate::profile::Profile> {
+pub(crate) fn tonight_profile(
+    state: &AppState,
+    db: &dj_library::Library,
+) -> Option<crate::profile::Profile> {
     let setting = crate::setting::Setting::parse(&db.night(&state.session_id()).ok()??.setting)?;
     let nights = db.nights_in(setting.slug()).ok()?;
     let genres = |s: crate::setting::Setting| db.genres_in(s.slug()).unwrap_or_default();
@@ -7676,7 +7679,7 @@ pub fn room_history(state: State<'_, AppState>) -> Result<Vec<SeenDto>, String> 
 }
 
 /// Which track is on a deck, if any.
-fn current_track(state: &AppState, deck: dj_core::DeckId) -> Option<dj_core::TrackId> {
+pub(crate) fn current_track(state: &AppState, deck: dj_core::DeckId) -> Option<dj_core::TrackId> {
     let tracks = state.deck_tracks();
     let map = tracks.lock().ok()?;
     map.get(&deck.human_number()).map(|t| t.id)
@@ -7789,7 +7792,7 @@ fn describe_reason(reason: &dj_library::suggest::Reason) -> String {
 /// analyser measures integrated LUFS; a 1-to-10 energy scale would be a
 /// invented unit dressed as a measurement. See the module docs of
 /// `dj_library::suggest`.
-fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
+pub(crate) fn summarise_reasons(reasons: &[dj_library::suggest::Reason]) -> String {
     use dj_library::suggest::Reason;
 
     /// Where each reason sits on the line, regardless of the order the scorer
@@ -10950,6 +10953,11 @@ pub fn assistant_sight() -> Vec<SightDto> {
                     crate::sight::Held::Recent => "what you just did".to_owned(),
                     crate::sight::Held::Hardware => "what is plugged in".to_owned(),
                     crate::sight::Held::Focus => "what is on screen".to_owned(),
+                    crate::sight::Held::Staged => "what it has prepared".to_owned(),
+                    crate::sight::Held::Candidates => "the next-track rail".to_owned(),
+                    crate::sight::Held::Plan => "your set plan".to_owned(),
+                    crate::sight::Held::Profile => "your nights like this one".to_owned(),
+                    crate::sight::Held::Transition => "the armed mix".to_owned(),
                 },
                 crate::sight::Carrier::Unseen { because } => because.to_owned(),
             },

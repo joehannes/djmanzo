@@ -74,6 +74,16 @@ pub enum Held {
     Hardware,
     /// The arrangement on screen and what it is for.
     Focus,
+    /// The moves the assistant has staged and not yet run. §44.
+    Staged,
+    /// What the rail would offer next. §22.
+    Candidates,
+    /// The set the DJ has planned, and how far through it they are. §21.
+    Plan,
+    /// What djmanzo has worked out about how this DJ plays here. §81.
+    Profile,
+    /// The mix that is armed, as a thing with a shape and a length. §68.
+    Transition,
 }
 
 /// What the app reads for the briefing that the snapshot does not carry.
@@ -96,6 +106,16 @@ pub struct Beside {
     pub hardware: String,
     /// The arrangement on screen.
     pub focus: String,
+    /// The moves the assistant has staged, in its own words.
+    pub staged: Vec<String>,
+    /// What the rail would offer next, best first.
+    pub candidates: Vec<String>,
+    /// The planned set, in order, with where the night has got to.
+    pub plan: Vec<String>,
+    /// One sentence about how this DJ plays this kind of night.
+    pub profile: String,
+    /// The armed mix, as a shape and a length.
+    pub transition: String,
 }
 
 /// One of the twenty-six things §40 says the AI context should include.
@@ -191,13 +211,24 @@ pub const ALL: &[Item] = &[
         "Which of the four parts of each record are muted.",
         "/stem_mutes",
     ),
-    unseen(
-        "current transitions",
-        "The mix in progress, as a thing with a shape and a length.",
-        "a transition happens over time and the briefing is one instant. What it \
-         does carry is the crossfader and what each deck is doing, which is the \
-         evidence a transition is under way rather than the transition itself",
-    ),
+    Item {
+        name: "current transitions",
+        about: "The mix that is armed, as a thing with a shape and a length.",
+        unit: "",
+        // §68's transition object is exactly the thing this said did not
+        // exist. The reason stood for a long time and stopped being true when
+        // a mix became something djmanzo *holds* rather than something it
+        // works out afresh: a held transition has a style, a length in beats,
+        // a start and what its style does beyond the faders. The briefing is
+        // still one instant, and an armed plan is a fact about that instant.
+        //
+        // Only while it still describes what is on the decks — the same rule
+        // the panel follows, because a confident mix point for a record that
+        // left four minutes ago looks exactly like a current one.
+        carrier: Carrier::Beside {
+            held: Held::Transition,
+        },
+    },
     measured(
         "cue points",
         "The hot cues set on each deck.",
@@ -225,17 +256,31 @@ pub const ALL: &[Item] = &[
          the database in a prompt. The assistant searches it instead, which is \
          what a search is for",
     ),
-    unseen(
-        "prepared tracks",
-        "What is staged and on its way to a deck.",
-        "staged records are the browser's and the snapshot carries what the engine \
-         has. Gathering them is a second read the briefing does not yet make",
-    ),
-    unseen(
-        "next candidates",
-        "What the rail would offer next.",
-        "the rail is computed from the library on demand and is not on the snapshot",
-    ),
+    Item {
+        name: "prepared tracks",
+        about: "The moves the assistant has staged and not yet run.",
+        unit: "",
+        // §44's transaction, in the words it already puts in front of the DJ.
+        // An assistant asked "should I bring it in" that cannot see it has
+        // already prepared the record is answering a different question from
+        // the one on screen.
+        carrier: Carrier::Beside { held: Held::Staged },
+    },
+    Item {
+        name: "next candidates",
+        about: "What the rail would offer next, best first, with the reasons.",
+        unit: "",
+        // Computed from the library on demand, which is what it was unseen
+        // for — and a briefing is asked when a DJ types a question rather
+        // than sixty times a second, so the cost is one ranking per question
+        // and the same one the rail already pays. "What should I play next"
+        // is the question an assistant exists for, and answering it without
+        // seeing what djmanzo has already offered is two systems disagreeing
+        // in front of a DJ.
+        carrier: Carrier::Beside {
+            held: Held::Candidates,
+        },
+    },
     Item {
         name: "history",
         about: "What has already been played tonight, oldest first.",
@@ -244,16 +289,29 @@ pub const ALL: &[Item] = &[
             held: Held::History,
         },
     },
-    unseen(
-        "session plan",
-        "The shape of the night, as a sequence.",
-        "the plan is the planner's and is not on the snapshot",
-    ),
-    unseen(
-        "user preferences",
-        "What this DJ has been learnt to like.",
-        "the profile is §12's and is read where suggestions are ranked, not here",
-    ),
+    Item {
+        name: "session plan",
+        about: "The set the DJ has planned, in order, and how far through it.",
+        unit: "",
+        // §21's setlist, read off the conduct state beside the posture that
+        // is already read there. How far through matters as much as the list:
+        // the next record in a plan is the useful half.
+        carrier: Carrier::Beside { held: Held::Plan },
+    },
+    Item {
+        name: "user preferences",
+        about: "How this DJ plays this kind of night, in djmanzo's own sentence.",
+        unit: "",
+        // §81's profile, and **the sentence rather than the numbers**. The
+        // words are written in Rust with the setting and the evidence in them
+        // — see `profile::Profile::words` — so the model is handed a claim
+        // djmanzo would make rather than weights it could assemble a stronger
+        // one out of. Absent until there are enough nights, which is most of
+        // them.
+        carrier: Carrier::Beside {
+            held: Held::Profile,
+        },
+    },
     Item {
         name: "current venue/occasion",
         about: "What the DJ declared the night to be.",
@@ -375,6 +433,11 @@ pub fn brief(snapshot: &serde_json::Value, beside: &Beside) -> Vec<String> {
             Held::Focus => one(&beside.focus),
             Held::History => many(&beside.history),
             Held::Recent => many(&beside.recent),
+            Held::Staged => many(&beside.staged),
+            Held::Candidates => many(&beside.candidates),
+            Held::Plan => many(&beside.plan),
+            Held::Profile => one(&beside.profile),
+            Held::Transition => one(&beside.transition),
         };
         lines.push(format!("{}: {value}", item.name));
     }
@@ -645,6 +708,11 @@ mod tests {
                 recent: vec!["deck 1 play".to_owned()],
                 hardware: "a controller with 2 jogs".to_owned(),
                 focus: "Autopilot".to_owned(),
+                staged: vec!["load deck 2".to_owned()],
+                candidates: vec!["Bachata Rosa (+2 BPM)".to_owned()],
+                plan: vec!["a1b2c3d4 (next)".to_owned()],
+                profile: "Wedding, over 4 nights: mostly blend transitions.".to_owned(),
+                transition: "deck 1 into deck 2, blend over 32 beats".to_owned(),
             },
         );
         let text = lines.join("\n");
@@ -713,6 +781,11 @@ mod tests {
             recent: vec!["deck 2 cue".to_owned()],
             hardware: "DDJ: 2 decks, 2 jogs".to_owned(),
             focus: "Autopilot (watching)".to_owned(),
+            staged: vec!["cue deck 2 to the phrase".to_owned()],
+            candidates: vec!["Ojala (+1 BPM, 8A)".to_owned()],
+            plan: vec!["deadbeef (next)".to_owned()],
+            profile: "Club, over 6 nights: mostly echo transitions.".to_owned(),
+            transition: "deck 1 into deck 2, echo over 16 beats".to_owned(),
         };
         let text = brief(&serde_json::json!({}), &beside).join("\n");
 
@@ -723,10 +796,61 @@ mod tests {
             "deck 2 cue",
             "DDJ: 2 decks, 2 jogs",
             "Autopilot (watching)",
+            // The five §40 listed as unseen until §68's transition object,
+            // §44's staged moves, §22's rail and §81's profile each became a
+            // thing djmanzo holds rather than a thing it works out afresh.
+            "cue deck 2 to the phrase",
+            "Ojala (+1 BPM, 8A)",
+            "deadbeef (next)",
+            "Club, over 6 nights: mostly echo transitions.",
+            "deck 1 into deck 2, echo over 16 beats",
         ] {
             assert!(
                 text.contains(wanted),
                 "`{wanted}` never reached the model:\n{text}"
+            );
+        }
+    }
+
+    /// **Only two of §40's twenty-six are still unseen, and both have a reason
+    /// that is about the thing rather than about djmanzo not having built it.**
+    ///
+    /// Named individually rather than counted, because a count passes again
+    /// the moment something slips back — and five of these slipped the other
+    /// way for a long time on reasons that had quietly stopped being true.
+    /// *The rail is not on the snapshot* and *the plan is the planner's* were
+    /// both accurate and neither was a reason the assistant could not be told:
+    /// a briefing is asked when a DJ types a question, not sixty times a
+    /// second, and reading one more lock is what the caller is for.
+    ///
+    /// The two that remain are different in kind. A **library** in a prompt is
+    /// the database in a prompt, and searching is what a search is for. The
+    /// **room** reading lives with the panel that opens the camera and stops
+    /// when it closes, so a briefing carrying it would go on claiming a room
+    /// nothing is looking at.
+    #[test]
+    fn the_only_things_the_assistant_cannot_see_are_the_two_it_should_not() {
+        let unseen: Vec<&str> = ALL
+            .iter()
+            .filter(|item| !item.carrier.told())
+            .map(|item| item.name)
+            .collect();
+        assert_eq!(unseen, vec!["library", "audience context"]);
+
+        for name in [
+            "current transitions",
+            "prepared tracks",
+            "next candidates",
+            "session plan",
+            "user preferences",
+        ] {
+            let item = ALL
+                .iter()
+                .find(|item| item.name == name)
+                .unwrap_or_else(|| panic!("§40 lists `{name}` and the table does not"));
+            assert!(
+                item.carrier.told(),
+                "`{name}` is unseen again; the reason it was is in this test"
             );
         }
     }

@@ -49,9 +49,9 @@
   },
   {
     "name": "current transitions",
-    "about": "The mix in progress, as a thing with a shape and a length.",
-    "told": false,
-    "source": "a transition happens over time and the briefing is one instant. What it does carry is the crossfader and what each deck is doing, which is the evidence a transition is under way rather than the transition itself"
+    "about": "The mix that is armed, as a thing with a shape and a length.",
+    "told": true,
+    "source": "the armed mix"
   },
   {
     "name": "cue points",
@@ -85,15 +85,15 @@
   },
   {
     "name": "prepared tracks",
-    "about": "What is staged and on its way to a deck.",
-    "told": false,
-    "source": "staged records are the browser's and the snapshot carries what the engine has. Gathering them is a second read the briefing does not yet make"
+    "about": "The moves the assistant has staged and not yet run.",
+    "told": true,
+    "source": "what it has prepared"
   },
   {
     "name": "next candidates",
-    "about": "What the rail would offer next.",
-    "told": false,
-    "source": "the rail is computed from the library on demand and is not on the snapshot"
+    "about": "What the rail would offer next, best first, with the reasons.",
+    "told": true,
+    "source": "the next-track rail"
   },
   {
     "name": "history",
@@ -103,15 +103,15 @@
   },
   {
     "name": "session plan",
-    "about": "The shape of the night, as a sequence.",
-    "told": false,
-    "source": "the plan is the planner's and is not on the snapshot"
+    "about": "The set the DJ has planned, in order, and how far through it.",
+    "told": true,
+    "source": "your set plan"
   },
   {
     "name": "user preferences",
-    "about": "What this DJ has been learnt to like.",
-    "told": false,
-    "source": "the profile is §12's and is read where suggestions are ranked, not here"
+    "about": "How this DJ plays this kind of night, in djmanzo's own sentence.",
+    "told": true,
+    "source": "your nights like this one"
   },
   {
     "name": "current venue/occasion",

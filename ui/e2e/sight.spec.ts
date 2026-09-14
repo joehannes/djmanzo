@@ -92,6 +92,46 @@ test.describe("§40's context, and its edges", () => {
   });
 
   /**
+   * **The five that used to be unseen are on the seen side now, by name.**
+   *
+   * Each was unseen for a reason that was true when it was written and quietly
+   * stopped being true: the rail is still not on the snapshot and the plan is
+   * still the planner's, and neither is a reason the assistant cannot be
+   * *told* — a briefing is asked when a DJ types a question, not sixty times a
+   * second. Named rather than counted, because a count is satisfied again the
+   * moment one of them slips back.
+   *
+   * And the two that remain unseen are still unseen, which is the other half:
+   * a library in a prompt is the database in a prompt, and a room reading that
+   * stops when the camera panel closes would go on claiming a room nothing is
+   * looking at.
+   */
+  test("what the assistant could not see, and now can", async ({ page }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/");
+    await openAssistant(page);
+    await page.locator(".sight summary").click();
+
+    const fold = page.locator(".sight");
+    for (const name of [
+      "current transitions",
+      "prepared tracks",
+      "next candidates",
+      "session plan",
+      "user preferences",
+    ]) {
+      await expect(
+        fold.locator(".seen .what").filter({ hasText: name }).first(),
+        `\`${name}\` is not on the side the assistant can see`,
+      ).toBeVisible();
+    }
+
+    const blind = await fold.locator(".blind .what").allTextContents();
+    expect(blind.map((n) => n.trim())).toEqual(["library", "audience context"]);
+    expect(thrown).toEqual([]);
+  });
+
+  /**
    * **The fold is closed until it is opened.**
    *
    * §18: the panel a DJ opens to ask a question should not first hand them

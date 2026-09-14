@@ -92,11 +92,7 @@ pub fn music(snapshot: &crate::Snapshot) -> MusicContext {
     let playing: Vec<&crate::snapshot::DeckSnapshot> =
         snapshot.decks.iter().filter(|deck| deck.playing).collect();
 
-    let carrying = playing.iter().max_by(|a, b| {
-        a.volume
-            .partial_cmp(&b.volume)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    let carrying = carrying(snapshot);
 
     let tempos: Vec<f32> = playing
         .iter()
@@ -119,6 +115,30 @@ pub fn music(snapshot: &crate::Snapshot) -> MusicContext {
             .count(),
         bpm_spread: spread,
     }
+}
+
+/// The deck the room is hearing, if any.
+///
+/// Playing, and the loudest of those: the fader is the DJ saying which record
+/// the mix is, and halfway through a blend both are playing. Taking the first
+/// loaded deck instead would make a record cued at 174 on deck 3 the answer
+/// for a 124 BPM set.
+///
+/// One rule rather than two. [`music`] reads the tempo and the key off this,
+/// and the assistant's briefing asks the rail about the same deck; two answers
+/// to "which record is the night" would disagree at exactly the moment it
+/// matters, which is mid-blend.
+#[must_use]
+pub fn carrying(snapshot: &crate::Snapshot) -> Option<&crate::snapshot::DeckSnapshot> {
+    snapshot
+        .decks
+        .iter()
+        .filter(|deck| deck.playing)
+        .max_by(|a, b| {
+            a.volume
+                .partial_cmp(&b.volume)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
 }
 
 /// The machine and what is plugged into it.

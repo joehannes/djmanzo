@@ -1036,6 +1036,17 @@ beside the close, and the test quietly started folding the panel it meant to
 close. It failed loudly, which is the good case — but a control picked by
 position in a row is one that changes meaning when the row does. Name it.
 
+**Re-read the reasons beside the things that are not built.** Five of the
+seven items §40 listed as unseen had reasons that were true when written and
+had quietly stopped being true — *the rail is not on the snapshot*, *a
+transition happens over time and the briefing is one instant*, *the plan is
+the planner's*. Each stayed accurate as a sentence while ceasing to be a reason
+for anything, because the thing it described had become something djmanzo
+*holds* rather than something it works out afresh. This is the second time in
+two days: §29's AI hover was blocked on the same shape of stale clause. **A
+reason is a claim about the codebase and the codebase moves.** When something
+lands that a blocked row names, go and re-read the row.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests

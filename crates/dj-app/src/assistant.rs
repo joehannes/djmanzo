@@ -214,6 +214,41 @@ fn context_lines(state: &AppState) -> Vec<String> {
         format!("{} ({})", workspace.name, workspace.about)
     });
 
+    // §44's transaction, in the words the panel puts in front of the DJ. An
+    // assistant asked "should I bring it in" that cannot see it has already
+    // prepared the record is answering a different question from the one on
+    // screen.
+    let staged: Vec<String> = state.staged().map_or_else(Vec::new, |plan| {
+        plan.moves
+            .iter()
+            .map(|step| {
+                format!(
+                    "{}{}",
+                    step.about,
+                    if step.chosen { "" } else { " (turned off)" }
+                )
+            })
+            .collect()
+    });
+
+    // §21's planned set, and **how far through it**: the next record in a plan
+    // is the useful half, and a bare list leaves the model to guess which one
+    // that is.
+    let plan = planned_lines(state);
+
+    // §68's armed mix. Only while it still describes what is on the decks —
+    // the rule `transition_current` states, because a confident mix point for
+    // a record that left four minutes ago looks exactly like a current one.
+    let transition = armed_line(state);
+
+    // §22's rail and §81's profile, both of which need the library. A briefing
+    // without them is the answer djmanzo already has, withheld from the thing
+    // being asked the same question.
+    let (candidates, profile) = match crate::commands::library(state) {
+        Ok(db) => (candidate_lines(state, &db), profile_line(state, &db)),
+        Err(_) => (Vec::new(), String::new()),
+    };
+
     crate::sight::brief(
         &value,
         &crate::sight::Beside {
@@ -223,8 +258,115 @@ fn context_lines(state: &AppState) -> Vec<String> {
             recent,
             hardware,
             focus,
+            staged,
+            candidates,
+            plan,
+            profile,
+            transition,
         },
     )
+}
+
+/// The planned set, in order, with the one that is next marked.
+fn planned_lines(state: &AppState) -> Vec<String> {
+    let held = state.conduct();
+    let Ok(conduct) = held.lock() else {
+        return Vec::new();
+    };
+    conduct
+        .setlist
+        .iter()
+        .enumerate()
+        .map(|(at, track)| {
+            let hex = track.to_hex();
+            // Short, because a briefing is read by something paying by the
+            // token and a full id says nothing a prefix does not.
+            let short = &hex[..hex.len().min(8)];
+            if at == conduct.played {
+                format!("{short} (next)")
+            } else {
+                short.to_owned()
+            }
+        })
+        .collect()
+}
+
+/// The armed mix as a shape and a length, or nothing.
+fn armed_line(state: &AppState) -> String {
+    let Some(transition) = state.transition() else {
+        return String::new();
+    };
+    let loaded = |deck| crate::commands::current_track(state, deck);
+    if !transition.describes(
+        loaded(transition.outgoing_deck),
+        loaded(transition.incoming_deck),
+    ) {
+        return String::new();
+    }
+    format!(
+        "deck {} into deck {}, {} over {} beats at {:.0}s; {}",
+        transition.outgoing_deck.human_number(),
+        transition.incoming_deck.human_number(),
+        transition.plan.style.as_str(),
+        transition.plan.length_beats,
+        transition.start_seconds(),
+        transition.shape().words().join("; ")
+    )
+}
+
+/// What the rail would offer next, best first, with the reasons.
+///
+/// The deck the room is hearing, because that is what the rail follows. A few
+/// rather than the whole ranking: the top of a rail is what a DJ reads and a
+/// briefing carrying fifty is the library in a prompt, which is what the
+/// library itself is deliberately kept out of this for.
+fn candidate_lines(state: &AppState, db: &dj_library::Library) -> Vec<String> {
+    const OFFERED: usize = 5;
+
+    // The same deck `context::carrying` calls the night's, so the rail the
+    // model is shown and the tempo it is told are about one record.
+    let snapshot = crate::commands::snapshot_now(state);
+    let Some(playing) = crate::context::carrying(&snapshot)
+        .and_then(|deck| dj_core::DeckId::from_human(deck.number))
+    else {
+        return Vec::new();
+    };
+    let Some(now) =
+        crate::commands::current_track(state, playing).and_then(|id| db.track(id).ok().flatten())
+    else {
+        return Vec::new();
+    };
+    let Ok(pool) = db.all_tracks(5_000) else {
+        return Vec::new();
+    };
+
+    let here = dj_library::suggest::Playing::of(&now);
+    dj_library::suggest::rank(&here, dj_library::suggest::Trajectory::Hold, &pool)
+        .into_iter()
+        .filter(|found| found.track != now.id)
+        .take(OFFERED)
+        .filter_map(|found| {
+            let track = pool.iter().find(|t| t.id == found.track)?;
+            let name = track
+                .tags
+                .title
+                .clone()
+                .unwrap_or_else(|| track.id.to_hex()[..8].to_owned());
+            Some(format!(
+                "{name} ({})",
+                crate::commands::summarise_reasons(&found.reasons)
+            ))
+        })
+        .collect()
+}
+
+/// §81's profile, as the one sentence djmanzo writes about it.
+///
+/// The sentence rather than the numbers: it names the setting and the evidence
+/// by construction, so the model is handed a claim djmanzo would make rather
+/// than weights it could assemble a stronger one out of.
+fn profile_line(state: &AppState, db: &dj_library::Library) -> String {
+    crate::commands::tonight_profile(state, db).map_or_else(String::new, |p| p.words())
 }
 
 /// §53's controller profile, as one line.
