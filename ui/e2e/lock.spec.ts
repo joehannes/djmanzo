@@ -135,6 +135,14 @@ test.describe("§78's freeze and §79's locks", () => {
       );
 
     await page.setViewportSize({ width: 1280, height: 1200 });
+    // Waited for, like every other read in this test and for the same reason.
+    // **This line was the flake**, not the poll below it: `roomy` was read the
+    // instant the viewport was applied, so about one run in ten it caught the
+    // band from *before* the resize — 0.8, which is also the band at 1000 — and
+    // then the poll underneath could never differ from it, and failed saying
+    // the density does not follow the window at all. There is no condition to
+    // wait for here, because the settled value is what is being captured.
+    await page.waitForTimeout(200);
     const roomy = await scale();
     await page.setViewportSize({ width: 1280, height: 1000 });
     // Waited for rather than read: the resize handler runs on the window's own

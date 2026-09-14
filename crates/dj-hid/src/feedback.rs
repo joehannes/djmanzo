@@ -277,6 +277,120 @@ impl Feedback {
     }
 }
 
+/// How often the lights are brought up to date.
+///
+/// About thirty times a second. The module docs explain the ceiling: a MIDI
+/// DIN cable carries roughly a thousand three-byte messages a second, shared
+/// with everything else on the wire, so the snapshot rate would be twice the
+/// budget for a busy board. Thirty is half of it and still under a frame of
+/// lag on an LED, which nobody has ever seen.
+const EVERY: std::time::Duration = std::time::Duration::from_millis(33);
+
+/// A mapping's lights, driven on a thread of their own.
+///
+/// [`Feedback`] is the arithmetic — which byte each parameter wants, and which
+/// of them changed. This is the thing that actually sends them, and until it
+/// existed the whole return path was **parsed and consulted by nothing**: a
+/// mapping declared its `[[feedback]]` blocks, `FeedbackMap::parse` resolved
+/// every parameter name in them, and no byte ever left the machine. A DJ
+/// looked down mid-set and the hardware disagreed with the screen about what
+/// was playing.
+///
+/// # Its own thread, not the snapshot pump
+///
+/// A blocked MIDI write must not be able to stall the interface, and the
+/// interface running slowly must not be able to leave a play button lit on a
+/// deck that stopped. They are separate answers to separate questions and they
+/// belong on separate threads. The registry is the shared truth between them
+/// and it is lock-free by construction, so this thread costs one atomic read
+/// per light per tick.
+///
+/// # It goes dark when it is dropped
+///
+/// A controller keeps its LEDs lit after the process that set them has gone —
+/// they are the device's state, not djmanzo's — so letting go of a port
+/// without a blackout leaves a DJ with a board still showing the last set.
+/// That happens in [`Drop`], because the cases where it matters most are the
+/// ones nobody wrote a close path for: a different mapping chosen, a device
+/// unplugged, the application quitting.
+#[derive(Debug)]
+pub struct Lights {
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+    lit: usize,
+    port: String,
+}
+
+impl Lights {
+    /// Start driving `map`'s lights into `sink` from `registry`.
+    ///
+    /// `port` is only carried so the interface can say which output is being
+    /// lit; nothing here reads it.
+    #[must_use]
+    pub fn start(
+        map: FeedbackMap,
+        mut sink: Box<dyn crate::out::Sink>,
+        registry: std::sync::Arc<ParameterRegistry>,
+        port: String,
+    ) -> Self {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let lit = map.lights.len();
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&stop);
+        // A named thread, so a stall shows up as `djmanzo-lights` in a
+        // backtrace rather than as thread 7.
+        let thread = std::thread::Builder::new()
+            .name("djmanzo-lights".to_owned())
+            .spawn(move || {
+                // Nothing has been sent yet, so the first poll sends every
+                // light — which is what a device that just came up dark needs.
+                let mut feedback = Feedback::new(map);
+                while !flag.load(Ordering::Relaxed) {
+                    for message in feedback.poll(&registry) {
+                        sink.send(&message);
+                    }
+                    std::thread::sleep(EVERY);
+                }
+                for message in feedback.blackout() {
+                    sink.send(&message);
+                }
+            })
+            .ok();
+
+        Self {
+            stop,
+            thread,
+            lit,
+            port,
+        }
+    }
+
+    /// How many lights this mapping declares.
+    #[must_use]
+    pub const fn lit(&self) -> usize {
+        self.lit
+    }
+
+    /// The output being lit, by name.
+    #[must_use]
+    pub fn port(&self) -> &str {
+        &self.port
+    }
+}
+
+impl Drop for Lights {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            // Joined rather than detached: the blackout is the last thing the
+            // thread does, and a detached one racing a newly opened port would
+            // put the old mapping's darkness over the new mapping's lights.
+            let _ = thread.join();
+        }
+    }
+}
+
 /// Every parameter, by the name a mapping file uses.
 fn parameters_by_name() -> HashMap<String, ParamId> {
     ParamId::all().map(|id| (id.name(), id)).collect()
@@ -287,6 +401,156 @@ mod tests {
     use super::*;
     use dj_core::param::DeckParam;
     use dj_core::{Action, DeckId};
+
+    /// Somewhere bytes can be sent that is not a device.
+    #[derive(Debug, Default, Clone)]
+    struct Recorder(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl Recorder {
+        fn bytes(&self) -> Vec<u8> {
+            self.0.lock().expect("not poisoned").clone()
+        }
+    }
+
+    impl crate::out::Sink for Recorder {
+        fn send(&mut self, message: &[u8]) {
+            self.0
+                .lock()
+                .expect("not poisoned")
+                .extend_from_slice(message);
+        }
+    }
+
+    /// Wait until `check` is true, or give up. Returns whether it happened.
+    ///
+    /// The pump is a real thread on a real clock, so a test that slept a fixed
+    /// amount would be either slow or flaky, and on a loaded CI machine both.
+    fn until(check: impl Fn() -> bool) -> bool {
+        for _ in 0..200 {
+            if check() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        false
+    }
+
+    fn lit_map() -> FeedbackMap {
+        FeedbackMap::parse(
+            r#"
+            [[feedback]]
+            when = "deck.1.playing"
+            send = "note 1 0x0B"
+            "#,
+        )
+        .expect("a mapping with one light")
+    }
+
+    /// **A light that nothing sends is not a light.**
+    ///
+    /// The whole reason this type exists. `FeedbackMap` resolved every
+    /// parameter name in a mapping's `[[feedback]]` blocks and `Feedback`
+    /// worked out the bytes, and no byte ever left the machine — the fourth
+    /// table in this codebase found parsed, validated and consulted by
+    /// nothing. A DJ looked down mid-set and the hardware disagreed with the
+    /// screen.
+    #[test]
+    fn a_parameter_that_moves_reaches_the_wire() {
+        let registry = std::sync::Arc::new(ParameterRegistry::new());
+        let sink = Recorder::default();
+        let lights = Lights::start(
+            lit_map(),
+            Box::new(sink.clone()),
+            std::sync::Arc::clone(&registry),
+            "Test Out".to_owned(),
+        );
+        assert_eq!(lights.lit(), 1);
+        assert_eq!(lights.port(), "Test Out");
+
+        // Off first, because a device comes up dark knowing nothing and the
+        // first pass tells it everything.
+        assert!(
+            until(|| sink.bytes() == vec![0x90, 0x0B, 0x00]),
+            "the first pass did not tell the device the deck was stopped: {:?}",
+            sink.bytes()
+        );
+
+        registry.set(
+            ParamId::Deck(DeckId::from_human(1).expect("deck 1"), DeckParam::Playing),
+            1.0,
+        );
+        assert!(
+            until(|| sink.bytes().len() >= 6),
+            "the deck started and the light did not: {:?}",
+            sink.bytes()
+        );
+        assert_eq!(&sink.bytes()[3..6], &[0x90, 0x0B, 0x7F]);
+        drop(lights);
+    }
+
+    /// **Letting go of a device leaves it dark.**
+    ///
+    /// A controller keeps its LEDs after the process that set them has gone;
+    /// they are the device's state, not djmanzo's. The blackout is in `Drop`
+    /// because the cases that matter are the ones nobody writes a close path
+    /// for — a different mapping chosen, a device unplugged, a quit.
+    #[test]
+    fn dropping_the_pump_turns_every_light_off() {
+        let registry = std::sync::Arc::new(ParameterRegistry::new());
+        registry.set(
+            ParamId::Deck(DeckId::from_human(1).expect("deck 1"), DeckParam::Playing),
+            1.0,
+        );
+        let sink = Recorder::default();
+        let lights = Lights::start(
+            lit_map(),
+            Box::new(sink.clone()),
+            std::sync::Arc::clone(&registry),
+            "Test Out".to_owned(),
+        );
+        assert!(
+            until(|| sink.bytes() == vec![0x90, 0x0B, 0x7F]),
+            "the lit deck never lit: {:?}",
+            sink.bytes()
+        );
+
+        drop(lights);
+        // `Drop` joins the thread, so by here the blackout has been sent.
+        assert_eq!(
+            sink.bytes(),
+            vec![0x90, 0x0B, 0x7F, 0x90, 0x0B, 0x00],
+            "the device was left lit"
+        );
+    }
+
+    /// **A board that is not moving costs nothing on the wire.**
+    ///
+    /// The module's own budget: a DIN cable carries about a thousand messages
+    /// a second and a mixer is mostly still. A pump that resent every light on
+    /// every tick would spend the whole cable on saying nothing changed, and
+    /// the pad a DJ just hit would queue behind it.
+    #[test]
+    fn a_still_mixer_sends_nothing_after_the_first_pass() {
+        let registry = std::sync::Arc::new(ParameterRegistry::new());
+        let sink = Recorder::default();
+        let lights = Lights::start(
+            lit_map(),
+            Box::new(sink.clone()),
+            std::sync::Arc::clone(&registry),
+            "Test Out".to_owned(),
+        );
+        assert!(until(|| !sink.bytes().is_empty()), "nothing was ever sent");
+        let after_first = sink.bytes().len();
+        // Several ticks' worth of a mixer nobody is touching.
+        std::thread::sleep(EVERY * 6);
+        assert_eq!(
+            sink.bytes().len(),
+            after_first,
+            "a still mixer kept talking: {:?}",
+            sink.bytes()
+        );
+        drop(lights);
+    }
 
     fn registry() -> ParameterRegistry {
         ParameterRegistry::new()

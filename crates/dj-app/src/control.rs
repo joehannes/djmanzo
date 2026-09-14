@@ -41,6 +41,14 @@ pub struct MappingDto {
     /// what each would give you *before* it is opened — which is the question a
     /// DJ with two controllers in a bag is actually asking.
     pub hands: dj_hid::hands::Hands,
+    /// How many controls this mapping lights.
+    ///
+    /// §53 asks which surfaces a controller deserves prominence for, and the
+    /// mirror of that question is what the controller itself can show. Zero is
+    /// a real answer and a common one — plenty of mappings bind a hundred
+    /// controls and declare no feedback at all — and it is different from a
+    /// mapping djmanzo simply has not opened.
+    pub lights: usize,
 }
 
 /// One key on the shortcut sheet.
@@ -122,6 +130,35 @@ pub struct AudioRoutingDto {
     pub not_applied: Option<String>,
 }
 
+/// One mapping djmanzo can open, and everything read out of its file.
+///
+/// All three parsed in one pass at load, because all three live in the same
+/// TOML and a `Mapping` carries neither of the other two. Reading the file
+/// again later to get the lights would mean holding the text as a fourth thing
+/// to keep in step — which is the failure this codebase keeps finding from the
+/// other side.
+struct Known {
+    mapping: Mapping,
+    /// §53's reading of what this controller puts under the hands.
+    hands: dj_hid::hands::Hands,
+    /// The lights it declares. Empty for a mapping with no `[[feedback]]`.
+    lights: dj_hid::feedback::FeedbackMap,
+    /// Whether djmanzo shipped it, as opposed to the DJ writing it.
+    bundled: bool,
+}
+
+/// What djmanzo is lighting on the open controller, or why it is not.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LightsDto {
+    /// How many controls are being driven. Zero when nothing is.
+    pub lit: usize,
+    /// The MIDI output they are going to, by name. Empty when none is open.
+    pub port: String,
+    /// Why a mapping's lights are not running, when it has some. Empty when
+    /// there is nothing to explain — including when they are running.
+    pub unlit: String,
+}
+
 /// Everything the controller layer owns.
 pub struct ControlHub {
     /// Mappings that can be opened, bundled and user files together.
@@ -129,7 +166,7 @@ pub struct ControlHub {
     /// shipped. The profile is derived once at load, from the same text: a
     /// `Mapping` does not carry its `[[feedback]]` blocks, so deriving it later
     /// would mean holding the text as a third thing to keep in step.
-    mappings: Mutex<Vec<(Mapping, dj_hid::hands::Hands, bool)>>,
+    mappings: Mutex<Vec<Known>>,
     /// The keyboard mapping in force.
     keyboard: Mutex<KeyMap>,
     /// Whether the keyboard is listening at all. Off is a real setting: a DJ
@@ -137,6 +174,17 @@ pub struct ControlHub {
     keyboard_on: std::sync::atomic::AtomicBool,
     /// The open port. Dropping it closes the port.
     open: Mutex<Option<dj_hid::Connection>>,
+    /// The open controller's lights, being driven. Dropping it blacks out the
+    /// board and joins its thread.
+    ///
+    /// §53 asks for a controller-aware interface, and this is the other
+    /// direction of the same question: `FeedbackMap` was parsed, validated and
+    /// consulted by nothing, so a mapping could declare sixty lights and the
+    /// hardware would sit dark disagreeing with the screen all night.
+    lights: Mutex<Option<dj_hid::feedback::Lights>>,
+    /// Why the lights are not running, when a mapping has some and they are
+    /// not. Empty when there is nothing to explain.
+    unlit: Mutex<Option<String>>,
     /// Where the open controller's mapping says its own sockets go.
     ///
     /// Kept beside the connection rather than inside it because the routing
@@ -189,10 +237,15 @@ impl ControlHub {
     #[must_use]
     pub fn new() -> (Self, Receiver<String>) {
         let (post, take) = std::sync::mpsc::channel();
-        let mappings = dj_hid::bundled::controllers_with_hands()
+        let mappings = dj_hid::bundled::controllers_read()
             .unwrap_or_default()
             .into_iter()
-            .map(|(mapping, hands)| (mapping, hands, true))
+            .map(|(mapping, hands, lights)| Known {
+                mapping,
+                hands,
+                lights,
+                bundled: true,
+            })
             .collect();
         // A broken bundled keyboard is a build error caught by a test in
         // `dj_hid::bundled`. If one somehow ships, an empty map means the
@@ -204,6 +257,8 @@ impl ControlHub {
                 keyboard: Mutex::new(keyboard),
                 keyboard_on: std::sync::atomic::AtomicBool::new(true),
                 open: Mutex::new(None),
+                lights: Mutex::new(None),
+                unlit: Mutex::new(None),
                 open_hid: Mutex::new(None),
                 registry: None,
                 hid_listener: dj_hid::usb::Listener::default(),
@@ -262,16 +317,31 @@ impl ControlHub {
                 }
                 continue;
             }
-            match (Mapping::parse(&text), dj_hid::hands::Hands::read(&text)) {
-                (Ok(mapping), Ok(hands)) => {
+            match (
+                Mapping::parse(&text),
+                dj_hid::hands::Hands::read(&text),
+                dj_hid::feedback::FeedbackMap::parse(&text),
+            ) {
+                (Ok(mapping), Ok(hands), Ok(lights)) => {
                     let mut all = self.mappings.lock().unwrap();
                     // The user's own file replaces the bundled one of the same
                     // name rather than sitting alongside it, so editing a
                     // shipped mapping works the way editing a file should.
-                    all.retain(|(existing, _, _)| existing.name != mapping.name);
-                    all.push((mapping, hands, false));
+                    all.retain(|known| known.mapping.name != mapping.name);
+                    all.push(Known {
+                        mapping,
+                        hands,
+                        lights,
+                        bundled: false,
+                    });
                 }
-                (Err(e), _) | (_, Err(e)) => problems.push(format!("{name}: {e}")),
+                // A file whose lights do not parse is refused whole. The
+                // alternative — load the bindings and silently drop the
+                // feedback — is a controller that works and never lights up,
+                // with nothing anywhere saying why.
+                (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
+                    problems.push(format!("{name}: {e}"));
+                }
             }
         }
         problems
@@ -355,8 +425,8 @@ impl ControlHub {
             .lock()
             .ok()?
             .iter()
-            .find(|(mapping, _, _)| mapping.name == name)
-            .map(|(mapping, _, _)| mapping.clone())
+            .find(|known| known.mapping.name == name)
+            .map(|known| known.mapping.clone())
     }
 
     /// Every mapping that can be opened.
@@ -366,12 +436,13 @@ impl ControlHub {
             .lock()
             .unwrap()
             .iter()
-            .map(|(mapping, hands, bundled)| MappingDto {
-                name: mapping.name.clone(),
-                device: mapping.device.clone(),
-                bindings: mapping.bindings.len(),
-                bundled: *bundled,
-                hands: *hands,
+            .map(|known| MappingDto {
+                name: known.mapping.name.clone(),
+                device: known.mapping.device.clone(),
+                bindings: known.mapping.bindings.len(),
+                bundled: known.bundled,
+                hands: known.hands,
+                lights: known.lights.lights.len(),
             })
             .collect()
     }
@@ -416,17 +487,16 @@ impl ControlHub {
         let chosen = {
             let all = self.mappings.lock().unwrap();
             let found = match mapping {
-                Some(name) => all.iter().find(|(m, _, _)| m.name == name),
-                None => all.iter().find(|(m, _, _)| m.fits(port)),
+                Some(name) => all.iter().find(|known| known.mapping.name == name),
+                None => all.iter().find(|known| known.mapping.fits(port)),
             };
-            found
-                .ok_or_else(|| match mapping {
-                    Some(name) => format!("no mapping called {name:?}"),
-                    None => format!("no mapping fits {port:?} — choose one"),
-                })?
-                .0
-                .clone()
+            let known = found.ok_or_else(|| match mapping {
+                Some(name) => format!("no mapping called {name:?}"),
+                None => format!("no mapping fits {port:?} — choose one"),
+            })?;
+            (known.mapping.clone(), known.lights.clone())
         };
+        let (chosen, lights) = chosen;
 
         // Taken before the mapping is handed to the port, which consumes it.
         let preset = chosen.audio.clone();
@@ -446,7 +516,72 @@ impl ControlHub {
         // rather than closing it and connecting to nothing.
         *self.open.lock().unwrap() = Some(open);
         *self.audio.lock().unwrap() = preset;
+        self.light(port, lights);
         Ok(())
+    }
+
+    /// Start driving a mapping's lights, if it has any and there is anywhere
+    /// to send them.
+    ///
+    /// **Failure here is not failure to open the controller.** A DJ whose
+    /// device has no MIDI output, or whose output is already claimed by
+    /// another application, still has a working controller — it simply does
+    /// not light up — and refusing the open would be djmanzo deciding that a
+    /// dark board is worse than no board. The reason is kept so
+    /// [`Self::lights`] can say it rather than the panel guessing.
+    ///
+    /// The output is looked up by the **input** port's name. That is right far
+    /// more often than not: a controller's two ports are one device and the
+    /// operating system names them from the same string, and `out::open`
+    /// matches loosely for the platforms where it decorates them differently.
+    fn light(&self, port: &str, map: dj_hid::feedback::FeedbackMap) {
+        // Replaced rather than added to, and the old pump's `Drop` blacks out
+        // the board it was lighting before the new one starts.
+        *self.lights.lock().unwrap() = None;
+        *self.unlit.lock().unwrap() = None;
+
+        if map.is_empty() {
+            // Not a failure and not worth a message: plenty of mappings bind a
+            // hundred controls and declare no feedback at all.
+            return;
+        }
+        let Some(registry) = self.registry.clone() else {
+            *self.unlit.lock().unwrap() =
+                Some("djmanzo has no parameters to light them from yet".to_owned());
+            return;
+        };
+        match dj_hid::out::open(port) {
+            Ok(sink) => {
+                let name = sink.name().to_owned();
+                *self.lights.lock().unwrap() = Some(dj_hid::feedback::Lights::start(
+                    map,
+                    Box::new(sink),
+                    registry,
+                    name,
+                ));
+            }
+            Err(e) => *self.unlit.lock().unwrap() = Some(e.to_string()),
+        }
+    }
+
+    /// What djmanzo is lighting, or why it is not.
+    ///
+    /// Both halves, because §53's panel has to tell a DJ whose board stays
+    /// dark *why*: a mapping with no feedback blocks, a device with no output,
+    /// and an output another application already holds are three different
+    /// problems with three different answers, and "no lights" is the same
+    /// picture for all of them.
+    #[must_use]
+    pub fn lights(&self) -> LightsDto {
+        let lit = self.lights.lock().unwrap();
+        LightsDto {
+            lit: lit.as_ref().map_or(0, dj_hid::feedback::Lights::lit),
+            port: lit
+                .as_ref()
+                .map(|lights| lights.port().to_owned())
+                .unwrap_or_default(),
+            unlit: self.unlit.lock().unwrap().clone().unwrap_or_default(),
+        }
     }
 
     /// Open a HID device with the mapping called `mapping`.
@@ -463,9 +598,9 @@ impl ControlHub {
         let chosen = {
             let all = self.mappings.lock().unwrap();
             all.iter()
-                .find(|(m, _, _)| m.name == mapping)
+                .find(|known| known.mapping.name == mapping)
                 .ok_or_else(|| format!("no mapping called {mapping:?}"))?
-                .0
+                .mapping
                 .clone()
         };
         if chosen.hid_fields().is_empty() {
@@ -508,6 +643,13 @@ impl ControlHub {
     /// Close whatever is open. Closing nothing is not an error.
     pub fn close(&self) {
         *self.open.lock().unwrap() = None;
+        // Dropped with the connection, which blacks the board out and joins
+        // the pump. A controller keeps its LEDs after the thing that set them
+        // has let go — they are the device's state, not djmanzo's — so a DJ
+        // unplugging mid-set would otherwise be left with a board still
+        // showing a deck that is no longer playing.
+        *self.lights.lock().unwrap() = None;
+        *self.unlit.lock().unwrap() = None;
         // Cleared with the connection: a routing left behind would send the
         // laptop's built-in output to sockets that belonged to a controller
         // which is no longer plugged in.
@@ -886,6 +1028,93 @@ mod tests {
         assert!(hub.load_user_mappings(dir.path()).is_empty());
         assert_eq!(hub.status(None).keyboard_name, "Mine");
         assert_eq!(hub.keys().len(), 1);
+    }
+
+    /// **The lights a mapping declares reach the thing that would send them.**
+    ///
+    /// The guard for the failure this whole change is about: `FeedbackMap`
+    /// parsed every `[[feedback]]` block and resolved every parameter name in
+    /// it, and the count never left `dj_hid` — so a mapping could declare
+    /// sixty lights and every layer above would be looking at a zero. A
+    /// mapping that lights nothing and a mapping whose lights nothing reads
+    /// are the same picture from here, which is why this counts rather than
+    /// asserting a boolean.
+    #[test]
+    fn a_bundled_mapping_that_declares_lights_is_seen_to_declare_them() {
+        let (hub, _take) = ControlHub::new();
+        let lit: usize = hub.mappings().iter().map(|m| m.lights).sum();
+        assert!(
+            lit > 0,
+            "no bundled mapping reaches this layer with a light on it"
+        );
+        // And nothing is lit until a controller is open, which is the honest
+        // answer on a machine with no MIDI — this container included.
+        let now = hub.lights();
+        assert_eq!(now.lit, 0);
+        assert!(now.port.is_empty());
+    }
+
+    /// **A file whose lights do not parse is refused whole.**
+    ///
+    /// The alternative is worse than a refusal: load the bindings, drop the
+    /// feedback, and hand a DJ a controller that works perfectly and never
+    /// lights up, with nothing anywhere saying why. The binding in this file
+    /// is valid, so the only thing that can refuse it is the light.
+    #[test]
+    fn a_mapping_whose_light_names_nothing_is_refused_and_named() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("dark.toml"),
+            r#"
+            name = "Dark"
+            device = "Dark"
+            [[binding]]
+            on = "note 1 36"
+            press = "deck 1 play_pause"
+            [[feedback]]
+            when = "deck.1.glowing"
+            send = "note 1 36"
+            "#,
+        )
+        .unwrap();
+
+        let (hub, _take) = ControlHub::new();
+        let problems = hub.load_user_mappings(dir.path());
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("dark.toml"), "{problems:?}");
+        assert!(
+            !hub.mappings().iter().any(|m| m.name == "Dark"),
+            "a mapping with a broken light was loaded without it"
+        );
+    }
+
+    /// A mapping with no `[[feedback]]` at all is not a broken one.
+    ///
+    /// Most mappings are this: a hundred bindings and no lights. Refusing them
+    /// would refuse nearly every mapping a DJ has ever written.
+    #[test]
+    fn a_mapping_with_no_lights_loads_like_any_other() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("plain.toml"),
+            r#"
+            name = "Plain"
+            device = "Plain"
+            [[binding]]
+            on = "note 1 36"
+            press = "deck 1 play_pause"
+            "#,
+        )
+        .unwrap();
+
+        let (hub, _take) = ControlHub::new();
+        assert!(hub.load_user_mappings(dir.path()).is_empty());
+        let found = hub
+            .mappings()
+            .into_iter()
+            .find(|m| m.name == "Plain")
+            .expect("a mapping with no lights still loads");
+        assert_eq!(found.lights, 0);
     }
 
     /// One bad file must not take the others down with it, and must be named.

@@ -83,16 +83,23 @@ test.describe("§53's controller-aware interface", () => {
    *
    * §53 opens with *"the UI should know"*, and a DJ who has just plugged
    * something in is entitled to see what djmanzo thinks it can do before
-   * finding out mid-set that it disagrees. The screens and the lights are named
-   * rather than counted: one is unknowable from a mapping, and the other is
-   * described in the file and driven by nothing yet.
+   * finding out mid-set that it disagrees. The screens are named rather than
+   * counted, because a controller's displays are driven by its own firmware
+   * and are unknowable from a mapping.
    */
   test("the controllers panel reports the reach it read", async ({ page }) => {
     const thrown = errorsThrown(page);
     await openShell(page, "/", {}, {
       controller_hands: NO_STEMS,
+      controller_lights: { lit: 0, port: "", unlit: "" },
       control_status: {
         inputs: ["DDJ-SR MIDI 1"],
+        // Absent here until the page-error guard started working, and the
+        // panel was throwing on it in every run: `status.hid_inputs.length`
+        // on an answer that did not carry the field. The layout assertions
+        // above passed anyway, because Svelte abandons the rest of a render
+        // pass and a panel that stops early still contains what it drew first.
+        hid_inputs: [],
         open_port: "DDJ-SR MIDI 1",
         open_mapping: "Pioneer DDJ-SR",
         unavailable: null,
@@ -130,13 +137,117 @@ test.describe("§53's controller-aware interface", () => {
     await expect(reach).toContainText("Stem controls");
     await expect(reach).toContainText("none");
     await expect(reach).toContainText("Pads");
-    // The two it cannot answer, said rather than counted.
+    // The one it cannot answer, said rather than counted.
     await expect(page.locator('[data-surface="controllers"]')).toContainText(
       "cannot see them",
     );
-    await expect(page.locator('[data-surface="controllers"]')).toContainText(
-      "does not send them yet",
-    );
     expect(thrown).toEqual([]);
+  });
+});
+
+/**
+ * §53's other direction: the controller showing what the interface knows.
+ *
+ * The lights were the fourth table in this codebase found parsed, validated
+ * and read by nothing: a mapping declared its `[[feedback]]` blocks,
+ * `FeedbackMap::parse` resolved every parameter name in them, and no byte ever
+ * left the machine. The pump is `dj_hid::feedback::Lights` and is tested
+ * there, against a sink rather than against hardware — **this container has no
+ * MIDI service at all**, so what a browser can prove is the part that matters
+ * to a DJ looking at the panel: that a dark board says *which* kind of dark it
+ * is, because the three have three different answers.
+ */
+test.describe("§53's lights", () => {
+  const open = (lights: { lit: number; port: string; unlit: string }) => ({
+    controller_hands: NO_STEMS,
+    controller_lights: lights,
+    control_status: {
+      inputs: ["DDJ-SR MIDI 1"],
+      // The panel draws the HID half too, and an answer missing a field djmanzo
+      // always sends is a stub the interface can trip over rather than a state
+      // it has to handle.
+      hid_inputs: [],
+      open_port: "DDJ-SR MIDI 1",
+      open_mapping: "Pioneer DDJ-SR",
+      unavailable: null,
+      keyboard: true,
+      keyboard_name: "",
+    },
+    control_mappings: [
+      {
+        name: "Pioneer DDJ-SR",
+        device: "DDJ-SR",
+        bindings: 113,
+        bundled: true,
+        hands: NO_STEMS,
+        lights: 12,
+      },
+    ],
+    palette: {
+      because: "",
+      entries: [
+        {
+          label: "Show Controllers",
+          about: "What is plugged in, and what it is mapped to.",
+          kind: "surface",
+          run: "controllers",
+          tier: "preparation",
+        },
+      ],
+    },
+  });
+
+  async function panel(page: Page, lights: { lit: number; port: string; unlit: string }) {
+    await openShell(page, "/", {}, open(lights));
+    await page.keyboard.press("Control+k");
+    await page.getByRole("button", { name: /Show Controllers/ }).first().click();
+    return page.locator("[data-lights]");
+  }
+
+  /** **Lit says what is lit, and where it is going.** */
+  test("a driven board says how many lights and out to where", async ({ page }) => {
+    const said = await panel(page, {
+      lit: 12,
+      port: "DDJ-SR MIDI 1",
+      unlit: "",
+    });
+    await expect(said).toContainText("driving 12");
+    await expect(said).toContainText("DDJ-SR MIDI 1");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **A board that cannot be lit says why, in Rust's words.**
+   *
+   * The half worth having. "No lights" for a mapping that declares twelve of
+   * them reads as djmanzo not supporting feedback; the actual answer — that
+   * something else holds the output — is one a DJ can do something about.
+   */
+  test("a board that cannot be lit gives the reason rather than a blank", async ({
+    page,
+  }) => {
+    const said = await panel(page, {
+      lit: 0,
+      port: "",
+      unlit: 'could not open "DDJ-SR MIDI 1": port is in use',
+    });
+    await expect(said).toContainText("describes 12");
+    await expect(said).toContainText("port is in use");
+    await expect(said).not.toContainText("driving");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **A mapping with no lights in it says only what it describes.**
+   *
+   * Not a failure and not worth a reason: plenty of mappings bind a hundred
+   * controls and declare no feedback at all.
+   */
+  test("a mapping with nothing to light claims neither", async ({ page }) => {
+    const said = await panel(page, { lit: 0, port: "", unlit: "" });
+    await expect(said).toContainText("describes 12");
+    await expect(said).not.toContainText("driving");
+    await expect(said).not.toContainText("cannot send");
+    expect(errorsThrown(page)).toEqual([]);
   });
 });

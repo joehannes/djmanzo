@@ -963,6 +963,47 @@ the row went on saying it, correctly-shaped and wrong. Worth re-reading the
 blocked rows whenever something they named as missing gets built: the gap this
 one described had been closed by a commit that never mentioned §29.
 
+**Thirty-six page-error guards could not fail, and one was hiding a real
+error.** `openShell` installed a *fresh* array for a page's thrown errors, so
+the natural way to write the test —
+
+```ts
+const thrown = errorsThrown(page);   // before openShell: a different array
+await openShell(page, "/");          // installs a new one
+expect(thrown).toEqual([]);          // compares the old empty one to []
+```
+
+— asserted an empty array against itself, in eleven files. `errorsThrown` now
+registers the list on first ask and `openShell` empties that same array, so
+both orders work; the first full run afterwards immediately failed
+`hands.spec.ts`, which had been passing while the controllers panel threw
+`Cannot read properties of undefined` on every render. The stub was missing a
+field the panel reads — Svelte abandons the rest of a render pass, and a panel
+that stops early still contains everything it drew first, so every content
+assertion above it passed. **A guard that cannot fail is worse than no guard**,
+because it is counted as coverage. Worth checking, for any helper a test
+captures before the thing it is meant to observe: does the reference survive
+the setup?
+
+**`git checkout <file>` is not how to undo a mutation.** It reverts to HEAD,
+which throws away every change in the file, not the one line just added. A
+mutation test in this session lost two hundred lines of uncommitted work that
+way and got them back only because a stray `cp` to the scratchpad happened to
+exist. Copy the file to the scratchpad before mutating it and copy it back
+afterwards — the same `cp`-based pattern the other mutation runs here use.
+
+**A flake reported twice is a defect, and this one named itself.** A browser
+test that failed about one run in ten said, in its own message, that the
+density did not follow the window at all. It did: the test read the "roomy"
+figure the instant `setViewportSize` resolved, which is before the page's own
+`resize` handler has run, so it sometimes captured the band from *before* the
+resize — and that band happened to be the same one the second viewport fits,
+so the poll underneath could never see a difference. The line below it already
+carried a comment explaining why *it* had to wait. Two reads of the same value,
+one guarded and one not, and the unguarded one was written first. When a test
+fails intermittently, read what it claims rather than re-running it: this one
+had been describing its own bug for months.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests

@@ -641,6 +641,7 @@ pub fn run() {
             commands::set_chosen_pack,
             commands::phrase_grid,
             commands::controller_hands,
+            commands::controller_lights,
             commands::setups,
             commands::apply_setup,
             commands::chosen_layers,

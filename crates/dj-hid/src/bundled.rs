@@ -65,19 +65,29 @@ pub fn controllers() -> Result<Vec<Mapping>, MappingError> {
         .collect()
 }
 
-/// Every bundled mapping with §53's reading of what it puts under the hands.
+/// Every bundled mapping, with §53's reading of what it puts under the hands
+/// and the lights it declares.
 ///
-/// Paired here rather than derived later because the lights are `[[feedback]]`
-/// blocks in the same file and a `Mapping` does not carry them: a profile
-/// assembled from two reads could be half of one mapping and half of another.
+/// All three from one read, rather than derived later, because a `Mapping`
+/// carries neither: the hands profile and the `[[feedback]]` blocks are both
+/// in the same file, and a set assembled from three reads could be half of one
+/// mapping and half of another.
 ///
 /// # Errors
-/// If any bundled mapping or its feedback blocks fail to parse, which a test
-/// in this module makes a build error rather than a runtime one.
-pub fn controllers_with_hands() -> Result<Vec<(Mapping, crate::hands::Hands)>, MappingError> {
+/// If any bundled mapping, its hands profile or its feedback blocks fail to
+/// parse, which a test in this module makes a build error rather than a
+/// runtime one.
+pub fn controllers_read()
+-> Result<Vec<(Mapping, crate::hands::Hands, crate::feedback::FeedbackMap)>, MappingError> {
     CONTROLLERS
         .iter()
-        .map(|(_, text)| Ok((Mapping::parse(text)?, crate::hands::Hands::read(text)?)))
+        .map(|(_, text)| {
+            Ok((
+                Mapping::parse(text)?,
+                crate::hands::Hands::read(text)?,
+                crate::feedback::FeedbackMap::parse(text)?,
+            ))
+        })
         .collect()
 }
 

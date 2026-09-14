@@ -27,8 +27,10 @@
     openController,
     openHidController,
     setKeyboardEnabled,
+    controllerLights,
     type AudioRouting,
     type ControlStatus,
+    type ControllerLights,
     type MappingInfo,
   } from "./api";
 
@@ -84,9 +86,22 @@
    */
   const POLL_MS = 2000;
 
+  /**
+   * §53's other direction: what djmanzo is lighting, and why it is not.
+   *
+   * Asked of Rust rather than worked out from the mapping's own count, because
+   * the two are different questions and the difference is the whole point: a
+   * mapping that describes sixty lights and a controller whose output is held
+   * by another application look identical from the mapping alone. That was the
+   * state this panel was in — it said djmanzo "does not send them yet", which
+   * stopped being true and would have gone on saying it.
+   */
+  let lights = $state<ControllerLights | null>(null);
+
   async function refresh() {
     try {
       status = await controlStatus();
+      lights = await controllerLights();
       error = null;
       // Keep the choice pointing at something that still exists.
       if (chosenPort && !status.inputs.includes(chosenPort)) chosenPort = null;
@@ -245,17 +260,26 @@
           {/each}
         </dl>
         <!--
-          The two §53 asks for that djmanzo cannot answer from a mapping, named
-          rather than counted. A screen is driven by the controller's own
-          firmware; the lights are described in the file and nothing sends them
-          yet, and a count alone would imply a controller that lights up.
+          The screens are the one thing §53 asks for that djmanzo still cannot
+          answer from a mapping, and it is named rather than counted.
+
+          The lights now say what is actually happening, which is three
+          different answers and not one: driven, described but not driven with
+          the reason, or not described at all. A count on its own would imply a
+          controller that lights up, which is exactly what this line used to do
+          in the other direction.
         -->
-        <p class="note">
+        <p class="note" data-lights>
           Screens: djmanzo cannot see them — they are driven by the
           controller's own firmware, not by a mapping.
-          {#if reach.leds > 0}
-            Lights: this mapping describes {reach.leds}, and djmanzo does not
-            send them yet.
+          {#if lights && lights.lit > 0}
+            Lights: djmanzo is driving {lights.lit} of them, out to
+            <strong>{lights.port}</strong>.
+          {:else if lights?.unlit}
+            Lights: this mapping describes {reach.leds}, and djmanzo cannot
+            send them — {lights.unlit}.
+          {:else if reach.leds > 0}
+            Lights: this mapping describes {reach.leds}.
           {/if}
         </p>
       {/if}

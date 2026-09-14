@@ -487,6 +487,15 @@ const ANSWERS: Record<string, unknown> = {
    */
   controller_hands: null,
   /**
+   * §53's other direction: nothing lit, because nothing is plugged in.
+   *
+   * Three fields rather than a count, because a dark board has three different
+   * causes with three different answers — no lights declared, no output to
+   * send them to, and an output another application holds — and a single
+   * number cannot tell them apart.
+   */
+  controller_lights: { lit: 0, port: "", unlit: "" },
+  /**
    * §75: an eight-beat phrase starting on beat four, which is the fixture's
    * own reading — `snapshot.json`'s first deck carries `phrase_beats: 8` and
    * `phrase_anchor: 4`.
@@ -1398,8 +1407,18 @@ export async function openShell(
 ) {
   const state = { ...snapshot, master: { ...snapshot.master, ...master } };
   const table = { ...ANSWERS, ...answers };
-  const thrown: string[] = [];
-  pageErrors.set(page, thrown);
+  // The array a test may already be holding, emptied, rather than a new one.
+  //
+  // **This used to allocate, and thirty-six guards could not fail because of
+  // it.** The natural way to write one of these tests is
+  // `const thrown = errorsThrown(page)` at the top and
+  // `expect(thrown).toEqual([])` at the bottom — and with a fresh array
+  // installed here, the reference the test is holding is one nothing ever
+  // pushes to. Every one of those assertions was comparing an empty array
+  // against itself, and a real thrown error was found the moment the first
+  // test asked at the right moment instead.
+  const thrown = errorsThrown(page);
+  thrown.length = 0;
   page.on("pageerror", (error) => thrown.push(error.message));
   await page.setViewportSize(WINDOW);
   await page.addInitScript(
@@ -2080,8 +2099,16 @@ const pageErrors = new WeakMap<Page, string[]>();
  * signal that distinguishes "this layout is fine" from "this layout did not
  * finish", so it is now a failure rather than a line in the console.
  */
+/// Registers the list on first ask, so the answer is the same array whenever
+/// it is called — before `openShell` or after it. See the note in `openShell`
+/// for what asking too early used to cost.
 export function errorsThrown(page: Page): string[] {
-  return pageErrors.get(page) ?? [];
+  let found = pageErrors.get(page);
+  if (!found) {
+    found = [];
+    pageErrors.set(page, found);
+  }
+  return found;
 }
 
 /**

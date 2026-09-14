@@ -10592,6 +10592,23 @@ pub fn controller_hands(state: State<'_, AppState>) -> Option<dj_hid::hands::Han
         .map(|mapping| mapping.hands)
 }
 
+/// §53's other direction: what djmanzo is lighting on the open controller.
+///
+/// The interface adapting to a controller is half of §53. The other half is
+/// the controller showing what the interface knows, and until this it could
+/// not: a mapping's `[[feedback]]` blocks were parsed, every parameter name in
+/// them resolved, and no byte ever left the machine.
+///
+/// Both halves of the answer, because a dark board has three different causes
+/// with three different answers — a mapping that declares no lights, a device
+/// with no MIDI output, and an output another application already holds — and
+/// "nothing lit" is the same picture for all of them.
+#[tauri::command]
+#[must_use]
+pub fn controller_lights(state: State<'_, AppState>) -> crate::control::LightsDto {
+    state.control().lights()
+}
+
 /// One of §54's functional presets, as the picker offers it.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SetupDto {

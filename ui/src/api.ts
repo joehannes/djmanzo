@@ -3481,6 +3481,27 @@ export const controlMappings = () => invoke<MappingInfo[]>("control_mappings");
  */
 export const controllerHands = () => invoke<Hands | null>("controller_hands");
 
+/** §53's other direction: what djmanzo is lighting on the open controller. */
+export interface ControllerLights {
+  /** How many controls are being driven. Zero when nothing is. */
+  lit: number;
+  /** The MIDI output they are going to, by name. Empty when none is open. */
+  port: string;
+  /**
+   * Why a mapping's lights are not running, when it has some.
+   *
+   * Empty when there is nothing to explain, which includes the case where they
+   * are running. A dark board has three different causes with three different
+   * answers — a mapping that declares no lights, a device with no MIDI output,
+   * and an output another application already holds — and "nothing lit" is the
+   * same picture for all of them.
+   */
+  unlit: string;
+}
+
+export const controllerLights = () =>
+  invoke<ControllerLights>("controller_lights");
+
 /* -- §75: phrase boundaries ------------------------------------------------ */
 
 /**
