@@ -55,7 +55,7 @@ use crate::plan::{self, MixOut, Outgoing, Plan};
 /// *left* and carries a length and no key, and this is about where one would
 /// be *brought in*. Two narrow types cannot borrow each other's fields by
 /// accident; one wide one invites exactly that.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Candidate {
     pub bpm: f64,
     pub phrase: Option<Phrase>,
@@ -63,6 +63,13 @@ pub struct Candidate {
     pub sample_rate: SampleRate,
     /// Frame position of a beat in the candidate, from which the rest follow.
     pub grid_anchor: f64,
+    /// Where the candidate drops, in its own frames. §75's `drops` layer.
+    ///
+    /// Empty for a record with no analysis, one with no grid, and one that
+    /// never thins out -- all three are records with no drop to draw, and the
+    /// ghost says nothing for any of them. §27 asks *where the drop occurs*
+    /// and this is the answer arriving from the only thing that measures it.
+    pub drops: Vec<f64>,
 }
 
 /// Where the candidate's first full phrase would land.
@@ -213,6 +220,14 @@ pub struct Ghost {
     /// [`Plan::bpm_delta`] says the same thing in BPM, and both are wanted —
     /// "+3 BPM" is what the record is, "-2.3%" is what the hand does.
     pub pitch_percent: f64,
+    /// Where the candidate's first drop would land. §27's *drop*.
+    ///
+    /// Frames on the **outgoing** record, like [`Landing`] and for the same
+    /// reason: that is the lane on screen, and once the mix begins a beat of
+    /// one record is a beat of the other. `None` when the candidate has no
+    /// drop in it, or none after the point it would be brought in at -- a
+    /// record whose only drop is behind the mix point has nothing to promise.
+    pub drop: Option<f64>,
     /// §27's seven, and whether each is answered.
     pub asked: Vec<(Asked, bool)>,
 }
@@ -258,12 +273,38 @@ pub fn look(out: &Outgoing, candidate: &Candidate) -> Option<Ghost> {
     let out_beat = plan::beat_frames(out.bpm, out.sample_rate)?;
 
     Some(Ghost {
+        drop: first_drop(&plan, candidate, out_beat),
         landing: landing(&plan, candidate, out_beat),
         weakens: plan::mix_out(&out.record()),
         pitch_percent: pitch_percent(out.bpm, candidate.bpm),
         asked: ASKED.into_iter().map(|a| (a, a.answered())).collect(),
         plan,
     })
+}
+
+/// Where the candidate's first drop falls on the outgoing record.
+///
+/// The same conversion [`landing`] makes, for the same reason: the two records
+/// are beat-matched once the mix begins, so a frame of the candidate is a
+/// frame of the outgoing record scaled by the ratio of their beat lengths.
+///
+/// The *first* drop rather than all of them. A ghost is a sentence about what
+/// would happen if this record came in here, and a row of marks down the rest
+/// of the record is not that sentence.
+fn first_drop(plan: &Plan, candidate: &Candidate, out_beat: f64) -> Option<f64> {
+    let beat = plan::beat_frames(candidate.bpm, candidate.sample_rate)?;
+    if beat <= 0.0 || out_beat <= 0.0 {
+        return None;
+    }
+    // Audible drops only: a grid extends backwards from its anchor, and a
+    // position before the file starts is arithmetic rather than music.
+    let first = candidate
+        .drops
+        .iter()
+        .copied()
+        .filter(|at| *at >= 0.0)
+        .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))?;
+    Some(plan.start_frame + first / beat * out_beat)
 }
 
 /// Where the candidate's first full phrase falls on the outgoing record.
@@ -356,6 +397,7 @@ mod tests {
             key: Some(key(8, Mode::Minor)),
             sample_rate: SR,
             grid_anchor: anchor_beats * (SR.as_f64() * 60.0 / bpm),
+            drops: Vec::new(),
         }
     }
 
@@ -527,7 +569,7 @@ mod tests {
         }
     }
 
-    /// **Five of seven, and the two that are missing are named.**
+    /// **Six of seven, and the one that is missing is named.**
     ///
     /// The count worth quoting. It is also the alarm: when an analyser finds
     /// vocals and the `vocal` layer starts being drawn, this fails — and what
@@ -538,7 +580,7 @@ mod tests {
         let missing: Vec<&str> = unseen().into_iter().map(Asked::slug).collect();
         assert_eq!(
             missing,
-            vec!["vocal-entry", "drop"],
+            vec!["vocal-entry"],
             "the answered set changed: give Ghost the positions to match"
         );
         let ghost = look(&outgoing(), &candidate(BPM, 0.0, 0)).expect("a ghost");

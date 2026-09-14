@@ -1333,6 +1333,7 @@ mod tests {
                 }),
                 loudness: Lufs::new(-11.0),
                 energy: dj_analysis::energy::Energy::default(),
+                trajectory: dj_analysis::energy::Trajectory::default(),
                 phrases: None,
             },
         );
@@ -1387,6 +1388,7 @@ mod tests {
                 key: None,
                 loudness: Lufs::new(-14.0),
                 energy: dj_analysis::energy::Energy::default(),
+                trajectory: dj_analysis::energy::Trajectory::default(),
                 phrases: None,
             },
         );

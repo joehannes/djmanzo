@@ -39,6 +39,8 @@
 //! cannot be seen is one nobody can argue with -- the same posture §42 takes
 //! about suggestions.
 
+use serde::{Deserialize, Serialize};
+
 use crate::loudness::Lufs;
 use crate::onset::BandedOnset;
 
@@ -250,6 +252,232 @@ fn squash(value: f32, half: f32) -> f32 {
     value / (value + half)
 }
 
+// -- §75's energy trajectory, and the breakdowns and drops in it -------------
+
+/// One window of a record, and how much is going on in it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Section {
+    /// Where the window starts, in frames.
+    pub at: f64,
+    /// How much is going on, against this record's own busiest window.
+    ///
+    /// Relative to the record rather than absolute, which is what a
+    /// *trajectory* is: the question a DJ asks of this curve is "where does
+    /// this one go", not "is this louder than the last one". The whole-record
+    /// [`Energy`] above is the comparison between records.
+    pub energy: f32,
+    /// The low band's share of it, on the same scale. A breakdown is this
+    /// falling away while the rest of the record carries on.
+    pub low: f32,
+}
+
+/// A stretch of a record where it thins out.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Span {
+    pub from: f64,
+    pub to: f64,
+}
+
+/// Where a record goes over its own length. [§75](../../../docs/DIRECTIVE.md).
+///
+/// §25 has had `breakdowns`, `drops` and `energy` in its layer table as
+/// `Drawn::Nowhere` since the table existed, with the same reason beside each:
+/// the analysis does not exist. It does now, and it is the same banded onset
+/// curve the phrase detector reads -- which is the point. A second pass over
+/// the audio to answer a second question about the same beats would be two
+/// answers that could disagree.
+/// `Default` is the empty answer -- no grid, nothing measured -- which is what
+/// a hand-built [`crate::Analysis`] in a test gets.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct Trajectory {
+    /// In order, one per window. Empty when there is no grid to count against.
+    pub sections: Vec<Section>,
+    /// How long a window is, in beats.
+    pub beats_per_section: u32,
+    /// Where the record thins out.
+    pub breakdowns: Vec<Span>,
+    /// Where it comes back, in frames. One per breakdown that ends before the
+    /// record does -- a record that fades out on a breakdown has no drop.
+    pub drops: Vec<f64>,
+}
+
+/// How many beats a window covers when the record has no phrase structure.
+///
+/// Eight. Long enough that one bar of a fill does not read as a breakdown, and
+/// short enough that a sixteen-bar breakdown is four windows rather than one.
+const DEFAULT_SECTION_BEATS: u32 = 8;
+
+/// How far below a record's own middle the low band has to fall to be thin.
+///
+/// Six tenths. A breakdown is not "slightly less kick": it is the floor coming
+/// out, and a threshold close to the median would mark every quiet bar in a
+/// record that breathes.
+const THIN: f32 = 0.6;
+
+/// How many windows in a row are a breakdown rather than a gap.
+///
+/// Two, which at eight beats is four bars. One window is a fill.
+const AT_LEAST: usize = 2;
+
+/// How much the low band has to come back for the return to be a drop.
+///
+/// Half as much again as the breakdown was. A record that drifts back up over
+/// a minute has no drop in it, and marking one would put an arrow on the
+/// overview where nothing happens.
+const RETURN: f32 = 1.5;
+
+/// Measure where a record goes. See [`Trajectory`].
+///
+/// `phrase_beats` decides the window when the record has one, because a
+/// breakdown in dance music starts on a phrase and a window that straddled two
+/// would smear its edges by half its own width.
+#[must_use]
+pub fn trajectory(
+    banded: &BandedOnset,
+    grid: &dj_core::Beatgrid,
+    rate: dj_core::SampleRate,
+    frames: u64,
+    phrase_beats: Option<u32>,
+) -> Trajectory {
+    let per_section = phrase_beats
+        .filter(|beats| *beats > 0)
+        .unwrap_or(DEFAULT_SECTION_BEATS);
+    let empty = Trajectory {
+        sections: Vec::new(),
+        beats_per_section: per_section,
+        breakdowns: Vec::new(),
+        drops: Vec::new(),
+    };
+    let Some(beats) = crate::structure::beat_features(banded, grid, rate, frames) else {
+        return empty;
+    };
+    if beats.len() < per_section as usize * 2 {
+        return empty;
+    }
+
+    let first = grid.beat_index_at(dj_core::FramePos::new(0.0), rate);
+    let mut sections = Vec::new();
+    for (index, window) in beats.chunks(per_section as usize).enumerate() {
+        // A trailing part-window is not a section: its mean is taken over
+        // fewer beats and would sit at a level the record never played.
+        if window.len() < per_section as usize {
+            break;
+        }
+        let span = window.len() as f32;
+        let total: f32 = window
+            .iter()
+            .map(|bands| bands.iter().sum::<f32>())
+            .sum::<f32>()
+            / span;
+        let low: f32 = window.iter().map(|bands| bands[0]).sum::<f32>() / span;
+        let beat = first + (index * per_section as usize) as i64;
+        sections.push(Section {
+            at: grid.beat_position(beat, rate).get(),
+            energy: total,
+            low,
+        });
+    }
+    if sections.is_empty() {
+        return empty;
+    }
+
+    // Scaled against this record's own busiest window -- see `Section::energy`.
+    let loudest = sections
+        .iter()
+        .map(|section| section.energy)
+        .fold(0.0f32, f32::max);
+    let busiest_low = sections.iter().map(|s| s.low).fold(0.0f32, f32::max);
+    let median_low = median(&sections.iter().map(|s| s.low).collect::<Vec<_>>());
+    for section in &mut sections {
+        if loudest > 0.0 {
+            section.energy = (section.energy / loudest).clamp(0.0, 1.0);
+        }
+        if busiest_low > 0.0 {
+            section.low = (section.low / busiest_low).clamp(0.0, 1.0);
+        }
+    }
+    let thin_below = if busiest_low > 0.0 {
+        median_low / busiest_low * THIN
+    } else {
+        0.0
+    };
+
+    let (breakdowns, drops) = thin_stretches(&sections, thin_below, per_section, grid, rate);
+    Trajectory {
+        sections,
+        beats_per_section: per_section,
+        breakdowns,
+        drops,
+    }
+}
+
+/// The runs of thin windows, and the returns that count as drops.
+fn thin_stretches(
+    sections: &[Section],
+    thin_below: f32,
+    per_section: u32,
+    grid: &dj_core::Beatgrid,
+    rate: dj_core::SampleRate,
+) -> (Vec<Span>, Vec<f64>) {
+    let mut breakdowns = Vec::new();
+    let mut drops = Vec::new();
+    let mut run: Option<usize> = None;
+    for index in 0..=sections.len() {
+        let thin = sections.get(index).is_some_and(|s| s.low < thin_below);
+        match (thin, run) {
+            (true, None) => run = Some(index),
+            (false, Some(start)) => {
+                if index - start >= AT_LEAST {
+                    let ends_at = sections.get(index).map_or_else(
+                        || {
+                            // The record ran out. The span ends where the last
+                            // window does rather than where the next would
+                            // start, which is a beat that does not exist.
+                            let last = sections[sections.len() - 1].at;
+                            last + span_frames(grid, rate, per_section)
+                        },
+                        |section| section.at,
+                    );
+                    breakdowns.push(Span {
+                        from: sections[start].at,
+                        to: ends_at,
+                    });
+                    // A drop only where it really comes back. A record that
+                    // drifts up has no drop in it.
+                    if let Some(after) = sections.get(index) {
+                        let during = sections[start..index]
+                            .iter()
+                            .map(|s| s.low)
+                            .fold(f32::MAX, f32::min);
+                        if after.low >= during.max(f32::EPSILON) * RETURN {
+                            drops.push(after.at);
+                        }
+                    }
+                }
+                run = None;
+            }
+            _ => {}
+        }
+    }
+    (breakdowns, drops)
+}
+
+/// How many frames a window covers.
+fn span_frames(grid: &dj_core::Beatgrid, rate: dj_core::SampleRate, beats: u32) -> f64 {
+    let one = grid.beat_position(1, rate).get() - grid.beat_position(0, rate).get();
+    one * f64::from(beats)
+}
+
+/// The middle value, for a slice that may be any length.
+fn median(values: &[f32]) -> f32 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    sorted[sorted.len() / 2]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -429,5 +657,185 @@ mod tests {
             with.value,
             without.value
         );
+    }
+}
+
+#[cfg(test)]
+mod trajectory_tests {
+    use super::*;
+    use crate::onset;
+    use dj_core::{Beatgrid, Bpm, Confidence, FramePos, SampleRate};
+
+    const SR: SampleRate = SampleRate::DEFAULT;
+    const BPM: f64 = 128.0;
+
+    /// A record with a shape: kick, then a stretch without it, then kick again.
+    ///
+    /// The bass bed carries on through the breakdown, which is what a breakdown
+    /// is -- the floor comes out and the record does not stop. A test signal
+    /// that went silent would be measuring a gap rather than a breakdown.
+    fn with_a_breakdown(bars_in: usize, bars_thin: usize, bars_out: usize) -> Vec<f32> {
+        use std::f32::consts::TAU;
+        let rate = SR.get();
+        let per_beat = f64::from(rate) * 60.0 / BPM;
+        let beats = (bars_in + bars_thin + bars_out) * 4;
+        let frames = (per_beat * beats as f64) as usize;
+        let thin_from = bars_in * 4;
+        let thin_to = thin_from + bars_thin * 4;
+
+        let mut audio = vec![0.0f32; frames * 2];
+        for n in 0..frames {
+            let t = n as f32 / rate as f32;
+            let beat = (n as f64 / per_beat) as usize;
+            let since = (n as f64 % per_beat) / f64::from(rate);
+            // The bed, all the way through.
+            let mut value = (TAU * 220.0 * t).sin() * 0.12;
+            let thin = beat >= thin_from && beat < thin_to;
+            if !thin && since < 0.12 {
+                let decay = (-since * 28.0).exp() as f32;
+                value += ((TAU * 55.0 * t).sin() + (TAU * 120.0 * t).sin() * 0.4) * decay * 0.9;
+            }
+            audio[n * 2] = value;
+            audio[n * 2 + 1] = value;
+        }
+        audio
+    }
+
+    fn grid() -> Beatgrid {
+        Beatgrid {
+            anchor: FramePos::new(0.0),
+            bpm: Bpm::new(BPM).expect("a tempo"),
+            beats_per_bar: 4,
+            confidence: Confidence::new(1.0),
+        }
+    }
+
+    fn measure(audio: &[f32]) -> Trajectory {
+        let (_, banded) = onset::detect_all(audio, SR.get());
+        let frames = (audio.len() / 2) as u64;
+        trajectory(&banded, &grid(), SR, frames, Some(8))
+    }
+
+    /// **The load-bearing one: a breakdown is found where it is, and so is the
+    /// drop.**
+    ///
+    /// §25 has carried `breakdowns`, `drops` and `energy` as layers nothing
+    /// draws, each with "the analysis does not exist" beside it. This is the
+    /// analysis, and the only thing worth asserting about it is that the marks
+    /// land on the right part of the record.
+    #[test]
+    fn the_breakdown_and_the_drop_land_where_the_record_puts_them() {
+        let found = measure(&with_a_breakdown(8, 8, 8));
+        let seconds = |frames: f64| frames / f64::from(SR.get());
+
+        assert_eq!(
+            found.breakdowns.len(),
+            1,
+            "found {} breakdowns in a record with one: {:?}",
+            found.breakdowns.len(),
+            found
+                .breakdowns
+                .iter()
+                .map(|span| (seconds(span.from), seconds(span.to)))
+                .collect::<Vec<_>>()
+        );
+        // Eight bars at 128 BPM is 15 seconds, so the breakdown runs from 15 to 30.
+        let span = found.breakdowns[0];
+        assert!(
+            (seconds(span.from) - 15.0).abs() < 2.0,
+            "the breakdown starts at {:.1}s and the record thins out at 15",
+            seconds(span.from)
+        );
+        assert!(
+            (seconds(span.to) - 30.0).abs() < 2.0,
+            "the breakdown ends at {:.1}s and the kick comes back at 30",
+            seconds(span.to)
+        );
+
+        assert_eq!(
+            found.drops.len(),
+            1,
+            "a record that comes back has one drop"
+        );
+        assert!(
+            (seconds(found.drops[0]) - 30.0).abs() < 2.0,
+            "the drop is marked at {:.1}s and the kick returns at 30",
+            seconds(found.drops[0])
+        );
+    }
+
+    /// A record that never thins out has nothing to mark.
+    ///
+    /// The half that stops this from being a detector of its own threshold: a
+    /// measure that found a breakdown in a steady record would put arrows all
+    /// over every overview in the collection.
+    #[test]
+    fn a_record_that_never_thins_out_has_no_breakdown_in_it() {
+        let found = measure(&with_a_breakdown(24, 0, 0));
+        assert!(
+            found.breakdowns.is_empty(),
+            "found {:?} in a record that runs one pattern from end to end",
+            found.breakdowns
+        );
+        assert!(found.drops.is_empty());
+        assert!(
+            found.sections.len() >= 4,
+            "only {} sections, so the record was barely measured",
+            found.sections.len()
+        );
+    }
+
+    /// One bar of a fill is not a breakdown.
+    #[test]
+    fn a_single_quiet_window_is_a_fill_rather_than_a_breakdown() {
+        // Two bars thin, which at eight beats a window is one window.
+        let found = measure(&with_a_breakdown(8, 2, 8));
+        assert!(
+            found.breakdowns.is_empty(),
+            "a two-bar gap was marked as a breakdown: {:?}",
+            found.breakdowns
+        );
+    }
+
+    /// The curve is a fraction of the record's own peak, from end to end.
+    #[test]
+    fn the_trajectory_is_a_curve_the_overview_can_draw() {
+        let found = measure(&with_a_breakdown(8, 8, 8));
+        assert!(!found.sections.is_empty());
+        for section in &found.sections {
+            assert!(
+                (0.0..=1.0).contains(&section.energy) && (0.0..=1.0).contains(&section.low),
+                "a section reads {:?}, and the overview draws these as a height",
+                section
+            );
+        }
+        assert!(
+            found
+                .sections
+                .windows(2)
+                .all(|pair| pair[1].at > pair[0].at),
+            "the sections are not in order"
+        );
+        assert!(
+            found.sections.iter().any(|section| section.energy > 0.9),
+            "nothing reaches the record's own peak, so the scaling is wrong"
+        );
+    }
+
+    /// A record with no grid gets an empty answer rather than a guess.
+    #[test]
+    fn no_grid_is_no_trajectory() {
+        let audio = with_a_breakdown(8, 8, 8);
+        let (_, banded) = onset::detect_all(&audio, SR.get());
+        let flat = Beatgrid {
+            anchor: FramePos::new(0.0),
+            bpm: Bpm::new(BPM).expect("a tempo"),
+            beats_per_bar: 4,
+            confidence: Confidence::new(1.0),
+        };
+        // Nothing to count against: zero frames is a record of no length.
+        let found = trajectory(&banded, &flat, SR, 0, Some(8));
+        assert!(found.sections.is_empty());
+        assert!(found.breakdowns.is_empty());
     }
 }

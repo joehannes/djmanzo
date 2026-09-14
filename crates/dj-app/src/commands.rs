@@ -1582,6 +1582,18 @@ pub struct WaveformInfo {
     /// those two events. Sixty times a second for a number that changes twice
     /// a track would be the snapshot pump carrying furniture.
     pub mix_out: Option<MixOutInfo>,
+    /// §75's trajectory, and the breakdowns and drops in it.
+    ///
+    /// Here for the same reason `mix_out` is: it is a property of the record,
+    /// it changes when a deck loads or an analysis lands, and this is the call
+    /// the waveform already makes on exactly those two events. Sixty times a
+    /// second for a curve that changes twice a track would be the snapshot
+    /// pump carrying furniture.
+    ///
+    /// Empty for a deck with nothing on it, one still being analysed, and a
+    /// record with no grid to count phrases against. The overview draws
+    /// nothing for all three, which is the honest answer to each.
+    pub trajectory: dj_analysis::energy::Trajectory,
 }
 
 /// §25's `mix-out` layer, as the waveform draws it.
@@ -1602,6 +1614,16 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         total_frames: state.waveforms().total_frames(deck).unwrap_or(0) as u64,
         epoch: state.waveforms().epoch(deck),
         mix_out: mix_out_of(&state, deck),
+        // From the analysis rather than from the waveform store, unlike
+        // `mix_out` above, and the difference is deliberate: a mix-out band has
+        // to line up with the beat lines beside it, and a breakdown is where
+        // the music thins out. Editing the grid moves the lines and does not
+        // move the breakdown.
+        trajectory: state
+            .analysis()
+            .for_deck(deck)
+            .map(|found| found.trajectory.clone())
+            .unwrap_or_default(),
     }
 }
 
@@ -2315,6 +2337,7 @@ mod tests {
                     key: None,
                     sample_rate: SR,
                     grid_anchor: 0.0,
+                    drops: Vec::new(),
                 },
             )
             .expect("a ghost");
@@ -6384,6 +6407,11 @@ fn estimate_transition(
             key: candidate.analysis.key(),
             sample_rate: candidate.sample_rate,
             grid_anchor: grid.anchor.get(),
+            // The rail draws a style and a length, not a drop. Left empty
+            // rather than looked up: this runs once per candidate per refresh,
+            // and reading a cache for a number nothing here draws would be
+            // work for nobody.
+            drops: Vec::new(),
         },
     )?;
     let at_seconds = ghost.plan.start_frame / out.sample_rate.as_f64();
@@ -7271,6 +7299,16 @@ pub fn ghost_preview(
         key: candidate_track.analysis.key(),
         sample_rate: candidate_track.sample_rate,
         grid_anchor: grid.anchor.get(),
+        // §27's *drop*, from the analysis cache rather than from the library
+        // row: the row stores §20's single energy number and the trajectory is
+        // a curve. A candidate djmanzo has never analysed has none, and the
+        // ghost then says nothing about a drop -- which is the honest answer
+        // and the one §27's own list is written to allow.
+        drops: state
+            .analysis()
+            .cached(&candidate_track.id)
+            .map(|found| found.trajectory.drops.clone())
+            .unwrap_or_default(),
     };
 
     let Some(ghost) = crate::ghost::look(&outgoing, &candidate) else {

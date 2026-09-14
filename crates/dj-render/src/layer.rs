@@ -73,6 +73,15 @@ pub enum Role {
     /// arrive with a confidence of their own, and they are the same kind of
     /// claim about a different thing.
     Uncertain,
+    /// Where the record goes, and the two places on it worth marking.
+    ///
+    /// Shared by three layers on the same argument `Proposed` is shared by
+    /// two: the trajectory, the breakdowns in it and the drops out of them are
+    /// one reading drawn three ways, from one pass over one curve. A DJ
+    /// glancing at an overview is asking "what shape is this record", and
+    /// three colours for three parts of one answer would be §30's
+    /// neon-everything failure rather than §57's distinction.
+    Shape,
     /// Nothing yet. The layer is named but not drawn.
     Unassigned,
 }
@@ -89,6 +98,7 @@ impl Role {
             Role::Runway => "runway",
             Role::Proposed => "proposed",
             Role::Uncertain => "uncertain",
+            Role::Shape => "shape",
             Role::Unassigned => "unassigned",
         }
     }
@@ -303,26 +313,29 @@ static LAYERS: [Layer; 20] = [
         role: Role::Unassigned,
         drawn: Drawn::Nowhere,
     },
+    // An estimate about the music, which is what `Uncertain` is for: the
+    // detector reads where the low band falls away and a record with a
+    // half-time section is a record it can be wrong about.
     Layer {
         name: "breakdowns",
         title: "Breakdowns",
         about: "Where the record thins out.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        role: Role::Shape,
+        drawn: Drawn::Overlay,
     },
     Layer {
         name: "drops",
         title: "Drops",
         about: "Where it comes back.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        role: Role::Shape,
+        drawn: Drawn::Overlay,
     },
     Layer {
         name: "energy",
         title: "Energy trajectory",
         about: "Where the record is going, over its whole length.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        role: Role::Shape,
+        drawn: Drawn::Overlay,
     },
     Layer {
         name: "suggestion",
@@ -509,6 +522,16 @@ mod tests {
             Some(&vec!["mix-out", "suggestion"]),
             "the proposed colour is for what djmanzo suggests, and only that"
         );
+        // §75's three, and the same argument as `proposed` above: the
+        // trajectory, the breakdowns in it and the drops out of them are one
+        // reading of one curve drawn three ways. Three colours for three parts
+        // of one answer to "what shape is this record" would be §30's
+        // neon-everything failure rather than §57's distinction.
+        assert_eq!(
+            grouped.get("shape"),
+            Some(&vec!["breakdowns", "drops", "energy"]),
+            "the shape colour is for where the record goes, and only that"
+        );
         for role in ["placed", "looping", "seam", "runway", "uncertain"] {
             assert_eq!(
                 grouped.get(role).map(Vec::len),
@@ -555,6 +578,9 @@ mod tests {
                 "loop",
                 "seam",
                 "mix-out",
+                "breakdowns",
+                "drops",
+                "energy",
                 "suggestion",
                 "confidence",
                 "runway",

@@ -42,7 +42,15 @@ use std::sync::{Arc, Mutex};
 /// A cached record from an older version is discarded and recomputed rather
 /// than read, which is why this number exists: reading an old record with new
 /// code is how a library ends up full of confidently wrong BPMs.
-const CACHE_VERSION: u32 = 3;
+///
+/// Bumped to 4 for §75's trajectory. Three was §20's energy, and the two were
+/// added a commit apart -- so for one build the version said "current" and the
+/// file it named had no trajectory in it, and every record loaded from that
+/// cache drew nothing on its overview while the analyser was never asked to
+/// look. **A field added here is a version bump**, every time, even when the
+/// field is optional: optional means "a reader may find it missing", not "a
+/// writer may forget it".
+const CACHE_VERSION: u32 = 4;
 
 /// What the analyser found, in a form that survives a restart.
 ///
@@ -77,6 +85,11 @@ struct CachedAnalysis {
     /// -- kept optional so a future reader of an old file gets absence rather
     /// than a zero that would read as a record with nothing in it.
     energy: Option<[f32; 4]>,
+    /// §75's trajectory, and the breakdowns and drops in it. `None` on the same
+    /// terms as `energy` above, and re-analysing is what fills it: a whole
+    /// record has to be read again to find where it thins out, which is the
+    /// reason this is cached rather than recomputed on every load.
+    trajectory: Option<dj_analysis::energy::Trajectory>,
 }
 
 impl CachedAnalysis {
@@ -99,6 +112,7 @@ impl CachedAnalysis {
             key_alt_major: key
                 .and_then(|k| k.alternative)
                 .map(|a| a.mode() == dj_core::Mode::Major),
+            trajectory: Some(analysis.trajectory.clone()),
             energy: Some([
                 analysis.energy.value,
                 analysis.energy.flux,
@@ -174,6 +188,7 @@ impl CachedAnalysis {
                     punch,
                 },
             ),
+            trajectory: self.trajectory.clone().unwrap_or_default(),
             phrases,
         })
     }
@@ -327,10 +342,15 @@ pub fn analyse_or_cached(
     }
 
     let analysis = dj_analysis::analyse(samples, sample_rate);
+    // Cloned rather than moved twice: `Analysis` carries §75's trajectory now
+    // and is no longer `Copy`. The fallback is for a store that dropped the
+    // deck between the write and the read, which a deck ejected mid-analysis
+    // really does.
+    let fallback = analysis.clone();
     store.record(deck, id, analysis);
     store
         .for_deck(deck.human_number())
-        .unwrap_or_else(|| Arc::new(analysis))
+        .unwrap_or_else(|| Arc::new(fallback))
 }
 
 /// The action that trims a freshly analysed track to the reference loudness.
@@ -383,6 +403,7 @@ mod tests {
             }),
             loudness: Lufs::new(-9.3),
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
         }
     }
@@ -433,6 +454,7 @@ mod tests {
             key: None,
             loudness: Lufs::SILENCE,
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
         };
         let restored = CachedAnalysis::from_analysis(&silent)
@@ -539,6 +561,7 @@ mod tests {
         let quiet = Analysis {
             loudness: Lufs::new(-20.0),
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
             ..analysis()
         };
@@ -550,6 +573,7 @@ mod tests {
         let loud = Analysis {
             loudness: Lufs::new(-8.0),
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
             ..analysis()
         };
@@ -567,6 +591,7 @@ mod tests {
         let already = Analysis {
             loudness: Lufs::new(-14.2),
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
             ..analysis()
         };
@@ -581,6 +606,7 @@ mod tests {
         let silent = Analysis {
             loudness: Lufs::SILENCE,
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
             ..analysis()
         };
@@ -595,6 +621,7 @@ mod tests {
         let quiet = Analysis {
             loudness: Lufs::new(-19.0),
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
             ..analysis()
         };
@@ -618,6 +645,7 @@ mod tests {
         let nearly_silent = Analysis {
             loudness: Lufs::new(-90.0),
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
             ..analysis()
         };

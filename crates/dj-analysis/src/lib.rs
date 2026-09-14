@@ -53,11 +53,18 @@ use dj_core::SampleRate;
 /// field recording has no tempo, a drum loop has no key, and a silent file has
 /// no loudness. A missing field means "could not tell", which the interface
 /// should show as such rather than filling in a plausible zero.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Analysis {
     pub tempo: Option<TempoAnalysis>,
     pub key: Option<KeyAnalysis>,
     pub loudness: Lufs,
+    /// Where the record goes over its own length, and the breakdowns and
+    /// drops in it. [§75](../../../docs/DIRECTIVE.md), and the three layers
+    /// §25 has carried as `Drawn::Nowhere` since that table existed.
+    ///
+    /// Empty for a record with no grid, which is the honest answer: a
+    /// trajectory is measured in phrases and there is nothing to count.
+    pub trajectory: energy::Trajectory,
     /// How hard the record hits, which is not how loud it is.
     ///
     /// [§20](../../../docs/DIRECTIVE.md) asks the library for an energy column
@@ -122,11 +129,26 @@ pub fn analyse(samples: &[f32], sample_rate: SampleRate) -> Analysis {
         tempo.as_ref().map(|t| t.grid.bpm.get()),
     );
 
+    // The same banded curve again, and deliberately: a record's shape over time
+    // and its phrase boundaries are two questions about one measurement.
+    let trajectory = tempo
+        .as_ref()
+        .map_or_else(energy::Trajectory::default, |tempo| {
+            energy::trajectory(
+                &banded,
+                &tempo.grid,
+                sample_rate,
+                frames,
+                phrases.map(|p| p.beats),
+            )
+        });
+
     Analysis {
         tempo,
         key: key::detect(samples, rate),
         loudness: measured.integrated,
         energy,
+        trajectory,
         phrases,
     }
 }

@@ -49,6 +49,22 @@
    *
    * A palette that wants its own stem hues can still override these; nothing
    * here depends on the derivation. */
+  /* §75's trajectory, the breakdowns in it and the drops out of them.
+   *
+   * The dim text colour rather than a hue of its own, and that is a decision
+   * rather than a shortcut. The overview already carries four coloured
+   * meanings -- the cues, the loop, the mix-out window and §27's ghost -- and
+   * a fifth would be §30's "neon application where everything is colourful and
+   * nothing is semantically distinct". The shape of a record is *context
+   * behind* the waveform, in the same register as a gridline, and it is drawn
+   * under the image at low opacity so it never competes with a mark on it.
+   *
+   * It shares this token with the grid's own uncertainty, which is the sharing
+   * `Role::must_differ_from` allows: that one is a hatch on the scrolling lane
+   * and this one is a column on the whole-record view, and there is no glance
+   * in which a DJ has to tell them apart. */
+  --shape: var(--text-dim);
+
   --stem-vocal: var(--accent);
   --stem-drums: var(--warn);
   --stem-bass: var(--danger);

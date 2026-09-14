@@ -120,28 +120,28 @@
     "name": "breakdowns",
     "title": "Breakdowns",
     "about": "Where the record thins out.",
-    "role": "unassigned",
-    "drawn": "nowhere",
-    "choosable": false,
-    "why_not": "djmanzo cannot draw this yet"
+    "role": "shape",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
   },
   {
     "name": "drops",
     "title": "Drops",
     "about": "Where it comes back.",
-    "role": "unassigned",
-    "drawn": "nowhere",
-    "choosable": false,
-    "why_not": "djmanzo cannot draw this yet"
+    "role": "shape",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
   },
   {
     "name": "energy",
     "title": "Energy trajectory",
     "about": "Where the record is going, over its whole length.",
-    "role": "unassigned",
-    "drawn": "nowhere",
-    "choosable": false,
-    "why_not": "djmanzo cannot draw this yet"
+    "role": "shape",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
   },
   {
     "name": "suggestion",

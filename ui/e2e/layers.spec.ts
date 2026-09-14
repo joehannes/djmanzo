@@ -102,6 +102,90 @@ test.describe("the waveform's layers", () => {
   });
 
   /**
+   * **§75's three: the trajectory, the breakdowns in it and the drops out of
+   * them.**
+   *
+   * These were `Drawn::Nowhere` in §25's table for the life of that table,
+   * each with "the analysis does not exist" beside it. It does now, and the
+   * only thing worth asserting here is the half Rust cannot: that the marks
+   * land where the record puts them. The harness's record thins out in its
+   * third quarter and comes back at three quarters through, so the band and
+   * the line have a position this test can check rather than a mere presence.
+   */
+  test("the trajectory, the breakdown and the drop are drawn on the overview", async ({
+    page,
+  }) => {
+    await openShell(page, "/");
+
+    const overview = page.locator(".overview").first();
+    await expect(overview).toBeVisible();
+    const box = await overview.boundingBox();
+    expect(box, "the overview has no box").not.toBeNull();
+
+    // The curve, as columns. One per window, and the fixture has four.
+    const columns = overview.locator('[data-layer="energy"]');
+    await expect(columns).toHaveCount(4);
+
+    // The breakdown covers the record's third quarter.
+    const thin = overview.locator('[data-layer="breakdowns"]');
+    await expect(thin).toHaveCount(1);
+    const band = await thin.boundingBox();
+    expect(band).not.toBeNull();
+    const at = (pixels: number) => (pixels - box!.x) / box!.width;
+    expect(
+      at(band!.x),
+      "the breakdown band does not start where the record thins out",
+    ).toBeCloseTo(0.5, 1);
+    expect(band!.width / box!.width).toBeCloseTo(0.25, 1);
+
+    // And the drop is a line where it comes back.
+    const drop = overview.locator('[data-layer="drops"]');
+    await expect(drop).toHaveCount(1);
+    const mark = await drop.boundingBox();
+    expect(mark).not.toBeNull();
+    expect(
+      at(mark!.x),
+      "the drop is not marked where the kick returns",
+    ).toBeCloseTo(0.75, 1);
+
+    // **And they are drawn over the tile rather than under it.** The first
+    // version of these three sat before the image in the DOM, which on an
+    // opaque tile means nothing of them reaches the screen -- the same mistake
+    // the runway made once, and one `toBeVisible` cannot see, because it asks
+    // whether an element has a box rather than whether anything can be seen of
+    // it. This is the assertion that would have caught it.
+    const above = await overview.evaluate((box) => {
+      const tile = box.querySelector("img");
+      const depth = (el: Element | null) => {
+        if (!el) return null;
+        const value = getComputedStyle(el).zIndex;
+        return value === "auto" ? 0 : Number(value);
+      };
+      const order = Array.from(box.children);
+      const paints = (el: Element | null) =>
+        el === null
+          ? null
+          : { z: depth(el), at: order.indexOf(el) };
+      return {
+        tile: paints(tile),
+        energy: paints(box.querySelector('[data-layer="energy"]')),
+        breakdown: paints(box.querySelector('[data-layer="breakdowns"]')),
+        drop: paints(box.querySelector('[data-layer="drops"]')),
+      };
+    });
+    for (const [what, painted] of Object.entries(above)) {
+      if (what === "tile" || painted === null) continue;
+      const tile = above.tile!;
+      expect(
+        painted.z > tile.z || (painted.z === tile.z && painted.at > tile.at),
+        `the ${what} layer paints under the waveform it is about, so none of ` +
+          `it reaches the screen`,
+      ).toBe(true);
+    }
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **A wash under an opaque waveform is not a layer.**
    *
    * The runway shipped with `z-index: 0` against tiles at `z-index: auto` that
@@ -310,9 +394,14 @@ test.describe("the waveform's layers", () => {
     expect(built).toContain("seam");
     expect(built).toContain("mix-out");
     expect(built).toContain("confidence");
-    // §27's ghost, which is the twelfth: the `suggestion` layer §25 reserves
+    // §27's ghost, which was the twelfth: the `suggestion` layer §25 reserves
     // for "what djmanzo would do, drawn as a ghost rather than as a fact".
     expect(built).toContain("suggestion");
-    expect(built).toHaveLength(12);
+    // §75's three, which were the last of §25's list waiting on an analysis
+    // nobody had written rather than on a decision nobody had made.
+    expect(built).toContain("energy");
+    expect(built).toContain("breakdowns");
+    expect(built).toContain("drops");
+    expect(built).toHaveLength(15);
   });
 });

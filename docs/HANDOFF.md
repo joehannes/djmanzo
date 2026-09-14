@@ -1417,6 +1417,29 @@ The largest of them, in the order they are worth doing:
    independent of something, test it at two values of that thing -- the
    tempo-invariance test is what found all three.
 
+12f. **A field added to a cache is a version bump, every time.** §20's energy
+   bumped `analysis::CACHE_VERSION` from 2 to 3. §75's trajectory was added a
+   commit later and did not bump it, because the field is optional and an
+   optional field reads as "a reader may find it missing". It also means "a
+   writer may forget it": for one build the cache said version 3 and the files
+   it named had no trajectory in them, so every record loaded from that cache
+   drew nothing on its overview and the analyser was never asked to look.
+
+   **Every test passed.** The trajectory tests build their own audio, the
+   browser tests use a fixture, and nothing in either path reads a cache file.
+   It was found by running the application, seeing an empty overview, and
+   printing the cache — which is the third time this repository has recorded
+   "the defect was one level out from everything the suite looks at".
+
+12g. **A wash under an opaque waveform is not a layer, recorded twice now.**
+   The first version of §75's three drew them before the `<img>` in the
+   overview, reasoning that the shape of a record is context *behind* the
+   waveform. The tile is opaque; nothing of them reached the screen, and
+   Playwright's `toBeVisible` passed because it asks whether an element has a
+   box. `layers.spec.ts` already carried this lesson about the runway. The
+   guard now asserts the painting order rather than the visibility, and it is
+   the assertion to copy for any new overlay.
+
 13. **§90 has one ratchet and four honest refusals, and the split is the
    lesson.** A ratchet is only worth having where the number means the same
    thing on two machines. Frame rate, memory and CPU do not — the argument §89

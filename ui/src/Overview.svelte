@@ -20,6 +20,7 @@
     waveformInfo,
     type DeckState,
     type MixOutInfo,
+    type EnergyTrajectory,
   } from "./api";
   import { remembers, showing } from "./remembers.svelte";
   import { theme } from "./theme.svelte";
@@ -68,6 +69,16 @@
   let epoch = $state(0);
   let ready = $state(false);
   let mixOut = $state<MixOutInfo | null>(null);
+  /**
+   * §75's trajectory, and §25's `breakdowns`, `drops` and `energy` layers.
+   *
+   * The whole-record view is where a trajectory belongs and the scrolling lane
+   * is not, for the same reason the ghost is drawn here: a breakdown two
+   * minutes ahead is off screen in a lane running at a few hundred frames per
+   * pixel, and "where does this record go" is a question asked before the
+   * record gets there.
+   */
+  let trajectory = $state<EnergyTrajectory | null>(null);
 
   // Interpolation state, as in the scrolling lane: snapshots arrive at 60 Hz
   // but a frame landing between two of them must still move.
@@ -97,6 +108,7 @@
         totalFrames = info.total_frames;
         epoch = info.epoch;
         mixOut = info.mix_out ?? null;
+        trajectory = info.trajectory ?? null;
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -174,6 +186,50 @@
     return right > left
       ? { left, width: Math.max(right - left, 0.8), onPhrase: mixOut.on_phrase }
       : null;
+  });
+
+  /**
+   * The trajectory as a run of columns, one per window.
+   *
+   * Columns rather than a line: a line implies a reading between the points
+   * and there is none — each window is a measurement over eight beats, and
+   * djmanzo has no opinion about the bar in the middle of one.
+   */
+  const shape = $derived.by(() => {
+    const sections = trajectory?.sections ?? [];
+    if (sections.length < 2 || totalFrames <= 0) return [];
+    // The width of one window, from the gap between the first two. Measured
+    // rather than computed from the tempo: this component does not know the
+    // grid, and the gap is the same number by construction.
+    const span = sections[1].at - sections[0].at;
+    return sections.map((section) => ({
+      at: section.at,
+      left: fraction(section.at) * 100,
+      width: Math.max((span / totalFrames) * 100, 0.4),
+      height: Math.round(section.energy * 100),
+    }));
+  });
+
+  /** §75's breakdowns, as bands. */
+  const thin = $derived.by(() => {
+    const spans = trajectory?.breakdowns ?? [];
+    if (totalFrames <= 0) return [];
+    return spans
+      .map((span) => ({
+        from: span.from,
+        left: fraction(span.from) * 100,
+        width: Math.max((span.to - span.from) / totalFrames * 100, 0.8),
+      }))
+      .filter((band) => band.width > 0);
+  });
+
+  /** And the drops, as marks. */
+  const returns = $derived.by(() => {
+    if (totalFrames <= 0) return [];
+    return (trajectory?.drops ?? []).map((at) => ({
+      at,
+      left: fraction(at) * 100,
+    }));
   });
 
   /**
@@ -296,6 +352,47 @@
       ></div>
     {/if}
     <img class="whole" src={url} alt="" width={tileWidth} {height} draggable="false" />
+    <!--
+      §75's trajectory and the two things worth marking on it.
+
+      **After the image, not before it.** The first version drew these under
+      the tile, reasoning that the shape of a record is context behind the
+      waveform -- and the tile is opaque, so nothing of them reached the
+      screen. `layers.spec.ts` records the same mistake being made once before
+      with the runway, and Playwright's `toBeVisible` passed both times because
+      it asks whether an element has a box rather than whether anything can be
+      seen of it. Found by looking at the running application, twice.
+
+      So they are over the tile and quiet instead: the breakdown is a wash at
+      low opacity, the trajectory is columns from the floor, and only the drop
+      is drawn at full strength -- one line, at one place, on a record.
+    -->
+    {#each showing("breakdowns") ? thin : [] as band (band.from)}
+      <div
+        class="thin"
+        data-layer="breakdowns"
+        style:left="{band.left}%"
+        style:width="{band.width}%"
+        title="The record thins out here"
+      ></div>
+    {/each}
+    {#each showing("energy") ? shape : [] as column (column.at)}
+      <div
+        class="shape"
+        data-layer="energy"
+        style:left="{column.left}%"
+        style:width="{column.width}%"
+        style:height="{column.height}%"
+      ></div>
+    {/each}
+    {#each showing("drops") ? returns : [] as mark (mark.at)}
+      <div
+        class="drop"
+        data-layer="drops"
+        style:left="{mark.left}%"
+        title="Where it comes back"
+      ></div>
+    {/each}
     {#each showing("cues") ? markers : [] as marker (marker.slot)}
       <div class="cue" data-layer="cues" style:left="{marker.left}%"></div>
     {/each}
@@ -306,6 +403,40 @@
 </div>
 
 <style>
+  /*
+    §75's three. One colour between them — `--shape` — because they are one
+    reading of one curve drawn three ways: see `dj_render::layer::Role::Shape`.
+    Told apart by form rather than by hue, which is what §57 asks for when a
+    meaning is shared: the trajectory is columns from the floor, a breakdown is
+    a washed band behind everything, and a drop is a line.
+  */
+  .shape {
+    position: absolute;
+    z-index: 1;
+    bottom: 0;
+    background: var(--shape, var(--text-dim));
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .thin {
+    position: absolute;
+    z-index: 1;
+    inset-block: 0;
+    background: var(--shape, var(--text-dim));
+    opacity: 0.18;
+    pointer-events: none;
+  }
+  .drop {
+    position: absolute;
+    z-index: 1;
+    inset-block: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--shape, var(--text-dim));
+    opacity: 0.85;
+    pointer-events: none;
+  }
+
   .overview {
     position: relative;
     overflow: hidden;

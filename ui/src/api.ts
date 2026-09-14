@@ -1113,6 +1113,31 @@ export interface WaveformInfo {
    * answers.
    */
   mix_out: MixOutInfo | null;
+  /**
+   * §75's energy trajectory, and the breakdowns and drops in it.
+   *
+   * Empty for a deck with nothing on it, one still being analysed, and a
+   * record with no grid to count phrases against — the overview draws nothing
+   * for all three, which is the honest answer to each. It arrives here for the
+   * same reason `mix_out` does: it changes on a load and on an analysis, which
+   * are the two events this call already answers.
+   */
+  trajectory: EnergyTrajectory;
+}
+
+/**
+ * §75's trajectory. See `dj_analysis::energy`.
+ *
+ * Not `Trajectory`, which §22 already has for lift / hold / ease. Two
+ * different things called the same word is how one of them ends up cast to
+ * the other.
+ */
+export interface EnergyTrajectory {
+  sections: { at: number; energy: number; low: number }[];
+  beats_per_section: number;
+  breakdowns: { from: number; to: number }[];
+  /** Frame positions. */
+  drops: number[];
 }
 
 export interface MixOutInfo {

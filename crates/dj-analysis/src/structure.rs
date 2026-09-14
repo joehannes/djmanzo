@@ -185,7 +185,11 @@ pub fn phrases(
 /// Each beat's span is rounded to whole hops at both ends, which is what keeps
 /// a transient on the downbeat inside the beat it belongs to. See the module
 /// documentation -- getting this wrong invents phrases in a metronome.
-fn beat_features(
+/// Visible to the crate because `energy::trajectory` reads the same per-beat
+/// band curve: a record's shape over time and its phrase boundaries are two
+/// questions about one measurement, and computing it twice would be two
+/// answers that could disagree about the same beat.
+pub(crate) fn beat_features(
     onset: &BandedOnset,
     grid: &Beatgrid,
     rate: SampleRate,

@@ -369,6 +369,7 @@ mod tests {
             key: None,
             loudness: crate::loudness::Lufs::SILENCE,
             energy: crate::energy::Energy::default(),
+            trajectory: crate::energy::Trajectory::default(),
             phrases: None,
         }
     }
@@ -451,6 +452,7 @@ mod tests {
             key: None,
             loudness: crate::loudness::Lufs::SILENCE,
             energy: crate::energy::Energy::default(),
+            trajectory: crate::energy::Trajectory::default(),
             phrases: None,
         };
         let scored = score(&label(128.0, 0.0), &none, SR, Tolerance::default());
@@ -620,6 +622,7 @@ mod tests {
             key: None,
             loudness: crate::loudness::Lufs::SILENCE,
             energy: crate::energy::Energy::default(),
+            trajectory: crate::energy::Trajectory::default(),
             phrases: None,
         };
         let mut report = report_of(&[(128.0, 128.0, 0.8), (120.0, 97.0, 0.3)]);

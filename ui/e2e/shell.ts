@@ -345,6 +345,21 @@ const ANSWERS: Record<string, unknown> = {
     total_frames: 12_000_000,
     epoch: 1,
     mix_out: { opens_frame: 10_800_000, closes_frame: 11_600_000, on_phrase: true },
+    // §75's trajectory, on the same twelve-million-frame record. Four windows
+    // with the third thinned out and the fourth back, which is the shape the
+    // detector is written to find -- a fixture whose energy never moved would
+    // let an overview that drew a flat row of columns pass.
+    trajectory: {
+      sections: [
+        { at: 0, energy: 0.9, low: 0.95 },
+        { at: 3_000_000, energy: 1.0, low: 1.0 },
+        { at: 6_000_000, energy: 0.35, low: 0.05 },
+        { at: 9_000_000, energy: 0.95, low: 0.98 },
+      ],
+      beats_per_section: 32,
+      breakdowns: [{ from: 6_000_000, to: 9_000_000 }],
+      drops: [9_000_000],
+    },
   },
   // §25's inventory, answered from the same table Rust publishes. The test
   // that matters reads it back and checks every `data-layer` on screen is in

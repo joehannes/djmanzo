@@ -557,6 +557,7 @@ mod tests {
             key: None,
             loudness: dj_analysis::Lufs::SILENCE,
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
         };
         let stored = stored_analysis(&analysis);
@@ -571,6 +572,7 @@ mod tests {
             key: None,
             loudness: dj_analysis::Lufs::new(-9.5),
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
         };
         assert_eq!(stored_analysis(&analysis).loudness_lufs, Some(-9.5));
@@ -586,6 +588,7 @@ mod tests {
             key: None,
             loudness: dj_analysis::Lufs::new(-12.0),
             energy: dj_analysis::energy::Energy::default(),
+            trajectory: dj_analysis::energy::Trajectory::default(),
             phrases: None,
         });
         assert_eq!(stored.bpm, None);
