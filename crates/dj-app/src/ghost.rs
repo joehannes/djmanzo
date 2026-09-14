@@ -262,14 +262,24 @@ impl Ghost {
 /// tempo that is not a tempo, a record already past its last usable phrase.
 /// A ghost that appeared anyway, over a mix that cannot happen, would be the
 /// one thing worse than no ghost.
+///
+/// `usual` is §81's learned transition style, passed through to the planner
+/// rather than applied here: the ghost's whole contract is that it draws
+/// [`plan::plan_as`]'s geometry unedited, and a ghost that made its own style
+/// decision would be the second place that decision lives — visible to the DJ
+/// as the overlay and the armed mix disagreeing about the same pair.
 #[must_use]
-pub fn look(out: &Outgoing, candidate: &Candidate) -> Option<Ghost> {
+pub fn look(
+    out: &Outgoing,
+    candidate: &Candidate,
+    usual: Option<dj_core::action::TransitionStyle>,
+) -> Option<Ghost> {
     let into = plan::Incoming {
         bpm: candidate.bpm,
         phrase: candidate.phrase,
         key: candidate.key,
     };
-    let plan = plan::plan(out, &into)?;
+    let plan = plan::plan_as(out, &into, usual)?;
     let out_beat = plan::beat_frames(out.bpm, out.sample_rate)?;
 
     Some(Ghost {
@@ -407,7 +417,7 @@ mod tests {
     /// this is not zero, nothing else in the landing means what it says.
     #[test]
     fn a_record_that_opens_on_a_phrase_leads_with_nothing() {
-        let ghost = look(&outgoing(), &candidate(BPM, 0.0, 0)).expect("a ghost");
+        let ghost = look(&outgoing(), &candidate(BPM, 0.0, 0), None).expect("a ghost");
         let landing = ghost.landing.expect("a landing");
         assert!(
             landing.lead_beats.abs() < 1e-6,
@@ -431,7 +441,7 @@ mod tests {
     fn a_pickup_pushes_the_first_phrase_later_by_exactly_its_length() {
         // Grid anchored at the first sample; the phrase starts on beat 4 of
         // it, which is a four-beat pickup.
-        let ghost = look(&outgoing(), &candidate(BPM, 0.0, 4)).expect("a ghost");
+        let ghost = look(&outgoing(), &candidate(BPM, 0.0, 4), None).expect("a ghost");
         let landing = ghost.landing.expect("a landing");
         assert!(
             (landing.lead_beats - 4.0).abs() < 1e-6,
@@ -454,7 +464,7 @@ mod tests {
     /// the very start, which is most of them.
     #[test]
     fn the_lead_in_counts_the_music_before_the_grid_anchor() {
-        let ghost = look(&outgoing(), &candidate(BPM, 2.0, 0)).expect("a ghost");
+        let ghost = look(&outgoing(), &candidate(BPM, 2.0, 0), None).expect("a ghost");
         let landing = ghost.landing.expect("a landing");
         assert!(
             (landing.lead_beats - 2.0).abs() < 1e-6,
@@ -471,8 +481,8 @@ mod tests {
     /// and it would be wrong by more the further the two tempos are apart.
     #[test]
     fn a_faster_candidate_still_lands_on_the_outgoing_grid() {
-        let slow = look(&outgoing(), &candidate(BPM, 0.0, 8)).expect("a ghost");
-        let fast = look(&outgoing(), &candidate(BPM * 1.05, 0.0, 8)).expect("a ghost");
+        let slow = look(&outgoing(), &candidate(BPM, 0.0, 8), None).expect("a ghost");
+        let fast = look(&outgoing(), &candidate(BPM * 1.05, 0.0, 8), None).expect("a ghost");
         let (slow, fast) = (
             slow.landing.expect("a landing"),
             fast.landing.expect("a landing"),
@@ -494,7 +504,7 @@ mod tests {
     fn no_phrase_structure_is_no_landing() {
         let mut none = candidate(BPM, 0.0, 0);
         none.phrase = None;
-        let ghost = look(&outgoing(), &none).expect("a ghost");
+        let ghost = look(&outgoing(), &none, None).expect("a ghost");
         assert_eq!(ghost.landing, None);
     }
 
@@ -505,14 +515,14 @@ mod tests {
     /// different thing from an alignment and is worth saying.
     #[test]
     fn a_phrase_after_the_mix_ends_is_not_an_alignment() {
-        let ghost = look(&outgoing(), &candidate(BPM, 0.0, 0)).expect("a ghost");
+        let ghost = look(&outgoing(), &candidate(BPM, 0.0, 0), None).expect("a ghost");
         // A 64-beat phrase whose boundary is 48 beats in: a very long
         // introduction, against a mix the planner will make 32 beats.
         let long = Candidate {
             phrase: Phrase::new(64, 48),
             ..candidate(BPM, 0.0, 0)
         };
-        let late = look(&outgoing(), &long).expect("a ghost");
+        let late = look(&outgoing(), &long, None).expect("a ghost");
         assert!(ghost.landing.expect("a landing").within_mix);
         let landing = late.landing.expect("a landing");
         assert!(landing.lead_beats > f64::from(late.plan.length_beats));
@@ -529,8 +539,8 @@ mod tests {
     /// sign wrong here would put a minus sign on a fader that goes up.
     #[test]
     fn a_faster_record_is_pulled_down() {
-        let up = look(&outgoing(), &candidate(BPM * 1.02, 0.0, 0)).expect("a ghost");
-        let down = look(&outgoing(), &candidate(BPM / 1.02, 0.0, 0)).expect("a ghost");
+        let up = look(&outgoing(), &candidate(BPM * 1.02, 0.0, 0), None).expect("a ghost");
+        let down = look(&outgoing(), &candidate(BPM / 1.02, 0.0, 0), None).expect("a ghost");
         assert!(
             up.pitch_percent < 0.0,
             "a 122 BPM record onto 120 is pulled down, not up: {}",
@@ -583,7 +593,7 @@ mod tests {
             vec!["vocal-entry"],
             "the answered set changed: give Ghost the positions to match"
         );
-        let ghost = look(&outgoing(), &candidate(BPM, 0.0, 0)).expect("a ghost");
+        let ghost = look(&outgoing(), &candidate(BPM, 0.0, 0), None).expect("a ghost");
         assert_eq!(ghost.asked.len(), 7);
         assert_eq!(
             ghost
@@ -605,7 +615,7 @@ mod tests {
     fn the_ghost_shows_the_transition_djmanzo_would_actually_do() {
         let out = outgoing();
         let cand = candidate(BPM, 0.0, 0);
-        let ghost = look(&out, &cand).expect("a ghost");
+        let ghost = look(&out, &cand, None).expect("a ghost");
         let planned = plan::plan(
             &out,
             &plan::Incoming {
@@ -624,7 +634,7 @@ mod tests {
     #[test]
     fn where_the_record_becomes_weak_is_the_window_already_drawn() {
         let out = outgoing();
-        let ghost = look(&out, &candidate(BPM, 0.0, 0)).expect("a ghost");
+        let ghost = look(&out, &candidate(BPM, 0.0, 0), None).expect("a ghost");
         assert_eq!(ghost.weakens, plan::mix_out(&out.record()));
         assert!(ghost.weakens.is_some(), "256 beats has room to be left in");
     }
@@ -635,6 +645,6 @@ mod tests {
     fn a_mix_that_cannot_happen_gets_no_ghost() {
         let mut nearly_over = outgoing();
         nearly_over.position = nearly_over.length - 2.0 * beat();
-        assert_eq!(look(&nearly_over, &candidate(BPM, 0.0, 0)), None);
+        assert_eq!(look(&nearly_over, &candidate(BPM, 0.0, 0), None), None);
     }
 }

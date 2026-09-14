@@ -86,6 +86,13 @@ pub struct Transition {
     /// it.
     outgoing: Outgoing,
     incoming: Incoming,
+    /// §81's learned transition style, as it stood when the mix was armed.
+    ///
+    /// Held rather than re-read, for the reason `outgoing`'s playhead is: a
+    /// replan is *this* mix planned again, and one that picked up a profile
+    /// which had changed since would silently give the DJ a different answer
+    /// from the one they threw away.
+    usual: Option<TransitionStyle>,
 }
 
 impl Transition {
@@ -102,7 +109,24 @@ impl Transition {
         incoming: Incoming,
         confidence: f64,
     ) -> Option<Self> {
-        let plan = plan::plan(&outgoing, &incoming)?;
+        Self::plan_as(decks, tracks, outgoing, incoming, confidence, None)
+    }
+
+    /// Plan a mix the way this DJ usually joins records, and hold the result.
+    ///
+    /// `usual` is §81's learned transition style. It reaches the planner rather
+    /// than being applied afterwards, and the planner uses it only where the
+    /// music left the choice open — see `plan::STYLE_IS_TASTE`.
+    #[must_use]
+    pub fn plan_as(
+        decks: (DeckId, DeckId),
+        tracks: (TrackId, TrackId),
+        outgoing: Outgoing,
+        incoming: Incoming,
+        confidence: f64,
+        usual: Option<TransitionStyle>,
+    ) -> Option<Self> {
+        let plan = plan::plan_as(&outgoing, &incoming, usual)?;
         Some(Self {
             outgoing_deck: decks.0,
             incoming_deck: decks.1,
@@ -113,6 +137,7 @@ impl Transition {
             edited: false,
             outgoing,
             incoming,
+            usual,
         })
     }
 
@@ -193,7 +218,7 @@ impl Transition {
     /// undo a DJ's adjustment at whatever moment it next recalculated, which
     /// is the behaviour §45 exists to forbid.
     pub fn replan(&mut self) {
-        if let Some(plan) = plan::plan(&self.outgoing, &self.incoming) {
+        if let Some(plan) = plan::plan_as(&self.outgoing, &self.incoming, self.usual) {
             self.plan = plan;
             self.edited = false;
         }
@@ -304,6 +329,58 @@ mod tests {
             0.8,
         )
         .expect("the fixture must be mixable or it tests nothing")
+    }
+
+    /// **A replan reproduces the answer the DJ threw away, not today's.**
+    ///
+    /// §81's learned style is held on the transition rather than re-read, for
+    /// the reason the armed playhead is: *replan* means plan **this** mix
+    /// again. A version that looked the profile up afresh would hand a DJ who
+    /// pressed it a different style from the one they had just discarded — and
+    /// they would have no way to tell whether they had mis-edited it or
+    /// djmanzo had changed its mind.
+    ///
+    /// The second assertion is the one that fails when the style is not held:
+    /// a transition armed with a preference and replanned without one falls
+    /// back to `Blend`, which is exactly what the planner gives when nobody
+    /// has said anything.
+    #[test]
+    fn a_replan_keeps_the_style_the_mix_was_armed_with() {
+        let outgoing = Outgoing {
+            position: 100.0 * beat(),
+            length: 400.0 * beat(),
+            bpm: BPM,
+            phrase: Phrase::new(16, 0),
+            key: key(8, Mode::Minor),
+            sample_rate: SR,
+            grid_anchor: 0.0,
+        };
+        let incoming = Incoming {
+            bpm: BPM,
+            phrase: Phrase::new(16, 0),
+            key: key(8, Mode::Minor),
+        };
+        let mut transition = Transition::plan_as(
+            (deck(1), deck(2)),
+            (track(1), track(2)),
+            outgoing,
+            incoming,
+            0.8,
+            Some(TransitionStyle::Fade),
+        )
+        .expect("the fixture must be mixable or it tests nothing");
+        assert_eq!(transition.plan.style, TransitionStyle::Fade);
+
+        transition.set_style(TransitionStyle::Cut);
+        assert!(transition.edited);
+        transition.replan();
+
+        assert!(!transition.edited, "the replan did not clear the edit");
+        assert_eq!(
+            transition.plan.style,
+            TransitionStyle::Fade,
+            "the replan forgot how this DJ joins records and gave the default back"
+        );
     }
 
     /// **An edit re-derives the reasons.**

@@ -2371,7 +2371,7 @@ mod tests {
         fn the_rail_shows_the_planners_own_answer() {
             let out = outgoing();
             let track = candidate(true);
-            let estimate = estimate_transition(&out, &track).expect("a plan");
+            let estimate = estimate_transition(&out, &track, None).expect("a plan");
 
             let ghost = crate::ghost::look(
                 &out,
@@ -2383,6 +2383,7 @@ mod tests {
                     grid_anchor: 0.0,
                     drops: Vec::new(),
                 },
+                None,
             )
             .expect("a ghost");
 
@@ -2402,7 +2403,7 @@ mod tests {
         /// exactly like one that has been.
         #[test]
         fn a_record_with_no_grid_gets_no_estimate() {
-            assert!(estimate_transition(&outgoing(), &candidate(false)).is_none());
+            assert!(estimate_transition(&outgoing(), &candidate(false), None).is_none());
         }
 
         /// A record already past its last usable phrase gets none either, for
@@ -2411,7 +2412,7 @@ mod tests {
         fn a_record_with_no_room_left_gets_no_estimate() {
             let mut nearly_over = outgoing();
             nearly_over.position = nearly_over.length - 2.0 * beat();
-            assert!(estimate_transition(&nearly_over, &candidate(true)).is_none());
+            assert!(estimate_transition(&nearly_over, &candidate(true), None).is_none());
         }
 
         /// The phrase is written once, and it is the one a DJ reads.
@@ -5992,6 +5993,17 @@ fn read_situation(
     crate::autopilot::Situation {
         posture: conduct.posture,
         occasion: conduct.occasion,
+        // §81, so the mix the machine performs is the one the rail and the
+        // ghost drew.
+        //
+        // Only when there is something staged, which is the same guard
+        // `gain_offset_db` above uses and for the same reason: the style is
+        // consulted in the one branch that plans a mix, and that branch needs a
+        // staged record to plan into. This assembly runs on the assistant's
+        // tick, twice a second, and `usual_style` is a night lookup and a fold
+        // over every night of that setting — worth paying when a mix is
+        // actually being planned and worth nothing at all when it is not.
+        usual: staged.as_ref().and_then(|_| usual_style(state)),
         // What the context engine has made of the night, or `Fair` where it has
         // not made anything of it yet -- the assistant is not held back for the
         // six minutes the engine needs before it can speak.
@@ -6911,12 +6923,16 @@ fn transition_between(
     };
     let confidence = score(&Playing::of(&out_track), Trajectory::Hold, &in_track).confidence();
 
-    Ok(crate::transition::Transition::plan(
+    Ok(crate::transition::Transition::plan_as(
         (from, to),
         (out_track.id, in_track.id),
         outgoing,
         incoming,
         confidence,
+        // §81, so the mix a DJ arms is the one the rail and the ghost showed
+        // them. Held by the transition afterwards, so a replan reproduces
+        // this answer rather than whatever the profile has become since.
+        usual_style(state),
     ))
 }
 
@@ -7124,6 +7140,7 @@ fn phrase_of(track: &dj_library::LibraryTrack) -> Option<dj_core::Phrase> {
 fn estimate_transition(
     out: &crate::plan::Outgoing,
     candidate: &dj_library::LibraryTrack,
+    usual: Option<dj_core::action::TransitionStyle>,
 ) -> Option<TransitionEstimateDto> {
     let grid = candidate.analysis.beatgrid()?;
     let ghost = crate::ghost::look(
@@ -7140,6 +7157,7 @@ fn estimate_transition(
             // work for nobody.
             drops: Vec::new(),
         },
+        usual,
     )?;
     let at_seconds = ghost.plan.start_frame / out.sample_rate.as_f64();
     Some(TransitionEstimateDto {
@@ -7402,6 +7420,11 @@ pub fn suggest_next(
         fatigue.offering(&rail.iter().map(|(s, _)| s.track).collect::<Vec<_>>());
     }
 
+    // §81's learned transition style, off the profile already read above rather
+    // than asked for again: `usual_style` is a query and a fold, and this rail
+    // draws an estimate per row.
+    let usual = profile.as_ref().and_then(crate::profile::Profile::style);
+
     Ok(rail
         .into_iter()
         .filter_map(|(s, because)| {
@@ -7409,7 +7432,7 @@ pub fn suggest_next(
             Some(SuggestionDto {
                 transition: outgoing
                     .as_ref()
-                    .and_then(|out| estimate_transition(out, track)),
+                    .and_then(|out| estimate_transition(out, track, usual)),
                 track: LibraryTrackDto::from(track.clone()),
                 score: s.score,
                 // The profile's reason goes with the scorer's rather than
@@ -7568,6 +7591,26 @@ pub(crate) fn tonight_profile(
     crate::profile::profiles(&nights, &genres)
         .into_iter()
         .find(|p| p.setting() == setting)
+}
+
+/// §81's learned transition style for the kind of night the DJ has named.
+///
+/// The one of §81's five that was *shown and consulted by nothing*: djmanzo
+/// could tell a DJ "at weddings you mostly fade" and then propose a blend,
+/// every time, for three years.
+///
+/// `None` in three different situations and they are all the same answer —
+/// there is no library, the night has not been named, or djmanzo has not seen
+/// enough nights of it to say. `profile::ENOUGH_NIGHTS` and the half-agree rule
+/// own the last of those; this just asks.
+///
+/// One query and a fold per call, rather than a cached copy: the profile
+/// changes when a night ends, this is asked once per planned transition, and a
+/// second copy of an answer that has an owner is the thing this codebase keeps
+/// having to take back out.
+pub(crate) fn usual_style(state: &AppState) -> Option<dj_core::action::TransitionStyle> {
+    let db = library(state).ok()?;
+    tonight_profile(state, &db).and_then(|profile| profile.style())
 }
 
 /// Fold §81's profile into a ranking, and re-sort.
@@ -7813,6 +7856,9 @@ pub fn similar_to(
             .then_with(|| a.1.track.cmp(&b.1.track))
     });
 
+    // §81's learned style, read once for the whole answer rather than per row.
+    let usual = usual_style(&state);
+
     Ok(ranked
         .into_iter()
         .take(limit.clamp(1, 100))
@@ -7826,7 +7872,7 @@ pub fn similar_to(
             // of and a line here would be about nothing.
             transition: outgoing
                 .as_ref()
-                .and_then(|out| estimate_transition(out, track)),
+                .and_then(|out| estimate_transition(out, track, usual)),
             track: LibraryTrackDto::from(track.clone()),
             score,
             reasons: s.reasons.iter().map(describe_reason).collect(),
@@ -8361,7 +8407,7 @@ pub fn ghost_preview(
             .unwrap_or_default(),
     };
 
-    let Some(ghost) = crate::ghost::look(&outgoing, &candidate) else {
+    let Some(ghost) = crate::ghost::look(&outgoing, &candidate, usual_style(&state)) else {
         return Ok(None);
     };
     let rate = outgoing.sample_rate.as_f64();

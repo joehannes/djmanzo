@@ -284,6 +284,7 @@ mod tests {
         crate::autopilot::Situation {
             posture: Posture::Autopilot,
             occasion: Occasion::Open,
+            usual: None,
             certainty: dj_core::Certainty::Fair,
             live: deck(1),
             outgoing: Outgoing {

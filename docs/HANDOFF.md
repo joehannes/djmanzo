@@ -1317,19 +1317,37 @@ The largest of them, in the order they are worth doing:
    the stems, so a kept vocal drop *is* a record of one. "Works only with an
    8-beat loop" is not: nothing records the loop that was running under a
    transition.
-5. **§81's profiles are read and not yet acted on.** `dj_app::profile` builds
+5. **§81's profiles are acted on now, in four places, and the heading here
+   said otherwise for a long time.** `dj_app::profile` builds
    a conditional profile per kind of night — §81's six settings, told rather
    than inferred, because nothing in the signal says *wedding*. It carries the
    §13 discipline up a level: private fields, constructible only through
    `profiles()`, nothing at all under three nights of a setting, and each field
    silent until half the nights that spoke agree.
 
-   **Nothing consults one.** The suggester, the layout and the posture all
-   still behave the same at a wedding as at a club, which is the half that
-   would make the profiles worth having. Whatever reads them first should read
-   them *as a tilt* rather than as an override, the way `kept_pairs` is
-   weighted below a key match and a tempo match together — a DJ whose night is
-   going differently wants the machine to notice.
+   **This paragraph used to read "nothing consults one", and it was the fourth
+   stale reason this project has had to take back.** Four things consult one
+   now: the rail's genre tilt, `profile::fits` for the density and the
+   assistant's posture, and — as of §81's transition-style work — the planner.
+   Only *technique preferences* is still shown and read by nothing.
+
+   **Read a profile as a tilt, not as an override**, and the transition style
+   is the clearest statement of what that means when the thing being chosen is
+   not a number. `choose_style` consults it in the one case where the music has
+   left the choice open — tempos and keys both agree, so anything that overlaps
+   works — and never where the music has answered. A key clash still gets the
+   echo and an unreachable tempo still gets the cut. `plan::STYLE_IS_TASTE` is
+   the list a preference is allowed to be, written as a list precisely so the
+   exclusions have somewhere to say why: a vocal drop needs stems the planner
+   cannot see, and an echo is the music's answer rather than a taste.
+
+   **If you thread a preference into the planner, thread it everywhere the same
+   plan is seen.** §22's rail estimate, §27's ghost overlay and the step the
+   autopilot performs are one plan drawn three times, and a machine mixing
+   differently from what the screen just promised is the worst version of that
+   drift. An armed `Transition` also *holds* the style it was planned with, for
+   the same reason it holds the armed playhead: replan means plan **this** mix
+   again, not plan it with today's profile.
 
    **The split to keep**: the setting is stored because nothing can derive it;
    genre weights are derived because `history` already holds them; the other

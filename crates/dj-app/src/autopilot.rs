@@ -61,6 +61,18 @@ pub struct Situation {
     pub next: Option<TrackId>,
     /// Trim needed to bring the staged track to the live one's level, in dB.
     pub gain_offset_db: Option<f64>,
+    /// §81: how this DJ usually joins records at the kind of night they named.
+    ///
+    /// Here rather than looked up, because the autopilot runs on the snapshot
+    /// pump and the answer is a database query. `None` until a night is named
+    /// and djmanzo has seen enough of them, which is most of the time.
+    ///
+    /// It is on the situation for a reason worth keeping: the rail's estimate,
+    /// §27's ghost overlay and the mix the machine actually performs are meant
+    /// to be one plan seen three times, and a machine planning without the
+    /// preference the other two were shown would perform a different mix from
+    /// the one on screen.
+    pub usual: Option<dj_core::action::TransitionStyle>,
 }
 
 /// One thing to do.
@@ -251,7 +263,7 @@ pub fn next_step(situation: &Situation, takeover: &Takeover, authority: &Authori
         return Decision::nothing("you have the crossfader");
     }
 
-    let Some(planned) = plan::plan(&situation.outgoing, incoming) else {
+    let Some(planned) = plan::plan_as(&situation.outgoing, incoming, situation.usual) else {
         return Decision::nothing("no sensible place left to mix");
     };
 
@@ -358,10 +370,43 @@ mod tests {
             staged: None,
             next: Some(TrackId::from_bytes([9; 32])),
             gain_offset_db: None,
+            usual: None,
             // Nothing has read this night, which is not the same as doubting
             // it. See `Posture::unweighed`.
             certainty: Certainty::Fair,
         }
+    }
+
+    /// **The machine performs the mix the rail and the ghost drew.**
+    ///
+    /// §81's learned style reaches the autopilot through the situation, and the
+    /// reason it has to is that the rail's estimate, §27's ghost overlay and
+    /// the mix the machine performs are meant to be one plan seen three times.
+    /// A machine planning without the preference the other two were shown would
+    /// do something visibly different from what the DJ had just been promised —
+    /// and it would do it without asking, which is the worst version of that.
+    #[test]
+    fn the_style_the_dj_usually_uses_reaches_the_step_the_machine_takes() {
+        let ready = ready_to_mix(Posture::Autopilot);
+        let default = next_step(&ready, &Takeover::new(), &Authority::new());
+        let Step::Mix { style, .. } = default.step else {
+            panic!("the fixture must mix or it tests nothing");
+        };
+        assert_eq!(style, dj_core::action::TransitionStyle::Blend);
+
+        let learned = Situation {
+            usual: Some(dj_core::action::TransitionStyle::Fade),
+            ..ready
+        };
+        let Step::Mix { style, .. } = next_step(&learned, &Takeover::new(), &Authority::new()).step
+        else {
+            panic!("the preference stopped the machine mixing at all");
+        };
+        assert_eq!(
+            style,
+            dj_core::action::TransitionStyle::Fade,
+            "the machine would have performed a blend to a DJ who mostly fades"
+        );
     }
 
     /// **Off and Watch do nothing at all.**

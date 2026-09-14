@@ -165,6 +165,24 @@ const TAIL_MARGIN: f64 = 8.0;
 /// which is exactly when it is being read.
 #[must_use]
 pub fn plan(out: &Outgoing, into: &Incoming) -> Option<Plan> {
+    plan_as(out, into, None)
+}
+
+/// Plan a transition, joining the records the way this DJ usually does.
+///
+/// `usual` is §81's learned transition style for the kind of night the DJ has
+/// named — `None` until they have named one and djmanzo has seen enough of
+/// them, which is most installations most of the time and is why [`plan`]
+/// exists as the short form rather than as a different answer.
+///
+/// **It decides only where the music has not.** See [`STYLE_IS_TASTE`] and
+/// `choose_style`: a profile picks between styles that all work on a pair whose
+/// tempos and keys agree, and it never touches the cut a mismatched tempo
+/// demands or the echo a key clash asks for. A preference that could overrule
+/// either would be three previous evenings outvoting the two records in front
+/// of the DJ.
+#[must_use]
+pub fn plan_as(out: &Outgoing, into: &Incoming, usual: Option<TransitionStyle>) -> Option<Plan> {
     let beat_frames = beat_frames(out.bpm, out.sample_rate)?;
     let remaining_beats = (out.length - out.position) / beat_frames;
     if !remaining_beats.is_finite() || remaining_beats <= TAIL_MARGIN {
@@ -175,7 +193,7 @@ pub fn plan(out: &Outgoing, into: &Incoming) -> Option<Plan> {
     // long the mix wants to be before the track's remaining length trims it.
     let tempos_match = ratio_within(out.bpm, into.bpm, TEMPO_TOLERANCE);
     let keys_match = relation(out, into).is_none_or(KeyRelation::mixes);
-    let style = choose_style(tempos_match, keys_match);
+    let style = choose_style(tempos_match, keys_match, usual);
 
     // The longest transition that leaves the tail margin intact.
     let usable = remaining_beats - TAIL_MARGIN;
@@ -397,9 +415,20 @@ fn relation(out: &Outgoing, into: &Incoming) -> Option<KeyRelation> {
 /// departures from it are both about not holding a problem open for eight bars:
 /// mismatched tempos and clashing keys are each tolerable for a moment and
 /// tiring for a phrase.
-fn choose_style(tempos_match: bool, keys_match: bool) -> TransitionStyle {
+fn choose_style(
+    tempos_match: bool,
+    keys_match: bool,
+    usual: Option<TransitionStyle>,
+) -> TransitionStyle {
     match (tempos_match, keys_match) {
-        (true, true) => TransitionStyle::Blend,
+        // §81: the one case where the music has left the choice open, and
+        // therefore the only case where how this DJ actually joins records at
+        // this kind of night gets to decide it. Everything that overlaps two
+        // records works here; which of them to use is taste, and djmanzo has
+        // watched three nights of theirs.
+        (true, true) => usual
+            .filter(|style| STYLE_IS_TASTE.contains(style))
+            .unwrap_or(TransitionStyle::Blend),
         // Tempos work, keys fight: get through it quickly, and let the outgoing
         // track dissolve rather than sit against the new one.
         (true, false) => TransitionStyle::Echo,
@@ -408,6 +437,35 @@ fn choose_style(tempos_match: bool, keys_match: bool) -> TransitionStyle {
         (false, _) => TransitionStyle::Cut,
     }
 }
+
+/// The styles a **profile** may choose between.
+///
+/// §81 learns how a DJ joins records at a kind of night, and this is the list
+/// its answer is allowed to be. It is a statement about where taste ends.
+///
+/// [`TransitionStyle::Cut`] is in it: a DJ who cuts between records at a
+/// wedding is doing something deliberate, and a planner that kept proposing a
+/// long blend to somebody who never uses one would be arguing with three
+/// nights of evidence. [`TransitionStyle::Fade`] and [`TransitionStyle::Blend`]
+/// likewise — every one of the three works on any pair whose tempos and keys
+/// agree, which is the case this list is consulted in.
+///
+/// [`TransitionStyle::VocalDrop`] is **not**, and that is the point of having a
+/// list rather than a `!=`: a vocal drop needs a vocal to keep and stems to
+/// keep it out of, and the planner sees two records' tempo, key and phrase. A
+/// profile could learn it — a DJ who does it every night would have it as their
+/// commonest style — and proposing it for a pair with no separation available
+/// would be djmanzo promising a mix it cannot perform.
+///
+/// [`TransitionStyle::Echo`] is not in it either, for the opposite reason: it
+/// is the *music's* answer to a key clash below, not a preference, and a DJ
+/// whose commonest style is Echo has mostly been mixing records whose keys
+/// fight rather than expressing a taste for echoes.
+const STYLE_IS_TASTE: [TransitionStyle; 3] = [
+    TransitionStyle::Cut,
+    TransitionStyle::Fade,
+    TransitionStyle::Blend,
+];
 
 /// Frames per beat, or `None` if the tempo is not a tempo.
 pub(crate) fn beat_frames(bpm: f64, rate: SampleRate) -> Option<f64> {
@@ -640,6 +698,100 @@ mod tests {
 
     /// Past the tail margin there is nothing to propose, and it says so rather
     /// than inventing a transition that cannot happen.
+    /// **The load-bearing one: §81's learned style decides where the music has
+    /// left the choice open, and nowhere else.**
+    ///
+    /// `Profile::style` — how this DJ actually joins records at the kind of
+    /// night they named — was shown in a sentence and read by nothing: djmanzo
+    /// could say *at weddings you mostly fade* and then propose a blend, every
+    /// time, forever.
+    ///
+    /// Both halves are asserted because only having the first is the shape this
+    /// fails in. A preference that reached the mismatched-tempo case would be
+    /// three previous evenings outvoting the two records in front of the DJ.
+    #[test]
+    fn a_learned_style_decides_the_open_case_and_never_the_musics_own() {
+        let out = outgoing(100.0, 400.0);
+        let agreeing = incoming(120.0, Some(key(8, Mode::Minor)));
+
+        // Nothing learned: the answer djmanzo has always given.
+        assert_eq!(
+            plan(&out, &agreeing).expect("a plan").style,
+            TransitionStyle::Blend
+        );
+        // Learned, and it lands.
+        for wanted in [
+            TransitionStyle::Fade,
+            TransitionStyle::Cut,
+            TransitionStyle::Blend,
+        ] {
+            assert_eq!(
+                plan_as(&out, &agreeing, Some(wanted))
+                    .expect("a plan")
+                    .style,
+                wanted,
+                "a DJ who mostly uses {wanted} was offered something else on a \
+                 pair the music had no opinion about"
+            );
+        }
+
+        // The keys fight: the echo is the music's answer and a preference does
+        // not get a vote.
+        let clashing = incoming(120.0, Some(key(2, Mode::Major)));
+        assert_eq!(
+            plan_as(&out, &clashing, Some(TransitionStyle::Blend))
+                .expect("a plan")
+                .style,
+            TransitionStyle::Echo,
+            "a learned blend was proposed over a key clash"
+        );
+
+        // The tempos do not work: a cut, whatever anybody usually does.
+        let far = incoming(145.0, Some(key(8, Mode::Minor)));
+        assert_eq!(
+            plan_as(&out, &far, Some(TransitionStyle::Blend))
+                .expect("a plan")
+                .style,
+            TransitionStyle::Cut,
+            "a learned blend was proposed across a tempo the deck cannot reach"
+        );
+    }
+
+    /// **A vocal drop is not a preference djmanzo may act on, and the list says
+    /// so rather than a `!=` hiding it.**
+    ///
+    /// A DJ who does one every night would have it as their commonest style,
+    /// and the planner sees two records' tempo, key and phrase — not whether
+    /// there is a vocal to keep or stems to keep it out of. Proposing it would
+    /// be djmanzo promising a mix it cannot perform.
+    ///
+    /// Echo is excluded for the opposite reason and is checked here too: it is
+    /// the music's own answer to a key clash below, so a DJ whose commonest
+    /// style is Echo has mostly been mixing records whose keys fight rather
+    /// than expressing a taste for echoes.
+    #[test]
+    fn the_two_styles_that_are_not_taste_are_refused_as_preferences() {
+        let out = outgoing(100.0, 400.0);
+        let agreeing = incoming(120.0, Some(key(8, Mode::Minor)));
+
+        for refused in [TransitionStyle::VocalDrop, TransitionStyle::Echo] {
+            assert_eq!(
+                plan_as(&out, &agreeing, Some(refused))
+                    .expect("a plan")
+                    .style,
+                TransitionStyle::Blend,
+                "{refused} was taken as a preference, and it is not one"
+            );
+            assert!(
+                !STYLE_IS_TASTE.contains(&refused),
+                "the table and the behaviour disagree about {refused}"
+            );
+        }
+        // And the three that are taste are all there, so the list cannot
+        // quietly shrink to one.
+        assert_eq!(STYLE_IS_TASTE.len(), 3);
+    }
+
     #[test]
     fn a_track_at_its_end_gets_no_plan() {
         assert!(
