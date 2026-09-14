@@ -63,3 +63,59 @@ test.describe("what you do, and when", () => {
     expect(said).toContain("often");
   });
 });
+
+/**
+ * §11's *technique recommendations*, reading the one context engine.
+ *
+ * §11 names nine consumers of the context and this was the one that read
+ * nothing: the coach narrowed its curriculum by §16's chosen pack and by what
+ * the DJ had done in the last two minutes, and had no idea whether they were
+ * mid-blend or standing between records.
+ *
+ * §58 puts *technique advice* in the contextual tier by name, and §18's mixing
+ * budget leaves room for the first two tiers and no others — so the rule is two
+ * tables that already existed meeting, and Rust owns it. What only a browser
+ * can say is that the two blanks look different to a learner.
+ */
+test.describe("when the coach offers a lesson", () => {
+  /**
+   * **Withheld says so; it does not go quiet.**
+   *
+   * A learner shown nothing the moment they start a blend would read it as
+   * having finished the curriculum — the one wrong thing a coach can say, and
+   * it would say it on every single mix.
+   */
+  test("a lesson held back for the moment says which moment", async ({ page }) => {
+    const thrown = errorsThrown(page);
+    await openConduct(page);
+
+    const coach = page.locator(".coach");
+    await expect(coach).toBeVisible();
+    // `toBeVisible` as well as the text, and the order matters: Playwright reads
+    // `textContent` off hidden elements quite happily, so a line the learner
+    // cannot see passes a text assertion. A `hidden` attribute on this
+    // paragraph survived the first version of this test.
+    const waiting = coach.locator(".waiting");
+    await expect(waiting).toBeVisible();
+    await expect(waiting).toContainText("while you are mixing");
+    // And there is no lesson being offered at the same time, which would be
+    // the panel saying both things at once.
+    await expect(coach.locator(".next")).toHaveCount(0);
+    expect(thrown).toEqual([]);
+  });
+
+  /**
+   * **And the correction is not withheld with it.**
+   *
+   * The half that makes the rule right rather than merely quiet. "Both records
+   * have their bass up" is the one thing a coach exists to say *during* a mix —
+   * it sounds fine in the headphones and wrong in the room — and a gate that
+   * took it away with the lesson would have made the panel useless at exactly
+   * the moment it is worth having.
+   */
+  test("the correction about the mix in progress is still made", async ({ page }) => {
+    await openConduct(page);
+    const coach = page.locator(".coach");
+    await expect(coach.locator(".note .fix")).toContainText("Pull one low down");
+  });
+});

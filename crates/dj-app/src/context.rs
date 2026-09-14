@@ -81,6 +81,101 @@ pub const FIELDS: [(&str, &str); 8] = [
     ("performanceHealth", "health"),
 ];
 
+/// One of §11's nine consumers of the context engine, and what it reads.
+///
+/// > The context engine should become the common input to: adaptive GUI, theme
+/// > engine, suggestions, session planning, assistant, audience sensing,
+/// > visualization, technique recommendations, automation policy. **Do not
+/// > duplicate context logic inside each component.**
+///
+/// [`FIELDS`] holds §11's eight *fields* against the object; this holds §11's
+/// nine *consumers* against the code, and it exists because those are different
+/// claims. An object that every component could read and none did would satisfy
+/// the first table perfectly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Consumer {
+    /// §11's own word for it.
+    pub asked: &'static str,
+    /// The module in `dj-app` where the reading happens, or empty where nothing
+    /// reads it.
+    pub module: &'static str,
+    /// The text a test can find in that module's source: the function, type or
+    /// field through which the context arrives.
+    ///
+    /// A name rather than a sentence, because the test greps for it. The
+    /// failure it catches is the one this codebase keeps meeting from the other
+    /// side — a row claiming a reader that stopped reading, which is a promise
+    /// nobody checks.
+    pub reads: &'static str,
+    /// Why nothing reads it. Empty for the ones that do.
+    pub why_not: &'static str,
+}
+
+/// §11's nine, in §11's order.
+pub const CONSUMERS: [Consumer; 9] = [
+    Consumer {
+        asked: "adaptive GUI",
+        module: "cockpit.rs",
+        reads: "for_context",
+        why_not: "",
+    },
+    Consumer {
+        asked: "theme engine",
+        module: "mood.rs",
+        reads: "SessionPhase",
+        why_not: "",
+    },
+    Consumer {
+        asked: "suggestions",
+        module: "asks.rs",
+        reads: "SessionPhase",
+        why_not: "",
+    },
+    Consumer {
+        asked: "session planning",
+        module: "",
+        reads: "",
+        why_not: "Nothing reads it, and that is a decision. A set arc is a \
+                  statement about a stretch of time — `rising`, `journey`, \
+                  `flat`, `descent` over the next three hours — and a phase is \
+                  a reading of one minute. Defaulting a four-hour journey from \
+                  whatever the music happened to be doing when the DJ pressed \
+                  the button would be djmanzo deciding the shape of the night \
+                  from its first record, which is the opposite of what §11's \
+                  engine is for. The arc stays the DJ's to say.",
+    },
+    Consumer {
+        asked: "assistant",
+        module: "commands.rs",
+        reads: "DjContext",
+        why_not: "",
+    },
+    Consumer {
+        asked: "audience sensing",
+        module: "commands.rs",
+        reads: "room.notes",
+        why_not: "",
+    },
+    Consumer {
+        asked: "visualization",
+        module: "mood.rs",
+        reads: "SessionPhase",
+        why_not: "",
+    },
+    Consumer {
+        asked: "technique recommendations",
+        module: "commands.rs",
+        reads: "next_lesson",
+        why_not: "",
+    },
+    Consumer {
+        asked: "automation policy",
+        module: "autopilot.rs",
+        reads: "certainty",
+        why_not: "",
+    },
+];
+
 /// What is on the decks, from the snapshot the interface is already being sent.
 ///
 /// The **playing** decks decide the tempo, because that is what the room is
@@ -492,5 +587,105 @@ mod tests {
         assert_eq!(measured.workers.library, None);
         // And the rest of the reading is untouched by it.
         assert_eq!(measured.dropouts, none.dropouts);
+    }
+
+    /// The source of one module this table names, with line endings normalised.
+    ///
+    /// A match rather than a loop, because `include_str!` takes a literal. The
+    /// `\r\n` is not paranoia: `remembered.rs` records a house-pattern test
+    /// that passed everywhere and failed only on Windows CI for exactly this.
+    fn source(module: &str) -> Option<&'static str> {
+        Some(match module {
+            "cockpit.rs" => include_str!("cockpit.rs"),
+            "mood.rs" => include_str!("mood.rs"),
+            "asks.rs" => include_str!("asks.rs"),
+            "commands.rs" => include_str!("commands.rs"),
+            "autopilot.rs" => include_str!("autopilot.rs"),
+            _ => return None,
+        })
+    }
+
+    /// **The load-bearing one: every consumer this table claims actually reads
+    /// the context.**
+    ///
+    /// §11 ends with *do not duplicate context logic inside each component*,
+    /// and the way that sentence fails is not loudly. The object gets built,
+    /// every field is gathered, `FIELDS` passes in both directions — and a
+    /// component goes on working the phase out for itself, because nothing
+    /// anywhere compares the list of consumers §11 names against the code.
+    ///
+    /// This is that comparison. A row naming a module that has stopped reading
+    /// what it claims to read fails here rather than becoming a sentence in a
+    /// status document that nobody can check.
+    #[test]
+    fn every_consumer_this_table_claims_reads_what_it_says_it_reads() {
+        for consumer in CONSUMERS {
+            if consumer.module.is_empty() {
+                continue;
+            }
+            let text = source(consumer.module)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "`{}` names {}, which this test cannot read — add it to `source`",
+                        consumer.asked, consumer.module
+                    )
+                })
+                .replace("\r\n", "\n");
+            assert!(
+                text.contains(consumer.reads),
+                "§11's `{}` says it reads the context through `{}` in {}, and {} \
+                 does not mention it",
+                consumer.asked,
+                consumer.reads,
+                consumer.module,
+                consumer.module
+            );
+        }
+    }
+
+    /// **A consumer that reads nothing says why, and one that reads says
+    /// nothing.**
+    ///
+    /// The §8 posture, and §11 needs it for the same reason: a list that simply
+    /// left out the one nobody wired would read as §11 being finished. The two
+    /// halves have to agree in both directions — a "not yet" beside a consumer
+    /// that works would be djmanzo lying about itself in the one table whose
+    /// whole job is to say what is true.
+    #[test]
+    fn the_consumers_that_read_nothing_are_the_ones_that_explain_themselves() {
+        for consumer in CONSUMERS {
+            assert_eq!(
+                consumer.module.is_empty(),
+                !consumer.why_not.trim().is_empty(),
+                "§11's `{}` is inconsistent about whether anything reads the context",
+                consumer.asked
+            );
+            assert_eq!(
+                consumer.module.is_empty(),
+                consumer.reads.is_empty(),
+                "§11's `{}` names a reader and no reading, or the other way round",
+                consumer.asked
+            );
+        }
+    }
+
+    /// **§11's nine, and nine different ones.**
+    ///
+    /// A tenth that is really one of the nine under another name would make the
+    /// count right and the table wrong.
+    #[test]
+    fn the_directive_names_nine_consumers_and_all_nine_are_here() {
+        assert_eq!(CONSUMERS.len(), 9, "§11 names nine consumers");
+        let mut asked: Vec<&str> = CONSUMERS.iter().map(|c| c.asked).collect();
+        asked.sort_unstable();
+        asked.dedup();
+        assert_eq!(asked.len(), 9, "two rows name the same consumer");
+        for consumer in CONSUMERS {
+            assert!(
+                !consumer.why_not.contains('*') && !consumer.why_not.contains('#'),
+                "`{}` is written in markup",
+                consumer.asked
+            );
+        }
     }
 }

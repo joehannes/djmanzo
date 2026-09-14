@@ -3261,6 +3261,18 @@ export interface CoachReport {
   note: CoachNote | null;
   next: string | null;
   next_metaphor: string | null;
+  /**
+   * Why there is no lesson right now, when the reason is the minute rather
+   * than the catalogue.
+   *
+   * §11's *technique recommendations* reading §18's attention budget: a new
+   * move to learn is §58's contextual tier, and a mix leaves room for the
+   * first two tiers and no others. `null` when a lesson is being offered, or
+   * when there is genuinely nothing left to teach — those two are told apart
+   * by `next`, which is the whole reason this field exists rather than the
+   * panel drawing one blank for both.
+   */
+  next_withheld: string | null;
 }
 
 /**

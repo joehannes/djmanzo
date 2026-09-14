@@ -660,6 +660,29 @@ const ANSWERS: Record<string, unknown> = {
   // what kind of night it is — and `null` rather than absent, because
   // `Next.svelte` reads it and an unstubbed command is the failure the
   // `stems_status` note above documents.
+  // §12's coach, in the state that makes both of its blanks testable: a move
+  // observed, a correction to make, and a lesson **withheld because of the
+  // moment** rather than because the curriculum is finished. A fixture with a
+  // lesson offered would let a panel that drew one blank for both pass.
+  coach_report: {
+    observed: [
+      {
+        technique: "long blend",
+        what: "Two records overlapped for a whole phrase.",
+        metaphor: "Two rivers meeting, neither stopping.",
+        at: 41.5,
+      },
+    ],
+    note: {
+      what: "Both records have their bass up.",
+      why: "Two basses do not add up to more bass. They add up to mud.",
+      fix: "Pull one low down as the other comes up.",
+    },
+    next: null,
+    next_metaphor: null,
+    next_withheld:
+      "Not while you are mixing. The lesson will be here between records.",
+  },
   profile_tonight: null,
   // §17: what the phase of the night asks of the ranking. Warm-up by default,
   // because that is what the captured snapshot's night reads as and because a

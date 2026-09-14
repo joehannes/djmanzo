@@ -71,6 +71,19 @@
   let recent = $derived([...(report?.observed ?? [])].reverse().slice(0, 4));
 </script>
 
+<!--
+  `next_withheld` is deliberately **not** in this condition, and that is the
+  §18 half of §11's technique-recommendation rule rather than an oversight.
+
+  A section that appeared mid-mix purely to say "not now" would be the
+  interface moving while somebody is reaching for it — the one thing §18
+  forbids outright — and it would appear on every single mix. The line belongs
+  where the panel is already open for another reason: the DJ has just done
+  something, the coach names it, and where the lesson would have been it says
+  why there is none. Found by driving the application: with the gate in and
+  nothing observed, the whole coach vanished at exactly the moment its message
+  was the point.
+-->
 {#if report && (recent.length > 0 || report.note || report.next)}
   <section class="coach">
     <h3>What that was</h3>
@@ -116,11 +129,28 @@
           <span class="metaphor">{report.next_metaphor}</span>
         {/if}
       </p>
+    {:else if report.next_withheld}
+      <!--
+        §11's technique recommendations, reading §18's budget: a lesson is
+        §58's contextual tier and a mix leaves room for the first two.
+
+        Said rather than left blank, and that is the whole point of the
+        field. A learner shown nothing the moment they start a blend would
+        read it as having finished the curriculum — which is the one wrong
+        thing a coach can say, and it would be said every single mix.
+      -->
+      <p class="waiting">{report.next_withheld}</p>
     {/if}
   </section>
 {/if}
 
 <style>
+  .waiting {
+    margin: 0.3rem 0 0;
+    font-size: 0.72em;
+    color: var(--muted);
+  }
+
   .coach {
     margin-top: 0.7rem;
     padding-top: 0.6rem;

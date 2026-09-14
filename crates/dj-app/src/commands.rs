@@ -4551,6 +4551,136 @@ mod phase_tests {
     }
 }
 
+/// §11's *technique recommendations*, reading the one context engine.
+///
+/// The consumer §11 names that read nothing: the coach narrowed its curriculum
+/// by §16's pack and by what the DJ had done in the last two minutes, and had
+/// no idea whether the DJ was mid-blend or standing between records.
+#[cfg(test)]
+mod lesson_moment_tests {
+    use super::*;
+    use crate::tiers::Tier;
+
+    /// **The load-bearing one: a lesson waits for a moment to be heard in, and
+    /// a correction does not.**
+    ///
+    /// §58 puts technique advice in the contextual tier by name and §18's
+    /// mixing budget stops at the second, so the rule is two existing tables
+    /// meeting rather than a new opinion. Both budgets are read from
+    /// `cockpit::Attention` rather than named here, so a change to either is a
+    /// change to this.
+    #[test]
+    fn a_lesson_waits_for_a_moment_to_be_heard_in() {
+        assert!(
+            !lesson_withheld(crate::cockpit::Attention::performing().room_for)
+                .expect("a mix is not the moment to be taught a new move")
+                .is_empty()
+        );
+        assert_eq!(
+            lesson_withheld(crate::cockpit::Attention::preparing().room_for),
+            None,
+            "between records is exactly when a lesson belongs"
+        );
+        assert_eq!(
+            lesson_withheld(crate::cockpit::Attention::learning().room_for),
+            None,
+            "the practising budget withheld a lesson, which is what it is for"
+        );
+    }
+
+    /// **The boundary is §58's own, not a number written here.**
+    ///
+    /// Contextual is where technique advice lives, so that tier and everything
+    /// roomier than it may teach, and the two tighter ones may not. Written
+    /// against the whole of `Tier::ALL` so a fifth tier cannot be added on
+    /// either side of the line without somebody deciding which side.
+    #[test]
+    fn the_line_falls_exactly_where_section_fifty_eight_puts_technique_advice() {
+        for tier in Tier::ALL {
+            assert_eq!(
+                lesson_withheld(tier).is_none(),
+                tier >= Tier::Contextual,
+                "{tier:?} disagrees with where §58 puts technique advice"
+            );
+        }
+    }
+
+    /// **The load-bearing join: exactly one of the two, always.**
+    ///
+    /// Between the pure decision above and the browser test on the panel sat a
+    /// line of command code, and dropping the gate there passed every test in
+    /// the repository. It was mutated out deliberately and nothing failed —
+    /// which is what "tested at both ends and not in the middle" looks like.
+    ///
+    /// The invariant is about the **pair**: a panel handed both would say two
+    /// things at once, and a panel handed neither with no reason tells a
+    /// learner they have finished the curriculum.
+    #[test]
+    fn a_lesson_or_a_reason_and_never_both() {
+        // The default djmanzo is built for, from the table that owns it rather
+        // than four booleans written here: a rig spelled out in a test is a
+        // second description of a shape `technique::Rig` already has.
+        let rig = dj_assistant::technique::Rig::laptop();
+        let shown: [&str; 0] = [];
+
+        let (next, withheld) = lesson_now(
+            crate::cockpit::Attention::performing().room_for,
+            &shown,
+            rig,
+            None,
+        );
+        assert!(
+            next.is_none(),
+            "a lesson was offered in the middle of a mix"
+        );
+        assert!(withheld.is_some(), "and nothing said why");
+
+        let (next, withheld) = lesson_now(
+            crate::cockpit::Attention::preparing().room_for,
+            &shown,
+            rig,
+            None,
+        );
+        assert!(
+            next.is_some(),
+            "a DJ who has shown nothing, between records, was taught nothing"
+        );
+        assert!(
+            withheld.is_none(),
+            "a lesson was offered and a reason for not offering one, at once"
+        );
+
+        // And every tier, so the pair can never both be empty without a reason
+        // or both be full.
+        for tier in crate::tiers::Tier::ALL {
+            let (next, withheld) = lesson_now(tier, &shown, rig, None);
+            assert!(
+                next.is_some() != withheld.is_some(),
+                "{tier:?} produced both a lesson and a reason, or neither"
+            );
+        }
+    }
+
+    /// **Withheld and finished are different answers.**
+    ///
+    /// The sentence exists so a panel can draw them apart. A learner told
+    /// nothing at the moment they start a mix would read it as having finished
+    /// the curriculum, which is the one wrong thing a coach can say.
+    #[test]
+    fn the_reason_is_about_the_minute_rather_than_about_the_dj() {
+        let said = lesson_withheld(crate::cockpit::Attention::performing().room_for)
+            .expect("mixing withholds");
+        assert!(
+            said.contains("mixing"),
+            "the reason does not say what is actually stopping it: {said}"
+        );
+        assert!(
+            !said.contains('*') && !said.contains('#'),
+            "the reason is written in markup"
+        );
+    }
+}
+
 #[cfg(test)]
 mod mix_out_tests {
     use super::*;
@@ -5515,6 +5645,14 @@ pub struct CoachDto {
     pub next: Option<String>,
     /// Why that one — the same metaphor the lesson is taught in.
     pub next_metaphor: Option<String>,
+    /// Why there is no lesson right now, when the reason is the moment rather
+    /// than the catalogue.
+    ///
+    /// Two different empties that must not look alike. *Nothing left to teach*
+    /// is an answer about the DJ; *not now* is an answer about the minute they
+    /// are in, and a panel that drew both as a blank would tell a learner they
+    /// had finished the curriculum every time they started a mix.
+    pub next_withheld: Option<String>,
 }
 
 /// What the rig can actually do right now.
@@ -5621,14 +5759,75 @@ pub fn coach_report(state: State<'_, AppState>) -> Result<CoachDto, String> {
     // was eventually sent to learn a transformer scratch.
     let chosen = state.chosen_pack();
     let pack = chosen.as_deref().and_then(dj_assistant::pack::pack);
-    let next = dj_assistant::coach::next_lesson(&shown, rig(&state), pack);
+
+    // §11's *technique recommendations*, reading the one context engine —
+    // §18's budget, which `cockpit::Attention::for_context` derives from the
+    // night and from what is audible, rather than the coach forming its own
+    // opinion about whether now is a good moment.
+    //
+    // §58 names technique advice in the **contextual** tier in as many words,
+    // and §18's mixing budget leaves room for the first two tiers and no
+    // others. So this is not a new rule: it is two tables that already existed
+    // being asked the question they were written to answer.
+    //
+    // The *note* is deliberately not gated. A correction about the mix the DJ
+    // is in the middle of is the one thing a coach is for — "both lows are up"
+    // is worth saying at exactly the moment a lesson is not.
+    let room = snapshot_now(&state).attention.room_for;
+    let (next, withheld) = lesson_now(room, &shown, rig(&state), pack);
 
     Ok(CoachDto {
         observed,
         note,
         next: next.map(|t| t.name.to_string()),
         next_metaphor: next.map(|t| t.metaphor.to_string()),
+        next_withheld: withheld.map(str::to_owned),
     })
+}
+
+/// Whether there is room for a lesson right now, and the words if there is not.
+///
+/// §58 names *technique advice* in the contextual tier, in as many words, and
+/// §18's mixing budget leaves room for the first two tiers and no others. So
+/// this is not a new rule — it is two tables that already existed being asked
+/// the question they were written to answer, at the one place that had never
+/// asked it.
+///
+/// Separate from the command so it can be tested: the command needs a live
+/// `AppState`, a snapshot and an action log, and this is the decision.
+fn lesson_withheld(room: crate::tiers::Tier) -> Option<&'static str> {
+    if room >= crate::tiers::Tier::Contextual {
+        return None;
+    }
+    Some("Not while you are mixing. The lesson will be here between records.")
+}
+
+/// The lesson to offer, or the reason there is none — never both, never
+/// neither-with-no-explanation.
+///
+/// Separate from the command so the **join** can be tested, which is the part
+/// that was not: `lesson_withheld` is a pure decision and the panel is a
+/// browser test, and between them sat a line of command code where the gate
+/// could be dropped without a single test noticing. It was, deliberately, and
+/// nothing failed.
+///
+/// The pair is returned together because the one invariant worth holding is
+/// about the pair: a panel handed both would say two things at once, and a
+/// panel handed neither, with no reason, tells a learner they have finished the
+/// curriculum.
+fn lesson_now(
+    room: crate::tiers::Tier,
+    shown: &[&str],
+    rig: dj_assistant::technique::Rig,
+    pack: Option<&dj_assistant::pack::Pack>,
+) -> (
+    Option<&'static dj_assistant::technique::Technique>,
+    Option<&'static str>,
+) {
+    match lesson_withheld(room) {
+        Some(because) => (None, Some(because)),
+        None => (dj_assistant::coach::next_lesson(shown, rig, pack), None),
+    }
 }
 
 /// The one thing worth saying about the mix as it stands.

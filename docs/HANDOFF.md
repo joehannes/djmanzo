@@ -921,6 +921,24 @@ this and it still happened, because the failure is one line above a wall of
 passing tests. **Confirm `✓ built` in the mutation run itself**, not only in the
 gate run; a mutation that does not compile has to be rewritten so it does.
 
+**A Playwright text assertion passes against an element nobody can see.**
+`toContainText` reads `textContent`, and `textContent` is perfectly happy on a
+node with `hidden` on it. A test asserting that the coach *says* why it is
+holding a lesson back passed with the whole line hidden — which is the only
+thing that test was for. **When the claim is that a DJ reads something, assert
+`toBeVisible()` as well as the text**, in that order, so the failure names the
+right half.
+
+**Tested at both ends and not in the middle is a real shape, and mutation
+testing is what finds it.** §11's lesson gate had a pure Rust test on the
+decision and a browser test on the panel, and between them one line of command
+code joined the two. Deleting that line passed every test in the repository.
+The fix is the one this codebase already uses everywhere else: pull the join
+out of the command into a function that returns *both* halves, so the
+invariant about the pair — exactly one of them, always — has somewhere to be
+asserted. If a mutation in a `#[tauri::command]` survives, that is usually the
+reason, and the answer is not a bigger integration test.
+
 **A comment saying "this cannot be inferred" is a claim about the codebase,
 and the codebase moves.** `Next.svelte` said lift/hold/ease was *the one thing
 the ranking cannot infer*, and by the time anybody read it again `dj_core`
