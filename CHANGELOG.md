@@ -16,6 +16,77 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+Nothing yet.
+
+---
+
+## v0.16.0 — What djmanzo knew and never used
+
+Eight things djmanzo had already learned, stored or been told, and acted on
+nowhere. Each one was found the same way: by asking *who consults this?* of a
+table that looked finished.
+
+**The knowledge pack you chose reaches the rail** — §16. `Pack::families` was
+parsed, stored, sent to the interface and read by nothing, so pressing *Latin*
+narrowed what the coach taught and changed nothing about what djmanzo offered.
+It now prefers the music the night is made of, and where a pack says this music
+does not pair across half and double time it **takes the credit back** rather
+than adding a penalty — so the pairing scores what an unrelated tempo scores,
+which is what "not part of this music" means.
+
+**The rail follows the night, until you say otherwise** — §17. Its phase model
+moved panels and nothing else; *gradual energy*, *energy trajectory*,
+*harmonic resolution*, *crowd cooling* and *known anchors* were listed as
+belonging to the planner and belonged to nobody. The Next rail now opens on the
+direction the night is going and says so. One press of lift, hold or ease takes
+it over for the rest of the night, and it never goes back to following on its
+own.
+
+**How you actually join records reaches the planner** — §81. djmanzo could tell
+you *at weddings you mostly fade* and then propose a blend, every time. Your
+learned transition style now decides — in the one case where the music has left
+the choice open. A key clash still gets the echo and an unreachable tempo still
+gets the cut; three previous evenings do not outvote the two records in front
+of you.
+
+**What you did last year counts for less than what you did last week** — §12's
+decay, on the same hundred-and-eighty-day half-life taste already used. A habit
+given up fades out of your profile instead of outvoting the present forever. It
+never reaches nothing, so a DJ who has been away is told what they used to do
+rather than told nothing at all.
+
+**Worker utilization is measured** — §90. The background threads reported
+whether they were *working*, which is a light; a worker that flickers busy once
+a minute and one pegged for an hour both show it. Both threads now account for
+their own time, reported separately because they mean opposite things: a busy
+library worker is a queue being got through, and a busy interface builder is
+§90's own warning.
+
+**The coach waits for a moment to be heard in** — §11. It knew nothing about
+whether you were mid-blend or standing between records, so a new move to learn
+could arrive in the middle of a mix. §58 puts technique advice in the
+contextual tier and §18's mixing budget stops at the second — the correction
+about the mix you are in is still made, because that is the one thing a coach
+is for.
+
+**Two more waveform layers** — §25, now sixteen and seventeen of twenty.
+**Likely mix-in**: where a record can be joined, opening on its first whole
+phrase and closing at its first drop, because a mix started after the drop has
+thrown the drop away. **Saved loops**: eight slots, a recall per slot, and
+until now no way to see where any of them were without pressing one.
+
+### Under it
+
+`context::CONSUMERS` holds §11's nine consumers against the code, and a test
+reads each named module's source — so a row claiming a reader that has stopped
+reading fails rather than becoming a sentence nobody can check. Four tilts now
+sit on one suggestion score, and one test holds all four below what a single
+key relation is worth: taste, the night's profile, the pack and the phase break
+ties, and none of them overrules the mixing.
+
+---
+
+
 **djmanzo remembers which records you put together** — §24's learned track
 relationships, and the gesture it names: *"Save this transition."*
 
