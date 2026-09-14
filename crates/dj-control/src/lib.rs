@@ -13,5 +13,5 @@
 pub mod bus;
 pub mod registry;
 
-pub use bus::{ActionBus, BusFull, SessionEvent, SessionLog, TimedEvent};
+pub use bus::{ActionBus, BusFull, By, SessionEvent, SessionLog, TimedEvent};
 pub use registry::ParameterRegistry;

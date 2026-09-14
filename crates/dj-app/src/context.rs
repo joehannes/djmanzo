@@ -378,6 +378,7 @@ mod tests {
 
         let press = |secs: u64| TimedEvent {
             at: std::time::Duration::from_secs(secs),
+            by: dj_control::By::Hand,
             event: SessionEvent::Action(Action::Deck {
                 deck: DeckId::from_human(1).expect("deck 1"),
                 action: DeckAction::SetEqLow(0.5),

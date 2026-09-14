@@ -67,8 +67,9 @@ impl Session {
             // quantise a beat at 174 BPM into the wrong place.
             let _ = writeln!(
                 out,
-                "{:.3} {}",
+                "{:.3} {}{}",
                 entry.at.as_secs_f64(),
+                entry.by.marker(),
                 entry.event.to_line()
             );
         }
@@ -113,11 +114,23 @@ impl Session {
             if !seconds.is_finite() || seconds < 0.0 {
                 return Err(format!("line {at_line}: {seconds} is not a time"));
             }
+            // §67's two kinds of intervention, as a marker rather than a
+            // field. **Absent means a person's**, which is what every session
+            // file written before this is: nothing in them was the machine's,
+            // because nothing could tell the machine apart when they were
+            // written. So the format needs no version bump and old takes read
+            // correctly rather than merely parsing.
+            let (by, rest) = rest
+                .strip_prefix("* ")
+                .map_or((dj_control::By::Hand, rest), |after| {
+                    (dj_control::By::Machine, after)
+                });
             let event =
                 SessionEvent::parse_line(rest).map_err(|e| format!("line {at_line}: {e}"))?;
             events.push(TimedEvent {
                 event,
                 at: Duration::from_secs_f64(seconds),
+                by,
             });
         }
 
@@ -242,10 +255,7 @@ mod tests {
     }
 
     fn at(seconds: f64, event: SessionEvent) -> TimedEvent {
-        TimedEvent {
-            event,
-            at: Duration::from_secs_f64(seconds),
-        }
+        TimedEvent::hand(Duration::from_secs_f64(seconds), event)
     }
 
     fn play(n: u8) -> SessionEvent {

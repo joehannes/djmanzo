@@ -1055,6 +1055,19 @@ pub fn dispatch(state: State<'_, AppState>, action: String) -> Result<(), String
 /// When the text is not in the vocabulary, or the engine is not accepting
 /// commands because no device is open.
 pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
+    perform_by(state, action, dj_control::By::Hand)
+}
+
+/// The same, saying whose doing it is.
+///
+/// §67's *AI interventions* and *manual interventions*. Everything djmanzo does
+/// on its own — the autopilot's tick, the automix's plan, an accepted
+/// transaction — comes through here with [`dj_control::By::Machine`], and
+/// everything else keeps [`perform`] and is a person's. **It is still the same
+/// path**: the automix does not get a private channel to the engine, and the
+/// origin changes what the log says about an action rather than how it
+/// travels.
+pub fn perform_by(state: &AppState, action: &str, by: dj_control::By) -> Result<(), String> {
     // §87's missing origins, before anything else, because a load is not an
     // `Action` and `Action::parse` would refuse it.
     //
@@ -1083,7 +1096,7 @@ pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
     }
 
     let parsed = Action::parse(action).map_err(|e| format!("{action:?}: {e}"))?;
-    perform_action(state, parsed)
+    perform_action_by(state, parsed, by)
 }
 
 /// The body of [`perform`], for a caller that has an [`Action`] already.
@@ -1100,11 +1113,33 @@ pub fn perform(state: &AppState, action: &str) -> Result<(), String> {
 /// # Errors
 /// As [`perform`], minus the parse.
 pub fn perform_action(state: &AppState, parsed: Action) -> Result<(), String> {
+    perform_action_by(state, parsed, dj_control::By::Hand)
+}
+
+/// The same, saying whose doing it is. See [`perform_by`].
+///
+/// # Errors
+/// As [`perform_action`].
+pub fn perform_action_by(
+    state: &AppState,
+    parsed: Action,
+    by: dj_control::By,
+) -> Result<(), String> {
     // A hand arrived on a control. Recorded before the action is carried out,
     // so an autopilot tick that lands between the two still sees the takeover
     // -- the wrong order here would let the assistant move a fader in the
     // moment between a DJ grabbing it and the engine hearing about it.
-    state.note_human_touch(&parsed);
+    //
+    // **Only a hand.** §87's takeover is "a person touched this, so leave it
+    // alone", and until the log could say whose an action was, this fired for
+    // *every* action — including djmanzo's own. The automix moving a fader
+    // marked that fader as held by the DJ for ten minutes, and `next_step`
+    // refuses a control the takeover says is held, so the machine was handing
+    // itself the controls it had just used. A whole section of §87 was being
+    // triggered by the thing it exists to defer to.
+    if by == dj_control::By::Hand {
+        state.note_human_touch(&parsed);
+    }
 
     // Eject is the one action with consequences outside the engine: the deck's
     // name and its analysis live here, not there, and leaving them behind would
@@ -1214,12 +1249,12 @@ pub fn perform_action(state: &AppState, parsed: Action) -> Result<(), String> {
         match action {
             dj_core::DeckAction::LoopSave(slot) => {
                 save_loop(state, deck, slot)?;
-                let _ = state.bus().dispatch(parsed);
+                let _ = state.bus().dispatch_by(parsed, by);
                 return Ok(());
             }
             dj_core::DeckAction::LoopRecall(slot) => {
                 recall_loop(state, deck, slot)?;
-                let _ = state.bus().dispatch(parsed);
+                let _ = state.bus().dispatch_by(parsed, by);
                 return Ok(());
             }
             _ => {}
@@ -1239,13 +1274,13 @@ pub fn perform_action(state: &AppState, parsed: Action) -> Result<(), String> {
         // the kind of thing worth being able to look back at. The engine
         // ignores the action itself; it has already had the result as
         // `SetGrid`. A refused edit is not logged, because it did not happen.
-        let _ = state.bus().dispatch(parsed);
+        let _ = state.bus().dispatch_by(parsed, by);
         return Ok(());
     }
 
     state
         .bus()
-        .dispatch(parsed)
+        .dispatch_by(parsed, by)
         .map_err(|_| "engine is not accepting commands; is a device open?".to_owned())
 }
 
@@ -3283,6 +3318,143 @@ mod tests {
         assert!(Action::parse("").is_err());
     }
 
+    /// **djmanzo's own moves are not a hand on the control.**
+    ///
+    /// §87's takeover is "a person touched this, so leave it alone", and it
+    /// fired for every action that went through `perform` — which is the same
+    /// path the automix and the autopilot use on purpose, because everything
+    /// the machine can do a person could have done. The consequence was that
+    /// djmanzo marked its own fader move as the DJ's, `Takeover::may_move`
+    /// then refused that control for ten minutes, and `autopilot::next_step`
+    /// declines a held one. The machine was handing itself the controls it had
+    /// just used, and the assistant's panel said "you have deck 1" with nobody
+    /// touching anything.
+    ///
+    /// Both directions, because a fix that stopped noticing *either* would be
+    /// worse than the bug: a DJ's hand must still take the control instantly.
+    #[test]
+    fn the_machines_own_actions_do_not_read_as_a_hand_on_the_control() {
+        use dj_core::param::DeckParam;
+
+        let state = AppState::new(true);
+        state.host().open(None, None, 128).unwrap();
+        let volume = dj_core::ParamId::Deck(
+            dj_core::DeckId::from_human(1).expect("deck 1"),
+            DeckParam::Volume,
+        );
+        let free = |state: &AppState| {
+            state
+                .conduct()
+                .lock()
+                .expect("not poisoned")
+                .takeover
+                .may_move(volume)
+        };
+
+        assert!(free(&state), "nothing is held before anything happens");
+
+        perform_by(&state, "deck 1 volume 0.5", dj_control::By::Machine).unwrap();
+        assert!(
+            free(&state),
+            "djmanzo moved a fader and then treated it as taken by the DJ"
+        );
+
+        perform_by(&state, "deck 1 volume 0.7", dj_control::By::Hand).unwrap();
+        assert!(
+            !free(&state),
+            "a hand on the fader did not take it, which is the half §87 is for"
+        );
+    }
+
+    /// **The automix's own mix is filed as the machine's.**
+    ///
+    /// The one path where getting this wrong is worst: automix moves faders
+    /// continuously for the length of a transition, so an automix blend filed
+    /// under the DJ's hand would both make a set they never touched read as
+    /// one they performed *and* hand every fader it used back to a DJ who is
+    /// not there — §87's takeover triggered by the thing it exists to defer
+    /// to, once a second, for the whole mix.
+    #[test]
+    fn an_automix_blend_is_the_machines_doing_and_takes_nothing_from_the_dj() {
+        use dj_core::param::DeckParam;
+
+        let state = AppState::new(true);
+        state.host().open(None, None, 128).unwrap();
+
+        let deck = dj_core::DeckId::from_human(1).expect("deck 1");
+        run_automix_plan(
+            &state,
+            crate::automix::Plan {
+                actions: vec![Action::Deck {
+                    deck,
+                    action: dj_core::DeckAction::SetVolume(0.4),
+                }],
+                load: None,
+            },
+        );
+
+        let log = state.bus().log();
+        assert_eq!(log.len(), 1, "{log:?}");
+        assert_eq!(
+            log[0].by,
+            dj_control::By::Machine,
+            "the automix's own fader move is filed under the DJ"
+        );
+        assert!(
+            state
+                .conduct()
+                .lock()
+                .expect("not poisoned")
+                .takeover
+                .may_move(dj_core::ParamId::Deck(deck, DeckParam::Volume)),
+            "the automix took the fader it was using away from itself"
+        );
+    }
+
+    /// **And the log says which of the two it was.**
+    ///
+    /// §67 lists *AI interventions* and *manual interventions* as two of the
+    /// fourteen things a session contains, and one log of undifferentiated
+    /// actions cannot answer either: "what did djmanzo do tonight" and "what
+    /// did I do" were the same question.
+    #[test]
+    fn the_log_records_whose_hand_each_action_came_from() {
+        let state = AppState::new(true);
+        state.host().open(None, None, 128).unwrap();
+
+        perform(&state, "deck 1 play").unwrap();
+        perform_by(&state, "deck 2 play", dj_control::By::Machine).unwrap();
+
+        let log = state.bus().log();
+        assert_eq!(log.len(), 2, "{log:?}");
+        assert_eq!(log[0].by, dj_control::By::Hand);
+        assert_eq!(log[1].by, dj_control::By::Machine);
+
+        // And it survives the round trip through a session file, which is what
+        // makes "what did djmanzo do" answerable about a set from last month.
+        let text = crate::session::Session {
+            events: log.clone(),
+        }
+        .to_text();
+        let read = crate::session::Session::from_text(&text).expect("it parses");
+        // The events and the origins, not the timestamps: a session file writes
+        // milliseconds, which is deliberate (see `Session::to_text`) and is not
+        // what this test is about.
+        assert_eq!(
+            read.events
+                .iter()
+                .map(|e| (e.event, e.by))
+                .collect::<Vec<_>>(),
+            log.iter().map(|e| (e.event, e.by)).collect::<Vec<_>>(),
+        );
+        // A file written before any of this existed reads as all a person's,
+        // which is true of it: nothing in it was the machine's, because the
+        // machine could not be told apart when it was written.
+        let old = "djmanzo-session 1\n0.000 deck 1 play\n";
+        let older = crate::session::Session::from_text(old).expect("an old take parses");
+        assert_eq!(older.events[0].by, dj_control::By::Hand);
+    }
+
     #[test]
     fn session_log_entries_are_formatted_for_reading() {
         let state = AppState::new(true);
@@ -4407,6 +4579,10 @@ pub fn assistant_step(state: State<'_, AppState>) -> Result<Option<String>, Stri
 /// posture check here would be a second thing to keep in step with the first.
 fn perform_step(state: &AppState, step: &crate::autopilot::Step) -> Result<Option<String>, String> {
     use crate::autopilot::Step;
+    // Every action a step sends is djmanzo's: a step is either the autopilot
+    // acting on its own or a transaction the DJ accepted, and in both cases the
+    // hand on the control is the machine's. §67's two kinds of intervention.
+    let perform = |state: &AppState, text: &str| perform_by(state, text, dj_control::By::Machine);
     match step {
         Step::Nothing => Ok(None),
         Step::Stage { deck, track } => {
@@ -9465,10 +9641,7 @@ mod coach_tests {
     use std::time::Duration;
 
     fn action(secs: u64, action: Action) -> TimedEvent {
-        TimedEvent {
-            event: SessionEvent::Action(action),
-            at: Duration::from_secs(secs),
-        }
+        TimedEvent::hand(Duration::from_secs(secs), SessionEvent::Action(action))
     }
 
     fn backspin(deck: u8) -> Action {
@@ -9485,13 +9658,13 @@ mod coach_tests {
     #[test]
     fn putting_a_record_on_is_not_something_to_name() {
         let log = vec![
-            TimedEvent {
-                event: SessionEvent::Load {
+            TimedEvent::hand(
+                Duration::from_secs(1),
+                SessionEvent::Load {
                     deck: DeckId::from_human(1).expect("valid deck"),
                     track: TrackId::from_hex(&"a".repeat(64)).expect("valid id"),
                 },
-                at: Duration::from_secs(1),
-            },
+            ),
             action(2, backspin(1)),
         ];
         let moments = recent_moments(&log, COACH_WINDOW);
@@ -9677,7 +9850,11 @@ pub fn publish_automix(state: &AppState, mix: &crate::automix::Automix) {
 pub fn run_automix_plan(state: &AppState, plan: crate::automix::Plan) {
     for action in &plan.actions {
         let text = action.to_string();
-        if let Err(error) = perform(state, &text) {
+        // The machine's, every one: this is djmanzo running the mix. §67 asks
+        // for AI and manual interventions as two different things, and an
+        // automix blend filed under the DJ's hand would make a set they never
+        // touched read as one they performed.
+        if let Err(error) = perform_by(state, &text, dj_control::By::Machine) {
             tracing::warn!(%error, %text, "automix action refused");
         }
     }

@@ -356,10 +356,7 @@ mod tests {
     }
 
     fn at(seconds: f64, event: SessionEvent) -> TimedEvent {
-        TimedEvent {
-            event,
-            at: Duration::from_secs_f64(seconds),
-        }
+        TimedEvent::hand(Duration::from_secs_f64(seconds), event)
     }
 
     /// A ramp, so any sample tells you which frame it came from -- silence and

@@ -198,11 +198,16 @@ fn context_lines(state: &AppState) -> Vec<String> {
     // What the DJ just did, in the action text a mapping or a script would
     // use. The same words everywhere: a model reading a line it could emit
     // back is the whole of ADR-0003's argument for one vocabulary.
+    // §67's two kinds of intervention, in the recent list. The same marker a
+    // session file carries, so the model reads one spelling wherever it meets
+    // one — and an assistant that cannot tell its own moves from the DJ's
+    // cannot answer "did you do that or did I", which is the first thing
+    // anybody asks when a set surprises them.
     let mut recent: Vec<String> = log
         .iter()
         .rev()
         .take(12)
-        .map(|entry| entry.event.to_line())
+        .map(|entry| format!("{}{}", entry.by.marker(), entry.event.to_line()))
         .collect();
     recent.reverse();
 
@@ -445,7 +450,11 @@ pub async fn ask(
     for text in &plan.actions {
         match Action::parse(text) {
             Ok(action) => {
-                if state.bus().dispatch(action).is_err() {
+                if state
+                    .bus()
+                    .dispatch_by(action, dj_control::By::Machine)
+                    .is_err()
+                {
                     undelivered.push(text.clone());
                 }
             }

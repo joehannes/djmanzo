@@ -1047,6 +1047,24 @@ two days: §29's AI hover was blocked on the same shape of stale clause. **A
 reason is a claim about the codebase and the codebase moves.** When something
 lands that a blocked row names, go and re-read the row.
 
+**A field the log did not have was hiding a live defect.** §67 asks for *AI
+interventions* and *manual interventions* as two different things and the
+action log had no origin, so they could not be told apart. Adding one found
+that §87's takeover — "a person touched this, so leave it alone" — was firing
+for every action that went through `perform`, which is deliberately the same
+path the automix and the autopilot use. djmanzo marked its own fader move as
+the DJ's, and `autopilot::next_step` refuses a held control for ten minutes:
+the machine was handing itself the controls it had just used. **The missing
+distinction was not only a reporting gap; something was already acting on the
+distinction it could not make.** Worth asking, whenever a directive line wants
+two things told apart: is anything already behaving as though they are?
+
+**Take the mutation backup immediately before the mutation.** A `cp` taken
+earlier in the session, then a test added, then a mutation and a restore — and
+the restore silently removed the test. It was caught because the test was fresh
+in mind; a week later it would have been a test that quietly stopped existing.
+One backup per mutation, taken in the same command.
+
 ## What this container cannot prove
 
 There is **no audio device, no microphone, no camera and no phone**. The tests

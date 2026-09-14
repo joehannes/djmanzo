@@ -436,10 +436,7 @@ mod tests {
     }
 
     fn at(secs: f64, event: SessionEvent) -> TimedEvent {
-        TimedEvent {
-            event,
-            at: Duration::from_secs_f64(secs),
-        }
+        TimedEvent::hand(Duration::from_secs_f64(secs), event)
     }
 
     fn load(secs: f64, on: u8, track: u8) -> TimedEvent {

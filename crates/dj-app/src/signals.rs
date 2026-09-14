@@ -353,10 +353,7 @@ mod tests {
     }
 
     fn at(secs: f64, action: Action) -> TimedEvent {
-        TimedEvent {
-            event: SessionEvent::Action(action),
-            at: Duration::from_secs_f64(secs),
-        }
+        TimedEvent::hand(Duration::from_secs_f64(secs), SessionEvent::Action(action))
     }
 
     fn pitch(secs: f64) -> TimedEvent {

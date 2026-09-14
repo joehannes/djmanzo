@@ -35,7 +35,48 @@ pub enum SessionEvent {
     },
 }
 
-/// An event together with when it happened.
+/// Whose hand an event came from.
+///
+/// [§67](../../../docs/DIRECTIVE.md) lists *AI interventions* and *manual
+/// interventions* as two of the fourteen things a session contains, and until
+/// this the log could not tell them apart: a crossfader move from a finger, a
+/// controller, the autopilot and an accepted transaction all arrived at
+/// [`dispatch`](ActionBus::dispatch) looking identical. So "what did djmanzo
+/// do tonight" and "what did I do" were the same question with one answer.
+///
+/// # Hand is the default, and that is the safer way round
+///
+/// A path that forgets to say records the DJ. §87's rule is that a hand on the
+/// control always wins, so an action wrongly filed as the DJ's makes djmanzo
+/// *more* deferential than it needs to be; one wrongly filed as the machine's
+/// would let it claim a move a person made, which is the mistake that reads as
+/// the software taking credit — or blame — for somebody else's mix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum By {
+    /// A person: a click, a key, a controller, the line protocol.
+    #[default]
+    Hand,
+    /// djmanzo: the autopilot, an accepted transaction, a staged move run.
+    Machine,
+}
+
+impl By {
+    /// The marker a session file carries for it, empty for a person's.
+    ///
+    /// **Absent means a hand**, which keeps every session file written before
+    /// this readable and reads them correctly: nothing in them was the
+    /// machine's, because the machine could not be told apart when they were
+    /// written.
+    #[must_use]
+    pub const fn marker(self) -> &'static str {
+        match self {
+            Self::Hand => "",
+            Self::Machine => "* ",
+        }
+    }
+}
+
+/// An event together with when it happened, and whose it was.
 ///
 /// The timestamp is what makes the log replayable: it is not decoration, it is
 /// the schedule a replay runs to.
@@ -44,6 +85,8 @@ pub struct TimedEvent {
     pub event: SessionEvent,
     /// Time since the session started.
     pub at: Duration,
+    /// Whose hand it came from. §67's two kinds of intervention.
+    pub by: By,
 }
 
 impl SessionEvent {
@@ -97,6 +140,23 @@ fn parse_deck(text: &str) -> Result<DeckId, String> {
         .ok_or_else(|| format!("not a deck: {:?}", text.trim()))
 }
 
+impl TimedEvent {
+    /// One a person did, which is the overwhelming majority and every one in a
+    /// session file written before [`By`] existed.
+    ///
+    /// A constructor rather than a `Default`, because an event has no sensible
+    /// default and the origin is the one thing that should never be implicit:
+    /// this names it.
+    #[must_use]
+    pub const fn hand(at: Duration, event: SessionEvent) -> Self {
+        Self {
+            event,
+            at,
+            by: By::Hand,
+        }
+    }
+}
+
 /// Sends actions to the engine and records them.
 ///
 /// Multiple producer threads (UI, MIDI, HID, network) share one sender, so the
@@ -136,11 +196,23 @@ where
     /// Submit an action. Records it in the session log whether or not the
     /// engine queue accepts it, so the log stays a faithful record of intent.
     pub fn dispatch(&self, action: Action) -> Result<(), BusFull> {
+        self.dispatch_by(action, By::Hand)
+    }
+
+    /// Submit an action, saying whose it is.
+    ///
+    /// §67's *AI interventions* and *manual interventions*. Every path that
+    /// knows it is djmanzo acting -- the autopilot's tick, a transaction the
+    /// DJ accepted, a staged move run -- comes through here with
+    /// [`By::Machine`]; everything else keeps [`dispatch`](Self::dispatch) and
+    /// is a person's, which is the safer default for the reason [`By`] gives.
+    pub fn dispatch_by(&self, action: Action, by: By) -> Result<(), BusFull> {
         let at = self.started.elapsed();
         if let Ok(mut log) = self.log.lock() {
             log.record(TimedEvent {
                 event: SessionEvent::Action(action),
                 at,
+                by,
             });
         }
         self.send_command(C::from(action))
@@ -156,11 +228,22 @@ where
     /// Called by whoever performs the load, rather than inferred from the
     /// command, because the bus deliberately does not know what a `C` contains.
     pub fn record_load(&self, deck: DeckId, track: TrackId) {
+        self.record_load_by(deck, track, By::Hand);
+    }
+
+    /// Note what went on a deck, saying whose doing it was.
+    ///
+    /// §87 lists seven places a load can come from and two of them are
+    /// djmanzo's: the autopilot staging the next record, and a transaction the
+    /// DJ accepted. Those are exactly the loads a DJ reviewing a set wants
+    /// told apart from the ones they made themselves.
+    pub fn record_load_by(&self, deck: DeckId, track: TrackId, by: By) {
         let at = self.started.elapsed();
         if let Ok(mut log) = self.log.lock() {
             log.record(TimedEvent {
                 event: SessionEvent::Load { deck, track },
                 at,
+                by,
             });
         }
     }
@@ -469,10 +552,10 @@ mod tests {
     fn session_log_slices_by_time() {
         let mut log = SessionLog::new();
         for ms in [0u64, 10, 20, 30, 40] {
-            log.record(TimedEvent {
-                event: SessionEvent::Action(play(1)),
-                at: Duration::from_millis(ms),
-            });
+            log.record(TimedEvent::hand(
+                Duration::from_millis(ms),
+                SessionEvent::Action(play(1)),
+            ));
         }
         assert_eq!(
             log.between(Duration::from_millis(10), Duration::from_millis(30))

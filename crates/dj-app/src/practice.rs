@@ -217,6 +217,11 @@ pub fn rehearse(
         events.push(TimedEvent {
             event,
             at: Duration::from_secs_f64((frame / rate).max(0.0)),
+            // A rehearsal is djmanzo performing a mix that was never played:
+            // every action in it is the machine's, and §67's two kinds of
+            // intervention should not have a practice run filed under the
+            // DJ's.
+            by: dj_control::By::Machine,
         });
     };
 
