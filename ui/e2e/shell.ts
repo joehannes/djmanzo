@@ -121,7 +121,7 @@ import styles from "./styles.json" with { type: "json" };
  * changes every time a panel is added -- the budget would then fail for a
  * reason with nothing to do with geometry.
  */
-const ANSWERS: Record<string, unknown> = {
+export const ANSWERS: Record<string, unknown> = {
   pad_pages: padPages,
   assistant_sight: sight,
   /**
@@ -375,12 +375,18 @@ const ANSWERS: Record<string, unknown> = {
     // with the third thinned out and the fourth back, which is the shape the
     // detector is written to find -- a fixture whose energy never moved would
     // let an overview that drew a flat row of columns pass.
+    // §25's `vocal` rides on the same windows, and the fixture gives it a
+    // shape of its own rather than the energy curve's: the voice enters in the
+    // second window, carries the breakdown where the kick does not, and is
+    // absent from the first -- `null`, which is "nobody measured" and is drawn
+    // as nothing rather than as silence. A fixture where the two curves moved
+    // together would let an overview that drew the energy twice pass.
     trajectory: {
       sections: [
-        { at: 0, energy: 0.9, low: 0.95 },
-        { at: 3_000_000, energy: 1.0, low: 1.0 },
-        { at: 6_000_000, energy: 0.35, low: 0.05 },
-        { at: 9_000_000, energy: 0.95, low: 0.98 },
+        { at: 0, energy: 0.9, low: 0.95, voice: null },
+        { at: 3_000_000, energy: 1.0, low: 1.0, voice: 0.3 },
+        { at: 6_000_000, energy: 0.35, low: 0.05, voice: 0.25 },
+        { at: 9_000_000, energy: 0.95, low: 0.98, voice: 0.02 },
       ],
       beats_per_section: 32,
       breakdowns: [{ from: 6_000_000, to: 9_000_000 }],
@@ -589,8 +595,11 @@ const ANSWERS: Record<string, unknown> = {
     weakens_from: 10_800_000,
     weakens_to: 11_600_000,
     // §27's drop, inside the stretch the mix would cover: a quarter of the way
-    // into a 32-beat blend. Six of the seven are answered now.
+    // into a 32-beat blend. **All seven are answered now**, the vocal entry
+    // included -- and it is deliberately *not* the same frame as the drop or
+    // the landing, so a view that drew one of them twice cannot pass.
     drop_frame: 10_992_000,
+    vocal_entry_frame: 11_184_000,
     reasons: ["phrase start (beat 450)", "128 into 131 BPM", "96 beats left"],
     asked: [
       {
@@ -598,7 +607,7 @@ const ANSWERS: Record<string, unknown> = {
         about: "where its first strong phrase would align",
         answered: true,
       },
-      { slug: "vocal-entry", about: "where the vocal enters", answered: false },
+      { slug: "vocal-entry", about: "where the vocal enters", answered: true },
       { slug: "drop", about: "where the drop occurs", answered: true },
       {
         slug: "outgoing-weakens",

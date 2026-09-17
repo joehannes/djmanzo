@@ -74,11 +74,11 @@
   {
     "name": "vocal",
     "title": "Vocal presence",
-    "about": "Where somebody is singing.",
-    "role": "unassigned",
-    "drawn": "nowhere",
-    "choosable": false,
-    "why_not": "djmanzo cannot draw this yet"
+    "about": "Where a lead is centred in the voice range -- usually a singer.",
+    "role": "uncertain",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
   },
   {
     "name": "stems",

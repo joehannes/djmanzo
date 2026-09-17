@@ -317,6 +317,34 @@ describe("colour tokens", () => {
     ).toEqual([]);
   });
 
+  /**
+   * **Two layers drawn on one view may not resolve to one colour.**
+   *
+   * §57's rule, at the one place a test can reach it. `--uncertain` and
+   * `--shape` were both `var(--text-dim)`, and the comment on `--shape` said
+   * why that was fine: one was a hatch on the scrolling lane and the other
+   * columns on the whole-record view, so there was no glance in which a DJ had
+   * to tell them apart. §25's `vocal` layer is an estimate drawn on the
+   * overview, beside the trajectory columns and the breakdown wash, and it
+   * created exactly that glance.
+   *
+   * The Rust side holds the roles apart; nothing held the *values* apart, and
+   * nothing would have noticed the day somebody pointed them at one token
+   * again.
+   */
+  it("what djmanzo estimates is not the colour of what it measured", () => {
+    const sheet = readFileSync(join(SRC, "app.css"), "utf8");
+    const value = (token: string) => {
+      const found = sheet.match(new RegExp(`^\\s*--${token}:\\s*([^;]+);`, "m"));
+      expect(found, `--${token} is not defined in app.css`).not.toBeNull();
+      return found![1].trim();
+    };
+    expect(
+      value("uncertain"),
+      "the vocal layer and the trajectory would be drawn in one colour on one view",
+    ).not.toBe(value("shape"));
+  });
+
   it("the palette files are exempt, because that is where colours live", () => {
     for (const file of PALETTE_FILES) {
       const source = readFileSync(join(SRC, file), "utf8");

@@ -67,6 +67,16 @@
        * the rail is a number about a place the eye then has to find.
        */
       drop?: number | null;
+      /**
+       * §27's *where the vocal enters*: where the candidate's voice would
+       * arrive, in frames on *this* record.
+       *
+       * The last of §27's seven, and drawn on the ghost for the same reason
+       * the drop is: both are answers about a record that is not loaded, so
+       * both wear the ghost's colour rather than the colour the loaded
+       * record's own vocal layer wears.
+       */
+      vocalEntry?: number | null;
       /** What the band means, for the hover. */
       title?: string;
     } | null;
@@ -237,6 +247,14 @@
     return { left: fraction(at) * 100 };
   });
 
+  /** And where its voice would arrive. §27's seventh. */
+  const ghostVoice = $derived.by(() => {
+    const at = ghost?.vocalEntry;
+    if (at == null || !ghost || totalFrames <= 0) return null;
+    if (at < ghost.from || at > ghost.to) return null;
+    return { left: fraction(at) * 100 };
+  });
+
   /**
    * The trajectory as a run of columns, one per window.
    *
@@ -270,6 +288,38 @@
         width: Math.max((span.to - span.from) / totalFrames * 100, 0.8),
       }))
       .filter((band) => band.width > 0);
+  });
+
+  /**
+   * §25's `vocal` layer: where a lead is centred in the voice range.
+   *
+   * A strip along the top edge rather than more columns from the floor. The
+   * trajectory already owns the floor, and a second set of columns would read
+   * as a second opinion about the same question — where this record goes —
+   * when it is an answer to a different one.
+   *
+   * Windows nobody measured are dropped rather than drawn at zero: absent and
+   * "nobody was singing" are different answers, and a strip that filled the
+   * gaps would claim the second when djmanzo only has the first.
+   */
+  const voices = $derived.by(() => {
+    const sections = trajectory?.sections ?? [];
+    if (sections.length < 2 || totalFrames <= 0) return [];
+    const span = sections[1].at - sections[0].at;
+    return sections
+      .filter((section) => section.voice != null)
+      .map((section) => ({
+        at: section.at,
+        left: fraction(section.at) * 100,
+        width: Math.max((span / totalFrames) * 100, 0.4),
+        share: section.voice as number,
+        // Where the strip reaches full strength. A drawing scale, **not** a
+        // threshold for a voice existing: the share at which a DJ would say
+        // "there's a vocal" can only come from real records with real voices
+        // on them, and the machine this was written on has none. So the strip
+        // says how much and never yes or no.
+        opacity: Math.min(1, (section.voice as number) / 0.25),
+      }));
   });
 
   /** And the drops, as marks. */
@@ -418,6 +468,14 @@
         title="Where the candidate drops, if it came in here"
       ></div>
     {/if}
+    {#if ghostVoice && showing("suggestion")}
+      <div
+        class="ghost-voice"
+        data-layer="suggestion"
+        style:left="{ghostVoice.left}%"
+        title="Where the candidate's voice comes in, if it came in here"
+      ></div>
+    {/if}
     {#if loopBand && showing("loop")}
       <div
         class="loop-band"
@@ -458,6 +516,18 @@
         style:left="{column.left}%"
         style:width="{column.width}%"
         style:height="{column.height}%"
+      ></div>
+    {/each}
+    {#each showing("vocal") ? voices : [] as band (band.at)}
+      <div
+        class="voice"
+        data-layer="vocal"
+        style:left="{band.left}%"
+        style:width="{band.width}%"
+        style:opacity={band.opacity}
+        title="A lead sits in the voice range here — {(band.share * 100).toFixed(
+          0,
+        )}% of this window is centred and sustained. Usually a singer; a centred synth lead reads the same way."
       ></div>
     {/each}
     {#each showing("drops") ? returns : [] as mark (mark.at)}
@@ -501,6 +571,17 @@
     opacity: 0.18;
     pointer-events: none;
   }
+  /* Pinned to the top edge, 3px, so the form says it is not the trajectory
+     even before the colour does -- §33's rule that colour is never the only
+     channel, applied to a layer nobody has to read in a hurry. */
+  .voice {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    height: 3px;
+    background: var(--uncertain, var(--text-dim));
+    pointer-events: none;
+  }
   .drop {
     position: absolute;
     z-index: 1;
@@ -523,6 +604,21 @@
      one, and `theme-tokens.test.ts` fails on a token nothing defines -- which
      is how the first version of this rule was caught, asking for a hue it
      would have fallen back from. */
+  /* A tick at the top rather than a full-height line, so it is not read as a
+     second drop. It sits in the band the loaded record's own vocal layer
+     occupies, which is the association worth making: same question, one about
+     a record on a deck and one about a record being considered. */
+  .ghost-voice {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    height: 40%;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--assistant);
+    opacity: 0.9;
+    pointer-events: none;
+  }
   .ghost-drop {
     position: absolute;
     z-index: 1;

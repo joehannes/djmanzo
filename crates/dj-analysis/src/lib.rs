@@ -37,6 +37,7 @@ pub mod onset;
 pub mod regression;
 pub mod structure;
 pub mod tempo;
+pub mod voice;
 
 pub use key::KeyAnalysis;
 pub use loudness::{Lufs, integrated};
@@ -44,6 +45,7 @@ pub use melody::{Contour, Match};
 pub use onset::{OnsetEnvelope, detect};
 pub use structure::{PhraseAnalysis, phrases};
 pub use tempo::TempoAnalysis;
+pub use voice::Presence;
 
 use dj_core::SampleRate;
 
@@ -129,13 +131,23 @@ pub fn analyse(samples: &[f32], sample_rate: SampleRate) -> Analysis {
         tempo.as_ref().map(|t| t.grid.bpm.get()),
     );
 
+    // Where the voice is. Its own pass over the audio rather than another read
+    // of the banded curve, because a voice is not an onset: the question is
+    // what is *still there* between the hits, and a curve built from what
+    // changed has thrown that away by construction.
+    let voice = voice::presence(samples, rate);
+
     // The same banded curve again, and deliberately: a record's shape over time
-    // and its phrase boundaries are two questions about one measurement.
+    // and its phrase boundaries are two questions about one measurement. The
+    // voice curve is folded in here rather than published beside it so both
+    // readings land on the same windows -- two window schemes over one record
+    // would draw two grids that nearly line up, which is worse than one.
     let trajectory = tempo
         .as_ref()
         .map_or_else(energy::Trajectory::default, |tempo| {
             energy::trajectory(
                 &banded,
+                &voice,
                 &tempo.grid,
                 sample_rate,
                 frames,

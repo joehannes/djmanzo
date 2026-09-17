@@ -1155,7 +1155,21 @@ export interface WaveformInfo {
  * the other.
  */
 export interface EnergyTrajectory {
-  sections: { at: number; energy: number; low: number }[];
+  sections: {
+    at: number;
+    energy: number;
+    low: number;
+    /**
+     * §25's `vocal` layer: how much of this window is a centred, sustained
+     * voice-range signal. Absolute, unlike `energy` and `low`, which are
+     * scaled against the record's own busiest window — see
+     * `dj_analysis::voice`.
+     *
+     * `null` where nothing was measured, which the overview draws as nothing
+     * rather than as silence.
+     */
+    voice: number | null;
+  }[];
   beats_per_section: number;
   breakdowns: { from: number; to: number }[];
   /** Frame positions. */
@@ -2241,6 +2255,14 @@ export interface Ghost {
    * that never thins out — all three are records with no drop to promise.
    */
   drop_frame: number | null;
+  /**
+   * §27's *where the vocal enters*: where the candidate's voice would arrive,
+   * in frames on the outgoing record.
+   *
+   * `null` for an instrumental, for a candidate nobody has analysed, and for
+   * one whose voice is in before the mix point.
+   */
+  vocal_entry_frame: number | null;
   reasons: string[];
   /** §27's seven, in its order, each saying whether it is answered. */
   asked: GhostAsked[];

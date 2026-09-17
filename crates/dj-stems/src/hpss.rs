@@ -86,9 +86,14 @@ const TIME_SPAN: usize = 17;
 const FREQ_SPAN: usize = 17;
 
 /// Where the bass ends and the vocal band begins.
-pub const BASS_HZ: f32 = 200.0;
-/// Where the vocal band ends.
-pub const VOCAL_TOP_HZ: f32 = 8_000.0;
+///
+/// Defined in `dj_core` rather than here: `dj_analysis::voice` measures how
+/// much is in this band without separating anything, and the two must be
+/// asking about the same band or the waveform's vocal layer and this
+/// separator's vocal stem would quietly disagree.
+pub use dj_core::VOICE_BOTTOM_HZ as BASS_HZ;
+/// Where the vocal band ends. See [`BASS_HZ`].
+pub use dj_core::VOICE_TOP_HZ as VOCAL_TOP_HZ;
 
 /// Guards the mask denominator. Below this a bin is silent and the split is
 /// arbitrary, so it is shared evenly rather than divided by nearly zero.

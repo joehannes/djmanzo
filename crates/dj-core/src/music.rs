@@ -1,7 +1,31 @@
-//! Musical properties: tempo, beat grids, keys.
+//! Musical properties: tempo, beat grids, keys, and where the voice sits.
 
 use crate::time::{FramePos, SampleRate};
 use serde::{Deserialize, Serialize};
+
+/// Where the bass ends and the voice begins, in hertz.
+///
+/// Below this a centred, sustained signal is a bassline rather than a singer,
+/// and treating it as one would put a vocal under every record with a sub in
+/// it.
+///
+/// # Why this is here rather than beside the separator that first needed it
+///
+/// Two things ask where the voice sits: [`dj_stems::hpss`] splits a stem out
+/// of that band, and `dj_analysis::voice` measures how much is in it without
+/// reconstructing anything. Those are one fact asked twice, and a fact defined
+/// twice is a fact that drifts -- the separator's idea of a voice and the
+/// waveform's drawing of one would disagree, and nothing would fail.
+///
+/// [`dj_stems::hpss`]: https://docs.rs/dj-stems
+pub const VOICE_BOTTOM_HZ: f32 = 200.0;
+
+/// Where the voice ends, in hertz. See [`VOICE_BOTTOM_HZ`].
+///
+/// Well above a soprano's fundamental on purpose: what makes a voice sound
+/// like a voice is its harmonics and its sibilance, and a band that stopped at
+/// the top note would cut off the part that carries the words.
+pub const VOICE_TOP_HZ: f32 = 8_000.0;
 
 /// Beats per minute. Constrained to a range that covers everything a DJ plays,
 /// which also stops a bad analysis result from producing a grid with billions of

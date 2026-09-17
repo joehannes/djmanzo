@@ -2506,6 +2506,7 @@ mod tests {
                     sample_rate: SR,
                     grid_anchor: 0.0,
                     drops: Vec::new(),
+                    voice_enters: None,
                 },
                 None,
             )
@@ -7477,8 +7478,9 @@ fn estimate_transition(
             // The rail draws a style and a length, not a drop. Left empty
             // rather than looked up: this runs once per candidate per refresh,
             // and reading a cache for a number nothing here draws would be
-            // work for nobody.
+            // work for nobody. The vocal entry is absent on the same terms.
             drops: Vec::new(),
+            voice_enters: None,
         },
         usual,
     )?;
@@ -8657,6 +8659,13 @@ pub struct GhostDto {
     /// promise, and the ghost says nothing for any of them rather than
     /// drawing a mark somewhere plausible.
     pub drop_frame: Option<f64>,
+    /// §27's *where the vocal enters*: where the candidate's voice would
+    /// arrive, in frames on the outgoing record.
+    ///
+    /// `None` for an instrumental, for a candidate nobody has analysed, and
+    /// for one whose voice is already in before the mix point -- three records
+    /// with no entry to promise, and the ghost draws nothing for all three.
+    pub vocal_entry_frame: Option<f64>,
     pub reasons: Vec<String>,
     /// The mix in one phrase — `32-beat blend at 2:09`. Worded here rather
     /// than in the panel, because §22's rail draws the same phrase and two
@@ -8712,6 +8721,10 @@ pub fn ghost_preview(
     let Some(grid) = candidate_track.analysis.beatgrid() else {
         return Ok(None);
     };
+    // Read once: the drop and the vocal entry are two positions on one
+    // trajectory, and asking the cache twice for one record is two lookups
+    // that could answer differently across a re-analysis landing between them.
+    let cached = state.analysis().cached(&candidate_track.id);
     let candidate = crate::ghost::Candidate {
         bpm: grid.bpm.get(),
         phrase: phrase_of(&candidate_track),
@@ -8723,11 +8736,16 @@ pub fn ghost_preview(
         // a curve. A candidate djmanzo has never analysed has none, and the
         // ghost then says nothing about a drop -- which is the honest answer
         // and the one §27's own list is written to allow.
-        drops: state
-            .analysis()
-            .cached(&candidate_track.id)
+        drops: cached
+            .as_ref()
             .map(|found| found.trajectory.drops.clone())
             .unwrap_or_default(),
+        // §27's *where the vocal enters*, from the same cached trajectory and
+        // for the same reason: the library row stores one energy number and
+        // this is a position on a curve.
+        voice_enters: cached
+            .as_ref()
+            .and_then(|found| found.trajectory.voice_enters),
     };
 
     let Some(ghost) = crate::ghost::look(&outgoing, &candidate, usual_style(&state)) else {
@@ -8759,6 +8777,7 @@ pub fn ghost_preview(
         weakens_from: ghost.weakens.map(|w| w.opens_frame),
         weakens_to: ghost.weakens.map(|w| w.closes_frame),
         drop_frame: ghost.drop,
+        vocal_entry_frame: ghost.vocal_entry,
         reasons: ghost
             .plan
             .reasons

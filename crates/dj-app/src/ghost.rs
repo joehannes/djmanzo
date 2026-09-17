@@ -70,6 +70,12 @@ pub struct Candidate {
     /// ghost says nothing for any of them. §27 asks *where the drop occurs*
     /// and this is the answer arriving from the only thing that measures it.
     pub drops: Vec<f64>,
+    /// Where the candidate's voice arrives, in its own frames. §27's *where
+    /// the vocal enters*, from `dj_analysis::voice`.
+    ///
+    /// `None` for an instrumental and for a record nobody has analysed, which
+    /// are different facts with the same drawing: no mark.
+    pub voice_enters: Option<f64>,
 }
 
 /// Where the candidate's first full phrase would land.
@@ -228,6 +234,15 @@ pub struct Ghost {
     /// drop in it, or none after the point it would be brought in at -- a
     /// record whose only drop is behind the mix point has nothing to promise.
     pub drop: Option<f64>,
+    /// Where the candidate's voice would arrive. §27's *where the vocal
+    /// enters*.
+    ///
+    /// Frames on the **outgoing** record, like [`Landing`] and [`Ghost::drop`]
+    /// and for the same reason: that is the lane on screen, and once the mix
+    /// begins a beat of one record is a beat of the other. `None` when the
+    /// candidate is an instrumental, when nobody has analysed it, and when its
+    /// voice arrives before the point it would be brought in at.
+    pub vocal_entry: Option<f64>,
     /// §27's seven, and whether each is answered.
     pub asked: Vec<(Asked, bool)>,
 }
@@ -284,6 +299,12 @@ pub fn look(
 
     Some(Ghost {
         drop: first_drop(&plan, candidate, out_beat),
+        // The same conversion the drop makes, because it is the same question
+        // about a different position: where does this moment of the candidate
+        // fall on the record a DJ is looking at.
+        vocal_entry: candidate
+            .voice_enters
+            .and_then(|at| onto_outgoing(&plan, candidate, out_beat, at)),
         landing: landing(&plan, candidate, out_beat),
         weakens: plan::mix_out(&out.record()),
         pitch_percent: pitch_percent(out.bpm, candidate.bpm),
@@ -302,10 +323,6 @@ pub fn look(
 /// would happen if this record came in here, and a row of marks down the rest
 /// of the record is not that sentence.
 fn first_drop(plan: &Plan, candidate: &Candidate, out_beat: f64) -> Option<f64> {
-    let beat = plan::beat_frames(candidate.bpm, candidate.sample_rate)?;
-    if beat <= 0.0 || out_beat <= 0.0 {
-        return None;
-    }
     // Audible drops only: a grid extends backwards from its anchor, and a
     // position before the file starts is arithmetic rather than music.
     let first = candidate
@@ -314,7 +331,24 @@ fn first_drop(plan: &Plan, candidate: &Candidate, out_beat: f64) -> Option<f64> 
         .copied()
         .filter(|at| *at >= 0.0)
         .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))?;
-    Some(plan.start_frame + first / beat * out_beat)
+    onto_outgoing(plan, candidate, out_beat, first)
+}
+
+/// A frame of the candidate, as a frame of the record on screen.
+///
+/// Written once because it is asked twice -- for the drop and for the vocal
+/// entry -- and two copies of one multiplication is two marks that could
+/// diverge by a beat with nothing failing.
+///
+/// `None` for a position before the candidate's first sample, which a grid
+/// extending backwards from its anchor will happily produce and which is
+/// arithmetic rather than music.
+fn onto_outgoing(plan: &Plan, candidate: &Candidate, out_beat: f64, at: f64) -> Option<f64> {
+    let beat = plan::beat_frames(candidate.bpm, candidate.sample_rate)?;
+    if beat <= 0.0 || out_beat <= 0.0 || at < 0.0 {
+        return None;
+    }
+    Some(plan.start_frame + at / beat * out_beat)
 }
 
 /// Where the candidate's first full phrase falls on the outgoing record.
@@ -408,6 +442,7 @@ mod tests {
             sample_rate: SR,
             grid_anchor: anchor_beats * (SR.as_f64() * 60.0 / bpm),
             drops: Vec::new(),
+            voice_enters: None,
         }
     }
 
@@ -498,6 +533,62 @@ mod tests {
         );
     }
 
+    /// **§27's seventh: where the vocal enters, on the lane a DJ is looking
+    /// at.**
+    ///
+    /// The candidate's own frames are not the answer. Once the mix begins the
+    /// two records are beat-matched, so sixteen beats into the candidate is
+    /// sixteen *outgoing* beats past the mix point however fast the candidate
+    /// is — and a mark drawn at the candidate's own frame number would sit in
+    /// the wrong place on the only lane on screen, by more the further the two
+    /// tempos are apart.
+    #[test]
+    fn the_vocal_enters_sixteen_outgoing_beats_in_at_either_tempo() {
+        let sixteen_beats_of = |bpm: f64| 16.0 * (SR.as_f64() * 60.0 / bpm);
+
+        let mut slow = candidate(BPM, 0.0, 0);
+        slow.voice_enters = Some(sixteen_beats_of(BPM));
+        let mut fast = candidate(BPM * 1.25, 0.0, 0);
+        fast.voice_enters = Some(sixteen_beats_of(BPM * 1.25));
+
+        let slow = look(&outgoing(), &slow, None).expect("a ghost");
+        let fast = look(&outgoing(), &fast, None).expect("a ghost");
+        let (a, b) = (
+            slow.vocal_entry.expect("an entry"),
+            fast.vocal_entry.expect("an entry"),
+        );
+
+        let wanted = slow.plan.start_frame + 16.0 * beat();
+        assert!(
+            (a - wanted).abs() < 1e-3,
+            "sixteen beats past the mix point is {wanted}, got {a}"
+        );
+        assert!(
+            (a - b).abs() < 1e-3,
+            "sixteen beats of the candidate is sixteen outgoing beats at \
+             either tempo: {a} against {b}"
+        );
+    }
+
+    /// An instrumental gets no mark, and neither does a voice the grid puts
+    /// before the file starts.
+    ///
+    /// Both are `None` rather than a position, and they are different facts
+    /// with the same drawing: djmanzo has nothing to point at.
+    #[test]
+    fn a_record_with_no_voice_in_it_is_not_given_one() {
+        let ghost = look(&outgoing(), &candidate(BPM, 0.0, 0), None).expect("a ghost");
+        assert_eq!(ghost.vocal_entry, None, "an instrumental has no entry");
+
+        let mut backwards = candidate(BPM, 0.0, 0);
+        backwards.voice_enters = Some(-4.0 * beat());
+        let ghost = look(&outgoing(), &backwards, None).expect("a ghost");
+        assert_eq!(
+            ghost.vocal_entry, None,
+            "a position before the candidate's first sample is arithmetic, not music"
+        );
+    }
+
     /// A record with no phrase structure gets no landing rather than a
     /// pretended one. Plenty of records have none.
     #[test]
@@ -579,18 +670,21 @@ mod tests {
         }
     }
 
-    /// **Six of seven, and the one that is missing is named.**
+    /// **Seven of seven.**
     ///
-    /// The count worth quoting. It is also the alarm: when an analyser finds
-    /// vocals and the `vocal` layer starts being drawn, this fails — and what
-    /// it is asking for is a *frame* in [`Ghost`] to go with the layer, not a
-    /// new number here.
+    /// The count worth quoting, and this test did its job: it was written as
+    /// *six of seven* with the alarm that when an analyser found vocals and
+    /// the `vocal` layer started being drawn it would fail, asking for a
+    /// **frame** in [`Ghost`] rather than a smaller count. `dj_analysis::voice`
+    /// is that analyser and this is that frame. It stays as the alarm in the
+    /// other direction: a layer that stops being drawn takes an answer with
+    /// it, and this is where that shows up.
     #[test]
     fn what_djmanzo_cannot_see_is_named_rather_than_left_out() {
         let missing: Vec<&str> = unseen().into_iter().map(Asked::slug).collect();
         assert_eq!(
             missing,
-            vec!["vocal-entry"],
+            Vec::<&str>::new(),
             "the answered set changed: give Ghost the positions to match"
         );
         let ghost = look(&outgoing(), &candidate(BPM, 0.0, 0), None).expect("a ghost");

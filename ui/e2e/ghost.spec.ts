@@ -16,7 +16,7 @@
  */
 import { expect, test } from "@playwright/test";
 
-import { errorsThrown, openShell } from "./shell";
+import { ANSWERS, errorsThrown, openShell } from "./shell";
 
 const RAIL = '.surface[data-surface="next"]';
 
@@ -136,31 +136,86 @@ test.describe("§27's ghost", () => {
   });
 
   /**
-   * **The two djmanzo cannot see are named.**
+   * **All seven, so the line is gone.**
    *
-   * §27 asks for seven things and nothing in `dj_analysis` finds a vocal
-   * entry. Saying so is the difference between an honest overlay and one that
-   * reads as a record with no vocal in it.
-   *
-   * It was two until §75's trajectory shipped: *where the drop occurs* is
-   * answered now, and the assertion that it is **not** in this line is the
-   * half worth keeping — a panel that went on naming an answered question as
-   * missing would be exactly as wrong as one that dropped an unanswered one.
+   * This test was *says which of the seven it cannot answer* for as long as
+   * there were any: two at first, one once §75's trajectory answered the drop,
+   * and none now that `dj_analysis::voice` answers the vocal entry. A panel
+   * that went on naming an answered question as missing would be exactly as
+   * wrong as one that dropped an unanswered one, so the absence is asserted
+   * rather than assumed.
    */
-  test("says which of the seven it cannot answer", async ({ page }) => {
+  test("nothing in the seven is still listed as unanswerable", async ({
+    page,
+  }) => {
     await railOpen(page);
+    await ask(page).click();
+    await expect(page.locator(`${RAIL} .ghost-what`)).toBeVisible();
+    await expect(page.locator(`${RAIL} .ghost-line.unseen`)).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **And the machinery for saying so still works.**
+   *
+   * The line above is empty because the answers are all in, not because
+   * nothing renders it — and those are indistinguishable from the outside.
+   * `Asked::answered` is derived from §25's layer table, so a layer that
+   * stopped being drawn would put a question back on this list; this drives
+   * that state deliberately, because the day it happens is not the day to
+   * discover the panel had quietly lost the ability to say so.
+   */
+  test("a question djmanzo cannot answer is still named out loud", async ({
+    page,
+  }) => {
+    const ghost = ANSWERS.ghost_preview as { asked: { slug: string }[] };
+    await openShell(page, "/", {}, {
+      ghost_preview: {
+        ...ghost,
+        asked: ghost.asked.map((one) =>
+          one.slug === "vocal-entry" ? { ...one, answered: false } : one,
+        ),
+      },
+    });
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(page.locator(RAIL)).toBeVisible();
     await ask(page).click();
 
     const unseen = page.locator(`${RAIL} .ghost-line.unseen`);
     await expect(unseen).toBeVisible();
-    const said = await unseen.textContent();
-    expect(said, "the vocal entry is dropped silently").toContain(
-      "where the vocal enters",
-    );
-    expect(
-      said,
-      "the drop is still listed as unanswerable, and §75 answers it",
-    ).not.toContain("where the drop occurs");
+    expect(await unseen.textContent()).toContain("where the vocal enters");
+  });
+
+  /**
+   * **And §27's seventh is a mark on the overlay, not a sentence under it.**
+   *
+   * The same rule the drop is held to below, and the same reason: §27 asks for
+   * these as part of the *overlay*, and a frame number in a caption is a
+   * number about a place the eye then has to go and find. The fixture puts the
+   * entry at a different frame from the drop and from the landing, so a view
+   * that drew any one of the three twice fails here.
+   */
+  test("the candidate's vocal entry is marked on the ghost", async ({
+    page,
+  }) => {
+    await railOpen(page);
+    await ask(page).click();
+
+    const overview = page.locator(`${RAIL} .overview`).first();
+    await expect(overview).toBeVisible();
+    const marks = overview.locator('.ghost-voice[data-layer="suggestion"]');
+    await expect(marks).toHaveCount(1);
+
+    const box = await overview.boundingBox();
+    const mark = await marks.boundingBox();
+    expect(box).not.toBeNull();
+    expect(mark).not.toBeNull();
+    // 11_184_000 of 12_000_000 frames: halfway through a blend that runs from
+    // 10.8M to 11.568M.
+    expect((mark!.x - box!.x) / box!.width).toBeCloseTo(0.932, 2);
+    // A tick rather than a full-height line, so it is not read as a drop.
+    expect(mark!.height).toBeLessThan(box!.height);
+    expect(errorsThrown(page)).toEqual([]);
   });
 
   /**

@@ -189,6 +189,81 @@ test.describe("the waveform's layers", () => {
   });
 
   /**
+   * **§25's `vocal`, the eighteenth layer.**
+   *
+   * `Drawn::Nowhere` for the life of that table with *the analysis does not
+   * exist* beside it, while djmanzo shipped a separator that pulls a vocal
+   * stem out of a record with no model and no download. `dj_analysis::voice`
+   * measures the same thing without reconstructing it.
+   *
+   * The half Rust cannot check is here: that a window nobody measured draws
+   * **nothing** rather than an empty strip, and that the strip's strength
+   * follows the reading. The fixture's four windows are `null`, 0.3, 0.25 and
+   * 0.02 — one unmeasured, two carrying a voice, one with barely any — so a
+   * view that drew a segment per section, or drew them all alike, fails.
+   */
+  test("the vocal layer is drawn where the voice is, and nowhere else", async ({
+    page,
+  }) => {
+    await openShell(page, "/");
+
+    const overview = page.locator(".overview").first();
+    await expect(overview).toBeVisible();
+    const box = await overview.boundingBox();
+    expect(box, "the overview has no box").not.toBeNull();
+
+    // Three of four: the unmeasured window is absent, not drawn at zero.
+    const strips = overview.locator('[data-layer="vocal"]');
+    await expect(strips).toHaveCount(3);
+
+    // The first drawn one is the second window, a quarter of the way in.
+    const first = await strips.first().boundingBox();
+    expect(first).not.toBeNull();
+    expect(
+      (first!.x - box!.x) / box!.width,
+      "the voice is drawn before it enters",
+    ).toBeCloseTo(0.25, 1);
+
+    // And the strength follows the reading rather than being flat: the window
+    // at 0.02 is far fainter than the one at 0.3.
+    const opacities = await strips.evaluateAll((els) =>
+      els.map((el) => Number(getComputedStyle(el).opacity)),
+    );
+    expect(opacities).toHaveLength(3);
+    expect(
+      opacities[0],
+      "a window carrying a voice is not drawn at full strength",
+    ).toBeGreaterThan(0.9);
+    expect(
+      opacities[2],
+      "a window with barely any voice is drawn as loudly as one full of it",
+    ).toBeLessThan(0.2);
+
+    // Over the tile, like every other overview layer -- the mistake this file
+    // records being made twice.
+    const above = await overview.evaluate((root) => {
+      const order = Array.from(root.children);
+      const depth = (el: Element | null) => {
+        if (!el) return null;
+        const value = getComputedStyle(el).zIndex;
+        return value === "auto" ? 0 : Number(value);
+      };
+      const tile = root.querySelector("img");
+      const strip = root.querySelector('[data-layer="vocal"]');
+      return {
+        tile: { z: depth(tile), at: order.indexOf(tile!) },
+        strip: { z: depth(strip), at: order.indexOf(strip!) },
+      };
+    });
+    expect(
+      above.strip.z! > above.tile.z! ||
+        (above.strip.z === above.tile.z && above.strip.at > above.tile.at),
+      "the vocal strip paints under the waveform it is about",
+    ).toBe(true);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **A wash under an opaque waveform is not a layer.**
    *
    * The runway shipped with `z-index: 0` against tiles at `z-index: auto` that
@@ -493,6 +568,12 @@ test.describe("the waveform's layers", () => {
     // analysis at all — `dj_library::StoredLoop` has held them per track for as
     // long as the library has, and nothing carried them to the waveform.
     expect(built).toContain("saved-loops");
-    expect(built).toHaveLength(17);
+    // §25's `vocal`: the eighteenth, and one more that was waiting on nobody.
+    // `dj_stems::hpss` has separated a vocal stem with no model and no
+    // download for as long as it has existed; what was missing was anything
+    // asking it where that voice was, which `dj_analysis::voice` now does
+    // without reconstructing the stem at all.
+    expect(built).toContain("vocal");
+    expect(built).toHaveLength(18);
   });
 });

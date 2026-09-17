@@ -16,7 +16,65 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
-Nothing yet.
+**Where somebody is singing** — §25's `vocal` layer, §75's *vocal density* and
+§27's *where the vocal enters*, all from a separator djmanzo already shipped.
+
+`vocal` had carried *the analysis does not exist* beside it for the life of
+§25's layer table. It did exist. `dj_stems::hpss` pulls a vocal stem out of a
+record with **no model, no download and no runtime** — a DJ can solo the voice
+today — and the waveform could not draw where that voice was.
+`dj_analysis::voice` measures the same thing the separator defines, the
+harmonic part of the centre channel between 200 Hz and 8 kHz, and measures it
+**without reconstructing anything**: a presence curve is a question about the
+masks, not about the audio, so there is no inverse transform and no second copy
+of the record in memory. The two band edges moved to `dj_core`, because one
+fact defined twice is a fact that drifts.
+
+On one point it deliberately asks a sharper question than the separator can. A
+separator has to produce audio that sums back to the mix, so its centre is the
+mid channel as it finds it — and a hard-panned guitar appears in mid at half
+amplitude whether anyone wanted it there or not. The first version read that
+guitar as *half a voice*, which is what the tests caught; each bin is now
+weighted by how centred it actually is.
+
+Where it is wrong is said out loud rather than buried: **a centred synth lead
+reads as a voice**, and the layer's own description says so. It wears
+`Role::Uncertain`, which is what that role's doc reserved it for long before
+this shipped.
+
+- **§25 goes from seventeen of twenty layers to eighteen.** Drawn as a strip
+  along the top of the overview — the trajectory owns the floor, and a second
+  set of columns there would read as a second opinion about *where does this
+  record go* when it answers a different question. A window nobody measured
+  draws **nothing** rather than zero: absent and *nobody was singing* are
+  different answers.
+- **§27 is seven of seven.** The count guard on §27's list was written as an
+  alarm rather than a tally — *when an analyser finds vocals and the `vocal`
+  layer starts being drawn, this fails, and what it is asking for is a frame
+  in `Ghost`* — and it fired exactly as designed. The entry is converted onto
+  the outgoing record by the same multiplication the drop already used,
+  written once now rather than twice. Drawn as a tick at the top of the ghost
+  so it is not read as a second drop.
+- **§75 goes from three of nine audio properties to four.** Its reason — *needs
+  separation analysis nobody has written* — had stopped being true before it
+  was written down.
+- **A real defect in the palette.** `--uncertain` and `--shape` were both
+  `var(--text-dim)`, justified by a comment saying there was no glance in which
+  a DJ had to tell them apart. This layer is an estimate drawn on the overview
+  beside the trajectory columns, which is exactly that glance. `--uncertain` is
+  now a tint of the palette's own accent, derived so every package gets one
+  free, and a vitest fails the day somebody points the two at one token again.
+- **One number here is not a measurement, and says so.** `voice::STRONG` is the
+  share at which djmanzo will call a lead *carrying* the record. That can only
+  be set by listening to real records with real voices on them; this machine
+  has none, only synthesised test signals. It is one constant rather than one
+  per consumer, so whoever does the listening has a single number to change.
+
+Four mutations were run against the measurement and two of the tests written
+for it were thrown away for passing on the wrong thing — a click train that
+read low because of the band rather than the harmonic mask, and chopped noise
+that read low because of its duty cycle. The test that stands builds the two
+spectrograms by hand.
 
 ---
 

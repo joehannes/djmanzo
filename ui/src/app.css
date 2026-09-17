@@ -147,7 +147,22 @@
   --on-selected: var(--on-accent);
   --on-active: var(--on-accent);
   --assistant: var(--accent-2);
-  --uncertain: var(--text-dim);
+  /* What djmanzo is estimating rather than measuring.
+   *
+   * **It used to be `--text-dim`, which is also `--shape`**, and the comment
+   * on `--shape` above justified the sharing: one was a hatch on the scrolling
+   * lane and the other columns on the whole-record view, so there was no
+   * glance in which a DJ had to tell them apart. §25's `vocal` layer created
+   * exactly that glance -- vocal presence is an estimate and it is drawn on
+   * the overview, beside the trajectory columns, the breakdown wash and the
+   * drop lines. Four forms in one grey is §57's rule broken by a layer that
+   * arrived after the reasoning was written.
+   *
+   * A tint of the palette's own accent rather than a fixed hue, so every
+   * package gets one for free the way the stem colours do: quiet enough to
+   * stay behind a mark, and plainly not the dim grey the record's shape is
+   * drawn in. */
+  --uncertain: color-mix(in oklab, var(--accent) 35%, var(--text-dim));
   --audience: var(--accent);
   --success: var(--accent);
 

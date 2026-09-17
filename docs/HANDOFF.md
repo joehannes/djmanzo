@@ -60,6 +60,18 @@ passes, the test is wrong — strengthen it, and say so in the commit message.
 This has caught several tests that were passing for the wrong reason, including
 one that could not have failed because the fixture had nothing in it to press.
 
+**When a test compares two signals, vary exactly one thing.** Two tests written
+for §25's `vocal` layer passed while the code they claimed to cover was deleted
+outright. The first compared a sustained tone against a click train, and the
+clicks read low because their energy is mostly *outside* the voice band — the
+band was doing the work, not the harmonic mask. The second compared held noise
+against chopped noise, and the chopped signal is silent nine tenths of the time
+— the duty cycle was doing the work. Both looked like good behavioural tests.
+Neither could fail for the reason it was written. The one that stands builds
+two spectrograms by hand, one horizontal ridge and one vertical, holding level,
+band and centre still. **A green mutation run is the only evidence a test is
+about what its name says.**
+
 ### Run the interface; do not only type-check it
 
 This is the single most valuable habit in the project. Every serious defect
@@ -94,6 +106,16 @@ vite build`, so a type error means `vite build` never runs and `dist/` keeps
 the *previous* bundle. A Playwright run then tests the old code and passes.
 This has produced a false "mutation killed" result more than once. Always look
 for `✓ built` in the output; never pipe it to `tail -1` and assume.
+
+**A new waveform layer will not appear in the Xvfb rig if a previous session
+ticked the layer picker.** §8 remembers a DJ's chosen layers in
+`~/.config/app.djmanzo.desktop/layers.json`, as an explicit list. An empty list
+means *everything*; a list written before a layer existed simply does not
+contain it, so a layer that works perfectly draws nothing and looks broken.
+Delete that file before driving a new layer. (It is also a real limitation for
+a real DJ, named in §25's row: somebody who ticked all twelve available layers
+last year is now seeing twelve of eighteen, having never been asked about the
+six added since.)
 
 **"Rail" already meant something here.** §22's *Next* rail — which record comes
 next — has `rail.spec.ts` and a `mod rail` in the command tests. §74's rail is

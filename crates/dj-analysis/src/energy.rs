@@ -269,6 +269,21 @@ pub struct Section {
     /// The low band's share of it, on the same scale. A breakdown is this
     /// falling away while the rest of the record carries on.
     pub low: f32,
+    /// How much of this window is a centred, sustained voice-range signal --
+    /// [`crate::voice`], and §25's `vocal` layer.
+    ///
+    /// **Absolute, unlike the two above, and the difference is the point.**
+    /// "Where does this record go" is a question about the record's own
+    /// busiest moment, so energy is scaled against it. "Is somebody singing"
+    /// is not: an instrumental scaled against its own maximum would report a
+    /// vocal at whichever window had the most synth in it.
+    ///
+    /// `None` where nothing was measured -- a record too short for the
+    /// measurement, or a sample rate with no room for a voice's harmonics
+    /// under Nyquist. Absent rather than zero, because "not measured" and
+    /// "nobody was singing" are different answers and the overview draws them
+    /// differently.
+    pub voice: Option<f32>,
 }
 
 /// A stretch of a record where it thins out.
@@ -299,6 +314,16 @@ pub struct Trajectory {
     /// Where it comes back, in frames. One per breakdown that ends before the
     /// record does -- a record that fades out on a breakdown has no drop.
     pub drops: Vec<f64>,
+    /// Where the voice arrives, in frames. [§27](../../../docs/DIRECTIVE.md)'s
+    /// *where the vocal enters*, and the last of the seven it asks for.
+    ///
+    /// The first window whose voice reading reaches
+    /// [`crate::voice::STRONG`]. `None` for an instrumental, for a record
+    /// nobody measured, and for a record whose lead never gets above a
+    /// murmur -- all three are records with no entry to mark, and a mark
+    /// placed at the loudest murmur would be the confident guess this crate
+    /// is written against.
+    pub voice_enters: Option<f64>,
 }
 
 /// How many beats a window covers when the record has no phrase structure.
@@ -334,6 +359,7 @@ const RETURN: f32 = 1.5;
 #[must_use]
 pub fn trajectory(
     banded: &BandedOnset,
+    voice: &crate::voice::Presence,
     grid: &dj_core::Beatgrid,
     rate: dj_core::SampleRate,
     frames: u64,
@@ -347,6 +373,7 @@ pub fn trajectory(
         beats_per_section: per_section,
         breakdowns: Vec::new(),
         drops: Vec::new(),
+        voice_enters: None,
     };
     let Some(beats) = crate::structure::beat_features(banded, grid, rate, frames) else {
         return empty;
@@ -371,10 +398,15 @@ pub fn trajectory(
             / span;
         let low: f32 = window.iter().map(|bands| bands[0]).sum::<f32>() / span;
         let beat = first + (index * per_section as usize) as i64;
+        let at = grid.beat_position(beat, rate).get();
+        let until = grid
+            .beat_position(beat + i64::from(per_section), rate)
+            .get();
         sections.push(Section {
-            at: grid.beat_position(beat, rate).get(),
+            at,
             energy: total,
             low,
+            voice: voice.mean_between(at, until),
         });
     }
     if sections.is_empty() {
@@ -403,11 +435,23 @@ pub fn trajectory(
     };
 
     let (breakdowns, drops) = thin_stretches(&sections, thin_below, per_section, grid, rate);
+    // The first window the voice actually carries, rather than the loudest one
+    // -- §27 asks where it *enters*, and the loudest window of a record is
+    // usually its last chorus.
+    let voice_enters = sections
+        .iter()
+        .find(|section| {
+            section
+                .voice
+                .is_some_and(|share| share >= crate::voice::STRONG)
+        })
+        .map(|section| section.at);
     Trajectory {
         sections,
         beats_per_section: per_section,
         breakdowns,
         drops,
+        voice_enters,
     }
 }
 
@@ -713,7 +757,14 @@ mod trajectory_tests {
     fn measure(audio: &[f32]) -> Trajectory {
         let (_, banded) = onset::detect_all(audio, SR.get());
         let frames = (audio.len() / 2) as u64;
-        trajectory(&banded, &grid(), SR, frames, Some(8))
+        trajectory(
+            &banded,
+            &crate::voice::Presence::default(),
+            &grid(),
+            SR,
+            frames,
+            Some(8),
+        )
     }
 
     /// **The load-bearing one: a breakdown is found where it is, and so is the
@@ -834,7 +885,14 @@ mod trajectory_tests {
             confidence: Confidence::new(1.0),
         };
         // Nothing to count against: zero frames is a record of no length.
-        let found = trajectory(&banded, &flat, SR, 0, Some(8));
+        let found = trajectory(
+            &banded,
+            &crate::voice::Presence::default(),
+            &flat,
+            SR,
+            0,
+            Some(8),
+        );
         assert!(found.sections.is_empty());
         assert!(found.breakdowns.is_empty());
     }

@@ -92,6 +92,82 @@ fn a_real_track_is_analysed_and_lands_on_its_deck() {
     assert_eq!(store.for_deck(1).as_deref(), Some(&*analysis));
 }
 
+/// **The join, for §25's `vocal` layer.**
+///
+/// `voice::presence` is unit-tested and `energy::trajectory` is unit-tested,
+/// and both would go on passing if `analyse` stopped calling the first — the
+/// trajectory's own tests hand it an empty curve. What that wiring is worth is
+/// only visible from here: the same helper's track with its sustained chord in
+/// against one with only the percussive bursts.
+///
+/// Both are centred, both are at the same level, and one of them has something
+/// held in the voice range. A reading that did not tell them apart would be
+/// measuring whether anything is playing.
+#[test]
+fn a_track_with_something_held_in_it_reads_as_a_voice_and_a_drum_track_does_not() {
+    let store = AnalysisStore::new();
+
+    let chord = analyse_or_cached(
+        &store,
+        deck(1),
+        TrackId::from_bytes([7; 32]),
+        &track(128.0, 30.0, 0.3),
+        SR,
+    );
+    let sections = &chord.trajectory.sections;
+    assert!(!sections.is_empty(), "a click track has a grid to window");
+    let voiced = sections
+        .iter()
+        .filter_map(|s| s.voice)
+        .fold(0.0f32, f32::max);
+    assert!(
+        voiced > dj_analysis::voice::STRONG,
+        "a sustained chord should read as a lead, got {voiced}"
+    );
+    assert!(
+        chord.trajectory.voice_enters.is_some(),
+        "and it should have somewhere it enters"
+    );
+
+    // The same track with the chord taken out: bursts on the beat and nothing
+    // held.
+    let drums = drum_only(128.0, 30.0);
+    let percussive = analyse_or_cached(&store, deck(2), TrackId::from_bytes([8; 32]), &drums, SR);
+    let hit = percussive
+        .trajectory
+        .sections
+        .iter()
+        .filter_map(|s| s.voice)
+        .fold(0.0f32, f32::max);
+    assert!(
+        hit < voiced / 2.0,
+        "a drum track reads {hit} against a chord's {voiced}"
+    );
+    assert_eq!(
+        percussive.trajectory.voice_enters, None,
+        "nothing is held in a drum track, so nothing enters"
+    );
+}
+
+/// The percussive half of [`track`], with nothing sustained under it.
+fn drum_only(bpm: f64, seconds: f64) -> Vec<f32> {
+    let rate = SR.get() as f64;
+    let frames = (seconds * rate) as usize;
+    let beat = 60.0 / bpm * rate;
+    let mut audio = vec![0.0f32; frames * 2];
+    for n in 0..frames {
+        let since_beat = (n as f64 % beat) / rate;
+        if since_beat < 0.01 {
+            let decay = (1.0 - since_beat as f32 / 0.01).powi(2);
+            let sign = if (n * 7919) % 2 == 0 { 1.0 } else { -1.0 };
+            let v = decay * sign * 0.8 * 0.3;
+            audio[n * 2] = v;
+            audio[n * 2 + 1] = v;
+        }
+    }
+    audio
+}
+
 /// The second load of the same audio must not re-analyse. This is the entire
 /// point of hashing content rather than paths, and the difference between a
 /// track appearing instantly and a two-second stall mid-set.

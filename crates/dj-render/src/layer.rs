@@ -285,12 +285,16 @@ static LAYERS: [Layer; 20] = [
         role: Role::Looping,
         drawn: Drawn::Overlay,
     },
+    // An estimate about the music, and a franker one than most: the detector
+    // measures a centred, sustained signal in the voice range, which is where
+    // a singer sits and is also where a centred synth lead sits. `Uncertain`
+    // is the colour for exactly that -- see `dj_analysis::voice`.
     Layer {
         name: "vocal",
         title: "Vocal presence",
-        about: "Where somebody is singing.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        about: "Where a lead is centred in the voice range -- usually a singer.",
+        role: Role::Uncertain,
+        drawn: Drawn::Overlay,
     },
     Layer {
         name: "stems",
@@ -556,7 +560,18 @@ mod tests {
             Some(&vec!["breakdowns", "drops", "energy"]),
             "the shape colour is for where the record goes, and only that"
         );
-        for role in ["placed", "seam", "runway", "uncertain"] {
+        // `uncertain` is the one the enum's own doc reserved for this: what is
+        // an estimate rather than a measurement. The beat grid's uncertainty
+        // and where a voice is are the same kind of claim about different
+        // things -- djmanzo saying *I think* -- and a DJ reading either is
+        // asking how much to trust what is drawn beside it. What must never
+        // share it is anything djmanzo knows.
+        assert_eq!(
+            grouped.get("uncertain"),
+            Some(&vec!["vocal", "confidence"]),
+            "the uncertain colour is for what djmanzo is estimating, and only that"
+        );
+        for role in ["placed", "seam", "runway"] {
             assert_eq!(
                 grouped.get(role).map(Vec::len),
                 Some(1),
@@ -601,6 +616,7 @@ mod tests {
                 "cues",
                 "loop",
                 "saved-loops",
+                "vocal",
                 "seam",
                 "mix-out",
                 "mix-in",
