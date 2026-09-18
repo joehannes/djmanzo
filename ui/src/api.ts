@@ -1404,6 +1404,15 @@ export interface LibraryTrack {
    * the analyser has run, and for a track analysed before this was measured.
    */
   energy: number | null;
+  /**
+   * §20's *vocal availability*.
+   *
+   * `null` means nobody has measured, which the table draws as a blank and
+   * never as "no vocal". `strong` is Rust's judgement at read time against
+   * `dj_analysis::presence::STRONG`; `share` is what was measured, for the
+   * hover.
+   */
+  vocal: { share: number; strong: boolean } | null;
   /** True once the track has everything sync and harmonic mixing need. */
   analysed: boolean;
   play_count: number;

@@ -66,6 +66,11 @@ import setups from "./setups.json" with { type: "json" };
  *  the other side of the workspace, so a hand-written stub would report a
  *  number nothing computes. */
 import packs from "./packs.json" with { type: "json" };
+/** §20's library columns, generated from `dj_app::columns::Column::ALL` by the
+ *  same Rust test. Hand-written here they drifted: fifteen entries under a
+ *  comment claiming fourteen, and a sixteenth the picker in these tests could
+ *  not offer. */
+import columns from "./columns.json" with { type: "json" };
 /** §81's six kinds of night, generated from `dj_app::setting::Setting::ALL` by
  *  the same Rust test. Hand-written here they would be the copy the panel was
  *  just relieved of, one file further out. */
@@ -1156,6 +1161,11 @@ export const ANSWERS: Record<string, unknown> = {
       // read the wrong field pass.
       loudness_lufs: -7.2,
       energy: 0.31,
+      // §20's *vocal availability*. A bachata has a singer on it, so this one
+      // reads strongly -- and the merengue below is left un-measured, because
+      // a blank and a "no" are different cells and a fixture with only one of
+      // them cannot tell a test which it is looking at.
+      vocal: { share: 0.42, strong: true },
       analysed: true,
       play_count: 0,
       rating: null,
@@ -1183,6 +1193,7 @@ export const ANSWERS: Record<string, unknown> = {
       // And the quieter, harder-hitting one.
       loudness_lufs: -11.0,
       energy: 0.88,
+      vocal: null,
       analysed: true,
       play_count: 3,
       rating: 5,
@@ -1194,27 +1205,16 @@ export const ANSWERS: Record<string, unknown> = {
   ],
   default_music_folder: null,
   /**
-   * §20's columns, as Rust offers them. All fourteen, so the picker draws the
-   * fourteen it draws in the application — a stub with a shorter list would
-   * make a test about ticking one a test about a control that is not there.
+   * §20's columns, from the same table Rust publishes.
+   *
+   * A golden file rather than a hand-written stub, and it became one the hard
+   * way: the list here was typed out under a comment claiming fourteen while
+   * holding fifteen, and adding §20's sixteenth left the picker in these tests
+   * with no row to tick. Nothing compared the two lists, so the copy drifted
+   * in silence. `e2e_fixture.rs` now regenerates this from
+   * `columns::Column::ALL` and fails when they diverge.
    */
-  library_columns: [
-    { slug: "title", heading: "Title", about: "The record's name. Always shown." },
-    { slug: "artist", heading: "Artist", about: "Who made it." },
-    { slug: "album", heading: "Album", about: "The release it came from." },
-    { slug: "genre", heading: "Genre", about: "The tag on the file, as its own library wrote it." },
-    { slug: "year", heading: "Year", about: "When it came out." },
-    { slug: "bpm", heading: "BPM", about: "Tempo, from the analyser. Blank until it has run." },
-    { slug: "key", heading: "Key", about: "Camelot — the notation you mix by." },
-    { slug: "duration", heading: "Time", about: "How long it runs." },
-    { slug: "loudness", heading: "Loud", about: "Integrated loudness in LUFS." },
-    { slug: "energy", heading: "Energy", about: "How hard it hits. Not how loud it is." },
-    { slug: "phrases", heading: "Phrase", about: "How many beats a phrase runs for." },
-    { slug: "rating", heading: "Rating", about: "Your own, out of five." },
-    { slug: "plays", heading: "Plays", about: "How many times you have played it." },
-    { slug: "last-played", heading: "Played", about: "When you last played it." },
-    { slug: "analysed", heading: "Ready", about: "Whether it has what sync and harmonic mixing need." },
-  ],
+  library_columns: columns,
   /** What a fresh install draws: the six the browser has always had. */
   chosen_columns: ["title", "artist", "album", "bpm", "key", "duration"],
   /**

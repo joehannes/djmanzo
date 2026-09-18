@@ -274,7 +274,7 @@ impl Library {
                      grid_confidence = ?5, key_hour = ?6, key_mode = ?7,
                      key_confidence = ?8, loudness_lufs = ?9, grid_source = ?10,
                      phrase_beats = ?11, phrase_anchor = ?12, phrase_confidence = ?13,
-                     energy = ?14
+                     energy = ?14, vocal = ?15
                  WHERE id = ?1",
                 params![
                     id.to_hex(),
@@ -291,6 +291,7 @@ impl Library {
                     analysis.phrase_anchor,
                     analysis.phrase_confidence,
                     analysis.energy,
+                    analysis.vocal,
                 ],
             )?;
             Ok(())
@@ -2194,7 +2195,10 @@ fn set_analysis_if_absent_on(
              -- brings a grid and a key and has never measured energy, and
              -- blanking a reading the analyser made would cost a column the
              -- import had nothing to say about.
-             energy = COALESCE(?14, energy)
+             energy = COALESCE(?14, energy),
+             -- COALESCE for `energy`'s reason: an importer brings a grid and a
+             -- key and has never asked whether there is a voice in the record.
+             vocal = COALESCE(?15, vocal)
          WHERE id = ?1",
         params![
             id.to_hex(),
@@ -2211,6 +2215,7 @@ fn set_analysis_if_absent_on(
             analysis.phrase_anchor,
             analysis.phrase_confidence,
             analysis.energy,
+            analysis.vocal,
         ],
     )?;
     Ok(written > 0)
@@ -2272,7 +2277,7 @@ const TRACK_COLUMNS: &str = "id, path, title, artist, album, album_artist, genre
      file_modified, added_at, bpm, grid_anchor, grid_beats_per_bar, \
      grid_confidence, key_hour, key_mode, key_confidence, loudness_lufs, \
      play_count, last_played, rating, grid_source, colour, \
-     phrase_beats, phrase_anchor, phrase_confidence, energy";
+     phrase_beats, phrase_anchor, phrase_confidence, energy, vocal";
 
 /// The same list, qualified — needed wherever the query joins another table
 /// that has columns of the same name.
@@ -2285,7 +2290,7 @@ const TRACK_COLUMNS_QUALIFIED: &str = "tracks.id, tracks.path, tracks.title, tra
      tracks.loudness_lufs, tracks.play_count, tracks.last_played, tracks.rating, \
      tracks.grid_source, tracks.colour, \
      tracks.phrase_beats, tracks.phrase_anchor, tracks.phrase_confidence, \
-     tracks.energy";
+     tracks.energy, tracks.vocal";
 
 /// Read one row.
 ///
@@ -2375,6 +2380,7 @@ fn read_track_from(row: &Row<'_>, base: usize) -> rusqlite::Result<Result<Librar
             phrase_anchor: row.get(at(31))?,
             phrase_confidence: row.get(at(32))?,
             energy: row.get(at(33))?,
+            vocal: row.get(at(34))?,
         },
         stats: PlayStats {
             play_count: row.get(at(25))?,
@@ -3305,6 +3311,84 @@ mod tests {
         assert_eq!(found.beatgrid(), Some(grid));
         assert_eq!(found.key(), Some(key));
         assert_eq!(found.key_confidence, Some(0.7));
+    }
+
+    /// **§20's vocal column keeps three answers apart, through SQLite.**
+    ///
+    /// Not analysed, measured and silent in the voice range, and measured with
+    /// a lead in it are three different facts, and two of them are easy to
+    /// collapse: a `NULL` read as `0.0` calls every un-analysed record an
+    /// instrumental, and a `0.0` written as `NULL` calls every instrumental
+    /// un-analysed. A DJ scanning a hundred rows acts on the difference.
+    #[test]
+    fn a_record_with_no_voice_and_one_nobody_measured_are_different_rows() {
+        let lib = library();
+        for n in 1..=3 {
+            lib.upsert_track(&track(n, "A", "B")).unwrap();
+        }
+
+        // Left alone: nobody has analysed it.
+        lib.set_analysis(id(1), &StoredAnalysis::default()).unwrap();
+        // Measured, and nothing is held in the voice range.
+        lib.set_analysis(
+            id(2),
+            &StoredAnalysis {
+                vocal: Some(0.0),
+                ..StoredAnalysis::default()
+            },
+        )
+        .unwrap();
+        // Measured, with a lead in it.
+        lib.set_analysis(
+            id(3),
+            &StoredAnalysis {
+                vocal: Some(0.42),
+                ..StoredAnalysis::default()
+            },
+        )
+        .unwrap();
+
+        let read = |n: u8| lib.track(id(n)).unwrap().unwrap().analysis.vocal;
+        assert_eq!(
+            read(1),
+            None,
+            "un-analysed must not read as an instrumental"
+        );
+        assert_eq!(
+            read(2),
+            Some(0.0),
+            "an instrumental must not read as absent"
+        );
+        assert_eq!(read(3), Some(0.42));
+    }
+
+    /// An importer that knows a grid must not blank a reading the analyser
+    /// made, which is what the `COALESCE` beside this column is for.
+    #[test]
+    fn an_import_that_has_never_heard_a_record_does_not_erase_its_vocal() {
+        let lib = library();
+        lib.upsert_track(&track(1, "A", "B")).unwrap();
+        lib.set_analysis(
+            id(1),
+            &StoredAnalysis {
+                vocal: Some(0.42),
+                ..StoredAnalysis::default()
+            },
+        )
+        .unwrap();
+
+        let grid = Beatgrid::new(
+            FramePos::new(0.0),
+            Bpm::new(124.0).unwrap(),
+            Confidence::new(0.9),
+        );
+        lib.set_analysis_if_absent(id(1), &StoredAnalysis::default().with_beatgrid(grid))
+            .unwrap();
+
+        assert_eq!(
+            lib.track(id(1)).unwrap().unwrap().analysis.vocal,
+            Some(0.42)
+        );
     }
 
     #[test]

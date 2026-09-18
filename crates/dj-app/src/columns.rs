@@ -58,6 +58,8 @@ pub enum Column {
     Duration,
     Loudness,
     Energy,
+    /// §20's *vocal availability*. See [`Column::about`].
+    Vocal,
     Phrases,
     Rating,
     Plays,
@@ -67,7 +69,7 @@ pub enum Column {
 
 impl Column {
     /// Every column there is, in the order the picker offers them.
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Title,
         Self::Artist,
         Self::Album,
@@ -78,6 +80,7 @@ impl Column {
         Self::Duration,
         Self::Loudness,
         Self::Energy,
+        Self::Vocal,
         Self::Phrases,
         Self::Rating,
         Self::Plays,
@@ -114,6 +117,7 @@ impl Column {
             Self::Duration => "duration",
             Self::Loudness => "loudness",
             Self::Energy => "energy",
+            Self::Vocal => "vocal",
             Self::Phrases => "phrases",
             Self::Rating => "rating",
             Self::Plays => "plays",
@@ -140,6 +144,7 @@ impl Column {
             Self::Duration => "Time",
             Self::Loudness => "Loud",
             Self::Energy => "Energy",
+            Self::Vocal => "Vocal",
             Self::Phrases => "Phrase",
             Self::Rating => "Rating",
             Self::Plays => "Plays",
@@ -171,6 +176,15 @@ impl Column {
             // disagree, which is the entire reason for measuring the second.
             Self::Energy => {
                 "How hard it hits: percussive drive, how much the spectrum moves, and how                  little it breathes. Not how loud it is."
+            }
+            // §20 asks for *vocal availability* and this is the honest form
+            // of it. djmanzo cannot tell a singer from a centred synth lead --
+            // `dj_analysis::presence` says so in its own docs -- so the
+            // heading is what a DJ calls it and the sentence is what was
+            // measured.
+            Self::Vocal => {
+                "Whether there is a lead sitting where a singer sits, at the record's most \
+                 vocal moment. A centred synth lead reads the same way."
             }
             Self::Phrases => {
                 "How many beats a phrase runs for, when the structure is clear enough to say."

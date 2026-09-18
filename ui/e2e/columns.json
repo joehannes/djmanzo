@@ -1,0 +1,82 @@
+[
+  {
+    "slug": "title",
+    "heading": "Title",
+    "about": "The record's name. Always shown."
+  },
+  {
+    "slug": "artist",
+    "heading": "Artist",
+    "about": "Who made it."
+  },
+  {
+    "slug": "album",
+    "heading": "Album",
+    "about": "The release it came from."
+  },
+  {
+    "slug": "genre",
+    "heading": "Genre",
+    "about": "The tag on the file, as its own library wrote it."
+  },
+  {
+    "slug": "year",
+    "heading": "Year",
+    "about": "When it came out."
+  },
+  {
+    "slug": "bpm",
+    "heading": "BPM",
+    "about": "Tempo, from the analyser. Blank until it has run."
+  },
+  {
+    "slug": "key",
+    "heading": "Key",
+    "about": "Camelot — the notation you mix by."
+  },
+  {
+    "slug": "duration",
+    "heading": "Time",
+    "about": "How long it runs."
+  },
+  {
+    "slug": "loudness",
+    "heading": "Loud",
+    "about": "Integrated loudness in LUFS — how loud it is mastered, not how hard it hits."
+  },
+  {
+    "slug": "energy",
+    "heading": "Energy",
+    "about": "How hard it hits: percussive drive, how much the spectrum moves, and how                  little it breathes. Not how loud it is."
+  },
+  {
+    "slug": "vocal",
+    "heading": "Vocal",
+    "about": "Whether there is a lead sitting where a singer sits, at the record's most vocal moment. A centred synth lead reads the same way."
+  },
+  {
+    "slug": "phrases",
+    "heading": "Phrase",
+    "about": "How many beats a phrase runs for, when the structure is clear enough to say."
+  },
+  {
+    "slug": "rating",
+    "heading": "Rating",
+    "about": "Your own, out of five."
+  },
+  {
+    "slug": "plays",
+    "heading": "Plays",
+    "about": "How many times you have played it."
+  },
+  {
+    "slug": "last-played",
+    "heading": "Played",
+    "about": "When you last played it."
+  },
+  {
+    "slug": "analysed",
+    "heading": "Ready",
+    "about": "Whether it has everything sync and harmonic mixing need."
+  }
+]

@@ -23,7 +23,7 @@ Versioning follows semver, with one project-specific convention:
 §25's layer table. It did exist. `dj_stems::hpss` pulls a vocal stem out of a
 record with **no model, no download and no runtime** — a DJ can solo the voice
 today — and the waveform could not draw where that voice was.
-`dj_analysis::voice` measures the same thing the separator defines, the
+`dj_analysis::presence` measures the same thing the separator defines, the
 harmonic part of the centre channel between 200 Hz and 8 kHz, and measures it
 **without reconstructing anything**: a presence curve is a question about the
 masks, not about the audio, so there is no inverse transform and no second copy
@@ -64,7 +64,7 @@ this shipped.
   beside the trajectory columns, which is exactly that glance. `--uncertain` is
   now a tint of the palette's own accent, derived so every package gets one
   free, and a vitest fails the day somebody points the two at one token again.
-- **One number here is not a measurement, and says so.** `voice::STRONG` is the
+- **One number here is not a measurement, and says so.** `presence::STRONG` is the
   share at which djmanzo will call a lead *carrying* the record. That can only
   be set by listening to real records with real voices on them; this machine
   has none, only synthesised test signals. It is one constant rather than one
@@ -97,10 +97,41 @@ every hop of a signal built to contain all four and says so.
   that row a commit ago — *four* — was a slip, corrected here: three were
   exposed before either of these shipped, and §75's own energy, breakdown and
   drop made six. The one left is *transient density*.
-- `dj_analysis::voice` is now `dj_analysis::presence`, and the four stem
+- The four stem
   labels, keys and colour tokens moved out of `Stems.svelte` into
   `ui/src/stems.ts` — a second copy of that order is how the bass fader ends
   up coloured like the vocal band.
+
+**§20's vocal column** — *vocal availability*, the reading §20 has listed as
+needing "analysis nobody has written" since the row existed.
+
+The library stores the **strongest window's share** rather than a verdict: the
+line between *has a vocal* and *does not* is `presence::STRONG`, the one stated
+guess in that measurement, and baking today's guess into a DJ's database would
+mean re-analysing a library to re-tune it. Deciding on the way out means
+re-tuning re-reads the column.
+
+Three answers, kept apart end to end: a mark for a record with a lead in it, a
+dash for one measured and found to have none, and a **blank** for one nobody
+has analysed. A DJ hunting for an acapella acts on *there is none* and skips
+*no answer yet*, and a column that drew both the same would send them to the
+same place.
+
+- **§20 goes to fifteen of twenty columns.** Of the five left, four are
+  decisions rather than gaps. The fifth is *stem availability*, and its reason
+  has changed rather than held: the separator can split any record on demand,
+  so availability here means **ready** rather than possible — and the stem
+  cache is keyed by chunk, so there is no cheap per-row answer to give a table
+  drawing a hundred rows.
+- **Adding it found the browser fixture had been drifting.** §20's column list
+  was typed out by hand under a comment claiming fourteen while holding
+  fifteen, and nothing compared it with `Column::ALL` — so the sixteenth column
+  simply had no row to tick, and the test that needed one failed for a reason
+  that had nothing to do with the column. It is a golden file blessed from Rust
+  now, like §54's setups and §16's packs.
+- Library schema 16. `NULL` and `0.0` are different rows and a mutation run
+  proves it: reading one as the other, never writing the column, and letting an
+  import blank a reading the analyser made all fail.
 
 Four more mutations were run against the partition — each current folded into
 *other* in turn, and the side channel judged by the centre's answer — and all

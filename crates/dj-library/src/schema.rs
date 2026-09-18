@@ -115,6 +115,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 15,
         sql: MIGRATION_15,
     },
+    Migration {
+        version: 16,
+        sql: MIGRATION_16,
+    },
 ];
 
 /// The initial schema.
@@ -801,6 +805,35 @@ const MIGRATION_15: &str = r#"
 -- written by djmanzo itself off its own action log that distinction cannot
 -- arise: the log has every loop gesture in it.
 ALTER TABLE kept_pairs ADD COLUMN loop_beats REAL;
+"#;
+
+const MIGRATION_16: &str = r#"
+-- §20's *vocal availability*, which for a long time was filed under "needs
+-- analysis nobody has written".
+--
+-- The analysis exists: `dj_analysis::presence` measures how much of each
+-- window is a centred, sustained voice-range signal, and this stores the
+-- **strongest** window's share. One number rather than a curve, for the reason
+-- `energy` above is one number: a library column shows one thing, and the
+-- curve is recomputed with the audio whenever the waveform that draws it is on
+-- screen.
+--
+-- The strongest rather than the mean, because the question a DJ asks this
+-- column is *is there a vocal in here at all* -- and a record with one chorus
+-- has a vocal. A mean over a six-minute record would answer a question nobody
+-- asked and would call that record an instrumental.
+--
+-- Real rather than a boolean, and deliberately: `dj_analysis::presence::STRONG`
+-- is the one number in that measurement that is a stated guess rather than a
+-- reading, and storing the answer instead of the evidence would bake today's
+-- guess into every row a DJ has. Re-tuning it re-reads the column; it does not
+-- require re-analysing a library.
+--
+-- Null means "analysed before this column existed" as well as "not analysed",
+-- and both are the same thing to a reader: no answer yet. Zero is a different
+-- answer -- a record measured and found to have nothing held in the voice
+-- range -- and the column draws the two differently.
+ALTER TABLE tracks ADD COLUMN vocal REAL;
 "#;
 
 #[cfg(test)]

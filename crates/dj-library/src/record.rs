@@ -74,6 +74,20 @@ pub struct StoredAnalysis {
     /// analysed at all, which are the same answer to a reader: nothing yet.
     /// See `dj_analysis::energy` for the three readings behind the number.
     pub energy: Option<f64>,
+    /// §20's *vocal availability*: the strongest window's vocal share.
+    ///
+    /// The strongest rather than the mean, because the question this column is
+    /// asked is *is there a vocal in here at all*, and a record with one
+    /// chorus has a vocal. `dj_analysis::presence` is the measurement and
+    /// `presence::STRONG` is where a reader decides the answer is yes -- the
+    /// share is stored rather than the verdict, so re-tuning that one stated
+    /// guess re-reads the column instead of requiring a library to be
+    /// analysed again.
+    ///
+    /// `None` for a track analysed before this existed as well as for one not
+    /// analysed at all. `Some(0.0)` is a different answer: measured, and
+    /// nothing held in the voice range.
+    pub vocal: Option<f64>,
     /// Phrase length in beats, and the beat within it that starts a phrase.
     ///
     /// Both or neither: a length without its starting beat is a marker in an

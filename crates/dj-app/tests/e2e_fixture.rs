@@ -205,6 +205,53 @@ fn the_browser_fixture_has_the_setups_djmanzo_offers() {
     );
 }
 
+/// §20's columns, as a golden file.
+///
+/// This was fifteen entries typed out by hand in `shell.ts`, under a comment
+/// claiming there were fourteen — and the count had been wrong for at least
+/// one column before anybody noticed, because nothing compared the two lists.
+/// Adding §20's sixteenth found it: the picker in the browser tests had no
+/// row to tick, and the test that needed one failed for a reason that had
+/// nothing to do with the column.
+///
+/// `library_columns` is a pure function of `columns::Column::ALL`, so the
+/// stub is generated from it for the same reason the setups above are: a
+/// hand-written copy of a table is a second description of it, and the copy is
+/// always the one that goes stale.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_columns_djmanzo_offers() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/columns.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::library_columns())
+        .expect("the columns serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the columns");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored columns are JSON");
+    let fresh: serde_json::Value =
+        serde_json::from_str(&fresh).expect("the fresh columns are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe library columns have changed, so the browser is ticking boxes \
+         against a list of columns djmanzo no longer offers.\n\nRegenerate \
+         with:\n    DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// §16's knowledge packs, as a golden file.
 ///
 /// `knowledge_packs` is a pure function of `dj_assistant::pack::ALL` and the

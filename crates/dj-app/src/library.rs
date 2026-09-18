@@ -312,6 +312,15 @@ pub fn stored_analysis(analysis: &dj_analysis::Analysis) -> dj_library::StoredAn
         // readings behind it are recomputed with the audio whenever the panel
         // that draws them is open.
         energy: Some(f64::from(analysis.energy.value)),
+        // §20's *vocal availability*, from §25's own measurement: the
+        // strongest window rather than the mean, because a record with one
+        // chorus has a vocal and a mean over six minutes would call it an
+        // instrumental.
+        //
+        // `None` when there were no windows to read -- a record with no grid
+        // to count phrases against, which is the same absence the trajectory
+        // itself reports and not a claim that nobody sings on it.
+        vocal: strongest_voice(&analysis.trajectory),
         ..dj_library::StoredAnalysis::default()
     };
     if let Some(tempo) = &analysis.tempo {
@@ -326,6 +335,24 @@ pub fn stored_analysis(analysis: &dj_analysis::Analysis) -> dj_library::StoredAn
         stored.phrase_confidence = Some(f64::from(phrases.confidence));
     }
     stored
+}
+
+/// The loudest vocal reading in a record, or `None` if nothing was measured.
+///
+/// `fold` over an option rather than `max` over a filtered iterator, because
+/// the two absences have to stay apart: a record with no measured window at
+/// all answers `None`, and one measured throughout with nothing held in the
+/// voice range answers `Some(0.0)`. A reader draws those differently and a
+/// `max` starting at zero would collapse them.
+fn strongest_voice(trajectory: &dj_analysis::energy::Trajectory) -> Option<f64> {
+    trajectory
+        .sections
+        .iter()
+        .filter_map(dj_analysis::energy::Section::voice)
+        .fold(None, |best: Option<f32>, share| {
+            Some(best.map_or(share, |seen| seen.max(share)))
+        })
+        .map(f64::from)
 }
 
 /// Unix seconds. One place, so every timestamp in the library agrees.
@@ -405,6 +432,63 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         condition()
+    }
+
+    /// **The strongest window, and the two absences kept apart.**
+    ///
+    /// A record with one chorus has a vocal, so this is a max rather than a
+    /// mean — a mean over six minutes would call that record an instrumental.
+    /// And a record nobody measured answers `None` while one measured and
+    /// found empty answers `Some(0.0)`: the library column draws those
+    /// differently, and a `max` starting at zero would collapse them into one.
+    #[test]
+    fn the_stored_vocal_is_the_loudest_window_and_absence_is_not_zero() {
+        use dj_analysis::energy::{Section, Trajectory};
+
+        let window = |voice: Option<f32>| Section {
+            at: 0.0,
+            energy: 0.5,
+            low: 0.5,
+            parts: voice.map(|share| {
+                let mut parts = [0.0f32; dj_core::Stem::COUNT];
+                parts[dj_core::Stem::Vocal.index()] = share;
+                parts
+            }),
+        };
+        let of = |sections: Vec<Section>| {
+            super::strongest_voice(&Trajectory {
+                sections,
+                ..Trajectory::default()
+            })
+        };
+
+        assert_eq!(of(Vec::new()), None, "no windows is no answer");
+        assert_eq!(
+            of(vec![window(None), window(None)]),
+            None,
+            "windows nobody measured are no answer either"
+        );
+        assert_eq!(
+            of(vec![window(Some(0.0)), window(Some(0.0))]),
+            Some(0.0),
+            "measured and empty is an answer, and it is not absence"
+        );
+        // One chorus in an otherwise instrumental record.
+        assert_eq!(
+            of(vec![
+                window(Some(0.01)),
+                window(Some(0.62)),
+                window(Some(0.02))
+            ]),
+            Some(0.62_f32.into()),
+            "the loudest window is the answer, not the average"
+        );
+        // A window nobody measured beside ones that were: the measured ones
+        // still answer.
+        assert_eq!(
+            of(vec![window(None), window(Some(0.3))]),
+            Some(0.3_f32.into())
+        );
     }
 
     #[test]

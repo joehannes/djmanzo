@@ -5117,6 +5117,36 @@ mod grid_edit_tests {
 /// frames or looking up Camelot letters — it renders a table, and a table of
 /// four hundred rows re-deriving the same values on every keystroke is how a
 /// browser stops feeling instant.
+/// §20's *vocal availability*, as the table reads it.
+///
+/// Two aspects of one reading rather than two fields: the **share** is what
+/// was measured and is stored, and **strong** is the judgement made about it
+/// at read time by the side that owns the line —
+/// `dj_analysis::presence::STRONG`.
+///
+/// Storing the share and deciding here is the point. That constant is the one
+/// number in the measurement that is a stated guess rather than a reading, so
+/// baking its verdict into a library row would put today's guess in a DJ's
+/// database permanently; deciding on the way out means re-tuning it re-reads
+/// every column instead of re-analysing every record.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct VocalReading {
+    /// The strongest window's vocal share, 0..=1.
+    pub share: f64,
+    /// Whether that is enough to say there is a lead in the record.
+    pub strong: bool,
+}
+
+impl VocalReading {
+    #[must_use]
+    pub fn from_share(share: f64) -> Self {
+        Self {
+            share,
+            strong: share >= f64::from(dj_analysis::presence::STRONG),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LibraryTrackDto {
     pub id: String,
@@ -5133,6 +5163,9 @@ pub struct LibraryTrackDto {
     pub loudness_lufs: Option<f64>,
     /// §20's energy, 0..=1. Not the loudness above — see `dj_analysis::energy`.
     pub energy: Option<f64>,
+    /// §20's *vocal availability*. `None` means nobody has measured, which the
+    /// table draws as a blank and never as "no vocal".
+    pub vocal: Option<VocalReading>,
     /// True once the track has everything sync and harmonic mixing need.
     pub analysed: bool,
     pub play_count: i64,
@@ -5168,6 +5201,7 @@ impl From<dj_library::LibraryTrack> for LibraryTrackDto {
             key: track.analysis.key().map(|k| k.camelot()),
             loudness_lufs: track.analysis.loudness_lufs,
             energy: track.analysis.energy,
+            vocal: track.analysis.vocal.map(VocalReading::from_share),
             analysed: track.analysis.is_complete(),
             play_count: track.stats.play_count,
             rating: track.stats.rating,

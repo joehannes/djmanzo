@@ -20,7 +20,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-import { errorsThrown, openShell } from "./shell";
+import { ANSWERS, errorsThrown, openShell } from "./shell";
 
 const TABLE = ".table-scroll table";
 const HEAD = (slug: string) => `${TABLE} th[data-column="${slug}"]`;
@@ -139,6 +139,61 @@ test.describe("§20's columns", () => {
       "the energy column ranks the records exactly as loudness does, so it is " +
         "loudness with a new header",
     ).not.toEqual(order(louds));
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **§20's *vocal availability*, and the three answers it has to keep apart.**
+   *
+   * A record with a lead in it, a record measured and found to have none, and
+   * a record nobody has measured. The middle one and the last one are the
+   * pair that matters: a DJ hunting for an acapella acts on "there is none"
+   * and skips "no answer yet", and a cell that drew both as blank — or both
+   * as a dash — would send them to the same place.
+   *
+   * Which of the three a share is, is Rust's: the line is
+   * `dj_analysis::presence::STRONG`, the one stated guess in that
+   * measurement, and it has one owner. What is checked here is that the three
+   * reach the screen as three different cells.
+   */
+  test("the vocal column tells a record with none from one nobody measured", async ({
+    page,
+  }) => {
+    const rows = ANSWERS.library_search as Record<string, unknown>[];
+    await openShell(page, "/", {}, {
+      library_search: [
+        rows[0], // a lead in it
+        rows[1], // nobody has measured
+        {
+          ...rows[0],
+          id: "c".repeat(64),
+          path: "/music/instrumental.flac",
+          title: "An Instrumental",
+          // Measured, and nothing is held in the voice range. Not `null`:
+          // that is the row above, and telling them apart is the point.
+          vocal: { share: 0.01, strong: false },
+        },
+      ],
+    });
+    await page.getByRole("button", { name: "Browse", exact: true }).click();
+    await expect(page.locator(TABLE)).toBeVisible();
+    await page.getByTestId("columns-toggle").click();
+    await expect(page.locator(".column-picker")).toBeVisible();
+
+    await tick(page, "vocal").check();
+    await expect(page.locator(HEAD("vocal"))).toHaveCount(1);
+
+    const cells = await page.locator(CELL("vocal")).allTextContents();
+    expect(cells).toHaveLength(3);
+    const [withVocal, unmeasured, instrumental] = cells.map((c) => c.trim());
+
+    expect(withVocal, "a record with a lead in it draws nothing").not.toBe("");
+    expect(unmeasured, "an un-measured record is not blank").toBe("");
+    expect(instrumental, "an instrumental is not marked").not.toBe("");
+    expect(
+      instrumental,
+      "an instrumental is drawn exactly like a record with a vocal",
+    ).not.toBe(withVocal);
     expect(errorsThrown(page)).toEqual([]);
   });
 

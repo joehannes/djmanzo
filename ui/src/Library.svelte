@@ -399,6 +399,8 @@
         return "loudness_lufs";
       case "energy":
         return "energy";
+      case "vocal":
+        return "vocal";
       default:
         return slug as keyof LibraryTrack;
     }
@@ -439,6 +441,18 @@
       // to argue about — it is a position in djmanzo's own range.
       case "energy":
         return track.energy != null ? String(Math.round(track.energy * 100)) : "";
+      // §20's *vocal availability*, read at a glance rather than measured. A
+      // mark for a record with a lead in it, a dash for one measured and found
+      // to have none, and a blank for one nobody has analysed — three states,
+      // because "no vocal" and "no answer" are different and a DJ scanning a
+      // hundred rows will not stop to wonder which. The share behind it is on
+      // the hover.
+      //
+      // Rust decides which of the three, because the line between the first
+      // two is `presence::STRONG` and that constant has one owner.
+      case "vocal":
+        if (track.vocal == null) return "";
+        return track.vocal.strong ? "\u25cf" : "\u2013";
       // Beats rather than bars, because that is what the analyser measures and
       // what `phrase_beats` holds. A record whose structure is not clear enough
       // to say has none, which is a real answer.
