@@ -117,11 +117,17 @@ own doc says why it must not be on the snapshot. Ten frames of playback cost
 **forty** IPC round trips. It was invisible to every test in the file, because
 every test emits one frame at a time.
 
-Two things follow. **Measure with spaced frames**: thirty rapid `__emit`s in a
-loop batch into one effect run and report four calls, which is what a first
-attempt at measuring this concluded before the defect was found. And **guard
-the call rather than trusting the dependency** — `ui/src/waveformAsks.ts` is
-that pattern: build a key from primitives, compare, return early.
+It was three calls, not one: `phrase_grid` and `pad_pages` were doing the same
+thing, and `pad_pages`'s own comment said it was *fetched once*. Ten frames of
+playback cost forty-two round trips in total.
+
+Three things follow. **Measure with spaced frames**: thirty rapid `__emit`s in
+a loop batch into one effect run and report four calls, which is what a first
+attempt at measuring this concluded before the defect was found. **Guard the
+call rather than trusting the dependency** — `ui/src/waveformAsks.ts` is that
+pattern: build a key from primitives, compare, return early. And **measure the
+seam, not the call**: `ui/e2e/asks.spec.ts` holds what a frame of playback may
+cost the interface in total, so the fourth one to go wrong fails too.
 
 **A new waveform layer will not appear in the Xvfb rig if a previous session
 ticked the layer picker.** §8 remembers a DJ's chosen layers in

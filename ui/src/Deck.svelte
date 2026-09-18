@@ -408,7 +408,16 @@
    * snapshot the component already has.
    */
   let padPageList = $state<PadPageDto[]>([]);
+  /** Which deck the list above was fetched for. See the effect. */
+  let askedPads = -1;
   $effect(() => {
+    // **"Once" was the intent and not the behaviour.** `deck.number` is read
+    // through a proxy `App.svelte` replaces on every frame — `snapshot = next`
+    // — so this fetched a fixed table sixty times a second: measured at twenty
+    // `pad_pages` calls for ten frames of ordinary playback. The guard is what
+    // makes the comment above true.
+    if (deck.number === askedPads) return;
+    askedPads = deck.number;
     void padPages(deck.number)
       .then((pages) => {
         padPageList = pages;

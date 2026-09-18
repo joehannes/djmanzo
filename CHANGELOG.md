@@ -102,7 +102,7 @@ every hop of a signal built to contain all four and says so.
   `ui/src/stems.ts` — a second copy of that order is how the bass fader ends
   up coloured like the vocal band.
 
-**The waveform asked Rust two hundred and forty times a second** — §25, §90,
+**The interface asked Rust four times per frame** — §25, §90,
 and a limitation this changelog recorded two entries ago that turns out to
 have been wrong about its own cause.
 
@@ -139,6 +139,16 @@ the snapshot in order to avoid.
   rapid emits in a loop batch into one effect run and report four calls. Spaced
   thirty milliseconds apart, as the pump really delivers them, they report
   forty. Both the measurement and the trap behind it are in HANDOFF.
+- **It was three calls, not one.** Measuring the whole seam rather than the one
+  call found `phrase_grid` and `pad_pages` doing the same thing, two a frame
+  each. Ten frames of playback cost **forty-two** IPC round trips; they now
+  cost **two**, and those two are on their own throttles rather than per frame.
+  `pad_pages`'s own comment said it was *fetched once*, which was the intent
+  and not the behaviour.
+- `ui/e2e/asks.spec.ts` is the ratchet, and it measures the **seam** rather
+  than naming the three calls: a test listing them would pass the day a fourth
+  arrived. Ten frames of ordinary playback may cost four calls; the real figure
+  is two, and it should be lowered whenever that drops.
 
 **§20's vocal column** — *vocal availability*, the reading §20 has listed as
 needing "analysis nobody has written" since the row existed.

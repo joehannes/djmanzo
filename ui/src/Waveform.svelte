@@ -420,11 +420,21 @@
    */
   let phrases = $state<PhraseGrid | null>(null);
 
+  /** What was last asked for, so a frame that changed nothing asks nothing. */
+  let askedPhrases = "";
+
   $effect(() => {
-    // Named so the effect depends on them; the epoch is the invalidation and
-    // the deck number is which record.
+    // **Guarded, for the reason the effect above is.** `deck.number` is read
+    // through a proxy the snapshot replaces on every frame, so naming it as a
+    // dependency re-ran this sixty times a second: measured at twenty
+    // `phrase_grid` calls for ten frames of ordinary playback.
+    //
+    // The epoch is the invalidation and the deck number is which record;
+    // together they are the whole of what the answer depends on.
     const [which, when] = [deck.number, epoch];
-    void when;
+    const key = `${which}/${when}`;
+    if (key === askedPhrases) return;
+    askedPhrases = key;
     void phraseGrid(which)
       .then((found) => {
         phrases = found;
