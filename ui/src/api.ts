@@ -114,6 +114,14 @@ export interface DeckState {
   pre_fader_level: number;
   keylock: boolean;
   keylock_latency_ms: number;
+  /**
+   * §25's saved loops, as a generation rather than the regions themselves.
+   *
+   * The waveform re-asks `waveform_info` when this moves. A counter because
+   * this frame is built sixty times a second and eight regions per deck on it
+   * would be the pump carrying furniture — see `dj_app::snapshot::Marks`.
+   */
+  marks: number;
   /** Whether a hand is on this deck's platter. */
   jog_touched: boolean;
   /** `"vinyl"` or `"cdj"` — how the platter behaves under that hand. */

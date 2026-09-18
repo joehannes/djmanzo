@@ -333,9 +333,9 @@ pub fn run() {
             // §77. Read once here so the pump has the handle; the state seeds
             // it from the stored workspace on the first read and updates it on
             // every write.
-            let chosen_focus = {
+            let (chosen_focus, marks) = {
                 let state: tauri::State<'_, AppState> = handle.state();
-                state.focus()
+                (state.focus(), state.marks())
             };
             let pump = SnapshotPump::start_with_bridge(
                 registry,
@@ -348,6 +348,7 @@ pub fn run() {
                     recording: Some(recording_state),
                     night: Some(night),
                     focus: Some(chosen_focus),
+                    marks: Some(marks),
                 },
                 move |snapshot| {
                     use tauri::Emitter;

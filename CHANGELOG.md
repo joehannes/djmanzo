@@ -102,6 +102,44 @@ every hop of a signal built to contain all four and says so.
   `ui/src/stems.ts` — a second copy of that order is how the bass fader ends
   up coloured like the vocal band.
 
+**The waveform asked Rust two hundred and forty times a second** — §25, §90,
+and a limitation this changelog recorded two entries ago that turns out to
+have been wrong about its own cause.
+
+§25's row said a loop saved mid-set would appear only when the record was next
+loaded, because the waveform re-asks on a load and on an analysis and a stored
+loop changes neither. That was reasoned rather than observed. Observing it
+found the opposite problem: the lane and the overview were re-asking on
+**every frame**.
+
+Their `$effect`s read `deck.analysis` and `deck.length_frames`. Those look like
+fine-grained dependencies and are not — `App.svelte` receives every frame as
+`snapshot = next`, and Svelte's `$state` proxies are deep, so replacing the
+root makes every deck a new proxy and every read through it a new signal.
+Measured with spaced frames: **forty `waveform_info` calls for ten frames of
+ordinary playback**, two components over two decks, every frame. Each call is a
+Tauri round trip, a library query for saved loops and a clone of the whole
+energy trajectory — which is exactly what that call's own doc says it is not on
+the snapshot in order to avoid.
+
+- `ui/src/waveformAsks.ts` builds a key from the primitives the answer depends
+  on, and the effect returns early when it has not moved. The same ten frames
+  now cost **nothing**, and a real change costs exactly two calls — the lane
+  and the overview of that one deck.
+- **`snapshot::Marks`** is the third thing for the waveform to watch: a
+  generation per deck, bumped where the library is written rather than where
+  the interface asks, so a loop saved from a controller pad reaches the lane on
+  the same terms as one saved from a click. A grid edit bumps it too, because
+  `grid_confidence` cannot carry that — the first hand edit takes it to certain
+  and every edit after leaves it there.
+- A counter rather than the regions: eight loops per deck on a frame built
+  sixty times a second would be the pump carrying the furniture this change
+  exists to take off it.
+- The first attempt at measuring this **missed the defect entirely**: thirty
+  rapid emits in a loop batch into one effect run and report four calls. Spaced
+  thirty milliseconds apart, as the pump really delivers them, they report
+  forty. Both the measurement and the trap behind it are in HANDOFF.
+
 **§20's vocal column** — *vocal availability*, the reading §20 has listed as
 needing "analysis nobody has written" since the row existed.
 

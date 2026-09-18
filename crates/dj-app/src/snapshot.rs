@@ -59,6 +59,13 @@ pub struct DeckSnapshot {
     pub pre_fader_level: f32,
     /// Holding the musical key while the pitch fader changes tempo.
     pub keylock: bool,
+    /// The generation of the marks stored with this deck's record.
+    ///
+    /// Not the marks themselves -- see [`Marks`] for why a counter rather than
+    /// eight regions rides a frame built sixty times a second. The waveform
+    /// watches it and re-asks `waveform_info` when it moves, which is how a
+    /// loop saved mid-set reaches the lane without the record being reloaded.
+    pub marks: u32,
     /// Whether a hand is on this deck's platter.
     pub jog_touched: bool,
     /// `"vinyl"` or `"cdj"` -- how the platter behaves under that hand.
@@ -530,6 +537,23 @@ impl Snapshot {
         self
     }
 
+    /// Stamp each deck with the generation of the marks stored against its
+    /// record. See [`Marks`].
+    ///
+    /// After capture rather than inside it, because this does not come from the
+    /// parameter registry: it is a fact about the *library*, and the registry
+    /// is what the audio thread shares.
+    #[must_use]
+    pub fn with_marks(mut self, marks: Option<&Marks>) -> Self {
+        let Some(marks) = marks else { return self };
+        for deck in &mut self.decks {
+            if let Some(id) = DeckId::from_human(deck.number) {
+                deck.marks = marks.generation(id);
+            }
+        }
+        self
+    }
+
     /// Read the current state of `deck_count` decks.
     #[must_use]
     pub fn capture(registry: &ParameterRegistry, deck_count: usize) -> Self {
@@ -600,6 +624,10 @@ impl Snapshot {
                 let length = get(DeckParam::LengthFrames);
                 DeckSnapshot {
                     number: id.human_number(),
+                    // Filled in by `with_marks` after capture: this comes from
+                    // the library rather than from the registry the audio
+                    // thread shares.
+                    marks: 0,
                     title: names
                         .as_ref()
                         .and_then(|m| m.get(&id.human_number()))
@@ -949,6 +977,46 @@ pub struct Sources {
     /// lives in a file and this loop runs sixty times a second. Written when an
     /// arrangement is stored or read, which is the only time it can change.
     pub focus: Option<Arc<std::sync::Mutex<Option<crate::cockpit::Focus>>>>,
+    /// §25's saved loops, as a generation per deck. See [`Marks`].
+    pub marks: Option<Arc<Marks>>,
+}
+
+/// How many times the marks stored *with a record* have changed, per deck.
+///
+/// A saved loop and a beat grid are both marks on a record: they live in the
+/// library rather than on the 60 Hz frame, they are edited mid-set, and the
+/// waveform draws both. Nothing on a deck's frame moves when either changes --
+/// `grid_confidence` comes closest and cannot do it, because the *first* hand
+/// edit takes it to certain and every edit after that leaves it there.
+///
+/// So this is what tells the lane there is something new to ask about.
+///
+/// A counter rather than the loops themselves, and that is the whole point:
+/// the snapshot is built sixty times a second and eight regions per deck on it
+/// would be the pump carrying furniture. One number says *ask again*; the
+/// asking is still the once-per-change call it always was.
+///
+/// Atomics rather than a lock because the pump reads this every tick and the
+/// writer is a command thread -- and a counter is exactly what an atomic is
+/// for.
+#[derive(Debug, Default)]
+pub struct Marks([std::sync::atomic::AtomicU32; dj_core::MAX_DECKS]);
+
+impl Marks {
+    /// Say that this deck's record has different marks now.
+    pub fn changed(&self, deck: dj_core::DeckId) {
+        if let Some(slot) = self.0.get(deck.index()) {
+            slot.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// The generation a deck is on. `0` until something changes.
+    #[must_use]
+    pub fn generation(&self, deck: dj_core::DeckId) -> u32 {
+        self.0
+            .get(deck.index())
+            .map_or(0, |slot| slot.load(Ordering::Relaxed))
+    }
 }
 
 /// A running snapshot pump. Stops when dropped.
@@ -1012,6 +1080,7 @@ impl SnapshotPump {
             recording,
             night,
             focus,
+            marks,
         } = sources;
         let alive = Arc::new(AtomicBool::new(true));
         // §90's *worker utilization* for the thread §90's last sentence is
@@ -1055,7 +1124,10 @@ impl SnapshotPump {
                             .as_deref()
                             .and_then(|slot| slot.lock().ok().map(|held| *held))
                             .flatten();
-                        let snapshot = snapshot.with_session(read).with_focus(chosen);
+                        let snapshot = snapshot
+                            .with_session(read)
+                            .with_focus(chosen)
+                            .with_marks(marks.as_deref());
                         let changed = previous.as_ref() != Some(&snapshot);
 
                         // Skip identical frames -- an idle application should not

@@ -107,6 +107,22 @@ the *previous* bundle. A Playwright run then tests the old code and passes.
 This has produced a false "mutation killed" result more than once. Always look
 for `✓ built` in the output; never pipe it to `tail -1` and assume.
 
+**A `$effect` that reads `deck.something` is not a fine-grained dependency.**
+`App.svelte` receives every frame as `snapshot = next` — the whole object,
+sixty times a second. Svelte's `$state` proxies are deep, so replacing the root
+makes every deck a *new* proxy and every read through it a *new* signal: an
+effect reading `deck.analysis` re-runs on every frame, not when the analysis
+changes. Two components were calling `waveform_info` that way, and the call's
+own doc says why it must not be on the snapshot. Ten frames of playback cost
+**forty** IPC round trips. It was invisible to every test in the file, because
+every test emits one frame at a time.
+
+Two things follow. **Measure with spaced frames**: thirty rapid `__emit`s in a
+loop batch into one effect run and report four calls, which is what a first
+attempt at measuring this concluded before the defect was found. And **guard
+the call rather than trusting the dependency** — `ui/src/waveformAsks.ts` is
+that pattern: build a key from primitives, compare, return early.
+
 **A new waveform layer will not appear in the Xvfb rig if a previous session
 ticked the layer picker.** §8 remembers a DJ's chosen layers in
 `~/.config/app.djmanzo.desktop/layers.json`, as an explicit list. An empty list

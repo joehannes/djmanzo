@@ -96,6 +96,9 @@ pub struct AppState {
     /// arrangement is a file and the pump runs sixty times a second. Seeded the
     /// first time the workspace is read, and updated whenever one is stored.
     focus: Arc<Mutex<Option<crate::cockpit::Focus>>>,
+    /// §25's saved loops, as a generation per deck. See
+    /// [`crate::snapshot::Marks`].
+    marks: Arc<crate::snapshot::Marks>,
     /// §43: what has been suggested and what the DJ did with it.
     ///
     /// Not persisted. Fatigue is a fact about *this* night — a DJ who worked
@@ -464,6 +467,7 @@ impl AppState {
             bus,
             conduct: Arc::new(Mutex::new(Conduct::default())),
             focus: Arc::new(Mutex::new(None)),
+            marks: Arc::new(crate::snapshot::Marks::default()),
             fatigue: Arc::new(Mutex::new(dj_assistant::Fatigue::new())),
             registry,
             remote: Arc::new(crate::remote::Remote::default()),
@@ -1848,6 +1852,21 @@ impl AppState {
     #[must_use]
     pub fn focus(&self) -> Arc<Mutex<Option<crate::cockpit::Focus>>> {
         Arc::clone(&self.focus)
+    }
+
+    /// §25's saved-loop generations, for the snapshot pump.
+    #[must_use]
+    pub fn marks(&self) -> Arc<crate::snapshot::Marks> {
+        Arc::clone(&self.marks)
+    }
+
+    /// Say that the marks stored with this deck's record have changed.
+    ///
+    /// Called where the library is written rather than where the interface
+    /// asks, so a loop saved from a controller pad reaches the lane on the same
+    /// terms as one saved from a click.
+    pub fn marks_changed(&self, deck: dj_core::DeckId) {
+        self.marks.changed(deck);
     }
 
     /// The context engine.

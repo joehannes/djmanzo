@@ -309,6 +309,90 @@ test.describe("the waveform's layers", () => {
   });
 
   /**
+   * **The waveform asks when something changed, and not otherwise.**
+   *
+   * `waveform_info`'s own doc says why it is not on the 60 Hz snapshot:
+   * *"Sixty times a second for a curve that changes twice a track would be the
+   * snapshot pump carrying furniture."* The interface did it anyway, and
+   * nothing here could see it.
+   *
+   * The lane and the overview each ran an `$effect` reading `deck.analysis`
+   * and `deck.length_frames`. Those reads look like fine-grained dependencies
+   * and are not: `App.svelte` does `snapshot = next` on every frame, so every
+   * deck is a new `$state` proxy and every read through it is a new signal.
+   * Measured before the guard went in: **forty** calls for ten frames of
+   * ordinary playback, two components over two decks, every frame.
+   *
+   * Both halves are asserted, because either alone is passed by something
+   * broken. A component that never asks passes the first; one that asks on
+   * every frame passes the second.
+   */
+  test("the waveform asks on a change and not on every frame", async ({
+    page,
+  }) => {
+    await openShell(page, "/");
+    await expect(page.locator(".overview").first()).toBeVisible();
+    // The calls at startup are two components over two decks and are not what
+    // this measures.
+    await page.waitForTimeout(700);
+
+    const reset = () =>
+      page.evaluate(() => {
+        (window as unknown as Record<string, unknown>).__asked = [];
+      });
+    const asked = () =>
+      page.evaluate(
+        () =>
+          ((window as unknown as { __asked: string[] }).__asked ?? []).filter(
+            (cmd) => cmd === "waveform_info",
+          ).length,
+      );
+
+    // Ten frames of ordinary playback, spaced so they are not batched into
+    // one — which is how the pump really delivers them, and how the first
+    // version of this measurement missed the defect entirely.
+    await reset();
+    await page.evaluate(async () => {
+      const win = window as unknown as {
+        __lastState: { decks: { position_frames: number }[] };
+        __emit: (next: unknown) => void;
+      };
+      for (let i = 0; i < 10; i += 1) {
+        const next = structuredClone(win.__lastState);
+        next.decks[0].position_frames += 2048;
+        win.__emit(next);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+    });
+    await page.waitForTimeout(400);
+    expect(
+      await asked(),
+      "the playhead moving makes the waveform re-ask Rust for bands that " +
+        "are beats counted from a grid the playhead does not touch",
+    ).toBe(0);
+
+    // And §25's saved loops: a loop kept mid-set changes nothing else on the
+    // frame, so `marks` is the only thing that can say the lane should look
+    // again. Two calls, which is the lane and the overview of that one deck.
+    await reset();
+    await page.evaluate(() => {
+      const win = window as unknown as {
+        __lastState: { decks: { marks: number }[] };
+        __emit: (next: unknown) => void;
+      };
+      const next = structuredClone(win.__lastState);
+      next.decks[0].marks += 1;
+      win.__emit(next);
+    });
+    await expect
+      .poll(asked, {
+        message: "a loop kept mid-set never reaches the lane",
+      })
+      .toBe(2);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **A wash under an opaque waveform is not a layer.**
    *
    * The runway shipped with `z-index: 0` against tiles at `z-index: auto` that

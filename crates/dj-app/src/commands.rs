@@ -1550,6 +1550,12 @@ fn publish_grid(
     grid: Option<dj_core::Beatgrid>,
     phrase: Option<dj_core::Phrase>,
 ) -> Result<(), String> {
+    // The one place every grid edit passes through, which is why the nudge is
+    // here rather than at each of the four callers. The mix windows are beats
+    // counted from this grid, so moving it moves them -- and `grid_confidence`
+    // cannot carry that on its own: the *first* hand edit takes it to certain
+    // and every edit after that leaves it there.
+    state.marks_changed(deck);
     state
         .bus()
         .send_command(dj_engine::Command::SetGrid { deck, grid, phrase })
@@ -1597,6 +1603,10 @@ pub fn snapshot_now(state: &AppState) -> crate::Snapshot {
     // be a panel painting itself one way and then being corrected on the next
     // tick.
     .with_focus(state.focus().lock().ok().and_then(|held| *held))
+    // And §25's saved-loop generations, on the same terms: a panel that has
+    // just mounted reads this frame synchronously, and one that came back
+    // zeroed would re-ask for every deck's loops on the pump's next tick.
+    .with_marks(Some(&state.marks()))
 }
 
 /// What the interface needs to size a deck's waveform strip.
@@ -9786,7 +9796,12 @@ fn save_loop(state: &AppState, deck: DeckId, slot: u8) -> Result<(), String> {
     });
     loops.sort_by_key(|region| region.slot);
 
-    db.set_loops(track, &loops).map_err(|e| e.to_string())
+    db.set_loops(track, &loops).map_err(|e| e.to_string())?;
+    // The lane draws saved loops from the library and asks for them on a load
+    // and on an analysis landing -- neither of which is this. Without the
+    // nudge, a loop kept mid-set appeared the next time the record was loaded.
+    state.marks_changed(deck);
+    Ok(())
 }
 
 /// Put a saved loop back on the deck.
@@ -10105,6 +10120,56 @@ mod persistence_tests {
 
         // And it comes back.
         recall_loop(&state, deck(), 1).unwrap();
+    }
+
+    /// **A loop kept mid-set reaches the lane without reloading the record.**
+    ///
+    /// §25's `saved-loops` layer reads the library, and the waveform asks for
+    /// it on a load and on an analysis landing. Saving a loop is neither, so
+    /// the band appeared the next time that record went on a deck -- recorded
+    /// as a limitation of the layer when it shipped. The deck's mark
+    /// generation is the third thing for the waveform to watch.
+    ///
+    /// Per deck rather than global, because a frame that changed for every
+    /// deck whenever any one of them was written would have the other lanes
+    /// re-asking for rows nobody touched.
+    #[test]
+    fn saving_a_loop_moves_only_that_decks_mark_generation() {
+        let state = app_with_track();
+        let marks = state.marks();
+        let other = dj_core::DeckId::from_human(2).unwrap();
+        let before = (marks.generation(deck()), marks.generation(other));
+
+        set_loop(&state, 96_000.0, 192_000.0);
+        save_loop(&state, deck(), 1).unwrap();
+
+        assert_eq!(
+            marks.generation(deck()),
+            before.0 + 1,
+            "the lane has nothing telling it to ask again"
+        );
+        assert_eq!(
+            marks.generation(other),
+            before.1,
+            "a loop saved on one deck moved another deck's generation"
+        );
+
+        // And it reaches the frame the interface is actually sent.
+        let snapshot = snapshot_now(&state);
+        assert_eq!(snapshot.decks[deck().index()].marks, before.0 + 1);
+        assert_eq!(snapshot.decks[other.index()].marks, before.1);
+    }
+
+    /// A save that cannot happen must not claim the lane should look again.
+    #[test]
+    fn a_refused_save_does_not_move_the_generation() {
+        let state = app_with_track();
+        let marks = state.marks();
+        let before = marks.generation(deck());
+
+        // Nothing is looping, which `save_loop` refuses.
+        assert!(save_loop(&state, deck(), 1).is_err());
+        assert_eq!(marks.generation(deck()), before);
     }
 
     #[test]

@@ -25,6 +25,7 @@
   } from "./api";
   import { remembers, showing } from "./remembers.svelte";
   import { STEM_KEYS, STEM_LABELS } from "./stems";
+  import { waveformAsks } from "./waveformAsks";
   import { theme } from "./theme.svelte";
 
   let {
@@ -119,11 +120,28 @@
   const QUANTUM = 32;
   const tileWidth = $derived(Math.max(QUANTUM, Math.round(width / QUANTUM) * QUANTUM));
 
+  /**
+   * What this component last asked Rust about. See `./waveformAsks`.
+   *
+   * Not `$state`: nothing renders it, and making it reactive would have the
+   * effect depend on its own write.
+   */
+  let asked = "";
+
   $effect(() => {
-    // Re-run whenever the deck's content changes: a new track changes the
-    // length, and analysis finishing changes the grid drawn into the tile.
-    deck.length_frames;
-    deck.analysis;
+    // **Guarded, not merely dependent.** These reads look fine-grained and are
+    // not: `App.svelte` replaces the whole snapshot on every frame, so every
+    // deck is a new proxy and every read through it is a new signal. This
+    // effect therefore runs on every frame the pump sends — measured at forty
+    // `waveform_info` calls for ten frames of ordinary playback, which is
+    // about two hundred and forty IPC round trips a second for an answer that
+    // changes twice a track.
+    //
+    // The effect still runs; the *call* does not. See `./waveformAsks` for
+    // what counts as something new.
+    const key = waveformAsks(deck);
+    if (key === asked) return;
+    asked = key;
     void waveformInfo(deck.number)
       .then((info) => {
         ready = info.ready;

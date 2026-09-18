@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { waveformAsks } from "./waveformAsks";
   /**
    * A scrolling waveform lane.
    *
@@ -288,6 +289,9 @@
   let anchorTime = 0;
   let framesPerSecond = 0;
 
+  /** What this component last asked Rust about. See `./waveformAsks`. */
+  let asked = "";
+
   $effect(() => {
     // Touch both so this re-runs whenever the deck's content changes: a new
     // track changes the length, and analysis finishing changes the grid without
@@ -301,8 +305,16 @@
     // polling this call would be the snapshot pump carrying furniture, which is
     // the argument `waveform_info` itself makes about why it is not on the
     // snapshot.
-    deck.length_frames;
-    deck.analysis;
+    // **Guarded, not merely dependent.** These reads look fine-grained and are
+    // not: `App.svelte` replaces the whole snapshot on every frame, so every
+    // deck is a new proxy and every read through it is a new signal. This
+    // effect therefore ran on every frame the pump sent — forty
+    // `waveform_info` calls for ten frames of ordinary playback, measured.
+    //
+    // The effect still runs; the *call* does not. See `./waveformAsks`.
+    const key = waveformAsks(deck);
+    if (key === asked) return;
+    asked = key;
     void waveformInfo(deck.number)
       .then((info) => {
         ready = info.ready;
