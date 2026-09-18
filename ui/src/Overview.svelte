@@ -24,6 +24,7 @@
     type EnergyTrajectory,
   } from "./api";
   import { remembers, showing } from "./remembers.svelte";
+  import { STEM_KEYS, STEM_LABELS } from "./stems";
   import { theme } from "./theme.svelte";
 
   let {
@@ -291,6 +292,63 @@
   });
 
   /**
+   * The vocal's place in the one stem order — see `./stems`. Named rather
+   * than written as `[0]` at each use, because a bare index into a four-array
+   * is the kind of thing that ends up pointing at the drums.
+   */
+  const VOCAL = STEM_KEYS.indexOf("vocal");
+
+  /**
+   * Where the vocal strip reaches full strength.
+   *
+   * A drawing scale, **not** a threshold for a voice existing. Rust has the
+   * one number that is a claim — `presence::STRONG`, which decides where §27
+   * says the voice enters — and it is deliberately not imported here: this
+   * says how dark to draw a share, that says whether to promise a DJ
+   * something, and one constant serving both would make a drawing tweak a
+   * change to what djmanzo asserts.
+   */
+  const SATURATES_AT = 0.25;
+
+  /**
+   * §25's `stems` layer: which of the four currents is carrying the record.
+   *
+   * One segment per window, in the colour of the fader that mutes that
+   * current — the association worth making, and the reason this does not
+   * share the `vocal` layer's colour: "which of four" drawn in one colour
+   * answers nothing.
+   *
+   * The **dominant** current rather than all four stacked. Four segments in a
+   * four-pixel band is one pixel each, which is texture rather than
+   * information; the question §25 actually asks is *which one is carrying the
+   * record here*, and that has one answer per window.
+   */
+  const currents = $derived.by(() => {
+    const sections = trajectory?.sections ?? [];
+    if (sections.length < 2 || totalFrames <= 0) return [];
+    const span = sections[1].at - sections[0].at;
+    return sections
+      .filter((section) => section.parts != null)
+      .map((section) => {
+        const parts = section.parts as number[];
+        let carrying = 0;
+        for (let i = 1; i < parts.length; i += 1) {
+          if (parts[i] > parts[carrying]) carrying = i;
+        }
+        return {
+          at: section.at,
+          left: fraction(section.at) * 100,
+          width: Math.max((span / totalFrames) * 100, 0.4),
+          key: STEM_KEYS[carrying],
+          label: STEM_LABELS[carrying],
+          says: STEM_LABELS.map(
+            (name, i) => `${name} ${Math.round(parts[i] * 100)}%`,
+          ).join(" · "),
+        };
+      });
+  });
+
+  /**
    * §25's `vocal` layer: where a lead is centred in the voice range.
    *
    * A strip along the top edge rather than more columns from the floor. The
@@ -307,18 +365,18 @@
     if (sections.length < 2 || totalFrames <= 0) return [];
     const span = sections[1].at - sections[0].at;
     return sections
-      .filter((section) => section.voice != null)
+      .filter((section) => section.parts != null)
       .map((section) => ({
         at: section.at,
         left: fraction(section.at) * 100,
         width: Math.max((span / totalFrames) * 100, 0.4),
-        share: section.voice as number,
+        share: (section.parts as number[])[VOCAL],
         // Where the strip reaches full strength. A drawing scale, **not** a
         // threshold for a voice existing: the share at which a DJ would say
         // "there's a vocal" can only come from real records with real voices
         // on them, and the machine this was written on has none. So the strip
         // says how much and never yes or no.
-        opacity: Math.min(1, (section.voice as number) / 0.25),
+        opacity: Math.min(1, (section.parts as number[])[VOCAL] / SATURATES_AT),
       }));
   });
 
@@ -530,6 +588,16 @@
         )}% of this window is centred and sustained. Usually a singer; a centred synth lead reads the same way."
       ></div>
     {/each}
+    {#each showing("stems") ? currents : [] as band (band.at)}
+      <div
+        class="current"
+        data-layer="stems"
+        data-current={band.key}
+        style:left="{band.left}%"
+        style:width="{band.width}%"
+        title="{band.label} carry this stretch — {band.says}"
+      ></div>
+    {/each}
     {#each showing("drops") ? returns : [] as mark (mark.at)}
       <div
         class="drop"
@@ -581,6 +649,29 @@
     height: 3px;
     background: var(--uncertain, var(--text-dim));
     pointer-events: none;
+  }
+  /* Under the vocal strip, in the colour of the fader that mutes the current
+     it names. Four pixels: enough to read as a band of colour changing along
+     the record, not enough to compete with the waveform it sits over. */
+  .current {
+    position: absolute;
+    z-index: 1;
+    top: 3px;
+    height: 4px;
+    opacity: 0.75;
+    pointer-events: none;
+  }
+  .current[data-current="vocal"] {
+    background: var(--stem-vocal);
+  }
+  .current[data-current="drums"] {
+    background: var(--stem-drums);
+  }
+  .current[data-current="bass"] {
+    background: var(--stem-bass);
+  }
+  .current[data-current="other"] {
+    background: var(--stem-other);
   }
   .drop {
     position: absolute;

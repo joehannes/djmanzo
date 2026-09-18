@@ -269,21 +269,32 @@ pub struct Section {
     /// The low band's share of it, on the same scale. A breakdown is this
     /// falling away while the rest of the record carries on.
     pub low: f32,
-    /// How much of this window is a centred, sustained voice-range signal --
-    /// [`crate::voice`], and §25's `vocal` layer.
+    /// What this window is made of: the four currents' shares of it, adding
+    /// to one. [`crate::presence`], and §25's `vocal` and `stems` layers.
+    ///
+    /// Indexed by [`dj_core::Stem::index`], which is the one order in the
+    /// project.
     ///
     /// **Absolute, unlike the two above, and the difference is the point.**
     /// "Where does this record go" is a question about the record's own
-    /// busiest moment, so energy is scaled against it. "Is somebody singing"
+    /// busiest window, so energy is scaled against it. "Is somebody singing"
     /// is not: an instrumental scaled against its own maximum would report a
     /// vocal at whichever window had the most synth in it.
     ///
     /// `None` where nothing was measured -- a record too short for the
     /// measurement, or a sample rate with no room for a voice's harmonics
-    /// under Nyquist. Absent rather than zero, because "not measured" and
-    /// "nobody was singing" are different answers and the overview draws them
-    /// differently.
-    pub voice: Option<f32>,
+    /// under Nyquist. Absent rather than four zeroes, because "not measured"
+    /// and "a window with nothing in it" are different answers and the
+    /// overview draws them differently.
+    pub parts: Option<[f32; dj_core::Stem::COUNT]>,
+}
+
+impl Section {
+    /// This window's vocal share. §25's `vocal` layer.
+    #[must_use]
+    pub fn voice(&self) -> Option<f32> {
+        self.parts.map(|parts| parts[dj_core::Stem::Vocal.index()])
+    }
 }
 
 /// A stretch of a record where it thins out.
@@ -359,7 +370,7 @@ const RETURN: f32 = 1.5;
 #[must_use]
 pub fn trajectory(
     banded: &BandedOnset,
-    voice: &crate::voice::Presence,
+    parts: &crate::presence::Presence,
     grid: &dj_core::Beatgrid,
     rate: dj_core::SampleRate,
     frames: u64,
@@ -406,7 +417,7 @@ pub fn trajectory(
             at,
             energy: total,
             low,
-            voice: voice.mean_between(at, until),
+            parts: parts.all_between(at, until),
         });
     }
     if sections.is_empty() {
@@ -442,8 +453,8 @@ pub fn trajectory(
         .iter()
         .find(|section| {
             section
-                .voice
-                .is_some_and(|share| share >= crate::voice::STRONG)
+                .voice()
+                .is_some_and(|share| share >= crate::presence::STRONG)
         })
         .map(|section| section.at);
     Trajectory {
@@ -759,7 +770,7 @@ mod trajectory_tests {
         let frames = (audio.len() / 2) as u64;
         trajectory(
             &banded,
-            &crate::voice::Presence::default(),
+            &crate::presence::Presence::default(),
             &grid(),
             SR,
             frames,
@@ -887,7 +898,7 @@ mod trajectory_tests {
         // Nothing to count against: zero frames is a record of no length.
         let found = trajectory(
             &banded,
-            &crate::voice::Presence::default(),
+            &crate::presence::Presence::default(),
             &flat,
             SR,
             0,

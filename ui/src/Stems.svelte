@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { STEM_COLORS, STEM_KEYS, STEM_LABELS } from "./stems";
   import IconButton from "./controls/IconButton.svelte";
   import { dispatch, stemsStatus, type StemsStatus, type StemSwap } from "./api";
   import { wantsStemsOpen } from "./hands.svelte";
@@ -75,22 +76,6 @@
     }
   });
 
-  const STEM_LABELS = ["Vocals", "Drums", "Bass", "Other"];
-  const STEM_KEYS = ["vocal", "drums", "bass", "other"];
-  /**
-   * One token per stem, not a hex value.
-   *
-   * These were four literal colours, which meant the stem pads were the only
-   * controls in djmanzo that ignored the theme — the same colour on the light
-   * palette, the industrial one and the cyber one. The tokens are defined in
-   * the theme sheet beside every other accent.
-   */
-  const STEM_COLORS = [
-    "var(--stem-vocal)",
-    "var(--stem-drums)",
-    "var(--stem-bass)",
-    "var(--stem-other)",
-  ];
 
   function toggleMute(index: number) {
     dispatch(`deck ${deckNumber} stem_mute ${STEM_KEYS[index]}`);

@@ -375,18 +375,30 @@ export const ANSWERS: Record<string, unknown> = {
     // with the third thinned out and the fourth back, which is the shape the
     // detector is written to find -- a fixture whose energy never moved would
     // let an overview that drew a flat row of columns pass.
-    // §25's `vocal` rides on the same windows, and the fixture gives it a
-    // shape of its own rather than the energy curve's: the voice enters in the
-    // second window, carries the breakdown where the kick does not, and is
-    // absent from the first -- `null`, which is "nobody measured" and is drawn
-    // as nothing rather than as silence. A fixture where the two curves moved
-    // together would let an overview that drew the energy twice pass.
+    // §25's `vocal` and `stems` ride on the same windows, and the fixture
+    // gives them a shape of their own rather than the energy curve's. The four
+    // shares are in the project's one stem order -- **vocal, drums, bass,
+    // other** -- and they add to one, as `dj_analysis::presence` produces
+    // them.
+    //
+    // A different current carries each window on purpose: drums the opening,
+    // the voice once it is in, and the pads through the breakdown where the
+    // kick and the bass are gone. A fixture whose dominant current never
+    // changed would let a band that drew one colour for the whole record pass,
+    // and one where the vocal and the energy moved together would let an
+    // overview that drew the energy twice pass.
+    //
+    // No window has two currents level with each other, deliberately: a tie
+    // makes the test about the tie-break rather than about the reading.
+    //
+    // The first window is `null`: "nobody measured", drawn as nothing rather
+    // than as silence.
     trajectory: {
       sections: [
-        { at: 0, energy: 0.9, low: 0.95, voice: null },
-        { at: 3_000_000, energy: 1.0, low: 1.0, voice: 0.3 },
-        { at: 6_000_000, energy: 0.35, low: 0.05, voice: 0.25 },
-        { at: 9_000_000, energy: 0.95, low: 0.98, voice: 0.02 },
+        { at: 0, energy: 0.9, low: 0.95, parts: null },
+        { at: 3_000_000, energy: 1.0, low: 1.0, parts: [0.35, 0.25, 0.25, 0.15] },
+        { at: 6_000_000, energy: 0.35, low: 0.05, parts: [0.25, 0.05, 0.1, 0.6] },
+        { at: 9_000_000, energy: 0.95, low: 0.98, parts: [0.02, 0.48, 0.3, 0.2] },
       ],
       beats_per_section: 32,
       breakdowns: [{ from: 6_000_000, to: 9_000_000 }],

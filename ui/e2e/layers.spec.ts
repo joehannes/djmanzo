@@ -264,6 +264,51 @@ test.describe("the waveform's layers", () => {
   });
 
   /**
+   * **§25's `stems`, the nineteenth layer.**
+   *
+   * The same pass that answers `vocal` answers this, and answers it as a
+   * partition: the four shares of a window add to the whole of it. What a
+   * browser can prove that Rust cannot is that the band **says which** — one
+   * colour per window, the colour of the fader that mutes the current it
+   * names.
+   *
+   * The fixture hands three measured windows carried by three different
+   * currents, so a band that drew one colour for the whole record, or read
+   * the wrong index of the four, fails here.
+   */
+  test("the stems band names which current carries each stretch", async ({
+    page,
+  }) => {
+    await openShell(page, "/");
+
+    const overview = page.locator(".overview").first();
+    await expect(overview).toBeVisible();
+
+    const bands = overview.locator('[data-layer="stems"]');
+    // Three, not four: the unmeasured window is absent rather than guessed at.
+    await expect(bands).toHaveCount(3);
+    expect(
+      await bands.evaluateAll((els) =>
+        els.map((el) => el.getAttribute("data-current")),
+      ),
+      "the band is not following the loudest current",
+    ).toEqual(["vocal", "other", "drums"]);
+
+    // Three different colours actually reach the screen. The four tokens are
+    // held apart in every palette by §30's rule, so if these resolve to one
+    // value the band is saying nothing whatever its attributes claim.
+    const painted = await bands.evaluateAll((els) =>
+      els.map((el) => getComputedStyle(el).backgroundColor),
+    );
+    expect(new Set(painted).size, `three currents painted ${painted}`).toBe(3);
+
+    // And the hover says all four rather than only the winner: which current
+    // is loudest is a summary, and a DJ deciding what to mute wants the mix.
+    expect(await bands.first().getAttribute("title")).toContain("Drums 25%");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **A wash under an opaque waveform is not a layer.**
    *
    * The runway shipped with `z-index: 0` against tiles at `z-index: auto` that
@@ -574,6 +619,10 @@ test.describe("the waveform's layers", () => {
     // asking it where that voice was, which `dj_analysis::voice` now does
     // without reconstructing the stem at all.
     expect(built).toContain("vocal");
-    expect(built).toHaveLength(18);
+    // §25's `stems`: the nineteenth, and the last one that was waiting on an
+    // analysis rather than on hardware. The same pass answers both, which is
+    // why they arrived a commit apart rather than a year.
+    expect(built).toContain("stems");
+    expect(built).toHaveLength(19);
   });
 });

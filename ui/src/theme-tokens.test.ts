@@ -65,12 +65,26 @@ describe("colour tokens", () => {
     ).toEqual([]);
   });
 
-  it("every stem has a colour token, in the sheet and in the panel", () => {
+  /**
+   * Every stem has a colour token, and the one table that names them uses it.
+   *
+   * It read `Stems.svelte` until §25's `stems` layer needed the same four on
+   * the waveform and the table moved to `stems.ts`. Pointing this at the new
+   * home rather than adding a second file to check is the same argument the
+   * move itself makes: there is one list, and this is the test that it is
+   * made of tokens.
+   *
+   * Both halves matter. The sheet having `--stem-vocal` and the table asking
+   * for a hex value is four controls that ignore the theme; the table asking
+   * for a token the sheet does not define is four controls with no colour at
+   * all.
+   */
+  it("every stem has a colour token, in the sheet and in the one table", () => {
     const css = readFileSync(join(SRC, "app.css"), "utf8");
-    const panel = readFileSync(join(SRC, "Stems.svelte"), "utf8");
+    const table = readFileSync(join(SRC, "stems.ts"), "utf8");
     for (const stem of ["vocal", "drums", "bass", "other"]) {
       expect(css, `--stem-${stem} is not defined`).toContain(`--stem-${stem}:`);
-      expect(panel, `the panel does not use --stem-${stem}`).toContain(
+      expect(table, `the stem table does not use --stem-${stem}`).toContain(
         `var(--stem-${stem})`,
       );
     }

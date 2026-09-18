@@ -43,11 +43,16 @@ use std::sync::{Arc, Mutex};
 /// than read, which is why this number exists: reading an old record with new
 /// code is how a library ends up full of confidently wrong BPMs.
 ///
-/// Bumped to 5 for §25's `vocal` layer, which put a field inside a type this
-/// file already stored: every cached `Section` gained a voice reading, so a
-/// version 4 record deserialises into sections that claim nothing was measured
-/// when in fact nothing had been. **A field added anywhere this schema reaches
-/// is a version bump**, not only a field added here.
+/// Bumped to 6 for §25's `stems` layer: the section's single voice reading
+/// became the four currents' shares, so a version 5 record's sections do not
+/// deserialise at all -- which is the failure mode this number is for, and is
+/// better than the one before it.
+///
+/// Five was §25's `vocal` layer, which put a field inside a type this file
+/// already stored: every cached `Section` gained a voice reading, so a version
+/// 4 record deserialised into sections that claimed nothing was measured when
+/// in fact nothing had been. **A field added anywhere this schema reaches is a
+/// version bump**, not only a field added here.
 ///
 /// Four was §75's trajectory. Three was §20's energy, and the two were added a
 /// commit apart -- so for one build the version said "current" and the file it
@@ -56,7 +61,7 @@ use std::sync::{Arc, Mutex};
 /// field added here is a version bump**, every time, even when the field is
 /// optional: optional means "a reader may find it missing", not "a writer may
 /// forget it".
-const CACHE_VERSION: u32 = 5;
+const CACHE_VERSION: u32 = 6;
 
 /// What the analyser found, in a form that survives a restart.
 ///

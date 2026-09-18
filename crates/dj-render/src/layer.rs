@@ -76,10 +76,26 @@ pub enum Role {
     Proposed,
     /// What is an estimate rather than a measurement.
     ///
-    /// Shared, eventually and deliberately: vocal and stem presence will each
-    /// arrive with a confidence of their own, and they are the same kind of
-    /// claim about a different thing.
+    /// Shared by the grid's own uncertainty and §25's `vocal`: how much to
+    /// trust what is drawn beside it, and how much of this moment is a lead.
+    /// Both are djmanzo saying *I think*.
+    ///
+    /// This doc used to predict that `stems` would join them -- *vocal and
+    /// stem presence will each arrive with a confidence of their own* -- and
+    /// building it showed the prediction was wrong. Vocal presence is one
+    /// number and can be drawn as strength; stem presence is a question about
+    /// *which of four*, and a drawing that cannot say which answers nothing.
+    /// It has [`Role::Stems`] instead, and the four colours the interface
+    /// already gives the stems.
     Uncertain,
+    /// Which of the four currents is carrying the record.
+    ///
+    /// Its own role rather than a share of [`Role::Uncertain`] because it is
+    /// not one colour: §30's four stem roles already have to be told apart
+    /// from one another, a DJ already reads them on the stem controls, and
+    /// naming the current on the waveform in the colour of the fader that
+    /// mutes it is the association worth making.
+    Stems,
     /// Where the record goes, and the two places on it worth marking.
     ///
     /// Shared by three layers on the same argument `Proposed` is shared by
@@ -105,6 +121,7 @@ impl Role {
             Role::Runway => "runway",
             Role::Proposed => "proposed",
             Role::Uncertain => "uncertain",
+            Role::Stems => "stems",
             Role::Shape => "shape",
             Role::Unassigned => "unassigned",
         }
@@ -296,12 +313,16 @@ static LAYERS: [Layer; 20] = [
         role: Role::Uncertain,
         drawn: Drawn::Overlay,
     },
+    // The same pass that answers `vocal` answers this, and answers it as a
+    // partition: the four shares of a moment add to the whole of it, so this
+    // is one reading of the record rather than four that could disagree --
+    // see `dj_analysis::presence`.
     Layer {
         name: "stems",
         title: "Stem presence",
         about: "Which of the four currents is carrying the record here.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        role: Role::Stems,
+        drawn: Drawn::Overlay,
     },
     Layer {
         name: "seam",
@@ -571,7 +592,7 @@ mod tests {
             Some(&vec!["vocal", "confidence"]),
             "the uncertain colour is for what djmanzo is estimating, and only that"
         );
-        for role in ["placed", "seam", "runway"] {
+        for role in ["placed", "seam", "runway", "stems"] {
             assert_eq!(
                 grouped.get(role).map(Vec::len),
                 Some(1),
@@ -617,6 +638,7 @@ mod tests {
                 "loop",
                 "saved-loops",
                 "vocal",
+                "stems",
                 "seam",
                 "mix-out",
                 "mix-in",

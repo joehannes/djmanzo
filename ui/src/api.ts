@@ -1160,15 +1160,18 @@ export interface EnergyTrajectory {
     energy: number;
     low: number;
     /**
-     * §25's `vocal` layer: how much of this window is a centred, sustained
-     * voice-range signal. Absolute, unlike `energy` and `low`, which are
-     * scaled against the record's own busiest window — see
-     * `dj_analysis::voice`.
+     * §25's `vocal` and `stems` layers: what this window is made of, as the
+     * four currents' shares of it, adding to one. Indexed in the project's
+     * one stem order — **vocal, drums, bass, other** — see
+     * `dj_analysis::presence`.
+     *
+     * Absolute, unlike `energy` and `low`, which are scaled against the
+     * record's own busiest window.
      *
      * `null` where nothing was measured, which the overview draws as nothing
      * rather than as silence.
      */
-    voice: number | null;
+    parts: number[] | null;
   }[];
   beats_per_section: number;
   breakdowns: { from: number; to: number }[];

@@ -92,9 +92,9 @@ fn a_real_track_is_analysed_and_lands_on_its_deck() {
     assert_eq!(store.for_deck(1).as_deref(), Some(&*analysis));
 }
 
-/// **The join, for §25's `vocal` layer.**
+/// **The join, for §25's `vocal` and `stems` layers.**
 ///
-/// `voice::presence` is unit-tested and `energy::trajectory` is unit-tested,
+/// `presence::measure` is unit-tested and `energy::trajectory` is unit-tested,
 /// and both would go on passing if `analyse` stopped calling the first — the
 /// trajectory's own tests hand it an empty curve. What that wiring is worth is
 /// only visible from here: the same helper's track with its sustained chord in
@@ -118,10 +118,10 @@ fn a_track_with_something_held_in_it_reads_as_a_voice_and_a_drum_track_does_not(
     assert!(!sections.is_empty(), "a click track has a grid to window");
     let voiced = sections
         .iter()
-        .filter_map(|s| s.voice)
+        .filter_map(|s| s.voice())
         .fold(0.0f32, f32::max);
     assert!(
-        voiced > dj_analysis::voice::STRONG,
+        voiced > dj_analysis::presence::STRONG,
         "a sustained chord should read as a lead, got {voiced}"
     );
     assert!(
@@ -137,7 +137,7 @@ fn a_track_with_something_held_in_it_reads_as_a_voice_and_a_drum_track_does_not(
         .trajectory
         .sections
         .iter()
-        .filter_map(|s| s.voice)
+        .filter_map(|s| s.voice())
         .fold(0.0f32, f32::max);
     assert!(
         hit < voiced / 2.0,
@@ -147,6 +147,18 @@ fn a_track_with_something_held_in_it_reads_as_a_voice_and_a_drum_track_does_not(
         percussive.trajectory.voice_enters, None,
         "nothing is held in a drum track, so nothing enters"
     );
+
+    // And §25's `stems`: the four currents of every measured window add to the
+    // whole of it, through the real analyser rather than in a unit test's
+    // hand-built spectrogram.
+    for section in &chord.trajectory.sections {
+        let Some(parts) = section.parts else { continue };
+        let total: f32 = parts.iter().sum();
+        assert!(
+            (total - 1.0).abs() < 0.02,
+            "a window accounts for {total} of the record, not all of it"
+        );
+    }
 }
 
 /// The percussive half of [`track`], with nothing sustained under it.

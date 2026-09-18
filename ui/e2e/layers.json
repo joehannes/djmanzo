@@ -84,10 +84,10 @@
     "name": "stems",
     "title": "Stem presence",
     "about": "Which of the four currents is carrying the record here.",
-    "role": "unassigned",
-    "drawn": "nowhere",
-    "choosable": false,
-    "why_not": "djmanzo cannot draw this yet"
+    "role": "stems",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
   },
   {
     "name": "seam",

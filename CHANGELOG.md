@@ -70,6 +70,42 @@ this shipped.
   has none, only synthesised test signals. It is one constant rather than one
   per consumer, so whoever does the listening has a single number to change.
 
+**Which of the four currents is carrying the record** — §25's `stems` layer,
+and §75's *drum density*, from the same pass a commit later.
+
+`stems` was the last layer filed under an analysis djmanzo could not do, and
+the measurement written for `vocal` was already computing the masks the other
+three need. It answers as a **partition**: the four shares of a moment add to
+the whole of it, which is the numerical form of the separator's own central
+invariant — the stems sum back to the mix — asked of the numbers instead of
+the audio. That is what makes them one reading of a record rather than four
+that could disagree about how loud it was at a given moment, and a test walks
+every hop of a signal built to contain all four and says so.
+
+- **§25 goes to nineteen of twenty layers.** The twentieth is the crowd, which
+  needs a camera or a microphone this container does not have.
+- **The layer table's own prediction was wrong, and is corrected rather than
+  quietly dropped.** `Role::Uncertain`'s doc had said for years that *vocal and
+  stem presence will each arrive with a confidence of their own*. Building it
+  showed the difference: vocal presence is one number and can be drawn as
+  strength; stem presence is a question about *which of four*, and a drawing
+  that cannot say which answers nothing. `Role::Stems` draws each window in the
+  colour of the fader that mutes the current it names.
+- **The dominant current, not all four stacked.** Four segments in a
+  four-pixel band is one pixel each, which is texture rather than information.
+- **§75 goes to eight of nine audio properties**, and the count written into
+  that row a commit ago — *four* — was a slip, corrected here: three were
+  exposed before either of these shipped, and §75's own energy, breakdown and
+  drop made six. The one left is *transient density*.
+- `dj_analysis::voice` is now `dj_analysis::presence`, and the four stem
+  labels, keys and colour tokens moved out of `Stems.svelte` into
+  `ui/src/stems.ts` — a second copy of that order is how the bass fader ends
+  up coloured like the vocal band.
+
+Four more mutations were run against the partition — each current folded into
+*other* in turn, and the side channel judged by the centre's answer — and all
+four were killed.
+
 Four mutations were run against the measurement and two of the tests written
 for it were thrown away for passing on the wrong thing — a click train that
 read low because of the band rather than the harmonic mask, and chopped noise
