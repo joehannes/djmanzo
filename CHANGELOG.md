@@ -128,8 +128,17 @@ showing the very state they were about.
 Found by auditing for enum variants nothing constructs or consumes, which is
 this project's signature defect. Most of what that turned up was noise —
 `#[from]` error variants and same-named variants in different enums — and this
-was the one real finding, along with a `Write::Loops` variant in the persist
-worker that is defined, handled and never sent.
+was the one real finding.
+
+The audit's other hit, `persist::Write::Loops`, came **out** rather than being
+wired up, and the reasoning is recorded where the enum is. A cue write is
+derived — the watcher compares frames and queues what moved, so nothing waits
+on the result. Saving a loop is a gesture whose consequence a DJ looks at: the
+band appears when the lane next asks, and the lane is told to ask by
+`snapshot::Marks` moving. Queue that write and the two race — the lane re-asks,
+the worker has not written yet, the library answers with the old loops, and
+nothing comes back to correct it. So it stays on the command thread: one
+`INSERT` on a press, not sixty comparisons a second.
 
 **§26's transition end can be grabbed** — the seventh of its nine, and
 another reason that had stopped being true before it was written down.

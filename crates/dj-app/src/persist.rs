@@ -25,21 +25,35 @@
 //! hands anything that changed to a writer thread through a queue.
 
 use dj_core::{FramePos, HOT_CUE_SLOTS, TrackId};
-use dj_library::{StoredCue, StoredLoop};
+use dj_library::StoredCue;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::mpsc::{SyncSender, TrySendError};
 
 /// One thing to write.
+///
+/// # Why saved loops are not here
+///
+/// There was a `Loops` variant, matched in the writer below and constructed
+/// by nothing -- the defect this project keeps finding, in its smallest form.
+/// It came out rather than being wired up, because the synchronous write in
+/// `commands::save_loop` is the right one and this queue would break it.
+///
+/// A cue write is *derived*: the watcher compares each frame against the last
+/// and queues what moved, so nothing is waiting on the result. Saving a loop
+/// is a gesture with a consequence a DJ looks at — §25's `saved-loops` band
+/// appears when the lane next asks, and the lane is told to ask by
+/// `snapshot::Marks` moving. Queue the write and the two race: the lane
+/// re-asks, the worker has not written yet, the library answers with the old
+/// loops, and nothing comes back to correct it.
+///
+/// So the loop write stays on the command thread. It is one `INSERT` on a
+/// press, not sixty comparisons a second.
 #[derive(Debug, Clone)]
 pub enum Write {
     Cues {
         track: TrackId,
         cues: Vec<StoredCue>,
-    },
-    Loops {
-        track: TrackId,
-        loops: Vec<StoredLoop>,
     },
     /// A track has been played. Bumps the count and appends to the history.
     Play {
@@ -89,7 +103,6 @@ impl LibraryWriter {
                     let Ok(db) = library.get() else { return };
                     let result = match &write {
                         Write::Cues { track, cues } => db.set_cues(*track, cues),
-                        Write::Loops { track, loops } => db.set_loops(*track, loops),
                         Write::Play { track, at, session } => {
                             db.record_play(*track, *at, session.as_deref())
                         }
