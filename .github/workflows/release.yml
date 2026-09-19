@@ -192,8 +192,12 @@ jobs:
             |---|---|
             | macOS, Apple Silicon | `.dmg` (aarch64) |
             | macOS, Intel | `.dmg` (x86_64) |
-            | Linux | `.deb` and `.AppImage` |
+            | Linux | `.deb`, `.rpm` and `.AppImage` |
             | Windows | `.msi` and `.exe` |
+
+            macOS also gets a `.app.tar.gz` of each build. It is the same
+            application as the `.dmg` beside it, for anyone who would rather
+            unpack it than mount a disk image.
 
             ### Before you run it
 

@@ -221,16 +221,6 @@
    * this one and fails if the two part company. Change it there first.
    */
   /**
-   * The platter's diameter when the DJ has one under their hands, or none at
-   * all: a readout beside a waveform that answers position better.
-   *
-   * 70 rather than a rounder 80 because that is what `--jog-size: 5rem` has
-   * always drawn at this interface's 14 px rem base. Rounding it up grew every
-   * deck by ten pixels, and the density budget caught it.
-   */
-  const JOG_READOUT = 70;
-
-  /**
    * The platter's diameter when the screen is the only one. §53's second
    * prominence judgement; `wantsJogRoom` holds the reasoning.
    *
@@ -1041,10 +1031,21 @@
     §53 is the other. A controller with no jog on it leaves this circle as the
     only place its DJ can nudge a record, so the default grows -- and only the
     default: a layout that named a size said what it wanted and is left alone,
-    the same way `wantsStemsOpen` never argues with an arrangement. See
-    `wantsJogRoom` for why it grows rather than shrinking.
+    the same way `wantsStemsOpen` never argues with an arrangement. That
+    precedence is written as a test of `props.size` rather than as a fallback
+    argument, because a fallback says "when nothing was asked for" only by
+    implication, and this has to say it outright. See `wantsJogRoom` for why it
+    grows rather than shrinking.
+
+    The 70 is deliberately a literal rather than a named constant here: it is
+    the same number `widgets::DECK_JOG`'s declaration carries in Rust, written
+    twice on purpose, and `a_prop_the_upconversion_sets_is_a_prop_the_deck_reads`
+    reads this file looking for exactly that spelling. Hiding it behind a name
+    put that test in the red for one commit -- which is how the wire between a
+    layout prop and the screen is kept honest, so it is worth the duplication.
   -->
-  {@const size = pixels(props, "size", wantsJogRoom() ? JOG_REACHED_FOR : JOG_READOUT)}
+  {@const stated = pixels(props, "size", 70)}
+  {@const size = props?.size === undefined && wantsJogRoom() ? Math.round(JOG_REACHED_FOR * density) : stated}
   <div class="jog-row" style="--jog-size: {size}px">
     <JogWheel
       deckNumber={deck.number}
