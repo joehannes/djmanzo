@@ -16,6 +16,21 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+Nothing yet.
+
+---
+
+## v0.17.0 — Where somebody is singing, and the reasons that stopped being true
+
+Two threads run through this release. One is an analysis djmanzo already had
+the parts for and had never run: a separator that ships with no model and no
+download is also a **measurement**, and once it is read as one the waveform can
+draw where a voice arrives, the library can sort by it, and §27's ghost can
+answer the last of its seven questions. The other is the one this project keeps
+meeting from a new angle each time — a sentence that was true when it was
+written, is false now, and has nothing checking it. Five of them were taken
+back here, one of them from a CI gate that did not exist until this release.
+
 **Where somebody is singing** — §25's `vocal` layer, §75's *vocal density* and
 §27's *where the vocal enters*, all from a separator djmanzo already shipped.
 
@@ -253,6 +268,45 @@ for it were thrown away for passing on the wrong thing — a click train that
 read low because of the band rather than the harmonic mask, and chopped noise
 that read low because of its duty cycle. The test that stands builds the two
 spectrograms by hand.
+
+**§27 is seven of seven** — the ghost overlay answers every question §27 asks,
+and the mechanism that says so matters more than the number. Whether a question
+can be drawn is derived from `dj_render::layer` rather than written down, so
+when `presence` shipped and the `vocal` layer stopped declaring itself undrawn,
+the count test failed on its own and demanded a **frame** in `Ghost` rather
+than a smaller number. It was written as an alarm rather than a tally, and it
+went off exactly as designed — twice, once for the vocal entry and once for the
+drop. The same derivation puts a question back on the unseen list the day a
+layer is taken out. What did not update itself was the prose: a whole section
+of `ghost.rs`'s module doc headed *"the two it cannot answer"* survived both
+analyses shipping, and §27's status row had accreted into a changelog — "five
+of seven", then "six", then "seven" — in one paragraph. Both are current
+statements now. One number in the chain is still a stated guess and says so:
+`presence::STRONG`, the share at which djmanzo calls a lead *carrying*.
+
+**A doc link that points at nothing, and the gate that finds them** — a
+`` [`Thing`] `` rustdoc cannot resolve renders as **plain text**, so a
+cross-reference that has gone stale looks exactly like one that works.
+`RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps` is a CI step and a
+gate now, and its first run found **twenty-seven** across twelve crates:
+renamed paths (`crate::voice::STRONG` after the measurement grew from one
+current to four), links to things that never existed (`Spend::Layers` and
+`Spend::Previews` are variants of an enum that is a struct), and links across
+dependency edges that do not exist.
+
+The one that mattered was §53's. Two constants in `dj_hid::hands` were defined
+and read by nothing, and one of them — `LEDS_NOT_DRIVEN`, *"this mapping
+describes lights, and djmanzo does not send them yet"* — had been false since
+`feedback::Lights` shipped. Nothing read it, so nothing broke and nothing said
+so: a string constant no caller consults cannot go stale loudly, only sit there
+waiting to be believed. It is gone, along with `DISPLAYS_UNKNOWABLE`, which is
+still true and always will be and belongs where it is said rather than in a
+constant that has to travel through a command, a DTO and two fixtures to reach
+one paragraph. The same stale claim was in two places that **are** read, the
+doc on `Hands::leds` and its `api.ts` twin, and both now say the subtler thing
+that is actually true: a mapping can describe twelve lights on a machine whose
+MIDI output another application is holding, so a reading of the *file* and a
+reading of the *wire* are different facts and live in different types.
 
 ---
 
