@@ -16,7 +16,31 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
-Nothing yet.
+**§53's second prominence judgement: the platter** — §53 asks the interface to
+read what is plugged in and use it to decide *which GUI surfaces deserve
+prominence*, and until now one surface answered that: the stem module, §53's
+own worked example. The deck's wheel is the second. It is a small readout by
+design — the waveform above answers *where am I* better than a circle does —
+and that reasoning assumes the hand has somewhere better to be. A
+pad-and-fader controller puts the hands on the pads, the faders and the EQ and
+leaves nudging a record back into time as the one gesture on that deck with no
+hardware behind it, so for that DJ the wheel grows by half.
+
+- **It only ever grows.** A controller *with* a platter makes the screen's
+  circle a readout, and shrinking it to give the waveform the pixels is
+  contextual demotion — which §3 refuses and §17 is built never to do. Nothing
+  a DJ can see is taken away by a piece of hardware being plugged in.
+- **A stated size outranks it.** §5B's scratch composition asks for about
+  200 px and means it; the adaptation moves a *default*, so a DJ who asked for
+  a platter and then plugged in a pad controller to go with it does not watch
+  it halve.
+- That precedence had nothing testing it until a mutation went looking: every
+  other case opens the shipped deck and §5B's own tests open with no
+  controller, so the two conditions had never met.
+- Measured as rendered geometry and as a **comparison** rather than against a
+  number, because every size on a deck is multiplied by the density token. The
+  first version of the assertion demanded more than 90 px of a wheel that
+  renders at 83, with the adaptation working perfectly.
 
 ---
 

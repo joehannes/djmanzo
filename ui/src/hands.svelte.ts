@@ -63,3 +63,34 @@ export function watchHands(): () => void {
 export function wantsStemsOpen(): boolean {
   return hands.reach !== null && !hands.reach.stems;
 }
+
+/**
+ * Whether the on-screen platter should be given room. §53's other prominence
+ * judgement, and the same shape as the stem one.
+ *
+ * The deck's wheel is deliberately small — about 70 px — and the reasoning is
+ * in `Deck.svelte`: the waveform above answers *where am I* better than a
+ * circle does, and a full row for it cost more than the waveform got in three
+ * of the four shipped arrangements. That reasoning assumes the hand has
+ * somewhere better to be. For a DJ whose controller has **no jog at all** it
+ * does not: a pad-and-fader controller puts their hands on the pads, the
+ * faders and the EQ, and leaves the one gesture a platter is for — nudging a
+ * record back into time — as the only thing on that deck they have to find
+ * with a mouse. A 70-pixel target is the wrong size for the one control the
+ * hardware cannot reach.
+ *
+ * **It only ever grows.** A controller *with* a platter makes the screen's
+ * circle a readout, and the obvious symmetry would be to shrink it and hand
+ * the pixels to the waveform — but that is contextual *demotion*, which §3
+ * refuses and §17 is built never to do: nothing a DJ can see is taken away by
+ * a piece of hardware being plugged in. So a platter on the desk changes
+ * nothing on screen, and the adaptation has one direction.
+ *
+ * **False when nothing is plugged in**, for the reason `wantsStemsOpen` gives:
+ * a laptop-only DJ is the case this interface is already designed around, and
+ * the default is theirs. The adaptation is for the DJ whose hardware has a
+ * gap.
+ */
+export function wantsJogRoom(): boolean {
+  return hands.reach !== null && hands.reach.jogs === 0;
+}

@@ -16,7 +16,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-import { errorsThrown, openShell } from "./shell";
+import { compositions, errorsThrown, openShell } from "./shell";
 
 /** A controller that reaches everything except the stems. */
 const NO_STEMS = {
@@ -32,7 +32,26 @@ const NO_STEMS = {
 /** The same controller with stem pads on it. */
 const WITH_STEMS = { ...NO_STEMS, stems: true };
 
+/**
+ * A pad-and-fader controller: everything under the hands except a platter.
+ *
+ * Real hardware, not a contrived reading -- a grid controller mapped for
+ * djmanzo reaches its pads, its faders and its EQ and has no jog anywhere on
+ * it. `stems: true` so this cannot accidentally pass through the stem
+ * adaptation instead.
+ */
+const NO_JOGS = { ...NO_STEMS, stems: true, jogs: 0 };
+
 const stems = (page: Page) => page.locator("[data-stems-open]").first();
+
+const DECK = "section.deck[data-deck]";
+
+/** The rendered diameter of a deck's wheel, in pixels. */
+async function platterWidth(page: Page): Promise<number> {
+  const platter = page.locator(`${DECK} .platter`).first();
+  await expect(platter).toBeVisible();
+  return platter.evaluate((el) => el.getBoundingClientRect().width);
+}
 
 test.describe("§53's controller-aware interface", () => {
   /**
@@ -75,6 +94,110 @@ test.describe("§53's controller-aware interface", () => {
     const thrown = errorsThrown(page);
     await openShell(page, "/");
     await expect(stems(page)).toHaveAttribute("data-stems-open", "false");
+    expect(thrown).toEqual([]);
+  });
+
+  /**
+   * **§53's second prominence judgement: a controller with no platter on it
+   * makes the one on screen bigger.**
+   *
+   * > Use that to determine which GUI surfaces deserve prominence.
+   *
+   * The deck's wheel is deliberately a small readout -- the waveform above
+   * answers *where am I* better than a circle does -- and that reasoning
+   * assumes the hand has somewhere better to be. A pad-and-fader controller
+   * puts the hands on the pads and the EQ and leaves nudging a record back
+   * into time as the one gesture on that deck with no hardware behind it.
+   *
+   * Measured off the screen rather than off a flag, for the reason §5B's
+   * composition test gives: a size can be set, serialised and resolved and
+   * still reach nothing.
+   */
+  test("a controller with no jog gives the on-screen platter room", async ({ page }) => {
+    const thrown = errorsThrown(page);
+
+    // Both arms on one page, and compared against each other rather than
+    // against a number. Every size on a deck is multiplied by the density
+    // token, so a threshold typed here is a threshold about whatever density
+    // the shell happens to open at -- the first version of this asserted
+    // `> 90` against a wheel that renders at 83, and the adaptation was
+    // working perfectly.
+    await openShell(page, "/", {}, { controller_hands: NO_STEMS });
+    const withPlatter = await platterWidth(page);
+
+    await openShell(page, "/", {}, { controller_hands: NO_JOGS });
+    const withoutPlatter = await platterWidth(page);
+
+    expect(
+      withoutPlatter,
+      "a controller with no jog on it should make the screen's wheel a target rather than a readout",
+    ).toBeGreaterThan(withPlatter * 1.2);
+    expect(thrown).toEqual([]);
+  });
+
+  /**
+   * **And the two controls, which are the whole of the direction.**
+   *
+   * A controller *with* jogs leaves the wheel alone: shrinking it would be
+   * contextual demotion, which §3 refuses and §17 is built never to do, and
+   * growing it would be the adaptation firing for a DJ who has a platter under
+   * their hand. Nothing plugged in leaves it alone too -- a laptop-only DJ is
+   * the case the default was chosen for.
+   *
+   * Both asserted twice, because the profile is polled and a deck that grew a
+   * beat late would pass a single read.
+   */
+  test("nothing plugged in gets the same wheel as a controller with jogs", async ({ page }) => {
+    const thrown = errorsThrown(page);
+
+    await openShell(page, "/", {}, { controller_hands: NO_STEMS });
+    const withPlatter = await platterWidth(page);
+
+    await openShell(page, "/");
+    const laptopOnly = await platterWidth(page);
+
+    // Equal, not merely both small: "no controller" and "a controller with a
+    // platter" are different facts that have to land on the same default, and
+    // a range would pass an adaptation that fired weakly for the laptop DJ.
+    expect(laptopOnly).toBe(withPlatter);
+
+    // Held, because the profile is polled: a deck that grew a beat late would
+    // pass a single read and fail a DJ.
+    expect(await platterWidth(page)).toBe(withPlatter);
+    expect(thrown).toEqual([]);
+  });
+
+  /**
+   * **An arrangement that asked for a platter keeps it, whatever is plugged
+   * in.**
+   *
+   * The adaptation moves a *default*, not a stated size, and until this test
+   * existed nothing said so: every other case here opens the shipped deck,
+   * and §5B's composition tests open with no controller, so the two
+   * conditions never met. A mutation that let the adaptation win found nothing
+   * to fail.
+   *
+   * The direction is what makes it matter rather than tidy. §5B's scratch
+   * composition asks for about 200 px -- hands on the records, a waveform
+   * sacrificed for it -- and the adaptation's size is 104. A rule that
+   * overrode the tree would *shrink* a scratch deck's platter by half the
+   * moment its DJ plugged in a pad controller to go with it, which is §53
+   * overruling §5B while claiming to serve the same hands.
+   */
+  test("a composition that asks for a platter outranks the adaptation", async ({ page }) => {
+    const thrown = errorsThrown(page);
+
+    await openShell(page, "/", {}, { layout_tree: compositions.Scratch });
+    const asked = await platterWidth(page);
+
+    await openShell(page, "/", {}, {
+      layout_tree: compositions.Scratch,
+      controller_hands: NO_JOGS,
+    });
+    expect(
+      await platterWidth(page),
+      "a stated size is what the DJ asked for; §53 moves the default",
+    ).toBe(asked);
     expect(thrown).toEqual([]);
   });
 

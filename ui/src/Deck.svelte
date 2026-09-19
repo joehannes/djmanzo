@@ -12,6 +12,7 @@
   } from "./api";
   import { onMount } from "svelte";
   import JogWheel from "./JogWheel.svelte";
+  import { wantsJogRoom } from "./hands.svelte";
   import { fill } from "./meter";
   import Fx from "./Fx.svelte";
   import Stems from "./Stems.svelte";
@@ -219,6 +220,28 @@
    * `a_prop_the_upconversion_sets_is_a_prop_the_deck_reads` in that file reads
    * this one and fails if the two part company. Change it there first.
    */
+  /**
+   * The platter's diameter when the DJ has one under their hands, or none at
+   * all: a readout beside a waveform that answers position better.
+   *
+   * 70 rather than a rounder 80 because that is what `--jog-size: 5rem` has
+   * always drawn at this interface's 14 px rem base. Rounding it up grew every
+   * deck by ten pixels, and the density budget caught it.
+   */
+  const JOG_READOUT = 70;
+
+  /**
+   * The platter's diameter when the screen is the only one. §53's second
+   * prominence judgement; `wantsJogRoom` holds the reasoning.
+   *
+   * Half again, not a scratch platter. §5B's scratch composition asks for
+   * about 220 px and means it -- hands on the records, a waveform sacrificed
+   * for it. This is a nudge target sized for a mouse, and a deck that grew by
+   * 150 px because somebody plugged in a pad controller would be the interface
+   * rearranging itself around a guess.
+   */
+  const JOG_REACHED_FOR = 104;
+
   function pixels(
     props: Record<string, unknown>,
     name: string,
@@ -1014,8 +1037,14 @@
     §5B's scratch mode is the one DJ for whom that reasoning is backwards, so
     the size comes from the tree rather than from this file: a composition that
     wants hands on the records asks for a platter, and gets one here.
+
+    §53 is the other. A controller with no jog on it leaves this circle as the
+    only place its DJ can nudge a record, so the default grows -- and only the
+    default: a layout that named a size said what it wanted and is left alone,
+    the same way `wantsStemsOpen` never argues with an arrangement. See
+    `wantsJogRoom` for why it grows rather than shrinking.
   -->
-  {@const size = pixels(props, "size", 70)}
+  {@const size = pixels(props, "size", wantsJogRoom() ? JOG_REACHED_FOR : JOG_READOUT)}
   <div class="jog-row" style="--jog-size: {size}px">
     <JogWheel
       deckNumber={deck.number}
