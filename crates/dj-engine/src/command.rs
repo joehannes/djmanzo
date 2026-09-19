@@ -32,6 +32,23 @@ pub enum Command {
         source: Arc<dyn TrackSource>,
         bpm: Option<f64>,
     },
+    /// §22's audition: play a candidate into the headphones, or stop.
+    ///
+    /// `Some(source)` starts one at `from_frame`, in the candidate's own
+    /// frames; `None` stops whatever is running and leaves the record loaded,
+    /// so a DJ who stops and starts again costs nothing.
+    ///
+    /// A command rather than an [`Action`] for the reason
+    /// [`Command::Load`] is one: it carries an `Arc<dyn TrackSource>`, which
+    /// is a decoded record, and the action vocabulary is words a controller
+    /// can send. What a controller sends is `audition <track-id>`, and the
+    /// host turns that into this.
+    ///
+    /// [`Action`]: dj_core::Action
+    Preview {
+        source: Option<Arc<dyn TrackSource>>,
+        from_frame: f64,
+    },
     /// Attach the analyser's beat grid to a deck, or clear it.
     ///
     /// A command rather than an [`Action`] because it is not something a DJ

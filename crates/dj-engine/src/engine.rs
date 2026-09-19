@@ -104,6 +104,12 @@ pub struct Engine {
     /// paused, which is what lets an echo thrown into the master ring out over
     /// a silence.
     master_rack: Rack,
+    /// §22's audition: one record in the headphones, without a deck.
+    ///
+    /// Beside the sampler rather than inside it, and beside the decks rather
+    /// than being one: see [`crate::preview`] for why a reserved sampler slot
+    /// and a hidden deck are both the wrong shape.
+    preview: crate::preview::Preview,
     /// Capturing into a sampler slot. See [`crate::record`].
     recorder: Recorder,
     /// The microphone / line input strip. See [`crate::mic::Mic`].
@@ -204,6 +210,7 @@ impl Engine {
             booth_gain_db: 0.0,
             quantize: false,
             sampler: Sampler::new(sample_rate.as_f64()),
+            preview: crate::preview::Preview::new(sample_rate.as_f64()),
             master_rack: Rack::new(sr),
             recorder: Recorder::new(sample_rate),
             mic: crate::mic::Mic::new(sr),
@@ -264,6 +271,24 @@ impl Engine {
     /// Alongside the deck racks in [`Self::publish_deck_state`] rather than
     /// inside them, because the master is not a deck — but published on the
     /// same schedule, so the interface never sees a half-updated rack.
+    /// §22's audition, as the two numbers an interface needs to draw it.
+    fn publish_preview(&self) {
+        let playing = self.preview.is_playing();
+        self.registry.set(
+            ParamId::Global(GlobalParam::PreviewPlaying),
+            f32::from(playing),
+        );
+        // Frames as an `f32` loses whole-frame precision past about 16.7
+        // million, which is six minutes at 48 kHz -- and that is fine here and
+        // would not be on a deck. A playhead a DJ scratches with has to be
+        // exact; a progress bar on an audition has to be within a few
+        // milliseconds, and 16.7 million frames in the error is one frame.
+        self.registry.set(
+            ParamId::Global(GlobalParam::PreviewFrame),
+            self.preview.position() as f32,
+        );
+    }
+
     /// The sampler's own state, and the showing bank's eight slots.
     fn publish_sampler(&self) {
         let set = |param, value| self.registry.set(ParamId::Global(param), value);
@@ -467,6 +492,13 @@ impl Engine {
                         self.retire(Retired::Source(previous));
                     }
                 }
+                Command::Preview { source, from_frame } => match source {
+                    Some(source) => {
+                        let previous = self.preview.start(source, from_frame);
+                        self.retire(Retired::Source(previous));
+                    }
+                    None => self.preview.stop(),
+                },
                 Command::ClapInsert { processor } => {
                     // The displaced processor goes back rather than being
                     // dropped: dropping it here leaks whatever the plugin
@@ -951,6 +983,7 @@ impl Engine {
         // publisher rather than with the static state written at construction.
         self.publish_master_rack();
         self.publish_sampler();
+        self.publish_preview();
         self.publish_mic();
         for (index, deck) in self.decks.iter().enumerate() {
             let Some(id) = DeckId::new(index as u8) else {
@@ -1641,6 +1674,21 @@ impl AudioCallback for Engine {
         };
         self.registry
             .set(ParamId::Global(GlobalParam::SamplerPeak), sample_peak);
+
+        // §22's audition, into the cue pair and nowhere else.
+        //
+        // After the sampler and before the master chain, which is a placement
+        // with no consequence and is the point: the master gain, the rack, the
+        // microphone and the limiter all act on the main bus, and a preview is
+        // never on it. A DJ auditioning a record hears the record, not the
+        // record through whatever is on the master tonight -- which is right,
+        // because they are deciding about the record.
+        //
+        // Deck-out mode is the one case that has to be named. There the main
+        // pair is deck 1's cable, but `layout.cue` is still the cue pair when
+        // the device has one, so an audition works exactly as it does
+        // normally. Nothing to skip.
+        self.preview.process(out, &layout);
 
         let recording_master = self.recorder.tapping() == Some(dj_core::RecordSource::Master);
 

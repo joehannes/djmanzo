@@ -439,6 +439,16 @@ pub enum GlobalParam {
     SamplerVolume,
     /// Peak the sampler put into the master this block.
     SamplerPeak,
+    /// 1.0 while §22's audition is playing a candidate into the headphones.
+    ///
+    /// A preview is not a deck and deliberately has no deck's worth of
+    /// parameters: a DJ listening to a record they have not loaded is asking
+    /// one question, and *is it playing* and *where has it got to* are the
+    /// whole of what the interface needs to draw to answer it.
+    PreviewPlaying,
+    /// How far into the audition the playhead is, in the candidate's own
+    /// frames. 0.0 when nothing is being auditioned.
+    PreviewFrame,
     /// 1.0 when a CLAP plugin is loaded on the master.
     ClapLoaded,
     /// 1.0 when that plugin is bypassed — loaded but out of the signal path.
@@ -893,8 +903,8 @@ impl GlobalParam {
     ];
 
     /// 100 before the spectrum and the recorder; four bands and five recorder
-    /// readings since.
-    pub const COUNT: usize = 135;
+    /// readings since, and two for §22's audition.
+    pub const COUNT: usize = 137;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -929,6 +939,8 @@ impl GlobalParam {
             SamplerBank,
             SamplerVolume,
             SamplerPeak,
+            PreviewPlaying,
+            PreviewFrame,
             RecordReady,
             Recording,
             RecordSlot,
@@ -1210,6 +1222,8 @@ const fn global_param_name(param: GlobalParam) -> &'static str {
         GlobalParam::SamplerBank => "sampler_bank",
         GlobalParam::SamplerVolume => "sampler_volume",
         GlobalParam::SamplerPeak => "sampler_peak",
+        GlobalParam::PreviewPlaying => "preview_playing",
+        GlobalParam::PreviewFrame => "preview_frame",
         GlobalParam::RecordReady => "record_ready",
         GlobalParam::Recording => "recording",
         GlobalParam::RecordSlot => "record_slot",

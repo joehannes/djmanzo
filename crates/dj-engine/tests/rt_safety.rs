@@ -856,6 +856,44 @@ fn loading_samples_never_allocates_on_the_audio_thread() {
     );
 }
 
+/// §22's audition, started and stopped the way a DJ works a rail.
+///
+/// A preview arrives on the audio thread as an `Arc` the way a track does, and
+/// starting one is setting a `bool` and an `f64`. What has to be true is that a
+/// DJ running down a rail -- audition, stop, audition the next one, twenty rows
+/// deep while two records are playing -- costs the callback nothing, because
+/// every one of those presses lands in the middle of a mix.
+///
+/// A device with a cue pair, because the mixing loop only has work when there
+/// is somewhere private to put it.
+#[test]
+fn auditioning_never_allocates() {
+    let mut rig = rig(4, 256);
+    rig.load_and_play(1, 2_000_000);
+    rig.warm_up(64);
+    let candidates: Vec<Arc<dyn TrackSource>> = (0..64).map(|_| tone(40_000)).collect();
+
+    let (_, allocations) = count_allocations(|| {
+        for (round, source) in candidates.iter().enumerate() {
+            rig.send(Command::Preview {
+                source: Some(Arc::clone(source)),
+                // A different point in each record, which is the whole reason
+                // this is not a sampler slot.
+                from_frame: (round * 137) as f64,
+            });
+            rig.renderer.render_block();
+            rig.renderer.render_block();
+            rig.send(Command::Preview {
+                source: None,
+                from_frame: 0.0,
+            });
+            rig.renderer.render_block();
+            while rig.retired.pop().is_ok() {}
+        }
+    });
+    assert_eq!(allocations, 0, "auditioning allocated {allocations} times");
+}
+
 /// The effect rack, switched and swept the way a DJ actually uses it.
 ///
 /// This is the test the whole rack design exists to pass. An effect is an enum

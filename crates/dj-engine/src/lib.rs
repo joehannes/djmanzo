@@ -22,6 +22,7 @@ pub mod deck;
 pub mod engine;
 pub mod jog;
 pub mod mic;
+pub mod preview;
 pub mod rack;
 pub mod record;
 pub mod sampler;
