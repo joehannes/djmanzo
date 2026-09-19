@@ -1978,16 +1978,39 @@ export async function openShell(
                 name: string;
                 shape: unknown;
               }[];
+              const startFrame =
+                (held.start_frame as number) + beats * beatFrames;
+              // §26's transition end. A *length*, worked out from the position
+              // the handle was dropped at, because that is what djmanzo
+              // answers with: `Transition::end_at` rounds to a whole beat and
+              // clamps to what a transition can be, and both of those are
+              // tested in Rust. The stub needs only enough of it to move the
+              // mark -- a floor of one beat, so a drag past the start does not
+              // put the end behind it and make a working drag look broken.
+              const length =
+                args.endFrame !== undefined
+                  ? Math.max(
+                      1,
+                      Math.round(
+                        (Number(args.endFrame) - startFrame) / beatFrames,
+                      ),
+                    )
+                  : ((args.lengthBeats ?? held.length_beats) as number);
               win.__transition = {
                 ...held,
-                length_beats: args.lengthBeats ?? held.length_beats,
+                length_beats: length,
                 style: restyled,
                 shape:
                   offered.find((style) => style.name === restyled)?.shape ??
                   held.shape,
                 start_beat: (held.start_beat as number) + beats,
-                start_frame: (held.start_frame as number) + beats * beatFrames,
-                end_frame: (held.end_frame as number) + beats * beatFrames,
+                start_frame: startFrame,
+                // Derived from the start and the length rather than nudged
+                // along with the start, which is the same trap the comment
+                // above records: a stub that moved the mark for one kind of
+                // adjustment and not another would let a shortened transition
+                // go on drawing its old end.
+                end_frame: startFrame + length * beatFrames,
                 edited: true,
               };
             }

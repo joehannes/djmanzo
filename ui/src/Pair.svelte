@@ -160,6 +160,20 @@
    * the planner snaps elsewhere snaps visibly.
    */
   function dragged(mix: Transition, label: string, frame: number) {
+    // §26's *transition end*, and the seventh of its nine. The end is a
+    // **resize**: the start stays where it is, which is the same distinction
+    // the loop edges make and for the same reason — dragging the end of a mix
+    // is not dragging the mix.
+    //
+    // The frame goes to Rust unconverted. `Transition::end_at` owns the
+    // arithmetic, the rounding to a whole beat and the clamp, because it is
+    // the thing that knows the tempo and the start; a handle that worked the
+    // length out here would be a second answer to *how long is this mix*
+    // sitting in a component that owns neither.
+    if (label === "out") {
+      void ask(() => transitionAdjust({ endFrame: frame }));
+      return;
+    }
     if (label !== "mix in") return;
     const beatFrames = (mix.end_frame - mix.start_frame) / mix.length_beats;
     if (!Number.isFinite(beatFrames) || beatFrames <= 0) return;
@@ -295,7 +309,15 @@
                     // the same rule the move buttons beside it already follow.
                     draggable: mix.armed,
                   },
-                  { frame: mix.end_frame, label: "out" },
+                  {
+                    frame: mix.end_frame,
+                    label: "out",
+                    // §26's *transition end*. Grabbable on the same terms as
+                    // the start above: only once djmanzo is holding the mix,
+                    // because `transition_adjust` refuses to move a proposal
+                    // and a handle that does nothing is worse than no handle.
+                    draggable: mix.armed,
+                  },
                 ]
               : []}
             onMoveMark={(label, frame) => dragged(mix, label, frame)}

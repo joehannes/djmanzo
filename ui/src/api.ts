@@ -2686,6 +2686,16 @@ export const transitionAdjust = (change: {
   moveBeats?: number;
   lengthBeats?: number;
   style?: string;
+  /**
+   * §26's *transition end*: where the closing handle was dropped, in frames on
+   * the outgoing record.
+   *
+   * A position rather than a length, because that is what a waveform knows.
+   * `Transition::end_at` turns it into a whole number of beats, where the
+   * tempo and the start already live — the same contract the hot cues and the
+   * loop edges are under.
+   */
+  endFrame?: number;
 }) => invoke<Transition | null>("transition_adjust", change);
 
 /** Throw the adjustments away and ask the planner again. */

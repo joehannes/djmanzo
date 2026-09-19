@@ -202,6 +202,36 @@ impl Transition {
         self.set_geometry(self.plan.start_beat, beats, self.plan.style);
     }
 
+    /// Put the end of the transition at this frame on the outgoing record.
+    ///
+    /// [§26](../../../docs/DIRECTIVE.md)'s *transition end*, and the seventh
+    /// of its nine. The waveform reports a **position** and nothing else --
+    /// the same contract the hot cues and the loop edges are under -- so the
+    /// arithmetic that turns a place on a lane into a length in beats is here,
+    /// where the tempo and the start already live. A handle that worked it out
+    /// for itself would be a second answer to *how long is this mix* sitting
+    /// in a component that does not own one.
+    ///
+    /// Rounded to a whole beat, because a transition is counted in beats and
+    /// a mix 31.4 beats long is not a thing a DJ can ask another DJ for. The
+    /// start does not move: this is a **resize**, which is the same
+    /// distinction `Deck::move_loop_edge` makes and for the same reason --
+    /// dragging the end of a mix is not dragging the mix.
+    ///
+    /// Everything else is [`Self::set_length`]'s clamp: an end dropped before
+    /// the start, or beyond the longest transition djmanzo will hold, becomes
+    /// the nearest length it will. Clamped rather than refused, for the reason
+    /// [`Self::move_start`] gives.
+    pub fn end_at(&mut self, frame: f64) {
+        if !frame.is_finite() {
+            return;
+        }
+        let beats = (frame - self.plan.start_frame) / self.beat_frames();
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let beats = beats.round().clamp(0.0, f64::from(u32::MAX)) as u32;
+        self.set_length(beats);
+    }
+
     /// Choose a different way to do it.
     ///
     /// The style is not checked against the tempos. A DJ who wants to blend
@@ -481,6 +511,63 @@ mod tests {
             (transition.plan.end_frame - (start + 8.0 * beat())).abs() < 1.0,
             "an eight-beat transition did not end eight beats after it started"
         );
+    }
+
+    /// **§26's transition end: a position becomes a length, and the start
+    /// stays put.**
+    ///
+    /// The handle reports where it was dropped and nothing else, so this is
+    /// where a place on a lane turns into a number of beats. A *resize*, not a
+    /// slide: the whole difference from `move_start`, and the same one
+    /// `Deck::move_loop_edge` makes.
+    #[test]
+    fn dropping_the_end_sets_the_length_and_leaves_the_start_alone() {
+        let mut transition = armed();
+        let start = transition.plan.start_frame;
+
+        transition.end_at(start + 24.0 * beat());
+
+        assert_eq!(transition.plan.length_beats, 24);
+        assert!(
+            (transition.plan.start_frame - start).abs() < 1.0,
+            "dragging the end moved the start, which is a slide rather than a resize"
+        );
+        assert!((transition.plan.end_frame - (start + 24.0 * beat())).abs() < 1.0);
+    }
+
+    /// A drop between two beats is a whole beat, because a mix is counted in
+    /// them: nobody asks another DJ for thirty-one and a half.
+    #[test]
+    fn an_end_dropped_between_beats_rounds_to_one() {
+        let mut transition = armed();
+        let start = transition.plan.start_frame;
+
+        transition.end_at(start + 15.6 * beat());
+        assert_eq!(transition.plan.length_beats, 16);
+
+        transition.end_at(start + 16.4 * beat());
+        assert_eq!(transition.plan.length_beats, 16);
+    }
+
+    /// An end dropped somewhere a transition cannot reach is clamped to the
+    /// nearest length it can, on `set_length`'s terms -- including one dropped
+    /// *behind* the start, which is a DJ asking for the shortest mix rather
+    /// than for the mix to run backwards.
+    #[test]
+    fn an_end_dropped_where_no_transition_can_go_is_clamped() {
+        let mut transition = armed();
+        let start = transition.plan.start_frame;
+
+        transition.end_at(start - 40.0 * beat());
+        assert_eq!(transition.plan.length_beats, LENGTH_RANGE.0);
+
+        transition.end_at(start + 4_000.0 * beat());
+        assert_eq!(transition.plan.length_beats, LENGTH_RANGE.1);
+
+        // And a position that is not a position leaves it exactly as it was.
+        let before = transition.plan.length_beats;
+        transition.end_at(f64::NAN);
+        assert_eq!(transition.plan.length_beats, before);
     }
 
     /// Lengths outside what a transition can sensibly be are clamped, not

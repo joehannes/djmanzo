@@ -102,6 +102,31 @@ every hop of a signal built to contain all four and says so.
   `ui/src/stems.ts` — a second copy of that order is how the bass fader ends
   up coloured like the vocal band.
 
+**§26's transition end can be grabbed** — the seventh of its nine, and
+another reason that had stopped being true before it was written down.
+
+The row said it *"needs an owner that knows what moving it means"*.
+`Transition::set_length` has clamped a length to what a transition can be for
+as long as there have been armed transitions. The *out* mark was already drawn
+on the lane and was deliberately not grabbable; that one line was the whole
+gap.
+
+- **A resize, not a slide.** The start stays where it is — the same
+  distinction `Deck::move_loop_edge` makes, asserted in Rust and in the
+  browser.
+- **The arithmetic is Rust's**, as §26's rule requires: the handle reports a
+  *position* and `Transition::end_at` decides what length that is. It rounds to
+  a whole beat, because nobody asks another DJ for a mix thirty-one and a half
+  beats long, and clamps on `set_length`'s existing terms — an end dropped
+  behind the start is the shortest mix rather than a mix running backwards.
+- Grabbable only once djmanzo is **holding** the mix, on the same terms as the
+  mix point: `transition_adjust` refuses to move a proposal, and a handle that
+  does nothing is worse than no handle.
+- The browser stub was carrying the defect its own comment warns about — it
+  moved `end_frame` for a start nudge and not for a length change, so a
+  shortened transition went on drawing its old end. Now derived from the start
+  and the length.
+
 **The interface asked Rust four times per frame** — §25, §90,
 and a limitation this changelog recorded two entries ago that turns out to
 have been wrong about its own cause.

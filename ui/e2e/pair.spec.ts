@@ -158,6 +158,60 @@ test.describe("the pair view", () => {
     expect(errorsThrown(page), "the pair view threw while dragging").toEqual([]);
   });
 
+  /**
+   * **§26's *transition end*: the other edge of the same mix.**
+   *
+   * The seventh of §26's nine, and the one whose row said it *"needs an owner
+   * that knows what moving it means"* — which by then existed:
+   * `Transition::set_length` has clamped a length to what a transition can be
+   * for as long as there have been armed transitions. What was missing was the
+   * handle.
+   *
+   * A **resize**, which is the claim worth asserting here and the whole
+   * difference from the drag above: the start does not move. Rust owns the
+   * arithmetic — the handle reports a position and `end_at` decides what
+   * length that is — so what this checks is the round trip and that one end
+   * moved while the other did not.
+   */
+  test("the transition end can be dragged, and the start stays put", async ({
+    page,
+  }) => {
+    await pairOpen(page);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+
+    // On the same terms as the start: a proposal cannot be adjusted, so
+    // offering a handle for one would be offering a control that does nothing.
+    await expect(page.getByRole("slider", { name: /^out/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Set up", exact: true }).click();
+
+    const end = page.getByRole("slider", { name: /^out/ });
+    const start = page.getByRole("slider", { name: /mix in/ });
+    await expect(end).toBeVisible();
+    const before = {
+      end: await end.getAttribute("aria-valuenow"),
+      start: await start.getAttribute("aria-valuenow"),
+    };
+
+    const box = await end.boundingBox();
+    expect(box, "the transition end has no handle to grab").not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    // Left, which shortens it: dragging right would run into the clamp that
+    // keeps a mix inside the record and could pass by not moving at all.
+    await page.mouse.move(box!.x - 120, box!.y + box!.height / 2, { steps: 8 });
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => end.getAttribute("aria-valuenow"))
+      .not.toBe(before.end);
+    expect(
+      await start.getAttribute("aria-valuenow"),
+      "dragging the end moved the start, which is a slide rather than a resize",
+    ).toBe(before.start);
+    await expect(page.locator(`${PAIR} .edited`)).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** And the same handle answers the keyboard, because a mouse is not the only hand. */
   test("the mix point moves with the arrow keys", async ({ page }) => {
     await pairOpen(page);

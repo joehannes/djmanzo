@@ -7444,6 +7444,11 @@ pub fn transition_adjust(
     move_beats: Option<i64>,
     length_beats: Option<u32>,
     style: Option<String>,
+    // §26's *transition end*: where the DJ dropped the closing handle, in
+    // frames on the outgoing record. A position rather than a length, because
+    // that is what a waveform knows -- `Transition::end_at` turns it into
+    // beats, where the tempo and the start already are.
+    end_frame: Option<f64>,
 ) -> Result<Option<TransitionDto>, String> {
     let style = match style.as_deref() {
         Some(word) => Some(
@@ -7458,6 +7463,12 @@ pub fn transition_adjust(
         }
         if let Some(beats) = length_beats {
             transition.set_length(beats);
+        }
+        // After the two above, because a drag says where the end should be
+        // *now*: a press that both moved the start and dropped the end would
+        // otherwise land the end relative to a start it had already left.
+        if let Some(frame) = end_frame {
+            transition.end_at(frame);
         }
         if let Some(style) = style {
             transition.set_style(style);
