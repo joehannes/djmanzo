@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { STEM_KEYS } from "./stems";
   /**
    * The pad zone: eight pads and a row of page tabs.
    *
@@ -143,11 +144,38 @@
       // grid on its own and you can see the next slice coming.
       return deck.slice.at === condition.SliceAt;
     }
-    // The M6 stem page is visible before separated buffers land. Until the
-    // snapshot carries per-stem state, these pads behave and label correctly
-    // but do not latch visually.
-    if ("StemMuted" in condition || "StemSolo" in condition) return false;
+    // **These read the snapshot, and the reason they did not had gone stale.**
+    // This branch was `return false` under a comment saying the pads would not
+    // latch "until the snapshot carries per-stem state" — which it does, and
+    // has for long enough that the stems *panel* has been drawing from the
+    // same two fields all along. Four pads a deck sat dark next to a panel
+    // showing the very state they were about.
+    if ("StemMuted" in condition) {
+      return deck.stem_mutes[stemIndex(condition.StemMuted)] ?? false;
+    }
+    if ("StemSolo" in condition) {
+      // The engine's solo mutes every stem and un-mutes exactly one, keeping
+      // the DJ's own pattern aside to restore on release — so *which* stem is
+      // soloed is the one that is audible while a solo is held. Derived rather
+      // than carried, because a second field saying the same thing is a second
+      // answer that can disagree with the audio.
+      return (
+        deck.stem_soloing && !deck.stem_mutes[stemIndex(condition.StemSolo)]
+      );
+    }
     return false;
+  }
+
+  /**
+   * Where a stem sits in the one order — see `./stems`.
+   *
+   * `Stem` serialises capitalised (`"Vocal"`) and the key table is lowercase,
+   * which is the whole of the conversion. Going through that table rather than
+   * writing a second list of four is the same argument the table's own doc
+   * makes: two copies of this order is how the bass pad lights for the vocal.
+   */
+  function stemIndex(name: string): number {
+    return STEM_KEYS.indexOf(name.toLowerCase() as (typeof STEM_KEYS)[number]);
   }
 
   function press(index: number, event: PointerEvent) {

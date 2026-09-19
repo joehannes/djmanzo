@@ -102,6 +102,35 @@ every hop of a signal built to contain all four and says so.
   `ui/src/stems.ts` — a second copy of that order is how the bass fader ends
   up coloured like the vocal band.
 
+**Four pads a deck stopped sitting dark** — §29, and another comment whose
+reason had gone stale.
+
+`dj_core::pads` gives every pad a `Lit` condition the interface evaluates
+against the snapshot. Eight of the ten were evaluated. `StemMuted` and
+`StemSolo` returned `false` under a comment saying the pads would not latch
+*"until the snapshot carries per-stem state"* — which it does, and has for
+long enough that the stems **panel** has been drawing its mute buttons from
+the same two fields all along. Four pads a deck sat dark beside a panel
+showing the very state they were about.
+
+- **Which stem is soloed is derived, not carried.** The engine's solo mutes
+  every stem and un-mutes exactly one, keeping the DJ's own pattern aside to
+  restore on release — so the soloed stem is the audible one while a solo is
+  held. A second snapshot field saying which would be a second answer that
+  could disagree with the audio.
+- The mute pads follow the *live* mutes, including the isolation a held solo
+  imposes, because that is what the panel shows. Two surfaces for one state
+  that disagreed would be worse than either being wrong alone.
+- The stem index comes from `ui/src/stems.ts` rather than a second list of
+  four — `Stem` serialises capitalised and the key table is lowercase, which
+  is the whole of the conversion.
+
+Found by auditing for enum variants nothing constructs or consumes, which is
+this project's signature defect. Most of what that turned up was noise —
+`#[from]` error variants and same-named variants in different enums — and this
+was the one real finding, along with a `Write::Loops` variant in the persist
+worker that is defined, handled and never sent.
+
 **§26's transition end can be grabbed** — the seventh of its nine, and
 another reason that had stopped being true before it was written down.
 
