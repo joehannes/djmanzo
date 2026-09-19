@@ -29,20 +29,26 @@
 //! The geometry is [`plan::plan`]'s, unedited. That matters more than it
 //! looks: a ghost that worked out its own mix point would show a DJ one
 //! transition and then perform a different one the moment they hit load. What
-//! this adds is the two things the planner has no reason to know — where the
-//! candidate's own first phrase lands once it is beat-matched onto that mix
-//! point, and which of §27's seven questions djmanzo cannot answer at all.
+//! this adds is what the planner has no reason to know: where three things
+//! inside the candidate — its first full phrase, its first drop, the arrival
+//! of its voice — land once it is beat-matched onto that mix point, and
+//! which of §27's seven questions djmanzo cannot answer at all.
 //!
-//! # The two it cannot answer, and why they are named rather than dropped
+//! # What it cannot answer is named rather than dropped
 //!
-//! §27 asks for the vocal entry and the drop. Nothing in `dj_analysis`
-//! produces either, and no amount of arithmetic over a beat grid will: they
-//! are questions about what the record *sounds* like. So they are carried as
-//! [`Asked`] entries that answer `false`, derived from
-//! [`dj_render::layer`] — the `vocal` and `drops` layers declaring themselves
-//! undrawn is already the fact, and stating it twice is how the two drift
-//! apart. An overlay that quietly showed five of seven marks would read as a
-//! record with no vocal and no drop.
+//! All seven are answered today, and the mechanism that says so is the point
+//! rather than the number. Whether a question can be drawn is derived from
+//! [`dj_render::layer`] — a layer declaring itself undrawn *is* the fact, and
+//! stating it twice here is how the two drift apart. [`unseen`] therefore
+//! shrinks on its own the day an analyser ships and grows again the day a
+//! layer is taken out, and the interface has to draw that line either way: an
+//! overlay that quietly showed five of seven marks would read as a record
+//! with no vocal and no drop, which is a lie about the record rather than an
+//! admission about djmanzo. Two of the seven, the vocal entry and the drop,
+//! spent a long time on the `false` side of it, because they are questions
+//! about what a record *sounds* like and no arithmetic over a beat grid
+//! answers them; `dj_analysis::presence` and §75's drop detection are what
+//! moved them, and the count test below is what noticed.
 
 use dj_core::{KeyRelation, MusicalKey, Phrase, SampleRate};
 use dj_render::layer::{self, Layer};
@@ -71,7 +77,7 @@ pub struct Candidate {
     /// and this is the answer arriving from the only thing that measures it.
     pub drops: Vec<f64>,
     /// Where the candidate's voice arrives, in its own frames. §27's *where
-    /// the vocal enters*, from `dj_analysis::voice`.
+    /// the vocal enters*, from `dj_analysis::presence`.
     ///
     /// `None` for an instrumental and for a record nobody has analysed, which
     /// are different facts with the same drawing: no mark.
@@ -188,10 +194,13 @@ impl Asked {
 
     /// Whether djmanzo can answer this yet.
     ///
-    /// Derived from the layer table rather than written down here. The day an
-    /// analyser finds vocals and `vocal` stops being `Drawn::Nowhere`, this
-    /// answers `true` by itself — and [`Ghost`] will owe a position to go with
-    /// it, which is what the count test below is there to say out loud.
+    /// Derived from the layer table rather than written down here, so it
+    /// tracks what djmanzo actually draws in both directions. That is not
+    /// theoretical: when `dj_analysis::presence` shipped and `vocal` stopped
+    /// being `Drawn::Nowhere`, this began answering `true` on its own, and the
+    /// count test below failed until [`Ghost`] carried a frame to go with it.
+    /// A layer removed tomorrow would put a question back on the unseen list
+    /// the same way, without anyone remembering to.
     #[must_use]
     pub fn answered(self) -> bool {
         self.layer()
