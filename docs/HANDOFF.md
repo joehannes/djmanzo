@@ -50,8 +50,17 @@ open to casual revision.
 cargo fmt --all
 RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets
 cargo test --workspace --all-targets
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cd ui && npx svelte-check && npx vitest run && npx playwright test
 ```
+
+The `cargo doc` line is the newest and the least obvious. A `` [`Thing`] ``
+that resolves to nothing renders as **plain text**, so a cross-reference that
+has gone stale looks exactly like one that works and no reader can tell. This
+codebase keeps its reasoning in its doc comments, which makes a dead link the
+same defect as a table nothing consults — one layer up. The first run of that
+gate found twenty-seven, including a link to a constant that said djmanzo does
+not drive a controller's lights months after it started driving them.
 
 ### Mutation-test whatever the new test claims to cover
 

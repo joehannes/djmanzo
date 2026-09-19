@@ -30,8 +30,9 @@
 //! first disagreement.
 //!
 //! So this module reuses that machinery rather than duplicating it:
-//! [`Token::shape`] extends the shape whitelist the layout loader already
-//! enforces, and a surface placement is checked the same way a widget
+//! [`semantic_tokens`] extends the shape whitelist the layout loader already
+//! enforces — the same [`crate::widgets::TokenShape`] the 23 appearance tokens
+//! are checked against — and a surface placement is checked the same way a widget
 //! placement is.
 //!
 //! # The rule everything here serves
@@ -218,11 +219,11 @@ impl Role {
 /// | §17 | here |
 /// |---|---|
 /// | Setup | `None` |
-/// | Warm-up | [`SessionPhase::WarmUp`] |
-/// | Build | [`SessionPhase::Heat`] |
-/// | Peak | [`SessionPhase::Peak`] |
-/// | Release | [`SessionPhase::Cooldown`] |
-/// | Closing | [`SessionPhase::ChillOut`] |
+/// | Warm-up | [`dj_core::SessionPhase::WarmUp`] |
+/// | Build | [`dj_core::SessionPhase::Heat`] |
+/// | Peak | [`dj_core::SessionPhase::Peak`] |
+/// | Release | [`dj_core::SessionPhase::Cooldown`] |
+/// | Closing | [`dj_core::SessionPhase::ChillOut`] |
 ///
 /// # What a priority is, and what it is not
 ///

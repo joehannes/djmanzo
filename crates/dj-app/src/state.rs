@@ -1994,7 +1994,8 @@ fn seed_defaults(registry: &ParameterRegistry) {
     }
 }
 
-/// What [`DeckParam::SlipPosition`] reads when nothing is being slipped over.
+/// What [`dj_core::DeckParam::SlipPosition`] reads when nothing is being
+/// slipped over.
 ///
 /// Outside the track and unambiguous, because zero is a real position. The
 /// engine publishes it and the snapshot reads it, so the two cannot disagree

@@ -3657,8 +3657,11 @@ export interface Hands {
   /**
    * Lights the mapping describes.
    *
-   * Not a claim that djmanzo sends them — it does not yet, and the panel says
-   * so rather than letting a count imply a controller lights up.
+   * Still not a claim that djmanzo is sending them. It does drive them now, but
+   * a mapping can describe twelve lights on a machine whose MIDI output another
+   * application is holding, and then the board is dark with nothing wrong with
+   * the mapping. Whether anything is going out is {@link ControllerLights},
+   * read off the open connection; this is read off the file.
    */
   leds: number;
 }

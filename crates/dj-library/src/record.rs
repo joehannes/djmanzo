@@ -113,7 +113,7 @@ impl StoredAnalysis {
     /// Flatten a grid into the stored form.
     ///
     /// Defaults the source to the analyser, which is where all but two grids
-    /// come from; [`Self::from`] on a source overrides it.
+    /// come from; [`Self::from_source`] overrides it.
     #[must_use]
     pub fn with_beatgrid(mut self, grid: Beatgrid) -> Self {
         self.bpm = Some(grid.bpm.get());

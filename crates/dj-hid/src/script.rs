@@ -24,7 +24,7 @@
 //!   from Lua to the engine that skips the vocabulary.
 //! - **Bounded execution.** A script runs on the MIDI thread, where a `while
 //!   true do end` would take the controller down with it. Lua's instruction
-//!   hook stops it after [`STEP_LIMIT`] steps.
+//!   hook stops it after `STEP_LIMIT` steps.
 //!
 //! # What a script is for
 //!

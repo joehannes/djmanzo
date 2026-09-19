@@ -20,7 +20,7 @@
 //! wildest hand can take it between two reports, so the short way is not a
 //! guess: the long way is physically impossible.
 //!
-//! That reasoning has a limit, and [`MAX_PLAUSIBLE`] is where it runs out.
+//! That reasoning has a limit, and `MAX_PLAUSIBLE` is where it runs out.
 //! Past that the reading is not a fast platter, it is a dropped packet or a
 //! device that was unplugged and plugged back in mid-turn -- and the honest
 //! answer to "how far did it move?" is that we do not know. Reporting zero

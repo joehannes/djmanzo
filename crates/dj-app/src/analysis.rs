@@ -15,7 +15,7 @@
 //!
 //! # Why the cache is keyed by content
 //!
-//! [`TrackId`] is a hash of the audio, not of the path. That is the right key
+//! [`dj_core::TrackId`] is a hash of the audio, not of the path. That is the right key
 //! for three reasons: the same file analysed twice gives the same answer, a
 //! file that moves or is renamed keeps its analysis, and two copies of the same
 //! track in different folders share one entry. A path-keyed cache gets all

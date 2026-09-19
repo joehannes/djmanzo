@@ -30,7 +30,7 @@
 //!
 //! So audibility is computed the way the engine computes it — the channel
 //! fader times the crossfader gain for that deck's assignment, through
-//! `dj_dsp`'s own curve — and a crossing of [`AUDIBLE`] in opposite directions
+//! `dj_dsp`'s own curve — and a crossing of `AUDIBLE` in opposite directions
 //! on two decks, close enough together, is a handover.
 //!
 //! # What it cannot know, and does not claim

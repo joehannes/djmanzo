@@ -32,8 +32,9 @@
 //!
 //! The same posture as §8's [`crate::remembered`] and §32's [`crate::theme`].
 //! Two of §48's seven are deliberate refusals rather than gaps, and both are
-//! collisions with other sections that had to be decided somewhere: see
-//! [`Spend::Layers`] and [`Spend::Previews`].
+//! collisions with other sections that had to be decided somewhere: the
+//! *visual layers* and *expensive previews* rows of [`Spend::ALL`], which are
+//! the two carrying a [`Spend::why_not`].
 
 /// Which of §48's three bands a cost belongs to.
 ///

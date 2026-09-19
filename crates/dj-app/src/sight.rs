@@ -26,7 +26,7 @@
 //!
 //! Each gathered item names a JSON pointer into the snapshot djmanzo already
 //! sends the interface sixty times a second, and
-//! [`tests::every_gathered_item_points_at_a_field_the_snapshot_really_has`]
+//! `tests::every_gathered_item_points_at_a_field_the_snapshot_really_has`
 //! resolves every one of them against a real capture. A table claiming the
 //! assistant can see the cue points through a field that does not exist is the
 //! failure this whole module is about, one level up.

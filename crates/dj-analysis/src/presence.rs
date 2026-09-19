@@ -7,7 +7,7 @@
 //! All four rows carried the same reason for as long as they existed — *the
 //! analysis does not exist* — and for as long as they did, djmanzo shipped a
 //! separator that pulls four stems out of a record with no model, no download
-//! and no runtime: [`dj_stems::hpss`]. A DJ can solo the voice. The waveform
+//! and no runtime: `dj_stems::hpss`. A DJ can solo the voice. The waveform
 //! could not draw where it was.
 //!
 //! # What is measured, and what it is not
@@ -88,7 +88,8 @@ const FREQ_SPAN: usize = 17;
 ///
 /// **A stated guess, not a measurement** — see the module docs. Two things
 /// read it and they are deliberately the same number: the overview saturates
-/// its vocal strip here, and [`Presence::enters`] calls this the point at
+/// its vocal strip here, and [`crate::energy::Trajectory::voice_enters`] calls
+/// this the point at
 /// which a voice has arrived. Two constants would be two answers to *is
 /// somebody singing*, drawn a few pixels apart on one screen.
 pub const STRONG: f32 = 0.25;

@@ -83,7 +83,7 @@ impl SeparationWorker {
 
     /// Enqueue a chunk of audio for separation, waiting if the worker is behind.
     ///
-    /// **This blocks** once [`QUEUED_CHUNKS`] are already waiting. Callers are
+    /// **This blocks** once `QUEUED_CHUNKS` are already waiting. Callers are
     /// background threads feeding this one, so waiting is the correct
     /// behaviour and the alternative -- an unbounded queue -- costs a whole
     /// track of memory per load. Nothing on the audio thread ever calls this.
@@ -92,7 +92,7 @@ impl SeparationWorker {
     /// `audio` is interleaved stereo and may carry context on either side of
     /// the chunk itself; `body` names, in frames, which part of it is the
     /// chunk. Separating with context and keeping the middle is what stops a
-    /// glitch landing at every chunk boundary — see [`SeparationJob::body`].
+    /// glitch landing at every chunk boundary — see `SeparationJob::body`.
     ///
     /// Passing `0..frames` means "no context", which is honest for a track
     /// short enough to be one chunk and wrong for anything else.

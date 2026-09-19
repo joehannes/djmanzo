@@ -9,7 +9,7 @@
 //! controller nobody is touching.
 //!
 //! The timeout is the only cost of that design and it is paid once per device:
-//! at [`POLL_MS`] the thread wakes twenty times a second on a silent
+//! at `POLL_MS` the thread wakes twenty times a second on a silent
 //! controller, which is nothing, and returns immediately whenever a report
 //! actually arrives.
 //!

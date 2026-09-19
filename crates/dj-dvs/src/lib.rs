@@ -17,7 +17,7 @@
 //!
 //! The numbers describing a particular record — carrier frequency, register
 //! width, seed and taps — are facts about a pressed disc rather than anybody's
-//! expression, and they are held as **configuration** in [`format`] rather than
+//! expression, and they are held as **configuration** in [`mod@format`] rather than
 //! baked into the decoder, so a new pressing is a table entry and not a
 //! release.
 //!

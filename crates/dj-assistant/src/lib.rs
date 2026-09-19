@@ -7,7 +7,7 @@
 //! > onto the existing bus.**
 //!
 //! Everything here is arranged to make that true rather than merely intended.
-//! The system prompt is *generated* from [`dj_core::vocabulary`], so a model can
+//! The system prompt is *generated* from [`dj_core::vocabulary()`], so a model can
 //! only be told about actions that exist. Whatever it replies is run through
 //! [`dj_core::Action::parse`], and what does not parse is rejected at the edge
 //! and reported. A hallucination is a parse error — it cannot invent a deck,

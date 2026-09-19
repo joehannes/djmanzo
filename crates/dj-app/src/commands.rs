@@ -5489,7 +5489,7 @@ fn make_safe(state: &AppState) -> Result<(), String> {
 ///
 /// A list rather than a loop of side effects so that the property that matters
 /// — what is *not* in it — can be asserted without an engine, an audio device
-/// or a running set. See [`make_safe`] for the reasoning behind the omissions;
+/// or a running set. See `make_safe` for the reasoning behind the omissions;
 /// `nothing_in_safe_can_silence_the_floor` is what holds them to it.
 #[must_use]
 pub fn safe_actions(decks: usize) -> Vec<String> {
@@ -9223,7 +9223,7 @@ const PALETTE_LIMIT: usize = 12;
 ///
 /// **Everything else is ordered by [§58's information
 /// hierarchy](crate::tiers)** -- glanceable, then performable, then contextual,
-/// then preparation -- and the cut to [`PALETTE_LIMIT`] happens after. Before
+/// then preparation -- and the cut to `PALETTE_LIMIT` happens after. Before
 /// this the order was the order the passes below happened to generate in, so a
 /// DJ who typed three letters mid-mix could be offered *Pin the Journal* above
 /// *deck 2 cue*, and on a six-deck layout the cut could take the performing

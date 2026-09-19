@@ -170,7 +170,8 @@ pub enum DeckParam {
     HotCue8,
     /// Which side of the crossfader this deck is cut by.
     ///
-    /// [`CrossfaderAssign::as_param`] defines the encoding: negative left,
+    /// [`crate::deck::CrossfaderAssign::as_param`] defines the encoding: negative
+    /// left,
     /// positive right, zero through.
     CrossfaderAssign,
     /// Stem Mutes: 1.0 when muted, 0.0 when active.

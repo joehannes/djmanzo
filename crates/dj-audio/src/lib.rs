@@ -94,7 +94,7 @@ pub trait AudioBackend: Send + Sync + std::fmt::Debug {
     /// Open a capture stream, delivering interleaved stereo into `sink`.
     ///
     /// The engine holds the other end. Mono devices are doubled on the way in
-    /// so the engine has one shape to handle — see [`dj_engine::mic`] — and
+    /// so the engine has one shape to handle — see the engine's `mic` module — and
     /// devices with more than two channels have the first two taken.
     ///
     /// Defaults to refusing, for the same reason as [`Self::input_devices`].

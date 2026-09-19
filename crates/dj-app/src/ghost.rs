@@ -38,7 +38,7 @@
 //!
 //! All seven are answered today, and the mechanism that says so is the point
 //! rather than the number. Whether a question can be drawn is derived from
-//! [`dj_render::layer`] — a layer declaring itself undrawn *is* the fact, and
+//! [`mod@dj_render::layer`] — a layer declaring itself undrawn *is* the fact, and
 //! stating it twice here is how the two drift apart. [`unseen`] therefore
 //! shrinks on its own the day an analyser ships and grows again the day a
 //! layer is taken out, and the interface has to draw that line either way: an

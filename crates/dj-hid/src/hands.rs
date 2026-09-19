@@ -15,7 +15,10 @@
 //! bindings are what a hand will actually find.
 //!
 //! That is what makes §53 testable at all. The eighth question — **displays** —
-//! is not answerable this way and is not guessed: see [`Hands::displays`].
+//! is not answerable this way and is not guessed: a controller's screens are
+//! driven by its own firmware, not by a mapping, so [`Hands`] has no field for
+//! them and the panel says so in a sentence instead of printing a count it
+//! would have had to invent.
 //!
 //! # Counted from the actions, not from the control names
 //!
@@ -61,36 +64,41 @@ pub struct Hands {
     pub channels: u8,
     /// Lights the mapping declares. §53's *LED feedback*.
     ///
-    /// A count of what the file says can be lit, **not** a claim that djmanzo
-    /// lights them: `FeedbackMap` is parsed and read by nobody, which is the
-    /// fourth table this project has found in that state. See
-    /// [`LEDS_NOT_DRIVEN`] — the interface says which, because "this controller
-    /// has lights" and "djmanzo drives them" are different facts and only one
-    /// of them is true.
+    /// A count of what the file says can be lit, which is still **not** the
+    /// same fact as djmanzo lighting them. `dj_hid::feedback::Lights` drives
+    /// them now — for a long time it did not, and this field's doc went on
+    /// saying so afterwards — but a mapping can describe twelve lights on a
+    /// machine whose MIDI output another application already holds, and then
+    /// the board is dark with nothing wrong with the mapping.
+    ///
+    /// So this stays a reading of the *file*, and whether anything is being
+    /// sent is a live answer that belongs with the open connection:
+    /// `dj_app::control::LightsDto` carries how many are driven, out to which
+    /// port, and the reason when none are. Three causes of a dark board, three
+    /// sentences, one count that means the same thing under all of them.
     pub leds: usize,
 }
 
-/// What §53 asks for and a mapping cannot answer.
-///
-/// **Displays.** A screen on a controller is not reachable over the MIDI
-/// mapping at all — a CDJ's display is driven by its own firmware and a DDJ's
-/// by a USB protocol djmanzo does not speak — so there is nothing in a mapping
-/// file that could say whether one exists. Reported as absent rather than
-/// guessed from the device name, which is the same posture §25's unbuilt layers
-/// take: a count that included a display djmanzo cannot draw to would be a
-/// promise the interface could not keep.
-pub const DISPLAYS_UNKNOWABLE: &str = "A controller's screens are driven by its own firmware, not by a mapping, \
-     so djmanzo cannot see them.";
-
-/// What the light count is, and what it is not.
-///
-/// The `[[feedback]]` blocks describe lights djmanzo *could* drive, and
-/// nothing sends them: `FeedbackMap` is parsed and consulted by no other
-/// module. Counting them and saying nothing would be the interface claiming a
-/// controller lights up under it, which is the kind of promise §25's unbuilt
-/// layers are named as absent to avoid.
-pub const LEDS_NOT_DRIVEN: &str =
-    "This mapping describes lights, and djmanzo does not send them yet.";
+// Two sentences used to live here as `pub const`s -- `DISPLAYS_UNKNOWABLE` and
+// `LEDS_NOT_DRIVEN` -- and neither was ever read by anything. They are gone
+// rather than wired up, for two different reasons worth keeping apart.
+//
+// `LEDS_NOT_DRIVEN` said *"this mapping describes lights, and djmanzo does not
+// send them yet"*. That was true when it was written and stopped being true
+// when `feedback::Lights` shipped, and because nothing read it, nothing broke
+// and nothing said so. A string constant that no caller consults cannot go
+// stale loudly; it can only sit there waiting to be believed. The live answer
+// is `dj_app::control::LightsDto::unlit`, which is built from the open
+// connection rather than from a mapping and therefore cannot describe a state
+// djmanzo is not in.
+//
+// `DISPLAYS_UNKNOWABLE` said what the module doc above now says: a controller's
+// screens are driven by its own firmware and a mapping cannot see them. That
+// one is still true and always will be -- it is a fact about hardware, not
+// about djmanzo -- and the interface says it, in the controllers panel, where a
+// browser test holds it. One unchanging English sentence does not need a
+// command, a DTO field, a TypeScript interface and two fixtures to reach the
+// one paragraph that prints it; it needs to be written once, where it is read.
 
 impl Hands {
     /// Read a controller's reach off the text of its mapping file.

@@ -16,8 +16,10 @@
 //!
 //! Most analysis has no ground truth. This does: EBU Tech 3341 specifies that a
 //! 1 kHz sine at −23 dBFS in both channels must read **−23.0 LUFS ±0.1**. That
-//! is a real conformance target, and [`tests`] asserts it. The famous −0.691 dB
-//! offset in the formula exists precisely so that this case comes out round —
+//! is a real conformance target, and it is asserted:
+//! `tests::a_1khz_sine_at_minus_23_dbfs_reads_minus_23_lufs`. The famous
+//! −0.691 dB offset in the formula exists precisely so that this case comes
+//! out round —
 //! the K-weighting contributes about +0.691 dB at 1 kHz and the two cancel.
 
 use dj_dsp::Biquad;

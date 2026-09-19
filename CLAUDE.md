@@ -28,8 +28,12 @@ all of them is in that file and in `docs/adr/`.
 cargo fmt --all
 RUSTFLAGS="-D warnings" cargo clippy --workspace --all-targets
 cargo test --workspace --all-targets
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cd ui && npx svelte-check && npx vitest run && npx playwright test
 ```
+
+A dead `` [`Thing`] `` renders as plain text, so a stale cross-reference looks
+exactly like a working one. That last line is what catches it.
 
 Then **mutation-test the load-bearing new test**: break the code it claims to
 cover and confirm it fails. If it still passes the test is wrong — strengthen

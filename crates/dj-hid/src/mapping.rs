@@ -257,7 +257,7 @@ pub struct Binding {
     /// a jog wheel or an endless knob has a convention and no position. Given a
     /// default, a jog wheel bound with `move` would be indistinguishable from a
     /// fader and would be read as one -- which puts its centre a hair off zero
-    /// and creeps the deck. See [`centred`].
+    /// and creeps the deck. See `centred`.
     #[serde(default)]
     pub encoding: Option<Encoding>,
     /// Sent when a **motorised platter** reports its angle. Contains `{value}`,

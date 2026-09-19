@@ -175,7 +175,7 @@ pub fn plan(out: &Outgoing, into: &Incoming) -> Option<Plan> {
 /// them, which is most installations most of the time and is why [`plan`]
 /// exists as the short form rather than as a different answer.
 ///
-/// **It decides only where the music has not.** See [`STYLE_IS_TASTE`] and
+/// **It decides only where the music has not.** See `STYLE_IS_TASTE` and
 /// `choose_style`: a profile picks between styles that all work on a pair whose
 /// tempos and keys agree, and it never touches the cut a mismatched tempo
 /// demands or the echo a key clash asks for. A preference that could overrule
@@ -242,7 +242,7 @@ pub fn plan_as(out: &Outgoing, into: &Incoming, usual: Option<TransitionStyle>) 
 ///
 /// Both are [`plan`]'s own arithmetic rather than a second opinion, which is
 /// why this lives beside it. The window **opens** at the last beat where the
-/// longest transition the planner will propose still leaves [`TAIL_MARGIN`]
+/// longest transition the planner will propose still leaves `TAIL_MARGIN`
 /// intact, and **closes** at the last beat where the shortest one does.
 /// Inside it every length djmanzo would suggest fits somewhere. Before it, a
 /// DJ is leaving record on the table; after it, whatever they start is

@@ -33,7 +33,7 @@
 //!   it is about how a number reads rather than what it is: "kill" for a
 //!   band at zero, "LP 60%" for a filter.
 //! - **Level 2, direct adjustment.** Drag, shift-drag for fine, double-click to
-//!   [`Handle::unity`]. The fine ratio and the unity point are here.
+//!   [`Control::unity`]. The fine ratio and the unity point are here.
 //! - **Level 3, contextual options.** [`Handle::options`] — a short list of
 //!   whole moves a DJ would otherwise reach across the interface for, each one
 //!   an action djmanzo already accepts.

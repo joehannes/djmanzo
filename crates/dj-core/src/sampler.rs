@@ -205,7 +205,7 @@ pub enum SamplerChange {
     StopAll,
     /// Start capturing into a slot of the bank that is showing.
     ///
-    /// The bank is not named here, unlike [`crate::Command`]'s load, because
+    /// The bank is not named here, unlike the engine's `LoadSample`, because
     /// this *is* a thing a DJ does — they press record while looking at a bank,
     /// and the one they are looking at is the one they mean.
     Record { slot: u8, source: RecordSource },

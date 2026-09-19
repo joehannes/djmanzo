@@ -2,7 +2,7 @@
 //!
 //! A controller with a built-in soundcard has a fixed arrangement: the DDJ-400
 //! puts the room on outputs 1-2 and the headphones on 3-4, and the manual says
-//! so. [`dj_engine::BusLayout::for_channels`] guesses that arrangement from the
+//! so. The engine's `BusLayout::for_channels` guesses that arrangement from the
 //! channel count, which is right for most devices and wrong for the ones that
 //! do it differently -- and "wrong" here means the room hears the cue.
 //!

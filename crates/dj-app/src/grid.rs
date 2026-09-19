@@ -14,7 +14,7 @@
 //!
 //! # Why the edits are still actions
 //!
-//! [`dj_core::Command::SetGrid`] is deliberately *not* in the action
+//! [`dj_engine::Command::SetGrid`] is deliberately *not* in the action
 //! vocabulary — nobody presses "set grid", it is the analyser reporting a
 //! finding. Editing is the opposite: it is a person saying where the beat
 //! actually is, and a controller encoder, a script and the assistant should all

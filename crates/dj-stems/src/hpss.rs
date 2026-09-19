@@ -56,7 +56,8 @@
 //! "vocals". A percussive bassline lands in "drums". A mono recording has no
 //! sides, so "other" is nearly empty and the voice takes the whole middle. It
 //! is a real separator and it is not a good one; it is the one that works with
-//! no download, and [`crate::Separator`] is the seam where a better one goes.
+//! no download, and [`crate::stems::Separator`] is the seam where a better one
+//! goes.
 
 use crate::stems::{Separator, StemError, Stems};
 use dj_core::Stem;

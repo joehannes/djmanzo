@@ -79,7 +79,7 @@ test.describe("§53's controller-aware interface", () => {
   });
 
   /**
-   * **The panel says what djmanzo found, including the two it cannot see.**
+   * **The panel says what djmanzo found, including the one it cannot see.**
    *
    * §53 opens with *"the UI should know"*, and a DJ who has just plugged
    * something in is entitled to see what djmanzo thinks it can do before

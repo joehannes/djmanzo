@@ -3,10 +3,10 @@
 //! Two responsibilities that belong together because they are one workflow: a
 //! source is useless without its key, and a key is meaningless without knowing
 //! what the source will then do for you. So the settings panel renders
-//! [`dj_sources::catalog`] directly — the same honest paragraph the code obeys —
+//! [`mod@dj_sources::catalog`] directly — the same honest paragraph the code obeys —
 //! and the browser searches whatever that leaves usable.
 //!
-//! Secrets go in and never come back out. [`secret_status`] reports only
+//! Secrets go in and never come back out. [`CredentialDto`] reports only
 //! whether one is set and the last four characters, which is enough to tell two
 //! keys apart and useless to anyone reading over the DJ's shoulder.
 

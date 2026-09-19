@@ -14,7 +14,7 @@
 //! # What this module refuses to do
 //!
 //! There is no `list_all_secrets`, no way to read a key back into the UI, and
-//! [`SecretRef`] deliberately does not implement `Display`. Keys go in, and they
+//! [`Secret`] deliberately does not implement `Display`. Keys go in, and they
 //! come out only at the point of an API call. The settings panel shows
 //! [`Secret::hint`] -- the last four characters -- which is enough to tell two
 //! keys apart and useless to anyone who reads it over your shoulder.

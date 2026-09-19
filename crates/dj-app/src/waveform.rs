@@ -61,7 +61,7 @@ pub struct TileKey {
     /// Frames per pixel, scaled by 1000 so fractional zoom still keys exactly.
     pub zoom_milli: u64,
     /// Which generation of this deck's content the tile belongs to. See
-    /// [`WaveformStore::epochs`].
+    /// `WaveformStore::epochs`.
     pub epoch: u32,
     /// Which palette the tile was drawn with.
     ///

@@ -290,7 +290,7 @@ impl Loaded {
 /// a plugin here and whether it is still producing sound.
 ///
 /// Sent to the engine on the command queue and handed back through the
-/// retirement queue. Everything it needs is sized in [`Processor::new`].
+/// retirement queue. Everything it needs is sized in `Processor::new`.
 pub struct Processor {
     processor: PluginAudioProcessor<DjHost>,
     ports_in: AudioPorts,

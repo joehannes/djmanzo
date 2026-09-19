@@ -62,14 +62,14 @@
 //! - novelty is **relative**: how much a beat differs from the one before it,
 //!   as a fraction of the previous beat. A one-percent ripple then reads as a
 //!   novelty of 0.01 whatever the track's absolute level, and
-//!   [`MIN_CHANGE`] is a number one can reason about rather than a threshold
+//!   `MIN_CHANGE` is a number one can reason about rather than a threshold
 //!   tuned against a particular recording.
 //!
 //! **Significance is not prominence.** A z-score says how unlikely a pattern is
 //! to be chance, and on a track whose beats are nearly identical a ripple of a
 //! few percent is *wildly* unlikely — and musically nothing. Scored on z alone,
 //! a metronome came back with a sixteen-beat phrase at thirteen z. So a
-//! boundary also has to be **big**, which is what [`MIN_CHANGE`] asks and what
+//! boundary also has to be **big**, which is what `MIN_CHANGE` asks and what
 //! makes the relative novelty below worth its arithmetic.
 //!
 //! **A 16-beat track satisfies a 32-beat test.** Every boundary of a 32 is also

@@ -239,7 +239,7 @@ impl RequestBook {
     ///
     /// Deliberately not an equality test. Nobody types what a file is called:
     /// the room asks for "Obsesión" and the deck loads "Aventura - Obsesión
-    /// (Album Version) [128kbps]". So one folded key containing the other
+    /// (Album Version) \[128kbps\]". So one folded key containing the other
     /// counts — which is why [`SPECIFIC_ENOUGH`] exists, because "si" is
     /// inside half a Latin catalogue. The longest match wins, so an ask for
     /// the artist does not beat an ask for the song.

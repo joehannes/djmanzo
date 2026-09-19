@@ -218,7 +218,7 @@ pub fn message_and_dropped(entries: &[Entry], style: &Style) -> (String, usize) 
 
 /// The full set as a file, for when it is too long to send as a message.
 ///
-/// The escape hatch from [`MAX_URL_BYTES`]: a four-hour set does not fit in a
+/// The escape hatch from `MAX_URL_BYTES`: a four-hour set does not fit in a
 /// link and there is no version of this feature where that becomes acceptable
 /// to silently discard.
 #[must_use]

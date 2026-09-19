@@ -162,5 +162,16 @@ jobs:
       - name: Doc tests
         run: cargo test --workspace --doc
 
+      # A `[`Thing`]` that resolves to nothing renders as plain text, so a link
+      # that has gone stale looks exactly like one that works and no reader can
+      # tell. This codebase carries its reasoning in its doc comments, so a
+      # cross-reference that stopped crossing is the same defect as a table
+      # nothing consults -- and the first run of this found twenty-seven,
+      # including two constants that no longer described what djmanzo does.
+      - name: Documentation links
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
       - name: Build the application
         run: cargo build --workspace --bin djmanzo

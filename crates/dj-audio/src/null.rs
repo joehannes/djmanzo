@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 /// open.
 static LIVE_INPUTS: AtomicUsize = AtomicUsize::new(0);
 
-/// Null capture streams currently open. See [`LIVE_INPUTS`].
+/// Null capture streams currently open. See `LIVE_INPUTS`.
 #[must_use]
 pub fn live_input_streams() -> usize {
     LIVE_INPUTS.load(Ordering::Relaxed)

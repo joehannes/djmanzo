@@ -329,7 +329,7 @@ pub struct Trajectory {
     /// *where the vocal enters*, and the last of the seven it asks for.
     ///
     /// The first window whose voice reading reaches
-    /// [`crate::voice::STRONG`]. `None` for an instrumental, for a record
+    /// [`crate::presence::STRONG`]. `None` for an instrumental, for a record
     /// nobody measured, and for a record whose lead never gets above a
     /// murmur -- all three are records with no entry to mark, and a mark
     /// placed at the loudest murmur would be the confident guess this crate

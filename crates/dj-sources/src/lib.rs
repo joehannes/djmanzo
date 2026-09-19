@@ -7,7 +7,7 @@
 //!
 //! So the answer is encoded rather than remembered. Every provider declares its
 //! [`provider::Capabilities`], the trait's `resolve` refuses by default, and
-//! [`catalog`] holds one honest paragraph per service that the settings panel
+//! [`mod@catalog`] holds one honest paragraph per service that the settings panel
 //! renders verbatim — so what the user reads is the same thing the code obeys.
 //!
 //! In brief:
