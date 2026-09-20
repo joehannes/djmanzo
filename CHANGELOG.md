@@ -16,6 +16,42 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**§22's audition, and the preview player djmanzo already had the parts for** —
+the sixth of the six things §22 offers a candidate, and the last one missing.
+The reason filed against it was *"needs a preview player djmanzo does not
+have"*, and that was wrong: a sampler slot already takes the same
+`Arc<dyn TrackSource>` a deck takes, already plays it, and already routes to
+the headphones alone. One thing was genuinely missing, and it is the thing
+that separates an audition from a sampler slot — a slot always starts at zero,
+and a preview that opens every record at 0:00 plays a DJ the least informative
+sixteen bars of every candidate in the list.
+
+- **`dj_engine::preview` is a voice of its own**, not a reserved sampler slot:
+  taking one would take a pad away, which §3 refuses, and an audition would
+  stop whatever that pad was holding.
+- **It cannot reach the room, structurally.** No `output` field, no branch that
+  sums it into the main bus. A routing switch is a switch somebody gets wrong
+  once, in front of a crowd. A machine with no cue pair therefore auditions in
+  silence rather than out loud — the right failure for a DJ with nowhere
+  private to listen — and the playhead still runs, so the interface is never
+  left drawing a frozen position.
+- **At the record's own speed**, though the machinery to stretch it is right
+  there. The rail already answers `+3 BPM` on every row; pitching a vocal up
+  two semitones would lie about the one thing a DJ is listening for.
+- **Where it starts is a decision and it is said out loud.**
+  `audition::start_of` takes the first drop, else where the vocal enters, else
+  the top, and the rail prints *from the drop* with the position — because a
+  preview that opens an unfamiliar record ninety seconds in without saying so
+  is indistinguishable from one that opened the wrong record. The top is not a
+  guess dressed as a choice: a record nobody has analysed has no landmark, and
+  inventing one would be a number with no reading behind it.
+- **It does not load, stage or write anything down**, and a browser test
+  asserts it beside the ghost's own. A preview that counted as a play would put
+  every record a DJ listened to into their history and into §12's taste.
+- Zero allocations on the audio thread over sixty-four auditions while a record
+  plays. Nothing here has heard one: this container has no sound card.
+- §22 goes to fifteen of fifteen.
+
 **§53's second prominence judgement: the platter** — §53 asks the interface to
 read what is plugged in and use it to decide *which GUI surfaces deserve
 prominence*, and until now one surface answered that: the stem module, §53's

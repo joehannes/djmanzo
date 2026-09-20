@@ -25,6 +25,7 @@ pub mod asks;
 pub mod assistant;
 pub mod at_hand;
 pub mod audience;
+pub mod audition;
 pub mod automix;
 pub mod autopilot;
 pub mod brand;
@@ -536,6 +537,7 @@ pub fn run() {
             commands::library_status,
             commands::palette,
             commands::track_functions,
+            commands::audition,
             commands::functions_of,
             commands::set_track_functions,
             commands::suggest_next,

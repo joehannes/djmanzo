@@ -291,3 +291,97 @@ test.describe("§27's ghost", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 });
+
+/**
+ * §22's *audition* — the sixth of the six things the rail offers, and the only
+ * one that makes a sound.
+ *
+ * The arithmetic is Rust's and is tested in `dj_app::audition` and
+ * `dj_engine::preview`: which landmark a record opens at, and that the audio
+ * reaches the cue pair and has no route to the room. What a browser can prove
+ * is the part a type-check cannot see — that the button is a **toggle**, that
+ * it **says where it started**, and that auditioning is not quietly a load.
+ */
+test.describe("§22's audition", () => {
+  /** The audition button on the first candidate. */
+  function listen(page: import("@playwright/test").Page) {
+    return page
+      .locator(`${RAIL} li`)
+      .first()
+      .getByRole("button", { name: /^Audition |^Stop auditioning / });
+  }
+
+  /** Every track id `audition` has been called with, oldest first. */
+  const calls = (page: import("@playwright/test").Page) =>
+    page.evaluate(() => (window as unknown as { __auditioned?: string[] }).__auditioned ?? []);
+
+  /**
+   * **The load-bearing one: it says where it started.**
+   *
+   * A preview that opens an unfamiliar record ninety seconds in without
+   * saying so is indistinguishable, to the DJ hearing it, from a preview that
+   * opened the wrong record. The wording is Rust's -- `says` -- because the
+   * decision is made there and two spellings of "from the drop" would be two
+   * answers.
+   */
+  test("says where the audition started and why", async ({ page }) => {
+    await railOpen(page);
+    await listen(page).click();
+
+    const line = page.locator(`${RAIL} [data-audition]`).first();
+    await expect(line).toBeVisible();
+    await expect(line).toContainText("from the drop");
+    // 88.2 seconds, as `m:ss`. The fixture's frame is deliberately not zero:
+    // a rail that dropped the position would still pass on the words alone.
+    await expect(line).toContainText("1:28");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **A second press stops it.**
+   *
+   * The failure this catches leaves a record playing in a DJ's headphones with
+   * no way to stop it but auditioning something else. Asserted on what reached
+   * Rust rather than on the button's own class, because a toggle that looked
+   * off and never sent the stop is exactly the bug.
+   */
+  test("a second press stops the audition", async ({ page }) => {
+    await railOpen(page);
+    await listen(page).click();
+    await expect(page.locator(`${RAIL} [data-audition]`).first()).toBeVisible();
+
+    await listen(page).click();
+    await expect(page.locator(`${RAIL} [data-audition]`)).toHaveCount(0);
+
+    const sent = await calls(page);
+    expect(sent.length, "the toggle sent one call for two presses").toBe(2);
+    expect(sent[0], "the first press did not name the candidate").not.toBe("");
+    expect(sent[1], "the second press did not stop anything").toBe("");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **Auditioning is not loading.**
+   *
+   * §22 lists audition and load as two of six separate things a DJ may do to a
+   * candidate. A preview that quietly counted as a play would put every record
+   * a DJ listened to into their history and into §12's taste -- the same
+   * failure the ghost's own test above exists to prevent, one sense over.
+   */
+  test("hearing a candidate does not load or stage it", async ({ page }) => {
+    await railOpen(page);
+    const asked = await watch(page);
+    await listen(page).click();
+    await expect(page.locator(`${RAIL} [data-audition]`).first()).toBeVisible();
+
+    const commands = await asked();
+    expect(commands, "the audition never asked Rust anything").toContain("audition");
+    for (const forbidden of ["load_track", "sidelist_add", "deck_play", "transition_arm"]) {
+      expect(
+        commands,
+        `auditioning called ${forbidden}, which is a different one of §22's six`,
+      ).not.toContain(forbidden);
+    }
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});

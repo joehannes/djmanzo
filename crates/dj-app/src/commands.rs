@@ -1095,6 +1095,15 @@ pub fn perform_by(state: &AppState, action: &str, by: dj_control::By) -> Result<
         return load_by_id(state, rest).map(|_| ());
     }
 
+    // §22's audition, on the same terms and for the same reasons: it carries a
+    // decoded record, so it is a line rather than an `Action`, and it takes an
+    // id rather than a path.
+    if let Some(rest) = action.trim().strip_prefix("audition")
+        && (rest.is_empty() || rest.starts_with(char::is_whitespace))
+    {
+        return audition_by_id(state, rest);
+    }
+
     let parsed = Action::parse(action).map_err(|e| format!("{action:?}: {e}"))?;
     perform_action_by(state, parsed, by)
 }
@@ -9517,6 +9526,158 @@ pub fn track_functions(state: State<'_, AppState>) -> Result<Vec<FunctionDto>, S
             count,
         })
         .collect())
+}
+
+/// What an audition is doing, as the rail needs to draw it.
+#[derive(Debug, Clone, Serialize)]
+pub struct AuditionDto {
+    /// The candidate being listened to, or empty when the audition stopped.
+    pub track: String,
+    /// Where it started, in the candidate's own frames.
+    pub from_frame: f64,
+    /// The same in seconds, because a rail row says "from 1:47" and not
+    /// "from 5064192". Converted here rather than in the interface for the
+    /// reason every other seconds field in this file is: the sample rate is
+    /// the record's and the interface does not have it.
+    pub from_seconds: f64,
+    /// `drop`, `vocal-entry` or `top`. See [`crate::audition::Reason`].
+    pub because: String,
+    /// What to tell the DJ: *from the drop*, *from the vocal*, *from the top*.
+    pub says: String,
+}
+
+/// §22's *audition*: play a candidate into the headphones, without loading it.
+///
+/// `track` empty stops whatever is playing. Anything else is a track id, and
+/// the record is decoded and handed to [`dj_engine::preview`], which mixes it
+/// into the cue pair and has no route to the room.
+///
+/// Where it starts is `crate::audition`'s decision rather than the
+/// interface's, and the answer comes back on [`AuditionDto`] so the rail can
+/// say *from the drop* instead of leaving a DJ to wonder why one candidate
+/// opened ninety seconds in.
+///
+/// **This does not load, stage, or write anything down.** §22 lists audition
+/// and load as two of six separate things a DJ may do to a candidate, and a
+/// preview that quietly counted as a play would put every record a DJ listened
+/// to into their history and into §12's taste.
+///
+/// # Errors
+/// A sentence naming which half is wrong -- the id, the library row or the
+/// file -- for the reason `load_by_id` gives.
+#[tauri::command]
+pub async fn audition(
+    state: State<'_, AppState>,
+    track: String,
+) -> Result<Option<AuditionDto>, String> {
+    if track.trim().is_empty() {
+        stop_audition(&state)?;
+        return Ok(None);
+    }
+
+    let id = dj_core::TrackId::from_hex(track.trim())
+        .ok_or_else(|| format!("not a track id: {:?}", track.trim()))?;
+    let db = library(&state)?;
+    let found = db
+        .track(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no track {} in the library", id.to_hex()))?;
+
+    // Off the caller's thread, like `load_track`: this is the interface's
+    // thread and a file read on it is a frozen window.
+    let path = found.path.clone();
+    let decoded = tauri::async_runtime::spawn_blocking(move || decode_file(&path))
+        .await
+        .map_err(|e| format!("decode task failed: {e}"))?
+        .map_err(|e| e.to_string())?;
+
+    Ok(Some(begin_audition(&state, id, decoded)))
+}
+
+/// Stop whatever is being auditioned.
+///
+/// Silent about an engine queue that is full, unlike its neighbours, because
+/// the one caller that cannot report an error is the one that matters: a DJ
+/// stopping a preview because the room needs their attention.
+fn stop_audition(state: &AppState) -> Result<(), String> {
+    state
+        .bus()
+        .send_command(dj_engine::Command::Preview {
+            source: None,
+            from_frame: 0.0,
+        })
+        .map_err(|_| "the engine queue is full".to_owned())
+}
+
+/// Where the audition starts, and the send. Shared by both ways in.
+///
+/// The decision is here rather than at either caller, for the reason the
+/// waveform's key is one function: two copies would be two answers to *where
+/// does this record become interesting*, and a controller and a click would
+/// audition the same record from two different places.
+fn begin_audition(
+    state: &AppState,
+    id: dj_core::TrackId,
+    decoded: dj_decode::DecodedTrack,
+) -> AuditionDto {
+    let start = crate::audition::start_of(
+        state
+            .analysis()
+            .cached(&id)
+            .as_ref()
+            .map(|found| &found.trajectory),
+        decoded.buffer.len_frames(),
+    );
+    let rate = decoded.buffer.sample_rate().as_f64();
+
+    // A full queue costs the audition and nothing else. Every other caller
+    // here treats it as an error because the thing that failed is the thing
+    // the DJ asked for; this one has already done the expensive part, and a
+    // preview that does not start is a button that did nothing rather than a
+    // set in trouble.
+    let _ = state.bus().send_command(dj_engine::Command::Preview {
+        source: Some(std::sync::Arc::new(decoded.buffer)),
+        from_frame: start.frame,
+    });
+
+    AuditionDto {
+        track: id.to_hex(),
+        from_frame: start.frame,
+        from_seconds: start.frame / rate,
+        because: start.reason.slug().to_owned(),
+        says: start.reason.says().to_owned(),
+    }
+}
+
+/// `<track-id>` or `stop` — §22's audition, from a controller or a script.
+///
+/// Outside the action vocabulary for exactly the reason a load is
+/// ([ADR-0003](../../../docs/adr/0003-action-bus-and-parameter-registry.md)):
+/// it carries an `Arc` of a decoded record, and nothing external should be
+/// inventing one. **By id, never by path**, for the reason
+/// [`load_by_id`] gives: a path here would hand anything that can reach the
+/// bus a way to make djmanzo read an arbitrary file.
+///
+/// Decoded on the calling thread, which is `djmanzo-control` for a controller
+/// and never the audio thread -- the same trade `load_by_id` makes and for the
+/// same reason.
+///
+/// # Errors
+/// A sentence naming which half is wrong: the id, the library row or the file.
+fn audition_by_id(state: &AppState, rest: &str) -> Result<(), String> {
+    let rest = rest.trim();
+    if rest.is_empty() || rest.eq_ignore_ascii_case("stop") {
+        return stop_audition(state);
+    }
+    let id = dj_core::TrackId::from_hex(rest).ok_or_else(|| format!("not a track id: {rest:?}"))?;
+    let db = library(state)?;
+    let found = db
+        .track(id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no track {} in the library", id.to_hex()))?;
+    let decoded = decode_file(&found.path).map_err(|e| e.to_string())?;
+    let _ = begin_audition(state, id, decoded);
+    Ok(())
 }
 
 /// What one track is for.

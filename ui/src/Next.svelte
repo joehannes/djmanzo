@@ -33,6 +33,8 @@
   import IconButton from "./controls/IconButton.svelte";
   import Overview from "./Overview.svelte";
   import {
+    audition,
+    formatTime,
     ghostPreview,
     loadTrack,
     phaseAsks,
@@ -40,6 +42,7 @@
     sidelistAdd,
     similarTo,
     suggestNext,
+    type Audition,
     type DeckState,
     type Ghost,
     type Profile,
@@ -319,6 +322,45 @@
   /** Said out loud when there is nothing honest to draw. */
   let ghostEmpty = $state(false);
 
+  /**
+   * §22's *audition*, and the one act on this rail that makes a sound.
+   *
+   * Everything else here is a decision about a list. This puts a record in the
+   * DJ's headphones, so it is a toggle rather than a fire-and-forget: a
+   * preview that could only be started would leave the candidate playing over
+   * whatever the DJ did next, and the only way to stop it would be to audition
+   * something else.
+   *
+   * **It does not load, stage or write anything down.** §22 lists audition and
+   * load as two of six separate things, and a preview that quietly counted as
+   * a play would put every record a DJ listened to into their history.
+   *
+   * The answer carries where it started and why, because a candidate that
+   * opens ninety seconds in has to say so -- otherwise a DJ hears an unfamiliar
+   * record from an unfamiliar place and reads the software as broken.
+   */
+  let listening = $state<string | null>(null);
+  let heard = $state<Audition | null>(null);
+
+  async function toggleAudition(candidate: Suggestion) {
+    const stopping = listening === candidate.track.id;
+    listening = stopping ? null : candidate.track.id;
+    heard = null;
+    try {
+      const answer = await audition(stopping ? "" : candidate.track.id);
+      // Another row may have been pressed while the file was decoding. The
+      // stale answer is dropped rather than drawn, the same way the ghost's
+      // is: a rail that said "from the drop" about the record before the one
+      // playing would be worse than saying nothing.
+      if (!stopping && listening === candidate.track.id) heard = answer;
+      error = null;
+    } catch (e) {
+      listening = null;
+      heard = null;
+      error = `${e}`;
+    }
+  }
+
   async function toggleGhost(candidate: Suggestion) {
     if (ghosting === candidate.track.id) {
       ghosting = null;
@@ -558,12 +600,46 @@
               title="What happens if this comes in — without loading it"
               aria-label="Preview {candidate.track.title} as a ghost"
             >&deg;</button>
+            <!--
+              §22's audition. Next to the ghost because they are the same
+              question asked of two senses — what happens if this comes in —
+              and a DJ reaching for one often wants the other.
+            -->
+            <button
+              class:on={listening === candidate.track.id}
+              onclick={() => toggleAudition(candidate)}
+              disabled={!enabled}
+              title="Hear it in the headphones — without loading it"
+              aria-label={listening === candidate.track.id
+                ? `Stop auditioning ${candidate.track.title}`
+                : `Audition ${candidate.track.title} in the headphones`}
+            >&#9835;</button>
             <button
               onclick={() => reject(candidate)}
               title="Not this one, this time"
               aria-label="Pass on {candidate.track.title}"
             >&times;</button>
           </div>
+          <!--
+            Where the audition started, and why.
+
+            A line rather than nothing, because a preview that opens a record
+            ninety seconds in without saying so is indistinguishable from a
+            preview that opened the wrong record. `says` is Rust's wording —
+            the decision is made there, and two spellings of "from the drop"
+            would be two answers.
+          -->
+          {#if listening === candidate.track.id}
+            <div class="heard" data-audition={candidate.track.id}>
+              {#if heard}
+                In your headphones, {heard.says}{heard.from_seconds > 0
+                  ? ` at ${formatTime(heard.from_seconds)}`
+                  : ""}.
+              {:else}
+                In your headphones…
+              {/if}
+            </div>
+          {/if}
           <!--
             §27's ghost, under the row that asked for it.
             **Non-destructive**: nothing is loaded, nothing is armed, nothing
@@ -769,6 +845,22 @@
   }
 
   /* §27's ghost panel: a whole record, and what would happen on it. */
+  /*
+    The audition line. A solid left edge against the ghost's dashed one,
+    because these are the two rows on a candidate that mean different kinds of
+    thing: a ghost is a proposal and an audition is happening. §33's rule --
+    never colour alone -- is met by the border style rather than by its hue.
+  */
+  .heard {
+    margin-top: 0.35rem;
+    padding: 0.2rem 0.35rem;
+    border-radius: 4px;
+    background: var(--panel-raised);
+    border-left: 2px solid var(--accent);
+    font-size: 0.75em;
+    color: var(--text-dim);
+  }
+
   .ghost {
     display: flex;
     flex-direction: column;

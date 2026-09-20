@@ -425,10 +425,31 @@ pub struct StemSwapSnapshot {
     pub to: u8,
 }
 
+/// §22's audition, as the interface needs to draw it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct PreviewSnapshot {
+    /// Whether a candidate is playing into the headphones right now.
+    pub playing: bool,
+    /// How far into that candidate the playhead is, in its own frames.
+    ///
+    /// Zero when nothing is playing. Deliberately not an `Option`: the pair is
+    /// read together and `playing` is the question, so a `None` here would be
+    /// a second way to say the same thing and a third state to draw.
+    pub frame: f32,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MasterSnapshot {
     /// The sampler: which bank is showing, its level, and that bank's slots.
     pub sampler: SamplerSnapshot,
+    /// §22's audition: a record in the headphones, without a deck.
+    ///
+    /// On the master rather than on a deck, because a preview belongs to no
+    /// deck -- that is the whole point of it. Which *record* is playing is not
+    /// here: the interface asked for it by id a moment ago and the engine has
+    /// no idea what a track id is, so carrying it would mean the host keeping
+    /// a second copy of an answer the rail already has.
+    pub preview: PreviewSnapshot,
     /// Recording the whole mix to disk.
     pub recording: SetRecordingSnapshot,
     /// The master rack's three slots, in order.
@@ -791,6 +812,10 @@ impl Snapshot {
                         .max(0.0) as u64,
                     failed: recording
                         .is_some_and(|r| r.failed.load(std::sync::atomic::Ordering::Relaxed)),
+                },
+                preview: PreviewSnapshot {
+                    playing: registry.get(ParamId::Global(GlobalParam::PreviewPlaying)) >= 0.5,
+                    frame: registry.get(ParamId::Global(GlobalParam::PreviewFrame)),
                 },
                 sampler: SamplerSnapshot {
                     bank,

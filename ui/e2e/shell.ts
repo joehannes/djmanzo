@@ -636,6 +636,17 @@ export const ANSWERS: Record<string, unknown> = {
       { slug: "tempo-movement", about: "BPM movement", answered: true },
     ],
   },
+  // §22's audition, answered the way Rust answers it: the candidate, where it
+  // started and *why*. The reason is the part worth stubbing rather than the
+  // frame -- a rail that played a record ninety seconds in and said nothing is
+  // the failure, and a fixture carrying only the number would let it ship.
+  audition: {
+    track: "b".repeat(64),
+    from_frame: 4_233_600,
+    from_seconds: 88.2,
+    because: "drop",
+    says: "from the drop",
+  },
   // The shape `suggest_next` and `similar_to` both return, including the
   // `summary` line the rail actually renders -- a fixture that carried only
   // `reasons` would have let the rail ship showing nothing and passed.
@@ -1658,6 +1669,17 @@ export async function openShell(
           if (cmd === "keep_mix") {
             win.__keptAt = args.at;
             return Promise.resolve(1);
+          }
+          // §22's audition. Answered here rather than from the table because
+          // a stop and a start are two different answers to one command, and
+          // a fixed one would make a toggle that works and one that only ever
+          // starts look identical -- which is the failure that leaves a record
+          // playing in a DJ's headphones with no way to stop it.
+          if (cmd === "audition") {
+            const track = String(args.track ?? "");
+            ((win.__auditioned ??= []) as string[]).push(track);
+            if (track.trim() === "") return Promise.resolve(null);
+            return Promise.resolve(answers.audition ?? null);
           }
           if (cmd === "session_render_mix") {
             win.__renderMixArgs = { at: args.at, tookSeconds: args.tookSeconds };

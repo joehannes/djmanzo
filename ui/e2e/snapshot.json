@@ -959,6 +959,10 @@
         "source": null
       }
     },
+    "preview": {
+      "playing": false,
+      "frame": 0.0
+    },
     "recording": {
       "active": false,
       "seconds": 0.0,

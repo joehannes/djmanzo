@@ -2298,6 +2298,42 @@ export interface Ghost {
 export const ghostPreview = (deck: number, track: string) =>
   invoke<Ghost | null>("ghost_preview", { deck, track });
 
+/**
+ * §22's *audition*: what djmanzo is playing into the headphones, and from where.
+ *
+ * `null` from {@link audition} means the audition stopped.
+ */
+export interface Audition {
+  /** The candidate being listened to. */
+  track: string;
+  /** Where it started, in the candidate's own frames. */
+  from_frame: number;
+  /** The same in seconds, converted in Rust where the sample rate is. */
+  from_seconds: number;
+  /** `drop`, `vocal-entry` or `top`. */
+  because: string;
+  /** What to tell the DJ: *from the drop*, *from the vocal*, *from the top*. */
+  says: string;
+}
+
+/**
+ * §22: play a candidate into the headphones without loading it.
+ *
+ * An empty `track` stops. Where it starts is Rust's decision -- the first
+ * drop, else where the vocal enters, else the top -- and the answer comes back
+ * so the rail can say which, rather than leaving a DJ to wonder why one
+ * candidate opened ninety seconds in and the next did not.
+ *
+ * **Nothing is loaded and nothing is written down.** §22 lists audition and
+ * load as two different things, and a preview that counted as a play would put
+ * every record a DJ listened to into their history and into §12's taste.
+ *
+ * It reaches the cue pair and has no route to the master, so a machine with no
+ * headphone output auditions in silence rather than out loud.
+ */
+export const audition = (track: string) =>
+  invoke<Audition | null>("audition", { track });
+
 /** What kind of night this is, and what has been read off it so far. §81. */
 export interface NightSetting {
   /** A setting slug, or null when the DJ has not said yet. */
