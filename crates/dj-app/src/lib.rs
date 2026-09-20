@@ -49,6 +49,7 @@ pub mod mixes;
 pub mod monitors;
 pub mod mood;
 pub mod night;
+pub mod parts;
 pub mod peersync;
 pub mod persist;
 pub mod persona;

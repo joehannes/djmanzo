@@ -16,6 +16,32 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**§67's fourteen are gathered, and writing them down found three wrong** — the
+gap that row named: *the timeline, the room, the DJ's own state, requests and
+the set arc each have a home of their own*.
+
+`parts::Part` is §67's list with the module that owns each part, how it reaches
+the interface, and — for the one djmanzo refuses — why it does not.
+
+- **A table, not a `Session` struct.** Thirteen of the fourteen already have an
+  owner that decides them, and a second copy gathered into one object is the
+  failure this codebase has found six times from the other side. §11 answered
+  the same problem the same way.
+- **What is tested is §67's own last line**: *the GUI is simply a live window
+  into that session*. The phase and what is on a deck ride the sixty-a-second
+  snapshot; eleven others are commands a panel calls when it needs them. Both
+  are windows and only one is live, so they are different variants. A pointer
+  is resolved against a real capture; a command name is checked against
+  `commands.rs`.
+- **Three rows were wrong and read as answers.** *Room state* pointed at
+  `audience.rs`, which is the room's **requests** — the page a stranger types
+  into — not the room's state. *Notes* pointed at `memory.rs`, which is
+  *finding a record from what you remember of it*: a search, not a notebook.
+  And three command names were recollection.
+- The **set arc** is the only part with no window, and it is §11's refusal
+  rather than a second gap. A test asserts it is the only one, and that its
+  reason says what djmanzo does instead — so the two rows cannot drift.
+
 **§14's *previewed* becomes a real signal, because §22 gave it something to
 watch** — and §89 closes with it.
 
