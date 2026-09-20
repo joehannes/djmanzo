@@ -554,6 +554,19 @@ export const ANSWERS: Record<string, unknown> = {
    * that computed it would be the interface's arithmetic tested against itself.
    */
   phrase_grid: { first_frame: 96000, spacing_frames: 192000 },
+  // §26's contextual beat jump. Rust decides what fits and what to call it;
+  // this is the shape and the order it answers in, mid-record, on a track with
+  // phrase structure. The phrase entries are last on purpose -- the ordering
+  // is Rust's and is tested there, and a fixture that sorted them differently
+  // would let a component that re-sorted the list pass.
+  waveform_moves: [
+    { label: "Back 8 beats", action: "deck 1 beatjump -8" },
+    { label: "Back 4 beats", action: "deck 1 beatjump -4" },
+    { label: "Forward 4 beats", action: "deck 1 beatjump 4" },
+    { label: "Forward 8 beats", action: "deck 1 beatjump 8" },
+    { label: "Back a phrase", action: "deck 1 phrasejump -1" },
+    { label: "Forward a phrase", action: "deck 1 phrasejump 1" },
+  ],
   peer_status: {
     running: false,
     address: null,

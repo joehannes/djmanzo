@@ -2298,6 +2298,32 @@ export interface Ghost {
 export const ghostPreview = (deck: number, track: string) =>
   invoke<Ghost | null>("ghost_preview", { deck, track });
 
+/** One entry on a contextual menu: what a DJ reads, and what djmanzo does. */
+export interface Move {
+  label: string;
+  /** Exactly the text Rust's `Action::parse` takes. */
+  action: string;
+}
+
+/**
+ * §26's *beat jump: contextual action* — what can be jumped from here.
+ *
+ * The one item on §26's list that is not a drag, because a beat jump has no
+ * position to grab: it is a move made to a record, not a mark on one.
+ *
+ * **Contextual rather than fixed.** A phrase jump is offered only when the
+ * record has phrase structure, and a move that would run off either end is not
+ * offered at all — so the menu is shorter near the top and near the end, which
+ * is the honest shape. Empty means there is nothing to offer and no menu is
+ * drawn.
+ *
+ * Asked for when the menu opens rather than held: the answer depends on where
+ * the playhead is, and a list fetched a minute ago would offer a jump that no
+ * longer fits.
+ */
+export const waveformMoves = (deck: number) =>
+  invoke<Move[]>("waveform_moves", { deck });
+
 /**
  * §22's *audition*: what djmanzo is playing into the headphones, and from where.
  *

@@ -16,6 +16,34 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**§26's beat jump gets its contextual action, and driving the application found
+two defects in it** — the eighth of §26's nine, and the only one that is not a
+drag. A beat jump has no position to grab: it is a move made to a record rather
+than a mark on one, which is why §26 gives it the other verb.
+
+A right-click on the lane offers the grid-aware moves, each one an action
+djmanzo already accepts — so a jump from the menu, from a controller, from a
+script and from the assistant are one thing in one log.
+
+- **Contextual, not a fixed menu under another name.** A phrase jump is offered
+  only when the record has phrase structure; a move that would run off either
+  end is not offered at all. The menu is shorter near the top and near the end,
+  and an unanalysed record gets no phrase entry rather than a jump by a guess.
+- **It was invisible.** `--panel-raised` is right for a panel on the page
+  background and wrong for one on a *waveform*: legible text on no visible
+  menu, which in a dark booth is a DJ aiming at nothing.
+- **It was clipped.** Drawn inside the lane — `overflow: hidden` and
+  `contain: strict`, as it must be for the transform that scrolls the strip —
+  so five moves were offered and two were visible, looking exactly like a
+  shorter menu.
+- **The test for that was rewritten twice.** `boundingBox` reports a layout box
+  whether or not an ancestor clips it; `toBeVisible` knows nothing about
+  clipping; and a trial click is worse than both, because Playwright scrolls an
+  element into view first and an `overflow: hidden` box is programmatically
+  scrollable — so the check reveals the entry it was meant to fail on. All
+  three passed against the bug. What holds now is the invariant the fix
+  establishes: nothing between the menu and the page cuts it off.
+
 **§67's fourteen are gathered, and writing them down found three wrong** — the
 gap that row named: *the timeline, the room, the DJ's own state, requests and
 the set arc each have a home of their own*.

@@ -12202,6 +12202,54 @@ pub struct PhraseGridDto {
     pub spacing_frames: f64,
 }
 
+/// One entry on a contextual menu: what a DJ reads, and what djmanzo does.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MoveDto {
+    pub label: String,
+    /// Exactly the text `Action::parse` takes, so the interface dispatches it
+    /// rather than mapping it to a command of its own.
+    pub action: String,
+}
+
+/// §26's *beat jump: contextual action* — what can be jumped from here.
+///
+/// The one item on §26's list that is not a drag, because a beat jump has no
+/// position to grab: it is a move made to a record rather than a mark on one.
+///
+/// Empty is a real answer and the interface draws no menu for it: a deck with
+/// no record, or one djmanzo cannot count beats in, has no jump to offer. See
+/// [`crate::jumps`] for why the list changes with where the playhead is.
+#[tauri::command]
+#[must_use]
+pub fn waveform_moves(state: State<'_, AppState>, deck: u8) -> Vec<MoveDto> {
+    let Some(id) = DeckId::from_human(deck) else {
+        return Vec::new();
+    };
+    let Some(overlay) = state.waveforms().grid(deck) else {
+        return Vec::new();
+    };
+    let registry = state.registry();
+    let get = |p| registry.get(dj_core::ParamId::Deck(id, p));
+    let position = f64::from(get(dj_core::param::DeckParam::Position));
+    let length = f64::from(get(dj_core::param::DeckParam::LengthFrames));
+
+    let phrase = overlay.phrase.or_else(|| analysed_phrase(&state, id));
+    crate::jumps::from_here(
+        deck,
+        position,
+        length,
+        overlay.grid.bpm.beat_frames(overlay.sample_rate),
+        phrase.is_some(),
+        phrase.map_or(0, |p| p.beats),
+    )
+    .into_iter()
+    .map(|option| MoveDto {
+        label: option.label,
+        action: option.action,
+    })
+    .collect()
+}
+
 /// Where the phrase boundaries are, or `None` when this record has no phrase
 /// structure — which is a real answer rather than a gap.
 #[tauri::command]

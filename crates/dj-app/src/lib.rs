@@ -39,6 +39,7 @@ pub mod ghost;
 pub mod grid;
 pub mod handle;
 pub mod host;
+pub mod jumps;
 pub mod layout;
 pub mod lens;
 pub mod level;
@@ -658,6 +659,7 @@ pub fn run() {
             commands::knowledge_packs,
             commands::chosen_pack,
             commands::set_chosen_pack,
+            commands::waveform_moves,
             commands::phrase_grid,
             commands::controller_hands,
             commands::controller_lights,

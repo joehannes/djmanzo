@@ -24,7 +24,7 @@
     type SavedLoopInfo,
     type MixOutInfo,
   } from "./api";
-  import { phraseGrid, type PhraseGrid } from "./api";
+  import { dispatch, phraseGrid, waveformMoves, type Move, type PhraseGrid } from "./api";
   import { remembers, showing } from "./remembers.svelte";
   import { theme } from "./theme.svelte";
 
@@ -540,9 +540,95 @@
       observer.disconnect();
     };
   });
+  /**
+   * §26's contextual action, opened where the DJ pressed.
+   *
+   * The browser's own menu is suppressed, which is the one thing a right-click
+   * handler must get right: a DJ who wanted *Reload* mid-set is not a case,
+   * and a lane that showed both menus would be unusable.
+   *
+   * An empty answer draws nothing. A deck with no record, or one djmanzo
+   * cannot count beats in, has no jump to offer, and a menu with nothing in it
+   * is worse than no menu.
+   */
+  let moves = $state<Move[]>([]);
+  let movesAt = $state<{ x: number; y: number } | null>(null);
+  let wrap = $state<HTMLDivElement | undefined>();
+
+  /** Roughly what the menu takes, for keeping it on screen. */
+  const MENU_WIDTH = 150;
+
+  async function openMoves(event: MouseEvent) {
+    event.preventDefault();
+    try {
+      const offered = await waveformMoves(deck.number);
+      if (offered.length === 0) {
+        movesAt = null;
+        return;
+      }
+      moves = offered;
+      /*
+        Measured against the wrapper rather than taken from `event.offsetX`.
+
+        Two reasons, and driving the application found both. `offsetX` is
+        relative to whatever was under the pointer, which on a waveform is a
+        PNG tile rather than the lane -- so a press on the third tile opened
+        the menu a third of the way back along the record. And the menu lives
+        outside the lane, so a coordinate inside the lane is the wrong origin
+        anyway.
+
+        Clamped to the left of the wrapper's right edge, because a menu opened
+        near the end of a record would otherwise run off the deck.
+      */
+      const box = wrap?.getBoundingClientRect();
+      const x = box ? event.clientX - box.left : 0;
+      const y = box ? event.clientY - box.top : 0;
+      movesAt = {
+        x: box ? Math.max(0, Math.min(x, box.width - MENU_WIDTH)) : x,
+        y,
+      };
+    } catch {
+      // A menu that cannot be built is a menu that does not open. Nothing here
+      // is worth an error banner over a record that is still playing.
+      movesAt = null;
+    }
+  }
+
+  function takeMove(move: Move) {
+    movesAt = null;
+    void dispatch(move.action);
+  }
 </script>
 
-<div class="lane" bind:this={lane} style:height="{height}px">
+<!--
+  §26's *beat jump: contextual action*.
+
+  Every other entry on §26's list is a drag, because every other entry names a
+  thing with a position. A beat jump has none -- it is a move made to a record
+  rather than a mark on one -- which is why §26 gives it the other verb, and
+  why this is the lane's context menu rather than another handle.
+
+  What is offered is Rust's, asked for at the moment the menu opens: whether a
+  phrase jump makes sense and whether a move would run off either end both
+  depend on where the playhead is now. A component working that out for itself
+  would need the grid, the tempo and the length -- three things it does not own
+  and one answer that could disagree with the deck.
+
+  **It is a faster route, not the only one.** Every entry here is an action
+  djmanzo already accepts, so the same moves are reachable from the command
+  palette, from a controller and from a script -- which is what keeps a
+  pointer-only affordance from being §33's complaint. The menu is the quick
+  way to a thing a DJ can already do.
+-->
+<div class="lane-wrap" bind:this={wrap}>
+<div
+  class="lane"
+  bind:this={lane}
+  style:height="{height}px"
+  oncontextmenu={openMoves}
+  role="application"
+  aria-label="Waveform for deck {deck.number}. Right-click for beat jumps."
+>
   {#if ready}
     <div class="strip" bind:this={strip}>
       <!--
@@ -842,8 +928,116 @@
   {/if}
   <div class="playhead" aria-hidden="true"></div>
 </div>
+{#if movesAt}
+  <!--
+    §26's menu, outside the lane rather than in it.
+
+    The lane is `overflow: hidden` and `contain: strict` -- it has to be, for
+    the transform that scrolls the strip -- so a menu drawn inside it is
+    **clipped to the waveform**. Driving the application is what showed that:
+    four moves were offered and two were visible, cut off at the lane's edge,
+    and it looked exactly like a shorter menu. A lane is about 67 px tall at
+    most densities and a menu is twice that, so this was never going to fit;
+    no test saw it because every assertion was about the entries, which were
+    all present in the DOM.
+  -->
+  <div
+    class="moves-away"
+    role="presentation"
+    onpointerdown={() => (movesAt = null)}
+  ></div>
+  <menu
+    class="moves"
+    data-moves={deck.number}
+    style:left="{movesAt.x}px"
+    style:top="{movesAt.y}px"
+  >
+    {#each moves as move (move.action)}
+      <li>
+        <button type="button" onclick={() => takeMove(move)}>{move.label}</button>
+      </li>
+    {/each}
+  </menu>
+{/if}
+</div>
 
 <style>
+  .lane-wrap {
+    position: relative;
+  }
+
+  /*
+    §26's contextual menu, placed where the press landed.
+
+    Absolutely positioned inside the lane rather than in a portal: the lane is
+    the thing it is about, and a menu that escaped its own waveform would need
+    to know about scrolling, docking and the four decks below it.
+  */
+  .moves {
+    position: absolute;
+    z-index: 6;
+    margin: 0;
+    padding: 0.2rem;
+    list-style: none;
+    min-width: 9rem;
+    border-radius: 4px;
+    /*
+      Driving the application is what wrote this rule. The first version used
+      `--panel-raised` and a hairline border, which is right for a panel
+      sitting on the page background and wrong for a menu sitting on a
+      *waveform*: at pkg-organic's `#162018` over a dark green record it was
+      legible text on no visible menu, and in a dark booth a DJ would be
+      aiming at nothing. Nothing caught it -- svelte-check cannot see contrast,
+      and Chromium rendered it exactly as described.
+
+      So: the page background rather than a raised panel, which is the
+      darkest surface in every palette and therefore the one that reads as a
+      hole cut in the record; a full border in the strong colour; and a
+      shadow deep enough to lift it. §33's rule is met by the border and the
+      shadow rather than by a hue.
+    */
+    border: 1px solid var(--border-strong);
+    background: var(--bg);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.5),
+      0 6px 18px rgba(0, 0, 0, 0.6);
+  }
+
+  .moves li {
+    list-style: none;
+  }
+
+  .moves button {
+    display: block;
+    width: 100%;
+    padding: 0.25rem 0.5rem;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.8em;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .moves button:hover,
+  .moves button:focus-visible {
+    background: var(--panel-hover);
+  }
+
+  /*
+    The catcher. A press anywhere else closes the menu, which is the behaviour
+    every other menu on this machine has -- and the alternative, a menu that
+    only closes when something in it is chosen, traps a DJ who opened it by
+    accident mid-mix.
+  */
+  .moves-away {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+  }
+
   .lane {
     position: relative;
     overflow: hidden;
