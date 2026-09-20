@@ -222,6 +222,24 @@ pub fn render(
                     let source = tracks(track).ok_or(ReplayError::MissingTrack(track))?;
                     Command::Load { deck, source }
                 }
+                // **An audition is not replayed**, and that is a decision
+                // rather than an omission.
+                //
+                // A replay re-performs a set: the same records, the same moves,
+                // the same mix, rendered offline. An audition was none of that.
+                // It was the DJ listening privately to a record they were
+                // deciding about -- often one they then did *not* play -- and
+                // re-performing it would put a record nobody chose into the
+                // headphones of whoever is listening to the replay, over the
+                // set they asked to hear.
+                //
+                // It stays in the log because §14 counts it, and `next` still
+                // advances so a set with auditions in it renders at exactly
+                // the length it did without them.
+                SessionEvent::Auditioned { .. } => {
+                    next += 1;
+                    continue;
+                }
             };
             producer.push(command).map_err(|_| ReplayError::QueueFull)?;
             next += 1;
@@ -441,6 +459,42 @@ mod tests {
         assert_eq!(
             first, second,
             "the same set rendered to different audio, so the replay is not deterministic"
+        );
+    }
+
+    /// **An audition in the log changes nothing about the replay.**
+    ///
+    /// §22's preview is written down because §14 counts it, and it is a record
+    /// the DJ listened to privately -- very often one they then did *not*
+    /// play. Re-performing it would put that record into the headphones of
+    /// whoever is listening to the replay, over the set they asked to hear.
+    ///
+    /// Asserted as byte-identical audio rather than as "it did not crash":
+    /// skipping an event is one line, and the failure it guards against is the
+    /// audition being delivered as *something* -- a load onto whatever deck
+    /// happened to be handy -- which would render as different audio rather
+    /// than as an error.
+    #[test]
+    fn an_audition_is_not_replayed() {
+        let plain = a_set();
+        let mut with_preview = a_set();
+        // Between the play and the pause, so it cannot be dropped for being
+        // outside the window.
+        with_preview.events.insert(
+            2,
+            at(
+                0.3,
+                SessionEvent::Auditioned {
+                    track: TrackId::from_bytes([9; 32]),
+                },
+            ),
+        );
+        with_preview.events.sort_by_key(|entry| entry.at);
+
+        assert_eq!(
+            run(&plain),
+            run(&with_preview),
+            "a preview the DJ listened to privately reached the replay"
         );
     }
 

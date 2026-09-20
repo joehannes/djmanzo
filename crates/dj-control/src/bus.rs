@@ -33,6 +33,25 @@ pub enum SessionEvent {
         deck: DeckId,
         track: TrackId,
     },
+    /// A candidate went into the headphones. §22's audition.
+    ///
+    /// The **second** thing the log needs beyond the vocabulary, and the note
+    /// above is the standard it has to meet. It is not an [`Action`] for the
+    /// same reason a load is not: it carries a decoded record, and the
+    /// vocabulary is words a controller can send.
+    ///
+    /// What earns it a place in the log is §14, which lists *previewed* among
+    /// the signals a DJ's behaviour is read from. It belongs there in a way
+    /// *track searched* does not: searching is a query with no object, and an
+    /// audition is a **decision about one record**, with a time on it. That is
+    /// exactly the shape `crate::signals` counts.
+    ///
+    /// No deck, because there is no deck. That is the whole of what makes an
+    /// audition different from a load, and a field carrying one would be a
+    /// number every reader then has to know to ignore.
+    Auditioned {
+        track: TrackId,
+    },
 }
 
 /// Whose hand an event came from.
@@ -104,6 +123,7 @@ impl SessionEvent {
             Self::Load { deck, track } => {
                 format!("load deck {} {}", deck.human_number(), track.to_hex())
             }
+            Self::Auditioned { track } => format!("audition {}", track.to_hex()),
         }
     }
 
@@ -124,6 +144,12 @@ impl SessionEvent {
                 deck: parse_deck(deck)?,
                 track: TrackId::from_hex(track.trim())
                     .ok_or_else(|| format!("not a track id: {:?}", track.trim()))?,
+            });
+        }
+        if let Some(rest) = line.strip_prefix("audition ") {
+            return Ok(Self::Auditioned {
+                track: TrackId::from_hex(rest.trim())
+                    .ok_or_else(|| format!("not a track id: {:?}", rest.trim()))?,
             });
         }
         Action::parse(line)
@@ -244,6 +270,27 @@ where
                 event: SessionEvent::Load { deck, track },
                 at,
                 by,
+            });
+        }
+    }
+
+    /// Note that a candidate went into the headphones. §22's audition.
+    ///
+    /// The same shape as [`record_load`](Self::record_load) and for the same
+    /// reason: the command carries an `Arc`, so what is written down is the
+    /// *fact* -- which record, and when.
+    ///
+    /// Always the DJ's. Nothing in djmanzo auditions on its own: the autopilot
+    /// loads and the assistant proposes, and neither has ears. A `by` argument
+    /// here would be a parameter with one possible value, which is the sort of
+    /// thing that later gets passed wrongly.
+    pub fn record_audition(&self, track: TrackId) {
+        let at = self.started.elapsed();
+        if let Ok(mut log) = self.log.lock() {
+            log.record(TimedEvent {
+                event: SessionEvent::Auditioned { track },
+                at,
+                by: By::Hand,
             });
         }
     }
@@ -375,6 +422,7 @@ mod tests {
                 action: DeckAction::LoopPhrases(0.5),
             }),
             SessionEvent::Load { deck, track },
+            SessionEvent::Auditioned { track },
         ];
 
         for event in events {
@@ -571,6 +619,48 @@ mod tests {
             log.between(Duration::from_millis(100), Duration::from_millis(200))
                 .is_empty()
         );
+    }
+
+    /// **An audition is written down, and it names no deck.**
+    ///
+    /// The deck is the whole of what makes a load different from a preview,
+    /// and a set diffed against another would otherwise find two records on
+    /// deck 1 at the same instant -- one played, one only listened to.
+    #[test]
+    fn an_audition_is_recorded_without_a_deck() {
+        let (bus, _consumer) = ActionBus::<TestCommand>::new(16);
+        let track = TrackId::from_bytes([0x5c; 32]);
+        bus.record_audition(track);
+
+        let log = bus.log();
+        assert_eq!(log.len(), 1);
+        assert_eq!(log[0].event, SessionEvent::Auditioned { track });
+        assert_eq!(log[0].by, By::Hand, "nothing in djmanzo has ears");
+        assert_eq!(
+            log[0].event.to_line(),
+            format!("audition {}", track.to_hex())
+        );
+    }
+
+    /// **And it is not mistaken for a load**, in either direction.
+    ///
+    /// The two lines both start with a word and carry a track id, and the
+    /// parser reaching for the wrong one would put a record a DJ auditioned
+    /// onto a deck on every replay.
+    #[test]
+    fn an_audition_line_is_not_a_load_line() {
+        let track = TrackId::from_bytes([0x11; 32]);
+        let audition = SessionEvent::Auditioned { track }.to_line();
+        assert!(
+            !audition.starts_with("load"),
+            "an audition wrote a load: {audition}"
+        );
+        assert!(SessionEvent::parse_line(&audition).is_ok());
+
+        // A truncated id is refused rather than half-read, the same way a load
+        // refuses one: a session file that is wrong should say which line.
+        assert!(SessionEvent::parse_line("audition beef").is_err());
+        assert!(SessionEvent::parse_line("audition").is_err());
     }
 
     #[test]

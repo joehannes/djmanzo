@@ -36,12 +36,26 @@
 //!
 //! # What §14 lists and the log cannot see
 //!
-//! *Track searched*, *previewed*, *staged*, *candidate rejected*, *candidate
-//! selected* and *assistant suggestion accepted*. None of them is an action:
-//! searching is a query, previewing needs a player djmanzo does not have, and
-//! staging and the rail's verdicts are interface gestures that never reach the
-//! bus. They are absent rather than approximated, because a signal inferred
-//! from something else is exactly the "unusual behaviour" §13 is about.
+//! *Track searched*, *staged*, *candidate rejected*, *candidate selected* and
+//! *assistant suggestion accepted*. None of them is an action: searching is a
+//! query, and staging and the rail's verdicts are interface gestures that
+//! never reach the bus. They are absent rather than approximated, because a
+//! signal inferred from something else is exactly the "unusual behaviour" §13
+//! is about.
+//!
+//! **There were six, and *previewed* is the one that moved.** Its reason here
+//! was *"previewing needs a player djmanzo does not have"*, which stopped
+//! being true the moment §22's audition shipped: `dj_engine::preview` plays a
+//! candidate into the headphones, and `SessionEvent::Auditioned` is the log
+//! seeing it. Nothing in this module was rewritten to make that happen — the
+//! gesture simply became one the log could record, and `did` picked it up.
+//!
+//! That is worth a sentence because of the shape of the remaining five. They
+//! are not waiting for machinery the way this one was. *Track searched* is a
+//! query with no object; the other four are verdicts a DJ gives a row in a
+//! list, and the argument for keeping them out is §13's, not an engineering
+//! one: a rail's pass is about this minute, and writing it down as evidence is
+//! how "not that one, now" becomes "never suggest this again".
 
 use dj_control::{SessionEvent, TimedEvent};
 use dj_core::{Action, DeckAction, MixerAction, SessionPhase};
@@ -67,12 +81,20 @@ pub enum Did {
     Crossfaded,
     TempoMoved,
     SyncChanged,
+    /// §14's *previewed*: a candidate taken into the headphones and not loaded.
+    ///
+    /// Last of the twelve to arrive, and it arrived by a route worth naming:
+    /// nothing about this module changed, §22 grew a preview player, and the
+    /// gesture became one the log could see. The five still missing below are
+    /// missing for a different reason, not a smaller version of this one.
+    Previewed,
 }
 
 impl Did {
     #[must_use]
     pub const fn slug(self) -> &'static str {
         match self {
+            Did::Previewed => "previewed",
             Did::Loaded => "loaded",
             Did::Ejected => "ejected",
             Did::Cued => "cued",
@@ -89,7 +111,14 @@ impl Did {
     }
 
     /// Every gesture djmanzo watches for.
-    pub const ALL: [Did; 12] = [
+    ///
+    /// This list already existed and the coverage test below did **not** walk
+    /// it -- it wrote the twelve out again, so a variant added here without a
+    /// producer passed, which is exactly the failure that test's own doc says
+    /// is worse than not listing a gesture at all. Adding `Previewed` is what
+    /// made that visible: nothing failed. It walks this now.
+    pub const ALL: [Did; 13] = [
+        Did::Previewed,
         Did::Loaded,
         Did::Ejected,
         Did::Cued,
@@ -123,6 +152,9 @@ impl Did {
     #[must_use]
     pub const fn words(self) -> &'static str {
         match self {
+            // "listen before you load" rather than "preview": the second is
+            // djmanzo's word for a feature, and this sentence is about the DJ.
+            Did::Previewed => "listen before you load",
             Did::Loaded => "put records on",
             Did::Ejected => "clear decks",
             Did::Cued => "set cues",
@@ -261,6 +293,7 @@ pub fn signals(
 fn did(event: &SessionEvent) -> Option<Did> {
     match event {
         SessionEvent::Load { .. } => Some(Did::Loaded),
+        SessionEvent::Auditioned { .. } => Some(Did::Previewed),
         SessionEvent::Action(Action::Mixer(MixerAction::Crossfader(_))) => Some(Did::Crossfaded),
         SessionEvent::Action(Action::Mixer(MixerAction::StemSwap { .. })) => Some(Did::StemChanged),
         SessionEvent::Action(Action::Deck { action, .. }) => match action {
@@ -506,6 +539,9 @@ mod tests {
                 deck: deck(1),
                 track: dj_core::TrackId::from_bytes([1; 32]),
             },
+            SessionEvent::Auditioned {
+                track: dj_core::TrackId::from_bytes([2; 32]),
+            },
             SessionEvent::Action(Action::Mixer(MixerAction::Crossfader(0.0))),
             deck1(DeckAction::Eject),
             deck1(DeckAction::HotCueSet(1)),
@@ -528,20 +564,7 @@ mod tests {
         .filter_map(did)
         .collect();
 
-        for named in [
-            Did::Loaded,
-            Did::Ejected,
-            Did::Cued,
-            Did::Looped,
-            Did::LoopResized,
-            Did::StemChanged,
-            Did::EqMoved,
-            Did::FilterSwept,
-            Did::FxUsed,
-            Did::Crossfaded,
-            Did::TempoMoved,
-            Did::SyncChanged,
-        ] {
+        for named in Did::ALL {
             assert!(
                 produced.contains(&named),
                 "{} is named but nothing on the bus produces it",

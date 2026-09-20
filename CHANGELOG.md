@@ -16,6 +16,43 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**§14's *previewed* becomes a real signal, because §22 gave it something to
+watch** — and §89 closes with it.
+
+`signals.rs` has listed six of §14's twenty as things the log cannot see, and
+the reason filed against one of them was *"previewing needs a player djmanzo
+does not have"*. That stopped being true the moment the audition shipped.
+Nothing in `signals` was rewritten: `SessionEvent::Auditioned` is the log
+seeing the gesture, and `did` picked it up.
+
+- **An audition earns a place in the log in a way *track searched* does not.**
+  A search is a query with no object; an audition is a decision about one
+  record, with a time on it, which is the shape §14 counts. It is the second
+  thing the log needs beyond the action vocabulary, and the note explaining why
+  a load was the first is the standard it had to meet.
+- **It names no deck**, because there is no deck. That is the whole of what
+  separates an audition from a load, and a field carrying one would be a number
+  every reader has to know to ignore.
+- **A replay does not perform it.** A replay re-performs a set; an audition was
+  the DJ listening privately to a record they very often did not play, and
+  re-performing it would put a record nobody chose into the headphones of
+  whoever asked to hear the set. Asserted as byte-identical audio, because the
+  failure to guard against is the audition arriving as *something*.
+- **Adding it found the coverage test not covering.**
+  `every_gesture_named_is_one_something_can_produce` exists to fail when a
+  gesture is named and nothing produces it — its own doc calls that worse than
+  not listing it — and it wrote the twelve out again instead of walking
+  `Did::ALL`. A new variant was added and nothing failed, which is how it was
+  noticed. It walks the list now.
+- §14 goes to thirteen of twenty. The five left are not waiting on machinery:
+  they are kept out on §13's grounds, because a rail's pass is about this
+  minute and writing it down as evidence is how "not that one, now" becomes
+  "never suggest this again".
+
+**§89 is done.** All ten configurations §89 names have geometry coverage, and
+appearance is now compared across every shipped palette. What it still cannot
+do — judge whether a palette is *good* — is not something §89 asks for.
+
 **§89 compares appearance now, and the first run found a theme drawing its page
 and its panels in the same white** — the gap §89's row named in exactly those
 words: *a theme that turned every panel the same colour would pass every one of

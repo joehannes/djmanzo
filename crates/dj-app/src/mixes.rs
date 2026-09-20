@@ -264,6 +264,10 @@ fn walk(events: &[TimedEvent]) -> Walked {
                 _ => {}
             },
             SessionEvent::Action(_) => {}
+            // §24 is about mixes between two records on decks. An audition
+            // never touched a deck, so there is nothing here it could be a
+            // handover between.
+            SessionEvent::Auditioned { .. } => {}
         }
 
         // Every deck the log has seen, re-read after every event.

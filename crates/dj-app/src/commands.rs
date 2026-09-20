@@ -2277,7 +2277,11 @@ pub fn learned_persona(state: State<'_, AppState>) -> Result<Vec<LearnedDto>, St
         .into_iter()
         .filter_map(|entry| match entry.event {
             dj_control::SessionEvent::Action(action) => Some(action),
-            dj_control::SessionEvent::Load { .. } => None,
+            // Neither is an action. A load is how a record got here, and an
+            // audition is a record the DJ listened to and did not load.
+            dj_control::SessionEvent::Load { .. } | dj_control::SessionEvent::Auditioned { .. } => {
+                None
+            }
         })
         .collect();
     let claims = crate::persona::learned(&profiles, &actions);
@@ -5892,8 +5896,13 @@ fn recent_moments(
             dj_control::SessionEvent::Action(action) => {
                 Some(dj_assistant::coach::Moment::new(e.at, *action))
             }
-            // A load is not a technique. It is how a record got here.
-            dj_control::SessionEvent::Load { .. } => None,
+            // A load is not a technique. It is how a record got here. Nor is
+            // an audition: listening to a candidate in headphones is a
+            // decision about what to play, not a thing a coach has an opinion
+            // on.
+            dj_control::SessionEvent::Load { .. } | dj_control::SessionEvent::Auditioned { .. } => {
+                None
+            }
         })
         .collect()
 }
@@ -9639,6 +9648,13 @@ fn begin_audition(
         source: Some(std::sync::Arc::new(decoded.buffer)),
         from_frame: start.frame,
     });
+
+    // §14's *previewed*, which was absent from `signals` until there was a
+    // player to make it real. Recorded after the send and unconditionally:
+    // what the signal is about is the DJ *deciding to listen to this record*,
+    // and a queue that was briefly full is djmanzo's problem rather than a
+    // fact about their evening.
+    state.bus().record_audition(id);
 
     AuditionDto {
         track: id.to_hex(),
