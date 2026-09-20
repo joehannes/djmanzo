@@ -36,6 +36,7 @@ pub mod melody;
 pub mod onset;
 pub mod presence;
 pub mod regression;
+pub mod strikes;
 pub mod structure;
 pub mod tempo;
 
@@ -137,6 +138,11 @@ pub fn analyse(samples: &[f32], sample_rate: SampleRate) -> Analysis {
     // curve built from what changed has thrown that away by construction.
     let parts = presence::measure(samples, rate);
 
+    // §75's transient density. No pass over the audio at all: the onset curve
+    // the tempo estimator already built is the measurement, and this is a
+    // reading of it. What was missing was never a measurement.
+    let struck = strikes::find(&envelope, rate);
+
     // The same banded curve again, and deliberately: a record's shape over time
     // and its phrase boundaries are two questions about one measurement. The
     // voice curve is folded in here rather than published beside it so both
@@ -148,6 +154,7 @@ pub fn analyse(samples: &[f32], sample_rate: SampleRate) -> Analysis {
             energy::trajectory(
                 &banded,
                 &parts,
+                &struck,
                 &tempo.grid,
                 sample_rate,
                 frames,

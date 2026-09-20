@@ -287,6 +287,20 @@ pub struct Section {
     /// and "a window with nothing in it" are different answers and the
     /// overview draws them differently.
     pub parts: Option<[f32; dj_core::Stem::COUNT]>,
+    /// How often something is struck in this window, in strikes a second.
+    /// [`crate::strikes`], and §75's *transient density*.
+    ///
+    /// **Absolute, like `parts` and for the same reason**, and deliberately
+    /// *not* the same question as the percussive share beside it. A sparse
+    /// kick-and-clap pattern is high share and low density; a shaker under a
+    /// pad is the other way round. A DJ reading a record for where to mix
+    /// wants both, and one drawn while claiming the other is the confusion
+    /// §75 ends on.
+    ///
+    /// `None` where nothing was measured, which is a different answer from a
+    /// window with nothing struck in it -- the overview draws them
+    /// differently.
+    pub strikes: Option<f32>,
 }
 
 impl Section {
@@ -371,6 +385,7 @@ const RETURN: f32 = 1.5;
 pub fn trajectory(
     banded: &BandedOnset,
     parts: &crate::presence::Presence,
+    strikes: &crate::strikes::Strikes,
     grid: &dj_core::Beatgrid,
     rate: dj_core::SampleRate,
     frames: u64,
@@ -418,6 +433,10 @@ pub fn trajectory(
             energy: total,
             low,
             parts: parts.all_between(at, until),
+            // The same window the shares are taken over, deliberately: two
+            // window schemes over one record would draw two grids that nearly
+            // line up, which is worse than one.
+            strikes: strikes.between(at, until, rate.as_f64()),
         });
     }
     if sections.is_empty() {
@@ -766,11 +785,12 @@ mod trajectory_tests {
     }
 
     fn measure(audio: &[f32]) -> Trajectory {
-        let (_, banded) = onset::detect_all(audio, SR.get());
+        let (envelope, banded) = onset::detect_all(audio, SR.get());
         let frames = (audio.len() / 2) as u64;
         trajectory(
             &banded,
             &crate::presence::Presence::default(),
+            &crate::strikes::find(&envelope, SR.get()),
             &grid(),
             SR,
             frames,
@@ -899,6 +919,7 @@ mod trajectory_tests {
         let found = trajectory(
             &banded,
             &crate::presence::Presence::default(),
+            &crate::strikes::Strikes::default(),
             &flat,
             SR,
             0,

@@ -10,7 +10,7 @@
 //!
 //! # Why the list is here rather than in a document
 //!
-//! A list of twenty layers in a markdown file is a list that quietly stops
+//! A list of layers in a markdown file is a list that quietly stops
 //! matching the code. Here it is checked: every layer names where it is drawn
 //! and whether it exists yet, the interface is handed the same table it draws
 //! from, and a browser test asserts that everything actually on screen is in
@@ -145,7 +145,7 @@ pub enum Drawn {
     Nowhere,
 }
 
-/// One of §25's twenty layers.
+/// One of §25's twenty layers, or one another section asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Layer {
     /// The stable slug. Appears in the interface as `data-layer`, so a browser
@@ -229,11 +229,20 @@ pub fn choosing(asked: &[String]) -> Vec<&'static Layer> {
     chosen
 }
 
-/// §25's twenty, in its order, with what each one currently is.
+/// §25's twenty in its order, with what each one currently is — and, after
+/// them, the layers other sections asked for.
 ///
 /// The order is the directive's, not a z-order: what sits on top of what is a
 /// question for whichever half draws it, and answering it here would be this
 /// table deciding something it cannot see.
+///
+/// **§25 says "potential layers", and that word is doing work.** Its twenty
+/// are a floor rather than a ceiling, and `transients` is here because §75
+/// asks for transient density and §25 never named a layer for it — §75's other
+/// eight properties all land on a layer §25 *did* name, and this one had
+/// nowhere to go. A test holds §25's twenty by slug and requires anything
+/// beyond them to be declared, so a layer dropped still fails and a layer
+/// added has to say which section wanted it.
 #[must_use]
 pub fn layers() -> &'static [Layer] {
     &LAYERS
@@ -245,7 +254,7 @@ pub fn layer(name: &str) -> Option<&'static Layer> {
     LAYERS.iter().find(|layer| layer.name == name)
 }
 
-static LAYERS: [Layer; 20] = [
+static LAYERS: [Layer; 21] = [
     Layer {
         name: "amplitude",
         title: "Amplitude",
@@ -370,6 +379,13 @@ static LAYERS: [Layer; 20] = [
         drawn: Drawn::Overlay,
     },
     Layer {
+        name: "transients",
+        title: "Transient density",
+        about: "How often something is struck, which is not how loud it is.",
+        role: Role::Shape,
+        drawn: Drawn::Overlay,
+    },
+    Layer {
         name: "suggestion",
         title: "AI recommendation",
         about: "What djmanzo would do, drawn as a ghost rather than as a fact.",
@@ -482,11 +498,77 @@ mod tests {
     }
     use std::collections::BTreeSet;
 
-    /// §25 names twenty. If the directive is ever read again and this is
-    /// nineteen, something was dropped rather than decided.
+    /// §25's own twenty, by slug, in the directive's order.
+    ///
+    /// Written out rather than counted, which is the difference between this
+    /// test and the one it replaced. `len() == 20` catches a layer being
+    /// dropped only if nothing was added in the same breath, and it made
+    /// *adding* one — which §25 invites, since its list is "potential layers"
+    /// — look like breaking the directive.
+    const DIRECTIVE: [&str; 20] = [
+        "amplitude",
+        "spectral",
+        "beats",
+        "phrases",
+        "downbeats",
+        "cues",
+        "loop",
+        "saved-loops",
+        "vocal",
+        "stems",
+        "seam",
+        "mix-out",
+        "mix-in",
+        "breakdowns",
+        "drops",
+        "energy",
+        "suggestion",
+        "crowd",
+        "confidence",
+        "runway",
+    ];
+
+    /// Layers djmanzo draws that §25 did not name, and which section wanted
+    /// each one.
+    ///
+    /// A short list on purpose. Every entry is a claim that a *different*
+    /// section asked for something §25's twenty have nowhere to put, and the
+    /// bar for that is high: §75's other eight properties all land on a layer
+    /// §25 named, and only this one did not.
+    const BEYOND: [(&str, &str); 1] = [("transients", "§75's transient density")];
+
+    /// **Every layer §25 named is still here, and anything else says who asked
+    /// for it.**
+    ///
+    /// Two failures in one, and they are different failures. A layer dropped
+    /// is something decided by accident. A layer added without a reason is the
+    /// list quietly becoming somebody's preference rather than the directive's
+    /// — which is the thing this whole module exists to prevent.
     #[test]
-    fn the_directive_lists_twenty_and_so_does_this() {
-        assert_eq!(layers().len(), 20);
+    fn the_directive_is_all_here_and_the_rest_is_accounted_for() {
+        let have: BTreeSet<&str> = layers().iter().map(|layer| layer.name).collect();
+        for named in DIRECTIVE {
+            assert!(
+                have.contains(named),
+                "§25 names `{named}` and this table does not have it"
+            );
+        }
+
+        let declared: BTreeSet<&str> = DIRECTIVE
+            .into_iter()
+            .chain(BEYOND.into_iter().map(|(name, _)| name))
+            .collect();
+        for layer in layers() {
+            assert!(
+                declared.contains(layer.name),
+                "`{}` is drawn and nothing says which section asked for it.                  Add it to BEYOND with the section, or take it out.",
+                layer.name
+            );
+        }
+        assert_eq!(layers().len(), DIRECTIVE.len() + BEYOND.len());
+        for (_, why) in BEYOND {
+            assert!(why.starts_with('§'), "{why} does not name a section");
+        }
     }
 
     /// A slug is what the interface stamps on an element and what a test looks
@@ -571,14 +653,22 @@ mod tests {
             Some(&vec!["mix-out", "mix-in", "suggestion"]),
             "the proposed colour is for what djmanzo suggests, and only that"
         );
-        // §75's three, and the same argument as `proposed` above: the
-        // trajectory, the breakdowns in it and the drops out of them are one
-        // reading of one curve drawn three ways. Three colours for three parts
-        // of one answer to "what shape is this record" would be §30's
-        // neon-everything failure rather than §57's distinction.
+        // §75's four, and the same argument as `proposed` above: the
+        // trajectory, the breakdowns in it, the drops out of them and how
+        // densely the moment is struck are readings of one record's shape
+        // drawn four ways. Four colours for four parts of one answer to "what
+        // shape is this record" would be §30's neon-everything failure rather
+        // than §57's distinction.
+        //
+        // `transients` belongs here and not with the stems, which is the one
+        // judgement worth stating: how *often* something is struck is a fact
+        // about the record's texture over time, and how *much* of a moment is
+        // percussive is a fact about the mixture. The first is shape; the
+        // second is what the mixture is made of, and `stems` already wears
+        // that colour.
         assert_eq!(
             grouped.get("shape"),
-            Some(&vec!["breakdowns", "drops", "energy"]),
+            Some(&vec!["breakdowns", "drops", "energy", "transients"]),
             "the shape colour is for where the record goes, and only that"
         );
         // `uncertain` is the one the enum's own doc reserved for this: what is
@@ -618,7 +708,7 @@ mod tests {
         }
     }
 
-    /// The count worth quoting, so "five of twenty" cannot drift.
+    /// The count worth quoting, so "twenty of twenty-one" cannot drift.
     #[test]
     fn the_built_count_is_a_fact_rather_than_a_recollection() {
         let built: Vec<&str> = layers()
@@ -645,6 +735,7 @@ mod tests {
                 "breakdowns",
                 "drops",
                 "energy",
+                "transients",
                 "suggestion",
                 "confidence",
                 "runway",

@@ -656,8 +656,15 @@ test.describe("the waveform's layers", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
-  /** And the inventory the interface reads is the one Rust publishes. */
-  test("the inventory is twenty, and the built ones are named", async ({
+  /**
+   * And the inventory the interface reads is the one Rust publishes.
+   *
+   * Twenty-one: §25's own twenty, plus `transients`, which §75 asked for and
+   * §25 never named a layer for. `layer.rs` holds the directive's twenty by
+   * slug and requires anything beyond them to say which section wanted it, so
+   * the number here is a consequence rather than a second opinion.
+   */
+  test("the inventory is the one Rust publishes, and the built ones are named", async ({
     page,
   }) => {
     await openShell(page, "/");
@@ -671,7 +678,7 @@ test.describe("the waveform's layers", () => {
           }
         ).__TAURI_INTERNALS__.invoke("waveform_layers", {}),
     );
-    expect(published).toHaveLength(20);
+    expect(published).toHaveLength(21);
     const built = (published as { name: string; drawn: string }[])
       .filter((layer) => layer.drawn !== "nowhere")
       .map((layer) => layer.name);
@@ -707,6 +714,96 @@ test.describe("the waveform's layers", () => {
     // analysis rather than on hardware. The same pass answers both, which is
     // why they arrived a commit apart rather than a year.
     expect(built).toContain("stems");
-    expect(built).toHaveLength(19);
+    // §75's `transients`: the twentieth, and the first layer here that §25
+    // never named. Its reason for being absent was *a curve at a resolution
+    // the overview cannot show*, which confused transients with their
+    // density: a count over a window is exactly what survives being drawn
+    // small. `dj_analysis::strikes` reads it off the onset curve the tempo
+    // estimator already builds.
+    expect(built).toContain("transients");
+    expect(built).toHaveLength(20);
+  });
+});
+
+/**
+ * §75's *transient density*, the last of its nine.
+ *
+ * How often something is struck, which is not how much of the moment is
+ * percussive and not how loud it is. `dj_analysis::strikes` measures it and is
+ * tested there; this says the one thing only a browser can — that the band is
+ * **drawn**, that it follows the density rather than the energy, and that a
+ * window nobody measured draws nothing.
+ */
+test.describe("§75's transient density", () => {
+  /**
+   * The bands on the *first* overview.
+   *
+   * Two decks are on screen and each draws one, so an unscoped selector counts
+   * every band twice -- which is how the first version of this read six for
+   * three measured windows.
+   */
+  const bandsOf = (page: import("@playwright/test").Page) =>
+    page.locator(".overview").first().locator('[data-layer="transients"]');
+
+  test("draws a band that follows the density, not the energy", async ({ page }) => {
+    await openShell(page, "/");
+
+    const bands = bandsOf(page);
+    await expect(bands.first()).toBeVisible();
+
+    /*
+      The fixture's three measured windows are deliberately anti-correlated
+      with energy: the *quietest* window is the densest, which is a shaker
+      under a pad. So a component that drew the energy curve into this band
+      would put the strongest mark on the wrong window, and this reads the
+      opacities back to catch exactly that.
+    */
+    const strengths = await bands.evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        left: Math.round(parseFloat((node as HTMLElement).style.left)),
+        opacity: Number(getComputedStyle(node).opacity),
+      })),
+    );
+    expect(strengths.length, "one band per measured window").toBe(3);
+
+    const strongest = strengths.reduce((a, b) => (b.opacity > a.opacity ? b : a));
+    const weakest = strengths.reduce((a, b) => (b.opacity < a.opacity ? b : a));
+    expect(
+      strongest.opacity,
+      "the densest window should be the darkest band",
+    ).toBeGreaterThan(weakest.opacity + 0.3);
+    // 11 strikes a second against a ceiling of 12.
+    expect(strongest.opacity).toBeGreaterThan(0.8);
+
+    /*
+      And it has to be the *right* window, which is the assertion that does the
+      work. Without it a component drawing the energy curve into this band
+      passes everything above: the fixture's energies are 1.0, 0.35 and 0.95,
+      so a strongest-versus-weakest check is satisfied by the wrong answer.
+
+      The fixture's densest window is the breakdown at 6,000,000 -- quiet and
+      busy, a shaker under a pad -- which is the second of the three measured
+      windows over a 12,000,000-frame record, so its band sits at 50%.
+    */
+    expect(
+      strongest.left,
+      "the darkest band is not over the densest window, so this is drawing something else",
+    ).toBe(50);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **A window nobody measured draws nothing, rather than a silent one.**
+   *
+   * Absent and *nothing was struck* are different answers, and a band that
+   * filled the gaps would claim the second when djmanzo only has the first —
+   * the same rule §25's vocal strip follows.
+   */
+  test("an unmeasured window is absent rather than empty", async ({ page }) => {
+    await openShell(page, "/");
+    const bands = bandsOf(page);
+    // The fixture has four windows and one of them has `strikes: null`.
+    await expect(bands).toHaveCount(3);
+    expect(errorsThrown(page)).toEqual([]);
   });
 });

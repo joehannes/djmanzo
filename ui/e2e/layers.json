@@ -144,6 +144,15 @@
     "why_not": ""
   },
   {
+    "name": "transients",
+    "title": "Transient density",
+    "about": "How often something is struck, which is not how loud it is.",
+    "role": "shape",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
+  },
+  {
     "name": "suggestion",
     "title": "AI recommendation",
     "about": "What djmanzo would do, drawn as a ghost rather than as a fact.",

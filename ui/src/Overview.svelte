@@ -296,6 +296,38 @@
     }));
   });
 
+  /**
+   * §75's *transient density*: how often something is struck.
+   *
+   * A thin band under the energy columns rather than columns of its own, and
+   * the shape is the argument. Energy is *where the record goes* and a column
+   * reads as a height on a journey; density is a texture, and a second run of
+   * columns beside the first would invite reading them as two heights of one
+   * thing. A band that darkens says "more is happening here" without
+   * competing for the same axis.
+   *
+   * **Absolute, against a stated ceiling**, like the vocal strip beside it —
+   * `strikes::BUSY` is the density at which it saturates, and it is a drawing
+   * decision rather than a claim about audio. A window nobody measured draws
+   * nothing rather than zero: absent and *nothing was struck* are different
+   * answers.
+   */
+  const STRUCK_SATURATES_AT = 12;
+
+  const struck = $derived.by(() => {
+    const sections = trajectory?.sections ?? [];
+    if (sections.length < 2 || totalFrames <= 0) return [];
+    const span = sections[1].at - sections[0].at;
+    return sections
+      .filter((section) => section.strikes !== null && section.strikes !== undefined)
+      .map((section) => ({
+        at: section.at,
+        left: fraction(section.at) * 100,
+        width: Math.max((span / totalFrames) * 100, 0.4),
+        strength: Math.min((section.strikes ?? 0) / STRUCK_SATURATES_AT, 1),
+      }));
+  });
+
   /** §75's breakdowns, as bands. */
   const thin = $derived.by(() => {
     const spans = trajectory?.breakdowns ?? [];
@@ -594,6 +626,16 @@
         style:height="{column.height}%"
       ></div>
     {/each}
+    {#each showing("transients") ? struck : [] as band (band.at)}
+      <div
+        class="struck"
+        data-layer="transients"
+        style:left="{band.left}%"
+        style:width="{band.width}%"
+        style:opacity={band.strength}
+        title="How often something is struck here"
+      ></div>
+    {/each}
     {#each showing("vocal") ? voices : [] as band (band.at)}
       <div
         class="voice"
@@ -660,6 +702,27 @@
   /* Pinned to the top edge, 3px, so the form says it is not the trajectory
      even before the colour does -- §33's rule that colour is never the only
      channel, applied to a layer nobody has to read in a hurry. */
+  /*
+    §75's transient density, along the bottom rather than the top.
+
+    The vocal strip is at the top and the stem band under it; this goes to the
+    other edge on purpose. It is the one reading here that is about *texture*
+    rather than about what the mixture contains, and stacking it with the two
+    that are would invite reading three bands as three parts of one answer.
+
+    Three pixels, in the shape colour it shares with the energy columns above
+    it -- `layer.rs` argues that case: how often something is struck is a fact
+    about the record's shape over time, and the columns are the same reading
+    drawn the other way.
+  */
+  .struck {
+    position: absolute;
+    z-index: 1;
+    bottom: 0;
+    height: 3px;
+    background: var(--shape, var(--accent-2));
+    pointer-events: none;
+  }
   .voice {
     position: absolute;
     z-index: 1;

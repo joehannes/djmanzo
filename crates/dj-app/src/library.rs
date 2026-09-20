@@ -454,6 +454,10 @@ mod tests {
                 parts[dj_core::Stem::Vocal.index()] = share;
                 parts
             }),
+            // Not what this test is about: §20's vocal column is
+            // read off `parts`, and a density beside it would be a number
+            // nothing here looks at.
+            strikes: None,
         };
         let of = |sections: Vec<Section>| {
             super::strongest_voice(&Trajectory {

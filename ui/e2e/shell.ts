@@ -400,10 +400,15 @@ export const ANSWERS: Record<string, unknown> = {
     // than as silence.
     trajectory: {
       sections: [
-        { at: 0, energy: 0.9, low: 0.95, parts: null },
-        { at: 3_000_000, energy: 1.0, low: 1.0, parts: [0.35, 0.25, 0.25, 0.15] },
-        { at: 6_000_000, energy: 0.35, low: 0.05, parts: [0.25, 0.05, 0.1, 0.6] },
-        { at: 9_000_000, energy: 0.95, low: 0.98, parts: [0.02, 0.48, 0.3, 0.2] },
+        // §75's transient density beside the shares, and deliberately not
+        // correlated with them: the breakdown at 6M is the *densest* window
+        // here and the quietest, which is a shaker under a pad. A fixture
+        // where density tracked energy would let a component that drew the
+        // energy curve twice pass every assertion.
+        { at: 0, energy: 0.9, low: 0.95, parts: null, strikes: null },
+        { at: 3_000_000, energy: 1.0, low: 1.0, parts: [0.35, 0.25, 0.25, 0.15], strikes: 4 },
+        { at: 6_000_000, energy: 0.35, low: 0.05, parts: [0.25, 0.05, 0.1, 0.6], strikes: 11 },
+        { at: 9_000_000, energy: 0.95, low: 0.98, parts: [0.02, 0.48, 0.3, 0.2], strikes: 2 },
       ],
       beats_per_section: 32,
       breakdowns: [{ from: 6_000_000, to: 9_000_000 }],

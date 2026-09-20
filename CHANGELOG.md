@@ -16,6 +16,37 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**§75's transient density, and a reason that was wrong about what it was
+measuring** — the last of §75's nine. Its absence was filed as *a curve at a
+resolution the overview cannot show*, which confuses transients with their
+density: individual strikes are indeed invisible where a whole record is six
+hundred pixels wide, and a **count over a window** is exactly what survives
+being drawn small.
+
+- **No pass over the audio at all.** `dj_analysis::strikes` is peak-picking on
+  the onset curve the tempo estimator already builds. What was missing was
+  never a measurement; it was a reading of one.
+- **It is not the percussive share**, and the two come apart constantly: a
+  sparse kick-and-clap pattern is high share and low density, a shaker under a
+  pad is the other way round. The browser fixture is deliberately
+  anti-correlated — its densest window is its quietest — so a component drawing
+  the energy curve into the band fails rather than looking right.
+- Absolute, like the stem shares and unlike the energy curve. A window nobody
+  measured draws nothing rather than zero.
+- **Two numbers are stated guesses and say so**: the density the band saturates
+  at, and how far above the local mean a peak must stand. The second is
+  calibrated against synthesised percussion with a known pattern, because the
+  only audio here is four seconds of test tone — and that calibration is weaker
+  than real material, which is said in the code rather than left to be
+  discovered.
+- **§25's list grew for the first time, and the test that guards it got
+  stronger.** §25 says *potential* layers; `transients` is the first layer
+  djmanzo draws that §25 did not name. The count test became a check of §25's
+  twenty **by slug** plus a requirement that anything beyond them declare which
+  section asked for it — which catches a layer being dropped even when one is
+  added in the same breath, and stops an addition looking like a breach of the
+  directive.
+
 **§26's beat jump gets its contextual action, and driving the application found
 two defects in it** — the eighth of §26's nine, and the only one that is not a
 drag. A beat jump has no position to grab: it is a move made to a record rather

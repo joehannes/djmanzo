@@ -1180,6 +1180,18 @@ export interface EnergyTrajectory {
      * rather than as silence.
      */
     parts: number[] | null;
+    /**
+     * §75's *transient density*: how often something is struck in this window,
+     * in strikes a second.
+     *
+     * **Not the same question as the percussive share in `parts`**, and the
+     * two come apart constantly: a sparse kick-and-clap pattern is high share
+     * and low density, and a shaker under a pad is the other way round.
+     *
+     * Absolute, like `parts`. `null` where nothing was measured, which the
+     * overview draws as nothing rather than as a silent passage.
+     */
+    strikes: number | null;
   }[];
   beats_per_section: number;
   breakdowns: { from: number; to: number }[];
