@@ -385,6 +385,47 @@ fn the_browser_fixture_has_the_levels_djmanzo_offers() {
 /// ```text
 /// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
 /// ```
+/// §30's roles and the pairs a theme may not collapse, as a golden file.
+///
+/// Blessed from `cockpit::Role` for the reason §20's columns are: the pairs
+/// are one judgement, and a second copy in the interface would be a second
+/// answer. This is the file `ui/src/appearance.test.ts` holds every shipped
+/// palette to -- so adding a pair here fails until a theme that collapses it
+/// is fixed, which is §89's *compare appearance* with a mechanism behind it.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_roles_a_theme_must_keep_apart() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/roles.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::semantic_roles())
+        .expect("the roles serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the roles");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored roles are JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh roles are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe semantic roles have changed, so every shipped palette is being \
+         checked against a set of distinctions djmanzo no longer makes -- or is \
+         not being checked against one it now does.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 #[test]
 fn the_browser_fixture_has_the_themes_djmanzo_accounts_for() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/themes.json");

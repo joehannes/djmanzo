@@ -1,0 +1,114 @@
+[
+  {
+    "token": "outgoing",
+    "about": "The deck the mix is coming from.",
+    "must_differ_from": [
+      "incoming"
+    ]
+  },
+  {
+    "token": "incoming",
+    "about": "The deck the mix is going to.",
+    "must_differ_from": [
+      "outgoing"
+    ]
+  },
+  {
+    "token": "selected",
+    "about": "What the DJ has selected.",
+    "must_differ_from": [
+      "active"
+    ]
+  },
+  {
+    "token": "active",
+    "about": "What is doing something right now.",
+    "must_differ_from": [
+      "selected"
+    ]
+  },
+  {
+    "token": "assistant",
+    "about": "What the assistant is responsible for.",
+    "must_differ_from": [
+      "audience",
+      "uncertain"
+    ]
+  },
+  {
+    "token": "uncertain",
+    "about": "What the system is not sure about.",
+    "must_differ_from": [
+      "assistant",
+      "audience"
+    ]
+  },
+  {
+    "token": "audience",
+    "about": "What the room did.",
+    "must_differ_from": [
+      "assistant",
+      "uncertain"
+    ]
+  },
+  {
+    "token": "success",
+    "about": "It worked.",
+    "must_differ_from": [
+      "danger",
+      "warn"
+    ]
+  },
+  {
+    "token": "warn",
+    "about": "It will probably be a problem.",
+    "must_differ_from": [
+      "danger",
+      "success"
+    ]
+  },
+  {
+    "token": "danger",
+    "about": "It is a problem now.",
+    "must_differ_from": [
+      "success",
+      "warn"
+    ]
+  },
+  {
+    "token": "stem-vocal",
+    "about": "The vocal stem.",
+    "must_differ_from": [
+      "stem-bass",
+      "stem-drums",
+      "stem-other"
+    ]
+  },
+  {
+    "token": "stem-drums",
+    "about": "The drum stem.",
+    "must_differ_from": [
+      "stem-bass",
+      "stem-other",
+      "stem-vocal"
+    ]
+  },
+  {
+    "token": "stem-bass",
+    "about": "The bass stem.",
+    "must_differ_from": [
+      "stem-drums",
+      "stem-other",
+      "stem-vocal"
+    ]
+  },
+  {
+    "token": "stem-other",
+    "about": "Everything that is not vocal, drums or bass.",
+    "must_differ_from": [
+      "stem-bass",
+      "stem-drums",
+      "stem-vocal"
+    ]
+  }
+]

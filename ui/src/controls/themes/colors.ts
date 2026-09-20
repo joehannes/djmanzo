@@ -61,7 +61,14 @@ const palettes: Record<string, { dark: Palette; light: Palette }> = {
       "--scrim": "#1c1f24aa",
     },
     light: {
-      "--bg": "#ffffff",
+      // Off-white rather than pure white, which every other light palette here
+      // does and this one did not: `--panel` is `#ffffff`, so a page and a
+      // panel were the same colour and every surface boundary in the theme
+      // rested on `--border` alone. In the one theme meant for an afternoon
+      // set outdoors -- where a bright screen washes a hairline border out
+      // first -- that is the worst place for it. Found by
+      // `appearance.spec.ts`, which measured them at 0.0000 apart.
+      "--bg": "#f3f6fa",
       "--panel": "#ffffff",
       "--panel-raised": "#eef1f5",
       "--panel-hover": "#dfe4ec",

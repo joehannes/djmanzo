@@ -632,6 +632,7 @@ pub fn run() {
             commands::cockpit_surfaces,
             commands::cockpit_workspaces,
             commands::cockpit_locks,
+            commands::semantic_roles,
             commands::library_columns,
             commands::chosen_columns,
             commands::set_chosen_columns,

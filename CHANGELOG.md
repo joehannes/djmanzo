@@ -16,6 +16,46 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**§89 compares appearance now, and the first run found a theme drawing its page
+and its panels in the same white** — the gap §89's row named in exactly those
+words: *a theme that turned every panel the same colour would pass every one of
+these*.
+
+Not by diffing pixels. That reason stands: CI and this container rasterise
+fonts differently, and a baseline re-blessed every run has stopped being a
+test. Colour is not like that — `getComputedStyle` resolves `var()` and
+`color-mix()` to numbers, and those numbers are identical on any machine, so
+appearance can be regressed exactly as long as what is regressed is the design
+language's own relationships rather than a bitmap.
+
+- **The gap it closes is structural.** §30's roles are not in a theme package:
+  a package carries fourteen base colours and the roles are *derived* from them
+  in `app.css`. So whether two roles stay distinguishable is a property of a
+  derivation meeting a palette, and it can collapse in one palette while
+  holding in the other thirty-three. Rust checks the pairs, vitest checks that
+  components ask for tokens, and `roles.spec.ts` checked one pair on one theme.
+  Nothing checked this.
+- Every must-differ pair, in every shipped palette, light and dark, against a
+  perceptual floor in OKLab. The surface ladder has to stay a ladder. Ordinary
+  and dim text are held to 4.5:1 and 3:1 **as rendered**, because a component
+  can ask for the right token and a palette can still ship a pair nobody looked
+  at together.
+- **Which pairs matter stays Rust's judgement**, read from a golden
+  `cockpit::Role::must_differ_from` blesses — so a pair added there fails here
+  until every palette honours it.
+- **`pkg-daylight` in light had `--bg` and `--panel` both `#ffffff`**, 0.0000
+  apart, so every surface boundary in that theme rested on a hairline border —
+  in the one palette meant for working outdoors, where a bright screen washes a
+  hairline out first. Every other light palette sets the page off-white and the
+  panel pure white; this one was the outlier, and is now not.
+- The floors are ratchets with their real margins written down: the closest
+  pair shipped is `danger` against `success` in pkg-latin light at 0.0563, the
+  closest surface step is pkg-stemlab light at 0.0096, the worst text is
+  pkg-industrial light's dim at 5.98:1. A test prints all three.
+- It still cannot say whether a palette is *good*. Two things being told apart
+  is not the same as a theme being pleasant, and nothing here pretends to judge
+  the second.
+
 **§22's audition, and the preview player djmanzo already had the parts for** —
 the sixth of the six things §22 offers a candidate, and the last one missing.
 The reason filed against it was *"needs a preview player djmanzo does not

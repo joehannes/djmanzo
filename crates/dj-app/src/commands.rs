@@ -11802,6 +11802,53 @@ pub struct ColumnDto {
     pub about: String,
 }
 
+/// One of §30's semantic roles, and which others it must be told apart from.
+///
+/// `SemanticRoleDto` rather than `RoleDto`: the mapping editor already has a
+/// `RoleDto` and it means a different thing entirely -- what a *control* does
+/// when a hand moves it. Two unrelated ideas called Role is the collision this
+/// file would otherwise ship.
+#[derive(Debug, Clone, Serialize)]
+pub struct SemanticRoleDto {
+    /// The custom property it is published as, without the `--`.
+    pub token: String,
+    /// What it means. §30's own sentence.
+    pub about: String,
+    /// The tokens of every role this one has to look different from.
+    ///
+    /// Sorted, so the golden file does not churn on an enum reordering.
+    pub must_differ_from: Vec<String>,
+}
+
+/// §30's roles, with the pairs a theme may not collapse.
+///
+/// Listed by Rust for the reason §20's columns are: the pairs are a judgement
+/// about what sits beside what, made once in `cockpit::Role`, and a second
+/// copy in the interface is a second answer. The interface does not *call*
+/// this — it reads the golden file blessed from it — which is the point: a
+/// pair added here fails a browser test until the theme that has to honour it
+/// is checked.
+#[tauri::command]
+#[must_use]
+pub fn semantic_roles() -> Vec<SemanticRoleDto> {
+    crate::cockpit::Role::ALL
+        .iter()
+        .map(|role| {
+            let mut differ: Vec<String> = crate::cockpit::Role::ALL
+                .iter()
+                .filter(|other| role.must_differ_from(**other))
+                .map(|other| other.token().to_owned())
+                .collect();
+            differ.sort_unstable();
+            SemanticRoleDto {
+                token: role.token().to_owned(),
+                about: role.about().to_owned(),
+                must_differ_from: differ,
+            }
+        })
+        .collect()
+}
+
 /// Every column §20's performance table can carry.
 ///
 /// Listed by Rust, with its heading and its sentence, so a column added there
