@@ -1849,6 +1849,46 @@ export async function openShell(
             if (state.previous === slug) state.previous = "";
             return Promise.resolve(redeal(state));
           }
+          // §107: the singer rotation. The rules are Rust's and tested there;
+          // this holds one rotation and records every call with its
+          // arguments, so a test can check what the surface *sent* — which is
+          // the half a browser can see.
+          if (cmd.startsWith("karaoke_")) {
+            ((win.__karaoke ??= []) as unknown[]).push({ cmd, ...args });
+            const rotation = (win.__rotation ??= structuredClone(
+              answers.karaoke_rotation ?? { singers: [], up_next: null, lately: [] },
+            )) as {
+              singers: { name: string; songs: { title: string; track: string | null; path: string | null; key: number }[]; turns: number }[];
+              up_next: string | null;
+              lately: unknown[];
+            };
+            const upNext = () => rotation.singers.find((s) => s.songs.length > 0)?.name ?? null;
+            if (cmd === "karaoke_ask") {
+              const name = String(args.singer ?? "").trim();
+              const title = String(args.title ?? "").trim();
+              if (!name || !title) return Promise.reject(new Error("a request needs a singer's name and a song"));
+              const song = { title, track: (args.track as string) ?? null, path: (args.path as string) ?? null, key: Number(args.key ?? 0) };
+              const found = rotation.singers.find((s) => s.name.toLowerCase() === name.toLowerCase());
+              if (found) found.songs.push(song);
+              else rotation.singers.push({ name, songs: [song], turns: 0 });
+            }
+            if (cmd === "karaoke_sang") {
+              const at = rotation.singers.findIndex((s) => s.songs.length > 0);
+              if (at >= 0) {
+                const [singer] = rotation.singers.splice(at, 1);
+                const song = singer.songs.shift();
+                singer.turns += 1;
+                rotation.lately.unshift({ singer: singer.name, title: song?.title, track: song?.track, key: song?.key });
+                rotation.singers.push(singer);
+              }
+            }
+            if (cmd === "karaoke_key") {
+              const singer = rotation.singers.find((s) => s.name === args.singer);
+              if (singer?.songs[0]) singer.songs[0].key = Math.max(-7, Math.min(7, Number(args.key)));
+            }
+            rotation.up_next = upNext();
+            return Promise.resolve(structuredClone(rotation));
+          }
           // §110: which colouring was chosen, echoed the way Rust echoes it.
           if (cmd === "set_waveform_colouring") {
             const asked = String(args.colouring);

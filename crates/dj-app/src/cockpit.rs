@@ -883,6 +883,25 @@ pub fn surfaces() -> &'static [Surface] {
             home: Dock::Right,
             docks: SIDE,
         },
+        // §107: the singer rotation. Its own surface rather than a view in the
+        // collection, because a karaoke host glances at it between every
+        // song — who is up, what, in which key — while the decks play.
+        Surface {
+            name: "karaoke",
+            title: "Singers",
+            about: "Who sings next, what, and in which key.",
+            category: Category::Assistant,
+            least: (240, 160),
+            prefer: (340, 360),
+            priority: 56,
+            performance_critical: false,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            contextual: false,
+            home: Dock::Right,
+            docks: SIDE,
+        },
         Surface {
             name: "assistant",
             title: "Assistant",

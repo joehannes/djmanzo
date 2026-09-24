@@ -12151,6 +12151,116 @@ pub fn set_chosen_layers(state: State<'_, AppState>, layers: Vec<String>) -> Vec
     chosen
 }
 
+/// §107: the rotation as the Singers surface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct RotationDto {
+    /// In calling order.
+    pub singers: Vec<crate::karaoke::Singer>,
+    /// Who is up next, when anybody is.
+    pub up_next: Option<String>,
+    /// The last few songs sung, newest first: what the host glances at to
+    /// answer "did I already sing tonight?".
+    pub lately: Vec<crate::karaoke::Sung>,
+}
+
+fn rotation_dto(rotation: &crate::karaoke::Rotation) -> RotationDto {
+    RotationDto {
+        singers: rotation.singers.clone(),
+        up_next: rotation.up_next().map(|(singer, _)| singer.name.clone()),
+        lately: rotation.history.iter().rev().take(12).cloned().collect(),
+    }
+}
+
+/// Read the rotation, change it, keep it, and answer with what it now is.
+fn with_rotation(
+    state: &AppState,
+    change: impl FnOnce(&mut crate::karaoke::Rotation) -> bool,
+) -> RotationDto {
+    let mut rotation = state.karaoke();
+    if change(&mut rotation) {
+        state.set_karaoke(&rotation);
+    }
+    rotation_dto(&rotation)
+}
+
+/// §107: the singer rotation.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_rotation(state: State<'_, AppState>) -> RotationDto {
+    rotation_dto(&state.karaoke())
+}
+
+/// §107: somebody asks for a song. With no key, the key they sang it in last
+/// time.
+///
+/// # Errors
+/// An empty name or title.
+#[tauri::command]
+pub fn karaoke_ask(
+    state: State<'_, AppState>,
+    singer: String,
+    title: String,
+    track: Option<String>,
+    path: Option<String>,
+    key: Option<i32>,
+) -> Result<RotationDto, String> {
+    let mut taken = false;
+    let dto = with_rotation(&state, |rotation| {
+        taken = rotation.ask(&singer, &title, track, path, key);
+        taken
+    });
+    if taken {
+        Ok(dto)
+    } else {
+        Err("a request needs a singer's name and a song".to_owned())
+    }
+}
+
+/// §107: the singer up next has sung; they go to the back.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_sang(state: State<'_, AppState>) -> RotationDto {
+    with_rotation(&state, |rotation| rotation.sang().is_some())
+}
+
+/// §107: called and not there — to the bottom, songs kept.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_not_here(state: State<'_, AppState>, singer: String) -> RotationDto {
+    with_rotation(&state, |rotation| rotation.not_here(&singer))
+}
+
+/// §107: the host moves somebody to a place in the calling order.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_move(state: State<'_, AppState>, singer: String, to: usize) -> RotationDto {
+    with_rotation(&state, |rotation| rotation.move_to(&singer, to))
+}
+
+/// §107: somebody leaves; their history, and so their keys, stay.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_leave(state: State<'_, AppState>, singer: String) -> RotationDto {
+    with_rotation(&state, |rotation| rotation.leave(&singer))
+}
+
+/// §107: the key of a singer's next song, in semitones.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_key(state: State<'_, AppState>, singer: String, key: i32) -> RotationDto {
+    with_rotation(&state, |rotation| rotation.set_key(&singer, key))
+}
+
+/// §107: a new night — everybody off the list, the history kept.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_clear(state: State<'_, AppState>) -> RotationDto {
+    with_rotation(&state, |rotation| {
+        rotation.clear();
+        true
+    })
+}
+
 /// §109: one activity as the strip draws it.
 #[derive(Debug, Clone, Serialize)]
 pub struct ActivityDto {

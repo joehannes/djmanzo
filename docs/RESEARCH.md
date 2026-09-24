@@ -352,3 +352,22 @@ manufacturer's MIDI message list, and it gets transcribed.
 - [Rubber Band](https://breakfastquay.com/rubberband/) · [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch)
 - [CLAP](https://cleveraudio.org/) · [Tauri Linux graphics issues](https://v2.tauri.app/develop/debug/linux-graphics/)
 - [HT-Demucs ONNX export](https://huggingface.co/StemSplitio/htdemucs-ft-onnx)
+
+
+## Karaoke hosting (§107)
+
+Researched 2026-09-24 for the owner's ask to "investigate and research in
+online resources what else can be done to improve karaoke features and
+usability". Feature descriptions, hosts' guides and format write-ups only —
+no program's code was read, and none is a dependency. Several vendor pages are
+refused by this environment's network, so what is recorded is what their
+search summaries and public guides say.
+
+| Source | What it contributed |
+|---|---|
+| [PCDJ Karaoki](https://pcdj.com/karaoke-software/karaoki/), [PCDJ: karaoke system for a bar](https://pcdj.com/karaoke-system-for-a-bar/) | The host's working set: an automatic singer rotation with drag-to-reorder, singer and song **history including the key** a song was sung in, key change in semitone steps, break music faded in and out between singers, a "next singers" screen and a ticker. |
+| [VirtualDJ karaoke manual](https://virtualdj.com/manuals/virtualdj/interface/browser/sideview/karaoke.html), [VirtualDJ: running karaoke shows](https://virtualdj.com/articles/how-to-run-karaoke-shows) | A rotation manager holding singer, song and key, saved for recall; vocal removal by muting the vocal stem; the queue shown to the room. |
+| [KaraFun features](https://www.karafun.com/features/), [KaraFun: saving key and tempo](https://www.karafun.com/blog/476-tip-of-the-month-saving-the-key-and-tempo-of-a-song.html), [KaraFun: vocal guide](https://www.karafun.com/help/features_105.html), [KaraFun: dual screen](https://www.karafun.com/blog/766-tip-of-the-month-dual-screen.html) | Key and tempo remembered per song; a **vocal guide** (the lead reduced rather than removed) for a hesitant singer; lead and backing vocals controlled separately, which makes a duet with one part muted; a second screen showing only the words. |
+| [Karaoke rules of singer rotation](https://www.karaoke-tutor.com/karaoke-rules-of-singer-rotation.html), [Rad Karaoke: how a rotation works](https://www.radkaraoke.com/blog/how-does-a-karaoke-rotation-work), [Good Time DJ: organising a karaoke night](https://goodtimedj.com/how-to-organize-karaoke-night/) | The fairness rules `dj_app::karaoke` implements: first come first served, newcomers at the end of the active rotation, one or two songs a turn, a singer not ready when called goes to the bottom, and the queue visible to the room rather than in the host's head. |
+| [EasyLRC: LRC and Enhanced LRC](https://easylrc.com/blog/lrc-format-complete-guide), [QuickLRC: Enhanced LRC](https://www.quicklrc.com/resources/enhanced-lrc-file-complete-guide) | The word-level "A2" LRC form — `<mm:ss.xx>` before each word inside a line — which is what a per-word wipe on the singers' screen needs. |
+| [OpenKJ](https://github.com/OpenKJ/OpenKJ) | An open-source KJ program. ⚠️ **GPL — not read, not linked, not transcribed.** Listed so nobody assumes it was used. |

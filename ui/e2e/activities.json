@@ -215,6 +215,40 @@
         "layout": "Starter",
         "locked": []
       }
+    },
+    {
+      "slug": "karaoke",
+      "title": "Karaoke",
+      "doing": "Host the singers: who is up, what, and in which key.",
+      "icon": "microphone",
+      "shipped": true,
+      "key": "F8",
+      "workspace": {
+        "name": "Karaoke",
+        "about": "The singer rotation beside the decks, and the collection to find their songs in.",
+        "surfaces": [
+          {
+            "surface": "karaoke",
+            "dock": "right",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          },
+          {
+            "surface": "library",
+            "dock": "bottom",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          }
+        ],
+        "density": "standard",
+        "focus": "performing",
+        "theme": "",
+        "decks": 2,
+        "layout": "Essentials",
+        "locked": []
+      }
     }
   ],
   "back": "Backquote",

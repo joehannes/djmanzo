@@ -34,7 +34,7 @@
 //!   Whatever the DJ is doing, the record playing is on screen, so no switch
 //!   ever hides the thing the room is hearing.
 //! - **One key each, and one key back.** The shipped activities are `F1` to
-//!   `F7`, a DJ's own take the next free ones, and the interface keeps the
+//!   `F8`, a DJ's own take the next free ones, and the interface keeps the
 //!   last one so a single key (`` ` ``) returns to it — digging for a record
 //!   and coming back to the mix is the most common round trip of a night.
 //!   Not the digits: those are the hot cues. See [`key_for`].
@@ -106,10 +106,11 @@ fn arrangement(
 /// The activities djmanzo ships, in the order the strip shows them and the
 /// number keys reach them.
 ///
-/// Seven, each built from surfaces and deck compositions that exist. **Not
-/// here yet, on purpose**: a karaoke host's activity, which waits for §107's
-/// work to give it a surface of its own rather than borrowing the request
-/// queue and calling it karaoke.
+/// Eight, each built from surfaces and deck compositions that exist. The
+/// karaoke host's is last on purpose: it waited for §107 to give it a surface
+/// of its own — the singer rotation — rather than borrow the request queue and
+/// call it karaoke, and putting it last kept the seven keys that were already
+/// learned where they were.
 #[must_use]
 pub fn shipped() -> Vec<Activity> {
     let activity =
@@ -223,6 +224,22 @@ pub fn shipped() -> Vec<Activity> {
                 vec![at("practice", Dock::Bottom, 0)],
                 Focus::Learning,
                 "Starter",
+            ),
+        ),
+        activity(
+            "karaoke",
+            "Karaoke",
+            "Host the singers: who is up, what, and in which key.",
+            "microphone",
+            arrangement(
+                "Karaoke",
+                "The singer rotation beside the decks, and the collection to find their songs in.",
+                vec![
+                    at("karaoke", Dock::Right, 0),
+                    at("library", Dock::Bottom, 0),
+                ],
+                Focus::Performing,
+                "Essentials",
             ),
         ),
     ]

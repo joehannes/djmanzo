@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Karaoke: the singer rotation** — §107. A *Singers* surface and a *Karaoke*
+activity (F8): first come first served, one song a turn, a singer who is not
+there when called goes to the bottom with their songs kept, and each singer's
+key is remembered with the song and offered again next time. The up-next song
+loads onto a deck in the singer's key.
+
 **Nothing moves the decks mid-mix** — §18. Two notices broke the rule that
 the interface may not reflow while two records are audible. The low
 frame-rate warning came and went with the frame rate and bounced the decks

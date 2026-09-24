@@ -4292,6 +4292,57 @@ export const chosenLayers = () => invoke<string[]>("chosen_layers");
 export const setChosenLayers = (layers: string[]) =>
   invoke<string[]>("set_chosen_layers", { layers });
 
+/** §107: one song a singer has asked for. */
+export interface SingerRequest {
+  title: string;
+  /** The record, in hex, when it has been found in the collection. */
+  track: string | null;
+  path: string | null;
+  /** Semitones from the record's own key. */
+  key: number;
+}
+
+/** §107: one singer in the rotation. */
+export interface Singer {
+  name: string;
+  songs: SingerRequest[];
+  turns: number;
+}
+
+/** §107: somebody sang something, in some key. */
+export interface Sung {
+  singer: string;
+  title: string;
+  track: string | null;
+  key: number;
+}
+
+/** §107: the night's rotation, from `dj_app::karaoke`. */
+export interface Rotation {
+  /** In calling order. */
+  singers: Singer[];
+  up_next: string | null;
+  /** Newest first. */
+  lately: Sung[];
+}
+
+export const karaokeRotation = () => invoke<Rotation>("karaoke_rotation");
+export const karaokeAsk = (
+  singer: string,
+  title: string,
+  track: string | null,
+  path: string | null,
+  key: number | null,
+) => invoke<Rotation>("karaoke_ask", { singer, title, track, path, key });
+export const karaokeSang = () => invoke<Rotation>("karaoke_sang");
+export const karaokeNotHere = (singer: string) => invoke<Rotation>("karaoke_not_here", { singer });
+export const karaokeMove = (singer: string, to: number) =>
+  invoke<Rotation>("karaoke_move", { singer, to });
+export const karaokeLeave = (singer: string) => invoke<Rotation>("karaoke_leave", { singer });
+export const karaokeKey = (singer: string, key: number) =>
+  invoke<Rotation>("karaoke_key", { singer, key });
+export const karaokeClear = () => invoke<Rotation>("karaoke_clear");
+
 /**
  * §109: one activity — what a DJ is doing right now, and the arrangement for
  * it. From `dj_app::activity`.

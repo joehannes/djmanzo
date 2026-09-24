@@ -1,5 +1,17 @@
 # Karaoke
 
+> **What is built, and what is still only written here** (updated 2026-09-24,
+> §107). This document was the plan; for a long time almost none of it reached
+> a DJ. Built: **the singer rotation** (`dj_app::karaoke`, the *Singers*
+> surface, the *Karaoke* activity on F8) — first come first served, one song a
+> turn, not ready is the bottom, a singer's key remembered with the song, the
+> up-next song loaded onto a deck in the singer's key. Built earlier and
+> still true: lyrics fetched from LRCLIB, synced where the database has them.
+> **Not yet**: the band-limited centre cancel exists as DSP (`dj_dsp::karaoke`)
+> and nothing in the engine calls it; the vocal-guide level on the stems; the
+> singers' screen that reads the synced lyrics. Those are the next pieces, in
+> that order.
+
 Two independent halves, usable together or separately:
 
 1. **Take the voice out** — a ladder of techniques, best first, with the

@@ -1222,6 +1222,35 @@ impl AppState {
         }
     }
 
+    /// The file §107's singer rotation lives in.
+    fn karaoke_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("karaoke.json"))
+    }
+
+    /// §107: the singer rotation and everything sung so far. Empty on a fresh
+    /// install or an unreadable file — a night with nobody queued, which is
+    /// what a host would start with anyway.
+    #[must_use]
+    pub fn karaoke(&self) -> crate::karaoke::Rotation {
+        self.karaoke_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keep the rotation, so a restart mid-night does not lose the queue.
+    pub fn set_karaoke(&self, rotation: &crate::karaoke::Rotation) {
+        let Some(path) = self.karaoke_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(rotation) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "the singer rotation will not survive a restart");
+        }
+    }
+
     /// The file §109's activities live in.
     fn activities_path(&self) -> Option<std::path::PathBuf> {
         Some(

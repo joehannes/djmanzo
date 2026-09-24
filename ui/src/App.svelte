@@ -78,6 +78,7 @@
   import Watershed from "./Watershed.svelte";
   import ActivityStrip from "./ActivityStrip.svelte";
   import Requests from "./Requests.svelte";
+  import Singers from "./Singers.svelte";
   import { findInCollection } from "./find.svelte";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
   import { theme } from "./theme.svelte";
@@ -268,6 +269,7 @@
     "mixes",
     "athand",
     "requests",
+    "karaoke",
   ] as const;
   type Drawn = (typeof DRAWN)[number];
 
@@ -1999,6 +2001,12 @@
           rather than something taking room on a deck all night.
         -->
         <IconButton icon="fa-solid fa-th" label="Sampler" title="Load and route the sample banks" active={isOpen("sampler")} onClick={() => toggleSurface("sampler")} />
+        <!--
+          §107's Singers surface has no button in this row, on purpose: the
+          row already wraps on a laptop screen, and one more button pushed a
+          deck's pads below the fold — the density test caught it. It is the
+          Karaoke activity's (F8), which is where a host works from.
+        -->
         <IconButton icon="fa-solid fa-robot" label="Assistant" title="Ask for a next track, or a transition" active={isOpen("assistant")} onClick={() => toggleSurface("assistant")} />
         <IconButton icon="fa-solid fa-cog" label="Settings" title="Audio, sources, controllers, timecode" active={isOpen("settings")} onClick={() => toggleSurface("settings")} />
         <IconButton icon="fa-solid fa-keyboard" label="Keys" title={keyboard.enabled ? "Keyboard shortcuts — enabled" : "Keyboard shortcuts — disabled"} active={isOpen("keys")} onClick={() => toggleSurface("keys")} />
@@ -2454,6 +2462,10 @@
     <Night enabled={ready} density={densityName} onDensity={applyDensity} />
   {/snippet}
 
+  {#snippet surfaceKaraoke()}
+    <Singers enabled={ready} {deckCount} />
+  {/snippet}
+
   {#snippet surfaceRequests()}
     <!--
       §109: the room's requests beside the decks, for the Requests activity.
@@ -2761,6 +2773,7 @@
         {:else if placement.surface === "night"}{@render surfaceNight()}
         {:else if placement.surface === "room"}{@render surfaceRoom()}
         {:else if placement.surface === "requests"}{@render surfaceRequests()}
+        {:else if placement.surface === "karaoke"}{@render surfaceKaraoke()}
         {:else if placement.surface === "mixes"}{@render surfaceMixes()}
         {:else if placement.surface === "athand"}{@render surfaceAtHand()}
         {:else if placement.surface === "booth"}{@render surfaceBooth()}

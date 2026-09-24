@@ -59,7 +59,7 @@ test.describe("§109: activity mode", () => {
 
     // And between activities, which a night does far more often than it
     // enters the mode: none of them moves where the decks begin.
-    for (const key of ["F1", "F3", "F4", "F5", "F6", "F7", "F2"]) {
+    for (const key of ["F1", "F3", "F4", "F5", "F6", "F7", "F8", "F2"]) {
       await page.keyboard.press(key);
       await expect(page.locator(`${STRIP} [aria-pressed="true"]`)).toHaveCount(1);
       expect(Math.abs((await bottom()) - after), `${key} moved the decks`).toBeLessThanOrEqual(2);
@@ -125,12 +125,12 @@ test.describe("§109: activity mode", () => {
 
     // Kept, and in it: the strip is up and the new tab is the current one.
     await expect(tab(page, "warm-up")).toHaveAttribute("aria-pressed", "true");
-    await expect(tab(page, "warm-up")).toContainText("F8");
+    await expect(tab(page, "warm-up")).toContainText("F9");
 
     // Away and back by its key: its arrangement comes back with it.
     await page.keyboard.press("F2");
     await expect(surface(page, "night")).toHaveCount(0);
-    await page.keyboard.press("F8");
+    await page.keyboard.press("F9");
     await expect(surface(page, "night")).toBeVisible();
 
     await page.getByRole("button", { name: "Forget Warm-up" }).click();
@@ -146,7 +146,7 @@ test.describe("§109: activity mode", () => {
     await page.getByRole("textbox", { name: "Name for the new activity" }).fill("Mix");
     await page.getByRole("button", { name: "Keep", exact: true }).click();
     await expect(page.locator(`${STRIP} [role="alert"]`)).toContainText("already has an activity");
-    await expect(page.locator(`${STRIP} [data-activity]`)).toHaveCount(7);
+    await expect(page.locator(`${STRIP} [data-activity]`)).toHaveCount(8);
   });
 
   /**

@@ -41,6 +41,7 @@ pub mod grid;
 pub mod handle;
 pub mod host;
 pub mod jumps;
+pub mod karaoke;
 pub mod layout;
 pub mod lens;
 pub mod level;
@@ -677,6 +678,14 @@ pub fn run() {
             commands::set_chosen_layers,
             commands::waveform_colourings,
             commands::activities,
+            commands::karaoke_rotation,
+            commands::karaoke_ask,
+            commands::karaoke_sang,
+            commands::karaoke_not_here,
+            commands::karaoke_move,
+            commands::karaoke_leave,
+            commands::karaoke_key,
+            commands::karaoke_clear,
             commands::set_activity_mode,
             commands::keep_activity,
             commands::forget_activity,
