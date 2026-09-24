@@ -2456,14 +2456,26 @@ mod tests {
     /// so and passes where there is none.
     #[test]
     fn a_model_takes_over_once_it_has_been_tried() {
-        if let Err(reason) =
+        let fixtures =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dj-stems/tests/fixtures");
+        // A runtime that opens but is refused -- Windows carries an older
+        // `onnxruntime.dll` of its own in System32 -- is this machine unable
+        // to run it, not the model failing.
+        let usable =
             dj_stems::availability::probe_named_runtime(&dj_stems::availability::runtime_library())
-        {
+                .map_err(|reason| reason.to_string())
+                .and_then(|()| {
+                    match dj_stems::StemsEngine::new(&fixtures.join("standin-4.onnx")) {
+                        Err(reason @ dj_stems::Unavailable::Runtime { .. }) => {
+                            Err(reason.to_string())
+                        }
+                        _ => Ok(()),
+                    }
+                });
+        if let Err(reason) = usable {
             eprintln!("skipped: {reason}");
             return;
         }
-        let fixtures =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dj-stems/tests/fixtures");
         let with = |fixture: &str| {
             let dir = tempfile::tempdir().unwrap();
             std::fs::create_dir_all(dir.path().join("models")).unwrap();

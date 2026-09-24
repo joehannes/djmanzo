@@ -49,14 +49,24 @@ fn off_by(stem: &[f32], mix: &[f32], gain: f32, edge: usize) -> f32 {
         .fold(0.0, f32::max)
 }
 
+/// Whether this machine has an ONNX Runtime djmanzo can use.
+///
+/// A library that opens is not enough: Windows carries an older
+/// `onnxruntime.dll` of its own in System32, which the probe finds and `ort`
+/// then refuses as too old. That is the machine saying it cannot run this,
+/// not the model failing, so it skips too.
 fn runtime_here() -> bool {
     let library = dj_stems::availability::runtime_library();
-    match dj_stems::availability::probe_named_runtime(&library) {
-        Ok(()) => true,
-        Err(reason) => {
+    if let Err(reason) = dj_stems::availability::probe_named_runtime(&library) {
+        eprintln!("skipped: {reason} (set ORT_DYLIB_PATH to run this)");
+        return false;
+    }
+    match StemsEngine::new(&fixture("standin-4.onnx")) {
+        Err(reason @ Unavailable::Runtime { .. }) => {
             eprintln!("skipped: {reason} (set ORT_DYLIB_PATH to run this)");
             false
         }
+        _ => true,
     }
 }
 
