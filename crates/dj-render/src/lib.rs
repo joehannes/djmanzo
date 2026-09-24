@@ -24,8 +24,9 @@ pub mod tile;
 pub use layer::{Drawn, Layer, Role, choosing, layer, layers};
 pub use summary::{Bucket, SPECTRUM_BANDS, SPECTRUM_EDGES_HZ, WaveformSummary};
 pub use tile::{
-    BAND_HUES_DEG, BYTES_PER_PIXEL, Colouring, GridLines, GridOverlay, Palette, Theme, Tile,
-    TileSpec, render_tile, render_tile_with_grid, spectral_light,
+    BYTES_PER_PIXEL, Colouring, EqPart, GridLines, GridOverlay, HEARING_HZ, Palette, Theme, Tile,
+    TileSpec, VISIBLE_NM, frequency_colour, hearing_position, render_tile, render_tile_with_grid,
+    wavelength_for,
 };
 
 pub mod encode;

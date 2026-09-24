@@ -200,8 +200,12 @@ test.describe("§8's ninth: the waveform a DJ chose", () => {
 
     const cues = page.locator('.lane [data-layer="cues"]');
     await expect(cues.first()).toBeVisible();
-    // Every tile URL carries all three grid letters to start with.
-    const before = await page.locator(".lane .strip img").first().getAttribute("src");
+    // Every tile that carries the grid carries all three letters to start
+    // with. That is the grid layer when §110 splits the lane into its EQ
+    // parts — the parts themselves carry no grid — and the whole tile when
+    // it does not.
+    const gridTile = page.locator('.lane .strip img[data-part="grid"], .lane .strip img[data-part="all"]');
+    const before = await gridTile.first().getAttribute("src");
     expect(before).toContain("/bdp");
 
     await openRemembers(page);
@@ -212,9 +216,7 @@ test.describe("§8's ninth: the waveform a DJ chose", () => {
 
     await expect(cues).toHaveCount(0);
     await expect
-      .poll(async () =>
-        page.locator(".lane .strip img").first().getAttribute("src"),
-      )
+      .poll(async () => gridTile.first().getAttribute("src"))
       .toContain("/-dp");
     expect(thrown).toEqual([]);
   });

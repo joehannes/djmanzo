@@ -1251,7 +1251,10 @@ export const waveformInfo = (deck: number) =>
  * serving whichever palette was rendered first. §25's three grid layers are
  * there for exactly the same reason: a DJ turning the beat lines off would
  * otherwise keep being served the tiles already drawn with them. §110's
- * colouring — light, or the three EQ bands — is there for the same reason.
+ * colouring — light, or the three EQ bands — is there for the same reason,
+ * and so is the EQ part: `all` for the whole column, `low`, `mid` or `high`
+ * for the one part of it the lane dims by that knob (`./eqLight`), or `grid`
+ * for the beat grid alone, laid over the three.
  */
 export function tileUrl(
   deck: number,
@@ -1263,10 +1266,11 @@ export function tileUrl(
   epoch: number,
   grid: string,
   colouring: string,
+  part: "all" | "low" | "mid" | "high" | "grid" = "all",
 ): string {
   const zoomMilli = Math.round(framesPerPixel * 1000);
   const start = Math.round(startFrame);
-  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}/${theme}/${epoch}/${grid}/${colouring}`;
+  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}/${theme}/${epoch}/${grid}/${colouring}/${part}`;
   // Tauri rewrites custom schemes differently per platform: Linux/WebKitGTK
   // keeps `scheme://`, while Windows needs the `http://scheme.localhost` form.
   // macOS accepts the former.

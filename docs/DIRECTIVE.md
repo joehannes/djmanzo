@@ -2516,6 +2516,10 @@ Quoted as written.
 ---
 # 110. ASKED SINCE: SPECTRAL COLOUR ON THE WAVEFORM
 > i also want you to improve and augment and enhance the waveforms/displays of the song ... more colors that combine to audiowaves like to light ... all frequencies = white ... lowest frequencies red ... highest frequencies violet .. so color code in live
+
+Clarified by the owner, 2026-09-24, after the first version drew the bands
+added together as light, white when all were present:
+> resume, but also reiterate over the (live) colors  and interactive/reactiveness of the waveform: i didn't mean white, red and violet ... i meant low frequencies of light are red, high frequencies of light are violet and all the colors lie in between. so also audio frequencies low frequencies sound deep, high frequencies sound high ... and the waveform likewise should be displayed colorful in the color spectrum of light. say like the lower limit of the human ear (that the human can perceive as of frequency) is drawn by a red close to infrared ... the lowest red a human eye can perceive ... and the upper limit at about 20khz shall be a violet that might be close to ultraviolet .. the frequencies in between shall be determined by a fitting and fast formula mapping the frequencies fittingly and adequatly to colors ... i guess white is out of the picture as we never got all frequencies at once ...
 ---
 # 111. ASKED SINCE: LEGAL MUSIC SOURCES FOR KARAOKE STEMS
 > also investigate if there's legal ways to use some kind of streaming or downloading service for music to live stem/out the vocals for karaoke (manipulate the plaid audio in real time) ... if so .. .make sure that's integrated/implemented (streaming services, download/buy mp3s and manipulate them legally) ... for that purpose also integrate with some kind of music stores if useful ... maybe just as direct links? ... maybe the downloads directly. .. have configurable music/download folder for that purpose and use internal AI to auto-create subfolders on buying/downloading music
@@ -2531,3 +2535,7 @@ Quoted as written.
 ---
 # 115. ASKED SINCE: A GUI FOR A DJ'S DAILY WORK
 > also, i when improving the GUI, i want in general the GUI to look better and be more useful and integrated as of the daily tasks/life of a DJ ... they should be interactively functional and auto-adapting in non-intrusive ways ... fittingly, adequate, beautiful ... preset-packages and easy switching everywhere a background AI always auto watching the DJ and proposing useful things without being intrusive
+---
+# 116. ASKED SINCE: SEEING THE MUSIC COMING
+> apart from that the waveform is mostly displayed as amplitude i guess ... but i'd love to also make the frequency and intensity visible .. maybe you can investigate as of typical instruments and arrange some kind of individual visualization so DJs can see instruments coming via the waveform ahead of time, via their shape or colorcoding .. .also use the bg of the display of a song control and waveform somehow to visualize rhythm and melody, intensity, amplitude, evolution of the song (rising, setting ...)
+> whatever can be useful to further intuitive perception for the DJ ... help implement and integrate ...

@@ -16,6 +16,31 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The waveform in the colours of light, reacting to the EQ** — §110, as the
+owner clarified it: not bands added together to white, but *low frequencies
+... red, high frequencies ... violet and all the colors ... in between*, from
+a red at the edge of infrared at 20 Hz to a violet at the edge of ultraviolet
+at 20 kHz, and no white, *as we never got all frequencies at once*.
+
+- Octave for octave: hearing's ten octaves onto sight's one, `λ = 750 ·
+  (380/750)^p`. A kick is red, a bass line orange, a voice yellow and green,
+  a snare's crack blue, hats violet. The two ends are dimmer, the way the eye
+  sees them, so a 20 Hz rumble is a deeper red than a 60 Hz kick.
+- Each column is the spectrum of that moment, stacked from the centre out:
+  sub-bass at the heart, air at the edge, each band as thick as it sounds
+  (in decibels, so hats and chords are not a pixel beside the kick). A
+  moment is its colours side by side, never mixed.
+- Live: the lane is three layers, one per EQ band, and each is as bright as
+  its knob. Kill the low and the red heart fades to a ghost where it stood;
+  sweep the filter down and the violet edge goes first. An opacity, so
+  turning a knob redraws nothing. The beat grid is its own layer and never
+  dims.
+- Measured in eight bands off the load path, so loading a record mid-mix is
+  as fast as it was; the colour lands a moment later, and a late answer for a
+  record that has since been replaced is dropped.
+- On a light theme the same hues are ink. The EQ-matched three bands are one
+  choice away in Settings.
+
 **Karaoke: the singer rotation** — §107. A *Singers* surface and a *Karaoke*
 activity (F8): first come first served, one song a turn, a singer who is not
 there when called goes to the bottom with their songs kept, and each singer's
@@ -42,17 +67,6 @@ Requests, Autopilot, Practice**, and the DJ's own.
   reason, and never switches for you.
 - The room's requests are a surface of their own now, beside the decks; *Find
   it* searches the collection.
-
-**The spectrum as light** — §110. The waveform is coloured the way the owner
-asked: *lowest frequencies red, highest violet, all frequencies white.*
-
-- Eight bands from sub to air, each its own hue in the spectrum's order, added
-  in linear light with weights solved so a full spectrum is exactly white. On a
-  light theme the same hues are ink, and a full spectrum is grey.
-- Measured off the load path, so loading a record mid-mix is as fast as it was;
-  the colour lands a moment later, and a late answer for a record that has
-  since been replaced is dropped.
-- The EQ-matched three bands are one choice away in Settings.
 
 **The watershed leaves the main bar** — §112. It stays a world: choosing
 *Watershed Living* opens it, and an × on its own band closes it.

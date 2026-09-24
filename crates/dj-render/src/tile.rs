@@ -24,7 +24,7 @@
 //! tile generation is a bottleneck -- it is not currently close -- a `wgpu`
 //! implementation drops in behind the same signature.
 
-use crate::summary::{Bucket, SPECTRUM_BANDS, WaveformSummary};
+use crate::summary::{Bucket, SPECTRUM_BANDS, SPECTRUM_EDGES_HZ, WaveformSummary};
 use dj_core::{Beatgrid, Phrase, SampleRate};
 use serde::{Deserialize, Serialize};
 
@@ -93,13 +93,13 @@ pub struct Palette {
     pub phrase: [u8; 4],
     /// How the spectral-balance layer is coloured.
     pub colouring: Colouring,
-    /// How bright §110's light is drawn, linear, 0..1.
+    /// How bright §110's spectrum is drawn, 0..1.
     ///
-    /// Full on a dark ground. On a light one, white is the one colour a
-    /// full-spectrum moment must not be — it would vanish into the page — so
-    /// the same hues are drawn as ink: darker, the balance kept, a full
-    /// spectrum a neutral grey rather than white.
+    /// Full on a dark ground. On a light one the same hues are drawn as ink,
+    /// darker: yellow at full strength is a colour a white page swallows.
     pub light_level: f32,
+    /// Which of the mixer's EQ bands this tile draws. See [`EqPart`].
+    pub part: EqPart,
 }
 
 /// How the spectral-balance layer is coloured.
@@ -112,9 +112,11 @@ pub enum Colouring {
     /// Three bands at the mixer's isolator crossovers, averaged. What a DJ
     /// sees matches exactly what the LOW, MID and HIGH knobs act on.
     Bands,
-    /// §110: the spectrum as light. Eight bands, each drawn at a wavelength —
-    /// the lowest red, the highest violet — and added the way light adds, so a
-    /// moment with everything in it is white and a bass line alone is red.
+    /// §110: the spectrum as light. Every pitch drawn in its own colour of
+    /// the visible spectrum — 20 Hz the deepest red an eye sees, 20 kHz a
+    /// violet at the edge of ultraviolet, octave for octave between — and the
+    /// bands stacked from the centre outward, each as thick as it is loud, so
+    /// a column is the colours of what is in it, never a mixture of them.
     #[default]
     Light,
 }
@@ -157,146 +159,288 @@ impl Colouring {
                 "Low, mid and high at the mixer's own crossovers, so what you see is what the EQ knobs act on."
             }
             Self::Light => {
-                "Eight bands from sub to air, drawn red to violet and added like light: bass alone is red, hats alone are violet, everything at once is white."
+                "Every pitch in its own colour of light, 20 Hz deep red to 20 kHz violet: the kick a red core, the voice yellow and green around it, the hats a violet edge. Each part fades with its EQ knob."
             }
         }
     }
 }
 
-/// The hue each of §110's bands is drawn in, lowest band first, in degrees.
-///
-/// **Not wavelengths**, and the first version was. Mapping each band to a
-/// spectral wavelength through the CIE colour-matching functions is the
-/// literal reading of "like light", and on a screen it fails: sRGB's red
-/// primary sits at about 612 nm, so nothing redder can be shown, and the
-/// bands drawn at 660 and 610 nm both came out as the same pure red — the
-/// orange band simply vanished. A screen can only show its own gamut, so the
-/// bands are placed on its hue circle instead, in the spectrum's order: red,
-/// orange, yellow, yellow-green, green, cyan, blue, violet. What stays
-/// literal is the mixing — the colours add as light, in linear light — and
-/// the white.
-pub const BAND_HUES_DEG: [f32; SPECTRUM_BANDS] =
-    [0.0, 28.0, 52.0, 90.0, 130.0, 180.0, 225.0, 270.0];
+/// The lowest and the highest pitch a human ear hears, in Hz: §110's two ends.
+pub const HEARING_HZ: (f32, f32) = (20.0, 20_000.0);
 
-/// A fully saturated hue as linear sRGB.
-fn hue_linear(degrees: f32) -> [f32; 3] {
-    let h = degrees.rem_euclid(360.0) / 60.0;
-    let x = 1.0 - (h % 2.0 - 1.0).abs();
-    let encoded = match h as u32 {
-        0 => [1.0, x, 0.0],
-        1 => [x, 1.0, 0.0],
-        2 => [0.0, 1.0, x],
-        3 => [0.0, x, 1.0],
-        4 => [x, 0.0, 1.0],
-        _ => [1.0, 0.0, x],
-    };
-    encoded.map(|c: f32| {
-        if c <= 0.040_45 {
-            c / 12.92
-        } else {
-            ((c + 0.055) / 1.055).powf(2.4)
-        }
-    })
-}
+/// The deepest red and the most violet violet an eye sees, in nanometres —
+/// the owner's *red close to infrared* and *violet that might be close to
+/// ultraviolet* — matched to [`HEARING_HZ`]'s two ends.
+pub const VISIBLE_NM: (f32, f32) = (750.0, 380.0);
 
-/// Each band's colour as linear sRGB, weighted so the eight sum to exactly
-/// (1, 1, 1).
-///
-/// The weighting is what makes *all frequencies white* a fact rather than an
-/// approximation. Eight saturated hues do not add to a neutral on their own,
-/// so each band is given a brightness — the smallest set of brightnesses, in
-/// the least-squares sense, whose sum is white. A band alone keeps its exact
-/// hue; only how much it contributes to the whole is adjusted. Every weight
-/// comes out positive for these hues, which a test holds.
-fn spectral_basis() -> &'static [[f32; 3]; SPECTRUM_BANDS] {
-    static BASIS: std::sync::OnceLock<[[f32; 3]; SPECTRUM_BANDS]> = std::sync::OnceLock::new();
-    BASIS.get_or_init(|| {
-        let hues = BAND_HUES_DEG.map(hue_linear);
-        let weights = white_weights(&hues);
-        std::array::from_fn(|band| hues[band].map(|channel| channel * weights[band]))
-    })
-}
-
-/// The least-norm weights `k` with `Σ k·colour = (1, 1, 1)`.
-///
-/// `k = Uᵀ (U Uᵀ)⁻¹ w`, with U the 3×8 matrix of colours: a 3×3 inverse,
-/// written out.
-fn white_weights(colours: &[[f32; 3]; SPECTRUM_BANDS]) -> [f32; SPECTRUM_BANDS] {
-    let mut gram = [[0.0f64; 3]; 3];
-    for colour in colours {
-        for a in 0..3 {
-            for b in 0..3 {
-                gram[a][b] += f64::from(colour[a]) * f64::from(colour[b]);
-            }
-        }
-    }
-    let [[a, b, c], [d, e, f], [g, h, i]] = gram;
-    let det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-    let inverse = [
-        [
-            (e * i - f * h) / det,
-            (c * h - b * i) / det,
-            (b * f - c * e) / det,
-        ],
-        [
-            (f * g - d * i) / det,
-            (a * i - c * g) / det,
-            (c * d - a * f) / det,
-        ],
-        [
-            (d * h - e * g) / det,
-            (b * g - a * h) / det,
-            (a * e - b * d) / det,
-        ],
-    ];
-    let lambda: [f64; 3] = std::array::from_fn(|row| inverse[row].iter().sum());
-    colours.map(|colour| {
-        (0..3)
-            .map(|channel| f64::from(colour[channel]) * lambda[channel])
-            .sum::<f64>() as f32
-    })
-}
-
-/// Linear light to an sRGB byte.
-fn encode_srgb(linear: f32) -> u8 {
-    let v = linear.clamp(0.0, 1.0);
-    let encoded = if v <= 0.003_130_8 {
-        12.92 * v
-    } else {
-        1.055 * v.powf(1.0 / 2.4) - 0.055
-    };
-    (encoded * 255.0).round() as u8
-}
-
-/// §110: one moment's spectrum as a colour of light.
-///
-/// Each band adds its own colour in proportion to its energy — in linear
-/// light, the way light adds — and the result
-/// is scaled so its brightest channel is `level`. Brightness is therefore not
-/// loudness — the waveform's height already says that — and the colour is
-/// free to say only *which part of the spectrum*: a bass line red, a hat
-/// violet, a full mix white, and every balance between as the hue between.
+/// Where a pitch sits in hearing, by octaves: 0 at 20 Hz, 1 at 20 kHz.
 #[must_use]
-pub fn spectral_light(spectrum: &[u8; SPECTRUM_BANDS], level: f32) -> [u8; 4] {
-    let basis = spectral_basis();
-    let mut sum = [0.0f32; 3];
-    for (energy, colour) in spectrum.iter().zip(basis) {
-        let weight = f32::from(*energy) / 255.0;
-        for channel in 0..3 {
-            sum[channel] += weight * colour[channel];
+pub fn hearing_position(hz: f32) -> f32 {
+    let (low, high) = HEARING_HZ;
+    ((hz.max(1e-3) / low).ln() / (high / low).ln()).clamp(0.0, 1.0)
+}
+
+/// §110: the wavelength of light a pitch is drawn in, in nanometres.
+///
+/// **Octave for octave.** Hearing spans ten octaves and sight almost exactly
+/// one — 750 to 380 nm is a ratio of 1.97 in the light's own frequency — so a
+/// pitch's place among the ten is its light's place in the one:
+/// `λ = 750 · (380 / 750)^p`, with `p` the pitch's [`hearing_position`].
+/// Every octave of sound is the same step of colour, which is how an ear
+/// hears octaves too, and it is one power: fast enough to call per pixel,
+/// though the rasteriser reads a table built from it.
+///
+/// Where things land: a kick's fundamental (50–100 Hz) red, a bass line
+/// orange, a voice's body yellow to green, its consonants and a snare's crack
+/// cyan to blue, hats and cymbals violet.
+#[must_use]
+pub fn wavelength_for(hz: f32) -> f32 {
+    let (red, violet) = VISIBLE_NM;
+    red * (violet / red).powf(hearing_position(hz))
+}
+
+/// How dark the two ends of sight are drawn at their darkest.
+///
+/// The eye's sensitivity falls away towards infrared and ultraviolet, so the
+/// spectrum's ends are dimmer than its middle, and that dimming is what tells
+/// a 20 Hz rumble from a 60 Hz kick when both are red. Floored, because a
+/// violet as dark as the physics would make it is invisible on a dark booth
+/// screen, and the hats are the one thing that must never be.
+const EDGE_FLOOR: f32 = 0.6;
+
+/// A wavelength as a screen colour, sRGB-encoded, each channel 0..1.
+///
+/// Dan Bruton's piecewise approximation of the visible spectrum, not the CIE
+/// colour-matching functions the first version of §110 used. A screen cannot
+/// show a spectral colour exactly — its red primary sits near 612 nm and
+/// nothing redder exists on it — and through the CIE functions every
+/// wavelength past that came out the one same red. Bruton's ramps lay the
+/// spectrum's hues, in order, across what the screen can show, and dim the
+/// ends the way the eye does. Every colour it produces has at least one
+/// channel at zero: nothing it draws is white or grey.
+fn wavelength_rgb(nm: f32) -> [f32; 3] {
+    let (r, g, b) = if nm < 440.0 {
+        ((440.0 - nm) / 60.0, 0.0, 1.0)
+    } else if nm < 490.0 {
+        (0.0, (nm - 440.0) / 50.0, 1.0)
+    } else if nm < 510.0 {
+        (0.0, 1.0, (510.0 - nm) / 20.0)
+    } else if nm < 580.0 {
+        ((nm - 510.0) / 70.0, 1.0, 0.0)
+    } else if nm < 645.0 {
+        (1.0, (645.0 - nm) / 65.0, 0.0)
+    } else {
+        (1.0, 0.0, 0.0)
+    };
+    let edge = if nm < 420.0 {
+        0.3 + 0.7 * (nm - 380.0) / 40.0
+    } else if nm > 700.0 {
+        0.3 + 0.7 * (780.0 - nm) / 80.0
+    } else {
+        1.0
+    }
+    .clamp(EDGE_FLOOR, 1.0);
+    [r, g, b].map(|channel: f32| (channel.clamp(0.0, 1.0) * edge).powf(0.8))
+}
+
+/// Entries in the pitch-to-colour table: a step of about a twenty-fifth of an
+/// octave, finer than any band edge a DJ could see.
+const SPECTRUM_STEPS: usize = 256;
+
+/// Every pitch's colour, by [`hearing_position`], built once.
+fn spectrum_table() -> &'static [[u8; 3]; SPECTRUM_STEPS] {
+    static TABLE: std::sync::OnceLock<[[u8; 3]; SPECTRUM_STEPS]> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        let (red, violet) = VISIBLE_NM;
+        std::array::from_fn(|step| {
+            let position = step as f32 / (SPECTRUM_STEPS - 1) as f32;
+            wavelength_rgb(red * (violet / red).powf(position))
+                .map(|channel| (channel * 255.0).round() as u8)
+        })
+    })
+}
+
+/// The colour at a place in hearing, 0 at 20 Hz and 1 at 20 kHz.
+fn colour_at_position(position: f32) -> [u8; 3] {
+    let step = (position.clamp(0.0, 1.0) * (SPECTRUM_STEPS - 1) as f32).round() as usize;
+    spectrum_table()[step]
+}
+
+/// §110: the colour a pitch is drawn in. 20 Hz a deep red, 20 kHz a violet,
+/// and every pitch between at its own place in the spectrum.
+#[must_use]
+pub fn frequency_colour(hz: f32) -> [u8; 3] {
+    colour_at_position(hearing_position(hz))
+}
+
+/// Where each of the eight bands begins and ends in hearing, lowest first.
+fn band_positions() -> &'static [(f32, f32); SPECTRUM_BANDS] {
+    static POSITIONS: std::sync::OnceLock<[(f32, f32); SPECTRUM_BANDS]> =
+        std::sync::OnceLock::new();
+    POSITIONS.get_or_init(|| {
+        std::array::from_fn(|band| {
+            let low = if band == 0 {
+                HEARING_HZ.0
+            } else {
+                SPECTRUM_EDGES_HZ[band - 1]
+            };
+            let high = SPECTRUM_EDGES_HZ.get(band).copied().unwrap_or(HEARING_HZ.1);
+            (hearing_position(low), hearing_position(high))
+        })
+    })
+}
+
+/// How bright the part of a column beyond its RMS body is, against the body.
+///
+/// The body is where the sound's weight is; the peaks outside it are the
+/// transients. The white veil that used to say so is gone with white itself,
+/// so the same fact is a step of brightness: a dense, compressed record is
+/// bright almost to its edge, a punchy one bright only at its heart.
+const BEYOND_BODY: f32 = 0.62;
+
+/// One column of §110's light: which band holds which share of the height.
+///
+/// The bands are stacked from the centre line outward, lowest nearest the
+/// centre: sub-bass at the heart of the waveform in deep red, the air at its
+/// outer edge in violet, each band as thick as its share of what is sounding.
+/// So the colours are never mixed — there is no white, because there is no
+/// moment with every frequency at once, and a moment with many is many
+/// colours side by side — and what is playing is read from the order and the
+/// thickness: a kick is a fat red core, a hat a violet fringe, a voice a band
+/// of yellow and green between them.
+#[derive(Debug, Clone, Copy)]
+struct Stack {
+    /// Where each band begins, as a fraction of the way from the centre to the
+    /// edge; the ninth entry is 1.
+    bounds: [f32; SPECTRUM_BANDS + 1],
+}
+
+/// How far below the strongest band a band can be and still take room, in
+/// decibels.
+///
+/// **Room is given by loudness, not by amplitude.** The first version stacked
+/// the raw levels, and a club record came out almost solid red: a kick's
+/// amplitude is many times a hat's, so the hats, the snare and the chords —
+/// everything a DJ looks ahead for — were a pixel at the edge. An ear does not
+/// hear a hat twenty decibels down as a twentieth of the record, so the stack
+/// does not draw it as one: each band's room is how far it stands above a
+/// floor this far under the strongest.
+pub const STACK_RANGE_DB: f32 = 30.0;
+
+/// The room one band's level takes, 0..1, from its byte (255 the strongest).
+fn room(level: u8) -> f32 {
+    static TABLE: std::sync::OnceLock<[f32; 256]> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        std::array::from_fn(|byte| {
+            if byte == 0 {
+                return 0.0;
+            }
+            let db = 20.0 * (byte as f32 / 255.0).log10();
+            (1.0 + db / STACK_RANGE_DB).max(0.0)
+        })
+    })[usize::from(level)]
+}
+
+impl Stack {
+    /// The stack for a measured spectrum, or `None` for one never measured.
+    fn of(spectrum: &[u8; SPECTRUM_BANDS]) -> Option<Self> {
+        let rooms = spectrum.map(room);
+        let total: f32 = rooms.iter().sum();
+        if total <= 0.0 {
+            return None;
+        }
+        let mut bounds = [0.0f32; SPECTRUM_BANDS + 1];
+        let mut sum = 0.0;
+        for (band, share) in rooms.iter().enumerate() {
+            sum += share;
+            bounds[band + 1] = sum / total;
+        }
+        bounds[SPECTRUM_BANDS] = 1.0;
+        Some(Self { bounds })
+    }
+
+    /// The band at a fraction of the way out, and the place in hearing its
+    /// colour is taken from.
+    ///
+    /// Within a band the colour runs across the band's own pitches — the
+    /// inner edge of the bass band the colour of 112 Hz, its outer edge that
+    /// of 266 Hz — so a column is one continuous spectrum, stretched where a
+    /// band is loud and squeezed where it is quiet, never a flat block.
+    fn at(&self, fraction: f32) -> (usize, f32) {
+        let fraction = fraction.clamp(0.0, 1.0);
+        let band = (0..SPECTRUM_BANDS)
+            .find(|&band| fraction < self.bounds[band + 1])
+            .unwrap_or(SPECTRUM_BANDS - 1);
+        let (from, to) = (self.bounds[band], self.bounds[band + 1]);
+        let within = if to > from {
+            (fraction - from) / (to - from)
+        } else {
+            0.5
+        };
+        let (low, high) = band_positions()[band];
+        (band, low + (high - low) * within)
+    }
+}
+
+/// Which of the mixer's three EQ bands a tile draws.
+///
+/// §110 asked for the waveform *interactive* and *live*. The lane draws each
+/// record as three images laid over each other, one per EQ band, and dims
+/// each by its knob: kill the low and the red heart of the waveform fades to
+/// a ghost where it stood, while the shape stays put. The dimming is an
+/// opacity the compositor applies, so turning a knob redraws nothing.
+///
+/// The parts split §110's eight bands at the band edges nearest the
+/// isolator's own crossovers (300 Hz and 4 kHz): low is sub, kick and bass,
+/// to 266 Hz; mid is low mids to presence, to 3.56 kHz; high is the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EqPart {
+    /// The whole column. The overview, and the three-band colouring.
+    #[default]
+    All,
+    Low,
+    Mid,
+    High,
+    /// No band at all: the beat grid alone, which the lane lays over its three
+    /// parts. Drawn into each part, the grid would be three lines on top of
+    /// each other, and a killed low would take a third of every line with it.
+    Grid,
+}
+
+impl EqPart {
+    /// Every part, `All` first.
+    pub const ALL: [Self; 5] = [Self::All, Self::Low, Self::Mid, Self::High, Self::Grid];
+
+    /// The word in a `wave://` URL.
+    #[must_use]
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Low => "low",
+            Self::Mid => "mid",
+            Self::High => "high",
+            Self::Grid => "grid",
         }
     }
-    let brightest = sum.iter().copied().fold(0.0f32, f32::max);
-    if brightest <= 1e-9 {
-        return [0, 0, 0, 0];
+
+    /// Parse the URL segment. Strict, like the theme and the colouring.
+    #[must_use]
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|part| part.slug() == slug)
     }
-    let scale = level / brightest;
-    [
-        encode_srgb(sum[0] * scale),
-        encode_srgb(sum[1] * scale),
-        encode_srgb(sum[2] * scale),
-        255,
-    ]
+
+    /// Whether one of §110's eight bands belongs to this part.
+    #[must_use]
+    pub const fn holds(self, band: usize) -> bool {
+        match self {
+            Self::All => true,
+            Self::Low => band <= 2,
+            Self::Mid => band >= 3 && band <= 5,
+            Self::High => band >= 6,
+            Self::Grid => false,
+        }
+    }
 }
 
 impl Default for Palette {
@@ -368,6 +512,7 @@ impl Palette {
             phrase: [251, 191, 36, 210],
             colouring: Colouring::Light,
             light_level: 1.0,
+            part: EqPart::All,
         }
     }
 
@@ -391,9 +536,10 @@ impl Palette {
             downbeat: [0, 0, 0, 130],
             phrase: [180, 83, 9, 220],
             colouring: Colouring::Light,
-            // A full spectrum lands near mid-grey on white — about 4:1 — and a
-            // single band its own hue, darkened.
-            light_level: 0.2,
+            // Yellow, the palest hue in the spectrum, at 60 % is about 3:1
+            // against white; every other hue is darker than it.
+            light_level: 0.6,
+            part: EqPart::All,
         }
     }
 
@@ -402,17 +548,37 @@ impl Palette {
     pub const fn coloured(self, colouring: Colouring) -> Self {
         Self { colouring, ..self }
     }
-    /// The colour one moment is drawn in.
-    ///
-    /// §110's light when it is chosen and the moment was measured in eight
-    /// bands; otherwise the three bands blended by their energies. A summary
-    /// with no spectrum in it — every byte zero — falls back rather than
-    /// drawing nothing.
+
+    /// The same palette, drawing only one EQ band's part of the column.
+    #[must_use]
+    pub const fn only(self, part: EqPart) -> Self {
+        Self { part, ..self }
+    }
+
+    /// §110's stack for a moment, when §110 is chosen and the moment was
+    /// measured in eight bands.
+    fn stack_for(&self, bucket: &Bucket) -> Option<Stack> {
+        if self.colouring == Colouring::Light {
+            Stack::of(&bucket.spectrum)
+        } else {
+            None
+        }
+    }
+
+    /// A place in hearing as a pixel, at a brightness.
+    fn spectral(&self, position: f32, brightness: f32) -> [u8; 4] {
+        let [r, g, b] = colour_at_position(position);
+        let scale = self.light_level * brightness;
+        let dim = |channel: u8| (f32::from(channel) * scale).round() as u8;
+        [dim(r), dim(g), dim(b), 255]
+    }
+
+    /// The colour a whole moment is drawn in, where a column is one colour:
+    /// the three bands blended by their energies. A summary with no spectrum
+    /// in it — every byte zero — is drawn this way under §110 too, rather
+    /// than not at all.
     #[must_use]
     fn colour_for(&self, bucket: &Bucket) -> [u8; 4] {
-        if self.colouring == Colouring::Light && bucket.spectrum.iter().any(|&band| band > 0) {
-            return spectral_light(&bucket.spectrum, self.light_level);
-        }
         let total = bucket.low + bucket.mid + bucket.high;
         if total <= 1e-6 {
             return self.mid;
@@ -729,41 +895,73 @@ pub fn render_tile_with_grid(
     let centre = f64::from(spec.height) * 0.5;
     let half_height = centre - 1.0;
 
-    for x in 0..spec.width {
+    // The grid's own layer draws no waveform, only what is laid over it.
+    let columns = if palette.part == EqPart::Grid {
+        0
+    } else {
+        spec.width
+    };
+    for x in 0..columns {
         let frame = spec.start_frame + f64::from(x) * spec.frames_per_pixel;
         if frame < 0.0 || frame >= summary.total_frames() as f64 {
             continue;
         }
 
         let bucket = summary.bucket_at(level, frame);
+        let stack = palette.stack_for(&bucket);
         if bucket.is_silent() {
             // A silent column still gets a centre line, so the lane reads as
-            // "track present but quiet" rather than "track missing".
-            paint(
-                &mut pixels,
-                spec,
-                x,
-                centre as u32,
-                palette.colour_for(&bucket),
-            );
+            // "track present but quiet" rather than "track missing". Under
+            // §110 it is the colour of the lowest band sounding, and belongs
+            // to that band's part, so a killed low takes its line with it.
+            let line = match stack {
+                Some(stack) => {
+                    let (band, position) = stack.at(0.0);
+                    palette
+                        .part
+                        .holds(band)
+                        .then(|| palette.spectral(position, 1.0))
+                }
+                None => Some(palette.colour_for(&bucket)),
+            };
+            if let Some(colour) = line {
+                paint(&mut pixels, spec, x, centre as u32, colour);
+            }
             continue;
         }
 
-        let colour = palette.colour_for(&bucket);
         let top = (centre - f64::from(bucket.max.clamp(-1.0, 1.0)) * half_height).round();
         let bottom = (centre - f64::from(bucket.min.clamp(-1.0, 1.0)) * half_height).round();
         let (top, bottom) = (
             top.max(0.0) as u32,
             (bottom.min(f64::from(spec.height) - 1.0)) as u32,
         );
+        let rms_extent = f64::from(bucket.rms.clamp(0.0, 1.0)) * half_height;
 
+        if let Some(stack) = stack {
+            paint_stack(
+                &mut pixels,
+                spec,
+                palette,
+                x,
+                &stack,
+                (top, bottom),
+                rms_extent,
+            );
+            continue;
+        }
+        // One colour for the whole column cannot be split by band, so a part
+        // asked for a column never measured — the moment between a record
+        // loading and its spectrum landing — draws all of it. The lane asks
+        // for parts only once the spectrum is there; this is what keeps a
+        // waveform on screen if it ever asks sooner.
+        let colour = palette.colour_for(&bucket);
         for y in top..=bottom.max(top) {
             paint(&mut pixels, spec, x, y, colour);
         }
 
         // RMS body, drawn over the peaks: the visual weight tracks loudness
         // rather than the occasional transient that sets the outline.
-        let rms_extent = f64::from(bucket.rms.clamp(0.0, 1.0)) * half_height;
         let rms_top = (centre - rms_extent).round().max(0.0) as u32;
         let rms_bottom = (centre + rms_extent)
             .round()
@@ -784,6 +982,43 @@ pub fn render_tile_with_grid(
     }
 }
 
+/// Paint one column of §110's spectrum: the [`Stack`] mirrored about the
+/// centre line, filling the peaks, full brightness inside the RMS body and
+/// [`BEYOND_BODY`] outside it.
+///
+/// Each half is scaled to its own peak, so the red heart sits on the centre
+/// line and the violet on the outline on both sides even when the waveform is
+/// lopsided.
+fn paint_stack(
+    pixels: &mut [u8],
+    spec: &TileSpec,
+    palette: &Palette,
+    x: u32,
+    stack: &Stack,
+    (top, bottom): (u32, u32),
+    rms_extent: f64,
+) {
+    let centre = f64::from(spec.height) * 0.5;
+    let above = (centre - f64::from(top)).max(1.0);
+    let below = (f64::from(bottom) - centre).max(1.0);
+    for y in top..=bottom.max(top) {
+        // Measured at the pixel's middle, so the row on the centre line is
+        // the heart of the lowest band and not the gap before it.
+        let offset = f64::from(y) + 0.5 - centre;
+        let reach = if offset < 0.0 { above } else { below };
+        let (band, position) = stack.at((offset.abs() / reach) as f32);
+        if !palette.part.holds(band) {
+            continue;
+        }
+        let brightness = if offset.abs() <= rms_extent.max(1.0) {
+            1.0
+        } else {
+            BEYOND_BODY
+        };
+        paint(pixels, spec, x, y, palette.spectral(position, brightness));
+    }
+}
+
 fn offset_of(spec: &TileSpec, x: u32, y: u32) -> Option<usize> {
     if x >= spec.width || y >= spec.height {
         return None;
@@ -797,18 +1032,29 @@ fn paint(pixels: &mut [u8], spec: &TileSpec, x: u32, y: u32, colour: [u8; 4]) {
     }
 }
 
-/// Source-over alpha blend, for the RMS tint.
+/// Source-over alpha blend, for the RMS tint and the grid.
+///
+/// The full formula, weighting what is already there by its own alpha. The
+/// shortcut this replaced assumed an opaque pixel underneath, and over a
+/// transparent one it darkened the incoming colour by its own alpha a second
+/// time: a grid line drawn where no waveform is — the whole of §110's grid
+/// layer — came out a dim grey instead of the palette's colour.
 fn blend(pixels: &mut [u8], spec: &TileSpec, x: u32, y: u32, colour: [u8; 4]) {
     let Some(offset) = offset_of(spec, x, y) else {
         return;
     };
     let alpha = f32::from(colour[3]) / 255.0;
-    for channel in 0..3 {
-        let existing = f32::from(pixels[offset + channel]);
-        let incoming = f32::from(colour[channel]);
-        pixels[offset + channel] = (existing * (1.0 - alpha) + incoming * alpha).round() as u8;
+    let under = f32::from(pixels[offset + 3]) / 255.0;
+    let out = alpha + under * (1.0 - alpha);
+    if out <= 0.0 {
+        return;
     }
-    pixels[offset + 3] = pixels[offset + 3].max(colour[3]);
+    for channel in 0..3 {
+        let existing = f32::from(pixels[offset + channel]) * under * (1.0 - alpha);
+        let incoming = f32::from(colour[channel]) * alpha;
+        pixels[offset + channel] = ((existing + incoming) / out).round() as u8;
+    }
+    pixels[offset + 3] = (out * 255.0).round() as u8;
 }
 
 #[cfg(test)]
@@ -1476,19 +1722,16 @@ mod tests {
 
 #[cfg(test)]
 mod light {
-    //! §110: *all frequencies = white, lowest frequencies red, highest
-    //! frequencies violet.*
+    //! §110, as the owner put it the second time: *the lower limit of the
+    //! human ear ... drawn by a red close to infrared ... the upper limit at
+    //! about 20khz ... a violet that might be close to ultraviolet ... the
+    //! frequencies in between ... determined by a fitting and fast formula ...
+    //! i guess white is out of the picture.*
     use super::*;
 
-    fn alone(band: usize) -> [u8; SPECTRUM_BANDS] {
-        let mut spectrum = [0; SPECTRUM_BANDS];
-        spectrum[band] = 255;
-        spectrum
-    }
-
     /// Hue in degrees of an sRGB colour, 0 for red.
-    fn hue(rgb: [u8; 4]) -> f32 {
-        let [r, g, b] = [rgb[0], rgb[1], rgb[2]].map(|c| f32::from(c) / 255.0);
+    fn hue(rgb: [u8; 3]) -> f32 {
+        let [r, g, b] = rgb.map(|c| f32::from(c) / 255.0);
         let max = r.max(g).max(b);
         let min = r.min(g).min(b);
         let delta = max - min;
@@ -1505,89 +1748,358 @@ mod light {
         h.rem_euclid(360.0)
     }
 
-    /// **The load-bearing one: every band at once is white.**
-    ///
-    /// The owner's own words for the whole scheme, and the one property that
-    /// needs the weighting: eight saturated hues added at equal strength are
-    /// not neutral until each band's contribution is solved for.
-    #[test]
-    fn all_frequencies_are_white() {
-        let white = spectral_light(&[255; SPECTRUM_BANDS], 1.0);
-        for channel in &white[..3] {
-            assert!(*channel >= 254, "a full spectrum drew {white:?}");
-        }
+    fn rgb(pixel: [u8; 4]) -> [u8; 3] {
+        [pixel[0], pixel[1], pixel[2]]
     }
 
-    /// **The lowest band alone is red and the highest alone is violet.**
-    #[test]
-    fn the_lowest_band_is_red_and_the_highest_violet() {
-        let low = spectral_light(&alone(0), 1.0);
-        assert!(
-            low[0] == 255 && low[1] < 10 && low[2] < 10,
-            "the lowest band drew {low:?}"
-        );
-        let high = spectral_light(&alone(SPECTRUM_BANDS - 1), 1.0);
-        let h = hue(high);
-        assert!(
-            (255.0..=290.0).contains(&h),
-            "the highest band drew {high:?}, hue {h}"
-        );
-    }
-
-    /// **The bands run through the spectrum in its order, each its own hue.**
-    ///
-    /// The first version mapped bands to wavelengths and two of them came out
-    /// the same red, because a screen cannot show anything redder than its own
-    /// red primary. This is the test that version fails: every band a hue
-    /// further along than the one below it, and far enough to tell apart.
-    #[test]
-    fn the_bands_run_red_to_violet_each_a_different_hue() {
-        let hues: Vec<f32> = (0..SPECTRUM_BANDS)
-            .map(|band| hue(spectral_light(&alone(band), 1.0)))
+    /// A sine of `hz`, or several summed, as the interleaved stereo a
+    /// summary is built from, measured with its spectrum.
+    fn tones(hz: &[f32], seconds: f32) -> WaveformSummary {
+        let frames = (48_000.0 * seconds) as usize;
+        let amplitude = 0.9 / hz.len() as f32;
+        let samples: Vec<f32> = (0..frames)
+            .flat_map(|n| {
+                let t = n as f32 / 48_000.0;
+                let v: f32 = hz
+                    .iter()
+                    .map(|f| (2.0 * std::f32::consts::PI * f * t).sin() * amplitude)
+                    .sum();
+                [v, v]
+            })
             .collect();
-        for pair in hues.windows(2) {
+        WaveformSummary::analyse_with_spectrum(&samples, dj_core::SampleRate::DEFAULT)
+    }
+
+    /// Zoomed out far enough that one column spans several cycles of the
+    /// lowest tone, so a column's peak is the tone's peak.
+    const WIDE: TileSpec = TileSpec {
+        width: 32,
+        height: 128,
+        start_frame: 0.0,
+        frames_per_pixel: 4_096.0,
+    };
+
+    /// The pixels of one column, top to bottom.
+    fn column(tile: &Tile, x: u32) -> Vec<[u8; 4]> {
+        (0..tile.spec.height).map(|y| tile.pixel(x, y)).collect()
+    }
+
+    /// **The two ends of hearing are the two ends of sight.**
+    #[test]
+    fn twenty_hertz_is_the_red_end_and_twenty_kilohertz_the_violet() {
+        assert!((wavelength_for(20.0) - 750.0).abs() < 0.01);
+        assert!((wavelength_for(20_000.0) - 380.0).abs() < 0.01);
+        // Past either end is that end, not a colour off the edge of sight.
+        assert_eq!(wavelength_for(5.0), wavelength_for(20.0));
+        assert_eq!(wavelength_for(30_000.0), wavelength_for(20_000.0));
+
+        let deep = frequency_colour(20.0);
+        assert!(
+            deep[1] == 0 && deep[2] == 0 && deep[0] > 100,
+            "20 Hz drew {deep:?}, not a red"
+        );
+        // Deep: darker than the red of a kick, which is how two reds differ.
+        assert!(
+            frequency_colour(60.0)[0] > deep[0] + 40,
+            "20 Hz {deep:?} is not deeper than 60 Hz {:?}",
+            frequency_colour(60.0)
+        );
+        let violet = frequency_colour(20_000.0);
+        let h = hue(violet);
+        assert!(
+            violet[1] == 0 && (270.0..=310.0).contains(&h),
+            "20 kHz drew {violet:?}, hue {h}"
+        );
+    }
+
+    /// **Octave for octave: the middle of hearing is the middle of the
+    /// spectrum**, and landmarks land where a DJ would look for them.
+    #[test]
+    fn a_kick_is_red_a_voice_green_and_a_hat_violet() {
+        let kick = frequency_colour(60.0);
+        assert!(hue(kick) < 10.0 && kick[0] == 255, "60 Hz drew {kick:?}");
+        let bass = hue(frequency_colour(150.0));
+        assert!(
+            (10.0..=45.0).contains(&bass),
+            "150 Hz is hue {bass}, not orange"
+        );
+        // ~630 Hz is the geometric middle of hearing.
+        let voice = hue(frequency_colour(632.0));
+        assert!(
+            (70.0..=150.0).contains(&voice),
+            "632 Hz is hue {voice}, not green"
+        );
+        let snare = hue(frequency_colour(3_000.0));
+        assert!(
+            (190.0..=250.0).contains(&snare),
+            "3 kHz is hue {snare}, not blue"
+        );
+        let hat = hue(frequency_colour(12_000.0));
+        assert!(
+            (260.0..=310.0).contains(&hat),
+            "12 kHz is hue {hat}, not violet"
+        );
+    }
+
+    /// **Every pitch a step further along the spectrum than the one below**,
+    /// all the way: no two neighbouring octaves the same colour, which is how
+    /// the first version failed, and no pitch going back.
+    #[test]
+    fn rising_pitch_runs_the_spectrum_in_order() {
+        let mut last = 0.0f32;
+        let mut distinct = 0;
+        for step in 0..=200 {
+            let position = step as f32 / 200.0;
+            let h = hue(colour_at_position(position));
             assert!(
-                pair[1] - pair[0] >= 15.0,
-                "bands too close or out of order: {hues:?}"
+                h + 0.5 >= last,
+                "hue went back from {last} to {h} at {position}"
+            );
+            if h > last + 0.5 {
+                distinct += 1;
+            }
+            last = h;
+        }
+        assert!(last > 270.0, "the top of hearing only reached hue {last}");
+        assert!(distinct > 120, "only {distinct} distinct steps of colour");
+    }
+
+    /// **The load-bearing one: nothing is white.** Not a colour in the table
+    /// and not a pixel of a column with every band sounding — the moment the
+    /// first version drew pure white.
+    #[test]
+    fn white_is_out_of_the_picture() {
+        for colour in spectrum_table() {
+            assert_eq!(
+                colour.iter().min(),
+                Some(&0),
+                "{colour:?} is a tint of white, not a colour of the spectrum"
+            );
+        }
+        // A tone in the middle of every one of the eight bands at once.
+        let everything = tones(
+            &[
+                30.0, 75.0, 180.0, 420.0, 1_000.0, 2_400.0, 5_600.0, 13_000.0,
+            ],
+            4.0,
+        );
+        assert!(
+            everything.level(0)[400]
+                .spectrum
+                .iter()
+                .all(|&band| band > 60),
+            "not every band sounding: {:?}",
+            everything.level(0)[400].spectrum
+        );
+        let tile = render_tile(&everything, &WIDE, &Palette::dark());
+        let drawn: Vec<[u8; 4]> = column(&tile, 16).into_iter().filter(|p| p[3] > 0).collect();
+        assert!(drawn.len() > 60, "only {} pixels drawn", drawn.len());
+        for pixel in &drawn {
+            assert!(
+                pixel[..3].iter().min() == Some(&0),
+                "a full spectrum drew {pixel:?}"
+            );
+        }
+        // Instead: the spectrum itself, red to violet, in one column.
+        let hues: Vec<f32> = drawn.iter().map(|p| hue(rgb(*p))).collect();
+        assert!(hues.iter().any(|h| *h < 15.0), "no red in {hues:?}");
+        assert!(hues.iter().any(|h| (90.0..150.0).contains(h)), "no green");
+        assert!(hues.iter().any(|h| *h > 260.0), "no violet");
+    }
+
+    /// **Drawn from real tones: a sub-bass note at the heart, an air tone at
+    /// the edge.** Two sines at once — 30 Hz and 14 kHz — and the column shows
+    /// both, each in its own colour and in its own place, rather than the one
+    /// colour between them.
+    #[test]
+    fn two_tones_at_once_are_two_colours_in_their_places() {
+        let tile = render_tile(&tones(&[30.0, 14_000.0], 4.0), &WIDE, &Palette::dark());
+        let heart = tile.pixel(16, 64);
+        assert!(
+            heart[0] > 120 && heart[1] == 0 && heart[2] == 0,
+            "the centre of a 30 Hz + 14 kHz column drew {heart:?}, not red"
+        );
+        let top = (0..128).find(|&y| tile.pixel(16, y)[3] > 0).unwrap();
+        let edge = rgb(tile.pixel(16, top + 1));
+        let h = hue(edge);
+        assert!(
+            (260.0..=310.0).contains(&h),
+            "the edge of a 30 Hz + 14 kHz column drew {edge:?}, hue {h}"
+        );
+        // And nothing between them: none of the orange, yellow and green of
+        // the bands that are not sounding. (Blue next to the violet is the
+        // air tone's own skirt in the band below it — a 24 dB-an-octave
+        // filter still passes a seventh of a tone under an octave away — and
+        // is the measurement telling the truth.)
+        for pixel in column(&tile, 16).into_iter().filter(|p| p[3] > 0) {
+            let h = hue(rgb(pixel));
+            assert!(
+                !(30.0..=200.0).contains(&h),
+                "a column of two tones drew {pixel:?} (hue {h}) between them"
             );
         }
     }
 
-    /// The weighting is a set of brightnesses, so every one has to be
-    /// positive: a negative one would be a band that *removes* light.
+    /// **A band is as thick as it is loud — as loud as an ear hears it.** A
+    /// band twenty decibels under the kick takes a third of the kick's room,
+    /// not a tenth: in raw amplitude the hats and chords of a club record were
+    /// a pixel at the edge of a red column, and on a synthetic drop the
+    /// decibel stack draws half its pixels in colours other than red against
+    /// the raw stack's 38 %.
     #[test]
-    fn every_band_adds_light() {
-        for colour in spectral_basis() {
-            assert!(colour.iter().all(|c| *c >= 0.0), "{colour:?}");
-            assert!(colour.iter().any(|c| *c > 0.0), "{colour:?}");
+    fn a_band_takes_room_as_loud_as_it_sounds() {
+        let mut spectrum = [0; SPECTRUM_BANDS];
+        spectrum[1] = 255;
+        // Twenty decibels down: a tenth of the amplitude.
+        spectrum[6] = 26;
+        let stack = Stack::of(&spectrum).unwrap();
+        let kick = stack.bounds[2] - stack.bounds[1];
+        let hats = stack.bounds[7] - stack.bounds[6];
+        assert!(
+            (hats / kick - 1.0 / 3.0).abs() < 0.02,
+            "a band 20 dB down took {hats:.3} against {kick:.3}"
+        );
+        assert_eq!(stack.at(0.1).0, 1);
+        assert_eq!(stack.at(0.9).0, 6);
+        // Past the floor, nothing: the filters' own skirts take no room.
+        spectrum[6] = 7; // about 31 dB down
+        let stack = Stack::of(&spectrum).unwrap();
+        assert_eq!(stack.bounds[7], stack.bounds[6], "{:?}", stack.bounds);
+        assert!(Stack::of(&[0; SPECTRUM_BANDS]).is_none());
+    }
+
+    /// **The three EQ parts are the whole column, cut three ways.** Each drawn
+    /// pixel of the full tile is drawn by exactly one part, in the same
+    /// colour — so the lane's three layered images, all at full opacity, are
+    /// the full waveform, and a knob that dims one dims only its own bands.
+    #[test]
+    fn the_eq_parts_partition_the_column() {
+        let summary = tones(&[40.0, 500.0, 9_000.0], 4.0);
+        let dark = Palette::dark();
+        let whole = render_tile(&summary, &WIDE, &dark);
+        let parts: Vec<Tile> = [EqPart::Low, EqPart::Mid, EqPart::High]
+            .into_iter()
+            .map(|part| render_tile(&summary, &WIDE, &dark.only(part)))
+            .collect();
+        let mut drawn_by = [0usize; 3];
+        for y in 0..WIDE.height {
+            for x in 0..WIDE.width {
+                let full = whole.pixel(x, y);
+                let owners: Vec<usize> = (0..3).filter(|&i| parts[i].pixel(x, y)[3] > 0).collect();
+                if full[3] == 0 {
+                    assert!(
+                        owners.is_empty(),
+                        "a part drew ({x},{y}) outside the waveform"
+                    );
+                    continue;
+                }
+                assert_eq!(owners.len(), 1, "({x},{y}) drawn by parts {owners:?}");
+                assert_eq!(parts[owners[0]].pixel(x, y), full);
+                drawn_by[owners[0]] += 1;
+            }
         }
+        assert!(
+            drawn_by.iter().all(|&n| n > 50),
+            "each of three sounding bands should hold room: {drawn_by:?}"
+        );
     }
 
-    /// **A bass-heavy moment is warm and a hat-heavy one is cool.** The mixes
-    /// between, not only the ends: most of a record is somewhere in between.
+    /// **The grid has a layer of its own, and it is only the grid.** Laid
+    /// over the three parts, it is drawn once, in the palette's own colour —
+    /// not a dim grey from being blended onto nothing.
     #[test]
-    fn a_balance_draws_the_hue_between() {
-        let bass = spectral_light(&[255, 255, 180, 90, 60, 40, 30, 20], 1.0);
-        assert!(bass[0] > bass[2] + 100, "a bass-heavy moment drew {bass:?}");
-        let hats = spectral_light(&[40, 30, 20, 20, 30, 80, 200, 255], 1.0);
-        assert!(hats[2] > hats[0] + 100, "a hat-heavy moment drew {hats:?}");
-    }
-
-    /// **On a light ground a full spectrum is grey, not white.** White on a
-    /// white page is a waveform that is not there.
-    #[test]
-    fn on_a_light_ground_everything_at_once_is_grey() {
-        let palette = Palette::light();
-        let bucket = Bucket {
-            min: -0.5,
-            max: 0.5,
-            rms: 0.3,
-            spectrum: [255; SPECTRUM_BANDS],
-            ..Bucket::default()
+    fn the_grid_layer_is_the_grid_alone_in_its_own_colour() {
+        use dj_core::{Beatgrid, Bpm, Confidence, FramePos};
+        let summary = tones(&[40.0, 500.0, 9_000.0], 4.0);
+        let overlay = GridOverlay {
+            grid: Beatgrid::new(
+                FramePos::new(0.0),
+                Bpm::new(120.0).unwrap(),
+                Confidence::new(1.0),
+            ),
+            sample_rate: dj_core::SampleRate::DEFAULT,
+            lines: GridLines::all(),
+            phrase: None,
         };
-        let [r, g, b, _] = palette.colour_for(&bucket);
-        assert!(r == g && g == b, "not neutral: {r} {g} {b}");
-        assert!(r < 140, "too pale to read on white: {r}");
+        let spec = TileSpec {
+            width: 256,
+            height: 64,
+            start_frame: 0.0,
+            frames_per_pixel: 512.0,
+        };
+        let dark = Palette::dark();
+        let grid = render_tile_with_grid(&summary, &spec, &dark.only(EqPart::Grid), Some(&overlay));
+        let drawn: Vec<u32> = (0..spec.width)
+            .filter(|&x| grid.pixel(x, 5)[3] > 0)
+            .collect();
+        // 120 BPM is 24,000 frames a beat: about 47 px at 512 frames a pixel.
+        assert!(
+            (5..=7).contains(&drawn.len()),
+            "the grid layer drew columns {drawn:?}"
+        );
+        for x in 0..spec.width {
+            if !drawn.contains(&x) {
+                assert_eq!(
+                    grid.drawn_height(x),
+                    0,
+                    "the grid layer drew waveform at {x}"
+                );
+            }
+        }
+        let beat = grid.pixel(drawn[1], 5);
+        assert_eq!(&beat[..3], &dark.beat[..3], "a beat line drew {beat:?}");
+    }
+
+    /// **The lane's EQ parts meet where these parts do.** The interface dims
+    /// each part by its knob (`ui/src/eqLight.ts`) and works out how much of
+    /// it the filter passes from the same two edges; a copy that drifted from
+    /// these would dim one band's colours with another band's knob.
+    #[test]
+    fn the_interface_splits_the_parts_where_the_rasteriser_does() {
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../ui/src/eqLight.ts"
+        ))
+        .expect("the interface's EQ light is where it was");
+        let constant = |name: &str| -> f32 {
+            let line = source
+                .lines()
+                .find(|line| line.starts_with(&format!("export const {name} = ")))
+                .unwrap_or_else(|| panic!("{name} is not in eqLight.ts"));
+            line.trim_end_matches(';')
+                .rsplit(' ')
+                .next()
+                .unwrap()
+                .replace('_', "")
+                .parse()
+                .unwrap()
+        };
+        let last = |part: EqPart| {
+            (0..SPECTRUM_BANDS)
+                .rev()
+                .find(|&band| part.holds(band))
+                .unwrap()
+        };
+        assert_eq!(constant("LOW_MID_HZ"), SPECTRUM_EDGES_HZ[last(EqPart::Low)]);
+        assert_eq!(
+            constant("MID_HIGH_HZ"),
+            SPECTRUM_EDGES_HZ[last(EqPart::Mid)]
+        );
+    }
+
+    /// **On a light page, ink.** Every hue dark enough to read on white —
+    /// yellow, the palest, included.
+    #[test]
+    fn on_a_light_page_every_colour_reads() {
+        let palette = Palette::light();
+        for step in 0..SPECTRUM_STEPS {
+            let [r, g, b, _] = palette.spectral(step as f32 / (SPECTRUM_STEPS - 1) as f32, 1.0);
+            let luma = 0.2126 * f32::from(r) + 0.7152 * f32::from(g) + 0.0722 * f32::from(b);
+            assert!(
+                luma < 150.0,
+                "step {step} is ({r},{g},{b}), too pale on white"
+            );
+        }
     }
 
     /// **The three bands are still there, unchanged, for a DJ who wants what
@@ -1602,79 +2114,38 @@ mod light {
             low: 1.0,
             mid: 0.2,
             high: 0.1,
-            spectrum: alone(SPECTRUM_BANDS - 1),
+            spectrum: [0, 0, 0, 0, 0, 0, 0, 255],
         };
-        let bands = Palette::dark().coloured(Colouring::Bands);
         let unmeasured = Bucket {
             spectrum: [0; SPECTRUM_BANDS],
             ..bucket
         };
-        assert_eq!(bands.colour_for(&bucket), bands.colour_for(&unmeasured));
-        assert_eq!(
-            Palette::dark().colour_for(&unmeasured),
-            bands.colour_for(&unmeasured)
-        );
-        assert_ne!(
-            Palette::dark().colour_for(&bucket),
-            bands.colour_for(&bucket)
-        );
+        let bands = Palette::dark().coloured(Colouring::Bands);
+        assert!(bands.stack_for(&bucket).is_none());
+        assert!(Palette::dark().stack_for(&unmeasured).is_none());
+        assert!(Palette::dark().stack_for(&bucket).is_some());
     }
 
-    /// The URL word round-trips, and an unknown one is refused rather than
+    /// The URL words round-trip, and an unknown one is refused rather than
     /// defaulted — the same strictness the theme word has.
     #[test]
-    fn the_colouring_is_spelled_the_same_both_ways() {
+    fn the_colouring_and_the_part_are_spelled_the_same_both_ways() {
         for colouring in Colouring::ALL {
             assert_eq!(Colouring::from_slug(colouring.slug()), Some(colouring));
         }
         assert_eq!(Colouring::from_slug("rainbow"), None);
-    }
-
-    /// **Drawn, not only computed: a sub-bass tone's tile is red and an air
-    /// tone's violet**, at the rows between the RMS body and the peak, where the
-    /// colour is not veiled.
-    #[test]
-    fn a_rendered_sub_tone_is_red_and_an_air_tone_violet() {
-        let tone = |hz: f32| {
-            let samples: Vec<f32> = (0..192_000)
-                .flat_map(|n| {
-                    let v = (2.0 * std::f32::consts::PI * hz * n as f32 / 48_000.0).sin() * 0.9;
-                    [v, v]
-                })
-                .collect();
-            WaveformSummary::analyse_with_spectrum(&samples, dj_core::SampleRate::DEFAULT)
-        };
-        // Zoomed out far enough that one column spans several cycles of the
-        // bass tone, so the column's peak is the tone's peak.
-        let spec = TileSpec {
-            width: 32,
-            height: 128,
-            start_frame: 0.0,
-            frames_per_pixel: 4_096.0,
-        };
-        // Amplitude 0.9, RMS about 0.64: row for 0.8 is colour, not veil.
-        let row = (64.0 - 0.8 * 63.0) as usize;
-        let pixel = |tile: &Tile| {
-            let at = (row * 32 + 16) * BYTES_PER_PIXEL;
-            [
-                tile.pixels[at],
-                tile.pixels[at + 1],
-                tile.pixels[at + 2],
-                tile.pixels[at + 3],
-            ]
-        };
-        // 30 Hz: sub, the lowest band. (50 Hz sits on the edge between sub
-        // and kick and is drawn orange-red, which is the mapping working.)
-        let sub = pixel(&render_tile(&tone(30.0), &spec, &Palette::dark()));
-        assert!(
-            sub[0] > 200 && sub[1] < 90 && sub[2] < 90,
-            "a 30 Hz tone drew {sub:?}"
-        );
-        let air = pixel(&render_tile(&tone(14_000.0), &spec, &Palette::dark()));
-        let h = hue(air);
-        assert!(
-            (240.0..=300.0).contains(&h),
-            "a 14 kHz tone drew {air:?}, hue {h}"
-        );
+        for part in EqPart::ALL {
+            assert_eq!(EqPart::from_slug(part.slug()), Some(part));
+        }
+        assert_eq!(EqPart::from_slug("Low"), None);
+        assert!((0..SPECTRUM_BANDS).all(|band| !EqPart::Grid.holds(band)));
+        // Every band in exactly one of the three.
+        for band in 0..SPECTRUM_BANDS {
+            let holders = [EqPart::Low, EqPart::Mid, EqPart::High]
+                .into_iter()
+                .filter(|part| part.holds(band))
+                .count();
+            assert_eq!(holders, 1, "band {band}");
+        }
     }
 }

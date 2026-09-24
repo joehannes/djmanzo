@@ -17,9 +17,9 @@ const HIGH_HZ: f32 = 4_000.0;
 
 /// How many bands §110's spectrum is read in.
 ///
-/// Eight, because the owner's ask — *lowest frequencies red, highest violet,
-/// all of them white* — needs enough bands for the colours between: three
-/// bands can only ever be three hues and their mixtures, which is the
+/// Eight, because the owner's ask — every pitch its own colour of the
+/// spectrum, the lowest red and the highest violet — needs enough bands for
+/// the colours between: three bands can only ever be three hues, which is the
 /// EQ-matched colouring djmanzo already had.
 pub const SPECTRUM_BANDS: usize = 8;
 
@@ -27,9 +27,9 @@ pub const SPECTRUM_BANDS: usize = 8;
 ///
 /// Log-spaced from 20 Hz to 20 kHz, about one and a quarter octaves each, so a
 /// signal with the same energy in every octave — pink noise, which is roughly
-/// the shape of a finished mix — puts the same energy in every band and is
-/// drawn white. The eight read as a DJ would name them: sub, kick, bass, low
-/// mids, mids, presence, brilliance, air.
+/// the shape of a finished mix — puts the same energy in every band, and every
+/// band takes its share of the waveform. The eight read as a DJ would name
+/// them: sub, kick, bass, low mids, mids, presence, brilliance, air.
 pub const SPECTRUM_EDGES_HZ: [f32; SPECTRUM_BANDS - 1] =
     [47.0, 112.0, 266.0, 632.0, 1_500.0, 3_560.0, 8_450.0];
 
@@ -625,7 +625,7 @@ mod tests {
     }
 
     /// **The same energy in every band reads as every band full**, which is
-    /// what lets a full mix be drawn white. One tone at the middle of each
+    /// what gives every band of a full mix its room. One tone at the middle of each
     /// band, all at the same level: no band may read less than half of the
     /// strongest.
     #[test]

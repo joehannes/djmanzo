@@ -189,6 +189,7 @@
       epoch,
       gridSlug(remembers.layers),
       remembers.colouring,
+      "all",
     );
   });
 

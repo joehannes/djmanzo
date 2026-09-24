@@ -894,7 +894,7 @@ export const ANSWERS: Record<string, unknown> = {
       slug: "light",
       title: "The spectrum as light",
       about:
-        "Eight bands from sub to air, drawn red to violet and added like light: bass alone is red, hats alone are violet, everything at once is white.",
+        "Every pitch in its own colour of light, 20 Hz deep red to 20 kHz violet: the kick a red core, the voice yellow and green around it, the hats a violet edge. Each part fades with its EQ knob.",
     },
     {
       slug: "bands",

@@ -11,7 +11,7 @@
 
 use dj_core::DeckId;
 use dj_render::{
-    Colouring, GridLines, GridOverlay, Theme, TileSpec, WaveformSummary, encode_png,
+    Colouring, EqPart, GridLines, GridOverlay, Theme, TileSpec, WaveformSummary, encode_png,
     render_tile_with_grid,
 };
 use std::collections::HashMap;
@@ -81,6 +81,10 @@ pub struct TileKey {
     /// How the spectral balance is coloured — §110's light, or the three EQ
     /// bands. In the key for the same reason as the theme and the lines.
     pub colouring: Colouring,
+    /// Which EQ band's part of the column the tile draws — the whole of it,
+    /// or one of the three the lane lays over each other and dims by the
+    /// deck's knobs. See `dj_render::EqPart`.
+    pub part: EqPart,
 }
 
 /// Bound on the tile cache.
@@ -276,7 +280,7 @@ impl WaveformStore {
                 lines: key.lines,
                 ..grid
             });
-        let palette = key.theme.palette().coloured(key.colouring);
+        let palette = key.theme.palette().coloured(key.colouring).only(key.part);
         let tile = render_tile_with_grid(&summary, &spec, &palette, overlay.as_ref());
         let png = Arc::new(encode_png(&tile).ok()?);
 
@@ -301,7 +305,7 @@ impl WaveformStore {
 /// Parse a `wave://` request path into a tile key.
 ///
 /// Shape:
-/// `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}/{theme}/{epoch}/{lines}/{colouring}`
+/// `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}/{theme}/{epoch}/{lines}/{colouring}/{part}`
 ///
 /// Deliberately strict. A malformed URL returns `None` and the handler answers
 /// 400 rather than guessing, because a silently wrong tile is far harder to
@@ -325,6 +329,7 @@ pub fn parse_tile_path(path: &str) -> Option<TileKey> {
         epoch: parts.next()?.parse().ok()?,
         lines: GridLines::from_slug(parts.next()?)?,
         colouring: Colouring::from_slug(parts.next()?)?,
+        part: EqPart::from_slug(parts.next()?)?,
     };
 
     // Nothing may follow, and the numbers must be drawable.
@@ -375,6 +380,7 @@ mod tests {
             epoch: 0,
             lines: GridLines::all(),
             colouring: Colouring::Light,
+            part: EqPart::All,
         }
     }
 
@@ -517,7 +523,7 @@ mod tests {
 
     #[test]
     fn a_well_formed_path_parses() {
-        let key = parse_tile_path("/tile/2/512/128/48000/256000/dark/0/bdp/light").unwrap();
+        let key = parse_tile_path("/tile/2/512/128/48000/256000/dark/0/bdp/light/all").unwrap();
         assert_eq!(key.deck, 2);
         assert_eq!(key.width, 512);
         assert_eq!(key.height, 128);
@@ -529,7 +535,7 @@ mod tests {
     #[test]
     fn the_theme_comes_from_the_path() {
         assert_eq!(
-            parse_tile_path("/tile/1/512/128/0/256000/light/0/bdp/light")
+            parse_tile_path("/tile/1/512/128/0/256000/light/0/bdp/light/all")
                 .unwrap()
                 .theme,
             Theme::Light
@@ -666,7 +672,7 @@ mod tests {
         // The strip extends before the track start while scrolled to the very
         // beginning, so those tiles are legitimately requested.
         assert_eq!(
-            parse_tile_path("/tile/1/512/128/-2048/256000/dark/0/bdp/light")
+            parse_tile_path("/tile/1/512/128/-2048/256000/dark/0/bdp/light/all")
                 .unwrap()
                 .start_frame,
             -2_048
@@ -679,22 +685,25 @@ mod tests {
             "",
             "/",
             "/nope/1/512/128/0/1000/dark/0",
-            "/tile/1/512/128/0/1000/0/bdp/light",    // no theme
-            "/tile/1/512/128/0/1000/dark/bdp/light", // no epoch
-            "/tile/1/512/128/0/1000/dark/0/light",   // no grid
-            "/tile/1/512/128/0/1000/dark/0/bdp",     // no colouring
-            "/tile/1/512/128/0/1000/dark/0/bdp/light/extra", // too many
-            "/tile/1/512/128/0/1000/dark/0/bd/light", // a two-letter grid
-            "/tile/1/512/128/0/1000/dark/0/bpd/light", // out of order
-            "/tile/1/512/128/0/1000/dark/0/BDP/light", // grids are lower-case
-            "/tile/x/512/128/0/1000/dark/0/bdp/light", // non-numeric deck
-            "/tile/1/0/128/0/1000/dark/0/bdp/light", // zero width
-            "/tile/1/512/0/0/1000/dark/0/bdp/light", // zero height
-            "/tile/1/512/128/0/0/dark/0/bdp/light",  // zero zoom
-            "/tile/1/512/128/0/1000/sepia/0/bdp/light", // not a theme
-            "/tile/1/512/128/0/1000/Dark/0/bdp/light", // themes are lower-case
-            "/tile/1/512/128/0/1000/dark/0/bdp/rainbow", // not a colouring
-            "/tile/1/512/128/0/1000/dark/0/bdp/Light", // colourings are lower-case
+            "/tile/1/512/128/0/1000/0/bdp/light/all", // no theme
+            "/tile/1/512/128/0/1000/dark/bdp/light/all", // no epoch
+            "/tile/1/512/128/0/1000/dark/0/light/all", // no grid
+            "/tile/1/512/128/0/1000/dark/0/bdp",      // no colouring
+            "/tile/1/512/128/0/1000/dark/0/bdp/light", // no part
+            "/tile/1/512/128/0/1000/dark/0/bdp/light/all/extra", // too many
+            "/tile/1/512/128/0/1000/dark/0/bd/light/all", // a two-letter grid
+            "/tile/1/512/128/0/1000/dark/0/bpd/light/all", // out of order
+            "/tile/1/512/128/0/1000/dark/0/BDP/light/all", // grids are lower-case
+            "/tile/x/512/128/0/1000/dark/0/bdp/light/all", // non-numeric deck
+            "/tile/1/0/128/0/1000/dark/0/bdp/light/all", // zero width
+            "/tile/1/512/0/0/1000/dark/0/bdp/light/all", // zero height
+            "/tile/1/512/128/0/0/dark/0/bdp/light/all", // zero zoom
+            "/tile/1/512/128/0/1000/sepia/0/bdp/light/all", // not a theme
+            "/tile/1/512/128/0/1000/Dark/0/bdp/light/all", // themes are lower-case
+            "/tile/1/512/128/0/1000/dark/0/bdp/rainbow/all", // not a colouring
+            "/tile/1/512/128/0/1000/dark/0/bdp/Light/all", // colourings are lower-case
+            "/tile/1/512/128/0/1000/dark/0/bdp/light/bass", // not a part
+            "/tile/1/512/128/0/1000/dark/0/bdp/light/Low", // parts are lower-case
         ] {
             assert!(
                 parse_tile_path(bad).is_none(),
@@ -707,8 +716,8 @@ mod tests {
     /// single request.
     #[test]
     fn absurd_tile_sizes_are_refused() {
-        assert!(parse_tile_path("/tile/1/999999/128/0/1000/dark/0/bdp/light").is_none());
-        assert!(parse_tile_path("/tile/1/512/999999/0/1000/dark/0/bdp/light").is_none());
+        assert!(parse_tile_path("/tile/1/999999/128/0/1000/dark/0/bdp/light/all").is_none());
+        assert!(parse_tile_path("/tile/1/512/999999/0/1000/dark/0/bdp/light/all").is_none());
     }
 
     #[test]
@@ -889,5 +898,29 @@ mod tests {
             ..key(1)
         });
         assert_ne!(light.unwrap(), bands.unwrap());
+    }
+
+    /// **The EQ part is part of the key, and the URL carries it.** The lane
+    /// asks for the low, mid and high parts of the same tile and dims each by
+    /// its knob; a store that served the whole column for all three would
+    /// draw every band three times over and no knob would take anything away.
+    #[test]
+    fn each_eq_part_is_its_own_tile() {
+        let (store, deck) = store_with_track();
+        let measured = store.summary(1).unwrap();
+        let mut coloured = (*measured).clone();
+        coloured.measure_spectrum(&samples(96_000));
+        assert!(store.set_spectrum(deck, &measured, coloured));
+        let epoch = store.epoch(1);
+        let tile = |part: &str| {
+            let path = format!("/tile/1/256/128/0/128000/dark/{epoch}/bdp/light/{part}");
+            let key = parse_tile_path(&path).unwrap();
+            store.tile_png(key).unwrap()
+        };
+        let (all, low, mid, high) = (tile("all"), tile("low"), tile("mid"), tile("high"));
+        assert_ne!(all, low);
+        assert_ne!(low, mid);
+        assert_ne!(mid, high);
+        assert_ne!(high, all);
     }
 }

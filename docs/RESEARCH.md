@@ -371,3 +371,25 @@ search summaries and public guides say.
 | [Karaoke rules of singer rotation](https://www.karaoke-tutor.com/karaoke-rules-of-singer-rotation.html), [Rad Karaoke: how a rotation works](https://www.radkaraoke.com/blog/how-does-a-karaoke-rotation-work), [Good Time DJ: organising a karaoke night](https://goodtimedj.com/how-to-organize-karaoke-night/) | The fairness rules `dj_app::karaoke` implements: first come first served, newcomers at the end of the active rotation, one or two songs a turn, a singer not ready when called goes to the bottom, and the queue visible to the room rather than in the host's head. |
 | [EasyLRC: LRC and Enhanced LRC](https://easylrc.com/blog/lrc-format-complete-guide), [QuickLRC: Enhanced LRC](https://www.quicklrc.com/resources/enhanced-lrc-file-complete-guide) | The word-level "A2" LRC form — `<mm:ss.xx>` before each word inside a line — which is what a per-word wipe on the singers' screen needs. |
 | [OpenKJ](https://github.com/OpenKJ/OpenKJ) | An open-source KJ program. ⚠️ **GPL — not read, not linked, not transcribed.** Listed so nobody assumes it was used. |
+
+## The waveform as the spectrum of light (§110)
+
+No dependency; two published pieces of arithmetic, written out in
+`dj_render::tile`.
+
+- **Where the ends are.** The usual textbook range of human hearing, 20 Hz to
+  20 kHz, and of vision, roughly 380 to 750 nm (the eye's sensitivity falls
+  off steeply past both). The owner asked for exactly those ends: *a red
+  close to infrared* and *a violet that might be close to ultraviolet*.
+- **The mapping between them** is djmanzo's own choice, not a standard: pitch
+  position in octaves, onto light frequency geometrically, so every octave of
+  sound is the same step of colour. There is no physical relation between a
+  sound's pitch and a light's colour; the only claims are that the ends are
+  where the owner put them and that equal musical intervals are equal steps.
+- **Wavelength to screen colour**: Dan Bruton's piecewise-linear
+  approximation of the visible spectrum (published 1996 as a short
+  Fortran routine and reproduced widely as arithmetic). Only the ramps and
+  the edge falloff were used, re-derived as a few lines of Rust. Chosen over
+  the CIE 1931 colour-matching functions after those were tried first: a
+  screen's red primary sits near 612 nm, and through the CIE functions
+  every wavelength redder than that came out the same red.

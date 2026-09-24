@@ -25,6 +25,7 @@
     type MixOutInfo,
   } from "./api";
   import { dispatch, phraseGrid, waveformMoves, type Move, type PhraseGrid } from "./api";
+  import { PARTS, partOpacities } from "./eqLight";
   import { remembers, showing } from "./remembers.svelte";
   import { theme } from "./theme.svelte";
 
@@ -293,6 +294,8 @@
   let asked = "";
   /** §110: bumped while the colour is pending, so the key moves and the lane asks again. */
   let recheck = $state(0);
+  /** Whether this record's spectrum is still being measured. */
+  let colourPending = $state(true);
   let recheckQueued = false;
 
   $effect(() => {
@@ -328,6 +331,7 @@
         mixOut = info.mix_out ?? null;
         mixIn = info.mix_in ?? null;
         savedLoops = info.saved_loops ?? [];
+        colourPending = info.colour_pending === true;
         if (info.colour_pending && !recheckQueued) {
           recheckQueued = true;
           setTimeout(() => {
@@ -366,31 +370,60 @@
       OVERSCAN,
   );
 
+  /**
+   * §110, live: whether the lane draws each tile as its three EQ parts.
+   *
+   * Only under the spectrum colouring — the three-band colouring is one
+   * colour a column and cannot be cut by band — and only once the spectrum
+   * has landed, because until then there is nothing to cut.
+   */
+  const split = $derived(remembers.colouring === "light" && !colourPending);
+
   /** Which tiles cover the visible span. Changes only on a boundary crossing. */
   const visibleTiles = $derived.by(() => {
     if (!ready || totalFrames === 0) return [];
 
     const count = Math.ceil(laneWidth / TILE_WIDTH) + OVERSCAN * 2 + 1;
+    const grid = gridSlug(remembers.layers);
+    // Split, the three parts carry no grid and the grid is a fourth layer on
+    // top, drawn once: in each part it would be three lines over each other,
+    // and a killed band would dim a third of every one.
+    const layers: { part: "all" | "low" | "mid" | "high" | "grid"; lines: string }[] = split
+      ? [
+          ...PARTS.map((part) => ({ part, lines: "---" })),
+          ...(grid === "---" ? [] : [{ part: "grid" as const, lines: grid }]),
+        ]
+      : [{ part: "all", lines: grid }];
     return Array.from({ length: count }, (_, i) => {
       const index = firstTile + i;
       const startFrame = index * tileSpanFrames;
       return {
         key: index,
         startFrame,
-        url: tileUrl(
-          deck.number,
-          TILE_WIDTH,
-          height,
-          startFrame,
-          framesPerPixel,
-          theme.resolved,
-          epoch,
-          gridSlug(remembers.layers),
-          remembers.colouring,
-        ),
+        layers: layers.map(({ part, lines }) => ({
+          part,
+          url: tileUrl(
+            deck.number,
+            TILE_WIDTH,
+            height,
+            startFrame,
+            framesPerPixel,
+            theme.resolved,
+            epoch,
+            lines,
+            remembers.colouring,
+            part,
+          ),
+        })),
       };
     }).filter((t) => t.startFrame + tileSpanFrames > 0 && t.startFrame < totalFrames);
   });
+
+  /**
+   * Each part's opacity, from the deck's knobs. Rounded to a hundredth in
+   * `partOpacity`, so a snapshot that moved no knob writes no style.
+   */
+  const opacity = $derived(partOpacities(deck));
 
   /**
    * Cue markers and the loop band, positioned inside the scrolling strip.
@@ -922,16 +955,20 @@
         {/if}
       {/each}
       {#each visibleTiles as tile (tile.key)}
-        <img
-          class="tile"
-          src={tile.url}
-          alt=""
-          decoding="async"
-          loading="eager"
-          width={TILE_WIDTH}
-          {height}
-          style:left="{tile.startFrame / framesPerPixel}px"
-        />
+        {#each tile.layers as layer (layer.part)}
+          <img
+            class="tile"
+            src={layer.url}
+            alt=""
+            decoding="async"
+            loading="eager"
+            width={TILE_WIDTH}
+            {height}
+            data-part={layer.part}
+            style:left="{tile.startFrame / framesPerPixel}px"
+            style:opacity={layer.part === "all" || layer.part === "grid" ? null : opacity[layer.part]}
+          />
+        {/each}
       {/each}
     </div>
   {:else if deck.loaded}
