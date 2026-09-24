@@ -19,7 +19,14 @@
   import { untrack } from "svelte";
   import { save } from "@tauri-apps/plugin-dialog";
   import IconButton from "./controls/IconButton.svelte";
-  import { exportSession, sharePreview, shareToWhatsApp, type Share } from "./api";
+  import {
+    exportSession,
+    shareChannels,
+    sharePreview,
+    shareTo,
+    type Share,
+    type ShareChannel,
+  } from "./api";
 
   interface Props {
     /** Which night. */
@@ -52,6 +59,14 @@
     heading = session;
   });
   let share = $state<Share | null>(null);
+  /**
+   * §108: where it goes. WhatsApp first, as it always was; X, Bluesky and
+   * Threads beside it. Each holds a different amount — a post on X a handful
+   * of records — so the preview is the chosen channel's, cut where it cuts.
+   */
+  let channels = $state<ShareChannel[]>([]);
+  let channel = $state("whatsapp");
+  let chosen = $derived(channels.find((c) => c.slug === channel) ?? null);
   let error = $state("");
   let note = $state("");
   let busy = $state(false);
@@ -63,13 +78,20 @@
     told about it afterwards.
   */
   $effect(() => {
+    void shareChannels()
+      .then((found) => (channels = found))
+      .catch(() => {});
+  });
+
+  $effect(() => {
     const wanted = heading;
     const forSession = session;
+    const forChannel = channel;
     void (async () => {
       try {
-        const next = await sharePreview(forSession, wanted);
+        const next = await sharePreview(forSession, wanted, forChannel);
         // Ignore a reply that arrived after the DJ typed again.
-        if (wanted === heading && forSession === session) {
+        if (wanted === heading && forSession === session && forChannel === channel) {
           share = next;
           error = "";
         }
@@ -80,16 +102,20 @@
     })();
   });
 
-  async function toWhatsApp() {
+  async function toChannel() {
     busy = true;
     note = "";
     try {
-      const sent = await shareToWhatsApp(session, heading);
+      const sent = await shareTo(session, heading, channel);
       share = sent;
-      // Deliberately not "sent". Nothing has been sent: WhatsApp is open with
-      // the message in it, and a person still has to choose a recipient and
-      // press the button. Saying "sent" here would be a lie a DJ acts on.
-      note = "WhatsApp is open with the message ready — pick a chat and send.";
+      // Deliberately not "sent" or "posted". Nothing has been: the composer is
+      // open with the message in it, and a person still has to press the
+      // button. Saying otherwise would be a lie a DJ acts on.
+      const name = chosen?.name ?? channel;
+      note =
+        channel === "whatsapp"
+          ? "WhatsApp is open with the message ready — pick a chat and send."
+          : `${name} is open with the post written — read it, and post it from there.`;
     } catch (e) {
       error = String(e);
     } finally {
@@ -137,7 +163,23 @@
       played, and an editable one is a record of what the DJ would rather
       have played.
     -->
-    <pre class="preview">{share.message}</pre>
+    {#if channels.length > 1}
+      <div class="channels" role="radiogroup" aria-label="Where to share it">
+        {#each channels as option (option.slug)}
+          <button
+            type="button"
+            role="radio"
+            aria-checked={channel === option.slug}
+            class:chosen={channel === option.slug}
+            data-channel={option.slug}
+            onclick={() => (channel = option.slug)}
+          >
+            {option.name}
+          </button>
+        {/each}
+      </div>
+    {/if}
+    <pre class="preview" data-preview>{share.message}</pre>
 
     <!--
       Warning and result sit above the buttons, not below.
@@ -148,9 +190,14 @@
       already is.
     -->
     {#if share.dropped > 0}
-      <p class="warning">
-        {share.dropped} of {share.total} won't fit in a WhatsApp link. The
-        message says so, and the file has all of them.
+      <p class="warning" data-dropped>
+        {#if chosen?.limit}
+          {share.dropped} of {share.total} won't fit in a {chosen.limit}-character
+          {chosen.name} post.
+        {:else}
+          {share.dropped} of {share.total} won't fit in a {chosen?.name ?? "WhatsApp"} link.
+        {/if}
+        The message says so, and the file has all of them.
       </p>
     {/if}
 
@@ -159,8 +206,8 @@
     {/if}
 
     <div class="destinations">
-      <button type="button" disabled={busy} onclick={toWhatsApp}>
-        Open WhatsApp
+      <button type="button" disabled={busy} onclick={toChannel} data-open>
+        Open {chosen?.name ?? "WhatsApp"}
       </button>
       <button type="button" disabled={busy} onclick={toFile}>
         Save as file{#if share.dropped > 0} (all {share.total}){/if}
@@ -194,6 +241,7 @@
   }
 
   header,
+  .channels,
   .destinations,
   .warning,
   .note,
@@ -257,6 +305,31 @@
     display: flex;
     gap: 0.4rem;
     margin-top: 0.5rem;
+  }
+
+  /* §108: where it goes, one choice among four, the chosen one filled. */
+  .channels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.45rem;
+  }
+
+  .channels button {
+    font: inherit;
+    font-size: 0.78em;
+    padding: 0.18rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .channels button.chosen {
+    border-color: var(--selected);
+    background: var(--selected);
+    color: var(--on-selected);
   }
 
   .warning,

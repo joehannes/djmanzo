@@ -40,24 +40,121 @@ use dj_library::PlayRecord;
 const MAX_URL_BYTES: usize = 2_000;
 
 /// How a shared set is addressed.
+///
+/// §108 added the three networks after WhatsApp, under the same rule: each is
+/// the network's own documented compose address with the text in it, opening
+/// a composer the DJ reads, edits and posts from. Telegram is not here
+/// because its share link requires a link to share, and a tracklist has none;
+/// Instagram and TikTok are not here because neither has a compose address
+/// for text. Sources in `docs/RESEARCH.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Channel {
     /// WhatsApp's own handoff link. Opens the desktop app when it is
     /// installed and the web client when it is not; both land on a compose
     /// window with the message in it and no recipient chosen.
     WhatsApp,
+    /// X's post intent.
+    X,
+    /// Bluesky's compose intent.
+    Bluesky,
+    /// Threads' post intent.
+    Threads,
 }
 
 impl Channel {
+    /// Every channel, in the order the panel offers them.
+    pub const ALL: [Channel; 4] = [Self::WhatsApp, Self::X, Self::Bluesky, Self::Threads];
+
+    /// The word a command names it by.
+    #[must_use]
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::WhatsApp => "whatsapp",
+            Self::X => "x",
+            Self::Bluesky => "bluesky",
+            Self::Threads => "threads",
+        }
+    }
+
+    /// What the DJ calls it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::WhatsApp => "WhatsApp",
+            Self::X => "X",
+            Self::Bluesky => "Bluesky",
+            Self::Threads => "Threads",
+        }
+    }
+
+    #[must_use]
+    pub fn by_slug(slug: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|channel| channel.slug() == slug)
+    }
+
     /// The link that opens a compose window carrying `message`.
     #[must_use]
     pub fn compose_url(self, message: &str) -> String {
+        let text = urlencoding::encode(message);
         match self {
             // No phone number in the path: djmanzo does not know who this is
             // for, and guessing would put a set in front of whoever was
             // messaged last.
-            Self::WhatsApp => format!("https://wa.me/?text={}", urlencoding::encode(message)),
+            Self::WhatsApp => format!("https://wa.me/?text={text}"),
+            Self::X => format!("https://x.com/intent/post?text={text}"),
+            Self::Bluesky => format!("https://bsky.app/intent/compose?text={text}"),
+            Self::Threads => format!("https://www.threads.net/intent/post?text={text}"),
         }
+    }
+
+    /// The longest post the network takes, in its own measure; `None` where
+    /// only the link's length limits it.
+    #[must_use]
+    pub const fn post_limit(self) -> Option<usize> {
+        match self {
+            Self::WhatsApp => None,
+            Self::X => Some(280),
+            Self::Bluesky => Some(300),
+            Self::Threads => Some(500),
+        }
+    }
+
+    /// How long `text` is in the network's own measure — never shorter than
+    /// the network counts it, so a message that fits here fits there.
+    ///
+    /// X weighs a character from outside its light ranges (Latin, and most
+    /// punctuation) as two, so an emoji or a CJK title costs double; each
+    /// code point is weighed alone, which over-counts an emoji sequence and
+    /// is the safe direction. Bluesky counts grapheme clusters, of which a
+    /// text never has more than it has characters.
+    #[must_use]
+    pub fn length(self, text: &str) -> usize {
+        match self {
+            Self::X => text.chars().map(x_weight).sum(),
+            _ => text.chars().count(),
+        }
+    }
+
+    /// Whether `text` can be handed over whole: the link under what a URL
+    /// handler takes, and the post under the network's limit.
+    #[must_use]
+    pub fn fits(self, text: &str) -> bool {
+        self.compose_url(text).len() <= MAX_URL_BYTES
+            && self
+                .post_limit()
+                .is_none_or(|limit| self.length(text) <= limit)
+    }
+}
+
+/// One character's weight in X's count: the light ranges of its published
+/// counting configuration weigh one, everything else two.
+fn x_weight(c: char) -> usize {
+    let point = u32::from(c);
+    let light = [(0, 4_351), (8_192, 8_205), (8_208, 8_223), (8_242, 8_247)];
+    if light.iter().any(|&(from, to)| (from..=to).contains(&point)) {
+        1
+    } else {
+        2
     }
 }
 
@@ -155,6 +252,16 @@ pub fn message(entries: &[Entry], style: &Style) -> String {
 /// finds out when somebody asks about a record that is not on the list.
 #[must_use]
 pub fn message_and_dropped(entries: &[Entry], style: &Style) -> (String, usize) {
+    message_for(entries, style, Channel::WhatsApp)
+}
+
+/// The message for one channel, and how many records did not fit it.
+///
+/// A post on X holds a handful of records and a WhatsApp link a hundred or
+/// so, so what fits is the channel's to say, and the count of what did not
+/// is said in the message whichever it is.
+#[must_use]
+pub fn message_for(entries: &[Entry], style: &Style, channel: Channel) -> (String, usize) {
     let head = if style.heading.is_empty() {
         String::new()
     } else {
@@ -185,7 +292,7 @@ pub fn message_and_dropped(entries: &[Entry], style: &Style) -> (String, usize) 
         let mut candidate = kept.clone();
         candidate.push(line(e));
         let text = format!("{head}{}", candidate.join("\n"));
-        if Channel::WhatsApp.compose_url(&text).len() > MAX_URL_BYTES {
+        if !channel.fits(&text) {
             dropped += 1;
         } else {
             kept = candidate;
@@ -201,12 +308,7 @@ pub fn message_and_dropped(entries: &[Entry], style: &Style) -> (String, usize) 
         // Trimming from the kept list rather than exceeding the budget: the
         // note is what makes the truncation honest, so it is the one part
         // that may not be dropped to make room for a record.
-        while !kept.is_empty()
-            && Channel::WhatsApp
-                .compose_url(&format!("{head}{}{tail}", kept.join("\n")))
-                .len()
-                > MAX_URL_BYTES
-        {
+        while !kept.is_empty() && !channel.fits(&format!("{head}{}{tail}", kept.join("\n"))) {
             kept.pop();
             dropped += 1;
         }
@@ -257,6 +359,132 @@ mod tests {
         let out = entries(&plays);
         assert_eq!(out[0].at, 0);
         assert_eq!(out[1].at, 252);
+    }
+
+    /// **Each network gets its own compose address with the words in it**,
+    /// https on its own domain, the text encoded so a title cannot add a
+    /// parameter of its own.
+    #[test]
+    fn every_channel_opens_its_own_composer() {
+        let mut slugs = std::collections::BTreeSet::new();
+        for channel in Channel::ALL {
+            assert!(slugs.insert(channel.slug()));
+            assert_eq!(Channel::by_slug(channel.slug()), Some(channel));
+            let url = channel.compose_url("Noche & día #1");
+            assert!(url.starts_with("https://"), "{url}");
+            assert!(url.ends_with("text=Noche%20%26%20d%C3%ADa%20%231"), "{url}");
+        }
+        assert!(
+            Channel::X
+                .compose_url("")
+                .starts_with("https://x.com/intent/post?")
+        );
+        assert!(
+            Channel::Bluesky
+                .compose_url("")
+                .starts_with("https://bsky.app/intent/compose?")
+        );
+        assert!(
+            Channel::Threads
+                .compose_url("")
+                .starts_with("https://www.threads.net/intent/post?")
+        );
+        assert_eq!(Channel::by_slug("telegram"), None);
+    }
+
+    /// X counts a Latin letter as one and an emoji or a CJK character as two.
+    #[test]
+    fn x_weighs_characters_as_x_does() {
+        assert_eq!(Channel::X.length("Añoranza"), 8);
+        assert_eq!(Channel::X.length("🔥"), 2);
+        assert_eq!(Channel::X.length("東京"), 4);
+        assert_eq!(Channel::Bluesky.length("東京🔥"), 3);
+    }
+
+    /// **A post never exceeds its network's limit, and says what it left
+    /// out** — swept across set sizes, accented, on every channel, because a
+    /// post that is one character over is a composer that will not post.
+    #[test]
+    fn every_channel_gets_a_post_that_fits_it() {
+        let style = Style {
+            heading: "Sábado en el Jumbo 🔥".into(),
+            limit_for_url: true,
+            ..Style::default()
+        };
+        for channel in Channel::ALL {
+            for n in 1..60 {
+                let plays: Vec<_> = (0..n)
+                    .map(|i| play(i * 200, "Añoranza Corazón", "Canción Íntima"))
+                    .collect();
+                let (text, dropped) = message_for(&entries(&plays), &style, channel);
+                // Measured here, not by `fits`, so a limit that went missing
+                // from the channel's own table is caught rather than agreed with.
+                let limit = match channel {
+                    Channel::X => Some(280),
+                    Channel::Bluesky => Some(300),
+                    Channel::Threads => Some(500),
+                    Channel::WhatsApp => None,
+                };
+                if let Some(limit) = limit {
+                    // The heading's flame is two on X; every other character one.
+                    let measured = text.chars().count()
+                        + usize::from(channel == Channel::X) * text.matches('🔥').count();
+                    assert!(
+                        measured <= limit,
+                        "{} at {n}: {measured} > {limit}",
+                        channel.name()
+                    );
+                }
+                assert!(
+                    channel.compose_url(&text).len() <= MAX_URL_BYTES,
+                    "{} at {n}",
+                    channel.name()
+                );
+                let kept = text.lines().filter(|l| l.contains(" - ")).count();
+                assert_eq!(kept + dropped, n as usize, "{} at {n}", channel.name());
+                if dropped > 0 {
+                    assert!(text.ends_with(&format!("(+{dropped} more)")), "{text}");
+                }
+            }
+        }
+        // And across heading lengths, so the room left after the last record
+        // that fits takes every size — including too little for the note
+        // saying what was left out, which must then cost a record.
+        for pad in 0..48 {
+            let style = Style {
+                heading: format!("Sábado {}", "x".repeat(pad)),
+                limit_for_url: true,
+                ..Style::default()
+            };
+            let plays: Vec<_> = (0..20)
+                .map(|i| play(i * 200, "Añoranza Corazón", "Canción Íntima"))
+                .collect();
+            for (channel, limit) in [(Channel::X, 280), (Channel::Bluesky, 300)] {
+                let (text, dropped) = message_for(&entries(&plays), &style, channel);
+                assert!(
+                    text.chars().count() <= limit,
+                    "{} with a heading of {pad}: {} > {limit}",
+                    channel.name(),
+                    text.chars().count()
+                );
+                let kept = text.lines().filter(|l| l.contains(" - ")).count();
+                assert_eq!(kept + dropped, 20);
+            }
+        }
+
+        // The limits are the networks': X holds a handful, WhatsApp dozens.
+        let plays: Vec<_> = (0..40)
+            .map(|i| play(i * 200, "Añoranza Corazón", "Canción Íntima"))
+            .collect();
+        let kept = |channel| 40 - message_for(&entries(&plays), &style, channel).1;
+        // Twenty characters apart, which is less than a line.
+        assert!(kept(Channel::X) <= kept(Channel::Bluesky));
+        assert!(kept(Channel::Bluesky) < kept(Channel::Threads));
+        assert!(kept(Channel::Threads) < kept(Channel::WhatsApp));
+        assert!(
+            kept(Channel::X) >= 3,
+            "an X post should still hold a few records"
+        );
     }
 
     /// **Zero is the earliest record, whatever order they arrive in.**

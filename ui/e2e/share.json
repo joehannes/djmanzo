@@ -1,0 +1,46 @@
+{
+  "channels": [
+    {
+      "limit": null,
+      "name": "WhatsApp",
+      "slug": "whatsapp"
+    },
+    {
+      "limit": 280,
+      "name": "X",
+      "slug": "x"
+    },
+    {
+      "limit": 300,
+      "name": "Bluesky",
+      "slug": "bluesky"
+    },
+    {
+      "limit": 500,
+      "name": "Threads",
+      "slug": "threads"
+    }
+  ],
+  "messages": {
+    "bluesky": {
+      "dropped": 4,
+      "message": "Sábado\n\n0:00  Aventura - Obsesión\n4:05  Juan Luis Guerra - Bachata Rosa\n8:10  Romeo Santos - Propuesta Indecente\n12:15  Monchy & Alexandra - Dos Locos\n16:20  Frank Reyes - Tu Eres Ajena\n20:25  Xtreme - Te Extraño\n24:30  Prince Royce - Stand By Me\n28:35  Hector Acosta - Me Duele la Cabeza\n\n(+4 more)",
+      "total": 12
+    },
+    "threads": {
+      "dropped": 0,
+      "message": "Sábado\n\n0:00  Aventura - Obsesión\n4:05  Juan Luis Guerra - Bachata Rosa\n8:10  Romeo Santos - Propuesta Indecente\n12:15  Monchy & Alexandra - Dos Locos\n16:20  Frank Reyes - Tu Eres Ajena\n20:25  Xtreme - Te Extraño\n24:30  Prince Royce - Stand By Me\n28:35  Hector Acosta - Me Duele la Cabeza\n32:40  Zacarías Ferreira - Si Tú Te Vas\n36:45  Raulín Rodríguez - Nadie Es Eterno\n40:50  Antony Santos - Voy Pa' Allá\n44:55  Joe Veras - Intentalo Tú",
+      "total": 12
+    },
+    "whatsapp": {
+      "dropped": 0,
+      "message": "Sábado\n\n0:00  Aventura - Obsesión\n4:05  Juan Luis Guerra - Bachata Rosa\n8:10  Romeo Santos - Propuesta Indecente\n12:15  Monchy & Alexandra - Dos Locos\n16:20  Frank Reyes - Tu Eres Ajena\n20:25  Xtreme - Te Extraño\n24:30  Prince Royce - Stand By Me\n28:35  Hector Acosta - Me Duele la Cabeza\n32:40  Zacarías Ferreira - Si Tú Te Vas\n36:45  Raulín Rodríguez - Nadie Es Eterno\n40:50  Antony Santos - Voy Pa' Allá\n44:55  Joe Veras - Intentalo Tú",
+      "total": 12
+    },
+    "x": {
+      "dropped": 5,
+      "message": "Sábado\n\n0:00  Aventura - Obsesión\n4:05  Juan Luis Guerra - Bachata Rosa\n8:10  Romeo Santos - Propuesta Indecente\n12:15  Monchy & Alexandra - Dos Locos\n16:20  Frank Reyes - Tu Eres Ajena\n20:25  Xtreme - Te Extraño\n24:30  Prince Royce - Stand By Me\n\n(+5 more)",
+      "total": 12
+    }
+  }
+}

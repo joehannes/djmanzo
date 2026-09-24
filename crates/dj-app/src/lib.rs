@@ -638,6 +638,8 @@ pub fn run() {
             commands::open_signup_link,
             commands::share_preview,
             commands::share_to_whatsapp,
+            commands::share_to,
+            commands::share_channels,
             commands::sidelist,
             commands::sidelist_add,
             commands::sidelist_remove,

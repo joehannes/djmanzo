@@ -904,3 +904,81 @@ fn the_browser_fixture_has_the_stores_djmanzo_links_to() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
     );
 }
+
+/// §108's share channels, as a golden file: the channels the share sheet
+/// offers, and the message each one would carry for one fixed night — so the
+/// browser tests draw what Rust writes, cut where Rust cuts it.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_what_each_share_channel_carries() {
+    use dj_app::share::{Channel, Entry, Style, message_for};
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/share.json");
+    let night: Vec<Entry> = [
+        ("Aventura", "Obsesión"),
+        ("Juan Luis Guerra", "Bachata Rosa"),
+        ("Romeo Santos", "Propuesta Indecente"),
+        ("Monchy & Alexandra", "Dos Locos"),
+        ("Frank Reyes", "Tu Eres Ajena"),
+        ("Xtreme", "Te Extraño"),
+        ("Prince Royce", "Stand By Me"),
+        ("Hector Acosta", "Me Duele la Cabeza"),
+        ("Zacarías Ferreira", "Si Tú Te Vas"),
+        ("Raulín Rodríguez", "Nadie Es Eterno"),
+        ("Antony Santos", "Voy Pa' Allá"),
+        ("Joe Veras", "Intentalo Tú"),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, (artist, title))| Entry {
+        at: i as i64 * 245,
+        artist: (*artist).to_owned(),
+        title: (*title).to_owned(),
+    })
+    .collect();
+    let style = Style {
+        heading: "Sábado".to_owned(),
+        timestamps: true,
+        limit_for_url: true,
+    };
+    let messages: serde_json::Map<String, serde_json::Value> = Channel::ALL
+        .iter()
+        .map(|channel| {
+            let (message, dropped) = message_for(&night, &style, *channel);
+            (
+                channel.slug().to_owned(),
+                serde_json::json!({ "message": message, "dropped": dropped, "total": night.len() }),
+            )
+        })
+        .collect();
+    let fresh = serde_json::to_string_pretty(&serde_json::json!({
+        "channels": dj_app::commands::share_channels(),
+        "messages": messages,
+    }))
+    .expect("the share channels serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the share channels");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored share channels are JSON");
+    let fresh: serde_json::Value =
+        serde_json::from_str(&fresh).expect("the fresh share channels are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe share channels have changed, so the browser is offering a share \
+         djmanzo no longer writes.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}

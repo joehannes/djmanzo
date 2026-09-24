@@ -11044,11 +11044,22 @@ pub struct ShareDto {
     pub total: usize,
 }
 
+/// A channel by its word, or the reason there is none. `None` is WhatsApp,
+/// which is what every share was before there was a choice.
+fn share_channel(channel: Option<&str>) -> Result<crate::share::Channel, String> {
+    match channel {
+        None => Ok(crate::share::Channel::WhatsApp),
+        Some(slug) => crate::share::Channel::by_slug(slug)
+            .ok_or_else(|| format!("djmanzo does not share to `{slug}`")),
+    }
+}
+
 /// Read one session and build the message for it.
 fn share_message(
     state: &State<'_, AppState>,
     session: &str,
     heading: &str,
+    channel: crate::share::Channel,
 ) -> Result<ShareDto, String> {
     let plays = library(state)?
         .session(session)
@@ -11062,7 +11073,7 @@ fn share_message(
         timestamps: true,
         limit_for_url: true,
     };
-    let (message, dropped) = crate::share::message_and_dropped(&entries, &style);
+    let (message, dropped) = crate::share::message_for(&entries, &style, channel);
     Ok(ShareDto {
         message,
         dropped,
@@ -11275,8 +11286,60 @@ pub fn share_preview(
     state: State<'_, AppState>,
     session: String,
     heading: String,
+    channel: Option<String>,
 ) -> Result<ShareDto, String> {
-    share_message(&state, &session, &heading)
+    share_message(
+        &state,
+        &session,
+        &heading,
+        share_channel(channel.as_deref())?,
+    )
+}
+
+/// One channel a set can be handed to.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ShareChannelDto {
+    pub slug: &'static str,
+    pub name: &'static str,
+    /// The network's post limit, where it has one, for the panel to say.
+    pub limit: Option<usize>,
+}
+
+/// §108: the channels a set can be handed to, in the order they are offered.
+#[tauri::command]
+pub fn share_channels() -> Vec<ShareChannelDto> {
+    crate::share::Channel::ALL
+        .iter()
+        .map(|channel| ShareChannelDto {
+            slug: channel.slug(),
+            name: channel.name(),
+            limit: channel.post_limit(),
+        })
+        .collect()
+}
+
+/// §108: open a network's composer with the set already written into it.
+///
+/// Posts nothing, as WhatsApp's never sent anything: the composer opens with
+/// the words in it, and the DJ reads, edits and posts. The address is built
+/// here from the channel's own table; the interface names a channel, never a
+/// URL.
+#[tauri::command]
+pub fn share_to(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    session: String,
+    heading: String,
+    channel: String,
+) -> Result<ShareDto, String> {
+    use tauri_plugin_opener::OpenerExt as _;
+
+    let channel = share_channel(Some(&channel))?;
+    let share = share_message(&state, &session, &heading, channel)?;
+    app.opener()
+        .open_url(channel.compose_url(&share.message), None::<&str>)
+        .map_err(|e| format!("could not hand the set to {}: {e}", channel.name()))?;
+    Ok(share)
 }
 
 /// Open WhatsApp with the set already written into the message box.
@@ -11293,7 +11356,7 @@ pub fn share_to_whatsapp(
 ) -> Result<ShareDto, String> {
     use tauri_plugin_opener::OpenerExt as _;
 
-    let share = share_message(&state, &session, &heading)?;
+    let share = share_message(&state, &session, &heading, crate::share::Channel::WhatsApp)?;
     let url = crate::share::Channel::WhatsApp.compose_url(&share.message);
     app.opener()
         .open_url(url, None::<&str>)

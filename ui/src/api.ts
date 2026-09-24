@@ -3600,8 +3600,26 @@ export interface Share {
  * out that a four-hour set does not fit in a link, while they can still
  * choose the file instead.
  */
-export const sharePreview = (session: string, heading: string) =>
-  invoke<Share>("share_preview", { session, heading });
+export const sharePreview = (session: string, heading: string, channel?: string) =>
+  invoke<Share>("share_preview", { session, heading, channel: channel ?? null });
+
+/** §108: one network a set can be handed to, from `dj_app::share::Channel`. */
+export interface ShareChannel {
+  slug: string;
+  name: string;
+  /** Its post limit, where it has one. */
+  limit: number | null;
+}
+
+/** §108: the channels a set can be handed to, in the order they are offered. */
+export const shareChannels = () => invoke<ShareChannel[]>("share_channels");
+
+/**
+ * §108: open a network's composer with the set written into it. Posts
+ * nothing: the DJ reads, edits and posts. The address is built in Rust.
+ */
+export const shareTo = (session: string, heading: string, channel: string) =>
+  invoke<Share>("share_to", { session, heading, channel });
 
 /**
  * Open WhatsApp with the set already typed into the message box.

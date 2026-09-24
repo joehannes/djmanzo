@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Share a night to X, Bluesky and Threads** — §108. The share sheet in
+History now offers X, Bluesky and Threads beside WhatsApp. Each opens the
+network's own composer with the tracklist already written and cut to what a
+post there holds — a handful of records on X, with how many more — so the
+DJ reads it, edits it and posts it. djmanzo posts nothing itself.
+
 **Going live: the record on the stream** — §108. Streaming a set from OBS to
 Twitch, YouTube, Instagram, TikTok or Kick? Switch on Settings → *Going live*
 and djmanzo puts the record on the stream: a transparent overlay page for a

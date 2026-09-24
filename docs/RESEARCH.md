@@ -482,3 +482,28 @@ platform. Reading live comments is restricted or forbidden on most platforms,
 and posting needs per-platform app review (see ROADMAP's *Closing the loop
 with the room*). The request page behind a QR code stays the room's channel.
 
+### Handing a night to the networks (§108)
+
+The same rule as WhatsApp's since A6: djmanzo writes the message and opens
+the network's own composer with it; the DJ reads, edits and posts. Each
+address below is the network's documented compose intent, carrying the text
+in a `text` parameter:
+
+- **X** — `https://x.com/intent/post?text=`. Posts are 280 in X's weighted
+  count, where a character outside its light ranges (an emoji, CJK) counts
+  two. ([X web intents](https://docs.x.com/x-for-websites/web-intents/overview))
+- **Bluesky** — `https://bsky.app/intent/compose?text=`. Posts are 300
+  grapheme clusters. ([Bluesky action intent links](https://docs.bsky.app/docs/advanced-guides/intent-links))
+- **Threads** — `https://www.threads.net/intent/post?text=`. Posts are 500
+  characters. ([Threads web intents](https://developers.facebook.com/docs/threads/threads-web-intents/))
+
+Left out, and why: **Telegram**'s share link requires a `url` to share and
+treats the text as a caption for it, and a tracklist has no link
+([Telegram sharing button](https://core.telegram.org/widgets/share));
+**Instagram** and **TikTok** have no compose address for text at all.
+
+`dj_app::share::Channel::length` never measures shorter than the network
+does — X's weights per code point, which over-counts an emoji sequence;
+characters for Bluesky, never fewer than its graphemes — so a message that
+fits in djmanzo fits on the network.
+
