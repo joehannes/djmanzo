@@ -16,6 +16,20 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.20.0 — The waveform in the colours of light
+
+Seven commits since v0.19.0, the owner's release cadence. Three threads.
+
+The waveform is drawn the way the owner clarified it: every pitch its own
+colour of the visible spectrum, 20 Hz a red at the edge of infrared and
+20 kHz a violet at the edge of ultraviolet, never white, and live — each EQ
+band's part of the waveform fades with its knob. Then it says what is coming:
+the next breakdown, drop, build or instrument arriving, in bars. And the
+cockpit can now be organised by the job rather than the style: activity mode,
+a karaoke host's singer rotation, and a watershed that leaves the main bar.
+Nothing here has been heard or seen on real hardware; the container this was
+built in has none.
+
 **Seeing what is coming** — §116. The waveform says what the record is about
 to do, not only how loud it is.
 
