@@ -2678,7 +2678,16 @@ export async function openShell(
             }
             return Promise.resolve(win.__staged ?? null);
           }
-          return Promise.resolve(answers[cmd] ?? null);
+          // An answer that changes over time, given as a list: each ask
+          // takes the next, and the last is kept. What a command says while
+          // something loads in Rust and after it has loaded is two answers,
+          // and a fixed one could not show the panel moving from one to the
+          // other.
+          const answer = answers[cmd];
+          if (Array.isArray(answer) && (answers.__sequences as string[] | undefined)?.includes(cmd)) {
+            return Promise.resolve(answer.length > 1 ? answer.shift() : answer[0]);
+          }
+          return Promise.resolve(answer ?? null);
         },
         transformCallback: (callback: unknown) => {
           const id = Math.floor(Math.random() * 1e9);

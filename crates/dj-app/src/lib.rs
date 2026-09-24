@@ -145,7 +145,12 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "dj_app=info,dj_engine=info".into()),
+                // Warnings and errors from every crate, information from the
+                // application's own. The filter used to name only these two,
+                // so every error the separator logged -- "Invalid input
+                // name", on every chunk of every record -- went nowhere, and
+                // stem controls that did nothing gave no reason at all.
+                .unwrap_or_else(|_| "warn,dj_app=info,dj_engine=info".into()),
         )
         .init();
 
@@ -340,8 +345,22 @@ pub fn run() {
                 // Separation looks for its model here too, and reports why it
                 // cannot run rather than refusing to start. It has to happen
                 // after the directory is known and before the interface asks
-                // whether stems are available.
-                state.open_stems(&dir);
+                // whether stems are available. The built-in separator is in
+                // place at once; a model is loaded and tried on its own
+                // thread, because that takes seconds the window should not
+                // wait for.
+                if let Some(model) = state.open_stems(&dir) {
+                    let loader = handle.clone();
+                    let spawned = std::thread::Builder::new()
+                        .name("dj-stems-load".into())
+                        .spawn(move || {
+                            let state: tauri::State<'_, AppState> = loader.state();
+                            state.load_stems_model(&model);
+                        });
+                    if let Err(error) = spawned {
+                        tracing::warn!(%error, "the separation model could not be loaded");
+                    }
+                }
                 // The editor saves here, so the loader has to look here too --
                 // otherwise a mapping a DJ just made would not be in the list
                 // they can open until the next restart.

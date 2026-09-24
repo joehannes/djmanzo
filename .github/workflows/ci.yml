@@ -151,6 +151,16 @@ jobs:
           npm ci
           npm run build
 
+      # The ONNX Runtime the Linux packages carry, so the stems tests that
+      # need a real runtime run here rather than skipping: v0.23.0 shipped a
+      # separator that failed every chunk, and a test that skips wherever the
+      # runtime is missing is a test that never ran.
+      - name: Stage ONNX Runtime
+        if: runner.os == 'Linux'
+        run: |
+          sh scripts/fetch-onnxruntime.sh
+          echo "ORT_DYLIB_PATH=$PWD/crates/dj-app/onnxruntime/libonnxruntime.so.1" >> "$GITHUB_ENV"
+
       # Neither runner has a sound card, which is exactly why dj-audio ships a
       # null backend and an offline renderer. The realtime-safety suite runs
       # here in full.

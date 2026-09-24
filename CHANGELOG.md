@@ -16,6 +16,22 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Fixed: stem controls did nothing with the HT-Demucs model** (v0.23.0,
+  reported on Xubuntu 26.04). The model loaded and the panel named it, but
+  djmanzo spoke to it with the wrong tensor names, the wrong length and the
+  wrong stem order, so every chunk failed — and the log did not show why,
+  because it only let through messages from two of djmanzo's crates. The
+  separator now reads what the model declares (`mix` → `stems`, 7.8 s
+  segments), runs longer audio in overlapping segments, maps drums, bass,
+  other and vocals onto the right faders (guitar and piano, in the six-stem
+  model, onto *other*), and takes 48 kHz records to the model's 44.1 kHz and
+  back. A model is tried on one segment before it is used; one that fails
+  leaves the built-in separator playing, with the reason beside the stem
+  controls. The model loads in the background, so the window no longer waits
+  for it: the built-in separator plays until it is ready, and the panel says
+  so. If separating is slower than the music on your computer, the panel
+  says that too. Warnings and errors from every part of djmanzo now reach
+  the log.
 - **§117: Space, and a guide to everything behind it.** Press Space and a
   guide appears along the bottom of the window with every key from there,
   one English word a step: `Space d 1 p` plays deck 1, `Space o l` opens the

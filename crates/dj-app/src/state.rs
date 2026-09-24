@@ -295,6 +295,11 @@ pub struct AppState {
     /// Which separator is running, for the interface to name. `None` when
     /// none is.
     stems_backend: Mutex<Option<&'static str>>,
+    /// Where separated chunks are kept, once [`AppState::open_stems`] has
+    /// opened it: the model, loading later, keeps its chunks there too.
+    stems_cache: Mutex<Option<Arc<dj_stems::cache::StemCache>>>,
+    /// True while a model is being loaded behind the built-in separator.
+    stems_loading: Mutex<bool>,
     /// How many decks are going out on pairs of their own, if any.
     ///
     /// Remembered for the same reason `stem_out` is: a fresh device means a
@@ -534,6 +539,8 @@ impl AppState {
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
             stems_backend,
+            stems_cache: Mutex::new(None),
+            stems_loading: Mutex::new(false),
             stem_out: Mutex::new(None),
             deck_out: Mutex::new(None),
             timecode: Mutex::new([const { None }; dj_core::MAX_DECKS]),
@@ -581,8 +588,8 @@ impl AppState {
         self.stems_backend.lock().ok().and_then(|name| *name)
     }
 
-    /// Start separation, preferring a downloaded model and falling back to the
-    /// built-in separator.
+    /// Start separation: the built-in separator at once, and a downloaded
+    /// model once it has loaded and been tried.
     ///
     /// # Why there is a fallback at all
     ///
@@ -593,27 +600,24 @@ impl AppState {
     /// every machine. It is not as good as HTDemucs and the interface says so,
     /// but a usable acapella now beats a better one after a restart.
     ///
+    /// # Why the model loads on its own thread
+    ///
+    /// HT-Demucs is a quarter of a gigabyte, and ONNX Runtime optimises the
+    /// graph before its first run: on the owner's machine that took thirteen
+    /// seconds, during which the window this runs before could not draw. So
+    /// this returns at once with the built-in separator in place, and returns
+    /// the model's path when there is one worth loading; the caller loads it
+    /// with [`Self::load_stems_model`] off the startup path, and it takes
+    /// over for the records loaded after it is ready.
+    ///
     /// Every failure is recorded as a sentence rather than raised: this runs
     /// during startup, and there is no useful way to fail it.
     /// `DJMANZO_STEMS_MODEL` overrides where the model is looked for.
-    pub fn open_stems(&self, dir: &std::path::Path) {
+    pub fn open_stems(&self, dir: &std::path::Path) -> Option<std::path::PathBuf> {
         let model = match std::env::var_os("DJMANZO_STEMS_MODEL") {
             Some(path) => std::path::PathBuf::from(path),
             None => dir.join("models").join(STEMS_MODEL_FILE),
         };
-
-        let (separator, reason): (Arc<dyn dj_stems::stems::Separator>, Option<String>) =
-            match dj_stems::StemsEngine::new(&model) {
-                Ok(engine) => (Arc::new(engine), None),
-                Err(unavailable) => {
-                    tracing::info!(%unavailable, "using the built-in separator");
-                    (
-                        Arc::new(dj_stems::hpss::Hpss),
-                        Some(unavailable.to_string()),
-                    )
-                }
-            };
-        let name = dj_stems::stems::Separator::name(separator.as_ref());
 
         let cache_dir = dir.join("stems-cache");
         let cache = match dj_stems::cache::StemCache::new(&cache_dir, STEMS_CACHE_BYTES) {
@@ -624,11 +628,95 @@ impl AppState {
                     "the stem cache at {} could not be opened: {error}",
                     cache_dir.display()
                 )));
+                return None;
+            }
+        };
+        if let Ok(mut slot) = self.stems_cache.lock() {
+            *slot = Some(Arc::clone(&cache));
+        }
+
+        // The same two checks the engine makes first, and both are quick: a
+        // runtime that is not there, or a model that is not, is said now
+        // rather than after a thread has been started to find it out.
+        let library = dj_stems::availability::runtime_library();
+        let missing = dj_stems::availability::probe_named_runtime(&library)
+            .and_then(|()| dj_stems::availability::probe_model(&model))
+            .err();
+        let reason = match &missing {
+            Some(unavailable) => {
+                tracing::info!(%unavailable, "using the built-in separator");
+                unavailable.to_string()
+            }
+            None => "the HTDemucs model is loading; the built-in separator plays until it is ready"
+                .to_owned(),
+        };
+        self.use_separator(Arc::new(dj_stems::hpss::Hpss), &cache, Some(reason));
+        if let Ok(mut loading) = self.stems_loading.lock() {
+            *loading = missing.is_none();
+        }
+        missing.is_none().then_some(model)
+    }
+
+    /// Load the model [`Self::open_stems`] found, try it, and put it in
+    /// place of the built-in separator -- or say why not, and keep the
+    /// built-in one. Slow: call it off the startup path.
+    pub fn load_stems_model(&self, model: &std::path::Path) {
+        let outcome = dj_stems::StemsEngine::new(model);
+        if let Ok(mut loading) = self.stems_loading.lock() {
+            *loading = false;
+        }
+        let engine = match outcome {
+            Ok(engine) => engine,
+            Err(unavailable) => {
+                tracing::warn!(%unavailable, "the separation model is not used; the built-in separator stays");
+                self.set_stems_reason(Some(unavailable.to_string()));
                 return;
             }
         };
+        let Some(cache) = self.stems_cache.lock().ok().and_then(|slot| slot.clone()) else {
+            return;
+        };
+        let (took, segment) = engine.speed();
+        let contract = engine.contract().clone();
+        // Slower than the music means stems arrive behind the playhead: said
+        // beside the controls, because a vocal that stays for the first
+        // seconds of a record is otherwise a control that seems not to work.
+        let behind = took > segment;
+        let reason = behind.then(|| {
+            format!(
+                "separating takes {:.1} s for every {:.1} s of music on this computer, so stems arrive a little after a record is loaded",
+                took.as_secs_f64(),
+                segment.as_secs_f64()
+            )
+        });
+        tracing::info!(
+            input = contract.input,
+            output = contract.output,
+            segment = ?contract.segment,
+            took_ms = took.as_millis(),
+            music_ms = segment.as_millis(),
+            "the separation model is tried and in use"
+        );
+        self.use_separator(Arc::new(engine), &cache, reason);
+    }
 
-        let worker = Arc::new(dj_stems::worker::SeparationWorker::new(separator, cache));
+    /// Whether a model is still being loaded.
+    #[must_use]
+    pub fn stems_loading(&self) -> bool {
+        self.stems_loading.lock().is_ok_and(|loading| *loading)
+    }
+
+    fn use_separator(
+        &self,
+        separator: Arc<dyn dj_stems::stems::Separator>,
+        cache: &Arc<dj_stems::cache::StemCache>,
+        reason: Option<String>,
+    ) {
+        let name = dj_stems::stems::Separator::name(separator.as_ref());
+        let worker = Arc::new(dj_stems::worker::SeparationWorker::new(
+            separator,
+            Arc::clone(cache),
+        ));
         if let Ok(mut slot) = self.stems_worker.lock() {
             *slot = worker;
         }
@@ -2356,6 +2444,58 @@ mod tests {
             reason.contains("ONNX Runtime") || reason.contains(STEMS_MODEL_FILE),
             "the reason should name the runtime or the model, got: {reason}"
         );
+    }
+
+    /// **A model in the folder is loaded, tried, and takes over; one that
+    /// does not fit leaves the built-in separator, with why.**
+    ///
+    /// The built-in separator is in place the moment `open_stems` returns,
+    /// saying the model is loading, so stem controls work from the first
+    /// second. Uses dj-stems' stand-in models, which have an HT-Demucs
+    /// export's interface; needs ONNX Runtime (`ORT_DYLIB_PATH`), and says
+    /// so and passes where there is none.
+    #[test]
+    fn a_model_takes_over_once_it_has_been_tried() {
+        if let Err(reason) =
+            dj_stems::availability::probe_named_runtime(&dj_stems::availability::runtime_library())
+        {
+            eprintln!("skipped: {reason}");
+            return;
+        }
+        let fixtures =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dj-stems/tests/fixtures");
+        let with = |fixture: &str| {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::create_dir_all(dir.path().join("models")).unwrap();
+            std::fs::copy(
+                fixtures.join(fixture),
+                dir.path().join("models").join(STEMS_MODEL_FILE),
+            )
+            .unwrap();
+            let state = AppState::new(true);
+            let model = state
+                .open_stems(dir.path())
+                .expect("there is a model to load");
+            assert!(state.stems_loading());
+            assert!(state.stems_backend().unwrap().contains("built-in"));
+            assert!(state.stems_reason().unwrap().contains("loading"));
+            state.load_stems_model(&model);
+            assert!(!state.stems_loading());
+            (state, dir)
+        };
+
+        let (good, _dir) = with("standin-4.onnx");
+        assert_eq!(good.stems_backend(), Some("HTDemucs (ONNX)"));
+        assert_eq!(
+            good.stems_reason(),
+            None,
+            "a stand-in keeps up with anything"
+        );
+
+        let (bad, _dir) = with("standin-wrong.onnx");
+        assert!(bad.stems_backend().unwrap().contains("built-in"));
+        let reason = bad.stems_reason().unwrap();
+        assert!(reason.contains("does not fit"), "{reason}");
     }
 
     /// Whatever happens, the worker handle is never absent: callers push

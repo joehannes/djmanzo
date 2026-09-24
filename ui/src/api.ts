@@ -753,6 +753,8 @@ export type StemsStatus = {
   backend: string | null;
   /** Why a downloaded model is not being used. `null` when one is. */
   reason: string | null;
+  /** A model is loading behind the built-in separator: ask again shortly. */
+  loading?: boolean;
 };
 
 /**

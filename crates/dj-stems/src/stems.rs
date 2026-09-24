@@ -25,6 +25,9 @@ pub enum StemError {
     NotStereo(usize),
     #[error("sample rate is zero")]
     NoSampleRate,
+    /// The model or the runtime refused the chunk, in its own words.
+    #[error("the separation model failed: {0}")]
+    Model(String),
 }
 
 impl Stems {

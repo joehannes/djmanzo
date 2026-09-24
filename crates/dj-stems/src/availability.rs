@@ -52,6 +52,13 @@ pub enum Unavailable {
         /// What ONNX Runtime said.
         reason: String,
     },
+    /// The model loads but is not one djmanzo can separate with: its inputs
+    /// and outputs are not a stereo mix in and stems out, or trying it on a
+    /// segment failed.
+    Unsuited {
+        /// What the model declares, or what it said when tried.
+        reason: String,
+    },
 }
 
 /// Each message names the cause and stops there.
@@ -74,6 +81,9 @@ impl std::fmt::Display for Unavailable {
             }
             Self::Session { reason } => {
                 write!(f, "the separation model would not load: {reason}")
+            }
+            Self::Unsuited { reason } => {
+                write!(f, "the separation model does not fit djmanzo: {reason}")
             }
         }
     }

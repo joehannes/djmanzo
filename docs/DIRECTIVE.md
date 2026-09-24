@@ -2566,3 +2566,28 @@ added together as light, white when all were present:
 > the welcome guide of above also gets to know the DJ .. the assistant already autosaves the personal data of the user/DJ to all the right places in combinatoric ways and auto searches the internet and given profiles for all useful and handy info ... so he helps the DJ populated/basically setup everything for him right away.
 > he asks him for his favorite genres/music/artists/songs/bpm/styles/combinations/tricks/transitions/techniques ...
 > and automatically creates activities and personalised preset-packages for him, even his favorite colors and assembles a personalised theme for him, and auto puts a personalised app logo as of his DJ design/logo he will be asked for.
+---
+# 119. ASKED SINCE: LIVE STREAMING, AND THE CROWD'S REACTIONS ON THE MUSIC
+> feature request:
+>
+> a tiktok live stream and youtube live stream integration.
+> as a DJ i want to use my mobile and / or webcam somehow (as a cam, with a companion app for the phone, somehow feasible) and live stream to tiktok/youtube and have the comments and reactions and statistics reflected in a live stream dashboard.
+> so i can know if people really like something, wish for something, ... stuff like that
+>
+> also ... i want to see comments as per social integrations, if relevant and selected as visible by the user, integrated in the view:
+> the song shall have comments and icons in places with the timestamp of messages where people comment heavily they like the moment of the music ...
+> AI shall help discern if its that moment of the comment, a particular song or region of the song/chorus/drop ... and put icons that are unobtrusive and helpful ...
+> this can be visible or switched off.
+> also: the core data shall be saveable independently.
+> the user shall be able to save a (live) session ... also meaning that on replay and later analysis the user can have insights into the reactions of the live crowd and the mood and whatnot ... there shall be typical categories and specifics for what to analyse and show graphically as of useful data as of partygoers, crowd, fans ... depending on type of club/festival/event/music genre/... insights that shall be useful.
+> on playback of the session or inspection of the session those comments shall be visible if desired and also color coded and usefully coded in different combinatoric ways ... even ways the user can define as of goals (a typical DJ/musician/event planner would like to study) and even goals a DJ/musician/event planner might want to define himself according to specifics he can define ...
+> thusly that analysis dashboard shall be useful and can replay a full session according to all available data, also as of live youtube/tiktok comments and moods ...
+---
+# 120. ASKED SINCE: ANY AI PROVIDER, COMFORTABLE WINDOWS, AND COMPACT CONTROLS
+> another feature improvement:
+>
+> * as of AI integration/assistance: I don't know what AI can be used right now, but I want to be able to use any OpenRouter AI, ChatGPT, Gemini Free and other models, Claude if feasible via some token or something else ... so there shall be a config as well to configure tokens/accounts ... and enable/select AI
+> * also i want the GUI/widgets to be improved a lot. scrollbars, sizing, layout stickyness and resizing shall be super comfortable and quickly possible in very useful and quickly applicable ways ... temporary windows can take a lot of space for the focused moment and then get out of the way ... scrolling inside the widget/window shall be easy and possible in any obvious/typical way that's not getting in the way of something else ...
+> * i got an issue with some filter knobs. on trying to manipulate them they are only switching on or off fully, not being adjustable gradually at all
+> * i don't like the design of the stem section yet ... also it seems to kind of not be very accessible quickly ... what if i want to quickly mute/unmute some stem??
+> * the rest of the faders/knobs/controls seem to take a lot of space ... fx also and design seems poor/redundant ... please improve

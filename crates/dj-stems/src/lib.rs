@@ -1,6 +1,8 @@
 pub mod availability;
 pub mod cache;
 pub mod hpss;
+pub mod model;
+pub mod resample;
 pub mod stems;
 pub mod worker;
 
@@ -9,6 +11,7 @@ pub use availability::Unavailable;
 use ort::session::{Session, builder::GraphOptimizationLevel};
 use std::path::Path;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// The number of threads ONNX Runtime may use for one separation.
 ///
@@ -17,8 +20,14 @@ use std::sync::Mutex;
 /// audio thread is never on this path either way.
 const INTRA_THREADS: usize = 4;
 
+/// How long a model with no fixed segment is tried on, at load: one second.
+const TRIAL_SAMPLES: usize = model::MODEL_RATE as usize;
+
 pub struct StemsEngine {
     session: Mutex<Session>,
+    contract: model::Contract,
+    /// How long one segment took when the model was tried at load.
+    trial: Duration,
 }
 
 impl StemsEngine {
@@ -34,6 +43,16 @@ impl StemsEngine {
     /// - probing the *runtime* first means a machine missing both is told
     ///   about the runtime, which is the one that no download of a model will
     ///   fix.
+    ///
+    /// # Tried before it is trusted
+    ///
+    /// Loading is not working. The model's declared inputs and outputs are
+    /// read into a [`model::Contract`], and one segment of silence is
+    /// separated through the same path a chunk of music takes. A model that
+    /// loads and then fails every chunk is refused here, with the reason, so
+    /// the application falls back to the built-in separator instead of
+    /// offering stem controls that change nothing — which is what v0.23.0
+    /// did with the HT-Demucs export its own notes point to.
     pub fn new(model_path: &Path) -> Result<Self, Unavailable> {
         let library = availability::runtime_library();
         availability::probe_named_runtime(&library)?;
@@ -65,54 +84,136 @@ impl StemsEngine {
             reason: error.to_string(),
         })?;
 
-        Ok(Self {
+        let declared = |outlets: &[ort::value::Outlet]| -> Vec<model::Declared> {
+            outlets
+                .iter()
+                .map(|outlet| model::Declared {
+                    name: outlet.name().to_owned(),
+                    dims: outlet
+                        .dtype()
+                        .tensor_shape()
+                        .map(|shape| shape.to_vec())
+                        .unwrap_or_default(),
+                })
+                .collect()
+        };
+        let contract =
+            model::Contract::read(&declared(session.inputs()), &declared(session.outputs()))
+                .map_err(|reason| Unavailable::Unsuited { reason })?;
+
+        let mut engine = Self {
             session: Mutex::new(session),
+            contract,
+            trial: Duration::ZERO,
+        };
+        let samples = engine.contract.segment.unwrap_or(TRIAL_SAMPLES);
+        let silence = vec![0.0; samples];
+        let started = Instant::now();
+        model::separate(&silence, &silence, engine.contract.segment, |piece| {
+            engine.run(piece)
+        })
+        .map_err(|reason| Unavailable::Unsuited { reason })?;
+        engine.trial = started.elapsed();
+        Ok(engine)
+    }
+
+    /// What the model was read as.
+    #[must_use]
+    pub fn contract(&self) -> &model::Contract {
+        &self.contract
+    }
+
+    /// How long one segment took when the model was tried at load, and how
+    /// much music that segment is: the pair says whether separation keeps up
+    /// with playback on this machine.
+    #[must_use]
+    pub fn speed(&self) -> (Duration, Duration) {
+        let samples = self.contract.segment.unwrap_or(TRIAL_SAMPLES);
+        (
+            self.trial,
+            Duration::from_secs_f64(samples as f64 / f64::from(model::MODEL_RATE)),
+        )
+    }
+
+    /// One run of the model over one segment, `[2][samples]` flattened.
+    fn run(&self, piece: &[f32]) -> Result<model::Ran, String> {
+        let samples = piece.len() / 2;
+        let tensor = ort::value::Tensor::from_array(([1, 2, samples], piece.to_vec()))
+            .map_err(|error| error.to_string())?;
+        let mut session = self
+            .session
+            .lock()
+            .map_err(|_| "the separation model is wedged".to_owned())?;
+        let outputs = session
+            .run(ort::inputs![self.contract.input.as_str() => tensor])
+            .map_err(|error| error.to_string())?;
+        let (shape, values) = outputs[self.contract.output.as_str()]
+            .try_extract_tensor::<f32>()
+            .map_err(|error| error.to_string())?;
+        let stems = match shape[..] {
+            [1, stems, 2, n] if usize::try_from(n) == Ok(samples) => {
+                usize::try_from(stems).map_err(|_| "a negative number of stems".to_owned())?
+            }
+            _ => {
+                return Err(format!(
+                    "it gave back {:?} for a segment of {samples} samples",
+                    &shape[..]
+                ));
+            }
+        };
+        Ok(model::Ran {
+            stems,
+            values: values.to_vec(),
         })
     }
 
-    /// Run inference on a batch of audio samples.
-    /// `input` is expected to be interleaved stereo `f32` (L, R, L, R...).
-    /// Returns 4 channels of stems: Vocal, Drums, Bass, Other as interleaved stereo `f32`.
-    pub fn separate(&self, input: &[f32]) -> Result<Vec<Vec<f32>>, ort::Error> {
+    /// Separate interleaved stereo at `sample_rate` into djmanzo's four
+    /// stems, each interleaved stereo at the same rate and length.
+    ///
+    /// # Errors
+    /// What the model or the runtime said, as a sentence.
+    pub fn separate(
+        &self,
+        input: &[f32],
+        sample_rate: u32,
+    ) -> Result<[Vec<f32>; dj_core::Stem::COUNT], String> {
         let frames = input.len() / 2;
-
-        // De-interleave into [channels, samples]
-        let mut left = Vec::with_capacity(frames);
-        let mut right = Vec::with_capacity(frames);
-        for frame in input.as_chunks::<2>().0 {
-            left.push(frame[0]);
-            right.push(frame[1]);
+        let (mut left, mut right): (Vec<f32>, Vec<f32>) = input
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|frame| (frame[0], frame[1]))
+            .unzip();
+        if sample_rate != model::MODEL_RATE {
+            left = resample::resample(&left, sample_rate, model::MODEL_RATE);
+            right = resample::resample(&right, sample_rate, model::MODEL_RATE);
         }
 
-        // Shape: [batch_size, channels, samples] -> [1, 2, frames]
-        let tensor = ort::value::Tensor::from_array(([1, 2, frames], [left, right].concat()))?;
-        let mut session = self.session.lock().unwrap();
-        let outputs = session.run(ort::inputs!["input" => tensor])?;
+        let planar = model::separate(&left, &right, self.contract.segment, |piece| {
+            self.run(piece)
+        })?;
 
-        let (_shape, slice) = outputs["output"].try_extract_tensor::<f32>()?;
-
-        // Expected output shape from models like HTDemucs is [batch, stems, channels, samples] -> [1, 4, 2, frames]
-        // If the model shape differs, this logic will panic or fail.
-        let mut stems = Vec::with_capacity(4);
-        for stem_idx in 0..4 {
-            let mut interleaved = Vec::with_capacity(frames * 2);
-            let stem_left = &slice[stem_idx * 2 * frames..stem_idx * 2 * frames + frames];
-            let stem_right =
-                &slice[stem_idx * 2 * frames + frames..stem_idx * 2 * frames + 2 * frames];
-            for i in 0..frames {
-                interleaved.push(stem_left[i]);
-                interleaved.push(stem_right[i]);
-            }
-            stems.push(interleaved);
-        }
-
-        Ok(stems)
+        Ok(planar.map(|[l, r]| {
+            let back = |channel: Vec<f32>| {
+                let mut channel = if sample_rate == model::MODEL_RATE {
+                    channel
+                } else {
+                    resample::resample(&channel, model::MODEL_RATE, sample_rate)
+                };
+                channel.resize(frames, 0.0);
+                channel
+            };
+            let (l, r) = (back(l), back(r));
+            l.iter().zip(&r).flat_map(|(a, b)| [*a, *b]).collect()
+        }))
     }
 }
 
 impl std::fmt::Debug for StemsEngine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StemsEngine").finish_non_exhaustive()
+        f.debug_struct("StemsEngine")
+            .field("contract", &self.contract)
+            .finish_non_exhaustive()
     }
 }
 
@@ -121,18 +222,14 @@ impl stems::Separator for StemsEngine {
         "HTDemucs (ONNX)"
     }
 
-    /// The model works at whatever rate it was trained for and takes no rate
-    /// argument, so `_sample_rate` is ignored here. It matters to the built-in
-    /// separator, which computes its band edges from it, and the trait carries
-    /// it for that reason.
     fn separate(&self, mix: &[f32], sample_rate: u32) -> Result<stems::Stems, stems::StemError> {
-        let parts = self.separate(mix).map_err(|error| {
-            tracing::error!(%error, "separation failed");
-            stems::StemError::NotStereo(mix.len())
+        if !mix.len().is_multiple_of(2) {
+            return Err(stems::StemError::NotStereo(mix.len()));
+        }
+        let parts = self.separate(mix, sample_rate).map_err(|reason| {
+            tracing::error!(%reason, "the separation model failed on a chunk");
+            stems::StemError::Model(reason)
         })?;
-        let parts: [Vec<f32>; dj_core::Stem::COUNT] = parts
-            .try_into()
-            .map_err(|_| stems::StemError::NotStereo(mix.len()))?;
         stems::Stems::new(parts, sample_rate)
     }
 }

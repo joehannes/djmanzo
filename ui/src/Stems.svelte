@@ -58,22 +58,36 @@
   /**
    * Whether separation can run here.
    *
-   * Asked once, on mount. It cannot change while the application is running:
-   * the model is looked for at startup, so a DJ who installs one mid-set has
-   * to restart -- and being told that is better than pads that quietly do
-   * nothing.
+   * Asked on mount, and again every few seconds while a model is still
+   * loading: the built-in separator plays from the first second and the
+   * model takes over once it has been loaded and tried, which takes seconds
+   * on a quarter-gigabyte model. After that it cannot change while the
+   * application is running: the model is looked for at startup, so a DJ who
+   * installs one mid-set has to restart -- and being told that is better
+   * than pads that quietly do nothing.
    */
+  const ASK_AGAIN_MS = 2000;
   let status = $state<StemsStatus>({ available: true, backend: null, reason: null });
-  onMount(async () => {
-    try {
-      status = await stemsStatus();
-    } catch (error) {
-      status = {
-        available: false,
-        backend: null,
-        reason: `could not ask about stems: ${error}`,
-      };
-    }
+  onMount(() => {
+    let again: ReturnType<typeof setTimeout> | undefined;
+    let gone = false;
+    const ask = async () => {
+      try {
+        status = await stemsStatus();
+      } catch (error) {
+        status = {
+          available: false,
+          backend: null,
+          reason: `could not ask about stems: ${error}`,
+        };
+      }
+      if (status.loading && !gone) again = setTimeout(ask, ASK_AGAIN_MS);
+    };
+    void ask();
+    return () => {
+      gone = true;
+      clearTimeout(again);
+    };
   });
 
 
