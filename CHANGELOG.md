@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**A quiet assistant that watches the booth** — §115. One line, beside REC
+and SAFE, proposes one thing at a time: a deck clipping (its trim down 3 dB),
+the limiter working hard (the master down 3 dB), a record running out with
+nothing loaded after it, the peak of the night going unrecorded, two records
+drifting apart in tempo. It waits until a condition has held, keeps the quiet
+suggestions for when your hands are free, takes *not now* for ten minutes and
+*not tonight* for the night, and never does anything until you press it.
+
 **Every preset one search away** — §115. Ctrl+K now finds every theme,
 activity, workspace and preset pack by its name: type *aurora*, press Enter,
 and the theme is on; *karaoke* moves to the activity; *echo* applies the

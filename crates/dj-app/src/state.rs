@@ -156,6 +156,8 @@ pub struct AppState {
     live_now: std::sync::Arc<dj_net::overlay::NowPlaying>,
     /// §108: what going live is doing, as the thread last found it.
     live_status: Mutex<crate::live::Status>,
+    /// §115: the quiet proposer, fed by the snapshot pump.
+    whisper: Mutex<crate::whisper::Watcher>,
     /// The mix that is set up, if one is. See [`crate::transition`].
     ///
     /// One at a time, and here rather than in the interface for the same
@@ -499,6 +501,7 @@ impl AppState {
             filed: Mutex::new(std::collections::VecDeque::new()),
             live_now: std::sync::Arc::new(dj_net::overlay::NowPlaying::new()),
             live_status: Mutex::new(crate::live::Status::default()),
+            whisper: Mutex::new(crate::whisper::Watcher::new()),
             transition: Mutex::new(None),
             recording: Mutex::new(None),
             recording_state: Arc::new(crate::setrec::RecordingState::default()),
@@ -1292,6 +1295,12 @@ impl AppState {
         if let Err(error) = std::fs::write(&path, text) {
             tracing::warn!(%error, ?path, "going live will not survive a restart");
         }
+    }
+
+    /// §115: the quiet proposer.
+    #[must_use]
+    pub fn whisper(&self) -> &Mutex<crate::whisper::Watcher> {
+        &self.whisper
     }
 
     /// The words on the stream.

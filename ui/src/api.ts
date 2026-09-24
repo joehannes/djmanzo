@@ -714,6 +714,8 @@ export interface Snapshot {
   attention: Attention;
   decks: DeckState[];
   master: MasterState;
+  /** §115: what the quiet proposer proposes about this frame, if anything. */
+  whisper?: Proposal | null;
 }
 
 export const listDevices = () => invoke<Device[]>("list_devices");
@@ -1242,6 +1244,21 @@ export interface Downloads {
 export const downloads = () => invoke<Downloads>("downloads");
 export const setDownloads = (watch: string | null, into: string | null, on: boolean) =>
   invoke<Downloads>("set_downloads", { watch, into, on });
+
+/** §115: what the quiet proposer is proposing, from `dj_app::whisper`. */
+export interface Proposal {
+  /** The rule it came from; declining it silences this kind. */
+  kind: string;
+  says: string;
+  /** The button's words. */
+  offer: string;
+  /** An action for the bus, or an interface operation (`ui …`). */
+  run: string;
+  urgent: boolean;
+}
+
+export const whisperAnswer = (kind: string, answer: "taken" | "not-now" | "not-tonight") =>
+  invoke<void>("whisper_answer", { kind, answer });
 
 /** §108: going live — the record on a stream, from `dj_app::live`. */
 export interface LiveStatus {

@@ -11447,6 +11447,30 @@ fn downloads_dto(state: &AppState) -> DownloadsDto {
     }
 }
 
+/// §115: the DJ's answer to a proposal — `taken`, `not-now` or
+/// `not-tonight`. Taking one runs nothing here: the interface ran the
+/// proposal's own action, the path any press takes; this only stops it being
+/// proposed again straight away.
+///
+/// # Errors
+/// When the answer is not one of the three.
+#[tauri::command]
+pub fn whisper_answer(
+    state: State<'_, AppState>,
+    kind: String,
+    answer: String,
+) -> Result<(), String> {
+    let answer = crate::whisper::Answer::parse(&answer)
+        .ok_or_else(|| format!("{answer:?} is not an answer to a proposal"))?;
+    let now = std::time::Instant::now()
+        .duration_since(*crate::START)
+        .as_secs_f64();
+    if let Ok(mut watcher) = state.whisper().lock() {
+        watcher.answer(&kind, answer, now);
+    }
+    Ok(())
+}
+
 /// §108: what going live is doing — the overlay's address, the file, and
 /// the words the stream is being told.
 #[tauri::command]

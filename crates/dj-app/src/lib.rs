@@ -91,6 +91,7 @@ pub mod transition;
 pub mod uiop;
 pub mod wav;
 pub mod waveform;
+pub mod whisper;
 pub mod widgets;
 pub mod workers;
 pub mod world;
@@ -369,7 +370,7 @@ pub fn run() {
                     focus: Some(chosen_focus),
                     marks: Some(marks),
                 },
-                move |snapshot| {
+                move |mut snapshot| {
                     use tauri::Emitter;
                     // The automix rides the same pump the interface does, so it
                     // sees exactly what the DJ sees and there is no second view
@@ -397,6 +398,19 @@ pub fn run() {
                         &library_writer,
                         &pump_audience,
                     );
+                    // §115: the quiet proposer reads the frame the DJ is
+                    // about to see, on the pump that draws it — so what it
+                    // proposes is about what is on screen, never a second
+                    // view of the booth.
+                    {
+                        let state: tauri::State<'_, AppState> = handle.state();
+                        let now = std::time::Instant::now()
+                            .duration_since(*START)
+                            .as_secs_f64();
+                        if let Ok(mut watcher) = state.whisper().lock() {
+                            snapshot.whisper = watcher.observe(&snapshot, now);
+                        }
+                    }
                     // §37. On the same pump for the same reason the automix
                     // is: it sees exactly what the DJ sees, and a second
                     // thread watching the same log would be a second answer
@@ -549,6 +563,7 @@ pub fn run() {
             commands::downloads,
             commands::set_downloads,
             commands::live_status,
+            commands::whisper_answer,
             commands::set_live,
             commands::report_bench,
             commands::at_hand,

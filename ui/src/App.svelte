@@ -67,6 +67,7 @@
   import Next from "./Next.svelte";
   import Pair from "./Pair.svelte";
   import MissionBar from "./MissionBar.svelte";
+  import Whisper from "./Whisper.svelte";
   import Night from "./Night.svelte";
   import RoomSense from "./RoomSense.svelte";
   import Mixes from "./Mixes.svelte";
@@ -2396,6 +2397,14 @@
           SAFE
         </button>
       </div>
+      <!--
+        §115: the quiet proposer, in the room this row has after the set
+        group — which is where the eye already goes for the state of the
+        night, and wider than the gap in the row above, where a sentence was
+        squeezed out and left its button alone. See `Whisper.svelte` and
+        `dj_app::whisper`.
+      -->
+      <Whisper offered={snapshot?.whisper} send={(action) => send(action)} />
     </div>
   </header>
 

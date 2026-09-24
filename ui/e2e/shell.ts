@@ -1947,6 +1947,13 @@ export async function openShell(
           // §108: the share sheet, answered with what Rust writes for one
           // fixed night on each channel (`share.json`), and every hand-off
           // recorded with the channel it was for.
+          // §115: the answers to a proposal, recorded with their words,
+          // because "not now" and "not tonight" are two different promises to
+          // the DJ. The proposal itself arrives on the snapshot.
+          if (cmd === "whisper_answer") {
+            ((win.__whisperAnswered ??= []) as unknown[]).push({ kind: args.kind, answer: args.answer });
+            return Promise.resolve(null);
+          }
           if (cmd === "share_channels") return Promise.resolve(structuredClone(answers.share_channels));
           if (cmd === "share_preview" || cmd === "share_to" || cmd === "share_to_whatsapp") {
             const slug = cmd === "share_to_whatsapp" ? "whatsapp" : String(args.channel ?? "whatsapp");

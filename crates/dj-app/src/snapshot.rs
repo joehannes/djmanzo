@@ -528,6 +528,14 @@ pub struct Snapshot {
     pub attention: crate::cockpit::Attention,
     pub decks: Vec<DeckSnapshot>,
     pub master: MasterSnapshot,
+    /// §115: what the quiet proposer proposes about this frame, if anything.
+    ///
+    /// On the frame rather than behind a command the interface polls: a poll
+    /// once a second was a question to Rust on every second of ordinary
+    /// playback, which is what `ui/e2e/asks.spec.ts` exists to refuse. Set by
+    /// the pump's receiver from [`crate::whisper::Watcher`]; `None` as
+    /// captured.
+    pub whisper: Option<crate::whisper::Proposal>,
 }
 
 impl Snapshot {
@@ -803,6 +811,7 @@ impl Snapshot {
             // has read the night from is not one to freeze the interface on.
             attention: crate::cockpit::Attention::preparing(),
             decks,
+            whisper: None,
             master: MasterSnapshot {
                 recording: SetRecordingSnapshot {
                     active: recording
