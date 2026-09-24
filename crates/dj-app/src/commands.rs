@@ -12151,6 +12151,134 @@ pub fn set_chosen_layers(state: State<'_, AppState>, layers: Vec<String>) -> Vec
     chosen
 }
 
+/// §109: one activity as the strip draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct ActivityDto {
+    pub slug: String,
+    pub title: String,
+    pub doing: String,
+    pub icon: String,
+    pub shipped: bool,
+    /// The key that reaches it — `F1` to `F9` — when it has one.
+    pub key: Option<String>,
+    pub workspace: crate::cockpit::Workspace,
+}
+
+/// §109: the strip, and the mode it is in.
+#[derive(Debug, Clone, Serialize)]
+pub struct ActivitiesDto {
+    pub activities: Vec<ActivityDto>,
+    /// The key that returns to the previous activity, as `KeyboardEvent.code`
+    /// spells it.
+    pub back: String,
+    pub on: bool,
+    pub current: String,
+    pub previous: String,
+}
+
+/// The strip for a given kept state. Public so the browser fixture can be
+/// generated from it rather than typed out.
+#[must_use]
+pub fn activities_dto(kept: &crate::activity::Kept) -> ActivitiesDto {
+    ActivitiesDto {
+        activities: crate::activity::all(&kept.mine)
+            .into_iter()
+            .enumerate()
+            .map(|(index, activity)| ActivityDto {
+                key: crate::activity::key_for(index),
+                slug: activity.slug,
+                title: activity.title,
+                doing: activity.doing,
+                icon: activity.icon,
+                shipped: activity.shipped,
+                workspace: activity.workspace,
+            })
+            .collect(),
+        back: crate::activity::BACK_KEY.to_owned(),
+        on: kept.on,
+        current: kept.current.clone(),
+        previous: kept.previous.clone(),
+    }
+}
+
+/// §109: every activity — djmanzo's, then the DJ's own — and the mode.
+#[tauri::command]
+#[must_use]
+pub fn activities(state: State<'_, AppState>) -> ActivitiesDto {
+    activities_dto(&state.activities())
+}
+
+/// §109: turn activity mode on or off, or move to another activity.
+///
+/// The interface applies the activity's workspace itself, through the path
+/// every arrangement takes; this keeps where the DJ is, so a restart comes
+/// back to it. An activity nobody has is refused rather than kept, so the
+/// file never names a tab the strip cannot draw.
+///
+/// # Errors
+/// When `current` names no activity.
+#[tauri::command]
+pub fn set_activity_mode(
+    state: State<'_, AppState>,
+    on: bool,
+    current: String,
+) -> Result<ActivitiesDto, String> {
+    let mut kept = state.activities();
+    let known = crate::activity::all(&kept.mine);
+    if !current.is_empty() && !known.iter().any(|activity| activity.slug == current) {
+        return Err(format!("there is no activity called {current:?}"));
+    }
+    if current != kept.current {
+        kept.previous = std::mem::replace(&mut kept.current, current);
+    }
+    kept.on = on;
+    state.set_activities(&kept);
+    Ok(activities_dto(&kept))
+}
+
+/// §109: keep the arrangement on screen as an activity of the DJ's own.
+///
+/// # Errors
+/// An empty name, or one djmanzo ships.
+#[tauri::command]
+pub fn keep_activity(
+    state: State<'_, AppState>,
+    title: String,
+    workspace: crate::cockpit::Workspace,
+) -> Result<ActivitiesDto, String> {
+    let mut kept = state.activities();
+    kept.mine = crate::activity::keep(&kept.mine, &title, workspace)
+        .map_err(|refused| refused.to_string())?;
+    state.set_activities(&kept);
+    Ok(activities_dto(&kept))
+}
+
+/// §109: forget one of the DJ's own. Leaving it while it is on screen drops
+/// the strip back to no current activity rather than to a tab that is gone.
+#[tauri::command]
+#[must_use]
+pub fn forget_activity(state: State<'_, AppState>, slug: String) -> ActivitiesDto {
+    let mut kept = state.activities();
+    kept.mine = crate::activity::forget(&kept.mine, &slug);
+    if kept.current == slug {
+        kept.current.clear();
+    }
+    if kept.previous == slug {
+        kept.previous.clear();
+    }
+    state.set_activities(&kept);
+    activities_dto(&kept)
+}
+
+/// §109 and §115: the activity the moment seems to call for, and why — or
+/// nothing. A suggestion for the strip to mark, never a switch.
+#[tauri::command]
+#[must_use]
+pub fn activity_suggestion(state: State<'_, AppState>) -> Option<crate::activity::Suggestion> {
+    let snapshot = get_snapshot(state.clone());
+    crate::activity::suggest(&snapshot, state.audience().waiting().len())
+}
+
 /// One way of colouring the waveform's spectral balance, as the picker offers
 /// it.
 #[derive(Debug, Clone, serde::Serialize)]

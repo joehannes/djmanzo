@@ -58,6 +58,11 @@ import snapshot from "./snapshot.json" with { type: "json" };
  */
 import padPages from "./pad-pages.json" with { type: "json" };
 import surfaces from "./surfaces.json" with { type: "json" };
+/**
+ * §109's activities, generated from `dj_app::activity::shipped` by the same
+ * Rust test as the rest. The strip draws what Rust ships, keys and all.
+ */
+import activities from "./activities.json" with { type: "json" };
 /** §54's functional presets, generated from `dj_app::setup::ALL` by the same
  *  Rust test. */
 import setups from "./setups.json" with { type: "json" };
@@ -899,6 +904,29 @@ export const ANSWERS: Record<string, unknown> = {
     },
   ],
   waveform_colouring: "light",
+  // §109: the strip, from the golden, in the full cockpit as a fresh install is.
+  activities,
+  // §115: nothing suggested unless a test says otherwise.
+  activity_suggestion: null,
+  // The room's requests as a fresh install has them: the page not running and
+  // nothing asked. Needed since §109 put the requests on a surface of their
+  // own — the Requests activity mounts it, and an unlisted command answers
+  // `null`, which is a shape Rust never sends and the list reads `.length` of.
+  audience_status: {
+    running: false,
+    open: false,
+    port: 0,
+    heading: "",
+    language: "en",
+    show_playing: false,
+    ways_in: [],
+    announcing: false,
+    announce_error: null,
+    error: null,
+    waiting: 0,
+  },
+  audience_waiting: [],
+  audience_all: [],
   /** Nothing chosen: djmanzo is running the way it shipped, which is the state
    *  the axis exists to end and the one a fresh install is actually in. */
   standing: { level: "", departures: [], locked: [] },
@@ -1738,6 +1766,88 @@ export async function openShell(
                 voiced: 0.8,
               },
             );
+          }
+          // §109: the activity strip, held between calls the way Rust holds
+          // it, so a test can move between activities and keep its own. The
+          // rules are Rust's, mirrored: a shipped name is refused, keeping a
+          // name again replaces it, and the keys are dealt F1 to F9 in order.
+          const strip = () => {
+            win.__activities ??= structuredClone(answers.activities);
+            return win.__activities as {
+              activities: {
+                slug: string;
+                title: string;
+                doing: string;
+                icon: string;
+                shipped: boolean;
+                key: string | null;
+                workspace: unknown;
+              }[];
+              back: string;
+              on: boolean;
+              current: string;
+              previous: string;
+            };
+          };
+          const redeal = (state: ReturnType<typeof strip>) => {
+            state.activities.forEach((activity, index) => {
+              activity.key = index < 9 ? `F${index + 1}` : null;
+            });
+            return structuredClone(state);
+          };
+          if (cmd === "activities") return Promise.resolve(structuredClone(strip()));
+          if (cmd === "set_activity_mode") {
+            const state = strip();
+            const current = String(args.current ?? "");
+            if (current && !state.activities.some((a) => a.slug === current)) {
+              return Promise.reject(new Error(`there is no activity called "${current}"`));
+            }
+            if (current !== state.current) {
+              state.previous = state.current;
+              state.current = current;
+            }
+            state.on = Boolean(args.on);
+            ((win.__activityMoves ??= []) as string[]).push(`${state.on ? "on" : "off"}:${current}`);
+            return Promise.resolve(structuredClone(state));
+          }
+          if (cmd === "keep_activity") {
+            const state = strip();
+            const title = String(args.title ?? "").trim();
+            const slug = title
+              .split(/[^\p{L}\p{N}]+/u)
+              .filter(Boolean)
+              .map((word) => word.toLowerCase())
+              .join("-");
+            if (!slug) return Promise.reject(new Error("an activity needs a name"));
+            if (state.activities.some((a) => a.shipped && a.slug === slug)) {
+              return Promise.reject(
+                new Error(`djmanzo already has an activity called "${title}" — choose another name`),
+              );
+            }
+            const mine = {
+              slug,
+              title,
+              doing: "Your own arrangement.",
+              icon: "flag",
+              shipped: false,
+              key: null,
+              // Through JSON, the way the real bridge carries it: the
+              // interface passes a live `$state` object, which IPC
+              // serialises and `structuredClone` cannot copy.
+              workspace: { ...JSON.parse(JSON.stringify(args.workspace)), name: title },
+            };
+            const at = state.activities.findIndex((a) => !a.shipped && a.slug === slug);
+            if (at >= 0) state.activities[at] = mine;
+            else state.activities.push(mine);
+            return Promise.resolve(redeal(state));
+          }
+          if (cmd === "forget_activity") {
+            const state = strip();
+            const slug = String(args.slug ?? "");
+            state.activities = state.activities.filter((a) => a.shipped || a.slug !== slug);
+            if (state.current === slug) state.current = "";
+            if (state.previous === slug) state.previous = "";
+            return Promise.resolve(redeal(state));
           }
           // §110: which colouring was chosen, echoed the way Rust echoes it.
           if (cmd === "set_waveform_colouring") {

@@ -1,0 +1,224 @@
+{
+  "activities": [
+    {
+      "slug": "dig",
+      "title": "Dig",
+      "doing": "Find the next record.",
+      "icon": "magnifying-glass",
+      "shipped": true,
+      "key": "F1",
+      "workspace": {
+        "name": "Dig",
+        "about": "The collection open under the decks, and what djmanzo would play next beside them.",
+        "surfaces": [
+          {
+            "surface": "library",
+            "dock": "bottom",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          },
+          {
+            "surface": "next",
+            "dock": "right",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          }
+        ],
+        "density": "standard",
+        "focus": "preparing",
+        "theme": "",
+        "decks": 2,
+        "layout": "Essentials",
+        "locked": []
+      }
+    },
+    {
+      "slug": "mix",
+      "title": "Mix",
+      "doing": "Blend into the next record.",
+      "icon": "sliders",
+      "shipped": true,
+      "key": "F2",
+      "workspace": {
+        "name": "Mix",
+        "about": "The two decks and the mixer, and nothing else to look at.",
+        "surfaces": [],
+        "density": "standard",
+        "focus": "performing",
+        "theme": "",
+        "decks": 2,
+        "layout": "Essentials",
+        "locked": []
+      }
+    },
+    {
+      "slug": "perform",
+      "title": "Perform",
+      "doing": "Play with the record: pads, loops, effects and stems.",
+      "icon": "hand",
+      "shipped": true,
+      "key": "F3",
+      "workspace": {
+        "name": "Perform",
+        "about": "Every pad, loop, effect and stem on the decks, and the sampler beside them.",
+        "surfaces": [
+          {
+            "surface": "sampler",
+            "dock": "right",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          }
+        ],
+        "density": "standard",
+        "focus": "performing",
+        "theme": "",
+        "decks": 2,
+        "layout": "Stem Performance",
+        "locked": []
+      }
+    },
+    {
+      "slug": "prepare",
+      "title": "Prepare",
+      "doing": "Set cues and grids, and shape tonight's plan.",
+      "icon": "list",
+      "shipped": true,
+      "key": "F4",
+      "workspace": {
+        "name": "Prepare",
+        "about": "The record being readied beside the decks, and the night's plan under them.",
+        "surfaces": [
+          {
+            "surface": "prepare",
+            "dock": "right",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          },
+          {
+            "surface": "plan",
+            "dock": "bottom",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          }
+        ],
+        "density": "standard",
+        "focus": "preparing",
+        "theme": "",
+        "decks": 2,
+        "layout": "Essentials",
+        "locked": []
+      }
+    },
+    {
+      "slug": "requests",
+      "title": "Requests",
+      "doing": "Answer what the room has asked for.",
+      "icon": "hand-pointer",
+      "shipped": true,
+      "key": "F5",
+      "workspace": {
+        "name": "Requests",
+        "about": "The room's requests beside the decks, and the collection to find them in.",
+        "surfaces": [
+          {
+            "surface": "requests",
+            "dock": "right",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          },
+          {
+            "surface": "library",
+            "dock": "bottom",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          }
+        ],
+        "density": "standard",
+        "focus": "preparing",
+        "theme": "",
+        "decks": 2,
+        "layout": "Essentials",
+        "locked": []
+      }
+    },
+    {
+      "slug": "autopilot",
+      "title": "Autopilot",
+      "doing": "Let djmanzo play; watch, and take it back.",
+      "icon": "robot",
+      "shipped": true,
+      "key": "F6",
+      "workspace": {
+        "name": "Autopilot",
+        "about": "What is playing, what is next and how the room is taking it, while it drives and you watch.",
+        "surfaces": [
+          {
+            "surface": "assistant",
+            "dock": "right",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          },
+          {
+            "surface": "next",
+            "dock": "right",
+            "order": 1,
+            "collapsed": false,
+            "pinned": false
+          },
+          {
+            "surface": "room",
+            "dock": "bottom",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          }
+        ],
+        "density": "standard",
+        "focus": "supervising",
+        "theme": "",
+        "decks": 2,
+        "layout": "Starter",
+        "locked": []
+      }
+    },
+    {
+      "slug": "practice",
+      "title": "Practice",
+      "doing": "Work on a technique, between sets.",
+      "icon": "book",
+      "shipped": true,
+      "key": "F7",
+      "workspace": {
+        "name": "Practice",
+        "about": "Two records as a laboratory, with the coach under them.",
+        "surfaces": [
+          {
+            "surface": "practice",
+            "dock": "bottom",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          }
+        ],
+        "density": "standard",
+        "focus": "learning",
+        "theme": "",
+        "decks": 2,
+        "layout": "Starter",
+        "locked": []
+      }
+    }
+  ],
+  "back": "Backquote",
+  "on": false,
+  "current": "",
+  "previous": ""
+}

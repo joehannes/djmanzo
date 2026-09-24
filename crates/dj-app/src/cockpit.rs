@@ -2412,6 +2412,38 @@ pub fn semantic_tokens() -> Vec<(&'static str, TokenShape)> {
         .collect()
 }
 
+/// The surfaces the shell actually draws, read out of `App.svelte`'s `DRAWN`.
+///
+/// For tests. A surface this table declares and the shell never draws is the
+/// defect class this codebase keeps meeting — a preset or an activity that
+/// places one opens looking like it did nothing — so anything that places
+/// surfaces is checked against this rather than against the declarations.
+#[cfg(test)]
+#[must_use]
+pub(crate) fn shell_draws() -> std::collections::BTreeSet<String> {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/App.svelte");
+    let source = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("could not read the shell at {path}: {e}"))
+        .replace("\r\n", "\n");
+    let table = source
+        .split_once("const DRAWN = [")
+        .and_then(|(_, rest)| rest.split_once("] as const;"))
+        .map(|(inside, _)| inside)
+        .expect("`const DRAWN = [` ... `] as const;` is no longer how the shell lists them");
+    let drawn: std::collections::BTreeSet<String> = table
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix('"'))
+        .filter_map(|rest| rest.split_once('"'))
+        .map(|(name, _)| name.to_owned())
+        .collect();
+    assert!(
+        drawn.len() > 5,
+        "read {} surfaces out of the shell, which is not how many it draws",
+        drawn.len()
+    );
+    drawn
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3560,32 +3592,12 @@ mod tests {
 
     #[test]
     fn every_preset_places_only_surfaces_the_shell_draws() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/App.svelte");
-        let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("could not read the shell at {path}: {e}"))
-            .replace("\r\n", "\n");
-        let table = source
-            .split_once("const DRAWN = [")
-            .and_then(|(_, rest)| rest.split_once("] as const;"))
-            .map(|(inside, _)| inside)
-            .expect("`const DRAWN = [` ... `] as const;` is no longer how the shell lists them");
-
-        let drawn: std::collections::BTreeSet<&str> = table
-            .lines()
-            .filter_map(|line| line.trim().strip_prefix('"'))
-            .filter_map(|rest| rest.split_once('"'))
-            .map(|(name, _)| name)
-            .collect();
-        assert!(
-            drawn.len() > 5,
-            "read {} surfaces out of the shell, which is not how many it draws",
-            drawn.len()
-        );
+        let drawn = shell_draws();
 
         for workspace in workspaces() {
             for placement in &workspace.surfaces {
                 assert!(
-                    drawn.contains(placement.surface.as_str()),
+                    drawn.contains(&placement.surface),
                     "{} places `{}`, which the shell never draws -- the preset \
                      would open looking like it had done nothing",
                     workspace.name,

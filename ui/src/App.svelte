@@ -13,7 +13,7 @@
   import Shortcuts from "./Shortcuts.svelte";
   import Controllers from "./Controllers.svelte";
   import MappingEditor from "./MappingEditor.svelte";
-  import { Keyboard } from "./keyboard.svelte";
+  import { Keyboard, typing } from "./keyboard.svelte";
   import {
     controlMappings as listControlMappings,
     type MappingInfo,
@@ -30,6 +30,13 @@
   import { watchHands } from "./hands.svelte";
   import { publishAudio } from "./audiovars.svelte";
   import {
+    activities as loadActivities,
+    activitySuggestion,
+    forgetActivity,
+    keepActivity,
+    setActivityMode,
+    type Activities,
+    type ActivitySuggestion,
     chooseLayout,
     chosenLayout,
     layoutTree,
@@ -69,6 +76,9 @@
   import Plan from "./Plan.svelte";
   import SideView from "./SideView.svelte";
   import Watershed from "./Watershed.svelte";
+  import ActivityStrip from "./ActivityStrip.svelte";
+  import Requests from "./Requests.svelte";
+  import { findInCollection } from "./find.svelte";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
   import { theme } from "./theme.svelte";
   import IconButton from "./controls/IconButton.svelte";
@@ -257,6 +267,7 @@
     "log",
     "mixes",
     "athand",
+    "requests",
   ] as const;
   type Drawn = (typeof DRAWN)[number];
 
@@ -499,7 +510,14 @@
    */
   const MIN_SURFACE = 160;
 
-  async function applyWorkspace(asked: Workspace) {
+  /**
+   * `keepDensity`: leave how big things are drawn exactly as it is — neither
+   * the workspace's named density nor its deck composition's. §109's
+   * activities ask for this: density belongs to the window and the DJ's eyes,
+   * and applying one marks it as chosen, which switches the window fitting
+   * off and rescales everything on every switch.
+   */
+  async function applyWorkspace(asked: Workspace, { keepDensity = false } = {}) {
     // §3's *pinned*, honoured where it means something. A pinned surface is
     // "never moved, resized or closed by adaptation", and an arrangement is
     // the loudest adaptation there is: it replaces every placement at once.
@@ -520,7 +538,7 @@
     // for the same reason: the panels appear on the press.
     workspace = preset;
     deckCount = preset.decks;
-    applyDensity(preset.density);
+    if (!keepDensity) applyDensity(preset.density);
     // An empty theme is a preset with no opinion, not a preset asking for the
     // default: a DJ who chose "Cyber Trance" and then picked "4 Deck" keeps
     // their theme.
@@ -563,8 +581,8 @@
           // The arrangement's band when it names one it has; otherwise the
           // composition's own, which is the honest fallback rather than a
           // guess.
-          density: densityOf(preset.density) ?? named.density,
-        });
+          density: keepDensity ? density : (densityOf(preset.density) ?? named.density),
+        }, true, { keepDensity });
       }
     }
     try {
@@ -575,6 +593,139 @@
       deckCount = resolved.workspace.decks;
     } catch {
       // Keeping the optimistic state, for the reason `toggleSurface` gives.
+    }
+  }
+
+  // ---------------------------------------------------------------- §109
+
+  /** The activity strip and where the DJ is in it, from `dj_app::activity`. */
+  let activityState = $state<Activities | null>(null);
+  /** What the moment seems to call for. Marked on the strip, never followed. */
+  let suggestion = $state<ActivitySuggestion | null>(null);
+  /** Why the last activity was not kept, said on the strip. */
+  let activityError = $state("");
+  /** The height of the button row, and the full cockpit's, which the strip holds. */
+  let goHeight = $state(0);
+  let fullGoHeight = $state(0);
+  $effect(() => {
+    if (!activityMode && goHeight > 0) fullGoHeight = goHeight;
+  });
+  /** The full cockpit's own "keep as activity" field, open or not. */
+  let namingActivity = $state(false);
+  let activityName = $state("");
+  const activityMode = $derived(activityState?.on ?? false);
+
+  $effect(() => {
+    void loadActivities()
+      .then((found) => (activityState = found))
+      .catch(() => {
+        // No strip rather than a guessed one: the full cockpit still works.
+      });
+  });
+
+  /**
+   * §115: ask what the moment calls for, while the strip is showing.
+   *
+   * Every three seconds, and only in activity mode: the full cockpit has no
+   * strip to mark, and a suggestion nobody can see is a query for nothing.
+   */
+  $effect(() => {
+    if (!activityMode) {
+      suggestion = null;
+      return;
+    }
+    const ask = () =>
+      void activitySuggestion()
+        .then((found) => (suggestion = found ?? null))
+        .catch(() => (suggestion = null));
+    ask();
+    const poll = setInterval(ask, 3000);
+    return () => clearInterval(poll);
+  });
+
+  /**
+   * Move to an activity: its arrangement, through the one path every
+   * arrangement takes, and then where the DJ is, kept for a restart.
+   */
+  async function chooseActivity(slug: string) {
+    const found = activityState?.activities.find((activity) => activity.slug === slug);
+    if (!found) return;
+    // The density stays the DJ's. It is how big things are drawn for this
+    // window and these eyes, not what the job needs — and an activity that
+    // set it rescaled the whole interface on every switch, which moved the
+    // decks by 27 px under the DJ's hands. Found by the test that measures.
+    await applyWorkspace(
+      { ...found.workspace, density: workspace?.density ?? found.workspace.density },
+      { keepDensity: true },
+    );
+    try {
+      activityState = await setActivityMode(true, slug);
+    } catch {
+      // The arrangement is on screen; only the bookkeeping failed.
+    }
+  }
+
+  /** Into activity mode, at wherever the DJ last was, or what is suggested. */
+  async function enterActivities() {
+    const start = activityState?.current || suggestion?.activity || "mix";
+    await chooseActivity(start);
+  }
+
+  /** Back to the full cockpit. The arrangement on screen stays as it is. */
+  async function leaveActivities() {
+    try {
+      activityState = await setActivityMode(false, activityState?.current ?? "");
+    } catch {
+      if (activityState) activityState = { ...activityState, on: false };
+    }
+  }
+
+  /** Keep what is on screen as an activity of the DJ's own, and be in it. */
+  async function keepAsActivity(title: string) {
+    if (!workspace) return;
+    activityError = "";
+    try {
+      const kept = await keepActivity(title, workspace);
+      activityState = kept;
+      const mine = kept.activities.find((activity) => !activity.shipped && activity.title === title.trim());
+      if (mine) activityState = await setActivityMode(true, mine.slug);
+    } catch (error) {
+      // A name djmanzo ships, or an empty one: said where the DJ is looking.
+      activityError = String(error);
+    }
+  }
+
+  async function forgetOne(slug: string) {
+    try {
+      activityState = await forgetActivity(slug);
+    } catch {
+      // Still on the strip; the next load will say whether it went.
+    }
+  }
+
+  /**
+   * F1 to F9 move between activities and the key under Escape goes back.
+   *
+   * Only in activity mode, so the full cockpit behaves exactly as it did.
+   * Never while typing, and never with a modifier held — those chords belong
+   * to the DJ's own keyboard mapping. `preventDefault` on a match matters in a
+   * webview: F5 is otherwise a reload, which mid-set is the music stopping.
+   */
+  function onActivityKey(event: KeyboardEvent) {
+    if (!activityState?.on) return;
+    if (typing(event.target)) return;
+    if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+    if (event.code === activityState.back) {
+      if (activityState.previous) {
+        event.preventDefault();
+        void chooseActivity(activityState.previous);
+      }
+      return;
+    }
+    const match = activityState.activities.find((activity) => activity.key === event.code);
+    if (match) {
+      event.preventDefault();
+      void chooseActivity(match.slug);
     }
   }
 
@@ -1004,14 +1155,18 @@
    * in the interface is in `em`, so one number moves all of them together —
    * which is what "denser" means to a DJ, rather than forty separate sizes.
    */
-  function applyLayout(next: Layout, remember = true) {
+  function applyLayout(next: Layout, remember = true, { keepDensity = false } = {}) {
     layout = next;
     deckCount = next.decks;
     // A layout that names a density is a DJ who has decided, so the
-    // window-fitting above stands down rather than arguing with it.
-    chosenDensity = next.density;
-    density = next.density;
-    document.documentElement.style.setProperty("--density", String(next.density));
+    // window-fitting above stands down rather than arguing with it — unless
+    // the caller is an activity, whose composition is what a deck is made of
+    // and says nothing about how big it is drawn. See `applyWorkspace`.
+    if (!keepDensity) {
+      chosenDensity = next.density;
+      density = next.density;
+      document.documentElement.style.setProperty("--density", String(next.density));
+    }
     // A layout naming a browser opens one, unless the DJ has pinned the
     // arrangement: this is a panel appearing without anybody pressing anything,
     // which is exactly what §78's first bullet is about.
@@ -1564,6 +1719,8 @@
   const split = $derived(snapshot?.master.split_output ?? null);
 </script>
 
+<svelte:window onkeydown={onActivityKey} />
+
 <main>
   <!--
     The page's own name, for a reader that cannot see the mark in the corner.
@@ -1742,7 +1899,38 @@
       watershed is named like its neighbours instead of remaining the last
       unlabelled square in the row this comment opens by complaining about.
     -->
-    <div class="go">
+    <!--
+      §109: the row keeps the full cockpit's height while the strip is up, so
+      entering and leaving activity mode swap one set of buttons for another
+      and the decks below do not move. Measured rather than set: the full row
+      wraps differently at every window width, and a fixed number would be
+      right at one of them.
+    -->
+    <div
+      class="go"
+      class:holding={activityMode && fullGoHeight > 0}
+      bind:clientHeight={goHeight}
+      style:min-height={activityMode && fullGoHeight > 0 ? `${fullGoHeight}px` : null}
+    >
+      {#if activityMode && activityState}
+        <!--
+          §109's activity mode: the strip stands where the panel buttons and
+          the stage pickers stand, so switching into it swaps one row for
+          another and nothing below moves. The set group — REC, Mark, SAFE —
+          stays, because it is read from across the booth whatever the DJ is
+          doing.
+        -->
+        <ActivityStrip
+          activities={activityState.activities}
+          current={activityState.current}
+          {suggestion}
+          error={activityError}
+          onchoose={(slug) => void chooseActivity(slug)}
+          onkeep={(title) => void keepAsActivity(title)}
+          onforget={(slug) => void forgetOne(slug)}
+          onleave={() => void leaveActivities()}
+        />
+      {:else}
       <nav class="go-group" aria-label="Panels">
         <IconButton icon="fa-solid fa-folder-open" label="Browse" title="Find and load tracks" active={isOpen("library")} onClick={() => toggleSurface("library")} />
         <!--
@@ -1973,6 +2161,60 @@
           </span>
         {/if}
         <!--
+          §109: into activity mode — the strip in place of the panel buttons,
+          so the decks below do not move. The first activity is where the DJ
+          last was, or what the moment suggests, or the mix.
+        -->
+        <IconButton
+          icon="fa-solid fa-hand-pointer"
+          label="Activities"
+          title="Show only what the job in front of you needs — dig, mix, perform, prepare — and switch with F1 to F9"
+          onClick={() => void enterActivities()}
+        />
+        <!--
+          And the way in for a DJ's own: arrange the cockpit, then keep it.
+          Here as well as on the strip, because entering activity mode opens an
+          activity — an arrangement built out here would be replaced before it
+          could be kept.
+        -->
+        {#if namingActivity}
+          <form
+            class="naming-activity"
+            onsubmit={(event) => {
+              event.preventDefault();
+              const title = activityName.trim();
+              if (!title) return;
+              namingActivity = false;
+              activityName = "";
+              void keepAsActivity(title);
+            }}
+          >
+            <!-- svelte-ignore a11y_autofocus -->
+            <input
+              bind:value={activityName}
+              placeholder="Name this activity"
+              aria-label="Name for the new activity"
+              autofocus
+              onkeydown={(event) => {
+                if (event.key === "Escape") namingActivity = false;
+              }}
+            />
+            <button type="submit" disabled={!activityName.trim()}>Keep</button>
+          </form>
+        {:else}
+          <IconButton
+            icon="fa-solid fa-plus"
+            title="Keep this arrangement as an activity of your own"
+            aria-label="Keep this arrangement as an activity"
+            onClick={() => (namingActivity = true)}
+          />
+        {/if}
+        <!-- Said here too: the strip is not on screen out here, and a refusal
+             only the strip could show was a press that silently did nothing. -->
+        {#if activityError && !activityMode}
+          <span class="warn-chip bad" role="alert">{activityError}</span>
+        {/if}
+        <!--
           §112: the watershed has no switch on this bar any more. It was one
           of the most visible buttons in the interface for a view that repeats
           what the waveforms and the mixer already say and, when open, pushed
@@ -1981,6 +2223,7 @@
           from its own band, where the DJ who opened it is looking.
         -->
       </div>
+      {/if}
 
       <!--
         The night itself, rather than the application.
@@ -2179,6 +2422,22 @@
 
   {#snippet surfaceNight()}
     <Night enabled={ready} density={densityName} onDensity={applyDensity} />
+  {/snippet}
+
+  {#snippet surfaceRequests()}
+    <!--
+      §109: the room's requests beside the decks, for the Requests activity.
+      They also live as a view inside the collection; here they are a surface
+      of their own so the list and the records to answer it with are on screen
+      together. "Find" opens the collection and searches it.
+    -->
+    <Requests
+      enabled={ready}
+      onFind={(text) => {
+        if (!isOpen("library")) void toggleSurface("library");
+        findInCollection(text);
+      }}
+    />
   {/snippet}
 
   {#snippet surfaceRoom()}
@@ -2471,6 +2730,7 @@
         {:else if placement.surface === "practice"}{@render surfacePractice()}
         {:else if placement.surface === "night"}{@render surfaceNight()}
         {:else if placement.surface === "room"}{@render surfaceRoom()}
+        {:else if placement.surface === "requests"}{@render surfaceRequests()}
         {:else if placement.surface === "mixes"}{@render surfaceMixes()}
         {:else if placement.surface === "athand"}{@render surfaceAtHand()}
         {:else if placement.surface === "booth"}{@render surfaceBooth()}
@@ -2822,6 +3082,15 @@
   .device-brief:hover:not(:disabled) {
     border-color: var(--border-strong);
     color: var(--text);
+  }
+
+  /*
+    §109: the strip centred in the height it holds, rather than sitting on top
+    of an empty band — the band is there so the decks do not move, and should
+    read as the row's own padding rather than as something missing.
+  */
+  .go.holding {
+    align-content: center;
   }
 
   .go {

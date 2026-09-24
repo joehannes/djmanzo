@@ -24,6 +24,7 @@
   import { open } from "@tauri-apps/plugin-dialog";
   import Journal from "./Journal.svelte";
   import Requests from "./Requests.svelte";
+  import { asked as askedToFind } from "./find.svelte";
   import Memory from "./Memory.svelte";
   import ShareSet from "./ShareSet.svelte";
   import Crates, { type Selection } from "./Crates.svelte";
@@ -510,6 +511,21 @@
   const DEBOUNCE_MS = 120;
 
   let debounce: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * §109: a search handed in from the requests surface beside the decks.
+   * The counter rather than the text is what is watched, so the same request
+   * found twice searches twice; nothing happens until something asks.
+   */
+  let foundTimes = 0;
+  $effect(() => {
+    const times = askedToFind.times;
+    if (times === foundTimes) return;
+    foundTimes = times;
+    query = askedToFind.query;
+    selection = { kind: "all" };
+    void refresh();
+  });
 
   async function refresh() {
     try {

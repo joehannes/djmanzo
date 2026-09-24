@@ -821,3 +821,47 @@ fn the_browser_fixture_has_what_the_assistant_can_and_cannot_see() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
     );
 }
+
+/// §109's activities, as a golden file.
+///
+/// The strip in the browser tests draws what Rust ships — seven activities,
+/// their keys and the workspaces they open — so the stub is generated from
+/// `activity::shipped` rather than typed out, for the reason every other table
+/// here is: a hand-written copy is a second description, and the copy is the
+/// one that goes stale.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_activities_djmanzo_ships() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/activities.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::commands::activities_dto(
+        &dj_app::activity::Kept::default(),
+    ))
+    .expect("the activities serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the activities");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored activities are JSON");
+    let fresh: serde_json::Value =
+        serde_json::from_str(&fresh).expect("the fresh activities are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe activities have changed, so the browser is drawing a strip \
+         djmanzo no longer offers.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}

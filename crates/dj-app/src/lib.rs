@@ -19,6 +19,7 @@
 //! makes a session replayable. See
 //! `docs/adr/0003-action-bus-and-parameter-registry.md`.
 
+pub mod activity;
 pub mod analysis;
 pub mod art;
 pub mod asks;
@@ -675,6 +676,11 @@ pub fn run() {
             commands::chosen_layers,
             commands::set_chosen_layers,
             commands::waveform_colourings,
+            commands::activities,
+            commands::set_activity_mode,
+            commands::keep_activity,
+            commands::forget_activity,
+            commands::activity_suggestion,
             commands::waveform_colouring,
             commands::set_waveform_colouring,
             commands::my_workspaces,

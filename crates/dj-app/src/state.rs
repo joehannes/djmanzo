@@ -1222,6 +1222,41 @@ impl AppState {
         }
     }
 
+    /// The file §109's activities live in.
+    fn activities_path(&self) -> Option<std::path::PathBuf> {
+        Some(
+            self.config_dir
+                .lock()
+                .ok()?
+                .clone()?
+                .join("activities.json"),
+        )
+    }
+
+    /// §109: the DJ's own activities and the mode they were in. Empty when
+    /// nothing was kept or the file cannot be read — which is a fresh install
+    /// in the full cockpit, the honest default.
+    #[must_use]
+    pub fn activities(&self) -> crate::activity::Kept {
+        self.activities_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keep the DJ's own activities and the mode they are in.
+    pub fn set_activities(&self, kept: &crate::activity::Kept) {
+        let Some(path) = self.activities_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(kept) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "your activities will not survive a restart");
+        }
+    }
+
     /// The file §110's colouring choice lives in.
     fn waveform_colouring_path(&self) -> Option<std::path::PathBuf> {
         Some(self.config_dir.lock().ok()?.clone()?.join("colouring.json"))

@@ -4292,6 +4292,57 @@ export const chosenLayers = () => invoke<string[]>("chosen_layers");
 export const setChosenLayers = (layers: string[]) =>
   invoke<string[]>("set_chosen_layers", { layers });
 
+/**
+ * §109: one activity — what a DJ is doing right now, and the arrangement for
+ * it. From `dj_app::activity`.
+ */
+export interface Activity {
+  slug: string;
+  title: string;
+  /** What the DJ is doing in it, in their words. */
+  doing: string;
+  /** A glyph from `controls/icons.ts`, held there by a Rust test. */
+  icon: string;
+  /** djmanzo's own, which cannot be forgotten. */
+  shipped: boolean;
+  /** `F1` to `F9`, when it has one. Not the digits: those are the hot cues. */
+  key: string | null;
+  workspace: Workspace;
+}
+
+/** §109: the strip, and where the DJ is in it. */
+export interface Activities {
+  activities: Activity[];
+  /** The key that returns to the previous activity, as `event.code` spells it. */
+  back: string;
+  on: boolean;
+  current: string;
+  previous: string;
+}
+
+/** §109 and §115: what the moment seems to call for. A mark, never a switch. */
+export interface ActivitySuggestion {
+  activity: string;
+  because: string;
+}
+
+export const activities = () => invoke<Activities>("activities");
+
+/** Turn activity mode on or off, or move to another activity; kept across a restart. */
+export const setActivityMode = (on: boolean, current: string) =>
+  invoke<Activities>("set_activity_mode", { on, current });
+
+/** Keep the arrangement on screen as an activity of the DJ's own. */
+export const keepActivity = (title: string, workspace: Workspace) =>
+  invoke<Activities>("keep_activity", { title, workspace });
+
+/** Forget one of the DJ's own. */
+export const forgetActivity = (slug: string) =>
+  invoke<Activities>("forget_activity", { slug });
+
+export const activitySuggestion = () =>
+  invoke<ActivitySuggestion | null>("activity_suggestion");
+
 /** One way of colouring the waveform's spectral balance. */
 export interface Colouring {
   /** The word in the tile URL: `light` or `bands`. */

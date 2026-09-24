@@ -16,6 +16,20 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Activity mode** — §109. A second way of working the cockpit, organised by
+the job in front of the DJ rather than by style: **Dig, Mix, Perform, Prepare,
+Requests, Autopilot, Practice**, and the DJ's own.
+
+- The strip stands where the panel buttons stood, and the decks do not move —
+  entering the mode, or between any two activities.
+- F1–F9 switch and the key under Escape goes back. Not the digits: those are
+  the hot cues. F5 no longer reloads the webview mid-set.
+- Arrange the full cockpit and keep it as an activity of your own.
+- The assistant marks the activity the moment seems to call for, with its
+  reason, and never switches for you.
+- The room's requests are a surface of their own now, beside the decks; *Find
+  it* searches the collection.
+
 **The spectrum as light** — §110. The waveform is coloured the way the owner
 asked: *lowest frequencies red, highest violet, all frequencies white.*
 
