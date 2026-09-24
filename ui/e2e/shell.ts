@@ -423,6 +423,19 @@ export const ANSWERS: Record<string, unknown> = {
       breakdowns: [{ from: 6_000_000, to: 9_000_000 }],
       drops: [9_000_000],
     },
+    // §116: what `Trajectory::changes` reads out of windows shaped like these,
+    // on a record long enough for each to hold: the drums leave and the pads
+    // take over at the breakdown, and at the drop the drums are back and the
+    // voice has gone. A settle into the breakdown and a rise out of it. In
+    // order, as Rust sends them.
+    changes: [
+      { at: 6_000_000, until: null, kind: "enters", stem: 3 },
+      { at: 6_000_000, until: null, kind: "leaves", stem: 1 },
+      { at: 6_000_000, until: 6_000_000, kind: "settles", stem: null },
+      { at: 9_000_000, until: null, kind: "enters", stem: 1 },
+      { at: 9_000_000, until: null, kind: "leaves", stem: 0 },
+      { at: 9_000_000, until: 9_000_000, kind: "rises", stem: null },
+    ],
   },
   // §25's inventory, answered from the same table Rust publishes. The test
   // that matters reads it back and checks every `data-layer` on screen is in

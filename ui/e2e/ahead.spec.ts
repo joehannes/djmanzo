@@ -1,0 +1,130 @@
+/**
+ * §116: seeing the record coming.
+ *
+ * > i'd love to also make the frequency and intensity visible .. maybe you can
+ * > investigate as of typical instruments and arrange some kind of individual
+ * > visualization so DJs can see instruments coming via the waveform ahead of
+ * > time, via their shape or colorcoding .. .also use the bg of the display of
+ * > a song control and waveform somehow to visualize rhythm and melody,
+ * > intensity, amplitude, evolution of the song (rising, setting ...)
+ *
+ * Which currents come and go and where a record builds is
+ * `dj_analysis::energy::Trajectory::changes`, tested there; the counting in
+ * bars is `./src/ahead.ts`, tested beside it. What a browser can hold is that
+ * a DJ sees it: the next change named in the lane with how far away it is,
+ * the record's energy as ground under the waveform, and every arrival and
+ * departure marked along the overview.
+ */
+import { expect, test, type Page } from "@playwright/test";
+
+import { errorsThrown, openShell } from "./shell";
+
+// The fixture's windows are 32 beats of 3 000 000 frames: a bar is 375 000.
+const BAR = 375_000;
+
+const lane = (page: Page) => page.locator('.deck[data-deck="1"] .lane');
+const overview = (page: Page) => page.locator('.deck[data-deck="1"] .overview');
+
+/** Send the snapshot again with deck 1's playhead somewhere else. */
+async function playheadAt(page: Page, frames: number) {
+  await page.evaluate((frames) => {
+    const win = window as unknown as {
+      __lastState?: { decks: Record<string, unknown>[] };
+      __emit?: (next: unknown) => void;
+    };
+    const state = win.__lastState;
+    if (!state) throw new Error("the harness delivered no state to start from");
+    const decks = state.decks.map((deck, index) =>
+      index === 0 ? { ...deck, position_frames: frames, playing: false } : deck,
+    );
+    win.__emit?.({ ...state, decks });
+  }, frames);
+}
+
+test.describe("§116: seeing the record coming", () => {
+  /**
+   * **The load-bearing one: eight bars before the breakdown, the lane says
+   * so, and counts down.** The DJ reads what is coming and how far away it
+   * is without doing the arithmetic.
+   */
+  test("the lane names what is coming and how many bars away", async ({ page }) => {
+    await openShell(page, "/");
+    await playheadAt(page, 6_000_000 - 8 * BAR);
+    const coming = lane(page).getByRole("list", { name: "Coming up on deck 1" });
+    await expect(coming).toBeVisible();
+    await expect(coming.locator("li").first()).toHaveText(/Breakdown\s*8 bars/);
+
+    await playheadAt(page, 6_000_000 - 2 * BAR);
+    await expect(coming.locator("li").first()).toHaveText(/Breakdown\s*2 bars/);
+
+    // Past the breakdown: the drop, and the drums back with it. Two at most:
+    // a readout of everything at once is one nobody reads between two cues.
+    await playheadAt(page, 9_000_000 - 4 * BAR);
+    await expect(coming.locator("li").first()).toHaveText(/Drop\s*4 bars/);
+    await expect(coming.locator("li").nth(1)).toHaveText(/Drums in\s*4 bars/);
+    await expect(coming.locator("li")).toHaveCount(2);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** A layer the DJ switched off is not read out either. */
+  test("the readout keeps to the layers the DJ has on", async ({ page }) => {
+    await openShell(page, "/");
+    await playheadAt(page, 6_000_000 - 8 * BAR);
+    const coming = lane(page).getByRole("list", { name: "Coming up on deck 1" });
+    await expect(coming.locator('[data-layer="stems"]')).toHaveCount(1);
+
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(page.locator(".remembers")).toBeVisible();
+    await page.locator('.remembers [data-layer-row="stems"] input').uncheck();
+    await expect(coming.locator('[data-layer="stems"]')).toHaveCount(0);
+    await expect(coming.locator('[data-layer="breakdowns"]')).toHaveCount(1);
+  });
+
+  /**
+   * **The ground under the waveform is the record's energy.** The busiest
+   * window stands full height and the breakdown a third of it, so the step
+   * down is on screen before the playhead is.
+   */
+  test("the ground under the lane rises and falls with the record", async ({ page }) => {
+    await openShell(page, "/");
+    await playheadAt(page, 6_000_000 - BAR / 2);
+    const ground = lane(page).locator(".ground");
+    await expect(ground).not.toHaveCount(0);
+    const heights = await ground.evaluateAll((windows) =>
+      windows.map((window) => (window as HTMLElement).style.height),
+    );
+    // The busiest window, and the breakdown after it.
+    expect(heights).toContain("100%");
+    expect(heights).toContain("35%");
+    // Under the waveform, not over it: every ground window comes before the
+    // first tile in the strip.
+    const order = await lane(page).locator(".strip > *").evaluateAll((children) =>
+      children.map((child) => child.className),
+    );
+    const lastGround = order.map((name) => name.includes("ground")).lastIndexOf(true);
+    const firstTile = order.findIndex((name) => name.includes("tile"));
+    expect(lastGround).toBeLessThan(firstTile);
+  });
+
+  /**
+   * **Every arrival and departure is marked along the overview**, in the
+   * colour of the fader that mutes that current, departures hatched.
+   */
+  test("the overview marks where each current comes and goes", async ({ page }) => {
+    await openShell(page, "/");
+    const marks = overview(page).locator(".arrival");
+    await expect(marks).toHaveCount(4);
+    await expect(overview(page).locator(".arrival.leaving")).toHaveCount(2);
+    const placed = await marks.evaluateAll((all) =>
+      all.map((mark) => ({
+        key: mark.getAttribute("data-current"),
+        left: (mark as HTMLElement).style.left,
+        leaving: mark.classList.contains("leaving"),
+      })),
+    );
+    expect(placed).toContainEqual({ key: "other", left: "50%", leaving: false });
+    expect(placed).toContainEqual({ key: "drums", left: "50%", leaving: true });
+    expect(placed).toContainEqual({ key: "drums", left: "75%", leaving: false });
+    expect(placed).toContainEqual({ key: "vocal", left: "75%", leaving: true });
+  });
+});

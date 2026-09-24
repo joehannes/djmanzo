@@ -83,7 +83,7 @@
   {
     "name": "stems",
     "title": "Stem presence",
-    "about": "Which of the four currents is carrying the record here.",
+    "about": "Which of the four currents is carrying the record here, and where each comes in and goes.",
     "role": "stems",
     "drawn": "overlay",
     "choosable": true,
@@ -137,7 +137,7 @@
   {
     "name": "energy",
     "title": "Energy trajectory",
-    "about": "Where the record is going, over its whole length.",
+    "about": "Where the record is going, over its whole length, and as the ground under the lane.",
     "role": "shape",
     "drawn": "overlay",
     "choosable": true,

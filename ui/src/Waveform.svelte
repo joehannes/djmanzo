@@ -20,11 +20,14 @@
     tileUrl,
     waveformInfo,
     type DeckState,
+    type EnergyTrajectory,
     type MixInInfo,
+    type RecordChange,
     type SavedLoopInfo,
     type MixOutInfo,
   } from "./api";
   import { dispatch, phraseGrid, waveformMoves, type Move, type PhraseGrid } from "./api";
+  import { comingUp, distance, framesPerBeat } from "./ahead";
   import { PARTS, partOpacities } from "./eqLight";
   import { remembers, showing } from "./remembers.svelte";
   import { theme } from "./theme.svelte";
@@ -296,6 +299,9 @@
   let recheck = $state(0);
   /** Whether this record's spectrum is still being measured. */
   let colourPending = $state(true);
+  /** §116: the record's shape and what changes in it. */
+  let trajectory = $state<EnergyTrajectory | null>(null);
+  let changes = $state<RecordChange[]>([]);
   let recheckQueued = false;
 
   $effect(() => {
@@ -332,6 +338,8 @@
         mixIn = info.mix_in ?? null;
         savedLoops = info.saved_loops ?? [];
         colourPending = info.colour_pending === true;
+        trajectory = info.trajectory ?? null;
+        changes = info.changes ?? [];
         if (info.colour_pending && !recheckQueued) {
           recheckQueued = true;
           setTimeout(() => {
@@ -418,6 +426,41 @@
       };
     }).filter((t) => t.startFrame + tileSpanFrames > 0 && t.startFrame < totalFrames);
   });
+
+  /**
+   * §116: the ground under the record — how much is going on in each window,
+   * as a quiet landscape behind the waveform. Where it steps up the record
+   * builds and where it steps down it settles, and the next step is on screen
+   * before the playhead reaches it.
+   *
+   * Only the windows the tiles cover, for the reason the tiles are only the
+   * visible ones: a record is seventy windows and the lane shows two.
+   */
+  const ground = $derived.by(() => {
+    const sections = trajectory?.sections ?? [];
+    if (sections.length < 2 || !showing("energy")) return [];
+    const span = sections[1].at - sections[0].at;
+    const from = firstTile * tileSpanFrames;
+    const to = from + (Math.ceil(laneWidth / TILE_WIDTH) + OVERSCAN * 2 + 1) * tileSpanFrames;
+    return sections
+      .filter((section) => section.at + span > from && section.at < to)
+      .map((section) => ({
+        at: section.at,
+        left: section.at / framesPerPixel,
+        width: span / framesPerPixel,
+        height: Math.round(Math.min(1, Math.max(0, section.energy)) * 100),
+      }));
+  });
+
+  /**
+   * §116: the next two things coming, in bars. See `./ahead` — the claims
+   * are Rust's, and this is the counting.
+   */
+  const coming = $derived(
+    framesPerBeat(trajectory) == null
+      ? []
+      : comingUp(deck.position_frames, changes, trajectory, (layer) => showing(layer)).slice(0, 2),
+  );
 
   /**
    * Each part's opacity, from the deck's knobs. Rounded to a hundredth in
@@ -954,6 +997,15 @@
           </div>
         {/if}
       {/each}
+      {#each ground as window (window.at)}
+        <div
+          class="ground"
+          data-layer="energy"
+          style:left="{window.left}px"
+          style:width="{window.width}px"
+          style:height="{window.height}%"
+        ></div>
+      {/each}
       {#each visibleTiles as tile (tile.key)}
         {#each tile.layers as layer (layer.part)}
           <img
@@ -975,6 +1027,21 @@
     <p class="pending">analysing…</p>
   {/if}
   <div class="playhead" aria-hidden="true"></div>
+  {#if ready && coming.length > 0}
+    <!--
+      §116: what is coming, in the corner the record scrolls in from. Outside
+      the strip, so it stays put while the waveform moves under it, and
+      small: it is read in a glance between two other things.
+    -->
+    <ol class="coming" aria-label="Coming up on deck {deck.number}">
+      {#each coming as thing (thing.at + thing.says)}
+        <li data-layer={thing.layer} style:--mark={thing.colour}>
+          <span class="coming-says">{thing.says}</span>
+          <span class="coming-away mono">{distance(thing)}</span>
+        </li>
+      {/each}
+    </ol>
+  {/if}
 </div>
 {#if movesAt}
   <!--
@@ -1254,6 +1321,57 @@
     rather than a moment — and behind everything, because it is the thing you
     should notice without looking for it.
   */
+  /*
+    §116's ground: the record's energy as a landscape under the waveform.
+    Below the tiles (it comes first in the strip and shares their layer), in
+    §75's shape colour at a whisper, so it is felt more than read: rising
+    ground ahead is a build, falling ground a breakdown on its way.
+  */
+  .ground {
+    position: absolute;
+    bottom: 0;
+    z-index: 0;
+    background: linear-gradient(
+      to top,
+      color-mix(in srgb, var(--shape) 20%, transparent),
+      color-mix(in srgb, var(--shape) 6%, transparent)
+    );
+    border-top: 1px solid color-mix(in srgb, var(--shape) 35%, transparent);
+    border-radius: 10px 10px 0 0;
+    pointer-events: none;
+  }
+
+  .coming {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    z-index: 5;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    gap: 0.25rem;
+    pointer-events: none;
+  }
+
+  .coming li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    padding: 0 0.35rem;
+    font-size: 0.62rem;
+    line-height: 1.4;
+    color: var(--text);
+    background: color-mix(in srgb, var(--panel) 82%, transparent);
+    border-left: 3px solid var(--mark);
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  .coming .coming-away {
+    color: var(--text-dim);
+  }
+
   .runway {
     position: absolute;
     top: 0;

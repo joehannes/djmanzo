@@ -1159,6 +1159,24 @@ export interface WaveformInfo {
    * are the two events this call already answers.
    */
   trajectory: EnergyTrajectory;
+  /**
+   * §116: what changes in this record, in order. See
+   * `dj_analysis::energy::Change`. Empty where nothing was measured.
+   */
+  changes?: RecordChange[];
+}
+
+/**
+ * §116: one change in a record — a current coming in or going, or a stretch
+ * that builds or settles. `stem` is an index in the one stem order (vocal,
+ * drums, bass, other) for `enters` and `leaves`; `until` is where a rise or a
+ * settle ends.
+ */
+export interface RecordChange {
+  at: number;
+  until: number | null;
+  kind: "enters" | "leaves" | "rises" | "settles";
+  stem: number | null;
 }
 
 /**

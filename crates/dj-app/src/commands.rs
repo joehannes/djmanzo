@@ -1694,6 +1694,11 @@ pub struct WaveformInfo {
     /// record with no grid to count phrases against. The overview draws
     /// nothing for all three, which is the honest answer to each.
     pub trajectory: dj_analysis::energy::Trajectory,
+    /// §116: what changes in this record, in order — a current coming in or
+    /// going, a stretch that builds or settles. Read from the trajectory above
+    /// rather than stored with it, so an analysis cached before this existed
+    /// answers too.
+    pub changes: Vec<dj_analysis::energy::Change>,
     /// Whether §110's spectrum is still being measured for this record.
     ///
     /// The waveform is drawn in the three bands until it lands, and the lane
@@ -1739,6 +1744,16 @@ pub struct MixOutInfo {
 
 #[tauri::command]
 pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
+    // From the analysis rather than from the waveform store, unlike
+    // `mix_out` below, and the difference is deliberate: a mix-out band has
+    // to line up with the beat lines beside it, and a breakdown is where the
+    // music thins out. Editing the grid moves the lines and does not move the
+    // breakdown.
+    let trajectory = state
+        .analysis()
+        .for_deck(deck)
+        .map(|found| found.trajectory.clone())
+        .unwrap_or_default();
     WaveformInfo {
         deck,
         ready: state.waveforms().has_summary(deck),
@@ -1748,16 +1763,8 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         mix_out: mix_out_of(&state, deck),
         mix_in: mix_in_of(&state, deck),
         saved_loops: saved_loops_of(&state, deck),
-        // From the analysis rather than from the waveform store, unlike
-        // `mix_out` above, and the difference is deliberate: a mix-out band has
-        // to line up with the beat lines beside it, and a breakdown is where
-        // the music thins out. Editing the grid moves the lines and does not
-        // move the breakdown.
-        trajectory: state
-            .analysis()
-            .for_deck(deck)
-            .map(|found| found.trajectory.clone())
-            .unwrap_or_default(),
+        changes: trajectory.changes(),
+        trajectory,
     }
 }
 

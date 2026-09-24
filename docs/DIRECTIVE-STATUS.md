@@ -141,7 +141,7 @@ rather than taken.
 | 113 | More themes, functional colour | ⬜ | Asked 2026-09-24. Not started when it was added |
 | 114 | Shapes of controls | ⬜ | Asked 2026-09-24. Not started when it was added |
 | 115 | A GUI for a DJ's daily work | ⬜ | Asked 2026-09-24. Close to §3's thesis and §105's *exactly what I need, exactly when I need it*; carried by §109's activities, §113's themes and §114's shapes rather than built on its own |
-| 116 | Seeing the music coming | ⬜ | Asked 2026-09-24. Not started when it was added |
+| 116 | Seeing the music coming | 🟡 | **Frequency and intensity beyond amplitude** are §110's column: every pitch its colour, each band as thick as it sounds, so a kick is a red core, a voice a yellow-green band and hats a violet fringe, visible before they arrive. **What changes next:** `dj_analysis::energy::Trajectory::changes` reads the trajectory's windows into the moments a DJ plans around — a current coming in or going (the voice by §27's share rule, one answer with `voice_enters`; drums, bass and the rest by their level against their own busiest, because shares add to one and a bass arriving under a steady kick first read as *Drums out* in the running application), a stretch that builds or settles — with hysteresis and the breakdown detector's two-window hold. The lane names the next two with how far away, in bars then beats (`ui/src/ahead.ts`: *Breakdown · 8 bars*, *Vocals in · 10 bars*), a drop outranking a rise and a breakdown a settle at the same place, each under its §25 layer's switch; the record's energy is ground under the lane, stepping up where it builds; the overview marks every arrival (solid notch) and departure (hatched) in the fader colour of that current. Held by `energy::change_tests` (entry and exit, one window is a fill, no flicker, a kick under a new bass has not gone, builds from where they move), `ahead.test.ts` and `e2e/ahead.spec.ts`; mutation-tested. **Not yet:** a melody line in the lane's background (the hum search's YIN contour, `dj_analysis::melody`, is the likely source), and rhythm drawn in the lane beyond the beat grid and the overview's transient density |
 
 ## §103's thirteen success criteria, judged honestly
 
@@ -163,7 +163,7 @@ rather than taken.
 
 ## The count
 
-Of the 116 sections: **64 done, 27 part, 6 open, 19 standing rules.**
+Of the 116 sections: **64 done, 28 part, 5 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -182,10 +182,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**64 of 97 deliverable sections are complete and 27 more are partly there.** Of the original 105, nothing is untouched: every deliverable section has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it. The 8 open rows are all among those asked for since.
+**64 of 97 deliverable sections are complete and 28 more are partly there.** Of the original 105, nothing is untouched: every deliverable section has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it. The 8 open rows are all among those asked for since.
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 64 whole plus 27 halves over 97 is 80%, and the phase view is stricter
+way: 64 whole plus 28 halves over 97 is 80%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

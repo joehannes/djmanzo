@@ -329,7 +329,7 @@ static LAYERS: [Layer; 21] = [
     Layer {
         name: "stems",
         title: "Stem presence",
-        about: "Which of the four currents is carrying the record here.",
+        about: "Which of the four currents is carrying the record here, and where each comes in and goes.",
         role: Role::Stems,
         drawn: Drawn::Overlay,
     },
@@ -374,7 +374,7 @@ static LAYERS: [Layer; 21] = [
     Layer {
         name: "energy",
         title: "Energy trajectory",
-        about: "Where the record is going, over its whole length.",
+        about: "Where the record is going, over its whole length, and as the ground under the lane.",
         role: Role::Shape,
         drawn: Drawn::Overlay,
     },

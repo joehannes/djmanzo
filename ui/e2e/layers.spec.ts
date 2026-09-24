@@ -284,7 +284,10 @@ test.describe("the waveform's layers", () => {
     const overview = page.locator(".overview").first();
     await expect(overview).toBeVisible();
 
-    const bands = overview.locator('[data-layer="stems"]');
+    // The band itself. §116's arrival notches are the same layer drawn in a
+    // second form — where each current comes and goes — and `ahead.spec.ts`
+    // holds those.
+    const bands = overview.locator('.current[data-layer="stems"]');
     // Three, not four: the unmeasured window is absent rather than guessed at.
     await expect(bands).toHaveCount(3);
     expect(

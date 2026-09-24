@@ -16,6 +16,19 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Seeing what is coming** — §116. The waveform says what the record is about
+to do, not only how loud it is.
+
+- The lane names the next two changes and how far away they are, in bars and
+  then beats: *Breakdown · 8 bars*, *Vocals in · 10 bars*, *Drop · 4 bars*,
+  *Builds*, *Drums out*. Each is hidden with its waveform layer.
+- The record's energy is a quiet landscape under the lane, so a build or a
+  breakdown is a step in the ground before the playhead reaches it.
+- The overview marks where each current comes in (a solid notch) and goes
+  (hatched), in the colour of the fader that mutes it.
+- Drums, bass and the rest are judged against their own loudest, so a bass
+  line arriving under a steady kick no longer reads as the drums leaving.
+
 **The waveform in the colours of light, reacting to the EQ** — §110, as the
 owner clarified it: not bands added together to white, but *low frequencies
 ... red, high frequencies ... violet and all the colors ... in between*, from

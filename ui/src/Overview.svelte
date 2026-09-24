@@ -22,6 +22,7 @@
     type MixInInfo,
     type MixOutInfo,
     type EnergyTrajectory,
+    type RecordChange,
   } from "./api";
   import { remembers, showing } from "./remembers.svelte";
   import { STEM_KEYS, STEM_LABELS } from "./stems";
@@ -102,6 +103,8 @@
    * record gets there.
    */
   let trajectory = $state<EnergyTrajectory | null>(null);
+  /** §116: where each current comes in and goes, from Rust. */
+  let changes = $state<RecordChange[]>([]);
 
   // Interpolation state, as in the scrolling lane: snapshots arrive at 60 Hz
   // but a frame landing between two of them must still move.
@@ -153,6 +156,7 @@
         mixOut = info.mix_out ?? null;
         mixIn = info.mix_in ?? null;
         trajectory = info.trajectory ?? null;
+        changes = info.changes ?? [];
         if (info.colour_pending && !recheckQueued) {
           recheckQueued = true;
           setTimeout(() => {
@@ -442,6 +446,38 @@
       }));
   });
 
+  /**
+   * §116: where each current comes in and where it goes, over the whole
+   * record — the instruments a DJ sees coming. Part of the `stems` layer,
+   * because it is the same reading of the same four shares: which current
+   * carries a stretch, and where that changes.
+   *
+   * Told apart by texture, as §57 asks when one colour carries one meaning
+   * in two forms: an arrival is a solid notch hanging from the top edge, a
+   * departure the same notch hatched.
+   */
+  const arrivals = $derived.by(() => {
+    if (totalFrames <= 0) return [];
+    return changes
+      .filter(
+        (change) =>
+          (change.kind === "enters" || change.kind === "leaves") &&
+          change.stem != null &&
+          STEM_KEYS[change.stem] !== undefined,
+      )
+      .map((change) => {
+        const stem = change.stem as number;
+        const entering = change.kind === "enters";
+        return {
+          id: `${change.at}-${stem}-${change.kind}`,
+          left: fraction(change.at) * 100,
+          key: STEM_KEYS[stem],
+          entering,
+          title: `${STEM_LABELS[stem]} ${entering ? "come in" : "go"} here`,
+        };
+      });
+  });
+
   /** And the drops, as marks. */
   const returns = $derived.by(() => {
     if (totalFrames <= 0) return [];
@@ -670,6 +706,16 @@
         title="{band.label} carry this stretch — {band.says}"
       ></div>
     {/each}
+    {#each showing("stems") ? arrivals : [] as mark (mark.id)}
+      <div
+        class="arrival"
+        class:leaving={!mark.entering}
+        data-layer="stems"
+        data-current={mark.key}
+        style:left="{mark.left}%"
+        title={mark.title}
+      ></div>
+    {/each}
     {#each showing("drops") ? returns : [] as mark (mark.at)}
       <div
         class="drop"
@@ -746,6 +792,44 @@
   /* Under the vocal strip, in the colour of the fader that mutes the current
      it names. Four pixels: enough to read as a band of colour changing along
      the record, not enough to compete with the waveform it sits over. */
+  /*
+    §116's arrivals: a notch hanging from the top edge, in the colour of the
+    fader that mutes that current. Solid where it comes in, hollow where it
+    goes it is hatched — one colour, two textures, which is how §57 tells two
+    states of one meaning apart.
+  */
+  .arrival {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    width: 9px;
+    height: 7px;
+    margin-left: -4.5px;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    background: var(--arrival);
+    pointer-events: auto;
+  }
+  .arrival.leaving {
+    /* Hatched: the current thinning out, where a solid notch is it arriving. */
+    background: repeating-linear-gradient(
+      90deg,
+      var(--arrival) 0 1px,
+      transparent 1px 3px
+    );
+  }
+  .arrival[data-current="vocal"] {
+    --arrival: var(--stem-vocal);
+  }
+  .arrival[data-current="drums"] {
+    --arrival: var(--stem-drums);
+  }
+  .arrival[data-current="bass"] {
+    --arrival: var(--stem-bass);
+  }
+  .arrival[data-current="other"] {
+    --arrival: var(--stem-other);
+  }
+
   .current {
     position: absolute;
     z-index: 1;

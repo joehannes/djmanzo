@@ -536,6 +536,232 @@ fn thin_stretches(
     (breakdowns, drops)
 }
 
+// -- §116: what changes next ---------------------------------------------------
+
+/// Something that happens to a record at a window's edge, as a DJ would say it.
+///
+/// §116: *DJs can see instruments coming via the waveform ahead of time ...
+/// evolution of the song (rising, setting ...)*. The trajectory already says
+/// how much is going on in each window and which of the four currents carries
+/// it; this is the same reading turned into the handful of moments a DJ plans
+/// around — the voice arriving, the bass going, a stretch that builds.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Change {
+    /// Where it happens, in frames: the start of the window it happens in.
+    pub at: f64,
+    /// For a rise or a fall, where the run ends. `None` for a current coming
+    /// or going, which happens at one place.
+    pub until: Option<f64>,
+    pub kind: ChangeKind,
+    /// Which current, in the one stem order ([`dj_core::Stem::index`]), for
+    /// [`ChangeKind::Enters`] and [`ChangeKind::Leaves`].
+    pub stem: Option<usize>,
+}
+
+/// What kind of change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChangeKind {
+    /// A current starts carrying the record.
+    Enters,
+    /// A current stops carrying it.
+    Leaves,
+    /// The record builds: several windows, each at least as busy as the one
+    /// before, rising by [`RISES_BY`] or more in all.
+    Rises,
+    /// The record settles, the same way down.
+    Settles,
+}
+
+/// The share at which the voice is said to have come in.
+///
+/// [`crate::presence::STRONG`], the same number that decides where the voice
+/// enters, so the vocal's entry here and §27's `voice_enters` are one answer
+/// rather than two drawn a few pixels apart. **A stated guess.**
+pub const ENTERS: f32 = crate::presence::STRONG;
+
+/// The share under which the voice is said to have gone: half of [`ENTERS`].
+///
+/// Apart from it on purpose. One threshold would make a voice that sits near
+/// it come and go every window, and a readout that says *vocal in, vocal out,
+/// vocal in* over one verse is one nobody would read twice.
+pub const LEAVES: f32 = ENTERS / 2.0;
+
+/// For the drums, the bass and the rest: the part of its own busiest level a
+/// current has to reach to be *in*, and fall under to be *out*.
+///
+/// **Not the share, and the first version used the share.** The four shares
+/// add to one, so a bass line arriving under a kick that never stops takes
+/// share from the kick — and the kick was read out as *Drums out* at the very
+/// moment the build added to it. Seen in the running application on a
+/// synthetic record, eight bars into its intro. A current's level here is its
+/// share of a window times how much is going on in that window, against the
+/// loudest that current ever is in this record: a kick that carries on
+/// through a build stays where it was. The voice keeps the share rule above,
+/// because §27 already answers where it enters and there must be one answer.
+pub const IN_OF_PEAK: f32 = 0.5;
+
+/// See [`IN_OF_PEAK`]: under this part of its busiest level, a current is out.
+pub const OUT_OF_PEAK: f32 = 0.2;
+
+/// A current that never carries at least this share anywhere in the record is
+/// never said to come in at all. Measured against its own peak, a bass that is
+/// a murmur throughout would otherwise come and go with every murmur.
+const PRESENT: f32 = LEAVES;
+
+/// How much a run of windows has to climb, in all, to be a rise — on the
+/// trajectory's own scale, where the record's busiest window is 1.
+///
+/// A quarter. A record that breathes by a tenth from bar to bar is not
+/// building, and a build that takes a sixteen-bar intro from a third to full
+/// is.
+pub const RISES_BY: f32 = 0.25;
+
+/// How far one window may slip back and still be part of a rise (or creep up
+/// and still be part of a fall). Measurement is not smooth, and a build with
+/// one window a hair under the last is still a build.
+const SLIP: f32 = 0.03;
+
+impl Trajectory {
+    /// §116: every change in this record, in order. See [`Change`].
+    ///
+    /// Currents come and go with hysteresis — the voice in at [`ENTERS`] and
+    /// out under [`LEAVES`] of the share, the others in at [`IN_OF_PEAK`] and
+    /// out under [`OUT_OF_PEAK`] of their own busiest level — and a change
+    /// counts only when it holds for two windows (`AT_LEAST`), the same rule
+    /// that tells a breakdown from a fill: one window
+    /// is a fill. Nothing is said about the first window, because a current
+    /// that is there from the start has not *come in* anywhere, and nothing is
+    /// said about windows nobody measured.
+    #[must_use]
+    pub fn changes(&self) -> Vec<Change> {
+        let mut found = Vec::new();
+        // Each measured window as (where, share, level) per current.
+        let measured: Vec<(f64, [f32; dj_core::Stem::COUNT], f32)> = self
+            .sections
+            .iter()
+            .filter_map(|section| {
+                section
+                    .parts
+                    .map(|parts| (section.at, parts, section.energy.max(0.0)))
+            })
+            .collect();
+        let voice = dj_core::Stem::Vocal.index();
+        for stem in 0..dj_core::Stem::COUNT {
+            let Some(first) = measured.first() else {
+                break;
+            };
+            // Whether a window has the current in, and whether it has it out,
+            // for this current's rule. The two are not each other's negation:
+            // between them is the band where it stays as it was.
+            let peak = measured
+                .iter()
+                .map(|(_, parts, energy)| parts[stem] * energy)
+                .fold(0.0f32, f32::max);
+            let ever = measured.iter().any(|(_, parts, _)| parts[stem] >= PRESENT);
+            let is_in = |parts: &[f32; dj_core::Stem::COUNT], energy: f32| {
+                if stem == voice {
+                    parts[stem] >= ENTERS
+                } else {
+                    ever && peak > 0.0 && parts[stem] * energy >= IN_OF_PEAK * peak
+                }
+            };
+            let is_out = |parts: &[f32; dj_core::Stem::COUNT], energy: f32| {
+                if stem == voice {
+                    parts[stem] < LEAVES
+                } else {
+                    parts[stem] * energy < OUT_OF_PEAK * peak
+                }
+            };
+            let mut carrying = is_in(&first.1, first.2);
+            for (index, (at, parts, energy)) in measured.iter().enumerate().skip(1) {
+                let flips = if carrying {
+                    is_out(parts, *energy)
+                } else {
+                    is_in(parts, *energy)
+                };
+                if !flips {
+                    continue;
+                }
+                // Held: the windows after it stay on the new side of the
+                // *other* threshold, so a current that dips for one window
+                // and is back is a fill, not an exit and an entry.
+                let held = measured.get(index..index + AT_LEAST).is_some_and(|run| {
+                    run.iter().all(|(_, parts, energy)| {
+                        if carrying {
+                            !is_in(parts, *energy)
+                        } else {
+                            !is_out(parts, *energy)
+                        }
+                    })
+                });
+                if held {
+                    carrying = !carrying;
+                    found.push(Change {
+                        at: *at,
+                        until: None,
+                        kind: if carrying {
+                            ChangeKind::Enters
+                        } else {
+                            ChangeKind::Leaves
+                        },
+                        stem: Some(stem),
+                    });
+                }
+            }
+        }
+        found.extend(self.runs());
+        found.sort_by(|a, b| a.at.partial_cmp(&b.at).unwrap_or(std::cmp::Ordering::Equal));
+        found
+    }
+
+    /// The rises and the settlings: runs of windows moving one way, by
+    /// [`RISES_BY`] or more from the first to the last.
+    fn runs(&self) -> Vec<Change> {
+        let mut found = Vec::new();
+        let sections = &self.sections;
+        let mut start = 0;
+        while start + 1 < sections.len() {
+            let up = sections[start + 1].energy >= sections[start].energy;
+            let mut end = start + 1;
+            while end + 1 < sections.len() {
+                let (last, next) = (sections[end].energy, sections[end + 1].energy);
+                let continues = if up {
+                    next >= last - SLIP
+                } else {
+                    next <= last + SLIP
+                };
+                if !continues {
+                    break;
+                }
+                end += 1;
+            }
+            let base = sections[start].energy;
+            let moved = sections[end].energy - base;
+            if moved.abs() >= RISES_BY && (moved > 0.0) == up {
+                // Marked where it first moves, like an entry is marked where
+                // the current first qualifies: a flat stretch before a build
+                // is not the build.
+                let first = (start + 1..=end)
+                    .find(|&index| (sections[index].energy - base).abs() > SLIP)
+                    .unwrap_or(end);
+                found.push(Change {
+                    at: sections[first].at,
+                    until: Some(sections[end].at),
+                    kind: if up {
+                        ChangeKind::Rises
+                    } else {
+                        ChangeKind::Settles
+                    },
+                    stem: None,
+                });
+            }
+            start = end;
+        }
+        found
+    }
+}
+
 /// How many frames a window covers.
 fn span_frames(grid: &dj_core::Beatgrid, rate: dj_core::SampleRate, beats: u32) -> f64 {
     let one = grid.beat_position(1, rate).get() - grid.beat_position(0, rate).get();
@@ -927,5 +1153,170 @@ mod trajectory_tests {
         );
         assert!(found.sections.is_empty());
         assert!(found.breakdowns.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod change_tests {
+    //! §116: what changes next, read from windows built by hand — the reading
+    //! is a rule over the trajectory, and the trajectory's own measurement is
+    //! tested above.
+    use super::*;
+
+    const WINDOW: f64 = 96_000.0;
+
+    /// A trajectory whose windows carry these vocal shares and these
+    /// energies, the rest of each window split evenly between the other three.
+    fn record(voice: &[f32], energy: &[f32]) -> Trajectory {
+        Trajectory {
+            sections: voice
+                .iter()
+                .zip(energy)
+                .enumerate()
+                .map(|(index, (&vocal, &energy))| {
+                    let rest = (1.0 - vocal) / 3.0;
+                    Section {
+                        at: index as f64 * WINDOW,
+                        energy,
+                        low: energy,
+                        parts: Some([vocal, rest, rest, rest]),
+                        strikes: None,
+                    }
+                })
+                .collect(),
+            beats_per_section: 8,
+            ..Trajectory::default()
+        }
+    }
+
+    fn of(changes: &[Change], kind: ChangeKind, stem: Option<usize>) -> Vec<f64> {
+        changes
+            .iter()
+            .filter(|change| change.kind == kind && change.stem == stem)
+            .map(|change| change.at / WINDOW)
+            .collect()
+    }
+
+    const VOCAL: Option<usize> = Some(0);
+
+    /// **The load-bearing one: a voice that arrives and stays is an entry,
+    /// where it arrives, and a voice that goes and stays gone is an exit.**
+    #[test]
+    fn a_voice_that_comes_and_goes_is_an_entry_and_an_exit() {
+        let flat = [0.6; 10];
+        let changes = record(
+            &[0.05, 0.05, 0.05, 0.4, 0.4, 0.4, 0.4, 0.05, 0.05, 0.05],
+            &flat,
+        )
+        .changes();
+        assert_eq!(of(&changes, ChangeKind::Enters, VOCAL), vec![3.0]);
+        assert_eq!(of(&changes, ChangeKind::Leaves, VOCAL), vec![7.0]);
+    }
+
+    /// **A kick that keeps going through a build is not "Drums out".** The
+    /// bass arriving takes share from the drums without the drums getting any
+    /// quieter; the first rule read shares and said the drums had gone at the
+    /// moment the build added to them.
+    #[test]
+    fn a_current_that_carries_on_under_a_new_one_has_not_gone() {
+        let mut build = record(&[0.0; 8], &[0.35, 0.35, 0.35, 1.0, 1.0, 1.0, 1.0, 1.0]);
+        for (index, section) in build.sections.iter_mut().enumerate() {
+            // vocal, drums, bass, other: the kick alone, then a bass and pads
+            // over it that take most of the share — the drums' share falls
+            // under the voice's exit line while the kick is exactly as loud.
+            section.parts = Some(if index < 3 {
+                [0.0, 0.9, 0.05, 0.05]
+            } else {
+                [0.0, 0.1, 0.6, 0.3]
+            });
+        }
+        let changes = build.changes();
+        assert!(
+            of(&changes, ChangeKind::Leaves, Some(1)).is_empty(),
+            "{changes:?}"
+        );
+        assert_eq!(of(&changes, ChangeKind::Enters, Some(2)), vec![3.0]);
+
+        // And a kick that really does stop is out.
+        for section in build.sections.iter_mut().skip(5) {
+            section.parts = Some([0.0, 0.0, 0.7, 0.3]);
+        }
+        assert_eq!(of(&build.changes(), ChangeKind::Leaves, Some(1)), vec![5.0]);
+    }
+
+    /// One window is a fill, not an arrival: a single vocal shot in an
+    /// instrumental stretch says nothing, and neither does one dropped bar.
+    #[test]
+    fn one_window_is_a_fill() {
+        let flat = [0.6; 8];
+        let shot = record(&[0.05, 0.05, 0.4, 0.05, 0.05, 0.05, 0.05, 0.05], &flat).changes();
+        assert!(of(&shot, ChangeKind::Enters, VOCAL).is_empty(), "{shot:?}");
+        let dropout = record(&[0.4, 0.4, 0.4, 0.05, 0.4, 0.4, 0.4, 0.4], &flat).changes();
+        assert!(
+            of(&dropout, ChangeKind::Leaves, VOCAL).is_empty(),
+            "{dropout:?}"
+        );
+    }
+
+    /// **Hysteresis:** a current hovering around the entry threshold is in
+    /// once, not in and out every window.
+    #[test]
+    fn a_current_near_the_line_does_not_flicker() {
+        let flat = [0.6; 9];
+        let hover = record(&[0.05, 0.05, 0.3, 0.2, 0.3, 0.2, 0.3, 0.2, 0.3], &flat).changes();
+        assert_eq!(of(&hover, ChangeKind::Enters, VOCAL), vec![2.0]);
+        assert!(
+            of(&hover, ChangeKind::Leaves, VOCAL).is_empty(),
+            "{hover:?}"
+        );
+    }
+
+    /// There from the start is not an entry, and a record nobody measured has
+    /// no currents coming or going.
+    #[test]
+    fn nothing_enters_at_the_start_or_where_nothing_was_measured() {
+        let flat = [0.6; 6];
+        let sung = record(&[0.4; 6], &flat).changes();
+        assert!(of(&sung, ChangeKind::Enters, VOCAL).is_empty(), "{sung:?}");
+        let mut unmeasured = record(&[0.05, 0.05, 0.4, 0.4, 0.4, 0.4], &flat);
+        for section in &mut unmeasured.sections {
+            section.parts = None;
+        }
+        assert!(unmeasured.changes().iter().all(|c| c.stem.is_none()));
+    }
+
+    /// **A build is a rise, from where it starts to where it tops out, and the
+    /// breath of a record that only wobbles is not.**
+    #[test]
+    fn a_build_is_a_rise_and_a_wobble_is_not() {
+        let voice = [0.05; 10];
+        let build = record(&voice, &[0.3, 0.3, 0.4, 0.5, 0.49, 0.7, 0.9, 1.0, 0.4, 0.4]).changes();
+        let rises: Vec<&Change> = build
+            .iter()
+            .filter(|c| c.kind == ChangeKind::Rises)
+            .collect();
+        assert_eq!(rises.len(), 1, "{build:?}");
+        // Where it first climbs — not the flat window before — to the top.
+        assert_eq!(rises[0].at / WINDOW, 2.0);
+        assert_eq!(rises[0].until.map(|until| until / WINDOW), Some(7.0));
+        assert_eq!(of(&build, ChangeKind::Settles, None), vec![8.0]);
+
+        let wobble = record(&voice, &[0.6, 0.7, 0.6, 0.7, 0.62, 0.7]).changes();
+        assert!(wobble.is_empty(), "{wobble:?}");
+    }
+
+    /// In order, whatever they are.
+    #[test]
+    fn changes_come_in_order() {
+        let changes = record(
+            &[0.05, 0.05, 0.05, 0.4, 0.4, 0.4, 0.05, 0.05, 0.05],
+            &[0.2, 0.3, 0.5, 0.7, 0.9, 0.9, 0.5, 0.3, 0.3],
+        )
+        .changes();
+        assert!(
+            changes.windows(2).all(|pair| pair[0].at <= pair[1].at),
+            "{changes:?}"
+        );
+        assert!(changes.len() >= 4, "{changes:?}");
     }
 }
