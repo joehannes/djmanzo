@@ -40,6 +40,7 @@ pub mod control;
 pub mod dashboard;
 pub mod downloads;
 pub mod ghost;
+pub mod gig;
 pub mod grid;
 pub mod handle;
 pub mod host;
