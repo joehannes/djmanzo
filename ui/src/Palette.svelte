@@ -30,6 +30,7 @@
     deckCount = 2,
     onAction,
     onSurface,
+    onSwitch,
   }: {
     enabled: boolean;
     deckCount?: number;
@@ -37,6 +38,11 @@
     onAction: (action: string) => void;
     /** Open or close a surface by name. */
     onSurface: (surface: string) => void;
+    /**
+     * §115: switch to a preset — a theme, an activity, a workspace or a
+     * preset pack — through the path its own picker takes.
+     */
+    onSwitch?: (run: string) => void;
   } = $props();
 
   let open = $state(false);
@@ -121,6 +127,7 @@
     // arrangement that comes back.
     if (entry.kind === "surface") onSurface(entry.run);
     else if (entry.kind === "ui") void uiDo(entry.run);
+    else if (entry.kind === "switch") onSwitch?.(entry.run);
     else onAction(entry.run);
     hide();
   }

@@ -2889,6 +2889,132 @@ mod tests {
     mod command_palette {
         use super::super::{PALETTE_LIMIT, PaletteEntryDto, matches, offered};
 
+        /// §115's switches as a fresh install has them: the shipped
+        /// activities, the shipped workspaces and the built-in preset packs.
+        fn shipped_switches(decks: u8) -> Vec<PaletteEntryDto> {
+            super::super::switches(
+                &crate::activity::shipped(),
+                &crate::cockpit::workspaces(),
+                &dj_presets::builtin::packs(),
+                decks,
+            )
+        }
+
+        fn switched(query: &str, room_for: crate::tiers::Tier) -> Vec<PaletteEntryDto> {
+            super::super::offered_with(query, 2, room_for, &shipped_switches(2)).entries
+        }
+
+        /// **Every preset is reachable by its name from the one gesture** —
+        /// a theme, an activity, a workspace and a preset pack each found by
+        /// typing a few letters of what the DJ calls it.
+        #[test]
+        fn every_kind_of_preset_is_one_search_away() {
+            let open = crate::tiers::Tier::Preparation;
+            let first = |query: &str| {
+                switched(query, open)
+                    .into_iter()
+                    .find(|entry| entry.kind == "switch")
+                    .map(|entry| (entry.label, entry.run))
+            };
+            assert_eq!(
+                first("theme aurora"),
+                Some((
+                    "Theme \u{b7} Aurora".to_owned(),
+                    "theme pkg-aurora".to_owned()
+                ))
+            );
+            let (label, run) = first("activity dig").expect("the dig activity");
+            assert_eq!(run, "activity dig", "{label}");
+            let (_, run) = first("workspace club").expect("a club workspace");
+            assert!(run.starts_with("workspace "), "{run}");
+            let (label, run) = first("preset").expect("a preset");
+            assert!(run.starts_with("preset "), "{label}: {run}");
+        }
+
+        /// **And only what a picker has**: each switch names a theme that
+        /// ships (and is not a world, whose picker opens it), an activity, a
+        /// workspace, or a preset the library resolves for that deck.
+        #[test]
+        fn every_switch_names_something_djmanzo_has() {
+            let library = dj_presets::PresetLibrary::builtin();
+            let workspaces: Vec<String> = crate::cockpit::workspaces()
+                .into_iter()
+                .map(|w| w.name)
+                .collect();
+            let slugs: Vec<String> = crate::activity::shipped()
+                .into_iter()
+                .map(|a| a.slug)
+                .collect();
+            let switches = shipped_switches(4);
+            for kind in ["theme", "activity", "workspace", "preset"] {
+                assert!(
+                    switches
+                        .iter()
+                        .any(|e| e.run.starts_with(&format!("{kind} "))),
+                    "no {kind} is offered"
+                );
+            }
+            for entry in &switches {
+                assert_eq!(entry.kind, "switch");
+                let (kind, which) = entry.run.split_once(' ').unwrap();
+                match kind {
+                    "theme" => assert!(
+                        crate::theme::ALL
+                            .iter()
+                            .any(|t| t.pack == Some(which) && !t.world),
+                        "{which} is not a theme that ships"
+                    ),
+                    "activity" => assert!(slugs.iter().any(|s| s == which), "{which}"),
+                    "workspace" => assert!(workspaces.iter().any(|w| w == which), "{which}"),
+                    "preset" => {
+                        let (id, deck) = which.split_once(' ').unwrap_or((which, "1"));
+                        let deck: u8 = deck.parse().unwrap();
+                        assert!(library.resolve(id, deck).is_ok(), "{which}");
+                    }
+                    other => panic!("a switch of kind {other}"),
+                }
+            }
+        }
+
+        /// Mid-mix the arrangement kinds are paperwork and stay out of the
+        /// list, unless they are what was asked for by name.
+        #[test]
+        fn mid_mix_a_theme_answers_only_when_asked_for() {
+            // The tier itself, because a one-letter query fills its twelve
+            // with deck verbs before any theme is reached, and would pass
+            // whatever tier a theme had.
+            for entry in shipped_switches(2) {
+                let arrangement =
+                    entry.run.starts_with("theme ") || entry.run.starts_with("workspace ");
+                assert!(
+                    !super::super::tier_of(&entry).survives_a_mix(),
+                    "{} survives a mix",
+                    entry.label
+                );
+                if arrangement {
+                    assert_eq!(
+                        entry.tier,
+                        crate::tiers::Tier::Preparation.name(),
+                        "{}",
+                        entry.label
+                    );
+                }
+            }
+            let mixing = crate::cockpit::Attention::performing().room_for;
+            assert!(
+                !switched("s", mixing)
+                    .iter()
+                    .any(|e| e.run.starts_with("theme ")),
+                "a theme was offered mid-mix to a query that did not ask for one"
+            );
+            assert!(
+                switched("theme signal", mixing)
+                    .iter()
+                    .any(|e| e.run == "theme pkg-signal"),
+                "a theme asked for by name mid-mix was refused"
+            );
+        }
+
         /// The palette with the whole hierarchy in reach.
         ///
         /// Every test below is about the ranking and the cut rather than about
@@ -3174,7 +3300,7 @@ mod tests {
                 "pick a query whose visible twelve are already all hands"
             );
             assert!(
-                super::ranked("s", 6)
+                super::ranked("s", 6, &[])
                     .iter()
                     .any(|entry| !super::tier_of(entry).survives_a_mix()),
                 "`s` matches no paperwork at all, so this proves nothing"
@@ -9372,11 +9498,106 @@ pub struct PaletteDto {
 #[must_use]
 pub fn palette(state: State<'_, AppState>, query: String, decks: u8) -> PaletteDto {
     let snapshot = crate::Snapshot::capture(&state.registry(), state.deck_count());
-    offered(
+    let activities = crate::activity::all(&state.activities().mine);
+    let mut workspaces = state.my_workspaces();
+    workspaces.extend(crate::cockpit::workspaces());
+    offered_with(
         &query,
         decks,
         crate::cockpit::Attention::for_context(&snapshot).room_for,
+        &switches(&activities, &workspaces, state.presets().packs(), decks),
     )
+}
+
+/// §115's *preset-packages and easy switching everywhere*: every preset a DJ
+/// switches between, reachable from the one gesture that reaches everything
+/// else — themes, activities, workspaces and the preset packs, each by its
+/// own name.
+///
+/// Each is an entry of kind `switch`, whose `run` is `<kind> <which>`; the
+/// interface carries it out through the path its own picker takes, so a theme
+/// chosen here is declared to djmanzo exactly as one chosen in the switcher.
+/// Built from the tables the pickers read, so nothing can be offered that a
+/// picker does not have.
+///
+/// Tiered by when they are reached for: an activity or a preset is a move
+/// made during a night (§109's *switch activities during a live DJ task*),
+/// and is contextual; a theme or a workspace is arrangement, and is paperwork
+/// that §18's budget leaves out mid-mix unless it is asked for by name.
+#[must_use]
+fn switches(
+    activities: &[crate::activity::Activity],
+    workspaces: &[crate::cockpit::Workspace],
+    packs: &[dj_presets::Pack],
+    decks: u8,
+) -> Vec<PaletteEntryDto> {
+    use crate::tiers::Tier;
+    let entry = |label: String, about: &str, run: String, tier: Tier| PaletteEntryDto {
+        label,
+        about: about.to_owned(),
+        kind: "switch",
+        run,
+        tier: tier.name(),
+    };
+    let mut out = Vec::new();
+    for activity in activities {
+        out.push(entry(
+            format!("Activity \u{b7} {}", activity.title),
+            &activity.doing,
+            format!("activity {}", activity.slug),
+            Tier::Contextual,
+        ));
+    }
+    for pack in packs {
+        for preset in &pack.presets {
+            let decks_for: Vec<Option<u8>> = if preset.per_deck {
+                (1..=decks.clamp(1, 6)).map(Some).collect()
+            } else {
+                vec![None]
+            };
+            for deck in decks_for {
+                let (label, run) = match deck {
+                    Some(deck) => (
+                        format!("Preset \u{b7} {} \u{b7} deck {deck}", preset.name),
+                        format!("preset {} {deck}", preset.id),
+                    ),
+                    None => (
+                        format!("Preset \u{b7} {}", preset.name),
+                        format!("preset {}", preset.id),
+                    ),
+                };
+                out.push(entry(label, &preset.description, run, Tier::Contextual));
+            }
+        }
+    }
+    for theme in crate::theme::ALL {
+        // A world opens a surface of its own; choosing one is the theme
+        // picker's job, where the world is said to open.
+        let (Some(pack), false) = (theme.pack, theme.world) else {
+            continue;
+        };
+        out.push(entry(
+            format!("Theme \u{b7} {}", theme.title),
+            theme.about,
+            format!("theme {pack}"),
+            Tier::Preparation,
+        ));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for workspace in workspaces {
+        // The DJ's own first, and a name only once: a saved "Club" is the one
+        // they mean.
+        if !seen.insert(workspace.name.clone()) {
+            continue;
+        }
+        out.push(entry(
+            format!("Workspace \u{b7} {}", workspace.name),
+            &workspace.about,
+            format!("workspace {}", workspace.name),
+            Tier::Preparation,
+        ));
+    }
+    out
 }
 
 /// What survives §18's *"nothing else may take room"*.
@@ -9400,9 +9621,21 @@ pub fn palette(state: State<'_, AppState>, query: String, decks: u8) -> PaletteD
 /// governs what djmanzo *offers*, never what a DJ asks for by name — so when
 /// the cut would leave nothing, there was nothing being offered in the first
 /// place and the full list stands.
+#[cfg(test)]
 #[must_use]
 fn offered(query: &str, decks: u8, room_for: crate::tiers::Tier) -> PaletteDto {
-    let all = ranked(query, decks);
+    offered_with(query, decks, room_for, &[])
+}
+
+/// [`offered`], with the switches a DJ has — see [`switches`].
+#[must_use]
+fn offered_with(
+    query: &str,
+    decks: u8,
+    room_for: crate::tiers::Tier,
+    switches: &[PaletteEntryDto],
+) -> PaletteDto {
+    let all = ranked(query, decks, switches);
     let within: Vec<PaletteEntryDto> = all
         .iter()
         .filter(|entry| tier_of(entry) <= room_for)
@@ -9447,7 +9680,7 @@ fn tier_of(entry: &PaletteEntryDto) -> crate::tiers::Tier {
 ///
 /// Separate from the cut so the budget can be applied between the two.
 #[must_use]
-fn ranked(query: &str, decks: u8) -> Vec<PaletteEntryDto> {
+fn ranked(query: &str, decks: u8, switches: &[PaletteEntryDto]) -> Vec<PaletteEntryDto> {
     use dj_core::vocabulary::{Target, vocabulary};
 
     let needle = query.trim();
@@ -9568,6 +9801,14 @@ fn ranked(query: &str, decks: u8) -> Vec<PaletteEntryDto> {
             });
         }
     }
+
+    // §115: the presets, by their own names.
+    out.extend(
+        switches
+            .iter()
+            .filter(|entry| matches(needle, &entry.label))
+            .cloned(),
+    );
 
     // §58, applied. Stable, so within a tier the passes' own order survives —
     // and the typed query keeps the top because it is pushed first and nothing

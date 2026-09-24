@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Every preset one search away** — §115. Ctrl+K now finds every theme,
+activity, workspace and preset pack by its name: type *aurora*, press Enter,
+and the theme is on; *karaoke* moves to the activity; *echo* applies the
+preset to a deck. During a mix, themes and workspaces stay out of the list
+unless you ask for one by name.
+
 **Chapters for a recorded mix** — §108. The share sheet of a night now lists
 every recording made during it, with the tracklist timed against the file:
 `0:00` the record playing when you pressed REC, then each record where it came

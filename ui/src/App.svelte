@@ -54,6 +54,7 @@
     densityBands,
     phasePriorities,
     themeChosen,
+    applyPreset,
     type DensityBand,
     setCockpitWorkspace,
     type Dock,
@@ -686,6 +687,35 @@
     activityRestored = true;
     if (activityState.on && activityState.current) void chooseActivity(activityState.current);
   });
+
+  /**
+   * §115: a switch from the palette — `theme <pack>`, `activity <slug>`,
+   * `workspace <name>` or `preset <id> [deck]` — carried out by the path its
+   * own picker takes, so a theme chosen here is declared to djmanzo as one
+   * chosen in the switcher is, and a workspace keeps what is pinned.
+   */
+  async function switchTo(run: string) {
+    const space = run.indexOf(" ");
+    const kind = run.slice(0, space);
+    const which = run.slice(space + 1);
+    if (kind === "theme") {
+      theme.setPackage(which);
+      void themeChosen(which).catch(() => {});
+    } else if (kind === "activity") {
+      await chooseActivity(which);
+    } else if (kind === "workspace") {
+      const found = [...mine, ...presets].find((w) => w.name === which);
+      if (found) await applyWorkspace(found);
+    } else if (kind === "preset") {
+      const [id, deck] = which.split(" ");
+      try {
+        await applyPreset(id, deck ? Number(deck) : undefined);
+      } catch {
+        // The engine is not taking actions; the palette has already closed,
+        // and the preset panel is where a refusal is explained.
+      }
+    }
+  }
 
   /** Into activity mode, at wherever the DJ last was, or what is suggested. */
   async function enterActivities() {
@@ -2823,6 +2853,7 @@
         void toggleSurface(surface as Drawn);
       }
     }}
+    onSwitch={(run) => void switchTo(run)}
   />
 
   <div class="cockpit">

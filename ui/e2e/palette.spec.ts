@@ -175,6 +175,45 @@ test.describe("the command palette", () => {
   });
 
   /**
+   * **§115: every preset is one search away.** A theme, an activity and a
+   * preset pack chosen from the palette take the path their own pickers
+   * take: the theme is worn *and* declared to djmanzo, the activity is moved
+   * to through activity mode, and the preset is applied by Rust. Which
+   * switches exist, and that each names something real, is Rust's to test
+   * (`every_switch_names_something_djmanzo_has`).
+   */
+  test("a switch entry switches the preset it names", async ({ page }) => {
+    const switches = [
+      { label: "Theme \u00b7 Aurora", about: "A night sky.", kind: "switch", run: "theme pkg-aurora", tier: "preparation" },
+      { label: "Activity \u00b7 Dig", about: "Finding records.", kind: "switch", run: "activity dig", tier: "contextual" },
+      { label: "Preset \u00b7 Echo out \u00b7 deck 2", about: "Echo out.", kind: "switch", run: "preset echo-out 2", tier: "contextual" },
+    ];
+    await openShell(page, "/", {}, { palette: { because: "", entries: switches } });
+    const asked = await watch(page);
+
+    await page.keyboard.press("Control+k");
+    await palette(page).getByRole("button", { name: /Theme · Aurora/ }).click();
+    await expect
+      .poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundColor))
+      .toBe("rgb(10, 11, 26)");
+    expect(await page.evaluate(() => (window as unknown as { __chosenTheme?: string }).__chosenTheme)).toBe(
+      "pkg-aurora",
+    );
+
+    await page.keyboard.press("Control+k");
+    await palette(page).getByRole("button", { name: /Activity · Dig/ }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __activityMoves?: string[] }).__activityMoves ?? []))
+      .toEqual(["on:dig"]);
+
+    await page.keyboard.press("Control+k");
+    await palette(page).getByRole("button", { name: /Preset · Echo out/ }).click();
+    await expect.poll(async () => (await asked()).includes("apply_preset")).toBe(true);
+    await expect(palette(page)).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * Ctrl+K is the only key djmanzo takes globally, and it does not steal a K
    * from a DJ typing into the browser's search box.
    */

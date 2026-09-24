@@ -1867,9 +1867,11 @@ export interface PaletteEntry {
   about: string;
   /**
    * How to carry it out: `"action"` through the bus, `"surface"` to open a
-   * panel, `"ui"` for one of §41's interface operations.
+   * panel, `"ui"` for one of §41's interface operations, `"switch"` for
+   * §115's presets — `theme <pack>`, `activity <slug>`, `workspace <name>`,
+   * `preset <id> [deck]` — carried out by the path each one's picker takes.
    */
-  kind: "action" | "surface" | "ui";
+  kind: "action" | "surface" | "ui" | "switch";
   /** The action text, the surface name, or the interface operation. */
   run: string;
   /**
