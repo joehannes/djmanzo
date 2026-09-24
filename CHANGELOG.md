@@ -16,6 +16,51 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+Nothing yet.
+
+---
+
+## v0.19.0 — The room, seen and heard for the first time
+
+`v0.18.0` is skipped on purpose: a tag of that name already exists on an older
+line of work, and a release has to agree with its tag.
+
+Three threads. The owner asked for nine new things in one sitting (§106–§115,
+quoted as written at the end of `DIRECTIVE.md`), and the first of them —
+*improvise for lacking hardware so real hardware has no surprises* — found that
+the room surface could not have opened a camera on either desktop djmanzo
+ships for, and that once it could, it would have read a dancing floor as a
+still one. Around that, the last of §75, §22's audition, §26's beat jump,
+§67's fourteen and §89's appearance regression.
+
+**Neither desktop could have opened a camera** — §106. On Linux, WebKitGTK
+asks its host before opening a device and a request nobody answers is denied;
+Tauri answers it on macOS and not on Linux, so a DJ with a webcam was told
+djmanzo was not allowed and sent to privacy settings Linux does not have. On
+macOS the bundle had no `Info.plist`, and the OS opens neither device for an
+application that does not say why.
+
+- Reproduced in the shipped webview under Xvfb with WebKitGTK's own mock
+  camera and microphone (`DJMANZO_MOCK_CAPTURE=1`), fixed in `dj_app::senses`,
+  and the same build then read light, movement and loudness end to end.
+- The grant goes to djmanzo's own page and nothing else, with the lookalike
+  addresses tested.
+
+**The room reads a dancing floor as dancing** — §106. Generated stand-ins —
+a dark club at its peak, an emptied room, a beach party in daylight, a pushed
+booth microphone, low chatter, a hummed tune — driven through Chromium's real
+capture path by `ui/e2e/senses.spec.ts`:
+
+- **Movement aliased with the tempo**: seventeen dancers at 120 BPM read 0.000,
+  because a two-second look is exactly four beats. It now reads two frames a
+  sixth of a second apart at a moment moved around the beat, and no longer
+  changes scale when §48 slows the room to one look every eight seconds.
+- **Loudness** was a 43 ms window through a call-tuned microphone; it is now two
+  thirds of a second with gain control and noise suppression off, and reads
+  each file's own level to within 0.01.
+- A machine with a microphone and **no camera** now reads loudness instead of
+  nothing.
+
 **§75's transient density, and a reason that was wrong about what it was
 measuring** — the last of §75's nine. Its absence was filed as *a curve at a
 resolution the overview cannot show*, which confuses transients with their
