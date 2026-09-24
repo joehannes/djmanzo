@@ -16,6 +16,22 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+---
+
+## v0.21.0 — Controls shaped like what they do
+
+Seven commits since v0.20.0, the owner's release cadence. Four threads.
+
+The controls say what they are doing: a tone knob draws the curve it puts on
+the record, the filter and the pitch fill from where they rest, the pads
+light in what they do, and the crossfader draws how much of each side is
+heard. Colour means something: each EQ knob is the colour the waveform draws
+its frequencies in, and three new themes are built on that. Karaoke gains a
+voice knob on every deck and a singers' screen. And a record you do not have
+can be found in the stores that sell it, and filed into your collection when
+you buy it. Nothing here has been heard or seen on real hardware; the
+container this was built in has none.
+
 **Controls shaped like what they do** — §114. Each tone knob now draws the
 curve it puts on the record, on its face: the HI knob a high shelf, the MID
 a bell, the LOW a low shelf, the filter the slope it cuts — at its setting,
