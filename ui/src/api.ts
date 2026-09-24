@@ -1184,6 +1184,24 @@ export interface MelodyLine {
   range: [number, number];
 }
 
+/** §107: one timed line of a lyric. See `dj_app::karaoke::LyricLine`. */
+export interface LyricLine {
+  /** Seconds into the record. */
+  at: number;
+  text: string;
+  /** Each word and when it is sung, where the lyric times words. */
+  words: [number, string][];
+}
+
+/** §107: the words for the singers' screen. See `dj_app::karaoke::SingerLyrics`. */
+export interface SingerLyrics {
+  lines: LyricLine[];
+  plain: string[];
+  instrumental: boolean;
+}
+
+export const singerLyrics = (deck: number) => invoke<SingerLyrics>("singer_lyrics", { deck });
+
 export const melodyLine = (deck: number, theme: string) =>
   invoke<MelodyLine | null>("melody_line", { deck, theme });
 

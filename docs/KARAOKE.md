@@ -11,8 +11,11 @@
 > (`deck N voice <0..1>`), a gain on the vocal stem where the record is
 > separated and the band-limited centre cancel of §1.3 on the whole mix where
 > it is not yet; *As recorded · Guide · Out* on the Singers surface, and a chip
-> on the deck while the vocal is not as recorded. **Not yet**: the singers'
-> screen that reads the synced lyrics, and break music between singers.
+> on the deck while the vocal is not as recorded. And **the singers' screen**:
+> a panel for a second display with the line being sung wiped in time (word by
+> word where the lyric is Enhanced LRC), the next line, a count-in and the next
+> singer (`dj_library::lrc`, `singer_lyrics`, `SingerScreen.svelte`). **Not
+> yet**: break music between singers.
 
 Two independent halves, usable together or separately:
 

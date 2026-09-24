@@ -584,7 +584,14 @@
           // composition's own, which is the honest fallback rather than a
           // guess.
           density: keepDensity ? density : (densityOf(preset.density) ?? named.density),
-        }, true, { keepDensity });
+          // Not remembered as the DJ's layout when an activity chose it. The
+          // layout file is *the DJ's* choice, restored with its own density
+          // on the next start — so an activity that wrote it came back from
+          // a restart drawn at another size: the scale a switch is careful
+          // not to change, changed by the restart instead. Seen by driving
+          // the application. The activity itself is remembered, and put
+          // back at start-up (below).
+        }, !keepDensity, { keepDensity });
       }
     }
     try {
@@ -666,6 +673,19 @@
       // The arrangement is on screen; only the bookkeeping failed.
     }
   }
+
+  /**
+   * After a restart in activity mode, the activity the DJ was in, drawn again
+   * — its composition as well as its panels, at the DJ's own size. Once, when
+   * both the activities and the layouts have arrived; the panels themselves
+   * come back with the workspace, so this adds only what they cannot carry.
+   */
+  let activityRestored = false;
+  $effect(() => {
+    if (activityRestored || !activityState || layouts.length === 0) return;
+    activityRestored = true;
+    if (activityState.on && activityState.current) void chooseActivity(activityState.current);
+  });
 
   /** Into activity mode, at wherever the DJ last was, or what is suggested. */
   async function enterActivities() {

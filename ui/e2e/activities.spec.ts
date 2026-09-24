@@ -18,7 +18,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
-import { errorsThrown, openShell } from "./shell";
+import { ANSWERS, errorsThrown, openShell } from "./shell";
 
 const STRIP = "[data-activity-strip]";
 const tab = (page: Page, slug: string) => page.locator(`${STRIP} [data-activity="${slug}"]`);
@@ -234,6 +234,76 @@ test.describe("§109: activity mode", () => {
     await expect(page.locator(STRIP)).toHaveCount(0);
     await expect(page.getByRole("navigation", { name: "Panels" })).toBeVisible();
     await expect(surface(page, "library")).toBeVisible();
+  });
+
+  /**
+   * **An activity is not the DJ's layout choice.** The layout the DJ chose is
+   * restored on the next start with its own density; an activity that
+   * recorded its composition there came back from a restart at another
+   * size. Switching through every activity writes no layout choice.
+   */
+  test("switching activities records no layout choice", async ({ page }) => {
+    await openShell(page, "/");
+    await enter(page);
+    for (const key of ["F1", "F3", "F4", "F5", "F6", "F7", "F8", "F2"]) {
+      await page.keyboard.press(key);
+      await expect(page.locator(`${STRIP} [aria-pressed="true"]`)).toHaveCount(1);
+    }
+    const asked = await page.evaluate(() => (window as unknown as { __asked: string[] }).__asked);
+    expect(asked, "an activity wrote the DJ's layout choice").not.toContain("choose_layout");
+  });
+
+  /**
+   * **A restart in activity mode comes back in the activity, at the DJ's
+   * size.** The karaoke host who closed djmanzo on F8 opens it on F8: the
+   * singers beside the decks, the activity's own deck composition put back
+   * with them, and the interface drawn exactly as big as a restart outside
+   * activity mode draws it.
+   */
+  test("a restart in an activity comes back in it, the same size", async ({ page }) => {
+    const base = ANSWERS.activities as {
+      on: boolean;
+      current: string;
+      activities: { slug: string; workspace: Record<string, unknown> }[];
+    };
+    const karaoke = {
+      ...base.activities.find((activity) => activity.slug === "karaoke")?.workspace,
+      layout: "Performance",
+    };
+    const activities = {
+      ...base,
+      activities: base.activities.map((activity) =>
+        activity.slug === "karaoke" ? { ...activity, workspace: karaoke } : activity,
+      ),
+    };
+    const saved = ANSWERS.cockpit_workspace as Record<string, unknown>;
+    // As a restart finds it: the activity remembered (or not), and the
+    // workspace the switch into it saved.
+    const restart = async (on: boolean) => {
+      const tab = await page.context().newPage();
+      await openShell(tab, "/", {}, {
+        activities: { ...activities, on, current: "karaoke" },
+        cockpit_workspace: { ...saved, workspace: karaoke },
+      });
+      await expect(tab.locator('.surface[data-surface="karaoke"]')).toBeVisible();
+      return tab;
+    };
+    const measure = (tab: Page) =>
+      tab.evaluate(() => ({
+        density: getComputedStyle(document.documentElement).getPropertyValue("--density").trim(),
+        applied: ((window as unknown as { __asked?: string[] }).__asked ?? []).includes(
+          "set_cockpit_workspace",
+        ),
+      }));
+
+    const outside = await measure(await restart(false));
+    const inside = await restart(true);
+    await expect(inside.locator(`${STRIP} [data-activity="karaoke"]`)).toHaveAttribute("aria-pressed", "true");
+    // The activity is put back — its composition with it, which is Rust's
+    // tokens and not visible to a stub — and only in activity mode.
+    expect(outside.applied, "a restart outside activity mode re-applied one").toBe(false);
+    await expect.poll(async () => (await measure(inside)).applied).toBe(true);
+    expect((await measure(inside)).density, "the restart changed the size").toBe(outside.density);
   });
 
   /**

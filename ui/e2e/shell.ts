@@ -2517,8 +2517,14 @@ export async function openShell(
 
   await page.goto(url);
   // Waiting for the crossfader is waiting for the thing being measured, rather
-  // than for a network idle that says nothing about whether it rendered.
-  await page.getByRole("slider", { name: "Crossfader" }).waitFor();
+  // than for a network idle that says nothing about whether it rendered. A
+  // detached panel (`?panel=`) has no crossfader — it is one panel and nothing
+  // else — so it is waited for by its own shell.
+  if (new URL(url, "http://localhost").searchParams.has("panel")) {
+    await page.locator("main.detached").waitFor();
+  } else {
+    await page.getByRole("slider", { name: "Crossfader" }).waitFor();
+  }
 }
 
 /**

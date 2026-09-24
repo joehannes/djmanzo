@@ -141,7 +141,7 @@ pub fn list_panels(state: State<'_, AppState>) -> Vec<PanelDto> {
 /// there are.
 ///
 /// # Errors
-/// When the panel name is not one of the six, or the window will not open.
+/// When the panel name is not one of the seven, or the window will not open.
 #[tauri::command]
 pub fn detach_panel(
     app: tauri::AppHandle,
@@ -12323,6 +12323,19 @@ pub fn karaoke_clear(state: State<'_, AppState>) -> RotationDto {
         rotation.clear();
         true
     })
+}
+
+/// §107: the words for the record on a deck, for the singers' screen.
+///
+/// Read from what the library already stored — the lyrics sweep fetches them
+/// from LRCLIB beforehand — so the screen never waits on the network while a
+/// singer stands at the microphone.
+#[tauri::command]
+pub fn singer_lyrics(state: State<'_, AppState>, deck: u8) -> crate::karaoke::SingerLyrics {
+    let stored = DeckId::from_human(deck)
+        .and_then(|deck| state.deck_track_id(deck))
+        .and_then(|track| state.library().get().ok()?.words_for(track).ok()?);
+    crate::karaoke::lyrics_for(stored)
 }
 
 /// §109: one activity as the strip draws it.

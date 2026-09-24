@@ -9,6 +9,7 @@
    * interface can do: put the up-next song on a deck, in the singer's key.
    */
   import {
+    detachPanel,
     dispatch,
     karaokeAsk,
     karaokeClear,
@@ -296,6 +297,14 @@
     </details>
   {/if}
 
+  <!--
+    The words for the singers go on a screen of their own, facing the
+    microphone — a second display, where the host's own screen is not.
+  -->
+  <button class="screen-out" onclick={() => void detachPanel("singers").catch((e) => (error = String(e)))}
+    >Singers' screen — the words, on a display of its own</button
+  >
+
   <button class="quiet new-night" onclick={() => void change(karaokeClear())}
     >New night — clear the list, keep everybody's keys</button
   >
@@ -451,6 +460,7 @@
     margin: 0;
   }
 
+  .screen-out,
   .new-night {
     align-self: flex-start;
     font-size: 0.85em;

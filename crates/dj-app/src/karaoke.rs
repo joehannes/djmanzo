@@ -266,6 +266,76 @@ impl Rotation {
     }
 }
 
+/// §107: the words for the singers' screen, as it draws them.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SingerLyrics {
+    /// Timed lines, in the order they are sung. Empty where the record has no
+    /// timed words, and then `plain` is what there is.
+    pub lines: Vec<LyricLine>,
+    /// The words without times, a line each — shown still, because words
+    /// wiped at a guessed pace would lead a singer wrong.
+    pub plain: Vec<String>,
+    /// Whether the lyrics database says the record has no words at all.
+    pub instrumental: bool,
+}
+
+/// One timed line.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LyricLine {
+    /// Seconds into the record.
+    pub at: f64,
+    pub text: String,
+    /// Each word and when it is sung, where the file says. Empty otherwise.
+    pub words: Vec<(f64, String)>,
+}
+
+/// The singers' screen's words, from what the library stored for a record.
+///
+/// `None` in, nothing out: a record nobody has fetched words for is an empty
+/// screen with its title on it, not an error.
+#[must_use]
+pub fn lyrics_for(stored: Option<dj_library::lyrics::Stored>) -> SingerLyrics {
+    let Some(stored) = stored else {
+        return SingerLyrics {
+            lines: Vec::new(),
+            plain: Vec::new(),
+            instrumental: false,
+        };
+    };
+    let lines: Vec<LyricLine> = stored
+        .synced
+        .as_deref()
+        .map(dj_library::lrc::parse)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|line| LyricLine {
+            at: line.at,
+            text: line.text,
+            words: line
+                .words
+                .into_iter()
+                .map(|word| (word.at, word.text))
+                .collect(),
+        })
+        .collect();
+    let plain = if lines.is_empty() {
+        stored
+            .plain
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_owned)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    SingerLyrics {
+        lines,
+        plain,
+        instrumental: stored.instrumental,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,5 +483,48 @@ mod tests {
         assert!(!rotation.ask("  ", "Valerie", None, None, None));
         assert!(!rotation.ask("Ana", "", None, None, None));
         assert!(rotation.singers.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod lyric_tests {
+    use super::*;
+
+    fn stored(plain: &str, synced: Option<&str>) -> dj_library::lyrics::Stored {
+        dj_library::lyrics::Stored {
+            plain: plain.to_owned(),
+            synced: synced.map(str::to_owned),
+            found: true,
+            instrumental: false,
+            source: "lrclib".to_owned(),
+            fetched_at: 0,
+        }
+    }
+
+    /// **Timed words are timed lines, and the untimed words are not also
+    /// sent** — a screen with both would show the lyric twice.
+    #[test]
+    fn synced_words_become_timed_lines() {
+        let words = lyrics_for(Some(stored(
+            "First\nSecond",
+            Some("[00:01.00]First\n[00:03.00]<00:03.00>Sec<00:03.50>ond"),
+        )));
+        assert_eq!(words.lines.len(), 2);
+        assert_eq!(
+            words.lines[1].words,
+            vec![(3.0, "Sec".to_owned()), (3.5, "ond".to_owned())]
+        );
+        assert!(words.plain.is_empty());
+    }
+
+    /// Untimed words are shown still, a line each, blank lines dropped; no
+    /// words at all is an empty screen rather than an error.
+    #[test]
+    fn untimed_words_are_kept_still_and_nothing_is_nothing() {
+        let words = lyrics_for(Some(stored("First\n\n  Second  ", None)));
+        assert!(words.lines.is_empty());
+        assert_eq!(words.plain, vec!["First".to_owned(), "Second".to_owned()]);
+        let none = lyrics_for(None);
+        assert!(none.lines.is_empty() && none.plain.is_empty() && !none.instrumental);
     }
 }

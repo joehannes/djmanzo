@@ -15,6 +15,7 @@
   import Browse from "./Browse.svelte";
   import Fx from "./Fx.svelte";
   import Sampler from "./Sampler.svelte";
+  import SingerScreen from "./SingerScreen.svelte";
   import Watershed from "./Watershed.svelte";
   import Waveform from "./Waveform.svelte";
   import { dispatch, getSnapshot, onSnapshot, type Snapshot } from "./api";
@@ -133,6 +134,8 @@
           <Fx slots={snapshot.master.fx} enabled={ready} target="master" {send} />
         </section>
       </div>
+    {:else if panel === "singers"}
+      <SingerScreen decks={snapshot.decks} />
     {:else if panel === "sampler"}
       <Sampler sampler={snapshot.master.sampler} enabled={ready} {send} />
     {:else if panel === "watershed"}

@@ -27,6 +27,7 @@ pub mod filter;
 pub mod functions;
 pub mod import;
 pub mod learned;
+pub mod lrc;
 pub mod lyrics;
 pub mod melody;
 pub mod playlist;

@@ -16,6 +16,19 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Karaoke: the singers' screen** — §107. The words, on a display of its own
+facing the microphone: the line being sung, large, wiped as it is sung (word
+by word where the lyric times words), the next line under it, a count-in
+before the first line and after a break, and who is up next. It follows the
+deck the singer is on. The words are the synced lyrics djmanzo already
+stores; a song with untimed words shows them still rather than guessing a
+pace. Open it from the Singers surface.
+
+**A restart no longer changes the interface's size** — §109. Closing djmanzo
+in an activity and opening it again drew everything larger, because the
+activity's deck composition had been saved as your own layout choice. It
+reopens in the activity, at your size.
+
 **Karaoke: the vocal comes out** — §107. Each deck has a voice level: as
 recorded, a guide vocal (about −12 dB), or out. Where the record has been
 separated it turns the vocal stem down, over your own stem level; before

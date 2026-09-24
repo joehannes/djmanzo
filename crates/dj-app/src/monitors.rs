@@ -51,16 +51,19 @@ pub enum Panel {
     Assistant,
     /// The living interface's visual, for a screen facing the room.
     Watershed,
+    /// §107: the words, for the singers — a screen facing the microphone.
+    Singers,
 }
 
 impl Panel {
-    pub const ALL: [Panel; 6] = [
+    pub const ALL: [Panel; 7] = [
         Panel::Browser,
         Panel::Waveforms,
         Panel::Fx,
         Panel::Sampler,
         Panel::Assistant,
         Panel::Watershed,
+        Panel::Singers,
     ];
 
     /// The name used in the window label and in the URL.
@@ -78,6 +81,7 @@ impl Panel {
             Panel::Sampler => "sampler",
             Panel::Assistant => "assistant",
             Panel::Watershed => "watershed",
+            Panel::Singers => "singers",
         }
     }
 
@@ -99,6 +103,7 @@ impl Panel {
             Panel::Sampler => "djmanzo - Sampler",
             Panel::Assistant => "djmanzo - Assistant",
             Panel::Watershed => "djmanzo - Watershed",
+            Panel::Singers => "djmanzo - Singers",
         }
     }
 
@@ -116,6 +121,7 @@ impl Panel {
             Panel::Sampler => (620.0, 520.0),
             Panel::Assistant => (480.0, 760.0),
             Panel::Watershed => (1280.0, 720.0),
+            Panel::Singers => (1280.0, 720.0),
         }
     }
 
