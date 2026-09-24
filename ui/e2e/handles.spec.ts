@@ -90,6 +90,27 @@ test.describe("a control's gestures", () => {
   });
 
   /**
+   * **Every entry does what it says, not only Kill.**
+   *
+   * The test above passed for a year on a menu none of whose entries ran:
+   * a press on an entry started a drag on the knob, which took the pointer
+   * and its click, and the EQ band's label passed that click on to its kill
+   * button — so *Kill* sent a kill, and so did *Full* and *Unity*. Choosing
+   * *Full* has to send exactly the full action and no kill.
+   */
+  test("an entry other than Kill sends its own action and nothing else", async ({ page }) => {
+    await openShell(page, "/");
+    const before = (await sent(page)).length;
+    await lowKnob(page, 1).click({ button: "right" });
+    await page.getByTestId("handle-options").getByRole("menuitem", { name: "Full" }).click();
+
+    await expect.poll(async () => (await sent(page)).slice(before)).toContain("deck 1 eq_low 4");
+    await page.waitForTimeout(200);
+    expect((await sent(page)).slice(before)).toEqual(["deck 1 eq_low 4"]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **The menu acts on the deck it was opened on.**
    *
    * The reason the table is Rust's rather than each call site's. A menu that

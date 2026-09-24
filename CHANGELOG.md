@@ -16,6 +16,15 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Fixed: the EQ knobs (HI, MID, LOW) jumped fully off or fully on.** Each
+  knob shared a label with its kill button, and a click anywhere in a label
+  is also a click on its button — so every drag ended by killing the band,
+  or by putting a killed band back to unity. They turn now, 0.04 per pixel,
+  finer with Shift; the kill buttons still kill.
+- **Fixed: a knob's press-and-hold menu ran only "Kill".** A press on any
+  entry started a drag on the knob, which took the click; *Unity*, *Full* and
+  the suggestion's *Do it* now do what they say.
+
 - **A stem mutes with one press.** The stems are four chips under each
   waveform — lit while they play, struck through when muted, filled to
   their level. Press to mute or bring back, Shift+press to hear one alone.

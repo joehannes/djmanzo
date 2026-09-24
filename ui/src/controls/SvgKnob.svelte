@@ -132,6 +132,12 @@
 
   function handlePointerDown(e: PointerEvent) {
     if (disabled) return;
+    // A press on one of the control's own buttons -- a menu entry, the
+    // suggestion's "Do it" -- is that button's, not the start of a drag.
+    // Capturing the pointer here sent the button's click to the control
+    // instead, so no menu entry ever ran; the kill entry only seemed to,
+    // because the EQ band's label passed every click on to its kill button.
+    if ((e.target as Element | null)?.closest?.("button, [role='menu']")) return;
     dragging = true;
     startY = e.clientY;
     startVal = value;

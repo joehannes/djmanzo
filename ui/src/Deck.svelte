@@ -1090,7 +1090,14 @@
   -->
   <div class="eq">
     {#each [{ id: "eq_high", label: "HI", value: deck.eq_high, face: "eq-high" as const }, { id: "eq_mid", label: "MID", value: deck.eq_mid, face: "eq-mid" as const }, { id: "eq_low", label: "LOW", value: deck.eq_low, face: "eq-low" as const }] as band (band.id)}
-      <label class="band" class:killed={band.value < 0.001} data-band={band.id}>
+      <!--
+        A div, not a label. A click anywhere in a label is also a click on its
+        first control, which here is the kill button: every drag of the knob
+        ended with the click that follows the release, and killed the band --
+        or, on a killed band, put it back to unity. The knob seemed to go only
+        fully off or fully on (§120). The knob and the button name themselves.
+      -->
+      <div class="band" class:killed={band.value < 0.001} data-band={band.id}>
         <SvgKnob
           value={band.value}
           min={0}
@@ -1116,7 +1123,7 @@
           title="Kill {band.label}"
           aria-label="Kill {band.label}"
         ></button>
-      </label>
+      </div>
     {/each}
   </div>
 
