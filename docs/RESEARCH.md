@@ -393,3 +393,62 @@ No dependency; two published pieces of arithmetic, written out in
   the CIE 1931 colour-matching functions after those were tried first: a
   screen's red primary sits near 612 nm, and through the CIE functions
   every wavelength redder than that came out the same red.
+
+## Legal music for karaoke and live stems (§111)
+
+Asked: *is there a legal way to stream or download music and take the vocal
+out live, for karaoke?* Researched September 2026, from the services' own
+pages and the DJ press. No code was read from any of them; djmanzo links to
+stores and does nothing else with them.
+
+**Streaming with live stems exists only inside partnerships.**
+
+- Beatport streaming allows stem separation in the DJ applications it has
+  agreements with (rekordbox, Serato, Traktor, VirtualDJ, djay, Engine DJ,
+  DJ.Studio and others), and needs its Advanced or Professional tier. Its API
+  offers no streaming endpoint; integrations are case-by-case partnerships.
+  Beatsource's accounts and catalogue have moved into Beatport.
+  ([Beatport Streaming](https://stream.beatport.com/),
+  [Beatport support](https://support.beatport.com/hc/en-us/articles/9901613047572-Why-can-t-I-access-Beatport-in-my-DJ-software),
+  [DJ.Studio](https://dj.studio/blog/dev-diary-5),
+  [Beatsource](https://www.beatsource.com/))
+- TIDAL withdrew stems from DJ software in October 2023 and brought them
+  back only with a paid *DJ Extension* add-on.
+  ([Digital DJ Tips](https://www.digitaldjtips.com/breaking-tidal-pulls-stems-from-dj-software/),
+  [DJ TechTools](https://djtechtools.com/2024/01/18/tidal-blocked-djs-from-using-stems-but-the-next-generation-of-dj-gear-will-likely-make-that-irrelevant/))
+- Apple Music streams in rekordbox, Serato, Engine DJ and djay, with **no
+  stems in any of them**, for licensing reasons; Spotify allows no DJ use at
+  all. ([DJ Mag](https://djmag.com/tech/you-can-now-dj-apple-music-using-rekordbox-serato-and-more),
+  [Serato FAQ](https://support.serato.com/hc/en-us/articles/12188545880719-Serato-DJ-Apple-Music-streaming-Frequently-Asked-Questions),
+  [DJ Deals](https://www.djdeals.co.uk/blog/best-dj-streaming-services-2025))
+
+So streaming stays what `dj_sources::partner` already says it is: ready,
+waiting on an agreement djmanzo cannot sign by itself.
+
+**A bought download is a file the DJ owns.** Taking the voice out of it
+for their own use is theirs to do. Playing it to a room is a separate right:
+store licences are usually for private use, and public performance is the
+venue's licence (and in some countries a digital DJ licence). Showing lyrics
+on a screen at a karaoke night is a further licence the venue holds.
+djmanzo prints one sentence saying so beside every store link
+(`dj_sources::stores::WHAT_BUYING_COVERS`).
+([Digital DJ licensing](https://en.wikipedia.org/wiki/Digital_DJ_licensing),
+[Bandcamp formats](https://get.bandcamp.help/en/articles/15263234-in-which-formats-can-i-download-my-purchases),
+[KaraFun for business](https://business.karafun.com/helpcenter/278/),
+[Singa on US karaoke licensing](https://singa.com/blog/usa-karaoke-licensing-for-bars-and-venues-explained-in-5-minutes/))
+
+**For karaoke specifically:** Karaoke Version sells re-recorded backing
+tracks whose master rights it licenses (composition rights stay separate),
+and ccMixter carries thousands of a cappellas and stems under Creative
+Commons, each marked with its own licence.
+([Karaoke Version licensing](https://www.karaoke-version.com/help/self-licensing.html),
+[public performance](https://www.karaoke-version.com/help/use_33.html),
+[ccMixter a cappellas](https://ccmixter.org/media/docs/pellbrowser),
+[ccMixter: is it legal](https://www.ccmixter.org/about))
+
+**Store search addresses** were taken only where they could be confirmed:
+Traxsource's `search?term=` from its own search page, Beatsource's
+`search?q=` (now pointing at Beatport's, the same form), and the widely used
+forms for Bandcamp, Beatport, Amazon and Apple. Karaoke Version's and Juno
+Download's could not be confirmed from here, so Karaoke Version is linked at
+its home page with "search there", and Juno is not linked.

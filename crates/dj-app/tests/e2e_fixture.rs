@@ -865,3 +865,42 @@ fn the_browser_fixture_has_the_activities_djmanzo_ships() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
     );
 }
+
+/// §111's stores, as a golden file: the "find it to buy" links the browser
+/// tests draw are the ones Rust answers with, karaoke's first when a karaoke
+/// host asks.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_stores_djmanzo_links_to() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/stores.json");
+    let fresh = serde_json::to_string_pretty(&serde_json::json!({
+        "plain": dj_app::commands::store_links(false),
+        "karaoke": dj_app::commands::store_links(true),
+    }))
+    .expect("the stores serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the stores");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored stores are JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh stores are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe stores have changed, so the browser is offering links djmanzo \
+         no longer builds.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}

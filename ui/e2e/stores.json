@@ -1,0 +1,110 @@
+{
+  "karaoke": {
+    "covers": "A bought download is yours to play and to take the voice out of; playing it to a room needs the venue's performance licence, and lyrics on a screen at a karaoke night need the venue's licence for those too.",
+    "stores": [
+      {
+        "karaoke": true,
+        "name": "Karaoke Version",
+        "searches": false,
+        "sells": "re-recorded backing tracks with the master rights licensed; search there",
+        "slug": "karaoke-version"
+      },
+      {
+        "karaoke": true,
+        "name": "ccMixter",
+        "searches": false,
+        "sells": "a cappellas and stems under Creative Commons, free; mind each one's licence",
+        "slug": "ccmixter"
+      },
+      {
+        "karaoke": false,
+        "name": "Bandcamp",
+        "searches": true,
+        "sells": "downloads straight from artists and labels, MP3 to FLAC and WAV",
+        "slug": "bandcamp"
+      },
+      {
+        "karaoke": false,
+        "name": "Beatport",
+        "searches": true,
+        "sells": "DJ downloads in MP3, WAV and AIFF; Beatsource's catalogue is part of it now",
+        "slug": "beatport"
+      },
+      {
+        "karaoke": false,
+        "name": "Traxsource",
+        "searches": true,
+        "sells": "house and soulful DJ downloads, MP3 and lossless",
+        "slug": "traxsource"
+      },
+      {
+        "karaoke": false,
+        "name": "Amazon Music",
+        "searches": true,
+        "sells": "MP3 downloads of most commercial releases",
+        "slug": "amazon"
+      },
+      {
+        "karaoke": false,
+        "name": "Apple (iTunes Store)",
+        "searches": true,
+        "sells": "downloads bought in Apple's Music app; the web search finds the song",
+        "slug": "apple"
+      }
+    ]
+  },
+  "plain": {
+    "covers": "A bought download is yours to play and to take the voice out of; playing it to a room needs the venue's performance licence, and lyrics on a screen at a karaoke night need the venue's licence for those too.",
+    "stores": [
+      {
+        "karaoke": false,
+        "name": "Bandcamp",
+        "searches": true,
+        "sells": "downloads straight from artists and labels, MP3 to FLAC and WAV",
+        "slug": "bandcamp"
+      },
+      {
+        "karaoke": false,
+        "name": "Beatport",
+        "searches": true,
+        "sells": "DJ downloads in MP3, WAV and AIFF; Beatsource's catalogue is part of it now",
+        "slug": "beatport"
+      },
+      {
+        "karaoke": false,
+        "name": "Traxsource",
+        "searches": true,
+        "sells": "house and soulful DJ downloads, MP3 and lossless",
+        "slug": "traxsource"
+      },
+      {
+        "karaoke": false,
+        "name": "Amazon Music",
+        "searches": true,
+        "sells": "MP3 downloads of most commercial releases",
+        "slug": "amazon"
+      },
+      {
+        "karaoke": false,
+        "name": "Apple (iTunes Store)",
+        "searches": true,
+        "sells": "downloads bought in Apple's Music app; the web search finds the song",
+        "slug": "apple"
+      },
+      {
+        "karaoke": true,
+        "name": "Karaoke Version",
+        "searches": false,
+        "sells": "re-recorded backing tracks with the master rights licensed; search there",
+        "slug": "karaoke-version"
+      },
+      {
+        "karaoke": true,
+        "name": "ccMixter",
+        "searches": false,
+        "sells": "a cappellas and stems under Creative Commons, free; mind each one's licence",
+        "slug": "ccmixter"
+      }
+    ]
+  }
+}

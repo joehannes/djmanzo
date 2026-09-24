@@ -38,6 +38,32 @@ to put in that folder.
 
 ---
 
+## Buying, and filing what you bought (§111)
+
+When a song you search for, or a singer asks for, is not in your collection,
+djmanzo offers **Find it to buy**: Bandcamp, Beatport, Traxsource, Amazon,
+Apple, and for karaoke Karaoke Version (licensed backing tracks) and ccMixter
+(Creative Commons a cappellas). Each opens the store's own search in your
+browser; you buy on the store's terms, and djmanzo never sees a payment or a
+password.
+
+Your browser saves the file to its downloads folder. In Settings → *New music
+from stores*, point djmanzo at that folder and at your music folder and switch
+filing on: each record is moved, a few seconds after it finishes arriving,
+into `Family/Artist/` — `House/Kerri Chandler/`, `Bachata/Romeo Santos/` —
+with backing tracks under `Karaoke/` and a cappellas under `A cappellas/`,
+and added to your collection. Nothing is ever overwritten, and a file still
+downloading is left alone. Album downloads that arrive as `.zip` are not
+unpacked yet.
+
+What buying covers: a bought file is yours to play and to take the voice out
+of. Playing it to a room needs the venue's performance licence, and lyrics on
+a screen at a karaoke night need the venue's licence for those too. Streaming
+services that allow live stems (Beatport, TIDAL with its DJ Extension) do so
+only inside partnerships — see the table above and `docs/RESEARCH.md`.
+
+---
+
 ## The three that just work
 
 ### Your own files

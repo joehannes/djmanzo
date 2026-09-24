@@ -16,6 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Find it to buy, and filed when you do** — §111. A song you search for, or
+a singer asks for, that is not in your collection now offers the stores'
+own searches: Bandcamp, Beatport, Traxsource, Amazon, Apple, and for karaoke
+Karaoke Version and ccMixter. Point djmanzo at your downloads folder in
+Settings and each record you buy is moved into your music folder under its
+genre family and artist — backing tracks under Karaoke, a cappellas under A
+cappellas — and added to the collection. Streaming you may take the vocal
+out of live exists only inside partnerships; `docs/SOURCES.md` says which,
+and what buying covers.
+
 **Karaoke: the singers' screen** — §107. The words, on a display of its own
 facing the microphone: the line being sung, large, wiped as it is sung (word
 by word where the lyric times words), the next line under it, a count-in

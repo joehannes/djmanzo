@@ -11110,6 +11110,142 @@ pub fn open_signup_link(app: tauri::AppHandle, url: String) -> Result<(), String
         .map_err(|e| format!("could not open the link: {e}"))
 }
 
+/// §111: one store, as a "find it to buy" link.
+#[derive(Debug, Clone, Serialize)]
+pub struct StoreLinkDto {
+    pub slug: String,
+    pub name: String,
+    pub sells: String,
+    /// Whether the link searches for the song, or only reaches the store.
+    pub searches: bool,
+    pub karaoke: bool,
+}
+
+/// §111: where a song could be bought, and what buying it covers.
+#[derive(Debug, Clone, Serialize)]
+pub struct StoreLinksDto {
+    pub stores: Vec<StoreLinkDto>,
+    /// The one sentence always shown beside them. See
+    /// `dj_sources::stores::WHAT_BUYING_COVERS`.
+    pub covers: String,
+}
+
+/// §111: the stores a song could be bought from — karaoke's first when a
+/// karaoke host is asking.
+#[tauri::command]
+#[must_use]
+pub fn store_links(karaoke: bool) -> StoreLinksDto {
+    let mut stores: Vec<&dj_sources::stores::Store> = dj_sources::stores::STORES.iter().collect();
+    if karaoke {
+        stores.sort_by_key(|store| !store.karaoke);
+    }
+    StoreLinksDto {
+        stores: stores
+            .into_iter()
+            .map(|store| StoreLinkDto {
+                slug: store.slug.to_owned(),
+                name: store.name.to_owned(),
+                sells: store.sells.to_owned(),
+                searches: store.searches(),
+                karaoke: store.karaoke,
+            })
+            .collect(),
+        covers: dj_sources::stores::WHAT_BUYING_COVERS.to_owned(),
+    }
+}
+
+/// §111: open a store's search for a song in the DJ's browser.
+///
+/// The address is built here from the store's own table and the song's
+/// words, encoded — the webview names a store and a song, never a URL, for
+/// the reason `open_signup_link` gives.
+#[tauri::command]
+pub fn open_store(
+    app: tauri::AppHandle,
+    store: String,
+    artist: String,
+    title: String,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt as _;
+
+    let found = dj_sources::stores::Store::by_slug(&store)
+        .ok_or_else(|| format!("no store called {store:?}"))?;
+    app.opener()
+        .open_url(found.url_for(&artist, &title), None::<&str>)
+        .map_err(|e| format!("could not open {}: {e}", found.name))
+}
+
+/// §111: the downloads folder, as the settings show it.
+#[derive(Debug, Clone, Serialize)]
+pub struct DownloadsDto {
+    pub watch: Option<String>,
+    pub into: Option<String>,
+    pub on: bool,
+    /// What was filed lately, newest first.
+    pub filed: Vec<crate::downloads::Filed>,
+}
+
+fn downloads_dto(state: &AppState) -> DownloadsDto {
+    let settings = state.downloads();
+    DownloadsDto {
+        watch: settings.watch.map(|p| p.to_string_lossy().into_owned()),
+        into: settings.into.map(|p| p.to_string_lossy().into_owned()),
+        on: settings.on,
+        filed: state.filed(),
+    }
+}
+
+/// §111: the downloads folder and what it filed.
+#[tauri::command]
+pub fn downloads(state: State<'_, AppState>) -> DownloadsDto {
+    downloads_dto(&state)
+}
+
+/// §111: choose the folder to watch, the music folder to file into, and
+/// whether to.
+///
+/// # Errors
+/// When filing is switched on without both folders, when a folder does not
+/// exist, or when the two are the same folder — watching the music folder
+/// and filing into it would sort every loose file a DJ keeps there, which is
+/// not what they asked for.
+#[tauri::command]
+pub fn set_downloads(
+    state: State<'_, AppState>,
+    watch: Option<String>,
+    into: Option<String>,
+    on: bool,
+) -> Result<DownloadsDto, String> {
+    let folder = |path: Option<String>| -> Result<Option<PathBuf>, String> {
+        match path.map(|p| p.trim().to_owned()).filter(|p| !p.is_empty()) {
+            None => Ok(None),
+            Some(path) => {
+                let path = PathBuf::from(path);
+                if path.is_dir() {
+                    Ok(Some(path))
+                } else {
+                    Err(format!("{} is not a folder", path.display()))
+                }
+            }
+        }
+    };
+    let settings = crate::downloads::Settings {
+        watch: folder(watch)?,
+        into: folder(into)?,
+        on,
+    };
+    if on && (settings.watch.is_none() || settings.into.is_none()) {
+        return Err(
+            "choose the folder to watch and the music folder before switching it on".to_owned(),
+        );
+    }
+    if settings.watch.is_some() && settings.watch == settings.into {
+        return Err("the downloads folder and the music folder have to be two folders".to_owned());
+    }
+    state.set_downloads(&settings);
+    Ok(downloads_dto(&state))
+}
+
 /// Show the DJ what will be sent, before anything opens.
 ///
 /// A preview rather than a straight-to-send button, because the message is

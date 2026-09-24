@@ -34,6 +34,7 @@ pub mod partner;
 pub mod provider;
 pub mod registry;
 pub mod spotify;
+pub mod stores;
 pub mod youtube;
 
 pub use catalog::{SourceInfo, catalog, info};

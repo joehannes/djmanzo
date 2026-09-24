@@ -8,6 +8,7 @@
    * cannot drift apart and leave the interface promising something the engine
    * refuses.
    */
+  import Downloads from "./Downloads.svelte";
   import Screens from "./Screens.svelte";
   import {
     adaptationLevels,
@@ -1613,6 +1614,16 @@
     <button class="primary" onclick={pickFolder} disabled={busy}>
       {busy ? "Scanning…" : "Add folder"}
     </button>
+  </div>
+
+  <div class="block">
+    <h3>New music from stores</h3>
+    <p class="hint">
+      A record you buy lands in your browser's downloads. Point djmanzo at that
+      folder and it files each one into your music folder — under its family
+      and artist — and into the collection, a few seconds after it arrives.
+    </p>
+    <Downloads />
   </div>
 
   <div class="block">

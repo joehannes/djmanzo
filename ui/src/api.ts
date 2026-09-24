@@ -1200,6 +1200,49 @@ export interface SingerLyrics {
   instrumental: boolean;
 }
 
+/** §111: one store, as a "find it to buy" link. */
+export interface StoreLink {
+  slug: string;
+  name: string;
+  sells: string;
+  /** Whether the link searches for the song, or only reaches the store. */
+  searches: boolean;
+  karaoke: boolean;
+}
+
+/** §111: where a song could be bought, and what buying it covers. */
+export interface StoreLinks {
+  stores: StoreLink[];
+  covers: string;
+}
+
+export const storeLinks = (karaoke: boolean) => invoke<StoreLinks>("store_links", { karaoke });
+
+/** Open a store's search for a song. The address is built in Rust. */
+export const openStore = (store: string, artist: string, title: string) =>
+  invoke<void>("open_store", { store, artist, title });
+
+/** §111: one record filed from the downloads folder. */
+export interface Filing {
+  arrived: string;
+  /** Where it went, relative to the music folder. */
+  to: string;
+  at: number;
+  problem: string | null;
+}
+
+/** §111: the downloads folder and what it filed. */
+export interface Downloads {
+  watch: string | null;
+  into: string | null;
+  on: boolean;
+  filed: Filing[];
+}
+
+export const downloads = () => invoke<Downloads>("downloads");
+export const setDownloads = (watch: string | null, into: string | null, on: boolean) =>
+  invoke<Downloads>("set_downloads", { watch, into, on });
+
 export const singerLyrics = (deck: number) => invoke<SingerLyrics>("singer_lyrics", { deck });
 
 export const melodyLine = (deck: number, theme: string) =>

@@ -36,6 +36,7 @@ pub mod columns;
 pub mod commands;
 pub mod context;
 pub mod control;
+pub mod downloads;
 pub mod ghost;
 pub mod grid;
 pub mod handle;
@@ -269,6 +270,9 @@ pub fn run() {
             // handle to reach the managed state, and it must outlive this
             // closure.
             commands::start_assistant_tick(app.handle().clone());
+            // §111: the downloads folder, filed into the collection when the
+            // DJ has switched it on. See `downloads`.
+            downloads::start(app.handle().clone());
 
             // The camera and microphone, which the Linux webview refuses unless
             // djmanzo answers for them. See `senses`.
@@ -537,6 +541,10 @@ pub fn run() {
             commands::waveform_info,
             commands::melody_line,
             commands::singer_lyrics,
+            commands::store_links,
+            commands::open_store,
+            commands::downloads,
+            commands::set_downloads,
             commands::report_bench,
             commands::at_hand,
             commands::keep_mix,

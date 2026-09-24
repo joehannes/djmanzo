@@ -150,6 +150,8 @@ pub struct AppState {
     /// subdirectory to find where you started is the sort of implicit
     /// coupling that breaks silently the first time either path moves.
     config_dir: Mutex<Option<std::path::PathBuf>>,
+    /// §111: what the downloads folder filed lately, newest first.
+    filed: Mutex<std::collections::VecDeque<crate::downloads::Filed>>,
     /// The mix that is set up, if one is. See [`crate::transition`].
     ///
     /// One at a time, and here rather than in the interface for the same
@@ -490,6 +492,7 @@ impl AppState {
             )),
             mapping_draft: Mutex::new(dj_hid::editor::Draft::new("My mapping", String::new())),
             config_dir: Mutex::new(None),
+            filed: Mutex::new(std::collections::VecDeque::new()),
             transition: Mutex::new(None),
             recording: Mutex::new(None),
             recording_state: Arc::new(crate::setrec::RecordingState::default()),
@@ -1220,6 +1223,52 @@ impl AppState {
         if let Err(error) = std::fs::write(&path, text) {
             tracing::warn!(%error, ?path, "your waveform will not survive a restart");
         }
+    }
+
+    /// The file §111's downloads settings live in.
+    fn downloads_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("downloads.json"))
+    }
+
+    /// §111: which folder to watch, where to file into, and whether to.
+    /// Off, with neither chosen, on a fresh install: moving a DJ's files is
+    /// something they switch on, never something that starts by itself.
+    #[must_use]
+    pub fn downloads(&self) -> crate::downloads::Settings {
+        self.downloads_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keep the downloads settings.
+    pub fn set_downloads(&self, settings: &crate::downloads::Settings) {
+        let Some(path) = self.downloads_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(settings) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "the downloads folder will not survive a restart");
+        }
+    }
+
+    /// Remember one filing, newest first, the last few only.
+    pub fn note_filed(&self, filed: crate::downloads::Filed) {
+        if let Ok(mut list) = self.filed.lock() {
+            list.push_front(filed);
+            list.truncate(crate::downloads::REMEMBERED);
+        }
+    }
+
+    /// What was filed lately, newest first.
+    #[must_use]
+    pub fn filed(&self) -> Vec<crate::downloads::Filed> {
+        self.filed
+            .lock()
+            .map(|list| list.iter().cloned().collect())
+            .unwrap_or_default()
     }
 
     /// The file §107's singer rotation lives in.

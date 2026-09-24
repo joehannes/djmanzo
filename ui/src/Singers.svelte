@@ -8,6 +8,7 @@
    * reports a press. What is here rather than there is the one thing only the
    * interface can do: put the up-next song on a deck, in the singer's key.
    */
+  import BuyLinks from "./BuyLinks.svelte";
   import {
     detachPanel,
     dispatch,
@@ -196,6 +197,7 @@
           {/each}
         {:else}
           <span class="hint">Not found in the collection yet — search for it below.</span>
+          <BuyLinks title={next.title} karaoke />
         {/if}
         <button class="done" onclick={() => void change(karaokeSang())}>Sang</button>
         <button

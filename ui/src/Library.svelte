@@ -20,6 +20,7 @@
    * collection concludes it is broken.
    */
   import { onMount } from "svelte";
+  import BuyLinks from "./BuyLinks.svelte";
   import { SvelteSet } from "svelte/reactivity";
   import { open } from "@tauri-apps/plugin-dialog";
   import Journal from "./Journal.svelte";
@@ -1368,6 +1369,7 @@
     <p class="empty">
       {#if query.trim()}
         Nothing matches “{query}”.
+        <BuyLinks title={query.trim()} />
       {:else if status && status.pending > 0}
         Still identifying. Tracks appear here as they finish.
       {:else}
