@@ -111,6 +111,11 @@ reqwest = { version = "0.12", default-features = false, features = [
 rustfft = "6"
 async-trait = "0.1"
 urlencoding = "2"
+# §111: album downloads arrive as .zip. Read, and deflate only: no
+# encryption, bzip2, zstd, lzma or xz. MIT. `deflate` is the feature that
+# turns flate2 on, and it compiles the zopfli compressor (Apache-2.0) too,
+# which nothing calls.
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
 # An embedded HTTP/1.1 server for the pages djmanzo serves to phones in the
 # room. Synchronous and thread-per-connection, which matches `dj-net`'s
 # existing control server; an async runtime would be a large dependency for

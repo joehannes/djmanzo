@@ -58,6 +58,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 # Percent-encoding the shared tracklist into that link. MIT.
 urlencoding = { workspace = true }
+zip = { workspace = true }
 rtrb = { workspace = true }
 # Fetching a streamed track to the cache before it reaches a deck. See
 # `sources::resolve_source_track` for why it lands on disk first.

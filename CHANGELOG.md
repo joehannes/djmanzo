@@ -16,6 +16,15 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **§111: an album bought as a `.zip` is filed record by record.** With the
+  downloads folder switched on, a store's album archive has its records taken
+  out and filed under their family and artist like any other purchase; the
+  cover and booklet stay in the archive, which is put away in `Unpacked/`
+  beside it rather than deleted. A `.zip` that holds no music is left alone.
+  Unpacking refuses an entry whose name points outside the album, stops a
+  record at 4 GiB and an album at 16 GiB, and leaves nothing of a damaged
+  record behind. New dependency: `zip` (MIT), reading deflate only.
+
 ---
 
 ## v0.22.0 — Going live, and an assistant that watches the booth

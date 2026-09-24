@@ -6,7 +6,9 @@
    * the browser saves things. With this on, djmanzo waits until it has
    * finished arriving, moves it into the music folder under its family and
    * artist — `House/Kerri Chandler/`, `Karaoke/Queen/` — and adds it to the
-   * collection. The rule is `dj_app::downloads::place`, tested there. Off
+   * collection. An album that arrives as a `.zip` has its records taken out
+   * and filed the same way, and the archive put away in `Unpacked/`. The
+   * rules are `dj_app::downloads::place` and `take_album`, tested there. Off
    * until the DJ switches it on: moving somebody's files is never something
    * that starts by itself.
    */
@@ -79,7 +81,8 @@
         disabled={!current.watch || !current.into}
         onchange={(event) => void change(current?.watch ?? null, current?.into ?? null, event.currentTarget.checked)}
       />
-      File new music automatically — under its family and artist, karaoke and a cappellas on their own
+      File new music automatically — under its family and artist, karaoke and a cappellas on their own, an album
+      taken out of its .zip
     </label>
     {#if current.filed.length > 0}
       <ul class="filed" aria-label="Filed lately">
