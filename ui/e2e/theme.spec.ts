@@ -179,7 +179,11 @@ test.describe("§32's theme packs", () => {
     // Another theme first: it must leave the switch alone. This is the half of
     // §32 that is a prohibition rather than a feature — the metaphor must not
     // constrain a DJ who did not ask for it.
-    await page.locator(".switcher .theme").filter({ hasText: "Booth" }).click();
+    // By name, exactly: a description may mention a booth too (Signal's does).
+    await page
+      .locator(".switcher .theme")
+      .filter({ has: page.locator(".name", { hasText: /^Booth$/ }) })
+      .click();
     await expect(stage, "choosing Booth opened the watershed").toHaveAttribute(
       "data-watershed",
       "closed",
@@ -190,7 +194,7 @@ test.describe("§32's theme packs", () => {
     await expect(page.locator(".switcher .menu")).toBeVisible();
     await page
       .locator(".switcher .theme")
-      .filter({ hasText: "Watershed Living" })
+      .filter({ has: page.locator(".name", { hasText: /^Watershed Living$/ }) })
       .click();
     await expect(
       stage,
@@ -245,7 +249,10 @@ test.describe("§32's theme packs", () => {
     await expect(page.getByRole("button", { name: "Watershed", exact: true })).toHaveCount(0);
 
     await page.locator(".switcher button.icon").click();
-    await page.locator(".switcher .theme").filter({ hasText: "Watershed Living" }).click();
+    await page
+      .locator(".switcher .theme")
+      .filter({ has: page.locator(".name", { hasText: /^Watershed Living$/ }) })
+      .click();
     const stage = page.locator(".stage");
     await expect(stage).toHaveAttribute("data-watershed", "open");
     const close = page.getByRole("button", { name: "Hide the watershed" });

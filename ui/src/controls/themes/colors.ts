@@ -688,6 +688,129 @@ const palettes: Record<string, { dark: Palette; light: Palette }> = {
       "--scrim": "#fbfcfdcc",
     },
   },
+  // -- §113: themes built on functional colour -------------------------------
+  //
+  // > the themes shall be functional as of color codes or usage parts,
+  // > meaningful colors and gradients
+  //
+  // Each of these is designed from what a colour *does* rather than from a
+  // room's mood. They inherit the functional tokens in `app.css` — the EQ
+  // bands in the waveform's own spectrum colours, the level gradient from calm
+  // to clip — and choose their accents so those meanings stand out.
+
+  // Spectrum: the chrome steps back so the spectrum is the only colour. A
+  // neutral graphite with no tint, so a red on screen is a low band, a violet
+  // is the air, and nothing else competes with them.
+  "pkg-spectrum": {
+    dark: {
+      "--bg": "#0d0d0f",
+      "--panel": "#151518",
+      "--panel-raised": "#1d1d21",
+      "--panel-hover": "#28282e",
+      "--border": "#2c2c32",
+      "--border-strong": "#3d3d45",
+      "--text": "#ececf0",
+      "--text-dim": "#a3a3ad",
+      "--accent": "#8ab4ff",
+      "--accent-2": "#6fe0c0",
+      "--warn": "#ffd166",
+      "--danger": "#ff5d73",
+      "--on-accent": "#0d0d0f",
+      "--scrim": "#0d0d0fb0",
+    },
+    light: {
+      "--bg": "#f1f1f3",
+      "--panel": "#ffffff",
+      "--panel-raised": "#e7e7ea",
+      "--panel-hover": "#dcdce1",
+      "--border": "#cfcfd6",
+      "--border-strong": "#a9a9b3",
+      "--text": "#121215",
+      "--text-dim": "#4c4c56",
+      "--accent": "#1f56c4",
+      "--accent-2": "#00726a",
+      "--warn": "#855c00",
+      "--danger": "#b3122e",
+      "--on-accent": "#ffffff",
+      "--scrim": "#ffffffd0",
+    },
+  },
+  // Signal: a colour code read from across a booth. Green is going (the
+  // value of every knob, a playing deck), cyan is what is chosen, amber is
+  // about to, red is stop. A deep navy ground, because a colour code needs
+  // the ground to stay out of it.
+  "pkg-signal": {
+    dark: {
+      "--bg": "#070b14",
+      "--panel": "#0d1320",
+      "--panel-raised": "#141c2d",
+      "--panel-hover": "#1c2740",
+      "--border": "#22304a",
+      "--border-strong": "#324566",
+      "--text": "#f2f6ff",
+      "--text-dim": "#a7b3c9",
+      "--accent": "#33c3ff",
+      "--accent-2": "#3ddc84",
+      "--warn": "#ffb020",
+      "--danger": "#ff4d4d",
+      "--on-accent": "#04111c",
+      "--scrim": "#070b14b8",
+    },
+    light: {
+      "--bg": "#eef2f8",
+      "--panel": "#ffffff",
+      "--panel-raised": "#e3e9f2",
+      "--panel-hover": "#d5deeb",
+      "--border": "#c3cfe0",
+      "--border-strong": "#94a6c2",
+      "--text": "#0b1220",
+      "--text-dim": "#3f4b61",
+      "--accent": "#0063a8",
+      "--accent-2": "#0b7a3e",
+      "--warn": "#8f5a00",
+      "--danger": "#b3141b",
+      "--on-accent": "#ffffff",
+      "--scrim": "#ffffffd0",
+    },
+  },
+  // Aurora: late night, and a screen allowed to glow. A teal-to-violet
+  // night sky, the value of a knob in aurora green and what is chosen in its
+  // violet — two ends of one light, so the gradient between them means
+  // "from here to there" wherever it is drawn.
+  "pkg-aurora": {
+    dark: {
+      "--bg": "#0a0b1a",
+      "--panel": "#111329",
+      "--panel-raised": "#191c38",
+      "--panel-hover": "#232748",
+      "--border": "#282c52",
+      "--border-strong": "#3a3f6e",
+      "--text": "#eef0ff",
+      "--text-dim": "#a9addb",
+      "--accent": "#b69cff",
+      "--accent-2": "#5ef0c0",
+      "--warn": "#ffcf5c",
+      "--danger": "#ff6b8b",
+      "--on-accent": "#0a0b1a",
+      "--scrim": "#0a0b1ab8",
+    },
+    light: {
+      "--bg": "#f3f2fb",
+      "--panel": "#ffffff",
+      "--panel-raised": "#e9e7f7",
+      "--panel-hover": "#dedbf2",
+      "--border": "#d1cdeb",
+      "--border-strong": "#a8a2d4",
+      "--text": "#15132b",
+      "--text-dim": "#4c4870",
+      "--accent": "#5b3fc4",
+      "--accent-2": "#00735a",
+      "--warn": "#855a00",
+      "--danger": "#b3163f",
+      "--on-accent": "#ffffff",
+      "--scrim": "#ffffffd0",
+    },
+  },
 };
 
 export function applyPackagePalette(pkgId: string, resolved: ResolvedTheme) {

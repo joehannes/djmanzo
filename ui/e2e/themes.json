@@ -150,5 +150,29 @@
     "why_not": "",
     "asked": false,
     "world": false
+  },
+  {
+    "title": "Spectrum",
+    "about": "When the waveform's colours should be the only colours: a neutral room, and every EQ knob in the colour of the band it cuts.",
+    "pack": "pkg-spectrum",
+    "why_not": "",
+    "asked": false,
+    "world": false
+  },
+  {
+    "title": "Signal",
+    "about": "A colour code read from across the booth: green is going, cyan is chosen, amber is about to, red is stop.",
+    "pack": "pkg-signal",
+    "why_not": "",
+    "asked": false,
+    "world": false
+  },
+  {
+    "title": "Aurora",
+    "about": "Late-night and lounge sets where the screen may glow: a night sky from teal to violet, the same two colours at the ends of every gradient.",
+    "pack": "pkg-aurora",
+    "why_not": "",
+    "asked": false,
+    "world": false
   }
 ]

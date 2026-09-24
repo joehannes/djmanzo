@@ -402,6 +402,47 @@ export const PkgLegible: ThemePackage = {
   effects: [],
 };
 
+// -- §113: themes built on functional colour ---------------------------------
+
+export const PkgSpectrum: ThemePackage = {
+  id: "pkg-spectrum",
+  name: "Spectrum",
+  category: "minimalist",
+  setting: "venue",
+  when: "When the waveform's colours should be the only colours: a neutral room, and every EQ knob in the colour of the band it cuts.",
+  geometry: GeometryCircle,
+  // Still: the colour here means a frequency, and a stroke that moved with
+  // the audio would be a colour that meant nothing.
+  behaviors: [],
+  effects: [],
+};
+
+export const PkgSignal: ThemePackage = {
+  id: "pkg-signal",
+  name: "Signal",
+  category: "minimalist",
+  setting: "booth",
+  when: "A colour code read from across the booth: green is going, cyan is chosen, amber is about to, red is stop.",
+  geometry: GeometryCircle,
+  // Still, for the Booth theme's reason: a signal that pulses is a signal
+  // that has to be read twice.
+  behaviors: [],
+  effects: [],
+};
+
+export const PkgAurora: ThemePackage = {
+  id: "pkg-aurora",
+  name: "Aurora",
+  category: "organic",
+  setting: "venue",
+  when: "Late-night and lounge sets where the screen may glow: a night sky from teal to violet, the same two colours at the ends of every gradient.",
+  geometry: GeometryCircle,
+  // The slow swell only: a glow that breathes with the bass, nothing that
+  // flickers.
+  behaviors: [TimeReactivePulse],
+  effects: [],
+};
+
 export const themePackages = [
   PkgDaylight,
   PkgStudio,
@@ -420,4 +461,7 @@ export const themePackages = [
   PkgScratch,
   PkgStemLab,
   PkgLegible,
+  PkgSpectrum,
+  PkgSignal,
+  PkgAurora,
 ];

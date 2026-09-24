@@ -73,7 +73,7 @@ pub struct Theme {
 }
 
 /// §32's sixteen, and the two djmanzo ships that §32 did not name.
-pub const ALL: [Theme; 19] = [
+pub const ALL: [Theme; 22] = [
     Theme {
         title: "Studio Neutral",
         about: "Long evenings at a desk. Easy on the eyes for hours at a time.",
@@ -240,6 +240,35 @@ pub const ALL: [Theme; 19] = [
         about: "Every colour djmanzo uses to mean something, chosen to stay apart for a \
                 colour-blind DJ.",
         pack: Some("pkg-legible"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
+    // §113's three: themes designed from what a colour *does*. §32 did not
+    // name them, so `asked` is false here too; §113 is where they come from.
+    Theme {
+        title: "Spectrum",
+        about: "When the waveform's colours should be the only colours: a neutral room, and \
+                every EQ knob in the colour of the band it cuts.",
+        pack: Some("pkg-spectrum"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
+    Theme {
+        title: "Signal",
+        about: "A colour code read from across the booth: green is going, cyan is chosen, \
+                amber is about to, red is stop.",
+        pack: Some("pkg-signal"),
+        why_not: "",
+        asked: false,
+        world: false,
+    },
+    Theme {
+        title: "Aurora",
+        about: "Late-night and lounge sets where the screen may glow: a night sky from teal to \
+                violet, the same two colours at the ends of every gradient.",
+        pack: Some("pkg-aurora"),
         why_not: "",
         asked: false,
         world: false,
@@ -425,14 +454,22 @@ mod tests {
             "a row is marked as §32's and is not one of §32's sixteen"
         );
 
-        // And the extras are honest about not being asked for. Three, and each
-        // for a different reason: two are rooms §32's list happens not to name,
-        // and the third is §33's -- a palette chosen by measurement rather than
-        // for a room at all.
+        // And the extras are honest about not being asked for by §32. Six, and
+        // each for a stated reason: two are rooms §32's list happens not to
+        // name, the third is §33's -- a palette chosen by measurement rather
+        // than for a room at all -- and the last three are §113's, designed
+        // from what a colour does.
         let extras: Vec<&str> = ALL.iter().filter(|t| !t.asked).map(|t| t.title).collect();
         assert_eq!(
             extras,
-            ["Organic Base", "Industrial Techno", "Colour-blind safe"]
+            [
+                "Organic Base",
+                "Industrial Techno",
+                "Colour-blind safe",
+                "Spectrum",
+                "Signal",
+                "Aurora"
+            ]
         );
     }
 

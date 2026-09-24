@@ -65,6 +65,36 @@
    * in which a DJ has to tell them apart. */
   --shape: var(--text-dim);
 
+  /* §113: functional colour — a control wears the colour of what it does.
+   *
+   * The three EQ bands in the colours §110 draws their frequencies in on the
+   * waveform: the low band the reds and oranges of 20–266 Hz, the mid the
+   * yellows and greens of the voice, the high the blues and violets of the
+   * air. So the LOW knob is the colour of the heart of the waveform it takes
+   * away, and a DJ reading one reads the other. The same three hues in every
+   * palette on purpose: they are the spectrum's, not the theme's, and a
+   * theme that moved them would break the one thing they mean. Only their
+   * lightness follows the ground they sit on.
+   */
+  --band-low: hsl(12 88% 60%);
+  --band-mid: hsl(96 58% 52%);
+  --band-high: hsl(262 78% 70%);
+
+  /* A knob's value arc, overridable by the control that knows what it means. */
+  --knob-value: var(--accent-2);
+
+  /* A level, positioned by how loud rather than by how full: the palette's own
+   * calm colour for most of the travel, its warning in the last stretch before
+   * clipping, its danger at the top. Drawn on the full meter and uncovered,
+   * so a quiet signal is never painted the colour of a loud one. */
+  --level-gradient: linear-gradient(
+    to right,
+    var(--accent-2) 0%,
+    var(--accent-2) 68%,
+    var(--warn) 86%,
+    var(--danger) 100%
+  );
+
   --stem-vocal: var(--accent);
   --stem-drums: var(--warn);
   --stem-bass: var(--danger);
@@ -211,6 +241,12 @@
      6.6:1 and 5.4:1 respectively. */
   --on-accent: #ffffff;
   --scrim: #ffffffaa;
+
+  /* The spectrum's three hues as ink: the same hues, dark enough to read on
+     white. */
+  --band-low: hsl(12 80% 42%);
+  --band-mid: hsl(96 62% 30%);
+  --band-high: hsl(262 60% 48%);
 
   color-scheme: light;
 }

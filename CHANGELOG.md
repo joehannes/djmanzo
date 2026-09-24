@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Colour that means something, and three themes built on it** — §113. Each
+EQ knob is now the colour the waveform draws its frequencies in — LOW red,
+MID green, HI violet — the filter knob takes the colour of what it keeps,
+and the level meter's colour is placed by loudness, calm until it nears the
+top. Three new themes are designed around that: *Spectrum* (a neutral room
+so the spectrum is the only colour), *Signal* (a colour code read from
+across the booth) and *Aurora* (a night sky that may glow).
+
 **Find it to buy, and filed when you do** — §111. A song you search for, or
 a singer asks for, that is not in your collection now offers the stores'
 own searches: Bandcamp, Beatport, Traxsource, Amazon, Apple, and for karaoke

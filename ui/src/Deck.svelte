@@ -1082,7 +1082,7 @@
   -->
   <div class="eq">
     {#each [{ id: "eq_high", label: "HI", value: deck.eq_high }, { id: "eq_mid", label: "MID", value: deck.eq_mid }, { id: "eq_low", label: "LOW", value: deck.eq_low }] as band (band.id)}
-      <label class="band" class:killed={band.value < 0.001}>
+      <label class="band" class:killed={band.value < 0.001} data-band={band.id}>
         <SvgKnob
           value={band.value}
           min={0}
@@ -1112,7 +1112,15 @@
 
   {/snippet}
   {#snippet zoneFilter()}
-  <label class="control">
+  <!--
+    §113: the filter knob wears the colour of what it leaves — a low-pass the
+    lows' red, a high-pass the highs' violet — so a glance says which side of
+    the record is still in the room.
+  -->
+  <label
+    class="control"
+    data-filter={deck.filter < -0.02 ? "low-pass" : deck.filter > 0.02 ? "high-pass" : "off"}
+  >
     <SvgKnob
       value={deck.filter}
       min={-1}
@@ -1281,7 +1289,12 @@
     aria-valuemax="1"
     aria-valuenow={deck.peak}
   >
-    <div class="meter-fill" style:scale="{fill(deck.peak)} 1"></div>
+    <!--
+      §113: the level's colour is where it is, not how full the bar is — the
+      gradient is the whole meter, and what is not reached is covered from
+      the right. A scale, so the compositor does it, as before.
+    -->
+    <div class="meter-cover" data-meter-cover style:scale="{1 - fill(deck.peak)} 1"></div>
   </div>
   {/snippet}
 
@@ -1871,17 +1884,35 @@
   }
   .meter {
     height: 4px;
-    background: var(--panel-raised);
+    background: var(--level-gradient);
     border-radius: 2px;
     overflow: hidden;
   }
 
-  .meter-fill {
+  .meter-cover {
     width: 100%;
-    transform-origin: left center;
+    transform-origin: right center;
     height: 100%;
-    background: var(--accent-2);
+    background: var(--panel-raised);
     /* No CSS transition: a level meter that lags is a lying level meter. */
+  }
+
+  /* §113: each EQ knob in its band's colour, the waveform's colour for the
+     same frequencies. */
+  .band[data-band="eq_low"] {
+    --knob-value: var(--band-low);
+  }
+  .band[data-band="eq_mid"] {
+    --knob-value: var(--band-mid);
+  }
+  .band[data-band="eq_high"] {
+    --knob-value: var(--band-high);
+  }
+  .control[data-filter="low-pass"] {
+    --knob-value: var(--band-low);
+  }
+  .control[data-filter="high-pass"] {
+    --knob-value: var(--band-high);
   }
 
   .error {

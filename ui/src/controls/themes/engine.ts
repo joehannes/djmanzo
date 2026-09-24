@@ -185,7 +185,9 @@ function withValue(
       paths.push({
         d: arc(centre, centre, radius, from, at),
         fill: "none",
-        stroke: "var(--accent-2)",
+        // §113: the knob's own meaning where its control gives one — an EQ
+        // band's colour, the filter's — and the palette's accent otherwise.
+        stroke: "var(--knob-value)",
         strokeWidth: 6,
         role: "value",
       });
