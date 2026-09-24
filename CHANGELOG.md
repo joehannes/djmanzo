@@ -26,6 +26,13 @@ Versioning follows semver, with one project-specific convention:
   and a digit** (`Shift+1`–`4` deck 1, `Shift+7`–`0` deck 2) and setting one is
   Alt, Shift and the digit. Play / pause is A and J, as it also was before;
   Space no longer plays deck 1.
+- **Your own keys under Space**, from the Keys sheet (F1): press the keys,
+  find what they do the way you find anything in the palette, name it, keep
+  it — it is in the guide from then on, marked as yours. djmanzo says why when
+  a chain would hide one of its groups.
+- **The system's own chords**: ⌘ on a Mac, Ctrl elsewhere — F to search the
+  library, comma for Settings, slash (or F1) for every key, 1–9 for an
+  activity even while typing.
 ---
 
 ## v0.23.0 — ONNX stems on a clean Linux install, and music filed by how it sounds

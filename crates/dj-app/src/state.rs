@@ -1263,6 +1263,33 @@ impl AppState {
         }
     }
 
+    fn leader_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("leader.json"))
+    }
+
+    /// §117: the DJ's own keys under Space. None on a fresh install, and none
+    /// from an unreadable file — the tree djmanzo ships is still all there.
+    #[must_use]
+    pub fn leader_mine(&self) -> Vec<crate::leader::Mine> {
+        self.leader_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keep the DJ's own keys under Space.
+    pub fn set_leader_mine(&self, mine: &[crate::leader::Mine]) {
+        let Some(path) = self.leader_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(mine) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "the DJ's own keys will not survive a restart");
+        }
+    }
+
     /// djmanzo's own folder, once the application has told this where it is.
     #[must_use]
     pub fn config_dir(&self) -> Option<std::path::PathBuf> {

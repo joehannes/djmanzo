@@ -9539,10 +9539,58 @@ pub struct PaletteDto {
 #[tauri::command]
 #[must_use]
 pub fn leader_tree(state: State<'_, AppState>, decks: u8) -> crate::leader::Node {
+    let (tree, switches) = leader_parts(&state, decks);
+    crate::leader::with_mine(tree, &state.leader_mine(), &switches)
+}
+
+/// The tree djmanzo ships for this state, and the switches a key may name.
+fn leader_parts(state: &AppState, decks: u8) -> (crate::leader::Node, Vec<String>) {
     let activities = crate::activity::all(&state.activities().mine);
     let mut workspaces = state.my_workspaces();
     workspaces.extend(crate::cockpit::workspaces());
-    crate::leader::tree(decks, &activities, &workspaces, state.presets().packs())
+    let packs = state.presets().packs();
+    (
+        crate::leader::tree(decks, &activities, &workspaces, packs),
+        switch_runs(&activities, &workspaces, packs, decks),
+    )
+}
+
+/// §117: the DJ's own keys under Space.
+#[tauri::command]
+#[must_use]
+pub fn leader_mine(state: State<'_, AppState>) -> Vec<crate::leader::Mine> {
+    state.leader_mine()
+}
+
+/// §117: keep one of the DJ's own keys under Space, checked against the tree
+/// it joins; one already on the same keys is replaced.
+///
+/// # Errors
+/// When the keys would hide one of djmanzo's groups or hang under a leaf, or
+/// what it runs is not something djmanzo does — said as a sentence.
+#[tauri::command]
+pub fn keep_mnemonic(
+    state: State<'_, AppState>,
+    keys: Vec<String>,
+    label: String,
+    run: String,
+    decks: u8,
+) -> Result<Vec<crate::leader::Mine>, String> {
+    let one = crate::leader::Mine { keys, label, run };
+    let (tree, switches) = leader_parts(&state, decks);
+    crate::leader::check(&tree, &one, &switches).map_err(|refused| refused.to_string())?;
+    let kept = crate::leader::keep(&state.leader_mine(), one);
+    state.set_leader_mine(&kept);
+    Ok(kept)
+}
+
+/// §117: forget the DJ's own key on these keys.
+#[tauri::command]
+#[must_use]
+pub fn forget_mnemonic(state: State<'_, AppState>, keys: Vec<String>) -> Vec<crate::leader::Mine> {
+    let kept = crate::leader::forget(&state.leader_mine(), &keys);
+    state.set_leader_mine(&kept);
+    kept
 }
 
 /// What the palette should offer for `query`, under §18's budget.
@@ -9656,9 +9704,8 @@ fn switches(
     out
 }
 
-/// The `run` of every switch the palette offers, for the leader's test to
-/// hold its switches to.
-#[cfg(test)]
+/// The `run` of every switch the palette offers, which a key under Space may
+/// name (§117).
 pub(crate) fn switch_runs(
     activities: &[crate::activity::Activity],
     workspaces: &[crate::cockpit::Workspace],

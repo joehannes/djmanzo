@@ -1843,6 +1843,54 @@ export async function openShell(
               },
             );
           }
+          // §117: the DJ's own keys under Space, held between calls the way
+          // Rust holds them, and laid over the tree Rust built (`leader.json`)
+          // as `dj_app::leader::with_mine` lays them: a chain makes the groups
+          // it needs, marked as the DJ's. Rust's refusal of keys that would
+          // hide a group is mirrored for one case, `d`, which the tests use.
+          type MyKey = { keys: string[]; label: string; run: string };
+          type Node = { key: string; label: string; run: string | null; children: Node[]; mine: boolean };
+          const myKeys = () => (win.__myKeys ??= []) as MyKey[];
+          if (cmd === "leader_mine") return Promise.resolve(structuredClone(myKeys()));
+          if (cmd === "keep_mnemonic") {
+            // Copied: the interface passes its own reactive array, which the
+            // real bridge serialises and `structuredClone` cannot.
+            const keys = Array.from(args.keys as string[]);
+            if (keys.length === 1 && keys[0] === "d") {
+              return Promise.reject(
+                new Error("Space d already opens a group of keys; choose keys below it or elsewhere"),
+              );
+            }
+            const kept = myKeys().filter((one) => one.keys.join(" ") !== keys.join(" "));
+            kept.push({ keys, label: String(args.label).trim(), run: String(args.run) });
+            win.__myKeys = kept;
+            return Promise.resolve(structuredClone(kept));
+          }
+          if (cmd === "forget_mnemonic") {
+            const keys = Array.from(args.keys as string[]).join(" ");
+            win.__myKeys = myKeys().filter((one) => one.keys.join(" ") !== keys);
+            return Promise.resolve(structuredClone(win.__myKeys));
+          }
+          if (cmd === "leader_tree") {
+            const root = structuredClone(answers.leader_tree) as Node;
+            for (const one of myKeys()) {
+              let here = root;
+              for (const key of one.keys.slice(0, -1)) {
+                let next = here.children.find((child) => child.key === key);
+                if (!next) {
+                  next = { key, label: "Yours", run: null, children: [], mine: true };
+                  here.children.push(next);
+                }
+                here = next;
+              }
+              const last = one.keys[one.keys.length - 1];
+              const leaf: Node = { key: last, label: one.label, run: one.run, children: [], mine: true };
+              const at = here.children.findIndex((child) => child.key === last);
+              if (at >= 0) here.children[at] = leaf;
+              else here.children.push(leaf);
+            }
+            return Promise.resolve(root);
+          }
           // §109: the activity strip, held between calls the way Rust holds
           // it, so a test can move between activities and keep its own. The
           // rules are Rust's, mirrored: a shipped name is refused, keeping a

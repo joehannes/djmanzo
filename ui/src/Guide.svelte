@@ -15,6 +15,9 @@
    */
   import type { LeaderNode } from "./api";
   import { keyLabel, mnemonicAt, type Leader } from "./leader.svelte";
+  import { CHORDS, modName } from "./platform";
+
+  const mod = modName();
 
   let { leader }: { leader: Leader } = $props();
 
@@ -59,6 +62,12 @@
         </li>
       {/each}
     </ul>
+    <footer aria-label="Also, anywhere">
+      {#each CHORDS as chord (chord.code)}
+        <span><kbd>{mod}</kbd><kbd>{chord.code === "Comma" ? "," : chord.code === "Slash" ? "/" : chord.code.slice(3)}</kbd> {chord.label}</span>
+      {/each}
+      <span><kbd>{mod}</kbd><kbd>1</kbd>–<kbd>9</kbd> an activity, even while typing</span>
+    </footer>
   </div>
 {/if}
 
@@ -187,6 +196,21 @@
     font-family: var(--mono, monospace);
     font-size: 0.85em;
     text-align: center;
+  }
+
+  footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    margin-top: 0.45rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.78rem;
+  }
+
+  footer kbd + kbd {
+    margin-left: 0.15em;
   }
 
   /* Read aloud, not drawn: a group's "›" says the same to the eye. */

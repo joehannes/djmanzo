@@ -33,7 +33,22 @@
 //! - `switch <kind> <which>` — a theme, activity, workspace or preset, as the
 //!   Ctrl+K palette switches one (§115);
 //! - `ui <verb>` — something only the interface does: open the palette,
-//!   search the library, go back to the last activity, record, mark.
+//!   search the library, go back to the last activity, record, mark;
+//! - `uiop <operation>` — one of §41's interface operations (`ui pin
+//!   library`, `ui focus 2`), which a DJ's own key can name because the
+//!   palette offers them.
+//!
+//! # The DJ's own
+//!
+//! > let the user be capable of creating his own shortcuts/mnemonics as well
+//! > and those shall be reflected in the visual guide.
+//!
+//! A DJ keeps a chain of keys, a name and anything the palette offers
+//! ([`Mine`]). It is checked against the tree before it is kept — it may not
+//! turn one of djmanzo's groups into a leaf, nor hang under a leaf, and what it
+//! runs must be something djmanzo does — and laid over the tree
+//! ([`with_mine`]), marked as the DJ's, where the guide shows it like any
+//! other key. On a key djmanzo already uses it wins: it is the DJ's keyboard.
 //!
 //! A test runs every leaf of the default tree through the parser, the panel
 //! list and the switch list, so nothing is offered that djmanzo cannot do.
@@ -48,7 +63,7 @@
 //! accelerators have been shown on Windows and GTK for decades. The letter is
 //! learned by seeing it in the word.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 /// One step of the tree: a group to go into, or a leaf to run.
@@ -377,6 +392,179 @@ fn presets(packs: &[dj_presets::Pack], decks: u8) -> Node {
     Node::group("p", "Preset", children)
 }
 
+/// The verbs a `ui` leaf may name: what the interface carries out itself.
+pub const UI_VERBS: [&str; 6] = ["palette", "search", "back", "record", "mark", "everything"];
+
+/// Whether a leaf's `run` is something djmanzo does, given the switches the
+/// palette offers. `Err` says why not.
+///
+/// # Errors
+/// When the kind is unknown, or the action, panel, switch, interface verb or
+/// operation is not one djmanzo has.
+pub fn runnable(run: &str, switches: &[String]) -> Result<(), String> {
+    let (kind, rest) = run.split_once(' ').unwrap_or((run, ""));
+    match kind {
+        "action" => dj_core::action::Action::parse(rest)
+            .map(|_| ())
+            .map_err(|error| format!("{rest:?} is not an action djmanzo knows: {error}")),
+        "surface" if crate::cockpit::surfaces().iter().any(|s| s.name == rest) => Ok(()),
+        "surface" => Err(format!("there is no panel called {rest:?}")),
+        "switch" if switches.iter().any(|s| s == rest) => Ok(()),
+        "switch" => Err(format!("there is nothing to switch to called {rest:?}")),
+        "ui" if UI_VERBS.contains(&rest) => Ok(()),
+        "ui" => Err(format!("{rest:?} is not something the interface does")),
+        "uiop" => crate::uiop::UiOp::parse(rest)
+            .map(|_| ())
+            .map_err(|error| format!("{rest:?}: {error}")),
+        other => Err(format!("{other:?} is not a kind of key")),
+    }
+}
+
+/// One of the DJ's own keys under Space.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Mine {
+    /// The keys after Space, each as the tree writes it: `["g", "h"]`.
+    pub keys: Vec<String>,
+    /// What the guide calls it.
+    pub label: String,
+    /// What it runs, as a leaf's `run` is written.
+    pub run: String,
+}
+
+/// The longest chain a DJ's own key may be. Four is already more than a hand
+/// wants mid-set; the tree's own leaves are at most four deep.
+pub const LONGEST: usize = 4;
+
+/// Why a DJ's own key was not kept.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refused {
+    /// No keys, or more than [`LONGEST`].
+    Length,
+    /// A key that is not one character or `space`.
+    NotAKey(String),
+    /// No name for the guide to show.
+    Unnamed,
+    /// It runs nothing djmanzo does.
+    CannotRun(String),
+    /// These keys are one of djmanzo's groups; a leaf there would hide it.
+    IsAGroup(String),
+    /// These keys already end at a leaf, so nothing can come after them.
+    UnderALeaf(String),
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Length => write!(f, "a key under Space is one to {LONGEST} keys long"),
+            Self::NotAKey(key) => write!(f, "{key:?} is not a key: one character, or space"),
+            Self::Unnamed => write!(f, "give it a name for the guide to show"),
+            Self::CannotRun(why) => write!(f, "it would do nothing: {why}"),
+            Self::IsAGroup(path) => write!(
+                f,
+                "Space {path} already opens a group of keys; choose keys below it or elsewhere"
+            ),
+            Self::UnderALeaf(path) => write!(
+                f,
+                "Space {path} already does something, so nothing can come after it"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for Refused {}
+
+/// Whether a DJ's own key can join `root`.
+///
+/// # Errors
+/// See [`Refused`].
+pub fn check(root: &Node, mine: &Mine, switches: &[String]) -> Result<(), Refused> {
+    if mine.keys.is_empty() || mine.keys.len() > LONGEST {
+        return Err(Refused::Length);
+    }
+    if let Some(bad) = mine
+        .keys
+        .iter()
+        .find(|key| key.as_str() != "space" && key.chars().count() != 1)
+    {
+        return Err(Refused::NotAKey(bad.clone()));
+    }
+    if mine.label.trim().is_empty() {
+        return Err(Refused::Unnamed);
+    }
+    runnable(&mine.run, switches).map_err(Refused::CannotRun)?;
+    let mut here = root;
+    for (depth, key) in mine.keys.iter().enumerate() {
+        let path = mine.keys[..=depth].join(" ");
+        let Some(next) = here.children.iter().find(|child| &child.key == key) else {
+            return Ok(());
+        };
+        let last = depth + 1 == mine.keys.len();
+        match (next.run.is_some(), last) {
+            (true, false) => return Err(Refused::UnderALeaf(path)),
+            (false, true) => return Err(Refused::IsAGroup(path)),
+            _ => here = next,
+        }
+    }
+    Ok(())
+}
+
+/// `root` with the DJ's own laid over it, each marked as theirs. One that no
+/// longer fits — djmanzo grew a group where it was — is left out rather than
+/// allowed to hide the group; the settings still list it.
+#[must_use]
+pub fn with_mine(mut root: Node, mine: &[Mine], switches: &[String]) -> Node {
+    for one in mine {
+        if check(&root, one, switches).is_err() {
+            continue;
+        }
+        let mut here = &mut root;
+        for key in &one.keys[..one.keys.len() - 1] {
+            let at = match here.children.iter().position(|child| &child.key == key) {
+                Some(at) => at,
+                None => {
+                    let mut group = Node::group(key.clone(), "Yours", Vec::new());
+                    group.mine = true;
+                    here.children.push(group);
+                    here.children.len() - 1
+                }
+            };
+            here = &mut here.children[at];
+        }
+        let last = one.keys[one.keys.len() - 1].clone();
+        let mut leaf = Node::leaf(last.clone(), one.label.trim(), one.run.clone());
+        leaf.mine = true;
+        match here.children.iter().position(|child| child.key == last) {
+            Some(at) => here.children[at] = leaf,
+            None => here.children.push(leaf),
+        }
+    }
+    root
+}
+
+/// The DJ's own with one more: any already on the same keys is replaced.
+#[must_use]
+pub fn keep(list: &[Mine], one: Mine) -> Vec<Mine> {
+    let mut out: Vec<Mine> = list
+        .iter()
+        .filter(|each| each.keys != one.keys)
+        .cloned()
+        .collect();
+    out.push(Mine {
+        label: one.label.trim().to_owned(),
+        ..one
+    });
+    out
+}
+
+/// The DJ's own without the one on these keys.
+#[must_use]
+pub fn forget(list: &[Mine], keys: &[String]) -> Vec<Mine> {
+    list.iter()
+        .filter(|each| each.keys != keys)
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,27 +597,12 @@ mod tests {
         assert!(leaves.len() > 80, "{} leaves", leaves.len());
         for (path, leaf) in leaves {
             let run = leaf.run.as_deref().unwrap();
-            let (kind, rest) = run.split_once(' ').unwrap_or((run, ""));
-            match kind {
-                "action" => {
-                    assert!(
-                        dj_core::action::Action::parse(rest).is_ok(),
-                        "{path:?}: {rest}"
-                    );
-                }
-                "surface" => assert!(
-                    crate::cockpit::surfaces().iter().any(|s| s.name == rest),
-                    "{path:?}: no panel {rest}"
-                ),
-                "switch" => assert!(
-                    switches.iter().any(|s| s == rest),
-                    "{path:?}: no switch {rest}"
-                ),
-                "ui" => assert!(
-                    ["palette", "search", "back", "record", "mark", "everything"].contains(&rest),
-                    "{path:?}: no ui verb {rest}"
-                ),
-                other => panic!("{path:?}: {other} is not a kind of leaf"),
+            assert!(
+                !run.starts_with("uiop "),
+                "{path:?}: the default tree names no operation"
+            );
+            if let Err(why) = runnable(run, &switches) {
+                panic!("{path:?}: {why}");
             }
         }
     }
@@ -512,5 +685,149 @@ mod tests {
         }
         let full: BTreeSet<char> = ('a'..='z').collect();
         assert_eq!(letter_for("Anything", &full), None);
+    }
+
+    fn mine(keys: &str, label: &str, run: &str) -> Mine {
+        Mine {
+            keys: keys.split(' ').map(str::to_owned).collect(),
+            label: label.to_owned(),
+            run: run.to_owned(),
+        }
+    }
+
+    fn switches() -> Vec<String> {
+        crate::commands::switch_runs(
+            &crate::activity::all(&[]),
+            &crate::cockpit::workspaces(),
+            &dj_presets::builtin::packs(),
+            4,
+        )
+    }
+
+    /// **A DJ's own key is refused where it would break the tree, and kept
+    /// where it fits.** It may not hide one of djmanzo's groups (`Space d`),
+    /// hang under a leaf (`Space , x`), run nothing, or be unnamed; a new
+    /// chain, a key in one of djmanzo's groups, and a key djmanzo already uses
+    /// for a leaf are all the DJ's to take.
+    #[test]
+    fn a_djs_own_key_is_checked_against_the_tree() {
+        let root = default_tree();
+        let s = switches();
+        let check = |m: Mine| check(&root, &m, &s);
+        assert_eq!(
+            check(mine("d", "Mine", "action deck 1 cue")),
+            Err(Refused::IsAGroup("d".into()))
+        );
+        assert_eq!(
+            check(mine(", x", "Mine", "action deck 1 cue")),
+            Err(Refused::UnderALeaf(",".into()))
+        );
+        assert!(matches!(
+            check(mine("g h", "Mine", "action deck 1 fly")),
+            Err(Refused::CannotRun(_))
+        ));
+        assert!(matches!(
+            check(mine("g h", "Mine", "surface nowhere")),
+            Err(Refused::CannotRun(_))
+        ));
+        assert_eq!(
+            check(mine("g h", "  ", "action deck 1 cue")),
+            Err(Refused::Unnamed)
+        );
+        assert_eq!(
+            check(mine("g hh", "Mine", "action deck 1 cue")),
+            Err(Refused::NotAKey("hh".into()))
+        );
+        assert_eq!(
+            check(mine("a b c d e", "Mine", "action deck 1 cue")),
+            Err(Refused::Length)
+        );
+
+        assert_eq!(
+            check(mine("g h", "Loop eight", "action deck 1 loop 8")),
+            Ok(())
+        );
+        assert_eq!(
+            check(mine("d 1 z", "Loop eight", "action deck 1 loop 8")),
+            Ok(())
+        );
+        assert_eq!(
+            check(mine("d 1 l", "Loop eight", "action deck 1 loop 8")),
+            Ok(())
+        );
+        assert_eq!(
+            check(mine("x", "Pin the library", "uiop ui pin library")),
+            Ok(())
+        );
+        assert!(
+            Refused::IsAGroup("d".into())
+                .to_string()
+                .contains("Space d")
+        );
+    }
+
+    /// **The DJ's own are in the guide, marked as theirs**: a new chain makes
+    /// the groups it needs, a key djmanzo used is replaced, and one that no
+    /// longer fits is left out rather than allowed to hide a group.
+    #[test]
+    fn a_djs_own_keys_are_laid_over_the_tree() {
+        let s = switches();
+        let kept = [
+            mine("g h", "Loop eight", "action deck 1 loop 8"),
+            mine("d 1 l", "Loop sixteen", "action deck 1 loop 16"),
+            mine("d", "Would hide the decks", "action deck 1 cue"),
+        ];
+        let root = with_mine(default_tree(), &kept, &s);
+        let at = |path: &[&str]| {
+            let mut here = &root;
+            for key in path {
+                here = here
+                    .children
+                    .iter()
+                    .find(|child| child.key == *key)
+                    .unwrap();
+            }
+            here
+        };
+        let g = at(&["g"]);
+        assert!(g.mine && g.run.is_none(), "{g:?}");
+        let gh = at(&["g", "h"]);
+        assert_eq!(
+            (gh.label.as_str(), gh.run.as_deref(), gh.mine),
+            ("Loop eight", Some("action deck 1 loop 8"), true)
+        );
+        let l = at(&["d", "1", "l"]);
+        assert_eq!(
+            (l.run.as_deref(), l.mine),
+            (Some("action deck 1 loop 16"), true)
+        );
+        let d = at(&["d"]);
+        assert!(
+            d.run.is_none() && !d.mine,
+            "a DJ's key hid djmanzo's deck group"
+        );
+        assert_eq!(
+            root.children
+                .iter()
+                .filter(|child| child.key == "g")
+                .count(),
+            1,
+            "a group made twice"
+        );
+    }
+
+    /// Keeping on the same keys replaces; forgetting takes only those keys.
+    #[test]
+    fn keeping_replaces_and_forgetting_removes() {
+        let one = keep(&[], mine("g h", " Loop eight ", "action deck 1 loop 8"));
+        assert_eq!(one[0].label, "Loop eight");
+        let two = keep(&one, mine("g h", "Loop four", "action deck 1 loop 4"));
+        assert_eq!(two.len(), 1);
+        assert_eq!(two[0].label, "Loop four");
+        let three = keep(&two, mine("g j", "Cue", "action deck 1 cue"));
+        assert_eq!(
+            forget(&three, &["g".to_owned(), "h".to_owned()]),
+            vec![three[1].clone()]
+        );
     }
 }

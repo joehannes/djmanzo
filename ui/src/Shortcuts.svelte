@@ -11,8 +11,14 @@
   import { grouped, pretty, type Keyboard } from "./keyboard.svelte";
   import { setKeyboardEnabled } from "./api";
   import IconButton from "./controls/IconButton.svelte";
+  import MyKeys from "./MyKeys.svelte";
 
-  let { keyboard, onclose }: { keyboard: Keyboard; onclose: () => void } = $props();
+  let {
+    keyboard,
+    onclose,
+    decks = 2,
+    onKeysChanged = () => {},
+  }: { keyboard: Keyboard; onclose: () => void; decks?: number; onKeysChanged?: () => void } = $props();
 
   const groups = $derived(grouped(keyboard.bindings));
 
@@ -48,6 +54,8 @@
     Keys are named by position, so this layout holds on an AZERTY or QWERTZ
     keyboard.
   </p>
+
+  <MyKeys {decks} onchange={onKeysChanged} />
 
   {#if !keyboard.enabled}
     <p class="off">

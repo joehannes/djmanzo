@@ -1949,6 +1949,23 @@ export interface LeaderNode {
 
 export const leaderTree = (decks: number) => invoke<LeaderNode>("leader_tree", { decks });
 
+/** §117: one of the DJ's own keys under Space. */
+export interface MyKey {
+  /** The keys after Space, as the tree writes them: `["g", "h"]`. */
+  keys: string[];
+  label: string;
+  /** What it runs, as a leaf's `run` is written. */
+  run: string;
+}
+
+export const leaderMine = () => invoke<MyKey[]>("leader_mine");
+
+/** Rejects with a sentence when the keys would break the tree or run nothing. */
+export const keepMnemonic = (keys: string[], label: string, run: string, decks: number) =>
+  invoke<MyKey[]>("keep_mnemonic", { keys, label, run, decks });
+
+export const forgetMnemonic = (keys: string[]) => invoke<MyKey[]>("forget_mnemonic", { keys });
+
 /** Where the DJ wants the next record to take the room. */
 export type Trajectory = "lift" | "hold" | "ease";
 

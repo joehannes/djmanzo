@@ -2,6 +2,7 @@
   import Assistant from "./Assistant.svelte";
   import Guide from "./Guide.svelte";
   import { Leader } from "./leader.svelte";
+  import { chordRun } from "./platform";
   import { tick } from "svelte";
   import Browse from "./Browse.svelte";
   import Deck from "./Deck.svelte";
@@ -39,6 +40,7 @@
     keepActivity,
     setActivityMode,
     leaderTree,
+    uiDo,
     type Activities,
     type ActivitySuggestion,
     chooseLayout,
@@ -771,6 +773,16 @@
    * is a hot cue, and the other chords belong to the DJ's own mapping.
    */
   function onActivityKey(event: KeyboardEvent) {
+    // §117: the platform's own chords first — ⌘ on a Mac, Ctrl elsewhere —
+    // unless the DJ's keyboard mapping already took the key.
+    if (!event.defaultPrevented) {
+      const chord = chordRun(event, (activityState?.activities ?? []).slice(0, 9).map((a) => a.slug));
+      if (chord) {
+        event.preventDefault();
+        void runLeaf(chord);
+        return;
+      }
+    }
     if (!activityState) return;
     if (typing(event.target)) return;
     if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
@@ -1124,9 +1136,13 @@
   const leader = new Leader((run) => void runLeaf(run));
   let paletteRef = $state<{ openPalette: () => void } | null>(null);
 
+  /** Bumped when the DJ keeps or forgets one of their own keys. */
+  let leaderVersion = $state(0);
+
   /** The tree changes with the decks and with what the DJ has kept. */
   $effect(() => {
     const decks = deckCount;
+    void leaderVersion;
     void activityState?.activities.length;
     void mine.length;
     void leaderTree(decks)
@@ -1154,6 +1170,10 @@
       else if (rest === "record") {
         if (setRecording) await send(setRecording.active ? "record off" : "record on");
       } else if (rest === "mark") await mark();
+    } else if (kind === "uiop") {
+      // §41's operations, which a DJ's own key may name because the palette
+      // offers them; carried out the way the palette carries them out.
+      await uiDo(rest).catch(() => {});
     }
   }
 
@@ -2663,7 +2683,7 @@
     <Assistant enabled={ready} />
   {/snippet}
   {#snippet surfaceKeys()}
-    <Shortcuts {keyboard} onclose={() => toggleSurface("keys")} />
+    <Shortcuts {keyboard} onclose={() => toggleSurface("keys")} decks={deckCount} onKeysChanged={() => (leaderVersion += 1)} />
   {/snippet}
   {#snippet surfaceControllers()}
     <!-- Two panels in the space of one: what is connected, then what it does. -->

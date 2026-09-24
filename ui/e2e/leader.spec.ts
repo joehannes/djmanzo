@@ -138,4 +138,71 @@ test.describe("§117: the leader key", () => {
     await expect(guide(page)).toHaveCount(0);
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **A DJ's own key: pressed, chosen from the palette's search, kept, and
+   * then in the guide** — marked as theirs, and it runs. One that would hide
+   * djmanzo's deck group is refused with the reason, and forgetting takes it
+   * out of the guide again.
+   */
+  test("a DJ's own key is kept, shown in the guide, run, and forgotten", async ({ page }) => {
+    await openShell(page, "/", {}, KEYS);
+    await page.keyboard.press("F1");
+    const mine = page.getByRole("region", { name: "Your keys under Space" });
+    await expect(mine).toBeVisible();
+
+    const keys = mine.getByRole("textbox", { name: "Keys after Space" });
+    await keys.click();
+    await keys.press("d");
+    await mine.getByRole("searchbox", { name: "What the key does" }).fill("cue");
+    await mine.getByRole("radiogroup", { name: "What it does" }).getByRole("radio").first().click();
+    await mine.getByRole("button", { name: "Keep", exact: true }).click();
+    await expect(mine.getByRole("alert")).toContainText("Space d already opens a group");
+
+    await keys.press("Backspace");
+    await keys.press("g");
+    await keys.press("h");
+    await expect(keys).toHaveValue("g h");
+    // The name is suggested from the choice, and a click then typing
+    // replaces it rather than typing onto its end.
+    const name = mine.getByRole("textbox", { name: "Name in the guide" });
+    await expect(name).not.toHaveValue("");
+    await name.click();
+    await page.keyboard.type("My cue");
+    await expect(name).toHaveValue("My cue");
+    await mine.getByRole("button", { name: "Keep", exact: true }).click();
+    await expect(mine.locator('[data-my-key="g h"]')).toContainText("My cue");
+
+    // In the guide, as the DJ's, and it runs.
+    await page.locator("body").click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press("Space");
+    await page.keyboard.press("g");
+    await expect(guide(page).getByRole("list", { name: "Where you are" })).toContainText("Yours");
+    await expect(guide(page).locator('[data-key="h"]')).toContainText("My cue");
+    const before = (await dispatched(page)).length;
+    await page.keyboard.press("h");
+    await expect.poll(async () => (await dispatched(page)).length).toBeGreaterThan(before);
+
+    await mine.getByRole("button", { name: "Forget My cue" }).click();
+    await page.keyboard.press("Space");
+    await expect(guide(page).locator('[data-key="g"]')).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **The system's own chords**, with the modifier Chromium on Linux reports:
+   * Ctrl+F puts the cursor in the library's search, Ctrl+, opens Settings, and
+   * Ctrl+2 goes to the second activity even from inside a text field.
+   */
+  test("Ctrl F searches, Ctrl comma opens settings, Ctrl 2 switches while typing", async ({ page }) => {
+    await openShell(page, "/");
+    await page.keyboard.press("Control+KeyF");
+    const search = page.getByRole("searchbox", { name: "Search the library" });
+    await expect(search).toBeFocused();
+    await page.keyboard.press("Control+Digit2");
+    await expect(page.locator('[data-activity-strip] [data-activity="mix"]')).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Control+Comma");
+    await expect(page.locator('.surface[data-surface="settings"]')).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });
