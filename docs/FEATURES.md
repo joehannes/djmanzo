@@ -175,6 +175,7 @@ Milestone definitions are in [ROADMAP.md](ROADMAP.md).
 | Record the master to disk (WAV; FLAC/MP3 later) | M5 — **done** |
 | **Network tempo sync between djmanzo instances** | **shipped** — announce and follow over UDP, no master, bounded corrections. Not Ableton Link; see ROADMAP |
 | Broadcast to Icecast/Shoutcast | M5 |
+| **Now playing on a live stream** | **shipped** (§108) — for a set streamed from OBS to Twitch, YouTube, Instagram, TikTok or Kick: a transparent overlay page for a Browser source, served on this machine only (`http://127.0.0.1:7332/`), and a `now-playing.txt` for a Text source set to *Read from file*. It names the record the room hears most — channel fader times the crossfader's side — and changes hands once per blend, not back and forth. Off until switched on in Settings → *Going live* |
 | **Per-stem outputs for external processing** | **shipped** — one deck as four stereo pairs (vocals 1–2, drums 3–4, bass 5–6, other 7–8), pre-EQ and pre-fader, on an interface with eight outputs |
 | **Per-deck outputs for external processing** | **shipped** — each deck on its own stereo pair, pre-fader, no master chain; exclusive with stem out |
 | **Phrase detection** | **shipped** — phrase length and phrase anchor, from beat-synchronous novelty in four bands; markers on the waveform, `phrasejump` and `loop_phrase` on the keyboard and the deck panel, persisted across restarts. Verified against synthetic tracks whose structure is arithmetic; **not measured against a corpus of real records** |

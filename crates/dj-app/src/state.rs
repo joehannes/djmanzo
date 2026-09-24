@@ -152,6 +152,10 @@ pub struct AppState {
     config_dir: Mutex<Option<std::path::PathBuf>>,
     /// §111: what the downloads folder filed lately, newest first.
     filed: Mutex<std::collections::VecDeque<crate::downloads::Filed>>,
+    /// §108: the words on the stream, shared with the overlay's server.
+    live_now: std::sync::Arc<dj_net::overlay::NowPlaying>,
+    /// §108: what going live is doing, as the thread last found it.
+    live_status: Mutex<crate::live::Status>,
     /// The mix that is set up, if one is. See [`crate::transition`].
     ///
     /// One at a time, and here rather than in the interface for the same
@@ -493,6 +497,8 @@ impl AppState {
             mapping_draft: Mutex::new(dj_hid::editor::Draft::new("My mapping", String::new())),
             config_dir: Mutex::new(None),
             filed: Mutex::new(std::collections::VecDeque::new()),
+            live_now: std::sync::Arc::new(dj_net::overlay::NowPlaying::new()),
+            live_status: Mutex::new(crate::live::Status::default()),
             transition: Mutex::new(None),
             recording: Mutex::new(None),
             recording_state: Arc::new(crate::setrec::RecordingState::default()),
@@ -1251,6 +1257,61 @@ impl AppState {
         };
         if let Err(error) = std::fs::write(&path, text) {
             tracing::warn!(%error, ?path, "the downloads folder will not survive a restart");
+        }
+    }
+
+    /// djmanzo's own folder, once the application has told this where it is.
+    #[must_use]
+    pub fn config_dir(&self) -> Option<std::path::PathBuf> {
+        self.config_dir.lock().ok()?.clone()
+    }
+
+    /// The file §108's going-live switch lives in.
+    fn live_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir()?.join("live.json"))
+    }
+
+    /// §108: whether the stream is told what is playing. Off on a fresh
+    /// install: nothing djmanzo says outside itself starts by itself.
+    #[must_use]
+    pub fn live(&self) -> crate::live::Settings {
+        self.live_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keep the going-live switch.
+    pub fn set_live(&self, settings: &crate::live::Settings) {
+        let Some(path) = self.live_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(settings) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "going live will not survive a restart");
+        }
+    }
+
+    /// The words on the stream.
+    #[must_use]
+    pub fn live_now(&self) -> std::sync::Arc<dj_net::overlay::NowPlaying> {
+        std::sync::Arc::clone(&self.live_now)
+    }
+
+    /// What going live is doing.
+    #[must_use]
+    pub fn live_status(&self) -> crate::live::Status {
+        self.live_status
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn set_live_status(&self, status: crate::live::Status) {
+        if let Ok(mut held) = self.live_status.lock() {
+            *held = status;
         }
     }
 

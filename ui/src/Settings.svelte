@@ -9,6 +9,7 @@
    * refuses.
    */
   import Downloads from "./Downloads.svelte";
+  import GoingLive from "./GoingLive.svelte";
   import Screens from "./Screens.svelte";
   import {
     adaptationLevels,
@@ -1597,6 +1598,16 @@
         <IconButton icon="fa-solid fa-trash" title="Remove logo" onClick={dropLogo} />
       {/if}
     </div>
+  </div>
+
+  <div class="block">
+    <h3>Going live</h3>
+    <p class="hint">
+      Streaming a set to Twitch, YouTube, Instagram or TikTok? djmanzo can put
+      the record on the stream, so nobody has to ask in the chat. It names the
+      one the room hears most, and changes once per mix, not back and forth.
+    </p>
+    <GoingLive />
   </div>
 
   <div class="block">

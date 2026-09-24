@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Going live: the record on the stream** — §108. Streaming a set from OBS to
+Twitch, YouTube, Instagram, TikTok or Kick? Switch on Settings → *Going live*
+and djmanzo puts the record on the stream: a transparent overlay page for a
+Browser source, and a text file for a Text source set to *Read from file*.
+It names the record the room hears most and changes once per mix, not back
+and forth while two records ride level. The overlay is served on your own
+machine only.
+
 ---
 
 ## v0.21.0 — Controls shaped like what they do

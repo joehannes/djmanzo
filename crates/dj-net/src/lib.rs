@@ -10,6 +10,7 @@ pub mod control;
 pub mod front;
 pub mod midi_clock;
 pub mod osc;
+pub mod overlay;
 pub mod page;
 pub mod peer;
 pub mod room;

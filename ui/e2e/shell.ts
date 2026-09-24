@@ -472,6 +472,15 @@ export const ANSWERS: Record<string, unknown> = {
   },
   stores_plain: stores.plain,
   stores_karaoke: stores.karaoke,
+  // §108's going live, switched off, as a fresh install answers it: the file
+  // is known before anything is written, and nothing is being said.
+  live: {
+    on: false,
+    overlay: null,
+    file: "/home/dj/.config/app.djmanzo.desktop/now-playing.txt",
+    saying: "",
+    problem: null,
+  },
   // §74's rail, in the shape `dj_app::rail` produces for a deck being got
   // ready: five controls, each an action the parser accepts, with the loop and
   // the sync showing their state.
@@ -1908,6 +1917,22 @@ export async function openShell(
               }
               Object.assign(kept, { watch: args.watch ?? null, into: args.into ?? null, on: Boolean(args.on) });
               ((win.__setDownloads ??= []) as unknown[]).push({ ...args });
+            }
+            return Promise.resolve(structuredClone(kept));
+          }
+          // §108: one switch, kept. Switched on, the overlay is served and the
+          // stream is told the record deck 1 is playing; which record is
+          // `dj_app::live::lead`'s decision, tested in Rust.
+          if (cmd === "live_status" || cmd === "set_live") {
+            const kept = (win.__live ??= structuredClone(answers.live)) as Record<string, unknown>;
+            if (cmd === "set_live") {
+              const on = Boolean(args.on);
+              Object.assign(kept, {
+                on,
+                overlay: on ? "http://127.0.0.1:7332/" : null,
+                saying: on ? "Aventura - Obsesión" : "",
+              });
+              ((win.__setLive ??= []) as unknown[]).push(on);
             }
             return Promise.resolve(structuredClone(kept));
           }

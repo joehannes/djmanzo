@@ -11195,6 +11195,24 @@ fn downloads_dto(state: &AppState) -> DownloadsDto {
     }
 }
 
+/// §108: what going live is doing — the overlay's address, the file, and
+/// the words the stream is being told.
+#[tauri::command]
+pub fn live_status(state: State<'_, AppState>) -> crate::live::Status {
+    let mut status = state.live_status();
+    // The switch as stored, not as the thread last saw it half a second ago,
+    // so the switch a DJ just pressed does not flick back.
+    status.on = state.live().on;
+    status
+}
+
+/// §108: tell the stream what is playing, or stop.
+#[tauri::command]
+pub fn set_live(state: State<'_, AppState>, on: bool) -> crate::live::Status {
+    state.set_live(&crate::live::Settings { on });
+    live_status(state)
+}
+
 /// §111: the downloads folder and what it filed.
 #[tauri::command]
 pub fn downloads(state: State<'_, AppState>) -> DownloadsDto {

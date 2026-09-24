@@ -1243,6 +1243,21 @@ export const downloads = () => invoke<Downloads>("downloads");
 export const setDownloads = (watch: string | null, into: string | null, on: boolean) =>
   invoke<Downloads>("set_downloads", { watch, into, on });
 
+/** §108: going live — the record on a stream, from `dj_app::live`. */
+export interface LiveStatus {
+  on: boolean;
+  /** The address for an OBS Browser source, while it is served. */
+  overlay: string | null;
+  /** The file for an OBS Text source set to "Read from file". */
+  file: string | null;
+  /** What the stream is being told. Empty for nothing. */
+  saying: string;
+  problem: string | null;
+}
+
+export const liveStatus = () => invoke<LiveStatus>("live_status");
+export const setLive = (on: boolean) => invoke<LiveStatus>("set_live", { on });
+
 export const singerLyrics = (deck: number) => invoke<SingerLyrics>("singer_lyrics", { deck });
 
 export const melodyLine = (deck: number, theme: string) =>

@@ -344,7 +344,7 @@ fn voices(words: &Words, count: u32) -> String {
 /// page exists to show a room what the room typed, so this function is the
 /// difference between a request box and a way to run a script on every phone
 /// in the building.
-fn escape(text: &str) -> String {
+pub(crate) fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
         match c {

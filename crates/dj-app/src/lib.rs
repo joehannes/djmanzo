@@ -47,6 +47,7 @@ pub mod layout;
 pub mod lens;
 pub mod level;
 pub mod library;
+pub mod live;
 pub mod memory;
 pub mod mission;
 pub mod mixes;
@@ -273,6 +274,7 @@ pub fn run() {
             // §111: the downloads folder, filed into the collection when the
             // DJ has switched it on. See `downloads`.
             downloads::start(app.handle().clone());
+            live::start(app.handle().clone());
 
             // The camera and microphone, which the Linux webview refuses unless
             // djmanzo answers for them. See `senses`.
@@ -545,6 +547,8 @@ pub fn run() {
             commands::open_store,
             commands::downloads,
             commands::set_downloads,
+            commands::live_status,
+            commands::set_live,
             commands::report_bench,
             commands::at_hand,
             commands::keep_mix,

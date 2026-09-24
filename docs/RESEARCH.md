@@ -452,3 +452,33 @@ Traxsource's `search?term=` from its own search page, Beatsource's
 forms for Bandcamp, Beatport, Amazon and Apple. Karaoke Version's and Juno
 Download's could not be confirmed from here, so Karaoke Version is linked at
 its home page with "search there", and Juno is not linked.
+
+## Now playing on a live stream (§108)
+
+A DJ's social presence is mostly a live stream now, sent from OBS or software
+like it. OBS has two sources that can carry a line of text, and djmanzo feeds
+both; no dependency is added for either (the overlay is served by the same
+`tiny_http` server as the request page, whose licence is already recorded).
+
+- **Text source, *Read from file*.** OBS re-reads the file when it changes,
+  about once a second, on Text (GDI+) on Windows and Text (FreeType 2) on
+  macOS and Linux. Two facts shaped `dj_app::live`: the refresh is about a
+  second, so deciding the words twice a second is enough; and a file that
+  only *appears* after OBS started reading is reportedly not picked up, so the
+  file is written the moment the switch goes on, empty if nothing is heard.
+  Sources: [OBS issue #3012](https://github.com/obsproject/obs-studio/issues/3012),
+  [OBS forum: read-from-file refresh rate](https://obsproject.com/forum/threads/read-from-text-file-refresh-rate.73589/),
+  [OBS forum: a file that starts existing after launch](https://obsproject.com/forum/threads/text-source-from-file-doesnt-update-if-file-starts-existing-after-obs-launch.107465/).
+- **Browser source.** A page composites over the scene only if its own ground
+  is transparent — OBS's default custom CSS makes the body transparent, and a
+  page that sets a colour shows it. `dj_net::overlay::page` sets
+  `background: transparent` and draws white type with a dark edge, so it reads
+  on a light scene and a dark one.
+  Sources: [OBS forum: translucent browser source](https://obsproject.com/forum/threads/translucent-transparent-browser-source.59549/),
+  [OBS forum: a transparent overlay page](https://obsproject.com/forum/threads/how-to-create-a-transparent-browser-window-as-overlay.139736/).
+
+What was deliberately **not** built: reading a stream's chat, or posting to a
+platform. Reading live comments is restricted or forbidden on most platforms,
+and posting needs per-platform app review (see ROADMAP's *Closing the loop
+with the room*). The request page behind a QR code stays the room's channel.
+
