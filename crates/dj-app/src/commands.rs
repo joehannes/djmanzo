@@ -9534,6 +9534,17 @@ pub struct PaletteDto {
     pub because: String,
 }
 
+/// §117: the tree behind the leader key, for this many decks and what the DJ
+/// has. See [`crate::leader`].
+#[tauri::command]
+#[must_use]
+pub fn leader_tree(state: State<'_, AppState>, decks: u8) -> crate::leader::Node {
+    let activities = crate::activity::all(&state.activities().mine);
+    let mut workspaces = state.my_workspaces();
+    workspaces.extend(crate::cockpit::workspaces());
+    crate::leader::tree(decks, &activities, &workspaces, state.presets().packs())
+}
+
 /// What the palette should offer for `query`, under §18's budget.
 ///
 /// The judgement is read here rather than passed in, like every other reading
@@ -9643,6 +9654,21 @@ fn switches(
         ));
     }
     out
+}
+
+/// The `run` of every switch the palette offers, for the leader's test to
+/// hold its switches to.
+#[cfg(test)]
+pub(crate) fn switch_runs(
+    activities: &[crate::activity::Activity],
+    workspaces: &[crate::cockpit::Workspace],
+    packs: &[dj_presets::Pack],
+    decks: u8,
+) -> Vec<String> {
+    switches(activities, workspaces, packs, decks)
+        .into_iter()
+        .map(|entry| entry.run)
+        .collect()
 }
 
 /// What survives §18's *"nothing else may take room"*.

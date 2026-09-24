@@ -982,3 +982,43 @@ fn the_browser_fixture_has_what_each_share_channel_carries() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
     );
 }
+
+/// §117's tree behind the leader key, as a golden file: two decks, the
+/// shipped activities, workspaces and preset packs — so the browser tests walk
+/// the tree Rust builds, and a key that moves in Rust moves in the tests.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_leader_tree() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/leader.json");
+    let tree = dj_app::leader::tree(
+        2,
+        &dj_app::activity::all(&[]),
+        &dj_app::cockpit::workspaces(),
+        &dj_presets::builtin::packs(),
+    );
+    let fresh = serde_json::to_string_pretty(&tree).expect("the tree serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the leader tree");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value = serde_json::from_str(&stored).expect("the stored tree is JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh tree is JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe leader tree has changed, so the browser is walking one djmanzo \
+         no longer builds.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}

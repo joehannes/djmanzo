@@ -19,7 +19,7 @@ const SINGERS = '.surface[data-surface="karaoke"]';
 async function openSingers(page: Page) {
   await openShell(page, "/");
   await page.getByRole("button", { name: "Activities", exact: true }).click();
-  await page.keyboard.press("F8");
+  await page.keyboard.press("8");
   await expect(page.locator(SINGERS)).toBeVisible();
 }
 
@@ -137,7 +137,7 @@ test.describe("§107: the singer rotation", () => {
   test("the Karaoke activity opens the rotation and the collection", async ({ page }) => {
     await openShell(page, "/");
     await page.getByRole("button", { name: "Activities", exact: true }).click();
-    await page.keyboard.press("F8");
+    await page.keyboard.press("8");
     await expect(page.locator('[data-activity="karaoke"]')).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator(SINGERS)).toBeVisible();
     await expect(page.locator('.surface[data-surface="library"]')).toBeVisible();

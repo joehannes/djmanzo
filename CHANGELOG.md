@@ -16,6 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **§117: Space, and a guide to everything behind it.** Press Space and a
+  guide appears along the bottom of the window with every key from there,
+  one English word a step: `Space d 1 p` plays deck 1, `Space o l` opens the
+  library, `Space t` lists the themes, `Space Space` opens the palette,
+  `Space ?` shows every key. After each key it shows where you are, and a key
+  that leads nowhere is said rather than played. **The number keys switch
+  activities** — `1` to `9`, from anywhere — so the **hot cues are now Shift
+  and a digit** (`Shift+1`–`4` deck 1, `Shift+7`–`0` deck 2) and setting one is
+  Alt, Shift and the digit. Play / pause is A and J, as it also was before;
+  Space no longer plays deck 1.
 ---
 
 ## v0.23.0 — ONNX stems on a clean Linux install, and music filed by how it sounds

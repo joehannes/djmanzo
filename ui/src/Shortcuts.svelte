@@ -37,6 +37,12 @@
   </header>
 
   <p class="hint">
+    <strong>Everything else is under Space</strong>: press it and a guide shows
+    every key from there, one word at a time — <kbd>Space</kbd> <kbd>d</kbd>
+    <kbd>1</kbd> <kbd>p</kbd> plays deck 1. The number keys switch activities.
+  </p>
+
+  <p class="hint">
     The keyboard is a controller like any other — the same vocabulary, the same
     file format. Put a <code>.toml</code> in your mappings folder to change it.
     Keys are named by position, so this layout holds on an AZERTY or QWERTZ

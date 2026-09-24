@@ -51,9 +51,14 @@
     name = "";
   }
 
+  /** A key as it is printed on the keyboard: `Digit3` is `3`. */
+  function keyName(code: string): string {
+    return code.startsWith("Digit") ? code.slice(5) : code;
+  }
+
   /** The line a tab's tooltip carries: what it is for, its key, and why it is suggested. */
   function titleOf(activity: Activity): string {
-    const key = activity.key ? ` (${activity.key})` : "";
+    const key = activity.key ? ` (${keyName(activity.key)})` : "";
     const why =
       suggestion?.activity === activity.slug && activity.slug !== current
         ? `\nSuggested: ${suggestion.because}`
@@ -78,7 +83,7 @@
         <Icon name={activity.icon} size="1.15rem" />
         <span class="name">{activity.title}</span>
         {#if activity.key}
-          <kbd class="key" aria-hidden="true">{activity.key}</kbd>
+          <kbd class="key" aria-hidden="true">{keyName(activity.key)}</kbd>
         {/if}
         {#if suggested}
           <!--

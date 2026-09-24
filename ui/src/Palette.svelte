@@ -104,6 +104,11 @@
       });
   });
 
+  /** §117: `Space Space` opens the palette as Ctrl+K does. */
+  export function openPalette() {
+    show();
+  }
+
   function show() {
     open = true;
     query = "";

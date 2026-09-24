@@ -59,7 +59,7 @@ test.describe("§109: activity mode", () => {
 
     // And between activities, which a night does far more often than it
     // enters the mode: none of them moves where the decks begin.
-    for (const key of ["F1", "F3", "F4", "F5", "F6", "F7", "F8", "F2"]) {
+    for (const key of ["1", "3", "4", "5", "6", "7", "8", "2"]) {
       await page.keyboard.press(key);
       await expect(page.locator(`${STRIP} [aria-pressed="true"]`)).toHaveCount(1);
       expect(Math.abs((await bottom()) - after), `${key} moved the decks`).toBeLessThanOrEqual(2);
@@ -68,19 +68,19 @@ test.describe("§109: activity mode", () => {
   });
 
   /**
-   * **A key each, and one key back.** F1 digs — the collection opens — F2
+   * **A key each, and one key back.** `1` digs — the collection opens — `2`
    * mixes and it closes, and the key under Escape returns to the dig: the
    * round trip a night makes most often, in two presses.
    */
-  test("F-keys move between activities and the back key returns", async ({ page }) => {
+  test("the digits move between activities and the back key returns", async ({ page }) => {
     await openShell(page, "/");
     await enter(page);
 
-    await page.keyboard.press("F1");
+    await page.keyboard.press("1");
     await expect(tab(page, "dig")).toHaveAttribute("aria-pressed", "true");
     await expect(surface(page, "library")).toBeVisible();
 
-    await page.keyboard.press("F2");
+    await page.keyboard.press("2");
     await expect(tab(page, "mix")).toHaveAttribute("aria-pressed", "true");
     await expect(surface(page, "library")).toHaveCount(0);
 
@@ -91,21 +91,24 @@ test.describe("§109: activity mode", () => {
   });
 
   /**
-   * **The keys are the activity mode's alone.** In the full cockpit an F-key
-   * does what it always did — nothing of djmanzo's — and while the DJ is
-   * typing a name it is a keystroke, not a switch.
+   * **A digit is a view from anywhere, and a keystroke while typing.** From
+   * the full cockpit `1` goes straight into activity mode at the dig (§117:
+   * the digits are the views now), and while the DJ is typing a name it is a
+   * character in the name, not a switch.
    */
-  test("the keys do nothing outside the mode or while typing", async ({ page }) => {
+  test("a digit reaches an activity from the full cockpit, and types while typing", async ({ page }) => {
     await openShell(page, "/");
-    await page.keyboard.press("F1");
-    await expect(surface(page, "library")).toHaveCount(0);
     await expect(page.locator(STRIP)).toHaveCount(0);
+    await page.keyboard.press("1");
+    await expect(tab(page, "dig")).toHaveAttribute("aria-pressed", "true");
+    await expect(surface(page, "library")).toBeVisible();
 
-    await enter(page);
-    await page.keyboard.press("F2");
+    await page.keyboard.press("2");
     await expect(tab(page, "mix")).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "Keep as activity" }).click();
-    await page.getByRole("textbox", { name: "Name for the new activity" }).press("F1");
+    const name = page.getByRole("textbox", { name: "Name for the new activity" });
+    await name.press("1");
+    await expect(name).toHaveValue("1");
     await expect(tab(page, "mix")).toHaveAttribute("aria-pressed", "true");
     await expect(surface(page, "library")).toHaveCount(0);
   });
@@ -125,12 +128,12 @@ test.describe("§109: activity mode", () => {
 
     // Kept, and in it: the strip is up and the new tab is the current one.
     await expect(tab(page, "warm-up")).toHaveAttribute("aria-pressed", "true");
-    await expect(tab(page, "warm-up")).toContainText("F9");
+    await expect(tab(page, "warm-up")).toContainText("9");
 
     // Away and back by its key: its arrangement comes back with it.
-    await page.keyboard.press("F2");
+    await page.keyboard.press("2");
     await expect(surface(page, "night")).toHaveCount(0);
-    await page.keyboard.press("F9");
+    await page.keyboard.press("9");
     await expect(surface(page, "night")).toBeVisible();
 
     await page.getByRole("button", { name: "Forget Warm-up" }).click();
@@ -158,7 +161,7 @@ test.describe("§109: activity mode", () => {
     const because = "80 seconds left on deck 1 and nothing loaded to follow it.";
     await openShell(page, "/", {}, { activity_suggestion: { activity: "dig", because } });
     await enter(page);
-    await page.keyboard.press("F2");
+    await page.keyboard.press("2");
     await expect(tab(page, "mix")).toHaveAttribute("aria-pressed", "true");
 
     await expect(tab(page, "dig")).toHaveClass(/suggested/);
@@ -211,7 +214,7 @@ test.describe("§109: activity mode", () => {
       ],
     });
     await enter(page);
-    await page.keyboard.press("F5");
+    await page.keyboard.press("5");
     await expect(tab(page, "requests")).toHaveAttribute("aria-pressed", "true");
     await expect(surface(page, "requests")).toBeVisible();
     await expect(surface(page, "library")).toBeVisible();
@@ -228,7 +231,7 @@ test.describe("§109: activity mode", () => {
   test("leaving brings the panel row back and keeps the arrangement", async ({ page }) => {
     await openShell(page, "/");
     await enter(page);
-    await page.keyboard.press("F1");
+    await page.keyboard.press("1");
     await expect(surface(page, "library")).toBeVisible();
     await page.getByRole("button", { name: "Full cockpit" }).click();
     await expect(page.locator(STRIP)).toHaveCount(0);
@@ -245,7 +248,7 @@ test.describe("§109: activity mode", () => {
   test("switching activities records no layout choice", async ({ page }) => {
     await openShell(page, "/");
     await enter(page);
-    for (const key of ["F1", "F3", "F4", "F5", "F6", "F7", "F8", "F2"]) {
+    for (const key of ["1", "3", "4", "5", "6", "7", "8", "2"]) {
       await page.keyboard.press(key);
       await expect(page.locator(`${STRIP} [aria-pressed="true"]`)).toHaveCount(1);
     }

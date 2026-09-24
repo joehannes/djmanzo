@@ -963,9 +963,15 @@ mod tests {
 
         let play = keys
             .iter()
-            .find(|k| k.chord == "space")
-            .expect("the bundled keyboard should have a space bar");
+            .find(|k| k.chord == "keya")
+            .expect("the bundled keyboard should play deck 1 on A");
+        assert_eq!(play.press.as_deref(), Some("deck 1 play_pause"));
         assert!(!play.held);
+        // Space is the guide's (§117), never a key the map sends to a deck.
+        assert!(
+            keys.iter().all(|k| k.chord != "space"),
+            "Space is bound in the map"
+        );
     }
 
     /// Naming a mapping that does not exist has to say so. Falling back to

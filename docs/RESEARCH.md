@@ -355,6 +355,45 @@ manufacturer's MIDI message list, and it gets transcribed.
 - [HT-Demucs ONNX export](https://huggingface.co/StemSplitio/htdemucs-ft-onnx)
 
 
+## A key system a DJ can learn by using it (§117)
+
+Asked: *neovim-style mnemonic shortcuts with a visual guide of where one is
+after each key and every outcome from there; 1, 2, 3 rather than F1, F2, F3;
+natural per-platform shortcuts; English mnemonics; the DJ's own shown too.*
+Researched September 2026. No code was read from any of these; djmanzo
+takes the idea, not the implementation.
+
+- **which-key** (Neovim) shows a popup of the keys that can follow what has
+  been typed, after a configurable delay that is independent of the key
+  timeout, so someone who knows a sequence never sees it and someone who
+  pauses sees it at once; groups are labelled and marked as groups.
+  ([folke/which-key.nvim](https://github.com/folke/which-key.nvim),
+  [vim-which-key](https://github.com/liuchengxu/vim-which-key))
+- **Doom Emacs and Spacemacs** put a leader on `SPC` and hang the whole
+  application under mnemonic groups beneath it, discoverable through
+  which-key rather than memorised.
+  ([Doom's keybinding system](https://deepwiki.com/doomemacs/doomemacs/3.1-keybinding-system),
+  [Spacemacs to Doom](https://practical.li/doom-emacs/introduction/spacemacs-to-doom/))
+- **GNOME's HIG** keeps `F1` for help and `Ctrl+?` for the shortcuts window,
+  recommends `Ctrl` with a letter for an application's own commands, and
+  asks for shortcut lists grouped in threes to eights.
+  ([GNOME HIG: keyboard](https://developer.gnome.org/hig/guidelines/keyboard.html),
+  [Shortcut windows](https://wiki.gnome.org/Initiatives/GnomeGoals/ShortcutWindows),
+  [Table of keyboard shortcuts](https://en.wikipedia.org/wiki/Table_of_keyboard_shortcuts))
+
+**What djmanzo does with it.** Space is the leader, and the guide is drawn
+after 180 ms, which-key's rule. Mnemonics are English words, one letter a
+step. Groups a DJ reaches for are hand-lettered (`d` deck, `m` mixer, `r`
+record, `o` open a panel); lists take each name's first free letter, the way
+Windows and GTK menu accelerators have always worked, and the guide
+underlines it in the word. Two things differ from an editor, both because
+of the booth. **A key that leads nowhere is kept, not passed through**:
+which-key lets it through, and here that would turn a typo into a deck
+action. **Performance keys are not under the leader**: a hot cue or a kill
+has to be one physical key, so the two-hand keyboard map stays as it was,
+minus Space (now the leader) and the bare digits (now the activities, as the
+owner chose when asked; the hot cues moved to Shift and a digit).
+
 ## Karaoke hosting (§107)
 
 Researched 2026-09-24 for the owner's ask to "investigate and research in

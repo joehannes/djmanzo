@@ -33,11 +33,12 @@
 //! - **The decks are always there.** Every activity keeps the performance zone.
 //!   Whatever the DJ is doing, the record playing is on screen, so no switch
 //!   ever hides the thing the room is hearing.
-//! - **One key each, and one key back.** The shipped activities are `F1` to
-//!   `F8`, a DJ's own take the next free ones, and the interface keeps the
+//! - **One key each, and one key back.** The shipped activities are `1` to
+//!   `8`, a DJ's own take the next free ones, and the interface keeps the
 //!   last one so a single key (`` ` ``) returns to it — digging for a record
 //!   and coming back to the mix is the most common round trip of a night.
-//!   Not the digits: those are the hot cues. See [`key_for`].
+//!   The hot cues moved to `Shift` and a digit to make room (§117). See
+//!   [`key_for`].
 //! - **The density is the DJ's, not the activity's.** Every workspace names
 //!   one, so these do too, and the interface keeps the DJ's own instead: how
 //!   big things are drawn belongs to the window and the eyes in front of it.
@@ -245,19 +246,20 @@ pub fn shipped() -> Vec<Activity> {
     ]
 }
 
-/// The key that reaches an activity, by its place in the strip: `F1` to `F9`.
+/// The key that reaches an activity, by its place in the strip: `1` to `9`.
 ///
-/// **Not the number keys**, which was the first plan. djmanzo's default
-/// keyboard puts the hot cues on `1`–`4` and `7`–`0` and clears them with Alt,
-/// so a digit that switched the screen would be a DJ reaching for a cue and
-/// losing the mixer. The function keys are free in the default map, sit in a
-/// row of their own, and are where DJ software has long put its views. On a
-/// Mac laptop they may need `fn`, which is the operating system's choice.
+/// **The digits, as the owner asked** (§117: *"i want 1,2,3, ... , not
+/// F1,F2,F3"*). The first version used the function keys because djmanzo's
+/// default keyboard had its hot cues on the digits; asked which should move,
+/// the owner moved the hot cues, which are now `Shift` and a digit. The
+/// function keys sit behind `fn` on most laptops, which is what made them
+/// the wrong row for the most-used switch in the application.
 ///
-/// Nine and then nothing: a tenth activity is still one click away.
+/// Nine and then nothing: a tenth activity is still one click away, and
+/// under Space in the guide.
 #[must_use]
 pub fn key_for(index: usize) -> Option<String> {
-    (index < 9).then(|| format!("F{}", index + 1))
+    (index < 9).then(|| format!("Digit{}", index + 1))
 }
 
 /// The key that returns to the previous activity. Free in the default
@@ -568,9 +570,9 @@ mod tests {
                 assert_ne!(a.slug, b.slug);
                 assert_ne!(a.title, b.title);
             }
-            assert_eq!(key_for(i), Some(format!("F{}", i + 1)));
+            assert_eq!(key_for(i), Some(format!("Digit{}", i + 1)));
         }
-        assert_eq!(key_for(8).as_deref(), Some("F9"));
+        assert_eq!(key_for(8).as_deref(), Some("Digit9"));
         assert_eq!(key_for(9), None, "a tenth activity has no key");
     }
 
@@ -586,14 +588,15 @@ mod tests {
             "/../dj-hid/mappings/keyboard-default.toml"
         ))
         .expect("the default keyboard");
+        // Whole chords: `shift+Digit1` is a hot cue and leaves a bare `1`
+        // free, which is the point of where the hot cues went.
         let taken: Vec<&str> = map
             .lines()
             .filter_map(|line| line.trim().strip_prefix("on = \""))
             .filter_map(|rest| rest.strip_suffix('"'))
-            .map(|chord| chord.rsplit('+').next().unwrap_or(chord))
             .collect();
         assert!(
-            taken.contains(&"Digit1"),
+            taken.contains(&"shift+Digit1"),
             "the reading of the map is wrong: {taken:?}"
         );
         for key in (0..9).filter_map(key_for).chain([BACK_KEY.to_owned()]) {

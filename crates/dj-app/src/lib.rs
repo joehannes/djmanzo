@@ -45,6 +45,7 @@ pub mod host;
 pub mod jumps;
 pub mod karaoke;
 pub mod layout;
+pub mod leader;
 pub mod lens;
 pub mod level;
 pub mod library;
@@ -578,6 +579,7 @@ pub fn run() {
             commands::session_log,
             commands::library_status,
             commands::palette,
+            commands::leader_tree,
             commands::track_functions,
             commands::audition,
             commands::functions_of,

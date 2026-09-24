@@ -1931,6 +1931,24 @@ export interface Palette {
 export const palette = (query: string, decks: number) =>
   invoke<Palette>("palette", { query, decks });
 
+/**
+ * §117: one step of the tree behind the leader key — a group to go into, or a
+ * leaf to run. Authored in Rust (`dj_app::leader`), where every leaf is held
+ * to something djmanzo can do.
+ */
+export interface LeaderNode {
+  /** The key that reaches it, as the character it types; `space` for Space. */
+  key: string;
+  label: string;
+  /** `action …`, `surface …`, `switch …` or `ui …` for a leaf; null for a group. */
+  run: string | null;
+  children: LeaderNode[];
+  /** Whether the DJ made it. */
+  mine: boolean;
+}
+
+export const leaderTree = (decks: number) => invoke<LeaderNode>("leader_tree", { decks });
+
 /** Where the DJ wants the next record to take the room. */
 export type Trajectory = "lift" | "hold" | "ease";
 
@@ -4534,7 +4552,7 @@ export interface Activity {
   icon: string;
   /** djmanzo's own, which cannot be forgotten. */
   shipped: boolean;
-  /** `F1` to `F9`, when it has one. Not the digits: those are the hot cues. */
+  /** `Digit1` to `Digit9`, when it has one (§117); the hot cues are Shift and a digit. */
   key: string | null;
   workspace: Workspace;
 }

@@ -6,7 +6,7 @@
       "doing": "Find the next record.",
       "icon": "magnifying-glass",
       "shipped": true,
-      "key": "F1",
+      "key": "Digit1",
       "workspace": {
         "name": "Dig",
         "about": "The collection open under the decks, and what djmanzo would play next beside them.",
@@ -40,7 +40,7 @@
       "doing": "Blend into the next record.",
       "icon": "sliders",
       "shipped": true,
-      "key": "F2",
+      "key": "Digit2",
       "workspace": {
         "name": "Mix",
         "about": "The two decks and the mixer, and nothing else to look at.",
@@ -59,7 +59,7 @@
       "doing": "Play with the record: pads, loops, effects and stems.",
       "icon": "hand",
       "shipped": true,
-      "key": "F3",
+      "key": "Digit3",
       "workspace": {
         "name": "Perform",
         "about": "Every pad, loop, effect and stem on the decks, and the sampler beside them.",
@@ -86,7 +86,7 @@
       "doing": "Set cues and grids, and shape tonight's plan.",
       "icon": "list",
       "shipped": true,
-      "key": "F4",
+      "key": "Digit4",
       "workspace": {
         "name": "Prepare",
         "about": "The record being readied beside the decks, and the night's plan under them.",
@@ -120,7 +120,7 @@
       "doing": "Answer what the room has asked for.",
       "icon": "hand-pointer",
       "shipped": true,
-      "key": "F5",
+      "key": "Digit5",
       "workspace": {
         "name": "Requests",
         "about": "The room's requests beside the decks, and the collection to find them in.",
@@ -154,7 +154,7 @@
       "doing": "Let djmanzo play; watch, and take it back.",
       "icon": "robot",
       "shipped": true,
-      "key": "F6",
+      "key": "Digit6",
       "workspace": {
         "name": "Autopilot",
         "about": "What is playing, what is next and how the room is taking it, while it drives and you watch.",
@@ -195,7 +195,7 @@
       "doing": "Work on a technique, between sets.",
       "icon": "book",
       "shipped": true,
-      "key": "F7",
+      "key": "Digit7",
       "workspace": {
         "name": "Practice",
         "about": "Two records as a laboratory, with the coach under them.",
@@ -222,7 +222,7 @@
       "doing": "Host the singers: who is up, what, and in which key.",
       "icon": "microphone",
       "shipped": true,
-      "key": "F8",
+      "key": "Digit8",
       "workspace": {
         "name": "Karaoke",
         "about": "The singer rotation beside the decks, and the collection to find their songs in.",

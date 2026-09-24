@@ -6,7 +6,7 @@
 # each other: whatever the left hand does to deck 1, the right hand does the
 # same distance from home position to deck 2.
 #
-#     1 2 3 4                    7 8 9 0     hot cues
+#    ⇧1 2 3 4                   ⇧7 8 9 0     hot cues (⌥⇧ sets one)
 #     Q W E R                    U I O P     beat jump, loop
 #     A S D F        G  H        J K L ;     transport, roll
 #     Z X C V                    M , . /     EQ kills, brake
@@ -26,6 +26,13 @@
 # DJ's own mapping, because a default that used every modifier leaves nowhere
 # to add anything.
 #
+# **Two keys are not here, on purpose (§117).** Space opens the guide to
+# everything else djmanzo does, one English letter at a time (`Space d 1 p` is
+# deck 1, play), and the bare digits 1 to 9 switch activities -- the owner's
+# choice, asked for by name, over the hot cues that used to be there. So the
+# hot cues are Shift and a digit, setting one is Alt, Shift and the digit, and
+# play / pause is A and J, which it always also was.
+#
 # Keys are named by position, not by the character they produce, so the layout
 # holds on an AZERTY or QWERTZ keyboard. See the module documentation in
 # `keys.rs` for why.
@@ -36,18 +43,6 @@
 name = "Default keyboard"
 
 # ---------------------------------------------------------------- transport
-
-[[key]]
-on = "Space"
-press = "deck 1 play_pause"
-label = "Play / pause deck 1"
-group = "Transport"
-
-[[key]]
-on = "shift+Space"
-press = "deck 2 play_pause"
-label = "Play / pause deck 2"
-group = "Transport"
 
 [[key]]
 on = "KeyA"
@@ -116,97 +111,97 @@ group = "Deck 2"
 # ----------------------------------------------------------------- hot cues
 
 [[key]]
-on = "Digit1"
+on = "shift+Digit1"
 press = "deck 1 hotcue 1"
 label = "Hot cue 1"
 group = "Deck 1"
 
 [[key]]
-on = "Digit2"
+on = "shift+Digit2"
 press = "deck 1 hotcue 2"
 label = "Hot cue 2"
 group = "Deck 1"
 
 [[key]]
-on = "Digit3"
+on = "shift+Digit3"
 press = "deck 1 hotcue 3"
 label = "Hot cue 3"
 group = "Deck 1"
 
 [[key]]
-on = "Digit4"
+on = "shift+Digit4"
 press = "deck 1 hotcue 4"
 label = "Hot cue 4"
 group = "Deck 1"
 
 [[key]]
-on = "shift+Digit1"
+on = "alt+shift+Digit1"
 press = "deck 1 hotcue_set 1"
 label = "Set hot cue 1"
 group = "Deck 1"
 
 [[key]]
-on = "shift+Digit2"
+on = "alt+shift+Digit2"
 press = "deck 1 hotcue_set 2"
 label = "Set hot cue 2"
 group = "Deck 1"
 
 [[key]]
-on = "shift+Digit3"
+on = "alt+shift+Digit3"
 press = "deck 1 hotcue_set 3"
 label = "Set hot cue 3"
 group = "Deck 1"
 
 [[key]]
-on = "shift+Digit4"
+on = "alt+shift+Digit4"
 press = "deck 1 hotcue_set 4"
 label = "Set hot cue 4"
 group = "Deck 1"
 
 [[key]]
-on = "Digit7"
+on = "shift+Digit7"
 press = "deck 2 hotcue 1"
 label = "Hot cue 1"
 group = "Deck 2"
 
 [[key]]
-on = "Digit8"
+on = "shift+Digit8"
 press = "deck 2 hotcue 2"
 label = "Hot cue 2"
 group = "Deck 2"
 
 [[key]]
-on = "Digit9"
+on = "shift+Digit9"
 press = "deck 2 hotcue 3"
 label = "Hot cue 3"
 group = "Deck 2"
 
 [[key]]
-on = "Digit0"
+on = "shift+Digit0"
 press = "deck 2 hotcue 4"
 label = "Hot cue 4"
 group = "Deck 2"
 
 [[key]]
-on = "shift+Digit7"
+on = "alt+shift+Digit7"
 press = "deck 2 hotcue_set 1"
 label = "Set hot cue 1"
 group = "Deck 2"
 
 [[key]]
-on = "shift+Digit8"
+on = "alt+shift+Digit8"
 press = "deck 2 hotcue_set 2"
 label = "Set hot cue 2"
 group = "Deck 2"
 
 [[key]]
-on = "shift+Digit9"
+on = "alt+shift+Digit9"
 press = "deck 2 hotcue_set 3"
 label = "Set hot cue 3"
 group = "Deck 2"
 
 [[key]]
-on = "shift+Digit0"
+on = "alt+shift+Digit0"
 press = "deck 2 hotcue_set 4"
 label = "Set hot cue 4"
 group = "Deck 2"

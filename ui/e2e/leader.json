@@ -1,0 +1,1279 @@
+{
+  "key": "space",
+  "label": "Space",
+  "run": null,
+  "children": [
+    {
+      "key": "space",
+      "label": "Find anything (the palette)",
+      "run": "ui palette",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "?",
+      "label": "Every key",
+      "run": "surface keys",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "/",
+      "label": "Search the library",
+      "run": "ui search",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": ",",
+      "label": "Settings",
+      "run": "surface settings",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "`",
+      "label": "Back to the last activity",
+      "run": "ui back",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "1",
+      "label": "Dig",
+      "run": "switch activity dig",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "2",
+      "label": "Mix",
+      "run": "switch activity mix",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "3",
+      "label": "Perform",
+      "run": "switch activity perform",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "4",
+      "label": "Prepare",
+      "run": "switch activity prepare",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "5",
+      "label": "Requests",
+      "run": "switch activity requests",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "6",
+      "label": "Autopilot",
+      "run": "switch activity autopilot",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "7",
+      "label": "Practice",
+      "run": "switch activity practice",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "8",
+      "label": "Karaoke",
+      "run": "switch activity karaoke",
+      "children": [],
+      "mine": false
+    },
+    {
+      "key": "d",
+      "label": "Deck",
+      "run": null,
+      "children": [
+        {
+          "key": "1",
+          "label": "Deck 1",
+          "run": null,
+          "children": [
+            {
+              "key": "p",
+              "label": "Play / pause",
+              "run": "action deck 1 play_pause",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "c",
+              "label": "Cue",
+              "run": "action deck 1 cue",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "s",
+              "label": "Sync on / off",
+              "run": "action deck 1 sync_toggle",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "k",
+              "label": "Keylock on / off",
+              "run": "action deck 1 keylock_toggle",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "h",
+              "label": "Headphones on / off",
+              "run": "action deck 1 cue_toggle",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "l",
+              "label": "Loop four beats",
+              "run": "action deck 1 loop 4",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "o",
+              "label": "Loop off",
+              "run": "action deck 1 loop_off",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "b",
+              "label": "Back four beats",
+              "run": "action deck 1 beatjump -4",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "f",
+              "label": "Forward four beats",
+              "run": "action deck 1 beatjump 4",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "g",
+              "label": "Grid: a beat here",
+              "run": "action deck 1 grid_here",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "e",
+              "label": "Eject",
+              "run": "action deck 1 eject",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "2",
+          "label": "Deck 2",
+          "run": null,
+          "children": [
+            {
+              "key": "p",
+              "label": "Play / pause",
+              "run": "action deck 2 play_pause",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "c",
+              "label": "Cue",
+              "run": "action deck 2 cue",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "s",
+              "label": "Sync on / off",
+              "run": "action deck 2 sync_toggle",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "k",
+              "label": "Keylock on / off",
+              "run": "action deck 2 keylock_toggle",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "h",
+              "label": "Headphones on / off",
+              "run": "action deck 2 cue_toggle",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "l",
+              "label": "Loop four beats",
+              "run": "action deck 2 loop 4",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "o",
+              "label": "Loop off",
+              "run": "action deck 2 loop_off",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "b",
+              "label": "Back four beats",
+              "run": "action deck 2 beatjump -4",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "f",
+              "label": "Forward four beats",
+              "run": "action deck 2 beatjump 4",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "g",
+              "label": "Grid: a beat here",
+              "run": "action deck 2 grid_here",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "e",
+              "label": "Eject",
+              "run": "action deck 2 eject",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        }
+      ],
+      "mine": false
+    },
+    {
+      "key": "s",
+      "label": "Stems",
+      "run": null,
+      "children": [
+        {
+          "key": "1",
+          "label": "Deck 1",
+          "run": null,
+          "children": [
+            {
+              "key": "v",
+              "label": "Mute / unmute the vocals",
+              "run": "action deck 1 stem_mute vocal",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "d",
+              "label": "Mute / unmute the drums",
+              "run": "action deck 1 stem_mute drums",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "b",
+              "label": "Mute / unmute the bass",
+              "run": "action deck 1 stem_mute bass",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "o",
+              "label": "Mute / unmute the other",
+              "run": "action deck 1 stem_mute other",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "2",
+          "label": "Deck 2",
+          "run": null,
+          "children": [
+            {
+              "key": "v",
+              "label": "Mute / unmute the vocals",
+              "run": "action deck 2 stem_mute vocal",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "d",
+              "label": "Mute / unmute the drums",
+              "run": "action deck 2 stem_mute drums",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "b",
+              "label": "Mute / unmute the bass",
+              "run": "action deck 2 stem_mute bass",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "o",
+              "label": "Mute / unmute the other",
+              "run": "action deck 2 stem_mute other",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        }
+      ],
+      "mine": false
+    },
+    {
+      "key": "m",
+      "label": "Mixer",
+      "run": null,
+      "children": [
+        {
+          "key": "c",
+          "label": "Crossfader to the centre",
+          "run": "action crossfader 0",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "a",
+          "label": "Crossfader to side A",
+          "run": "action crossfader -1",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "b",
+          "label": "Crossfader to side B",
+          "run": "action crossfader 1",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "x",
+          "label": "Stop every sample",
+          "run": "action sampler stop_all",
+          "children": [],
+          "mine": false
+        }
+      ],
+      "mine": false
+    },
+    {
+      "key": "r",
+      "label": "Record",
+      "run": null,
+      "children": [
+        {
+          "key": "r",
+          "label": "Record the set on / off",
+          "run": "ui record",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "m",
+          "label": "Mark this moment",
+          "run": "ui mark",
+          "children": [],
+          "mine": false
+        }
+      ],
+      "mine": false
+    },
+    {
+      "key": "o",
+      "label": "Open a panel",
+      "run": null,
+      "children": [
+        {
+          "key": "l",
+          "label": "Library",
+          "run": "surface library",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "n",
+          "label": "Next",
+          "run": "surface next",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "p",
+          "label": "Prepare",
+          "run": "surface prepare",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "s",
+          "label": "Set plan",
+          "run": "surface plan",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "a",
+          "label": "Pair",
+          "run": "surface pair",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "r",
+          "label": "Practice",
+          "run": "surface practice",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "t",
+          "label": "The night",
+          "run": "surface night",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "h",
+          "label": "At hand",
+          "run": "surface athand",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "m",
+          "label": "Tonight's mixes",
+          "run": "surface mixes",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "e",
+          "label": "Requests",
+          "run": "surface requests",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "i",
+          "label": "Singers",
+          "run": "surface karaoke",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "b",
+          "label": "Booth",
+          "run": "surface booth",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "o",
+          "label": "Room",
+          "run": "surface room",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "c",
+          "label": "Sampler",
+          "run": "surface sampler",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "d",
+          "label": "Presets",
+          "run": "surface presets",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "f",
+          "label": "Assistant",
+          "run": "surface assistant",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "g",
+          "label": "Controllers",
+          "run": "surface controllers",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "k",
+          "label": "Keys",
+          "run": "surface keys",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "j",
+          "label": "Session log",
+          "run": "surface log",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "q",
+          "label": "Settings",
+          "run": "surface settings",
+          "children": [],
+          "mine": false
+        }
+      ],
+      "mine": false
+    },
+    {
+      "key": "v",
+      "label": "View",
+      "run": null,
+      "children": [
+        {
+          "key": "1",
+          "label": "Dig",
+          "run": "switch activity dig",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "2",
+          "label": "Mix",
+          "run": "switch activity mix",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "3",
+          "label": "Perform",
+          "run": "switch activity perform",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "4",
+          "label": "Prepare",
+          "run": "switch activity prepare",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "5",
+          "label": "Requests",
+          "run": "switch activity requests",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "6",
+          "label": "Autopilot",
+          "run": "switch activity autopilot",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "7",
+          "label": "Practice",
+          "run": "switch activity practice",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "8",
+          "label": "Karaoke",
+          "run": "switch activity karaoke",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "e",
+          "label": "Everything (leave activities)",
+          "run": "ui everything",
+          "children": [],
+          "mine": false
+        }
+      ],
+      "mine": false
+    },
+    {
+      "key": "t",
+      "label": "Theme",
+      "run": null,
+      "children": [
+        {
+          "key": "s",
+          "label": "Studio Neutral",
+          "run": "switch theme pkg-studio",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "p",
+          "label": "Pro Dark",
+          "run": "switch theme pkg-booth",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "d",
+          "label": "Daylight",
+          "run": "switch theme pkg-daylight",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "c",
+          "label": "Club",
+          "run": "switch theme pkg-club",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "f",
+          "label": "Festival",
+          "run": "switch theme pkg-festival",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "b",
+          "label": "Beach Sunset",
+          "run": "switch theme pkg-sunset",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "a",
+          "label": "Caribbean",
+          "run": "switch theme pkg-caribbean",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "l",
+          "label": "Latin",
+          "run": "switch theme pkg-latin",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "w",
+          "label": "Wedding",
+          "run": "switch theme pkg-wedding",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "o",
+          "label": "Lounge",
+          "run": "switch theme pkg-lounge",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "r",
+          "label": "Scratch",
+          "run": "switch theme pkg-scratch",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "t",
+          "label": "Stem Lab",
+          "run": "switch theme pkg-stemlab",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "e",
+          "label": "Cyber / Experimental",
+          "run": "switch theme pkg-cyber",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "g",
+          "label": "Organic Base",
+          "run": "switch theme pkg-organic",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "i",
+          "label": "Industrial Techno",
+          "run": "switch theme pkg-industrial",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "u",
+          "label": "Colour-blind safe",
+          "run": "switch theme pkg-legible",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "m",
+          "label": "Spectrum",
+          "run": "switch theme pkg-spectrum",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "n",
+          "label": "Signal",
+          "run": "switch theme pkg-signal",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "h",
+          "label": "Aurora",
+          "run": "switch theme pkg-aurora",
+          "children": [],
+          "mine": false
+        }
+      ],
+      "mine": false
+    },
+    {
+      "key": "w",
+      "label": "Workspace",
+      "run": null,
+      "children": [
+        {
+          "key": "p",
+          "label": "Perform",
+          "run": "switch workspace Perform",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "b",
+          "label": "Beginner",
+          "run": "switch workspace Beginner",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "c",
+          "label": "Classic DJ",
+          "run": "switch workspace Classic DJ",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "r",
+          "label": "Pro Performance",
+          "run": "switch workspace Pro Performance",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "d",
+          "label": "4 Deck",
+          "run": "switch workspace 4 Deck",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "e",
+          "label": "6 Deck",
+          "run": "switch workspace 6 Deck",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "l",
+          "label": "Club",
+          "run": "switch workspace Club",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "m",
+          "label": "Mobile DJ",
+          "run": "switch workspace Mobile DJ",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "w",
+          "label": "Wedding / Event",
+          "run": "switch workspace Wedding / Event",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "o",
+          "label": "Open Format",
+          "run": "switch workspace Open Format",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "a",
+          "label": "Latin / Caribbean",
+          "run": "switch workspace Latin / Caribbean",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "s",
+          "label": "Scratch / Turntablism",
+          "run": "switch workspace Scratch / Turntablism",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "t",
+          "label": "Stem Performance",
+          "run": "switch workspace Stem Performance",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "h",
+          "label": "Mashup / Remix",
+          "run": "switch workspace Mashup / Remix",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "i",
+          "label": "Preparation",
+          "run": "switch workspace Preparation",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "n",
+          "label": "Set Planning",
+          "run": "switch workspace Set Planning",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "g",
+          "label": "Practice / Learning",
+          "run": "switch workspace Practice / Learning",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "u",
+          "label": "Autopilot",
+          "run": "switch workspace Autopilot",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "f",
+          "label": "Read the room",
+          "run": "switch workspace Read the room",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "j",
+          "label": "Minimal",
+          "run": "switch workspace Minimal",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "k",
+          "label": "High Contrast",
+          "run": "switch workspace High Contrast",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "q",
+          "label": "Laptop Compact",
+          "run": "switch workspace Laptop Compact",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "v",
+          "label": "Controller Focus",
+          "run": "switch workspace Controller Focus",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "x",
+          "label": "CDJ / External Mixer",
+          "run": "switch workspace CDJ / External Mixer",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "y",
+          "label": "Karaoke / MC",
+          "run": "switch workspace Karaoke / MC",
+          "children": [],
+          "mine": false
+        }
+      ],
+      "mine": false
+    },
+    {
+      "key": "p",
+      "label": "Preset",
+      "run": null,
+      "children": [
+        {
+          "key": "w",
+          "label": "Warm up",
+          "run": "switch preset phase-warmup",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "f",
+          "label": "Fiesta",
+          "run": "switch preset phase-fiesta",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "p",
+          "label": "Peak",
+          "run": "switch preset phase-peak",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "s",
+          "label": "Slow down",
+          "run": "switch preset phase-slowdown",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "c",
+          "label": "Chill out",
+          "run": "switch preset phase-chillout",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "l",
+          "label": "Close",
+          "run": "switch preset phase-close",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "i",
+          "label": "Cue it up",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset prep-cue 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset prep-cue 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "r",
+          "label": "Ready without bass",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset prep-bassless 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset prep-bassless 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "t",
+          "label": "Reset the strip",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset prep-reset 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset prep-reset 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "b",
+          "label": "Take the bass",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset move-bass-swap-in 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset move-bass-swap-in 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "g",
+          "label": "Give up the bass",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset move-bass-out 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset move-bass-out 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "h",
+          "label": "Lift the top",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset move-isolate-vocal 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset move-isolate-vocal 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "e",
+          "label": "Filter build",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset move-filter-build 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset move-filter-build 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "d",
+          "label": "Drop",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset move-drop 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset move-drop 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "a",
+          "label": "Hear both",
+          "run": "switch preset move-headphones-both",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "n",
+          "label": "Bachata blend",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset carib-bachata-blend 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset carib-bachata-blend 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "m",
+          "label": "Merengue drive",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset carib-merengue-drive 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset carib-merengue-drive 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "o",
+          "label": "Dembow swap",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset carib-dembow-swap 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset carib-dembow-swap 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        },
+        {
+          "key": "j",
+          "label": "Típico wide open",
+          "run": null,
+          "children": [
+            {
+              "key": "1",
+              "label": "On deck 1",
+              "run": "switch preset carib-tipico-open 1",
+              "children": [],
+              "mine": false
+            },
+            {
+              "key": "2",
+              "label": "On deck 2",
+              "run": "switch preset carib-tipico-open 2",
+              "children": [],
+              "mine": false
+            }
+          ],
+          "mine": false
+        }
+      ],
+      "mine": false
+    }
+  ],
+  "mine": false
+}

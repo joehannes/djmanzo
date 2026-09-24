@@ -46,7 +46,7 @@ test.describe("§111: finding a song to buy", () => {
   test("a singer's song nobody has offers karaoke's stores first", async ({ page }) => {
     await openShell(page, "/");
     await page.getByRole("button", { name: "Activities", exact: true }).click();
-    await page.keyboard.press("F8");
+    await page.keyboard.press("8");
     const singers = page.locator('.surface[data-surface="karaoke"]');
     await singers.getByRole("textbox", { name: "Singer's name" }).fill("Ben");
     await singers.getByRole("textbox", { name: "Song" }).fill("A song nobody has");

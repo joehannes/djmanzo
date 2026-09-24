@@ -1,5 +1,8 @@
 <script lang="ts">
   import Assistant from "./Assistant.svelte";
+  import Guide from "./Guide.svelte";
+  import { Leader } from "./leader.svelte";
+  import { tick } from "svelte";
   import Browse from "./Browse.svelte";
   import Deck from "./Deck.svelte";
   import Fx from "./Fx.svelte";
@@ -35,6 +38,7 @@
     forgetActivity,
     keepActivity,
     setActivityMode,
+    leaderTree,
     type Activities,
     type ActivitySuggestion,
     chooseLayout,
@@ -757,18 +761,21 @@
   }
 
   /**
-   * F1 to F9 move between activities and the key under Escape goes back.
+   * `1` to `9` move between activities and the key under Escape goes back
+   * (§117: the owner's *"1,2,3, ... , not F1,F2,F3"*).
    *
-   * Only in activity mode, so the full cockpit behaves exactly as it did.
-   * Never while typing, and never with a modifier held — those chords belong
-   * to the DJ's own keyboard mapping. `preventDefault` on a match matters in a
-   * webview: F5 is otherwise a reload, which mid-set is the music stopping.
+   * A digit works from the full cockpit too, and goes into activity mode at
+   * that activity: the digits are the views now, wherever the DJ is. The
+   * back key only means something once there is an activity to go back to.
+   * Never while typing, and never with a modifier held — `Shift` and a digit
+   * is a hot cue, and the other chords belong to the DJ's own mapping.
    */
   function onActivityKey(event: KeyboardEvent) {
-    if (!activityState?.on) return;
+    if (!activityState) return;
     if (typing(event.target)) return;
     if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
     if (event.code === activityState.back) {
+      if (!activityState.on) return;
       if (activityState.previous) {
         event.preventDefault();
         void chooseActivity(activityState.previous);
@@ -1110,6 +1117,53 @@
    */
   const keyboard = new Keyboard();
 
+  /**
+   * §117: Space, and the tree of English words behind it. Each leaf is run by
+   * the path its own button or picker takes; see `runLeaf`.
+   */
+  const leader = new Leader((run) => void runLeaf(run));
+  let paletteRef = $state<{ openPalette: () => void } | null>(null);
+
+  /** The tree changes with the decks and with what the DJ has kept. */
+  $effect(() => {
+    const decks = deckCount;
+    void activityState?.activities.length;
+    void mine.length;
+    void leaderTree(decks)
+      .then((tree) => (leader.tree = tree))
+      .catch((why) => console.warn("leader tree:", why));
+  });
+
+  /** Carry out one leaf of the tree. */
+  async function runLeaf(run: string) {
+    const space = run.indexOf(" ");
+    const kind = run.slice(0, space);
+    const rest = run.slice(space + 1);
+    if (kind === "action") {
+      await send(rest);
+    } else if (kind === "surface") {
+      if ((DRAWN as readonly string[]).includes(rest)) await toggleSurface(rest as Drawn);
+    } else if (kind === "switch") {
+      await switchTo(rest);
+    } else if (kind === "ui") {
+      if (rest === "palette") paletteRef?.openPalette();
+      else if (rest === "search") await searchLibrary();
+      else if (rest === "back") {
+        if (activityState?.previous) await chooseActivity(activityState.previous);
+      } else if (rest === "everything") await leaveActivities();
+      else if (rest === "record") {
+        if (setRecording) await send(setRecording.active ? "record off" : "record on");
+      } else if (rest === "mark") await mark();
+    }
+  }
+
+  /** Open the library if it is not, and put the cursor in its search. */
+  async function searchLibrary() {
+    if (!isOpen("library")) await toggleSurface("library");
+    await tick();
+    document.querySelector<HTMLInputElement>('input[aria-label="Search the library"]')?.focus();
+  }
+
   // The list the mapping editor can start a draft from. Fetched once: it only
   // changes when a mapping is saved, and a DJ who has just saved one is
   // looking at their own work rather than at this list.
@@ -1154,7 +1208,21 @@
   }
 
   $effect(() => {
-    const detach = keyboard.attach(window);
+    // The guide first: while it is open every key is its, and Space opens it.
+    // Registered before the keyboard map's listener, on the same capture
+    // phase, so a key the guide takes never reaches a deck.
+    const onLeaderKey = (event: KeyboardEvent) => {
+      if (leader.press(event)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener("keydown", onLeaderKey, true);
+    const detachKeys = keyboard.attach(window);
+    const detach = () => {
+      detachKeys();
+      window.removeEventListener("keydown", onLeaderKey, true);
+    };
     void keyboard.load().catch((why) => {
       // Not fatal. The keyboard does nothing and every other way in still
       // works, which is worth one line rather than a dialog on launch.
@@ -2245,7 +2313,7 @@
         <IconButton
           icon="fa-solid fa-hand-pointer"
           label="Activities"
-          title="Show only what the job in front of you needs — dig, mix, perform, prepare — and switch with F1 to F9"
+          title="Show only what the job in front of you needs — dig, mix, perform, prepare — and switch with 1 to 9"
           onClick={() => void enterActivities()}
         />
         <!--
@@ -2853,7 +2921,11 @@
     it is a way of reaching everything, including the surfaces themselves, and
     a thing that opens over the whole window has no dock to belong to.
   -->
+  <!-- §117: the guide behind Space, drawn over everything while a chain is typed. -->
+  <Guide {leader} />
+
   <Palette
+    bind:this={paletteRef}
     enabled={ready}
     {deckCount}
     onAction={(action) => void send(action)}
