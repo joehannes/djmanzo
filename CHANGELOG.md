@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.24.0 — Stems that work with the HT-Demucs model, Space and its guide, and a dashboard instead of toolbars
+
+The fix for stem controls that did nothing with the HT-Demucs model on
+v0.23.0, and §117's key system: Space and a guide to every key behind it,
+the number keys for activities, your own keys, and a dashboard in place of
+the toolbars.
+
 - **Fixed: stem controls did nothing with the HT-Demucs model** (v0.23.0,
   reported on Xubuntu 26.04). The model loaded and the panel named it, but
   djmanzo spoke to it with the wrong tensor names, the wrong length and the
