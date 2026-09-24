@@ -1717,6 +1717,8 @@
   // idle case is its own state rather than being folded into the off one.
   const limiterOn = $derived(!ready || (snapshot?.master.limiter_enabled ?? true));
   const split = $derived(snapshot?.master.split_output ?? null);
+  /** §18: whether the layout must hold still right now — true during every mix. */
+  const quietLayout = $derived(snapshot ? !snapshot.attention.reflow : false);
 </script>
 
 <svelte:window onkeydown={onActivityKey} />
@@ -1869,6 +1871,22 @@
           title="Clock difference between the two sound cards, corrected by resampling. {split.queue_ms.toFixed(1)} ms queued."
         >
           {split.drift_ppm >= 0 ? "+" : ""}{split.drift_ppm.toFixed(0)} ppm
+        </span>
+      {/if}
+      {#if slowFrames !== null}
+        <!--
+          The interface's own frame rate when it is too low to scroll a
+          waveform smoothly. Here, beside the readings, rather than in the band
+          above the decks: it comes and goes as the frame rate does, and in
+          the band it moved the decks every time. The whole sentence is the
+          title; the chip is the number.
+        -->
+        <span
+          class="warn-chip"
+          data-slow-frames
+          title="Interface running at {slowFrames.toFixed(0)} fps. This usually means the webview has no hardware acceleration — the audio engine is unaffected, but the waveform will not scroll smoothly."
+        >
+          UI {slowFrames.toFixed(0)} fps
         </span>
       {/if}
     </div>
@@ -2323,63 +2341,75 @@
     </div>
   </header>
 
-  {#if error}
-    <p class="error">{error}</p>
-  {/if}
-
   <!--
-    The sound card from last time, not here any more. Silently falling back
-    would look identical to having chosen the laptop speakers on purpose, and
-    only one of those is a surprise.
+    The notice band. In the flow — pushing the decks down by the height of what
+    it says — only while §18 allows the interface to move. While two records
+    are audible it floats over the top edge of the stage instead: covering a
+    deck's title for as long as a notice is up is the lesser harm, and moving a
+    fader out from under a hand mid-mix is the harm §18 exists to prevent. A
+    headphone device failing is exactly the kind of thing that happens mid-mix.
   -->
-  {#if missingDevice}
-    <p class="warning">
-      The sound card you used last time is not here. Playing through
-      <strong>{devices.find((d) => d.id === selectedDevice)?.name ?? "the default output"}</strong>
-      instead — plug the other one in and press Reconnect.
-      <button class="inline" onclick={() => (missingDevice = null)}>Dismiss</button>
-    </p>
-  {/if}
+  <div class="notices" class:floating={quietLayout} data-notices>
+    {#if error}
+      <p class="error">{error}</p>
+    {/if}
 
-  <!--
-    A headphone device that would not open is not fatal — the master still
-    runs — but it is silent unless said out loud, and the DJ would be reaching
-    for a cue that is not there.
-  -->
-  {#if active?.cue_error}
-    <p class="warning">
-      The headphone device would not open ({active.cue_error}). Cueing has
-      stayed on the main device.
-    </p>
-  {/if}
+    <!--
+      The sound card from last time, not here any more. Silently falling back
+      would look identical to having chosen the laptop speakers on purpose, and
+      only one of those is a surprise.
+    -->
+    {#if missingDevice}
+      <p class="warning">
+        The sound card you used last time is not here. Playing through
+        <strong>{devices.find((d) => d.id === selectedDevice)?.name ?? "the default output"}</strong>
+        instead — plug the other one in and press Reconnect.
+        <button class="inline" onclick={() => (missingDevice = null)}>Dismiss</button>
+      </p>
+    {/if}
 
-  {#if split && !split.healthy}
-    <p class="warning">
-      The headphone device has lost audio
-      ({split.starved_frames > 0
-        ? `${split.starved_frames.toFixed(0)} frames of silence`
-        : `${split.dropped_samples.toFixed(0)} samples dropped`}). Try a larger
-      buffer, or put the cue back on the main device.
-    </p>
-  {/if}
+    <!--
+      A headphone device that would not open is not fatal — the master still
+      runs — but it is silent unless said out loud, and the DJ would be reaching
+      for a cue that is not there.
+    -->
+    {#if active?.cue_error}
+      <p class="warning">
+        The headphone device would not open ({active.cue_error}). Cueing has
+        stayed on the main device.
+      </p>
+    {/if}
 
-  {#if slowFrames !== null}
-    <p class="warning">
-      Interface running at {slowFrames.toFixed(0)} fps. This usually means the
-      webview has no hardware acceleration — the audio engine is unaffected, but
-      the waveform will not scroll smoothly.
-    </p>
-  {/if}
+    {#if split && !split.healthy}
+      <p class="warning">
+        The headphone device has lost audio
+        ({split.starved_frames > 0
+          ? `${split.starved_frames.toFixed(0)} frames of silence`
+          : `${split.dropped_samples.toFixed(0)} samples dropped`}). Try a larger
+        buffer, or put the cue back on the main device.
+      </p>
+    {/if}
 
-  <!--
-    §44's staged transaction, in the notice band rather than as a surface.
+    <!--
+      The interface's own frame rate is not said here any more; see the chip
+      beside the Mission Bar. This band sits above the decks, and a notice that
+      comes and goes with the frame rate moved them down and up again — 36 px,
+      on exactly the struggling machine where it appears, and in the middle of
+      whatever mix was slowing it down. §18 says the interface may not reflow
+      while two records are audible; a warning that does is the warning breaking
+      the rule it exists to help with.
+    -->
 
-    It belongs here for the reason the audit gives: the AI is never the largest
-    thing on screen, and what it normally has to say is one line and two
-    buttons. It occupies no height at all when nothing is staged, so the decks
-    are not paying for it the rest of the night.
-  -->
-  <Staged enabled={ready} />
+    <!--
+      §44's staged transaction, in the notice band rather than as a surface.
+
+      It belongs here for the reason the audit gives: the AI is never the largest
+      thing on screen, and what it normally has to say is one line and two
+      buttons. It occupies no height at all when nothing is staged, so the decks
+      are not paying for it the rest of the night.
+    -->
+    <Staged enabled={ready} />
+  </div>
 
   <!--
     Decks and mixer sit in their own scrolling region so that opening the
@@ -3082,6 +3112,20 @@
   .device-brief:hover:not(:disabled) {
     border-color: var(--border-strong);
     color: var(--text);
+  }
+
+  /*
+    §18: notices float over the stage's top edge while the layout must hold
+    still, instead of pushing the decks down mid-mix. Centred and narrower than
+    the window, so the decks' own edges — where the hands are — stay clear.
+  */
+  .notices.floating {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(92vw, 56rem);
+    z-index: 40;
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.45));
   }
 
   /*

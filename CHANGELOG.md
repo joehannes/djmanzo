@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Nothing moves the decks mid-mix** — §18. Two notices broke the rule that
+the interface may not reflow while two records are audible. The low
+frame-rate warning came and went with the frame rate and bounced the decks
+36 px each time; it is now a chip beside the readings. Every other notice —
+a headphone device failing, say — now floats over the stage's top edge
+during a mix, and takes its room in the flow only between records.
+
 **Activity mode** — §109. A second way of working the cockpit, organised by
 the job in front of the DJ rather than by style: **Dig, Mix, Perform, Prepare,
 Requests, Autopilot, Practice**, and the DJ's own.
