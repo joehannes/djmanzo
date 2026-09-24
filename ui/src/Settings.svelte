@@ -1632,7 +1632,11 @@
     <p class="hint">
       A record you buy lands in your browser's downloads. Point djmanzo at that
       folder and it files each one into your music folder — under its family
-      and artist — and into the collection, a few seconds after it arrives.
+      and artist — and into the collection, a few seconds after it arrives. A
+      record with no genre tag is listened to: where its drums and tempo plainly
+      say house, techno, reggaeton, hip-hop or the like, it goes under that family
+      marked as a guess, <span class="mono">House (guessed)/</span>, and otherwise
+      to <span class="mono">Unsorted/</span>.
     </p>
     <Downloads />
   </div>

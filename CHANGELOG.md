@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **§111: a record bought with no genre tag is filed by how it sounds.**
+  Bandcamp and many stores send no genre, and such a record went to
+  `Unsorted/`. It is now listened to: its drums' grammar (four on the floor,
+  dembow, a backbeat) and its tempo, where together they plainly point at one
+  family, file it under that family marked as a guess — `House (guessed)/`,
+  `Reggaeton (guessed)/` — and otherwise it stays unsorted. Only tested on
+  synthetic drum patterns; how often it is right on real records is not
+  known yet.
 - **§111: an album bought as a `.zip` is filed record by record.** With the
   downloads folder switched on, a store's album archive has its records taken
   out and filed under their family and artist like any other purchase; the

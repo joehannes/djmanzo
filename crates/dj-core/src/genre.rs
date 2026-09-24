@@ -194,6 +194,37 @@ pub fn family_for(tag: &str) -> Option<&'static Family> {
         .find(|f| normalise(f.name) == wanted || f.aliases.iter().any(|a| normalise(a) == wanted))
 }
 
+/// The family a DJ reaches for first for a record whose only evidence is its
+/// grammar and its written tempo — one that arrived with no genre tag.
+///
+/// Grammar and tempo alone do not name a family: a kick on every beat at 124
+/// is house, tech house, disco, afro house, gqom or pop. This names the one a
+/// DJ filing an unmarked record would try first, and only where one clearly
+/// is that — the grammars that hold one family at a tempo (dembow's three),
+/// and the broad folders of four-on-the-floor. Every other pairing is `None`,
+/// because a guess filed in the wrong place is worse than a record left
+/// unsorted.
+const FIRST_REACH: [(Grammar, f32, f32, &str); 7] = [
+    (Grammar::Dembow, 86.0, 103.0, "reggaeton"),
+    (Grammar::Dembow, 103.0, 113.0, "moombahton"),
+    (Grammar::Dembow, 113.0, 126.0, "dembow"),
+    (Grammar::FourOnFloor, 118.0, 128.5, "house"),
+    (Grammar::FourOnFloor, 128.5, 150.0, "techno"),
+    (Grammar::Boombap, 70.0, 100.0, "hip hop"),
+    (Grammar::Breakbeat, 165.0, 180.0, "drum and bass"),
+];
+
+/// The family a record of this grammar at this written tempo is filed under
+/// when nothing else says: the table above, one family where one is plainly
+/// the first reach and nothing otherwise.
+#[must_use]
+pub fn first_reach(grammar: Grammar, bpm: f32) -> Option<&'static Family> {
+    FIRST_REACH
+        .iter()
+        .find(|(g, low, high, _)| *g == grammar && (*low..*high).contains(&bpm))
+        .and_then(|(_, _, _, name)| family_for(name))
+}
+
 /// Lowercase, letters and digits only, with `&` read as "and".
 ///
 /// The ampersand matters: "Drum & Bass" and "drum and bass" are the same music
@@ -725,5 +756,40 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// **Every first reach is a family djmanzo knows, of the grammar it is
+    /// reached for by, at a tempo the family is played at** — the table
+    /// cannot send a record somewhere the rest of djmanzo disagrees with.
+    #[test]
+    fn every_first_reach_agrees_with_its_family() {
+        for (grammar, low, high, name) in FIRST_REACH {
+            let family = family_for(name).unwrap_or_else(|| panic!("no family {name}"));
+            assert_eq!(family.grammar, grammar, "{name}");
+            let middle = f32::midpoint(low, high);
+            assert!(
+                (family.bpm.0 - 2.0..=family.bpm.1 + 2.0).contains(&middle),
+                "{name} reached for at {middle}, played at {:?}",
+                family.bpm
+            );
+        }
+    }
+
+    /// Where one family is the first reach it is named; where none is, or the
+    /// tempo is none of the grammar's, nothing is.
+    #[test]
+    fn a_first_reach_is_named_only_where_there_is_one() {
+        let named = |grammar, bpm| first_reach(grammar, bpm).map(|f| f.name);
+        assert_eq!(named(Grammar::FourOnFloor, 124.0), Some("house"));
+        assert_eq!(named(Grammar::FourOnFloor, 132.0), Some("techno"));
+        assert_eq!(named(Grammar::Dembow, 95.0), Some("reggaeton"));
+        assert_eq!(named(Grammar::Dembow, 108.0), Some("moombahton"));
+        assert_eq!(named(Grammar::Boombap, 90.0), Some("hip hop"));
+        assert_eq!(named(Grammar::Breakbeat, 174.0), Some("drum and bass"));
+        // A four-on-the-floor record at 110 is disco or pop or neither.
+        assert_eq!(named(Grammar::FourOnFloor, 110.0), None);
+        assert_eq!(named(Grammar::Breakbeat, 140.0), None);
+        assert_eq!(named(Grammar::Clave, 95.0), None);
+        assert_eq!(named(Grammar::Free, 0.0), None);
     }
 }

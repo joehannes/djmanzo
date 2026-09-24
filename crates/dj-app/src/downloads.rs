@@ -20,9 +20,15 @@
 //! `House/Kerri Chandler/`. A backing track or an a cappella goes to
 //! `Karaoke/` or `A cappellas/` first, whatever its genre, because that is
 //! what a karaoke host looks for it as. A record whose genre djmanzo does not
-//! recognise keeps the tag's own spelling as its folder; one with no genre at
-//! all goes to `Unsorted/`, which is honest, and a DJ sorting later knows
-//! where to look.
+//! recognise keeps the tag's own spelling as its folder.
+//!
+//! A record with no genre tag at all — most of Bandcamp's, and anything
+//! ripped carelessly — is listened to ([`hear`]): its drums' grammar and its
+//! tempo, where together they plainly point at one family, file it under that
+//! family marked as a guess, `House (guessed)/`. Where they do not — a
+//! four-on-the-floor record at 110 is disco or pop or neither, and clave is
+//! not read at all — it goes to `Unsorted/`, which is honest, and a DJ
+//! sorting later knows where to look.
 //!
 //! # What it will not do
 //!
@@ -249,19 +255,67 @@ pub fn place(tags: &dj_library::Tags, file_name: &str) -> PathBuf {
         },
         str::to_owned,
     );
-    let artist = tags
-        .album_artist
-        .as_deref()
-        .or(tags.artist.as_deref())
-        .map(folder_name)
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "Unknown artist".to_owned());
     let top = if top.is_empty() {
         "Unsorted".to_owned()
     } else {
         top
     };
-    PathBuf::from(top).join(artist).join(file_name)
+    PathBuf::from(top).join(artist_folder(tags)).join(file_name)
+}
+
+/// The artist's folder: the album artist, else the artist, else said to be
+/// unknown.
+fn artist_folder(tags: &dj_library::Tags) -> String {
+    tags.album_artist
+        .as_deref()
+        .or(tags.artist.as_deref())
+        .map(folder_name)
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "Unknown artist".to_owned())
+}
+
+/// Whether a record says nothing of what it is: no genre tag, and no title
+/// or file name that says karaoke or a cappella. Only such a record is
+/// listened to.
+#[must_use]
+pub fn untold(tags: &dj_library::Tags, file_name: &str) -> bool {
+    let title = tags.title.as_deref().unwrap_or_default();
+    kind_folder(&format!("{title} {file_name}")).is_none()
+        && tags
+            .genre
+            .as_deref()
+            .is_none_or(|genre| genre.trim().is_empty())
+}
+
+/// Where a record that says nothing of itself goes once its audio has:
+/// `House (guessed)/Artist/`. The folder says it is a guess, so a guess is
+/// never mistaken for a tag, and a DJ sorting later knows which to check —
+/// they sit beside the family's own folder rather than inside it.
+#[must_use]
+pub fn place_heard(
+    family: &dj_core::genre::Family,
+    tags: &dj_library::Tags,
+    file_name: &str,
+) -> PathBuf {
+    PathBuf::from(format!("{} (guessed)", family_folder(family.name)))
+        .join(artist_folder(tags))
+        .join(file_name)
+}
+
+/// The family a record's audio plainly says it is: its rhythmic grammar and
+/// tempo (`dj_analysis::rhythm::heard`), and the family a DJ reaches for
+/// first for that pairing (`dj_core::genre::first_reach`). `None` when the
+/// record cannot be decoded, has no steady drums, or its grammar and tempo
+/// point at more than one family — then it is `Unsorted/`, as before.
+///
+/// Reads the whole record: seconds of work, on the downloads thread.
+#[must_use]
+pub fn hear(path: &Path) -> Option<&'static dj_core::genre::Family> {
+    let decoded = dj_decode::decode_file(path).ok()?;
+    let buffer = &decoded.buffer;
+    let (grammar, bpm) = dj_analysis::rhythm::heard(buffer.as_interleaved(), buffer.sample_rate())?;
+    #[allow(clippy::cast_possible_truncation)]
+    dj_core::genre::first_reach(grammar, bpm as f32)
 }
 
 /// A path that does not exist yet: `Title.mp3`, else `Title (2).mp3`, and on.
@@ -427,7 +481,11 @@ fn put(arrived: &Path, into: &Path, shown: String, now: i64) -> (Filed, Option<P
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     let tags = dj_library::tags::read(arrived).unwrap_or_default();
-    let relative = place(&tags, &name);
+    let heard = untold(&tags, &name).then(|| hear(arrived)).flatten();
+    let relative = heard.map_or_else(
+        || place(&tags, &name),
+        |family| place_heard(family, &tags, &name),
+    );
     match file(arrived, into, &relative) {
         Ok(target) => (
             Filed {
@@ -732,6 +790,78 @@ mod tests {
             watcher.look(&dir),
             vec![album.clone()],
             "changed, and never answered"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A record with no tags: a groove on a drum machine at `bpm`, each hit
+    /// a decaying tone in its drum's band, the kick on `kicks` and the snare
+    /// on `snares` of a bar's sixteen steps.
+    fn untagged(path: &Path, bpm: f64, bars: usize, kicks: &[usize], snares: &[usize]) {
+        const RATE: u32 = 44_100;
+        let step = f64::from(RATE) * 60.0 / bpm / 4.0;
+        let mut mono = vec![0.0_f64; (step * 16.0 * bars as f64) as usize + RATE as usize];
+        for bar in 0..bars {
+            for (hz, level, on) in [(55.0, 0.8, kicks), (1_800.0, 0.4, snares)] {
+                for &at in on {
+                    let start = ((bar * 16 + at) as f64 * step) as usize;
+                    for i in 0..(RATE as usize / 6) {
+                        let t = f64::from(i as u32) / f64::from(RATE);
+                        let envelope = (t / 0.002).min(1.0) * (-(t * 30.0)).exp();
+                        mono[start + i] +=
+                            level * envelope * (2.0 * std::f64::consts::PI * hz * t).sin();
+                    }
+                }
+            }
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        let samples: Vec<i16> = mono
+            .iter()
+            .flat_map(|s| {
+                let s = (s * f64::from(i16::MAX)) as i16;
+                [s, s]
+            })
+            .collect();
+        let mut wav = crate::wav::Wav::create(path, RATE).unwrap();
+        wav.write(&samples).unwrap();
+        wav.close().unwrap();
+    }
+
+    /// **A record that says nothing of itself is listened to.** With no tag,
+    /// a kick on every beat at 124 is filed as house, and says it was a
+    /// guess; with no drums to read it stays unsorted; and a record that
+    /// says it is karaoke is filed as karaoke without being listened to.
+    #[test]
+    fn a_record_with_no_genre_is_listened_to() {
+        let dir = scratch("heard");
+        let (downloads, music) = (dir.join("downloads"), dir.join("music"));
+        std::fs::create_dir_all(&downloads).unwrap();
+        untagged(
+            &downloads.join("groove.wav"),
+            124.0,
+            24,
+            &[0, 4, 8, 12],
+            &[4, 12],
+        );
+        untagged(&downloads.join("no drums.wav"), 124.0, 24, &[], &[]);
+        untagged(
+            &downloads.join("groove karaoke.wav"),
+            124.0,
+            24,
+            &[0, 4, 8, 12],
+            &[4, 12],
+        );
+        for name in ["groove.wav", "no drums.wav", "groove karaoke.wav"] {
+            let (filed, _) = put(&downloads.join(name), &music, name.to_owned(), 0);
+            assert_eq!(filed.problem, None, "{name}");
+        }
+        assert_eq!(
+            every_file(&music),
+            vec![
+                "House (guessed)/Unknown artist/groove.wav",
+                "Karaoke/Unknown artist/groove karaoke.wav",
+                "Unsorted/Unknown artist/no drums.wav",
+            ]
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
