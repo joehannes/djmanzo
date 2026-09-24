@@ -1429,10 +1429,22 @@ mod tests {
         let pump = SnapshotPump::start(Arc::clone(&registry), 2, |_| {});
         let work = pump.work();
 
-        std::thread::sleep(Duration::from_millis(120));
-        let share = work
-            .share()
-            .expect("a pump that has run has accounted for time");
+        // Until the pump's first sleep has been counted its share is honestly
+        // one: it has only ever built. A fixed wait read it there on a loaded
+        // macOS runner whose first build took longer than the wait, so this
+        // waits for the first sleep instead — with a deadline, because a pump
+        // whose sleeps are never counted stays at one for ever, and that is
+        // the failure this test exists for.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut share = None;
+        while std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+            share = work.share();
+            if share.is_some_and(|share| share < 1.0) {
+                break;
+            }
+        }
+        let share = share.expect("a pump that has run has accounted for time");
         drop(pump);
 
         assert!(
