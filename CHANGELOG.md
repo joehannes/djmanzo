@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+---
+
+## v0.23.0 — ONNX stems on a clean Linux install, and music filed by how it sounds
+
+Cut early, three commits after v0.22.0 rather than seven, because the owner
+found stems through ONNX broken on a fresh Xubuntu 26.04 and wants the fixed
+package now.
+
 - **Linux: stems through ONNX work on a clean install.** The `.deb`, `.rpm`
   and AppImage carry ONNX Runtime 1.28.0 (Microsoft's own build, MIT) in
   `/usr/lib/djmanzo/`, and djmanzo loads it from there. Before this the
