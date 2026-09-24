@@ -16,6 +16,22 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+---
+
+## v0.22.0 — Going live, and an assistant that watches the booth
+
+Seven commits since v0.21.0, the owner's release cadence. Three threads.
+
+Social: put the record on your live stream (an overlay page and a text file
+for OBS), share a night's tracklist to WhatsApp, X, Bluesky or Threads with
+the post already written, and get a recording's tracklist as chapters for
+YouTube or Mixcloud. Daily work: every theme, activity, workspace and preset
+pack is one Ctrl+K search away, and a quiet line beside REC proposes one thing
+at a time — a deck clipping, a record running out, the peak unrecorded —
+without ever acting on its own. And the waveform now shows the rhythm under
+it, kick, snare and hats on every sixteenth. Nothing here has been heard or
+seen on real hardware; the container this was built in has none.
+
 **The rhythm under the waveform** — §116. A strip along the foot of each
 waveform shows the drums as a drum machine would: the kick on the floor row in
 red, the snare above it in green, the hats on top in violet, on every
