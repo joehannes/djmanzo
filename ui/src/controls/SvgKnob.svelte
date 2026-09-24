@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { KnobState } from "./grammar";
+  import type { Face } from "./faces";
   import { theme as globalTheme } from "../theme.svelte";
   import { executeThemePipeline } from "./themes/engine";
   import SvgRenderer from "./SvgRenderer.svelte";
@@ -40,6 +41,13 @@
     suggestion?: { to: number | null; action: string; because: string } | null;
     disabled?: boolean;
     size?: number;
+    /** §114: the curve the knob's face draws — see `faces.ts`. */
+    face?: Face;
+    /**
+     * §114: the value the knob rests at, which its arc fills from — the
+     * filter's centre, an EQ's unity. Absent is `min`.
+     */
+    origin?: number;
     // Injectable theme, falls back to BaseTheme
     theme?: any; 
   }
@@ -57,7 +65,9 @@
     onoption,
     suggestion = null,
     disabled = false,
-    size = 48
+    size = 48,
+    face,
+    origin
   }: Props = $props();
 
   let dragging = $state(false);
@@ -102,7 +112,8 @@
   let angle = $derived(-135 + normalized * 270);
   
   let shape: KnobState = $derived({
-    value, min, max, normalized, angle, dragging, disabled, size, label
+    value, min, max, normalized, angle, dragging, disabled, size, label, face,
+    origin: origin === undefined ? undefined : (origin - min) / (max - min)
   });
 
   let renderState = $derived(executeThemePipeline(globalTheme.activePackage, shape));

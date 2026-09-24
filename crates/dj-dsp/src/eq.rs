@@ -151,6 +151,12 @@ impl SweepFilter {
     pub const MIN_HZ: f32 = 20.0;
     pub const MAX_HZ: f32 = 20_000.0;
 
+    /// Where each side of the sweep ends: fully low-passed the corner is at
+    /// 40 Hz, fully high-passed at 8 kHz. The interface draws the filter's
+    /// slope from these (`ui/src/controls/faces.ts`).
+    pub const LOW_PASS_FLOOR_HZ: f32 = 40.0;
+    pub const HIGH_PASS_CEILING_HZ: f32 = 8_000.0;
+
     #[must_use]
     pub fn new(sample_rate: f32) -> Self {
         Self {
@@ -179,7 +185,7 @@ impl SweepFilter {
         // so a linear sweep spends most of its travel doing nothing audible.
         if position < 0.0 {
             let amount = (-position - Self::DEAD_ZONE) / (1.0 - Self::DEAD_ZONE);
-            let frequency = exp_sweep(Self::MAX_HZ, 40.0, amount);
+            let frequency = exp_sweep(Self::MAX_HZ, Self::LOW_PASS_FLOOR_HZ, amount);
             self.low_pass.set_coefficients_from(&Biquad::low_pass(
                 self.sample_rate,
                 frequency,
@@ -187,7 +193,7 @@ impl SweepFilter {
             ));
         } else {
             let amount = (position - Self::DEAD_ZONE) / (1.0 - Self::DEAD_ZONE);
-            let frequency = exp_sweep(Self::MIN_HZ, 8_000.0, amount);
+            let frequency = exp_sweep(Self::MIN_HZ, Self::HIGH_PASS_CEILING_HZ, amount);
             self.high_pass.set_coefficients_from(&Biquad::high_pass(
                 self.sample_rate,
                 frequency,
@@ -499,6 +505,46 @@ mod tests {
                 assert!(filter.process(0.5).is_finite(), "q {q}");
             }
         }
+    }
+
+    /// **The knob faces draw the curves these filters are** (§114): the
+    /// interface's copy of the crossovers, the sweep's dead zone and its two
+    /// ends are read out of `ui/src/controls/faces.ts` and must be these. A
+    /// copy that drifted would draw a shelf where the band is not, or a
+    /// corner an octave from where the filter is cutting.
+    #[test]
+    fn the_knob_faces_draw_these_filters() {
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../ui/src/controls/faces.ts"
+        ))
+        .expect("the interface's knob faces are where they were");
+        let constant = |name: &str| -> f32 {
+            let line = source
+                .lines()
+                .find(|line| line.starts_with(&format!("export const {name} = ")))
+                .unwrap_or_else(|| panic!("{name} is not in faces.ts"));
+            line.trim_end_matches(';')
+                .rsplit(' ')
+                .next()
+                .unwrap()
+                .replace('_', "")
+                .parse()
+                .unwrap()
+        };
+        assert_eq!(constant("ISOLATOR_LOW_MID_HZ"), LOW_MID_HZ);
+        assert_eq!(constant("ISOLATOR_MID_HIGH_HZ"), MID_HIGH_HZ);
+        assert_eq!(constant("SWEEP_DEAD_ZONE"), SweepFilter::DEAD_ZONE);
+        assert_eq!(
+            constant("SWEEP_LOW_PASS_FLOOR_HZ"),
+            SweepFilter::LOW_PASS_FLOOR_HZ
+        );
+        assert_eq!(
+            constant("SWEEP_HIGH_PASS_CEILING_HZ"),
+            SweepFilter::HIGH_PASS_CEILING_HZ
+        );
+        assert_eq!(constant("LOWEST_HZ"), SweepFilter::MIN_HZ);
+        assert_eq!(constant("HIGHEST_HZ"), SweepFilter::MAX_HZ);
     }
 
     #[test]

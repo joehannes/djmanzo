@@ -57,7 +57,9 @@ test.describe("§113: functional colour", () => {
    */
   test("each EQ knob wears its band's colour", async ({ page }) => {
     await openShell(page, "/");
-    await emitDeck(page, { eq_low: 1, eq_mid: 1, eq_high: 1 });
+    // A boost, so each knob has an arc: §114 fills from unity, and a knob at
+    // rest has none.
+    await emitDeck(page, { eq_low: 1.5, eq_mid: 1.5, eq_high: 1.5 });
     const bands = { eq_low: "--band-low", eq_mid: "--band-mid", eq_high: "--band-high" } as const;
     const seen: string[] = [];
     for (const [band, name] of Object.entries(bands)) {

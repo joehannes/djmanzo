@@ -1,5 +1,6 @@
 import { performance, type ResolvedPerformance } from "../../performance.svelte";
 import type { KnobState, FaderState, PadState } from "../grammar";
+import { PAD_LIGHT, facePath, pebblePath, stonePath, unityPath } from "../faces";
 
 // The fundamental render instruction set for any SVG control
 export interface SvgRenderState {
@@ -170,6 +171,10 @@ function withValue(
     const from = -KNOB_SWEEP / 2;
     const to = KNOB_SWEEP / 2;
     const at = from + KNOB_SWEEP * clamp01(state.normalized);
+    // §114: where the knob rests. The fill runs from there, so a filter at
+    // its centre or an EQ at unity shows no arc at all, and a cut runs the
+    // other way from a boost.
+    const rest = from + KNOB_SWEEP * clamp01(state.origin ?? 0);
 
     // The unfilled track, so the range is visible even at zero.
     paths.push({
@@ -179,16 +184,48 @@ function withValue(
       strokeWidth: 6,
       role: "value",
     });
-    // How far along it is. Skipped at the very bottom, where an arc of zero
-    // length renders as a stray dot in some engines.
-    if (at - from > 0.5) {
+    // The detent, where the rest is not the start: the notch a hand feels on
+    // a hardware filter, drawn across the track.
+    if (rest > from) {
+      const inner = polar(centre, centre, radius - 5, rest);
+      const outer = polar(centre, centre, radius + 5, rest);
       paths.push({
-        d: arc(centre, centre, radius, from, at),
+        d: `M ${inner.x.toFixed(2)} ${inner.y.toFixed(2)} L ${outer.x.toFixed(2)} ${outer.y.toFixed(2)}`,
+        fill: "none",
+        stroke: "var(--text-dim)",
+        strokeWidth: 2,
+        role: "value",
+      });
+    }
+    // How far along it is. Skipped at rest, where an arc of zero length
+    // renders as a stray dot in some engines.
+    if (Math.abs(at - rest) > 0.5) {
+      paths.push({
+        d: arc(centre, centre, radius, rest, at),
         fill: "none",
         // §113: the knob's own meaning where its control gives one — an EQ
         // band's colour, the filter's — and the palette's accent otherwise.
         stroke: "var(--knob-value)",
         strokeWidth: 6,
+        role: "value",
+      });
+    }
+    // §114: what the knob is doing to the sound, drawn on its face — the
+    // shelf, the bell, the filter's slope — against the line where it does
+    // nothing.
+    if (state.face) {
+      paths.push({
+        d: unityPath(),
+        fill: "none",
+        stroke: "var(--border)",
+        strokeWidth: 1,
+        role: "value",
+      });
+      paths.push({
+        d: facePath(state.face, state.value),
+        fill: "none",
+        stroke: "var(--knob-value)",
+        strokeWidth: 2,
         role: "value",
       });
     }
@@ -208,11 +245,18 @@ function withValue(
 
   if (isFader(state)) {
     const along = clamp01(state.normalized);
+    // §114: where the fader rests. The pitch fader's zero is its middle, and
+    // filled from the bottom it read as half-way up when it was untouched.
+    const rest = clamp01(state.origin ?? 0);
+    const centred = rest > 0 && rest < 1;
     if (state.orientation === "vertical") {
       // Zero at the bottom, which is where a channel fader's zero is.
-      const top = 10 + (BOX - 20) * (1 - along);
+      const y = (n: number) => 10 + (BOX - 20) * (1 - n);
+      const top = y(along);
+      const base = y(rest);
+      if (centred) paths.push(detent(`M 28 ${base.toFixed(2)} H 36 M 64 ${base.toFixed(2)} H 72`));
       paths.push({
-        d: `M 40 ${top.toFixed(2)} H 60 V 90 H 40 Z`,
+        d: `M 40 ${Math.min(top, base).toFixed(2)} H 60 V ${Math.max(top, base).toFixed(2)} H 40 Z`,
         fill: "var(--accent-2)",
         stroke: "none",
         strokeWidth: 0,
@@ -226,9 +270,12 @@ function withValue(
         role: "value",
       });
     } else {
-      const right = 10 + (BOX - 20) * along;
+      const x = (n: number) => 10 + (BOX - 20) * n;
+      const right = x(along);
+      const base = x(rest);
+      if (centred) paths.push(detent(`M ${base.toFixed(2)} 28 V 36 M ${base.toFixed(2)} 64 V 72`));
       paths.push({
-        d: `M 10 40 H ${right.toFixed(2)} V 60 H 10 Z`,
+        d: `M ${Math.min(right, base).toFixed(2)} 40 H ${Math.max(right, base).toFixed(2)} V 60 H ${Math.min(right, base).toFixed(2)} Z`,
         fill: "var(--accent-2)",
         stroke: "none",
         strokeWidth: 0,
@@ -245,17 +292,45 @@ function withValue(
     return { ...body, paths };
   }
 
-  // A pad has two states rather than a position, and they are read by fill.
-  if (state.active || state.pressed) {
+  // A pad has two states rather than a position, and they are read by fill —
+  // in the pad's own outline, whatever the theme drew it as.
+  const outline = body.paths[0]?.d ?? "M 4 4 H 96 V 96 H 4 Z";
+  // §114: a pad that says what it does lights in that colour — see
+  // `PAD_LIGHT`. The fill is a tint, so the label on it stays legible.
+  const light = state.does ? PAD_LIGHT[state.does] : null;
+  if (light && (state.active || state.pressed)) {
     paths.push({
-      d: "M 4 4 H 96 V 96 H 4 Z",
+      d: outline,
+      fill: light,
+      stroke: light,
+      strokeWidth: 2,
+      style: `fill-opacity: ${state.pressed ? 0.6 : 0.4};`,
+      role: "value",
+    });
+  } else if (state.active || state.pressed) {
+    paths.push({
+      d: outline,
       fill: state.pressed ? "var(--accent)" : "var(--accent-2)",
       stroke: "none",
       strokeWidth: 0,
       role: "value",
     });
+  } else if (state.does === "eject") {
+    // The one press that cannot be undone is ringed in its colour at rest.
+    paths.push({
+      d: outline,
+      fill: "none",
+      stroke: PAD_LIGHT.eject,
+      strokeWidth: 1.5,
+      role: "value",
+    });
   }
   return { ...body, paths };
+}
+
+/** A rest mark across a fader's slot. */
+function detent(d: string): SvgPath {
+  return { d, fill: "none", stroke: "var(--text-dim)", strokeWidth: 2, role: "value" };
 }
 
 function clamp01(value: number): number {
@@ -315,3 +390,30 @@ export const GeometryPolygon =
       paths: [{ d, fill: "var(--panel)", stroke: "var(--border)", strokeWidth: 2 }],
     });
   };
+
+/**
+ * §114's natural forms, for the organic themes.
+ *
+ * A knob is a river stone grown from its name — its own, and the same one
+ * every night — and a pad a pebble; a fader's slot is a reed, rounded at both
+ * ends. The value is drawn over them exactly as on every other theme: on a
+ * true circle, because the setting is not a thing a stone may bend.
+ */
+export const GeometryStone: GeometryGenerator = (state) => {
+  const body = (d: string): SvgRenderState => ({
+    containerStyle: "",
+    paths: [{ d, fill: "var(--panel)", stroke: "var(--border)", strokeWidth: 2 }],
+  });
+  if (isKnob(state)) return withValue(state, body(stonePath(state.label ?? "")));
+  if (isFader(state)) {
+    return withValue(
+      state,
+      body(
+        state.orientation === "vertical"
+          ? "M 38 20 A 12 12 0 0 1 62 20 V 80 A 12 12 0 0 1 38 80 Z"
+          : "M 20 38 H 80 A 12 12 0 0 1 80 62 H 20 A 12 12 0 0 1 20 38 Z",
+      ),
+    );
+  }
+  return withValue(state, body(pebblePath()));
+};

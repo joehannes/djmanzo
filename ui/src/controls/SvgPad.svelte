@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PadState } from "./grammar";
+  import type { PadRole } from "./faces";
   import { theme as globalTheme } from "../theme.svelte";
   import { executeThemePipeline } from "./themes/engine";
   import SvgRenderer from "./SvgRenderer.svelte";
@@ -22,6 +23,8 @@
      */
     hold?: boolean;
     label?: string;
+    /** §114: what the pad does, which decides the colour it lights in. */
+    does?: PadRole;
     width?: number;
     height?: number;
     onclick?: () => void;
@@ -35,6 +38,7 @@
     disabled = false,
     hold = false,
     label,
+    does,
     width = 60,
     height = 40,
     onclick,
@@ -87,7 +91,7 @@
   $effect(() => endHold);
 
   let shape: PadState = $derived({
-    active, pressed, disabled, width, height, label
+    active, pressed, disabled, width, height, label, does
   });
 
   let renderState = $derived(executeThemePipeline(globalTheme.activePackage, shape));
@@ -137,6 +141,7 @@
   role="button"
   aria-pressed={active}
   aria-label={label || "pad"}
+  data-does={does}
   tabindex={disabled ? -1 : 0}
   onclick={hold ? undefined : onclick}
   onpointerdown={handlePointerDown}

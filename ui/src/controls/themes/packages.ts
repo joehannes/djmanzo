@@ -4,6 +4,7 @@ import {
   type EffectProcessor,
   GeometryCircle,
   GeometryPolygon,
+  GeometryStone,
   decorate,
 } from "./engine";
 
@@ -160,7 +161,7 @@ export const PkgStudio: ThemePackage = {
   category: "organic",
   setting: "home",
   when: "Long evenings at a desk. Easy on the eyes for hours at a time.",
-  geometry: GeometryCircle,
+  geometry: GeometryStone,
   // Motion, but only the slow kind. Over a four-hour session anything faster
   // than a swell becomes something to look away from.
   behaviors: [TimeReactivePulse],
@@ -173,7 +174,7 @@ export const PkgOrganic: ThemePackage = {
   category: "organic",
   setting: "home",
   when: "The default. Calm, green, and readable in most rooms.",
-  geometry: GeometryCircle,
+  geometry: GeometryStone,
   behaviors: [AudioReactiveStroke, TimeReactivePulse],
   effects: [], // Clean and smooth
 };
@@ -220,7 +221,7 @@ export const PkgSunset: ThemePackage = {
   category: "organic",
   setting: "venue",
   when: "Golden hour on a terrace, when the room is neither light nor dark.",
-  geometry: GeometryCircle,
+  geometry: GeometryStone,
   behaviors: [TimeReactivePulse],
   effects: [],
 };
@@ -254,7 +255,7 @@ export const PkgWatershed: ThemePackage = {
   category: "organic",
   setting: "venue",
   when: "The mix drawn as moving water. Choosing it opens the watershed.",
-  geometry: GeometryCircle,
+  geometry: GeometryStone,
   behaviors: [TimeReactivePulse],
   effects: [],
 };
@@ -296,7 +297,7 @@ export const PkgFestival: ThemePackage = {
   category: "organic",
   setting: "daylight",
   when: "A main stage, outdoors, with the sun still on the screen.",
-  geometry: GeometryCircle,
+  geometry: GeometryStone,
   // Nothing reactive, for Daylight's reason: in bright light the eye is
   // already working, and a control that shimmers competes with the sun.
   behaviors: [],
@@ -309,7 +310,7 @@ export const PkgCaribbean: ThemePackage = {
   category: "organic",
   setting: "daylight",
   when: "A beach bar in the afternoon, where the screen is in the open.",
-  geometry: GeometryCircle,
+  geometry: GeometryStone,
   behaviors: [TimeReactivePulse],
   effects: [],
 };
@@ -320,7 +321,7 @@ export const PkgLatin: ThemePackage = {
   category: "organic",
   setting: "venue",
   when: "A Latin night: warm, dark enough for a room, and never clinical.",
-  geometry: GeometryCircle,
+  geometry: GeometryStone,
   behaviors: [AudioReactiveStroke, TimeReactivePulse],
   effects: [],
 };
@@ -436,7 +437,7 @@ export const PkgAurora: ThemePackage = {
   category: "organic",
   setting: "venue",
   when: "Late-night and lounge sets where the screen may glow: a night sky from teal to violet, the same two colours at the ends of every gradient.",
-  geometry: GeometryCircle,
+  geometry: GeometryStone,
   // The slow swell only: a glow that breathes with the bass, nothing that
   // flickers.
   behaviors: [TimeReactivePulse],

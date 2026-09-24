@@ -16,6 +16,18 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Controls shaped like what they do** — §114. Each tone knob now draws the
+curve it puts on the record, on its face: the HI knob a high shelf, the MID
+a bell, the LOW a low shelf, the filter the slope it cuts — at its setting,
+so a killed low is a floor on the left of the LOW knob. The filter, the EQs
+and the pitch fader fill from where they rest (centre, unity, zero), so an
+untouched control shows nothing filled and a cut runs the other way from a
+boost. The transport pads light in what they do — PLAY in go, CUE in amber,
+SYNC in the colour of a thing chosen — and EJECT is always ringed in stop.
+The organic themes, the default among them, draw each knob as a river stone
+of its own and each pad as a pebble; the setting is still drawn on a true
+circle over the stone.
+
 **Colour that means something, and three themes built on it** — §113. Each
 EQ knob is now the colour the waveform draws its frequencies in — LOW red,
 MID green, HI violet — the filter knob takes the colour of what it keeps,

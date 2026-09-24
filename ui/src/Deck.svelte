@@ -913,17 +913,20 @@
   <div class="transport">
     <SvgPad
       label="CUE"
+      does="cue"
       disabled={!enabled || !deck.loaded}
       onclick={() => send(`deck ${deck.number} cue`)}
     />
     <SvgPad
       label={deck.playing ? "PAUSE" : "PLAY"}
+      does="play"
       active={deck.playing}
       disabled={!enabled || !deck.loaded}
       onclick={() => send(`deck ${deck.number} play_pause`)}
     />
     <SvgPad
       label="SYNC"
+      does="sync"
       active={deck.synced}
       disabled={!enabled || !deck.can_sync}
       onclick={() => send(`deck ${deck.number} ${deck.synced ? "sync_off" : "sync"}`)}
@@ -935,6 +938,7 @@
     -->
     <SvgPad
       label="EJECT"
+      does="eject"
       hold={careful && deck.playing}
       disabled={!enabled || !deck.loaded}
       onclick={() => send(`deck ${deck.number} eject`)}
@@ -1079,9 +1083,13 @@
     Isolator EQ: each knob runs from a true kill at 0 to +12 dB. Double-click
     resets to unity, because reaching for exactly 1.00 with a mouse mid-mix is
     not a thing anyone can do.
+
+    §114: each knob's face draws what it is doing — HI a high shelf, MID a
+    bell, LOW a low shelf, at its setting — and its arc fills from unity, so an
+    untouched EQ shows no arc and a cut runs the other way from a boost.
   -->
   <div class="eq">
-    {#each [{ id: "eq_high", label: "HI", value: deck.eq_high }, { id: "eq_mid", label: "MID", value: deck.eq_mid }, { id: "eq_low", label: "LOW", value: deck.eq_low }] as band (band.id)}
+    {#each [{ id: "eq_high", label: "HI", value: deck.eq_high, face: "eq-high" as const }, { id: "eq_mid", label: "MID", value: deck.eq_mid, face: "eq-mid" as const }, { id: "eq_low", label: "LOW", value: deck.eq_low, face: "eq-low" as const }] as band (band.id)}
       <label class="band" class:killed={band.value < 0.001} data-band={band.id}>
         <SvgKnob
           value={band.value}
@@ -1090,6 +1098,8 @@
           step={0.01}
           label={band.label}
           readout={band.value < 0.001 ? "kill" : band.value.toFixed(2)}
+          face={band.face}
+          origin={1}
           size={46}
           disabled={!enabled}
           oninput={(val) => send(`deck ${deck.number} ${band.id} ${val}`)}
@@ -1115,7 +1125,8 @@
   <!--
     §113: the filter knob wears the colour of what it leaves — a low-pass the
     lows' red, a high-pass the highs' violet — so a glance says which side of
-    the record is still in the room.
+    the record is still in the room. §114: its face draws the slope it cuts,
+    and its arc fills from the centre, where it is off.
   -->
   <label
     class="control"
@@ -1134,6 +1145,8 @@
           : `HP ${Math.round(deck.filter * 100)}%`}
       disabled={!enabled}
       size={56}
+      face="filter"
+      origin={0}
       oninput={(val) => send(`deck ${deck.number} filter ${val}`)}
       ondblclick={() => send(handles.filter?.reset ?? `deck ${deck.number} filter 0`)}
       options={handles.filter?.options}
@@ -1186,6 +1199,7 @@
         max={0.16}
         step={0.001}
         label="Pitch"
+        origin={0}
         readout={`${(deck.pitch * 100).toFixed(1)}%`}
         disabled={!enabled}
         height={140}

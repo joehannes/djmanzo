@@ -1,4 +1,5 @@
 import type { Snippet } from "svelte";
+import type { Face, PadRole } from "./faces";
 
 /**
  * What a control looks like right now.
@@ -17,6 +18,14 @@ export interface KnobState {
   disabled: boolean;
   size: number;
   label?: string;
+  /** §114: the curve its face draws, where the knob shapes the sound. */
+  face?: Face;
+  /**
+   * §114: where the knob rests, 0..1 along its sweep — the filter's centre,
+   * an EQ's unity. The arc fills from here, so a knob at rest shows none.
+   * Absent is the bottom of the sweep.
+   */
+  origin?: number;
 }
 
 export interface FaderState {
@@ -30,6 +39,8 @@ export interface FaderState {
   height: number;
   orientation: "vertical" | "horizontal";
   label?: string;
+  /** §114: where the fader rests, 0..1 — the pitch fader's zero is its middle. */
+  origin?: number;
 }
 
 export interface PadState {
@@ -39,6 +50,8 @@ export interface PadState {
   width: number;
   height: number;
   label?: string;
+  /** §114: what the pad does, which decides the colour it lights in. */
+  does?: PadRole;
 }
 
 /**

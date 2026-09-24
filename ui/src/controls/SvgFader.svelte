@@ -30,6 +30,8 @@
     width?: number;
     height?: number;
     orientation?: "vertical" | "horizontal";
+    /** §114: the value the fader rests at, which it fills from. Absent is `min`. */
+    origin?: number;
   }
 
   let {
@@ -46,7 +48,8 @@
     disabled = false,
     width = 30,
     height = 120,
-    orientation = "vertical"
+    orientation = "vertical",
+    origin
   }: Props = $props();
 
   let dragging = $state(false);
@@ -60,7 +63,8 @@
   let normalized = $derived((value - min) / (max - min));
   
   let shape: FaderState = $derived({
-    value, min, max, normalized, dragging, disabled, width, height, orientation, label
+    value, min, max, normalized, dragging, disabled, width, height, orientation, label,
+    origin: origin === undefined ? undefined : (origin - min) / (max - min)
   });
 
   let renderState = $derived(executeThemePipeline(globalTheme.activePackage, shape));
