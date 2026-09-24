@@ -137,7 +137,7 @@ rather than taken.
 | 109 | Activity mode | ⬜ | Asked 2026-09-24. Not started when it was added |
 | 110 | Spectral colour on the waveform | ⬜ | Asked 2026-09-24. Not started when it was added |
 | 111 | Legal music sources for karaoke stems | ⬜ | Asked 2026-09-24. Not started when it was added |
-| 112 | Watershed, improved or hidden | ⬜ | Asked 2026-09-24. Not started when it was added |
+| 112 | Watershed, improved or hidden | ✅ | **Hidden for now, which is the branch the owner named.** Driven in the running application first: open, it is a band of about 240 px above the decks that restates what the waveforms and the mixer already say — two streams merging for the crossfader, a lane per deck, *keys clash* in words — and on a 1280×800 screen it pushed a deck's pads off the bottom. Making it *much much better* is a redesign in competition with nine other asks, so it came off the main bar and stayed what §55 says it is: a **world**, opened by choosing *Watershed Living* in the theme picker and closed by an × on its own band, where the DJ who opened it is looking. Nothing is deleted, which is §55's *do not delete the existing watershed concept*. Both halves tested in the browser — no switch on the bar, and the band's own close control closes it (mutation-tested: a close that does nothing fails). What would earn it the bar back is information it alone carries; §110's spectral colour, drawn as the colour of the water, is the candidate |
 | 113 | More themes, functional colour | ⬜ | Asked 2026-09-24. Not started when it was added |
 | 114 | Shapes of controls | ⬜ | Asked 2026-09-24. Not started when it was added |
 | 115 | A GUI for a DJ's daily work | ⬜ | Asked 2026-09-24. Close to §3's thesis and §105's *exactly what I need, exactly when I need it*; carried by §109's activities, §113's themes and §114's shapes rather than built on its own |
@@ -162,7 +162,7 @@ rather than taken.
 
 ## The count
 
-Of the 114 sections: **62 done, 25 part, 8 open, 19 standing rules.**
+Of the 115 sections: **63 done, 25 part, 8 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -181,10 +181,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**62 of 95 deliverable sections are complete and 25 more are partly there.** Of the original 105, nothing is untouched: every deliverable section has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it. The eight open rows are all among the nine asked for since.
+**63 of 96 deliverable sections are complete and 25 more are partly there.** Of the original 105, nothing is untouched: every deliverable section has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it. The 8 open rows are all among those asked for since.
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 62 whole plus 25 halves over 95 is 78%, and the phase view is stricter
+way: 63 whole plus 25 halves over 96 is 79%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

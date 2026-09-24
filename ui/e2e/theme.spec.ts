@@ -168,19 +168,21 @@ test.describe("§32's theme packs", () => {
   test("the watershed is a theme, and only its own theme opens it", async ({ page }) => {
     await openThemes(page);
 
-    const watershed = page.getByRole("button", { name: "Watershed", exact: true });
+    // Read from the stage rather than from a switch: §112 took the switch off
+    // the main bar, and the stage is where the watershed is drawn.
+    const stage = page.locator(".stage");
     await expect(
-      watershed,
+      stage,
       "the watershed was already open before anything was chosen",
-    ).toHaveAttribute("aria-pressed", "false");
+    ).toHaveAttribute("data-watershed", "closed");
 
     // Another theme first: it must leave the switch alone. This is the half of
     // §32 that is a prohibition rather than a feature — the metaphor must not
     // constrain a DJ who did not ask for it.
     await page.locator(".switcher .theme").filter({ hasText: "Booth" }).click();
-    await expect(watershed, "choosing Booth opened the watershed").toHaveAttribute(
-      "aria-pressed",
-      "false",
+    await expect(stage, "choosing Booth opened the watershed").toHaveAttribute(
+      "data-watershed",
+      "closed",
     );
 
     // The menu stays open across a choice on purpose — picking a theme and
@@ -191,9 +193,66 @@ test.describe("§32's theme packs", () => {
       .filter({ hasText: "Watershed Living" })
       .click();
     await expect(
-      watershed,
+      stage,
       "choosing Watershed Living did not open the watershed",
-    ).toHaveAttribute("aria-pressed", "true");
+    ).toHaveAttribute("data-watershed", "open");
     expect(errorsThrown(page), "the theme switcher threw").toEqual([]);
+  });
+
+  /**
+   * **§112: no switch on the main bar, and it closes where it is.**
+   *
+   * > the watershed feature .. see if you can make it much much better or
+   * > integrate is somehow usefully ... if not, I guess hide it for now
+   *
+   * It repeats what the waveforms and mixer say and, open, pushed a deck's pads
+   * off a 1280×800 screen, so it left the bar and stayed a world (§55). A DJ
+   * who opened it by choosing its theme closes it from the band itself — which
+   * needs a river to draw, so this world has one.
+   */
+  test("the watershed has no switch on the bar, and closes from its own band", async ({ page }) => {
+    await openShell(page, "/", {}, {
+      world: {
+        entities: [
+          {
+            name: "deck.river",
+            index: 1,
+            slot: 0,
+            form: "Flow",
+            bearing: "Trunk",
+            tint: { hue: 90, saturation: 0.5, lightness: 0.5 },
+            vitality: {
+              pulse_bpm: 124,
+              phase: 0,
+              depth: 0.5,
+              agitation: 0.1,
+              backwards: false,
+              turbidity: 0,
+              excursion: { drift: 0, scale: 0 },
+            },
+            along: 0,
+            extent: 1,
+            reading: "deck 1, flowing",
+          },
+        ],
+        confluence: "Unknown",
+        strain: 0,
+        alarm: null,
+        beating: "Unknown",
+        unsurveyed: 0,
+      },
+    });
+    await expect(page.getByRole("button", { name: "Watershed", exact: true })).toHaveCount(0);
+
+    await page.locator(".switcher button.icon").click();
+    await page.locator(".switcher .theme").filter({ hasText: "Watershed Living" }).click();
+    const stage = page.locator(".stage");
+    await expect(stage).toHaveAttribute("data-watershed", "open");
+    const close = page.getByRole("button", { name: "Hide the watershed" });
+    await expect(close).toBeVisible();
+    await close.click();
+    await expect(stage).toHaveAttribute("data-watershed", "closed");
+    await expect(page.locator(".watershed-band")).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
   });
 });

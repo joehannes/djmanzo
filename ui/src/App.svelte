@@ -1972,15 +1972,14 @@
             {layoutNotes.length} not shown
           </span>
         {/if}
-        <IconButton
-          icon="fa-solid fa-water"
-          label="Watershed"
-          title={living
-            ? `Hide the watershed${backend ? ` (drawing with ${backend})` : ""}`
-            : "Show the watershed — the mix drawn as moving water"}
-          active={living}
-          onClick={() => (living = !living)}
-        />
+        <!--
+          §112: the watershed has no switch on this bar any more. It was one
+          of the most visible buttons in the interface for a view that repeats
+          what the waveforms and the mixer already say and, when open, pushed
+          the pads off a 1280×800 screen. It is §55's *world*, chosen like one
+          — *Watershed Living* in the theme picker opens it — and it closes
+          from its own band, where the DJ who opened it is looking.
+        -->
       </div>
 
       <!--
@@ -2513,7 +2512,7 @@
   {/if}
 
   <div class="middle">
-  <div class="stage" class:shared={docked}>
+  <div class="stage" class:shared={docked} data-watershed={living ? "open" : "closed"}>
   {#if snapshot}
     <!--
       The watershed. Above the decks rather than replacing them: it answers
@@ -2523,14 +2522,24 @@
       real booth. See docs/VISUAL-LANGUAGE.md.
     -->
     {#if living && rivers.length > 0}
-      <Watershed
-        {world}
-        {tier}
-        decks={rivers.map((r) => r.index)}
-        latencyMs={snapshot.master.output_latency_ms}
-        {accelerate}
-        ondriver={(what) => (backend = what)}
-      />
+      <div class="watershed-band">
+        <Watershed
+          {world}
+          {tier}
+          decks={rivers.map((r) => r.index)}
+          latencyMs={snapshot.master.output_latency_ms}
+          {accelerate}
+          ondriver={(what) => (backend = what)}
+        />
+        <span class="watershed-close">
+          <IconButton
+            icon="fa-solid fa-xmark"
+            aria-label="Hide the watershed"
+            title={`Hide the watershed${backend ? ` (drawing with ${backend})` : ""}`}
+            onClick={() => (living = false)}
+          />
+        </span>
+      </div>
     {/if}
 
     <div class="decks" class:four={deckCount === 4} class:six={deckCount === 6}>
@@ -3318,6 +3327,16 @@
     gap: 0.5rem;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  /* §112: the watershed closes from its own band. */
+  .watershed-band {
+    position: relative;
+  }
+  .watershed-close {
+    position: absolute;
+    top: 4px;
+    right: 4px;
   }
 
   .decks {
