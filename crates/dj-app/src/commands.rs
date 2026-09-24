@@ -853,6 +853,20 @@ pub fn put_on_deck(
         let spawned = std::thread::Builder::new()
             .name("spectrum".into())
             .spawn(move || {
+                // §116's melody first: the spectrum's new epoch is what the
+                // lane asks again on, and the melody has to be there when it
+                // does. About as long again as the spectrum.
+                let rate = audio.sample_rate().as_f64();
+                let mono = dj_analysis::melody::mono(audio.as_interleaved(), 2);
+                let hertz = dj_analysis::melody::pitches(&mono, audio.sample_rate().get());
+                store.set_melody(
+                    deck_id,
+                    &measured,
+                    crate::waveform::Melody {
+                        hertz,
+                        frames_per_point: rate / dj_analysis::melody::RATE,
+                    },
+                );
                 let mut coloured = (*measured).clone();
                 coloured.measure_spectrum(audio.as_interleaved());
                 store.set_spectrum(deck_id, &measured, coloured);
@@ -1766,6 +1780,49 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         changes: trajectory.changes(),
         trajectory,
     }
+}
+
+/// §116's melody line, as the lane draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct MelodyLine {
+    /// Frames of the file between two points.
+    pub frames_per_point: f64,
+    /// Each point: its pitch in Hz and which of `colours` it is drawn in, or
+    /// `null` where nothing periodic was found.
+    pub points: Vec<Option<(f32, u8)>>,
+    /// §110's spectrum as the theme draws it, lowest pitch first. The colour
+    /// of a note is the colour its pitch has in the waveform under it — a
+    /// table rather than a formula, so the formula stays in one place.
+    pub colours: Vec<[u8; 3]>,
+    /// The lowest and highest pitch the line is read in, Hz: the lane's floor
+    /// and ceiling for it.
+    pub range: (f32, f32),
+}
+
+/// §116: the strongest line of notes in a deck's record, where it is known.
+///
+/// Asked for on the waveform's epoch rather than carried on `waveform_info`:
+/// three thousand points a record is not furniture to send each time the lane
+/// checks whether its colour has landed.
+#[tauri::command]
+pub fn melody_line(state: State<'_, AppState>, deck: u8, theme: String) -> Option<MelodyLine> {
+    let melody = state.waveforms().melody(deck)?;
+    let palette = dj_render::Theme::from_slug(&theme)
+        .unwrap_or(dj_render::Theme::Dark)
+        .palette();
+    Some(MelodyLine {
+        frames_per_point: melody.frames_per_point,
+        points: melody
+            .hertz
+            .iter()
+            .map(|hz| hz.map(|hz| ((hz * 10.0).round() / 10.0, dj_render::spectrum_step(hz))))
+            .collect(),
+        colours: palette.spectrum_steps(),
+        range: (
+            dj_analysis::melody::LOWEST_HZ,
+            dj_analysis::melody::HIGHEST_HZ,
+        ),
+    })
 }
 
 /// Where this deck's record could be left, when djmanzo knows enough to say.

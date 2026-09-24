@@ -26,7 +26,7 @@ pub use summary::{Bucket, SPECTRUM_BANDS, SPECTRUM_EDGES_HZ, WaveformSummary};
 pub use tile::{
     BYTES_PER_PIXEL, Colouring, EqPart, GridLines, GridOverlay, HEARING_HZ, Palette, Theme, Tile,
     TileSpec, VISIBLE_NM, frequency_colour, hearing_position, render_tile, render_tile_with_grid,
-    wavelength_for,
+    spectrum_step, wavelength_for,
 };
 
 pub mod encode;

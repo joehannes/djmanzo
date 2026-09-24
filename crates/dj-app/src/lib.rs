@@ -535,6 +535,7 @@ pub fn run() {
             commands::stop_osc,
             commands::get_snapshot,
             commands::waveform_info,
+            commands::melody_line,
             commands::report_bench,
             commands::at_hand,
             commands::keep_mix,

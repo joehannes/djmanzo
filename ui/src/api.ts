@@ -1167,6 +1167,22 @@ export interface WaveformInfo {
 }
 
 /**
+ * §116's melody line for a deck's record: the strongest line of notes, each
+ * point its pitch in Hz and the step of `colours` it is drawn in, or `null`
+ * where nothing periodic was found. `null` altogether until it has been read.
+ */
+export interface MelodyLine {
+  frames_per_point: number;
+  points: ([number, number] | null)[];
+  colours: [number, number, number][];
+  /** The lowest and highest pitch it is read in, Hz. */
+  range: [number, number];
+}
+
+export const melodyLine = (deck: number, theme: string) =>
+  invoke<MelodyLine | null>("melody_line", { deck, theme });
+
+/**
  * §116: one change in a record — a current coming in or going, or a stretch
  * that builds or settles. `stem` is an index in the one stem order (vocal,
  * drums, bass, other) for `enters` and `leaves`; `until` is where a rise or a

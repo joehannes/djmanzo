@@ -72,6 +72,15 @@
     "why_not": ""
   },
   {
+    "name": "melody",
+    "title": "Melody line",
+    "about": "The strongest line of notes, at its pitch and in its colour -- usually the voice.",
+    "role": "sound",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
+  },
+  {
     "name": "vocal",
     "title": "Vocal presence",
     "about": "Where a lead is centred in the voice range -- usually a singer.",

@@ -21,14 +21,16 @@
     waveformInfo,
     type DeckState,
     type EnergyTrajectory,
+    type MelodyLine,
     type MixInInfo,
     type RecordChange,
     type SavedLoopInfo,
     type MixOutInfo,
   } from "./api";
-  import { dispatch, phraseGrid, waveformMoves, type Move, type PhraseGrid } from "./api";
+  import { dispatch, melodyLine, phraseGrid, waveformMoves, type Move, type PhraseGrid } from "./api";
   import { comingUp, distance, framesPerBeat } from "./ahead";
   import { PARTS, partOpacities } from "./eqLight";
+  import { melodyPaths } from "./melody";
   import { remembers, showing } from "./remembers.svelte";
   import { theme } from "./theme.svelte";
 
@@ -302,6 +304,25 @@
   /** §116: the record's shape and what changes in it. */
   let trajectory = $state<EnergyTrajectory | null>(null);
   let changes = $state<RecordChange[]>([]);
+  /** §116's melody line, once Rust has read it. */
+  let melody = $state<MelodyLine | null>(null);
+  let askedMelody = "";
+
+  $effect(() => {
+    // Asked once per record, per epoch and per theme — the colours are the
+    // theme's — and only once the spectrum has landed, because the melody is
+    // read on the same thread and set just before it.
+    const key = `${deck.number}/${epoch}/${colourPending}/${theme.resolved}`;
+    if (key === askedMelody) return;
+    askedMelody = key;
+    if (!ready || colourPending) {
+      melody = null;
+      return;
+    }
+    void melodyLine(deck.number, theme.resolved)
+      .then((line) => (melody = line))
+      .catch(() => (melody = null));
+  });
   let recheckQueued = false;
 
   $effect(() => {
@@ -450,6 +471,23 @@
         width: span / framesPerPixel,
         height: Math.round(Math.min(1, Math.max(0, section.energy)) * 100),
       }));
+  });
+
+  /**
+   * §116's melody line over the stretch the tiles cover: one SVG the width of
+   * that stretch, redrawn when the tiles change — every few seconds, not every
+   * frame — and carried by the same transform as everything else in the strip.
+   */
+  const melodyDrawn = $derived.by(() => {
+    if (!melody || !showing("melody") || totalFrames === 0) return null;
+    const from = Math.max(0, firstTile * tileSpanFrames);
+    const count = Math.ceil(laneWidth / TILE_WIDTH) + OVERSCAN * 2 + 1;
+    const to = Math.min(totalFrames, (firstTile + count) * tileSpanFrames);
+    if (to <= from) return null;
+    const paths = melodyPaths(melody, from, to, framesPerPixel, height);
+    return paths.length > 0
+      ? { left: from / framesPerPixel, width: (to - from) / framesPerPixel, paths }
+      : null;
   });
 
   /**
@@ -1022,6 +1060,29 @@
           />
         {/each}
       {/each}
+      {#if melodyDrawn}
+        <!--
+          §116's melody line: the strongest line of notes, placed by pitch and
+          coloured by the colour its pitch has in the waveform under it. A dark
+          halo first, so it reads over the waveform it crosses.
+        -->
+        <svg
+          class="melody"
+          data-layer="melody"
+          aria-hidden="true"
+          style:left="{melodyDrawn.left}px"
+          width={melodyDrawn.width}
+          {height}
+          viewBox="0 0 {melodyDrawn.width} {height}"
+        >
+          {#each melodyDrawn.paths as path, i (i)}
+            <path class="halo" d={path.d} />
+          {/each}
+          {#each melodyDrawn.paths as path, i (i)}
+            <path class="note" d={path.d} stroke={path.colour} />
+          {/each}
+        </svg>
+      {/if}
     </div>
   {:else if deck.loaded}
     <p class="pending">analysing…</p>
@@ -1339,6 +1400,30 @@
     border-top: 1px solid color-mix(in srgb, var(--shape) 35%, transparent);
     border-radius: 10px 10px 0 0;
     pointer-events: none;
+  }
+
+  .melody {
+    position: absolute;
+    top: 0;
+    z-index: 1;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .melody path {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .melody .halo {
+    stroke: var(--panel);
+    stroke-width: 4;
+    opacity: 0.55;
+  }
+
+  .melody .note {
+    stroke-width: 2;
   }
 
   .coming {

@@ -182,7 +182,16 @@ impl Layer {
     ///   would learn the wrong thing about the ones that do work.
     #[must_use]
     pub const fn choosable(&self) -> bool {
-        self.exists() && !matches!(self.role, Role::Sound)
+        self.exists() && !self.is_the_waveform()
+    }
+
+    /// Whether this is the waveform itself: the record's own sound, drawn in
+    /// the tile. §116's melody line is the record's sound too, but it is a
+    /// line laid over the waveform, and a DJ who finds it busy can take it
+    /// away without taking the record with it.
+    #[must_use]
+    pub const fn is_the_waveform(&self) -> bool {
+        matches!(self.role, Role::Sound) && matches!(self.drawn, Drawn::Tile)
     }
 }
 
@@ -254,7 +263,7 @@ pub fn layer(name: &str) -> Option<&'static Layer> {
     LAYERS.iter().find(|layer| layer.name == name)
 }
 
-static LAYERS: [Layer; 21] = [
+static LAYERS: [Layer; 22] = [
     Layer {
         name: "amplitude",
         title: "Amplitude",
@@ -309,6 +318,17 @@ static LAYERS: [Layer; 21] = [
         title: "Saved loops",
         about: "Loops kept for later, drawn where they would fire.",
         role: Role::Looping,
+        drawn: Drawn::Overlay,
+    },
+    // §116: the record's own sound again, drawn as a line of notes rather
+    // than as a column — its height is the pitch and its colour is the colour
+    // that pitch has in the waveform under it, so it shares `Sound` with the
+    // two layers it is read from rather than taking a hue of its own.
+    Layer {
+        name: "melody",
+        title: "Melody line",
+        about: "The strongest line of notes, at its pitch and in its colour -- usually the voice.",
+        role: Role::Sound,
         drawn: Drawn::Overlay,
     },
     // An estimate about the music, and a franker one than most: the detector
@@ -483,7 +503,7 @@ mod tests {
             if !layer.exists() {
                 assert!(!layer.choosable(), "{} is not drawn anywhere", layer.name);
             }
-            if layer.role == Role::Sound {
+            if layer.is_the_waveform() {
                 assert!(
                     !layer.choosable(),
                     "{} is the waveform itself and cannot be a preference",
@@ -535,7 +555,10 @@ mod tests {
     /// section asked for something §25's twenty have nowhere to put, and the
     /// bar for that is high: §75's other eight properties all land on a layer
     /// §25 named, and only this one did not.
-    const BEYOND: [(&str, &str); 1] = [("transients", "§75's transient density")];
+    const BEYOND: [(&str, &str); 2] = [
+        ("transients", "§75's transient density"),
+        ("melody", "§116's melody line"),
+    ];
 
     /// **Every layer §25 named is still here, and anything else says who asked
     /// for it.**
@@ -620,9 +643,12 @@ mod tests {
                 .or_default()
                 .push(layer.name);
         }
+        // `sound` is the record itself: its outline, its spectrum, and §116's
+        // melody line, which is the same sound read as notes and coloured by
+        // the same spectrum. A hue of its own would say it was something else.
         assert_eq!(
-            grouped.get("sound").map(Vec::len),
-            Some(2),
+            grouped.get("sound"),
+            Some(&vec!["amplitude", "spectral", "melody"]),
             "the record's own sound"
         );
         assert_eq!(grouped.get("grid").map(Vec::len), Some(3), "the pulse");
@@ -708,7 +734,7 @@ mod tests {
         }
     }
 
-    /// The count worth quoting, so "twenty of twenty-one" cannot drift.
+    /// The count worth quoting, so "twenty-one of twenty-two" cannot drift.
     #[test]
     fn the_built_count_is_a_fact_rather_than_a_recollection() {
         let built: Vec<&str> = layers()
@@ -727,6 +753,7 @@ mod tests {
                 "cues",
                 "loop",
                 "saved-loops",
+                "melody",
                 "vocal",
                 "stems",
                 "seam",

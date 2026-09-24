@@ -48,6 +48,18 @@ pub struct WaveformStore {
     /// Encoded PNGs, keyed by the request that produced them. Tiles are
     /// deterministic, so a hit is always byte-identical to a re-render.
     cache: Mutex<HashMap<TileKey, Arc<Vec<u8>>>>,
+    /// §116's melody line per deck: the strongest line of notes, in Hz, and
+    /// how many frames of the file each point covers.
+    melodies: Mutex<HashMap<u8, Arc<Melody>>>,
+}
+
+/// §116: a record's melody, as `dj_analysis::melody::pitches` reads it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Melody {
+    /// Hz, or `None` where nothing periodic was found.
+    pub hertz: Vec<Option<f32>>,
+    /// Frames of the file between two points.
+    pub frames_per_point: f64,
 }
 
 /// Identifies a tile exactly. Integer-keyed so it can be hashed -- floats
@@ -105,6 +117,10 @@ impl WaveformStore {
         if let Ok(mut summaries) = self.summaries.lock() {
             summaries.insert(deck.human_number(), Arc::new(summary));
         }
+        // The last record's tune is not this one's.
+        if let Ok(mut melodies) = self.melodies.lock() {
+            melodies.remove(&deck.human_number());
+        }
         // Tiles for the previous track on this deck are now wrong.
         self.invalidate(deck);
     }
@@ -141,6 +157,40 @@ impl WaveformStore {
         landed
     }
 
+    /// Put §116's melody beside a deck's record, if the deck still holds the
+    /// record it was read from — the same guard the spectrum has, for the
+    /// same reason: a late answer for a record since replaced would draw one
+    /// record's tune over another's waveform.
+    ///
+    /// Set *before* the spectrum on the thread that measures both, so that
+    /// the new epoch the spectrum brings — which is what the lane re-asks on
+    /// — finds the melody already here.
+    pub fn set_melody(
+        &self,
+        deck: DeckId,
+        measured: &Arc<WaveformSummary>,
+        melody: Melody,
+    ) -> bool {
+        let current = self
+            .summaries
+            .lock()
+            .ok()
+            .and_then(|summaries| summaries.get(&deck.human_number()).cloned());
+        if !current.is_some_and(|current| Arc::ptr_eq(&current, measured)) {
+            return false;
+        }
+        if let Ok(mut melodies) = self.melodies.lock() {
+            melodies.insert(deck.human_number(), Arc::new(melody));
+        }
+        true
+    }
+
+    /// §116's melody for a deck's record, once it has been read.
+    #[must_use]
+    pub fn melody(&self, deck: u8) -> Option<Arc<Melody>> {
+        self.melodies.lock().ok()?.get(&deck).cloned()
+    }
+
     /// Whether a deck's record is still waiting for its spectrum.
     #[must_use]
     pub fn colour_pending(&self, deck: u8) -> bool {
@@ -151,6 +201,9 @@ impl WaveformStore {
     pub fn clear(&self, deck: DeckId) {
         if let Ok(mut summaries) = self.summaries.lock() {
             summaries.remove(&deck.human_number());
+        }
+        if let Ok(mut melodies) = self.melodies.lock() {
+            melodies.remove(&deck.human_number());
         }
         if let Ok(mut grids) = self.grids.lock() {
             grids.remove(&deck.human_number());
@@ -898,6 +951,36 @@ mod tests {
             ..key(1)
         });
         assert_ne!(light.unwrap(), bands.unwrap());
+    }
+
+    /// **A tune read from one record is never drawn over the next.** The
+    /// melody is read on the thread the spectrum is measured on, a second or
+    /// so after the load; a DJ who loaded again in between gets nothing
+    /// rather than the first record's notes, and a new load clears the old.
+    #[test]
+    fn a_melody_belongs_to_the_record_it_was_read_from() {
+        let (store, deck) = store_with_track();
+        let first = store.summary(1).unwrap();
+        let tune = Melody {
+            hertz: vec![Some(220.0), None, Some(330.0)],
+            frames_per_point: 4_800.0,
+        };
+        assert!(store.set_melody(deck, &first, tune.clone()));
+        assert_eq!(store.melody(1).as_deref(), Some(&tune));
+
+        store.set_summary(
+            deck,
+            WaveformSummary::analyse(&samples(48_000), SampleRate::DEFAULT),
+        );
+        assert!(
+            store.melody(1).is_none(),
+            "the last record's tune outlived it"
+        );
+        assert!(
+            !store.set_melody(deck, &first, tune),
+            "a late tune landed on the wrong record"
+        );
+        assert!(store.melody(1).is_none());
     }
 
     /// **The EQ part is part of the key, and the URL carries it.** The lane

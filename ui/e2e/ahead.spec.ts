@@ -99,11 +99,49 @@ test.describe("§116: seeing the record coming", () => {
     // Under the waveform, not over it: every ground window comes before the
     // first tile in the strip.
     const order = await lane(page).locator(".strip > *").evaluateAll((children) =>
-      children.map((child) => child.className),
+      children.map((child) => child.getAttribute("class") ?? ""),
     );
     const lastGround = order.map((name) => name.includes("ground")).lastIndexOf(true);
     const firstTile = order.findIndex((name) => name.includes("tile"));
     expect(lastGround).toBeLessThan(firstTile);
+  });
+
+  /**
+   * **The melody line is on the lane, placed by pitch and coloured by the
+   * step Rust sent**, broken where nothing was pitched, and gone when the DJ
+   * switches its layer off.
+   */
+  test("the lane draws the melody line, and the layer switch takes it away", async ({ page }) => {
+    await openShell(page, "/");
+    const line = lane(page).locator('svg.melody[data-layer="melody"]');
+    await expect(line).toBeVisible();
+    const notes = line.locator("path.note");
+    await expect(notes).not.toHaveCount(0);
+    // More than one path: the rests break the line, and so does each change
+    // of colour.
+    expect(await notes.count()).toBeGreaterThan(2);
+    // A colour from the table sent, by the step sent — not one of the
+    // theme's own tokens.
+    const strokes = await notes.evaluateAll((paths) => paths.map((path) => path.getAttribute("stroke")));
+    expect(strokes).toContain("rgb(100, 155, 128)");
+    expect(strokes).toContain("rgb(107, 148, 128)");
+    // The higher note sits higher: the step-107 run is above the step-100
+    // one. Read at each run's last point — its first is where the run before
+    // it ended, which is what keeps the line unbroken across a colour.
+    const tops = await notes.evaluateAll((paths) =>
+      paths.map((path) => {
+        const numbers = (path.getAttribute("d") ?? "").trim().split(/[ ML]+/).filter(Boolean);
+        return { stroke: path.getAttribute("stroke"), y: Number(numbers[numbers.length - 1]) };
+      }),
+    );
+    const at = (stroke: string) => tops.filter((t) => t.stroke === stroke).map((t) => t.y);
+    expect(Math.max(...at("rgb(107, 148, 128)"))).toBeLessThan(Math.min(...at("rgb(100, 155, 128)")));
+
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(page.locator(".remembers")).toBeVisible();
+    await page.locator('.remembers [data-layer-row="melody"] input').uncheck();
+    await expect(line).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
   });
 
   /**

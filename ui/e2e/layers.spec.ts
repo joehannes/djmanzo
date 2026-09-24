@@ -662,8 +662,8 @@ test.describe("the waveform's layers", () => {
   /**
    * And the inventory the interface reads is the one Rust publishes.
    *
-   * Twenty-one: §25's own twenty, plus `transients`, which §75 asked for and
-   * §25 never named a layer for. `layer.rs` holds the directive's twenty by
+   * Twenty-two: §25's own twenty, plus `transients`, which §75 asked for and
+   * §25 never named a layer for, and `melody`, which §116 asked for. `layer.rs` holds the directive's twenty by
    * slug and requires anything beyond them to say which section wanted it, so
    * the number here is a consequence rather than a second opinion.
    */
@@ -681,7 +681,7 @@ test.describe("the waveform's layers", () => {
           }
         ).__TAURI_INTERNALS__.invoke("waveform_layers", {}),
     );
-    expect(published).toHaveLength(21);
+    expect(published).toHaveLength(22);
     const built = (published as { name: string; drawn: string }[])
       .filter((layer) => layer.drawn !== "nowhere")
       .map((layer) => layer.name);
@@ -724,7 +724,10 @@ test.describe("the waveform's layers", () => {
     // small. `dj_analysis::strikes` reads it off the onset curve the tempo
     // estimator already builds.
     expect(built).toContain("transients");
-    expect(built).toHaveLength(20);
+    // §116's `melody`: the twenty-first, and the record's own sound read as a
+    // line of notes — the hum search's pitch reading, kept at its height.
+    expect(built).toContain("melody");
+    expect(built).toHaveLength(21);
   });
 });
 

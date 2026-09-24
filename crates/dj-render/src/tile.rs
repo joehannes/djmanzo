@@ -266,6 +266,12 @@ fn colour_at_position(position: f32) -> [u8; 3] {
     spectrum_table()[step]
 }
 
+/// Which of [`Palette::spectrum_steps`] a pitch is drawn in.
+#[must_use]
+pub fn spectrum_step(hz: f32) -> u8 {
+    (hearing_position(hz) * (SPECTRUM_STEPS - 1) as f32).round() as u8
+}
+
 /// §110: the colour a pitch is drawn in. 20 Hz a deep red, 20 kHz a violet,
 /// and every pitch between at its own place in the spectrum.
 #[must_use]
@@ -547,6 +553,20 @@ impl Palette {
     #[must_use]
     pub const fn coloured(self, colouring: Colouring) -> Self {
         Self { colouring, ..self }
+    }
+
+    /// §116: every step of §110's spectrum as this palette draws it, lowest
+    /// pitch first — for a line drawn outside the tiles, such as the melody,
+    /// to be coloured exactly as the waveform under it is. Pair with
+    /// [`spectrum_step`].
+    #[must_use]
+    pub fn spectrum_steps(&self) -> Vec<[u8; 3]> {
+        (0..SPECTRUM_STEPS)
+            .map(|step| {
+                let [r, g, b, _] = self.spectral(step as f32 / (SPECTRUM_STEPS - 1) as f32, 1.0);
+                [r, g, b]
+            })
+            .collect()
     }
 
     /// The same palette, drawing only one EQ band's part of the column.
@@ -2084,6 +2104,28 @@ mod light {
         assert_eq!(
             constant("MID_HIGH_HZ"),
             SPECTRUM_EDGES_HZ[last(EqPart::Mid)]
+        );
+    }
+
+    /// §116's melody line is coloured from the palette's own steps, so a
+    /// note drawn outside the tiles is the colour its pitch is inside them.
+    #[test]
+    fn a_pitch_outside_the_tiles_is_its_colour_inside_them() {
+        let steps = Palette::dark().spectrum_steps();
+        assert_eq!(steps.len(), SPECTRUM_STEPS);
+        for hz in [20.0, 70.0, 220.0, 440.0, 700.0, 5_000.0, 20_000.0] {
+            assert_eq!(
+                steps[usize::from(spectrum_step(hz))],
+                frequency_colour(hz),
+                "{hz} Hz"
+            );
+        }
+        let ink = Palette::light().spectrum_steps();
+        assert!(
+            ink[128]
+                .iter()
+                .zip(&steps[128])
+                .all(|(dark, bright)| dark <= bright)
         );
     }
 

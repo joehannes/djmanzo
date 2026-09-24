@@ -278,6 +278,22 @@ pub fn mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
 /// the question is what the melody is doing, and a cymbal is not a melody.
 #[must_use]
 pub fn contour(samples: &[f32], sample_rate: u32) -> Contour {
+    Contour {
+        semitones: centre(&pitches(samples, sample_rate)),
+        rate: RATE,
+    }
+}
+
+/// The strongest periodic thing in the melodic band, in Hz, [`RATE`] times a
+/// second — `None` where nothing periodic was found.
+///
+/// What [`contour`] is made from, before it is centred on its own median.
+/// §116 draws it on the waveform, where the pitch itself is the point: a
+/// melody line is placed and coloured by the notes it plays, and a line with
+/// no height of its own could only say *up* and *down*. The same limits as
+/// the contour: the vocal much of the time, the bassline some of the time.
+#[must_use]
+pub fn pitches(samples: &[f32], sample_rate: u32) -> Vec<Option<f32>> {
     let work = resample(samples, sample_rate);
     let hop = (WORK_RATE as f64 / RATE).round() as usize;
     // Long enough for two of the lowest period, which is what YIN needs to see
@@ -297,11 +313,7 @@ pub fn contour(samples: &[f32], sample_rate: u32) -> Contour {
         );
         at += hop;
     }
-
-    Contour {
-        semitones: centre(&hertz),
-        rate: RATE,
-    }
+    hertz
 }
 
 /// Turn frequencies into semitones about their own median.
@@ -578,6 +590,43 @@ mod tests {
 
     fn silence(seconds: f32) -> Vec<f32> {
         vec![0.0; (seconds * SR as f32) as usize]
+    }
+
+    /// **§116: the pitches are the notes played, not only their shape.** A
+    /// tune from A3 up a fifth reads as 220 Hz then 330 Hz, each within a
+    /// quarter of a semitone — the height and the colour the waveform draws
+    /// the melody line at come from these numbers.
+    #[test]
+    fn the_pitches_are_the_notes_played() {
+        let hertz = pitches(&melody(&[0, 7], 1.0), SR);
+        let near = |at: usize, hz: f32| {
+            let found = hertz[at].unwrap_or_else(|| panic!("nothing at point {at}"));
+            let off = 12.0 * (found / hz).log2();
+            assert!(off.abs() < 0.25, "point {at}: {found} Hz against {hz} Hz");
+        };
+        near(4, 220.0);
+        near(15, 220.0 * 2.0f32.powf(7.0 / 12.0));
+        // And the contour is the same reading, centred.
+        let shape = contour(&melody(&[0, 7], 1.0), SR);
+        assert_eq!(shape.semitones.len(), hertz.len());
+    }
+
+    /// Cheap enough to run on every record a DJ loads, off the audio thread:
+    /// five minutes in about 0.7 s where this was written, about what the
+    /// spectrum beside it takes. Bounded at three for a slower machine.
+    #[test]
+    fn five_minutes_of_pitches_is_quick() {
+        let record = melody(&[0, 3, 5, 7, 5, 3], 50.0);
+        let started = std::time::Instant::now();
+        let hertz = pitches(&record, SR);
+        let took = started.elapsed();
+        assert!(
+            (2_990..=3_000).contains(&hertz.len()),
+            "{} points",
+            hertz.len()
+        );
+        assert!(took.as_secs_f32() < 3.0, "five minutes took {took:?}");
+        eprintln!("five minutes of pitches: {took:?}");
     }
 
     /// Noise of a fixed shape, so a test that depends on it depends on the

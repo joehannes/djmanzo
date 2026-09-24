@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The melody line** — §116. The strongest line of notes in a record is drawn
+over the lane, as high as it is pitched and in the colour its pitch has in the
+waveform under it, so a vocal phrase or a lead is visible before it arrives.
+It is read beside the spectrum after a record loads, and it is a waveform
+layer a DJ can switch off.
+
 ## v0.20.0 — The waveform in the colours of light
 
 Seven commits since v0.19.0, the owner's release cadence. Three threads.

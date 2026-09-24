@@ -437,6 +437,20 @@ export const ANSWERS: Record<string, unknown> = {
       { at: 9_000_000, until: 9_000_000, kind: "rises", stem: null },
     ],
   },
+  // §116's melody line for the same record: ten points a second at 48 kHz,
+  // phrases of four seconds with a second's rest between, climbing a scale —
+  // so a lane anywhere in the record has notes on screen and a gap to break
+  // at. Each note's step is where Rust would put its pitch in the spectrum;
+  // the colours are a stand-in ramp, because what a browser can hold is that
+  // the step it was sent picks the colour it draws.
+  melody_line: {
+    frames_per_point: 4_800,
+    points: Array.from({ length: 2_500 }, (_, i) =>
+      i % 50 < 40 ? [220 * 2 ** ((Math.floor(i / 5) % 8) / 12), 100 + (Math.floor(i / 5) % 8)] : null,
+    ),
+    colours: Array.from({ length: 256 }, (_, i) => [i, 255 - i, 128]),
+    range: [70, 700],
+  },
   // §25's inventory, answered from the same table Rust publishes. The test
   // that matters reads it back and checks every `data-layer` on screen is in
   // it, so this stub is deliberately the real shape rather than a stand-in.
