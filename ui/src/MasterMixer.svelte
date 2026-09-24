@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { MasterState, SplitOutput } from "./api";
   import { fill } from "./meter";
+  import { gainY, lawPath, sides, sidesInWords, type Plot } from "./crossfader";
 
   let { master, ready, split = null, cueSplit = false, limiterOn = true, send }: {
     master: MasterState; ready: boolean; split?: SplitOutput | null; cueSplit?: boolean; limiterOn?: boolean; send: (action: string) => void | Promise<void>;
@@ -9,8 +10,16 @@
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
   const norm = (value: number, min: number, max: number) => (clamp(value, min, max) - min) / (max - min);
 
+  /**
+   * The value under the pointer, measured along the slider's track.
+   *
+   * The track and not the whole group: the group's box takes in the thumb,
+   * which overhangs the track's ends, so it grew as the thumb reached an end
+   * and the last few percent of each throw could not be reached by dragging.
+   */
   function valueFromPointer(event: PointerEvent, min: number, max: number): string {
-    const rect = (event.currentTarget as SVGElement).getBoundingClientRect();
+    const group = event.currentTarget as SVGElement;
+    const rect = (group.querySelector(".track") ?? group).getBoundingClientRect();
     return String(min + clamp((event.clientX - rect.left) / rect.width, 0, 1) * (max - min));
   }
 
@@ -32,6 +41,15 @@
   }
 
   const cross = $derived(norm(master.crossfader, -1, 1));
+  /**
+   * §114: the law the crossfader mixes by, drawn under its track across the
+   * same throw as the thumb — see `crossfader.ts`. The two points the thumb
+   * stands on are how much of each side is in the room.
+   */
+  const LAW: Plot = { left: 28, width: 300, top: 73, height: 22 };
+  const lawOne = lawPath(0, LAW);
+  const lawTwo = lawPath(1, LAW);
+  const heard = $derived(sides(master.crossfader));
   const gain = $derived(norm(master.gain_db, -24, 6));
   const cue = $derived(norm(master.cue_mix, 0, 1));
   const reduction = $derived(fill(master.limiter_reduction_db / 12));
@@ -68,8 +86,26 @@
   <defs><linearGradient id="meter-hot" x1="0" x2="1"><stop offset="0" stop-color="var(--accent-2)" /><stop offset="0.76" stop-color="var(--accent-2)" /><stop offset="1" stop-color="var(--warn)" /></linearGradient></defs>
   <rect class="shell" x="1" y="1" width="1238" height="108" rx="18" />
 
-  <g class="slider" role="slider" aria-label="Crossfader" aria-valuemin="-1" aria-valuemax="1" aria-valuenow={master.crossfader} tabindex={ready ? 0 : -1} onpointerdown={(e) => drag(e, -1, 1, (v) => `crossfader ${v}`)}>
-    <text x="28" y="30">Crossfader</text><rect class="track" x="28" y="42" width="300" height="14" rx="7" /><rect class="split" x="176" y="38" width="4" height="22" rx="2" /><circle class="thumb" cx={28 + cross * 300} cy="49" r="17" /><text class="ends" x="28" y="82">1</text><text class="ends" x="318" y="82">2</text>
+  <!--
+    §114: a crossfader shaped like one. Under the track, the law it mixes by —
+    side 1 falling, side 2 rising, both at 71 % in the middle — with a point
+    where the thumb stands on each, so how much of each deck is in the room is
+    read rather than inferred; a side the fader has cut dims its number. The
+    cap is a fin, as a crossfader's is, narrow enough to see both points past.
+  -->
+  <g class="slider" role="slider" aria-label="Crossfader" aria-valuemin="-1" aria-valuemax="1" aria-valuenow={master.crossfader} aria-valuetext={sidesInWords(master.crossfader)} tabindex={ready ? 0 : -1} onpointerdown={(e) => drag(e, -1, 1, (v) => `crossfader ${v}`)}>
+    <text x="28" y="30">Crossfader</text><rect class="track" x="28" y="42" width="300" height="14" rx="7" /><rect class="split" x="176" y="38" width="4" height="22" rx="2" />
+    <rect class="thumb fin" x={28 + cross * 300 - 10} y="31" width="20" height="36" rx="6" /><line class="grip" x1={28 + cross * 300} x2={28 + cross * 300} y1="39" y2="59" />
+  </g>
+  <!--
+    Outside the slider: it is read, not grabbed, and inside it the slider's
+    box grew to include it -- which moved the crossfader's centre below a
+    720-pixel window. The same words are the slider's `aria-valuetext`.
+  -->
+  <g class="law-plot" aria-hidden="true">
+    <path class="law" data-side="1" d={lawOne} /><path class="law" data-side="2" d={lawTwo} />
+    <circle class="law-at" data-side="1" cx={28 + cross * 300} cy={gainY(LAW, heard[0])} r="4.5" /><circle class="law-at" data-side="2" cx={28 + cross * 300} cy={gainY(LAW, heard[1])} r="4.5" />
+    <text class="ends side" class:cut={heard[0] < 0.05} x="12" y="90">1</text><text class="ends side" class:cut={heard[1] < 0.05} x="334" y="90">2</text>
   </g>
 
   <g class="slider" role="slider" aria-label="Master gain" aria-valuemin="-24" aria-valuemax="6" aria-valuenow={master.gain_db} tabindex={ready ? 0 : -1} onpointerdown={(e) => drag(e, -24, 6, (v) => `master gain ${v}`)}>
@@ -117,6 +153,10 @@
   .thumb { fill: var(--panel-hover); stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 5px 10px rgb(0 0 0 / 0.35)); } .thumb.teal { stroke: var(--accent-2); }
   .svg-button rect { fill: var(--panel-raised); stroke: var(--border); stroke-width: 2; } .svg-button text { text-anchor: middle; dominant-baseline: middle; font-size: 14px; }
   .svg-button.active rect { fill: var(--accent-2); stroke: var(--accent-2); } .svg-button.active text { fill: var(--on-accent); }
+  .law { fill: none; stroke: var(--text-dim); stroke-width: 1.5; opacity: 0.7; pointer-events: none; }
+  .law-at { fill: var(--accent-2); stroke: var(--panel); stroke-width: 1.5; pointer-events: none; }
+  .grip { stroke: var(--accent); stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+  .side { transition: opacity var(--motion-fast, 120ms) linear; } .side.cut { opacity: 0.35; }
   .meter-fill { fill: url(#meter-hot); } .reduction { fill: var(--warn); } .disabled { opacity: 0.55; } .bad { fill: var(--danger); }
   [role="slider"], [role="button"] { cursor: pointer; outline: none; } [role="slider"]:focus-visible .thumb, [role="button"]:focus-visible rect { stroke: var(--focus, var(--accent-2)); stroke-width: 4; }
 </style>

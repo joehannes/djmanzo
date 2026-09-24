@@ -135,6 +135,59 @@ test.describe("§114: shapes that say what a control does", () => {
   });
 
   /**
+   * **The crossfader draws the law it mixes by**: in the middle both sides
+   * stand at 71 %, level with each other and above half-way; hard left, side
+   * 1 is at the top, side 2 on the floor, and 2's number dims.
+   */
+  test("the crossfader shows how much of each side is heard", async ({ page }) => {
+    await openShell(page, "/", { crossfader: 0 });
+    const slider = page.getByRole("slider", { name: "Crossfader" });
+    const dot = (side: string) =>
+      page.locator(`.master-mixer .law-at[data-side="${side}"]`).evaluate((el) => Number(el.getAttribute("cy")));
+    await expect(slider).toHaveAttribute("aria-valuetext", "1 at 71%, 2 at 71%");
+    const [one, two] = [await dot("1"), await dot("2")];
+    expect(one).toBeCloseTo(two, 3);
+    // 71 % of a 22-unit plot from 73: well above its middle at 84.
+    expect(one).toBeLessThan(80);
+
+    await page.evaluate(() => {
+      const win = window as unknown as {
+        __lastState?: { master: Record<string, unknown> };
+        __emit?: (next: unknown) => void;
+      };
+      const state = win.__lastState!;
+      win.__emit?.({ ...state, master: { ...state.master, crossfader: -1 } });
+    });
+    await expect(slider).toHaveAttribute("aria-valuetext", "1 at 100%, 2 at 0%");
+    expect(await dot("1")).toBe(73);
+    expect(await dot("2")).toBe(95);
+    await expect(page.locator(".master-mixer .side.cut")).toHaveText("2");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * The ends of the track are the ends of the throw. The drag was measured
+   * across the slider's whole box, which takes in the thumb overhanging the
+   * track, so a press at the track's end fell a few percent short of it.
+   */
+  test("a press at the end of the crossfader's track is the end of its throw", async ({ page }) => {
+    // Hard right, where the thumb overhangs the end of the track.
+    await openShell(page, "/", { crossfader: 1 });
+    const track = await page.locator(".master-mixer [aria-label='Crossfader'] .track").boundingBox();
+    const press = async (x: number) => {
+      await page.mouse.move(x, track!.y + track!.height / 2);
+      await page.mouse.down();
+      await page.mouse.up();
+      return page.evaluate(() => {
+        const sent = (window as unknown as { __dispatched?: string[] }).__dispatched ?? [];
+        return Number(sent.filter((a) => a.startsWith("crossfader ")).pop()?.split(" ")[1]);
+      });
+    };
+    expect(await press(track!.x + track!.width - 0.5)).toBeGreaterThan(0.99);
+    expect(await press(track!.x + track!.width / 2)).toBeCloseTo(0, 1);
+  });
+
+  /**
    * **Nature where the theme is a natural one.** The default theme is an
    * organic one, and its knobs are stones — each its own, the value still on
    * a circle — while Booth, a plain one, keeps the circle.

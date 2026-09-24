@@ -26,7 +26,11 @@ boost. The transport pads light in what they do — PLAY in go, CUE in amber,
 SYNC in the colour of a thing chosen — and EJECT is always ringed in stop.
 The organic themes, the default among them, draw each knob as a river stone
 of its own and each pad as a pebble; the setting is still drawn on a true
-circle over the stone.
+circle over the stone. The crossfader draws the curve it mixes by under its
+track, with a point where the thumb stands on each side's curve, so how much
+of each deck is heard is read rather than guessed; its cap is a fin. A press
+at the very end of a master-strip slider's track now reaches the end of its
+throw.
 
 **Colour that means something, and three themes built on it** — §113. Each
 EQ knob is now the colour the waveform draws its frequencies in — LOW red,
