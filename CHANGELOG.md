@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Chapters for a recorded mix** — §108. The share sheet of a night now lists
+every recording made during it, with the tracklist timed against the file:
+`0:00` the record playing when you pressed REC, then each record where it came
+in — ready to paste into a YouTube description, where it becomes chapters, or
+Mixcloud's tracklist. The history also now records when a record came in,
+rather than thirty seconds later when it counted as played.
+
 **Share a night to X, Bluesky and Threads** — §108. The share sheet in
 History now offers X, Bluesky and Threads beside WhatsApp. Each opens the
 network's own composer with the tracklist already written and cut to what a

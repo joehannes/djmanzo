@@ -62,4 +62,52 @@ test.describe("§108: sharing a night", () => {
       .toEqual(["x", "bluesky"]);
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **A recording of the night comes with its chapters**, timed against the
+   * file — `dj_app::chapters` does the timing and is tested there; the sheet
+   * shows each recording's, and says when YouTube will not draw them.
+   */
+  test("a recording made that night offers its chapters", async ({ page }) => {
+    await openShell(page, "/", {}, {
+      list_sessions: [{ id: "Sábado", tracks: 12, ended_at: 1_700_003_000 }],
+      play_history: [],
+      recording_chapters: [
+        {
+          file: "set-1700000000.wav",
+          path: "/home/dj/.config/app.djmanzo.desktop/recordings/set-1700000000.wav",
+          started_at: 1_700_000_000,
+          seconds: 2_950,
+          chapters: "0:00 Aventura - Obsesión\n4:05 Juan Luis Guerra - Bachata Rosa\n8:10 Romeo Santos - Propuesta Indecente",
+          count: 3,
+          youtube: true,
+        },
+        {
+          file: "set-1700002600.wav",
+          path: "/home/dj/.config/app.djmanzo.desktop/recordings/set-1700002600.wav",
+          started_at: 1_700_002_600,
+          seconds: 400,
+          chapters: "0:00 Start\n2:00 Joe Veras - Intentalo Tú",
+          count: 2,
+          youtube: false,
+        },
+      ],
+    });
+    await page.getByRole("button", { name: "Browse", exact: true }).click();
+    await page.getByRole("button", { name: "History", exact: true }).click();
+    await page.getByRole("button", { name: /Sábado · 12/ }).click();
+
+    const first = page.locator('[data-chapters="set-1700000000.wav"]');
+    await expect(first).toContainText("(49:10)");
+    await expect(first.locator("pre")).toHaveText(/^0:00 Aventura - Obsesión\n4:05 /);
+    await expect(first).not.toContainText("YouTube draws chapters from three");
+    await expect(first.getByRole("button", { name: "Copy chapters" })).toBeVisible();
+
+    const second = page.locator('[data-chapters="set-1700002600.wav"]');
+    await expect(second).toContainText("YouTube draws chapters from three; this has 2.");
+    await expect(
+      page.evaluate(() => (window as unknown as { __asked?: string[] }).__asked?.includes("recording_chapters")),
+    ).resolves.toBe(true);
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });

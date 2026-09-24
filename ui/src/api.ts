@@ -3611,6 +3611,24 @@ export interface ShareChannel {
   limit: number | null;
 }
 
+/** §108: a recording of a night, with its tracklist timed against it. */
+export interface RecordingChapters {
+  file: string;
+  path: string;
+  /** Unix seconds. */
+  started_at: number;
+  seconds: number;
+  /** `0:00 Artist - Title`, one a line — a YouTube description's chapters. */
+  chapters: string;
+  count: number;
+  /** Whether YouTube will draw them: it needs three or more. */
+  youtube: boolean;
+}
+
+/** §108: every recording made during a night, each with its chapters. */
+export const recordingChapters = (session: string) =>
+  invoke<RecordingChapters[]>("recording_chapters", { session });
+
 /** §108: the channels a set can be handed to, in the order they are offered. */
 export const shareChannels = () => invoke<ShareChannel[]>("share_channels");
 

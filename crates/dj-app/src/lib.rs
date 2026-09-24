@@ -30,6 +30,7 @@ pub mod audition;
 pub mod automix;
 pub mod autopilot;
 pub mod brand;
+pub mod chapters;
 pub mod clock;
 pub mod cockpit;
 pub mod columns;
@@ -640,6 +641,7 @@ pub fn run() {
             commands::share_to_whatsapp,
             commands::share_to,
             commands::share_channels,
+            commands::recording_chapters,
             commands::sidelist,
             commands::sidelist_add,
             commands::sidelist_remove,
@@ -890,9 +892,14 @@ fn record_plays(
             f64::from(deck.length_seconds),
             now,
         ) {
+            // Stamped when the record came in: now, less how long it has been
+            // heard. Counting waits thirty seconds to be sure it was played;
+            // the history should not be thirty seconds late about when.
+            #[allow(clippy::cast_possible_truncation)]
+            let heard = watcher.heard(deck.number).round() as i64;
             writer.send(persist::Write::Play {
                 track: played,
-                at: library::now_seconds(),
+                at: library::now_seconds() - heard.max(0),
                 session: Some(session.to_owned()),
             });
             // The moment a track counts as played is the moment to tick off

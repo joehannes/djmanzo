@@ -331,6 +331,16 @@ impl PlayWatcher {
         Some(track)
     }
 
+    /// How long a deck's current record has been heard, in seconds of
+    /// playback. What a play is stamped back by, so the history says when a
+    /// record came in rather than when it crossed the threshold for counting
+    /// — which for a recorded set's chapters is the difference between a mark
+    /// at the mix-in and one thirty seconds after it.
+    #[must_use]
+    pub fn heard(&self, deck: u8) -> f64 {
+        self.heard.get(&deck).map_or(0.0, |heard| heard.seconds)
+    }
+
     /// Add the time since the last observation, and return the running total.
     ///
     /// A deck that has jumped to a different track starts from nothing: the
@@ -479,6 +489,37 @@ mod play_tests {
             Some(id(1)),
             "half a minute of playback is a play, wherever the playhead sat"
         );
+    }
+
+    /// **A play is known the moment it counts, and how long it had been
+    /// heard by then** — which is what the history is stamped back by, so a
+    /// record is written as coming in when it came in, not thirty seconds
+    /// later.
+    #[test]
+    fn the_moment_a_play_counts_says_how_long_it_had_been_heard() {
+        let mut watcher = PlayWatcher::new();
+        let step = 1.0 / 60.0;
+        let mut now = 0.0;
+        let mut counted_after = None;
+        while now < 40.0 {
+            now += step;
+            if watcher
+                .observe(1, Some(id(1)), true, 8.0, 300.0, now)
+                .is_some()
+            {
+                counted_after = Some(watcher.heard(1));
+            }
+        }
+        let heard = counted_after.expect("it counted");
+        assert!(
+            (heard - 30.0).abs() < 0.1,
+            "counted after {heard} s of playback"
+        );
+        // A different record starts from nothing, and an empty deck knows none.
+        watcher.observe(1, Some(id(2)), true, 0.0, 300.0, now + step);
+        assert_eq!(watcher.heard(1), 0.0);
+        watcher.observe(2, None, false, 0.0, 0.0, now);
+        assert_eq!(watcher.heard(2), 0.0);
     }
 
     #[test]

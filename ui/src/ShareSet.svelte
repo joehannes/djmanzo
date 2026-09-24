@@ -21,9 +21,11 @@
   import IconButton from "./controls/IconButton.svelte";
   import {
     exportSession,
+    recordingChapters,
     shareChannels,
     sharePreview,
     shareTo,
+    type RecordingChapters,
     type Share,
     type ShareChannel,
   } from "./api";
@@ -77,6 +79,41 @@
     that no longer fits, and the DJ should watch that happen rather than be
     told about it afterwards.
   */
+  /**
+   * §108: a recording made during this night, with the tracklist timed
+   * against it — for a YouTube description or a Mixcloud upload. Timed by
+   * `dj_app::chapters`; this only shows it and copies it.
+   */
+  let recordings = $state<RecordingChapters[]>([]);
+  let copied = $state<string | null>(null);
+
+  $effect(() => {
+    const forSession = session;
+    void recordingChapters(forSession)
+      .then((found) => {
+        if (forSession === session) recordings = found;
+      })
+      .catch(() => (recordings = []));
+  });
+
+  async function copyChapters(recording: RecordingChapters) {
+    try {
+      await navigator.clipboard.writeText(recording.chapters);
+      copied = recording.file;
+      setTimeout(() => (copied = null), 1_500);
+    } catch {
+      // No clipboard: the text is selectable, which is the fallback.
+    }
+  }
+
+  function length(seconds: number): string {
+    const whole = Math.round(seconds);
+    const h = Math.floor(whole / 3600);
+    const m = Math.floor((whole % 3600) / 60);
+    const s = whole % 60;
+    return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  }
+
   $effect(() => {
     void shareChannels()
       .then((found) => (channels = found))
@@ -216,6 +253,24 @@
   {:else}
     <p class="note">Reading the night…</p>
   {/if}
+
+  {#each recordings as recording (recording.file)}
+    <div class="chapters" data-chapters={recording.file}>
+      <p class="about">
+        Chapters for <span class="mono">{recording.file}</span> ({length(recording.seconds)})
+        — paste them into the YouTube description, or Mixcloud's tracklist.
+        {#if !recording.youtube}
+          YouTube draws chapters from three; this has {recording.count}.
+        {/if}
+      </p>
+      <pre class="preview">{recording.chapters}</pre>
+      <div class="destinations">
+        <button type="button" onclick={() => void copyChapters(recording)}>
+          {copied === recording.file ? "Copied" : "Copy chapters"}
+        </button>
+      </div>
+    </div>
+  {/each}
 </section>
 
 <style>
@@ -305,6 +360,25 @@
     display: flex;
     gap: 0.4rem;
     margin-top: 0.5rem;
+  }
+
+  /* §108: a recording's chapters, under the share it belongs to. */
+  .chapters {
+    flex: none;
+    margin-top: 0.6rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--line, #333);
+  }
+
+  .chapters .about {
+    margin: 0;
+    font-size: 0.78em;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+
+  .chapters .preview {
+    max-height: 9rem;
   }
 
   /* §108: where it goes, one choice among four, the chosen one filled. */

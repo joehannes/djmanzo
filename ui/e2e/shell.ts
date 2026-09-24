@@ -477,6 +477,9 @@ export const ANSWERS: Record<string, unknown> = {
   // night on each — see `share.json`.
   share_channels: share.channels,
   share_messages: share.messages,
+  // §108: no recording was made on the fixture's night; a test that wants
+  // one passes it.
+  recording_chapters: [],
   // §108's going live, switched off, as a fresh install answers it: the file
   // is known before anything is written, and nothing is being said.
   live: {

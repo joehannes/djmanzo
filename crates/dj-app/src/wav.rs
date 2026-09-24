@@ -206,6 +206,29 @@ impl Wav {
         file.write_all(&data.to_le_bytes()).map_err(io)?;
         Ok(data_bytes / u64::from(CHANNELS * (BITS / 8)))
     }
+
+    /// How long a recording djmanzo wrote runs, in seconds, from its header's
+    /// rate and the bytes on disk — the bytes rather than the header's size
+    /// field, so a recording still being written, or never closed, is
+    /// measured by what it holds.
+    #[must_use]
+    pub fn seconds_of(path: impl AsRef<Path>) -> Option<f64> {
+        use std::io::Read;
+        let mut file = File::open(path).ok()?;
+        let len = file.metadata().ok()?.len();
+        let mut header = [0_u8; HEADER_BYTES as usize];
+        file.read_exact(&mut header).ok()?;
+        if &header[..4] != b"RIFF" || &header[8..12] != b"WAVE" {
+            return None;
+        }
+        let rate = u32::from_le_bytes(header[24..28].try_into().ok()?);
+        if rate == 0 {
+            return None;
+        }
+        let frames = (len - HEADER_BYTES) / u64::from(CHANNELS * (BITS / 8));
+        #[allow(clippy::cast_precision_loss)]
+        Some(frames as f64 / f64::from(rate))
+    }
 }
 
 #[cfg(test)]

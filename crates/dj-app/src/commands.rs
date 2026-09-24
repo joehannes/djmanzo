@@ -11296,6 +11296,56 @@ pub fn share_preview(
     )
 }
 
+/// §108: a recording of the night, and its tracklist timed against it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RecordingChaptersDto {
+    /// The file's name, as the recordings folder shows it.
+    pub file: String,
+    pub path: String,
+    /// Unix seconds, when it started.
+    pub started_at: i64,
+    pub seconds: f64,
+    /// The chapters as a description's lines, `0:00 Artist - Title`.
+    pub chapters: String,
+    pub count: usize,
+    /// Whether YouTube will draw them: it needs three or more.
+    pub youtube: bool,
+}
+
+/// §108: every recording made during a night, each with the night's
+/// tracklist timed against it, for a YouTube description or a Mixcloud
+/// upload. See [`crate::chapters`].
+///
+/// # Errors
+/// When the library cannot be read.
+#[tauri::command]
+pub fn recording_chapters(
+    state: State<'_, AppState>,
+    session: String,
+) -> Result<Vec<RecordingChaptersDto>, String> {
+    let plays = library(&state)?
+        .session(&session)
+        .map_err(|e| e.to_string())?;
+    if plays.is_empty() {
+        return Ok(Vec::new());
+    }
+    let Some(dir) = state.recordings_dir() else {
+        return Ok(Vec::new());
+    };
+    Ok(crate::chapters::in_folder(&plays, &dir)
+        .into_iter()
+        .map(|found| RecordingChaptersDto {
+            file: found.file,
+            path: found.path.display().to_string(),
+            started_at: found.start,
+            seconds: found.seconds,
+            chapters: crate::chapters::written(&found.chapters),
+            count: found.chapters.len(),
+            youtube: found.chapters.len() >= crate::chapters::YOUTUBE_FEWEST,
+        })
+        .collect())
+}
+
 /// One channel a set can be handed to.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ShareChannelDto {

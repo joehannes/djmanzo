@@ -507,3 +507,14 @@ does — X's weights per code point, which over-counts an emoji sequence;
 characters for Bluesky, never fewer than its graphemes — so a message that
 fits in djmanzo fits on the network.
 
+### A recorded mix's chapters (§108)
+
+YouTube draws chapters from lines in a video's description that start with a
+time, on three conditions: the first is `0:00`, there are at least three, in
+ascending order, and each is at least ten seconds long
+([YouTube Help: video chapters](https://support.google.com/youtube/answer/9884579)).
+`dj_app::chapters` is built to them — the record playing when recording
+started is `0:00`, a record that lasted under ten seconds before the next is
+dropped as a preview, and the sheet says when there are fewer than three.
+Mixcloud asks for each record's start time on upload; the same lines serve.
+
