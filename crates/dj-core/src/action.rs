@@ -198,6 +198,9 @@ pub enum DeckAction {
     SetEqHigh(f32),
     /// Filter sweep: -1.0 fully low-passed, 0.0 off, +1.0 fully high-passed.
     SetFilter(f32),
+    /// §107: how much of the singer to leave in, 1.0 as recorded, 0.0 out.
+    /// A quarter is a karaoke host's guide vocal.
+    SetVoice(f32),
     /// Pre-fader listen: send this deck to the headphones.
     SetCue(bool),
     /// Flip the headphone cue send.
@@ -1036,6 +1039,7 @@ fn parse_deck_verb(verb: &str, argument: Option<&str>) -> Result<DeckAction, Par
         "eq_mid" => Ok(DeckAction::SetEqMid(parse_f32(argument)?.clamp(0.0, 4.0))),
         "eq_high" => Ok(DeckAction::SetEqHigh(parse_f32(argument)?.clamp(0.0, 4.0))),
         "filter" => Ok(DeckAction::SetFilter(parse_f32(argument)?.clamp(-1.0, 1.0))),
+        "voice" => Ok(DeckAction::SetVoice(parse_f32(argument)?.clamp(0.0, 1.0))),
         "cue_on" => bare(DeckAction::SetCue(true)),
         "cue_off" => bare(DeckAction::SetCue(false)),
         "cue_toggle" => bare(DeckAction::ToggleCue),
@@ -1351,6 +1355,9 @@ impl fmt::Display for Action {
                 }
                 DeckAction::SetFilter(v) => {
                     write!(f, "deck {deck} filter {}", number(f64::from(*v)))
+                }
+                DeckAction::SetVoice(v) => {
+                    write!(f, "deck {deck} voice {}", number(f64::from(*v)))
                 }
                 DeckAction::SetCue(true) => write!(f, "deck {deck} cue_on"),
                 DeckAction::SetCue(false) => write!(f, "deck {deck} cue_off"),
@@ -2299,6 +2306,10 @@ mod tests {
             Action::Deck {
                 deck: deck(4),
                 action: DeckAction::SetFilter(-0.75),
+            },
+            Action::Deck {
+                deck: deck(2),
+                action: DeckAction::SetVoice(0.25),
             },
             Action::Deck {
                 deck: deck(1),

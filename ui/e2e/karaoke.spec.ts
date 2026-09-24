@@ -85,6 +85,54 @@ test.describe("§107: the singer rotation", () => {
     await expect(up.getByRole("button", { name: /^Load on/ })).toHaveCount(0);
   });
 
+  /**
+   * **The vocal, taken out per deck, and said on the deck.** The host chooses
+   * on the Singers surface; the deck then carries a chip saying so, because
+   * the setting outlives the karaoke screen, and one press on it puts the
+   * voice back. The chip must not move the waveform under it (§18).
+   */
+  test("the host takes the vocal out, the deck says so, and one press puts it back", async ({ page }) => {
+    await openSingers(page);
+    const singers = page.locator(SINGERS);
+    const voice1 = singers.getByRole("group", { name: "Vocal on deck 1" });
+    await expect(voice1.getByRole("button", { name: "As recorded" })).toHaveAttribute("aria-pressed", "true");
+
+    await voice1.getByRole("button", { name: "Out" }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __dispatched?: string[] }).__dispatched ?? []))
+      .toContain("deck 1 voice 0");
+    await voice1.getByRole("button", { name: "Guide" }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __dispatched?: string[] }).__dispatched ?? []))
+      .toContain("deck 1 voice 0.25");
+
+    // The engine answers on the snapshot; the deck shows it without moving.
+    const lane = page.locator('.deck[data-deck="1"] .lane');
+    const before = await lane.boundingBox();
+    await page.evaluate(() => {
+      const win = window as unknown as {
+        __lastState?: { decks: Record<string, unknown>[] };
+        __emit?: (next: unknown) => void;
+      };
+      const state = win.__lastState;
+      if (!state) throw new Error("no state");
+      win.__emit?.({ ...state, decks: state.decks.map((d, i) => (i === 0 ? { ...d, voice: 0 } : d)) });
+    });
+    const chip = page.locator('.deck[data-deck="1"] [data-voice-chip]');
+    await expect(chip).toHaveText("Voice out");
+    await expect(voice1.getByRole("button", { name: "Out" })).toHaveAttribute("aria-pressed", "true");
+    expect((await lane.boundingBox())?.y, "the chip moved the waveform").toBe(before?.y);
+    await expect(page.locator('.deck[data-deck="2"] [data-voice-chip]')).toHaveCount(0);
+
+    await chip.click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => ((window as unknown as { __dispatched?: string[] }).__dispatched ?? []).at(-1)),
+      )
+      .toBe("deck 1 voice 1");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** F8 is the host's own screen: the rotation beside the decks, the collection under them. */
   test("the Karaoke activity opens the rotation and the collection", async ({ page }) => {
     await openShell(page, "/");

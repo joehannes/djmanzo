@@ -443,6 +443,11 @@ mod tests {
         ("volume", "continuous: a fader"),
         ("gain", "continuous: a trim"),
         ("filter", "continuous: a sweep"),
+        (
+            "voice",
+            "continuous: a level, and a karaoke host sets it on the Singers surface, not \
+             mid-mix from a key where it could take a vocal out by accident",
+        ),
         ("stem_volume", "continuous"),
         ("stem_eq_low", "continuous"),
         ("stem_eq_mid", "continuous"),

@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**Karaoke: the vocal comes out** — §107. Each deck has a voice level: as
+recorded, a guide vocal (about −12 dB), or out. Where the record has been
+separated it turns the vocal stem down, over your own stem level; before
+separation it cancels the centre of the vocal band on the whole mix, keeping
+the kick and bass. Set it from the Singers surface; the deck shows *Voice out*
+or *Guide vocal* while it is set, and one press puts the voice back.
+
 **The melody line** — §116. The strongest line of notes in a record is drawn
 over the lane, as high as it is pitched and in the colour its pitch has in the
 waveform under it, so a vocal phrase or a lead is visible before it arrives.

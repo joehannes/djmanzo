@@ -10,8 +10,14 @@ use dj_core::{
 };
 use dj_decode::{AudioBuffer, TrackSource};
 use dj_dsp::fx::FxContext;
+use dj_dsp::karaoke::CentreCancel;
 use dj_dsp::{CHANNELS, Keylock, SmoothedValue, SweepFilter, ThreeBandEq};
 use std::sync::Arc;
+
+/// Where the vocal sits among a separated record's four stems:
+/// [`dj_core::Stem::index`] of [`dj_core::Stem::Vocal`], which is the one
+/// order every stem array in the project is indexed by.
+const VOCAL_STEM: usize = 0;
 
 /// Widest tempo change sync may ask for, as a fraction.
 ///
@@ -167,6 +173,22 @@ pub struct Deck {
     phrase: Option<Phrase>,
     /// Stems state: true if muted
     pub stem_mutes: [bool; 4],
+    /// §107: how much of the singer is left in. 1 is the record as it was
+    /// made, 0 takes the voice out, and a quarter is a karaoke host's *guide
+    /// vocal* — there for a singer who loses the line, under one who has it.
+    ///
+    /// Two mechanisms, one knob. Where the record has been separated it is a
+    /// gain on the vocal stem, over and above the stem's own level, so a DJ's
+    /// stem mix is kept and this comes off the top of it. Where it has not
+    /// been — the first seconds of a record loaded a moment ago, or a
+    /// machine with no separation — it is `dj_dsp::karaoke`'s band-limited
+    /// centre cancel on the whole mix, at the depth the knob leaves out.
+    /// Coarser, and there from the first frame.
+    pub voice: f32,
+    /// The stem gain `voice` asks for, smoothed so a move is not a click.
+    voice_gain: SmoothedValue,
+    /// The fallback for a record with no stems yet. Allocated with the deck.
+    centre: CentreCancel,
     /// Mutes as they were before a held stem solo.
     ///
     /// A solo is an audition, not a destructive "unmute all" command. Keeping
@@ -261,6 +283,9 @@ impl Deck {
             grid: None,
             phrase: None,
             stem_mutes: [false; 4],
+            voice: 1.0,
+            voice_gain: SmoothedValue::new(1.0, sr),
+            centre: CentreCancel::new(sr),
             stem_mutes_before_solo: None,
             synced: false,
             active_loop: None,
@@ -392,6 +417,16 @@ impl Deck {
             }
             self.refresh_stem_tone();
         }
+    }
+
+    /// §107: how much of the singer to leave in. See [`Deck::voice`].
+    pub fn set_voice(&mut self, level: f32) {
+        if !level.is_finite() {
+            return;
+        }
+        self.voice = level.clamp(0.0, 1.0);
+        self.voice_gain.set_target(self.voice);
+        self.centre.set_depth(1.0 - self.voice);
     }
 
     pub fn set_filter(&mut self, position: f32) {
@@ -1796,19 +1831,29 @@ impl Deck {
     /// If stems are not available, returns the raw track frame.
     /// If `apply_dsp` is false, bypasses EQ and filter state updates (used for priming).
     fn read_frame(&mut self, position: f64, apply_dsp: bool) -> ([f32; 2], bool) {
+        // Advanced every frame read, stems or not, so a move made while the
+        // record was unseparated has settled when the stems arrive.
+        let voice = self.voice_gain.next_value();
         if let Some(stems) = self.source.stem_frame_at(position) {
             let mut mixed_left = 0.0;
             let mut mixed_right = 0.0;
             for (i, stem) in stems.iter().enumerate() {
                 let ch = &mut self.stem_channels[i];
                 if !ch.mute {
+                    // §107: the singer's level comes off the top of the
+                    // vocal stem's own, rather than replacing it.
+                    let volume = if i == VOCAL_STEM {
+                        ch.volume * voice
+                    } else {
+                        ch.volume
+                    };
                     let (l, r) = if apply_dsp {
                         (
-                            ch.filter[0].process(ch.eq[0].process(stem[0])) * ch.volume,
-                            ch.filter[1].process(ch.eq[1].process(stem[1])) * ch.volume,
+                            ch.filter[0].process(ch.eq[0].process(stem[0])) * volume,
+                            ch.filter[1].process(ch.eq[1].process(stem[1])) * volume,
                         )
                     } else {
-                        (stem[0] * ch.volume, stem[1] * ch.volume)
+                        (stem[0] * volume, stem[1] * volume)
                     };
                     mixed_left += l;
                     mixed_right += r;
@@ -1816,7 +1861,16 @@ impl Deck {
             }
             ([mixed_left, mixed_right], true)
         } else {
-            (self.source.frame_at(position), false)
+            let [left, right] = self.source.frame_at(position);
+            // §107's fallback: no stems to turn the singer down in, so the
+            // centre of the vocal band comes out instead. Skipped while
+            // priming, like the EQ, and free when the knob is up.
+            if apply_dsp && !self.centre.is_bypassed() {
+                let (left, right) = self.centre.process(left, right);
+                ([left, right], false)
+            } else {
+                ([left, right], false)
+            }
         }
     }
 
@@ -4111,6 +4165,83 @@ mod slicer_tests {
             (share - 0.9).abs() < 1e-3,
             "muting the vocal should leave nine tenths; got {share} ({muted} of {whole})"
         );
+    }
+
+    /// §107: **the voice level comes off the vocal stem, over the DJ's own
+    /// level for it.** Out is the other nine tenths of this fixture, a guide
+    /// vocal is a quarter of the voice back, and a DJ who had already set the
+    /// vocal stem to half keeps that half: the knob multiplies, it does not
+    /// replace.
+    #[test]
+    fn the_voice_level_takes_the_singer_out_of_a_separated_record() {
+        assert_eq!(VOCAL_STEM, Stem::Vocal.index());
+        let layout = BusLayout::for_channels(2);
+        let level = |voice: f32, stem: f32| {
+            let mut deck = Deck::new(SR);
+            let _ = deck.load(separated(100_000));
+            deck.set_stem_volume(Stem::Vocal as usize, stem);
+            deck.set_voice(voice);
+            deck.play();
+            // Past the smoothing and the stems' own filters settling.
+            let _ = peak(&mut deck, &layout, 9_600);
+            peak(&mut deck, &layout, 512)
+        };
+        let whole = level(1.0, 1.0);
+        assert!(whole > 0.5, "the stem path is not live: {whole}");
+        let share = |got: f32| got / whole;
+        assert!(
+            (share(level(0.0, 1.0)) - 0.9).abs() < 2e-3,
+            "{}",
+            share(level(0.0, 1.0))
+        );
+        assert!(
+            (share(level(0.25, 1.0)) - 0.925).abs() < 2e-3,
+            "{}",
+            share(level(0.25, 1.0))
+        );
+        assert!(
+            (share(level(0.25, 0.5)) - 0.9125).abs() < 2e-3,
+            "{}",
+            share(level(0.25, 0.5))
+        );
+    }
+
+    /// §107's fallback, **before a record is separated**: the centre of the
+    /// vocal band comes out of the whole mix, and what a dance floor needs —
+    /// the centred low end — stays. A centred 1 kHz tone, where a voice
+    /// sits, is nearly gone at voice 0; a centred 60 Hz tone, where a kick
+    /// sits, is not.
+    #[test]
+    fn with_no_stems_the_voice_level_cancels_the_centre_of_the_vocal_band() {
+        let layout = BusLayout::for_channels(2);
+        let centred = |hz: f32| {
+            let frames = 96_000;
+            let samples: Vec<f32> = (0..frames)
+                .flat_map(|n| {
+                    let v = (2.0 * std::f32::consts::PI * hz * n as f32 / 48_000.0).sin() * 0.5;
+                    [v, v]
+                })
+                .collect();
+            Arc::new(AudioBuffer::from_interleaved(samples, SR))
+        };
+        let level = |hz: f32, voice: f32| {
+            let mut deck = Deck::new(SR);
+            let _ = deck.load(centred(hz));
+            deck.set_voice(voice);
+            deck.play();
+            let _ = peak(&mut deck, &layout, 9_600);
+            peak(&mut deck, &layout, 4_800)
+        };
+        let voice = level(1_000.0, 0.0) / level(1_000.0, 1.0);
+        assert!(
+            voice < 0.1,
+            "a centred voice-band tone kept {voice} of itself"
+        );
+        let kick = level(60.0, 0.0) / level(60.0, 1.0);
+        assert!(kick > 0.85, "a centred kick-band tone kept only {kick}");
+        // A guide: most of it out, some of it left.
+        let guide = level(1_000.0, 0.25) / level(1_000.0, 1.0);
+        assert!((0.15..0.4).contains(&guide), "a guide vocal kept {guide}");
     }
 
     /// **The defect this pins.** The separated track used to live behind an

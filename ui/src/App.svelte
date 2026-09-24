@@ -2463,7 +2463,7 @@
   {/snippet}
 
   {#snippet surfaceKaraoke()}
-    <Singers enabled={ready} {deckCount} />
+    <Singers enabled={ready} {deckCount} decks={snapshot?.decks ?? []} />
   {/snippet}
 
   {#snippet surfaceRequests()}

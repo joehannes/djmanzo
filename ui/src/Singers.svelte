@@ -20,11 +20,33 @@
     karaokeSang,
     librarySearch,
     loadTrack,
+    type DeckState,
     type LibraryTrack,
     type Rotation,
   } from "./api";
 
-  let { enabled, deckCount = 2 }: { enabled: boolean; deckCount?: number } = $props();
+  let {
+    enabled,
+    deckCount = 2,
+    decks = [],
+  }: { enabled: boolean; deckCount?: number; decks?: DeckState[] } = $props();
+
+  /**
+   * §107: what the room hears of the recorded singer, per deck. Out is
+   * karaoke; a guide — a quarter, about -12 dB — is the vocal a host leaves
+   * under a nervous singer or a song nobody quite remembers. It is the deck's
+   * own setting and stays set, so every song loaded onto a karaoke deck plays
+   * the way the host chose.
+   */
+  const VOICES = [
+    { level: 1, label: "As recorded" },
+    { level: 0.25, label: "Guide" },
+    { level: 0, label: "Out" },
+  ] as const;
+
+  function voiceOf(deck: number): number {
+    return decks.find((d) => d.number === deck)?.voice ?? 1;
+  }
 
   let rotation = $state<Rotation | null>(null);
   let error = $state("");
@@ -185,6 +207,24 @@
     <p class="empty">Nobody is queued. Add the first singer below.</p>
   {/if}
 
+  <!--
+    The vocal, per deck. Beside the rotation rather than on the deck, because
+    this is where the host decides it; the deck says so too, once it is set.
+  -->
+  <div class="voices" role="group" aria-label="The recorded singer">
+    {#each Array.from({ length: deckCount }, (_, i) => i + 1) as deck (deck)}
+      <div class="voice" role="group" aria-label="Vocal on deck {deck}">
+        <span class="deck-label mono">{deck}</span>
+        {#each VOICES as choice (choice.level)}
+          <button
+            aria-pressed={Math.abs(voiceOf(deck) - choice.level) < 0.01}
+            onclick={() => void dispatch(`deck ${deck} voice ${choice.level}`)}>{choice.label}</button
+          >
+        {/each}
+      </div>
+    {/each}
+  </div>
+
   {#if waiting.length > 1}
     <ol class="order" aria-label="Calling order">
       {#each waiting.slice(1) as person, index (person.name)}
@@ -299,6 +339,29 @@
   .done {
     border-color: var(--accent);
     font-weight: 600;
+  }
+
+  .voices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .voice {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+  }
+
+  .voice button[aria-pressed="true"] {
+    border-color: var(--stem-vocal);
+    color: var(--stem-vocal);
+    font-weight: 600;
+  }
+
+  .deck-label {
+    color: var(--text-dim);
+    margin-right: 0.15rem;
   }
 
   .order {

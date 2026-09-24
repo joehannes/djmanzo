@@ -230,6 +230,11 @@ pub enum DeckParam {
     StemOtherEqMid,
     StemOtherEqHigh,
     StemOtherFilter,
+    /// §107: how much of the singer is left in, 1.0 as recorded, 0.0 out.
+    ///
+    /// Last on purpose: the order is the memory layout, and a parameter added
+    /// in the middle would move every one after it.
+    Voice,
 }
 
 /// What a hot cue parameter reads when the slot is empty.
@@ -261,7 +266,7 @@ impl DeckParam {
     }
 
     /// Number of parameters each deck occupies.
-    pub const COUNT: usize = 91;
+    pub const COUNT: usize = 92;
 
     #[must_use]
     pub const fn offset(self) -> usize {
@@ -363,6 +368,7 @@ impl DeckParam {
             StemOtherEqMid,
             StemOtherEqHigh,
             StemOtherFilter,
+            Voice,
         ]
     }
 }
@@ -1194,6 +1200,7 @@ const fn deck_param_name(param: DeckParam) -> &'static str {
         DeckParam::StemOtherEqMid => "stem_other_eq_mid",
         DeckParam::StemOtherEqHigh => "stem_other_eq_high",
         DeckParam::StemOtherFilter => "stem_other_filter",
+        DeckParam::Voice => "voice",
     }
 }
 

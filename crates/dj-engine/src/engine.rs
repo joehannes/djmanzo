@@ -613,6 +613,7 @@ impl Engine {
                     DeckAction::SetEqMid(g) => target.set_eq_mid(g),
                     DeckAction::SetEqHigh(g) => target.set_eq_high(g),
                     DeckAction::SetFilter(p) => target.set_filter(p),
+                    DeckAction::SetVoice(level) => target.set_voice(level),
                     DeckAction::SetCue(on) => target.set_cue(on),
                     DeckAction::ToggleCue => target.toggle_cue(),
                     DeckAction::SetKeylock(on) => target.set_keylock(on),
@@ -1144,6 +1145,7 @@ impl Engine {
                 DeckParam::StemOtherFilter,
                 deck.stem_channels[3].filter_trim,
             );
+            set(DeckParam::Voice, deck.voice);
 
             for number in 1..=dj_core::FX_SLOTS as u8 {
                 let (Some(param), Some(slot)) = (DeckParam::fx(number), deck.rack().slot(number))

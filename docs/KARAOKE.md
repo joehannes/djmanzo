@@ -7,10 +7,12 @@
 > turn, not ready is the bottom, a singer's key remembered with the song, the
 > up-next song loaded onto a deck in the singer's key. Built earlier and
 > still true: lyrics fetched from LRCLIB, synced where the database has them.
-> **Not yet**: the band-limited centre cancel exists as DSP (`dj_dsp::karaoke`)
-> and nothing in the engine calls it; the vocal-guide level on the stems; the
-> singers' screen that reads the synced lyrics. Those are the next pieces, in
-> that order.
+> Built since: **taking the voice out** — one knob per deck
+> (`deck N voice <0..1>`), a gain on the vocal stem where the record is
+> separated and the band-limited centre cancel of §1.3 on the whole mix where
+> it is not yet; *As recorded · Guide · Out* on the Singers surface, and a chip
+> on the deck while the vocal is not as recorded. **Not yet**: the singers'
+> screen that reads the synced lyrics, and break music between singers.
 
 Two independent halves, usable together or separately:
 

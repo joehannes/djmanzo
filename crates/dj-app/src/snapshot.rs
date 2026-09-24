@@ -55,6 +55,8 @@ pub struct DeckSnapshot {
     pub eq_mid: f32,
     pub eq_high: f32,
     pub filter: f32,
+    /// §107: how much of the singer is left in. See `dj_engine::Deck::voice`.
+    pub voice: f32,
     pub cue_enabled: bool,
     pub pre_fader_level: f32,
     /// Holding the musical key while the pitch fader changes tempo.
@@ -672,6 +674,7 @@ impl Snapshot {
                     eq_mid: get(DeckParam::EqMid),
                     eq_high: get(DeckParam::EqHigh),
                     filter: get(DeckParam::Filter),
+                    voice: get(DeckParam::Voice),
                     cue_enabled: get(DeckParam::CueEnabled) >= 0.5,
                     pre_fader_level: get(DeckParam::PreFaderLevel),
                     keylock: get(DeckParam::Keylock) >= 0.5,

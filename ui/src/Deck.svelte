@@ -649,6 +649,24 @@
         {#if analysis == null}
           <span class="pending">analysing…</span>
         {/if}
+        {#if (deck.voice ?? 1) < 0.99}
+          <!--
+            §107: the singer is out of this record, or down to a guide. Said on
+            the deck itself, because it outlives the karaoke screen that set it
+            — a DJ back in the mix after the last singer must not play a record
+            with its vocal missing and not know why. One press puts it back.
+          -->
+          <button
+            class="voice-chip"
+            data-voice-chip
+            title="The vocal is {deck.voice <= 0.01
+              ? 'taken out'
+              : 'down to a guide'} on this deck. Press to put it back as recorded."
+            onclick={() => void dispatch(`deck ${deck.number} voice 1`)}
+          >
+            {deck.voice <= 0.01 ? "Voice out" : "Guide vocal"}
+          </button>
+        {/if}
         <!--
           The way in to grid editing, next to the number it corrects. Shown
           whether or not the analyser found a grid: a track it could not read at
@@ -1615,6 +1633,17 @@
   .key {
     color: var(--accent-2);
     font-weight: 600;
+  }
+
+  .voice-chip {
+    padding: 0 0.35rem;
+    font-size: 0.72em;
+    line-height: 1.5;
+    color: var(--stem-vocal);
+    background: transparent;
+    border: 1px solid var(--stem-vocal);
+    border-radius: 999px;
+    white-space: nowrap;
   }
 
   .pending {

@@ -110,6 +110,11 @@ export interface DeckState {
   eq_mid: number;
   eq_high: number;
   filter: number;
+  /**
+   * §107: how much of the singer is left in, 1 as recorded, 0 out, a
+   * quarter a karaoke host's guide vocal. See `dj_engine::Deck::voice`.
+   */
+  voice: number;
   cue_enabled: boolean;
   pre_fader_level: number;
   keylock: boolean;

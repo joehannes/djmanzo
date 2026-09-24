@@ -101,7 +101,7 @@ pub fn as_prompt_lines() -> Vec<String> {
 /// Gain ranges match the isolator EQ: 0.0 is a true kill, 4.0 is +12 dB.
 const EQ: ArgSpec = ArgSpec::Number { min: 0.0, max: 4.0 };
 
-static VOCABULARY: [VerbSpec; 83] = [
+static VOCABULARY: [VerbSpec; 84] = [
     // -- transport ---------------------------------------------------------
     VerbSpec {
         target: Target::Deck,
@@ -514,6 +514,13 @@ static VOCABULARY: [VerbSpec; 83] = [
     },
     VerbSpec {
         target: Target::Deck,
+        verb: "voice",
+        argument: ArgSpec::Number { min: 0.0, max: 1.0 },
+        help: "how much of the recorded singer to leave in, for karaoke: 1 as recorded, 0.25 a guide vocal, 0 out",
+        example: "deck 1 voice 0",
+    },
+    VerbSpec {
+        target: Target::Deck,
         verb: "cue_on",
         argument: ArgSpec::None,
         help: "send this deck to the headphones",
@@ -842,6 +849,7 @@ mod tests {
             "eq_mid",
             "eq_high",
             "filter",
+            "voice",
             "cue_on",
             "cue_off",
             "cue_toggle",
