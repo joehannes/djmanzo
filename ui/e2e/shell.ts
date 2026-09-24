@@ -453,6 +453,18 @@ export const ANSWERS: Record<string, unknown> = {
     colours: Array.from({ length: 256 }, (_, i) => [i, 255 - i, 128]),
     range: [70, 700],
   },
+  // §116's rhythm, as `rhythm_line` sends it: four on the floor, a snare on
+  // two and four, hats on every off-beat — a step every sixteenth at 124 BPM
+  // and 48 kHz.
+  rhythm_line: {
+    first_frame: 0,
+    frames_per_step: 5_806,
+    steps: Array.from({ length: 2_400 }, (_, i) => [
+      i % 4 === 0 ? 255 : 0,
+      i % 8 === 4 ? 220 : 0,
+      i % 4 === 2 ? 180 : 0,
+    ]),
+  },
   // §25's inventory, answered from the same table Rust publishes. The test
   // that matters reads it back and checks every `data-layer` on screen is in
   // it, so this stub is deliberately the real shape rather than a stand-in.

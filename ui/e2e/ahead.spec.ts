@@ -145,6 +145,51 @@ test.describe("§116: seeing the record coming", () => {
   });
 
   /**
+   * **The rhythm is under the waveform as a drum machine reads it**: the
+   * kick every beat on the floor row, the hats between, the snare on two and
+   * four — each in its band's colour — and gone with its layer switch.
+   */
+  test("the lane draws the rhythm, a row a voice, and the layer switch takes it away", async ({ page }) => {
+    await openShell(page, "/");
+    const strip = lane(page).locator('svg.rhythm[data-layer="rhythm"]');
+    await expect(strip).toBeVisible();
+    const xs = (voice: number) =>
+      strip
+        .locator(`rect.step[data-voice="${voice}"]`)
+        .evaluateAll((rects) => rects.map((r) => Number(r.getAttribute("x")) + Number(r.getAttribute("width")) / 2));
+    const kicks = await xs(0);
+    const hats = await xs(2);
+    const snares = await xs(1);
+    expect(kicks.length).toBeGreaterThan(3);
+    // A beat apart, evenly; a hat half-way between two kicks; a snare every
+    // other beat.
+    const beat = kicks[1] - kicks[0];
+    expect(beat).toBeGreaterThan(8);
+    for (let i = 2; i < kicks.length; i++) expect(kicks[i] - kicks[i - 1]).toBeCloseTo(beat, 3);
+    const between = hats.find((x) => x > kicks[0] && x < kicks[1]);
+    expect(between).toBeCloseTo((kicks[0] + kicks[1]) / 2, 3);
+    expect(snares.length).toBeLessThan(kicks.length);
+    expect(snares.length).toBeGreaterThan(0);
+    // The floor row is the lows' colour.
+    const fill = await strip.locator('rect.step[data-voice="0"]').first().evaluate((r) => getComputedStyle(r).fill);
+    const low = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--band-low)";
+      document.body.append(probe);
+      const value = getComputedStyle(probe).color;
+      probe.remove();
+      return value;
+    });
+    expect(fill).toBe(low);
+
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(page.locator(".remembers")).toBeVisible();
+    await page.locator('.remembers [data-layer-row="rhythm"] input').uncheck();
+    await expect(strip).toHaveCount(0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **Every arrival and departure is marked along the overview**, in the
    * colour of the fader that mutes that current, departures hatched.
    */

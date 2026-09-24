@@ -36,6 +36,7 @@ pub mod melody;
 pub mod onset;
 pub mod presence;
 pub mod regression;
+pub mod rhythm;
 pub mod strikes;
 pub mod structure;
 pub mod tempo;

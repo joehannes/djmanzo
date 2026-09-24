@@ -81,6 +81,15 @@
     "why_not": ""
   },
   {
+    "name": "rhythm",
+    "title": "Rhythm",
+    "about": "Kick, snare and hats on every sixteenth, under the waveform -- where each plays and where it drops out.",
+    "role": "sound",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
+  },
+  {
     "name": "vocal",
     "title": "Vocal presence",
     "about": "Where a lead is centred in the voice range -- usually a singer.",

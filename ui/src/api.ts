@@ -1280,6 +1280,10 @@ export const singerLyrics = (deck: number) => invoke<SingerLyrics>("singer_lyric
 export const melodyLine = (deck: number, theme: string) =>
   invoke<MelodyLine | null>("melody_line", { deck, theme });
 
+/** §116: a deck's rhythm on its grid — see `./rhythm`. */
+export const rhythmLine = (deck: number) =>
+  invoke<import("./rhythm").RhythmLine | null>("rhythm_line", { deck });
+
 /**
  * §116: one change in a record — a current coming in or going, or a stretch
  * that builds or settles. `stem` is an index in the one stem order (vocal,

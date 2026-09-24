@@ -557,6 +557,7 @@ pub fn run() {
             commands::get_snapshot,
             commands::waveform_info,
             commands::melody_line,
+            commands::rhythm_line,
             commands::singer_lyrics,
             commands::store_links,
             commands::open_store,

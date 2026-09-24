@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+**The rhythm under the waveform** — §116. A strip along the foot of each
+waveform shows the drums as a drum machine would: the kick on the floor row in
+red, the snare above it in green, the hats on top in violet, on every
+sixteenth, as strong as they play — so you see the kick drop out or the hats
+double before you hear it. It follows the beat grid, including one you have
+corrected by hand, and can be switched off with the other waveform layers.
+
 **A quiet assistant that watches the booth** — §115. One line, beside REC
 and SAFE, proposes one thing at a time: a deck clipping (its trim down 3 dB),
 the limiter working hard (the master down 3 dB), a record running out with

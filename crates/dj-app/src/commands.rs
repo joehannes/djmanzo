@@ -867,6 +867,16 @@ pub fn put_on_deck(
                         frames_per_point: rate / dj_analysis::melody::RATE,
                     },
                 );
+                // §116's rhythm: the banded onset curve, stepped against
+                // whatever grid the deck has when the lane asks.
+                store.set_onsets(
+                    deck_id,
+                    &measured,
+                    dj_analysis::onset::detect_bands(
+                        audio.as_interleaved(),
+                        audio.sample_rate().get(),
+                    ),
+                );
                 let mut coloured = (*measured).clone();
                 coloured.measure_spectrum(audio.as_interleaved());
                 store.set_spectrum(deck_id, &measured, coloured);
@@ -1822,6 +1832,41 @@ pub fn melody_line(state: State<'_, AppState>, deck: u8, theme: String) -> Optio
             dj_analysis::melody::LOWEST_HZ,
             dj_analysis::melody::HIGHEST_HZ,
         ),
+    })
+}
+
+/// §116: a deck's rhythm on its grid, for the lane's drum-machine strip.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RhythmLine {
+    /// The frame of the first step.
+    pub first_frame: f64,
+    pub frames_per_step: f64,
+    /// Per step, the kick, snare and hat, 0 to 255.
+    pub steps: Vec<[u8; 3]>,
+}
+
+/// §116: the rhythm of a deck's record, stepped against the grid the lane's
+/// beat lines are drawn from — so a grid corrected by hand moves the steps
+/// with the lines. `None` before the record has been read, or without a grid.
+#[tauri::command]
+#[must_use]
+pub fn rhythm_line(state: State<'_, AppState>, deck: u8) -> Option<RhythmLine> {
+    let store = state.waveforms();
+    let onsets = store.onsets(deck)?;
+    let overlay = store.grid(deck)?;
+    let summary = store.summary(deck)?;
+    let frames_per_beat = overlay.grid.bpm.beat_frames(overlay.sample_rate);
+    #[allow(clippy::cast_precision_loss)]
+    let steps = dj_analysis::rhythm::steps(
+        &onsets,
+        overlay.grid.anchor.get(),
+        frames_per_beat,
+        summary.total_frames() as f64,
+    );
+    Some(RhythmLine {
+        first_frame: steps.first_frame,
+        frames_per_step: steps.frames_per_step,
+        steps: steps.strength,
     })
 }
 

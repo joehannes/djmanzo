@@ -51,6 +51,11 @@ pub struct WaveformStore {
     /// §116's melody line per deck: the strongest line of notes, in Hz, and
     /// how many frames of the file each point covers.
     melodies: Mutex<HashMap<u8, Arc<Melody>>>,
+    /// §116's rhythm per deck: the banded onset curve the steps are read
+    /// from. Kept as the curve rather than as steps so that the steps follow
+    /// the grid as it is now — a grid corrected by hand moves the rhythm with
+    /// the beat lines.
+    onsets: Mutex<HashMap<u8, Arc<dj_analysis::onset::BandedOnset>>>,
 }
 
 /// §116: a record's melody, as `dj_analysis::melody::pitches` reads it.
@@ -117,9 +122,12 @@ impl WaveformStore {
         if let Ok(mut summaries) = self.summaries.lock() {
             summaries.insert(deck.human_number(), Arc::new(summary));
         }
-        // The last record's tune is not this one's.
+        // The last record's tune is not this one's, nor its rhythm.
         if let Ok(mut melodies) = self.melodies.lock() {
             melodies.remove(&deck.human_number());
+        }
+        if let Ok(mut onsets) = self.onsets.lock() {
+            onsets.remove(&deck.human_number());
         }
         // Tiles for the previous track on this deck are now wrong.
         self.invalidate(deck);
@@ -185,6 +193,34 @@ impl WaveformStore {
         true
     }
 
+    /// Put §116's rhythm — the banded onset curve — beside a deck's record,
+    /// under the same guard as the melody.
+    pub fn set_onsets(
+        &self,
+        deck: DeckId,
+        measured: &Arc<WaveformSummary>,
+        onsets: dj_analysis::onset::BandedOnset,
+    ) -> bool {
+        let current = self
+            .summaries
+            .lock()
+            .ok()
+            .and_then(|summaries| summaries.get(&deck.human_number()).cloned());
+        if !current.is_some_and(|current| Arc::ptr_eq(&current, measured)) {
+            return false;
+        }
+        if let Ok(mut held) = self.onsets.lock() {
+            held.insert(deck.human_number(), Arc::new(onsets));
+        }
+        true
+    }
+
+    /// §116's banded onset curve for a deck's record, once it has been read.
+    #[must_use]
+    pub fn onsets(&self, deck: u8) -> Option<Arc<dj_analysis::onset::BandedOnset>> {
+        self.onsets.lock().ok()?.get(&deck).cloned()
+    }
+
     /// §116's melody for a deck's record, once it has been read.
     #[must_use]
     pub fn melody(&self, deck: u8) -> Option<Arc<Melody>> {
@@ -204,6 +240,9 @@ impl WaveformStore {
         }
         if let Ok(mut melodies) = self.melodies.lock() {
             melodies.remove(&deck.human_number());
+        }
+        if let Ok(mut onsets) = self.onsets.lock() {
+            onsets.remove(&deck.human_number());
         }
         if let Ok(mut grids) = self.grids.lock() {
             grids.remove(&deck.human_number());
@@ -981,6 +1020,32 @@ mod tests {
             "a late tune landed on the wrong record"
         );
         assert!(store.melody(1).is_none());
+    }
+
+    /// §116's rhythm is under the same guard as the melody: gone with its
+    /// record, and a late one for a record since replaced is refused.
+    #[test]
+    fn a_rhythm_belongs_to_the_record_it_was_read_from() {
+        let (store, deck) = store_with_track();
+        let first = store.summary(1).unwrap();
+        let onsets = || dj_analysis::onset::detect_bands(&samples(48_000), 48_000);
+        assert!(store.set_onsets(deck, &first, onsets()));
+        assert!(store.onsets(1).is_some());
+
+        store.set_summary(
+            deck,
+            WaveformSummary::analyse(&samples(48_000), SampleRate::DEFAULT),
+        );
+        assert!(
+            store.onsets(1).is_none(),
+            "the last record's rhythm outlived it"
+        );
+        assert!(
+            !store.set_onsets(deck, &first, onsets()),
+            "a late rhythm landed on the wrong record"
+        );
+        store.clear(deck);
+        assert!(store.onsets(1).is_none());
     }
 
     /// **The EQ part is part of the key, and the URL carries it.** The lane

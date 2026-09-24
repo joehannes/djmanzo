@@ -27,10 +27,11 @@
     type SavedLoopInfo,
     type MixOutInfo,
   } from "./api";
-  import { dispatch, melodyLine, phraseGrid, waveformMoves, type Move, type PhraseGrid } from "./api";
+  import { dispatch, melodyLine, phraseGrid, rhythmLine, waveformMoves, type Move, type PhraseGrid } from "./api";
   import { comingUp, distance, framesPerBeat } from "./ahead";
   import { PARTS, partOpacities } from "./eqLight";
   import { melodyPaths } from "./melody";
+  import { rhythmDots, type RhythmLine } from "./rhythm";
   import { remembers, showing } from "./remembers.svelte";
   import { theme } from "./theme.svelte";
 
@@ -323,6 +324,26 @@
       .then((line) => (melody = line))
       .catch(() => (melody = null));
   });
+  /**
+   * §116's rhythm, once Rust has read it. Asked again on every epoch, because
+   * the epoch moves when the grid does, and the steps are stepped against the
+   * grid as it is now.
+   */
+  let rhythm = $state<RhythmLine | null>(null);
+  let askedRhythm = "";
+  $effect(() => {
+    const key = `${deck.number}/${epoch}/${colourPending}`;
+    if (key === askedRhythm) return;
+    askedRhythm = key;
+    if (!ready || colourPending) {
+      rhythm = null;
+      return;
+    }
+    void rhythmLine(deck.number)
+      .then((line) => (rhythm = line))
+      .catch(() => (rhythm = null));
+  });
+
   let recheckQueued = false;
 
   $effect(() => {
@@ -487,6 +508,27 @@
     const paths = melodyPaths(melody, from, to, framesPerPixel, height);
     return paths.length > 0
       ? { left: from / framesPerPixel, width: (to - from) / framesPerPixel, paths }
+      : null;
+  });
+
+  /** Height of the rhythm strip, a row per voice. */
+  const RHYTHM_ROW = 4;
+
+  /**
+   * §116's rhythm under the stretch the tiles cover, carried by the same
+   * transform: a drum machine's grid, a row a voice, redrawn when the tiles
+   * change rather than every frame.
+   */
+  const rhythmDrawn = $derived.by(() => {
+    if (!rhythm || !showing("rhythm") || totalFrames === 0) return null;
+    const from = Math.max(0, firstTile * tileSpanFrames);
+    const count = Math.ceil(laneWidth / TILE_WIDTH) + OVERSCAN * 2 + 1;
+    const to = Math.min(totalFrames, (firstTile + count) * tileSpanFrames);
+    if (to <= from) return null;
+    const dots = rhythmDots(rhythm, from, to, framesPerPixel);
+    const mark = Math.max(1.5, Math.min(4, rhythm.frames_per_step / framesPerPixel - 1));
+    return dots.length > 0
+      ? { left: from / framesPerPixel, width: (to - from) / framesPerPixel, dots, mark }
       : null;
   });
 
@@ -1083,6 +1125,35 @@
           {/each}
         </svg>
       {/if}
+      {#if rhythmDrawn}
+        <!--
+          §116's rhythm: kick at the floor, snare above it, hats on top, each in
+          the colour of the band it sounds in, as strong as it plays — so a
+          kick dropping out is a gap in the red row before it is heard.
+        -->
+        <svg
+          class="rhythm"
+          data-layer="rhythm"
+          aria-hidden="true"
+          style:left="{rhythmDrawn.left}px"
+          width={rhythmDrawn.width}
+          height={RHYTHM_ROW * 3}
+          viewBox="0 0 {rhythmDrawn.width} {RHYTHM_ROW * 3}"
+        >
+          {#each rhythmDrawn.dots as dot, i (i)}
+            <rect
+              class="step"
+              data-voice={dot.voice}
+              x={dot.x - rhythmDrawn.mark / 2}
+              y={(2 - dot.voice) * RHYTHM_ROW + 0.5}
+              width={rhythmDrawn.mark}
+              height={RHYTHM_ROW - 1}
+              rx="1"
+              opacity={0.35 + 0.65 * dot.strength}
+            />
+          {/each}
+        </svg>
+      {/if}
     </div>
   {:else if deck.loaded}
     <p class="pending">analysing…</p>
@@ -1424,6 +1495,26 @@
 
   .melody .note {
     stroke-width: 2;
+  }
+
+  .rhythm {
+    position: absolute;
+    bottom: 0;
+    z-index: 1;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .rhythm .step[data-voice="0"] {
+    fill: var(--band-low);
+  }
+
+  .rhythm .step[data-voice="1"] {
+    fill: var(--band-mid);
+  }
+
+  .rhythm .step[data-voice="2"] {
+    fill: var(--band-high);
   }
 
   .coming {

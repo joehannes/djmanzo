@@ -263,7 +263,7 @@ pub fn layer(name: &str) -> Option<&'static Layer> {
     LAYERS.iter().find(|layer| layer.name == name)
 }
 
-static LAYERS: [Layer; 22] = [
+static LAYERS: [Layer; 23] = [
     Layer {
         name: "amplitude",
         title: "Amplitude",
@@ -328,6 +328,16 @@ static LAYERS: [Layer; 22] = [
         name: "melody",
         title: "Melody line",
         about: "The strongest line of notes, at its pitch and in its colour -- usually the voice.",
+        role: Role::Sound,
+        drawn: Drawn::Overlay,
+    },
+    // §116's rhythm, as a drum machine's grid: the record read as hits, in
+    // the colours of the bands each voice sounds in -- so, like the melody, it
+    // is the record's sound and shares `Sound`.
+    Layer {
+        name: "rhythm",
+        title: "Rhythm",
+        about: "Kick, snare and hats on every sixteenth, under the waveform -- where each plays and where it drops out.",
         role: Role::Sound,
         drawn: Drawn::Overlay,
     },
@@ -555,9 +565,10 @@ mod tests {
     /// section asked for something §25's twenty have nowhere to put, and the
     /// bar for that is high: §75's other eight properties all land on a layer
     /// §25 named, and only this one did not.
-    const BEYOND: [(&str, &str); 2] = [
+    const BEYOND: [(&str, &str); 3] = [
         ("transients", "§75's transient density"),
         ("melody", "§116's melody line"),
+        ("rhythm", "§116's rhythm, step by step"),
     ];
 
     /// **Every layer §25 named is still here, and anything else says who asked
@@ -648,7 +659,7 @@ mod tests {
         // the same spectrum. A hue of its own would say it was something else.
         assert_eq!(
             grouped.get("sound"),
-            Some(&vec!["amplitude", "spectral", "melody"]),
+            Some(&vec!["amplitude", "spectral", "melody", "rhythm"]),
             "the record's own sound"
         );
         assert_eq!(grouped.get("grid").map(Vec::len), Some(3), "the pulse");
@@ -734,7 +745,7 @@ mod tests {
         }
     }
 
-    /// The count worth quoting, so "twenty-one of twenty-two" cannot drift.
+    /// The count worth quoting, so "twenty-two of twenty-three" cannot drift.
     #[test]
     fn the_built_count_is_a_fact_rather_than_a_recollection() {
         let built: Vec<&str> = layers()
@@ -754,6 +765,7 @@ mod tests {
                 "loop",
                 "saved-loops",
                 "melody",
+                "rhythm",
                 "vocal",
                 "stems",
                 "seam",
