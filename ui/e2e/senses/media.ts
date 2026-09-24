@@ -37,7 +37,7 @@
  * when the scene does; it proves nothing about what a particular webcam makes
  * of a particular club, and nothing here should be read as if it did.
  */
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -442,4 +442,30 @@ export function ensureMedia() {
   for (const kind of ["peak", "quiet", "hum"] as const) {
     if (!existsSync(soundPath(kind))) writeSound(kind);
   }
+}
+
+/**
+ * What the room surface should read for a sound: the file's own RMS, mapped
+ * the way `RoomSense` maps it (-60 dBFS to 0 across 0..1).
+ *
+ * Read back from the file rather than taken from {@link LOUDNESS_DBFS}, because
+ * the peak mix is soft-clipped after it is levelled and that moves its RMS by
+ * two decibels. A test that compared against the intended number would be
+ * testing the generator.
+ */
+export function expectedLoudness(kind: Sound): number {
+  const data = readFileSync(soundPath(kind));
+  const count = (data.length - 44) / 2;
+  let squares = 0;
+  for (let i = 0; i < count; i++) {
+    const s = data.readInt16LE(44 + i * 2) / 32767;
+    squares += s * s;
+  }
+  const db = 20 * Math.log10(Math.sqrt(squares / count));
+  return Math.min(1, Math.max(0, (db + 60) / 60));
+}
+
+/** The same file's RMS as a plain amplitude, for the hum. */
+export function expectedRms(kind: Sound): number {
+  return 10 ** ((expectedLoudness(kind) * 60 - 60) / 20);
 }

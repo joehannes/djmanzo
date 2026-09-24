@@ -2528,3 +2528,6 @@ Quoted as written.
 ---
 # 114. ASKED SINCE: THE SHAPES OF CONTROLS
 > i'd also like to see the forms and shapes of the controls and widgets to be individual and useful and resembling nature and functionality ...
+---
+# 115. ASKED SINCE: A GUI FOR A DJ'S DAILY WORK
+> also, i when improving the GUI, i want in general the GUI to look better and be more useful and integrated as of the daily tasks/life of a DJ ... they should be interactively functional and auto-adapting in non-intrusive ways ... fittingly, adequate, beautiful ... preset-packages and easy switching everywhere a background AI always auto watching the DJ and proposing useful things without being intrusive

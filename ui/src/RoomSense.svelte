@@ -81,6 +81,11 @@
   const WIDE = 64;
   const HIGH = 48;
 
+  /**
+   * The mean luma change per pixel, out of 255, that reads as full movement.
+   */
+  const MOVEMENT_SCALE = 64;
+
   let read = $state<RoomRead | null>(null);
   let error = $state("");
   let looking = $state(false);
@@ -94,29 +99,89 @@
   let audio: AudioContext | null = null;
   let analyser: AnalyserNode | null = null;
   let canvas: HTMLCanvasElement | null = null;
-  let previous: Uint8ClampedArray | null = null;
+  /**
+   * Which look this is. A measurement waits before it reads, and a DJ can stop
+   * and start again inside that wait; a reading from the look that was
+   * stopped must not be sent as one from the look that replaced it.
+   */
+  let generation = 0;
+  /** Whether a measurement is already in its wait, so ticks cannot pile up. */
+  let measuring = false;
   let timer: ReturnType<typeof setInterval> | undefined;
+
+  /**
+   * The camera as asked for. `ideal` rather than exact, so a webcam that
+   * cannot do 320×240 gives whatever it can instead of refusing.
+   */
+  const CAMERA: MediaTrackConstraints = {
+    width: { ideal: 320 },
+    height: { ideal: 240 },
+  };
+
+  /**
+   * The microphone as a **measuring** microphone, not a telephone one.
+   *
+   * A browser's default microphone is tuned for a call: automatic gain
+   * control levels a quiet room up and a loud one down, noise suppression
+   * treats a crowd as the noise it exists to remove, and echo cancellation
+   * subtracts whatever it thinks is playing. Each of those is right for a
+   * voice and wrong for a reading whose whole value is *how loud the room is
+   * compared with earlier*: with them on, a floor that doubled in volume
+   * could read unchanged.
+   *
+   * Measured, not assumed: against a file of low chatter made at -42 dBFS,
+   * this surface read 0.21 with the defaults and 0.30 — the file's own level —
+   * without them. The hum in Memory keeps the defaults on purpose: it reads
+   * pitch rather than level, and a hummed tune arrived at the same level
+   * either way, so there was nothing to fix. They are asked off rather than
+   * required off, so a browser that cannot turn one off still opens the
+   * microphone.
+   */
+  const MICROPHONE: MediaTrackConstraints = {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+  };
+
+  /**
+   * Open whatever there is: both, then the camera alone, then the microphone
+   * alone.
+   *
+   * Asked for together first so the browser prompts once. Then each on its
+   * own, because half the senses is most of the value and both halves are
+   * common on their own — a webcam with no microphone, and a booth whose only
+   * input is a microphone, or a laptop with its lid shut. **It used to stop
+   * after the camera**, so a machine with a microphone and no camera read
+   * nothing at all and was told it had neither.
+   *
+   * A refusal ends it. A DJ who said no to the first prompt did not mean
+   * "ask me twice more".
+   */
+  async function open(): Promise<MediaStream | null> {
+    const asks: MediaStreamConstraints[] = [
+      { video: CAMERA, audio: MICROPHONE },
+      { video: CAMERA },
+      { audio: MICROPHONE },
+    ];
+    let first: unknown = null;
+    for (const ask of asks) {
+      try {
+        return await navigator.mediaDevices.getUserMedia(ask);
+      } catch (problem) {
+        first ??= problem;
+        const name = problem instanceof Error ? problem.name : "";
+        if (name === "NotAllowedError" || name === "SecurityError") break;
+      }
+    }
+    error = explain(first);
+    return null;
+  }
 
   async function look() {
     error = "";
-    try {
-      // Asked for together so the browser prompts once. If both are refused
-      // there is nothing to measure; if one is, we carry on with the other.
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 320 }, height: { ideal: 240 } },
-        audio: true,
-      });
-    } catch {
-      // Both together failed. Try the camera alone before giving up: a
-      // machine with a webcam and no microphone is common, and half the
-      // measurements is most of the value.
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      } catch (alone) {
-        error = explain(alone);
-        return;
-      }
-    }
+    const opened = await open();
+    if (!opened) return;
+    stream = opened;
 
     haveCamera = stream.getVideoTracks().length > 0;
     haveMic = stream.getAudioTracks().length > 0;
@@ -128,14 +193,19 @@
     if (haveMic) {
       audio = new AudioContext();
       analyser = audio.createAnalyser();
-      analyser.fftSize = 2048;
+      // The longest window an analyser has: about two thirds of a second.
+      // Loudness is read as the RMS of one window, and a window shorter than a
+      // beat measures *where in the beat it landed* — the first version read
+      // 43 ms, and the same record read 0.65 on one schedule and 0.80 on
+      // another because one kept landing between kicks.
+      analyser.fftSize = 32768;
       audio.createMediaStreamSource(stream).connect(analyser);
     }
 
     canvas = document.createElement("canvas");
     canvas.width = WIDE;
     canvas.height = HIGH;
-    previous = null;
+    generation += 1;
     looking = true;
     timer = setInterval(() => void measure(), everyMs);
   }
@@ -185,47 +255,95 @@
     audio = null;
     analyser = null;
     canvas = null;
-    previous = null;
+    generation += 1;
     looking = false;
     haveCamera = false;
     haveMic = false;
   }
 
+  /**
+   * How far apart the two frames that movement is read from are.
+   *
+   * **Movement used to be the difference between one tick's frame and the
+   * last one's**, which made it two different measurements depending on how
+   * often the room was looked at — two seconds normally, eight on a
+   * struggling laptop (§48) — so a night that changed tier halfway compared
+   * readings on two scales. Worse, it aliased with the music: at 120 BPM two
+   * seconds is exactly four beats, every look caught the crowd in the same
+   * pose, and a floor of people dancing read as a still room. A fixed short
+   * gap measures the same thing at every tier. A sixth of a second is shorter
+   * than half of any beat a DJ plays, so it can never span a whole bounce and
+   * come back to where it started.
+   */
+  const GAP_MS = 160;
+
+  /**
+   * The most a measurement waits before it starts, chosen afresh each time.
+   *
+   * The gap alone still samples one point of the beat if every look starts on
+   * the same one, and a timer running at two seconds under a record at 120 BPM
+   * does exactly that. Waiting a random part of a second moves each look to a
+   * different point, so across a few minutes of readings every part of the
+   * beat is seen. A second covers every tempo down to 60 BPM.
+   */
+  const JITTER_MS = 1000;
+
+  const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+  /** The picture as luma, scaled to WIDE×HIGH, or nothing yet. */
+  function frame(): Float32Array | null {
+    if (!haveCamera || !video || !canvas || video.videoWidth === 0) return null;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return null;
+    context.drawImage(video, 0, 0, WIDE, HIGH);
+    const pixels = context.getImageData(0, 0, WIDE, HIGH).data;
+    const luma = new Float32Array(WIDE * HIGH);
+    for (let i = 0; i < luma.length; i++) {
+      // Rec. 601 luma: the eye is not equally sensitive to the three
+      // channels, and a plain average calls a red-lit room dark.
+      luma[i] =
+        0.299 * pixels[i * 4] + 0.587 * pixels[i * 4 + 1] + 0.114 * pixels[i * 4 + 2];
+    }
+    return luma;
+  }
+
   /** One look: three numbers out, no pixels. */
   async function measure() {
+    if (measuring) return;
+    measuring = true;
+    try {
+      await measureOnce();
+    } finally {
+      measuring = false;
+    }
+  }
+
+  async function measureOnce() {
+    const mine = generation;
+    const still = () => looking && generation === mine;
+    await wait(Math.random() * Math.min(JITTER_MS, everyMs / 2));
+    if (!still()) return;
+
     const reading: { light?: number; movement?: number; loudness?: number } = {};
 
-    if (haveCamera && video && canvas && video.videoWidth > 0) {
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (context) {
-        context.drawImage(video, 0, 0, WIDE, HIGH);
-        const frame = context.getImageData(0, 0, WIDE, HIGH).data;
+    const before = frame();
+    if (before) {
+      await wait(GAP_MS);
+      if (!still()) return;
+      const after = frame();
+      if (after) {
         let sum = 0;
         let changed = 0;
-        for (let i = 0; i < frame.length; i += 4) {
-          // Rec. 601 luma: the eye is not equally sensitive to the three
-          // channels, and a plain average calls a red-lit room dark.
-          const luma =
-            0.299 * frame[i] + 0.587 * frame[i + 1] + 0.114 * frame[i + 2];
-          sum += luma;
-          if (previous) {
-            const was =
-              0.299 * previous[i] +
-              0.587 * previous[i + 1] +
-              0.114 * previous[i + 2];
-            changed += Math.abs(luma - was);
-          }
+        for (let i = 0; i < after.length; i++) {
+          sum += after[i];
+          changed += Math.abs(after[i] - before[i]);
         }
-        const pixels = frame.length / 4;
-        reading.light = sum / pixels / 255;
-        if (previous) {
-          // Scaled so that ordinary movement lands mid-range rather than in
-          // the bottom tenth: a whole-frame change of 255 never happens, and a
-          // reading that only ever uses a sliver of its range is a reading
-          // whose own night's distribution is all one bucket.
-          reading.movement = Math.min(1, changed / pixels / 64);
-        }
-        previous = frame;
+        reading.light = sum / after.length / 255;
+        // Scaled so that ordinary movement lands mid-range rather than in
+        // the bottom tenth: a whole-frame change of 255 never happens, and a
+        // reading that only ever uses a sliver of its range is a reading
+        // whose own night's distribution is all one bucket.
+        reading.movement = Math.min(1, changed / after.length / MOVEMENT_SCALE);
       }
     }
 
