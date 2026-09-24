@@ -22,10 +22,10 @@ pub mod summary;
 pub mod tile;
 
 pub use layer::{Drawn, Layer, Role, choosing, layer, layers};
-pub use summary::{Bucket, WaveformSummary};
+pub use summary::{Bucket, SPECTRUM_BANDS, SPECTRUM_EDGES_HZ, WaveformSummary};
 pub use tile::{
-    BYTES_PER_PIXEL, GridLines, GridOverlay, Palette, Theme, Tile, TileSpec, render_tile,
-    render_tile_with_grid,
+    BAND_HUES_DEG, BYTES_PER_PIXEL, Colouring, GridLines, GridOverlay, Palette, Theme, Tile,
+    TileSpec, render_tile, render_tile_with_grid, spectral_light,
 };
 
 pub mod encode;

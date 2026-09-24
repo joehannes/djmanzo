@@ -24,6 +24,7 @@
     setups,
     standing,
     waveformLayers,
+    waveformColourings,
     type AdaptationLevel,
     type KnowledgePack,
     type LockOption,
@@ -34,12 +35,14 @@
     type Spend,
     type Standing,
     type WaveformLayer,
+    type Colouring,
   } from "./api";
   import {
     remembers,
     starPage,
     keepControl,
     showLayer,
+    chooseColouring,
     loadRemembers,
   } from "./remembers.svelte";
   import { open, save as saveDialog } from "@tauri-apps/plugin-dialog";
@@ -547,6 +550,7 @@
   let allControls = $state<RailControl[]>([]);
   /** §25's twenty, and which of them a DJ may turn off. */
   let allLayers = $state<WaveformLayer[]>([]);
+  let allColourings = $state<Colouring[]>([]);
   /** §54's functional presets, one per kind of night §81 names. */
   let allSetups = $state<Setup[]>([]);
   /** The one whose changes are being read, before anything is applied. */
@@ -690,6 +694,15 @@
         // djmanzo remembers would be the second description this table exists
         // to prevent.
       });
+  });
+
+  // §110's two colourings, asked for on their own: the block above draws
+  // nothing if any of its answers fail, and a missing colouring picker should
+  // not cost the layer picker beside it.
+  $effect(() => {
+    void waveformColourings()
+      .then((found) => (allColourings = found ?? []))
+      .catch(() => (allColourings = []));
   });
 
   const audioLabel = (source: Source) =>
@@ -953,12 +966,38 @@
     </ul>
 
     <h4>What the waveform draws</h4>
+    <!--
+      The count is read from the table, not written here. This sentence said
+      "twelve exist" long after nineteen did — the kind of reason that is true
+      when it is written and quietly false a month later.
+    -->
     <p class="hint">
-      §25's twenty semantic layers. Twelve exist; the rest are named rather than
+      §25's semantic layers — {allLayers.filter((layer) => layer.drawn !== "nowhere").length}
+      of {allLayers.length} exist; the rest are named rather than
       offered empty, because a box that ticks and changes nothing teaches you
       the wrong thing about the ones that work. Amplitude and spectral balance
       are the waveform itself and cannot be turned off.
     </p>
+    <!--
+      §110: how the spectral balance is coloured. Not a layer — it cannot be
+      turned off — but a way of drawing one, so it sits with them.
+    -->
+    <fieldset class="colouring" data-picker="waveform-colouring">
+      <legend>How the spectrum is coloured</legend>
+      {#each allColourings as colouring (colouring.slug)}
+        <label>
+          <input
+            type="radio"
+            name="waveform-colouring"
+            value={colouring.slug}
+            checked={remembers.colouring === colouring.slug}
+            onchange={() => void chooseColouring(colouring.slug)}
+          />
+          <span class="pick-name">{colouring.title}</span>
+          <span class="pick-about">{colouring.about}</span>
+        </label>
+      {/each}
+    </fieldset>
     <ul class="picker" data-picker="waveform-layers">
       {#each allLayers as layer (layer.name)}
         <li data-layer-row={layer.name} class:unavailable={!layer.choosable}>
@@ -2136,6 +2175,29 @@
 
   .picker {
     gap: 0.35rem;
+  }
+
+  /* §110's two colourings: a choice of one, drawn like the pickers beside it. */
+  .colouring {
+    margin: 0.6rem 0 0;
+    padding: 0;
+    border: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .colouring legend {
+    padding: 0;
+    font-size: 0.85em;
+    color: var(--muted);
+  }
+
+  .colouring label {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.4rem;
   }
 
   /*

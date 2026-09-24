@@ -1222,6 +1222,39 @@ impl AppState {
         }
     }
 
+    /// The file §110's colouring choice lives in.
+    fn waveform_colouring_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("colouring.json"))
+    }
+
+    /// How the DJ has chosen to colour the spectral balance.
+    ///
+    /// §110's light when nothing was chosen or the file says something this
+    /// build does not draw — the owner asked for it, and a preferences file
+    /// from a later build naming a colouring this one lacks should still get
+    /// a colour rather than an error.
+    #[must_use]
+    pub fn waveform_colouring(&self) -> dj_render::Colouring {
+        self.waveform_colouring_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str::<String>(&text).ok())
+            .and_then(|slug| dj_render::Colouring::from_slug(&slug))
+            .unwrap_or_default()
+    }
+
+    /// Remember how the spectral balance is coloured.
+    pub fn set_waveform_colouring(&self, colouring: dj_render::Colouring) {
+        let Some(path) = self.waveform_colouring_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string(colouring.slug()) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "your waveform colouring will not survive a restart");
+        }
+    }
+
     /// The file the DJ's favourite pad pages live in.
     fn pad_pages_path(&self) -> Option<std::path::PathBuf> {
         Some(self.config_dir.lock().ok()?.clone()?.join("pad-pages.json"))

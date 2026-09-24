@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { waveformAsks } from "./waveformAsks";
+  import { COLOUR_RECHECK_MS, waveformAsks } from "./waveformAsks";
   /**
    * A scrolling waveform lane.
    *
@@ -291,6 +291,9 @@
 
   /** What this component last asked Rust about. See `./waveformAsks`. */
   let asked = "";
+  /** §110: bumped while the colour is pending, so the key moves and the lane asks again. */
+  let recheck = $state(0);
+  let recheckQueued = false;
 
   $effect(() => {
     // Touch both so this re-runs whenever the deck's content changes: a new
@@ -312,7 +315,7 @@
     // `waveform_info` calls for ten frames of ordinary playback, measured.
     //
     // The effect still runs; the *call* does not. See `./waveformAsks`.
-    const key = waveformAsks(deck);
+    const key = `${waveformAsks(deck)}/${recheck}`;
     if (key === asked) return;
     asked = key;
     void waveformInfo(deck.number)
@@ -325,6 +328,13 @@
         mixOut = info.mix_out ?? null;
         mixIn = info.mix_in ?? null;
         savedLoops = info.saved_loops ?? [];
+        if (info.colour_pending && !recheckQueued) {
+          recheckQueued = true;
+          setTimeout(() => {
+            recheckQueued = false;
+            recheck += 1;
+          }, COLOUR_RECHECK_MS);
+        }
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -376,6 +386,7 @@
           theme.resolved,
           epoch,
           gridSlug(remembers.layers),
+          remembers.colouring,
         ),
       };
     }).filter((t) => t.startFrame + tileSpanFrames > 0 && t.startFrame < totalFrames);

@@ -16,7 +16,22 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
-Nothing yet.
+**The spectrum as light** — §110. The waveform is coloured the way the owner
+asked: *lowest frequencies red, highest violet, all frequencies white.*
+
+- Eight bands from sub to air, each its own hue in the spectrum's order, added
+  in linear light with weights solved so a full spectrum is exactly white. On a
+  light theme the same hues are ink, and a full spectrum is grey.
+- Measured off the load path, so loading a record mid-mix is as fast as it was;
+  the colour lands a moment later, and a late answer for a record that has
+  since been replaced is dropped.
+- The EQ-matched three bands are one choice away in Settings.
+
+**The watershed leaves the main bar** — §112. It stays a world: choosing
+*Watershed Living* opens it, and an × on its own band closes it.
+
+**The layer picker's count comes from the table.** It said *twelve exist*
+long after twenty did.
 
 ---
 

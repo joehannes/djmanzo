@@ -70,3 +70,14 @@ export function waveformAsks(deck: DeckState): string {
     deck.marks,
   ].join("/");
 }
+
+/**
+ * §110: how long a lane waits before asking again while the colour is pending.
+ *
+ * The spectrum is measured off the load path and lands most of a second later,
+ * and nothing in {@link waveformAsks}'s key moves when it does — a record whose
+ * analysis came from the cache has its tempo and key at load, so without a
+ * second ask it would stay in three bands until the next record. Two or three
+ * asks a load, and none once the colour is there.
+ */
+export const COLOUR_RECHECK_MS = 400;

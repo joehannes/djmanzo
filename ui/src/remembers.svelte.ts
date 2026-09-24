@@ -25,6 +25,8 @@ import {
   favouritePadPages,
   keptControls,
   setChosenLayers,
+  setWaveformColouring,
+  waveformColouring,
   setFavouritePadPages,
   setKeptControls,
 } from "./api";
@@ -51,6 +53,12 @@ export const remembers = $state({
    * stray click would be a worse surface than one with no picker at all.
    */
   layers: [] as string[],
+  /**
+   * §110: how the spectral balance is coloured — `light` (the spectrum as
+   * light, red to violet, white when everything is there) or `bands` (the
+   * three EQ bands). Travels in the tile URL, like the grid layers.
+   */
+  colouring: "light",
   /** True once Rust has answered, so a picker can tell empty from not-yet. */
   loaded: false,
 });
@@ -71,6 +79,10 @@ export async function loadRemembers(): Promise<void> {
     remembers.pages = pages;
     remembers.controls = controls;
     remembers.layers = layers;
+    // Its own guard: an answer this build does not recognise keeps the
+    // default rather than becoming a tile URL Rust refuses.
+    const colouring = await waveformColouring().catch(() => null);
+    if (colouring === "light" || colouring === "bands") remembers.colouring = colouring;
   } catch {
     // Nothing starred and nothing kept — which is what djmanzo does when a DJ
     // has never set either, so a preferences file that cannot be read costs
@@ -79,6 +91,19 @@ export async function loadRemembers(): Promise<void> {
     // Set even on failure. A picker that waited forever for an answer that is
     // not coming would show a spinner where the checkboxes are.
     remembers.loaded = true;
+  }
+}
+
+/** Choose how the spectral balance is coloured, and keep what Rust kept. */
+export async function chooseColouring(colouring: string): Promise<void> {
+  const before = remembers.colouring;
+  // Optimistic, like the layers: the lane redraws now rather than after a
+  // round trip, and a refusal puts it back.
+  remembers.colouring = colouring;
+  try {
+    remembers.colouring = await setWaveformColouring(colouring);
+  } catch {
+    remembers.colouring = before;
   }
 }
 

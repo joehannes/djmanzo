@@ -803,6 +803,8 @@ pub fn put_on_deck(
         decoded.buffer.sample_rate(),
     );
     state.waveforms().set_summary(deck_id, summary);
+    // What §110's spectrum will be measured against, once the buffer is shared.
+    let measured = state.waveforms().summary(deck);
 
     // Drop the previous track's numbers *before* the new audio starts playing,
     // so the header never shows one track's BPM against another's waveform.
@@ -839,6 +841,26 @@ pub fn put_on_deck(
     remember_track(state, &decoded, sample_rate);
 
     let buffer = Arc::new(decoded.buffer);
+    // §110's spectrum, off the load path. It costs more than the rest of the
+    // summary put together — most of a second for five minutes of audio — and
+    // a DJ loading the next record mid-mix should not wait for a colour. The
+    // waveform is drawn at once in the three bands and takes its light when
+    // this lands; if another record has been loaded by then, the store drops
+    // the answer instead of painting it over the wrong one.
+    if let Some(measured) = measured {
+        let store = Arc::clone(state.waveforms());
+        let audio = Arc::clone(&buffer);
+        let spawned = std::thread::Builder::new()
+            .name("spectrum".into())
+            .spawn(move || {
+                let mut coloured = (*measured).clone();
+                coloured.measure_spectrum(audio.as_interleaved());
+                store.set_spectrum(deck_id, &measured, coloured);
+            });
+        if let Err(error) = spawned {
+            tracing::warn!(%error, "no thread for the spectrum; this record stays in three bands");
+        }
+    }
     // One allocation, two owners: the engine plays it, the analyser reads it.
     // Cloning the samples instead would double a hundred megabytes for no reason.
     let source: Arc<dyn dj_decode::TrackSource> = buffer.clone();
@@ -1672,6 +1694,13 @@ pub struct WaveformInfo {
     /// record with no grid to count phrases against. The overview draws
     /// nothing for all three, which is the honest answer to each.
     pub trajectory: dj_analysis::energy::Trajectory,
+    /// Whether §110's spectrum is still being measured for this record.
+    ///
+    /// The waveform is drawn in the three bands until it lands, and the lane
+    /// asks again while this is true: nothing else the lane watches changes
+    /// when the colour arrives, so without it a record whose analysis came
+    /// from the cache would stay in three bands until the next load.
+    pub colour_pending: bool,
 }
 
 /// One of §25's `saved-loops`, as the waveform draws it.
@@ -1715,6 +1744,7 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         ready: state.waveforms().has_summary(deck),
         total_frames: state.waveforms().total_frames(deck).unwrap_or(0) as u64,
         epoch: state.waveforms().epoch(deck),
+        colour_pending: state.waveforms().colour_pending(deck),
         mix_out: mix_out_of(&state, deck),
         mix_in: mix_in_of(&state, deck),
         saved_loops: saved_loops_of(&state, deck),
@@ -12119,6 +12149,55 @@ pub fn set_chosen_layers(state: State<'_, AppState>, layers: Vec<String>) -> Vec
         .collect();
     state.set_waveform_layers(&chosen);
     chosen
+}
+
+/// One way of colouring the waveform's spectral balance, as the picker offers
+/// it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ColouringDto {
+    /// The word in the tile URL and the settings file.
+    pub slug: String,
+    pub title: String,
+    pub about: String,
+}
+
+/// Both ways of colouring the spectral balance, in the order a picker offers
+/// them. From `dj_render::Colouring`, so a picker cannot offer one the
+/// renderer does not draw.
+#[tauri::command]
+#[must_use]
+pub fn waveform_colourings() -> Vec<ColouringDto> {
+    dj_render::Colouring::ALL
+        .into_iter()
+        .map(|colouring| ColouringDto {
+            slug: colouring.slug().to_owned(),
+            title: colouring.title().to_owned(),
+            about: colouring.about().to_owned(),
+        })
+        .collect()
+}
+
+/// How the DJ has chosen to colour the spectral balance. §110's light unless
+/// they chose otherwise.
+#[tauri::command]
+#[must_use]
+pub fn waveform_colouring(state: State<'_, AppState>) -> String {
+    state.waveform_colouring().slug().to_owned()
+}
+
+/// Choose how the spectral balance is coloured, and keep it.
+///
+/// # Errors
+/// When the word is not a colouring djmanzo draws.
+#[tauri::command]
+pub fn set_waveform_colouring(
+    state: State<'_, AppState>,
+    colouring: String,
+) -> Result<String, String> {
+    let chosen = dj_render::Colouring::from_slug(&colouring)
+        .ok_or_else(|| format!("djmanzo does not colour the waveform {colouring:?}"))?;
+    state.set_waveform_colouring(chosen);
+    Ok(chosen.slug().to_owned())
 }
 
 /// One of §16's knowledge packs, as the picker offers it.

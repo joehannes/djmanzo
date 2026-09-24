@@ -1103,6 +1103,12 @@ export interface WaveformInfo {
   ready: boolean;
   total_frames: number;
   /**
+   * §110: the spectrum is still being measured, off the load path. The lane
+   * draws the three bands meanwhile and asks again until this is false —
+   * nothing else it watches moves when the colour lands.
+   */
+  colour_pending?: boolean;
+  /**
    * Generation of this deck's tiles.
    *
    * Goes into every tile URL, and it has to: tiles are served immutable for a
@@ -1244,7 +1250,8 @@ export const waveformInfo = (deck: number) =>
  * URL, hard and for a year. Two themes sharing a URL would mean switching kept
  * serving whichever palette was rendered first. §25's three grid layers are
  * there for exactly the same reason: a DJ turning the beat lines off would
- * otherwise keep being served the tiles already drawn with them.
+ * otherwise keep being served the tiles already drawn with them. §110's
+ * colouring — light, or the three EQ bands — is there for the same reason.
  */
 export function tileUrl(
   deck: number,
@@ -1255,10 +1262,11 @@ export function tileUrl(
   theme: ResolvedTheme,
   epoch: number,
   grid: string,
+  colouring: string,
 ): string {
   const zoomMilli = Math.round(framesPerPixel * 1000);
   const start = Math.round(startFrame);
-  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}/${theme}/${epoch}/${grid}`;
+  const path = `tile/${deck}/${width}/${height}/${start}/${zoomMilli}/${theme}/${epoch}/${grid}/${colouring}`;
   // Tauri rewrites custom schemes differently per platform: Linux/WebKitGTK
   // keeps `scheme://`, while Windows needs the `http://scheme.localhost` form.
   // macOS accepts the former.
@@ -4262,7 +4270,7 @@ export interface WaveformLayer {
    * Whether a DJ may turn it off.
    *
    * False for the two that *are* the waveform — a picker offering to remove
-   * them offers an empty strip — and for the eight nobody has built. Both are
+   * them offers an empty strip — and for the ones nobody has built. Both are
    * still on the list, with a box that is disabled and says which, on the same
    * principle as §20's title column.
    */
@@ -4283,6 +4291,24 @@ export const chosenLayers = () => invoke<string[]>("chosen_layers");
  */
 export const setChosenLayers = (layers: string[]) =>
   invoke<string[]>("set_chosen_layers", { layers });
+
+/** One way of colouring the waveform's spectral balance. */
+export interface Colouring {
+  /** The word in the tile URL: `light` or `bands`. */
+  slug: string;
+  title: string;
+  about: string;
+}
+
+/** Both colourings, from `dj_render::Colouring`, in the order to offer them. */
+export const waveformColourings = () => invoke<Colouring[]>("waveform_colourings");
+
+/** How the DJ colours the spectral balance. §110's `light` unless they chose. */
+export const waveformColouring = () => invoke<string>("waveform_colouring");
+
+/** Choose how the spectral balance is coloured, and take back what was kept. */
+export const setWaveformColouring = (colouring: string) =>
+  invoke<string>("set_waveform_colouring", { colouring });
 
 /**
  * The three grid layers, as the tile URL spells them.

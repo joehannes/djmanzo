@@ -349,6 +349,10 @@ export const ANSWERS: Record<string, unknown> = {
     ready: true,
     total_frames: 12_000_000,
     epoch: 1,
+    // §110: the spectrum has landed. A test that wants it still pending
+    // answers `waveform_info` with this true and `waveform_info_then` with
+    // what comes after.
+    colour_pending: false,
     mix_out: { opens_frame: 10_800_000, closes_frame: 11_600_000, on_phrase: true },
     // And the other end: where a mix into this record could begin. Opening on
     // its first phrase and closing before the drop the trajectory below
@@ -878,6 +882,23 @@ export const ANSWERS: Record<string, unknown> = {
    *  the healthy number: the browser runs at whatever frame rate the harness
    *  gives it, and a test about the *list* must not depend on that. */
   room_poll_ms: 2000,
+  // §110, from `dj_render::Colouring`: the two ways the spectral balance is
+  // coloured, in the order the picker offers them.
+  waveform_colourings: [
+    {
+      slug: "light",
+      title: "The spectrum as light",
+      about:
+        "Eight bands from sub to air, drawn red to violet and added like light: bass alone is red, hats alone are violet, everything at once is white.",
+    },
+    {
+      slug: "bands",
+      title: "Three bands, like the EQ",
+      about:
+        "Low, mid and high at the mixer's own crossovers, so what you see is what the EQ knobs act on.",
+    },
+  ],
+  waveform_colouring: "light",
   /** Nothing chosen: djmanzo is running the way it shipped, which is the state
    *  the axis exists to end and the one a fresh install is actually in. */
   standing: { level: "", departures: [], locked: [] },
@@ -1717,6 +1738,25 @@ export async function openShell(
                 voiced: 0.8,
               },
             );
+          }
+          // §110: which colouring was chosen, echoed the way Rust echoes it.
+          if (cmd === "set_waveform_colouring") {
+            const asked = String(args.colouring);
+            if (asked !== "light" && asked !== "bands") {
+              return Promise.reject(new Error(`djmanzo does not colour the waveform "${asked}"`));
+            }
+            ((win.__coloured ??= []) as string[]).push(asked);
+            return Promise.resolve(asked);
+          }
+          // §110: the colour still being measured, then landing, the way the
+          // spectrum arrives off the load path. Timed rather than counted:
+          // every lane and every overview asks at load, and "only the first
+          // ask is pending" would hand the rest the landed answer without
+          // their ever having to ask again — which is the thing under test.
+          if (cmd === "waveform_info" && answers.waveform_info_then !== undefined) {
+            const first = (win.__firstWaveformAsk ??= Date.now()) as number;
+            const landed = Date.now() - first >= 600;
+            return Promise.resolve(landed ? answers.waveform_info_then : answers.waveform_info);
           }
           if (cmd === "keep_mix") {
             win.__keptAt = args.at;

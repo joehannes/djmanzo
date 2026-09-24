@@ -25,7 +25,7 @@
   } from "./api";
   import { remembers, showing } from "./remembers.svelte";
   import { STEM_KEYS, STEM_LABELS } from "./stems";
-  import { waveformAsks } from "./waveformAsks";
+  import { COLOUR_RECHECK_MS, waveformAsks } from "./waveformAsks";
   import { theme } from "./theme.svelte";
 
   let {
@@ -127,6 +127,9 @@
    * effect depend on its own write.
    */
   let asked = "";
+  /** §110: bumped while the colour is pending, so the key moves and the lane asks again. */
+  let recheck = $state(0);
+  let recheckQueued = false;
 
   $effect(() => {
     // **Guarded, not merely dependent.** These reads look fine-grained and are
@@ -139,7 +142,7 @@
     //
     // The effect still runs; the *call* does not. See `./waveformAsks` for
     // what counts as something new.
-    const key = waveformAsks(deck);
+    const key = `${waveformAsks(deck)}/${recheck}`;
     if (key === asked) return;
     asked = key;
     void waveformInfo(deck.number)
@@ -150,6 +153,13 @@
         mixOut = info.mix_out ?? null;
         mixIn = info.mix_in ?? null;
         trajectory = info.trajectory ?? null;
+        if (info.colour_pending && !recheckQueued) {
+          recheckQueued = true;
+          setTimeout(() => {
+            recheckQueued = false;
+            recheck += 1;
+          }, COLOUR_RECHECK_MS);
+        }
       })
       // `ready` stays false, which is the "no tiles yet" state this component
       // already draws and already explains. Deliberately quiet: this re-runs
@@ -178,6 +188,7 @@
       theme.resolved,
       epoch,
       gridSlug(remembers.layers),
+      remembers.colouring,
     );
   });
 

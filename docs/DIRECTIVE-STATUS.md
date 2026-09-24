@@ -135,7 +135,7 @@ rather than taken.
 | 107 | Karaoke, researched and improved | ⬜ | Asked 2026-09-24. Not started when it was added |
 | 108 | Social networks | ⬜ | Asked 2026-09-24. Not started when it was added |
 | 109 | Activity mode | ⬜ | Asked 2026-09-24. Not started when it was added |
-| 110 | Spectral colour on the waveform | ⬜ | Asked 2026-09-24. Not started when it was added |
+| 110 | Spectral colour on the waveform | ✅ | **The spectrum as light, and the default.** Eight bands from sub to air (`dj_render::SPECTRUM_EDGES_HZ`, log-spaced so equal energy per octave fills every band), each drawn in its own hue in the spectrum's order — red, orange, yellow, yellow-green, green, cyan, blue, violet — and **added in linear light** with per-band weights solved so that everything at once is exactly white. A test holds each end: the lowest band alone is red, the highest violet, every band a distinct hue further along than the one below, and a full spectrum white; on a light theme the same hues are drawn as ink, so a full spectrum is grey rather than white on white. **Three things the first versions got wrong and a test now catches:** bands mapped to wavelengths through the CIE functions came out as two identical reds, because nothing redder than a screen's own red primary can be shown; bands taken as differences of neighbouring low-passes leaked two thirds of a 30 Hz sine into the band above, so sub-bass drew orange; and bass read raw per 5 ms bucket flickered with its phase, so a steady bass line would have been stripes. **Off the load path:** the spectrum costs about 0.7 s per five minutes of audio, so it is measured on its own thread after the record is on the deck — the load stays at 90 ms — and lands under a new epoch; the lane and overview ask again while `colour_pending` is true, and a spectrum for a record that has since been replaced is dropped rather than painted over the new one (mutation-tested). The EQ-matched three bands stay one choice away in Settings, remembered across restarts. What it does not do: recolour for what the DJ does to the sound — an EQ cut does not change the waveform's colour, because the colour is the record's, not the output's |
 | 111 | Legal music sources for karaoke stems | ⬜ | Asked 2026-09-24. Not started when it was added |
 | 112 | Watershed, improved or hidden | ✅ | **Hidden for now, which is the branch the owner named.** Driven in the running application first: open, it is a band of about 240 px above the decks that restates what the waveforms and the mixer already say — two streams merging for the crossfader, a lane per deck, *keys clash* in words — and on a 1280×800 screen it pushed a deck's pads off the bottom. Making it *much much better* is a redesign in competition with nine other asks, so it came off the main bar and stayed what §55 says it is: a **world**, opened by choosing *Watershed Living* in the theme picker and closed by an × on its own band, where the DJ who opened it is looking. Nothing is deleted, which is §55's *do not delete the existing watershed concept*. Both halves tested in the browser — no switch on the bar, and the band's own close control closes it (mutation-tested: a close that does nothing fails). What would earn it the bar back is information it alone carries; §110's spectral colour, drawn as the colour of the water, is the candidate |
 | 113 | More themes, functional colour | ⬜ | Asked 2026-09-24. Not started when it was added |
@@ -162,7 +162,7 @@ rather than taken.
 
 ## The count
 
-Of the 115 sections: **63 done, 25 part, 8 open, 19 standing rules.**
+Of the 115 sections: **64 done, 25 part, 7 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -181,10 +181,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**63 of 96 deliverable sections are complete and 25 more are partly there.** Of the original 105, nothing is untouched: every deliverable section has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it. The 8 open rows are all among those asked for since.
+**64 of 96 deliverable sections are complete and 25 more are partly there.** Of the original 105, nothing is untouched: every deliverable section has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it. The 8 open rows are all among those asked for since.
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 63 whole plus 25 halves over 96 is 79%, and the phase view is stricter
+way: 64 whole plus 25 halves over 96 is 80%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

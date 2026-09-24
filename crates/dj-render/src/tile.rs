@@ -24,7 +24,7 @@
 //! tile generation is a bottleneck -- it is not currently close -- a `wgpu`
 //! implementation drops in behind the same signature.
 
-use crate::summary::{Bucket, WaveformSummary};
+use crate::summary::{Bucket, SPECTRUM_BANDS, WaveformSummary};
 use dj_core::{Beatgrid, Phrase, SampleRate};
 use serde::{Deserialize, Serialize};
 
@@ -91,6 +91,212 @@ pub struct Palette {
     /// drawn even when the beat and bar lines are too dense to show: at
     /// overview zoom the phrase markers *are* the structure.
     pub phrase: [u8; 4],
+    /// How the spectral-balance layer is coloured.
+    pub colouring: Colouring,
+    /// How bright §110's light is drawn, linear, 0..1.
+    ///
+    /// Full on a dark ground. On a light one, white is the one colour a
+    /// full-spectrum moment must not be — it would vanish into the page — so
+    /// the same hues are drawn as ink: darker, the balance kept, a full
+    /// spectrum a neutral grey rather than white.
+    pub light_level: f32,
+}
+
+/// How the spectral-balance layer is coloured.
+///
+/// Both answer the same question — *which part of the spectrum is this moment*
+/// — and they suit different jobs, so the DJ chooses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Colouring {
+    /// Three bands at the mixer's isolator crossovers, averaged. What a DJ
+    /// sees matches exactly what the LOW, MID and HIGH knobs act on.
+    Bands,
+    /// §110: the spectrum as light. Eight bands, each drawn at a wavelength —
+    /// the lowest red, the highest violet — and added the way light adds, so a
+    /// moment with everything in it is white and a bass line alone is red.
+    #[default]
+    Light,
+}
+
+impl Colouring {
+    /// Both, in the order a picker offers them.
+    pub const ALL: [Self; 2] = [Self::Light, Self::Bands];
+
+    /// The word that appears in a `wave://` URL.
+    #[must_use]
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::Bands => "bands",
+            Self::Light => "light",
+        }
+    }
+
+    /// Parse the URL segment. Strict: an unknown word is not a colouring.
+    #[must_use]
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|colouring| colouring.slug() == slug)
+    }
+
+    /// What a picker calls it.
+    #[must_use]
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::Bands => "Three bands, like the EQ",
+            Self::Light => "The spectrum as light",
+        }
+    }
+
+    /// What choosing it means, in a DJ's words.
+    #[must_use]
+    pub const fn about(self) -> &'static str {
+        match self {
+            Self::Bands => {
+                "Low, mid and high at the mixer's own crossovers, so what you see is what the EQ knobs act on."
+            }
+            Self::Light => {
+                "Eight bands from sub to air, drawn red to violet and added like light: bass alone is red, hats alone are violet, everything at once is white."
+            }
+        }
+    }
+}
+
+/// The hue each of §110's bands is drawn in, lowest band first, in degrees.
+///
+/// **Not wavelengths**, and the first version was. Mapping each band to a
+/// spectral wavelength through the CIE colour-matching functions is the
+/// literal reading of "like light", and on a screen it fails: sRGB's red
+/// primary sits at about 612 nm, so nothing redder can be shown, and the
+/// bands drawn at 660 and 610 nm both came out as the same pure red — the
+/// orange band simply vanished. A screen can only show its own gamut, so the
+/// bands are placed on its hue circle instead, in the spectrum's order: red,
+/// orange, yellow, yellow-green, green, cyan, blue, violet. What stays
+/// literal is the mixing — the colours add as light, in linear light — and
+/// the white.
+pub const BAND_HUES_DEG: [f32; SPECTRUM_BANDS] =
+    [0.0, 28.0, 52.0, 90.0, 130.0, 180.0, 225.0, 270.0];
+
+/// A fully saturated hue as linear sRGB.
+fn hue_linear(degrees: f32) -> [f32; 3] {
+    let h = degrees.rem_euclid(360.0) / 60.0;
+    let x = 1.0 - (h % 2.0 - 1.0).abs();
+    let encoded = match h as u32 {
+        0 => [1.0, x, 0.0],
+        1 => [x, 1.0, 0.0],
+        2 => [0.0, 1.0, x],
+        3 => [0.0, x, 1.0],
+        4 => [x, 0.0, 1.0],
+        _ => [1.0, 0.0, x],
+    };
+    encoded.map(|c: f32| {
+        if c <= 0.040_45 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    })
+}
+
+/// Each band's colour as linear sRGB, weighted so the eight sum to exactly
+/// (1, 1, 1).
+///
+/// The weighting is what makes *all frequencies white* a fact rather than an
+/// approximation. Eight saturated hues do not add to a neutral on their own,
+/// so each band is given a brightness — the smallest set of brightnesses, in
+/// the least-squares sense, whose sum is white. A band alone keeps its exact
+/// hue; only how much it contributes to the whole is adjusted. Every weight
+/// comes out positive for these hues, which a test holds.
+fn spectral_basis() -> &'static [[f32; 3]; SPECTRUM_BANDS] {
+    static BASIS: std::sync::OnceLock<[[f32; 3]; SPECTRUM_BANDS]> = std::sync::OnceLock::new();
+    BASIS.get_or_init(|| {
+        let hues = BAND_HUES_DEG.map(hue_linear);
+        let weights = white_weights(&hues);
+        std::array::from_fn(|band| hues[band].map(|channel| channel * weights[band]))
+    })
+}
+
+/// The least-norm weights `k` with `Σ k·colour = (1, 1, 1)`.
+///
+/// `k = Uᵀ (U Uᵀ)⁻¹ w`, with U the 3×8 matrix of colours: a 3×3 inverse,
+/// written out.
+fn white_weights(colours: &[[f32; 3]; SPECTRUM_BANDS]) -> [f32; SPECTRUM_BANDS] {
+    let mut gram = [[0.0f64; 3]; 3];
+    for colour in colours {
+        for a in 0..3 {
+            for b in 0..3 {
+                gram[a][b] += f64::from(colour[a]) * f64::from(colour[b]);
+            }
+        }
+    }
+    let [[a, b, c], [d, e, f], [g, h, i]] = gram;
+    let det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    let inverse = [
+        [
+            (e * i - f * h) / det,
+            (c * h - b * i) / det,
+            (b * f - c * e) / det,
+        ],
+        [
+            (f * g - d * i) / det,
+            (a * i - c * g) / det,
+            (c * d - a * f) / det,
+        ],
+        [
+            (d * h - e * g) / det,
+            (b * g - a * h) / det,
+            (a * e - b * d) / det,
+        ],
+    ];
+    let lambda: [f64; 3] = std::array::from_fn(|row| inverse[row].iter().sum());
+    colours.map(|colour| {
+        (0..3)
+            .map(|channel| f64::from(colour[channel]) * lambda[channel])
+            .sum::<f64>() as f32
+    })
+}
+
+/// Linear light to an sRGB byte.
+fn encode_srgb(linear: f32) -> u8 {
+    let v = linear.clamp(0.0, 1.0);
+    let encoded = if v <= 0.003_130_8 {
+        12.92 * v
+    } else {
+        1.055 * v.powf(1.0 / 2.4) - 0.055
+    };
+    (encoded * 255.0).round() as u8
+}
+
+/// §110: one moment's spectrum as a colour of light.
+///
+/// Each band adds its own colour in proportion to its energy — in linear
+/// light, the way light adds — and the result
+/// is scaled so its brightest channel is `level`. Brightness is therefore not
+/// loudness — the waveform's height already says that — and the colour is
+/// free to say only *which part of the spectrum*: a bass line red, a hat
+/// violet, a full mix white, and every balance between as the hue between.
+#[must_use]
+pub fn spectral_light(spectrum: &[u8; SPECTRUM_BANDS], level: f32) -> [u8; 4] {
+    let basis = spectral_basis();
+    let mut sum = [0.0f32; 3];
+    for (energy, colour) in spectrum.iter().zip(basis) {
+        let weight = f32::from(*energy) / 255.0;
+        for channel in 0..3 {
+            sum[channel] += weight * colour[channel];
+        }
+    }
+    let brightest = sum.iter().copied().fold(0.0f32, f32::max);
+    if brightest <= 1e-9 {
+        return [0, 0, 0, 0];
+    }
+    let scale = level / brightest;
+    [
+        encode_srgb(sum[0] * scale),
+        encode_srgb(sum[1] * scale),
+        encode_srgb(sum[2] * scale),
+        255,
+    ]
 }
 
 impl Default for Palette {
@@ -160,6 +366,8 @@ impl Palette {
             // reads as "even more emphasis" and gets lost among the downbeats
             // at a glance, which is the moment it is needed.
             phrase: [251, 191, 36, 210],
+            colouring: Colouring::Light,
+            light_level: 1.0,
         }
     }
 
@@ -182,11 +390,29 @@ impl Palette {
             beat: [0, 0, 0, 60],
             downbeat: [0, 0, 0, 130],
             phrase: [180, 83, 9, 220],
+            colouring: Colouring::Light,
+            // A full spectrum lands near mid-grey on white — about 4:1 — and a
+            // single band its own hue, darkened.
+            light_level: 0.2,
         }
     }
-    /// Blend the band colours by their energies.
+
+    /// The same palette, coloured another way.
+    #[must_use]
+    pub const fn coloured(self, colouring: Colouring) -> Self {
+        Self { colouring, ..self }
+    }
+    /// The colour one moment is drawn in.
+    ///
+    /// §110's light when it is chosen and the moment was measured in eight
+    /// bands; otherwise the three bands blended by their energies. A summary
+    /// with no spectrum in it — every byte zero — falls back rather than
+    /// drawing nothing.
     #[must_use]
     fn colour_for(&self, bucket: &Bucket) -> [u8; 4] {
+        if self.colouring == Colouring::Light && bucket.spectrum.iter().any(|&band| band > 0) {
+            return spectral_light(&bucket.spectrum, self.light_level);
+        }
         let total = bucket.low + bucket.mid + bucket.high;
         if total <= 1e-6 {
             return self.mid;
@@ -1244,6 +1470,211 @@ mod tests {
         assert_eq!(
             grid_columns(&drawn, &render_tile(&summary, &spec, &palette)),
             vec![0, 240, 480, 720, 960]
+        );
+    }
+}
+
+#[cfg(test)]
+mod light {
+    //! §110: *all frequencies = white, lowest frequencies red, highest
+    //! frequencies violet.*
+    use super::*;
+
+    fn alone(band: usize) -> [u8; SPECTRUM_BANDS] {
+        let mut spectrum = [0; SPECTRUM_BANDS];
+        spectrum[band] = 255;
+        spectrum
+    }
+
+    /// Hue in degrees of an sRGB colour, 0 for red.
+    fn hue(rgb: [u8; 4]) -> f32 {
+        let [r, g, b] = [rgb[0], rgb[1], rgb[2]].map(|c| f32::from(c) / 255.0);
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let delta = max - min;
+        if delta <= 1e-6 {
+            return 0.0;
+        }
+        let h = if max == r {
+            60.0 * ((g - b) / delta)
+        } else if max == g {
+            60.0 * ((b - r) / delta + 2.0)
+        } else {
+            60.0 * ((r - g) / delta + 4.0)
+        };
+        h.rem_euclid(360.0)
+    }
+
+    /// **The load-bearing one: every band at once is white.**
+    ///
+    /// The owner's own words for the whole scheme, and the one property that
+    /// needs the weighting: eight saturated hues added at equal strength are
+    /// not neutral until each band's contribution is solved for.
+    #[test]
+    fn all_frequencies_are_white() {
+        let white = spectral_light(&[255; SPECTRUM_BANDS], 1.0);
+        for channel in &white[..3] {
+            assert!(*channel >= 254, "a full spectrum drew {white:?}");
+        }
+    }
+
+    /// **The lowest band alone is red and the highest alone is violet.**
+    #[test]
+    fn the_lowest_band_is_red_and_the_highest_violet() {
+        let low = spectral_light(&alone(0), 1.0);
+        assert!(
+            low[0] == 255 && low[1] < 10 && low[2] < 10,
+            "the lowest band drew {low:?}"
+        );
+        let high = spectral_light(&alone(SPECTRUM_BANDS - 1), 1.0);
+        let h = hue(high);
+        assert!(
+            (255.0..=290.0).contains(&h),
+            "the highest band drew {high:?}, hue {h}"
+        );
+    }
+
+    /// **The bands run through the spectrum in its order, each its own hue.**
+    ///
+    /// The first version mapped bands to wavelengths and two of them came out
+    /// the same red, because a screen cannot show anything redder than its own
+    /// red primary. This is the test that version fails: every band a hue
+    /// further along than the one below it, and far enough to tell apart.
+    #[test]
+    fn the_bands_run_red_to_violet_each_a_different_hue() {
+        let hues: Vec<f32> = (0..SPECTRUM_BANDS)
+            .map(|band| hue(spectral_light(&alone(band), 1.0)))
+            .collect();
+        for pair in hues.windows(2) {
+            assert!(
+                pair[1] - pair[0] >= 15.0,
+                "bands too close or out of order: {hues:?}"
+            );
+        }
+    }
+
+    /// The weighting is a set of brightnesses, so every one has to be
+    /// positive: a negative one would be a band that *removes* light.
+    #[test]
+    fn every_band_adds_light() {
+        for colour in spectral_basis() {
+            assert!(colour.iter().all(|c| *c >= 0.0), "{colour:?}");
+            assert!(colour.iter().any(|c| *c > 0.0), "{colour:?}");
+        }
+    }
+
+    /// **A bass-heavy moment is warm and a hat-heavy one is cool.** The mixes
+    /// between, not only the ends: most of a record is somewhere in between.
+    #[test]
+    fn a_balance_draws_the_hue_between() {
+        let bass = spectral_light(&[255, 255, 180, 90, 60, 40, 30, 20], 1.0);
+        assert!(bass[0] > bass[2] + 100, "a bass-heavy moment drew {bass:?}");
+        let hats = spectral_light(&[40, 30, 20, 20, 30, 80, 200, 255], 1.0);
+        assert!(hats[2] > hats[0] + 100, "a hat-heavy moment drew {hats:?}");
+    }
+
+    /// **On a light ground a full spectrum is grey, not white.** White on a
+    /// white page is a waveform that is not there.
+    #[test]
+    fn on_a_light_ground_everything_at_once_is_grey() {
+        let palette = Palette::light();
+        let bucket = Bucket {
+            min: -0.5,
+            max: 0.5,
+            rms: 0.3,
+            spectrum: [255; SPECTRUM_BANDS],
+            ..Bucket::default()
+        };
+        let [r, g, b, _] = palette.colour_for(&bucket);
+        assert!(r == g && g == b, "not neutral: {r} {g} {b}");
+        assert!(r < 140, "too pale to read on white: {r}");
+    }
+
+    /// **The three bands are still there, unchanged, for a DJ who wants what
+    /// the EQ knobs act on**, and a summary with no spectrum in it falls back
+    /// to them rather than drawing nothing.
+    #[test]
+    fn bands_are_what_they_were_and_an_unmeasured_moment_falls_back() {
+        let bucket = Bucket {
+            min: -0.5,
+            max: 0.5,
+            rms: 0.3,
+            low: 1.0,
+            mid: 0.2,
+            high: 0.1,
+            spectrum: alone(SPECTRUM_BANDS - 1),
+        };
+        let bands = Palette::dark().coloured(Colouring::Bands);
+        let unmeasured = Bucket {
+            spectrum: [0; SPECTRUM_BANDS],
+            ..bucket
+        };
+        assert_eq!(bands.colour_for(&bucket), bands.colour_for(&unmeasured));
+        assert_eq!(
+            Palette::dark().colour_for(&unmeasured),
+            bands.colour_for(&unmeasured)
+        );
+        assert_ne!(
+            Palette::dark().colour_for(&bucket),
+            bands.colour_for(&bucket)
+        );
+    }
+
+    /// The URL word round-trips, and an unknown one is refused rather than
+    /// defaulted — the same strictness the theme word has.
+    #[test]
+    fn the_colouring_is_spelled_the_same_both_ways() {
+        for colouring in Colouring::ALL {
+            assert_eq!(Colouring::from_slug(colouring.slug()), Some(colouring));
+        }
+        assert_eq!(Colouring::from_slug("rainbow"), None);
+    }
+
+    /// **Drawn, not only computed: a sub-bass tone's tile is red and an air
+    /// tone's violet**, at the rows between the RMS body and the peak, where the
+    /// colour is not veiled.
+    #[test]
+    fn a_rendered_sub_tone_is_red_and_an_air_tone_violet() {
+        let tone = |hz: f32| {
+            let samples: Vec<f32> = (0..192_000)
+                .flat_map(|n| {
+                    let v = (2.0 * std::f32::consts::PI * hz * n as f32 / 48_000.0).sin() * 0.9;
+                    [v, v]
+                })
+                .collect();
+            WaveformSummary::analyse_with_spectrum(&samples, dj_core::SampleRate::DEFAULT)
+        };
+        // Zoomed out far enough that one column spans several cycles of the
+        // bass tone, so the column's peak is the tone's peak.
+        let spec = TileSpec {
+            width: 32,
+            height: 128,
+            start_frame: 0.0,
+            frames_per_pixel: 4_096.0,
+        };
+        // Amplitude 0.9, RMS about 0.64: row for 0.8 is colour, not veil.
+        let row = (64.0 - 0.8 * 63.0) as usize;
+        let pixel = |tile: &Tile| {
+            let at = (row * 32 + 16) * BYTES_PER_PIXEL;
+            [
+                tile.pixels[at],
+                tile.pixels[at + 1],
+                tile.pixels[at + 2],
+                tile.pixels[at + 3],
+            ]
+        };
+        // 30 Hz: sub, the lowest band. (50 Hz sits on the edge between sub
+        // and kick and is drawn orange-red, which is the mapping working.)
+        let sub = pixel(&render_tile(&tone(30.0), &spec, &Palette::dark()));
+        assert!(
+            sub[0] > 200 && sub[1] < 90 && sub[2] < 90,
+            "a 30 Hz tone drew {sub:?}"
+        );
+        let air = pixel(&render_tile(&tone(14_000.0), &spec, &Palette::dark()));
+        let h = hue(air);
+        assert!(
+            (240.0..=300.0).contains(&h),
+            "a 14 kHz tone drew {air:?}, hue {h}"
         );
     }
 }

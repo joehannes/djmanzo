@@ -11,7 +11,8 @@
 
 use dj_core::DeckId;
 use dj_render::{
-    GridLines, GridOverlay, Theme, TileSpec, WaveformSummary, encode_png, render_tile_with_grid,
+    Colouring, GridLines, GridOverlay, Theme, TileSpec, WaveformSummary, encode_png,
+    render_tile_with_grid,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -77,6 +78,9 @@ pub struct TileKey {
     /// being served the tiles already drawn with them and nothing on screen
     /// would change.
     pub lines: GridLines,
+    /// How the spectral balance is coloured — §110's light, or the three EQ
+    /// bands. In the key for the same reason as the theme and the lines.
+    pub colouring: Colouring,
 }
 
 /// Bound on the tile cache.
@@ -99,6 +103,45 @@ impl WaveformStore {
         }
         // Tiles for the previous track on this deck are now wrong.
         self.invalidate(deck);
+    }
+
+    /// Put §110's spectrum into a deck's summary, if the deck still holds the
+    /// record it was measured from.
+    ///
+    /// The spectrum is measured on a background thread after the load, so by
+    /// the time it lands the DJ may have loaded something else. `measured` is
+    /// the summary it was measured against; if that is no longer the deck's,
+    /// the answer belongs to a record that has gone and is dropped rather
+    /// than drawn over the one that replaced it. Returns whether it landed.
+    pub fn set_spectrum(
+        &self,
+        deck: DeckId,
+        measured: &Arc<WaveformSummary>,
+        coloured: WaveformSummary,
+    ) -> bool {
+        let landed = match self.summaries.lock() {
+            Ok(mut summaries) => match summaries.get_mut(&deck.human_number()) {
+                Some(current) if Arc::ptr_eq(current, measured) => {
+                    *current = Arc::new(coloured);
+                    true
+                }
+                _ => false,
+            },
+            Err(_) => false,
+        };
+        // A new generation, so tiles drawn before the colour arrived are
+        // fetched again rather than served from the webview's own cache.
+        if landed {
+            self.invalidate(deck);
+        }
+        landed
+    }
+
+    /// Whether a deck's record is still waiting for its spectrum.
+    #[must_use]
+    pub fn colour_pending(&self, deck: u8) -> bool {
+        self.summary(deck)
+            .is_some_and(|summary| !summary.has_spectrum())
     }
 
     pub fn clear(&self, deck: DeckId) {
@@ -233,7 +276,8 @@ impl WaveformStore {
                 lines: key.lines,
                 ..grid
             });
-        let tile = render_tile_with_grid(&summary, &spec, &key.theme.palette(), overlay.as_ref());
+        let palette = key.theme.palette().coloured(key.colouring);
+        let tile = render_tile_with_grid(&summary, &spec, &palette, overlay.as_ref());
         let png = Arc::new(encode_png(&tile).ok()?);
 
         if let Ok(mut cache) = self.cache.lock() {
@@ -257,7 +301,7 @@ impl WaveformStore {
 /// Parse a `wave://` request path into a tile key.
 ///
 /// Shape:
-/// `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}/{theme}/{epoch}/{lines}`
+/// `/tile/{deck}/{width}/{height}/{start_frame}/{zoom_milli}/{theme}/{epoch}/{lines}/{colouring}`
 ///
 /// Deliberately strict. A malformed URL returns `None` and the handler answers
 /// 400 rather than guessing, because a silently wrong tile is far harder to
@@ -280,6 +324,7 @@ pub fn parse_tile_path(path: &str) -> Option<TileKey> {
         theme: Theme::from_slug(parts.next()?)?,
         epoch: parts.next()?.parse().ok()?,
         lines: GridLines::from_slug(parts.next()?)?,
+        colouring: Colouring::from_slug(parts.next()?)?,
     };
 
     // Nothing may follow, and the numbers must be drawable.
@@ -329,6 +374,7 @@ mod tests {
             theme: Theme::Dark,
             epoch: 0,
             lines: GridLines::all(),
+            colouring: Colouring::Light,
         }
     }
 
@@ -471,7 +517,7 @@ mod tests {
 
     #[test]
     fn a_well_formed_path_parses() {
-        let key = parse_tile_path("/tile/2/512/128/48000/256000/dark/0/bdp").unwrap();
+        let key = parse_tile_path("/tile/2/512/128/48000/256000/dark/0/bdp/light").unwrap();
         assert_eq!(key.deck, 2);
         assert_eq!(key.width, 512);
         assert_eq!(key.height, 128);
@@ -483,7 +529,7 @@ mod tests {
     #[test]
     fn the_theme_comes_from_the_path() {
         assert_eq!(
-            parse_tile_path("/tile/1/512/128/0/256000/light/0/bdp")
+            parse_tile_path("/tile/1/512/128/0/256000/light/0/bdp/light")
                 .unwrap()
                 .theme,
             Theme::Light
@@ -620,7 +666,7 @@ mod tests {
         // The strip extends before the track start while scrolled to the very
         // beginning, so those tiles are legitimately requested.
         assert_eq!(
-            parse_tile_path("/tile/1/512/128/-2048/256000/dark/0/bdp")
+            parse_tile_path("/tile/1/512/128/-2048/256000/dark/0/bdp/light")
                 .unwrap()
                 .start_frame,
             -2_048
@@ -633,19 +679,22 @@ mod tests {
             "",
             "/",
             "/nope/1/512/128/0/1000/dark/0",
-            "/tile/1/512/128/0/1000/0/bdp",            // no theme
-            "/tile/1/512/128/0/1000/dark/bdp",         // no epoch
-            "/tile/1/512/128/0/1000/dark/0",           // no grid
-            "/tile/1/512/128/0/1000/dark/0/bdp/extra", // too many
-            "/tile/1/512/128/0/1000/dark/0/bd",        // a two-letter grid
-            "/tile/1/512/128/0/1000/dark/0/bpd",       // out of order
-            "/tile/1/512/128/0/1000/dark/0/BDP",       // grids are lower-case
-            "/tile/x/512/128/0/1000/dark/0/bdp",       // non-numeric deck
-            "/tile/1/0/128/0/1000/dark/0/bdp",         // zero width
-            "/tile/1/512/0/0/1000/dark/0/bdp",         // zero height
-            "/tile/1/512/128/0/0/dark/0/bdp",          // zero zoom
-            "/tile/1/512/128/0/1000/sepia/0/bdp",      // not a theme
-            "/tile/1/512/128/0/1000/Dark/0/bdp",       // themes are lower-case
+            "/tile/1/512/128/0/1000/0/bdp/light",    // no theme
+            "/tile/1/512/128/0/1000/dark/bdp/light", // no epoch
+            "/tile/1/512/128/0/1000/dark/0/light",   // no grid
+            "/tile/1/512/128/0/1000/dark/0/bdp",     // no colouring
+            "/tile/1/512/128/0/1000/dark/0/bdp/light/extra", // too many
+            "/tile/1/512/128/0/1000/dark/0/bd/light", // a two-letter grid
+            "/tile/1/512/128/0/1000/dark/0/bpd/light", // out of order
+            "/tile/1/512/128/0/1000/dark/0/BDP/light", // grids are lower-case
+            "/tile/x/512/128/0/1000/dark/0/bdp/light", // non-numeric deck
+            "/tile/1/0/128/0/1000/dark/0/bdp/light", // zero width
+            "/tile/1/512/0/0/1000/dark/0/bdp/light", // zero height
+            "/tile/1/512/128/0/0/dark/0/bdp/light",  // zero zoom
+            "/tile/1/512/128/0/1000/sepia/0/bdp/light", // not a theme
+            "/tile/1/512/128/0/1000/Dark/0/bdp/light", // themes are lower-case
+            "/tile/1/512/128/0/1000/dark/0/bdp/rainbow", // not a colouring
+            "/tile/1/512/128/0/1000/dark/0/bdp/Light", // colourings are lower-case
         ] {
             assert!(
                 parse_tile_path(bad).is_none(),
@@ -658,8 +707,8 @@ mod tests {
     /// single request.
     #[test]
     fn absurd_tile_sizes_are_refused() {
-        assert!(parse_tile_path("/tile/1/999999/128/0/1000/dark/0/bdp").is_none());
-        assert!(parse_tile_path("/tile/1/512/999999/0/1000/dark/0/bdp").is_none());
+        assert!(parse_tile_path("/tile/1/999999/128/0/1000/dark/0/bdp/light").is_none());
+        assert!(parse_tile_path("/tile/1/512/999999/0/1000/dark/0/bdp/light").is_none());
     }
 
     #[test]
@@ -770,5 +819,75 @@ mod tests {
 
         store.clear(deck);
         assert!(store.grid(1).is_none(), "a grid outlived its track");
+    }
+
+    /// **§110's spectrum lands on the record it was measured from, and on no
+    /// other.**
+    ///
+    /// The load-bearing one for the background pass. The spectrum is measured
+    /// on its own thread after the load, and a DJ can load another record onto
+    /// the deck before it finishes. The late answer must be dropped rather
+    /// than painted over the record that replaced it — which would be the
+    /// first record's colours on the second record's waveform.
+    #[test]
+    fn a_spectrum_for_a_record_that_has_gone_is_dropped() {
+        let (store, deck) = store_with_track();
+        let first = store.summary(1).expect("the first record's summary");
+        assert!(
+            store.colour_pending(1),
+            "a fresh load already had its colour"
+        );
+
+        // Another record arrives before the first one's spectrum is done.
+        store.set_summary(
+            deck,
+            WaveformSummary::analyse(&samples(48_000), SampleRate::DEFAULT),
+        );
+        let second = store.summary(1).expect("the second record's summary");
+        let epoch = store.epoch(1);
+
+        let mut late = (*first).clone();
+        late.measure_spectrum(&samples(96_000));
+        assert!(
+            !store.set_spectrum(deck, &first, late),
+            "the first record's colour landed on the second"
+        );
+        assert!(Arc::ptr_eq(&store.summary(1).unwrap(), &second));
+        assert_eq!(
+            store.epoch(1),
+            epoch,
+            "a dropped answer still invalidated the tiles"
+        );
+        assert!(store.colour_pending(1));
+
+        // The second record's own spectrum does land, and moves the epoch so
+        // the webview fetches the coloured tiles.
+        let mut own = (*second).clone();
+        own.measure_spectrum(&samples(48_000));
+        assert!(store.set_spectrum(deck, &second, own));
+        assert!(!store.colour_pending(1));
+        assert_ne!(store.epoch(1), epoch);
+    }
+
+    /// The colouring is part of the key, so the same tile in the two
+    /// colourings is two different images and neither is served for the other.
+    #[test]
+    fn the_colouring_is_part_of_what_a_tile_is() {
+        let (store, deck) = store_with_track();
+        let measured = store.summary(1).unwrap();
+        let mut coloured = (*measured).clone();
+        coloured.measure_spectrum(&samples(96_000));
+        assert!(store.set_spectrum(deck, &measured, coloured));
+        let light = store.tile_png(TileKey {
+            colouring: Colouring::Light,
+            epoch: store.epoch(1),
+            ..key(1)
+        });
+        let bands = store.tile_png(TileKey {
+            colouring: Colouring::Bands,
+            epoch: store.epoch(1),
+            ..key(1)
+        });
+        assert_ne!(light.unwrap(), bands.unwrap());
     }
 }

@@ -15,6 +15,28 @@ use std::f32::consts::FRAC_1_SQRT_2;
 const LOW_HZ: f32 = 300.0;
 const HIGH_HZ: f32 = 4_000.0;
 
+/// How many bands §110's spectrum is read in.
+///
+/// Eight, because the owner's ask — *lowest frequencies red, highest violet,
+/// all of them white* — needs enough bands for the colours between: three
+/// bands can only ever be three hues and their mixtures, which is the
+/// EQ-matched colouring djmanzo already had.
+pub const SPECTRUM_BANDS: usize = 8;
+
+/// Where one of the eight bands ends and the next begins, in Hz.
+///
+/// Log-spaced from 20 Hz to 20 kHz, about one and a quarter octaves each, so a
+/// signal with the same energy in every octave — pink noise, which is roughly
+/// the shape of a finished mix — puts the same energy in every band and is
+/// drawn white. The eight read as a DJ would name them: sub, kick, bass, low
+/// mids, mids, presence, brilliance, air.
+pub const SPECTRUM_EDGES_HZ: [f32; SPECTRUM_BANDS - 1] =
+    [47.0, 112.0, 266.0, 632.0, 1_500.0, 3_560.0, 8_450.0];
+
+/// How long each band's level is followed over, in seconds. See
+/// `analyse_with_base` for why the level is followed at all.
+const SPECTRUM_FOLLOW_SECONDS: f32 = 0.025;
+
 /// One drawable column of audio.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub struct Bucket {
@@ -28,6 +50,14 @@ pub struct Bucket {
     pub low: f32,
     pub mid: f32,
     pub high: f32,
+    /// §110's eight bands, lowest first, normalised so the largest is 255.
+    ///
+    /// A byte each rather than a float: it is a colour's worth of precision,
+    /// and a five-minute record carries over a hundred thousand buckets across
+    /// its zoom levels. All zeros means "not measured" — a summary built before
+    /// this existed — and is drawn with the three bands instead.
+    #[serde(default)]
+    pub spectrum: [u8; SPECTRUM_BANDS],
 }
 
 impl Bucket {
@@ -55,6 +85,7 @@ impl Bucket {
             low: (self.low + other.low) * 0.5,
             mid: (self.mid + other.mid) * 0.5,
             high: (self.high + other.high) * 0.5,
+            spectrum: merge_spectrum(&self.spectrum, &other.spectrum),
         }
     }
 }
@@ -102,7 +133,6 @@ impl WaveformSummary {
         let sr = sample_rate.as_f64() as f32;
         let mut low_pass = Biquad::low_pass(sr, LOW_HZ, FRAC_1_SQRT_2);
         let mut high_pass = Biquad::high_pass(sr, HIGH_HZ, FRAC_1_SQRT_2);
-
         let bucket_count = total_frames.div_ceil(base);
         let mut finest = Vec::with_capacity(bucket_count);
 
@@ -151,6 +181,116 @@ impl WaveformSummary {
             sample_rate,
             total_frames,
         }
+    }
+
+    /// A summary with §110's spectrum measured in: [`Self::analyse`] and then
+    /// [`Self::measure_spectrum`], for callers that can afford both at once.
+    #[must_use]
+    pub fn analyse_with_spectrum(samples: &[f32], sample_rate: SampleRate) -> Self {
+        let mut summary = Self::analyse(samples, sample_rate);
+        summary.measure_spectrum(samples);
+        summary
+    }
+
+    /// Measure §110's eight bands into a summary built without them.
+    ///
+    /// **Separate from [`Self::analyse`] on purpose.** It costs more than the
+    /// whole of the rest of the summary — about half a second more for five
+    /// minutes of audio — and the summary is built on the path that puts a
+    /// record on a deck, which a DJ may be doing mid-mix. So loading waits for
+    /// the outline and the three bands, and the light arrives a moment later
+    /// from a background pass: the waveform appears at once and takes its
+    /// colour when this finishes. `samples` must be the same interleaved
+    /// stereo the summary was built from.
+    pub fn measure_spectrum(&mut self, samples: &[f32]) {
+        let sr = self.sample_rate.as_f64() as f32;
+        let base = self.base_frames_per_bucket;
+        let total_frames = (samples.len() / 2).min(self.total_frames);
+
+        // §110's spectrum: each band its own filter — a high-pass at its lower
+        // edge and a low-pass at its upper one, each applied twice, so the
+        // skirts fall at 24 dB an octave. **The first version took the
+        // difference of neighbouring low-passes instead**, which sums back to
+        // the signal exactly and separates badly: two second-order low-passes
+        // a little over an octave apart shift a tone's phase differently, and
+        // their difference kept two thirds of a 30 Hz sine in the band above —
+        // a sub-bass line drew orange. Nothing here needs the bands to add
+        // back up; they are only measured. An edge past a low sample rate's
+        // Nyquist is pulled under it rather than left to make a filter that
+        // rings.
+        let edge = |i: usize| SPECTRUM_EDGES_HZ[i].min(sr * 0.45);
+        let mut bands: [Vec<Biquad>; SPECTRUM_BANDS] = std::array::from_fn(|band| {
+            let mut stages = Vec::with_capacity(4);
+            if band > 0 {
+                stages.push(Biquad::high_pass(sr, edge(band - 1), FRAC_1_SQRT_2));
+                stages.push(Biquad::high_pass(sr, edge(band - 1), FRAC_1_SQRT_2));
+            }
+            if band < SPECTRUM_BANDS - 1 {
+                stages.push(Biquad::low_pass(sr, edge(band), FRAC_1_SQRT_2));
+                stages.push(Biquad::low_pass(sr, edge(band), FRAC_1_SQRT_2));
+            }
+            stages
+        });
+        // Each band's level is followed, not sampled. A bucket is five
+        // milliseconds and a bass wave is up to fifty, so how much of one lands
+        // in a bucket depends on its phase: read raw, a steady bass line came
+        // out a third as strong as it is in some buckets and full in the next,
+        // and would have been drawn as stripes. A follower with a time constant
+        // longer than a bass cycle and far shorter than a note holds the level
+        // across the cycle and still lets the colour change on the beat.
+        let follow = 1.0 - (-1.0 / (SPECTRUM_FOLLOW_SECONDS * sr)).exp();
+        let mut levels = [0.0f32; SPECTRUM_BANDS];
+
+        let mut finest = Vec::with_capacity(total_frames.div_ceil(base));
+        let mut sums = [0.0f32; SPECTRUM_BANDS];
+        let mut count = 0usize;
+        for frame in 0..total_frames {
+            let mono = (samples[frame * 2] + samples[frame * 2 + 1]) * 0.5;
+            for ((stages, level), sum) in bands.iter_mut().zip(&mut levels).zip(&mut sums) {
+                let filtered = stages.iter_mut().fold(mono, |x, stage| stage.process(x));
+                *level += (filtered.abs() - *level) * follow;
+                *sum += *level;
+            }
+            count += 1;
+            if count >= base {
+                finest.push(balance(&sums));
+                sums = [0.0; SPECTRUM_BANDS];
+                count = 0;
+            }
+        }
+        if count > 0 {
+            finest.push(balance(&sums));
+        }
+
+        let Some(first) = self.levels.first_mut() else {
+            return;
+        };
+        for (bucket, spectrum) in first.iter_mut().zip(finest) {
+            bucket.spectrum = spectrum;
+        }
+        // The coarser levels are pairs of the level below, exactly as they
+        // were built, so their spectra are pairs too.
+        for level in 1..self.levels.len() {
+            let (finer, coarser) = self.levels.split_at_mut(level);
+            let finer = &finer[level - 1];
+            for (index, bucket) in coarser[0].iter_mut().enumerate() {
+                bucket.spectrum = match (finer.get(index * 2), finer.get(index * 2 + 1)) {
+                    (Some(a), Some(b)) => merge_spectrum(&a.spectrum, &b.spectrum),
+                    (Some(a), None) => a.spectrum,
+                    _ => bucket.spectrum,
+                };
+            }
+        }
+    }
+
+    /// Whether [`Self::measure_spectrum`] has run on this summary.
+    #[must_use]
+    pub fn has_spectrum(&self) -> bool {
+        self.levels.first().is_some_and(|finest| {
+            finest
+                .iter()
+                .any(|bucket| bucket.spectrum.iter().any(|&band| band > 0))
+        })
     }
 
     #[must_use]
@@ -210,6 +350,26 @@ impl WaveformSummary {
     }
 }
 
+/// Two neighbouring spectra as their parent's: the mean of each band.
+fn merge_spectrum(a: &[u8; SPECTRUM_BANDS], b: &[u8; SPECTRUM_BANDS]) -> [u8; SPECTRUM_BANDS] {
+    std::array::from_fn(|band| {
+        let sum = u16::from(a[band]) + u16::from(b[band]);
+        u8::try_from(sum / 2).unwrap_or(u8::MAX)
+    })
+}
+
+/// A bucket's band totals as a balance: the strongest band is 255.
+///
+/// Balance rather than level, like the three bands: colour says which part of
+/// the spectrum, and the waveform's height already says how loud.
+fn balance(sums: &[f32; SPECTRUM_BANDS]) -> [u8; SPECTRUM_BANDS] {
+    let strongest = sums.iter().copied().fold(0.0f32, f32::max);
+    if strongest <= 1e-9 {
+        return [0; SPECTRUM_BANDS];
+    }
+    sums.map(|sum| (sum / strongest * 255.0).round() as u8)
+}
+
 /// Running totals for one bucket while scanning.
 #[derive(Debug, Default)]
 struct Accumulator {
@@ -257,6 +417,7 @@ impl Accumulator {
             low: low * scale,
             mid: mid * scale,
             high: high * scale,
+            spectrum: [0; SPECTRUM_BANDS],
         }
     }
 }
@@ -440,5 +601,82 @@ mod tests {
         assert_eq!(summary.total_frames(), 0);
         assert!(summary.bucket_at(0, 0.0).is_silent());
         assert_eq!(summary.level_for(100.0), 0);
+    }
+
+    /// **§110's eight bands put a tone where it belongs.** A 50 Hz sine is
+    /// strongest in the lowest bands and a 14 kHz one in the highest.
+    #[test]
+    fn the_spectrum_puts_a_tone_in_its_band() {
+        let strongest = |hz: f32| {
+            let summary =
+                WaveformSummary::analyse_with_spectrum(&sine(96_000, hz, 0.8), SampleRate::DEFAULT);
+            let bucket = summary.level(0)[200];
+            (0..SPECTRUM_BANDS)
+                .max_by_key(|&band| bucket.spectrum[band])
+                .unwrap()
+        };
+        assert!(
+            strongest(50.0) <= 1,
+            "50 Hz landed in band {}",
+            strongest(50.0)
+        );
+        assert_eq!(strongest(14_000.0), SPECTRUM_BANDS - 1);
+        assert_eq!(strongest(1_000.0), 4, "1 kHz is a mid");
+    }
+
+    /// **The same energy in every band reads as every band full**, which is
+    /// what lets a full mix be drawn white. One tone at the middle of each
+    /// band, all at the same level: no band may read less than half of the
+    /// strongest.
+    #[test]
+    fn equal_energy_in_every_band_fills_every_band() {
+        let centres = [30.0, 72.0, 172.0, 410.0, 975.0, 2_300.0, 5_500.0, 13_000.0];
+        let frames = 96_000;
+        let samples: Vec<f32> = (0..frames)
+            .flat_map(|n| {
+                let t = n as f32 / 48_000.0;
+                let v: f32 = centres
+                    .iter()
+                    .map(|hz| (2.0 * std::f32::consts::PI * hz * t).sin())
+                    .sum::<f32>()
+                    * 0.1;
+                [v, v]
+            })
+            .collect();
+        let summary = WaveformSummary::analyse_with_spectrum(&samples, SampleRate::DEFAULT);
+        let bucket = summary.level(0)[200];
+        for (band, energy) in bucket.spectrum.iter().enumerate() {
+            assert!(
+                *energy >= 128,
+                "band {band} read {energy}: {:?}",
+                bucket.spectrum
+            );
+        }
+    }
+
+    /// **The load path does not pay for the spectrum, and every zoom level
+    /// gets it when it lands.** `analyse` leaves it unmeasured — that is what
+    /// keeps a load as fast as it was — and `measure_spectrum` fills the
+    /// finest level and every coarser one, since the overview draws from the
+    /// coarsest.
+    #[test]
+    fn the_spectrum_arrives_separately_and_reaches_every_zoom_level() {
+        let samples = sine(96_000, 14_000.0, 0.8);
+        let mut summary = WaveformSummary::analyse(&samples, SampleRate::DEFAULT);
+        assert!(
+            !summary.has_spectrum(),
+            "the load path measured the spectrum"
+        );
+        summary.measure_spectrum(&samples);
+        assert!(summary.has_spectrum());
+        for level in 0..summary.level_count() {
+            let bucket = summary.level(level)[summary.level(level).len() / 2];
+            assert_eq!(
+                bucket.spectrum[SPECTRUM_BANDS - 1],
+                255,
+                "level {level} did not get the spectrum: {:?}",
+                bucket.spectrum
+            );
+        }
     }
 }
