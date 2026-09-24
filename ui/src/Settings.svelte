@@ -108,8 +108,14 @@
     onLock,
     onSetUp,
     onPackChange,
+    toolbars = false,
+    onToolbars,
   }: {
     onLogoChange: () => void;
+    /** §117: whether the two rows of buttons above the decks are shown. */
+    toolbars?: boolean;
+    /** Show or hide them; the shell keeps the setting and redraws its header. */
+    onToolbars?: (on: boolean) => void;
     /**
      * §79's locks that are on, by slug.
      *
@@ -1049,6 +1055,16 @@
   -->
   <div class="block">
     <h3>Appearance</h3>
+    <!--
+      §117: the toolbars are a choice. Off, the top of the window keeps only
+      what is read from across a booth and everything else is on the
+      dashboard (0) and under Space.
+    -->
+    <label class="toolbars">
+      <input type="checkbox" checked={toolbars} onchange={(event) => onToolbars?.(event.currentTarget.checked)} />
+      Show the toolbars above the decks — off keeps that room for the activity; everything is on the dashboard
+      (<kbd>0</kbd>) and under <kbd>Space</kbd>
+    </label>
     <p class="hint">
       Dark by default, because a white screen at eye level in a dark room costs
       you the night vision you need to find anything on the actual mixer. The

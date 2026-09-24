@@ -1022,3 +1022,58 @@ fn the_browser_fixture_has_the_leader_tree() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
     );
 }
+
+/// §117's dashboard, as a golden file: for no activity and for Karaoke and
+/// Dig, so the browser tests draw the sections and tiles Rust builds —
+/// including each activity's own section first.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_dashboards() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/dashboards.json");
+    let activities = dj_app::activity::all(&[]);
+    let boards: serde_json::Map<String, serde_json::Value> = ["", "karaoke", "dig"]
+        .iter()
+        .map(|slug| {
+            let current = activities.iter().find(|activity| activity.slug == *slug);
+            let board = dj_app::dashboard::build(
+                &activities,
+                current,
+                &dj_app::cockpit::workspaces(),
+                &dj_presets::builtin::packs(),
+                &dj_app::dashboard::Interface::default(),
+            );
+            (
+                (*slug).to_owned(),
+                serde_json::to_value(board).expect("the dashboard serialises"),
+            )
+        })
+        .collect();
+    let fresh = serde_json::to_string_pretty(&boards).expect("the dashboards serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the dashboards");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored dashboards are JSON");
+    let fresh: serde_json::Value =
+        serde_json::from_str(&fresh).expect("the fresh dashboards are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe dashboards have changed, so the browser is drawing ones djmanzo \
+         no longer builds.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}

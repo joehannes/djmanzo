@@ -1966,6 +1966,40 @@ export const keepMnemonic = (keys: string[], label: string, run: string, decks: 
 
 export const forgetMnemonic = (keys: string[]) => invoke<MyKey[]>("forget_mnemonic", { keys });
 
+/** §117: the interface's own settings (`dj_app::dashboard::Interface`). */
+export interface InterfaceSettings {
+  /** The two rows of buttons above the decks. Off on a fresh install. */
+  toolbars: boolean;
+  /** How many times each dashboard tile has been used, by id. */
+  uses: Record<string, number>;
+}
+
+/** One dashboard tile: a leaf of the kinds the leader's tree runs. */
+export interface DashboardTile {
+  id: string;
+  label: string;
+  about: string;
+  run: string;
+  /** The key that reaches it without the dashboard, where one does. */
+  key: string | null;
+}
+
+export interface DashboardSection {
+  title: string;
+  tiles: DashboardTile[];
+}
+
+export interface Dashboard {
+  sections: DashboardSection[];
+}
+
+export const interfaceSettings = () => invoke<InterfaceSettings>("interface_settings");
+export const setToolbars = (on: boolean) => invoke<InterfaceSettings>("set_toolbars", { on });
+/** The dashboard for the activity the DJ is in (`current`, empty for none). */
+export const dashboard = (current: string) => invoke<Dashboard>("dashboard", { current });
+/** Count one use of a tile, however it was reached. */
+export const usedTile = (id: string) => invoke<void>("used_tile", { id });
+
 /** Where the DJ wants the next record to take the room. */
 export type Trajectory = "lift" | "hold" | "ease";
 

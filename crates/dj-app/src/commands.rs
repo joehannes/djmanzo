@@ -9555,6 +9555,50 @@ fn leader_parts(state: &AppState, decks: u8) -> (crate::leader::Node, Vec<String
     )
 }
 
+/// §117: the dashboard for what the DJ has and the activity they are in
+/// (`current`, empty for none). See [`crate::dashboard`].
+#[tauri::command]
+#[must_use]
+pub fn dashboard(state: State<'_, AppState>, current: String) -> crate::dashboard::Dashboard {
+    let activities = crate::activity::all(&state.activities().mine);
+    let mut workspaces = state.my_workspaces();
+    workspaces.extend(crate::cockpit::workspaces());
+    let current = activities.iter().find(|activity| activity.slug == current);
+    crate::dashboard::build(
+        &activities,
+        current,
+        &workspaces,
+        state.presets().packs(),
+        &state.interface(),
+    )
+}
+
+/// §117: the interface's own settings.
+#[tauri::command]
+#[must_use]
+pub fn interface_settings(state: State<'_, AppState>) -> crate::dashboard::Interface {
+    state.interface()
+}
+
+/// §117: show the toolbars, or keep the space for the activity.
+#[tauri::command]
+#[must_use]
+pub fn set_toolbars(state: State<'_, AppState>, on: bool) -> crate::dashboard::Interface {
+    let mut interface = state.interface();
+    interface.toolbars = on;
+    state.set_interface(&interface);
+    interface
+}
+
+/// §117: count one use of a dashboard tile, however it was reached, so the
+/// dashboard can arrange itself by what the DJ reaches for.
+#[tauri::command]
+pub fn used_tile(state: State<'_, AppState>, id: String) {
+    let mut interface = state.interface();
+    interface.used(&id);
+    state.set_interface(&interface);
+}
+
 /// §117: the DJ's own keys under Space.
 #[tauri::command]
 #[must_use]

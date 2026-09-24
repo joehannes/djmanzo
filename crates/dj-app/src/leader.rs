@@ -274,6 +274,7 @@ pub fn tree(
         Node::leaf("/", "Search the library", "ui search"),
         Node::leaf(",", "Settings", "surface settings"),
         Node::leaf("`", "Back to the last activity", "ui back"),
+        Node::leaf("0", "Dashboard", "ui dashboard"),
     ];
     for (index, activity) in activities.iter().take(9).enumerate() {
         root.push(Node::leaf(
@@ -393,7 +394,15 @@ fn presets(packs: &[dj_presets::Pack], decks: u8) -> Node {
 }
 
 /// The verbs a `ui` leaf may name: what the interface carries out itself.
-pub const UI_VERBS: [&str; 6] = ["palette", "search", "back", "record", "mark", "everything"];
+pub const UI_VERBS: [&str; 7] = [
+    "palette",
+    "search",
+    "back",
+    "record",
+    "mark",
+    "everything",
+    "dashboard",
+];
 
 /// Whether a leaf's `run` is something djmanzo does, given the switches the
 /// palette offers. `Err` says why not.

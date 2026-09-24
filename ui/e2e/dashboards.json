@@ -1,0 +1,1807 @@
+{
+  "": {
+    "sections": [
+      {
+        "tiles": [
+          {
+            "about": "Find the next record.",
+            "id": "activity:dig",
+            "key": "1",
+            "label": "Dig",
+            "run": "switch activity dig"
+          },
+          {
+            "about": "Blend into the next record.",
+            "id": "activity:mix",
+            "key": "2",
+            "label": "Mix",
+            "run": "switch activity mix"
+          },
+          {
+            "about": "Play with the record: pads, loops, effects and stems.",
+            "id": "activity:perform",
+            "key": "3",
+            "label": "Perform",
+            "run": "switch activity perform"
+          },
+          {
+            "about": "Set cues and grids, and shape tonight's plan.",
+            "id": "activity:prepare",
+            "key": "4",
+            "label": "Prepare",
+            "run": "switch activity prepare"
+          },
+          {
+            "about": "Answer what the room has asked for.",
+            "id": "activity:requests",
+            "key": "5",
+            "label": "Requests",
+            "run": "switch activity requests"
+          },
+          {
+            "about": "Let djmanzo play; watch, and take it back.",
+            "id": "activity:autopilot",
+            "key": "6",
+            "label": "Autopilot",
+            "run": "switch activity autopilot"
+          },
+          {
+            "about": "Work on a technique, between sets.",
+            "id": "activity:practice",
+            "key": "7",
+            "label": "Practice",
+            "run": "switch activity practice"
+          },
+          {
+            "about": "Host the singers: who is up, what, and in which key.",
+            "id": "activity:karaoke",
+            "key": "8",
+            "label": "Karaoke",
+            "run": "switch activity karaoke"
+          },
+          {
+            "about": "Every panel, arranged by hand — the full cockpit.",
+            "id": "ui:everything",
+            "key": "`",
+            "label": "Everything",
+            "run": "ui everything"
+          }
+        ],
+        "title": "Activities"
+      },
+      {
+        "tiles": [
+          {
+            "about": "The collection, searchable and sortable.",
+            "id": "surface:library",
+            "key": null,
+            "label": "Library",
+            "run": "surface library"
+          },
+          {
+            "about": "What could come next, and why.",
+            "id": "surface:next",
+            "key": null,
+            "label": "Next",
+            "run": "surface next"
+          },
+          {
+            "about": "Records on their way to a deck, before they are on one.",
+            "id": "surface:prepare",
+            "key": null,
+            "label": "Prepare",
+            "run": "surface prepare"
+          },
+          {
+            "about": "The shape of the night, as a sequence.",
+            "id": "surface:plan",
+            "key": null,
+            "label": "Set plan",
+            "run": "surface plan"
+          },
+          {
+            "about": "Two records side by side, and the seam between them.",
+            "id": "surface:pair",
+            "key": null,
+            "label": "Pair",
+            "run": "surface pair"
+          },
+          {
+            "about": "Hear a transition before you play it, without touching the decks.",
+            "id": "surface:practice",
+            "key": null,
+            "label": "Practice",
+            "run": "surface practice"
+          },
+          {
+            "about": "Where the set is in its arc, and what says so.",
+            "id": "surface:night",
+            "key": null,
+            "label": "The night",
+            "run": "surface night"
+          },
+          {
+            "about": "The four to eight controls that matter on the focused deck right now.",
+            "id": "surface:athand",
+            "key": null,
+            "label": "At hand",
+            "run": "surface athand"
+          },
+          {
+            "about": "How tonight's records were joined, and what kind of mix each was.",
+            "id": "surface:mixes",
+            "key": null,
+            "label": "Tonight's mixes",
+            "run": "surface mixes"
+          },
+          {
+            "about": "What the room has asked for.",
+            "id": "surface:requests",
+            "key": null,
+            "label": "Requests",
+            "run": "surface requests"
+          },
+          {
+            "about": "Who sings next, what, and in which key.",
+            "id": "surface:karaoke",
+            "key": null,
+            "label": "Singers",
+            "run": "surface karaoke"
+          },
+          {
+            "about": "The microphone, the automix, a plugin insert and the master effects -- the things set up once a night rather than reached for during a mix.",
+            "id": "surface:booth",
+            "key": null,
+            "label": "Booth",
+            "run": "surface booth"
+          },
+          {
+            "about": "What the floor is doing, against its own earlier state.",
+            "id": "surface:room",
+            "key": null,
+            "label": "Room",
+            "run": "surface room"
+          },
+          {
+            "about": "Banks, pads and what is loaded on them.",
+            "id": "surface:sampler",
+            "key": null,
+            "label": "Sampler",
+            "run": "surface sampler"
+          },
+          {
+            "about": "Effect chains and mix settings, saved and recalled.",
+            "id": "surface:presets",
+            "key": null,
+            "label": "Presets",
+            "run": "surface presets"
+          },
+          {
+            "about": "The second DJ, when spoken to directly.",
+            "id": "surface:assistant",
+            "key": null,
+            "label": "Assistant",
+            "run": "surface assistant"
+          },
+          {
+            "about": "What is plugged in and what is listening to it.",
+            "id": "surface:controllers",
+            "key": null,
+            "label": "Controllers",
+            "run": "surface controllers"
+          },
+          {
+            "about": "The keyboard shortcuts, and whether they are listening.",
+            "id": "surface:keys",
+            "key": null,
+            "label": "Keys",
+            "run": "surface keys"
+          },
+          {
+            "about": "Every action, in order, with its timestamp -- the thing that makes a set replayable.",
+            "id": "surface:log",
+            "key": null,
+            "label": "Session log",
+            "run": "surface log"
+          },
+          {
+            "about": "Everything that is a preference rather than a performance.",
+            "id": "surface:settings",
+            "key": null,
+            "label": "Settings",
+            "run": "surface settings"
+          }
+        ],
+        "title": "Panels"
+      },
+      {
+        "tiles": [
+          {
+            "about": "Everything flat and open, master down a little. Nothing dramatic while the room is filling.",
+            "id": "preset:phase-warmup",
+            "key": null,
+            "label": "Warm up",
+            "run": "switch preset phase-warmup"
+          },
+          {
+            "about": "Master back up, headphones split so you can work the next track while the floor is going.",
+            "id": "preset:phase-fiesta",
+            "key": null,
+            "label": "Fiesta",
+            "run": "switch preset phase-fiesta"
+          },
+          {
+            "about": "Full level, headphones on the incoming track only. The point of the night where you are cueing constantly.",
+            "id": "preset:phase-peak",
+            "key": null,
+            "label": "Peak",
+            "run": "switch preset phase-peak"
+          },
+          {
+            "about": "Ease the master back and blend the headphones, for the stretch where you are bringing the energy down deliberately.",
+            "id": "preset:phase-slowdown",
+            "key": null,
+            "label": "Slow down",
+            "run": "switch preset phase-slowdown"
+          },
+          {
+            "about": "Quieter still, and the booth down with it. People are talking again and should be able to.",
+            "id": "preset:phase-chillout",
+            "key": null,
+            "label": "Chill out",
+            "run": "switch preset phase-chillout"
+          },
+          {
+            "about": "Last track level. Down far enough that the lights coming up is not a shock.",
+            "id": "preset:phase-close",
+            "key": null,
+            "label": "Close",
+            "run": "switch preset phase-close"
+          },
+          {
+            "about": "Headphones halfway between cue and master, so you can hear the blend rather than one side of it.",
+            "id": "preset:move-headphones-both",
+            "key": null,
+            "label": "Hear both",
+            "run": "switch preset move-headphones-both"
+          }
+        ],
+        "title": "Presets"
+      },
+      {
+        "tiles": [
+          {
+            "about": "Long evenings at a desk. Easy on the eyes for hours at a time.",
+            "id": "theme:pkg-studio",
+            "key": null,
+            "label": "Studio Neutral",
+            "run": "switch theme pkg-studio"
+          },
+          {
+            "about": "Playing in the dark. Highest contrast, least motion, nothing to miss.",
+            "id": "theme:pkg-booth",
+            "key": null,
+            "label": "Pro Dark",
+            "run": "switch theme pkg-booth"
+          },
+          {
+            "about": "Preparing by a window, or an afternoon set outdoors.",
+            "id": "theme:pkg-daylight",
+            "key": null,
+            "label": "Daylight",
+            "run": "switch theme pkg-daylight"
+          },
+          {
+            "about": "A dark room with people in it.",
+            "id": "theme:pkg-club",
+            "key": null,
+            "label": "Club",
+            "run": "switch theme pkg-club"
+          },
+          {
+            "about": "Daylight, a big stage, and a screen nobody can shade.",
+            "id": "theme:pkg-festival",
+            "key": null,
+            "label": "Festival",
+            "run": "switch theme pkg-festival"
+          },
+          {
+            "about": "Golden hour on a terrace, when the room is neither light nor dark.",
+            "id": "theme:pkg-sunset",
+            "key": null,
+            "label": "Beach Sunset",
+            "run": "switch theme pkg-sunset"
+          },
+          {
+            "about": "Warm, bright, and unhurried.",
+            "id": "theme:pkg-caribbean",
+            "key": null,
+            "label": "Caribbean",
+            "run": "switch theme pkg-caribbean"
+          },
+          {
+            "about": "The one §32 names after a genre rather than a room.",
+            "id": "theme:pkg-latin",
+            "key": null,
+            "label": "Latin",
+            "run": "switch theme pkg-latin"
+          },
+          {
+            "about": "A room that is not there for the DJ.",
+            "id": "theme:pkg-wedding",
+            "key": null,
+            "label": "Wedding",
+            "run": "switch theme pkg-wedding"
+          },
+          {
+            "about": "Low light, low tempo, and nobody dancing yet.",
+            "id": "theme:pkg-lounge",
+            "key": null,
+            "label": "Lounge",
+            "run": "switch theme pkg-lounge"
+          },
+          {
+            "about": "Hands on the platters, eyes on two records.",
+            "id": "theme:pkg-scratch",
+            "key": null,
+            "label": "Scratch",
+            "run": "switch theme pkg-scratch"
+          },
+          {
+            "about": "Four parts of one record, told apart at a glance.",
+            "id": "theme:pkg-stemlab",
+            "key": null,
+            "label": "Stem Lab",
+            "run": "switch theme pkg-stemlab"
+          },
+          {
+            "about": "Peak time. Everything moves; needs the machine to have it to spare.",
+            "id": "theme:pkg-cyber",
+            "key": null,
+            "label": "Cyber / Experimental",
+            "run": "switch theme pkg-cyber"
+          },
+          {
+            "about": "The default. Calm, green, and readable in most rooms.",
+            "id": "theme:pkg-organic",
+            "key": null,
+            "label": "Organic Base",
+            "run": "switch theme pkg-organic"
+          },
+          {
+            "about": "A dark room, hard music, and a screen that should look like the music.",
+            "id": "theme:pkg-industrial",
+            "key": null,
+            "label": "Industrial Techno",
+            "run": "switch theme pkg-industrial"
+          },
+          {
+            "about": "Every colour djmanzo uses to mean something, chosen to stay apart for a colour-blind DJ.",
+            "id": "theme:pkg-legible",
+            "key": null,
+            "label": "Colour-blind safe",
+            "run": "switch theme pkg-legible"
+          },
+          {
+            "about": "When the waveform's colours should be the only colours: a neutral room, and every EQ knob in the colour of the band it cuts.",
+            "id": "theme:pkg-spectrum",
+            "key": null,
+            "label": "Spectrum",
+            "run": "switch theme pkg-spectrum"
+          },
+          {
+            "about": "A colour code read from across the booth: green is going, cyan is chosen, amber is about to, red is stop.",
+            "id": "theme:pkg-signal",
+            "key": null,
+            "label": "Signal",
+            "run": "switch theme pkg-signal"
+          },
+          {
+            "about": "Late-night and lounge sets where the screen may glow: a night sky from teal to violet, the same two colours at the ends of every gradient.",
+            "id": "theme:pkg-aurora",
+            "key": null,
+            "label": "Aurora",
+            "run": "switch theme pkg-aurora"
+          }
+        ],
+        "title": "Themes"
+      },
+      {
+        "tiles": [
+          {
+            "about": "The decks and nothing else.",
+            "id": "workspace:Perform",
+            "key": null,
+            "label": "Perform",
+            "run": "switch workspace Perform"
+          },
+          {
+            "about": "Everything named, nothing hidden, and the coach talking.",
+            "id": "workspace:Beginner",
+            "key": null,
+            "label": "Beginner",
+            "run": "switch workspace Beginner"
+          },
+          {
+            "about": "Two decks and a mixer, the way it has always been.",
+            "id": "workspace:Classic DJ",
+            "key": null,
+            "label": "Classic DJ",
+            "run": "switch workspace Classic DJ"
+          },
+          {
+            "about": "Two decks, tight, with what is next and the booth to hand.",
+            "id": "workspace:Pro Performance",
+            "key": null,
+            "label": "Pro Performance",
+            "run": "switch workspace Pro Performance"
+          },
+          {
+            "about": "Four decks, close together.",
+            "id": "workspace:4 Deck",
+            "key": null,
+            "label": "4 Deck",
+            "run": "switch workspace 4 Deck"
+          },
+          {
+            "about": "Every deck djmanzo has, at the cost of comfort.",
+            "id": "workspace:6 Deck",
+            "key": null,
+            "label": "6 Deck",
+            "run": "switch workspace 6 Deck"
+          },
+          {
+            "about": "Four decks, the night's arc, and what is under your hands.",
+            "id": "workspace:Club",
+            "key": null,
+            "label": "Club",
+            "run": "switch workspace Club"
+          },
+          {
+            "about": "The collection and the booth, for a room that talks back.",
+            "id": "workspace:Mobile DJ",
+            "key": null,
+            "label": "Mobile DJ",
+            "run": "switch workspace Mobile DJ"
+          },
+          {
+            "about": "The collection, the requests inside it, and what kind of night it is.",
+            "id": "workspace:Wedding / Event",
+            "key": null,
+            "label": "Wedding / Event",
+            "run": "switch workspace Wedding / Event"
+          },
+          {
+            "about": "Four decks and the whole collection, for a night that goes anywhere.",
+            "id": "workspace:Open Format",
+            "key": null,
+            "label": "Open Format",
+            "run": "switch workspace Open Format"
+          },
+          {
+            "about": "What comes next and where the night is, for a set that crosses genres on purpose.",
+            "id": "workspace:Latin / Caribbean",
+            "key": null,
+            "label": "Latin / Caribbean",
+            "run": "switch workspace Latin / Caribbean"
+          },
+          {
+            "about": "Two decks and the controllers, with the hands in charge.",
+            "id": "workspace:Scratch / Turntablism",
+            "key": null,
+            "label": "Scratch / Turntablism",
+            "run": "switch workspace Scratch / Turntablism"
+          },
+          {
+            "about": "The decks alone, so the stem controls and the rack on them have room.",
+            "id": "workspace:Stem Performance",
+            "key": null,
+            "label": "Stem Performance",
+            "run": "switch workspace Stem Performance"
+          },
+          {
+            "about": "Four decks and the sampler, with the stem controls on each deck.",
+            "id": "workspace:Mashup / Remix",
+            "key": null,
+            "label": "Mashup / Remix",
+            "run": "switch workspace Mashup / Remix"
+          },
+          {
+            "about": "The library beside the decks, with what is coming next.",
+            "id": "workspace:Preparation",
+            "key": null,
+            "label": "Preparation",
+            "run": "switch workspace Preparation"
+          },
+          {
+            "about": "The shape of the night, and the records to build it from.",
+            "id": "workspace:Set Planning",
+            "key": null,
+            "label": "Set Planning",
+            "run": "switch workspace Set Planning"
+          },
+          {
+            "about": "A mix rehearsed offline, with the pair it is between.",
+            "id": "workspace:Practice / Learning",
+            "key": null,
+            "label": "Practice / Learning",
+            "run": "switch workspace Practice / Learning"
+          },
+          {
+            "about": "What is playing, what is next and how the room is taking it, while it drives and you watch.",
+            "id": "workspace:Autopilot",
+            "key": null,
+            "label": "Autopilot",
+            "run": "switch workspace Autopilot"
+          },
+          {
+            "about": "The library and the assistant at the same time -- the thing the old shell could not do.",
+            "id": "workspace:Read the room",
+            "key": null,
+            "label": "Read the room",
+            "run": "switch workspace Read the room"
+          },
+          {
+            "about": "The decks, given room to breathe.",
+            "id": "workspace:Minimal",
+            "key": null,
+            "label": "Minimal",
+            "run": "switch workspace Minimal"
+          },
+          {
+            "about": "The decks, in the theme built for a dark booth and a bright screen.",
+            "id": "workspace:High Contrast",
+            "key": null,
+            "label": "High Contrast",
+            "run": "switch workspace High Contrast"
+          },
+          {
+            "about": "Everything that fits on a small screen, and nothing that does not.",
+            "id": "workspace:Laptop Compact",
+            "key": null,
+            "label": "Laptop Compact",
+            "run": "switch workspace Laptop Compact"
+          },
+          {
+            "about": "The decks and what is mapped to the hardware in front of them.",
+            "id": "workspace:Controller Focus",
+            "key": null,
+            "label": "Controller Focus",
+            "run": "switch workspace Controller Focus"
+          },
+          {
+            "about": "The decks and the booth, for a mixer djmanzo is not.",
+            "id": "workspace:CDJ / External Mixer",
+            "key": null,
+            "label": "CDJ / External Mixer",
+            "run": "switch workspace CDJ / External Mixer"
+          },
+          {
+            "about": "The microphone in the booth and the collection the requests are in.",
+            "id": "workspace:Karaoke / MC",
+            "key": null,
+            "label": "Karaoke / MC",
+            "run": "switch workspace Karaoke / MC"
+          }
+        ],
+        "title": "Workspaces"
+      }
+    ]
+  },
+  "dig": {
+    "sections": [
+      {
+        "tiles": [
+          {
+            "about": "The collection, searchable and sortable.",
+            "id": "surface:library",
+            "key": null,
+            "label": "Library",
+            "run": "surface library"
+          },
+          {
+            "about": "What could come next, and why.",
+            "id": "surface:next",
+            "key": null,
+            "label": "Next",
+            "run": "surface next"
+          }
+        ],
+        "title": "For Dig"
+      },
+      {
+        "tiles": [
+          {
+            "about": "Find the next record.",
+            "id": "activity:dig",
+            "key": "1",
+            "label": "Dig",
+            "run": "switch activity dig"
+          },
+          {
+            "about": "Blend into the next record.",
+            "id": "activity:mix",
+            "key": "2",
+            "label": "Mix",
+            "run": "switch activity mix"
+          },
+          {
+            "about": "Play with the record: pads, loops, effects and stems.",
+            "id": "activity:perform",
+            "key": "3",
+            "label": "Perform",
+            "run": "switch activity perform"
+          },
+          {
+            "about": "Set cues and grids, and shape tonight's plan.",
+            "id": "activity:prepare",
+            "key": "4",
+            "label": "Prepare",
+            "run": "switch activity prepare"
+          },
+          {
+            "about": "Answer what the room has asked for.",
+            "id": "activity:requests",
+            "key": "5",
+            "label": "Requests",
+            "run": "switch activity requests"
+          },
+          {
+            "about": "Let djmanzo play; watch, and take it back.",
+            "id": "activity:autopilot",
+            "key": "6",
+            "label": "Autopilot",
+            "run": "switch activity autopilot"
+          },
+          {
+            "about": "Work on a technique, between sets.",
+            "id": "activity:practice",
+            "key": "7",
+            "label": "Practice",
+            "run": "switch activity practice"
+          },
+          {
+            "about": "Host the singers: who is up, what, and in which key.",
+            "id": "activity:karaoke",
+            "key": "8",
+            "label": "Karaoke",
+            "run": "switch activity karaoke"
+          },
+          {
+            "about": "Every panel, arranged by hand — the full cockpit.",
+            "id": "ui:everything",
+            "key": "`",
+            "label": "Everything",
+            "run": "ui everything"
+          }
+        ],
+        "title": "Activities"
+      },
+      {
+        "tiles": [
+          {
+            "about": "The collection, searchable and sortable.",
+            "id": "surface:library",
+            "key": null,
+            "label": "Library",
+            "run": "surface library"
+          },
+          {
+            "about": "What could come next, and why.",
+            "id": "surface:next",
+            "key": null,
+            "label": "Next",
+            "run": "surface next"
+          },
+          {
+            "about": "Records on their way to a deck, before they are on one.",
+            "id": "surface:prepare",
+            "key": null,
+            "label": "Prepare",
+            "run": "surface prepare"
+          },
+          {
+            "about": "The shape of the night, as a sequence.",
+            "id": "surface:plan",
+            "key": null,
+            "label": "Set plan",
+            "run": "surface plan"
+          },
+          {
+            "about": "Two records side by side, and the seam between them.",
+            "id": "surface:pair",
+            "key": null,
+            "label": "Pair",
+            "run": "surface pair"
+          },
+          {
+            "about": "Hear a transition before you play it, without touching the decks.",
+            "id": "surface:practice",
+            "key": null,
+            "label": "Practice",
+            "run": "surface practice"
+          },
+          {
+            "about": "Where the set is in its arc, and what says so.",
+            "id": "surface:night",
+            "key": null,
+            "label": "The night",
+            "run": "surface night"
+          },
+          {
+            "about": "The four to eight controls that matter on the focused deck right now.",
+            "id": "surface:athand",
+            "key": null,
+            "label": "At hand",
+            "run": "surface athand"
+          },
+          {
+            "about": "How tonight's records were joined, and what kind of mix each was.",
+            "id": "surface:mixes",
+            "key": null,
+            "label": "Tonight's mixes",
+            "run": "surface mixes"
+          },
+          {
+            "about": "What the room has asked for.",
+            "id": "surface:requests",
+            "key": null,
+            "label": "Requests",
+            "run": "surface requests"
+          },
+          {
+            "about": "Who sings next, what, and in which key.",
+            "id": "surface:karaoke",
+            "key": null,
+            "label": "Singers",
+            "run": "surface karaoke"
+          },
+          {
+            "about": "The microphone, the automix, a plugin insert and the master effects -- the things set up once a night rather than reached for during a mix.",
+            "id": "surface:booth",
+            "key": null,
+            "label": "Booth",
+            "run": "surface booth"
+          },
+          {
+            "about": "What the floor is doing, against its own earlier state.",
+            "id": "surface:room",
+            "key": null,
+            "label": "Room",
+            "run": "surface room"
+          },
+          {
+            "about": "Banks, pads and what is loaded on them.",
+            "id": "surface:sampler",
+            "key": null,
+            "label": "Sampler",
+            "run": "surface sampler"
+          },
+          {
+            "about": "Effect chains and mix settings, saved and recalled.",
+            "id": "surface:presets",
+            "key": null,
+            "label": "Presets",
+            "run": "surface presets"
+          },
+          {
+            "about": "The second DJ, when spoken to directly.",
+            "id": "surface:assistant",
+            "key": null,
+            "label": "Assistant",
+            "run": "surface assistant"
+          },
+          {
+            "about": "What is plugged in and what is listening to it.",
+            "id": "surface:controllers",
+            "key": null,
+            "label": "Controllers",
+            "run": "surface controllers"
+          },
+          {
+            "about": "The keyboard shortcuts, and whether they are listening.",
+            "id": "surface:keys",
+            "key": null,
+            "label": "Keys",
+            "run": "surface keys"
+          },
+          {
+            "about": "Every action, in order, with its timestamp -- the thing that makes a set replayable.",
+            "id": "surface:log",
+            "key": null,
+            "label": "Session log",
+            "run": "surface log"
+          },
+          {
+            "about": "Everything that is a preference rather than a performance.",
+            "id": "surface:settings",
+            "key": null,
+            "label": "Settings",
+            "run": "surface settings"
+          }
+        ],
+        "title": "Panels"
+      },
+      {
+        "tiles": [
+          {
+            "about": "Everything flat and open, master down a little. Nothing dramatic while the room is filling.",
+            "id": "preset:phase-warmup",
+            "key": null,
+            "label": "Warm up",
+            "run": "switch preset phase-warmup"
+          },
+          {
+            "about": "Master back up, headphones split so you can work the next track while the floor is going.",
+            "id": "preset:phase-fiesta",
+            "key": null,
+            "label": "Fiesta",
+            "run": "switch preset phase-fiesta"
+          },
+          {
+            "about": "Full level, headphones on the incoming track only. The point of the night where you are cueing constantly.",
+            "id": "preset:phase-peak",
+            "key": null,
+            "label": "Peak",
+            "run": "switch preset phase-peak"
+          },
+          {
+            "about": "Ease the master back and blend the headphones, for the stretch where you are bringing the energy down deliberately.",
+            "id": "preset:phase-slowdown",
+            "key": null,
+            "label": "Slow down",
+            "run": "switch preset phase-slowdown"
+          },
+          {
+            "about": "Quieter still, and the booth down with it. People are talking again and should be able to.",
+            "id": "preset:phase-chillout",
+            "key": null,
+            "label": "Chill out",
+            "run": "switch preset phase-chillout"
+          },
+          {
+            "about": "Last track level. Down far enough that the lights coming up is not a shock.",
+            "id": "preset:phase-close",
+            "key": null,
+            "label": "Close",
+            "run": "switch preset phase-close"
+          },
+          {
+            "about": "Headphones halfway between cue and master, so you can hear the blend rather than one side of it.",
+            "id": "preset:move-headphones-both",
+            "key": null,
+            "label": "Hear both",
+            "run": "switch preset move-headphones-both"
+          }
+        ],
+        "title": "Presets"
+      },
+      {
+        "tiles": [
+          {
+            "about": "Long evenings at a desk. Easy on the eyes for hours at a time.",
+            "id": "theme:pkg-studio",
+            "key": null,
+            "label": "Studio Neutral",
+            "run": "switch theme pkg-studio"
+          },
+          {
+            "about": "Playing in the dark. Highest contrast, least motion, nothing to miss.",
+            "id": "theme:pkg-booth",
+            "key": null,
+            "label": "Pro Dark",
+            "run": "switch theme pkg-booth"
+          },
+          {
+            "about": "Preparing by a window, or an afternoon set outdoors.",
+            "id": "theme:pkg-daylight",
+            "key": null,
+            "label": "Daylight",
+            "run": "switch theme pkg-daylight"
+          },
+          {
+            "about": "A dark room with people in it.",
+            "id": "theme:pkg-club",
+            "key": null,
+            "label": "Club",
+            "run": "switch theme pkg-club"
+          },
+          {
+            "about": "Daylight, a big stage, and a screen nobody can shade.",
+            "id": "theme:pkg-festival",
+            "key": null,
+            "label": "Festival",
+            "run": "switch theme pkg-festival"
+          },
+          {
+            "about": "Golden hour on a terrace, when the room is neither light nor dark.",
+            "id": "theme:pkg-sunset",
+            "key": null,
+            "label": "Beach Sunset",
+            "run": "switch theme pkg-sunset"
+          },
+          {
+            "about": "Warm, bright, and unhurried.",
+            "id": "theme:pkg-caribbean",
+            "key": null,
+            "label": "Caribbean",
+            "run": "switch theme pkg-caribbean"
+          },
+          {
+            "about": "The one §32 names after a genre rather than a room.",
+            "id": "theme:pkg-latin",
+            "key": null,
+            "label": "Latin",
+            "run": "switch theme pkg-latin"
+          },
+          {
+            "about": "A room that is not there for the DJ.",
+            "id": "theme:pkg-wedding",
+            "key": null,
+            "label": "Wedding",
+            "run": "switch theme pkg-wedding"
+          },
+          {
+            "about": "Low light, low tempo, and nobody dancing yet.",
+            "id": "theme:pkg-lounge",
+            "key": null,
+            "label": "Lounge",
+            "run": "switch theme pkg-lounge"
+          },
+          {
+            "about": "Hands on the platters, eyes on two records.",
+            "id": "theme:pkg-scratch",
+            "key": null,
+            "label": "Scratch",
+            "run": "switch theme pkg-scratch"
+          },
+          {
+            "about": "Four parts of one record, told apart at a glance.",
+            "id": "theme:pkg-stemlab",
+            "key": null,
+            "label": "Stem Lab",
+            "run": "switch theme pkg-stemlab"
+          },
+          {
+            "about": "Peak time. Everything moves; needs the machine to have it to spare.",
+            "id": "theme:pkg-cyber",
+            "key": null,
+            "label": "Cyber / Experimental",
+            "run": "switch theme pkg-cyber"
+          },
+          {
+            "about": "The default. Calm, green, and readable in most rooms.",
+            "id": "theme:pkg-organic",
+            "key": null,
+            "label": "Organic Base",
+            "run": "switch theme pkg-organic"
+          },
+          {
+            "about": "A dark room, hard music, and a screen that should look like the music.",
+            "id": "theme:pkg-industrial",
+            "key": null,
+            "label": "Industrial Techno",
+            "run": "switch theme pkg-industrial"
+          },
+          {
+            "about": "Every colour djmanzo uses to mean something, chosen to stay apart for a colour-blind DJ.",
+            "id": "theme:pkg-legible",
+            "key": null,
+            "label": "Colour-blind safe",
+            "run": "switch theme pkg-legible"
+          },
+          {
+            "about": "When the waveform's colours should be the only colours: a neutral room, and every EQ knob in the colour of the band it cuts.",
+            "id": "theme:pkg-spectrum",
+            "key": null,
+            "label": "Spectrum",
+            "run": "switch theme pkg-spectrum"
+          },
+          {
+            "about": "A colour code read from across the booth: green is going, cyan is chosen, amber is about to, red is stop.",
+            "id": "theme:pkg-signal",
+            "key": null,
+            "label": "Signal",
+            "run": "switch theme pkg-signal"
+          },
+          {
+            "about": "Late-night and lounge sets where the screen may glow: a night sky from teal to violet, the same two colours at the ends of every gradient.",
+            "id": "theme:pkg-aurora",
+            "key": null,
+            "label": "Aurora",
+            "run": "switch theme pkg-aurora"
+          }
+        ],
+        "title": "Themes"
+      },
+      {
+        "tiles": [
+          {
+            "about": "The decks and nothing else.",
+            "id": "workspace:Perform",
+            "key": null,
+            "label": "Perform",
+            "run": "switch workspace Perform"
+          },
+          {
+            "about": "Everything named, nothing hidden, and the coach talking.",
+            "id": "workspace:Beginner",
+            "key": null,
+            "label": "Beginner",
+            "run": "switch workspace Beginner"
+          },
+          {
+            "about": "Two decks and a mixer, the way it has always been.",
+            "id": "workspace:Classic DJ",
+            "key": null,
+            "label": "Classic DJ",
+            "run": "switch workspace Classic DJ"
+          },
+          {
+            "about": "Two decks, tight, with what is next and the booth to hand.",
+            "id": "workspace:Pro Performance",
+            "key": null,
+            "label": "Pro Performance",
+            "run": "switch workspace Pro Performance"
+          },
+          {
+            "about": "Four decks, close together.",
+            "id": "workspace:4 Deck",
+            "key": null,
+            "label": "4 Deck",
+            "run": "switch workspace 4 Deck"
+          },
+          {
+            "about": "Every deck djmanzo has, at the cost of comfort.",
+            "id": "workspace:6 Deck",
+            "key": null,
+            "label": "6 Deck",
+            "run": "switch workspace 6 Deck"
+          },
+          {
+            "about": "Four decks, the night's arc, and what is under your hands.",
+            "id": "workspace:Club",
+            "key": null,
+            "label": "Club",
+            "run": "switch workspace Club"
+          },
+          {
+            "about": "The collection and the booth, for a room that talks back.",
+            "id": "workspace:Mobile DJ",
+            "key": null,
+            "label": "Mobile DJ",
+            "run": "switch workspace Mobile DJ"
+          },
+          {
+            "about": "The collection, the requests inside it, and what kind of night it is.",
+            "id": "workspace:Wedding / Event",
+            "key": null,
+            "label": "Wedding / Event",
+            "run": "switch workspace Wedding / Event"
+          },
+          {
+            "about": "Four decks and the whole collection, for a night that goes anywhere.",
+            "id": "workspace:Open Format",
+            "key": null,
+            "label": "Open Format",
+            "run": "switch workspace Open Format"
+          },
+          {
+            "about": "What comes next and where the night is, for a set that crosses genres on purpose.",
+            "id": "workspace:Latin / Caribbean",
+            "key": null,
+            "label": "Latin / Caribbean",
+            "run": "switch workspace Latin / Caribbean"
+          },
+          {
+            "about": "Two decks and the controllers, with the hands in charge.",
+            "id": "workspace:Scratch / Turntablism",
+            "key": null,
+            "label": "Scratch / Turntablism",
+            "run": "switch workspace Scratch / Turntablism"
+          },
+          {
+            "about": "The decks alone, so the stem controls and the rack on them have room.",
+            "id": "workspace:Stem Performance",
+            "key": null,
+            "label": "Stem Performance",
+            "run": "switch workspace Stem Performance"
+          },
+          {
+            "about": "Four decks and the sampler, with the stem controls on each deck.",
+            "id": "workspace:Mashup / Remix",
+            "key": null,
+            "label": "Mashup / Remix",
+            "run": "switch workspace Mashup / Remix"
+          },
+          {
+            "about": "The library beside the decks, with what is coming next.",
+            "id": "workspace:Preparation",
+            "key": null,
+            "label": "Preparation",
+            "run": "switch workspace Preparation"
+          },
+          {
+            "about": "The shape of the night, and the records to build it from.",
+            "id": "workspace:Set Planning",
+            "key": null,
+            "label": "Set Planning",
+            "run": "switch workspace Set Planning"
+          },
+          {
+            "about": "A mix rehearsed offline, with the pair it is between.",
+            "id": "workspace:Practice / Learning",
+            "key": null,
+            "label": "Practice / Learning",
+            "run": "switch workspace Practice / Learning"
+          },
+          {
+            "about": "What is playing, what is next and how the room is taking it, while it drives and you watch.",
+            "id": "workspace:Autopilot",
+            "key": null,
+            "label": "Autopilot",
+            "run": "switch workspace Autopilot"
+          },
+          {
+            "about": "The library and the assistant at the same time -- the thing the old shell could not do.",
+            "id": "workspace:Read the room",
+            "key": null,
+            "label": "Read the room",
+            "run": "switch workspace Read the room"
+          },
+          {
+            "about": "The decks, given room to breathe.",
+            "id": "workspace:Minimal",
+            "key": null,
+            "label": "Minimal",
+            "run": "switch workspace Minimal"
+          },
+          {
+            "about": "The decks, in the theme built for a dark booth and a bright screen.",
+            "id": "workspace:High Contrast",
+            "key": null,
+            "label": "High Contrast",
+            "run": "switch workspace High Contrast"
+          },
+          {
+            "about": "Everything that fits on a small screen, and nothing that does not.",
+            "id": "workspace:Laptop Compact",
+            "key": null,
+            "label": "Laptop Compact",
+            "run": "switch workspace Laptop Compact"
+          },
+          {
+            "about": "The decks and what is mapped to the hardware in front of them.",
+            "id": "workspace:Controller Focus",
+            "key": null,
+            "label": "Controller Focus",
+            "run": "switch workspace Controller Focus"
+          },
+          {
+            "about": "The decks and the booth, for a mixer djmanzo is not.",
+            "id": "workspace:CDJ / External Mixer",
+            "key": null,
+            "label": "CDJ / External Mixer",
+            "run": "switch workspace CDJ / External Mixer"
+          },
+          {
+            "about": "The microphone in the booth and the collection the requests are in.",
+            "id": "workspace:Karaoke / MC",
+            "key": null,
+            "label": "Karaoke / MC",
+            "run": "switch workspace Karaoke / MC"
+          }
+        ],
+        "title": "Workspaces"
+      }
+    ]
+  },
+  "karaoke": {
+    "sections": [
+      {
+        "tiles": [
+          {
+            "about": "Who sings next, what, and in which key.",
+            "id": "surface:karaoke",
+            "key": null,
+            "label": "Singers",
+            "run": "surface karaoke"
+          },
+          {
+            "about": "The collection, searchable and sortable.",
+            "id": "surface:library",
+            "key": null,
+            "label": "Library",
+            "run": "surface library"
+          }
+        ],
+        "title": "For Karaoke"
+      },
+      {
+        "tiles": [
+          {
+            "about": "Find the next record.",
+            "id": "activity:dig",
+            "key": "1",
+            "label": "Dig",
+            "run": "switch activity dig"
+          },
+          {
+            "about": "Blend into the next record.",
+            "id": "activity:mix",
+            "key": "2",
+            "label": "Mix",
+            "run": "switch activity mix"
+          },
+          {
+            "about": "Play with the record: pads, loops, effects and stems.",
+            "id": "activity:perform",
+            "key": "3",
+            "label": "Perform",
+            "run": "switch activity perform"
+          },
+          {
+            "about": "Set cues and grids, and shape tonight's plan.",
+            "id": "activity:prepare",
+            "key": "4",
+            "label": "Prepare",
+            "run": "switch activity prepare"
+          },
+          {
+            "about": "Answer what the room has asked for.",
+            "id": "activity:requests",
+            "key": "5",
+            "label": "Requests",
+            "run": "switch activity requests"
+          },
+          {
+            "about": "Let djmanzo play; watch, and take it back.",
+            "id": "activity:autopilot",
+            "key": "6",
+            "label": "Autopilot",
+            "run": "switch activity autopilot"
+          },
+          {
+            "about": "Work on a technique, between sets.",
+            "id": "activity:practice",
+            "key": "7",
+            "label": "Practice",
+            "run": "switch activity practice"
+          },
+          {
+            "about": "Host the singers: who is up, what, and in which key.",
+            "id": "activity:karaoke",
+            "key": "8",
+            "label": "Karaoke",
+            "run": "switch activity karaoke"
+          },
+          {
+            "about": "Every panel, arranged by hand — the full cockpit.",
+            "id": "ui:everything",
+            "key": "`",
+            "label": "Everything",
+            "run": "ui everything"
+          }
+        ],
+        "title": "Activities"
+      },
+      {
+        "tiles": [
+          {
+            "about": "The collection, searchable and sortable.",
+            "id": "surface:library",
+            "key": null,
+            "label": "Library",
+            "run": "surface library"
+          },
+          {
+            "about": "What could come next, and why.",
+            "id": "surface:next",
+            "key": null,
+            "label": "Next",
+            "run": "surface next"
+          },
+          {
+            "about": "Records on their way to a deck, before they are on one.",
+            "id": "surface:prepare",
+            "key": null,
+            "label": "Prepare",
+            "run": "surface prepare"
+          },
+          {
+            "about": "The shape of the night, as a sequence.",
+            "id": "surface:plan",
+            "key": null,
+            "label": "Set plan",
+            "run": "surface plan"
+          },
+          {
+            "about": "Two records side by side, and the seam between them.",
+            "id": "surface:pair",
+            "key": null,
+            "label": "Pair",
+            "run": "surface pair"
+          },
+          {
+            "about": "Hear a transition before you play it, without touching the decks.",
+            "id": "surface:practice",
+            "key": null,
+            "label": "Practice",
+            "run": "surface practice"
+          },
+          {
+            "about": "Where the set is in its arc, and what says so.",
+            "id": "surface:night",
+            "key": null,
+            "label": "The night",
+            "run": "surface night"
+          },
+          {
+            "about": "The four to eight controls that matter on the focused deck right now.",
+            "id": "surface:athand",
+            "key": null,
+            "label": "At hand",
+            "run": "surface athand"
+          },
+          {
+            "about": "How tonight's records were joined, and what kind of mix each was.",
+            "id": "surface:mixes",
+            "key": null,
+            "label": "Tonight's mixes",
+            "run": "surface mixes"
+          },
+          {
+            "about": "What the room has asked for.",
+            "id": "surface:requests",
+            "key": null,
+            "label": "Requests",
+            "run": "surface requests"
+          },
+          {
+            "about": "Who sings next, what, and in which key.",
+            "id": "surface:karaoke",
+            "key": null,
+            "label": "Singers",
+            "run": "surface karaoke"
+          },
+          {
+            "about": "The microphone, the automix, a plugin insert and the master effects -- the things set up once a night rather than reached for during a mix.",
+            "id": "surface:booth",
+            "key": null,
+            "label": "Booth",
+            "run": "surface booth"
+          },
+          {
+            "about": "What the floor is doing, against its own earlier state.",
+            "id": "surface:room",
+            "key": null,
+            "label": "Room",
+            "run": "surface room"
+          },
+          {
+            "about": "Banks, pads and what is loaded on them.",
+            "id": "surface:sampler",
+            "key": null,
+            "label": "Sampler",
+            "run": "surface sampler"
+          },
+          {
+            "about": "Effect chains and mix settings, saved and recalled.",
+            "id": "surface:presets",
+            "key": null,
+            "label": "Presets",
+            "run": "surface presets"
+          },
+          {
+            "about": "The second DJ, when spoken to directly.",
+            "id": "surface:assistant",
+            "key": null,
+            "label": "Assistant",
+            "run": "surface assistant"
+          },
+          {
+            "about": "What is plugged in and what is listening to it.",
+            "id": "surface:controllers",
+            "key": null,
+            "label": "Controllers",
+            "run": "surface controllers"
+          },
+          {
+            "about": "The keyboard shortcuts, and whether they are listening.",
+            "id": "surface:keys",
+            "key": null,
+            "label": "Keys",
+            "run": "surface keys"
+          },
+          {
+            "about": "Every action, in order, with its timestamp -- the thing that makes a set replayable.",
+            "id": "surface:log",
+            "key": null,
+            "label": "Session log",
+            "run": "surface log"
+          },
+          {
+            "about": "Everything that is a preference rather than a performance.",
+            "id": "surface:settings",
+            "key": null,
+            "label": "Settings",
+            "run": "surface settings"
+          }
+        ],
+        "title": "Panels"
+      },
+      {
+        "tiles": [
+          {
+            "about": "Everything flat and open, master down a little. Nothing dramatic while the room is filling.",
+            "id": "preset:phase-warmup",
+            "key": null,
+            "label": "Warm up",
+            "run": "switch preset phase-warmup"
+          },
+          {
+            "about": "Master back up, headphones split so you can work the next track while the floor is going.",
+            "id": "preset:phase-fiesta",
+            "key": null,
+            "label": "Fiesta",
+            "run": "switch preset phase-fiesta"
+          },
+          {
+            "about": "Full level, headphones on the incoming track only. The point of the night where you are cueing constantly.",
+            "id": "preset:phase-peak",
+            "key": null,
+            "label": "Peak",
+            "run": "switch preset phase-peak"
+          },
+          {
+            "about": "Ease the master back and blend the headphones, for the stretch where you are bringing the energy down deliberately.",
+            "id": "preset:phase-slowdown",
+            "key": null,
+            "label": "Slow down",
+            "run": "switch preset phase-slowdown"
+          },
+          {
+            "about": "Quieter still, and the booth down with it. People are talking again and should be able to.",
+            "id": "preset:phase-chillout",
+            "key": null,
+            "label": "Chill out",
+            "run": "switch preset phase-chillout"
+          },
+          {
+            "about": "Last track level. Down far enough that the lights coming up is not a shock.",
+            "id": "preset:phase-close",
+            "key": null,
+            "label": "Close",
+            "run": "switch preset phase-close"
+          },
+          {
+            "about": "Headphones halfway between cue and master, so you can hear the blend rather than one side of it.",
+            "id": "preset:move-headphones-both",
+            "key": null,
+            "label": "Hear both",
+            "run": "switch preset move-headphones-both"
+          }
+        ],
+        "title": "Presets"
+      },
+      {
+        "tiles": [
+          {
+            "about": "Long evenings at a desk. Easy on the eyes for hours at a time.",
+            "id": "theme:pkg-studio",
+            "key": null,
+            "label": "Studio Neutral",
+            "run": "switch theme pkg-studio"
+          },
+          {
+            "about": "Playing in the dark. Highest contrast, least motion, nothing to miss.",
+            "id": "theme:pkg-booth",
+            "key": null,
+            "label": "Pro Dark",
+            "run": "switch theme pkg-booth"
+          },
+          {
+            "about": "Preparing by a window, or an afternoon set outdoors.",
+            "id": "theme:pkg-daylight",
+            "key": null,
+            "label": "Daylight",
+            "run": "switch theme pkg-daylight"
+          },
+          {
+            "about": "A dark room with people in it.",
+            "id": "theme:pkg-club",
+            "key": null,
+            "label": "Club",
+            "run": "switch theme pkg-club"
+          },
+          {
+            "about": "Daylight, a big stage, and a screen nobody can shade.",
+            "id": "theme:pkg-festival",
+            "key": null,
+            "label": "Festival",
+            "run": "switch theme pkg-festival"
+          },
+          {
+            "about": "Golden hour on a terrace, when the room is neither light nor dark.",
+            "id": "theme:pkg-sunset",
+            "key": null,
+            "label": "Beach Sunset",
+            "run": "switch theme pkg-sunset"
+          },
+          {
+            "about": "Warm, bright, and unhurried.",
+            "id": "theme:pkg-caribbean",
+            "key": null,
+            "label": "Caribbean",
+            "run": "switch theme pkg-caribbean"
+          },
+          {
+            "about": "The one §32 names after a genre rather than a room.",
+            "id": "theme:pkg-latin",
+            "key": null,
+            "label": "Latin",
+            "run": "switch theme pkg-latin"
+          },
+          {
+            "about": "A room that is not there for the DJ.",
+            "id": "theme:pkg-wedding",
+            "key": null,
+            "label": "Wedding",
+            "run": "switch theme pkg-wedding"
+          },
+          {
+            "about": "Low light, low tempo, and nobody dancing yet.",
+            "id": "theme:pkg-lounge",
+            "key": null,
+            "label": "Lounge",
+            "run": "switch theme pkg-lounge"
+          },
+          {
+            "about": "Hands on the platters, eyes on two records.",
+            "id": "theme:pkg-scratch",
+            "key": null,
+            "label": "Scratch",
+            "run": "switch theme pkg-scratch"
+          },
+          {
+            "about": "Four parts of one record, told apart at a glance.",
+            "id": "theme:pkg-stemlab",
+            "key": null,
+            "label": "Stem Lab",
+            "run": "switch theme pkg-stemlab"
+          },
+          {
+            "about": "Peak time. Everything moves; needs the machine to have it to spare.",
+            "id": "theme:pkg-cyber",
+            "key": null,
+            "label": "Cyber / Experimental",
+            "run": "switch theme pkg-cyber"
+          },
+          {
+            "about": "The default. Calm, green, and readable in most rooms.",
+            "id": "theme:pkg-organic",
+            "key": null,
+            "label": "Organic Base",
+            "run": "switch theme pkg-organic"
+          },
+          {
+            "about": "A dark room, hard music, and a screen that should look like the music.",
+            "id": "theme:pkg-industrial",
+            "key": null,
+            "label": "Industrial Techno",
+            "run": "switch theme pkg-industrial"
+          },
+          {
+            "about": "Every colour djmanzo uses to mean something, chosen to stay apart for a colour-blind DJ.",
+            "id": "theme:pkg-legible",
+            "key": null,
+            "label": "Colour-blind safe",
+            "run": "switch theme pkg-legible"
+          },
+          {
+            "about": "When the waveform's colours should be the only colours: a neutral room, and every EQ knob in the colour of the band it cuts.",
+            "id": "theme:pkg-spectrum",
+            "key": null,
+            "label": "Spectrum",
+            "run": "switch theme pkg-spectrum"
+          },
+          {
+            "about": "A colour code read from across the booth: green is going, cyan is chosen, amber is about to, red is stop.",
+            "id": "theme:pkg-signal",
+            "key": null,
+            "label": "Signal",
+            "run": "switch theme pkg-signal"
+          },
+          {
+            "about": "Late-night and lounge sets where the screen may glow: a night sky from teal to violet, the same two colours at the ends of every gradient.",
+            "id": "theme:pkg-aurora",
+            "key": null,
+            "label": "Aurora",
+            "run": "switch theme pkg-aurora"
+          }
+        ],
+        "title": "Themes"
+      },
+      {
+        "tiles": [
+          {
+            "about": "The decks and nothing else.",
+            "id": "workspace:Perform",
+            "key": null,
+            "label": "Perform",
+            "run": "switch workspace Perform"
+          },
+          {
+            "about": "Everything named, nothing hidden, and the coach talking.",
+            "id": "workspace:Beginner",
+            "key": null,
+            "label": "Beginner",
+            "run": "switch workspace Beginner"
+          },
+          {
+            "about": "Two decks and a mixer, the way it has always been.",
+            "id": "workspace:Classic DJ",
+            "key": null,
+            "label": "Classic DJ",
+            "run": "switch workspace Classic DJ"
+          },
+          {
+            "about": "Two decks, tight, with what is next and the booth to hand.",
+            "id": "workspace:Pro Performance",
+            "key": null,
+            "label": "Pro Performance",
+            "run": "switch workspace Pro Performance"
+          },
+          {
+            "about": "Four decks, close together.",
+            "id": "workspace:4 Deck",
+            "key": null,
+            "label": "4 Deck",
+            "run": "switch workspace 4 Deck"
+          },
+          {
+            "about": "Every deck djmanzo has, at the cost of comfort.",
+            "id": "workspace:6 Deck",
+            "key": null,
+            "label": "6 Deck",
+            "run": "switch workspace 6 Deck"
+          },
+          {
+            "about": "Four decks, the night's arc, and what is under your hands.",
+            "id": "workspace:Club",
+            "key": null,
+            "label": "Club",
+            "run": "switch workspace Club"
+          },
+          {
+            "about": "The collection and the booth, for a room that talks back.",
+            "id": "workspace:Mobile DJ",
+            "key": null,
+            "label": "Mobile DJ",
+            "run": "switch workspace Mobile DJ"
+          },
+          {
+            "about": "The collection, the requests inside it, and what kind of night it is.",
+            "id": "workspace:Wedding / Event",
+            "key": null,
+            "label": "Wedding / Event",
+            "run": "switch workspace Wedding / Event"
+          },
+          {
+            "about": "Four decks and the whole collection, for a night that goes anywhere.",
+            "id": "workspace:Open Format",
+            "key": null,
+            "label": "Open Format",
+            "run": "switch workspace Open Format"
+          },
+          {
+            "about": "What comes next and where the night is, for a set that crosses genres on purpose.",
+            "id": "workspace:Latin / Caribbean",
+            "key": null,
+            "label": "Latin / Caribbean",
+            "run": "switch workspace Latin / Caribbean"
+          },
+          {
+            "about": "Two decks and the controllers, with the hands in charge.",
+            "id": "workspace:Scratch / Turntablism",
+            "key": null,
+            "label": "Scratch / Turntablism",
+            "run": "switch workspace Scratch / Turntablism"
+          },
+          {
+            "about": "The decks alone, so the stem controls and the rack on them have room.",
+            "id": "workspace:Stem Performance",
+            "key": null,
+            "label": "Stem Performance",
+            "run": "switch workspace Stem Performance"
+          },
+          {
+            "about": "Four decks and the sampler, with the stem controls on each deck.",
+            "id": "workspace:Mashup / Remix",
+            "key": null,
+            "label": "Mashup / Remix",
+            "run": "switch workspace Mashup / Remix"
+          },
+          {
+            "about": "The library beside the decks, with what is coming next.",
+            "id": "workspace:Preparation",
+            "key": null,
+            "label": "Preparation",
+            "run": "switch workspace Preparation"
+          },
+          {
+            "about": "The shape of the night, and the records to build it from.",
+            "id": "workspace:Set Planning",
+            "key": null,
+            "label": "Set Planning",
+            "run": "switch workspace Set Planning"
+          },
+          {
+            "about": "A mix rehearsed offline, with the pair it is between.",
+            "id": "workspace:Practice / Learning",
+            "key": null,
+            "label": "Practice / Learning",
+            "run": "switch workspace Practice / Learning"
+          },
+          {
+            "about": "What is playing, what is next and how the room is taking it, while it drives and you watch.",
+            "id": "workspace:Autopilot",
+            "key": null,
+            "label": "Autopilot",
+            "run": "switch workspace Autopilot"
+          },
+          {
+            "about": "The library and the assistant at the same time -- the thing the old shell could not do.",
+            "id": "workspace:Read the room",
+            "key": null,
+            "label": "Read the room",
+            "run": "switch workspace Read the room"
+          },
+          {
+            "about": "The decks, given room to breathe.",
+            "id": "workspace:Minimal",
+            "key": null,
+            "label": "Minimal",
+            "run": "switch workspace Minimal"
+          },
+          {
+            "about": "The decks, in the theme built for a dark booth and a bright screen.",
+            "id": "workspace:High Contrast",
+            "key": null,
+            "label": "High Contrast",
+            "run": "switch workspace High Contrast"
+          },
+          {
+            "about": "Everything that fits on a small screen, and nothing that does not.",
+            "id": "workspace:Laptop Compact",
+            "key": null,
+            "label": "Laptop Compact",
+            "run": "switch workspace Laptop Compact"
+          },
+          {
+            "about": "The decks and what is mapped to the hardware in front of them.",
+            "id": "workspace:Controller Focus",
+            "key": null,
+            "label": "Controller Focus",
+            "run": "switch workspace Controller Focus"
+          },
+          {
+            "about": "The decks and the booth, for a mixer djmanzo is not.",
+            "id": "workspace:CDJ / External Mixer",
+            "key": null,
+            "label": "CDJ / External Mixer",
+            "run": "switch workspace CDJ / External Mixer"
+          },
+          {
+            "about": "The microphone in the booth and the collection the requests are in.",
+            "id": "workspace:Karaoke / MC",
+            "key": null,
+            "label": "Karaoke / MC",
+            "run": "switch workspace Karaoke / MC"
+          }
+        ],
+        "title": "Workspaces"
+      }
+    ]
+  }
+}

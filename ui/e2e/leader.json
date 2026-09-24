@@ -39,6 +39,13 @@
       "mine": false
     },
     {
+      "key": "0",
+      "label": "Dashboard",
+      "run": "ui dashboard",
+      "children": [],
+      "mine": false
+    },
+    {
       "key": "1",
       "label": "Dig",
       "run": "switch activity dig",

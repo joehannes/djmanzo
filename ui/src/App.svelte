@@ -1,6 +1,8 @@
 <script lang="ts">
   import Assistant from "./Assistant.svelte";
   import Guide from "./Guide.svelte";
+  import DashboardView from "./Dashboard.svelte";
+  import Icon from "./controls/Icon.svelte";
   import { Leader } from "./leader.svelte";
   import { chordRun } from "./platform";
   import { tick } from "svelte";
@@ -41,6 +43,12 @@
     setActivityMode,
     leaderTree,
     uiDo,
+    interfaceSettings,
+    setToolbars,
+    dashboard as fetchDashboard,
+    usedTile,
+    type InterfaceSettings,
+    type Dashboard,
     type Activities,
     type ActivitySuggestion,
     chooseLayout,
@@ -667,6 +675,8 @@
   async function chooseActivity(slug: string) {
     const found = activityState?.activities.find((activity) => activity.slug === slug);
     if (!found) return;
+    counted(`activity:${slug}`);
+    board = null;
     // The density stays the DJ's. It is how big things are drawn for this
     // window and these eyes, not what the job needs — and an activity that
     // set it rescaled the whole interface on every switch, which moved the
@@ -705,6 +715,7 @@
     const space = run.indexOf(" ");
     const kind = run.slice(0, space);
     const which = run.slice(space + 1);
+    if (kind !== "activity") counted(`${kind}:${kind === "preset" ? which.split(" ")[0] : which}`);
     if (kind === "theme") {
       theme.setPackage(which);
       void themeChosen(which).catch(() => {});
@@ -780,6 +791,18 @@
       if (chord) {
         event.preventDefault();
         void runLeaf(chord);
+        return;
+      }
+    }
+    // §117: `0` calls the dashboard up and puts it away; Escape puts it away.
+    if (!typing(event.target) && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
+      if (event.code === "Digit0") {
+        event.preventDefault();
+        void toggleDashboard();
+        return;
+      }
+      if (event.key === "Escape" && board) {
+        board = null;
         return;
       }
     }
@@ -953,6 +976,7 @@
       locked: [],
     };
     const already = current.surfaces.some((p) => p.surface === name);
+    if (!already) counted(`surface:${name}`);
     const surfaces: SurfacePlacement[] = already
       ? current.surfaces.filter((p) => p.surface !== name)
       : [
@@ -1136,6 +1160,45 @@
   const leader = new Leader((run) => void runLeaf(run));
   let paletteRef = $state<{ openPalette: () => void } | null>(null);
 
+  /**
+   * §117: the interface's own settings — the toolbars shown or not — and the
+   * dashboard, when it is up.
+   */
+  let chrome = $state<InterfaceSettings | null>(null);
+  const toolbars = $derived(chrome?.toolbars ?? false);
+  let board = $state<Dashboard | null>(null);
+  $effect(() => {
+    void interfaceSettings()
+      .then((settings) => (chrome = settings))
+      .catch(() => {});
+  });
+
+  async function showToolbars(on: boolean) {
+    try {
+      chrome = await setToolbars(on);
+    } catch {
+      // The header stays as it is; the switch will say so on the next look.
+    }
+  }
+
+  /** Call the dashboard up, for the activity the DJ is in; or put it away. */
+  async function toggleDashboard() {
+    if (board) {
+      board = null;
+      return;
+    }
+    try {
+      board = await fetchDashboard(activityState?.on ? activityState.current : "");
+    } catch {
+      board = null;
+    }
+  }
+
+  /** Count a use toward the dashboard's arrangement, whatever reached it. */
+  function counted(id: string) {
+    void usedTile(id).catch(() => {});
+  }
+
   /** Bumped when the DJ keeps or forgets one of their own keys. */
   let leaderVersion = $state(0);
 
@@ -1170,6 +1233,7 @@
       else if (rest === "record") {
         if (setRecording) await send(setRecording.active ? "record off" : "record on");
       } else if (rest === "mark") await mark();
+      else if (rest === "dashboard") await toggleDashboard();
     } else if (kind === "uiop") {
       // §41's operations, which a DJ's own key may name because the palette
       // offers them; carried out the way the palette carries them out.
@@ -2067,11 +2131,34 @@
     -->
     <div
       class="go"
-      class:holding={activityMode && fullGoHeight > 0}
+      class:holding={toolbars && activityMode && fullGoHeight > 0}
       bind:clientHeight={goHeight}
-      style:min-height={activityMode && fullGoHeight > 0 ? `${fullGoHeight}px` : null}
+      style:min-height={toolbars && activityMode && fullGoHeight > 0 ? `${fullGoHeight}px` : null}
     >
-      {#if activityMode && activityState}
+      {#if !toolbars}
+        <!--
+          §117: no toolbars. The two rows of buttons are on the dashboard and
+          under Space; what stays is where the DJ is and the two ways to
+          everything else, so the room above the decks goes to the activity.
+        -->
+        <nav class="go-group slim" aria-label="Where you are">
+          <button type="button" class="dash" onclick={() => void toggleDashboard()} title="Everything else — activities, panels, presets, themes, workspaces (0)">
+            <Icon name="table-cells" size="0.95rem" /> Dashboard <kbd>0</kbd>
+          </button>
+          <span class="where" data-where>
+            {#if activityMode && activityState}
+              {@const at = activityState.activities.findIndex((a) => a.slug === activityState?.current)}
+              {#if at >= 0 && at < 9}<kbd>{at + 1}</kbd>{/if}
+              {activityState.activities[at]?.title ?? "Activity"}
+            {:else}
+              Everything
+            {/if}
+          </span>
+          <button type="button" class="keys-hint" onclick={() => leader.start()} title="Every key from here, one word at a time">
+            <kbd>Space</kbd> keys
+          </button>
+        </nav>
+      {:else if activityMode && activityState}
         <!--
           §109's activity mode: the strip stands where the panel buttons and
           the stage pickers stand, so switching into it swaps one row for
@@ -2705,6 +2792,8 @@
       onLock={saveLocks}
       onSetUp={setUpForTonight}
       onPackChange={(id) => (chosenPack = id)}
+      {toolbars}
+      onToolbars={(on) => void showToolbars(on)}
     />
   {/snippet}
   {#snippet surfaceLog()}
@@ -2943,6 +3032,16 @@
   -->
   <!-- §117: the guide behind Space, drawn over everything while a chain is typed. -->
   <Guide {leader} />
+  {#if board}
+    <DashboardView
+      {board}
+      onclose={() => (board = null)}
+      onrun={(tile) => {
+        board = null;
+        void runLeaf(tile.run);
+      }}
+    />
+  {/if}
 
   <Palette
     bind:this={paletteRef}
@@ -3333,6 +3432,47 @@
     align-items: center;
     gap: 0.4rem;
     flex-wrap: wrap;
+  }
+
+  /* §117: the slim header's one group — where you are, and the two ways on. */
+  .slim {
+    flex-wrap: nowrap;
+  }
+
+  .slim button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s, 4px);
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+  }
+
+  .slim button:hover {
+    background: var(--panel-hover);
+  }
+
+  .slim .where {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.4rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+
+  .slim kbd {
+    padding: 0 0.3em;
+    border: 1px solid var(--border-strong, var(--border));
+    border-radius: 0.25rem;
+    font-family: var(--mono, monospace);
+    font-size: 0.72rem;
   }
 
   /*

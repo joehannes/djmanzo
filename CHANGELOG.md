@@ -30,6 +30,12 @@ Versioning follows semver, with one project-specific convention:
   find what they do the way you find anything in the palette, name it, keep
   it — it is in the guide from then on, marked as yours. djmanzo says why when
   a chain would hide one of its groups.
+- **The dashboard, instead of toolbars.** On a fresh install the two rows of
+  buttons above the decks are gone: the top of the window is one row, and the
+  decks start about 95 px higher. Everything that was there is on the
+  dashboard — press `0` — with the activity you are in first, then the
+  activities, panels, presets, themes and workspaces, arranged by what you
+  use most. Settings → Appearance brings the toolbars back.
 - **The system's own chords**: ⌘ on a Mac, Ctrl elsewhere — F to search the
   library, comma for Settings, slash (or F1) for every key, 1–9 for an
   activity even while typing.

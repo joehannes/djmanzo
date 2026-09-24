@@ -1263,6 +1263,34 @@ impl AppState {
         }
     }
 
+    fn interface_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("interface.json"))
+    }
+
+    /// §117: the interface's own settings — whether the toolbars are shown,
+    /// and how often each dashboard tile has been used. Defaults on a fresh
+    /// install or an unreadable file: toolbars off, nothing counted.
+    #[must_use]
+    pub fn interface(&self) -> crate::dashboard::Interface {
+        self.interface_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keep the interface's own settings.
+    pub fn set_interface(&self, interface: &crate::dashboard::Interface) {
+        let Some(path) = self.interface_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(interface) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "the interface settings will not survive a restart");
+        }
+    }
+
     fn leader_path(&self) -> Option<std::path::PathBuf> {
         Some(self.config_dir.lock().ok()?.clone()?.join("leader.json"))
     }

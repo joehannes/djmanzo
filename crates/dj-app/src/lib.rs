@@ -37,6 +37,7 @@ pub mod columns;
 pub mod commands;
 pub mod context;
 pub mod control;
+pub mod dashboard;
 pub mod downloads;
 pub mod ghost;
 pub mod grid;
@@ -580,6 +581,10 @@ pub fn run() {
             commands::library_status,
             commands::palette,
             commands::leader_tree,
+            commands::dashboard,
+            commands::interface_settings,
+            commands::set_toolbars,
+            commands::used_tile,
             commands::leader_mine,
             commands::keep_mnemonic,
             commands::forget_mnemonic,
