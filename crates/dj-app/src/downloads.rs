@@ -1071,10 +1071,12 @@ mod tests {
                 ],
             );
             let album = take_album(&zip_path, &music, LIMITS, 1_700_000_000).unwrap();
-            let shown: Vec<(&str, &str)> = album
+            // Where a record went is shown with the system's own separator,
+            // which on Windows is a backslash; compared here in one spelling.
+            let shown: Vec<(&str, String)> = album
                 .filed
                 .iter()
-                .map(|f| (f.arrived.as_str(), f.to.as_str()))
+                .map(|f| (f.arrived.as_str(), f.to.replace('\\', "/")))
                 .collect();
             let (first, second) = if round == 1 {
                 (
@@ -1090,8 +1092,8 @@ mod tests {
             assert_eq!(
                 shown,
                 vec![
-                    ("Night Album.zip › 01 First.mp3", first),
-                    ("Night Album.zip › 02 Second.flac", second),
+                    ("Night Album.zip › 01 First.mp3", first.to_owned()),
+                    ("Night Album.zip › 02 Second.flac", second.to_owned()),
                 ]
             );
             assert!(album.filed.iter().all(|f| f.problem.is_none()));
