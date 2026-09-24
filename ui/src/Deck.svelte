@@ -1541,6 +1541,9 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    /* Room for the scrollbar whether or not it is showing, so a deck's
+       controls do not move sideways when its body starts to scroll. */
+    scrollbar-gutter: stable;
   }
 
   /*

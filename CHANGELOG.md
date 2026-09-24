@@ -16,6 +16,15 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A stem mutes with one press.** The stems are four chips under each
+  waveform — lit while they play, struck through when muted, filled to
+  their level. Press to mute or bring back, Shift+press to hear one alone.
+  **Tone** opens level, EQ and filter per stem (knobs now, not tiny
+  sliders), the swap and the vocal moves in a panel over the deck that
+  goes away with Escape or a press elsewhere.
+- **Scrollbars no longer lie on top of controls** on Linux: they take their
+  own room, are easier to grab, and follow the theme.
+
 ## v0.24.0 — Stems that work with the HT-Demucs model, Space and its guide, and a dashboard instead of toolbars
 
 The fix for stem controls that did nothing with the HT-Demucs model on

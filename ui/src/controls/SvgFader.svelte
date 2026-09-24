@@ -10,6 +10,13 @@
     max: number;
     step?: number;
     label?: string;
+    /**
+     * What a screen reader and a test call it, when that is longer than the
+     * label drawn beside it: four knobs labelled "Lo" in four stem columns
+     * are "Vocals low", "Drums low" and so on to anything that cannot see
+     * the column.
+     */
+    name?: string;
     /** The value in words, shown under the label. A knob with no number
      *  beside it is a knob you cannot set to anything in particular. */
     readout?: string;
@@ -40,6 +47,7 @@
     max,
     step = 0.01,
     label,
+    name,
     readout,
     oninput,
     ondblclick,
@@ -129,7 +137,7 @@
   aria-valuemin={min}
   aria-valuemax={max}
   aria-valuenow={value}
-  aria-label={label || "fader"}
+  aria-label={name || label || "fader"}
   tabindex={disabled ? -1 : 0}
   onpointerdown={handlePointerDown}
   onpointermove={handlePointerMove}

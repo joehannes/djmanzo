@@ -255,6 +255,38 @@
   box-sizing: border-box;
 }
 
+/*
+  §120: scrollbars that are easy to take hold of and never lie on a control.
+
+  WebKitGTK -- the engine djmanzo ships on in Linux -- draws overlay
+  scrollbars by default, over whatever is at the edge of a scrolling box. On a
+  deck that was the right end of the stem strip: a press on "Tone" landed on
+  the scrollbar's track and paged the deck down instead. Chromium reserves room
+  for its scrollbar, so a browser test could not see it; the running
+  application did. Styling the scrollbar makes WebKit give it room of its own,
+  as Chromium does, and a ten-pixel thumb in the theme's own ink is easier to
+  grab than the hairline it replaces.
+*/
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-dim) 45%, transparent) padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim) padding-box;
+}
+
 body {
   margin: 0;
   background: var(--bg);

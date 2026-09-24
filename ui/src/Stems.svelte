@@ -1,6 +1,9 @@
 <script lang="ts">
   import { STEM_COLORS, STEM_KEYS, STEM_LABELS } from "./stems";
   import IconButton from "./controls/IconButton.svelte";
+  import SvgFader from "./controls/SvgFader.svelte";
+  import SvgKnob from "./controls/SvgKnob.svelte";
+  import { portal } from "./controls/portal";
   import { dispatch, stemsStatus, type StemsStatus, type StemSwap } from "./api";
   import { wantsStemsOpen } from "./hands.svelte";
   import { onDestroy, onMount } from "svelte";
@@ -91,8 +94,107 @@
   });
 
 
+  /**
+   * §120: *"what if i want to quickly mute/unmute some stem??"*
+   *
+   * The four stems are a row of chips that is always there, under the
+   * waveform: one press mutes a stem or brings it back, and the chip says
+   * which from across the booth — lit in its colour when it plays, dark and
+   * struck through when it does not, with its level as the fill. Shift and a
+   * press hears it alone; a press while a solo is held lets the solo go,
+   * because the engine refuses mutes during one and a chip that did nothing
+   * would be the complaint again.
+   */
   function toggleMute(index: number) {
+    if (soloing) {
+      releaseSolo();
+      return;
+    }
     dispatch(`deck ${deckNumber} stem_mute ${STEM_KEYS[index]}`);
+  }
+
+  /** Which stem the chips soloed, to let the same one go. */
+  let soloed = $state<number | null>(null);
+
+  function soloStem(index: number) {
+    stopFade();
+    if (soloing) {
+      releaseSolo();
+      return;
+    }
+    soloed = index;
+    dispatch(`deck ${deckNumber} stem_solo_on ${STEM_KEYS[index]}`);
+  }
+
+  function releaseSolo() {
+    dispatch(`deck ${deckNumber} stem_solo_off ${STEM_KEYS[soloed ?? 0]}`);
+    soloed = null;
+  }
+
+  function pressChip(event: MouseEvent, index: number) {
+    if (event.shiftKey) soloStem(index);
+    else toggleMute(index);
+  }
+
+  /**
+   * The tone controls — level, EQ and filter per stem, the swap, the vocal
+   * macros — are a panel of their own.
+   *
+   * Opened by the DJ, it floats over the deck and goes away again (Escape, a
+   * press elsewhere, or the same button): §120's *temporary windows can take
+   * a lot of space for the focused moment and then get out of the way*. A
+   * layout or a controller that asks for it (below) gets it in place instead,
+   * because there it is the point rather than a visit.
+   */
+  let asked = $state(false);
+
+  /**
+   * Where the floating panel goes: under the strip, in window coordinates.
+   *
+   * Fixed rather than absolute, because the deck's upper zone scrolls, and a
+   * panel positioned inside a scrolling box is cut off at its edge — the
+   * first version was, and a press on a knob landed on whatever was under the
+   * cut and put the panel away.
+   */
+  let stripEl = $state<HTMLElement | null>(null);
+  let place = $state("");
+  const PANEL_MIN_WIDTH = 440;
+  function measure() {
+    if (!stripEl) return;
+    const rect = stripEl.getBoundingClientRect();
+    const width = Math.min(window.innerWidth - 16, Math.max(rect.width, PANEL_MIN_WIDTH));
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    const top = rect.bottom + 4;
+    place = `top: ${top}px; left: ${left}px; width: ${width}px; max-height: ${Math.max(160, window.innerHeight - top - 8)}px;`;
+  }
+  /** The floating panel, which lives in the document's body while open. */
+  let floatEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (!asked || inline) return;
+    measure();
+    // A press anywhere but the strip and the panel puts it away. Captured,
+    // so a control that stops propagation still counts as elsewhere.
+    const away = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (stripEl?.contains(target) || floatEl?.contains(target)) return;
+      asked = false;
+    };
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    document.addEventListener("pointerdown", away, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+      document.removeEventListener("pointerdown", away, true);
+    };
+  });
+
+  function onKey(event: KeyboardEvent) {
+    if (event.key === "Escape" && asked && !inline) {
+      asked = false;
+      event.stopPropagation();
+    }
   }
 
   /** low, mid, high — matching `EqBand::ALL` on the engine side. */
@@ -161,15 +263,10 @@
    * Nothing plugged in leaves it folded, deliberately: see `wantsStemsOpen`.
    */
   const noStemControls = $derived(wantsStemsOpen());
+  /** In place, because the layout or the hardware asked for it. */
+  const inline = $derived(noStemControls || startOpen);
+  const open = $derived(inline || asked);
 
-  const inUse = $derived(
-    soloing ||
-      swap?.from === deckNumber ||
-      swap?.to === deckNumber ||
-      muteState.some((muted) => muted) ||
-      volumeState.some((level) => Math.abs(level - 1) > 0.001) ||
-      [0, 1, 2, 3].some((index) => toneTouched(index)),
-  );
 
   function changeVolume(index: number, value: string) {
     const vol = parseFloat(value);
@@ -187,8 +284,7 @@
    * release.
    */
   function macroAcapella() {
-    stopFade();
-    dispatch(`deck ${deckNumber} stem_solo_${soloing ? "off" : "on"} vocal`);
+    soloStem(0);
   }
 
   /**
@@ -266,254 +362,331 @@
   }
 </script>
 
-<!--
-  Folded, like the effect rack, and for the same reason written larger: this is
-  the biggest block on a deck and it was mounted open on every loaded track.
-  The summary always says the word, so the block is one press away rather than
-  hidden -- which is the standing complaint about the products this competes
-  with, and not a trade worth making to save a row.
--->
-<details class="stem-fold" open={inUse || noStemControls || startOpen} data-stems-open={inUse || noStemControls || startOpen}>
-  <summary>
-    Stems
-    {#if inUse}
-      <span class="live">on</span>
-    {:else if !status.available}
-      <span class="off">unavailable</span>
-    {/if}
-  </summary>
-<div class="stems-module" class:unavailable={!status.available}>
-  {#if !status.available}
-    <p class="stems-reason" role="status">
-      Stem separation is unavailable{status.reason ? ` — ${status.reason}` : ""}
-    </p>
-  {:else if status.reason}
-    <!--
-      Separating, but with the fallback. Worth saying: the controls work, and
-      a downloaded model would work better. Not an error, so it does not read
-      as one -- which the sentence used to fail at, because `Unavailable`'s own
-      Display ended "so stems are unavailable" and this line begins "Using the
-      built-in separator". The consequence now belongs to whoever knows it.
-    -->
-    <p class="stems-reason" role="status">
-      Using the {status.backend ?? "built-in"} separator — {status.reason}
-    </p>
-  {/if}
-  <div class="stems-grid">
-    {#each STEM_LABELS as name, i}
-      <div class="stem-column">
-        <button
-          class="stem-pad"
-          class:muted={muteState[i]}
-          style="--stem-color: {STEM_COLORS[i]}"
-          disabled={!status.available}
-          onclick={() => toggleMute(i)}
-          title="Toggle {name}"
-        >
-          <span class="label">{name}</span>
-        </button>
-        <div class="stem-slider-container" style="--stem-color: {STEM_COLORS[i]}">
-          <div class="stem-meter" style="height: {volumeState[i] * 100}%"></div>
-          <input 
-            aria-label="{name} level"
-            type="range" 
-            min="0" 
-            max="1" 
-            step="0.01" 
-            value={volumeState[i]} 
-            disabled={!status.available}
-            oninput={(e) => changeVolume(i, e.currentTarget.value)}
-            class="stem-slider" 
-          />
-        </div>
-        <!--
-          This stem's own tone, on top of the deck's EQ rather than instead of
-          it. Flat is 1.0 for the bands and 0.0 for the filter, so an untouched
-          stem sits in the middle of every control and the deck's channel strip
-          behaves exactly as it did before these existed.
-        -->
-        <div class="stem-tone" style="--stem-color: {STEM_COLORS[i]}">
-          {#each ["Lo", "Md", "Hi"] as band, b (band)}
-            <label class="tone-knob">
-              <span>{band}</span>
-              <input
-                type="range"
-                min="0"
-                max="4"
-                step="0.05"
-                value={eqState?.[i]?.[b] ?? 1}
-                disabled={!status.available}
-                aria-label="{STEM_LABELS[i]} {['low', 'mid', 'high'][b]}"
-                oninput={(e) => changeEq(i, b, e.currentTarget.value)}
-              />
-            </label>
-          {/each}
-          <label class="tone-knob">
-            <span>Flt</span>
-            <input
-              type="range"
-              min="-1"
-              max="1"
-              step="0.02"
-              value={filterState?.[i] ?? 0}
-              disabled={!status.available}
-              aria-label="{STEM_LABELS[i]} filter"
-              oninput={(e) => changeStemFilter(i, e.currentTarget.value)}
-            />
-          </label>
-          <button
-            class="tone-reset"
-            class:active={toneTouched(i)}
-            disabled={!status.available || !toneTouched(i)}
-            title="Put {STEM_LABELS[i]} back to flat"
-            onclick={() => resetTone(i)}
-          >
-            ⌀
-          </button>
-        </div>
-      </div>
-    {/each}
-  </div>
-  
-  {#if status.available}
-    <div class="swap-row">
-      {#if sending}
-        <span class="swap-note">
-          {STEM_LABELS[sending.stem]} over deck {sending.to}
-        </span>
-        <IconButton
-          icon="unlink"
-          title="Put both decks back"
-          active={true}
-          onClick={() => swapStem(sending.stem)}
-        />
-      {:else}
-        <span class="swap-note">Send a stem to deck</span>
-        <select bind:value={target} aria-label="Which deck to send a stem to">
-          {#each Array.from({ length: deckCount }, (_, i) => i + 1) as n (n)}
-            {#if n !== deckNumber}
-              <option value={n}>{n}</option>
-            {/if}
-          {/each}
-        </select>
-        {#each STEM_LABELS as name, i}
-          <button
-            class="swap-pick"
-            style="--stem-color: {STEM_COLORS[i]}"
-            title="Play this deck's {name.toLowerCase()} over deck {target}"
-            onclick={() => swapStem(i)}
-          >
-            {name.slice(0, 2)}
-          </button>
-        {/each}
-      {/if}
-    </div>
-  {/if}
+<svelte:window onkeydown={onKey} />
 
-  <div class="macros-row">
-    <IconButton
-      icon="fa-solid fa-microphone"
-      title={soloing ? "Release the vocal solo" : "Solo Vocals (Acapella)"}
-      active={soloing}
-      disabled={!status.available}
-      onClick={macroAcapella}
-    />
-    <IconButton
-      icon="fa-solid fa-guitar"
-      title="Mute Vocals (Instrumental)"
-      disabled={!status.available}
-      onClick={macroInstrumental}
-    />
-    <IconButton
-      icon="fa-solid fa-hand"
-      title={fade ? "Stop the fade" : "Gradually fade out vocals"}
-      active={fade !== null}
-      disabled={!status.available}
-      onClick={macroVocalFadeOut}
-    />
+<!--
+  §120: the stems as a row that is always there, and the rest a press away.
+  It used to be a fold, closed on every deck unless a layout opened it, so
+  muting a vocal took two presses and a scroll.
+-->
+<div class="stems" class:inline data-stems-open={open}>
+  <div class="stem-strip" role="group" aria-label="Stems on deck {deckNumber}" bind:this={stripEl}>
+    {#each STEM_LABELS as name, i (name)}
+      <button
+        class="stem-chip"
+        class:muted={muteState[i]}
+        class:alone={soloing && soloed === i}
+        style="--stem-color: {STEM_COLORS[i]}; --level: {muteState[i] ? 0 : (volumeState[i] ?? 1)}"
+        data-stem={STEM_KEYS[i]}
+        aria-pressed={!muteState[i]}
+        disabled={!status.available}
+        title={soloing
+          ? `A solo is held — press to let it go`
+          : `${name}: press to ${muteState[i] ? "bring it back" : "mute it"}, Shift+press to hear it alone`}
+        onclick={(event) => pressChip(event, i)}
+      >
+        <span class="chip-fill" aria-hidden="true"></span>
+        <span class="chip-name">{name}</span>
+      </button>
+    {/each}
+    {#if !status.available}
+      <span class="off" title={status.reason ?? ""}>unavailable</span>
+    {/if}
+    {#if !inline}
+      <button
+        class="stem-more"
+        aria-expanded={open}
+        title={open ? "Put the stem tone away (Esc)" : "Level, EQ and filter per stem, the swap and the vocal moves"}
+        onclick={() => (asked = !asked)}
+      >
+        {open ? "Close" : "Tone"}
+      </button>
+    {/if}
   </div>
+
+  {#if open && inline}
+    {@render module(false)}
+  {/if}
 </div>
-</details>
+
+{#if open && !inline}
+  <div class="stems-float" use:portal bind:this={floatEl}>
+    {@render module(true)}
+  </div>
+{/if}
+
+{#snippet module(floating: boolean)}
+    <div
+      class="stems-module"
+      class:floating
+      class:unavailable={!status.available}
+      style={floating ? place : undefined}
+    >
+      {#if !status.available}
+        <p class="stems-reason" role="status">
+          Stem separation is unavailable{status.reason ? ` — ${status.reason}` : ""}
+        </p>
+      {:else if status.reason}
+        <!--
+          Separating, but with the fallback. Worth saying: the controls work, and
+          a downloaded model would work better. Not an error, so it does not read
+          as one.
+        -->
+        <p class="stems-reason" role="status">
+          Using the {status.backend ?? "built-in"} separator — {status.reason}
+        </p>
+      {/if}
+      <div class="stems-grid">
+        {#each STEM_LABELS as name, i (name)}
+          <div class="stem-column" style="--stem-color: {STEM_COLORS[i]}">
+            <span class="column-name">{name}</span>
+            <!--
+              Knobs and a fader, the deck's own controls, rather than native
+              sliders: a drag of a hundred pixels is the whole range however
+              narrow the column, Shift is fine, and a double press puts it
+              back. The sliders these replace were a few pixels of travel per
+              step in a narrow column.
+            -->
+            <SvgFader
+              value={volumeState[i] ?? 1}
+              min={0}
+              max={1}
+              step={0.01}
+              label="Level"
+              name="{name} level"
+              readout={(volumeState[i] ?? 1).toFixed(2)}
+              disabled={!status.available}
+              height={70}
+              width={26}
+              oninput={(value) => changeVolume(i, String(value))}
+              ondblclick={() => changeVolume(i, "1")}
+            />
+            <div class="stem-tone">
+              {#each ["Lo", "Mid", "Hi"] as band, b (band)}
+                <SvgKnob
+                  value={eqState?.[i]?.[b] ?? 1}
+                  min={0}
+                  max={4}
+                  step={0.01}
+                  label={band}
+                  name="{name} {['low', 'mid', 'high'][b]}"
+                  face={(["eq-low", "eq-mid", "eq-high"] as const)[b]}
+                  origin={1}
+                  size={30}
+                  disabled={!status.available}
+                  oninput={(value) => changeEq(i, b, String(value))}
+                  ondblclick={() => changeEq(i, b, "1")}
+                />
+              {/each}
+              <SvgKnob
+                value={filterState?.[i] ?? 0}
+                min={-1}
+                max={1}
+                step={0.01}
+                label="Flt"
+                name="{name} filter"
+                face="filter"
+                origin={0}
+                size={30}
+                disabled={!status.available}
+                oninput={(value) => changeStemFilter(i, String(value))}
+                ondblclick={() => changeStemFilter(i, "0")}
+              />
+            </div>
+            <button
+              class="tone-reset"
+              class:active={toneTouched(i)}
+              disabled={!status.available || !toneTouched(i)}
+              title="Put {name} back to flat"
+              onclick={() => resetTone(i)}
+            >
+              flat
+            </button>
+          </div>
+        {/each}
+      </div>
+
+      {#if status.available}
+        <div class="swap-row">
+          {#if sending}
+            <span class="swap-note">
+              {STEM_LABELS[sending.stem]} over deck {sending.to}
+            </span>
+            <IconButton
+              icon="unlink"
+              title="Put both decks back"
+              active={true}
+              onClick={() => swapStem(sending.stem)}
+            />
+          {:else}
+            <span class="swap-note">Send a stem to deck</span>
+            <select bind:value={target} aria-label="Which deck to send a stem to">
+              {#each Array.from({ length: deckCount }, (_, i) => i + 1) as n (n)}
+                {#if n !== deckNumber}
+                  <option value={n}>{n}</option>
+                {/if}
+              {/each}
+            </select>
+            {#each STEM_LABELS as name, i (name)}
+              <button
+                class="swap-pick"
+                style="--stem-color: {STEM_COLORS[i]}"
+                title="Play this deck's {name.toLowerCase()} over deck {target}"
+                onclick={() => swapStem(i)}
+              >
+                {name.slice(0, 2)}
+              </button>
+            {/each}
+          {/if}
+        </div>
+      {/if}
+
+      <div class="macros-row">
+        <IconButton
+          icon="fa-solid fa-microphone"
+          title={soloing ? "Release the solo" : "Solo Vocals (Acapella)"}
+          active={soloing}
+          disabled={!status.available}
+          onClick={macroAcapella}
+        />
+        <IconButton
+          icon="fa-solid fa-guitar"
+          title="Mute Vocals (Instrumental)"
+          disabled={!status.available}
+          onClick={macroInstrumental}
+        />
+        <IconButton
+          icon="fa-solid fa-hand"
+          title={fade ? "Stop the fade" : "Gradually fade out vocals"}
+          active={fade !== null}
+          disabled={!status.available}
+          onClick={macroVocalFadeOut}
+        />
+      </div>
+    </div>
+{/snippet}
 
 <style>
-  /* Same shape as the effect rack's fold, because they are the same idea. */
-  .stem-fold summary {
-    font-size: 0.78em;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-dim);
+  .stems {
+    position: relative;
+  }
+
+  /* The row that is always there. Chips share the width, so four stems read
+     as four equal things on any deck, and nothing wraps. */
+  .stem-strip {
+    display: flex;
+    align-items: stretch;
+    gap: 0.3rem;
+  }
+
+  .stem-chip {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    /* No taller than the fold's header it replaced, so a deck that fitted
+       its window still does (e2e/density.spec.ts measures it). */
+    height: 1.45rem;
+    padding: 0 0.3rem;
+    overflow: hidden;
+    border: 1px solid var(--stem-color);
+    border-radius: 0.35rem;
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
     cursor: pointer;
-    padding: 0.15rem 0;
   }
 
-  .stem-fold[open] summary {
-    margin-bottom: 0.35rem;
+  /* The level, as the chip's own fill: a stem turned down reads as less lit,
+     a muted one as empty. */
+  .chip-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: calc(var(--level) * 100%);
+    background: color-mix(in srgb, var(--stem-color) 34%, transparent);
+    pointer-events: none;
   }
 
-  .live {
-    margin-left: 0.35rem;
-    color: var(--accent);
+  .chip-name {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .stem-chip:hover:not(:disabled) {
+    background: var(--panel-hover);
+  }
+
+  .stem-chip.muted {
+    border-color: var(--border);
+    color: var(--text-dim);
+  }
+
+  .stem-chip.muted .chip-name {
+    text-decoration: line-through;
+  }
+
+  .stem-chip.alone {
+    box-shadow: 0 0 0 2px var(--stem-color);
+  }
+
+  .stem-chip:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  .stem-more {
+    flex: none;
+    padding: 0 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 0.35rem;
+    background: var(--panel);
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+  }
+
+  .stem-more[aria-expanded="true"] {
+    border-color: var(--selected);
+    color: var(--text);
   }
 
   .off {
-    margin-left: 0.35rem;
+    align-self: center;
     color: var(--text-dim);
-  }
-
-  /* The tone row sits under each stem's fader, in that stem's colour, so a
-     glance says which column a knob belongs to without reading a label. */
-  .stem-tone {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    margin-top: 0.3rem;
-  }
-
-  .tone-knob {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.62rem;
-    color: var(--text-dim);
-  }
-
-  .tone-knob span {
-    width: 1.4em;
-    flex: none;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .tone-knob input[type="range"] {
-    accent-color: var(--stem-color);
-    flex: 1;
-    min-width: 0;
-    height: 0.7rem;
-  }
-
-  .tone-reset {
-    margin-top: 0.15rem;
-    padding: 0.1rem 0;
     font-size: 0.7rem;
-    line-height: 1;
   }
 
-  /* Tokens, not white-on-black: `rgba(255,255,255,0.03)` is a panel on the
-     dark theme and an invisible one on the light theme. */
   .stems-module {
-    background: var(--panel-raised);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    margin-top: 0.35rem;
+    padding: 0.5rem;
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px;
-    margin: 8px 0;
+    border-radius: 0.45rem;
+    background: var(--panel);
+  }
+
+  /* Opened by the DJ: over the deck, not pushing it down, and gone again. */
+  .stems-module.floating {
+    position: fixed;
+    z-index: 60;
+    margin-top: 0;
+    overflow: auto;
+    background:
+      linear-gradient(var(--panel-raised), var(--panel-raised)),
+      var(--bg);
+    box-shadow: 0 0.8rem 2rem rgb(0 0 0 / 0.45);
   }
 
   .stems-reason {
-    margin: 0 0 8px;
-    font-size: 0.78rem;
-    line-height: 1.35;
+    margin: 0 0 0.4rem;
     color: var(--text-dim);
+    font-size: 0.72rem;
   }
 
   .stems-module.unavailable .stems-grid {
@@ -523,131 +696,57 @@
   .stems-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-  }
-
-  .stem-pad {
-    position: relative;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    overflow: hidden;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 4px 12px var(--scrim);
-  }
-
-  /* Active state.
-     The glow was `calc(var(--stem-color) + '40')`, which is not CSS: `calc`
-     cannot concatenate a colour with a string, so the whole declaration was
-     invalid and the browser dropped it. The pads have never glowed.
-     `color-mix` is how a colour is diluted; where it is unsupported the
-     declaration is dropped exactly as before, so this cannot be worse. */
-  .stem-pad:not(.muted) {
-    background: var(--panel-hover);
-    border-color: var(--stem-color);
-    box-shadow:
-      0 0 15px color-mix(in srgb, var(--stem-color) 25%, transparent),
-      inset 0 0 10px color-mix(in srgb, var(--stem-color) 12%, transparent);
-  }
-
-  .stem-pad:not(.muted) .label {
-    color: var(--text);
-    text-shadow: 0 0 8px var(--stem-color);
-  }
-
-  /* Muted state */
-  .stem-pad.muted {
-    background: var(--panel);
-    border-color: var(--border);
-    box-shadow: none;
-    opacity: 0.5;
-  }
-
-  .stem-pad.muted .label {
-    color: var(--text-dim);
-  }
-
-  .label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    z-index: 1;
-    transition: all 0.2s ease;
-  }
-
-  .stem-pad:hover {
-    transform: translateY(-2px);
-  }
-  .stem-pad:active {
-    transform: translateY(1px);
+    gap: 0.4rem;
   }
 
   .stem-column {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3rem 0.2rem;
+    border-top: 2px solid var(--stem-color);
+    border-radius: 0.3rem;
+    background: color-mix(in srgb, var(--stem-color) 7%, transparent);
   }
 
-  .stem-slider-container {
-    position: relative;
-    height: 80px;
-    background: var(--panel);
+  .column-name {
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* Four small knobs in two pairs: EQ low and mid, high and filter. */
+  .stem-tone {
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    gap: 0.15rem 0.3rem;
+    justify-items: center;
+  }
+
+  .tone-reset {
+    padding: 0.05rem 0.4rem;
     border: 1px solid var(--border);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-
-  .stem-meter {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    background: var(--stem-color);
-    opacity: 0.3;
-    pointer-events: none;
-    transition: height 0.1s ease-out;
-  }
-
-  .stem-slider {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 80px;
-    height: 100%;
-    transform-origin: 40px 40px;
-    transform: rotate(-90deg);
-    appearance: none;
+    border-radius: 0.3rem;
     background: transparent;
-    cursor: pointer;
-    margin: 0;
-    outline: none;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 0.65rem;
   }
 
-  .stem-slider::-webkit-slider-thumb {
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    background: var(--text);
-    border-radius: 50%;
-    box-shadow: 0 0 4px var(--scrim);
-    cursor: grab;
-  }
-  
-  .stem-slider::-webkit-slider-thumb:active {
-    cursor: grabbing;
+  .tone-reset.active {
+    border-color: var(--selected);
+    color: var(--text);
+    cursor: pointer;
   }
 
   .swap-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.3rem;
-    margin-top: 6px;
+    margin-top: 0.5rem;
     font-size: 0.68rem;
     color: var(--text-dim);
   }
@@ -673,7 +772,7 @@
   .macros-row {
     display: flex;
     justify-content: space-between;
-    margin-top: 12px;
+    margin-top: 0.5rem;
     gap: 8px;
   }
 </style>
