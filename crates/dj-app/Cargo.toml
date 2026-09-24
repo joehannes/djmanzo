@@ -70,6 +70,14 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 dj-stems = { workspace = true }
 
+# The Linux webview itself, reached through Tauri for one thing it does not do:
+# answer WebKitGTK's camera and microphone permission request, which is denied
+# when nobody answers it. See `senses`. The same version, with the same
+# features, that Tauri's webview layer already links — so this adds no crate
+# to the build, only a name for one that is there. MIT.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
+
 [lints]
 workspace = true
 

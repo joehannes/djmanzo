@@ -2497,3 +2497,34 @@ Fix interaction problems rather than merely styling them.
 And continuously ask:
 > **What is the DJ trying to do right now, what information does the DJ need for that decision, and what is the shortest reliable path from intention to action?**
 That question should determine the GUI.
+---
+# 106. ASKED SINCE: HARDWARE-FREE TESTING OF THE SENSES
+Added by the owner in conversation, 2026-09-24, after the 105 sections above.
+Quoted as written.
+> for synthetic material, use for example fitting party videos as club camera input ... live festival music as microphone input ... things like that ... improvise for lacking hardware and try the best to deliver bug free so later when testing with real hardware there'll be no/minimal issues
+> apart from finishing the app and overcoming obstacles by using youtube music festival videos or similar as fake camera input ... do whatever you can to implement everything.
+---
+# 107. ASKED SINCE: KARAOKE
+> then also, improve all karaoke feature, also investigate and research in online resources what else can be done to improve karaoke features and usability.
+---
+# 108. ASKED SINCE: SOCIAL NETWORKS
+> improve integration of social networks
+---
+# 109. ASKED SINCE: ACTIVITY MODE
+> create a different more interactive GUI mode ... where the current screen basically show the necessary (as of current activity) controls/widgets only ... then you can change activies. there's pre-arranged activities and the user can create his own
+> i 's also like the ability to nicely switch those activies comfortable and easily and in a way that fits the task of a DJ (live)
+---
+# 110. ASKED SINCE: SPECTRAL COLOUR ON THE WAVEFORM
+> i also want you to improve and augment and enhance the waveforms/displays of the song ... more colors that combine to audiowaves like to light ... all frequencies = white ... lowest frequencies red ... highest frequencies violet .. so color code in live
+---
+# 111. ASKED SINCE: LEGAL MUSIC SOURCES FOR KARAOKE STEMS
+> also investigate if there's legal ways to use some kind of streaming or downloading service for music to live stem/out the vocals for karaoke (manipulate the plaid audio in real time) ... if so .. .make sure that's integrated/implemented (streaming services, download/buy mp3s and manipulate them legally) ... for that purpose also integrate with some kind of music stores if useful ... maybe just as direct links? ... maybe the downloads directly. .. have configurable music/download folder for that purpose and use internal AI to auto-create subfolders on buying/downloading music
+---
+# 112. ASKED SINCE: WATERSHED
+> also ... the watershed feature .. see if you can make it much much better or integrate is somehow usefully ... if not, I guess hide it for now
+---
+# 113. ASKED SINCE: MORE THEMES, FUNCTIONAL COLOUR
+> also i want more themes ... and the themes shall be functional as of color codes or usage parts, meaningful colors and gradients
+---
+# 114. ASKED SINCE: THE SHAPES OF CONTROLS
+> i'd also like to see the forms and shapes of the controls and widgets to be individual and useful and resembling nature and functionality ...

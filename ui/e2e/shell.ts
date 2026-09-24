@@ -1684,6 +1684,40 @@ export async function openShell(
             ((win.__ranked ??= []) as string[]).push(String(args.trajectory));
             return Promise.resolve(answers.suggest_next ?? []);
           }
+          // §106: what the room surface measured, in order. Recorded rather
+          // than counted, because the claim a camera test makes is about the
+          // numbers — a surface that sent three readings of zero looks like
+          // one that worked to anything that only counts calls.
+          if (cmd === "room_saw") {
+            ((win.__saw ??= []) as unknown[]).push({
+              light: args.light,
+              movement: args.movement,
+              loudness: args.loudness,
+            });
+            return Promise.resolve(null);
+          }
+          // §106: what the hum handed Rust — how much, at what rate, and how
+          // loud — without keeping eight seconds of floats in the page.
+          if (cmd === "hum") {
+            const samples = (args.samples ?? []) as number[];
+            let squares = 0;
+            for (const s of samples) squares += s * s;
+            win.__hummed = {
+              count: samples.length,
+              rate: args.rate,
+              rms: samples.length ? Math.sqrt(squares / samples.length) : 0,
+            };
+            return Promise.resolve(
+              answers.hum ?? {
+                key: "8A",
+                tempo: 120,
+                seconds: samples.length / Number(args.rate || 1),
+                near: [],
+                melody: [],
+                voiced: 0.8,
+              },
+            );
+          }
           if (cmd === "keep_mix") {
             win.__keptAt = args.at;
             return Promise.resolve(1);

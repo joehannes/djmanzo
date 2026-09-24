@@ -163,7 +163,7 @@ pub fn detach_panel(
     }
 
     let (width, height) = panel.size();
-    tauri::WebviewWindowBuilder::new(
+    let window = tauri::WebviewWindowBuilder::new(
         &app,
         &label,
         tauri::WebviewUrl::App(format!("index.html?panel={}", panel.slug()).into()),
@@ -174,6 +174,9 @@ pub fn detach_panel(
     .resizable(true)
     .build()
     .map_err(|e| e.to_string())?;
+    // A detached room surface is a camera in a second window, and the second
+    // window's webview needs the same answer the first one got.
+    crate::senses::permit(&window);
 
     state.detach_panel(panel);
     Ok(())

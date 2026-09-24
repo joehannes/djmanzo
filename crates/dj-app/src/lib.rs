@@ -65,6 +65,7 @@ pub mod remembered;
 pub mod remote;
 pub mod replay;
 pub mod response;
+pub mod senses;
 pub mod session;
 pub mod setrec;
 pub mod setting;
@@ -266,6 +267,12 @@ pub fn run() {
             // handle to reach the managed state, and it must outlive this
             // closure.
             commands::start_assistant_tick(app.handle().clone());
+
+            // The camera and microphone, which the Linux webview refuses unless
+            // djmanzo answers for them. See `senses`.
+            if let Some(window) = app.get_webview_window("main") {
+                senses::permit(&window);
+            }
 
             let handle = app.handle().clone();
             if let Ok(path) = std::env::var(BENCH_ENV) {

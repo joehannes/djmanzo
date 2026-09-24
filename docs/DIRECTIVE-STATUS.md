@@ -1,7 +1,7 @@
-# The 105 sections, and where each one stands
+# The 114 sections, and where each one stands
 
 The owner's directive — *DJMANZO — ADAPTIVE PROFESSIONAL DJ COCKPIT* — is 105
-numbered sections. [`GUI-OVERHAUL.md`](GUI-OVERHAUL.md) is the analysis §99
+numbered sections, and the owner has asked for nine more since (§106–§114), quoted as written at the end of `DIRECTIVE.md`. [`GUI-OVERHAUL.md`](GUI-OVERHAUL.md) is the analysis §99
 asked for and turns them into nine phases; this file is the other view, section
 by section, so "where are we" is answerable from a file rather than from
 somebody's memory.
@@ -131,6 +131,15 @@ rather than taken.
 | 103 | Success criteria | 🟡 | See below — nine of thirteen met. The table had ten rows and §103 names thirteen; *audience awareness*, *performance* and *extensibility* had never been judged at all |
 | 104 | Coding style | ⚖️ | |
 | 105 | Final instruction | ⚖️ | |
+| 106 | Hardware-free testing of the senses | 🟡 | **The first thing it found is that neither desktop could have opened a camera.** On Linux, WebKitGTK asks its host before opening a device and a request nobody answers is denied; Tauri answers it on macOS and not on Linux, so a DJ with a working webcam was told djmanzo was not allowed and sent to privacy settings Linux does not have. Reproduced in the shipped webview under Xvfb with WebKitGTK's own mock camera and microphone (`DJMANZO_MOCK_CAPTURE`), fixed in `dj_app::senses`, and the same build then read *light 6%, movement 1%, loudness 62%* end to end through `room_saw`. On macOS the bundle had **no `Info.plist`**, and the OS will not open either device for an application that does not say why; the two sentences are now there and a Rust test holds the file to them. A camera or microphone is granted only to djmanzo's own page (`senses::is_own_page`, with the lookalike addresses tested). For Chromium, `ui/e2e/senses/media.ts` draws the stand-ins from a seed at test time — a dark club at its peak, a room that has emptied, a beach party in daylight, a pushed booth microphone, low chatter and a hummed tune — because the openly licensed festival archives are refused by this network and footage from a streaming site could not be a fixture. What they have already shown and is not yet fixed: **movement aliases with the tempo** (a floor of seventeen people dancing at 120 BPM read 0.000, because a two-second look is exactly four beats), movement changes scale with §48's tier, and loudness is a 43 ms window, so it measures where in the beat it landed. None of this says anything about how a real room reads — only that the path runs and which way the numbers move |
+| 107 | Karaoke, researched and improved | ⬜ | Asked 2026-09-24. Not started when it was added |
+| 108 | Social networks | ⬜ | Asked 2026-09-24. Not started when it was added |
+| 109 | Activity mode | ⬜ | Asked 2026-09-24. Not started when it was added |
+| 110 | Spectral colour on the waveform | ⬜ | Asked 2026-09-24. Not started when it was added |
+| 111 | Legal music sources for karaoke stems | ⬜ | Asked 2026-09-24. Not started when it was added |
+| 112 | Watershed, improved or hidden | ⬜ | Asked 2026-09-24. Not started when it was added |
+| 113 | More themes, functional colour | ⬜ | Asked 2026-09-24. Not started when it was added |
+| 114 | Shapes of controls | ⬜ | Asked 2026-09-24. Not started when it was added |
 
 ## §103's thirteen success criteria, judged honestly
 
@@ -152,7 +161,7 @@ rather than taken.
 
 ## The count
 
-Of the 105 sections: **62 done, 24 part, 0 open, 19 standing rules.**
+Of the 114 sections: **62 done, 25 part, 8 open, 19 standing rules.**
 
 Counted by a script over this table rather than by hand, and the first hand
 count was wrong in all four columns — which is the argument for the script.
@@ -171,10 +180,10 @@ EOF
 Standing rules are counted separately on purpose. Folding them into "done"
 would inflate the number — a constraint honoured is not a feature delivered —
 and they cannot be "open" either, since they are being obeyed. Excluding them,
-**62 of 86 deliverable sections are complete and 24 more are partly there.** Nothing is untouched: every deliverable section now has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it.
+**62 of 95 deliverable sections are complete and 25 more are partly there.** Of the original 105, nothing is untouched: every deliverable section has something real behind it, which is a different claim from every section being finished and is worth keeping apart from it. The eight open rows are all among the nine asked for since.
 
 That is the same state the phase view calls "about 40%", counted a different
-way: 62 whole plus 24 halves over 86 is 86%, and the phase view is stricter
+way: 62 whole plus 25 halves over 95 is 78%, and the phase view is stricter
 because a phase only closes when its gate is met. Neither number is wrong;
 the phase view is the one to quote, because a gate is a fact and a half is a
 judgement.

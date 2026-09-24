@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged by Tauri into the application bundle's own Info.plist.
+
+  macOS will not open a camera or a microphone for an application that does
+  not say why it wants one, and these two sentences are what the system shows
+  a DJ when it asks. They say what djmanzo does with each device and, as
+  importantly, what it does not: the room surface keeps three numbers from a
+  frame and throws the frame away, and the hum is read for a key and a tempo
+  and never stored. `dj_app::senses` holds this file to both keys.
+-->
+<plist version="1.0">
+<dict>
+  <key>NSCameraUsageDescription</key>
+  <string>djmanzo can point a camera at the dance floor to read how bright the room is and how much it is moving. Each frame is reduced to two numbers and thrown away; nothing is recorded or sent anywhere.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>djmanzo can listen to the room to read how loud it is, and to a tune you hum to narrow your collection by key and tempo. The sound is reduced to numbers on this computer; nothing is recorded or sent anywhere.</string>
+</dict>
+</plist>
