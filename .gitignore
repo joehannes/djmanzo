@@ -25,3 +25,6 @@ crates/dj-app/gen/schemas/
 ui/test-results/
 ui/playwright-report/
 ui/blob-report/
+
+# ONNX Runtime staged for the Linux packages by scripts/fetch-onnxruntime.sh.
+crates/dj-app/onnxruntime/

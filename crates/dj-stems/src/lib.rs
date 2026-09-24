@@ -35,11 +35,22 @@ impl StemsEngine {
     ///   about the runtime, which is the one that no download of a model will
     ///   fix.
     pub fn new(model_path: &Path) -> Result<Self, Unavailable> {
-        availability::probe_runtime()?;
+        let library = availability::runtime_library();
+        availability::probe_named_runtime(&library)?;
         availability::probe_model(model_path)?;
 
-        // Only now is it safe to call into `ort`.
-        let _ = ort::init().with_name("djmanzo-stems").commit();
+        // Only now is it safe to call into `ort`, and it is told which file
+        // to load rather than left to search for one: the probe and `ort`
+        // then answer about the same library, and the one a package carries
+        // is used over whatever else the machine has. `init_from` also checks
+        // the library's version, so an ONNX Runtime older than the C API this
+        // build asks for is refused here, as an error, instead of panicking
+        // at the first call.
+        let environment = ort::init_from(&library).map_err(|error| Unavailable::Runtime {
+            library: library.clone(),
+            reason: error.to_string(),
+        })?;
+        let _ = environment.with_name("djmanzo-stems").commit();
 
         let build = || -> Result<Session, ort::Error> {
             Session::builder()?

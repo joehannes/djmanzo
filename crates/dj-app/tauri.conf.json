@@ -37,13 +37,6 @@
     ],
     "category": "Music",
     "shortDescription": "VirtualDJ-class DJ application",
-    "longDescription": "A DJ application for macOS and Linux with a Rust realtime audio engine.",
-    "linux": {
-      "deb": {
-        "depends": [
-          "libasound2t64 | libasound2"
-        ]
-      }
-    }
+    "longDescription": "A DJ application for macOS and Linux with a Rust realtime audio engine."
   }
 }

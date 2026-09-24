@@ -82,7 +82,7 @@ impl std::fmt::Display for Unavailable {
 impl std::error::Error for Unavailable {}
 
 /// The library name `ort` will try to open, given the value of
-/// `ORT_DYLIB_PATH`.
+/// `ORT_DYLIB_PATH`, when no runtime was packaged with djmanzo.
 ///
 /// Split out from the environment lookup so it can be tested without setting a
 /// process-wide variable that every other test in the binary would see.
@@ -91,10 +91,60 @@ impl std::error::Error for Unavailable {}
 /// that never mentioned it.
 #[must_use]
 pub fn resolve_dylib_name(configured: Option<&str>) -> String {
-    match configured {
-        Some(path) if !path.is_empty() => path.to_owned(),
+    choose_library(configured, None)
+}
+
+/// Where the Linux packages install the ONNX Runtime they carry, under the
+/// prefix the executable is installed in: `/usr/bin/djmanzo` finds
+/// `/usr/lib/djmanzo/libonnxruntime.so.1`, and the same layout holds inside an
+/// AppImage. `scripts/fetch-onnxruntime.sh` stages the file and
+/// `crates/dj-app/tauri.linux.conf.json` installs it there.
+///
+/// A private directory, as Debian policy puts a library no other package
+/// links against, and by its SONAME, the name the library gives itself.
+pub const BUNDLED: [&str; 3] = ["lib", "djmanzo", "libonnxruntime.so.1"];
+
+/// Where a packaged runtime would be for an executable at `exe`: `BUNDLED`
+/// under the directory above the executable's own. `None` off Linux, where no
+/// package carries one yet, and for an executable with no directory above it.
+#[must_use]
+pub fn bundled_beside(exe: &Path) -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    let prefix = exe.parent()?.parent()?;
+    Some(
+        BUNDLED
+            .iter()
+            .fold(prefix.to_path_buf(), |path, part| path.join(part)),
+    )
+}
+
+/// Which library to open, in order: `ORT_DYLIB_PATH` when it is set, so a DJ
+/// or a developer can always point at another; the runtime the package
+/// carries, when it is there; and otherwise the platform's name, for the
+/// loader to search for -- which is what a development build does.
+#[must_use]
+pub fn choose_library(configured: Option<&str>, bundled: Option<&Path>) -> String {
+    match (configured, bundled) {
+        (Some(path), _) if !path.is_empty() => path.to_owned(),
+        (_, Some(bundled)) => bundled.display().to_string(),
         _ => default_dylib_name().to_owned(),
     }
+}
+
+/// The library this process will load ONNX Runtime from. See
+/// [`choose_library`].
+#[must_use]
+pub fn runtime_library() -> String {
+    let bundled = std::env::current_exe()
+        .ok()
+        .and_then(|exe| bundled_beside(&exe))
+        .filter(|path| path.is_file());
+    choose_library(
+        std::env::var(DYLIB_PATH_VAR).ok().as_deref(),
+        bundled.as_deref(),
+    )
 }
 
 /// The platform's ONNX Runtime file name, as `ort` spells it.
@@ -125,8 +175,7 @@ pub const fn default_dylib_name() -> &'static str {
 /// again itself, and on every platform we target `dlopen` of an already-loaded
 /// library is refcounted and cheap.
 pub fn probe_runtime() -> Result<(), Unavailable> {
-    let library = resolve_dylib_name(std::env::var(DYLIB_PATH_VAR).ok().as_deref());
-    probe_named_runtime(&library)
+    probe_named_runtime(&runtime_library())
 }
 
 /// [`probe_runtime`] against a name chosen by the caller, so a test can ask
@@ -201,6 +250,88 @@ mod tests {
         assert_eq!(name, "libonnxruntime.dylib");
         #[cfg(target_os = "windows")]
         assert_eq!(name, "onnxruntime.dll");
+    }
+
+    /// **A packaged runtime is found where the package put it**, from the
+    /// executable's own path — `/usr/bin` and inside an AppImage alike —
+    /// without `LD_LIBRARY_PATH`, a symlink or a system copy; and
+    /// `ORT_DYLIB_PATH` still wins over it when a DJ sets one.
+    #[test]
+    fn a_packaged_runtime_is_found_beside_the_executable() {
+        #[cfg(target_os = "linux")]
+        {
+            assert_eq!(
+                bundled_beside(Path::new("/usr/bin/djmanzo")),
+                Some(PathBuf::from("/usr/lib/djmanzo/libonnxruntime.so.1"))
+            );
+            assert_eq!(
+                bundled_beside(Path::new("/tmp/.mount_djmanzo/usr/bin/djmanzo")),
+                Some(PathBuf::from(
+                    "/tmp/.mount_djmanzo/usr/lib/djmanzo/libonnxruntime.so.1"
+                ))
+            );
+        }
+        let packaged = Path::new("/usr/lib/djmanzo/libonnxruntime.so.1");
+        assert_eq!(
+            choose_library(None, Some(packaged)),
+            "/usr/lib/djmanzo/libonnxruntime.so.1"
+        );
+        assert_eq!(
+            choose_library(Some(""), Some(packaged)),
+            packaged.display().to_string()
+        );
+        assert_eq!(
+            choose_library(Some("/opt/ort/libonnxruntime.so"), Some(packaged)),
+            "/opt/ort/libonnxruntime.so"
+        );
+        assert_eq!(choose_library(None, None), default_dylib_name());
+    }
+
+    /// **The file the application looks for is the file the packages
+    /// install, of a version `ort` accepts.** Three places name it — this
+    /// crate, the Linux bundle configuration and the script that fetches it —
+    /// and a package that installs it anywhere else, or a script that pins an
+    /// ONNX Runtime older than the C API this build asks for, ships a stem
+    /// separator that cannot load.
+    #[test]
+    fn the_packaged_runtime_is_the_one_looked_for() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let config = std::fs::read_to_string(root.join("crates/dj-app/tauri.linux.conf.json"))
+            .expect("the Linux bundle configuration");
+        let installed = format!(
+            "\"/usr/{}\": \"onnxruntime/{}\"",
+            BUNDLED.join("/"),
+            BUNDLED[2]
+        );
+        assert_eq!(
+            config.matches(&installed).count(),
+            3,
+            "the .deb, the .rpm and the AppImage each install {installed}"
+        );
+
+        let script = std::fs::read_to_string(root.join("scripts/fetch-onnxruntime.sh"))
+            .expect("the script that stages ONNX Runtime");
+        let staged = format!("\"$stage/{}\"", BUNDLED[2]);
+        assert!(
+            script
+                .lines()
+                .any(|line| line.starts_with("cp ") && line.ends_with(&staged)),
+            "the script does not copy the library to {staged}"
+        );
+        let version = script
+            .lines()
+            .find_map(|line| line.strip_prefix("VERSION="))
+            .expect("a pinned version");
+        let minor: u32 = version
+            .split('.')
+            .nth(1)
+            .and_then(|m| m.parse().ok())
+            .expect("1.x.y");
+        assert!(
+            version.starts_with("1.") && minor >= ort::MINOR_VERSION,
+            "ONNX Runtime {version} is older than the C API 1.{} this build asks for",
+            ort::MINOR_VERSION
+        );
     }
 
     #[test]

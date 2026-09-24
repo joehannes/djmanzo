@@ -16,6 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Linux: stems through ONNX work on a clean install.** The `.deb`, `.rpm`
+  and AppImage carry ONNX Runtime 1.28.0 (Microsoft's own build, MIT) in
+  `/usr/lib/djmanzo/`, and djmanzo loads it from there. Before this the
+  packages carried nothing, and every machine without a hand-installed ONNX
+  Runtime reported "ONNX Runtime could not be loaded (libonnxruntime.so)";
+  a distribution's copy would not have helped either, since Ubuntu 26.04's
+  1.23 is older than the 1.27 djmanzo needs. An ONNX Runtime that is too old
+  is now refused with a sentence instead of a crash at exit. The separation
+  model itself is still a download of the DJ's choosing; without one the
+  built-in separator runs, as before.
 - **§111: a record bought with no genre tag is filed by how it sounds.**
   Bandcamp and many stores send no genre, and such a record went to
   `Unsorted/`. It is now listened to: its drums' grammar (four on the floor,

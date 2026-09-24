@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeBuildCommand": "node dj-app/build-ui.cjs build && sh ../scripts/fetch-onnxruntime.sh"
+  },
+  "bundle": {
+    "linux": {
+      "deb": {
+        "depends": ["libasound2t64 | libasound2", "libstdc++6", "libgcc-s1"],
+        "files": {
+          "/usr/lib/djmanzo/libonnxruntime.so.1": "onnxruntime/libonnxruntime.so.1",
+          "/usr/lib/djmanzo/libonnxruntime_providers_shared.so": "onnxruntime/libonnxruntime_providers_shared.so",
+          "/usr/share/doc/djmanzo/onnxruntime/LICENSE": "onnxruntime/LICENSE",
+          "/usr/share/doc/djmanzo/onnxruntime/ThirdPartyNotices.txt": "onnxruntime/ThirdPartyNotices.txt",
+          "/usr/share/doc/djmanzo/onnxruntime/VERSION_NUMBER": "onnxruntime/VERSION_NUMBER"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/lib/djmanzo/libonnxruntime.so.1": "onnxruntime/libonnxruntime.so.1",
+          "/usr/lib/djmanzo/libonnxruntime_providers_shared.so": "onnxruntime/libonnxruntime_providers_shared.so",
+          "/usr/share/doc/djmanzo/onnxruntime/LICENSE": "onnxruntime/LICENSE",
+          "/usr/share/doc/djmanzo/onnxruntime/ThirdPartyNotices.txt": "onnxruntime/ThirdPartyNotices.txt",
+          "/usr/share/doc/djmanzo/onnxruntime/VERSION_NUMBER": "onnxruntime/VERSION_NUMBER"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/lib/djmanzo/libonnxruntime.so.1": "onnxruntime/libonnxruntime.so.1",
+          "/usr/lib/djmanzo/libonnxruntime_providers_shared.so": "onnxruntime/libonnxruntime_providers_shared.so",
+          "/usr/share/doc/djmanzo/onnxruntime/LICENSE": "onnxruntime/LICENSE",
+          "/usr/share/doc/djmanzo/onnxruntime/ThirdPartyNotices.txt": "onnxruntime/ThirdPartyNotices.txt",
+          "/usr/share/doc/djmanzo/onnxruntime/VERSION_NUMBER": "onnxruntime/VERSION_NUMBER"
+        }
+      }
+    }
+  }
+}
