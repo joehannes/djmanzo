@@ -8026,16 +8026,100 @@ pub fn suggest_next(
     trajectory: String,
     limit: usize,
 ) -> Result<Vec<SuggestionDto>, String> {
+    next_rail(&state, deck, &trajectory, Some(limit))
+}
+
+/// §118a: the decision a record running out asks for.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NextDecision {
+    /// The deck running out.
+    pub from: u8,
+    /// Where a choice is loaded: the first other deck with nothing on it.
+    pub into: u8,
+    /// Up, level and down, each the top of the rail going that way that no
+    /// earlier direction took.
+    pub choices: Vec<crate::decide::Choice<SuggestionDto>>,
+    /// Or buy time: the deck running out, looped where it is.
+    pub stall: crate::decide::Stall,
+}
+
+/// §118a: three records to follow `deck`, one per direction, and the deck
+/// to load the chosen one on.
+///
+/// # Errors
+/// No deck free to load on, or no library to choose from.
+#[tauri::command]
+pub fn next_decision(state: State<'_, AppState>, deck: u8) -> Result<NextDecision, String> {
+    use crate::decide::Direction;
+    let into = snapshot_now(&state)
+        .decks
+        .iter()
+        .find(|d| d.number != deck && !d.loaded)
+        .map(|d| d.number)
+        .ok_or_else(|| "every other deck already has a record on it".to_owned())?;
+    let [lift, hold, ease] = Direction::ALL;
+    let ranked = [
+        (lift, next_rail(&state, deck, lift.slug(), None)?),
+        (hold, next_rail(&state, deck, hold.slug(), None)?),
+        (ease, next_rail(&state, deck, ease.slug(), None)?),
+    ];
+    // How loud what is playing is, to hold each direction to its word.
+    let playing = dj_core::DeckId::from_human(deck)
+        .and_then(|id| current_track(&state, id))
+        .and_then(|id| library(&state).ok()?.track(id).ok().flatten())
+        .and_then(|track| track.analysis.loudness_lufs);
+    let choices = crate::decide::pick(
+        ranked,
+        |s| s.track.id.clone(),
+        |direction, s| {
+            let delta = playing
+                .zip(s.track.loudness_lufs)
+                .map(|(from, to)| to - from);
+            crate::decide::goes(direction, delta)
+        },
+    );
+    // The three shown are what was offered, as the rail records its own.
+    if let Ok(mut fatigue) = state.fatigue().lock() {
+        fatigue.offering(
+            &choices
+                .iter()
+                .filter_map(|c| dj_core::TrackId::from_hex(&c.offer.track.id))
+                .collect::<Vec<_>>(),
+        );
+    }
+    Ok(NextDecision {
+        from: deck,
+        into,
+        choices,
+        stall: crate::decide::stall(deck),
+    })
+}
+
+/// How deep a decision reads each direction: enough that three directions
+/// sharing their best records still leave each one of its own.
+const DECISION_DEPTH: usize = 4;
+
+/// The rail's ranking, asked by the rail (`Some(limit)`: cut to the attention
+/// budget and the fatigue allowance, and recorded as offered) or by a
+/// decision (`None`: [`DECISION_DEPTH`] deep, neither cut nor recorded -- a
+/// record running out is not the moment to offer fewer, and only the three a
+/// decision shows were put in front of the DJ, which it records itself).
+fn next_rail(
+    state: &AppState,
+    deck: u8,
+    trajectory: &str,
+    limit: Option<usize>,
+) -> Result<Vec<SuggestionDto>, String> {
     use dj_library::suggest::{Playing, Trajectory};
 
-    let db = library(&state)?;
+    let db = library(state)?;
     let deck_id = dj_core::DeckId::from_human(deck).ok_or("no such deck")?;
 
     // What is playing, read from the library rather than the snapshot: the
     // snapshot carries the analysis for display, but the library row is the
     // same numbers the candidates are being scored against, and comparing like
     // with like matters more than saving a query.
-    let now = current_track(&state, deck_id)
+    let now = current_track(state, deck_id)
         .and_then(|id| db.track(id).ok().flatten())
         .map_or_else(Playing::nothing, |t| Playing::of(&t));
 
@@ -8043,14 +8127,14 @@ pub fn suggest_next(
     // rather than in `from_name`: a rail asked for a direction it has never
     // heard of should still rank, and holding is the one answer that adds
     // nothing of its own.
-    let trajectory = Trajectory::from_name(&trajectory).unwrap_or(Trajectory::Hold);
+    let trajectory = Trajectory::from_name(trajectory).unwrap_or(Trajectory::Hold);
 
     // A generous pool, then ranked and cut. Ranking is cheap arithmetic per
     // track; reading the rows is the part that costs, so the limit is applied
     // after scoring rather than before -- cutting first would rank an arbitrary
     // slice of the library.
     let pool = db.all_tracks(5_000).map_err(|e| e.to_string())?;
-    let playing_now = current_track(&state, deck_id);
+    let playing_now = current_track(state, deck_id);
 
     // §24. What the DJ has kept going into, after this record — read once
     // rather than per candidate, because it is one indexed query for the whole
@@ -8125,7 +8209,7 @@ pub fn suggest_next(
     // §12's other half: tonight's profile, when the DJ has named the night.
     // Read once for the whole rail — it is two queries and a fold, and five
     // thousand candidates would be ten thousand queries.
-    let profile = tonight_profile(&state, &db);
+    let profile = tonight_profile(state, &db);
     let ranked = with_profile(
         ranked.into_iter().map(|s| (s, None)).collect(),
         profile.as_ref(),
@@ -8138,22 +8222,29 @@ pub fn suggest_next(
     // costs less than the query that found the candidates.
     let outgoing = playing_now
         .and_then(|id| db.track(id).ok().flatten())
-        .and_then(|track| outgoing_of(&state, deck_id, &track));
+        .and_then(|track| outgoing_of(state, deck_id, &track));
 
-    let budget = snapshot_now(&state).attention.suggestions;
-    let held = state.fatigue();
-    let want = held
-        .lock()
-        .map_or(limit, |fatigue| rail_size(limit, budget, &fatigue));
-    let rail: Vec<_> = ranked.into_iter().take(want).collect();
+    let rail: Vec<_> = match limit {
+        Some(limit) => {
+            let budget = snapshot_now(state).attention.suggestions;
+            let held = state.fatigue();
+            let want = held
+                .lock()
+                .map_or(limit, |fatigue| rail_size(limit, budget, &fatigue));
+            let rail: Vec<_> = ranked.into_iter().take(want).collect();
 
-    // What was put in front of the DJ, so that a record landing later can be
-    // told apart from one they found themselves. Recorded before the rows are
-    // built, because what matters is the set of records offered rather than
-    // whether every one of them had a library row to draw.
-    if let Ok(mut fatigue) = held.lock() {
-        fatigue.offering(&rail.iter().map(|(s, _)| s.track).collect::<Vec<_>>());
-    }
+            // What was put in front of the DJ, so that a record landing later
+            // can be told apart from one they found themselves. Recorded
+            // before the rows are built, because what matters is the set of
+            // records offered rather than whether every one of them had a
+            // library row to draw.
+            if let Ok(mut fatigue) = held.lock() {
+                fatigue.offering(&rail.iter().map(|(s, _)| s.track).collect::<Vec<_>>());
+            }
+            rail
+        }
+        None => ranked.into_iter().take(DECISION_DEPTH).collect(),
+    };
 
     // §81's learned transition style, off the profile already read above rather
     // than asked for again: `usual_style` is a query and a fold, and this rail

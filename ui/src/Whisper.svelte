@@ -16,6 +16,7 @@
    * question to Rust on every second of playback, which `asks.spec.ts`
    * refuses.
    */
+  import Decision from "./Decision.svelte";
   import { uiDo, whisperAnswer, type Proposal } from "./api";
 
   let {
@@ -37,9 +38,30 @@
   });
   let proposal = $derived(offered && offered.kind !== answered ? offered : null);
 
+  /**
+   * §118a: a record running out is a decision, drawn as one once its seconds
+   * call for it (`presence`) -- or sooner, when the DJ asks from the line.
+   */
+  let asked = $state<number | null>(null);
+  const deciding = $derived(
+    proposal?.kind === "running-out" && proposal.deck != null && (proposal.presence !== "line" || asked === proposal.deck)
+      ? proposal
+      : null,
+  );
+
+  // Asked for this time, not every time: once the record is no longer
+  // running out, the next one starts as a line again.
+  $effect(() => {
+    if (proposal?.kind !== "running-out") asked = null;
+  });
+
   async function take() {
     const taken = proposal;
     if (!taken) return;
+    if (taken.kind === "running-out" && taken.deck != null) {
+      asked = taken.deck;
+      return;
+    }
     answered = taken.kind;
     try {
       if (taken.run.startsWith("ui ")) await uiDo(taken.run);
@@ -69,6 +91,22 @@
     </button>
   {/if}
 </div>
+
+{#if deciding && deciding.deck != null}
+  <Decision
+    deck={deciding.deck}
+    presence={deciding.presence === "whole" ? "whole" : "card"}
+    says={deciding.says}
+    {send}
+    onTaken={() => {
+      // Named rather than read off `deciding`: by the time the record is
+      // loaded the snapshot may already have taken the proposal away.
+      answered = "running-out";
+      void whisperAnswer("running-out", "taken").catch(() => {});
+    }}
+    onLater={() => decline("not-now")}
+  />
+{/if}
 
 <style>
   /*

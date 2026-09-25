@@ -1,0 +1,22 @@
+{
+  "card_below": 20.0,
+  "directions": [
+    {
+      "direction": "lift",
+      "says": "Lift the floor"
+    },
+    {
+      "direction": "hold",
+      "says": "Keep it where it is"
+    },
+    {
+      "direction": "ease",
+      "says": "Take it down"
+    }
+  ],
+  "stall": {
+    "run": "deck 1 loop 8",
+    "says": "Loop deck 1 for 8 beats"
+  },
+  "whole_below": 8.0
+}

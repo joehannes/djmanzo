@@ -25,6 +25,14 @@ Versioning follows semver, with one project-specific convention:
   the top bar — and does exactly that when you press *Set it up*. The moves
   you want to learn start every new event, ready to learn and rehearse.
   *Not now* keeps your answers; the welcome opens again from Settings.
+- **A decision when a record is running out.** With nothing loaded after
+  it, the last twenty seconds bring up three records to choose from — one
+  to lift the floor, one to keep it where it is, one to take it down — each
+  told apart by an arrow and a colour, and one press loads it on the free
+  deck. Or loop the record for eight beats to buy time. It is a line in the
+  top bar while there is time, comes up by itself when there is not, and
+  takes most of the screen in the last seconds without covering the decks.
+  A direction is only offered by a record that actually goes that way.
 - The set-up lists now name a theme by its name (*Theme: Beach Sunset*)
   and the waveform as *9 of 22 layers*.
 

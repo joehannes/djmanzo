@@ -38,6 +38,7 @@ pub mod commands;
 pub mod context;
 pub mod control;
 pub mod dashboard;
+pub mod decide;
 pub mod downloads;
 pub mod ghost;
 pub mod gig;
@@ -614,6 +615,7 @@ pub fn run() {
             commands::functions_of,
             commands::set_track_functions,
             commands::suggest_next,
+            commands::next_decision,
             commands::plan_transition,
             commands::transition_arm,
             commands::transition_current,

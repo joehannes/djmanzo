@@ -77,6 +77,12 @@ pub struct Proposal {
     pub run: String,
     /// Whether it may be shown while the hands are busy.
     pub urgent: bool,
+    /// The deck it is about, when it is about one.
+    pub deck: Option<u8>,
+    /// §118a: how much of the screen it should take. A line for all but a
+    /// record running out, which grows as its seconds do not
+    /// ([`crate::decide::presence`]).
+    pub presence: crate::decide::Presence,
 }
 
 /// One rule's reading of the booth right now.
@@ -101,6 +107,8 @@ fn rule(
             offer,
             run,
             urgent,
+            deck: None,
+            presence: crate::decide::Presence::Line,
         },
         hold,
     }
@@ -167,18 +175,21 @@ fn reading(snapshot: &Snapshot) -> Vec<Rule> {
             .iter()
             .all(|other| other.number == deck.number || !other.loaded);
         if deck.length_seconds > 0.0 && left > 0.0 && left < RUNNING_OUT_SECONDS && alone {
-            out.push(rule(
+            let mut running_out = rule(
                 "running-out",
                 format!(
                     "Deck {} ends in {} and nothing else is loaded.",
                     deck.number,
                     crate::share::clock(left.round() as i64)
                 ),
-                "Find the next record".to_owned(),
+                "Choose the next record".to_owned(),
                 "ui show next".to_owned(),
                 true,
                 0.0,
-            ));
+            );
+            running_out.proposal.deck = Some(deck.number);
+            running_out.proposal.presence = crate::decide::presence(left);
+            out.push(running_out);
         }
     }
 
@@ -439,6 +450,10 @@ mod tests {
         assert_eq!(said.run, "ui show next");
         assert!(crate::uiop::UiOp::parse(&said.run).is_ok());
         assert!(said.says.contains("0:15"), "{}", said.says);
+        // §118a: it names its deck, and fifteen seconds is a card -- the
+        // choices come up by themselves -- where the others are a line.
+        assert_eq!(said.deck, Some(1));
+        assert_eq!(said.presence, crate::decide::Presence::Card);
         // A record loaded on the other deck is the answer, and then the peak
         // unrecorded is what is left to say.
         snapshot.decks[1].loaded = true;

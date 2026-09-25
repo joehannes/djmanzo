@@ -1257,7 +1257,14 @@ export interface Proposal {
   /** An action for the bus, or an interface operation (`ui …`). */
   run: string;
   urgent: boolean;
+  /** The deck it is about, when it is about one. */
+  deck: number | null;
+  /** §118a: how much of the screen it takes (`dj_app::decide::presence`). */
+  presence: Presence;
 }
+
+/** §118a: a line in the top bar, a card over the decks, or most of the screen. */
+export type Presence = "line" | "card" | "whole";
 
 export const whisperAnswer = (kind: string, answer: "taken" | "not-now" | "not-tonight") =>
   invoke<void>("whisper_answer", { kind, answer });
@@ -2054,6 +2061,26 @@ export interface TransitionEstimate {
  */
 export const suggestNext = (deck: number, trajectory: Trajectory, limit = 12) =>
   invoke<Suggestion[]>("suggest_next", { deck, trajectory, limit });
+
+/** §118a: one of a decision's choices -- a direction, and the rail's record for it. */
+export interface DecisionChoice extends Suggestion {
+  direction: Trajectory;
+  /** What choosing it does to the night. */
+  says: string;
+}
+
+/** §118a: what a record running out asks for (`commands::next_decision`). */
+export interface NextDecision {
+  /** The deck running out. */
+  from: number;
+  /** Where a choice is loaded. */
+  into: number;
+  choices: DecisionChoice[];
+  /** Or buy time: the deck running out, looped where it is. */
+  stall: { says: string; run: string };
+}
+
+export const nextDecision = (deck: number) => invoke<NextDecision>("next_decision", { deck });
 
 /** One record of a pair, as the pair view draws it. */
 export interface PairSide {

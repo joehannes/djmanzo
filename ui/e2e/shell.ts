@@ -122,6 +122,11 @@ import events from "./events.json" with { type: "json" };
  */
 import welcome from "./welcome.json" with { type: "json" };
 /**
+ * §118a's words, as Rust says them (`tests/e2e_fixture.rs`); the records a
+ * decision offers are the rail's fixture below, one per direction.
+ */
+import decide from "./decide.json" with { type: "json" };
+/**
  * §40's twenty-six and which half the assistant sees, generated from
  * `dj_app::sight::ALL` by the same Rust test.
  *
@@ -276,6 +281,8 @@ export const ANSWERS: Record<string, unknown> = {
   welcome_plan: welcome.plan,
   welcome_applied: welcome.applied,
   welcome_refused: welcome.refused,
+  // §118a: a decision's words, carried into the page with the rest.
+  decision_words: decide,
   learned_taste: { favourites: [], plays: 0, confident: false },
   // §13/§14. Two gestures that reached four occurrences in one phase, with the
   // sentences Rust writes — never "you like", always what was seen and when.
@@ -1880,6 +1887,25 @@ export async function openShell(
           // exactly like one that worked, and the direction is an input to the
           // ranking rather than a decoration on it. Answered from the table
           // afterwards, like everything else.
+          // §118a: a decision, composed as `next_decision` composes it --
+          // the rail's records, one per direction, in Rust's words -- with
+          // what was asked and what was loaded recorded, because loading the
+          // wrong record on the wrong deck looks like working to a count.
+          if (cmd === "next_decision") {
+            const deck = Number(args.deck);
+            ((win.__decisionAsked ??= []) as number[]).push(deck);
+            const rail = (answers.suggest_next ?? []) as Record<string, unknown>[];
+            const words = answers.decision_words as typeof decide;
+            return Promise.resolve({
+              from: deck,
+              into: deck === 1 ? 2 : 1,
+              choices: rail.slice(0, 3).map((s, i) => ({ ...s, ...words.directions[i] })),
+              stall: words.stall,
+            });
+          }
+          if (cmd === "load_track") {
+            ((win.__loadedTracks ??= []) as unknown[]).push({ deck: args.deck, path: args.path });
+          }
           if (cmd === "suggest_next") {
             ((win.__ranked ??= []) as string[]).push(String(args.trajectory));
             return Promise.resolve(answers.suggest_next ?? []);

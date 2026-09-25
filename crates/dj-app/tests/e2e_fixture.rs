@@ -1284,3 +1284,45 @@ fn the_browser_fixture_has_the_welcomes_plan() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
     );
 }
+
+/// §118a: a decision's own words, as Rust says them.
+///
+/// Which records a decision offers is the rail's ranking, tested in Rust;
+/// the browser composes one from the rail's fixture with these -- each
+/// direction's sentence, the stall for deck 1, and the seconds at which a
+/// decision grows -- so the words it checks are Rust's and not a copy.
+#[test]
+fn the_browser_fixture_has_the_decisions_words() {
+    use dj_app::decide::{self, Direction};
+
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/decide.json");
+    let fixture = serde_json::json!({
+        "directions": Direction::ALL
+            .iter()
+            .map(|d| serde_json::json!({ "direction": d, "says": d.says() }))
+            .collect::<Vec<_>>(),
+        "stall": decide::stall(1),
+        "card_below": decide::CARD_BELOW,
+        "whole_below": decide::WHOLE_BELOW,
+    });
+    let text = serde_json::to_string_pretty(&fixture).expect("the decision serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{text}\n")).expect("writing the decision");
+        return;
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored decision is JSON");
+    assert_eq!(
+        stored, fixture,
+        "ui/e2e/decide.json is stale; regenerate it with \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
+    );
+}
