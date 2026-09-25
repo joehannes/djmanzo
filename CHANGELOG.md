@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.28.0 — A welcome, the assistant's guides, your press kit, and what the crowd said
+
 - **A welcome.** The first time djmanzo opens it introduces itself and asks
   a few questions, every one skippable: your DJ name, where you play, your
   music and tempo, the moves you play and the ones you want to learn, how
