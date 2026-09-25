@@ -128,6 +128,8 @@ import welcome from "./welcome.json" with { type: "json" };
 import decide from "./decide.json" with { type: "json" };
 /** §118a's guides, as Rust offers them in four booths (`tests/e2e_fixture.rs`). */
 import guides from "./guides.json" with { type: "json" };
+/** §118d's press kit, as Rust answers it (`tests/e2e_fixture.rs`). */
+import kit from "./kit.json" with { type: "json" };
 /**
  * §40's twenty-six and which half the assistant sees, generated from
  * `dj_app::sight::ALL` by the same Rust test.
@@ -288,6 +290,10 @@ export const ANSWERS: Record<string, unknown> = {
   // A quiet booth: every guide says why not, so no test that is not about
   // them finds one open.
   guides: guides.quiet,
+  // §118d: the whole kit; a test about a first kit says `kit_view: kit.fresh`.
+  kit_view: kit.full,
+  kit_compose: kit.wedding,
+  kit_refused: kit.refused,
   learned_taste: { favourites: [], plays: 0, confident: false },
   // §13/§14. Two gestures that reached four occurrences in one phase, with the
   // sentences Rust writes — never "you like", always what was seen and when.
@@ -1855,6 +1861,47 @@ export async function openShell(
           // can tell what was kept. A save is answered with the view of the
           // event as sent -- the steps are the fixture's, because the rules
           // that recompute them are Rust's and do not run here.
+          // §118d: every write and every hand-over the press kit makes,
+          // recorded. A save is answered with the view of the kit as sent --
+          // the occasions are the fixture's, because the words are Rust's
+          // and are tested there -- or with Rust's refusal of the one answer
+          // the fixture has one for.
+          // The file dialog answers with the path a test put in
+          // `__dialogAnswer`, or with nothing, as a dialog cancelled does.
+          if (cmd === "plugin:dialog|open") {
+            return Promise.resolve(win.__dialogAnswer ?? null);
+          }
+          if (
+            cmd === "kit_save" ||
+            cmd === "kit_compose" ||
+            cmd === "kit_send" ||
+            cmd === "kit_add" ||
+            cmd === "kit_forget"
+          ) {
+            ((win.__kitCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args)) });
+            const view = answers.kit_view as { kit: Record<string, unknown> } & Record<string, unknown>;
+            if (cmd === "kit_save") {
+              const sent = args.kit as { phone?: string };
+              const refused = answers.kit_refused as { phone: string; message: string };
+              if (sent.phone === refused.phone) return Promise.reject(refused.message);
+              return Promise.resolve({ ...view, kept: true, kit: args.kit });
+            }
+            if (cmd === "kit_compose") return Promise.resolve(answers.kit_compose);
+            if (cmd === "kit_send") {
+              return Promise.resolve(args.way === "save" ? "/home/dj/.config/djmanzo/kit/press-kit.html" : null);
+            }
+            const kind = String(args.kind) === "photo" ? "photos" : "documents";
+            const list = [...((view.kit[kind] ?? []) as { file: string; caption: string }[])];
+            if (cmd === "kit_add") {
+              list.push({ file: String(args.path).split("/").pop() ?? "file", caption: "" });
+            } else {
+              const at = list.findIndex((k) => k.file === args.file);
+              if (at >= 0) list.splice(at, 1);
+            }
+            const next = { ...view, kit: { ...view.kit, [kind]: list } };
+            answers.kit_view = next;
+            return Promise.resolve(next);
+          }
           if (cmd === "save_event") {
             ((win.__eventSaves ??= []) as unknown[]).push(args.gig);
             const base = (answers.event_view ?? {}) as Record<string, unknown>;

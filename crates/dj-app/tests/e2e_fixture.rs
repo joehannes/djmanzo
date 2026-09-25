@@ -1378,3 +1378,109 @@ fn the_browser_fixture_has_the_guides() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
     );
 }
+
+/// §118d: the press kit, as Rust answers it.
+///
+/// A kit begun from the welcome, a whole one with a night booked, its
+/// answer to a wedding enquiry, and what Rust says to a phone number that is
+/// not one -- so the words the browser checks are Rust's.
+#[test]
+fn the_browser_fixture_has_the_press_kit() {
+    use dj_app::commands::KitView;
+    use dj_app::kit::{self, Booked, Fee, Kit, Occasion};
+    use dj_app::setting::Setting;
+
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/kit.json");
+    let view = |kit: Kit, kept: bool, booked: Vec<Booked>| {
+        let occasions = Occasion::ALL
+            .into_iter()
+            .map(|o| kit::compose(&kit, o, None, &booked))
+            .collect();
+        let qr = (!kit.name.is_empty() && !(kit.email.is_empty() && kit.phone.is_empty()))
+            .then(|| dj_net::sticker::qr_svg(&kit::vcard(&kit)).ok())
+            .flatten();
+        let sites = kit.links.iter().map(|l| kit::site(l).to_owned()).collect();
+        KitView {
+            kit,
+            kept,
+            booked,
+            occasions,
+            qr,
+            sites,
+        }
+    };
+    let welcomed = dj_app::welcome::Answers {
+        name: "DJ Rosa".to_owned(),
+        genres: vec!["disco".to_owned()],
+        ..dj_app::welcome::Answers::default()
+    };
+    let fresh = view(kit::begun(&welcomed), false, Vec::new());
+    let rosa = kit::check(Kit {
+        name: "DJ Rosa".to_owned(),
+        tagline: "Latin and disco for rooms that dance".to_owned(),
+        bio: "Ten years of weddings and beach bars.".to_owned(),
+        based: "Vienna".to_owned(),
+        genres: vec!["disco".to_owned(), "salsa".to_owned()],
+        experience: vec!["Resident at Sun Bar since 2019".to_owned()],
+        email: "rosa@example.com".to_owned(),
+        phone: "+43 660 123 4567".to_owned(),
+        booking: "A deposit of 30% holds the date.".to_owned(),
+        fees: vec![
+            Fee {
+                night: Some(Setting::Wedding),
+                what: "Up to five hours, sound included".to_owned(),
+                price: "€900".to_owned(),
+            },
+            Fee {
+                night: None,
+                what: "A club night".to_owned(),
+                price: "€400".to_owned(),
+            },
+        ],
+        links: vec![
+            "https://soundcloud.com/djrosa".to_owned(),
+            "https://www.instagram.com/djrosa/".to_owned(),
+        ],
+        photos: Vec::new(),
+        documents: Vec::new(),
+    })
+    .expect("the kit is usable");
+    let booked = vec![Booked {
+        date: "2026-10-03".to_owned(),
+        title: "Anna and Ben".to_owned(),
+        place: "Schloss Hof".to_owned(),
+        starts: "18:00".to_owned(),
+    }];
+    let wedding = kit::compose(&rosa, Occasion::Enquiry, Some(Setting::Wedding), &booked);
+    let full = view(rosa.clone(), true, booked);
+    let bad = Kit {
+        phone: "call me".to_owned(),
+        ..rosa
+    };
+    let refused = kit::check(bad).expect_err("not a number").to_string();
+    let fixture = serde_json::json!({
+        "fresh": fresh,
+        "full": full,
+        "wedding": wedding,
+        "refused": { "phone": "call me", "message": refused },
+    });
+    let text = serde_json::to_string_pretty(&fixture).expect("the kit serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{text}\n")).expect("writing the kit");
+        return;
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value = serde_json::from_str(&stored).expect("the stored kit is JSON");
+    assert_eq!(
+        stored, fixture,
+        "ui/e2e/kit.json is stale; regenerate it with \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
+    );
+}

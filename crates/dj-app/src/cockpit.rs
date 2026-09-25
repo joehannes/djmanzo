@@ -1013,6 +1013,26 @@ pub fn surfaces() -> &'static [Surface] {
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
+            name: "kit",
+            title: "Press kit",
+            // §118d: the DJ's own details in one place, and what to send
+            // for each occasion. `crate::kit` holds it.
+            about: "Your details in one place -- bio, fees, links, photos -- and \
+                    the card, the booking answer, the post or the whole kit, \
+                    ready to send.",
+            category: Category::Planning,
+            least: (340, 260),
+            prefer: (460, 600),
+            priority: 25,
+            performance_critical: false,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            contextual: false,
+            home: Dock::Right,
+            docks: SIDE_OR_BOTTOM,
+        },
+        Surface {
             name: "transition",
             title: "Transition",
             about: "One transition, examined: where, how long, and what happens.",

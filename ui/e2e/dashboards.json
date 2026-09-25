@@ -224,6 +224,13 @@
             "key": null,
             "label": "Event",
             "run": "surface event"
+          },
+          {
+            "about": "Your details in one place -- bio, fees, links, photos -- and the card, the booking answer, the post or the whole kit, ready to send.",
+            "id": "surface:kit",
+            "key": null,
+            "label": "Press kit",
+            "run": "surface kit"
           }
         ],
         "title": "Panels"
@@ -846,6 +853,13 @@
             "key": null,
             "label": "Event",
             "run": "surface event"
+          },
+          {
+            "about": "Your details in one place -- bio, fees, links, photos -- and the card, the booking answer, the post or the whole kit, ready to send.",
+            "id": "surface:kit",
+            "key": null,
+            "label": "Press kit",
+            "run": "surface kit"
           }
         ],
         "title": "Panels"
@@ -1468,6 +1482,13 @@
             "key": null,
             "label": "Event",
             "run": "surface event"
+          },
+          {
+            "about": "Your details in one place -- bio, fees, links, photos -- and the card, the booking answer, the post or the whole kit, ready to send.",
+            "id": "surface:kit",
+            "key": null,
+            "label": "Press kit",
+            "run": "surface kit"
           }
         ],
         "title": "Panels"

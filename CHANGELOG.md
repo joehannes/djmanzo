@@ -40,6 +40,16 @@ Versioning follows semver, with one project-specific convention:
   the automix performs it when it is on), and while a prepared night is
   playing, what to do if something goes wrong. A guide that cannot open
   says why. Only the decks on screen are ever used.
+- **Your press kit.** A *Press kit* panel (Space o u) keeps who you are,
+  your music and experience, how to book you, your fees per kind of night,
+  your links, photos and documents in one place — begun from what the
+  welcome was told. Four occasions are ready to send, each saying what is
+  still missing: your card for someone at the booth (with a QR code they
+  can scan to save your contact), the answer to a booking enquiry for a
+  kind of night (with that night's fee and the dates already booked), where
+  you play next, and the whole kit as one page. djmanzo opens your mail,
+  WhatsApp, X, Bluesky or Threads with the words already in it, or copies
+  them — you send.
 - The set-up lists now name a theme by its name (*Theme: Beach Sunset*)
   and the waveform as *9 of 22 layers*.
 

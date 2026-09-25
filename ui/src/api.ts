@@ -5171,3 +5171,94 @@ export const welcomePlan = (answers: WelcomeAnswers) =>
   invoke<WelcomePlan>("welcome_plan", { answers });
 export const welcomeApply = (answers: WelcomeAnswers) =>
   invoke<WelcomeApplied>("welcome_apply", { answers });
+
+// -- §118d: the press kit ------------------------------------------------------
+
+/** The DJ's own date, as `YYYY-MM-DD`: only the interface knows the zone. */
+export function localToday(at: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}
+
+export interface KitFee {
+  /** A kind of night's slug, or null for any night. */
+  night: string | null;
+  what: string;
+  price: string;
+}
+
+export interface KitKept {
+  /** Its plain name in the kit's folder. */
+  file: string;
+  caption: string;
+}
+
+/** `dj_app::kit::Kit`. */
+export interface Kit {
+  name: string;
+  tagline: string;
+  bio: string;
+  based: string;
+  genres: string[];
+  experience: string[];
+  email: string;
+  phone: string;
+  booking: string;
+  fees: KitFee[];
+  links: string[];
+  photos: KitKept[];
+  documents: KitKept[];
+}
+
+export type KitOccasion = "card" | "enquiry" | "next" | "page";
+export type KitWay = "copy" | "email" | "whatsapp" | "x" | "bluesky" | "threads" | "save";
+
+/** `dj_app::kit::Composed`: an occasion, written from the kit. */
+export interface KitComposed {
+  occasion: KitOccasion;
+  title: string;
+  when: string;
+  subject: string;
+  text: string;
+  /** What the kit still lacks for it; empty is ready. */
+  missing: string[];
+  ways: { way: KitWay; name: string; fits: boolean }[];
+}
+
+export interface KitBooked {
+  date: string;
+  title: string;
+  place: string;
+  starts: string;
+}
+
+/** `commands::KitView`. */
+export interface KitView {
+  kit: Kit;
+  /** Whether a kit is kept, or this one was begun from the welcome. */
+  kept: boolean;
+  booked: KitBooked[];
+  occasions: KitComposed[];
+  /** The card's contact as a QR code (SVG), when there is a contact. */
+  qr: string | null;
+  /** How each link is named, in the links' order. */
+  sites: string[];
+}
+
+export const kitView = () => invoke<KitView>("kit_view", { today: localToday() });
+export const kitSave = (kit: Kit) => invoke<KitView>("kit_save", { kit, today: localToday() });
+export const kitCompose = (occasion: KitOccasion, night: string | null) =>
+  invoke<KitComposed>("kit_compose", { occasion, night, today: localToday() });
+export const kitAdd = (kind: "photo" | "document", path: string) =>
+  invoke<KitView>("kit_add", { kind, path, today: localToday() });
+export const kitForget = (kind: "photo" | "document", file: string) =>
+  invoke<KitView>("kit_forget", { kind, file, today: localToday() });
+/** Hand an occasion over; answers where a saved page is. */
+export const kitSend = (occasion: KitOccasion, night: string | null, way: KitWay) =>
+  invoke<string | null>("kit_send", { occasion, night, way, today: localToday() });
+
+/** A photo in the kit's folder, as the webview loads it. */
+export function kitUrl(file: string, version = 0): string {
+  const path = `${encodeURIComponent(file)}?v=${version}`;
+  return navigator.userAgent.includes("Windows") ? `http://kit.localhost/${path}` : `kit://localhost/${path}`;
+}

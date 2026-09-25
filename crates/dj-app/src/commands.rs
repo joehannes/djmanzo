@@ -16194,3 +16194,233 @@ mod one_source_of_truth {
         }
     }
 }
+
+/// §118d: the press kit, as the panel draws it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct KitView {
+    pub kit: crate::kit::Kit,
+    /// Whether a kit has been kept, or this one was begun from the welcome.
+    pub kept: bool,
+    /// The nights already booked, from the events, soonest first.
+    pub booked: Vec<crate::kit::Booked>,
+    /// Every occasion, composed; the enquiry for no night in particular.
+    pub occasions: Vec<crate::kit::Composed>,
+    /// The card's contact as a QR code, when there is a contact to put in one.
+    pub qr: Option<String>,
+    /// How each link is named.
+    pub sites: Vec<String>,
+}
+
+fn kit_config(state: &AppState) -> Result<std::path::PathBuf, String> {
+    state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep the kit in yet".to_owned())
+}
+
+fn kit_booked(state: &AppState, today: &str) -> Vec<crate::kit::Booked> {
+    events_dir(state)
+        .map(|dir| crate::kit::booked(&crate::gig::list(&dir), today))
+        .unwrap_or_default()
+}
+
+fn kit_view_of(state: &AppState, today: &str) -> Result<KitView, String> {
+    let config = kit_config(state)?;
+    let stored = crate::kit::load(&config);
+    let kept = stored.is_some();
+    let kit = stored.unwrap_or_else(|| {
+        crate::welcome::load(&config)
+            .map(|answers| crate::kit::begun(&answers))
+            .unwrap_or_default()
+    });
+    let booked = kit_booked(state, today);
+    let occasions = crate::kit::Occasion::ALL
+        .into_iter()
+        .map(|occasion| crate::kit::compose(&kit, occasion, None, &booked))
+        .collect();
+    let qr = (!kit.name.is_empty() && !(kit.email.is_empty() && kit.phone.is_empty()))
+        .then(|| dj_net::sticker::qr_svg(&crate::kit::vcard(&kit)).ok())
+        .flatten();
+    let sites = kit
+        .links
+        .iter()
+        .map(|l| crate::kit::site(l).to_owned())
+        .collect();
+    Ok(KitView {
+        kit,
+        kept,
+        booked,
+        occasions,
+        qr,
+        sites,
+    })
+}
+
+/// §118d: the press kit, begun from the welcome when none is kept. `today`
+/// is the DJ's own date, which only the interface knows the zone of.
+///
+/// # Errors
+/// No settings folder yet.
+#[tauri::command]
+pub fn kit_view(state: State<'_, AppState>, today: String) -> Result<KitView, String> {
+    kit_view_of(&state, &today)
+}
+
+/// §118d: keep the kit, after `kit::check`.
+///
+/// # Errors
+/// See [`crate::kit::Refused`], or the file system's refusal.
+#[tauri::command]
+pub fn kit_save(
+    state: State<'_, AppState>,
+    kit: crate::kit::Kit,
+    today: String,
+) -> Result<KitView, String> {
+    crate::kit::save(&kit_config(&state)?, kit)?;
+    kit_view_of(&state, &today)
+}
+
+fn kit_night(night: Option<&str>) -> Result<Option<crate::setting::Setting>, String> {
+    night
+        .filter(|n| !n.is_empty())
+        .map(|n| {
+            crate::setting::Setting::ALL
+                .into_iter()
+                .find(|s| s.slug() == n)
+                .ok_or_else(|| format!("{n:?} is not a kind of night"))
+        })
+        .transpose()
+}
+
+/// §118d: one occasion, composed for a kind of night.
+///
+/// # Errors
+/// An unknown night, or no settings folder yet.
+#[tauri::command]
+pub fn kit_compose(
+    state: State<'_, AppState>,
+    occasion: crate::kit::Occasion,
+    night: Option<String>,
+    today: String,
+) -> Result<crate::kit::Composed, String> {
+    let view = kit_view_of(&state, &today)?;
+    let night = kit_night(night.as_deref())?;
+    Ok(crate::kit::compose(
+        &view.kit,
+        occasion,
+        night,
+        &view.booked,
+    ))
+}
+
+/// §118d: copy a photo or a document into the kit.
+///
+/// # Errors
+/// A file that cannot be copied, or a kit that cannot be kept.
+#[tauri::command]
+pub fn kit_add(
+    state: State<'_, AppState>,
+    kind: String,
+    path: String,
+    today: String,
+) -> Result<KitView, String> {
+    let config = kit_config(&state)?;
+    let mut kit = kit_view_of(&state, &today)?.kit;
+    let file = crate::kit::copy_in(&config, std::path::Path::new(&path))?;
+    let kept = crate::kit::Kept {
+        file,
+        caption: String::new(),
+    };
+    match kind.as_str() {
+        "photo" => {
+            if crate::kit::read(&config, &kept.file)
+                .is_none_or(|(_, mime)| !mime.starts_with("image/"))
+            {
+                let _ = std::fs::remove_file(crate::kit::folder(&config).join(&kept.file));
+                return Err(format!("{path} is not a photo djmanzo can show"));
+            }
+            kit.photos.push(kept);
+        }
+        "document" => kit.documents.push(kept),
+        other => return Err(format!("{other:?} is not something a kit keeps")),
+    }
+    crate::kit::save(&config, kit)?;
+    kit_view_of(&state, &today)
+}
+
+/// §118d: take a photo or a document out of the kit, and out of its folder.
+///
+/// # Errors
+/// A kit that cannot be kept.
+#[tauri::command]
+pub fn kit_forget(
+    state: State<'_, AppState>,
+    kind: String,
+    file: String,
+    today: String,
+) -> Result<KitView, String> {
+    let config = kit_config(&state)?;
+    let mut kit = kit_view_of(&state, &today)?.kit;
+    let list = match kind.as_str() {
+        "photo" => &mut kit.photos,
+        "document" => &mut kit.documents,
+        other => return Err(format!("{other:?} is not something a kit keeps")),
+    };
+    let before = list.len();
+    list.retain(|k| k.file != file);
+    if list.len() != before && !file.contains(['/', '\\']) {
+        let _ = std::fs::remove_file(crate::kit::folder(&config).join(&file));
+    }
+    crate::kit::save(&config, kit)?;
+    kit_view_of(&state, &today)
+}
+
+/// §118d: hand an occasion over. A composer opens with the words in it --
+/// the mail client or a network's own -- or the whole kit is written as a
+/// page and opened; nothing is sent. The interface names a way, never an
+/// address. Answers where a saved page is.
+///
+/// # Errors
+/// A way that is not offered for the occasion, words that do not fit it, or
+/// nothing that could open them.
+#[tauri::command]
+pub fn kit_send(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    occasion: crate::kit::Occasion,
+    night: Option<String>,
+    way: crate::kit::Way,
+    today: String,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_opener::OpenerExt as _;
+
+    if !occasion.ways().contains(&way) {
+        return Err(format!(
+            "{} is not a way to send {}",
+            way.name(),
+            occasion.title()
+        ));
+    }
+    let view = kit_view_of(&state, &today)?;
+    let composed = crate::kit::compose(
+        &view.kit,
+        occasion,
+        kit_night(night.as_deref())?,
+        &view.booked,
+    );
+    if way == crate::kit::Way::Save {
+        let path = crate::kit::write_page(&kit_config(&state)?, &view.kit, &view.booked)?;
+        // A page djmanzo has just written itself, as `audience_sheet` opens.
+        let _ = app.opener().open_path(path.to_string_lossy(), None::<&str>);
+        return Ok(Some(path.to_string_lossy().into_owned()));
+    }
+    if !way.fits(&composed.text) {
+        return Err(format!("too long for {}; copy it instead", way.name()));
+    }
+    let Some(address) = way.address(&composed.subject, &composed.text) else {
+        return Ok(None);
+    };
+    app.opener()
+        .open_url(address, None::<&str>)
+        .map_err(|e| format!("could not open {}: {e}", way.name()))?;
+    Ok(None)
+}

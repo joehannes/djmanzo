@@ -575,6 +575,13 @@
           "run": "surface event",
           "children": [],
           "mine": false
+        },
+        {
+          "key": "u",
+          "label": "Press kit",
+          "run": "surface kit",
+          "children": [],
+          "mine": false
         }
       ],
       "mine": false

@@ -89,6 +89,7 @@
   import MissionBar from "./MissionBar.svelte";
   import Whisper from "./Whisper.svelte";
   import Guides from "./Guides.svelte";
+  import PressKit from "./PressKit.svelte";
   import Night from "./Night.svelte";
   import RoomSense from "./RoomSense.svelte";
   import Mixes from "./Mixes.svelte";
@@ -283,6 +284,7 @@
     "pair",
     "practice",
     "event",
+    "kit",
     "night",
     "room",
     "booth",
@@ -3005,6 +3007,10 @@
     <EventPanel {liveId} onGoLive={(id) => void goLive(id)} />
   {/snippet}
 
+  {#snippet surfaceKit()}
+    <PressKit />
+  {/snippet}
+
   {#snippet surfaceNight()}
     <Night enabled={ready} density={densityName} onDensity={applyDensity} />
   {/snippet}
@@ -3373,6 +3379,7 @@
         {:else if placement.surface === "pair"}{@render surfacePair()}
         {:else if placement.surface === "practice"}{@render surfacePractice()}
         {:else if placement.surface === "event"}{@render surfaceEvent()}
+        {:else if placement.surface === "kit"}{@render surfaceKit()}
         {:else if placement.surface === "night"}{@render surfaceNight()}
         {:else if placement.surface === "room"}{@render surfaceRoom()}
         {:else if placement.surface === "requests"}{@render surfaceRequests()}

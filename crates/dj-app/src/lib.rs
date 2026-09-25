@@ -48,6 +48,7 @@ pub mod handle;
 pub mod host;
 pub mod jumps;
 pub mod karaoke;
+pub mod kit;
 pub mod layout;
 pub mod leader;
 pub mod lens;
@@ -269,6 +270,31 @@ pub fn run() {
                     // Unlike tiles, a logo is replaced in place at the same URL.
                     // Caching it would mean the old one staying on screen until
                     // a restart, which reads as the change having failed.
+                    .header("Cache-Control", "no-store")
+                    .body(bytes)
+                    .unwrap_or_default(),
+                None => http::Response::builder()
+                    .status(404)
+                    .body(Vec::new())
+                    .unwrap_or_default(),
+            }
+        })
+        // §118d: the press kit's photos, by plain name from its own folder.
+        .register_uri_scheme_protocol(kit::SCHEME, move |ctx, request| {
+            let name = request.uri().path().trim_start_matches('/');
+            let name = urlencoding::decode(name)
+                .map(|n| n.into_owned())
+                .unwrap_or_default();
+            let found = ctx
+                .app_handle()
+                .path()
+                .app_config_dir()
+                .ok()
+                .and_then(|dir| kit::read(&dir, &name));
+            match found {
+                Some((bytes, mime)) => http::Response::builder()
+                    .status(200)
+                    .header("Content-Type", mime)
                     .header("Cache-Control", "no-store")
                     .body(bytes)
                     .unwrap_or_default(),
@@ -618,6 +644,12 @@ pub fn run() {
             commands::suggest_next,
             commands::next_decision,
             commands::guides,
+            commands::kit_view,
+            commands::kit_save,
+            commands::kit_compose,
+            commands::kit_add,
+            commands::kit_forget,
+            commands::kit_send,
             commands::plan_transition,
             commands::transition_arm,
             commands::transition_current,
