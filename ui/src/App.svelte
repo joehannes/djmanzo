@@ -302,6 +302,8 @@
   const rightDock = $derived(inDock("right"));
   const bottomDock = $derived(inDock("bottom"));
   const leftDock = $derived(inDock("left"));
+  /** Panels a workspace put over the decks: drawn lifted, closed on dismissal. */
+  const overlayDock = $derived(inDock("overlay"));
   /** True when any dock has something in it, so the stage yields room. */
   const docked = $derived(placements.length > 0);
 
@@ -527,6 +529,105 @@
    * who drags it there has lost the handle to drag it back.
    */
   const MIN_SURFACE = 160;
+
+  /**
+   * §3's *temporarily surfaced*, and §120's temporary windows: *"temporary
+   * windows can take a lot of space for the focused moment and then get out
+   * of the way"*.
+   *
+   * Any open panel can be lifted over the decks -- the whole of the stage, for
+   * as long as it is wanted -- and it goes back to where it was docked, at
+   * the size it had, on Escape, on a press anywhere outside it, or on its own
+   * button again. A press outside is the important one: the DJ who lifted the
+   * browser to find a record and then reaches for the crossfader has said the
+   * moment is over, and the panel gets out of the way without being asked.
+   *
+   * Not stored. A lift is a moment, not an arrangement, so it is not in the
+   * workspace and does not survive a restart. A placement whose dock *is*
+   * `overlay` -- a workspace can put the room or the night there -- is drawn
+   * the same way, and dismissing it closes it: Rust's own description of
+   * that dock is "dismissed by the next thing the DJ does". It was accepted,
+   * resolved and stored, and never drawn at all.
+   */
+  let lifted = $state<string | null>(null);
+  let stageEl = $state<HTMLElement | undefined>();
+  /** Where the stage is, so a lifted panel covers exactly it. */
+  let stageBox = $state<{ top: number; left: number; width: number; height: number } | null>(null);
+
+  function measureStage() {
+    const r = stageEl?.getBoundingClientRect();
+    stageBox = r ? { top: r.top, left: r.left, width: r.width, height: r.height } : null;
+  }
+
+  const isLifted = (placement: SurfacePlacement) =>
+    placement.dock === "overlay" || lifted === placement.surface;
+
+  function lift(name: string) {
+    measureStage();
+    lifted = lifted === name ? null : name;
+  }
+
+  /** Put every lifted panel back; close the ones that only ever float. */
+  function dismissLifted() {
+    lifted = null;
+    for (const placement of overlayDock) void toggleSurface(placement.surface as Drawn);
+  }
+
+  /** The lifted panel's box: the stage, a little inside its edges. */
+  function liftStyle(): string {
+    if (!stageBox) return "";
+    const inset = 6;
+    return (
+      `position: fixed; top: ${Math.round(stageBox.top + inset)}px; ` +
+      `left: ${Math.round(stageBox.left + inset)}px; ` +
+      `width: ${Math.round(stageBox.width - inset * 2)}px; ` +
+      `height: ${Math.round(stageBox.height - inset * 2)}px;`
+    );
+  }
+
+  const anyLifted = $derived(lifted !== null || overlayDock.length > 0);
+
+  $effect(() => {
+    // A panel closed while lifted is no longer lifted.
+    if (lifted && !placements.some((p) => p.surface === lifted)) lifted = null;
+  });
+
+  $effect(() => {
+    if (!anyLifted) return;
+    measureStage();
+    // The stage moves when a lift empties a dock, and a lifted panel has to
+    // follow it there rather than keep the box it was lifted into.
+    const watch = new ResizeObserver(measureStage);
+    if (stageEl) watch.observe(stageEl);
+    // A press outside puts the panel back when it is *released*, not when it
+    // lands. Putting it back returns its dock, and the master strip moves to
+    // make room: done on the press, the crossfader a DJ had just taken hold
+    // of jumped a quarter of the screen up under the hand, mid-gesture.
+    let outside = false;
+    const onPress = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      outside = !target?.closest?.(".surface.lifted");
+    };
+    const onRelease = () => {
+      if (!outside) return;
+      outside = false;
+      dismissLifted();
+    };
+    // Capture, so a press on a control that stops its own event still counts
+    // as the next thing the DJ did -- and nothing is prevented, so the press
+    // on the crossfader still moves the crossfader.
+    window.addEventListener("pointerdown", onPress, true);
+    window.addEventListener("pointerup", onRelease, true);
+    window.addEventListener("pointercancel", onRelease, true);
+    window.addEventListener("resize", measureStage);
+    return () => {
+      watch.disconnect();
+      window.removeEventListener("pointerdown", onPress, true);
+      window.removeEventListener("pointerup", onRelease, true);
+      window.removeEventListener("pointercancel", onRelease, true);
+      window.removeEventListener("resize", measureStage);
+    };
+  });
 
   /**
    * `keepDensity`: leave how big things are drawn exactly as it is — neither
@@ -793,6 +894,11 @@
         void runLeaf(chord);
         return;
       }
+    }
+    // §120: Escape puts a lifted panel back before it does anything else.
+    if (event.key === "Escape" && anyLifted && !typing(event.target)) {
+      dismissLifted();
+      return;
     }
     // §117: `0` calls the dashboard up and puts it away; Escape puts it away.
     if (!typing(event.target) && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey) {
@@ -2920,16 +3026,36 @@
     -->
     <section
       class="surface"
-      class:collapsed={placement.collapsed}
+      class:collapsed={placement.collapsed && !isLifted(placement)}
       class:pinned={placement.pinned}
+      class:lifted={isLifted(placement)}
       data-surface={placement.surface}
       data-collapsed={placement.collapsed}
       data-pinned={placement.pinned}
+      data-lifted={isLifted(placement)}
       bind:this={boxes[placement.surface]}
-      style={placement.collapsed ? "" : sizeStyle(placement)}
+      style={isLifted(placement) ? liftStyle() : placement.collapsed ? "" : sizeStyle(placement)}
     >
       <header class="surface-head">
         <h2>{titleOf(placement.surface)}</h2>
+        {#if placement.dock !== "overlay"}
+          <!--
+            §120's temporary window. The panel takes the whole stage for the
+            moment and gives it back, unchanged, the moment the DJ is done.
+          -->
+          <button
+            class="lift"
+            class:on={lifted === placement.surface}
+            title={lifted === placement.surface
+              ? `Put ${titleOf(placement.surface)} back`
+              : `Lift ${titleOf(placement.surface)} over the decks for now`}
+            aria-label={lifted === placement.surface
+              ? `Put ${titleOf(placement.surface)} back`
+              : `Lift ${titleOf(placement.surface)}`}
+            aria-pressed={lifted === placement.surface}
+            onclick={() => lift(placement.surface)}
+          ><Icon name={lifted === placement.surface ? "compress" : "expand"} size="0.95rem" /></button>
+        {/if}
         <!--
           §3's *collapsed* and *expanded*. Two of the eleven verbs it lists,
           and the field behind them was stored, serialised and resolved by Rust
@@ -2979,7 +3105,7 @@
         the left, and the bottom one upwards. A handle on the wrong edge makes
         the panel run away from the pointer.
       -->
-      {#if !placement.collapsed}
+      {#if !placement.collapsed && !isLifted(placement)}
         <div
           class="grip"
           role="separator"
@@ -2997,9 +3123,18 @@
           onpointercancel={(e) =>
             boxes[placement.surface] &&
             endResize(e, placement, boxes[placement.surface]!)}
+          ondblclick={() => {
+            // Back to the size the panel asks for itself: the quick way out
+            // of a size that seemed right at the time.
+            const box = boxes[placement.surface];
+            box?.style.removeProperty("flex");
+            box?.style.removeProperty(alongY(placement) ? "height" : "width");
+            void setPlacement(placement.surface, { size: null });
+          }}
+          title="Drag to resize; double-click for its own size"
         ></div>
       {/if}
-      <div class="surface-body" hidden={placement.collapsed}>
+      <div class="surface-body" hidden={placement.collapsed && !isLifted(placement)}>
         {#if placement.surface === "library"}{@render surfaceLibrary()}
         {:else if placement.surface === "prepare"}{@render surfacePrepare()}
         {:else if placement.surface === "next"}{@render surfaceNext()}
@@ -3066,7 +3201,7 @@
   {/if}
 
   <div class="middle">
-  <div class="stage" class:shared={docked} data-watershed={living ? "open" : "closed"}>
+  <div class="stage" class:shared={docked} data-watershed={living ? "open" : "closed"} bind:this={stageEl}>
   {#if snapshot}
     <!--
       The watershed. Above the decks rather than replacing them: it answers
@@ -3174,6 +3309,14 @@
     </div>
   {/if}
   </div>
+
+  {#if overlayDock.length > 0}
+    <div class="dock overlay">
+      {#each overlayDock as placement (placement.surface)}
+        {@render surface(placement)}
+      {/each}
+    </div>
+  {/if}
 
   {#if rightDock.length > 0}
     <div class="dock side right">
@@ -3775,6 +3918,7 @@
 
   .surface-head .shut,
   .surface-head .fold,
+  .surface-head .lift,
   .surface-head .pin {
     background: transparent;
     border: none;
@@ -3787,9 +3931,47 @@
 
   .surface-head .shut:hover,
   .surface-head .fold:hover,
+  .surface-head .lift:hover,
   .surface-head .pin:hover {
     color: var(--text);
   }
+
+  .surface-head .lift {
+    font-size: 0.72em;
+  }
+
+  .surface-head .lift.on {
+    color: var(--selected);
+  }
+
+  /*
+    §120's temporary window: over the stage, above everything on it and
+    below every menu, the palette and the guide. `position: fixed` and its
+    box come from `liftStyle`, measured off the stage, so the panel covers
+    the decks and nothing else -- the master strip and the other panels stay
+    where a hand can reach them, which is also where a press puts this back.
+  */
+  .surface.lifted {
+    z-index: 35;
+    border-color: var(--selected);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+    animation: panel-in var(--motion-enter) var(--ease);
+  }
+
+  /*
+    Its children float; the dock itself takes no room. And a dock whose every
+    panel is lifted gives its room up for as long as they are, so the stage
+    grows into it and the lifted panel -- which covers the stage -- grows with
+    it. Lifted out of the bottom dock the library had the stage above the
+    master strip, about as tall as the dock it left; now it has the dock's
+    height as well. `display: contents` rather than a zero size, because a
+    zero-sized dock still takes the cockpit's gap on either side of it.
+  */
+  .dock.overlay,
+  .dock:not(:has(> .surface:not(.lifted))) {
+    display: contents;
+  }
+
 
   /* A pin that is in reads as in, and §33's rule applies: the pressed state is
      carried by `aria-pressed` as well as by the colour. */

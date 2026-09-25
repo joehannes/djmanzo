@@ -1434,9 +1434,13 @@ impl Shaping {
             // notion of stacking would be a second way to say the same thing.
             Self::Stacked => Does::By("Placement::order, within one dock"),
             Self::Detached => Does::By("Dock::Detached, and crate::monitors"),
-            Self::TemporarilySurfaced => {
-                Does::By("Dock::Overlay, dismissed by the next thing the DJ does")
-            }
+            // §120's temporary windows. The overlay dock was accepted,
+            // resolved and stored for a long time before anything drew it.
+            Self::TemporarilySurfaced => Does::By(
+                "every surface's Lift, over the stage until Escape or a press elsewhere; \
+                 and Dock::Overlay, drawn the same way and dismissed by the next thing \
+                 the DJ does",
+            ),
             Self::Pinned => Does::By("Placement::pinned, which an arrangement may not overrule"),
             Self::ContextuallyPromoted => Does::By("cockpit::priorities, on the night's phase"),
             // The one §3 asks for that djmanzo deliberately does not do, and

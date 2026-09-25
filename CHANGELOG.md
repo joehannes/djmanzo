@@ -25,6 +25,12 @@ Versioning follows semver, with one project-specific convention:
 - **Shift is fine on the faders too, and on knobs it works mid-drag.**
   A quarter of a drag, counted from the moment Shift goes down — before, a
   knob rescaled the whole drag and jumped back towards where it began.
+- **Lift any panel over the decks for the moment.** A button in every
+  panel's header raises it over the whole stage — the library, say, while
+  you look for the next record — and it goes back where it was on Escape,
+  the same button, or as soon as you let go of anything else (the
+  crossfader included, which keeps working). A double-click on a panel's
+  resize edge gives it back its own size.
 - **Fixed: a click on the volume fader could take the assistant's
   suggestion.** With a planned transition's suggestion showing, a click on
   the volume fader or the filter knob sent the suggested value (the volume
