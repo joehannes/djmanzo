@@ -1167,6 +1167,193 @@ pub fn summary(gig: &Gig) -> Summary {
     }
 }
 
+// -- the night itself ---------------------------------------------------------
+
+/// Days since 1970-01-01 for a `YYYY-MM-DD` date: the civil calendar's own
+/// arithmetic, so a night can be placed against today without a clock crate.
+fn days(date: &str) -> Option<i64> {
+    if !is_date(date) {
+        return None;
+    }
+    let year: i64 = date[0..4].parse().ok()?;
+    let month: i64 = date[5..7].parse().ok()?;
+    let day: i64 = date[8..10].parse().ok()?;
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146_097 + doe - 719_468)
+}
+
+/// Where the night stands at a moment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum Standing {
+    /// No start time yet, so nothing to count towards.
+    Unscheduled,
+    /// Before the DJ starts.
+    Before { starts_in: u32 },
+    /// Playing: how long in, and how long left of the agreed time.
+    Playing { played: u32, left: u32 },
+    /// Past the agreed end.
+    Over { past: u32 },
+}
+
+/// The next moment with a time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Upcoming {
+    pub at: String,
+    pub what: String,
+    pub record: String,
+    /// Minutes from now.
+    pub in_minutes: u32,
+}
+
+/// One trouble as the night's quick decision shows it: the plan written for
+/// it, or nothing -- and then the usual answer, which is a hint and never
+/// passed off as the DJ's own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Decision {
+    pub trouble: Trouble,
+    pub title: &'static str,
+    pub plan: Option<String>,
+    pub usual: &'static str,
+}
+
+/// §118's live event: *"narrow focus, specific, prepared ... prepared for
+/// exceptions and emergencies/alternatives"*. What the booth needs from the
+/// preparation while the night is on, and nothing else.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Tonight {
+    pub id: String,
+    pub title: String,
+    pub standing: Standing,
+    pub next: Option<Upcoming>,
+    pub decisions: Vec<Decision>,
+    pub wishes: Vec<String>,
+    pub never: Vec<String>,
+    pub contacts: String,
+}
+
+/// The night at `now` -- minutes past midnight on `today` (`YYYY-MM-DD`), in
+/// the DJ's own time, which only the interface knows.
+///
+/// An event with no date is read as tonight's, and a moment of the small
+/// hours as after the start rather than before it: a night that crosses
+/// midnight is one night, as [`timeline`] reads it.
+#[must_use]
+pub fn tonight(gig: &Gig, today: &str, now: u32) -> Tonight {
+    let decisions = Trouble::ALL
+        .into_iter()
+        .filter(|t| t.applies(gig))
+        .map(|trouble| Decision {
+            trouble,
+            title: trouble.title(),
+            plan: gig.plan_for(trouble).map(str::to_owned),
+            usual: trouble.usual(),
+        })
+        .collect();
+
+    let mut standing = Standing::Unscheduled;
+    let mut next = None;
+    if let (Some(start), Some(today_days)) = (clock(&gig.starts), days(today)) {
+        let now_abs = today_days * 1440 + i64::from(now);
+        let start_abs = match days(&gig.date) {
+            Some(day) => day * 1440 + i64::from(start),
+            None => {
+                // Undated: tonight's. Twelve hours or more before the start
+                // is the small hours after it, not the morning before.
+                let mut at = today_days * 1440 + i64::from(start);
+                if now_abs - at < -12 * 60 {
+                    at -= 1440;
+                }
+                at
+            }
+        };
+        let delta = now_abs - start_abs;
+        let minutes = i64::from(gig.minutes);
+        let clamp = |v: i64| u32::try_from(v.max(0)).unwrap_or(u32::MAX);
+        standing = if delta < 0 {
+            Standing::Before {
+                starts_in: clamp(-delta),
+            }
+        } else if gig.minutes == 0 || delta <= minutes {
+            Standing::Playing {
+                played: clamp(delta),
+                left: clamp(minutes - delta),
+            }
+        } else {
+            Standing::Over {
+                past: clamp(delta - minutes),
+            }
+        };
+        next = gig
+            .moments
+            .iter()
+            .filter_map(|moment| {
+                let at = clock(&moment.at)?;
+                let after = (i64::from(at) - i64::from(start)).rem_euclid(1440);
+                let when = start_abs + after;
+                (when >= now_abs).then_some((when, moment))
+            })
+            .min_by_key(|(when, _)| *when)
+            .map(|(when, moment)| Upcoming {
+                at: moment.at.clone(),
+                what: moment.what.clone(),
+                record: moment.record.clone(),
+                in_minutes: clamp(when - now_abs),
+            });
+    }
+
+    Tonight {
+        id: gig.id.clone(),
+        title: gig.title.clone(),
+        standing,
+        next,
+        decisions,
+        wishes: gig.wishes.clone(),
+        never: gig.never.clone(),
+        contacts: gig.contacts.clone(),
+    }
+}
+
+/// The file naming the event being played: plain text, not `.json`, so
+/// [`list`] never mistakes it for an event.
+fn live_file(dir: &Path) -> PathBuf {
+    dir.join("live")
+}
+
+/// The event being played, when one is.
+#[must_use]
+pub fn live(dir: &Path) -> Option<String> {
+    let id = std::fs::read_to_string(live_file(dir)).ok()?;
+    let id = id.trim();
+    (is_id(id) && dir.join(format!("{id}.json")).exists()).then(|| id.to_owned())
+}
+
+/// Play an event, or stop: `None` ends the night.
+///
+/// # Errors
+/// An event that is not kept, or the file system's own sentence.
+pub fn set_live(dir: &Path, id: Option<&str>) -> Result<(), String> {
+    match id {
+        Some(id) => {
+            if load(dir, id).is_none() {
+                return Err(format!("there is no event {id:?}"));
+            }
+            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            std::fs::write(live_file(dir), id).map_err(|e| e.to_string())
+        }
+        None => match std::fs::remove_file(live_file(dir)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.to_string()),
+        },
+    }
+}
+
 // -- keeping them ------------------------------------------------------------
 
 /// `events/` beside the settings: one file per event, readable and easy to
@@ -1688,5 +1875,147 @@ mod tests {
         let kept = check(gig.clone()).expect("everything offered is kept");
         assert_eq!(kept.genres, gig.genres);
         assert_eq!(kept.techniques, gig.techniques);
+    }
+
+    /// **Where the night stands, against the DJ's own clock.** Before, in,
+    /// past the end; a night crossing midnight is one night; the next
+    /// moment is the soonest still to come, the small hours included.
+    #[test]
+    fn tonight_reads_the_night_against_the_clock() {
+        let mut gig = wedding(); // 2026-10-03, 21:00, four hours
+        gig.moments = vec![
+            Moment {
+                at: "21:30".to_owned(),
+                what: "First dance".to_owned(),
+                record: "At Last".to_owned(),
+            },
+            Moment {
+                at: "00:30".to_owned(),
+                what: "Last dance".to_owned(),
+                record: String::new(),
+            },
+        ];
+        let at = |day: &str, hh: u32, mm: u32| tonight(&gig, day, hh * 60 + mm);
+
+        assert_eq!(
+            at("2026-10-03", 20, 35).standing,
+            Standing::Before { starts_in: 25 }
+        );
+        let first = at("2026-10-03", 20, 35).next.unwrap();
+        assert_eq!((first.what.as_str(), first.in_minutes), ("First dance", 55));
+
+        assert_eq!(
+            at("2026-10-03", 22, 0).standing,
+            Standing::Playing {
+                played: 60,
+                left: 180
+            }
+        );
+        // Past the first dance, the next is the last dance after midnight.
+        let last = at("2026-10-03", 22, 0).next.unwrap();
+        assert_eq!((last.what.as_str(), last.in_minutes), ("Last dance", 150));
+
+        // After midnight, on the next day's date, it is still the same night.
+        assert_eq!(
+            at("2026-10-04", 0, 15).standing,
+            Standing::Playing {
+                played: 195,
+                left: 45
+            }
+        );
+        assert_eq!(
+            at("2026-10-04", 1, 20).standing,
+            Standing::Over { past: 20 }
+        );
+        assert!(at("2026-10-04", 1, 20).next.is_none());
+
+        // Days before, the count is in minutes all the same.
+        assert_eq!(
+            at("2026-10-01", 21, 0).standing,
+            Standing::Before {
+                starts_in: 2 * 1440
+            }
+        );
+    }
+
+    /// An undated event is tonight's, and the small hours are after it.
+    #[test]
+    fn an_undated_night_is_tonight_and_crosses_midnight() {
+        let gig = Gig {
+            date: String::new(),
+            ..wedding()
+        };
+        assert_eq!(
+            tonight(&gig, "2026-05-01", 23 * 60).standing,
+            Standing::Playing {
+                played: 120,
+                left: 120
+            }
+        );
+        assert_eq!(
+            tonight(&gig, "2026-05-02", 60).standing,
+            Standing::Playing {
+                played: 240,
+                left: 0
+            }
+        );
+        assert_eq!(
+            tonight(&gig, "2026-05-01", 18 * 60).standing,
+            Standing::Before { starts_in: 180 }
+        );
+    }
+
+    /// The quick decision offers the plan the DJ wrote, and the usual one
+    /// only as a hint -- never as a plan nobody wrote.
+    #[test]
+    fn a_decision_is_the_djs_plan_or_says_there_is_none() {
+        let mut gig = wedding();
+        gig.fallbacks.push(Fallback {
+            trouble: Trouble::Power,
+            plan: "Phone into the house desk; start with September.".to_owned(),
+        });
+        let decisions = tonight(&gig, "2026-10-03", 22 * 60).decisions;
+        let power = decisions
+            .iter()
+            .find(|d| d.trouble == Trouble::Power)
+            .unwrap();
+        assert_eq!(
+            power.plan.as_deref(),
+            Some("Phone into the house desk; start with September.")
+        );
+        let mic = decisions
+            .iter()
+            .find(|d| d.trouble == Trouble::Microphone)
+            .unwrap();
+        assert_eq!(mic.plan, None);
+        assert_eq!(mic.usual, Trouble::Microphone.usual());
+        // Rain is offered only because this night is partly outside.
+        assert!(decisions.iter().any(|d| d.trouble == Trouble::Rain));
+        let indoors = Gig {
+            sky: Sky::Indoors,
+            ..gig
+        };
+        assert!(
+            !tonight(&indoors, "2026-10-03", 0)
+                .decisions
+                .iter()
+                .any(|d| d.trouble == Trouble::Rain)
+        );
+    }
+
+    /// The live event is kept beside the events without becoming one, and
+    /// only an event that is kept can be played.
+    #[test]
+    fn the_live_event_is_named_beside_the_events_and_is_not_one() {
+        let dir = std::env::temp_dir().join(format!("djmanzo-gig-live-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let gig = save(&dir, wedding(), 1).expect("the wedding is kept");
+        assert!(set_live(&dir, Some("nobody-2026-01-01")).is_err());
+        set_live(&dir, Some(&gig.id)).expect("a kept event can be played");
+        assert_eq!(live(&dir).as_deref(), Some(gig.id.as_str()));
+        assert_eq!(list(&dir).len(), 1, "the live file was read as an event");
+        set_live(&dir, None).expect("the night ends");
+        assert_eq!(live(&dir), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

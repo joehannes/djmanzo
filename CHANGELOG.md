@@ -24,6 +24,10 @@ Versioning follows semver, with one project-specific convention:
   wedding's first dance, a beach's sunset — and everything is kept as you
   type, one file per event in `events/`. Key 9 now opens it: an activity
   of your own that was on 9 is a click away on the strip, or under Space.
+- **Play the night you prepared.** *Play it live* on a prepared event puts
+  the night in the top bar — how long in, how long left, the next moment and
+  its record — and **If…** opens every trouble you planned for, each with
+  the plan you wrote, for when something goes wrong mid-set.
 
 - **The deck's mixer is compact.** The channel strip is one line at the
   opening window — platter, EQ with kill squares, filter, volume and pitch,

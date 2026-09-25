@@ -1183,7 +1183,16 @@ fn the_browser_fixture_has_the_event_panels_answers() {
         date: "2026-07-04".to_owned(),
         ..Gig::default()
     };
+    // Eighteen minutes in, with one plan written: the quick decision has to
+    // tell a plan the DJ wrote from a trouble with only the usual answer.
+    let mut playing = wedding.clone();
+    playing.fallbacks.push(gig::Fallback {
+        trouble: gig::Trouble::Power,
+        plan: "Phone into the house desk; start again with September.".to_owned(),
+    });
+    let tonight = gig::tonight(&playing, "2026-10-03", 21 * 60 + 18);
     let fixture = serde_json::json!({
+        "tonight": tonight,
         "options": gig::options(),
         "list": [gig::summary(&wedding), gig::summary(&fresh)],
         "wedding": gig::view(wedding),

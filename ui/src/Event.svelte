@@ -22,6 +22,16 @@
    * nothing was typed while it was on its way.
    */
   import { onMount } from "svelte";
+
+  let {
+    liveId = null,
+    onGoLive,
+  }: {
+    /** The event being played, if one is. */
+    liveId?: string | null;
+    /** Play this event: the narrow focus, and the night's line in the top bar. */
+    onGoLive?: (id: string) => void;
+  } = $props();
   import {
     eventOptions,
     eventView,
@@ -106,8 +116,10 @@
    * Native date and time fields were the first version, and WebKitGTK draws
    * an empty one as today's date and a time of day -- so an event with no
    * date looked dated, while its own step said the date was still to do.
-   * Text says exactly what is there. An edit is held while one of them is
-   * half typed, rather than sent to be refused on every keystroke.
+   * Text says exactly what is there, and the hint is the form -- YYYY-MM-DD,
+   * HH:MM -- because a sample date as a hint read as a date that was set.
+   * An edit is held while one of them is half typed, rather than sent to be
+   * refused on every keystroke.
    */
   const DATE = /^\d{4}-\d{2}-\d{2}$/;
   const TIME = /^\d{2}:\d{2}$/;
@@ -280,7 +292,7 @@
       <input
         class="new-date"
         inputmode="numeric"
-        placeholder="2026-10-03"
+        placeholder="YYYY-MM-DD"
         aria-label="Date of the new event"
         class:wrong={!dateOk(newDate)}
         bind:value={newDate}
@@ -319,6 +331,23 @@
           <span class="mark" aria-hidden="true">{stop.done ? "✓" : "·"}</span>
           <span class="stop-title">{stop.title}</span>
           <span class="stop-about">{stop.about}</span>
+          {#if stop.stop === "live" && onGoLive}
+            <!--
+              Always offered, even unprepared: the night comes whether or not
+              the list is finished, and the stop above already says what is
+              missing.
+            -->
+            <button
+              type="button"
+              class="go-live"
+              class:on={liveId === draft.id}
+              disabled={liveId === draft.id}
+              onclick={async () => {
+                await flush();
+                onGoLive(draft!.id);
+              }}
+            >{liveId === draft.id ? "Playing" : "Play it live"}</button>
+          {/if}
         </li>
       {/each}
     </ol>
@@ -346,7 +375,7 @@
             <label>Date
               <input
                 inputmode="numeric"
-                placeholder="2026-10-03"
+                placeholder="YYYY-MM-DD"
                 class:wrong={!dateOk(draft.date)}
                 bind:value={draft.date}
                 oninput={edited}
@@ -355,7 +384,7 @@
             <label>You start
               <input
                 inputmode="numeric"
-                placeholder="21:00"
+                placeholder="HH:MM"
                 class:wrong={!timeOk(draft.starts)}
                 bind:value={draft.starts}
                 oninput={edited}
@@ -514,7 +543,7 @@
               <div class="moment" data-moment={index}>
                 <input
                   inputmode="numeric"
-                  placeholder="21:30"
+                  placeholder="HH:MM"
                   aria-label="When: {moment.what || 'moment'}"
                   class:wrong={!timeOk(moment.at)}
                   bind:value={moment.at}
@@ -713,6 +742,16 @@
     border-color: var(--warn);
   }
 
+  /* A hint must never pass for a value: a sample date as a placeholder
+     read as a date that was set, which is the mistake the text fields were
+     brought in to stop. The form, dimmed and slanted. */
+  .event input::placeholder,
+  .event textarea::placeholder {
+    color: var(--text-dim);
+    font-style: italic;
+    opacity: 0.75;
+  }
+
   .new-date {
     width: 7.5rem;
   }
@@ -764,6 +803,19 @@
 
   .stop-title {
     font-weight: 600;
+  }
+
+  .go-live {
+    margin-top: 0.2rem;
+    padding: 0.1rem 0.3rem;
+    font-size: 0.85em;
+    font-weight: 600;
+    border-color: var(--active);
+  }
+
+  .go-live.on {
+    background: var(--active);
+    color: var(--on-active);
   }
 
   .stop-about {

@@ -880,6 +880,76 @@
       ]
     }
   },
+  "tonight": {
+    "contacts": "",
+    "decisions": [
+      {
+        "plan": null,
+        "title": "The floor empties",
+        "trouble": "empty-floor",
+        "usual": "Go back to what filled it: the last record that worked, then one everybody knows."
+      },
+      {
+        "plan": null,
+        "title": "It rains",
+        "trouble": "rain",
+        "usual": "Where the decks go if it rains, a cover for them, and a warmer hour while people find shelter."
+      },
+      {
+        "plan": "Phone into the house desk; start again with September.",
+        "title": "The power goes",
+        "trouble": "power",
+        "usual": "The first record back on, cued on deck 1; a phone with the set offline and a cable into the house system."
+      },
+      {
+        "plan": null,
+        "title": "The microphone fails",
+        "trouble": "microphone",
+        "usual": "A spare cable, and every announcement written down so someone else can read it."
+      },
+      {
+        "plan": null,
+        "title": "It runs late",
+        "trouble": "late",
+        "usual": "Which moments stay and which records go, decided now rather than at the time."
+      },
+      {
+        "plan": null,
+        "title": "They ask for more",
+        "trouble": "longer",
+        "usual": "Half an hour more you would be glad to play, already in a crate."
+      },
+      {
+        "plan": null,
+        "title": "A request you will not play",
+        "trouble": "request",
+        "usual": "A kind answer, and the nearest record you would play instead."
+      },
+      {
+        "plan": null,
+        "title": "Your gear fails",
+        "trouble": "gear",
+        "usual": "The laptop alone: the keyboard map, the set as a playlist, and the headphones on the laptop's own output."
+      }
+    ],
+    "id": "anna-and-ben-2026-10-03",
+    "never": [],
+    "next": {
+      "at": "21:30",
+      "in_minutes": 12,
+      "record": "At Last",
+      "what": "First dance"
+    },
+    "standing": {
+      "kind": "playing",
+      "left": 222,
+      "played": 18
+    },
+    "title": "Anna and Ben",
+    "wishes": [
+      "September"
+    ]
+  },
   "wedding": {
     "gig": {
       "after": "",

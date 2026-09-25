@@ -71,6 +71,8 @@
     applyPreset,
     type DensityBand,
     setCockpitWorkspace,
+    liveEvent,
+    setLiveEvent,
     type Dock,
     type DockSizes,
     type Layout,
@@ -88,6 +90,7 @@
   import Mixes from "./Mixes.svelte";
   import Practice from "./Practice.svelte";
   import EventPanel from "./Event.svelte";
+  import Tonight from "./Tonight.svelte";
   import AtHand from "./AtHand.svelte";
   import Staged from "./Staged.svelte";
   import Palette from "./Palette.svelte";
@@ -532,6 +535,41 @@
    * who drags it there has lost the handle to drag it back.
    */
   const MIN_SURFACE = 160;
+
+  /**
+   * §118: the event being played, if one is.
+   *
+   * Kept by Rust beside the events, so a restart in the middle of the night
+   * comes back to it rather than to an evening with nothing prepared.
+   */
+  let liveId = $state<string | null>(null);
+
+  $effect(() => {
+    liveEvent()
+      .then((id) => (liveId = id))
+      .catch(() => {});
+  });
+
+  /**
+   * Play a prepared event: the narrow focus the owner asked for -- the decks
+   * and the mixer (the Mix activity), with the night's line in the top bar.
+   */
+  async function goLive(id: string) {
+    try {
+      liveId = await setLiveEvent(id);
+    } catch {
+      return;
+    }
+    await chooseActivity("mix");
+  }
+
+  async function endNight() {
+    try {
+      liveId = await setLiveEvent(null);
+    } catch {
+      liveId = null;
+    }
+  }
 
   /**
    * §120: a dock's own size, dragged from the edge that faces the stage.
@@ -2797,6 +2835,13 @@
         squeezed out and left its button alone. See `Whisper.svelte` and
         `dj_app::whisper`.
       -->
+      <!--
+        §118: the night being played. After the set group and before the
+        proposer, because while a night is on it is the state of the night.
+      -->
+      {#if liveId}
+        <Tonight id={liveId} onEnd={() => void endNight()} />
+      {/if}
       <Whisper offered={snapshot?.whisper} send={(action) => send(action)} />
     </div>
   </header>
@@ -2911,7 +2956,7 @@
   {/snippet}
 
   {#snippet surfaceEvent()}
-    <EventPanel />
+    <EventPanel {liveId} onGoLive={(id) => void goLive(id)} />
   {/snippet}
 
   {#snippet surfaceNight()}

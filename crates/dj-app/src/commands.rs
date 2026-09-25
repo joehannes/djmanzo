@@ -13330,6 +13330,50 @@ pub fn forget_event(
         .collect())
 }
 
+/// §118: the night being played, at the DJ's own date and time.
+///
+/// The interface passes the date and the minutes past midnight because the
+/// DJ's clock is the one the host agreed times on, and only the interface
+/// knows its time zone.
+///
+/// # Errors
+/// An event that is not kept.
+#[tauri::command]
+pub fn event_tonight(
+    state: State<'_, AppState>,
+    id: String,
+    today: String,
+    now: u32,
+) -> Result<crate::gig::Tonight, String> {
+    let dir = events_dir(&state)?;
+    let gig = crate::gig::load(&dir, &id).ok_or_else(|| format!("there is no event {id:?}"))?;
+    Ok(crate::gig::tonight(&gig, &today, now.min(24 * 60 - 1)))
+}
+
+/// §118: the event being played, if one is -- kept so a restart mid-night
+/// comes back to it.
+///
+/// # Errors
+/// When djmanzo has no settings folder yet.
+#[tauri::command]
+pub fn live_event(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    Ok(crate::gig::live(&events_dir(&state)?))
+}
+
+/// §118: play an event, or end the night with `None`.
+///
+/// # Errors
+/// An event that is not kept, or the file system's refusal.
+#[tauri::command]
+pub fn set_live_event(
+    state: State<'_, AppState>,
+    id: Option<String>,
+) -> Result<Option<String>, String> {
+    let dir = events_dir(&state)?;
+    crate::gig::set_live(&dir, id.as_deref())?;
+    Ok(crate::gig::live(&dir))
+}
+
 /// §118: the fixed lists the event panel offers.
 #[tauri::command]
 #[must_use]

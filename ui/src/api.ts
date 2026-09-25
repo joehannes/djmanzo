@@ -5028,3 +5028,48 @@ export const takeEventIdea = (id: string, adds: GigAdds) =>
   invoke<GigView>("take_event_idea", { id, adds });
 export const forgetEvent = (id: string) => invoke<GigSummary[]>("forget_event", { id });
 export const eventOptions = () => invoke<GigOptions>("event_options");
+
+/** `gig::Standing`: where the night stands at a moment. */
+export type GigStanding =
+  | { kind: "unscheduled" }
+  | { kind: "before"; starts_in: number }
+  | { kind: "playing"; played: number; left: number }
+  | { kind: "over"; past: number };
+
+/** `gig::Decision`: the plan the DJ wrote for a trouble, or none. */
+export interface GigDecision {
+  trouble: GigTrouble;
+  title: string;
+  /** The DJ's own plan; null when none was written. */
+  plan: string | null;
+  /** What DJs usually keep ready: a hint, never passed off as the plan. */
+  usual: string;
+}
+
+/** `gig::Tonight`: the preparation, as the booth needs it while the night is on. */
+export interface GigTonight {
+  id: string;
+  title: string;
+  standing: GigStanding;
+  next: { at: string; what: string; record: string; in_minutes: number } | null;
+  decisions: GigDecision[];
+  wishes: string[];
+  never: string[];
+  contacts: string;
+}
+
+/**
+ * The night at the DJ's own date and time. The date and minutes past midnight
+ * come from here because only the interface knows the local time zone.
+ */
+export const eventTonight = (id: string, at: Date = new Date()) => {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const today = `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+  return invoke<GigTonight>("event_tonight", {
+    id,
+    today,
+    now: at.getHours() * 60 + at.getMinutes(),
+  });
+};
+export const liveEvent = () => invoke<string | null>("live_event");
+export const setLiveEvent = (id: string | null) => invoke<string | null>("set_live_event", { id });

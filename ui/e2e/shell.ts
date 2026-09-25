@@ -260,6 +260,10 @@ export const ANSWERS: Record<string, unknown> = {
   event_view: events.wedding,
   new_event: events.fresh,
   take_event_idea: events.taken.view,
+  // No night being played unless a test says so: a Tonight line in every
+  // test's top bar would be measured by every layout budget.
+  live_event: null,
+  event_tonight: events.tonight,
   learned_taste: { favourites: [], plays: 0, confident: false },
   // §13/§14. Two gestures that reached four occurrences in one phase, with the
   // sentences Rust writes — never "you like", always what was seen and when.
@@ -1831,6 +1835,11 @@ export async function openShell(
             ((win.__eventSaves ??= []) as unknown[]).push(args.gig);
             const base = (answers.event_view ?? {}) as Record<string, unknown>;
             return Promise.resolve({ ...base, gig: args.gig });
+          }
+          if (cmd === "set_live_event" || cmd === "event_tonight") {
+            ((win.__eventCalls ??= []) as unknown[]).push({ cmd, ...args });
+            if (cmd === "set_live_event") return Promise.resolve(args.id ?? null);
+            return Promise.resolve(answers.event_tonight);
           }
           if (cmd === "take_event_idea" || cmd === "new_event" || cmd === "forget_event") {
             ((win.__eventCalls ??= []) as unknown[]).push({ cmd, ...args });
