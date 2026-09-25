@@ -30,6 +30,7 @@ pub mod audition;
 pub mod automix;
 pub mod autopilot;
 pub mod brand;
+pub mod breaks;
 pub mod chapters;
 pub mod clock;
 pub mod cockpit;
@@ -441,6 +442,23 @@ pub fn run() {
                             crate::commands::run_automix_plan(&state, plan);
                         }
                     }
+                    // §107's break music, on the same pump for the same
+                    // reason. The record it asks for is read off the pump:
+                    // a whole file decoded here would stop the interface for
+                    // as long as that takes.
+                    {
+                        let state: tauri::State<'_, AppState> = handle.state();
+                        let now = std::time::Instant::now()
+                            .duration_since(*START)
+                            .as_secs_f64();
+                        if let Some(deck) = crate::commands::tick_breaks(&state, now) {
+                            let handle = handle.clone();
+                            std::thread::spawn(move || {
+                                let state: tauri::State<'_, AppState> = handle.state();
+                                crate::commands::load_break(&state, deck);
+                            });
+                        }
+                    }
                     save_changed_cues(&snapshot, &watched_tracks, &cue_watcher, &library_writer);
                     record_plays(
                         &snapshot,
@@ -792,6 +810,8 @@ pub fn run() {
             commands::karaoke_leave,
             commands::karaoke_key,
             commands::karaoke_clear,
+            commands::karaoke_breaks,
+            commands::karaoke_breaks_set,
             commands::set_activity_mode,
             commands::keep_activity,
             commands::list_events,

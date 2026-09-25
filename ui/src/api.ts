@@ -4664,6 +4664,37 @@ export const karaokeKey = (singer: string, key: number) =>
   invoke<Rotation>("karaoke_key", { singer, key });
 export const karaokeClear = () => invoke<Rotation>("karaoke_clear");
 
+/** §107: one playlist break music can play from. */
+export interface BreakPlaylist {
+  id: number;
+  name: string;
+  tracks: number;
+}
+
+/** §107: break music between singers, from `dj_app::breaks`. */
+export interface Breaks {
+  on: boolean;
+  /** Counted from one. */
+  deck: number;
+  playlist: number | null;
+  level: number;
+  /** The levels offered, each with its name. */
+  levels: [number, string][];
+  phase: "off" | "loading" | "fading-in" | "playing" | "fading-out";
+  /** What stops it, in words, when something does. */
+  problem: string | null;
+  playlists: BreakPlaylist[];
+}
+
+export const karaokeBreaks = () => invoke<Breaks>("karaoke_breaks");
+export const karaokeBreaksSet = (
+  on: boolean,
+  deck: number,
+  playlist: number | null,
+  level: number,
+  decks: number,
+) => invoke<Breaks>("karaoke_breaks_set", { on, deck, playlist, level, decks });
+
 /**
  * §109: one activity — what a DJ is doing right now, and the arrangement for
  * it. From `dj_app::activity`.

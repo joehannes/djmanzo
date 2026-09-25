@@ -11,13 +11,14 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
+import breaks from "./breaks.json" with { type: "json" };
 import { errorsThrown, openShell } from "./shell";
 
 const SINGERS = '.surface[data-surface="karaoke"]';
 
 /** Through the Karaoke activity, which is where a host opens it. */
-async function openSingers(page: Page) {
-  await openShell(page, "/");
+async function openSingers(page: Page, answers: Record<string, unknown> = {}) {
+  await openShell(page, "/", {}, answers);
   await page.getByRole("button", { name: "Activities", exact: true }).click();
   await page.keyboard.press("8");
   await expect(page.locator(SINGERS)).toBeVisible();
@@ -141,5 +142,79 @@ test.describe("§107: the singer rotation", () => {
     await expect(page.locator('[data-activity="karaoke"]')).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator(SINGERS)).toBeVisible();
     await expect(page.locator('.surface[data-surface="library"]')).toBeVisible();
+  });
+});
+
+/**
+ * §107's break music. When it fades in and out is `dj_app::breaks`'s, held by
+ * its own tests; what a browser holds is that the host's choices reach Rust as
+ * they were made, and that what Rust says back is what the host reads.
+ */
+test.describe("§107: break music between singers", () => {
+  /**
+   * **The load-bearing one: switched on with a playlist, a deck and a level,
+   * each sent as chosen.** The deck is one of those on screen, and the
+   * count on screen goes with it so Rust can refuse one that is not.
+   */
+  test("the host's choices reach Rust as they were made", async ({ page }) => {
+    await openSingers(page);
+    const row = page.locator(SINGERS).getByRole("region", { name: "Break music" });
+    const on = row.getByRole("checkbox", { name: "Break music between singers" });
+    await expect(on).not.toBeChecked();
+    // The levels are Rust's, by name, with the one set pressed.
+    const levels = row.getByRole("group", { name: "Break music level" }).getByRole("button");
+    await expect(levels).toHaveText(breaks.off.levels.map(([, name]) => name as string));
+    await expect(row.getByRole("button", { name: "Background" })).toHaveAttribute("aria-pressed", "true");
+    // Pressed is seen, not only announced: the set level does not look like
+    // the others.
+    const colour = (name: string) =>
+      row.getByRole("button", { name }).evaluate((button) => getComputedStyle(button).color);
+    expect(await colour("Background")).not.toBe(await colour("Quiet"));
+
+    await row.getByRole("combobox", { name: "Break music playlist" }).selectOption({ label: "Last orders (3)" });
+    await row.getByRole("group", { name: "Break music deck" }).getByRole("button", { name: "1", exact: true }).click();
+    await row.getByRole("button", { name: "Full" }).click();
+    await on.check();
+
+    const sets = (await calls(page)).filter((call) => call.cmd === "karaoke_breaks_set");
+    expect(sets.at(-1)).toMatchObject({ on: true, deck: 1, playlist: 9, level: 1, decks: 2 });
+    await expect(on).toBeChecked();
+    await expect(row.getByRole("button", { name: "Full" })).toHaveAttribute("aria-pressed", "true");
+    await expect(row.getByRole("status")).toHaveText("Waiting for the room to go quiet");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **What stops it is said, and where it has got to follows it.** Rust's
+   * words when there is nothing to play from; and while it is on the line
+   * is asked again, so a fade that has started shows without a click.
+   */
+  test("says what stops it, and follows where it has got to", async ({ page }) => {
+    await openSingers(page, { karaoke_breaks: breaks.no_playlist });
+    const row = page.locator(SINGERS).getByRole("region", { name: "Break music" });
+    await expect(row.getByRole("status")).toHaveText(breaks.no_playlist.problem!);
+
+    await page.evaluate((playing) => {
+      (window as unknown as { __breaks: unknown }).__breaks = structuredClone(playing);
+    }, breaks.playing);
+    await expect(row.getByRole("status")).toHaveText("Playing", { timeout: 5000 });
+    await expect(row).toHaveAttribute("data-phase", "playing");
+    await page.evaluate(() => {
+      (window as unknown as { __breaks: { phase: string } }).__breaks.phase = "fading-out";
+    });
+    await expect(row.getByRole("status")).toHaveText("Fading out for the singer", { timeout: 5000 });
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** A deck the layout does not show is not where break music plays unseen. */
+  test("a break deck that is not on screen is said", async ({ page }) => {
+    await openSingers(page, { karaoke_breaks: { ...breaks.playing, deck: 4 } });
+    const row = page.locator(SINGERS).getByRole("region", { name: "Break music" });
+    await expect(row.getByRole("status")).toHaveText(
+      "Deck 4 is not on screen. Choose one of these for break music.",
+    );
+    const decks = row.getByRole("group", { name: "Break music deck" }).getByRole("button");
+    await expect(decks).toHaveText(["1", "2"]);
+    expect(errorsThrown(page)).toEqual([]);
   });
 });

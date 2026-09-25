@@ -1,6 +1,6 @@
 # Karaoke
 
-> **What is built, and what is still only written here** (updated 2026-09-24,
+> **What is built, and what is still only written here** (updated 2026-09-25,
 > §107). This document was the plan; for a long time almost none of it reached
 > a DJ. Built: **the singer rotation** (`dj_app::karaoke`, the *Singers*
 > surface, the *Karaoke* activity on F8) — first come first served, one song a
@@ -14,8 +14,15 @@
 > on the deck while the vocal is not as recorded. And **the singers' screen**:
 > a panel for a second display with the line being sung wiped in time (word by
 > word where the lyric is Enhanced LRC), the next line, a count-in and the next
-> singer (`dj_library::lrc`, `singer_lyrics`, `SingerScreen.svelte`). **Not
-> yet**: break music between singers.
+> singer (`dj_library::lrc`, `singer_lyrics`, `SingerScreen.svelte`). And
+> **break music between singers** (`dj_app::breaks`, a row on the Singers
+> surface): the host names a playlist, a deck and a level (*Quiet*,
+> *Background*, *Full*); two seconds after the room goes quiet a record from
+> that playlist fades in along its own playhead, and the moment anything else
+> starts it fades out, pauses and hands the fader back where the host had it.
+> Each break takes the playlist's next record. It only ever plays a record it
+> put there itself — the next singer's song loaded on the break deck by
+> mistake is left alone, and the row says why nothing is playing.
 
 Two independent halves, usable together or separately:
 

@@ -16,6 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Break music between singers.** On the Singers surface, choose a
+  playlist, a deck and a level (Quiet, Background or Full) and switch it
+  on: when the room goes quiet a record from the playlist fades in, and
+  when the next singer's song starts it fades out and the fader goes back
+  where it was. Each break plays the next record. It never plays a record
+  it did not put on the deck itself, and says so when that is what stops it.
+- **Fixed: clicking PLAY on a paused deck did nothing** in the Linux and
+  macOS builds (it worked from the keyboard). A click on any unlit
+  transport pad was lost.
+
 ## v0.28.0 — A welcome, the assistant's guides, your press kit, and what the crowd said
 
 - **A welcome.** The first time djmanzo opens it introduces itself and asks

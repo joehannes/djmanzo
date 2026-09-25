@@ -1595,3 +1595,72 @@ fn the_browser_fixture_has_a_nights_crowd() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
     );
 }
+
+/// §107: break music, as Rust answers it.
+///
+/// Off as a fresh install has it, on with a playlist and playing, and on with
+/// nothing to play from -- so the levels offered and the words a host reads
+/// are Rust's.
+#[test]
+fn the_browser_fixture_has_break_music() {
+    use dj_app::breaks::{Phase, Settings};
+    use dj_app::commands::{BreakPlaylistDto, breaks_view};
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/breaks.json");
+    let lists = || {
+        vec![
+            BreakPlaylistDto {
+                id: 7,
+                name: "Between singers".to_owned(),
+                tracks: 12,
+            },
+            BreakPlaylistDto {
+                id: 9,
+                name: "Last orders".to_owned(),
+                tracks: 3,
+            },
+        ]
+    };
+    let off = breaks_view(&Settings::default(), Phase::Off, None, lists());
+    let on = Settings {
+        on: true,
+        deck: 2,
+        playlist: Some(7),
+        level: 0.7,
+        next: 3,
+    };
+    let playing = breaks_view(&on, Phase::Playing, None, lists());
+    let nothing = breaks_view(
+        &Settings {
+            playlist: None,
+            ..on.clone()
+        },
+        Phase::Off,
+        None,
+        lists(),
+    );
+    let fixture = serde_json::json!({
+        "off": off,
+        "playing": playing,
+        "no_playlist": nothing,
+    });
+    let text = serde_json::to_string_pretty(&fixture).expect("break music serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{text}\n")).expect("writing break music");
+        return;
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored break music is JSON");
+    assert_eq!(
+        stored, fixture,
+        "ui/e2e/breaks.json is stale; regenerate it with \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
+    );
+}

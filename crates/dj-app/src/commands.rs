@@ -13302,6 +13302,273 @@ pub fn karaoke_clear(state: State<'_, AppState>) -> RotationDto {
     })
 }
 
+/// §107: break music as the Singers surface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct BreaksDto {
+    pub on: bool,
+    /// Counted from one.
+    pub deck: u8,
+    pub playlist: Option<i64>,
+    pub level: f32,
+    /// The levels a host chooses between, with their names.
+    pub levels: Vec<(f32, &'static str)>,
+    /// `off`, `loading`, `fading-in`, `playing` or `fading-out`.
+    pub phase: &'static str,
+    /// What stops it, in words, when something does.
+    pub problem: Option<String>,
+    /// The playlists it can play from: lists, not folders or smart folders.
+    pub playlists: Vec<BreakPlaylistDto>,
+}
+
+/// One playlist break music could play from.
+#[derive(Debug, Clone, Serialize)]
+pub struct BreakPlaylistDto {
+    pub id: i64,
+    pub name: String,
+    pub tracks: i64,
+}
+
+fn breaks_dto(state: &AppState) -> BreaksDto {
+    use crate::breaks::Phase;
+    let (settings, phase, problem) = match state.breaks().lock() {
+        Ok(mut held) => {
+            let settings = held
+                .settings
+                .get_or_insert_with(|| state.read_break_settings())
+                .clone();
+            // Waiting on a deck that holds the host's record would wait for
+            // ever, and "waiting for quiet" would be the wrong thing to say.
+            let theirs = dj_core::DeckId::from_human(settings.deck)
+                .and_then(|deck| state.deck_track_id(deck))
+                .map(dj_core::TrackId::to_hex)
+                .filter(|track| Some(track.as_str()) != held.machine.ours());
+            let blocked = (held.machine.phase() == Phase::Off && theirs.is_some()).then(|| {
+                format!(
+                    "Deck {} has a record on it. Break music plays only what it puts there \
+                     itself: eject that one, or choose another deck.",
+                    settings.deck
+                )
+            });
+            (
+                settings,
+                held.machine.phase(),
+                held.problem.clone().or(blocked),
+            )
+        }
+        Err(_) => (crate::breaks::Settings::default(), Phase::Off, None),
+    };
+    let playlists: Vec<BreakPlaylistDto> = library(state)
+        .ok()
+        .and_then(|db| db.playlists().ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| p.kind == dj_library::PlaylistKind::List)
+        .map(|p| BreakPlaylistDto {
+            id: p.id,
+            name: p.name,
+            tracks: p.track_count,
+        })
+        .collect();
+    breaks_view(&settings, phase, problem, playlists)
+}
+
+/// §107: break music as the surface draws it, from what is set, where the
+/// machine has got to, and what went wrong last.
+#[must_use]
+pub fn breaks_view(
+    settings: &crate::breaks::Settings,
+    phase: crate::breaks::Phase,
+    problem: Option<String>,
+    playlists: Vec<BreakPlaylistDto>,
+) -> BreaksDto {
+    use crate::breaks::Phase;
+    // Said before it is tried, so a host is not left wondering why a switch
+    // they turned on does nothing.
+    let problem = if !settings.on {
+        None
+    } else if settings.playlist.is_none() {
+        Some("Choose a playlist for break music to play from.".to_owned())
+    } else if !playlists.iter().any(|p| Some(p.id) == settings.playlist) {
+        Some("The break music playlist is not in the collection any more.".to_owned())
+    } else {
+        problem
+    };
+    BreaksDto {
+        on: settings.on,
+        deck: settings.deck,
+        playlist: settings.playlist,
+        level: settings.level,
+        levels: crate::breaks::LEVELS.to_vec(),
+        phase: match phase {
+            Phase::Off => "off",
+            Phase::Loading { .. } => "loading",
+            Phase::FadingIn { .. } => "fading-in",
+            Phase::Playing => "playing",
+            Phase::FadingOut { .. } => "fading-out",
+        },
+        problem,
+        playlists,
+    }
+}
+
+/// §107: break music, as it is set and where it has got to.
+#[tauri::command]
+#[must_use]
+pub fn karaoke_breaks(state: State<'_, AppState>) -> BreaksDto {
+    breaks_dto(&state)
+}
+
+/// §107: set break music. The deck is one of those on screen, and the level
+/// one of [`crate::breaks::LEVELS`]'s.
+///
+/// # Errors
+/// A deck that is not on screen, or a level that is not offered.
+#[tauri::command]
+pub fn karaoke_breaks_set(
+    state: State<'_, AppState>,
+    on: bool,
+    deck: u8,
+    playlist: Option<i64>,
+    level: f32,
+    decks: u8,
+) -> Result<BreaksDto, String> {
+    if deck == 0 || deck > decks.min(state.deck_count() as u8) {
+        return Err(format!("deck {deck} is not on screen"));
+    }
+    if !crate::breaks::LEVELS
+        .iter()
+        .any(|(offered, _)| (offered - level).abs() < 1e-3)
+    {
+        return Err("that is not one of the levels break music plays at".to_owned());
+    }
+    if let Ok(mut held) = state.breaks().lock() {
+        let before = held
+            .settings
+            .get_or_insert_with(|| state.read_break_settings())
+            .clone();
+        let settings = crate::breaks::Settings {
+            on,
+            deck,
+            playlist,
+            level,
+            // A different playlist starts from its top.
+            next: if playlist == before.playlist {
+                before.next
+            } else {
+                0
+            },
+        };
+        state.write_break_settings(&settings);
+        held.settings = Some(settings);
+        held.problem = None;
+    }
+    Ok(breaks_dto(&state))
+}
+
+/// §107: break music's view of the decks — the automix's, with the fader and
+/// the record, off the same registry the interface draws.
+fn break_view(state: &AppState) -> Vec<crate::breaks::DeckView> {
+    use dj_core::param::DeckParam;
+    let registry = state.registry();
+    automix_view(state)
+        .into_iter()
+        .map(|deck| crate::breaks::DeckView {
+            id: deck.id,
+            loaded: deck.loaded,
+            playing: deck.playing,
+            position: deck.position,
+            length: deck.length,
+            sample_rate: deck.sample_rate,
+            volume: registry.get(dj_core::ParamId::Deck(deck.id, DeckParam::Volume)),
+            track: state.deck_track_id(deck.id).map(dj_core::TrackId::to_hex),
+        })
+        .collect()
+}
+
+/// §107: one step of break music, on the snapshot pump. Answers the deck a
+/// record is wanted on; the caller loads it off the pump, because reading a
+/// whole file there would stop the interface for as long as it takes.
+pub fn tick_breaks(state: &AppState, now: f64) -> Option<dj_core::DeckId> {
+    let plan = {
+        let mut held = state.breaks().lock().ok()?;
+        let settings = held
+            .settings
+            .get_or_insert_with(|| state.read_break_settings())
+            .clone();
+        if !settings.on && held.machine.phase() == crate::breaks::Phase::Off {
+            return None;
+        }
+        let views = break_view(state);
+        held.machine.tick(&settings, &views, now)
+    };
+    for action in &plan.actions {
+        let text = action.to_string();
+        // The machine's, like the automix's: a fade nobody's hand made.
+        if let Err(error) = perform_by(state, &text, dj_control::By::Machine) {
+            tracing::warn!(%error, %text, "break music action refused");
+        }
+    }
+    plan.load
+}
+
+/// §107: put the next break record on `deck`. Off the pump.
+pub fn load_break(state: &AppState, deck: dj_core::DeckId) {
+    let settings = match state.breaks().lock() {
+        Ok(mut held) => held
+            .settings
+            .get_or_insert_with(|| state.read_break_settings())
+            .clone(),
+        Err(_) => return,
+    };
+    let say = |problem: String| {
+        if let Ok(mut held) = state.breaks().lock() {
+            held.problem = Some(problem);
+        }
+    };
+    let Some(playlist) = settings.playlist else {
+        return;
+    };
+    let entries = match library(state).and_then(|db| {
+        db.playlist_tracks(playlist)
+            .map_err(|error| error.to_string())
+    }) {
+        Ok(entries) => entries,
+        Err(error) => {
+            return say(format!(
+                "The break music playlist could not be read: {error}"
+            ));
+        }
+    };
+    if entries.is_empty() {
+        return say("The break music playlist is empty.".to_owned());
+    }
+    let at = settings.next % entries.len();
+    let track = &entries[at].1;
+    // Moved on whether or not this one reads: a file that will not load must
+    // not be the only thing break music ever tries.
+    if let Ok(mut held) = state.breaks().lock()
+        && let Some(kept) = held.settings.as_mut()
+    {
+        kept.next = (at + 1) % entries.len();
+        state.write_break_settings(kept);
+    }
+    let loaded = decode_file(&track.path)
+        .map_err(|error| error.to_string())
+        .and_then(|decoded| put_on_deck(state, deck, decoded));
+    match loaded {
+        Ok(dto) => {
+            if let Ok(mut held) = state.breaks().lock() {
+                held.machine.loaded(dto.id);
+                held.problem = None;
+            }
+        }
+        Err(error) => say(format!(
+            "{} could not be read: {error}",
+            track.display_title()
+        )),
+    }
+}
+
 /// §107: the words for the record on a deck, for the singers' screen.
 ///
 /// Read from what the library already stored — the lyrics sweep fetches them

@@ -1,0 +1,104 @@
+{
+  "no_playlist": {
+    "deck": 2,
+    "level": 0.699999988079071,
+    "levels": [
+      [
+        0.4000000059604645,
+        "Quiet"
+      ],
+      [
+        0.699999988079071,
+        "Background"
+      ],
+      [
+        1.0,
+        "Full"
+      ]
+    ],
+    "on": true,
+    "phase": "off",
+    "playlist": null,
+    "playlists": [
+      {
+        "id": 7,
+        "name": "Between singers",
+        "tracks": 12
+      },
+      {
+        "id": 9,
+        "name": "Last orders",
+        "tracks": 3
+      }
+    ],
+    "problem": "Choose a playlist for break music to play from."
+  },
+  "off": {
+    "deck": 2,
+    "level": 0.699999988079071,
+    "levels": [
+      [
+        0.4000000059604645,
+        "Quiet"
+      ],
+      [
+        0.699999988079071,
+        "Background"
+      ],
+      [
+        1.0,
+        "Full"
+      ]
+    ],
+    "on": false,
+    "phase": "off",
+    "playlist": null,
+    "playlists": [
+      {
+        "id": 7,
+        "name": "Between singers",
+        "tracks": 12
+      },
+      {
+        "id": 9,
+        "name": "Last orders",
+        "tracks": 3
+      }
+    ],
+    "problem": null
+  },
+  "playing": {
+    "deck": 2,
+    "level": 0.699999988079071,
+    "levels": [
+      [
+        0.4000000059604645,
+        "Quiet"
+      ],
+      [
+        0.699999988079071,
+        "Background"
+      ],
+      [
+        1.0,
+        "Full"
+      ]
+    ],
+    "on": true,
+    "phase": "playing",
+    "playlist": 7,
+    "playlists": [
+      {
+        "id": 7,
+        "name": "Between singers",
+        "tracks": 12
+      },
+      {
+        "id": 9,
+        "name": "Last orders",
+        "tracks": 3
+      }
+    ],
+    "problem": null
+  }
+}

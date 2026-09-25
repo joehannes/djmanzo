@@ -132,6 +132,8 @@ import guides from "./guides.json" with { type: "json" };
 import kit from "./kit.json" with { type: "json" };
 /** §119's crowd, as Rust reads a night of it (`tests/e2e_fixture.rs`). */
 import crowd from "./crowd.json" with { type: "json" };
+/** §107's break music, as Rust answers it (`tests/e2e_fixture.rs`). */
+import breaks from "./breaks.json" with { type: "json" };
 /**
  * §40's twenty-six and which half the assistant sees, generated from
  * `dj_app::sight::ALL` by the same Rust test.
@@ -297,6 +299,8 @@ export const ANSWERS: Record<string, unknown> = {
   kit_compose: kit.wedding,
   kit_refused: kit.refused,
   crowd_view: crowd.view,
+  // §107: break music off, as a fresh install has it.
+  karaoke_breaks: breaks.off,
   learned_taste: { favourites: [], plays: 0, confident: false },
   // §13/§14. Two gestures that reached four occurrences in one phase, with the
   // sentences Rust writes — never "you like", always what was seen and when.
@@ -2261,6 +2265,17 @@ export async function openShell(
           // this holds one rotation and records every call with its
           // arguments, so a test can check what the surface *sent* — which is
           // the half a browser can see.
+          // §107: break music. Recorded like the rotation; a change is kept
+          // and echoed, and where it has got to is whatever the test put in
+          // `__breaks` -- the machine is Rust's and tested there.
+          if (cmd === "karaoke_breaks" || cmd === "karaoke_breaks_set") {
+            ((win.__karaoke ??= []) as unknown[]).push({ cmd, ...args });
+            const held = (win.__breaks ??= structuredClone(answers.karaoke_breaks)) as Record<string, unknown>;
+            if (cmd === "karaoke_breaks_set") {
+              Object.assign(held, { on: args.on, deck: args.deck, playlist: args.playlist, level: args.level });
+            }
+            return Promise.resolve(structuredClone(held));
+          }
           if (cmd.startsWith("karaoke_")) {
             ((win.__karaoke ??= []) as unknown[]).push({ cmd, ...args });
             const rotation = (win.__rotation ??= structuredClone(

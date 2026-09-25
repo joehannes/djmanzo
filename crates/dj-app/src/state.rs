@@ -278,6 +278,8 @@ pub struct AppState {
     /// only ever touched from the snapshot pump and from `perform` — sixty
     /// times a second and on a button press. Nothing realtime is behind it.
     automix: Arc<Mutex<crate::automix::Automix>>,
+    /// §107: break music between singers.
+    breaks: Mutex<crate::breaks::Held>,
     /// The other end of the controller queue, until `setup` can start the
     /// thread that drains it. Held rather than dropped: a receiver dropped
     /// here would make every MIDI message a send into a closed channel.
@@ -536,6 +538,7 @@ impl AppState {
             detached: Arc::new(Mutex::new(crate::monitors::Detached::default())),
             plugin,
             automix: Arc::new(Mutex::new(crate::automix::Automix::new())),
+            breaks: Mutex::new(crate::breaks::Held::default()),
             control_inbox: Mutex::new(Some(control_inbox)),
             stems_worker,
             stems_backend,
@@ -1498,6 +1501,40 @@ impl AppState {
             .and_then(|path| std::fs::read_to_string(path).ok())
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default()
+    }
+
+    /// §107: break music, its settings and its machine.
+    #[must_use]
+    pub fn breaks(&self) -> &Mutex<crate::breaks::Held> {
+        &self.breaks
+    }
+
+    fn breaks_path(&self) -> Option<std::path::PathBuf> {
+        Some(self.config_dir.lock().ok()?.clone()?.join("breaks.json"))
+    }
+
+    /// §107: the host's break music settings as kept on disk. Off on a fresh
+    /// install or an unreadable file: break music a host never asked for is
+    /// music playing over their announcement.
+    #[must_use]
+    pub fn read_break_settings(&self) -> crate::breaks::Settings {
+        self.breaks_path()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keep them.
+    pub fn write_break_settings(&self, settings: &crate::breaks::Settings) {
+        let Some(path) = self.breaks_path() else {
+            return;
+        };
+        let Ok(text) = serde_json::to_string_pretty(settings) else {
+            return;
+        };
+        if let Err(error) = std::fs::write(&path, text) {
+            tracing::warn!(%error, ?path, "break music's settings will not survive a restart");
+        }
     }
 
     /// Keep the rotation, so a restart mid-night does not lose the queue.

@@ -174,6 +174,18 @@
     cursor: pointer;
     outline: none;
   }
+  /*
+    The drawing never takes the pointer; the pad does. Pressing an unlit pad
+    adds a path (the pressed glow) and letting go removes it, so a press that
+    landed on that path lands on a node that is gone by the time the click is
+    dispatched -- and WebKit, which is the webview on Linux and macOS, then
+    fires no click at all. Every unlit pad ignored a mouse click there: PLAY
+    on a paused deck, an empty hot cue. Chromium forgives it, which is why no
+    browser test saw it.
+  */
+  .pad-container :global(.renderer) {
+    pointer-events: none;
+  }
   .label {
     position: absolute;
     inset: 0;

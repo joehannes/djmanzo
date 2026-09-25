@@ -13,6 +13,8 @@
     detachPanel,
     dispatch,
     karaokeAsk,
+    karaokeBreaks,
+    karaokeBreaksSet,
     karaokeClear,
     karaokeKey,
     karaokeLeave,
@@ -22,6 +24,7 @@
     karaokeSang,
     librarySearch,
     loadTrack,
+    type Breaks,
     type DeckState,
     type LibraryTrack,
     type Rotation,
@@ -155,6 +158,57 @@
     await change(karaokeMove(name, to));
   }
 
+  /**
+   * §107: break music between singers — `dj_app::breaks` fades it in when
+   * the room goes quiet and out when the next song starts. Asked again every
+   * two seconds while it is on, so the line under it says where it has got
+   * to.
+   */
+  let breaks = $state<Breaks | null>(null);
+
+  async function refreshBreaks() {
+    try {
+      breaks = await karaokeBreaks();
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  $effect(() => {
+    if (!enabled) return;
+    void refreshBreaks();
+  });
+
+  // Its own effect on a derived switch: one that read `breaks` itself would
+  // re-run on every answer it asked for, and ask again.
+  const breaksOn = $derived(breaks?.on ?? false);
+  $effect(() => {
+    if (!enabled || !breaksOn) return;
+    const timer = setInterval(() => void refreshBreaks(), 2000);
+    return () => clearInterval(timer);
+  });
+
+  async function setBreaks(change: Partial<Pick<Breaks, "on" | "deck" | "playlist" | "level">>) {
+    if (!breaks) return;
+    const next = { ...breaks, ...change };
+    error = "";
+    try {
+      breaks = await karaokeBreaksSet(next.on, next.deck, next.playlist, next.level, deckCount);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
+  const BREAK_PHASES: Record<Breaks["phase"], string> = {
+    off: "Waiting for the room to go quiet",
+    loading: "Putting the next break record on",
+    "fading-in": "Fading in",
+    playing: "Playing",
+    "fading-out": "Fading out for the singer",
+  };
+
+  const breakDeckHidden = $derived(!!breaks && breaks.deck > deckCount);
+
   const upNext = $derived(
     rotation?.singers.find((s) => s.name === rotation?.up_next) ?? null,
   );
@@ -227,6 +281,66 @@
       </div>
     {/each}
   </div>
+
+  {#if breaks}
+    <!--
+      Break music: the silence between singers is where a karaoke night
+      loses its room. Its own deck and its own playlist, so it never touches
+      a singer's song.
+    -->
+    <section class="breaks" aria-label="Break music" data-phase={breaks.phase}>
+      <label class="switch">
+        <input
+          type="checkbox"
+          checked={breaks.on}
+          onchange={(event) => void setBreaks({ on: event.currentTarget.checked })}
+        />
+        Break music between singers
+      </label>
+      <div class="break-row">
+        <label>
+          From
+          <select
+            aria-label="Break music playlist"
+            value={breaks.playlist ?? ""}
+            onchange={(event) => {
+              const id = Number(event.currentTarget.value);
+              void setBreaks({ playlist: Number.isFinite(id) && event.currentTarget.value !== "" ? id : null });
+            }}
+          >
+            <option value="" disabled>Choose a playlist</option>
+            {#each breaks.playlists as list (list.id)}
+              <option value={list.id}>{list.name} ({list.tracks})</option>
+            {/each}
+          </select>
+        </label>
+        <div class="choices" role="group" aria-label="Break music deck">
+          <span>on deck</span>
+          {#each Array.from({ length: deckCount }, (_, i) => i + 1) as deck (deck)}
+            <button aria-pressed={breaks.deck === deck} onclick={() => void setBreaks({ deck })}>{deck}</button>
+          {/each}
+        </div>
+        <div class="choices" role="group" aria-label="Break music level">
+          {#each breaks.levels as [level, name] (level)}
+            <button aria-pressed={Math.abs(breaks.level - level) < 0.01} onclick={() => void setBreaks({ level })}
+              >{name}</button
+            >
+          {/each}
+        </div>
+      </div>
+      {#if breaks.on}
+        {#if breakDeckHidden}
+          <p class="problem" role="status">
+            Deck {breaks.deck} is not on screen. Choose one of these for break music.
+          </p>
+        {:else if breaks.problem}
+          <p class="problem" role="status">{breaks.problem}</p>
+        {:else}
+          <p class="phase" role="status">{BREAK_PHASES[breaks.phase]}</p>
+        {/if}
+      {/if}
+    </section>
+  {/if}
 
   {#if waiting.length > 1}
     <ol class="order" aria-label="Calling order">
@@ -318,6 +432,43 @@
     flex-direction: column;
     gap: 0.6rem;
     padding: 0.4rem 0.2rem;
+  }
+
+  .breaks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
+  }
+
+  .break-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.8rem;
+  }
+
+  .choices {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .choices button[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .breaks .phase {
+    color: var(--text-dim);
+    margin: 0;
+  }
+
+  .breaks .problem {
+    color: var(--warn);
+    margin: 0;
   }
 
   .up {
