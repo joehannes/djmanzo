@@ -126,6 +126,8 @@ import welcome from "./welcome.json" with { type: "json" };
  * decision offers are the rail's fixture below, one per direction.
  */
 import decide from "./decide.json" with { type: "json" };
+/** §118a's guides, as Rust offers them in four booths (`tests/e2e_fixture.rs`). */
+import guides from "./guides.json" with { type: "json" };
 /**
  * §40's twenty-six and which half the assistant sees, generated from
  * `dj_app::sight::ALL` by the same Rust test.
@@ -283,6 +285,9 @@ export const ANSWERS: Record<string, unknown> = {
   welcome_refused: welcome.refused,
   // §118a: a decision's words, carried into the page with the rest.
   decision_words: decide,
+  // A quiet booth: every guide says why not, so no test that is not about
+  // them finds one open.
+  guides: guides.quiet,
   learned_taste: { favourites: [], plays: 0, confident: false },
   // §13/§14. Two gestures that reached four occurrences in one phase, with the
   // sentences Rust writes — never "you like", always what was seen and when.
@@ -1894,6 +1899,7 @@ export async function openShell(
           if (cmd === "next_decision") {
             const deck = Number(args.deck);
             ((win.__decisionAsked ??= []) as number[]).push(deck);
+            ((win.__decisionDecks ??= []) as number[]).push(Number(args.decks));
             const rail = (answers.suggest_next ?? []) as Record<string, unknown>[];
             const words = answers.decision_words as typeof decide;
             return Promise.resolve({
@@ -1902,6 +1908,9 @@ export async function openShell(
               choices: rail.slice(0, 3).map((s, i) => ({ ...s, ...words.directions[i] })),
               stall: words.stall,
             });
+          }
+          if (cmd === "guides") {
+            ((win.__guidesDecks ??= []) as number[]).push(Number(args.decks));
           }
           if (cmd === "load_track") {
             ((win.__loadedTracks ??= []) as unknown[]).push({ deck: args.deck, path: args.path });

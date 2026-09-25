@@ -28,14 +28,16 @@
   let {
     id,
     onEnd,
+    deciding = $bindable(false),
   }: {
     id: string;
     /** The DJ ended the night. */
     onEnd: () => void;
+    /** Whether the quick decision is open -- which §118a's guides may ask for. */
+    deciding?: boolean;
   } = $props();
 
   let tonight = $state<GigTonight | null>(null);
-  let deciding = $state(false);
   let chosen = $state<GigDecision | null>(null);
   let ending = $state(false);
   let pill = $state<HTMLElement | undefined>();
@@ -82,6 +84,13 @@
     deciding = !deciding;
   }
 
+  // Opened from elsewhere (the guides), it still opens under its own line.
+  $effect(() => {
+    if (!deciding) return;
+    const r = pill?.getBoundingClientRect();
+    if (r) place = { top: Math.round(r.bottom + 6), left: Math.round(r.left) };
+  });
+
   $effect(() => {
     if (!deciding) return;
     const onKey = (event: KeyboardEvent) => {
@@ -92,7 +101,7 @@
     };
     const onPress = (event: PointerEvent) => {
       const target = event.target as Element | null;
-      if (target?.closest?.(".decide-float, .tonight")) return;
+      if (target?.closest?.(".decide-float, .tonight, .guides-float")) return;
       deciding = false;
     };
     window.addEventListener("keydown", onKey, true);

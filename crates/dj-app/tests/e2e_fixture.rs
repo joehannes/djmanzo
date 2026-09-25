@@ -1326,3 +1326,55 @@ fn the_browser_fixture_has_the_decisions_words() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
     );
 }
+
+/// §118a: the guides, as Rust offers them in four booths.
+///
+/// Which guide can be opened, on which decks, and why the others cannot is
+/// `dj_app::guide`'s; the browser is handed Rust's answer for a quiet booth,
+/// one deck playing with the other empty, a record waiting on the other
+/// deck, and the same with a prepared night being played.
+#[test]
+fn the_browser_fixture_has_the_guides() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/guides.json");
+    let state = dj_app::AppState::new(true);
+    let mut booth = dj_app::Snapshot::capture(&state.registry(), 2);
+    for deck in &mut booth.decks {
+        deck.loaded = false;
+        deck.playing = false;
+        deck.volume = 1.0;
+    }
+    booth.master.crossfader = 0.0;
+    let quiet = dj_app::guide::guides(&booth, false, 2);
+    booth.decks[0].loaded = true;
+    booth.decks[0].playing = true;
+    let playing = dj_app::guide::guides(&booth, false, 2);
+    booth.decks[1].loaded = true;
+    let waiting = dj_app::guide::guides(&booth, false, 2);
+    let live = dj_app::guide::guides(&booth, true, 2);
+    let fixture = serde_json::json!({
+        "quiet": quiet,
+        "playing": playing,
+        "waiting": waiting,
+        "live": live,
+    });
+    let text = serde_json::to_string_pretty(&fixture).expect("the guides serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{text}\n")).expect("writing the guides");
+        return;
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored guides are JSON");
+    assert_eq!(
+        stored, fixture,
+        "ui/e2e/guides.json is stale; regenerate it with \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
+    );
+}

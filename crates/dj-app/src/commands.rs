@@ -8044,17 +8044,21 @@ pub struct NextDecision {
 }
 
 /// §118a: three records to follow `deck`, one per direction, and the deck
-/// to load the chosen one on.
+/// to load the chosen one on -- among the first `decks`, the ones on screen.
 ///
 /// # Errors
 /// No deck free to load on, or no library to choose from.
 #[tauri::command]
-pub fn next_decision(state: State<'_, AppState>, deck: u8) -> Result<NextDecision, String> {
+pub fn next_decision(
+    state: State<'_, AppState>,
+    deck: u8,
+    decks: u8,
+) -> Result<NextDecision, String> {
     use crate::decide::Direction;
     let into = snapshot_now(&state)
         .decks
         .iter()
-        .find(|d| d.number != deck && !d.loaded)
+        .find(|d| d.number <= decks && d.number != deck && !d.loaded)
         .map(|d| d.number)
         .ok_or_else(|| "every other deck already has a record on it".to_owned())?;
     let [lift, hold, ease] = Direction::ALL;
@@ -13457,6 +13461,17 @@ pub fn event_tonight(
 #[tauri::command]
 pub fn live_event(state: State<'_, AppState>) -> Result<Option<String>, String> {
     Ok(crate::gig::live(&events_dir(&state)?))
+}
+
+/// §118a: the assistant's guides, each open or saying why not.
+#[tauri::command]
+#[must_use]
+pub fn guides(state: State<'_, AppState>, decks: u8) -> Vec<crate::guide::Guide> {
+    let live = events_dir(&state)
+        .ok()
+        .and_then(|dir| crate::gig::live(&dir))
+        .is_some();
+    crate::guide::guides(&snapshot_now(&state), live, decks)
 }
 
 /// §118: play an event, or end the night with `None`.

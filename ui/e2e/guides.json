@@ -1,0 +1,106 @@
+{
+  "live": [
+    {
+      "about": "Three records to follow what is playing: up, level, or down.",
+      "from": 1,
+      "not_now": "Every other deck has a record on it already.",
+      "title": "Next record",
+      "to": null,
+      "topic": "next"
+    },
+    {
+      "about": "How to bring the waiting record in, each way drawn as it sounds.",
+      "from": 1,
+      "not_now": null,
+      "title": "The mix",
+      "to": 2,
+      "topic": "mix"
+    },
+    {
+      "about": "The plans you wrote for tonight, one press each.",
+      "from": null,
+      "not_now": null,
+      "title": "If something goes wrong",
+      "to": null,
+      "topic": "trouble"
+    }
+  ],
+  "playing": [
+    {
+      "about": "Three records to follow what is playing: up, level, or down.",
+      "from": 1,
+      "not_now": null,
+      "title": "Next record",
+      "to": 2,
+      "topic": "next"
+    },
+    {
+      "about": "How to bring the waiting record in, each way drawn as it sounds.",
+      "from": 1,
+      "not_now": "Load the next record on another deck first.",
+      "title": "The mix",
+      "to": null,
+      "topic": "mix"
+    },
+    {
+      "about": "The plans you wrote for tonight, one press each.",
+      "from": null,
+      "not_now": "Only while a prepared night is being played.",
+      "title": "If something goes wrong",
+      "to": null,
+      "topic": "trouble"
+    }
+  ],
+  "quiet": [
+    {
+      "about": "Three records to follow what is playing: up, level, or down.",
+      "from": null,
+      "not_now": "Nothing is playing.",
+      "title": "Next record",
+      "to": null,
+      "topic": "next"
+    },
+    {
+      "about": "How to bring the waiting record in, each way drawn as it sounds.",
+      "from": null,
+      "not_now": "Nothing is playing.",
+      "title": "The mix",
+      "to": null,
+      "topic": "mix"
+    },
+    {
+      "about": "The plans you wrote for tonight, one press each.",
+      "from": null,
+      "not_now": "Only while a prepared night is being played.",
+      "title": "If something goes wrong",
+      "to": null,
+      "topic": "trouble"
+    }
+  ],
+  "waiting": [
+    {
+      "about": "Three records to follow what is playing: up, level, or down.",
+      "from": 1,
+      "not_now": "Every other deck has a record on it already.",
+      "title": "Next record",
+      "to": null,
+      "topic": "next"
+    },
+    {
+      "about": "How to bring the waiting record in, each way drawn as it sounds.",
+      "from": 1,
+      "not_now": null,
+      "title": "The mix",
+      "to": 2,
+      "topic": "mix"
+    },
+    {
+      "about": "The plans you wrote for tonight, one press each.",
+      "from": null,
+      "not_now": "Only while a prepared night is being played.",
+      "title": "If something goes wrong",
+      "to": null,
+      "topic": "trouble"
+    }
+  ]
+}

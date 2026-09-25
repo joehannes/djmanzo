@@ -22,14 +22,18 @@
 
   let {
     deck,
+    decks,
     presence,
     says,
     send,
     onTaken,
     onLater,
+    later = "Not now",
   }: {
     /** The deck running out. */
     deck: number;
+    /** How many decks are on screen. */
+    decks: number;
     presence: Presence;
     /** The whisper's sentence: which deck ends when. */
     says: string;
@@ -38,6 +42,8 @@
     onTaken: () => void;
     /** Not now. */
     onLater: () => void;
+    /** The words on the way out: *Not now* for a proposal, *Close* for a guide. */
+    later?: string;
   } = $props();
 
   let decision = $state<NextDecision | null>(null);
@@ -49,11 +55,13 @@
   // prop is read through the whisper's proposal, which is a new object on
   // every frame, and a derived only speaks when its value changes.
   const asking = $derived(deck);
+  const shown = $derived(decks);
   $effect(() => {
     const asked = asking;
+    const on = shown;
     void (async () => {
       try {
-        decision = await nextDecision(asked);
+        decision = await nextDecision(asked, on);
         error = null;
       } catch (e) {
         decision = null;
@@ -111,7 +119,7 @@
 >
   <header>
     <strong class="says">{says}</strong>
-    <button type="button" class="later" title="Quiet about this for ten minutes" onclick={onLater}>Not now</button>
+    <button type="button" class="later" onclick={onLater}>{later}</button>
   </header>
 
   {#if decision && decision.choices.length > 0}

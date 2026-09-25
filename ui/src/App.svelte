@@ -88,6 +88,7 @@
   import Pair from "./Pair.svelte";
   import MissionBar from "./MissionBar.svelte";
   import Whisper from "./Whisper.svelte";
+  import Guides from "./Guides.svelte";
   import Night from "./Night.svelte";
   import RoomSense from "./RoomSense.svelte";
   import Mixes from "./Mixes.svelte";
@@ -581,6 +582,8 @@
    * comes back to it rather than to an evening with nothing prepared.
    */
   let liveId = $state<string | null>(null);
+  /** §118a: whether the night's quick decision is open, which the guides can ask for. */
+  let tonightDeciding = $state(false);
 
   $effect(() => {
     liveEvent()
@@ -2877,10 +2880,15 @@
         §118: the night being played. After the set group and before the
         proposer, because while a night is on it is the state of the night.
       -->
+      <!--
+        §118a: the assistant's guides, one per topic -- the next record, the
+        mix, and while a night is on, its plans for trouble.
+      -->
+      <Guides send={(action) => send(action)} decks={deckCount} onTrouble={() => (tonightDeciding = true)} />
       {#if liveId}
-        <Tonight id={liveId} onEnd={() => void endNight()} />
+        <Tonight id={liveId} onEnd={() => void endNight()} bind:deciding={tonightDeciding} />
       {/if}
-      <Whisper offered={snapshot?.whisper} send={(action) => send(action)} />
+      <Whisper offered={snapshot?.whisper} send={(action) => send(action)} decks={deckCount} />
     </div>
   </header>
 

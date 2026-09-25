@@ -47,6 +47,7 @@ export const ICONS: Record<string, IconGlyph> = {
   // §118's event: a page of a calendar, its two rings and the line under
   // the month.
   "calendar": { d: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5" },
+  "signpost": { d: "M12 2v20M5 5h11l3 3-3 3H5zM19 13H8l-3 3 3 3h11z" },
   "eye": { d: "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6zM12 9.5a2.5 2.5 0 1 0 0 5.0a2.5 2.5 0 1 0 0 -5.0z" },
   "eye-slash": { d: "M2 12s3.5-6 10-6c1.6 0 3 .35 4.3.9M22 12s-3.5 6-10 6c-1.6 0-3-.35-4.3-.9M4 4l16 16" },
   // A flask: a narrow neck over a conical body, with the liquid line the thing

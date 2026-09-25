@@ -2080,7 +2080,24 @@ export interface NextDecision {
   stall: { says: string; run: string };
 }
 
-export const nextDecision = (deck: number) => invoke<NextDecision>("next_decision", { deck });
+/** `decks`: how many are on screen, so a record is never loaded on one nobody sees. */
+export const nextDecision = (deck: number, decks: number) =>
+  invoke<NextDecision>("next_decision", { deck, decks });
+
+/** §118a: one of the assistant's guides, open or saying why not (`dj_app::guide`). */
+export interface Guide {
+  topic: "next" | "mix" | "trouble";
+  title: string;
+  about: string;
+  /** Why it cannot be opened now; `null` when it can. */
+  not_now: string | null;
+  /** The deck the room hears most, which the guide works from. */
+  from: number | null;
+  /** The deck it works towards. */
+  to: number | null;
+}
+
+export const listGuides = (decks: number) => invoke<Guide[]>("guides", { decks });
 
 /** One record of a pair, as the pair view draws it. */
 export interface PairSide {

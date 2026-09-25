@@ -43,6 +43,7 @@ pub mod downloads;
 pub mod ghost;
 pub mod gig;
 pub mod grid;
+pub mod guide;
 pub mod handle;
 pub mod host;
 pub mod jumps;
@@ -616,6 +617,7 @@ pub fn run() {
             commands::set_track_functions,
             commands::suggest_next,
             commands::next_decision,
+            commands::guides,
             commands::plan_transition,
             commands::transition_arm,
             commands::transition_current,

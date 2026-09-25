@@ -115,7 +115,7 @@ fn rule(
 }
 
 /// How loud the room hears a deck: its fader, and its side of the crossfader.
-fn heard(deck: &DeckSnapshot, crossfader: f32) -> f32 {
+pub(crate) fn heard(deck: &DeckSnapshot, crossfader: f32) -> f32 {
     use dj_core::CrossfaderAssign;
     let assign = match deck.crossfader_assign {
         CrossfaderAssign::Left => -1.0,

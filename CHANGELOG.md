@@ -33,6 +33,13 @@ Versioning follows semver, with one project-specific convention:
   top bar while there is time, comes up by itself when there is not, and
   takes most of the screen in the last seconds without covering the decks.
   A direction is only offered by a record that actually goes that way.
+- **The assistant's guides.** A *Guides* button next to SAFE opens three
+  topics as pictures: the next record (three to choose from, one each way),
+  the mix (every way to bring the waiting record in, drawn as the two
+  records' levels across the mix, and one press holds the one you want —
+  the automix performs it when it is on), and while a prepared night is
+  playing, what to do if something goes wrong. A guide that cannot open
+  says why. Only the decks on screen are ever used.
 - The set-up lists now name a theme by its name (*Theme: Beach Sunset*)
   and the waveform as *9 of 22 layers*.
 

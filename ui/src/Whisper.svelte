@@ -22,10 +22,13 @@
   let {
     offered,
     send,
+    decks = 2,
   }: {
     /** The proposal the latest snapshot carries, if any. */
     offered: Proposal | null | undefined;
     send: (action: string) => void | Promise<void>;
+    /** How many decks are on screen. */
+    decks?: number;
   } = $props();
 
   /**
@@ -95,6 +98,7 @@
 {#if deciding && deciding.deck != null}
   <Decision
     deck={deciding.deck}
+    {decks}
     presence={deciding.presence === "whole" ? "whole" : "card"}
     says={deciding.says}
     {send}
