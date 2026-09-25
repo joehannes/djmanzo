@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { ICONS, iconGlyph, normalizeIconName } from "./icons";
+import padPages from "../../e2e/pad-pages.json";
 
 /** Every `.svelte` file under `ui/src`. */
 function svelteFiles(dir: string): string[] {
@@ -56,6 +57,18 @@ describe("the icon set", () => {
       .map(({ name, file }) => `${name} (${file.split("/src/")[1]})`);
 
     expect(missing, "icons with no drawing").toEqual([]);
+  });
+
+  it("draws every symbol the pad pages name", () => {
+    // §121: the pad tabs and faces are symbols Rust chooses, so a name with
+    // no drawing would be a tab showing a stray letter where its symbol was.
+    const named = [
+      ...padPages.map((page) => page.glyph),
+      ...padPages.flatMap((page) => page.pads.map((pad) => pad.glyph).filter((glyph) => glyph !== null)),
+    ] as string[];
+    expect(named.length).toBeGreaterThan(8);
+    const missing = [...new Set(named)].filter((name) => iconGlyph(name) === null);
+    expect(missing).toEqual([]);
   });
 
   it("accepts both the bare name and the Font Awesome form", () => {

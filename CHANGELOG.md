@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Fade a stem by scrolling across it.** A sideways scroll (or Shift and
+  the wheel) over a stem's button turns it up or down; a click still mutes
+  it; a double-click puts it back to full and on.
+- **The pads in one row, in symbols.** The eight pads sit in a single row,
+  and the page tabs are symbols — cues, loops, roll, slicer, saved loops,
+  sampler, stems, effects — with the name on hover. A pad shows a number, a
+  beat length or a stem's initial in its colour, and says what it does when
+  you point at it.
 - **Fixed: the top bar going to two lines for no reason.** The sound-card
   area held room it did not use, and a suggestion from the assistant
   counted its whole sentence towards the bar's width, so the bar could

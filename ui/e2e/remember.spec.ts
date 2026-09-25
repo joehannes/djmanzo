@@ -92,17 +92,18 @@ test.describe("§8 Level 1: what djmanzo remembers", () => {
     const thrown = errorsThrown(page);
     await openShell(page, "/");
 
-    // Cues first, as it ships.
+    // Cues first, as it ships. Read by name: a tab is a symbol now (§121),
+    // and its name is what the hover and a screen reader say.
     const tabs = page.locator(".zone .tabs button");
-    await expect(tabs.first()).toHaveText("cues");
+    await expect(tabs.first()).toHaveAttribute("aria-label", "Hot cues");
 
     await openRemembers(page);
     await star(page, "loops").check();
 
     await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await expect(tabs.first()).toHaveText("loops");
+    await expect(tabs.first()).toHaveAttribute("aria-label", "Loops");
     // And the page on screen is that one, not merely the first tab.
-    await expect(page.locator(".zone .tabs button.active").first()).toHaveText("loops");
+    await expect(page.locator(".zone .tabs button.active").first()).toHaveAttribute("aria-label", "Loops");
     expect(thrown).toEqual([]);
   });
 

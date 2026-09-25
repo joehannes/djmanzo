@@ -12568,22 +12568,135 @@ pub fn pad_pages(deck: u8) -> Vec<PadPageDto> {
     };
     dj_core::PadPage::ALL
         .into_iter()
-        .map(|page| PadPageDto {
-            name: page.name().to_owned(),
-            needs_grid: page.needs_grid(),
-            pads: page
-                .pads()
-                .into_iter()
-                .map(|pad| PadDto {
-                    label: label_of(pad.label),
-                    press: pad.press.map(|action| render(id, action)),
-                    release: pad.release.map(|action| render(id, action)),
-                    clear: pad.clear.map(|action| render(id, action)),
-                    lit: pad.lit,
-                })
-                .collect(),
+        .map(|page| {
+            let (title, glyph) = page_face(page);
+            PadPageDto {
+                name: page.name().to_owned(),
+                title,
+                glyph,
+                needs_grid: page.needs_grid(),
+                pads: page
+                    .pads()
+                    .into_iter()
+                    .map(|pad| {
+                        let face = face_of(page, pad.label);
+                        PadDto {
+                            label: face.label,
+                            about: face.about,
+                            glyph: face.glyph,
+                            stem: face.stem,
+                            press: pad.press.map(|action| render(id, action)),
+                            release: pad.release.map(|action| render(id, action)),
+                            clear: pad.clear.map(|action| render(id, action)),
+                            lit: pad.lit,
+                        }
+                    })
+                    .collect(),
+            }
         })
         .collect()
+}
+
+/// §121: a page's tab, as a symbol with its name for the hover.
+///
+/// The names are the ones a screen reader says, so three of them say *pads*:
+/// "Sampler", "Stems" and "Effects" are the names of panels too, and two
+/// buttons with one name are one button too many to find.
+///
+/// *"I don't want full wording all the time (on hover only) .. but I do want
+/// easy to grasp symbols."* Each an icon from `ui/src/controls/icons.ts` that
+/// is what the page does: a flag marks a place, a circle arrow repeats, a
+/// turning arrow rolls back, scissors slice, a disk keeps, four pads play
+/// samples, layers are stems, a flask is an effect.
+const fn page_face(page: dj_core::PadPage) -> (&'static str, &'static str) {
+    use dj_core::PadPage;
+    match page {
+        PadPage::Cues => ("Hot cues", "flag"),
+        PadPage::Loops => ("Loops", "repeat"),
+        PadPage::Roll => ("Loop roll", "rotate-left"),
+        PadPage::Slicer => ("Slicer", "scissors"),
+        PadPage::Saved => ("Saved loops", "floppy-disk"),
+        PadPage::Sampler => ("Sampler pads", "drum-pads"),
+        PadPage::Stems => ("Stem pads", "layer-group"),
+        PadPage::Fx => ("Effect pads", "flask"),
+    }
+}
+
+/// A pad's face: the few characters on it, and the words for the hover.
+struct Face {
+    label: String,
+    about: String,
+    glyph: Option<&'static str>,
+    stem: Option<&'static str>,
+}
+
+/// A pad's face, short, and what it does in words.
+///
+/// §121 asked for symbols rather than wording. A number is already one, and so
+/// is a beat length -- "1/4", spelt the one way, as the loop controls write it.
+/// A stem is its initial in its own colour with a mark for what the pad does
+/// to it (a bar for mute, headphones for solo), an effect a number beside the
+/// flask. The words go to the hover and to a screen reader, in full.
+fn face_of(page: dj_core::PadPage, label: dj_core::PadLabel) -> Face {
+    use dj_core::{PadLabel, PadPage};
+    let beats = |b: f32| {
+        let n = label_of(PadLabel::Beats(b));
+        if (b - 1.0).abs() < f32::EPSILON || b < 1.0 {
+            format!("{n} beat")
+        } else {
+            format!("{n} beats")
+        }
+    };
+    let plain = |label: String, about: String| Face {
+        label,
+        about,
+        glyph: None,
+        stem: None,
+    };
+    match label {
+        PadLabel::Blank => plain(String::new(), String::new()),
+        PadLabel::Number(n) => plain(
+            n.to_string(),
+            match page {
+                PadPage::Cues => format!("Hot cue {n}"),
+                PadPage::Slicer => format!("Slice {n}"),
+                PadPage::Saved => format!("Saved loop {n}"),
+                PadPage::Sampler => format!("Sample {n}"),
+                _ => n.to_string(),
+            },
+        ),
+        PadLabel::Beats(b) => plain(
+            label_of(label),
+            match page {
+                PadPage::Roll => format!("Roll {}", beats(b)),
+                _ => format!("Loop {}", beats(b)),
+            },
+        ),
+        PadLabel::FxSlot(n) => Face {
+            label: n.to_string(),
+            about: format!("Effect {n} on or off"),
+            glyph: Some("flask"),
+            stem: None,
+        },
+        PadLabel::FxPlace(n) => Face {
+            label: n.to_string(),
+            about: format!("Effect {n} before or after the fader"),
+            glyph: Some("code-compare"),
+            stem: None,
+        },
+        PadLabel::StemMute(stem) | PadLabel::StemSolo(stem) => {
+            let name = stem.name();
+            let solo = matches!(label, PadLabel::StemSolo(_));
+            let mut title = name.to_owned();
+            title[..1].make_ascii_uppercase();
+            Face {
+                label: title[..1].to_owned(),
+                about: format!("{title} {}", if solo { "solo" } else { "mute" }),
+                glyph: Some(if solo { "headphones" } else { "ban" }),
+                stem: Some(name),
+            }
+        }
+    }
 }
 
 /// A pad's action as a string the interface can dispatch without knowing the
@@ -12623,6 +12736,10 @@ fn label_of(label: dj_core::PadLabel) -> String {
 #[derive(Debug, Clone, Serialize)]
 pub struct PadPageDto {
     pub name: String,
+    /// The page's name in words, for the hover (§121).
+    pub title: &'static str,
+    /// Its symbol, by `ui/src/controls/icons.ts` name.
+    pub glyph: &'static str,
     /// True when every pad on it is measured in beats, so the page is worth
     /// hiding on a track with no grid rather than showing eight dead buttons.
     pub needs_grid: bool,
@@ -12632,7 +12749,14 @@ pub struct PadPageDto {
 /// One pad, with its actions already written out.
 #[derive(Debug, Clone, Serialize)]
 pub struct PadDto {
+    /// The face: a few characters, a symbol rather than a sentence (§121).
     pub label: String,
+    /// What the pad does, in words: the hover, and what a screen reader says.
+    pub about: String,
+    /// An icon drawn on the face, by `ui/src/controls/icons.ts` name.
+    pub glyph: Option<&'static str>,
+    /// The stem the pad is about, so the face wears that stem's colour.
+    pub stem: Option<&'static str>,
     /// `null` for a pad this page leaves blank.
     pub press: Option<String>,
     /// Present only on a momentary pad.

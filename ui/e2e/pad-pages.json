@@ -1,10 +1,15 @@
 [
   {
     "name": "cues",
+    "title": "Hot cues",
+    "glyph": "flag",
     "needs_grid": false,
     "pads": [
       {
         "label": "1",
+        "about": "Hot cue 1",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 hotcue 1",
         "release": null,
         "clear": "deck 1 hotcue_clear 1",
@@ -14,6 +19,9 @@
       },
       {
         "label": "2",
+        "about": "Hot cue 2",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 hotcue 2",
         "release": null,
         "clear": "deck 1 hotcue_clear 2",
@@ -23,6 +31,9 @@
       },
       {
         "label": "3",
+        "about": "Hot cue 3",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 hotcue 3",
         "release": null,
         "clear": "deck 1 hotcue_clear 3",
@@ -32,6 +43,9 @@
       },
       {
         "label": "4",
+        "about": "Hot cue 4",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 hotcue 4",
         "release": null,
         "clear": "deck 1 hotcue_clear 4",
@@ -41,6 +55,9 @@
       },
       {
         "label": "5",
+        "about": "Hot cue 5",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 hotcue 5",
         "release": null,
         "clear": "deck 1 hotcue_clear 5",
@@ -50,6 +67,9 @@
       },
       {
         "label": "6",
+        "about": "Hot cue 6",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 hotcue 6",
         "release": null,
         "clear": "deck 1 hotcue_clear 6",
@@ -59,6 +79,9 @@
       },
       {
         "label": "7",
+        "about": "Hot cue 7",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 hotcue 7",
         "release": null,
         "clear": "deck 1 hotcue_clear 7",
@@ -68,6 +91,9 @@
       },
       {
         "label": "8",
+        "about": "Hot cue 8",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 hotcue 8",
         "release": null,
         "clear": "deck 1 hotcue_clear 8",
@@ -79,10 +105,15 @@
   },
   {
     "name": "loops",
+    "title": "Loops",
+    "glyph": "repeat",
     "needs_grid": true,
     "pads": [
       {
         "label": "1/16",
+        "about": "Loop 1/16 beat",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop 0.0625",
         "release": null,
         "clear": "deck 1 loop_off",
@@ -92,6 +123,9 @@
       },
       {
         "label": "1/8",
+        "about": "Loop 1/8 beat",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop 0.125",
         "release": null,
         "clear": "deck 1 loop_off",
@@ -101,6 +135,9 @@
       },
       {
         "label": "1/4",
+        "about": "Loop 1/4 beat",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop 0.25",
         "release": null,
         "clear": "deck 1 loop_off",
@@ -110,6 +147,9 @@
       },
       {
         "label": "1/2",
+        "about": "Loop 1/2 beat",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop 0.5",
         "release": null,
         "clear": "deck 1 loop_off",
@@ -119,6 +159,9 @@
       },
       {
         "label": "1",
+        "about": "Loop 1 beat",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop 1",
         "release": null,
         "clear": "deck 1 loop_off",
@@ -128,6 +171,9 @@
       },
       {
         "label": "2",
+        "about": "Loop 2 beats",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop 2",
         "release": null,
         "clear": "deck 1 loop_off",
@@ -137,6 +183,9 @@
       },
       {
         "label": "4",
+        "about": "Loop 4 beats",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop 4",
         "release": null,
         "clear": "deck 1 loop_off",
@@ -146,6 +195,9 @@
       },
       {
         "label": "8",
+        "about": "Loop 8 beats",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop 8",
         "release": null,
         "clear": "deck 1 loop_off",
@@ -157,10 +209,15 @@
   },
   {
     "name": "roll",
+    "title": "Loop roll",
+    "glyph": "rotate-left",
     "needs_grid": true,
     "pads": [
       {
         "label": "1/16",
+        "about": "Roll 1/16 beat",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 roll 0.0625",
         "release": "deck 1 roll_off",
         "clear": null,
@@ -170,6 +227,9 @@
       },
       {
         "label": "1/8",
+        "about": "Roll 1/8 beat",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 roll 0.125",
         "release": "deck 1 roll_off",
         "clear": null,
@@ -179,6 +239,9 @@
       },
       {
         "label": "1/4",
+        "about": "Roll 1/4 beat",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 roll 0.25",
         "release": "deck 1 roll_off",
         "clear": null,
@@ -188,6 +251,9 @@
       },
       {
         "label": "1/2",
+        "about": "Roll 1/2 beat",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 roll 0.5",
         "release": "deck 1 roll_off",
         "clear": null,
@@ -197,6 +263,9 @@
       },
       {
         "label": "1",
+        "about": "Roll 1 beat",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 roll 1",
         "release": "deck 1 roll_off",
         "clear": null,
@@ -206,6 +275,9 @@
       },
       {
         "label": "2",
+        "about": "Roll 2 beats",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 roll 2",
         "release": "deck 1 roll_off",
         "clear": null,
@@ -215,6 +287,9 @@
       },
       {
         "label": "4",
+        "about": "Roll 4 beats",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 roll 4",
         "release": "deck 1 roll_off",
         "clear": null,
@@ -224,6 +299,9 @@
       },
       {
         "label": "8",
+        "about": "Roll 8 beats",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 roll 8",
         "release": "deck 1 roll_off",
         "clear": null,
@@ -235,10 +313,15 @@
   },
   {
     "name": "slicer",
+    "title": "Slicer",
+    "glyph": "scissors",
     "needs_grid": true,
     "pads": [
       {
         "label": "1",
+        "about": "Slice 1",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 slice 1",
         "release": "deck 1 slice_off",
         "clear": null,
@@ -248,6 +331,9 @@
       },
       {
         "label": "2",
+        "about": "Slice 2",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 slice 2",
         "release": "deck 1 slice_off",
         "clear": null,
@@ -257,6 +343,9 @@
       },
       {
         "label": "3",
+        "about": "Slice 3",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 slice 3",
         "release": "deck 1 slice_off",
         "clear": null,
@@ -266,6 +355,9 @@
       },
       {
         "label": "4",
+        "about": "Slice 4",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 slice 4",
         "release": "deck 1 slice_off",
         "clear": null,
@@ -275,6 +367,9 @@
       },
       {
         "label": "5",
+        "about": "Slice 5",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 slice 5",
         "release": "deck 1 slice_off",
         "clear": null,
@@ -284,6 +379,9 @@
       },
       {
         "label": "6",
+        "about": "Slice 6",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 slice 6",
         "release": "deck 1 slice_off",
         "clear": null,
@@ -293,6 +391,9 @@
       },
       {
         "label": "7",
+        "about": "Slice 7",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 slice 7",
         "release": "deck 1 slice_off",
         "clear": null,
@@ -302,6 +403,9 @@
       },
       {
         "label": "8",
+        "about": "Slice 8",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 slice 8",
         "release": "deck 1 slice_off",
         "clear": null,
@@ -313,10 +417,15 @@
   },
   {
     "name": "saved",
+    "title": "Saved loops",
+    "glyph": "floppy-disk",
     "needs_grid": false,
     "pads": [
       {
         "label": "1",
+        "about": "Saved loop 1",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop_recall 1",
         "release": null,
         "clear": "deck 1 loop_save 1",
@@ -324,6 +433,9 @@
       },
       {
         "label": "2",
+        "about": "Saved loop 2",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop_recall 2",
         "release": null,
         "clear": "deck 1 loop_save 2",
@@ -331,6 +443,9 @@
       },
       {
         "label": "3",
+        "about": "Saved loop 3",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop_recall 3",
         "release": null,
         "clear": "deck 1 loop_save 3",
@@ -338,6 +453,9 @@
       },
       {
         "label": "4",
+        "about": "Saved loop 4",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop_recall 4",
         "release": null,
         "clear": "deck 1 loop_save 4",
@@ -345,6 +463,9 @@
       },
       {
         "label": "5",
+        "about": "Saved loop 5",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop_recall 5",
         "release": null,
         "clear": "deck 1 loop_save 5",
@@ -352,6 +473,9 @@
       },
       {
         "label": "6",
+        "about": "Saved loop 6",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop_recall 6",
         "release": null,
         "clear": "deck 1 loop_save 6",
@@ -359,6 +483,9 @@
       },
       {
         "label": "7",
+        "about": "Saved loop 7",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop_recall 7",
         "release": null,
         "clear": "deck 1 loop_save 7",
@@ -366,6 +493,9 @@
       },
       {
         "label": "8",
+        "about": "Saved loop 8",
+        "glyph": null,
+        "stem": null,
         "press": "deck 1 loop_recall 8",
         "release": null,
         "clear": "deck 1 loop_save 8",
@@ -375,10 +505,15 @@
   },
   {
     "name": "sampler",
+    "title": "Sampler pads",
+    "glyph": "drum-pads",
     "needs_grid": false,
     "pads": [
       {
         "label": "1",
+        "about": "Sample 1",
+        "glyph": null,
+        "stem": null,
         "press": "sampler 1 trigger",
         "release": "sampler 1 release",
         "clear": "sampler 1 stop",
@@ -388,6 +523,9 @@
       },
       {
         "label": "2",
+        "about": "Sample 2",
+        "glyph": null,
+        "stem": null,
         "press": "sampler 2 trigger",
         "release": "sampler 2 release",
         "clear": "sampler 2 stop",
@@ -397,6 +535,9 @@
       },
       {
         "label": "3",
+        "about": "Sample 3",
+        "glyph": null,
+        "stem": null,
         "press": "sampler 3 trigger",
         "release": "sampler 3 release",
         "clear": "sampler 3 stop",
@@ -406,6 +547,9 @@
       },
       {
         "label": "4",
+        "about": "Sample 4",
+        "glyph": null,
+        "stem": null,
         "press": "sampler 4 trigger",
         "release": "sampler 4 release",
         "clear": "sampler 4 stop",
@@ -415,6 +559,9 @@
       },
       {
         "label": "5",
+        "about": "Sample 5",
+        "glyph": null,
+        "stem": null,
         "press": "sampler 5 trigger",
         "release": "sampler 5 release",
         "clear": "sampler 5 stop",
@@ -424,6 +571,9 @@
       },
       {
         "label": "6",
+        "about": "Sample 6",
+        "glyph": null,
+        "stem": null,
         "press": "sampler 6 trigger",
         "release": "sampler 6 release",
         "clear": "sampler 6 stop",
@@ -433,6 +583,9 @@
       },
       {
         "label": "7",
+        "about": "Sample 7",
+        "glyph": null,
+        "stem": null,
         "press": "sampler 7 trigger",
         "release": "sampler 7 release",
         "clear": "sampler 7 stop",
@@ -442,6 +595,9 @@
       },
       {
         "label": "8",
+        "about": "Sample 8",
+        "glyph": null,
+        "stem": null,
         "press": "sampler 8 trigger",
         "release": "sampler 8 release",
         "clear": "sampler 8 stop",
@@ -453,10 +609,15 @@
   },
   {
     "name": "stems",
+    "title": "Stem pads",
+    "glyph": "layer-group",
     "needs_grid": false,
     "pads": [
       {
-        "label": "vocal mute",
+        "label": "V",
+        "about": "Vocal mute",
+        "glyph": "ban",
+        "stem": "vocal",
         "press": "deck 1 stem_mute vocal",
         "release": null,
         "clear": null,
@@ -465,7 +626,10 @@
         }
       },
       {
-        "label": "drums mute",
+        "label": "D",
+        "about": "Drums mute",
+        "glyph": "ban",
+        "stem": "drums",
         "press": "deck 1 stem_mute drums",
         "release": null,
         "clear": null,
@@ -474,7 +638,10 @@
         }
       },
       {
-        "label": "bass mute",
+        "label": "B",
+        "about": "Bass mute",
+        "glyph": "ban",
+        "stem": "bass",
         "press": "deck 1 stem_mute bass",
         "release": null,
         "clear": null,
@@ -483,7 +650,10 @@
         }
       },
       {
-        "label": "other mute",
+        "label": "O",
+        "about": "Other mute",
+        "glyph": "ban",
+        "stem": "other",
         "press": "deck 1 stem_mute other",
         "release": null,
         "clear": null,
@@ -492,7 +662,10 @@
         }
       },
       {
-        "label": "vocal solo",
+        "label": "V",
+        "about": "Vocal solo",
+        "glyph": "headphones",
+        "stem": "vocal",
         "press": "deck 1 stem_solo_on vocal",
         "release": "deck 1 stem_solo_off vocal",
         "clear": null,
@@ -501,7 +674,10 @@
         }
       },
       {
-        "label": "drums solo",
+        "label": "D",
+        "about": "Drums solo",
+        "glyph": "headphones",
+        "stem": "drums",
         "press": "deck 1 stem_solo_on drums",
         "release": "deck 1 stem_solo_off drums",
         "clear": null,
@@ -510,7 +686,10 @@
         }
       },
       {
-        "label": "bass solo",
+        "label": "B",
+        "about": "Bass solo",
+        "glyph": "headphones",
+        "stem": "bass",
         "press": "deck 1 stem_solo_on bass",
         "release": "deck 1 stem_solo_off bass",
         "clear": null,
@@ -519,7 +698,10 @@
         }
       },
       {
-        "label": "other solo",
+        "label": "O",
+        "about": "Other solo",
+        "glyph": "headphones",
+        "stem": "other",
         "press": "deck 1 stem_solo_on other",
         "release": "deck 1 stem_solo_off other",
         "clear": null,
@@ -531,10 +713,15 @@
   },
   {
     "name": "fx",
+    "title": "Effect pads",
+    "glyph": "flask",
     "needs_grid": false,
     "pads": [
       {
-        "label": "FX1",
+        "label": "1",
+        "about": "Effect 1 on or off",
+        "glyph": "flask",
+        "stem": null,
         "press": "deck 1 fx 1 toggle",
         "release": null,
         "clear": "deck 1 fx 1 none",
@@ -543,7 +730,10 @@
         }
       },
       {
-        "label": "FX2",
+        "label": "2",
+        "about": "Effect 2 on or off",
+        "glyph": "flask",
+        "stem": null,
         "press": "deck 1 fx 2 toggle",
         "release": null,
         "clear": "deck 1 fx 2 none",
@@ -552,7 +742,10 @@
         }
       },
       {
-        "label": "FX3",
+        "label": "3",
+        "about": "Effect 3 on or off",
+        "glyph": "flask",
+        "stem": null,
         "press": "deck 1 fx 3 toggle",
         "release": null,
         "clear": "deck 1 fx 3 none",
@@ -561,7 +754,10 @@
         }
       },
       {
-        "label": "1 post",
+        "label": "1",
+        "about": "Effect 1 before or after the fader",
+        "glyph": "code-compare",
+        "stem": null,
         "press": "deck 1 fx 1 post",
         "release": null,
         "clear": "deck 1 fx 1 pre",
@@ -570,7 +766,10 @@
         }
       },
       {
-        "label": "2 post",
+        "label": "2",
+        "about": "Effect 2 before or after the fader",
+        "glyph": "code-compare",
+        "stem": null,
         "press": "deck 1 fx 2 post",
         "release": null,
         "clear": "deck 1 fx 2 pre",
@@ -579,7 +778,10 @@
         }
       },
       {
-        "label": "3 post",
+        "label": "3",
+        "about": "Effect 3 before or after the fader",
+        "glyph": "code-compare",
+        "stem": null,
         "press": "deck 1 fx 3 post",
         "release": null,
         "clear": "deck 1 fx 3 pre",
@@ -589,6 +791,9 @@
       },
       {
         "label": "",
+        "about": "",
+        "glyph": null,
+        "stem": null,
         "press": null,
         "release": null,
         "clear": null,
@@ -596,6 +801,9 @@
       },
       {
         "label": "",
+        "about": "",
+        "glyph": null,
+        "stem": null,
         "press": null,
         "release": null,
         "clear": null,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { STEM_KEYS } from "./stems";
+  import { STEM_COLORS, STEM_KEYS } from "./stems";
   /**
    * The pad zone: eight pads and a row of page tabs.
    *
@@ -196,26 +196,44 @@
     const pad = current?.pads[index];
     if (pad?.release) send(pad.release);
   }
+  /** A stem pad's colour, from the one table the stem chips use too. */
+  function toneOf(stem: string | null): string | null {
+    const at = stem ? STEM_KEYS.indexOf(stem as (typeof STEM_KEYS)[number]) : -1;
+    return at >= 0 ? STEM_COLORS[at] : null;
+  }
 </script>
 
 {#if current}
   <div class="zone">
     <div class="tabs">
       {#each usable as p (p.name)}
-        <SvgButton kind="tab" label={p.name} active={p.name === current.name} onclick={() => (page = p.name)} />
+        <SvgButton
+          kind="tab"
+          label=""
+          glyph={p.glyph}
+          about={p.title}
+          active={p.name === current.name}
+          onclick={() => (page = p.name)}
+        />
       {/each}
     </div>
 
     <!--
-      Two rows of four, which is what the hardware has. A four-by-two grid
-      rather than a single row of eight because a DJ finds pad 6 by its
-      position, and a row of eight has no position worth learning.
+      One row of eight (§121: *"make those buttons use only one row of
+      space"*). It was two rows of four, which is what the hardware has, on
+      the argument that pad 6 is found by its position; the owner asked for
+      the room, and a row of eight still has positions -- the first and last
+      four, which is where a two-by-four controller's rows land when it is
+      read left to right.
     -->
     <div class="grid">
       {#each current.pads as pad, index (index)}
         <SvgButton
           kind="pad"
           label={pad.label}
+          about={pad.about}
+          glyph={pad.glyph}
+          tone={toneOf(pad.stem)}
           blank={!pad.press}
           lit={lit(pad.lit)}
           held={held === index}
@@ -228,7 +246,7 @@
             event.preventDefault();
             send(pad.clear);
           }}
-          title={pad.clear ? `${pad.label} — right-click for the second gesture` : pad.label}
+          title={pad.clear ? `${pad.about} — right-click for the second gesture` : pad.about}
         />
       {/each}
     </div>
@@ -270,8 +288,8 @@
   */
   .grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    grid-auto-rows: 2.9rem;
+    grid-template-columns: repeat(8, 1fr);
+    grid-auto-rows: 2.6rem;
     gap: 0.25rem;
   }
 

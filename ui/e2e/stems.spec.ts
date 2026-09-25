@@ -85,6 +85,41 @@ test.describe("§120: the stems, one press away", () => {
   });
 
   /**
+   * **§121: a stem fades by scrolling across its chip, and a double-click
+   * puts it back full and on.** Towards the right is more, as the fill is
+   * drawn; a wheel notch is a twentieth, and a second notch counts from the
+   * first rather than from a snapshot that has not caught up. An
+   * up-and-down scroll is the deck's, not the stem's. The double-click's
+   * second press is not a second toggle -- the stem is put on outright.
+   */
+  test("a stem fades by scrolling across its chip, and a double-click puts it back", async ({ page }) => {
+    await openShell(page, "/");
+    const levels = async () =>
+      (await dispatched(page)).filter((line) => line.startsWith("deck 1 stem_volume vocal:"));
+    const box = (await chip(page, "vocal").boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+
+    await page.mouse.wheel(-100, 0);
+    await expect.poll(levels).toEqual(["deck 1 stem_volume vocal:0.950"]);
+    await page.mouse.wheel(-200, 0);
+    await expect.poll(levels).toEqual(["deck 1 stem_volume vocal:0.950", "deck 1 stem_volume vocal:0.850"]);
+    await page.mouse.wheel(60, 0);
+    await expect.poll(async () => (await levels()).at(-1)).toBe("deck 1 stem_volume vocal:0.880");
+
+    const before = (await levels()).length;
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(150);
+    expect((await levels()).length, "an up-and-down scroll faded the stem").toBe(before);
+
+    const mark = (await dispatched(page)).length;
+    await chip(page, "vocal").dblclick();
+    await expect
+      .poll(async () => (await dispatched(page)).slice(mark))
+      .toEqual(["deck 1 stem_mute vocal", "deck 1 stem_volume vocal:1.000", "deck 1 stem_mute_off vocal"]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **The tone floats, and gets out of the way.** Opening it moves nothing
    * on the deck; Escape and a press elsewhere put it away.
    */
@@ -92,7 +127,7 @@ test.describe("§120: the stems, one press away", () => {
     await openShell(page, "/");
     // What sits under the stems on the deck: a panel that pushed it down
     // would be taking the deck's own room rather than floating over it.
-    const tabs = deck(page).getByRole("button", { name: "cues", exact: true }).first();
+    const tabs = deck(page).getByRole("button", { name: "Hot cues", exact: true }).first();
     await expect(tabs).toBeVisible();
     const below = async () => (await tabs.boundingBox())?.y ?? 0;
     const resting = await below();

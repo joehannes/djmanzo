@@ -254,7 +254,14 @@ export type Lit =
 
 /** One pad, with its actions already written out by the backend. */
 export interface PadDto {
+  /** The face: a few characters, a symbol rather than a sentence (§121). */
   label: string;
+  /** What the pad does, in words: the hover and what a screen reader says. */
+  about: string;
+  /** An icon on the face, by `controls/icons.ts` name. */
+  glyph: string | null;
+  /** The stem the pad is about, so its face wears that stem's colour. */
+  stem: string | null;
   /** Null for a pad this page leaves blank. */
   press: string | null;
   /** Present only on a momentary pad. */
@@ -267,6 +274,10 @@ export interface PadDto {
 /** One page of eight pads. */
 export interface PadPageDto {
   name: string;
+  /** The page's name in words, for the hover (§121). */
+  title: string;
+  /** Its symbol, by `controls/icons.ts` name. */
+  glyph: string;
   /** True when every pad on it is measured in beats. */
   needs_grid: boolean;
   pads: PadDto[];

@@ -51,8 +51,8 @@ const pad = (page: Page, name: string) =>
 
 async function stemsPage(page: Page) {
   await openShell(page, "/");
-  await pad(page, "stems").click();
-  await expect(pad(page, "vocal mute")).toBeVisible();
+  await pad(page, "Stem pads").click();
+  await expect(pad(page, "Vocal mute")).toBeVisible();
 }
 
 test.describe("§29's stem pads", () => {
@@ -67,11 +67,11 @@ test.describe("§29's stem pads", () => {
     await stemsPage(page);
     await stems(page, [false, true, false, false], false);
 
-    await expect(pad(page, "drums mute")).toHaveAttribute(
+    await expect(pad(page, "Drums mute")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    for (const dark of ["vocal mute", "bass mute", "other mute"]) {
+    for (const dark of ["Vocal mute", "Bass mute", "Other mute"]) {
       expect(
         await pad(page, dark).getAttribute("aria-pressed"),
         `${dark} lit for a stem that is not muted`,
@@ -94,11 +94,11 @@ test.describe("§29's stem pads", () => {
     // What the engine leaves behind when the vocal is soloed.
     await stems(page, [false, true, true, true], true);
 
-    await expect(pad(page, "vocal solo")).toHaveAttribute(
+    await expect(pad(page, "Vocal solo")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    for (const dark of ["drums solo", "bass solo", "other solo"]) {
+    for (const dark of ["Drums solo", "Bass solo", "Other solo"]) {
       expect(
         await pad(page, dark).getAttribute("aria-pressed"),
         `${dark} lit while a different stem is soloed`,
@@ -108,7 +108,7 @@ test.describe("§29's stem pads", () => {
     // And the mute pads agree with the audio — and so with the stems panel,
     // which draws its buttons from the same field. Two surfaces for one state
     // that disagreed would be worse than either being wrong alone.
-    await expect(pad(page, "drums mute")).toHaveAttribute(
+    await expect(pad(page, "Drums mute")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -124,12 +124,50 @@ test.describe("§29's stem pads", () => {
     await stemsPage(page);
     await stems(page, [false, true, true, true], false);
 
-    for (const dark of ["vocal solo", "drums solo", "bass solo", "other solo"]) {
+    for (const dark of ["Vocal solo", "Drums solo", "Bass solo", "Other solo"]) {
       expect(
         await pad(page, dark).getAttribute("aria-pressed"),
         `${dark} lit with no solo held`,
       ).toBeNull();
     }
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});
+
+/**
+ * §121: *"make those buttons use only one row of space and be adequately
+ * symbolized ... i don't want full wording all the time (on hover only)"*.
+ */
+test.describe("§121: the pad row, in symbols", () => {
+  /**
+   * **The load-bearing one: eight pads in one row, the tabs as symbols with
+   * their names on hover, and a stem's pad in its own colour.** The words
+   * are still there for a screen reader and the hover -- as the accessible
+   * name and the title, which is how every test here finds them.
+   */
+  test("eight pads in one row, the tabs as symbols, the words on hover", async ({ page }) => {
+    await stemsPage(page);
+    const deck = page.locator("section.deck[data-deck]").first();
+    const pads = deck.locator("button.svg-button.pad");
+    await expect(pads).toHaveCount(8);
+    const tops = await pads.evaluateAll((all) => all.map((el) => Math.round(el.getBoundingClientRect().top)));
+    expect(new Set(tops).size, `not one row: ${tops}`).toBe(1);
+
+    const tabs = deck.locator("button.svg-button.tab");
+    expect(await tabs.count()).toBeGreaterThanOrEqual(5);
+    for (const tab of await tabs.all()) {
+      await expect(tab, "a tab still spells its name out").toHaveText("");
+      await expect(tab.locator("svg.icon")).toHaveCount(1);
+      expect(await tab.getAttribute("title")).toBeTruthy();
+    }
+    await expect(pad(page, "Stem pads")).toHaveAttribute("title", "Stem pads");
+
+    // A stem pad is its initial, not its sentence, in the stem's own colour.
+    await expect(pad(page, "Vocal mute")).toHaveText("V");
+    const colour = (name: string) =>
+      pad(page, name).locator("b").evaluate((el) => getComputedStyle(el).color);
+    expect(await colour("Vocal mute")).not.toBe(await colour("Drums mute"));
+    expect(await colour("Vocal mute")).toBe(await colour("Vocal solo"));
     expect(errorsThrown(page)).toEqual([]);
   });
 });

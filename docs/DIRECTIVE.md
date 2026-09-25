@@ -2623,3 +2623,30 @@ added together as light, white when all were present:
 > if i open an additional widget in a view ... let there be a way to open it as a temporary rather big/huge modal instead of an integrated side widget ... (also via mnemonics, there's got to be 2 mnemonic ways to open widgets, one as integrated, one as modal)
 > also, if opened as side widget ... i want to be able to have the bigger as well ...
 > especially the file browser ... i might want that one a bit taller ... but be able to resize it quickly at all times
+
+---
+# 122. ASKED SINCE: LYRICS FROM THE RECORD, LAYERED VISUALS, VIDEO, AND A MARKETPLACE
+> karaoke feature requests:
+> add/auto-install on install as dependency/co-package-if-possible any dependency cli app for linux/macos/windows that enable analysing the song for lyrics and using that for displaying the song lyrics for karaoke. it should be relatively quick, if it takes longer than 15 sec to analyse a 3-5 min song on a medium class laptop, it's not an option
+> use and curate a webgl shader and general audio visualization functionality => ultimately i want an online marketplace that allows for additional parts/downloads/packs to download/buy/trade ... maybe even a marketplace where users can contribute and sell/trade their own parts/plugins/...
+> so these visualizations can be combined ... investigate, research, diligently, prudently, check what kind of layers fit into audio visualizations ... a background layer, a main layer, an fx layer, a bass layer, a mids, a treble layer, a instruments layer, a vocal layer, ... an artist (online) image collection (prepared, searched online via internal AI as of useful parameters that can be templated/configured)
+> also consider playing video files in the app ... audio is analysed and controllable as with regular audio ... video is displayable (in some separate widget/window ... a separate window can be sent to a beamer in the venue ... or streamed to some online service (youtube??)) or can be hidden.
+> so subsequent karaoke visualizations can be preset-packages that can be applied to songs/videos per different aspects: genre/bpm/topic/ ... with letters/words as analysed ... as fetched from free online sources. (apart from being able to analyse the song for letters, add AI driven search for song letters online services ... a few that work pretty good and freely, auto ordered by quality/reliability ... even 2 or 3 paid services with configuration for subscription tokens/...secrets ... disabled by default but activateable
+
+---
+# 123. ASKED SINCE: A KARAOKE JOURNAL, AND A SONG FOR EVERY SINGER
+> also for karaoke, new feature:
+> the current karaoke singer/guest/guest artist shall be remembered in some kind of useful and versatile and rich karaoke journal ... investigate on key points as of karaoke and venue guests and useful features and implement them.
+> minimal requirements:
+> name of the guest artist, song sung, age, email, social profile(s), WA/phone nr, home country/town, nationality, favorite band, favorite musical genre, favorite song, native language, additional languages
+> then i shall be able to access suno internally, or use suno somehow internally (their free v6 mini with unlimited generations) ... maybe it would be best to simply open suno.com straight with the latest free/unlimited engine (v6 mini or later or even pro if a subscription is present and that is chosen/selected) ... and auto prefill the lyrics with individual lyrics mentioning the venue, event, evening, name of the artist, that she sang this karaoke song tonight, ... let the DJ be able to add a few keywords/ideas of his own ... integrate with internal AI to generate those lyrics subsequently then and put them automatically in suno lyrics ... as of the styles, let it be a mix of her favorite song, favorite band, favorite genre and the song sung ... if the evening also is about some music genre, that has influences as well ...
+> also the karaoke song shall be partly recorded => the singers voice!!! => this part of about 15 secs sung voice of the guest karaoke singer/artist are autosaved as mp3 and also auto provided to suno as the voice to enhance and use for the song generation.
+> then the lyrics shall be created in the language of the karaoke song (+ if differing, a second version in the native language of the karaoke artist) => and auto-downloaded if possible and autosent to the WA/email/social profiles of the guest, if somehow feasible possible ... investigate and implement all you can if useful
+>
+> as of suno ... can you have an additional minimal browser view feature ... that enable the user to load suno internally, and then subsequently you control it via readymade playwright scripts or the internal suno api???
+
+---
+# 124. ASKED SINCE: ONE SEARCH, AND SIDEBARS THAT STAY
+> feature update:
+> as of the library ... there shall be no extra view for external sources, but the regular search shall have a tickable toggle or something to include external sources ... also it might be some fuzzy search, whatever suits best.
+> also sidebars in any view shall be fixed in such a way, that if something in the view is a list/table that's scrolled the sidebar shall be visible at all times ... also the basic controls / top toolbar/search

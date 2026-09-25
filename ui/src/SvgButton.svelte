@@ -6,8 +6,13 @@
    * semantics; the visible control is an SVG plate. This is the compromise that
    * keeps the GUI SVG-driven without rebuilding browser accessibility badly.
    */
+  import Icon from "./controls/Icon.svelte";
+
   let {
     label,
+    about,
+    glyph = null,
+    tone = null,
     active = false,
     lit = false,
     held = false,
@@ -22,6 +27,15 @@
     oncontextmenu,
   }: {
     label: string;
+    /**
+     * What the button does, in words, when the face is a symbol (§121): the
+     * hover and the accessible name, so the face can be short.
+     */
+    about?: string;
+    /** An icon on the face, by `controls/icons.ts` name. */
+    glyph?: string | null;
+    /** A colour for the face's mark -- a stem's, on a stem pad. */
+    tone?: string | null;
     active?: boolean;
     lit?: boolean;
     held?: boolean;
@@ -74,7 +88,8 @@
   class:held={held}
   class:blank={blank}
   {disabled}
-  {title}
+  title={title ?? about}
+  aria-label={about || undefined}
   style={`color: ${text}`}
   aria-pressed={active || lit || held ? "true" : undefined}
   {onclick}
@@ -87,11 +102,19 @@
 >
   <svg viewBox="0 0 {plate.w} {plate.h}" aria-hidden="true" focusable="false">
     <rect x="3" y="3" width={plate.w - 6} height={plate.h - 6} rx={plate.r} fill={face} stroke={edge} stroke-width={stroke} />
-    {#if kind === "pad" && !blank}
-      <path d="M 14 38 C 31 28, 45 45, 62 35 S 84 29, 90 37" fill="none" stroke="currentColor" stroke-opacity="0.3" stroke-width="4" stroke-linecap="round" />
-    {/if}
   </svg>
-  <span>{label}</span>
+  <!--
+    The face. A symbol and a few characters, never a sentence (§121): the
+    words are in the title and the accessible name. The decorative wave that
+    sat under every pad's label is gone -- it meant nothing, and a face that
+    says what the pad does has no room for decoration.
+  -->
+  <span class="face" class:toned={tone !== null} style:--tone={tone}>
+    <!-- In rem, not em: a tab's lettering is small, and a symbol at that
+         size was nine pixels nobody could read. -->
+    {#if glyph}<Icon name={glyph} size={kind === "tab" ? "1.15rem" : "1rem"} />{/if}
+    {#if label}<b>{label}</b>{/if}
+  </span>
 </button>
 
 <style>
@@ -120,6 +143,29 @@
   svg,
   span {
     grid-area: 1 / 1;
+  }
+
+  .face {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25em;
+  }
+
+  .face b {
+    font-weight: inherit;
+  }
+
+  /* A stem's pad: its initial in the stem's colour, so four pads read as
+     four stems before a letter is read. Lit, the face is the accent's text
+     colour like every lit pad, so the state is never lost to the tone. */
+  .toned b {
+    color: var(--tone);
+  }
+
+  .lit .toned b,
+  .held .toned b,
+  .active .toned b {
+    color: inherit;
   }
 
   svg {

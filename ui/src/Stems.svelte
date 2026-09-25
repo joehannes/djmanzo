@@ -132,8 +132,60 @@
   }
 
   function pressChip(event: MouseEvent, index: number) {
+    // The second press of a double-click is the reset's, not a second toggle.
+    if (event.detail > 1) return;
     if (event.shiftKey) soloStem(index);
     else toggleMute(index);
+  }
+
+  /**
+   * §121: *"scroll horizontally over the stem buttons and smoothly reduce the
+   * effectfulness of the switch/toggle ... double click resets the button to
+   * 100% and on"*.
+   *
+   * Across the chip is the stem's level, in the direction its fill is drawn:
+   * towards the right is more. A sideways scroll, or Shift and the wheel;
+   * an up-and-down scroll is left to scroll the deck, which is what it was
+   * doing before. A wheel notch is a twentieth, a trackpad as fine as it is.
+   */
+  const NOTCH_PX = 100;
+  const NOTCH = 0.05;
+  /** What the wheel last sent, and when: the snapshot is a frame or two behind it. */
+  const sent: (number | null)[] = [null, null, null, null];
+  const sentAt = [0, 0, 0, 0];
+
+  function levelNow(index: number): number {
+    const recent = performance.now() - sentAt[index] < 400;
+    return recent && sent[index] !== null ? (sent[index] as number) : (volumeState[index] ?? 1);
+  }
+
+  function wheelChip(event: WheelEvent, index: number) {
+    const across =
+      // Shift and the wheel as the browsers themselves read it, a scroll to
+      // the right for a turn towards you -- Chromium and GTK both turn it
+      // into one, and a webview that does not must not go the other way.
+      Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.shiftKey ? event.deltaY : 0;
+    if (across === 0 || !status.available) return;
+    event.preventDefault();
+    const px = event.deltaMode === 1 ? across * 16 : event.deltaMode === 2 ? across * 400 : across;
+    const level = Math.min(1, Math.max(0, levelNow(index) + (px / NOTCH_PX) * NOTCH));
+    sent[index] = level;
+    sentAt[index] = performance.now();
+    stopFade();
+    dispatch(`deck ${deckNumber} stem_volume ${STEM_KEYS[index]}:${level.toFixed(3)}`);
+  }
+
+  /**
+   * Full and on. The first press of the double-click has already toggled the
+   * stem, so for the moment between the two it was off; this puts it on
+   * outright rather than toggling it back, which would be wrong half the time.
+   */
+  function resetChip(index: number) {
+    if (!status.available) return;
+    sent[index] = 1;
+    sentAt[index] = performance.now();
+    dispatch(`deck ${deckNumber} stem_volume ${STEM_KEYS[index]}:1.000`);
+    if (!soloing) dispatch(`deck ${deckNumber} stem_mute_off ${STEM_KEYS[index]}`);
   }
 
   /**
@@ -382,8 +434,10 @@
         disabled={!status.available}
         title={soloing
           ? `A solo is held — press to let it go`
-          : `${name}: press to ${muteState[i] ? "bring it back" : "mute it"}, Shift+press to hear it alone`}
+          : `${name} at ${Math.round((volumeState[i] ?? 1) * 100)}%: press to ${muteState[i] ? "bring it back" : "mute it"}, Shift+press to hear it alone, scroll across to fade, double-click for full`}
         onclick={(event) => pressChip(event, i)}
+        ondblclick={() => resetChip(i)}
+        onwheel={(event) => wheelChip(event, i)}
       >
         <span class="chip-fill" aria-hidden="true"></span>
         <span class="chip-name">{name}</span>

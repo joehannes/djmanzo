@@ -101,6 +101,9 @@ export const ICONS: Record<string, IconGlyph> = {
   "repeat": { d: "M6 9V8a3 3 0 0 1 3 -3h9M18 15v1a3 3 0 0 1 -3 3H6M15 2l3 3-3 3M9 16l-3 3 3 3" },
   "robot": { d: "M6 9h12v9H6zM12 9V5M9 5h6M9 13h.01M15 13h.01M4 12v3M20 12v3" },
   "rotate-left": { d: "M4 10a8 8 0 1 1 2 6M4 4v6h6" },
+  // §121's pad pages: a slicer cuts, a sampler is four pads to hit.
+  "scissors": { d: "M6 3.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0 -5zM6 15.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0 -5zM8.2 7.3L20 18M8.2 16.7L20 6" },
+  "drum-pads": { d: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" },
   "sliders": { d: "M3 7h18M3 12h18M3 17h18M8 4.5v5M16 9.5v5M11 14.5v5" },
   "stop": { d: "M7 7h10v10H7z", fill: true },
   "sun": { d: "M12 7.5a4.5 4.5 0 1 0 0 9.0a4.5 4.5 0 1 0 0 -9.0zM12.0 5.0L12.0 2.5M16.9 7.1L18.7 5.3M19.0 12.0L21.5 12.0M16.9 16.9L18.7 18.7M12.0 19.0L12.0 21.5M7.1 16.9L5.3 18.7M5.0 12.0L2.5 12.0M7.1 7.1L5.3 5.3" },
