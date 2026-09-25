@@ -4803,6 +4803,14 @@ export const uiDo = (op: string) => invoke<UiApplied>("ui_do", { op });
 export const onCockpit = (handler: (applied: UiApplied) => void): Promise<UnlistenFn> =>
   listen<UiApplied>("cockpit", (event) => handler(event.payload));
 
+/**
+ * §109: a controller asked for what a key under Space runs -- an activity, a
+ * panel, one of the interface's verbs -- already checked against the tree in
+ * Rust.
+ */
+export const onLeaf = (handler: (run: string) => void): Promise<UnlistenFn> =>
+  listen<string>("leaf", (event) => handler(event.payload));
+
 /* -- what the assistant has prepared, before any of it happens ------------- */
 
 /** How far a posture may go with one row of the override matrix. */

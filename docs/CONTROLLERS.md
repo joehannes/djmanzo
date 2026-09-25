@@ -151,6 +151,33 @@ spelling.
 
 Channel `0` means "any channel", for controllers that can be moved around.
 
+### A button for the screen rather than the mix
+
+A binding may also say what a key under Space would run, after `interface `:
+
+```toml
+[[binding]]
+on = "note 1 0x40"
+press = "interface switch activity mix"    # the Mix activity
+
+[[binding]]
+on = "note 1 0x41"
+press = "interface ui back"                # back to the last activity
+
+[[binding]]
+on = "note 1 0x42"
+press = "interface surface library"        # open or close the collection
+```
+
+Four kinds, the four a leaf of the Space tree has: `switch` (an activity, a
+workspace, a theme, a preset pack), `surface` (a panel), `ui` (the palette,
+the search, back, everything, record, mark, the dashboard) and `uiop` (§41's
+operations). The loader checks the shape; the application checks the name
+against the tree it offers when the button is pressed, so a line naming an
+activity or a panel djmanzo does not have does nothing and says so in the
+log. It is still nothing a key cannot do. A fader cannot be one — `{value}` is
+refused in an interface line — because a position is not an activity.
+
 ### Faders that arrive in two halves
 
 Most modern controllers -- every Pioneer, and Denon and Native Instruments

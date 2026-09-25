@@ -91,6 +91,33 @@ test.describe("§109: activity mode", () => {
   });
 
   /**
+   * **A controller's button reaches an activity, as the key does.** Rust
+   * checks a mapping's interface line against the Space tree and hands the
+   * window what it runs; the window runs it exactly as the key would -- from
+   * the full cockpit into the dig, then to the karaoke host's rotation, then
+   * back. What Rust refuses never arrives, so it is not tried here.
+   */
+  test("a controller's button switches the activity as its key would", async ({ page }) => {
+    await openShell(page, "/");
+    const emit = (run: string) =>
+      page.evaluate(
+        (run) => (window as unknown as { __emitEvent: (n: string, p: unknown) => boolean }).__emitEvent("leaf", run),
+        run,
+      );
+    expect(await emit("switch activity dig"), "the window is not listening for a controller").toBe(true);
+    await expect(tab(page, "dig")).toHaveAttribute("aria-pressed", "true");
+    await expect(surface(page, "library")).toBeVisible();
+
+    await emit("switch activity karaoke");
+    await expect(tab(page, "karaoke")).toHaveAttribute("aria-pressed", "true");
+    await expect(surface(page, "karaoke")).toBeVisible();
+
+    await emit("ui back");
+    await expect(tab(page, "dig")).toHaveAttribute("aria-pressed", "true");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * **A digit is a view from anywhere, and a keystroke while typing.** From
    * the full cockpit `1` goes straight into activity mode at the dig (§117:
    * the digits are the views now), and while the DJ is typing a name it is a

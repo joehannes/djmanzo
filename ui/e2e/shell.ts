@@ -1807,6 +1807,16 @@ export async function openShell(
         handler?.({ event: "snapshot", id: 0, payload: next });
       };
 
+      // Any other event Rust emits, by name: what a controller's interface
+      // line arrives as (§109), and whatever comes after it.
+      win.__emitEvent = (name: string, payload: unknown) => {
+        const id = handlers.get(name);
+        if (id === undefined) return false;
+        const handler = win[`_${id}`] as ((event: unknown) => void) | undefined;
+        handler?.({ event: name, id: 0, payload });
+        return true;
+      };
+
       win.__TAURI_INTERNALS__ = {
         invoke: (cmd: string, args: Record<string, unknown>) => {
           // A record of what the interface asked for, so a stub that answers

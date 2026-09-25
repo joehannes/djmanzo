@@ -28,6 +28,7 @@ pub mod bundled;
 pub mod editor;
 pub mod feedback;
 pub mod hands;
+pub mod interface;
 pub mod keys;
 pub mod mapping;
 pub mod message;

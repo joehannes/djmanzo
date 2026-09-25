@@ -512,12 +512,12 @@ impl Mapping {
             .into_iter()
             .flatten()
             {
-                // `{value}` stands in for a number, so it is filled with one
-                // before checking. A template that only parses when the fader
-                // happens to be at 0.5 is not a template that works.
-                let probe = action.replace("{value}", "0.5");
-                dj_core::Action::parse(&probe)
-                    .map_err(|e| MappingError::BadAction(action.clone(), e.to_string()))?;
+                // An engine action -- `{value}` filled with a number first,
+                // since a template that only parses when the fader happens to
+                // be at 0.5 is not a template that works -- or §109's line to
+                // the interface.
+                crate::interface::check(action)
+                    .map_err(|e| MappingError::BadAction(action.clone(), e))?;
             }
         }
         Ok(())

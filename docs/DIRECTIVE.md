@@ -2591,3 +2591,35 @@ added together as light, white when all were present:
 > * i got an issue with some filter knobs. on trying to manipulate them they are only switching on or off fully, not being adjustable gradually at all
 > * i don't like the design of the stem section yet ... also it seems to kind of not be very accessible quickly ... what if i want to quickly mute/unmute some stem??
 > * the rest of the faders/knobs/controls seem to take a lot of space ... fx also and design seems poor/redundant ... please improve
+
+---
+# 121. ASKED SINCE: THEMES IN PARTS, WINDOW HANDLES, REAL DASHBOARDS, AND STEMS BY SCROLL
+> feature requests:
+> i want an overhaul over the themes ...
+>
+> 1. the system is to be extended into package that can be applied partially:
+> 2. the theme
+> 3. effect skinning/parts of the theme that are artistic and apply to specific parts functionally and combine and express the existing idea visually
+> 4. interactive skinning (effects/partial skins/theme items that apply on specific events)
+> 5. any theme can be selected in the basic or more parts/fully
+>
+> themes should be distinctly giving contrast while not over/under pronouncing anything.
+> Main regions are similar, edges are distinct and distinguishing, edgy zones are more harsh then the basic harmony of a main region that will be used as background to provide controls above in the foreground.
+> i also want controls on the widget borders. they shall be more distinct, easy to select and easy to grasp as what they resemble immediately .... grab, move, resize, zoom, reset size, full size, minimize, pop out ... sticky ...
+> i want the repaints of the window to happen whenever necessary, saying:
+> currently if a different layout composition is activated the top bar sometimes is showing two lines for no apparent reason ... please ensure repainting and/or whatever applies/necessary
+> why is it possible to activate/play a deck via a command, but the play/pause button doesn't seem to work??? if a bug, fix ... if not, let me know why
+> i meant the dashboard to be a dashboard not only like the which-key shortcut widget.
+> i meant something else.
+> press kit desktop like folder organization, quick links to workflow like current activities as of different dashboards (prepare dashboard, live dashboard, messing around/experimental dashboard, my music dashbaord, my presskit dashboard, social dashboard) ...
+> all these dashboards can hold widgets, info, controls as of their topics and more
+> also, they should replace (apart from the ubuquitous main bar ... that should also hold basic visualization of music flow/ctrl/autopilot and quick switch of main activities or similar, disaster ctrl ... emergency/basic/instinctive stuff)
+> the main view entirely and show their view while active ...
+> so a dashboard is like a specific activity itself, but a dashboard acitvity .. not a music/dj activity maybe .../in part
+> the stems now don't take that much space, but i want to be able to scroll horizontally over the stem buttons and smoothly reduce the effectfulness of the switch/toggle ... apart from being able to click/toggle it. double click resets the button to 100% and on/off.
+> the row of effects/stems/.... right under the stems has various buttons with names and sine waves on them per main effects/stems ... button ... find an applicable and useful way to make those buttons use only one row of space and be adequately symbolized ... i don't want full wording all the time (on hover only) .. but I do want easy to grasp symbols on those.
+>
+> also, as of the activities and windows in activities ...
+> if i open an additional widget in a view ... let there be a way to open it as a temporary rather big/huge modal instead of an integrated side widget ... (also via mnemonics, there's got to be 2 mnemonic ways to open widgets, one as integrated, one as modal)
+> also, if opened as side widget ... i want to be able to have the bigger as well ...
+> especially the file browser ... i might want that one a bit taller ... but be able to resize it quickly at all times

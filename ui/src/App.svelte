@@ -60,6 +60,7 @@
     watershedShowing,
     cockpitSurfaces,
     onCockpit,
+    onLeaf,
     cockpitWorkspace,
     forgetWorkspace,
     keepWorkspace,
@@ -1772,6 +1773,9 @@
       deckCount = applied.workspace.workspace.decks;
       if (applied.focus !== null) focusDeck(applied.focus);
     });
+    // §109: a controller's button for an activity or a panel, run as the key
+    // under Space would run it.
+    const unwatchLeaf = onLeaf((run) => void runLeaf(run));
 
     const unlisten = onSnapshot((next) => {
       snapshot = next;
@@ -1821,6 +1825,7 @@
       clearInterval(wardrobe);
       void unlisten.then((fn) => fn());
       void unwatchCockpit.then((fn) => fn());
+      void unwatchLeaf.then((fn) => fn());
     };
   });
 

@@ -9826,6 +9826,20 @@ pub fn leader_tree(state: State<'_, AppState>, decks: u8) -> crate::leader::Node
     crate::leader::with_mine(tree, &state.leader_mine(), &switches)
 }
 
+/// §109: what an interface line from a controller runs, checked against the
+/// tree this state offers -- the activities, panels and verbs a key under
+/// Space can reach, and nothing else. `None` when the line is not one.
+///
+/// # Errors
+/// Inside the `Some`: a line shaped like one that names something djmanzo
+/// does not have.
+#[must_use]
+pub fn interface_run(state: &AppState, line: &str) -> Option<Result<String, String>> {
+    let run = dj_hid::interface::run(line)?;
+    let (_, switches) = leader_parts(state, u8::try_from(state.deck_count()).unwrap_or(4));
+    Some(crate::leader::runnable(run, &switches).map(|()| run.to_owned()))
+}
+
 /// The tree djmanzo ships for this state, and the switches a key may name.
 fn leader_parts(state: &AppState, decks: u8) -> (crate::leader::Node, Vec<String>) {
     let activities = crate::activity::all(&state.activities().mine);

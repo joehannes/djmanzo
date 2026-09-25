@@ -16,6 +16,10 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A controller button can switch the activity**, or open a panel, or go
+  back: a mapping line may say what a key under Space runs, after
+  `interface ` — `interface switch activity mix`. See
+  `docs/CONTROLLERS.md`.
 - **Break music between singers.** On the Singers surface, choose a
   playlist, a deck and a level (Quiet, Background or Full) and switch it
   on: when the room goes quiet a record from the playlist fades in, and

@@ -756,6 +756,23 @@ pub fn drain(handle: tauri::AppHandle, take: Receiver<String>) {
             // needing to be told to.
             while let Ok(action) = take.recv() {
                 let state = handle.state::<crate::state::AppState>();
+                // §109: a line for the interface -- an activity, a panel --
+                // is checked against the Space tree and handed to the window,
+                // which runs it exactly as the key would. In the same order
+                // as everything else, so a button that switches activity and
+                // then starts a deck does both, in that order.
+                if let Some(checked) = crate::commands::interface_run(&state, &action) {
+                    match checked {
+                        Ok(run) => {
+                            use tauri::Emitter;
+                            if let Err(why) = handle.emit("leaf", &run) {
+                                eprintln!("controller: {why}");
+                            }
+                        }
+                        Err(why) => eprintln!("controller: {why}"),
+                    }
+                    continue;
+                }
                 if let Err(why) = crate::commands::perform(&state, &action) {
                     // Not fatal and not silent: a mapping bound to something
                     // the engine will not take yet — a deck action with no
@@ -926,6 +943,34 @@ mod tests {
         assert_eq!(files.len(), 1, "saving twice left {} files", files.len());
     }
     use super::*;
+
+    /// **§109: a controller reaches what a key under Space reaches, and
+    /// nothing else.** An interface line naming an activity, a panel or one
+    /// of the interface's verbs is handed on as the tree would run it; one
+    /// naming an activity or a panel djmanzo does not have is refused, and an
+    /// engine action is not an interface line at all.
+    #[test]
+    fn a_controller_reaches_what_a_key_under_space_reaches() {
+        let state = crate::state::AppState::new(true);
+        let run = |line: &str| crate::commands::interface_run(&state, line);
+        assert_eq!(
+            run("interface switch activity karaoke"),
+            Some(Ok("switch activity karaoke".to_owned()))
+        );
+        assert_eq!(run("interface ui back"), Some(Ok("ui back".to_owned())));
+        assert_eq!(
+            run("interface surface library"),
+            Some(Ok("surface library".to_owned()))
+        );
+        for refused in [
+            "interface switch activity séance",
+            "interface surface hologram",
+            "interface ui self_destruct",
+        ] {
+            assert!(matches!(run(refused), Some(Err(_))), "{refused}");
+        }
+        assert_eq!(run("deck 1 play_pause"), None);
+    }
 
     #[test]
     fn a_new_hub_has_the_bundled_mappings_and_a_keyboard() {

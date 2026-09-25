@@ -286,11 +286,9 @@ fn check(binding: &Binding) -> Result<(), MappingError> {
             .map_err(|e| MappingError::BadPlatter(binding.on.clone(), e.to_string()))?;
     }
     for action in actions.into_iter().flatten() {
-        // `{value}` is substituted at dispatch time, so it has to be stood in
-        // for to check the rest of the line -- the same way the loader does.
-        let probe = action.replace("{value}", "0.5");
-        dj_core::Action::parse(&probe)
-            .map_err(|e| MappingError::BadAction(action.clone(), e.to_string()))?;
+        // The same check the loader makes, so the editor never keeps a line
+        // the loader would refuse, nor refuses one it would keep.
+        crate::interface::check(action).map_err(|e| MappingError::BadAction(action.clone(), e))?;
     }
     Ok(())
 }
