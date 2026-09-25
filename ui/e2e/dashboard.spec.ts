@@ -50,6 +50,77 @@ test.describe("§117: the dashboard", () => {
   });
 
   /**
+   * **§121: the bar wraps only when it has to.** The device group held 26rem
+   * while it showed nothing but the device's name, so the rest of the bar
+   * went to a second line past an empty gap -- and a composition's density
+   * tipped it one way or the other, which read as a bar that changed for no
+   * reason. Closed, the group is as wide as what it shows; open (the device
+   * pickers, in Settings), it takes the room they need.
+   */
+  test("the device group is as wide as what it shows, and the bar is one row when that fits", async ({ page }) => {
+    await openShell(page, "/", {}, SLIM);
+    const group = page.locator(".topbar .device");
+    const spare = () =>
+      group.evaluate((el) => {
+        const kids = [...el.children].map((kid) => kid.getBoundingClientRect());
+        const used = kids.reduce((sum, box) => sum + box.width, 0);
+        const gap = parseFloat(getComputedStyle(el).columnGap) || 0;
+        return el.getBoundingClientRect().width - used - gap * Math.max(0, kids.length - 1);
+      });
+    expect(await spare(), "the closed device group reserves room it does not use").toBeLessThan(2);
+    const tops = await page.evaluate(() =>
+      [".brand", ".device", ".status", ".go"].map((s) =>
+        Math.round(document.querySelector(`.topbar ${s}`)!.getBoundingClientRect().top),
+      ),
+    );
+    expect(Math.max(...tops) - Math.min(...tops), `not one row: ${tops}`).toBeLessThanOrEqual(10);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
+   * **And a proposal arriving does not tip it onto a second line.** The
+   * quiet proposer's sentence is cut to the room its line has; it used to
+   * count its whole length towards the bar's, so on a window wide enough for
+   * one row the bar went to two the moment the assistant said something, and
+   * back when it stopped.
+   */
+  test("a proposal arriving leaves the bar on one row", async ({ page }) => {
+    // After the shell, which sets its own size.
+    await openShell(page, "/", {}, SLIM);
+    await page.setViewportSize({ width: 1600, height: 900 });
+    const rows = () =>
+      page.evaluate(() => {
+        const tops = [".brand", ".device", ".status", ".go"].map((s) =>
+          Math.round(document.querySelector(`.topbar ${s}`)!.getBoundingClientRect().top),
+        );
+        return Math.max(...tops) - Math.min(...tops);
+      });
+    expect(await rows(), "not one row before anything was said").toBeLessThanOrEqual(10);
+    const height = await page.locator(".topbar").evaluate((el) => el.getBoundingClientRect().height);
+    await page.evaluate(() => {
+      const win = window as unknown as { __lastState?: Record<string, unknown>; __emit?: (next: unknown) => void };
+      win.__emit?.({
+        ...win.__lastState,
+        whisper: {
+          kind: "tempo",
+          says: "Decks 1 and 2 are 3.4% apart in tempo, and the next phrase lands in eight bars. Sync deck 2?",
+          offer: "Sync deck 2",
+          run: "deck 2 sync",
+          urgent: false,
+        },
+      });
+    });
+    await expect(page.locator(".whisper .says")).toHaveCount(1);
+    expect(await rows(), "a proposal put the bar on two rows").toBeLessThanOrEqual(10);
+    // Cut to the room there is, and there is room: a sentence squeezed to
+    // nothing would keep the bar on one row by saying nothing.
+    const said = await page.locator(".whisper .says").evaluate((el) => el.getBoundingClientRect().width);
+    expect(said, "the proposal was given no room to be read").toBeGreaterThan(120);
+    expect(await page.locator(".topbar").evaluate((el) => el.getBoundingClientRect().height)).toBeCloseTo(height, 0);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /**
    * `0` calls the dashboard up with every section Rust built, in order; a
    * tile runs what its key would — Library opens the library — and the
    * dashboard goes; `0` again, and Escape, put it away.

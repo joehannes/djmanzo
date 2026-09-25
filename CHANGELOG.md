@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Fixed: the top bar going to two lines for no reason.** The sound-card
+  area held room it did not use, and a suggestion from the assistant
+  counted its whole sentence towards the bar's width, so the bar could
+  jump to a second line when a layout was applied or something was said.
+  It now takes two lines only when the window is too narrow for one.
 - **A controller button can switch the activity**, or open a panel, or go
   back: a mapping line may say what a key under Space runs, after
   `interface ` — `interface switch activity mix`. See

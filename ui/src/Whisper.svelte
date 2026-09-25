@@ -120,7 +120,19 @@
   */
   .whisper {
     flex: 1 1 0;
-    min-width: 0;
+    /*
+      And no width of its own: without this the whole sentence counted towards
+      the width of the row it stands in, so on a window wide enough for one
+      row the top bar went to two the moment something was said (§121).
+    */
+    width: 0;
+    /*
+      But always this much, said or not: room for a readable sentence and
+      its answer. Reserved whether or not anything is being said, so how many
+      rows the bar takes depends on the window and nothing else -- squeezed
+      to what was left, a proposal at 1280 px was a sliver nobody could read.
+    */
+    min-width: 17rem;
     display: flex;
     align-items: center;
     gap: 0.4rem;

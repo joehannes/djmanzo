@@ -2284,7 +2284,7 @@
       <ThemeSwitcher onWorld={() => (living = true)} />
     </div>
 
-    <div class="device">
+    <div class="device" class:choosing={isOpen("settings")}>
       {#if isOpen("settings")}
         <select
           aria-label="Sound card"
@@ -3740,12 +3740,24 @@
     fit — which is how the Connect button, the one control that matters before
     a device is open, ended up squeezed to zero width behind the status row.
   */
+  /*
+    The room the device pickers need, only while they are there. Collapsed to
+    the device's name it held the same 26rem, empty, and pushed the rest of
+    the bar onto a second line with a gap in the first -- the "two lines for
+    no apparent reason" of §121, which a composition's density tipped over
+    the edge one way or the other.
+  */
   .device {
     display: flex;
     gap: 0.4rem;
-    flex: 1 1 26rem;
+    flex: 0 1 auto;
     min-width: 0;
   }
+
+  .device.choosing {
+    flex: 1 1 26rem;
+  }
+
 
   /* The device names are the long ones, so they are what gives way. */
   .device select:first-child {
@@ -3809,6 +3821,9 @@
 
   .go {
     display: flex;
+    /* The rest of its line: the quiet proposer's sentence has no width of
+       its own (§121) and is read in whatever room this leaves it. */
+    flex: 1 1 auto;
     align-items: center;
     /*
       Three times the gap inside a group, which is the whole of the grouping.
@@ -4011,6 +4026,8 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    /* The readings keep to the right end of whichever line they are on. */
+    margin-left: auto;
     gap: 0.7rem;
     font-size: 0.85em;
     color: var(--text-dim);
