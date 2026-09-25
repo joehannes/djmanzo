@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.27.0 — Prepare an event and play it; a compact deck; lift any panel
+
 - **Prepare an event.** A new *Event* activity (key 9) opens the night you
   are preparing beside the decks: the event itself, the music, the running
   order with its moments and the moves it needs, what to do if the floor
@@ -28,7 +30,6 @@ Versioning follows semver, with one project-specific convention:
   the night in the top bar — how long in, how long left, the next moment and
   its record — and **If…** opens every trouble you planned for, each with
   the plan you wrote, for when something goes wrong mid-set.
-
 - **The deck's mixer is compact.** The channel strip is one line at the
   opening window — platter, EQ with kill squares, filter, volume and pitch,
   the semitone shift and keylock as a column beside pitch, and the cue and
