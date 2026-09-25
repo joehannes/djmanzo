@@ -1120,9 +1120,15 @@ fn the_browser_fixture_has_the_ai_providers() {
             path.display()
         )
     });
+    // Compared as JSON, as the other fixtures are: Windows checks the file
+    // out with CRLF line endings, and a byte comparison failed there on a
+    // file whose content was right.
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored providers are JSON");
+    let fresh: serde_json::Value =
+        serde_json::from_str(&fresh).expect("the fresh providers are JSON");
     assert_eq!(
-        stored.trim_end(),
-        fresh,
+        stored, fresh,
         "ui/e2e/providers.json is stale; regenerate it with \
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
     );
