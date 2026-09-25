@@ -4865,3 +4865,166 @@ export const guessFromDescription = (description: string) =>
   invoke<Guess[]>("guess_from_description", { description });
 export const hum = (samples: number[], rate: number) =>
   invoke<Hummed>("hum", { samples, rate });
+
+// -- §118: an event, prepared step by step ------------------------------------
+
+/** `gig::Sky`: under a roof, in the open, or some of each. */
+export type GigSky = "indoors" | "outdoors" | "both";
+/** `gig::Leeway`: how closely the night keeps to what was agreed. */
+export type GigLeeway = "strict" | "some" | "open";
+/** `gig::Trouble`: what can go wrong, each with a plan written before it does. */
+export type GigTrouble =
+  | "empty-floor"
+  | "rain"
+  | "power"
+  | "microphone"
+  | "late"
+  | "longer"
+  | "request"
+  | "gear";
+
+export interface GigMoment {
+  /** `HH:MM`, or empty until the host has said. */
+  at: string;
+  what: string;
+  /** The record for it, as the host named it. */
+  record: string;
+}
+
+export interface GigFallback {
+  trouble: GigTrouble;
+  plan: string;
+}
+
+/** `gig::Gig`: one event and everything prepared for it. */
+export interface Gig {
+  id: string;
+  title: string;
+  date: string;
+  starts: string;
+  minutes: number;
+  /** §81's kind of night, by slug. */
+  setting: string | null;
+  place: string;
+  sky: GigSky;
+  crowd: string;
+  topic: string;
+  genres: string[];
+  avoid: string[];
+  wishes: string[];
+  never: string[];
+  leeway: GigLeeway;
+  moments: GigMoment[];
+  techniques: string[];
+  rehearsed: string[];
+  setlist: { playlist: number; name: string } | null;
+  fallbacks: GigFallback[];
+  extras: string;
+  after: string;
+  contacts: string;
+  notes: string;
+  updated: number;
+}
+
+export type GigStep = "event" | "music" | "order" | "trouble" | "extras";
+
+export interface GigStepState {
+  step: GigStep;
+  title: string;
+  about: string;
+  /** What is not there yet, one phrase each. Empty means ready. */
+  missing: string[];
+  optional: boolean;
+}
+
+/** `gig::Adds`: what taking an idea adds, and where. */
+export type GigAdds =
+  | { kind: "genre"; name: string }
+  | { kind: "technique"; name: string }
+  | { kind: "moment"; what: string }
+  | { kind: "fallback"; trouble: GigTrouble; plan: string }
+  | { kind: "extra"; line: string }
+  | { kind: "after"; line: string };
+
+export interface GigIdea {
+  step: GigStep;
+  text: string;
+  /** The rule it comes from. */
+  because: string;
+  adds: GigAdds;
+}
+
+export interface GigPathStop {
+  stop: "learn" | "practise" | "set" | "prepare" | "live";
+  title: string;
+  about: string;
+  done: boolean;
+}
+
+export interface GigMark {
+  at: string;
+  /** Minutes after the DJ starts. */
+  after: number;
+  what: string;
+  /** A moment the host put at a time the DJ is not playing. */
+  outside: boolean;
+}
+
+export interface GigMove {
+  name: string;
+  what: string;
+  when: string;
+  metaphor: string;
+  rehearsed: boolean;
+}
+
+export interface GigTroubleRow {
+  trouble: GigTrouble;
+  title: string;
+  usual: string;
+}
+
+/** `gig::View`: everything the panel draws for one event, in one answer. */
+export interface GigView {
+  gig: Gig;
+  steps: GigStepState[];
+  ideas: GigIdea[];
+  path: GigPathStop[];
+  timeline: GigMark[];
+  moves: GigMove[];
+  troubles: GigTroubleRow[];
+}
+
+export interface GigSummary {
+  id: string;
+  title: string;
+  date: string;
+  starts: string;
+  place: string;
+  setting: string | null;
+  /** Things still missing from the steps the night needs. */
+  lacking: number;
+}
+
+export interface GigChoice {
+  slug: string;
+  title: string;
+}
+
+export interface GigOptions {
+  nights: GigChoice[];
+  skies: GigChoice[];
+  leeways: GigChoice[];
+  moves: { name: string; what: string }[];
+  genres: string[];
+}
+
+export const listEvents = () => invoke<GigSummary[]>("list_events");
+export const eventView = (id: string) => invoke<GigView>("event_view", { id });
+export const newEvent = (title: string, date: string) =>
+  invoke<GigView>("new_event", { title, date });
+export const saveEvent = (gig: Gig) => invoke<GigView>("save_event", { gig });
+export const takeEventIdea = (id: string, adds: GigAdds) =>
+  invoke<GigView>("take_event_idea", { id, adds });
+export const forgetEvent = (id: string) => invoke<GigSummary[]>("forget_event", { id });
+export const eventOptions = () => invoke<GigOptions>("event_options");

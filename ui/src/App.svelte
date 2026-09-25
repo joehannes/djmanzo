@@ -87,6 +87,7 @@
   import RoomSense from "./RoomSense.svelte";
   import Mixes from "./Mixes.svelte";
   import Practice from "./Practice.svelte";
+  import EventPanel from "./Event.svelte";
   import AtHand from "./AtHand.svelte";
   import Staged from "./Staged.svelte";
   import Palette from "./Palette.svelte";
@@ -273,6 +274,7 @@
     "plan",
     "pair",
     "practice",
+    "event",
     "night",
     "room",
     "booth",
@@ -2908,6 +2910,10 @@
     <Practice enabled={ready} />
   {/snippet}
 
+  {#snippet surfaceEvent()}
+    <EventPanel />
+  {/snippet}
+
   {#snippet surfaceNight()}
     <Night enabled={ready} density={densityName} onDensity={applyDensity} />
   {/snippet}
@@ -3274,6 +3280,7 @@
         {:else if placement.surface === "plan"}{@render surfacePlan()}
         {:else if placement.surface === "pair"}{@render surfacePair()}
         {:else if placement.surface === "practice"}{@render surfacePractice()}
+        {:else if placement.surface === "event"}{@render surfaceEvent()}
         {:else if placement.surface === "night"}{@render surfaceNight()}
         {:else if placement.surface === "room"}{@render surfaceRoom()}
         {:else if placement.surface === "requests"}{@render surfaceRequests()}

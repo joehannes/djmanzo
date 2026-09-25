@@ -1133,3 +1133,81 @@ fn the_browser_fixture_has_the_ai_providers() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
     );
 }
+
+/// §118: the event panel's answers, as Rust gives them.
+///
+/// The browser cannot run the rules that decide what an event still lacks
+/// or which ideas it is offered, so it is handed Rust's own answers for a
+/// few events: the options the pickers offer, a wedding half prepared, the
+/// same wedding after its first idea is taken, and a fresh event with
+/// nothing in it yet. A test that drew made-up steps would pass against a
+/// panel whose steps Rust never sends.
+#[test]
+fn the_browser_fixture_has_the_event_panels_answers() {
+    use dj_app::gig::{self, Gig, Moment, Sky};
+    use dj_app::setting::Setting;
+
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/events.json");
+    let wedding = Gig {
+        id: "anna-and-ben-2026-10-03".to_owned(),
+        title: "Anna and Ben".to_owned(),
+        date: "2026-10-03".to_owned(),
+        starts: "21:00".to_owned(),
+        minutes: 240,
+        setting: Some(Setting::Wedding),
+        place: "The old mill".to_owned(),
+        sky: Sky::Both,
+        crowd: "Family and friends, three generations".to_owned(),
+        topic: "Songs they met to".to_owned(),
+        genres: vec!["disco".to_owned()],
+        wishes: vec!["September".to_owned()],
+        moments: vec![Moment {
+            at: "21:30".to_owned(),
+            what: "First dance".to_owned(),
+            record: "At Last".to_owned(),
+        }],
+        techniques: vec!["echo out".to_owned(), "cut".to_owned()],
+        rehearsed: vec!["cut".to_owned()],
+        updated: 1_790_000_000,
+        ..Gig::default()
+    };
+    let wedding = gig::check(wedding).expect("the wedding is an event djmanzo keeps");
+    let first = gig::ideas(&wedding)
+        .into_iter()
+        .next()
+        .expect("a half-prepared wedding is offered ideas");
+    let taken = gig::take(wedding.clone(), &first.adds);
+    let fresh = Gig {
+        id: gig::new_id("Summer party", "2026-07-04", &[]),
+        title: "Summer party".to_owned(),
+        date: "2026-07-04".to_owned(),
+        ..Gig::default()
+    };
+    let fixture = serde_json::json!({
+        "options": gig::options(),
+        "list": [gig::summary(&wedding), gig::summary(&fresh)],
+        "wedding": gig::view(wedding),
+        "taken": { "adds": first.adds, "view": gig::view(taken) },
+        "fresh": gig::view(fresh),
+    });
+    let fresh_text = serde_json::to_string_pretty(&fixture).expect("the event answers serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh_text}\n")).expect("writing the event answers");
+        return;
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored event answers are JSON");
+    assert_eq!(
+        stored, fixture,
+        "ui/e2e/events.json is stale; regenerate it with \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
+    );
+}

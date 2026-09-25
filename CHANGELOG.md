@@ -16,6 +16,15 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Prepare an event.** A new *Event* activity (key 9) opens the night you
+  are preparing beside the decks: the event itself, the music, the running
+  order with its moments and the moves it needs, what to do if the floor
+  empties or the power goes, and the extras and what comes after. Each step
+  says what it still lacks, a kind of night brings its own ideas — a
+  wedding's first dance, a beach's sunset — and everything is kept as you
+  type, one file per event in `events/`. Key 9 now opens it: an activity
+  of your own that was on 9 is a click away on the strip, or under Space.
+
 - **The deck's mixer is compact.** The channel strip is one line at the
   opening window — platter, EQ with kill squares, filter, volume and pitch,
   the semitone shift and keylock as a column beside pitch, and the cue and

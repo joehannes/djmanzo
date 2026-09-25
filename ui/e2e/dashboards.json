@@ -60,6 +60,13 @@
             "run": "switch activity karaoke"
           },
           {
+            "about": "Prepare a night: the event, the set, and what to do if it goes wrong.",
+            "id": "activity:event",
+            "key": "9",
+            "label": "Event",
+            "run": "switch activity event"
+          },
+          {
             "about": "Every panel, arranged by hand — the full cockpit.",
             "id": "ui:everything",
             "key": "`",
@@ -210,6 +217,13 @@
             "key": null,
             "label": "Settings",
             "run": "surface settings"
+          },
+          {
+            "about": "Prepare one night: the event, the music, the running order, what to do if it goes wrong, and what comes after.",
+            "id": "surface:event",
+            "key": null,
+            "label": "Event",
+            "run": "surface event"
           }
         ],
         "title": "Panels"
@@ -668,6 +682,13 @@
             "run": "switch activity karaoke"
           },
           {
+            "about": "Prepare a night: the event, the set, and what to do if it goes wrong.",
+            "id": "activity:event",
+            "key": "9",
+            "label": "Event",
+            "run": "switch activity event"
+          },
+          {
             "about": "Every panel, arranged by hand — the full cockpit.",
             "id": "ui:everything",
             "key": "`",
@@ -818,6 +839,13 @@
             "key": null,
             "label": "Settings",
             "run": "surface settings"
+          },
+          {
+            "about": "Prepare one night: the event, the music, the running order, what to do if it goes wrong, and what comes after.",
+            "id": "surface:event",
+            "key": null,
+            "label": "Event",
+            "run": "surface event"
           }
         ],
         "title": "Panels"
@@ -1276,6 +1304,13 @@
             "run": "switch activity karaoke"
           },
           {
+            "about": "Prepare a night: the event, the set, and what to do if it goes wrong.",
+            "id": "activity:event",
+            "key": "9",
+            "label": "Event",
+            "run": "switch activity event"
+          },
+          {
             "about": "Every panel, arranged by hand — the full cockpit.",
             "id": "ui:everything",
             "key": "`",
@@ -1426,6 +1461,13 @@
             "key": null,
             "label": "Settings",
             "run": "surface settings"
+          },
+          {
+            "about": "Prepare one night: the event, the music, the running order, what to do if it goes wrong, and what comes after.",
+            "id": "surface:event",
+            "key": null,
+            "label": "Event",
+            "run": "surface event"
           }
         ],
         "title": "Panels"

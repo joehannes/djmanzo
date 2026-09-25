@@ -375,6 +375,33 @@
     ]
   },
   {
+    "name": "event",
+    "title": "Event",
+    "about": "Prepare one night: the event, the music, the running order, what to do if it goes wrong, and what comes after.",
+    "category": "planning",
+    "least": [
+      340,
+      260
+    ],
+    "prefer": [
+      440,
+      560
+    ],
+    "priority": 30,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "home": "right",
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
     "name": "transition",
     "title": "Transition",
     "about": "One transition, examined: where, how long, and what happens.",

@@ -114,10 +114,14 @@ test.describe("§109: activity mode", () => {
   });
 
   /**
-   * **A DJ's own: arranged in the full cockpit, kept by name, reachable by
-   * its key, and forgotten.** The whole life of one, as a DJ would live it.
+   * **A DJ's own: arranged in the full cockpit, kept by name, reachable from
+   * its tab, and forgotten.** The whole life of one, as a DJ would live it.
+   *
+   * It had key 9 until §118's Event became the ninth of djmanzo's own. The
+   * keys stop at 9, as the owner asked for them, so a DJ's own is now the
+   * tenth and a press away on the strip or under Space.
    */
-  test("a DJ's own activity is kept, switched to by its key, and forgotten", async ({ page }) => {
+  test("a DJ's own activity is kept, switched to from its tab, and forgotten", async ({ page }) => {
     await openShell(page, "/");
     // Arranged by hand in the full cockpit: the night panel open.
     await page.getByRole("button", { name: "Night", exact: true }).click();
@@ -128,12 +132,15 @@ test.describe("§109: activity mode", () => {
 
     // Kept, and in it: the strip is up and the new tab is the current one.
     await expect(tab(page, "warm-up")).toHaveAttribute("aria-pressed", "true");
-    await expect(tab(page, "warm-up")).toContainText("9");
 
-    // Away and back by its key: its arrangement comes back with it.
+    // Away and back from its tab: its arrangement comes back with it. Key 9
+    // is the Event's now, and goes there rather than here.
     await page.keyboard.press("2");
     await expect(surface(page, "night")).toHaveCount(0);
     await page.keyboard.press("9");
+    await expect(tab(page, "event")).toHaveAttribute("aria-pressed", "true");
+    await expect(surface(page, "night")).toHaveCount(0);
+    await tab(page, "warm-up").click();
     await expect(surface(page, "night")).toBeVisible();
 
     await page.getByRole("button", { name: "Forget Warm-up" }).click();
@@ -149,7 +156,7 @@ test.describe("§109: activity mode", () => {
     await page.getByRole("textbox", { name: "Name for the new activity" }).fill("Mix");
     await page.getByRole("button", { name: "Keep", exact: true }).click();
     await expect(page.locator(`${STRIP} [role="alert"]`)).toContainText("already has an activity");
-    await expect(page.locator(`${STRIP} [data-activity]`)).toHaveCount(8);
+    await expect(page.locator(`${STRIP} [data-activity]`)).toHaveCount(9);
   });
 
   /**

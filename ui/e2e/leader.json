@@ -102,6 +102,13 @@
       "mine": false
     },
     {
+      "key": "9",
+      "label": "Event",
+      "run": "switch activity event",
+      "children": [],
+      "mine": false
+    },
+    {
       "key": "d",
       "label": "Deck",
       "run": null,
@@ -561,6 +568,13 @@
           "run": "surface settings",
           "children": [],
           "mine": false
+        },
+        {
+          "key": "v",
+          "label": "Event",
+          "run": "surface event",
+          "children": [],
+          "mine": false
         }
       ],
       "mine": false
@@ -623,6 +637,13 @@
           "key": "8",
           "label": "Karaoke",
           "run": "switch activity karaoke",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "9",
+          "label": "Event",
+          "run": "switch activity event",
           "children": [],
           "mine": false
         },

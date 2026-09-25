@@ -249,6 +249,40 @@
         "layout": "Essentials",
         "locked": []
       }
+    },
+    {
+      "slug": "event",
+      "title": "Event",
+      "doing": "Prepare a night: the event, the set, and what to do if it goes wrong.",
+      "icon": "calendar",
+      "shipped": true,
+      "key": "Digit9",
+      "workspace": {
+        "name": "Event",
+        "about": "The night being prepared beside the decks, and the set being built for it under them.",
+        "surfaces": [
+          {
+            "surface": "event",
+            "dock": "right",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          },
+          {
+            "surface": "plan",
+            "dock": "bottom",
+            "order": 0,
+            "collapsed": false,
+            "pinned": false
+          }
+        ],
+        "density": "standard",
+        "focus": "preparing",
+        "theme": "",
+        "decks": 2,
+        "layout": "Essentials",
+        "locked": []
+      }
     }
   ],
   "back": "Backquote",

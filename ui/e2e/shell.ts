@@ -109,6 +109,13 @@ import dashboards from "./dashboards.json" with { type: "json" };
  */
 import compositions from "./compositions.json" with { type: "json" };
 /**
+ * §118's event panel: Rust's own answers for a half-prepared wedding, the same
+ * wedding after its first idea is taken, and a fresh event -- written by
+ * `tests/e2e_fixture.rs` from `dj_app::gig`, because what a step lacks and
+ * which ideas a night is offered are rules only Rust runs.
+ */
+import events from "./events.json" with { type: "json" };
+/**
  * §40's twenty-six and which half the assistant sees, generated from
  * `dj_app::sight::ALL` by the same Rust test.
  *
@@ -248,6 +255,11 @@ export const ANSWERS: Record<string, unknown> = {
   // What the assistant surface asks for.
   assistant_packs: [],
   list_llm_providers: [],
+  event_options: events.options,
+  list_events: events.list,
+  event_view: events.wedding,
+  new_event: events.fresh,
+  take_event_idea: events.taken.view,
   learned_taste: { favourites: [], plays: 0, confident: false },
   // §13/§14. Two gestures that reached four occurrences in one phase, with the
   // sentences Rust writes — never "you like", always what was seen and when.
@@ -1810,6 +1822,23 @@ export async function openShell(
               { id: `${provider}/fast`, name: `${provider} fast`, free: true, context: null, input_price: null, output_price: null },
               { id: `${provider}/large`, name: `${provider} large`, free: false, context: null, input_price: 1, output_price: 2 },
             ]);
+          }
+          // §118: every write the event panel makes is recorded, so a test
+          // can tell what was kept. A save is answered with the view of the
+          // event as sent -- the steps are the fixture's, because the rules
+          // that recompute them are Rust's and do not run here.
+          if (cmd === "save_event") {
+            ((win.__eventSaves ??= []) as unknown[]).push(args.gig);
+            const base = (answers.event_view ?? {}) as Record<string, unknown>;
+            return Promise.resolve({ ...base, gig: args.gig });
+          }
+          if (cmd === "take_event_idea" || cmd === "new_event" || cmd === "forget_event") {
+            ((win.__eventCalls ??= []) as unknown[]).push({ cmd, ...args });
+            if (cmd === "forget_event") {
+              const list = (answers.list_events ?? []) as { id: string }[];
+              return Promise.resolve(list.filter((e) => e.id !== args.id));
+            }
+            return Promise.resolve(answers[cmd]);
           }
           if (cmd === "set_assistant_model") {
             const chosen = { provider: String(args.provider), model: String(args.model) };

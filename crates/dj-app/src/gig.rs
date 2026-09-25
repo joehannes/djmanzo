@@ -1088,14 +1088,27 @@ pub struct MoveChoice {
 /// The fixed lists the panel offers, read off the tables that own them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Options {
+    /// §81's kinds of night, which decide most of the ideas.
+    pub nights: Vec<Choice>,
     pub skies: Vec<Choice>,
     pub leeways: Vec<Choice>,
     pub moves: Vec<MoveChoice>,
+    /// The genre families djmanzo knows, by the name [`check`] keeps: a
+    /// genre typed that is not one of these is refused, so the panel offers
+    /// these rather than a free field that fails on save.
+    pub genres: Vec<&'static str>,
 }
 
 #[must_use]
 pub fn options() -> Options {
     Options {
+        nights: Setting::ALL
+            .iter()
+            .map(|n| Choice {
+                slug: n.slug(),
+                title: n.title(),
+            })
+            .collect(),
         skies: Sky::ALL
             .iter()
             .map(|s| Choice {
@@ -1117,6 +1130,40 @@ pub fn options() -> Options {
                 what: t.what,
             })
             .collect(),
+        genres: dj_core::genre::families().iter().map(|f| f.name).collect(),
+    }
+}
+
+/// An event as the list shows it: enough to find it, and how much of it is
+/// still to prepare.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Summary {
+    pub id: String,
+    pub title: String,
+    pub date: String,
+    pub starts: String,
+    pub place: String,
+    pub setting: Option<Setting>,
+    /// Things still missing from the steps the night needs; the optional
+    /// step does not count.
+    pub lacking: usize,
+}
+
+/// The list's line for an event.
+#[must_use]
+pub fn summary(gig: &Gig) -> Summary {
+    Summary {
+        id: gig.id.clone(),
+        title: gig.title.clone(),
+        date: gig.date.clone(),
+        starts: gig.starts.clone(),
+        place: gig.place.clone(),
+        setting: gig.setting,
+        lacking: steps(gig)
+            .iter()
+            .filter(|s| !s.optional)
+            .map(|s| s.missing.len())
+            .sum(),
     }
 }
 
@@ -1595,5 +1642,51 @@ mod tests {
         }
         assert_eq!(done(&ready), [true, true, true, true, false]);
         assert_eq!(path(&ready)[4].about, "Ready to play.");
+    }
+
+    /// The list line counts what the night still needs and not the optional
+    /// extras, so an event whose extras are empty can still read "ready".
+    #[test]
+    fn a_summary_counts_what_the_night_still_needs() {
+        let fresh = Gig {
+            id: "summer-party".to_owned(),
+            title: "Summer party".to_owned(),
+            ..Gig::default()
+        };
+        let lacking: usize = steps(&fresh)
+            .iter()
+            .filter(|s| !s.optional)
+            .map(|s| s.missing.len())
+            .sum();
+        assert!(lacking > 0);
+        assert_eq!(summary(&fresh).lacking, lacking);
+        assert_eq!(summary(&fresh).title, "Summer party");
+        // The optional step never counts, however empty.
+        assert!(
+            steps(&fresh)
+                .iter()
+                .filter(|s| s.optional)
+                .all(|s| s.missing.is_empty())
+        );
+    }
+
+    /// The pickers offer exactly what [`check`] keeps: every night §81 lists,
+    /// and genre names that come back unchanged -- so nothing chosen from a
+    /// list can be refused when it is saved.
+    #[test]
+    fn what_the_panel_offers_is_what_an_event_may_hold() {
+        let offered = options();
+        assert_eq!(offered.nights.len(), Setting::ALL.len());
+        let mut gig = Gig {
+            id: "all-of-it".to_owned(),
+            title: "All of it".to_owned(),
+            genres: offered.genres.iter().map(|&g| g.to_owned()).collect(),
+            techniques: offered.moves.iter().map(|m| m.name.to_owned()).collect(),
+            ..Gig::default()
+        };
+        gig.avoid = gig.genres.clone();
+        let kept = check(gig.clone()).expect("everything offered is kept");
+        assert_eq!(kept.genres, gig.genres);
+        assert_eq!(kept.techniques, gig.techniques);
     }
 }

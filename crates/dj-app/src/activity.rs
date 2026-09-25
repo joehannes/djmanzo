@@ -108,8 +108,8 @@ fn arrangement(
 /// The activities djmanzo ships, in the order the strip shows them and the
 /// number keys reach them.
 ///
-/// Eight, each built from surfaces and deck compositions that exist. The
-/// karaoke host's is last on purpose: it waited for §107 to give it a surface
+/// Nine, each built from surfaces and deck compositions that exist. The
+/// karaoke host's and the event's are last on purpose: it waited for §107 to give it a surface
 /// of its own — the singer rotation — rather than borrow the request queue and
 /// call it karaoke, and putting it last kept the seven keys that were already
 /// learned where they were.
@@ -241,6 +241,23 @@ pub fn shipped() -> Vec<Activity> {
                     at("library", Dock::Bottom, 0),
                 ],
                 Focus::Performing,
+                "Essentials",
+            ),
+        ),
+        // §118: *"make a workflow and an activity to specifically prepare a
+        // set/show for an event"*. Last, for the reason karaoke is last: the
+        // eight keys already learned stay where they are. The plan panel
+        // beside it is where the set the event links to is built.
+        activity(
+            "event",
+            "Event",
+            "Prepare a night: the event, the set, and what to do if it goes wrong.",
+            "calendar",
+            arrangement(
+                "Event",
+                "The night being prepared beside the decks, and the set being built for it under them.",
+                vec![at("event", Dock::Right, 0), at("plan", Dock::Bottom, 0)],
+                Focus::Preparing,
                 "Essentials",
             ),
         ),

@@ -13220,6 +13220,123 @@ pub fn forget_activity(state: State<'_, AppState>, slug: String) -> ActivitiesDt
     activities_dto(&kept)
 }
 
+/// §118: where events are kept, `events/` beside the settings.
+fn events_dir(state: &AppState) -> Result<std::path::PathBuf, String> {
+    state
+        .config_dir()
+        .map(|dir| crate::gig::folder(&dir))
+        .ok_or_else(|| "no settings folder to keep events in yet".to_owned())
+}
+
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+        })
+}
+
+/// §118: every event kept, the soonest first.
+///
+/// # Errors
+/// When djmanzo has no settings folder yet.
+#[tauri::command]
+pub fn list_events(state: State<'_, AppState>) -> Result<Vec<crate::gig::Summary>, String> {
+    let dir = events_dir(&state)?;
+    Ok(crate::gig::list(&dir)
+        .iter()
+        .map(crate::gig::summary)
+        .collect())
+}
+
+/// §118: one event, with its steps, ideas, path and running order.
+///
+/// # Errors
+/// An event that is not kept.
+#[tauri::command]
+pub fn event_view(state: State<'_, AppState>, id: String) -> Result<crate::gig::View, String> {
+    let dir = events_dir(&state)?;
+    crate::gig::load(&dir, &id)
+        .map(crate::gig::view)
+        .ok_or_else(|| format!("there is no event {id:?}"))
+}
+
+/// §118: start preparing an event. Kept at once, so a preparation begun is
+/// never lost by closing the panel before the first edit.
+///
+/// # Errors
+/// An empty name, a date djmanzo cannot read, or the file system's refusal.
+#[tauri::command]
+pub fn new_event(
+    state: State<'_, AppState>,
+    title: String,
+    date: String,
+) -> Result<crate::gig::View, String> {
+    let dir = events_dir(&state)?;
+    let taken: Vec<String> = crate::gig::list(&dir).into_iter().map(|g| g.id).collect();
+    let gig = crate::gig::Gig {
+        id: crate::gig::new_id(&title, &date, &taken),
+        title: title.trim().to_owned(),
+        date,
+        ..crate::gig::Gig::default()
+    };
+    crate::gig::save(&dir, gig, now_seconds()).map(crate::gig::view)
+}
+
+/// §118: keep an edit. The panel writes on every change, so this is called
+/// often and answers with the whole view: what a change leaves missing is
+/// Rust's to say, not the panel's to guess.
+///
+/// # Errors
+/// See [`crate::gig::Refused`], or the file system's refusal.
+#[tauri::command]
+pub fn save_event(
+    state: State<'_, AppState>,
+    gig: crate::gig::Gig,
+) -> Result<crate::gig::View, String> {
+    let dir = events_dir(&state)?;
+    crate::gig::save(&dir, gig, now_seconds()).map(crate::gig::view)
+}
+
+/// §118: take one of the ideas offered for an event.
+///
+/// # Errors
+/// An event that is not kept, or the file system's refusal.
+#[tauri::command]
+pub fn take_event_idea(
+    state: State<'_, AppState>,
+    id: String,
+    adds: crate::gig::Adds,
+) -> Result<crate::gig::View, String> {
+    let dir = events_dir(&state)?;
+    let gig = crate::gig::load(&dir, &id).ok_or_else(|| format!("there is no event {id:?}"))?;
+    crate::gig::save(&dir, crate::gig::take(gig, &adds), now_seconds()).map(crate::gig::view)
+}
+
+/// §118: forget an event.
+///
+/// # Errors
+/// An id djmanzo did not make, or the file system's refusal.
+#[tauri::command]
+pub fn forget_event(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<crate::gig::Summary>, String> {
+    let dir = events_dir(&state)?;
+    crate::gig::forget(&dir, &id)?;
+    Ok(crate::gig::list(&dir)
+        .iter()
+        .map(crate::gig::summary)
+        .collect())
+}
+
+/// §118: the fixed lists the event panel offers.
+#[tauri::command]
+#[must_use]
+pub fn event_options() -> crate::gig::Options {
+    crate::gig::options()
+}
+
 /// §109 and §115: the activity the moment seems to call for, and why — or
 /// nothing. A suggestion for the strip to mark, never a switch.
 #[tauri::command]

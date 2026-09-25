@@ -1,0 +1,1284 @@
+{
+  "fresh": {
+    "gig": {
+      "after": "",
+      "avoid": [],
+      "contacts": "",
+      "crowd": "",
+      "date": "2026-07-04",
+      "extras": "",
+      "fallbacks": [],
+      "genres": [],
+      "id": "summer-party-2026-07-04",
+      "leeway": "some",
+      "minutes": 0,
+      "moments": [],
+      "never": [],
+      "notes": "",
+      "place": "",
+      "rehearsed": [],
+      "setlist": null,
+      "setting": null,
+      "sky": "indoors",
+      "starts": "",
+      "techniques": [],
+      "title": "Summer party",
+      "topic": "",
+      "updated": 0,
+      "wishes": []
+    },
+    "ideas": [
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "Go back to what filled it: the last record that worked, then one everybody knows.",
+          "trouble": "empty-floor"
+        },
+        "because": "What DJs keep ready for when the floor empties.",
+        "step": "trouble",
+        "text": "Go back to what filled it: the last record that worked, then one everybody knows."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "The first record back on, cued on deck 1; a phone with the set offline and a cable into the house system.",
+          "trouble": "power"
+        },
+        "because": "What DJs keep ready for when the power goes.",
+        "step": "trouble",
+        "text": "The first record back on, cued on deck 1; a phone with the set offline and a cable into the house system."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "A spare cable, and every announcement written down so someone else can read it.",
+          "trouble": "microphone"
+        },
+        "because": "What DJs keep ready for when the microphone fails.",
+        "step": "trouble",
+        "text": "A spare cable, and every announcement written down so someone else can read it."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "Which moments stay and which records go, decided now rather than at the time.",
+          "trouble": "late"
+        },
+        "because": "What DJs keep ready for when it runs late.",
+        "step": "trouble",
+        "text": "Which moments stay and which records go, decided now rather than at the time."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "Half an hour more you would be glad to play, already in a crate.",
+          "trouble": "longer"
+        },
+        "because": "What DJs keep ready for when they ask for more.",
+        "step": "trouble",
+        "text": "Half an hour more you would be glad to play, already in a crate."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "A kind answer, and the nearest record you would play instead.",
+          "trouble": "request"
+        },
+        "because": "What DJs keep ready for when a request you will not play.",
+        "step": "trouble",
+        "text": "A kind answer, and the nearest record you would play instead."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "The laptop alone: the keyboard map, the set as a playlist, and the headphones on the laptop's own output.",
+          "trouble": "gear"
+        },
+        "because": "What DJs keep ready for when your gear fails.",
+        "step": "trouble",
+        "text": "The laptop alone: the keyboard map, the set as a playlist, and the headphones on the laptop's own output."
+      },
+      {
+        "adds": {
+          "kind": "extra",
+          "line": "A recording of the set"
+        },
+        "because": "Something the night could have that it did not ask for.",
+        "step": "extras",
+        "text": "A recording of the set"
+      },
+      {
+        "adds": {
+          "kind": "after",
+          "line": "The set list to the host the next day"
+        },
+        "because": "After the set: the bonus that gets the next booking.",
+        "step": "extras",
+        "text": "The set list to the host the next day"
+      },
+      {
+        "adds": {
+          "kind": "after",
+          "line": "The recording online, with the records named"
+        },
+        "because": "After the set: the bonus that gets the next booking.",
+        "step": "extras",
+        "text": "The recording online, with the records named"
+      },
+      {
+        "adds": {
+          "kind": "after",
+          "line": "A thank-you with a photo from the night"
+        },
+        "because": "After the set: the bonus that gets the next booking.",
+        "step": "extras",
+        "text": "A thank-you with a photo from the night"
+      }
+    ],
+    "moves": [],
+    "path": [
+      {
+        "about": "Choose the moves this night needs.",
+        "done": false,
+        "stop": "learn",
+        "title": "Learn"
+      },
+      {
+        "about": "Nothing to rehearse until the moves are chosen.",
+        "done": false,
+        "stop": "practise",
+        "title": "Practise"
+      },
+      {
+        "about": "Build the set for this night.",
+        "done": false,
+        "stop": "set",
+        "title": "Set"
+      },
+      {
+        "about": "13 things still to prepare.",
+        "done": false,
+        "stop": "prepare",
+        "title": "Prepare"
+      },
+      {
+        "about": "Play it, once it is prepared.",
+        "done": false,
+        "stop": "live",
+        "title": "Live"
+      }
+    ],
+    "steps": [
+      {
+        "about": "When and where, how long, what kind of night, and who is coming.",
+        "missing": [
+          "when you start",
+          "how long you play",
+          "what kind of night it is",
+          "where it is"
+        ],
+        "optional": false,
+        "step": "event",
+        "title": "The event"
+      },
+      {
+        "about": "What the set is about, the genres, what was asked for and what not to play.",
+        "missing": [
+          "what the music is: a topic or a genre"
+        ],
+        "optional": false,
+        "step": "music",
+        "title": "The music"
+      },
+      {
+        "about": "The moments at a time, the moves the night needs, and the set itself.",
+        "missing": [
+          "a set built for it"
+        ],
+        "optional": false,
+        "step": "order",
+        "title": "Running order"
+      },
+      {
+        "about": "What to do when it goes wrong, written before it does.",
+        "missing": [
+          "what to do if the floor empties",
+          "what to do if the power goes",
+          "what to do if the microphone fails",
+          "what to do if it runs late",
+          "what to do if they ask for more",
+          "what to do if a request you will not play",
+          "what to do if your gear fails"
+        ],
+        "optional": false,
+        "step": "trouble",
+        "title": "Just in case"
+      },
+      {
+        "about": "The specials, the after bonus, who to call and anything else.",
+        "missing": [],
+        "optional": true,
+        "step": "extras",
+        "title": "Extras and after"
+      }
+    ],
+    "timeline": [],
+    "troubles": [
+      {
+        "title": "The floor empties",
+        "trouble": "empty-floor",
+        "usual": "Go back to what filled it: the last record that worked, then one everybody knows."
+      },
+      {
+        "title": "The power goes",
+        "trouble": "power",
+        "usual": "The first record back on, cued on deck 1; a phone with the set offline and a cable into the house system."
+      },
+      {
+        "title": "The microphone fails",
+        "trouble": "microphone",
+        "usual": "A spare cable, and every announcement written down so someone else can read it."
+      },
+      {
+        "title": "It runs late",
+        "trouble": "late",
+        "usual": "Which moments stay and which records go, decided now rather than at the time."
+      },
+      {
+        "title": "They ask for more",
+        "trouble": "longer",
+        "usual": "Half an hour more you would be glad to play, already in a crate."
+      },
+      {
+        "title": "A request you will not play",
+        "trouble": "request",
+        "usual": "A kind answer, and the nearest record you would play instead."
+      },
+      {
+        "title": "Your gear fails",
+        "trouble": "gear",
+        "usual": "The laptop alone: the keyboard map, the set as a playlist, and the headphones on the laptop's own output."
+      }
+    ]
+  },
+  "list": [
+    {
+      "date": "2026-10-03",
+      "id": "anna-and-ben-2026-10-03",
+      "lacking": 9,
+      "place": "The old mill",
+      "setting": "wedding",
+      "starts": "21:00",
+      "title": "Anna and Ben"
+    },
+    {
+      "date": "2026-07-04",
+      "id": "summer-party-2026-07-04",
+      "lacking": 13,
+      "place": "",
+      "setting": null,
+      "starts": "",
+      "title": "Summer party"
+    }
+  ],
+  "options": {
+    "genres": [
+      "reggaeton",
+      "dembow",
+      "cumbia",
+      "bachata",
+      "merengue",
+      "salsa",
+      "guaracha",
+      "baile funk",
+      "moombahton",
+      "hip hop",
+      "trap",
+      "house",
+      "disco",
+      "jersey club",
+      "footwork",
+      "r&b",
+      "tech house",
+      "techno",
+      "trance",
+      "drum and bass",
+      "uk garage",
+      "dubstep",
+      "hardstyle",
+      "eurodance",
+      "amapiano",
+      "afrobeats",
+      "afro house",
+      "gqom",
+      "kuduro",
+      "coupe decale",
+      "pop",
+      "ambient"
+    ],
+    "leeways": [
+      {
+        "slug": "strict",
+        "title": "As agreed"
+      },
+      {
+        "slug": "some",
+        "title": "Room to move"
+      },
+      {
+        "slug": "open",
+        "title": "Read the room"
+      }
+    ],
+    "moves": [
+      {
+        "name": "beatmatch by ear",
+        "what": "matching two tempos by listening and nudging, with no sync"
+      },
+      {
+        "name": "sync",
+        "what": "the deck holds the tempo for you so your hands are free"
+      },
+      {
+        "name": "long blend",
+        "what": "both records audible together for thirty seconds or more"
+      },
+      {
+        "name": "bass swap",
+        "what": "drop the outgoing low as you raise the incoming, so only one bass plays"
+      },
+      {
+        "name": "phrase mix",
+        "what": "start the incoming record on a phrase boundary, not just a beat"
+      },
+      {
+        "name": "harmonic mix",
+        "what": "choosing the next record by key so the two do not fight"
+      },
+      {
+        "name": "acapella over instrumental",
+        "what": "a vocal from one record over the music of another"
+      },
+      {
+        "name": "double drop",
+        "what": "both records arriving at their drop on the same beat"
+      },
+      {
+        "name": "cut",
+        "what": "one record stops, the next starts, on the beat"
+      },
+      {
+        "name": "echo out",
+        "what": "throw a delay on the outgoing record and pull the fader under it"
+      },
+      {
+        "name": "filter fade",
+        "what": "sweep the outgoing record's low end away rather than its volume"
+      },
+      {
+        "name": "brake",
+        "what": "the record slows to a stop as if the power went"
+      },
+      {
+        "name": "backspin",
+        "what": "the record is thrown backwards and the next one lands"
+      },
+      {
+        "name": "EQ ride",
+        "what": "moving the three bands through a mix rather than setting them once"
+      },
+      {
+        "name": "filter sweep",
+        "what": "opening or closing the whole record's tone over several bars"
+      },
+      {
+        "name": "stem swap",
+        "what": "the drums of one record under the vocal of another, live"
+      },
+      {
+        "name": "tone play",
+        "what": "pitching a cue or a stab to make a melody out of one sound"
+      },
+      {
+        "name": "baby scratch",
+        "what": "the record pushed and pulled with the fader open"
+      },
+      {
+        "name": "chirp",
+        "what": "the fader closes at each turn, so the sound is clipped at both ends"
+      },
+      {
+        "name": "transformer",
+        "what": "the record runs and the fader chops it into pieces"
+      },
+      {
+        "name": "beat juggle",
+        "what": "two copies of one record cut against each other into a new pattern"
+      },
+      {
+        "name": "loop roll",
+        "what": "a short loop held over the record, which carries on underneath"
+      },
+      {
+        "name": "censor",
+        "what": "the record plays backwards, silently, and returns in time"
+      },
+      {
+        "name": "loop the intro",
+        "what": "hold a short intro open until there is time to mix into it"
+      },
+      {
+        "name": "hot cue juggle",
+        "what": "jumping between marked points to rearrange the record as it plays"
+      },
+      {
+        "name": "slip trick",
+        "what": "loop, scratch or reverse while the record keeps running underneath"
+      },
+      {
+        "name": "phrase jump",
+        "what": "moving a whole breath forward or back, landing in time"
+      }
+    ],
+    "nights": [
+      {
+        "slug": "club",
+        "title": "Club"
+      },
+      {
+        "slug": "beach",
+        "title": "Beach / sunset"
+      },
+      {
+        "slug": "wedding",
+        "title": "Wedding"
+      },
+      {
+        "slug": "latin",
+        "title": "Latin"
+      },
+      {
+        "slug": "practice",
+        "title": "Practice"
+      },
+      {
+        "slug": "open-format",
+        "title": "Open format"
+      }
+    ],
+    "skies": [
+      {
+        "slug": "indoors",
+        "title": "Under a roof"
+      },
+      {
+        "slug": "outdoors",
+        "title": "Open air"
+      },
+      {
+        "slug": "both",
+        "title": "Some of each"
+      }
+    ]
+  },
+  "taken": {
+    "adds": {
+      "kind": "genre",
+      "name": "pop"
+    },
+    "view": {
+      "gig": {
+        "after": "",
+        "avoid": [],
+        "contacts": "",
+        "crowd": "Family and friends, three generations",
+        "date": "2026-10-03",
+        "extras": "",
+        "fallbacks": [],
+        "genres": [
+          "disco",
+          "pop"
+        ],
+        "id": "anna-and-ben-2026-10-03",
+        "leeway": "some",
+        "minutes": 240,
+        "moments": [
+          {
+            "at": "21:30",
+            "record": "At Last",
+            "what": "First dance"
+          }
+        ],
+        "never": [],
+        "notes": "",
+        "place": "The old mill",
+        "rehearsed": [
+          "cut"
+        ],
+        "setlist": null,
+        "setting": "wedding",
+        "sky": "both",
+        "starts": "21:00",
+        "techniques": [
+          "echo out",
+          "cut"
+        ],
+        "title": "Anna and Ben",
+        "topic": "Songs they met to",
+        "updated": 1790000000,
+        "wishes": [
+          "September"
+        ]
+      },
+      "ideas": [
+        {
+          "adds": {
+            "kind": "technique",
+            "name": "phrase mix"
+          },
+          "because": "A move a Wedding night asks for.",
+          "step": "order",
+          "text": "phrase mix"
+        },
+        {
+          "adds": {
+            "kind": "moment",
+            "what": "The couple's entrance"
+          },
+          "because": "A Wedding night usually has it.",
+          "step": "order",
+          "text": "The couple's entrance"
+        },
+        {
+          "adds": {
+            "kind": "moment",
+            "what": "Cutting the cake"
+          },
+          "because": "A Wedding night usually has it.",
+          "step": "order",
+          "text": "Cutting the cake"
+        },
+        {
+          "adds": {
+            "kind": "moment",
+            "what": "Parents' dance"
+          },
+          "because": "A Wedding night usually has it.",
+          "step": "order",
+          "text": "Parents' dance"
+        },
+        {
+          "adds": {
+            "kind": "moment",
+            "what": "Bouquet toss"
+          },
+          "because": "A Wedding night usually has it.",
+          "step": "order",
+          "text": "Bouquet toss"
+        },
+        {
+          "adds": {
+            "kind": "moment",
+            "what": "Last dance"
+          },
+          "because": "A Wedding night usually has it.",
+          "step": "order",
+          "text": "Last dance"
+        },
+        {
+          "adds": {
+            "kind": "moment",
+            "what": "Your break: a long record, or a mix prepared for ten minutes off the decks"
+          },
+          "because": "4 hours is a long time to stand at the decks.",
+          "step": "order",
+          "text": "Your break: a long record, or a mix prepared for ten minutes off the decks"
+        },
+        {
+          "adds": {
+            "kind": "fallback",
+            "plan": "Go back to what filled it: the last record that worked, then one everybody knows.",
+            "trouble": "empty-floor"
+          },
+          "because": "What DJs keep ready for when the floor empties.",
+          "step": "trouble",
+          "text": "Go back to what filled it: the last record that worked, then one everybody knows."
+        },
+        {
+          "adds": {
+            "kind": "fallback",
+            "plan": "Where the decks go if it rains, a cover for them, and a warmer hour while people find shelter.",
+            "trouble": "rain"
+          },
+          "because": "What DJs keep ready for when it rains.",
+          "step": "trouble",
+          "text": "Where the decks go if it rains, a cover for them, and a warmer hour while people find shelter."
+        },
+        {
+          "adds": {
+            "kind": "fallback",
+            "plan": "The first record back on, cued on deck 1; a phone with the set offline and a cable into the house system.",
+            "trouble": "power"
+          },
+          "because": "What DJs keep ready for when the power goes.",
+          "step": "trouble",
+          "text": "The first record back on, cued on deck 1; a phone with the set offline and a cable into the house system."
+        },
+        {
+          "adds": {
+            "kind": "fallback",
+            "plan": "A spare cable, and every announcement written down so someone else can read it.",
+            "trouble": "microphone"
+          },
+          "because": "What DJs keep ready for when the microphone fails.",
+          "step": "trouble",
+          "text": "A spare cable, and every announcement written down so someone else can read it."
+        },
+        {
+          "adds": {
+            "kind": "fallback",
+            "plan": "Which moments stay and which records go, decided now rather than at the time.",
+            "trouble": "late"
+          },
+          "because": "What DJs keep ready for when it runs late.",
+          "step": "trouble",
+          "text": "Which moments stay and which records go, decided now rather than at the time."
+        },
+        {
+          "adds": {
+            "kind": "fallback",
+            "plan": "Half an hour more you would be glad to play, already in a crate.",
+            "trouble": "longer"
+          },
+          "because": "What DJs keep ready for when they ask for more.",
+          "step": "trouble",
+          "text": "Half an hour more you would be glad to play, already in a crate."
+        },
+        {
+          "adds": {
+            "kind": "fallback",
+            "plan": "A kind answer, and the nearest record you would play instead.",
+            "trouble": "request"
+          },
+          "because": "What DJs keep ready for when a request you will not play.",
+          "step": "trouble",
+          "text": "A kind answer, and the nearest record you would play instead."
+        },
+        {
+          "adds": {
+            "kind": "fallback",
+            "plan": "The laptop alone: the keyboard map, the set as a playlist, and the headphones on the laptop's own output.",
+            "trouble": "gear"
+          },
+          "because": "What DJs keep ready for when your gear fails.",
+          "step": "trouble",
+          "text": "The laptop alone: the keyboard map, the set as a playlist, and the headphones on the laptop's own output."
+        },
+        {
+          "adds": {
+            "kind": "extra",
+            "line": "A request card on each table, collected before dinner ends"
+          },
+          "because": "Something the night could have that it did not ask for.",
+          "step": "extras",
+          "text": "A request card on each table, collected before dinner ends"
+        },
+        {
+          "adds": {
+            "kind": "extra",
+            "line": "The couple's own playlist through dinner"
+          },
+          "because": "Something the night could have that it did not ask for.",
+          "step": "extras",
+          "text": "The couple's own playlist through dinner"
+        },
+        {
+          "adds": {
+            "kind": "after",
+            "line": "The set list to the host the next day"
+          },
+          "because": "After the set: the bonus that gets the next booking.",
+          "step": "extras",
+          "text": "The set list to the host the next day"
+        },
+        {
+          "adds": {
+            "kind": "after",
+            "line": "The recording online, with the records named"
+          },
+          "because": "After the set: the bonus that gets the next booking.",
+          "step": "extras",
+          "text": "The recording online, with the records named"
+        },
+        {
+          "adds": {
+            "kind": "after",
+            "line": "A thank-you with a photo from the night"
+          },
+          "because": "After the set: the bonus that gets the next booking.",
+          "step": "extras",
+          "text": "A thank-you with a photo from the night"
+        }
+      ],
+      "moves": [
+        {
+          "metaphor": "a shout in a valley — the sound leaves before the voice does",
+          "name": "echo out",
+          "rehearsed": false,
+          "what": "throw a delay on the outgoing record and pull the fader under it",
+          "when": "leaving a record that has no outro, without dead air"
+        },
+        {
+          "metaphor": "stepping over a wall instead of walking round it",
+          "name": "cut",
+          "rehearsed": true,
+          "what": "one record stops, the next starts, on the beat",
+          "when": "records that will not blend, and any time the night needs a jolt"
+        }
+      ],
+      "path": [
+        {
+          "about": "What echo out and cut are, and when to reach for them.",
+          "done": true,
+          "stop": "learn",
+          "title": "Learn"
+        },
+        {
+          "about": "Rehearse echo out in the practice lab.",
+          "done": false,
+          "stop": "practise",
+          "title": "Practise"
+        },
+        {
+          "about": "Build a set on “Songs they met to”.",
+          "done": false,
+          "stop": "set",
+          "title": "Set"
+        },
+        {
+          "about": "9 things still to prepare.",
+          "done": false,
+          "stop": "prepare",
+          "title": "Prepare"
+        },
+        {
+          "about": "Play it, once it is prepared.",
+          "done": false,
+          "stop": "live",
+          "title": "Live"
+        }
+      ],
+      "steps": [
+        {
+          "about": "When and where, how long, what kind of night, and who is coming.",
+          "missing": [],
+          "optional": false,
+          "step": "event",
+          "title": "The event"
+        },
+        {
+          "about": "What the set is about, the genres, what was asked for and what not to play.",
+          "missing": [],
+          "optional": false,
+          "step": "music",
+          "title": "The music"
+        },
+        {
+          "about": "The moments at a time, the moves the night needs, and the set itself.",
+          "missing": [
+            "a set built for it"
+          ],
+          "optional": false,
+          "step": "order",
+          "title": "Running order"
+        },
+        {
+          "about": "What to do when it goes wrong, written before it does.",
+          "missing": [
+            "what to do if the floor empties",
+            "what to do if it rains",
+            "what to do if the power goes",
+            "what to do if the microphone fails",
+            "what to do if it runs late",
+            "what to do if they ask for more",
+            "what to do if a request you will not play",
+            "what to do if your gear fails"
+          ],
+          "optional": false,
+          "step": "trouble",
+          "title": "Just in case"
+        },
+        {
+          "about": "The specials, the after bonus, who to call and anything else.",
+          "missing": [],
+          "optional": true,
+          "step": "extras",
+          "title": "Extras and after"
+        }
+      ],
+      "timeline": [
+        {
+          "after": 0,
+          "at": "21:00",
+          "outside": false,
+          "what": "You start"
+        },
+        {
+          "after": 30,
+          "at": "21:30",
+          "outside": false,
+          "what": "First dance"
+        },
+        {
+          "after": 240,
+          "at": "01:00",
+          "outside": false,
+          "what": "You finish"
+        }
+      ],
+      "troubles": [
+        {
+          "title": "The floor empties",
+          "trouble": "empty-floor",
+          "usual": "Go back to what filled it: the last record that worked, then one everybody knows."
+        },
+        {
+          "title": "It rains",
+          "trouble": "rain",
+          "usual": "Where the decks go if it rains, a cover for them, and a warmer hour while people find shelter."
+        },
+        {
+          "title": "The power goes",
+          "trouble": "power",
+          "usual": "The first record back on, cued on deck 1; a phone with the set offline and a cable into the house system."
+        },
+        {
+          "title": "The microphone fails",
+          "trouble": "microphone",
+          "usual": "A spare cable, and every announcement written down so someone else can read it."
+        },
+        {
+          "title": "It runs late",
+          "trouble": "late",
+          "usual": "Which moments stay and which records go, decided now rather than at the time."
+        },
+        {
+          "title": "They ask for more",
+          "trouble": "longer",
+          "usual": "Half an hour more you would be glad to play, already in a crate."
+        },
+        {
+          "title": "A request you will not play",
+          "trouble": "request",
+          "usual": "A kind answer, and the nearest record you would play instead."
+        },
+        {
+          "title": "Your gear fails",
+          "trouble": "gear",
+          "usual": "The laptop alone: the keyboard map, the set as a playlist, and the headphones on the laptop's own output."
+        }
+      ]
+    }
+  },
+  "wedding": {
+    "gig": {
+      "after": "",
+      "avoid": [],
+      "contacts": "",
+      "crowd": "Family and friends, three generations",
+      "date": "2026-10-03",
+      "extras": "",
+      "fallbacks": [],
+      "genres": [
+        "disco"
+      ],
+      "id": "anna-and-ben-2026-10-03",
+      "leeway": "some",
+      "minutes": 240,
+      "moments": [
+        {
+          "at": "21:30",
+          "record": "At Last",
+          "what": "First dance"
+        }
+      ],
+      "never": [],
+      "notes": "",
+      "place": "The old mill",
+      "rehearsed": [
+        "cut"
+      ],
+      "setlist": null,
+      "setting": "wedding",
+      "sky": "both",
+      "starts": "21:00",
+      "techniques": [
+        "echo out",
+        "cut"
+      ],
+      "title": "Anna and Ben",
+      "topic": "Songs they met to",
+      "updated": 1790000000,
+      "wishes": [
+        "September"
+      ]
+    },
+    "ideas": [
+      {
+        "adds": {
+          "kind": "genre",
+          "name": "pop"
+        },
+        "because": "What a Wedding night is usually played with.",
+        "step": "music",
+        "text": "pop"
+      },
+      {
+        "adds": {
+          "kind": "technique",
+          "name": "phrase mix"
+        },
+        "because": "A move a Wedding night asks for.",
+        "step": "order",
+        "text": "phrase mix"
+      },
+      {
+        "adds": {
+          "kind": "moment",
+          "what": "The couple's entrance"
+        },
+        "because": "A Wedding night usually has it.",
+        "step": "order",
+        "text": "The couple's entrance"
+      },
+      {
+        "adds": {
+          "kind": "moment",
+          "what": "Cutting the cake"
+        },
+        "because": "A Wedding night usually has it.",
+        "step": "order",
+        "text": "Cutting the cake"
+      },
+      {
+        "adds": {
+          "kind": "moment",
+          "what": "Parents' dance"
+        },
+        "because": "A Wedding night usually has it.",
+        "step": "order",
+        "text": "Parents' dance"
+      },
+      {
+        "adds": {
+          "kind": "moment",
+          "what": "Bouquet toss"
+        },
+        "because": "A Wedding night usually has it.",
+        "step": "order",
+        "text": "Bouquet toss"
+      },
+      {
+        "adds": {
+          "kind": "moment",
+          "what": "Last dance"
+        },
+        "because": "A Wedding night usually has it.",
+        "step": "order",
+        "text": "Last dance"
+      },
+      {
+        "adds": {
+          "kind": "moment",
+          "what": "Your break: a long record, or a mix prepared for ten minutes off the decks"
+        },
+        "because": "4 hours is a long time to stand at the decks.",
+        "step": "order",
+        "text": "Your break: a long record, or a mix prepared for ten minutes off the decks"
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "Go back to what filled it: the last record that worked, then one everybody knows.",
+          "trouble": "empty-floor"
+        },
+        "because": "What DJs keep ready for when the floor empties.",
+        "step": "trouble",
+        "text": "Go back to what filled it: the last record that worked, then one everybody knows."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "Where the decks go if it rains, a cover for them, and a warmer hour while people find shelter.",
+          "trouble": "rain"
+        },
+        "because": "What DJs keep ready for when it rains.",
+        "step": "trouble",
+        "text": "Where the decks go if it rains, a cover for them, and a warmer hour while people find shelter."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "The first record back on, cued on deck 1; a phone with the set offline and a cable into the house system.",
+          "trouble": "power"
+        },
+        "because": "What DJs keep ready for when the power goes.",
+        "step": "trouble",
+        "text": "The first record back on, cued on deck 1; a phone with the set offline and a cable into the house system."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "A spare cable, and every announcement written down so someone else can read it.",
+          "trouble": "microphone"
+        },
+        "because": "What DJs keep ready for when the microphone fails.",
+        "step": "trouble",
+        "text": "A spare cable, and every announcement written down so someone else can read it."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "Which moments stay and which records go, decided now rather than at the time.",
+          "trouble": "late"
+        },
+        "because": "What DJs keep ready for when it runs late.",
+        "step": "trouble",
+        "text": "Which moments stay and which records go, decided now rather than at the time."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "Half an hour more you would be glad to play, already in a crate.",
+          "trouble": "longer"
+        },
+        "because": "What DJs keep ready for when they ask for more.",
+        "step": "trouble",
+        "text": "Half an hour more you would be glad to play, already in a crate."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "A kind answer, and the nearest record you would play instead.",
+          "trouble": "request"
+        },
+        "because": "What DJs keep ready for when a request you will not play.",
+        "step": "trouble",
+        "text": "A kind answer, and the nearest record you would play instead."
+      },
+      {
+        "adds": {
+          "kind": "fallback",
+          "plan": "The laptop alone: the keyboard map, the set as a playlist, and the headphones on the laptop's own output.",
+          "trouble": "gear"
+        },
+        "because": "What DJs keep ready for when your gear fails.",
+        "step": "trouble",
+        "text": "The laptop alone: the keyboard map, the set as a playlist, and the headphones on the laptop's own output."
+      },
+      {
+        "adds": {
+          "kind": "extra",
+          "line": "A request card on each table, collected before dinner ends"
+        },
+        "because": "Something the night could have that it did not ask for.",
+        "step": "extras",
+        "text": "A request card on each table, collected before dinner ends"
+      },
+      {
+        "adds": {
+          "kind": "extra",
+          "line": "The couple's own playlist through dinner"
+        },
+        "because": "Something the night could have that it did not ask for.",
+        "step": "extras",
+        "text": "The couple's own playlist through dinner"
+      },
+      {
+        "adds": {
+          "kind": "after",
+          "line": "The set list to the host the next day"
+        },
+        "because": "After the set: the bonus that gets the next booking.",
+        "step": "extras",
+        "text": "The set list to the host the next day"
+      },
+      {
+        "adds": {
+          "kind": "after",
+          "line": "The recording online, with the records named"
+        },
+        "because": "After the set: the bonus that gets the next booking.",
+        "step": "extras",
+        "text": "The recording online, with the records named"
+      },
+      {
+        "adds": {
+          "kind": "after",
+          "line": "A thank-you with a photo from the night"
+        },
+        "because": "After the set: the bonus that gets the next booking.",
+        "step": "extras",
+        "text": "A thank-you with a photo from the night"
+      }
+    ],
+    "moves": [
+      {
+        "metaphor": "a shout in a valley — the sound leaves before the voice does",
+        "name": "echo out",
+        "rehearsed": false,
+        "what": "throw a delay on the outgoing record and pull the fader under it",
+        "when": "leaving a record that has no outro, without dead air"
+      },
+      {
+        "metaphor": "stepping over a wall instead of walking round it",
+        "name": "cut",
+        "rehearsed": true,
+        "what": "one record stops, the next starts, on the beat",
+        "when": "records that will not blend, and any time the night needs a jolt"
+      }
+    ],
+    "path": [
+      {
+        "about": "What echo out and cut are, and when to reach for them.",
+        "done": true,
+        "stop": "learn",
+        "title": "Learn"
+      },
+      {
+        "about": "Rehearse echo out in the practice lab.",
+        "done": false,
+        "stop": "practise",
+        "title": "Practise"
+      },
+      {
+        "about": "Build a set on “Songs they met to”.",
+        "done": false,
+        "stop": "set",
+        "title": "Set"
+      },
+      {
+        "about": "9 things still to prepare.",
+        "done": false,
+        "stop": "prepare",
+        "title": "Prepare"
+      },
+      {
+        "about": "Play it, once it is prepared.",
+        "done": false,
+        "stop": "live",
+        "title": "Live"
+      }
+    ],
+    "steps": [
+      {
+        "about": "When and where, how long, what kind of night, and who is coming.",
+        "missing": [],
+        "optional": false,
+        "step": "event",
+        "title": "The event"
+      },
+      {
+        "about": "What the set is about, the genres, what was asked for and what not to play.",
+        "missing": [],
+        "optional": false,
+        "step": "music",
+        "title": "The music"
+      },
+      {
+        "about": "The moments at a time, the moves the night needs, and the set itself.",
+        "missing": [
+          "a set built for it"
+        ],
+        "optional": false,
+        "step": "order",
+        "title": "Running order"
+      },
+      {
+        "about": "What to do when it goes wrong, written before it does.",
+        "missing": [
+          "what to do if the floor empties",
+          "what to do if it rains",
+          "what to do if the power goes",
+          "what to do if the microphone fails",
+          "what to do if it runs late",
+          "what to do if they ask for more",
+          "what to do if a request you will not play",
+          "what to do if your gear fails"
+        ],
+        "optional": false,
+        "step": "trouble",
+        "title": "Just in case"
+      },
+      {
+        "about": "The specials, the after bonus, who to call and anything else.",
+        "missing": [],
+        "optional": true,
+        "step": "extras",
+        "title": "Extras and after"
+      }
+    ],
+    "timeline": [
+      {
+        "after": 0,
+        "at": "21:00",
+        "outside": false,
+        "what": "You start"
+      },
+      {
+        "after": 30,
+        "at": "21:30",
+        "outside": false,
+        "what": "First dance"
+      },
+      {
+        "after": 240,
+        "at": "01:00",
+        "outside": false,
+        "what": "You finish"
+      }
+    ],
+    "troubles": [
+      {
+        "title": "The floor empties",
+        "trouble": "empty-floor",
+        "usual": "Go back to what filled it: the last record that worked, then one everybody knows."
+      },
+      {
+        "title": "It rains",
+        "trouble": "rain",
+        "usual": "Where the decks go if it rains, a cover for them, and a warmer hour while people find shelter."
+      },
+      {
+        "title": "The power goes",
+        "trouble": "power",
+        "usual": "The first record back on, cued on deck 1; a phone with the set offline and a cable into the house system."
+      },
+      {
+        "title": "The microphone fails",
+        "trouble": "microphone",
+        "usual": "A spare cable, and every announcement written down so someone else can read it."
+      },
+      {
+        "title": "It runs late",
+        "trouble": "late",
+        "usual": "Which moments stay and which records go, decided now rather than at the time."
+      },
+      {
+        "title": "They ask for more",
+        "trouble": "longer",
+        "usual": "Half an hour more you would be glad to play, already in a crate."
+      },
+      {
+        "title": "A request you will not play",
+        "trouble": "request",
+        "usual": "A kind answer, and the nearest record you would play instead."
+      },
+      {
+        "title": "Your gear fails",
+        "trouble": "gear",
+        "usual": "The laptop alone: the keyboard map, the set as a playlist, and the headphones on the laptop's own output."
+      }
+    ]
+  }
+}
