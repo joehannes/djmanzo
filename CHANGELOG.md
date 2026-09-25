@@ -16,6 +16,18 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Choose your AI in Settings.** Settings has an *AI assistant* section:
+  OpenRouter (hundreds of models, free ones included), a local model through
+  Ollama (no key, no internet), Anthropic's Claude, OpenAI's ChatGPT models,
+  Google's Gemini (free tier) and Groq — each with its key field, where to get
+  a key, and its models, free ones first. Keys go to the system keychain,
+  never a file. It was there before, but only behind "Setup" in the
+  assistant's own panel. Level 0 in "How far djmanzo may go" switches the
+  assistant off.
+- **Fixed: a model chosen from one provider's list could be set with
+  another.** Choosing a model gave it to whichever provider was ready first,
+  so with OpenRouter and Google both keyed a Gemini model went to OpenRouter.
+
 ## v0.25.0 — EQ knobs that turn, and stems one press away
 
 Cut early, four commits after v0.24.0 rather than seven: the owner found

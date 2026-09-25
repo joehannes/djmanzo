@@ -1800,6 +1800,22 @@ export async function openShell(
             ((win.__dispatched ??= []) as string[]).push(String(args.action));
             return Promise.resolve(null);
           }
+          // §120: each provider's own models, so a test can tell which
+          // provider's list a model was chosen from -- and the choice echoed
+          // and recorded, because the provider it is set with is the thing
+          // that was wrong.
+          if (cmd === "list_llm_models") {
+            const provider = String(args.provider);
+            return Promise.resolve([
+              { id: `${provider}/fast`, name: `${provider} fast`, free: true, context: null, input_price: null, output_price: null },
+              { id: `${provider}/large`, name: `${provider} large`, free: false, context: null, input_price: 1, output_price: 2 },
+            ]);
+          }
+          if (cmd === "set_assistant_model") {
+            const chosen = { provider: String(args.provider), model: String(args.model) };
+            ((win.__chosenModels ??= []) as unknown[]).push(chosen);
+            return Promise.resolve({ ...chosen, spent_usd: 0, cap_usd: 2, unpriced_calls: 0 });
+          }
           // The mix re-render. Answered here rather than from the table so a
           // test can check *which* mix was asked for: the panel holds two
           // numbers per row and passing the wrong row's would produce a

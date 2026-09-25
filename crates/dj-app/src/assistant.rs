@@ -70,6 +70,47 @@ fn provider_from_slug(slug: &str) -> Option<ProviderId> {
     ProviderId::all().iter().copied().find(|p| p.slug() == slug)
 }
 
+/// One provider as the settings draw it, from its status and the hint of a
+/// stored key (`None` when there is none).
+///
+/// Separate from the command so it needs no running application: the browser
+/// tests draw Rust's own rows (`ui/e2e/providers.json`, written by
+/// `tests/e2e_fixture.rs`) rather than a copy of the table typed out again.
+#[must_use]
+pub fn provider_row(
+    id: ProviderId,
+    status: ProviderStatus,
+    stored_hint: Option<String>,
+) -> LlmProviderDto {
+    let info = dj_assistant::info(id);
+    let (status, status_detail) = match status {
+        ProviderStatus::Ready => ("ready", "Ready".to_owned()),
+        ProviderStatus::NeedsKey { .. } => (
+            "needs_key",
+            format!(
+                "Needs {}",
+                info.credential.map(|c| c.label()).unwrap_or("a key")
+            ),
+        ),
+        ProviderStatus::NotRunning { hint } => ("not_running", hint.to_owned()),
+    };
+    LlmProviderDto {
+        id: id.slug(),
+        label: info.label,
+        summary: info.summary,
+        detail: info.detail,
+        recommended: info.recommended,
+        status,
+        status_detail,
+        credential: info.credential.map(|c| c.id()),
+        credential_label: info.credential.map(|c| c.label()),
+        signup_url: info.signup_url,
+        free_tier: info.credential.map(|c| c.free_tier()),
+        is_set: stored_hint.is_some(),
+        hint: stored_hint.unwrap_or_default(),
+    }
+}
+
 /// Every provider, with its status and its key field.
 #[tauri::command]
 pub fn list_llm_providers(state: State<'_, AppState>) -> Vec<LlmProviderDto> {
@@ -79,34 +120,11 @@ pub fn list_llm_providers(state: State<'_, AppState>) -> Vec<LlmProviderDto> {
         .iter()
         .map(|provider| {
             let info = dj_assistant::info(provider.id());
-            let (status, status_detail) = match provider.status() {
-                ProviderStatus::Ready => ("ready", "Ready".to_owned()),
-                ProviderStatus::NeedsKey { .. } => (
-                    "needs_key",
-                    format!(
-                        "Needs {}",
-                        info.credential.map(|c| c.label()).unwrap_or("a key")
-                    ),
-                ),
-                ProviderStatus::NotRunning { hint } => ("not_running", hint.to_owned()),
-            };
-            let stored = info.credential.and_then(|kind| secrets.get(kind).ok());
-
-            LlmProviderDto {
-                id: provider.id().slug(),
-                label: info.label,
-                summary: info.summary,
-                detail: info.detail,
-                recommended: info.recommended,
-                status,
-                status_detail,
-                credential: info.credential.map(|c| c.id()),
-                credential_label: info.credential.map(|c| c.label()),
-                signup_url: info.signup_url,
-                free_tier: info.credential.map(|c| c.free_tier()),
-                is_set: stored.is_some(),
-                hint: stored.map(|s| s.hint()).unwrap_or_default(),
-            }
+            let stored = info
+                .credential
+                .and_then(|kind| secrets.get(kind).ok())
+                .map(|secret| secret.hint());
+            provider_row(provider.id(), provider.status(), stored)
         })
         .collect()
 }

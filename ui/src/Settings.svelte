@@ -9,6 +9,7 @@
    * refuses.
    */
   import Downloads from "./Downloads.svelte";
+  import AiSetup from "./AiSetup.svelte";
   import GoingLive from "./GoingLive.svelte";
   import Screens from "./Screens.svelte";
   import {
@@ -875,6 +876,21 @@
         Since you set it: {stand.departures.join("; ")}.
       </p>
     {/if}
+  </div>
+
+  <!--
+    §120: which AI the assistant uses. Beside how far it may go, because the
+    two are one question -- whether there is an assistant, and whose model
+    answers. It lived only behind "Setup" in the assistant's own panel, and the
+    owner did not know it was there.
+  -->
+  <div class="block ai" data-settings="ai">
+    <h3>AI assistant</h3>
+    <p class="hint">
+      Which model answers when you ask djmanzo something, and the keys it needs.
+      Level 0 above switches the assistant off altogether.
+    </p>
+    <AiSetup />
   </div>
 
   <!--

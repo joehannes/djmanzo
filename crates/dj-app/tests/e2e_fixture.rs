@@ -1077,3 +1077,53 @@ fn the_browser_fixture_has_the_dashboards() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
     );
 }
+
+/// **The AI providers the settings draw**, as Rust describes them, for
+/// `ui/e2e/ai.spec.ts`: OpenRouter and Google keyed and ready, the local
+/// model not running, the rest waiting for a key.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_ai_providers() {
+    use dj_assistant::{ProviderId, ProviderStatus};
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/providers.json");
+    let rows: Vec<_> = ProviderId::all()
+        .iter()
+        .map(|&id| {
+            let (status, hint) = match id {
+                ProviderId::OpenRouter | ProviderId::Google => {
+                    (ProviderStatus::Ready, Some("…4f2a".to_owned()))
+                }
+                ProviderId::Local => (
+                    ProviderStatus::NotRunning {
+                        hint: "Ollama is not running",
+                    },
+                    None,
+                ),
+                _ => (ProviderStatus::NeedsKey { secret: "key" }, None),
+            };
+            dj_app::assistant::provider_row(id, status, hint)
+        })
+        .collect();
+    let fresh = serde_json::to_string_pretty(&rows).expect("the providers serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the providers");
+        return;
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    assert_eq!(
+        stored.trim_end(),
+        fresh,
+        "ui/e2e/providers.json is stale; regenerate it with \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
+    );
+}
