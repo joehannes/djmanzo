@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.29.0 — Break music, a controller switches the activity, the pads in symbols, and fixes
+
 - **Fade a stem by scrolling across it.** A sideways scroll (or Shift and
   the wheel) over a stem's button turns it up or down; a click still mutes
   it; a double-click puts it back to full and on.
