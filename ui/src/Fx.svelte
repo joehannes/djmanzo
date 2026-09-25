@@ -12,6 +12,7 @@
    * (`docs/adr/0003-action-bus-and-parameter-registry.md`).
    */
   import IconButton from "./controls/IconButton.svelte";
+  import SvgKnob from "./controls/SvgKnob.svelte";
   import { EFFECTS, saveRackPreset, type FxSlot } from "./api";
 
   let {
@@ -101,108 +102,119 @@
       <span class="loaded">{slots.filter((s) => s.kind !== "none").length}</span>
     {/if}
   </summary>
+<!--
+  §120: three units side by side, like a hardware effects unit, rather than
+  three full-width rows. *"fx also and design seems poor/redundant"*: each slot
+  was a dropdown beside a slider the width of the deck, and a loaded one grew a
+  second slider and a third row. Now each is a card -- its switch and its
+  effect on top, wet and the effect's own control as the deck's knobs (a
+  hundred pixels of drag for the whole range, Shift for fine, a double press
+  back to where it started), the beat lengths under them. A narrow column (the
+  master's) stacks the units instead of squeezing them.
+-->
 <div class="rack">
   {#each slots as slot (slot.slot)}
     {@const loaded = slot.kind !== "none"}
-    <div class="slot" class:on={slot.enabled && loaded}>
-      <!--
-        The switch first and largest, because it is the control reached for
-        mid-mix. Selecting an effect is something done once, while setting up.
-      -->
-      <button
-        class="power"
-        class:lit={slot.enabled && loaded}
-        disabled={!enabled || !loaded}
-        onclick={() => send(`${target} fx ${slot.slot} toggle`)}
-        title={loaded
-          ? slot.enabled
-            ? `${slot.kind} on — click to switch it off`
-            : `${slot.kind} loaded — click to switch it on`
-          : "Load an effect first"}
-      >
-        {slot.slot}
-      </button>
-
-      <select
-        class="pick"
-        disabled={!enabled}
-        value={slot.kind}
-        onchange={(event) =>
-          send(`${target} fx ${slot.slot} ${event.currentTarget.value}`)}
-        aria-label="Effect in slot {slot.slot}"
-      >
-        {#each EFFECTS as name (name)}
-          <option value={name}>{name === "none" ? "—" : name}</option>
-        {/each}
-      </select>
-
-      <!--
-        Wet is a slider and the amount is a slider, but the beat length is a
-        row of buttons: a DJ picking a quarter-beat echo wants a quarter beat,
-        not something near it, and a slider cannot promise that.
-      -->
-      <label class="knob">
-        <span>wet</span>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
+    <div class="slot" class:on={slot.enabled && loaded} data-fx-slot={slot.slot}>
+      <div class="unit-head">
+        <!--
+          The switch first and largest, because it is the control reached for
+          mid-mix. Selecting an effect is something done once, while setting up.
+        -->
+        <button
+          class="power"
+          class:lit={slot.enabled && loaded}
           disabled={!enabled || !loaded}
-          value={slot.wet}
-          oninput={(event) =>
-            send(`${target} fx ${slot.slot} wet ${event.currentTarget.value}`)}
-        />
-      </label>
+          onclick={() => send(`${target} fx ${slot.slot} toggle`)}
+          title={loaded
+            ? slot.enabled
+              ? `${slot.kind} on — click to switch it off`
+              : `${slot.kind} loaded — click to switch it on`
+            : "Load an effect first"}
+        >
+          {slot.slot}
+        </button>
+
+        <select
+          class="pick"
+          disabled={!enabled}
+          value={slot.kind}
+          onchange={(event) =>
+            send(`${target} fx ${slot.slot} ${event.currentTarget.value}`)}
+          aria-label="Effect in slot {slot.slot}"
+        >
+          {#each EFFECTS as name (name)}
+            <option value={name}>{name === "none" ? "—" : name}</option>
+          {/each}
+        </select>
+      </div>
 
       {#if loaded}
-        <label class="knob">
-          <span>{slot.amount_label}</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
+        <div class="unit-knobs">
+          <SvgKnob
+            value={slot.wet}
+            min={0}
+            max={1}
+            step={0.01}
+            label="wet"
+            name="Slot {slot.slot} wet"
+            readout={`${Math.round(slot.wet * 100)}%`}
+            size={34}
+            origin={0}
             disabled={!enabled}
-            value={slot.amount}
-            oninput={(event) =>
-              send(`${target} fx ${slot.slot} amount ${event.currentTarget.value}`)}
+            oninput={(value) => send(`${target} fx ${slot.slot} wet ${value}`)}
+            ondblclick={() => send(`${target} fx ${slot.slot} wet 0`)}
           />
-        </label>
-      {/if}
-
-      <!--
-        Hidden rather than greyed out for an effect with no time in it. A
-        control that is absent asks no questions; one that is greyed out asks
-        "what would that have done?".
-      -->
-      {#if slot.timed}
-        <div class="lengths">
-          {#each LENGTHS as beats (beats)}
-            <button
-              class:active={Math.abs(slot.beats - beats) < 0.001}
-              disabled={!enabled}
-              onclick={() => send(`${target} fx ${slot.slot} beats ${beats}`)}
-              title="{formatBeats(beats)} beat{beats === 1 ? '' : 's'}"
-            >
-              {formatBeats(beats)}
-            </button>
-          {/each}
+          <SvgKnob
+            value={slot.amount}
+            min={0}
+            max={1}
+            step={0.01}
+            label={slot.amount_label}
+            name="Slot {slot.slot} {slot.amount_label}"
+            readout={`${Math.round(slot.amount * 100)}%`}
+            size={34}
+            origin={0.5}
+            disabled={!enabled}
+            oninput={(value) => send(`${target} fx ${slot.slot} amount ${value}`)}
+            ondblclick={() => send(`${target} fx ${slot.slot} amount 0.5`)}
+          />
         </div>
-      {/if}
 
-      {#if showsPlacement && loaded}
-        <button
-          class="place"
-          disabled={!enabled}
-          onclick={() =>
-            send(`${target} fx ${slot.slot} ${slot.post_fader ? "pre" : "post"}`)}
-          title={slot.post_fader
-            ? "After the fader — pulling the fader down takes the tail with it"
-            : "Before the fader — the tail survives the fader coming down"}
-        >
-          {slot.post_fader ? "post" : "pre"}
-        </button>
+        <!--
+          Hidden rather than greyed out for an effect with no time in it. A
+          control that is absent asks no questions; one that is greyed out asks
+          "what would that have done?". Buttons, not a knob: a DJ picking a
+          quarter-beat echo wants a quarter beat, not something near it.
+        -->
+        {#if slot.timed}
+          <div class="lengths">
+            {#each LENGTHS as beats (beats)}
+              <button
+                class:active={Math.abs(slot.beats - beats) < 0.001}
+                disabled={!enabled}
+                onclick={() => send(`${target} fx ${slot.slot} beats ${beats}`)}
+                title="{formatBeats(beats)} beat{beats === 1 ? '' : 's'}"
+              >
+                {formatBeats(beats)}
+              </button>
+            {/each}
+          </div>
+        {/if}
+
+        {#if showsPlacement}
+          <button
+            class="place"
+            disabled={!enabled}
+            onclick={() =>
+              send(`${target} fx ${slot.slot} ${slot.post_fader ? "pre" : "post"}`)}
+            title={slot.post_fader
+              ? "After the fader — pulling the fader down takes the tail with it"
+              : "Before the fader — the tail survives the fader coming down"}
+          >
+            {slot.post_fader ? "post-fader" : "pre-fader"}
+          </button>
+        {/if}
       {/if}
     </div>
   {/each}
@@ -275,20 +287,50 @@
   }
 
   .rack {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
+    display: grid;
+    /* Three units across a deck; the master's narrow column stacks them. */
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: 0.35rem;
+    align-items: start;
+  }
+
+  /* Saving the chain spans the rack, under the units. */
+  .rack > .keep,
+  .rack > .chain-error {
+    grid-column: 1 / -1;
   }
 
   .slot {
     display: flex;
-    align-items: center;
-    gap: 0.35rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.3rem;
+    padding: 0.35rem;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    background: var(--panel);
     font-size: 0.8em;
-    /* The master column is a third the width of a deck's. Wrapping rather than
-       a second component for the narrow case: the same rack has to fit both,
-       and a squeezed slider is worse than a second line. */
-    flex-wrap: wrap;
+  }
+
+  .slot.on {
+    border-color: var(--active);
+  }
+
+  .unit-head {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .unit-head .pick {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .unit-knobs {
+    display: flex;
+    justify-content: space-around;
+    gap: 0.3rem;
   }
 
   .power {
@@ -310,34 +352,13 @@
   .pick {
     font-size: 0.9em;
     padding: 0.1rem 0.2rem;
-    min-width: 5.5rem;
   }
 
-  .knob {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    flex: 1 1 8rem;
-    /* Below this a slider is a decoration rather than a control. */
-    min-width: 7rem;
-  }
-
-  .knob span {
-    color: var(--text-dim);
-    font-size: 0.85em;
-    /* Fixed so the sliders line up down the rack even though "feedback" and
-       "grit" are different lengths. */
-    width: 3.6rem;
-    text-align: right;
-  }
-
-  .knob input {
-    flex: 1;
-    min-width: 2.5rem;
-  }
-
+  /* Wrapped inside the unit: seven lengths are wider than a third of a
+     deck, and the first version ran them out past the card's edge. */
   .lengths {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.15rem;
   }
 

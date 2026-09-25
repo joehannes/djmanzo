@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The effects rack takes a third of the room.** The three slots sit side
+  by side as units — switch and effect on top, *wet* and the effect's own
+  control as knobs (100 px of drag for the whole range, Shift for fine,
+  double-click to reset), the beat lengths under them. Empty, the rack is
+  one row instead of three.
+
 - **Choose your AI in Settings.** Settings has an *AI assistant* section:
   OpenRouter (hundreds of models, free ones included), a local model through
   Ollama (no key, no internet), Anthropic's Claude, OpenAI's ChatGPT models,
