@@ -105,6 +105,11 @@ pub enum Role {
     /// three colours for three parts of one answer would be §30's
     /// neon-everything failure rather than §57's distinction.
     Shape,
+    /// What people did: §25's crowd response. Its own colour because it is
+    /// the one layer about the room rather than the record -- a mark there
+    /// is somebody else's reaction, and it must never be read as the
+    /// record's own shape or as djmanzo's proposal.
+    Audience,
     /// Nothing yet. The layer is named but not drawn.
     Unassigned,
 }
@@ -123,6 +128,7 @@ impl Role {
             Role::Uncertain => "uncertain",
             Role::Stems => "stems",
             Role::Shape => "shape",
+            Role::Audience => "audience",
             Role::Unassigned => "unassigned",
         }
     }
@@ -422,12 +428,14 @@ static LAYERS: [Layer; 23] = [
         role: Role::Proposed,
         drawn: Drawn::Overlay,
     },
+    // §119 built it: the moments past crowds reacted to, gathered over
+    // every night kept, as marks over the whole-record view.
     Layer {
         name: "crowd",
         title: "Crowd response",
-        about: "What the room did last time this played.",
-        role: Role::Unassigned,
-        drawn: Drawn::Nowhere,
+        about: "Where past crowds reacted, over every night this played.",
+        role: Role::Audience,
+        drawn: Drawn::Overlay,
     },
     Layer {
         name: "confidence",
@@ -477,14 +485,23 @@ mod tests {
         assert!(one.contains(&"cues"), "{one:?}");
         assert!(!one.contains(&"beats"), "{one:?}");
 
-        // A slug from another build, a repeat, and one nobody has drawn yet.
+        // A slug from another build, and a repeat.
         let messy = names(choosing(&[
             "hologram".to_owned(),
             "cues".to_owned(),
             "cues".to_owned(),
-            "crowd".to_owned(),
         ]));
-        assert_eq!(messy, one, "unknown, repeated and unbuilt should all drop");
+        assert_eq!(messy, one, "unknown and repeated should both drop");
+        // And one nobody has drawn yet. §119's crowd response was the last
+        // example of that in the table; with every layer built, the rule is
+        // held where it lives: nothing unbuilt can be chosen.
+        for layer in layers() {
+            assert!(
+                !layer.choosable() || layer.exists(),
+                "{} can be chosen and is not drawn",
+                layer.name
+            );
+        }
 
         // And §25's order, not the order they were ticked in.
         let backwards = names(choosing(&["runway".to_owned(), "beats".to_owned()]));
@@ -719,7 +736,7 @@ mod tests {
             Some(&vec!["vocal", "confidence"]),
             "the uncertain colour is for what djmanzo is estimating, and only that"
         );
-        for role in ["placed", "seam", "runway", "stems"] {
+        for role in ["placed", "seam", "runway", "stems", "audience"] {
             assert_eq!(
                 grouped.get(role).map(Vec::len),
                 Some(1),
@@ -745,7 +762,7 @@ mod tests {
         }
     }
 
-    /// The count worth quoting, so "twenty-two of twenty-three" cannot drift.
+    /// The count worth quoting, so "all twenty-three" cannot drift.
     #[test]
     fn the_built_count_is_a_fact_rather_than_a_recollection() {
         let built: Vec<&str> = layers()
@@ -776,6 +793,7 @@ mod tests {
                 "energy",
                 "transients",
                 "suggestion",
+                "crowd",
                 "confidence",
                 "runway",
             ],

@@ -240,11 +240,13 @@ test.describe("§8's ninth: the waveform a DJ chose", () => {
       await expect(row.locator("input")).toBeDisabled();
       await expect(row).toContainText("This is the waveform itself");
     }
-    // And a layer nobody has built is offered the same way rather than left off
-    // the list: "twelve of twenty" is a fact a DJ is entitled to see.
-    const unbuilt = page.locator('.remembers [data-layer-row="crowd"]');
-    await expect(unbuilt.locator("input")).toBeDisabled();
-    await expect(unbuilt).toContainText("cannot draw this yet");
+    // A layer nobody had built was offered the same way rather than left off
+    // the list. With the crowd drawn every layer is, so nothing else is
+    // refused -- and the crowd, the last, is a choice like the rest.
+    const crowd = page.locator('.remembers [data-layer-row="crowd"]');
+    await expect(crowd.locator("input")).toBeEnabled();
+    await expect(page.locator(".remembers [data-layer-row] input:disabled")).toHaveCount(2);
+    await expect(page.locator(".remembers [data-layer-row]", { hasText: "cannot draw this yet" })).toHaveCount(0);
     expect(thrown).toEqual([]);
   });
 

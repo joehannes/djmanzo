@@ -451,6 +451,93 @@ pub fn summary(placed: &[Placed], played: &[Played]) -> Summary {
     }
 }
 
+/// A moment in one record that past crowds reacted to, gathered over every
+/// night kept: what §25's *crowd response* layer draws.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Mark {
+    /// Seconds into the record: the part's own place when there is one.
+    pub at: f64,
+    pub part: Part,
+    /// How many reactions, over every night.
+    pub count: usize,
+    /// On how many different nights -- the number that says a moment
+    /// lands, where one loud night says only that it did once.
+    pub nights: usize,
+}
+
+impl Mark {
+    /// What the mark says when pointed at.
+    #[must_use]
+    pub fn says(&self) -> String {
+        let reactions = if self.count == 1 {
+            "1 reaction".to_owned()
+        } else {
+            format!("{} reactions", self.count)
+        };
+        let nights = if self.nights == 1 {
+            "one night".to_owned()
+        } else {
+            format!("{} nights", self.nights)
+        };
+        let part = match self.part {
+            Part::Drop => " to the drop",
+            Part::Breakdown => " in the breakdown",
+            Part::Voice => " as the voice came in",
+            Part::Record => "",
+        };
+        format!("{reactions}{part}, on {nights}")
+    }
+}
+
+/// The moments in `track_id` that crowds reacted to, over every night kept
+/// -- each night its reactions placed on its own records -- most reacted
+/// first. Gathered as [`summary`] gathers one night's: at the part when
+/// there is one, to the nearest ten seconds when there is not.
+#[must_use]
+pub fn marks(nights: &[(Vec<Placed>, Vec<Played>)], track_id: &str) -> Vec<Mark> {
+    let mut out: Vec<(Mark, Vec<usize>)> = Vec::new();
+    for (night, (placed, played)) in nights.iter().enumerate() {
+        for p in placed.iter().filter(|p| p.about == About::Moment) {
+            let Some(record) = p.record.and_then(|i| played.get(i)) else {
+                continue;
+            };
+            if record.track_id != track_id {
+                continue;
+            }
+            let at = p.part_at.unwrap_or_else(|| (p.into / 10.0).round() * 10.0);
+            match out
+                .iter_mut()
+                .find(|(m, _)| m.part == p.part && (m.at - at).abs() < f64::EPSILON)
+            {
+                Some((m, seen)) => {
+                    m.count += 1;
+                    if !seen.contains(&night) {
+                        seen.push(night);
+                        m.nights += 1;
+                    }
+                }
+                None => out.push((
+                    Mark {
+                        at,
+                        part: p.part,
+                        count: 1,
+                        nights: 1,
+                    },
+                    vec![night],
+                )),
+            }
+        }
+    }
+    let mut marks: Vec<Mark> = out.into_iter().map(|(m, _)| m).collect();
+    marks.sort_by(|a, b| {
+        b.nights
+            .cmp(&a.nights)
+            .then(b.count.cmp(&a.count))
+            .then(a.at.total_cmp(&b.at))
+    });
+    marks
+}
+
 /// What a goal measures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -886,6 +973,53 @@ mod tests {
         for night in Setting::ALL {
             assert!(!goals_for(Some(night)).is_empty(), "{night:?} has no goals");
         }
+    }
+
+    /// **The record remembers its crowds.** Over every night kept, the
+    /// moments in one record that people reacted to, counted by night as
+    /// well as by reaction -- two nights at the drop outrank one loud night
+    /// elsewhere -- and nothing from another record.
+    #[test]
+    fn a_record_remembers_where_its_crowds_reacted() {
+        let played = night();
+        let one = place(
+            &[
+                said(1_065, "this drop 🔥"),
+                said(1_066, "🔥"),
+                said(1_067, "🔥"),
+                said(1_110, "omg"),
+            ],
+            &played,
+            0,
+        );
+        let two = place(
+            &[
+                said(1_068, "the drop!!"),
+                said(1_250, "🔥 on the second record"),
+            ],
+            &played,
+            0,
+        );
+        let nights = vec![(one, played.clone()), (two, played.clone())];
+        let first = marks(&nights, "a");
+        assert_eq!(
+            first[0],
+            Mark {
+                at: 60.0,
+                part: Part::Drop,
+                count: 4,
+                nights: 2
+            },
+            "{first:#?}"
+        );
+        assert_eq!(first[0].says(), "4 reactions to the drop, on 2 nights");
+        assert_eq!(first.len(), 2, "the drop, and one other moment");
+        assert_eq!((first[1].count, first[1].nights), (1, 1));
+        assert!(
+            marks(&nights, "b").iter().all(|m| m.count == 1),
+            "the second record's own"
+        );
+        assert!(marks(&nights, "nothing").is_empty());
     }
 
     /// Kept on its own, a line each, and read back whole even past a bad

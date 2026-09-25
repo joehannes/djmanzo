@@ -13,7 +13,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import crowd from "./crowd.json" with { type: "json" };
-import { errorsThrown, openShell } from "./shell";
+import layers from "./layers.json" with { type: "json" };
+import { ANSWERS, errorsThrown, openShell } from "./shell";
 
 const PANEL = '.surface[data-surface="crowd"]';
 const view = crowd.view;
@@ -139,6 +140,56 @@ test.describe("§119: the crowd", () => {
     await expect
       .poll(async () => (await calls(page)).find((c) => c.cmd === "crowd_import"))
       .toMatchObject({ path: "/home/dj/stream-chat.txt", start: Math.round(expected.getTime() / 1000), source: "youtube" });
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});
+
+/**
+ * §25's crowd response, which §119 built: where past crowds reacted, over the
+ * whole-record view. Which moments, how many and on how many nights are
+ * `crowd::marks`' (the fixture's `marks`, Rust's own for the night above).
+ * What the browser holds: a mark lands at its frame, grows with the nights
+ * that reacted there, and goes when the layer is switched off.
+ */
+test.describe("§119: the crowd on the record", () => {
+  const info = ANSWERS.waveform_info as { total_frames: number };
+  const marks = [
+    ...crowd.marks,
+    // A second, reacted to on three nights: the size rule is the overview's.
+    { ...crowd.marks[0], frame: info.total_frames / 2, nights: 3, count: 7, part: "record", says: "7 reactions, on 3 nights" },
+  ];
+
+  test("where past crowds reacted is marked on the record, larger the more nights did", async ({ page }) => {
+    await openShell(page, "/", {}, { waveform_info: { ...ANSWERS.waveform_info, crowd: marks } });
+    const overview = page.locator(".overview").first();
+    await expect(overview).toBeVisible();
+    const drawn = overview.locator('[data-layer="crowd"]');
+    await expect(drawn).toHaveCount(marks.length);
+    const box = (await overview.boundingBox())!;
+    for (const [i, mark] of marks.entries()) {
+      const el = drawn.nth(i);
+      await expect(el).toHaveAttribute("title", mark.says);
+      // And said to a screen reader, not only drawn.
+      await expect(overview.getByRole("img", { name: mark.says })).toHaveCount(1);
+      // The tip points at the moment: the element is centred on it.
+      const at = await el.boundingBox();
+      const centre = (at!.x + at!.width / 2 - box.x) / box.width;
+      expect(centre).toBeCloseTo(mark.frame / info.total_frames, 2);
+    }
+    const one = (await drawn.nth(0).boundingBox())!;
+    const three = (await drawn.nth(1).boundingBox())!;
+    expect(three.width, "three nights draw no larger than one").toBeGreaterThan(one.width);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("switched off with the rest of the layers, it is gone", async ({ page }) => {
+    await openShell(page, "/", {}, {
+      waveform_info: { ...ANSWERS.waveform_info, crowd: marks },
+      chosen_layers: (layers as { name: string }[]).map((l) => l.name).filter((name) => name !== "crowd"),
+    });
+    const overview = page.locator(".overview").first();
+    await expect(overview.locator('[data-layer="drops"]').first()).toBeVisible();
+    await expect(overview.locator('[data-layer="crowd"]')).toHaveCount(0);
     expect(errorsThrown(page)).toEqual([]);
   });
 });

@@ -61,8 +61,15 @@ Versioning follows semver, with one project-specific convention:
   usual ones for each kind of night offered. A night's reactions are kept
   in a file of their own. Streaming itself still goes through OBS; live
   YouTube and TikTok chat are not read yet.
+- **Where past crowds reacted, on the record.** Load a record and the
+  overview shows a small triangle at every moment a crowd reacted to on a
+  night you kept — the drop, the breakdown, the voice coming in — larger
+  when it happened on two nights, larger again on three. On by default and
+  in the Wedding, Beach, Latin and Open format set-ups; off in Club and
+  Practice; *Crowd response* in the waveform layers turns it off. Every
+  layer the waveform plan named is drawn now.
 - The set-up lists now name a theme by its name (*Theme: Beach Sunset*)
-  and the waveform as *9 of 22 layers*.
+  and the waveform as *10 of 23 layers*.
 
 ## v0.27.0 — Prepare an event and play it; a compact deck; lift any panel
 

@@ -182,11 +182,11 @@
   {
     "name": "crowd",
     "title": "Crowd response",
-    "about": "What the room did last time this played.",
-    "role": "unassigned",
-    "drawn": "nowhere",
-    "choosable": false,
-    "why_not": "djmanzo cannot draw this yet"
+    "about": "Where past crowds reacted, over every night this played.",
+    "role": "audience",
+    "drawn": "overlay",
+    "choosable": true,
+    "why_not": ""
   },
   {
     "name": "confidence",

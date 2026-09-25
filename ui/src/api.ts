@@ -1107,6 +1107,16 @@ export interface DivergenceLine {
 export const sessionDiff = (first: string, second: string) =>
   invoke<DivergenceLine[]>("session_diff", { first, second });
 
+/** A moment past crowds reacted to (`commands::CrowdMarkInfo`). */
+export interface CrowdMarkInfo {
+  /** Frames on the record. */
+  frame: number;
+  part: "drop" | "breakdown" | "voice" | "record";
+  count: number;
+  nights: number;
+  says: string;
+}
+
 export interface WaveformInfo {
   deck: number;
   ready: boolean;
@@ -1158,6 +1168,11 @@ export interface WaveformInfo {
    * loop in, which draw the same thing — nothing.
    */
   saved_loops: SavedLoopInfo[];
+  /**
+   * §25's crowd response, which §119 built: the moments in this record past
+   * crowds reacted to, over every night kept, most reacted first.
+   */
+  crowd?: CrowdMarkInfo[];
   /**
    * §75's energy trajectory, and the breakdowns and drops in it.
    *

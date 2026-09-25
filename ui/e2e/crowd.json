@@ -1,4 +1,13 @@
 {
+  "marks": [
+    {
+      "count": 3,
+      "frame": 2880000.0,
+      "nights": 1,
+      "part": "drop",
+      "says": "3 reactions to the drop, on one night"
+    }
+  ],
   "view": {
     "current": true,
     "delay": 8,

@@ -8,7 +8,7 @@
     "changes": [
       "Arrangement: Club",
       "Theme: Industrial Techno",
-      "Waveform: 7 of 22 layers",
+      "Waveform: 7 of 23 layers",
       "Pad pages: cues, loops, fx",
       "Assistant: prepare",
       "Requests: off"
@@ -23,7 +23,7 @@
     "changes": [
       "Arrangement: Open Format",
       "Theme: Beach Sunset",
-      "Waveform: 9 of 22 layers",
+      "Waveform: 10 of 23 layers",
       "Pad pages: cues, saved",
       "Assistant: assist",
       "Requests: on"
@@ -38,7 +38,7 @@
     "changes": [
       "Arrangement: Wedding / Event",
       "Theme: Organic Base",
-      "Waveform: 7 of 22 layers",
+      "Waveform: 8 of 23 layers",
       "Pad pages: cues, saved, sampler",
       "Assistant: assist",
       "Requests: on"
@@ -53,7 +53,7 @@
     "changes": [
       "Arrangement: Classic DJ",
       "Theme: Organic Base",
-      "Waveform: 8 of 22 layers",
+      "Waveform: 9 of 23 layers",
       "Pad pages: cues, loops, roll",
       "Assistant: suggest",
       "Requests: on",
@@ -69,7 +69,7 @@
     "changes": [
       "Arrangement: Pro Performance",
       "Theme: Studio Neutral",
-      "Waveform: 10 of 22 layers",
+      "Waveform: 10 of 23 layers",
       "Pad pages: cues, loops, roll, slicer",
       "Assistant: watch",
       "Requests: off",
@@ -84,7 +84,7 @@
     "theme": "",
     "changes": [
       "Arrangement: Open Format",
-      "Waveform: 8 of 22 layers",
+      "Waveform: 9 of 23 layers",
       "Pad pages: cues, loops, saved",
       "Assistant: suggest",
       "Requests: on",

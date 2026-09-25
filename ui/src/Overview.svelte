@@ -22,6 +22,7 @@
     type MixInInfo,
     type MixOutInfo,
     type EnergyTrajectory,
+    type CrowdMarkInfo,
     type RecordChange,
   } from "./api";
   import { remembers, showing } from "./remembers.svelte";
@@ -105,6 +106,8 @@
   let trajectory = $state<EnergyTrajectory | null>(null);
   /** §116: where each current comes in and goes, from Rust. */
   let changes = $state<RecordChange[]>([]);
+  /** §25's crowd response: where past crowds reacted, from Rust. */
+  let crowd = $state<CrowdMarkInfo[]>([]);
 
   // Interpolation state, as in the scrolling lane: snapshots arrive at 60 Hz
   // but a frame landing between two of them must still move.
@@ -157,6 +160,7 @@
         mixIn = info.mix_in ?? null;
         trajectory = info.trajectory ?? null;
         changes = info.changes ?? [];
+        crowd = info.crowd ?? [];
         if (info.colour_pending && !recheckQueued) {
           recheckQueued = true;
           setTimeout(() => {
@@ -478,6 +482,21 @@
       });
   });
 
+  /**
+   * §25's crowd response: a mark where past crowds reacted, larger the more
+   * nights did -- one loud night says a moment landed once, three nights
+   * say it lands.
+   */
+  const cheers = $derived.by(() => {
+    if (totalFrames <= 0) return [];
+    return crowd.map((mark) => ({
+      key: `${mark.part}-${mark.frame}`,
+      left: fraction(mark.frame) * 100,
+      nights: Math.min(3, mark.nights),
+      says: mark.says,
+    }));
+  });
+
   /** And the drops, as marks. */
   const returns = $derived.by(() => {
     if (totalFrames <= 0) return [];
@@ -724,6 +743,17 @@
         title="Where it comes back"
       ></div>
     {/each}
+    {#each showing("crowd") ? cheers : [] as mark (mark.key)}
+      <div
+        class="cheer"
+        role="img"
+        data-layer="crowd"
+        data-nights={mark.nights}
+        style:left="{mark.left}%"
+        title={mark.says}
+        aria-label={mark.says}
+      ></div>
+    {/each}
     {#each showing("cues") ? markers : [] as marker (marker.slot)}
       <div class="cue" data-layer="cues" style:left="{marker.left}%"></div>
     {/each}
@@ -749,6 +779,32 @@
     opacity: 0.5;
     pointer-events: none;
   }
+  /* §25's crowd response. Its own colour -- the audience's, not the
+     record's shape nor djmanzo's proposal -- and its own form: a small
+     triangle hung from the top edge, pointing at the moment, where a drop is
+     a full-height line. Larger the more nights reacted there. */
+  .cheer {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    width: 0;
+    height: 0;
+    --size: 4px;
+    margin-left: calc(var(--size) * -1);
+    border-left: var(--size) solid transparent;
+    border-right: var(--size) solid transparent;
+    border-top: calc(var(--size) * 1.4) solid var(--audience, var(--accent));
+    pointer-events: none;
+  }
+
+  .cheer[data-nights="2"] {
+    --size: 5px;
+  }
+
+  .cheer[data-nights="3"] {
+    --size: 7px;
+  }
+
   .thin {
     position: absolute;
     z-index: 1;

@@ -730,7 +730,11 @@ test.describe("the waveform's layers", () => {
     expect(built).toContain("melody");
     // §116's `rhythm`: the twenty-second, the record read as hits on its grid.
     expect(built).toContain("rhythm");
-    expect(built).toHaveLength(22);
+    // §25's `crowd`: the twenty-third and the last. It waited on a camera
+    // that was never the only way to know what a room did: §119 keeps what
+    // people said, placed on the records they said it about.
+    expect(built).toContain("crowd");
+    expect(built).toHaveLength(23);
   });
 });
 

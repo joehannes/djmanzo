@@ -125,6 +125,7 @@ pub const ALL: [Setup; 6] = [
             "suggestion",
             "runway",
             "confidence",
+            "crowd",
         ],
         pages: &["cues", "saved"],
         posture: Posture::Assist,
@@ -145,6 +146,7 @@ pub const ALL: [Setup; 6] = [
             "seam",
             "mix-out",
             "runway",
+            "crowd",
         ],
         pages: &["cues", "saved", "sampler"],
         posture: Posture::Assist,
@@ -165,6 +167,7 @@ pub const ALL: [Setup; 6] = [
             "seam",
             "runway",
             "confidence",
+            "crowd",
         ],
         pages: &["cues", "loops", "roll"],
         posture: Posture::Suggest,
@@ -174,8 +177,8 @@ pub const ALL: [Setup; 6] = [
         setting: Setting::Practice,
         workspace: "Pro Performance",
         theme: "pkg-studio",
-        // Everything djmanzo can draw. Practice is the one night where the
-        // instrumentation is the point and there is nobody to play to.
+        // The instrumentation, which is the point of practice. Not where past
+        // crowds reacted: there is nobody to play to.
         layers: &[
             "beats",
             "downbeats",
@@ -210,6 +213,7 @@ pub const ALL: [Setup; 6] = [
             "seam",
             "mix-out",
             "runway",
+            "crowd",
         ],
         pages: &["cues", "loops", "saved"],
         posture: Posture::Suggest,
@@ -460,5 +464,24 @@ mod tests {
             );
         }
         assert_eq!(setup(Setting::Practice).posture, Posture::Watch);
+    }
+
+    /// **Where past crowds reacted is drawn on the nights the room takes
+    /// part in.** §119's marks are other people's reactions, so they are on
+    /// exactly where `requests` is: a wedding, a beach, a Latin night and an
+    /// open-format one are played *to* a room that talks back, and a moment
+    /// that landed there before is worth seeing coming. A club at peak is
+    /// read off the grid, and practice has nobody to play to. A DJ who never
+    /// chose a set-up has every layer, these marks included.
+    #[test]
+    fn the_crowd_is_drawn_on_the_nights_the_room_takes_part_in() {
+        for preset in ALL {
+            assert_eq!(
+                preset.layers.contains(&"crowd"),
+                preset.requests,
+                "{}",
+                preset.setting.slug()
+            );
+        }
     }
 }

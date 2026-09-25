@@ -1537,6 +1537,19 @@ fn the_browser_fixture_has_a_nights_crowd() {
     ];
     let delay = 8;
     let placed = crowd::place(&reactions, &played, delay);
+    // §25's crowd response for the first record, in frames at 48 kHz: what
+    // the overview draws over it.
+    let marks: Vec<dj_app::commands::CrowdMarkInfo> =
+        crowd::marks(&[(placed.clone(), played.clone())], &played[0].track_id)
+            .into_iter()
+            .map(|mark| dj_app::commands::CrowdMarkInfo {
+                frame: mark.at * 48_000.0,
+                part: mark.part,
+                count: mark.count,
+                nights: mark.nights,
+                says: mark.says(),
+            })
+            .collect();
     let summary = crowd::summary(&placed, &played);
     let goals = crowd::answer(&crowd::goals_for(Some(Setting::Wedding)), &summary);
     let view = CrowdView {
@@ -1560,7 +1573,7 @@ fn the_browser_fixture_has_a_nights_crowd() {
             })
             .collect(),
     };
-    let fixture = serde_json::json!({ "view": view });
+    let fixture = serde_json::json!({ "view": view, "marks": marks });
     let text = serde_json::to_string_pretty(&fixture).expect("the crowd serialises");
 
     if std::env::var_os("DJMANZO_BLESS").is_some() {

@@ -1754,6 +1754,12 @@ pub struct WaveformInfo {
     /// rather than stored with it, so an analysis cached before this existed
     /// answers too.
     pub changes: Vec<dj_analysis::energy::Change>,
+    /// §25's crowd response, which §119 built: the moments in this record
+    /// that past crowds reacted to, over every night kept, most reacted
+    /// first. Here for the reason the trajectory is -- a property of the
+    /// record, asked again on a load -- and empty for a record no crowd has
+    /// reacted to, which the overview draws as nothing.
+    pub crowd: Vec<CrowdMarkInfo>,
     /// Whether §110's spectrum is still being measured for this record.
     ///
     /// The waveform is drawn in the three bands until it lands, and the lane
@@ -1761,6 +1767,118 @@ pub struct WaveformInfo {
     /// when the colour arrives, so without it a record whose analysis came
     /// from the cache would stay in three bands until the next load.
     pub colour_pending: bool,
+}
+
+/// A moment past crowds reacted to, as the overview draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct CrowdMarkInfo {
+    /// Where, in frames on the record.
+    pub frame: f64,
+    pub part: crate::crowd::Part,
+    pub count: usize,
+    pub nights: usize,
+    /// What it says when pointed at: "4 reactions to the drop, on 2 nights".
+    pub says: String,
+}
+
+/// §25's crowd response for the record on `deck`: every night's reactions
+/// placed on that night's records, and the moments in this one gathered.
+///
+/// Only this record's parts are looked up -- a night's other records need
+/// their start times to place reactions on, not their drops -- so the cost
+/// is a history query and a file read per night kept, on a load.
+fn crowd_marks_of(state: &AppState, deck: u8) -> Vec<CrowdMarkInfo> {
+    let Some(config) = state.config_dir() else {
+        return Vec::new();
+    };
+    let Some(id) = dj_core::DeckId::from_human(deck).and_then(|d| current_track(state, d)) else {
+        return Vec::new();
+    };
+    let Ok(db) = library(state) else {
+        return Vec::new();
+    };
+    let Some(rate) = db
+        .track(id)
+        .ok()
+        .flatten()
+        .map(|track| track.sample_rate.as_f64())
+        .filter(|rate| *rate > 0.0)
+    else {
+        return Vec::new();
+    };
+    let track_id = id.to_hex();
+    let Ok(dir) = std::fs::read_dir(crate::crowd::folder(&config)) else {
+        return Vec::new();
+    };
+    let sessions: Vec<String> = dir
+        .flatten()
+        .filter_map(|entry| {
+            entry
+                .file_name()
+                .into_string()
+                .ok()?
+                .strip_suffix(".jsonl")
+                .map(str::to_owned)
+        })
+        .collect();
+    if sessions.is_empty() {
+        return Vec::new();
+    }
+    let history = db.history(HISTORY_LIMIT).unwrap_or_default();
+    let found = state.analysis().cached(&id);
+    let seconds = |frames: f64| frames / rate;
+    let delay = crowd_settings(state, &config).delay;
+    let nights: Vec<(Vec<crate::crowd::Placed>, Vec<crate::crowd::Played>)> = sessions
+        .iter()
+        .filter_map(|session| {
+            let mut records: Vec<_> = history
+                .iter()
+                .filter(|r| r.session_id.as_deref() == Some(session.as_str()))
+                .collect();
+            if !records.iter().any(|r| r.track_id == track_id) {
+                return None;
+            }
+            records.sort_by_key(|r| r.played_at);
+            let played: Vec<crate::crowd::Played> = records
+                .into_iter()
+                .map(|r| {
+                    let ours = r.track_id == track_id;
+                    let parts = found.as_ref().filter(|_| ours);
+                    crate::crowd::Played {
+                        at: r.played_at,
+                        track_id: r.track_id.clone(),
+                        title: r.title.clone(),
+                        artist: r.artist.clone(),
+                        drops: parts
+                            .map(|f| f.trajectory.drops.iter().map(|&d| seconds(d)).collect())
+                            .unwrap_or_default(),
+                        breakdowns: parts
+                            .map(|f| {
+                                f.trajectory
+                                    .breakdowns
+                                    .iter()
+                                    .map(|b| (seconds(b.from), seconds(b.to)))
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        vocal: parts.and_then(|f| f.trajectory.voice_enters).map(seconds),
+                    }
+                })
+                .collect();
+            let reactions = crate::crowd::load(&config, session);
+            Some((crate::crowd::place(&reactions, &played, delay), played))
+        })
+        .collect();
+    crate::crowd::marks(&nights, &track_id)
+        .into_iter()
+        .map(|mark| CrowdMarkInfo {
+            frame: mark.at * rate,
+            part: mark.part,
+            count: mark.count,
+            nights: mark.nights,
+            says: mark.says(),
+        })
+        .collect()
 }
 
 /// One of §25's `saved-loops`, as the waveform draws it.
@@ -1818,6 +1936,7 @@ pub fn waveform_info(state: State<'_, AppState>, deck: u8) -> WaveformInfo {
         mix_out: mix_out_of(&state, deck),
         mix_in: mix_in_of(&state, deck),
         saved_loops: saved_loops_of(&state, deck),
+        crowd: crowd_marks_of(&state, deck),
         changes: trajectory.changes(),
         trajectory,
     }
