@@ -101,6 +101,7 @@ fn arrangement(
         decks: 2,
         layout: layout.to_owned(),
         locked: Vec::new(),
+        docks: crate::cockpit::DockSizes::default(),
     }
 }
 

@@ -3342,6 +3342,19 @@ export interface Workspace {
    * which would be the same judgement written twice.
    */
   locked: string[];
+  /**
+   * §120: the room each dock takes once the DJ has dragged its edge — a side
+   * dock's width, the bottom dock's height. Absent, or a dock missing from it,
+   * is that dock's own share of the window. `cockpit::DockSizes`.
+   */
+  docks?: DockSizes;
+}
+
+/** `cockpit::DockSizes`: pixels, `null` or absent for the dock's own share. */
+export interface DockSizes {
+  left?: number | null;
+  right?: number | null;
+  bottom?: number | null;
 }
 
 /**

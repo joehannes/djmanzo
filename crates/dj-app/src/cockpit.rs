@@ -1528,6 +1528,72 @@ impl Permits {
     }
 }
 
+/// §120: the room each dock takes, once the DJ has dragged its edge.
+///
+/// > scrollbars, sizing, layout stickyness and resizing shall be super
+/// > comfortable and quickly possible
+///
+/// A panel could be resized along its dock ([`Placement::size`]), but the dock
+/// itself was a share of the window the interface decided -- a side dock
+/// 30 % of the width between 320 and 520 px -- so a DJ who wanted the browser
+/// wider than that, or the decks wider than the default left them, could not
+/// have it. `None` is that share still: no opinion.
+///
+/// A side dock's number is its width and the bottom dock's its height, in CSS
+/// pixels, which are the only axes a dock can grow along without growing past
+/// the window.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DockSizes {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub right: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bottom: Option<u16>,
+}
+
+impl DockSizes {
+    /// How narrow and how wide a side dock may be dragged.
+    ///
+    /// Under 280 px a side panel stops being a panel and becomes a column of
+    /// ellipses -- the automatic share's own floor is 320 for that reason, and
+    /// a DJ may go a little under it on purpose. Over 960 it is the decks that
+    /// become the column.
+    pub const SIDE: (u16, u16) = (280, 960);
+
+    /// How short and how tall the bottom dock may be dragged: a header and a
+    /// row of results at the least, and never so tall that the decks above it
+    /// are only their headers.
+    pub const BOTTOM: (u16, u16) = (140, 720);
+
+    /// No dock has been sized: every one takes its own share.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.left.is_none() && self.right.is_none() && self.bottom.is_none()
+    }
+
+    /// Each size brought inside its bounds, saying so for each that moved.
+    fn bounded(self, notes: &mut Vec<String>) -> Self {
+        let mut bound = |name: &str, size: Option<u16>, (least, most): (u16, u16)| {
+            size.map(|asked| {
+                let kept = asked.clamp(least, most);
+                if kept != asked {
+                    notes.push(format!(
+                        "the {name} dock was given {asked}px; it opens at {kept}px, \
+                         inside the {least} to {most}px a {name} dock can be"
+                    ));
+                }
+                kept
+            })
+        };
+        Self {
+            left: bound("left", self.left, Self::SIDE),
+            right: bound("right", self.right, Self::SIDE),
+            bottom: bound("bottom", self.bottom, Self::BOTTOM),
+        }
+    }
+}
+
 /// A saved arrangement of the cockpit.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Workspace {
@@ -1571,6 +1637,15 @@ pub struct Workspace {
     /// which costs nothing, because nothing honoured it.
     #[serde(default)]
     pub locked: Vec<Lock>,
+    /// §120: the room each dock takes, when the DJ has dragged it.
+    ///
+    /// Carried across an arrangement by the interface, as a pinned panel is:
+    /// how wide a DJ wants the side panels is about their screen and their
+    /// eyes, not about which activity they are in -- the same reason density
+    /// stays with the window. Absent from the file when no dock has been
+    /// sized, so every arrangement written before this reads the same.
+    #[serde(default, skip_serializing_if = "DockSizes::is_empty")]
+    pub docks: DockSizes,
 }
 
 impl Workspace {
@@ -1649,6 +1724,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Beginner".to_owned(),
@@ -1681,6 +1757,7 @@ pub fn workspaces() -> Vec<Workspace> {
             // in place would be named after something it did not do.
             layout: "Starter".to_owned(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Classic DJ".to_owned(),
@@ -1692,6 +1769,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Pro Performance".to_owned(),
@@ -1722,6 +1800,7 @@ pub fn workspaces() -> Vec<Workspace> {
             // `Pro` is that composition by name and by description.
             layout: "Pro".to_owned(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "4 Deck".to_owned(),
@@ -1733,6 +1812,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 4,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "6 Deck".to_owned(),
@@ -1744,6 +1824,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 6,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Club".to_owned(),
@@ -1776,6 +1857,7 @@ pub fn workspaces() -> Vec<Workspace> {
             // deck count stays this arrangement's four.
             layout: "Starter".to_owned(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Mobile DJ".to_owned(),
@@ -1804,6 +1886,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Wedding / Event".to_owned(),
@@ -1833,6 +1916,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Open Format".to_owned(),
@@ -1862,6 +1946,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 4,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Latin / Caribbean".to_owned(),
@@ -1892,6 +1977,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Scratch / Turntablism".to_owned(),
@@ -1914,6 +2000,7 @@ pub fn workspaces() -> Vec<Workspace> {
             // not on taken off the screen they want.
             layout: "Scratch".to_owned(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Stem Performance".to_owned(),
@@ -1930,6 +2017,7 @@ pub fn workspaces() -> Vec<Workspace> {
             // rather than a readout.
             layout: "Stem Performance".to_owned(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Mashup / Remix".to_owned(),
@@ -1948,6 +2036,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 4,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Preparation".to_owned(),
@@ -1976,6 +2065,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Set Planning".to_owned(),
@@ -2004,6 +2094,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Practice / Learning".to_owned(),
@@ -2032,6 +2123,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         // §5B's autopilot supervisory mode: "performance display becomes
         // simplified and emphasizes: current, next, transition, room response,
@@ -2093,6 +2185,7 @@ pub fn workspaces() -> Vec<Workspace> {
             // composition describes a deck, not the DJ in front of it.
             layout: "Starter".to_owned(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Read the room".to_owned(),
@@ -2123,6 +2216,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Minimal".to_owned(),
@@ -2134,6 +2228,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "High Contrast".to_owned(),
@@ -2145,6 +2240,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Laptop Compact".to_owned(),
@@ -2159,6 +2255,7 @@ pub fn workspaces() -> Vec<Workspace> {
             // is the one §48's laptop mode is about the machine behind.
             layout: "Performance".to_owned(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Controller Focus".to_owned(),
@@ -2177,6 +2274,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "CDJ / External Mixer".to_owned(),
@@ -2195,6 +2293,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
         Workspace {
             name: "Karaoke / MC".to_owned(),
@@ -2223,6 +2322,7 @@ pub fn workspaces() -> Vec<Workspace> {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         },
     ]
 }
@@ -2410,6 +2510,8 @@ pub fn resolve(workspace: &Workspace) -> Resolved {
     // nobody can diff.
     out.locked.sort_unstable();
     out.locked.dedup();
+
+    out.docks = out.docks.bounded(&mut notes);
 
     let permits = out.permits();
     Resolved {
@@ -3874,6 +3976,7 @@ mod tests {
             decks: 2,
             layout: String::new(),
             locked: Vec::new(),
+            docks: DockSizes::default(),
         }
     }
 
@@ -3912,6 +4015,88 @@ mod tests {
         assert_eq!(out.workspace.surfaces.len(), 1);
         assert_eq!(out.notes.len(), 1);
         assert!(out.notes[0].contains("holodeck"));
+    }
+
+    /// §120: **a dock the DJ sized keeps its size**, through the resolver and
+    /// through the file -- and a workspace nobody sized writes nothing, so
+    /// every arrangement saved before docks could be sized reads as it did.
+    #[test]
+    fn a_dock_the_dj_sized_is_kept_and_an_unsized_one_writes_nothing() {
+        let mut workspace = workspace_with(vec![place("library", Dock::Left)]);
+        workspace.docks = DockSizes {
+            left: Some(520),
+            right: None,
+            bottom: Some(300),
+        };
+        let out = resolve(&workspace);
+        assert_eq!(out.workspace.docks, workspace.docks);
+        assert!(out.notes.is_empty(), "{:?}", out.notes);
+
+        let written = serde_json::to_value(&out.workspace).expect("it serialises");
+        assert_eq!(
+            written["docks"],
+            serde_json::json!({ "left": 520, "bottom": 300 })
+        );
+        let read: Workspace = serde_json::from_value(written).expect("it reads back");
+        assert_eq!(read.docks, workspace.docks);
+
+        let plain = serde_json::to_value(resolve(&workspace_with(Vec::new())).workspace)
+            .expect("it serialises");
+        assert!(
+            plain.get("docks").is_none(),
+            "an unsized workspace wrote {plain}"
+        );
+        let mut old = plain;
+        old.as_object_mut().expect("an object").remove("docks");
+        let read: Workspace = serde_json::from_value(old).expect("an old file still reads");
+        assert!(read.docks.is_empty());
+    }
+
+    /// The interface's live drag stops where the resolver will put the saved
+    /// size. It repeats the bounds so a drag does not run past them and then
+    /// snap back when the save is answered; this holds the two spellings to
+    /// one number each.
+    #[test]
+    fn the_interface_stops_a_dock_drag_where_the_resolver_will() {
+        let app = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../ui/src/App.svelte"
+        ))
+        .expect("`App.svelte` is in the tree");
+        for (name, (least, most)) in [
+            ("DOCK_SIDE", DockSizes::SIDE),
+            ("DOCK_BOTTOM", DockSizes::BOTTOM),
+        ] {
+            let spelled = format!("const {name} = [{least}, {most}];");
+            assert!(
+                app.contains(&spelled),
+                "`App.svelte` does not say `{spelled}`: its live drag and \
+                 `DockSizes` disagree about where a dock stops"
+            );
+        }
+    }
+
+    /// A dock dragged past what is usable opens at the edge of what is, and
+    /// the notes say so -- the same rule as a panel given less than it needs.
+    #[test]
+    fn a_dock_sized_past_its_bounds_opens_inside_them_and_says_so() {
+        let mut workspace = workspace_with(Vec::new());
+        workspace.docks = DockSizes {
+            left: Some(40),
+            right: Some(5_000),
+            bottom: Some(60),
+        };
+        let out = resolve(&workspace);
+        assert_eq!(
+            out.workspace.docks,
+            DockSizes {
+                left: Some(DockSizes::SIDE.0),
+                right: Some(DockSizes::SIDE.1),
+                bottom: Some(DockSizes::BOTTOM.0),
+            }
+        );
+        assert_eq!(out.notes.len(), 3, "{:?}", out.notes);
+        assert!(out.notes[0].contains("left dock was given 40px"));
     }
 
     #[test]

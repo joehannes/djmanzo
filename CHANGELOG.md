@@ -31,6 +31,10 @@ Versioning follows semver, with one project-specific convention:
   the same button, or as soon as you let go of anything else (the
   crossfader included, which keeps working). A double-click on a panel's
   resize edge gives it back its own size.
+- **Size the docks themselves.** Drag the gap between a side dock and the
+  decks to make the side panels wider or narrower, or the gap above the
+  bottom dock to make it taller; double-click the gap for the default again.
+  The size is kept, and switching activity keeps it too.
 - **Fixed: a click on the volume fader could take the assistant's
   suggestion.** With a planned transition's suggestion showing, a click on
   the volume fader or the filter knob sent the suggested value (the volume

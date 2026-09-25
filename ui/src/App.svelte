@@ -72,6 +72,7 @@
     type DensityBand,
     setCockpitWorkspace,
     type Dock,
+    type DockSizes,
     type Layout,
     type Placed,
     type SurfacePlacement,
@@ -531,6 +532,107 @@
   const MIN_SURFACE = 160;
 
   /**
+   * §120: a dock's own size, dragged from the edge that faces the stage.
+   *
+   * A panel could be resized along its dock, but the dock was a share of the
+   * window -- a side dock 30 % of it, between 320 and 520 px -- and the DJ
+   * had no say. The grip is the gap between the dock and the stage: dragging
+   * towards the stage grows the dock, a double-click gives it back its own
+   * share, and the size is the workspace's (`cockpit::DockSizes`), bounded by
+   * Rust. The bounds are Rust's too, repeated here only so the live drag
+   * stops where the saved size will; a Rust test holds the two spellings the
+   * same.
+   */
+  const DOCK_SIDE = [280, 960];
+  const DOCK_BOTTOM = [140, 720];
+
+  type DockName = "left" | "right" | "bottom";
+
+  let dockEls = $state<Record<DockName, HTMLElement | undefined>>({
+    left: undefined,
+    right: undefined,
+    bottom: undefined,
+  });
+  let dockDrag = $state<{ dock: DockName; from: number; was: number } | null>(null);
+
+  /**
+   * The dock's size as a style, when the DJ has set one -- and not while
+   * every panel in it is folded, because a folded dock gives its room up and
+   * a stored size would hold it open as a blank.
+   */
+  function dockStyle(dock: DockName, placed: SurfacePlacement[]): string {
+    const size = workspace?.docks?.[dock];
+    if (size == null) return "";
+    if (placed.every((p) => p.collapsed)) return "";
+    return dock === "bottom" ? `flex: 0 0 ${size}px; min-height: 0;` : `flex: 0 0 ${size}px;`;
+  }
+
+  async function setDocks(docks: DockSizes) {
+    if (!workspace) return;
+    const next = { ...workspace, docks };
+    workspace = next;
+    try {
+      const resolved = await setCockpitWorkspace(next);
+      workspace = resolved.workspace;
+      workspaceNotes = resolved.notes;
+      permits = resolved.permits;
+    } catch {
+      // Kept as drawn, for the reason `toggleSurface` gives.
+    }
+  }
+
+  function startDockResize(event: PointerEvent, dock: DockName) {
+    const el = dockEls[dock];
+    if (!el) return;
+    dockDrag = {
+      dock,
+      from: dock === "bottom" ? event.clientY : event.clientX,
+      was: dock === "bottom" ? el.offsetHeight : el.offsetWidth,
+    };
+    try {
+      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    } catch {
+      // Without capture the drag still works while over the grip.
+    }
+    event.preventDefault();
+  }
+
+  function onDockResize(event: PointerEvent, dock: DockName) {
+    if (dockDrag?.dock !== dock) return;
+    const el = dockEls[dock];
+    if (!el) return;
+    const now = dock === "bottom" ? event.clientY : event.clientX;
+    // Towards the stage grows the dock: right for the left one, left for the
+    // right one, up for the bottom one.
+    const moved = dock === "left" ? now - dockDrag.from : dockDrag.from - now;
+    const [least, most] = dock === "bottom" ? DOCK_BOTTOM : DOCK_SIDE;
+    const size = Math.max(least, Math.min(most, Math.round(dockDrag.was + moved)));
+    el.style.setProperty("flex", `0 0 ${size}px`);
+    if (dock === "bottom") el.style.setProperty("min-height", "0");
+  }
+
+  function endDockResize(event: PointerEvent, dock: DockName) {
+    if (dockDrag?.dock !== dock) return;
+    dockDrag = null;
+    try {
+      (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+    } catch {
+      // Never captured, or already released.
+    }
+    const el = dockEls[dock];
+    if (!el) return;
+    const size = Math.round(dock === "bottom" ? el.offsetHeight : el.offsetWidth);
+    void setDocks({ ...(workspace?.docks ?? {}), [dock]: size });
+  }
+
+  function resetDock(dock: DockName) {
+    const el = dockEls[dock];
+    el?.style.removeProperty("flex");
+    el?.style.removeProperty("min-height");
+    void setDocks({ ...(workspace?.docks ?? {}), [dock]: null });
+  }
+
+  /**
    * §3's *temporarily surfaced*, and §120's temporary windows: *"temporary
    * windows can take a lot of space for the focused moment and then get out
    * of the way"*.
@@ -644,8 +746,16 @@
     // names loses the preset's version rather than the DJ's — which is the
     // whole of what pinning it said.
     const kept = (workspace?.surfaces ?? []).filter((p) => p.pinned);
+    // §120: the docks keep the size the DJ dragged them to, unless the
+    // arrangement names its own. How wide the side panels are is about the
+    // DJ's screen, not the activity -- the reason density stays with the
+    // window -- and an activity switch that snapped a dragged dock back is a
+    // size a DJ has to set again every time they change what they are doing.
+    const askedDocks = asked.docks ?? {};
+    const namesDocks = Object.values(askedDocks).some((size) => size != null);
     const preset = {
       ...asked,
+      docks: namesDocks ? askedDocks : (workspace?.docks ?? {}),
       surfaces: [
         ...kept,
         ...asked.surfaces.filter(
@@ -3014,6 +3124,29 @@
     </div>
   {/snippet}
 
+  {#snippet dockGrip(dock: DockName)}
+    <!--
+      §120: the gap between a dock and the stage is the handle for the
+      dock's size. The gap rather than a bar of its own, so the layout is
+      exactly as it was and the handle is as wide as the space a hand
+      already aims between the two.
+    -->
+    <div
+      class="dock-grip {dock === 'bottom' ? 'across' : 'along'}"
+      class:dragging={dockDrag?.dock === dock}
+      role="separator"
+      aria-label="Resize the {dock} dock"
+      aria-orientation={dock === "bottom" ? "horizontal" : "vertical"}
+      title="Drag to size the {dock} panels; double-click for their own share"
+      data-dock-grip={dock}
+      onpointerdown={(e) => startDockResize(e, dock)}
+      onpointermove={(e) => onDockResize(e, dock)}
+      onpointerup={(e) => endDockResize(e, dock)}
+      onpointercancel={(e) => endDockResize(e, dock)}
+      ondblclick={() => resetDock(dock)}
+    ></div>
+  {/snippet}
+
   {#snippet surface(placement: SurfacePlacement)}
     <!--
       A titled, closable frame around every surface.
@@ -3193,11 +3326,12 @@
 
   <div class="cockpit">
   {#if leftDock.length > 0}
-    <div class="dock side left">
+    <div class="dock side left" bind:this={dockEls.left} style={dockStyle("left", leftDock)}>
       {#each leftDock as placement (placement.surface)}
         {@render surface(placement)}
       {/each}
     </div>
+    {@render dockGrip("left")}
   {/if}
 
   <div class="middle">
@@ -3302,7 +3436,8 @@
   {/if}
 
   {#if bottomDock.length > 0}
-    <div class="dock bottom">
+    {#if !bottomDock.every((p) => p.collapsed)}{@render dockGrip("bottom")}{/if}
+    <div class="dock bottom" bind:this={dockEls.bottom} style={dockStyle("bottom", bottomDock)}>
       {#each bottomDock as placement (placement.surface)}
         {@render surface(placement)}
       {/each}
@@ -3319,7 +3454,8 @@
   {/if}
 
   {#if rightDock.length > 0}
-    <div class="dock side right">
+    {@render dockGrip("right")}
+    <div class="dock side right" bind:this={dockEls.right} style={dockStyle("right", rightDock)}>
       {#each rightDock as placement (placement.surface)}
         {@render surface(placement)}
       {/each}
@@ -3956,6 +4092,57 @@
     border-color: var(--selected);
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
     animation: panel-in var(--motion-enter) var(--ease);
+  }
+
+  /*
+    §120: the dock's own size, from the gap beside it. Laid over the gap by
+    negative margins as wide as itself, so the space between the dock and the
+    stage stays exactly the cockpit's gap and the grip is all of it.
+  */
+  .dock-grip {
+    flex: none;
+    position: relative;
+    z-index: 2;
+    touch-action: none;
+  }
+
+  .dock-grip.along {
+    width: 0.9rem;
+    margin-inline: -0.9rem;
+    cursor: ew-resize;
+  }
+
+  .dock-grip.across {
+    height: 0.9rem;
+    margin-block: -0.9rem;
+    cursor: ns-resize;
+  }
+
+  .dock-grip::after {
+    content: "";
+    position: absolute;
+    border-radius: 2px;
+    background: transparent;
+  }
+
+  .dock-grip.along::after {
+    top: 20%;
+    bottom: 20%;
+    left: calc(50% - 1.5px);
+    width: 3px;
+  }
+
+  .dock-grip.across::after {
+    left: 20%;
+    right: 20%;
+    top: calc(50% - 1.5px);
+    height: 3px;
+  }
+
+  .dock-grip:hover::after,
+  .dock-grip.dragging::after {
+    background: var(--accent);
+    opacity: 0.55;
   }
 
   /*
