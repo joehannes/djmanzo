@@ -37,6 +37,7 @@ pub mod columns;
 pub mod commands;
 pub mod context;
 pub mod control;
+pub mod crowd;
 pub mod dashboard;
 pub mod decide;
 pub mod downloads;
@@ -650,6 +651,10 @@ pub fn run() {
             commands::kit_add,
             commands::kit_forget,
             commands::kit_send,
+            commands::crowd_view,
+            commands::crowd_add,
+            commands::crowd_import,
+            commands::crowd_settings_save,
             commands::plan_transition,
             commands::transition_arm,
             commands::transition_current,

@@ -402,6 +402,33 @@
     ]
   },
   {
+    "name": "crowd",
+    "title": "Crowd",
+    "about": "What the room and the stream said, placed on the records and moments they were about, read back against your goals.",
+    "category": "assistant",
+    "least": [
+      300,
+      240
+    ],
+    "prefer": [
+      420,
+      560
+    ],
+    "priority": 45,
+    "performance_critical": false,
+    "detachable": true,
+    "stackable": true,
+    "collapsible": true,
+    "contextual": false,
+    "home": "right",
+    "docks": [
+      "left",
+      "right",
+      "bottom",
+      "detached"
+    ]
+  },
+  {
     "name": "kit",
     "title": "Press kit",
     "about": "Your details in one place -- bio, fees, links, photos -- and the card, the booking answer, the post or the whole kit, ready to send.",

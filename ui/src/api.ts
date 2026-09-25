@@ -5262,3 +5262,107 @@ export function kitUrl(file: string, version = 0): string {
   const path = `${encodeURIComponent(file)}?v=${version}`;
   return navigator.userAgent.includes("Windows") ? `http://kit.localhost/${path}` : `kit://localhost/${path}`;
 }
+
+// -- §119: the crowd's reactions ------------------------------------------------
+
+export type CrowdSource = "room" | "youtube" | "tiktok" | "other";
+export type CrowdAbout = "moment" | "track" | "request" | "greeting" | "other";
+export type CrowdLean = "up" | "down" | "neither";
+export type CrowdPart = "drop" | "breakdown" | "voice" | "record";
+export type CrowdMeasure = "warmth" | "busiest-minute" | "moments" | "asked" | "requests" | "down";
+
+export interface CrowdReaction {
+  /** Unix seconds. */
+  at: number;
+  source: CrowdSource;
+  who: string;
+  text: string;
+}
+
+export interface CrowdPlayed {
+  at: number;
+  track_id: string;
+  title: string;
+  artist: string;
+  drops: number[];
+  breakdowns: [number, number][];
+  vocal: number | null;
+}
+
+/** `dj_app::crowd::Placed`: a reaction, read and put on the music. */
+export interface CrowdPlaced {
+  reaction: CrowdReaction;
+  about: CrowdAbout;
+  lean: CrowdLean;
+  /** Index into `played`, or null before the first record came in. */
+  record: number | null;
+  into: number;
+  part: CrowdPart;
+  part_at: number | null;
+}
+
+export interface CrowdMoment {
+  part: CrowdPart;
+  at: number;
+  count: number;
+}
+
+export interface CrowdReception {
+  track_id: string;
+  title: string;
+  artist: string;
+  reactions: number;
+  up: number;
+  down: number;
+  asked: number;
+  moments: CrowdMoment[];
+}
+
+export interface CrowdSummary {
+  reactions: number;
+  busiest_minute: number;
+  up: number;
+  down: number;
+  warmth: number | null;
+  moments: number;
+  asked: number;
+  requests: number;
+  greetings: number;
+  by_source: [CrowdSource, number][];
+  records: CrowdReception[];
+  pace: number[];
+}
+
+export interface CrowdGoal {
+  name: string;
+  measure: CrowdMeasure;
+  target: number;
+  at_most: boolean;
+}
+
+export interface CrowdAnswered {
+  goal: CrowdGoal;
+  value: number | null;
+  met: boolean | null;
+}
+
+/** `commands::CrowdView`. */
+export interface CrowdView {
+  session: string;
+  current: boolean;
+  sessions: string[];
+  delay: number;
+  played: CrowdPlayed[];
+  placed: CrowdPlaced[];
+  summary: CrowdSummary;
+  goals: CrowdAnswered[];
+  measures: { measure: CrowdMeasure; title: string }[];
+}
+
+export const crowdView = (session: string | null) => invoke<CrowdView>("crowd_view", { session });
+export const crowdAdd = (text: string, who: string | null, source: CrowdSource) =>
+  invoke<CrowdView>("crowd_add", { text, who, source });
+export const crowdImport = (session: string | null, path: string, start: number, source: CrowdSource) =>
+  invoke<CrowdView>("crowd_import", { session, path, start, source });
+export const crowdSettingsSave = (session: string | null, settings: { delay: number; goals: CrowdGoal[] }) =>
+  invoke<CrowdView>("crowd_settings_save", { session, settings });

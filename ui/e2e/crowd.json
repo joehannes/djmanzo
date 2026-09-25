@@ -1,0 +1,256 @@
+{
+  "view": {
+    "current": true,
+    "delay": 8,
+    "goals": [
+      {
+        "goal": {
+          "at_most": false,
+          "measure": "warmth",
+          "name": "Everyone was with me",
+          "target": 0.85
+        },
+        "met": false,
+        "value": 0.75
+      },
+      {
+        "goal": {
+          "at_most": true,
+          "measure": "down",
+          "name": "Few complaints",
+          "target": 3.0
+        },
+        "met": true,
+        "value": 1.0
+      },
+      {
+        "goal": {
+          "at_most": false,
+          "measure": "requests",
+          "name": "Requests came in",
+          "target": 3.0
+        },
+        "met": false,
+        "value": 1.0
+      }
+    ],
+    "measures": [
+      {
+        "measure": "warmth",
+        "title": "Share of reactions that were warm"
+      },
+      {
+        "measure": "busiest-minute",
+        "title": "Reactions in the busiest minute"
+      },
+      {
+        "measure": "moments",
+        "title": "Reactions to a moment in the music"
+      },
+      {
+        "measure": "asked",
+        "title": "Times people asked what was playing"
+      },
+      {
+        "measure": "requests",
+        "title": "Requests"
+      },
+      {
+        "measure": "down",
+        "title": "Reactions that were cold"
+      }
+    ],
+    "placed": [
+      {
+        "about": "greeting",
+        "into": 2.0,
+        "lean": "neither",
+        "part": "record",
+        "part_at": null,
+        "reaction": {
+          "at": 1790000010,
+          "source": "youtube",
+          "text": "hello from Porto",
+          "who": "Ana"
+        },
+        "record": 0
+      },
+      {
+        "about": "moment",
+        "into": 62.0,
+        "lean": "up",
+        "part": "drop",
+        "part_at": 60.0,
+        "reaction": {
+          "at": 1790000070,
+          "source": "youtube",
+          "text": "THIS DROP 🔥",
+          "who": "Ben"
+        },
+        "record": 0
+      },
+      {
+        "about": "moment",
+        "into": 63.0,
+        "lean": "up",
+        "part": "drop",
+        "part_at": 60.0,
+        "reaction": {
+          "at": 1790000071,
+          "source": "youtube",
+          "text": "🔥🔥🔥",
+          "who": "Cleo"
+        },
+        "record": 0
+      },
+      {
+        "about": "moment",
+        "into": 65.0,
+        "lean": "up",
+        "part": "drop",
+        "part_at": 60.0,
+        "reaction": {
+          "at": 1790000073,
+          "source": "tiktok",
+          "text": "insane",
+          "who": "Dan"
+        },
+        "record": 0
+      },
+      {
+        "about": "track",
+        "into": 72.0,
+        "lean": "neither",
+        "part": "record",
+        "part_at": null,
+        "reaction": {
+          "at": 1790000080,
+          "source": "youtube",
+          "text": "what song is this??",
+          "who": "Eve"
+        },
+        "record": 0
+      },
+      {
+        "about": "other",
+        "into": 142.0,
+        "lean": "down",
+        "part": "record",
+        "part_at": null,
+        "reaction": {
+          "at": 1790000150,
+          "source": "youtube",
+          "text": "boring, skip",
+          "who": "Finn"
+        },
+        "record": 0
+      },
+      {
+        "about": "request",
+        "into": 52.0,
+        "lean": "neither",
+        "part": "record",
+        "part_at": null,
+        "reaction": {
+          "at": 1790000260,
+          "source": "room",
+          "text": "play Bachata Rosa",
+          "who": ""
+        },
+        "record": 1
+      }
+    ],
+    "played": [
+      {
+        "artist": "Juan Luis Guerra",
+        "at": 1790000000,
+        "breakdowns": [
+          [
+            40.0,
+            60.0
+          ]
+        ],
+        "drops": [
+          60.0
+        ],
+        "title": "Ojalá Que Llueva Café",
+        "track_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "vocal": 20.0
+      },
+      {
+        "artist": "Juan Luis Guerra",
+        "at": 1790000200,
+        "breakdowns": [],
+        "drops": [],
+        "title": "Burbujas de Amor",
+        "track_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "vocal": null
+      }
+    ],
+    "session": "session-1790000000",
+    "sessions": [
+      "session-1790000000",
+      "session-1789913600"
+    ],
+    "summary": {
+      "asked": 1,
+      "busiest_minute": 4,
+      "by_source": [
+        [
+          "youtube",
+          5
+        ],
+        [
+          "tiktok",
+          1
+        ],
+        [
+          "room",
+          1
+        ]
+      ],
+      "down": 1,
+      "greetings": 1,
+      "moments": 3,
+      "pace": [
+        1,
+        4,
+        1,
+        0,
+        1
+      ],
+      "reactions": 7,
+      "records": [
+        {
+          "artist": "Juan Luis Guerra",
+          "asked": 1,
+          "down": 1,
+          "moments": [
+            {
+              "at": 60.0,
+              "count": 3,
+              "part": "drop"
+            }
+          ],
+          "reactions": 6,
+          "title": "Ojalá Que Llueva Café",
+          "track_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "up": 3
+        },
+        {
+          "artist": "Juan Luis Guerra",
+          "asked": 0,
+          "down": 0,
+          "moments": [],
+          "reactions": 1,
+          "title": "Burbujas de Amor",
+          "track_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "up": 0
+        }
+      ],
+      "requests": 1,
+      "up": 3,
+      "warmth": 0.75
+    }
+  }
+}

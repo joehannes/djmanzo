@@ -130,6 +130,8 @@ import decide from "./decide.json" with { type: "json" };
 import guides from "./guides.json" with { type: "json" };
 /** §118d's press kit, as Rust answers it (`tests/e2e_fixture.rs`). */
 import kit from "./kit.json" with { type: "json" };
+/** §119's crowd, as Rust reads a night of it (`tests/e2e_fixture.rs`). */
+import crowd from "./crowd.json" with { type: "json" };
 /**
  * §40's twenty-six and which half the assistant sees, generated from
  * `dj_app::sight::ALL` by the same Rust test.
@@ -294,6 +296,7 @@ export const ANSWERS: Record<string, unknown> = {
   kit_view: kit.full,
   kit_compose: kit.wedding,
   kit_refused: kit.refused,
+  crowd_view: crowd.view,
   learned_taste: { favourites: [], plays: 0, confident: false },
   // §13/§14. Two gestures that reached four occurrences in one phase, with the
   // sentences Rust writes — never "you like", always what was seen and when.
@@ -1866,6 +1869,23 @@ export async function openShell(
           // the occasions are the fixture's, because the words are Rust's
           // and are tested there -- or with Rust's refusal of the one answer
           // the fixture has one for.
+          // §119: the crowd's writes, recorded; what is read and placed is
+          // Rust's (the fixture), because the rules are Rust's and are
+          // tested there. Goals saved come back unanswered, as a night that
+          // cannot yet say.
+          if (cmd === "crowd_view" || cmd === "crowd_add" || cmd === "crowd_import" || cmd === "crowd_settings_save") {
+            ((win.__crowdCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args)) });
+            const view = answers.crowd_view as Record<string, unknown>;
+            if (cmd === "crowd_settings_save") {
+              const settings = args.settings as { delay: number; goals: unknown[] };
+              return Promise.resolve({
+                ...view,
+                delay: settings.delay,
+                goals: settings.goals.map((goal) => ({ goal, value: null, met: null })),
+              });
+            }
+            return Promise.resolve(view);
+          }
           // The file dialog answers with the path a test put in
           // `__dialogAnswer`, or with nothing, as a dialog cancelled does.
           if (cmd === "plugin:dialog|open") {

@@ -1013,6 +1013,28 @@ pub fn surfaces() -> &'static [Surface] {
             docks: SIDE_OR_BOTTOM,
         },
         Surface {
+            name: "crowd",
+            title: "Crowd",
+            // §119: what the room and the stream said, on the records they
+            // said it about. `crate::crowd` reads it; this is where it is
+            // drawn, live and afterwards.
+            about: "What the room and the stream said, placed on the records and \
+                    moments they were about, read back against your goals.",
+            category: Category::Assistant,
+            least: (300, 240),
+            prefer: (420, 560),
+            priority: 45,
+            performance_critical: false,
+            detachable: true,
+            stackable: true,
+            collapsible: true,
+            // Opened by the DJ: comments arriving must not open a panel by
+            // themselves in the middle of a mix.
+            contextual: false,
+            home: Dock::Right,
+            docks: SIDE_OR_BOTTOM,
+        },
+        Surface {
             name: "kit",
             title: "Press kit",
             // §118d: the DJ's own details in one place, and what to send

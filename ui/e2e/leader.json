@@ -582,6 +582,13 @@
           "run": "surface kit",
           "children": [],
           "mine": false
+        },
+        {
+          "key": "w",
+          "label": "Crowd",
+          "run": "surface crowd",
+          "children": [],
+          "mine": false
         }
       ],
       "mine": false

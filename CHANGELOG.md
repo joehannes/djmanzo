@@ -50,6 +50,17 @@ Versioning follows semver, with one project-specific convention:
   you play next, and the whole kit as one page. djmanzo opens your mail,
   WhatsApp, X, Bluesky or Threads with the words already in it, or copies
   them — you send.
+- **What the crowd said, on the music.** A *Crowd* panel (Space o w)
+  gathers the reactions of a night — the room's requests, reactions you
+  note, a stream's chat brought in as a log — and reads each: about the
+  moment, about the record ("what song is this?"), a request, a hello; warm
+  or cold. Each is placed on the record the room was hearing, allowing for
+  the stream's delay, and a cheer on the drop is placed on the drop. The
+  night reads back as numbers, a reactions-per-minute chart, and the
+  records and moments that drew the most — against goals you set, with the
+  usual ones for each kind of night offered. A night's reactions are kept
+  in a file of their own. Streaming itself still goes through OBS; live
+  YouTube and TikTok chat are not read yet.
 - The set-up lists now name a theme by its name (*Theme: Beach Sunset*)
   and the waveform as *9 of 22 layers*.
 

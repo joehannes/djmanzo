@@ -1484,3 +1484,101 @@ fn the_browser_fixture_has_the_press_kit() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
     );
 }
+
+/// §119: a night's reactions, as Rust reads, places and answers them.
+///
+/// Two records -- the first with a drop, a breakdown and a voice entry --
+/// and what was said over them: a burst at the drop, a question about the
+/// record, a cold word, a request from the room, a hello. The browser is
+/// handed Rust's reading of every one, its summary and the wedding's usual
+/// goals answered, so what the panel draws is Rust's and not the panel's.
+#[test]
+fn the_browser_fixture_has_a_nights_crowd() {
+    use dj_app::commands::{CrowdMeasure, CrowdView};
+    use dj_app::crowd::{self, Measure, Played, Reaction, Source};
+    use dj_app::setting::Setting;
+
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/crowd.json");
+    let start = 1_790_000_000;
+    let played = vec![
+        Played {
+            at: start,
+            track_id: "a".repeat(64),
+            title: "Ojalá Que Llueva Café".to_owned(),
+            artist: "Juan Luis Guerra".to_owned(),
+            drops: vec![60.0],
+            breakdowns: vec![(40.0, 60.0)],
+            vocal: Some(20.0),
+        },
+        Played {
+            at: start + 200,
+            track_id: "b".repeat(64),
+            title: "Burbujas de Amor".to_owned(),
+            artist: "Juan Luis Guerra".to_owned(),
+            drops: Vec::new(),
+            breakdowns: Vec::new(),
+            vocal: None,
+        },
+    ];
+    let said = |at: i64, source: Source, who: &str, text: &str| Reaction {
+        at: start + at,
+        source,
+        who: who.to_owned(),
+        text: text.to_owned(),
+    };
+    let reactions = vec![
+        said(10, Source::YouTube, "Ana", "hello from Porto"),
+        said(70, Source::YouTube, "Ben", "THIS DROP 🔥"),
+        said(71, Source::YouTube, "Cleo", "🔥🔥🔥"),
+        said(73, Source::TikTok, "Dan", "insane"),
+        said(80, Source::YouTube, "Eve", "what song is this??"),
+        said(150, Source::YouTube, "Finn", "boring, skip"),
+        said(260, Source::Room, "", "play Bachata Rosa"),
+    ];
+    let delay = 8;
+    let placed = crowd::place(&reactions, &played, delay);
+    let summary = crowd::summary(&placed, &played);
+    let goals = crowd::answer(&crowd::goals_for(Some(Setting::Wedding)), &summary);
+    let view = CrowdView {
+        // In the form `AppState` names a run's session: when it began.
+        session: format!("session-{start}"),
+        current: true,
+        sessions: vec![
+            format!("session-{start}"),
+            format!("session-{}", start - 86_400),
+        ],
+        delay,
+        played,
+        placed,
+        summary,
+        goals,
+        measures: Measure::ALL
+            .into_iter()
+            .map(|measure| CrowdMeasure {
+                measure,
+                title: measure.title(),
+            })
+            .collect(),
+    };
+    let fixture = serde_json::json!({ "view": view });
+    let text = serde_json::to_string_pretty(&fixture).expect("the crowd serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{text}\n")).expect("writing the crowd");
+        return;
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored crowd is JSON");
+    assert_eq!(
+        stored, fixture,
+        "ui/e2e/crowd.json is stale; regenerate it with \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
+    );
+}

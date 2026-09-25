@@ -231,6 +231,13 @@
             "key": null,
             "label": "Press kit",
             "run": "surface kit"
+          },
+          {
+            "about": "What the room and the stream said, placed on the records and moments they were about, read back against your goals.",
+            "id": "surface:crowd",
+            "key": null,
+            "label": "Crowd",
+            "run": "surface crowd"
           }
         ],
         "title": "Panels"
@@ -860,6 +867,13 @@
             "key": null,
             "label": "Press kit",
             "run": "surface kit"
+          },
+          {
+            "about": "What the room and the stream said, placed on the records and moments they were about, read back against your goals.",
+            "id": "surface:crowd",
+            "key": null,
+            "label": "Crowd",
+            "run": "surface crowd"
           }
         ],
         "title": "Panels"
@@ -1489,6 +1503,13 @@
             "key": null,
             "label": "Press kit",
             "run": "surface kit"
+          },
+          {
+            "about": "What the room and the stream said, placed on the records and moments they were about, read back against your goals.",
+            "id": "surface:crowd",
+            "key": null,
+            "label": "Crowd",
+            "run": "surface crowd"
           }
         ],
         "title": "Panels"

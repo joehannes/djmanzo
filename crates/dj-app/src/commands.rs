@@ -16424,3 +16424,284 @@ pub fn kit_send(
         .map_err(|e| format!("could not open {}: {e}", way.name()))?;
     Ok(None)
 }
+
+/// §119: a session's reactions, placed on its records and read back.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CrowdView {
+    pub session: String,
+    /// Whether it is this run's session, which is still being added to.
+    pub current: bool,
+    /// Every session with reactions kept, and this one, newest first.
+    pub sessions: Vec<String>,
+    /// How far behind the music the reactions arrive, in seconds.
+    pub delay: i64,
+    pub played: Vec<crate::crowd::Played>,
+    pub placed: Vec<crate::crowd::Placed>,
+    pub summary: crate::crowd::Summary,
+    pub goals: Vec<crate::crowd::Answered>,
+    /// What a goal can measure, with what each is called.
+    pub measures: Vec<CrowdMeasure>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CrowdMeasure {
+    pub measure: crate::crowd::Measure,
+    pub title: &'static str,
+}
+
+/// The DJ's own settings for reading a crowd: the stream's delay, and the
+/// goals asked of a night.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CrowdSettings {
+    pub delay: i64,
+    pub goals: Vec<crate::crowd::Goal>,
+}
+
+/// A stream is commonly several seconds behind the room; eight is where
+/// reactions to a drop land on the drop and not on the bar after it.
+const CROWD_DELAY: i64 = 8;
+
+fn crowd_settings(state: &AppState, config: &std::path::Path) -> CrowdSettings {
+    std::fs::read_to_string(crate::crowd::folder(config).join("goals.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_else(|| {
+            // The usual questions for tonight's kind of night, when a
+            // prepared one is being played.
+            let night = events_dir(state)
+                .ok()
+                .and_then(|dir| {
+                    let id = crate::gig::live(&dir)?;
+                    crate::gig::list(&dir).into_iter().find(|g| g.id == id)
+                })
+                .and_then(|gig| gig.setting);
+            CrowdSettings {
+                delay: CROWD_DELAY,
+                goals: crate::crowd::goals_for(night),
+            }
+        })
+}
+
+/// The records a session played, oldest first, with the parts of each the
+/// analysis knows, in seconds.
+fn crowd_played(state: &AppState, session: &str) -> Vec<crate::crowd::Played> {
+    let Ok(db) = library(state) else {
+        return Vec::new();
+    };
+    let mut history: Vec<_> = db
+        .history(HISTORY_LIMIT)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|record| record.session_id.as_deref() == Some(session))
+        .collect();
+    history.sort_by_key(|record| record.played_at);
+    history
+        .into_iter()
+        .map(|record| {
+            let id = dj_core::TrackId::from_hex(&record.track_id);
+            let rate = id
+                .and_then(|id| db.track(id).ok().flatten())
+                .map(|track| track.sample_rate.as_f64())
+                .filter(|rate| *rate > 0.0);
+            let found = id.and_then(|id| state.analysis().cached(&id));
+            let seconds = |frames: f64| rate.map(|rate| frames / rate);
+            let (drops, breakdowns, vocal) = match (&found, rate) {
+                (Some(found), Some(_)) => (
+                    found
+                        .trajectory
+                        .drops
+                        .iter()
+                        .filter_map(|&f| seconds(f))
+                        .collect(),
+                    found
+                        .trajectory
+                        .breakdowns
+                        .iter()
+                        .filter_map(|span| Some((seconds(span.from)?, seconds(span.to)?)))
+                        .collect(),
+                    found.trajectory.voice_enters.and_then(seconds),
+                ),
+                _ => (Vec::new(), Vec::new(), None),
+            };
+            crate::crowd::Played {
+                at: record.played_at,
+                track_id: record.track_id,
+                title: record.title,
+                artist: record.artist,
+                drops,
+                breakdowns,
+                vocal,
+            }
+        })
+        .collect()
+}
+
+fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView, String> {
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep reactions in yet".to_owned())?;
+    let now = state.session_id();
+    let session = session
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| now.clone());
+    let current = session == now;
+    let settings = crowd_settings(state, &config);
+
+    let mut reactions = crate::crowd::load(&config, &session);
+    // The room's own requests, while the night they were asked in is on.
+    if current {
+        reactions.extend(state.audience().everything().into_iter().map(|ask| {
+            crate::crowd::Reaction {
+                at: i64::try_from(ask.first_asked).unwrap_or(i64::MAX),
+                source: crate::crowd::Source::Room,
+                who: String::new(),
+                // A request by construction, said as one so it is read as one.
+                text: format!("play {}", ask.text),
+            }
+        }));
+        reactions.sort_by_key(|r| r.at);
+    }
+    let played = crowd_played(state, &session);
+    let placed = crate::crowd::place(&reactions, &played, settings.delay);
+    let summary = crate::crowd::summary(&placed, &played);
+    let goals = crate::crowd::answer(&settings.goals, &summary);
+
+    let mut sessions: Vec<(std::time::SystemTime, String)> =
+        std::fs::read_dir(crate::crowd::folder(&config))
+            .map(|dir| {
+                dir.flatten()
+                    .filter_map(|entry| {
+                        let name = entry.file_name().into_string().ok()?;
+                        let id = name.strip_suffix(".jsonl")?.to_owned();
+                        let when = entry.metadata().ok()?.modified().ok()?;
+                        Some((when, id))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+    sessions.sort_by_key(|(when, _)| std::cmp::Reverse(*when));
+    let mut names: Vec<String> = sessions.into_iter().map(|(_, id)| id).collect();
+    names.retain(|id| *id != now);
+    names.insert(0, now);
+
+    Ok(CrowdView {
+        session,
+        current,
+        sessions: names,
+        delay: settings.delay,
+        played,
+        placed,
+        summary,
+        goals,
+        measures: crate::crowd::Measure::ALL
+            .into_iter()
+            .map(|measure| CrowdMeasure {
+                measure,
+                title: measure.title(),
+            })
+            .collect(),
+    })
+}
+
+/// §119: a session's reactions -- this run's when none is named -- placed on
+/// its records and read back against the DJ's goals.
+///
+/// # Errors
+/// No settings folder yet.
+#[tauri::command]
+pub fn crowd_view(
+    state: State<'_, AppState>,
+    session: Option<String>,
+) -> Result<CrowdView, String> {
+    crowd_view_of(&state, session)
+}
+
+/// §119: note a reaction now -- one the DJ saw or heard, or one a source
+/// hands over -- and keep it with this run's session.
+///
+/// # Errors
+/// An empty reaction, or the file system's refusal.
+#[tauri::command]
+pub fn crowd_add(
+    state: State<'_, AppState>,
+    text: String,
+    who: Option<String>,
+    source: crate::crowd::Source,
+) -> Result<CrowdView, String> {
+    let text = text.trim().to_owned();
+    if text.is_empty() {
+        return Err("a reaction needs words".to_owned());
+    }
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep reactions in yet".to_owned())?;
+    let reaction = crate::crowd::Reaction {
+        at: now_seconds(),
+        source,
+        who: who.unwrap_or_default().trim().to_owned(),
+        text,
+    };
+    crate::crowd::append(&config, &state.session_id(), &[reaction])?;
+    crowd_view_of(&state, None)
+}
+
+/// §119: bring in a chat log kept elsewhere, timed from `start` (unix
+/// seconds, when the stream or recording began), into `session`.
+///
+/// # Errors
+/// A file that cannot be read, nothing in it with a time, or the file
+/// system's refusal.
+#[tauri::command]
+pub fn crowd_import(
+    state: State<'_, AppState>,
+    session: Option<String>,
+    path: String,
+    start: i64,
+    source: crate::crowd::Source,
+) -> Result<CrowdView, String> {
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep reactions in yet".to_owned())?;
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+    let reactions = crate::crowd::import(&text, start, source);
+    if reactions.is_empty() {
+        return Err(format!(
+            "{path}: no line reads as a time, a name and a message"
+        ));
+    }
+    let session = session
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| state.session_id());
+    crate::crowd::append(&config, &session, &reactions)?;
+    crowd_view_of(&state, Some(session))
+}
+
+/// §119: keep the DJ's own goals and the stream's delay.
+///
+/// # Errors
+/// A goal with no name, a delay out of reason, or the file system's refusal.
+#[tauri::command]
+pub fn crowd_settings_save(
+    state: State<'_, AppState>,
+    session: Option<String>,
+    settings: CrowdSettings,
+) -> Result<CrowdView, String> {
+    if !(0..=120).contains(&settings.delay) {
+        return Err("a stream's delay is between 0 and 120 seconds".to_owned());
+    }
+    if settings
+        .goals
+        .iter()
+        .any(|g| g.name.trim().is_empty() || !g.target.is_finite())
+    {
+        return Err("a goal needs a name and a number".to_owned());
+    }
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep reactions in yet".to_owned())?;
+    let dir = crate::crowd::folder(&config);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let text = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join("goals.json"), text).map_err(|e| e.to_string())?;
+    crowd_view_of(&state, session)
+}
