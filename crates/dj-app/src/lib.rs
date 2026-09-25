@@ -94,6 +94,7 @@ pub mod transition;
 pub mod uiop;
 pub mod wav;
 pub mod waveform;
+pub mod welcome;
 pub mod whisper;
 pub mod widgets;
 pub mod workers;
@@ -762,6 +763,10 @@ pub fn run() {
             commands::event_tonight,
             commands::live_event,
             commands::set_live_event,
+            commands::welcome_state,
+            commands::welcome_save,
+            commands::welcome_plan,
+            commands::welcome_apply,
             commands::forget_activity,
             commands::activity_suggestion,
             commands::waveform_colouring,

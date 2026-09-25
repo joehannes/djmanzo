@@ -116,6 +116,12 @@ import compositions from "./compositions.json" with { type: "json" };
  */
 import events from "./events.json" with { type: "json" };
 /**
+ * §118b's welcome: Rust's own plan for one DJ, the fresh answers a first run
+ * starts from, and what the set-up hands back -- written by
+ * `tests/e2e_fixture.rs` from `dj_app::welcome`.
+ */
+import welcome from "./welcome.json" with { type: "json" };
+/**
  * §40's twenty-six and which half the assistant sees, generated from
  * `dj_app::sight::ALL` by the same Rust test.
  *
@@ -264,6 +270,12 @@ export const ANSWERS: Record<string, unknown> = {
   // test's top bar would be measured by every layout budget.
   live_event: null,
   event_tonight: events.tonight,
+  // Seen, so the welcome stays shut in every test that is not about it; a
+  // first run is a test saying `seen: false`.
+  welcome_state: { seen: true, answers: welcome.fresh },
+  welcome_plan: welcome.plan,
+  welcome_applied: welcome.applied,
+  welcome_refused: welcome.refused,
   learned_taste: { favourites: [], plays: 0, confident: false },
   // §13/§14. Two gestures that reached four occurrences in one phase, with the
   // sentences Rust writes — never "you like", always what was seen and when.
@@ -2042,6 +2054,42 @@ export async function openShell(
             if (at >= 0) state.activities[at] = mine;
             else state.activities.push(mine);
             return Promise.resolve(redeal(state));
+          }
+          // §118b: the welcome's writes, recorded; applying it keeps the
+          // plan's activities the way `keep_activity` above does.
+          if (cmd === "welcome_save" || cmd === "welcome_plan" || cmd === "welcome_apply") {
+            ((win.__welcomeCalls ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args)) });
+            const given = JSON.parse(JSON.stringify(args.answers ?? {}));
+            // The one answer the fixture has Rust's refusal for.
+            const refused = answers.welcome_refused as { bpm_low: number; bpm_high: number; message: string };
+            if (given.bpm_low === refused.bpm_low && given.bpm_high === refused.bpm_high) {
+              return Promise.reject(refused.message);
+            }
+            if (cmd === "welcome_save") return Promise.resolve(given);
+            const plan = answers.welcome_plan as { activities: { title: string; workspace: string }[] };
+            if (cmd === "welcome_plan") return Promise.resolve(plan);
+            const state = strip();
+            for (const planned of plan.activities) {
+              const slug = planned.title.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join("-");
+              if (state.activities.some((a) => a.slug === slug)) continue;
+              state.activities.push({
+                slug,
+                title: planned.title,
+                doing: "Your own arrangement.",
+                icon: "flag",
+                shipped: false,
+                key: null,
+                workspace: { name: planned.workspace },
+              });
+            }
+            const applied = answers.welcome_applied as { workspace: string; theme: string };
+            return Promise.resolve({
+              plan,
+              workspace: applied.workspace,
+              theme: given.theme || applied.theme,
+              activities: redeal(state),
+              answers: { ...given, done: true },
+            });
           }
           if (cmd === "forget_activity") {
             const state = strip();

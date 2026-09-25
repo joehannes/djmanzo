@@ -1220,3 +1220,67 @@ fn the_browser_fixture_has_the_event_panels_answers() {
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
     );
 }
+
+/// §118b: the welcome's plan, as Rust makes it.
+///
+/// What setting up will do is `welcome::plan`'s to say, sentence by
+/// sentence; the browser is handed Rust's own plan for one DJ -- weddings
+/// first, then Latin nights, a couple of moves, a level -- and the fresh
+/// answers a first run starts from -- and what Rust says to one answer it
+/// cannot use, a tempo range the wrong way round.
+#[test]
+fn the_browser_fixture_has_the_welcomes_plan() {
+    use dj_app::setting::Setting;
+    use dj_app::welcome::{self, Answers};
+
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/welcome.json");
+    let answers = welcome::check(Answers {
+        name: "Johannes".to_owned(),
+        nights: vec![Setting::Wedding, Setting::Latin],
+        genres: vec!["disco".to_owned()],
+        bpm_low: 100,
+        bpm_high: 128,
+        favourites: vec!["Romeo Santos".to_owned()],
+        moves: vec!["cut".to_owned()],
+        learn: vec!["echo out".to_owned()],
+        level: "suggest".to_owned(),
+        theme: String::new(),
+        done: false,
+    })
+    .expect("the answers are usable");
+    let plan = welcome::plan(&answers);
+    let wedding = dj_app::setup::setup(Setting::Wedding);
+    let backwards = welcome::check(Answers {
+        bpm_low: 140,
+        bpm_high: 120,
+        ..Answers::default()
+    })
+    .expect_err("a tempo range the wrong way round is refused");
+    let fixture = serde_json::json!({
+        "fresh": Answers::default(),
+        "answers": answers,
+        "plan": plan,
+        "applied": { "workspace": wedding.workspace, "theme": wedding.theme },
+        "refused": { "bpm_low": 140, "bpm_high": 120, "message": backwards.to_string() },
+    });
+    let text = serde_json::to_string_pretty(&fixture).expect("the welcome serialises");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{text}\n")).expect("writing the welcome");
+        return;
+    }
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored welcome is JSON");
+    assert_eq!(
+        stored, fixture,
+        "ui/e2e/welcome.json is stale; regenerate it with \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture"
+    );
+}

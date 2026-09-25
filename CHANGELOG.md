@@ -16,6 +16,18 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A welcome.** The first time djmanzo opens it introduces itself and asks
+  a few questions, every one skippable: your DJ name, where you play, your
+  music and tempo, the moves you play and the ones you want to learn, how
+  much djmanzo should do, and a look. It then says in plain sentences what
+  setting up will do — the set-up for the night you play most, an activity
+  of your own for each kind of night, the assistant's level, your name in
+  the top bar — and does exactly that when you press *Set it up*. The moves
+  you want to learn start every new event, ready to learn and rehearse.
+  *Not now* keeps your answers; the welcome opens again from Settings.
+- The set-up lists now name a theme by its name (*Theme: Beach Sunset*)
+  and the waveform as *9 of 22 layers*.
+
 ## v0.27.0 — Prepare an event and play it; a compact deck; lift any panel
 
 - **Prepare an event.** A new *Event* activity (key 9) opens the night you

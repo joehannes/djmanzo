@@ -5073,3 +5073,57 @@ export const eventTonight = (id: string, at: Date = new Date()) => {
 };
 export const liveEvent = () => invoke<string | null>("live_event");
 export const setLiveEvent = (id: string | null) => invoke<string | null>("set_live_event", { id });
+
+// -- §118b: the welcome --------------------------------------------------------
+
+/** `welcome::Answers`: what the DJ told the welcome. */
+export interface WelcomeAnswers {
+  name: string;
+  /** §81's kinds of night, by slug, the one played most first. */
+  nights: string[];
+  genres: string[];
+  /** Zero is unsaid. */
+  bpm_low: number;
+  bpm_high: number;
+  favourites: string[];
+  moves: string[];
+  learn: string[];
+  /** §8's level by slug, or empty. */
+  level: string;
+  /** A theme package id, or empty for the one the night wears. */
+  theme: string;
+  done: boolean;
+}
+
+/** `welcome::Plan`: what setting up will do, said before it is done. */
+export interface WelcomePlan {
+  setup: string | null;
+  activities: { title: string; workspace: string; night: string }[];
+  level: string;
+  practise: string[];
+  /** What the set-up changes, one line each, listed under the first sentence. */
+  changes: string[];
+  says: string[];
+}
+
+export interface WelcomeState {
+  /** Whether the welcome was ever opened: a first run is the one without. */
+  seen: boolean;
+  answers: WelcomeAnswers;
+}
+
+export interface WelcomeApplied {
+  plan: WelcomePlan;
+  workspace: string;
+  theme: string;
+  activities: Activities;
+  answers: WelcomeAnswers;
+}
+
+export const welcomeState = () => invoke<WelcomeState>("welcome_state");
+export const welcomeSave = (answers: WelcomeAnswers) =>
+  invoke<WelcomeAnswers>("welcome_save", { answers });
+export const welcomePlan = (answers: WelcomeAnswers) =>
+  invoke<WelcomePlan>("welcome_plan", { answers });
+export const welcomeApply = (answers: WelcomeAnswers) =>
+  invoke<WelcomeApplied>("welcome_apply", { answers });

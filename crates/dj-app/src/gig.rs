@@ -918,7 +918,9 @@ pub struct PathStop {
     pub done: bool,
 }
 
-fn listed(names: &[String]) -> String {
+/// "a", "a and b", "a, b and c".
+#[must_use]
+pub fn listed(names: &[String]) -> String {
     match names {
         [] => String::new(),
         [one] => one.clone(),

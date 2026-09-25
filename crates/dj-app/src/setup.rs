@@ -266,7 +266,11 @@ impl Setup {
     pub fn changes(&self) -> Vec<String> {
         let mut said = vec![
             format!("Arrangement: {}", self.workspace),
-            format!("Waveform: {} of §25's layers", self.layers.len()),
+            format!(
+                "Waveform: {} of {} layers",
+                self.layers.len(),
+                dj_render::layers().iter().filter(|l| l.exists()).count()
+            ),
             format!("Pad pages: {}", self.pages.join(", ")),
             format!("Assistant: {}", self.posture.name()),
             format!("Requests: {}", if self.requests { "on" } else { "off" }),
@@ -274,7 +278,7 @@ impl Setup {
         // The theme only when there is one, because "leave it alone" is an
         // answer and a line saying so would be a change that did not happen.
         if !self.theme.is_empty() {
-            said.insert(1, format!("Theme: {}", self.theme));
+            said.insert(1, format!("Theme: {}", crate::theme::title(self.theme)));
         }
         // And the pack on the same rule. A preset that narrowed what the coach
         // teaches without saying so would be the silent extra change §54's own

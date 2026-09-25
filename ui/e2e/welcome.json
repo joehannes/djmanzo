@@ -1,0 +1,82 @@
+{
+  "answers": {
+    "bpm_high": 128,
+    "bpm_low": 100,
+    "done": false,
+    "favourites": [
+      "Romeo Santos"
+    ],
+    "genres": [
+      "disco"
+    ],
+    "learn": [
+      "echo out"
+    ],
+    "level": "suggest",
+    "moves": [
+      "cut"
+    ],
+    "name": "Johannes",
+    "nights": [
+      "wedding",
+      "latin"
+    ],
+    "theme": ""
+  },
+  "applied": {
+    "theme": "pkg-organic",
+    "workspace": "Wedding / Event"
+  },
+  "fresh": {
+    "bpm_high": 0,
+    "bpm_low": 0,
+    "done": false,
+    "favourites": [],
+    "genres": [],
+    "learn": [],
+    "level": "",
+    "moves": [],
+    "name": "",
+    "nights": [],
+    "theme": ""
+  },
+  "plan": {
+    "activities": [
+      {
+        "night": "wedding",
+        "title": "Weddings",
+        "workspace": "Wedding / Event"
+      },
+      {
+        "night": "latin",
+        "title": "Latin nights",
+        "workspace": "Classic DJ"
+      }
+    ],
+    "changes": [
+      "Arrangement: Wedding / Event",
+      "Theme: Organic Base",
+      "Waveform: 7 of 22 layers",
+      "Pad pages: cues, saved, sampler",
+      "Requests: on"
+    ],
+    "level": "suggest",
+    "practise": [
+      "echo out"
+    ],
+    "says": [
+      "Set djmanzo up for wedding nights, the kind you play most.",
+      "Keep “Weddings” as an activity of your own: the Wedding / Event arrangement.",
+      "Keep “Latin nights” as an activity of your own: the Classic DJ arrangement.",
+      "Let djmanzo go as far as Suggest: djmanzo offers records and reasons, and never touches a control.",
+      "Start every new event with echo out to learn and rehearse.",
+      "Put “Johannes” where the djmanzo mark is."
+    ],
+    "setup": "wedding"
+  },
+  "refused": {
+    "bpm_high": 120,
+    "bpm_low": 140,
+    "message": "140 to 120 BPM is not a tempo range (between 40 and 220, slowest first)"
+  }
+}

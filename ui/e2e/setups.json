@@ -7,8 +7,8 @@
     "theme": "pkg-industrial",
     "changes": [
       "Arrangement: Club",
-      "Theme: pkg-industrial",
-      "Waveform: 7 of §25's layers",
+      "Theme: Industrial Techno",
+      "Waveform: 7 of 22 layers",
       "Pad pages: cues, loops, fx",
       "Assistant: prepare",
       "Requests: off"
@@ -22,8 +22,8 @@
     "theme": "pkg-sunset",
     "changes": [
       "Arrangement: Open Format",
-      "Theme: pkg-sunset",
-      "Waveform: 9 of §25's layers",
+      "Theme: Beach Sunset",
+      "Waveform: 9 of 22 layers",
       "Pad pages: cues, saved",
       "Assistant: assist",
       "Requests: on"
@@ -37,8 +37,8 @@
     "theme": "pkg-organic",
     "changes": [
       "Arrangement: Wedding / Event",
-      "Theme: pkg-organic",
-      "Waveform: 7 of §25's layers",
+      "Theme: Organic Base",
+      "Waveform: 7 of 22 layers",
       "Pad pages: cues, saved, sampler",
       "Assistant: assist",
       "Requests: on"
@@ -52,8 +52,8 @@
     "theme": "pkg-organic",
     "changes": [
       "Arrangement: Classic DJ",
-      "Theme: pkg-organic",
-      "Waveform: 8 of §25's layers",
+      "Theme: Organic Base",
+      "Waveform: 8 of 22 layers",
       "Pad pages: cues, loops, roll",
       "Assistant: suggest",
       "Requests: on",
@@ -68,8 +68,8 @@
     "theme": "pkg-studio",
     "changes": [
       "Arrangement: Pro Performance",
-      "Theme: pkg-studio",
-      "Waveform: 10 of §25's layers",
+      "Theme: Studio Neutral",
+      "Waveform: 10 of 22 layers",
       "Pad pages: cues, loops, roll, slicer",
       "Assistant: watch",
       "Requests: off",
@@ -84,7 +84,7 @@
     "theme": "",
     "changes": [
       "Arrangement: Open Format",
-      "Waveform: 8 of §25's layers",
+      "Waveform: 8 of 22 layers",
       "Pad pages: cues, loops, saved",
       "Assistant: suggest",
       "Requests: on",

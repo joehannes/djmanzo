@@ -111,8 +111,11 @@
     onPackChange,
     toolbars = false,
     onToolbars,
+    onWelcome,
   }: {
     onLogoChange: () => void;
+    /** §118b: open the welcome again. */
+    onWelcome?: () => void;
     /** §117: whether the two rows of buttons above the decks are shown. */
     toolbars?: boolean;
     /** Show or hide them; the shell keeps the setting and redraws its header. */
@@ -884,6 +887,21 @@
     answers. It lived only behind "Setup" in the assistant's own panel, and the
     owner did not know it was there.
   -->
+  <!--
+    §118b: the welcome, again. It opens by itself only on a first run; a DJ
+    who put it away, or whose nights have changed, finds it here.
+  -->
+  {#if onWelcome}
+    <div class="block" data-settings="welcome">
+      <h3>Welcome</h3>
+      <p class="hint">
+        The questions djmanzo asked when you first opened it — your nights, your music, your
+        moves, how much it should do — and the set-up it made from them.
+      </p>
+      <button type="button" onclick={onWelcome}>Open the welcome</button>
+    </div>
+  {/if}
+
   <div class="block ai" data-settings="ai">
     <h3>AI assistant</h3>
     <p class="hint">

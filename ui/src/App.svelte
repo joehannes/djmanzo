@@ -73,6 +73,9 @@
     setCockpitWorkspace,
     liveEvent,
     setLiveEvent,
+    welcomeState,
+    type WelcomeAnswers,
+    type WelcomeApplied,
     type Dock,
     type DockSizes,
     type Layout,
@@ -91,6 +94,7 @@
   import Practice from "./Practice.svelte";
   import EventPanel from "./Event.svelte";
   import Tonight from "./Tonight.svelte";
+  import Welcome from "./Welcome.svelte";
   import AtHand from "./AtHand.svelte";
   import Staged from "./Staged.svelte";
   import Palette from "./Palette.svelte";
@@ -535,6 +539,40 @@
    * who drags it there has lost the handle to drag it back.
    */
   const MIN_SURFACE = 160;
+
+  /**
+   * §118b: the welcome, open when this holds its answers.
+   *
+   * It opens by itself only on a first run -- when djmanzo has never kept a
+   * `welcome.json` -- and from Settings after that. The DJ's name, once
+   * given, stands where the wordmark was.
+   */
+  let welcoming = $state<WelcomeAnswers | null>(null);
+  let djName = $state("");
+
+  $effect(() => {
+    welcomeState()
+      .then((found) => {
+        djName = found.answers.name;
+        if (!found.seen) welcoming = found.answers;
+      })
+      .catch(() => {});
+  });
+
+  async function openWelcome() {
+    try {
+      welcoming = (await welcomeState()).answers;
+    } catch {
+      // No settings folder: nothing to welcome into.
+    }
+  }
+
+  function welcomed(applied: WelcomeApplied) {
+    welcoming = null;
+    djName = applied.answers.name;
+    activityState = applied.activities;
+    if (applied.workspace || applied.theme) setUpForTonight(applied.workspace, applied.theme);
+  }
 
   /**
    * §118: the event being played, if one is.
@@ -2214,7 +2252,7 @@
           <img src={logoUrl(logoVersion)} alt="Your DJ logo" />
         {:else}
           <span class="brand-mark" aria-hidden="true">✦</span>
-          <span>DJ MANZO</span>
+          <span data-dj-name>{djName || "DJ MANZO"}</span>
         {/if}
       </button>
       {#if logo}
@@ -3058,6 +3096,7 @@
       locked={workspace?.locked ?? []}
       onLock={saveLocks}
       onSetUp={setUpForTonight}
+      onWelcome={() => void openWelcome()}
       onPackChange={(id) => (chosenPack = id)}
       {toolbars}
       onToolbars={(on) => void showToolbars(on)}
@@ -3520,6 +3559,15 @@
     notes in the bar above: skipping what cannot be drawn is the rule, saying
     nothing about it is not.
   -->
+  {#if welcoming}
+    <Welcome
+      answers={welcoming}
+      onPickLogo={() => void chooseLogo()}
+      onApplied={welcomed}
+      onClose={() => (welcoming = null)}
+    />
+  {/if}
+
   {#if workspaceNotes.length > 0}
     <p class="warn-chip notes" title={workspaceNotes.join("\n")}>
       {workspaceNotes.length} of the saved arrangement could not be drawn

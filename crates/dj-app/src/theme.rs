@@ -281,6 +281,13 @@ pub fn for_pack(id: &str) -> Option<&'static Theme> {
     ALL.iter().find(|t| t.pack == Some(id))
 }
 
+/// What a DJ calls the theme a package id is: its title, or the id itself
+/// for one nothing ships, so a line naming it is never blank.
+#[must_use]
+pub fn title(id: &str) -> &str {
+    for_pack(id).map_or(id, |t| t.title)
+}
+
 /// Whether this package id is one the interface can actually wear.
 #[must_use]
 pub fn ships(id: &str) -> bool {

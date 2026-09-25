@@ -26,6 +26,12 @@ const TYPING = new Set(["INPUT", "TEXTAREA", "SELECT"]);
  * the same tick.
  */
 export function typing(target: EventTarget | null): boolean {
+  // A modal dialog holds the keyboard while it is open, so every shortcut
+  // that asks this stands down together. §118b's welcome found it: the key
+  // guide listens at the window's capture as well, was registered first, and
+  // a dialog's own `stopPropagation` came too late -- Space opened the guide
+  // behind the welcome and the guide ate the name being typed.
+  if (typeof document !== "undefined" && document.querySelector('[aria-modal="true"]')) return true;
   const element = target as HTMLElement | null;
   if (!element || !element.tagName) return false;
   if (TYPING.has(element.tagName)) return true;

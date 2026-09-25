@@ -13280,6 +13280,14 @@ pub fn new_event(
         date,
         ..crate::gig::Gig::default()
     };
+    // §118b: begun from what the welcome was told, when it was.
+    let gig = match state
+        .config_dir()
+        .and_then(|config| crate::welcome::load(&config))
+    {
+        Some(answers) => crate::welcome::started(&answers, gig),
+        None => gig,
+    };
     crate::gig::save(&dir, gig, now_seconds()).map(crate::gig::view)
 }
 
@@ -13372,6 +13380,124 @@ pub fn set_live_event(
     let dir = events_dir(&state)?;
     crate::gig::set_live(&dir, id.as_deref())?;
     Ok(crate::gig::live(&dir))
+}
+
+/// §118b: the welcome's answers so far, and whether it has been finished.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WelcomeState {
+    /// Whether the welcome was ever opened. A first run is the one without.
+    pub seen: bool,
+    pub answers: crate::welcome::Answers,
+}
+
+/// §118b: where the welcome stands.
+///
+/// # Errors
+/// When djmanzo has no settings folder yet.
+#[tauri::command]
+pub fn welcome_state(state: State<'_, AppState>) -> Result<WelcomeState, String> {
+    let dir = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder yet".to_owned())?;
+    let kept = crate::welcome::load(&dir);
+    Ok(WelcomeState {
+        seen: kept.is_some(),
+        answers: kept.unwrap_or_default(),
+    })
+}
+
+/// §118b: keep the answers so far, so a welcome closed half way opens where
+/// it was left.
+///
+/// # Errors
+/// See [`crate::welcome::Refused`], or the file system's refusal.
+#[tauri::command]
+pub fn welcome_save(
+    state: State<'_, AppState>,
+    answers: crate::welcome::Answers,
+) -> Result<crate::welcome::Answers, String> {
+    let dir = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder yet".to_owned())?;
+    crate::welcome::save(&dir, answers)
+}
+
+/// §118b: what setting up would do with these answers, before it is done.
+///
+/// # Errors
+/// See [`crate::welcome::Refused`].
+#[tauri::command]
+pub fn welcome_plan(answers: crate::welcome::Answers) -> Result<crate::welcome::Plan, String> {
+    crate::welcome::check(answers)
+        .map(|answers| crate::welcome::plan(&answers))
+        .map_err(|refused| refused.to_string())
+}
+
+/// What the welcome set up, and what the interface still has to do: open the
+/// arrangement and wear the theme, which Rust does not guess at.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WelcomeApplied {
+    pub plan: crate::welcome::Plan,
+    /// The arrangement to open, or empty.
+    pub workspace: String,
+    /// The theme to wear, or empty.
+    pub theme: String,
+    pub activities: ActivitiesDto,
+    pub answers: crate::welcome::Answers,
+}
+
+/// §118b: set djmanzo up from the answers, through the same steps a DJ's own
+/// presses take -- §54's set-up, §8's level, activities of their own -- and
+/// mark the welcome finished.
+///
+/// # Errors
+/// See [`crate::welcome::Refused`], or the file system's refusal.
+#[tauri::command]
+pub fn welcome_apply(
+    state: State<'_, AppState>,
+    answers: crate::welcome::Answers,
+) -> Result<WelcomeApplied, String> {
+    let dir = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder yet".to_owned())?;
+    let answers = crate::welcome::save(
+        &dir,
+        crate::welcome::Answers {
+            done: true,
+            ..answers
+        },
+    )?;
+    let plan = crate::welcome::plan(&answers);
+
+    let applied = plan.setup.map(|night| apply_setup_of(&state, night));
+    if !plan.level.is_empty() {
+        set_adaptation_level_of(&state, &plan.level)?;
+    }
+    let mut kept = state.activities();
+    let arrangements = crate::cockpit::workspaces();
+    for activity in &plan.activities {
+        if let Some(workspace) = arrangements.iter().find(|w| w.name == activity.workspace) {
+            kept.mine = crate::activity::keep(&kept.mine, &activity.title, workspace.clone())
+                .map_err(|refused| refused.to_string())?;
+        }
+    }
+    state.set_activities(&kept);
+
+    let theme = if answers.theme.is_empty() {
+        applied
+            .as_ref()
+            .map(|a| a.theme.clone())
+            .unwrap_or_default()
+    } else {
+        answers.theme.clone()
+    };
+    Ok(WelcomeApplied {
+        workspace: applied.map(|a| a.workspace).unwrap_or_default(),
+        theme,
+        activities: activities_dto(&kept),
+        plan,
+        answers,
+    })
 }
 
 /// §118: the fixed lists the event panel offers.
@@ -13699,6 +13825,12 @@ pub struct SetupApplied {
 pub fn apply_setup(state: State<'_, AppState>, setting: String) -> Result<SetupApplied, String> {
     let which = crate::setting::Setting::parse(&setting)
         .ok_or_else(|| format!("{setting:?} is not a kind of night djmanzo knows"))?;
+    Ok(apply_setup_of(&state, which))
+}
+
+/// What [`apply_setup`] does, off a plain reference, so §118's welcome sets a
+/// night up through exactly the same steps a DJ's own press does.
+pub fn apply_setup_of(state: &AppState, which: crate::setting::Setting) -> SetupApplied {
     let setup = crate::setup::setup(which);
 
     let layers: Vec<String> = setup.layers.iter().map(|l| (*l).to_owned()).collect();
@@ -13724,11 +13856,11 @@ pub fn apply_setup(state: State<'_, AppState>, setting: String) -> Result<SetupA
         state.set_chosen_pack(pack.id);
     }
 
-    Ok(SetupApplied {
+    SetupApplied {
         workspace: setup.workspace.to_owned(),
         theme: setup.theme.to_owned(),
         changes: setup.changes(),
-    })
+    }
 }
 
 /// One of §8 Level 1's nine, and whether djmanzo actually keeps it.
