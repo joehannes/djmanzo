@@ -3763,6 +3763,64 @@ mod tests {
         assert_eq!(lib.search("llueva", 20).unwrap().len(), 1);
     }
 
+    /// **A record is found by the name it is shown under.** A file with no
+    /// title tag is shown by its file name, so that is what a DJ types -- and
+    /// the index held only the tags, which answered "Nothing matches" to
+    /// exactly what was on screen. The folders on the way to it are not part
+    /// of the name: a folder called *Music* matching every record in it would
+    /// be a search that finds everything.
+    #[test]
+    fn a_record_is_found_by_the_name_it_is_shown_under() {
+        let lib = library();
+        let mut untagged = track(1, "", "");
+        untagged.tags = Tags::default();
+        untagged.path = PathBuf::from("/Music/Sets/low-118.final.wav");
+        lib.upsert_track(&untagged).unwrap();
+        let mut windows = track(2, "", "");
+        windows.tags.title = Some("   ".to_owned());
+        windows.path = PathBuf::from(r"C:\Users\dj\Rise Up.flac");
+        lib.upsert_track(&windows).unwrap();
+        lib.upsert_track(&track(3, "Bachata Rosa", "Juan Luis Guerra"))
+            .unwrap();
+
+        let found = |query: &str| -> Vec<String> {
+            lib.search(query, 20)
+                .unwrap()
+                .iter()
+                .map(LibraryTrack::display_title)
+                .collect()
+        };
+        assert_eq!(found("low"), ["low-118.final"]);
+        assert_eq!(found("low 118 final"), ["low-118.final"]);
+        assert!(found("wav").is_empty(), "the extension is not the name");
+        assert!(found("sets").is_empty(), "nor is the folder");
+        assert!(found("music").is_empty(), "nor is the folder");
+        // A Windows path, by id: this platform's `file_stem` would not split
+        // it, and the library on Windows must.
+        let ids = |query: &str| -> Vec<TrackId> {
+            lib.search(query, 20)
+                .unwrap()
+                .iter()
+                .map(|t| t.id)
+                .collect()
+        };
+        assert_eq!(ids("rise up"), [id(2)]);
+        assert!(ids("users").is_empty(), "a Windows folder is a folder too");
+        // A tagged record is found by its title and not by its file name,
+        // which is not what the browser shows.
+        assert_eq!(found("bachata"), ["Bachata Rosa"]);
+
+        // And moving the file, or tagging it, moves what finds it.
+        untagged.path = PathBuf::from("/Music/Sets/high-130.wav");
+        lib.upsert_track(&untagged).unwrap();
+        assert!(found("low").is_empty());
+        assert_eq!(found("high"), ["high-130"]);
+        untagged.tags.title = Some("Peak Time".to_owned());
+        lib.upsert_track(&untagged).unwrap();
+        assert!(found("high").is_empty());
+        assert_eq!(found("peak"), ["Peak Time"]);
+    }
+
     /// A search box is not a query language. `AC/DC` and a stray quote have to
     /// find things, not raise a syntax error.
     #[test]

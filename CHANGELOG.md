@@ -68,6 +68,10 @@ Versioning follows semver, with one project-specific convention:
   in the Wedding, Beach, Latin and Open format set-ups; off in Club and
   Practice; *Crowd response* in the waveform layers turns it off. Every
   layer the waveform plan named is drawn now.
+- **Fixed: searching for a record by the name it is shown under.** A file
+  with no title tag — most WAVs, many downloads — is listed by its file
+  name, and searching for that name found nothing. It does now, for the
+  records already in your library too.
 - The set-up lists now name a theme by its name (*Theme: Beach Sunset*)
   and the waveform as *10 of 23 layers*.
 

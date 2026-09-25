@@ -119,6 +119,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 16,
         sql: MIGRATION_16,
     },
+    Migration {
+        version: 17,
+        sql: MIGRATION_17,
+    },
 ];
 
 /// The initial schema.
@@ -836,6 +840,78 @@ const MIGRATION_16: &str = r#"
 ALTER TABLE tracks ADD COLUMN vocal REAL;
 "#;
 
+const MIGRATION_17: &str = r#"
+-- Search finds a record by the name the browser shows it under.
+--
+-- A file with no title tag -- most WAVs, a great many downloads -- is shown
+-- by its file name (`LibraryTrack::display_title`), and the index held only
+-- the tags, so typing exactly what was on screen answered "Nothing matches".
+-- The index now holds `shown_title`: the title where there is one, the file
+-- name without its extension where there is not. The file name and not the
+-- whole path, because a folder called *Music* would otherwise match every
+-- record in it.
+--
+-- Generated columns so the rule is written once, here, rather than in the
+-- three triggers and a rebuild that must all agree -- an external-content
+-- index fed a different value on delete than on insert is corrupt. VIRTUAL,
+-- which is the only kind `ADD COLUMN` may add: nothing is stored, and the
+-- index is what makes it fast.
+--
+-- The file name is cut out of the path in plain SQL, so the database still
+-- works in `sqlite3` with no djmanzo loaded. `rtrim(path, <every character
+-- of the path but the separators>)` strips back to the last '/' or '\',
+-- which is the folder, and what follows it is the name; the same move on '.'
+-- finds where the extension starts. A name that is only an extension
+-- (`.wav`) keeps it rather than becoming empty -- `Path::file_stem` answers
+-- the same.
+ALTER TABLE tracks ADD COLUMN file_name TEXT GENERATED ALWAYS AS (
+    substr(path, length(rtrim(path, replace(replace(path, '/', ''), char(92), ''))) + 1)
+) VIRTUAL;
+
+ALTER TABLE tracks ADD COLUMN shown_title TEXT GENERATED ALWAYS AS (
+    coalesce(
+        nullif(trim(title, char(32, 9, 10, 13)), ''),
+        CASE
+            WHEN length(rtrim(file_name, replace(file_name, '.', ''))) > 1
+            THEN substr(file_name, 1, length(rtrim(file_name, replace(file_name, '.', ''))) - 1)
+            ELSE file_name
+        END
+    )
+) VIRTUAL;
+
+DROP TRIGGER tracks_fts_insert;
+DROP TRIGGER tracks_fts_delete;
+DROP TRIGGER tracks_fts_update;
+DROP TABLE tracks_fts;
+
+CREATE VIRTUAL TABLE tracks_fts USING fts5(
+    shown_title, artist, album, genre, label, comment,
+    content = 'tracks',
+    content_rowid = 'rowid',
+    tokenize = 'unicode61 remove_diacritics 2'
+);
+
+CREATE TRIGGER tracks_fts_insert AFTER INSERT ON tracks BEGIN
+    INSERT INTO tracks_fts(rowid, shown_title, artist, album, genre, label, comment)
+    VALUES (new.rowid, new.shown_title, new.artist, new.album, new.genre, new.label, new.comment);
+END;
+
+CREATE TRIGGER tracks_fts_delete AFTER DELETE ON tracks BEGIN
+    INSERT INTO tracks_fts(tracks_fts, rowid, shown_title, artist, album, genre, label, comment)
+    VALUES ('delete', old.rowid, old.shown_title, old.artist, old.album, old.genre, old.label, old.comment);
+END;
+
+CREATE TRIGGER tracks_fts_update AFTER UPDATE ON tracks BEGIN
+    INSERT INTO tracks_fts(tracks_fts, rowid, shown_title, artist, album, genre, label, comment)
+    VALUES ('delete', old.rowid, old.shown_title, old.artist, old.album, old.genre, old.label, old.comment);
+    INSERT INTO tracks_fts(rowid, shown_title, artist, album, genre, label, comment)
+    VALUES (new.rowid, new.shown_title, new.artist, new.album, new.genre, new.label, new.comment);
+END;
+
+-- Every record already in the library, indexed by the name it is shown under.
+INSERT INTO tracks_fts(tracks_fts) VALUES ('rebuild');
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -889,6 +965,75 @@ mod tests {
         conn.query_row("SELECT import_payload FROM pending_files", [], |row| {
             row.get::<_, Option<String>>(0)
         })
+        .unwrap();
+    }
+
+    /// **A library kept before search knew file names finds them after.**
+    /// The records a DJ already has are the ones they are searching, so the
+    /// index is rebuilt by the migration rather than only fed new rows; a
+    /// record tagged, one untagged, and one tagged afterwards each answer to
+    /// the name the browser shows.
+    #[test]
+    fn a_library_kept_before_search_knew_file_names_finds_them_after() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let before = MIGRATIONS
+            .iter()
+            .position(|m| m.version == 17)
+            .expect("the migration that indexes the shown name");
+        for migration in &MIGRATIONS[..before] {
+            conn.execute_batch(migration.sql).unwrap();
+        }
+        conn.execute_batch(&format!(
+            "PRAGMA user_version = {}",
+            MIGRATIONS[before - 1].version
+        ))
+        .unwrap();
+        for (id, path, title) in [
+            ("a", "/Music/Sets/low-118.wav", None),
+            ("b", "/Music/Sets/whatever.flac", Some("Bachata Rosa")),
+        ] {
+            conn.execute(
+                "INSERT INTO tracks (id, path, title, duration_frames, sample_rate, \
+                 channels, added_at) VALUES (?1, ?2, ?3, 1, 48000, 2, 1)",
+                rusqlite::params![id, path, title],
+            )
+            .unwrap();
+        }
+
+        assert_eq!(migrate(&mut conn).unwrap(), latest_version());
+        let found = |conn: &Connection, query: &str| -> Vec<String> {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT tracks.id FROM tracks JOIN tracks_fts \
+                     ON tracks_fts.rowid = tracks.rowid WHERE tracks_fts MATCH ?1 \
+                     ORDER BY tracks.id",
+                )
+                .unwrap();
+            stmt.query_map([query], |row| row.get(0))
+                .unwrap()
+                .collect::<rusqlite::Result<_>>()
+                .unwrap()
+        };
+        assert_eq!(found(&conn, "low*"), ["a"]);
+        assert_eq!(found(&conn, "bachata*"), ["b"]);
+        assert!(
+            found(&conn, "whatever*").is_empty(),
+            "a title hides the file name"
+        );
+        assert!(
+            found(&conn, "music*").is_empty(),
+            "and a folder is not a name"
+        );
+
+        conn.execute("UPDATE tracks SET title = 'Peak Time' WHERE id = 'a'", [])
+            .unwrap();
+        assert!(found(&conn, "low*").is_empty());
+        assert_eq!(found(&conn, "peak*"), ["a"]);
+        // The index agrees with what it indexes, row for row.
+        conn.execute(
+            "INSERT INTO tracks_fts(tracks_fts, rank) VALUES ('integrity-check', 1)",
+            [],
+        )
         .unwrap();
     }
 
