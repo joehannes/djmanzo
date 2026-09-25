@@ -247,6 +247,12 @@
     gap: 0.2rem;
   }
 
+  /* An equal share each, as they had when their height came from their
+     width; now it does not, the share has to be asked for. */
+  .tabs > :global(.tab) {
+    flex: 1 1 0;
+  }
+
   /*
     A pad's height comes from this rule, not from how wide the deck is.
 

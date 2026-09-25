@@ -16,6 +16,20 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The deck's mixer is compact.** The channel strip is one line at the
+  opening window — platter, EQ with kill squares, filter, volume and pitch,
+  the semitone shift and keylock as a column beside pitch, and the cue and
+  crossfader switch at its end — where it was two rows with wide gaps. The
+  deck's upper part gets 342 px instead of 275 at 1280×800, and the pad
+  tabs are 20 px tall instead of as tall as their width made them.
+- **Shift is fine on the faders too, and on knobs it works mid-drag.**
+  A quarter of a drag, counted from the moment Shift goes down — before, a
+  knob rescaled the whole drag and jumped back towards where it began.
+- **Fixed: a click on the volume fader could take the assistant's
+  suggestion.** With a planned transition's suggestion showing, a click on
+  the volume fader or the filter knob sent the suggested value (the volume
+  to nothing); in the application a drag could too.
+
 ## v0.26.0 — Choose your AI in Settings, and a compact effects rack
 
 Cut early, three commits after v0.25.0 rather than seven, at the owner's

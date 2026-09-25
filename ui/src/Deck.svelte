@@ -260,10 +260,29 @@
   const STRIP = ["deck.jog", "deck.eq", "deck.filter", "deck.volume", "deck.pitch"];
   const FOOT = ["deck.cue", "deck.xfader"];
 
+  /**
+   * The channel faders' height, and so their travel: a fader's drag is its
+   * drawn height.
+   *
+   * 140 until §120 (*"the rest of the faders/knobs/controls seem to take a
+   * lot of space"*). The faders were what made the strip 125 px tall, with
+   * the knobs sitting at the bottom of it and 60 px of nothing above them.
+   * Shorter costs the pitch fader precision -- a third of a percent a pixel
+   * rather than a quarter -- so Shift is a quarter of a drag on it now, as on
+   * every knob, which is finer than the tall fader ever was.
+   */
+  const FADER = 100;
+
   type Row = {
     kind: "strip" | "foot" | "one";
     key: string;
     zones: { key: string; placed: Placed }[];
+    /**
+     * The foot, when it follows the strip: where this deck is heard, drawn at
+     * the strip's end as the column a hardware channel keeps its cue button
+     * and crossfader switch in, rather than as a row of its own under it.
+     */
+    routing?: { key: string; placed: Placed }[];
   };
 
   /**
@@ -296,7 +315,8 @@
       // that is only the name would then collide.
       const entry = { key: `${zone.widget}-${index}`, placed: zone };
       const last = out[out.length - 1];
-      if (kind !== "one" && last?.kind === kind) last.zones.push(entry);
+      if (kind === "foot" && last?.kind === "strip") (last.routing ??= []).push(entry);
+      else if (kind !== "one" && last?.kind === kind) last.zones.push(entry);
       else out.push({ kind, key: entry.key, zones: [entry] });
     });
     return out;
@@ -316,23 +336,30 @@
   let deckHeight = $state(0);
 
   /**
-   * What the pinned foot costs, at the two sizes it actually has.
+   * What the pinned foot costs, by how wide the deck is.
    *
-   * Measured in Chromium at 900 px tall, sweeping the window from 1100 to
-   * 1920 with a surface docked, and it is a step rather than a curve: the
-   * channel strip is `flex-wrap: wrap`, so it is either on one line or it is
-   * not.
+   * Measured in Chromium at 900 px tall, sweeping the window from 900 to
+   * 1920 with a surface docked, and it is steps rather than a curve: the
+   * channel strip is `flex-wrap: wrap`, so it is on one line, two or three.
    *
    * | deck width | channel | foot |
    * |---|---|---|
-   * | 543 px and up | 125 px | **168 px** |
-   * | 515 px and down | 257 px | **300 px** |
+   * | 515 px and up | 93 px | **102 px** |
+   * | 403 to 514 px | 128 px | **137 px** |
+   * | under 403 px | up to 208 px | **217 px** |
    *
-   * The step is between 515 and 543; 530 is the middle of it.
+   * Each step is taken a few pixels wide of where it was measured, because
+   * guessing a foot too tall only pins a little less often, and guessing it
+   * too short is the overflow `pinning` exists to prevent. Before §120 made
+   * the strip compact -- the cue and the crossfader switch up into it, the
+   * faders shorter, the groups packed -- the foot was 168 px on one line and
+   * 300 wrapped, and one line needed a 543 px deck.
    */
-  const WRAPS_BELOW = 530;
-  const FOOT_ON_ONE_LINE = 168;
-  const FOOT_WRAPPED = 300;
+  const FOOT_BY_WIDTH: readonly (readonly [number, number])[] = [
+    [522, 102],
+    [410, 137],
+    [0, 217],
+  ];
 
   /**
    * What is left of the deck has to be worth having.
@@ -374,7 +401,10 @@
    */
   const pinning = $derived.by(() => {
     if (deckHeight === 0) return true;
-    const foot = deckWidth > 0 && deckWidth < WRAPS_BELOW ? FOOT_WRAPPED : FOOT_ON_ONE_LINE;
+    // Unmeasured is the widest, as unmeasured height is tall enough: the
+    // default at djmanzo's own window is to pin.
+    const width = deckWidth === 0 ? Infinity : deckWidth;
+    const foot = FOOT_BY_WIDTH.find(([from]) => width >= from)![1];
     return deckHeight >= foot + DECK_CHROME + BODY_FLOOR;
   });
 
@@ -1107,7 +1137,7 @@
           readout={band.value < 0.001 ? "kill" : band.value.toFixed(2)}
           face={band.face}
           origin={1}
-          size={46}
+          size={40}
           disabled={!enabled}
           oninput={(val) => send(`deck ${deck.number} ${band.id} ${val}`)}
           ondblclick={() => send(handles[band.id]?.reset ?? `deck ${deck.number} ${band.id} 1`)}
@@ -1135,7 +1165,7 @@
     the record is still in the room. §114: its face draws the slope it cuts,
     and its arc fills from the centre, where it is off.
   -->
-  <label
+  <div
     class="control"
     data-filter={deck.filter < -0.02 ? "low-pass" : deck.filter > 0.02 ? "high-pass" : "off"}
   >
@@ -1151,7 +1181,7 @@
           ? `LP ${Math.round(-deck.filter * 100)}%`
           : `HP ${Math.round(deck.filter * 100)}%`}
       disabled={!enabled}
-      size={56}
+      size={46}
       face="filter"
       origin={0}
       oninput={(val) => send(`deck ${deck.number} filter ${val}`)}
@@ -1160,11 +1190,19 @@
       suggestion={suggestions.filter ?? null}
       onoption={(action) => send(action)}
     />
-  </label>
+  </div>
 
   {/snippet}
   {#snippet zoneVolume()}
-  <label class="control fader-wrap">
+  <!--
+    Divs, not labels, here and on the filter and the pitch fader. A click in a
+    label is also a click on its first button, and hovered with a plan armed
+    the first button is the suggestion's *Do it*: a tap on this fader took the
+    plan's move -- the volume to nothing, mid-transition -- and in WebKitGTK,
+    which ends every drag with a click, so did every drag. The EQ bands were
+    the same shape (§120). The controls name themselves.
+  -->
+  <div class="control fader-wrap">
     <SvgFader
       value={deck.volume}
       min={0}
@@ -1173,13 +1211,13 @@
       label="Volume"
       readout={deck.volume.toFixed(2)}
       disabled={!enabled}
-      height={140}
-      width={40}
+      height={FADER}
+      width={36}
       oninput={(val) => send(`deck ${deck.number} volume ${val}`)}
       suggestion={suggestions.volume ?? null}
       onoption={(action) => send(action)}
     />
-  </label>
+  </div>
   {/snippet}
   {#snippet zonePitch()}
   <!--
@@ -1199,7 +1237,7 @@
     below the fold.
   -->
   <div class="tempo">
-    <label class="control fader-wrap">
+    <div class="control fader-wrap">
       <SvgFader
         value={deck.pitch}
         min={-0.16}
@@ -1209,12 +1247,12 @@
         origin={0}
         readout={`${(deck.pitch * 100).toFixed(1)}%`}
         disabled={!enabled}
-        height={140}
-        width={40}
+        height={FADER}
+        width={36}
         oninput={(val) => send(`deck ${deck.number} pitch ${val}`)}
         ondblclick={() => send(`deck ${deck.number} pitch 0`)}
       />
-    </label>
+    </div>
     <!--
       Harmonic mixing: shift the key in semitones without touching tempo.
       Separate from keylock, and engages the shifter on its own — but hidden
@@ -1223,23 +1261,27 @@
     -->
     {#if keylock}
       <div class="tempo-extras">
+        <!--
+          Up above down, as the fader beside it runs: a column the height of
+          the fader rather than a row as wide as two more of them.
+        -->
         <div class="keyshift">
-          <IconButton
-            icon="fa-solid fa-minus"
-            title="Down a semitone"
-            disabled={!enabled}
-            onClick={() => send(`deck ${deck.number} key ${deck.key_shift - 1}`)}
-            aria-label="Down a semitone"
-          />
-          <span class="mono" class:shifted={deck.key_shift !== 0}>
-            {deck.key_shift > 0 ? `+${deck.key_shift}` : deck.key_shift}
-          </span>
           <IconButton
             icon="fa-solid fa-plus"
             title="Up a semitone"
             disabled={!enabled}
             onClick={() => send(`deck ${deck.number} key ${deck.key_shift + 1}`)}
             aria-label="Up a semitone"
+          />
+          <span class="mono" class:shifted={deck.key_shift !== 0}>
+            {deck.key_shift > 0 ? `+${deck.key_shift}` : deck.key_shift}
+          </span>
+          <IconButton
+            icon="fa-solid fa-minus"
+            title="Down a semitone"
+            disabled={!enabled}
+            onClick={() => send(`deck ${deck.number} key ${deck.key_shift - 1}`)}
+            aria-label="Down a semitone"
           />
         </div>
         <IconButton
@@ -1384,6 +1426,11 @@
     -->
         <div class="channel">
           {#each row.zones as entry (entry.key)}{@render zone(entry.placed)}{/each}
+          {#if row.routing}
+            <div class="routing" role="group" aria-label="Where deck {deck.number} is heard">
+              {#each row.routing as entry (entry.key)}{@render zone(entry.placed)}{/each}
+            </div>
+          {/if}
         </div>
       {:else if row.kind === "foot"}
     <!--
@@ -1482,12 +1529,49 @@
     415 px inside its padding, and a strip that overflowed would put a control
     off the edge rather than onto a second line.
   */
+  /*
+    Packed from the left rather than spread across the deck (§120). Spread,
+    the four groups stood about 34 px apart on a two-deck column and further
+    apart the wider the deck got, so the strip read as five things that
+    happened to share a line. What is left over goes in one place: before the
+    routing column, which keeps to the right edge as a hardware channel keeps
+    its cue button by the fader.
+  */
   .channel {
     display: flex;
     align-items: flex-end;
-    justify-content: space-between;
+    justify-content: flex-start;
     flex-wrap: wrap;
-    gap: 0.6rem 0.9rem;
+    gap: 0.5rem 0.8rem;
+  }
+
+  /*
+    Where the deck is heard: the cue button and the crossfader switch.
+
+    It takes whatever the strip leaves and arranges itself in that, with no
+    breakpoint to keep in step with anything: room to spare and the two sit
+    side by side along the strip's foot; squeezed at the end of the line and
+    they stack, cue above switch, as the column a hardware channel keeps them
+    in; pushed onto a line of its own at a narrow deck and it is one row
+    across it, which is what the separate foot row used to be.
+  */
+  .routing {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    align-content: flex-end;
+    gap: 0.3rem 0.5rem;
+    flex: 1 1 6rem;
+  }
+
+  .routing .cue {
+    flex: 1 1 4.5rem;
+    min-width: 0;
+  }
+
+  .routing .xfader-assign {
+    flex: none;
+    margin-left: auto;
   }
 
   /*
@@ -1499,7 +1583,7 @@
   */
   .channel .eq {
     justify-content: flex-start;
-    gap: 0.55rem;
+    gap: 0.4rem;
   }
 
   /*
@@ -1804,8 +1888,9 @@
 
   .keyshift {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 0.15rem;
+    gap: 0.1rem;
     font-size: 0.72em;
   }
   .keyshift span {
@@ -1828,21 +1913,29 @@
   .tempo {
     display: flex;
     align-items: flex-end;
-    gap: 0.5rem;
+    gap: 0.35rem;
   }
 
   /*
     Keylock and the semitone shift, as one parcel.
 
-    Grouped so that when the strip runs out of width they wrap *together*,
-    onto a line of their own about 44 px tall, instead of one of them going
-    over alone and leaving the other stranded beside the fader.
+    A column beside the pitch fader, up above down, rather than a row: the
+    row was as wide as two more faders and was what wrapped the strip onto
+    a second line at a narrower deck (§120).
   */
   .tempo-extras {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 0.4rem;
-    flex-wrap: wrap;
+    gap: 0.2rem;
+  }
+
+  /* Three buttons and a number in a column no taller than the fader beside
+     it, so the column is not what sets the strip's height. Still no smaller
+     than a 24 px target at the density djmanzo ships at. */
+  .tempo-extras :global(.icon-button) {
+    min-width: 2.2rem;
+    height: 2.2rem;
   }
 
   /*

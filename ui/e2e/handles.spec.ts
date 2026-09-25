@@ -284,3 +284,62 @@ test.describe("what the assistant would do to a control", () => {
     expect(errorsThrown(page), "a deck threw").toEqual([]);
   });
 });
+
+/**
+ * **A drag is a drag, even with the plan's suggestion showing.**
+ *
+ * The volume fader and the filter sat inside a `<label>`, and a click in a
+ * label is also a click on its first button. Hovered with a plan armed, the
+ * first button is the suggestion's *Do it*: a tap on the fader took the
+ * suggestion -- the volume straight to nothing in the middle of an armed
+ * transition -- and in WebKitGTK, which ends a drag with a click, so did
+ * every drag. The EQ bands had the same shape, and it made their knobs seem
+ * to switch only on or off (§120). Chromium routes that click elsewhere once
+ * the pointer is captured, so the test delivers it to the control itself.
+ */
+test.describe("dragging past a suggestion", () => {
+  const PLANNED = {
+    control_suggestions: [
+      { control: "volume", to: 0, action: "deck 1 volume 0", because: "The assistant brings this fader down over 32 beats." },
+      { control: "filter", to: -1, action: "deck 1 filter -1", because: "The filter closes on the way out." },
+    ],
+  };
+
+  for (const [name, taken, note] of [
+    ["Volume", "deck 1 volume 0", "fader-suggestion"],
+    ["Filter", "deck 1 filter -1", "knob-suggestion"],
+  ] as const) {
+    test(`a tap or a drag on the ${name.toLowerCase()} does not take the suggestion`, async ({ page }) => {
+      await openShell(page, "/", {}, PLANNED);
+      const control = page
+        .locator(`.deck[data-deck="1"] [role="slider"][aria-label="${name}"]`)
+        .first();
+      await control.scrollIntoViewIfNeeded();
+      const box = await control.boundingBox();
+      if (!box) throw new Error(`the ${name} is not drawn`);
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await expect(control.getByTestId(note).getByRole("button")).toBeVisible();
+      // The click WebKitGTK ends a press or a drag with. Chromium sends it
+      // somewhere else once the pointer is captured, so it is delivered
+      // here as the application's engine delivers it: to the control.
+      let before = (await sent(page)).length;
+      await control.dispatchEvent("click");
+      await page.waitForTimeout(150);
+      expect((await sent(page)).slice(before), "a click on the control took the plan's suggestion").not.toContain(taken);
+
+      // A drag, which should move the control and do nothing else.
+      before = (await sent(page)).length;
+      await page.mouse.down();
+      await page.mouse.move(x, y + 4, { steps: 2 });
+      await page.mouse.move(x, y + 8, { steps: 2 });
+      await page.mouse.up();
+      await page.waitForTimeout(150);
+      const after = (await sent(page)).slice(before);
+      expect(after.length, "the drag sent nothing").toBeGreaterThan(0);
+      expect(after, "the end of the drag took the plan's suggestion").not.toContain(taken);
+      expect(errorsThrown(page)).toEqual([]);
+    });
+  }
+});

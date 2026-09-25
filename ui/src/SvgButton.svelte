@@ -46,6 +46,22 @@
           ? "var(--panel)"
           : "var(--panel-raised, var(--panel))",
   );
+  /**
+   * A tab's plate is drawn at the tab's own size.
+   *
+   * Every kind used to draw a 100x52 plate and let the SVG's aspect ratio
+   * decide the height, so a tab was as tall as its width made it: 57 px on a
+   * deck with five pages, taller than the pads under it, and 20 on one with
+   * eight (§120, *"the rest of the faders/knobs/controls seem to take a lot of
+   * space"*). A tab is a label and is as tall as one now; its plate is
+   * measured rather than stretched, so the corners stay round. A pad keeps
+   * its proportions -- its height comes from the pad grid.
+   */
+  let width = $state(0);
+  let height = $state(0);
+  const plate = $derived(
+    kind === "tab" && width > 0 && height > 0 ? { w: width, h: height, r: 6 } : { w: 100, h: 52, r: 10 },
+  );
   const edge = $derived(hot ? "var(--accent)" : "var(--edge)");
   const text = $derived(hot ? "var(--on-accent)" : "var(--text)");
   const stroke = $derived(held ? 3 : 1.5);
@@ -66,9 +82,11 @@
   {onpointerup}
   {onpointercancel}
   {oncontextmenu}
+  bind:clientWidth={width}
+  bind:clientHeight={height}
 >
-  <svg viewBox="0 0 100 52" aria-hidden="true" focusable="false">
-    <rect x="3" y="3" width="94" height="46" rx="10" fill={face} stroke={edge} stroke-width={stroke} />
+  <svg viewBox="0 0 {plate.w} {plate.h}" aria-hidden="true" focusable="false">
+    <rect x="3" y="3" width={plate.w - 6} height={plate.h - 6} rx={plate.r} fill={face} stroke={edge} stroke-width={stroke} />
     {#if kind === "pad" && !blank}
       <path d="M 14 38 C 31 28, 45 45, 62 35 S 84 29, 90 37" fill="none" stroke="currentColor" stroke-opacity="0.3" stroke-width="4" stroke-linecap="round" />
     {/if}
@@ -141,10 +159,18 @@
   }
 
   .tab {
-    min-block-size: 1.65rem;
+    block-size: 1.8rem;
     font-size: 0.72em;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+  }
+
+  /* Laid over the tab rather than in it, so the plate follows the tab's
+     size and never sets it: a plate drawn from a measured size that was also
+     its intrinsic size would keep whatever width it first happened to get. */
+  .tab svg {
+    position: absolute;
+    inset: 0;
   }
 
   .control {

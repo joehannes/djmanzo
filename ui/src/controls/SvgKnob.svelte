@@ -79,8 +79,12 @@
   }: Props = $props();
 
   let dragging = $state(false);
+  /** Where the press began: a hold is a press that has not moved from it. */
   let startY = $state(0);
-  let startVal = $state(0);
+  /** Where the pointer was at the last move, not at the press. */
+  let lastY = 0;
+  /** The value the drag has reached, before it is rounded to a step. */
+  let reached = 0;
 
   /**
    * §29's level two: a shift-drag is a quarter of a drag.
@@ -140,7 +144,8 @@
     if ((e.target as Element | null)?.closest?.("button, [role='menu']")) return;
     dragging = true;
     startY = e.clientY;
-    startVal = value;
+    lastY = e.clientY;
+    reached = value;
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     cancelHold();
@@ -157,14 +162,19 @@
 
   function handlePointerMove(e: PointerEvent) {
     if (!dragging || disabled) return;
-    const deltaY = startY - e.clientY;
     // Any movement is a drag, so it is not a hold.
-    if (Math.abs(deltaY) > 2) cancelHold();
+    if (Math.abs(startY - e.clientY) > 2) cancelHold();
+    const deltaY = lastY - e.clientY;
+    lastY = e.clientY;
     const range = max - min;
+    // This move at this move's rate, added to where the drag had got to.
+    // Scaling the whole drag from the press instead threw the value back
+    // towards where it began the moment shift went down -- the opposite of
+    // creeping back after an overshoot.
     const deltaVal = (deltaY / 100) * range * (e.shiftKey ? FINE : 1);
+    reached = clamp(reached + deltaVal);
 
-    let nextVal = clamp(startVal + deltaVal);
-    nextVal = Math.round(nextVal / step) * step;
+    const nextVal = Math.round(reached / step) * step;
     
     if (nextVal !== value && oninput) {
       oninput(nextVal);

@@ -60,9 +60,21 @@
     origin
   }: Props = $props();
 
+  /**
+   * A shift-drag is a quarter of a drag, as on the knob (§29's level two).
+   *
+   * It matters more here than there. A fader's drag is its drawn height, so
+   * the pitch fader's ±16% over a hundred pixels is a third of a percent a
+   * pixel -- too coarse to hold two records together. A quarter of that is
+   * the precision the taller fader it replaced never had either.
+   */
+  const FINE = 0.25;
+
   let dragging = $state(false);
-  let startMouse = $state(0);
-  let startVal = $state(0);
+  /** Where the pointer was at the last move, not at the press. */
+  let lastMouse = 0;
+  /** The value the drag has reached, before it is rounded to a step. */
+  let reached = 0;
   let container: HTMLElement;
 
   /** Whether the suggestion is showing. Hover and focus, as on the knob. */
@@ -90,8 +102,8 @@
     // because the EQ band's label passed every click on to its kill button.
     if ((e.target as Element | null)?.closest?.("button, [role='menu']")) return;
     dragging = true;
-    startMouse = orientation === "vertical" ? e.clientY : e.clientX;
-    startVal = value;
+    lastMouse = orientation === "vertical" ? e.clientY : e.clientX;
+    reached = value;
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
   }
@@ -100,15 +112,20 @@
     if (!dragging || disabled || !container) return;
     
     const currentMouse = orientation === "vertical" ? e.clientY : e.clientX;
-    const deltaMouse = currentMouse - startMouse;
-    
+    const deltaMouse = currentMouse - lastMouse;
+    lastMouse = currentMouse;
+
     const travel = orientation === "vertical" ? height : width;
     const direction = orientation === "vertical" ? -1 : 1;
-    
-    const deltaVal = (deltaMouse / travel) * (max - min) * direction;
-    
-    let nextVal = clamp(startVal + deltaVal);
-    nextVal = Math.round(nextVal / step) * step;
+
+    // Each move at its own rate, added to where the drag had got to, so
+    // shift pressed half way through slows what follows rather than
+    // rescaling what has already happened -- which would throw the value
+    // back towards where the drag began.
+    const deltaVal = (deltaMouse / travel) * (max - min) * direction * (e.shiftKey ? FINE : 1);
+    reached = clamp(reached + deltaVal);
+
+    const nextVal = Math.round(reached / step) * step;
     
     if (nextVal !== value && oninput) {
       oninput(nextVal);
@@ -126,7 +143,7 @@
   function handleKeyDown(e: KeyboardEvent) {
     if (disabled) return;
     let nextVal = value;
-    const increment = step * 10;
+    const increment = step * 10 * (e.shiftKey ? FINE : 1);
     if (e.key === "ArrowUp" || e.key === "ArrowRight") nextVal = clamp(value + increment);
     if (e.key === "ArrowDown" || e.key === "ArrowLeft") nextVal = clamp(value - increment);
     if (nextVal !== value && oninput) {
