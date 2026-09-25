@@ -90,6 +90,10 @@ pub struct Script {
     lua: Lua,
     /// Kept for error messages: a stack trace nobody can place is no help.
     name: String,
+    /// How many Lua instructions the last decision took, to the nearest
+    /// thousand the hook counts in. The bound [`STEP_LIMIT`] promises is a
+    /// number of steps, and this is where it can be seen to hold.
+    steps: std::sync::Arc<std::sync::atomic::AtomicU32>,
 }
 
 impl std::fmt::Debug for Script {
@@ -134,6 +138,7 @@ impl Script {
         Ok(Self {
             lua,
             name: name.to_owned(),
+            steps: std::sync::Arc::default(),
         })
     }
 
@@ -224,12 +229,13 @@ impl Script {
         // A hook that could not be installed is not a small problem: the
         // script would then run unbounded on the MIDI thread. Refusing to run
         // it at all is the only safe answer.
-        let steps = std::cell::Cell::new(0u32);
+        let steps = std::sync::Arc::clone(&self.steps);
+        steps.store(0, std::sync::atomic::Ordering::Relaxed);
         let armed = self.lua.set_hook(
             mlua::HookTriggers::new().every_nth_instruction(1_000),
             move |_lua, _debug| {
-                let used = steps.get() + 1_000;
-                steps.set(used);
+                let used = steps.load(std::sync::atomic::Ordering::Relaxed) + 1_000;
+                steps.store(used, std::sync::atomic::Ordering::Relaxed);
                 if used > STEP_LIMIT {
                     Err(mlua::Error::RuntimeError("too long".into()))
                 } else {
@@ -294,6 +300,13 @@ impl Script {
                 .map_err(|e| ScriptError::BadAction(action.clone(), e.to_string()))?;
         }
         Ok(actions)
+    }
+
+    /// How many Lua instructions the last decision took, counted in the
+    /// thousands the step limit is checked in.
+    #[must_use]
+    pub fn steps_used(&self) -> u32 {
+        self.steps.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -540,18 +553,39 @@ mod tests {
 
     /// **A script runs on the MIDI thread.** `while true do end` would take the
     /// controller down with it, so it is stopped instead.
+    ///
+    /// The bound is a number of instructions, so that is what is asserted
+    /// first: the endless loop is stopped within one hook interval of
+    /// [`STEP_LIMIT`], on any machine. The time is asserted on the *second*
+    /// runaway. Once, on a Windows runner, the first runaway in the process
+    /// took 3.5 s to come back -- and the other test that runs one away
+    /// finished in the same instant, so it was something both waited on
+    /// rather than the loop; the steps were bounded all the same. Why is not
+    /// known, and a Windows machine is needed to find out. What is kept is
+    /// the claim that matters in a booth: a runaway that is stopped costs no
+    /// time worth measuring, every time after the first.
     #[test]
     fn a_runaway_script_is_stopped_rather_than_taking_the_controller_with_it() {
         let script =
             script(r#"function on_control(c, e, v) while true do end end"#).expect("it loads");
-        let started = std::time::Instant::now();
         let why = script
             .on_control("note 1 0x01", Event::Press, 0.0)
             .expect_err("an endless loop should be stopped");
         assert_eq!(why, ScriptError::TooLong);
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(2),
-            "it took {:?} to give up",
+            script.steps_used() <= STEP_LIMIT + 1_000,
+            "the loop ran {} steps, past the limit of {STEP_LIMIT}",
+            script.steps_used()
+        );
+
+        let started = std::time::Instant::now();
+        let why = script
+            .on_control("note 1 0x01", Event::Press, 0.0)
+            .expect_err("an endless loop should be stopped every time");
+        assert_eq!(why, ScriptError::TooLong);
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(500),
+            "the second runaway took {:?} to give up",
             started.elapsed()
         );
     }
