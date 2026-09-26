@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.30.0 — Panels you move and zoom, dashboards, one forgiving search, themes in parts, a guest book, and neural stems on Windows and Macs
+
 - **Every panel has controls on its border.** Its title bar carries it:
   drag it to the left, right or bottom and it lands there, beside another
   panel if you drop it on one, or over the decks if you drop it in the
