@@ -208,6 +208,7 @@ pub fn apply(op: &UiOp, workspace: &crate::cockpit::Workspace) -> Applied {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 });
                 format!("opened {surface}")
             }

@@ -14,8 +14,8 @@
 //!
 //! # Still nothing a mapping can invent
 //!
-//! This crate checks the **shape**: one of the four kinds of leaf the tree has
-//! (`switch`, `surface`, `ui`, `uiop`), something after it, nothing that is
+//! This crate checks the **shape**: one of the five kinds of leaf the tree has
+//! (`switch`, `surface`, `lift`, `ui`, `uiop`), something after it, nothing that is
 //! not plain text, and no `{value}` -- a fader position is not an activity.
 //! It does not know which activities or panels exist; the application checks
 //! the **name** against what its own tree offers before anything happens, so
@@ -27,7 +27,7 @@
 pub const PREFIX: &str = "interface ";
 
 /// The kinds of leaf an interface line may run, as the Space tree names them.
-pub const KINDS: [&str; 4] = ["switch", "surface", "ui", "uiop"];
+pub const KINDS: [&str; 5] = ["switch", "surface", "lift", "ui", "uiop"];
 
 /// What an interface line runs, or `None` when the line is not one.
 #[must_use]

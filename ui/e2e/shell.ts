@@ -1863,6 +1863,12 @@ export async function openShell(
             ((win.__dispatched ??= []) as string[]).push(String(args.action));
             return Promise.resolve(null);
           }
+          // §121: the windows a panel was popped out into, by the name
+          // `monitors::Panel` gives them.
+          if (cmd === "detach_panel") {
+            ((win.__detached ??= []) as string[]).push(String(args.panel));
+            return Promise.resolve(null);
+          }
           // §120: each provider's own models, so a test can tell which
           // provider's list a model was chosen from -- and the choice echoed
           // and recorded, because the provider it is set with is the thing

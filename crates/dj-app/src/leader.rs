@@ -24,12 +24,15 @@
 //!
 //! # How a leaf is run
 //!
-//! A leaf's `run` is a sentence of one of four kinds, each carried out by the
+//! A leaf's `run` is a sentence of one of six kinds, each carried out by the
 //! path the rest of the interface already takes:
 //!
 //! - `action <words>` — an action in djmanzo's vocabulary, sent to the
 //!   engine exactly as the keyboard map's are;
 //! - `surface <name>` — a panel opened or closed, as its button does;
+//! - `lift <name>` — §121: a panel opened large over the decks, as its
+//!   full-size button lifts it; `Space O` and the letter `Space o` docks it
+//!   with;
 //! - `switch <kind> <which>` — a theme, activity, workspace or preset, as the
 //!   Ctrl+K palette switches one (§115);
 //! - `ui <verb>` — something only the interface does: open the palette,
@@ -252,17 +255,20 @@ fn stems(n: u8) -> Node {
 }
 
 /// The panels, each under its letter, titled as the cockpit titles them.
-fn panels() -> Node {
+///
+/// `kind` is what the leaf runs: `surface` docks the panel, `lift` opens it
+/// large over the decks.
+fn panels(key: &str, label: &str, kind: &str) -> Node {
     let entries = PANELS
         .iter()
         .filter_map(|name| {
             let surface = crate::cockpit::surfaces()
                 .iter()
                 .find(|surface| surface.name == *name)?;
-            Some((surface.title.to_owned(), format!("surface {name}")))
+            Some((surface.title.to_owned(), format!("{kind} {name}")))
         })
         .collect();
-    list("o", "Open a panel", entries)
+    list(key, label, entries)
 }
 
 /// The default tree, for `decks` decks and what the DJ has: activities (the
@@ -311,7 +317,11 @@ pub fn tree(
             Node::leaf("m", "Mark this moment", "ui mark"),
         ],
     ));
-    root.push(panels());
+    root.push(panels("o", "Open a panel", "surface"));
+    // §121: "two mnemonic ways to open widgets, one as integrated, one as
+    // modal". The same letters under Shift, so a DJ who knows where a panel
+    // docks already knows how to have it large for a moment.
+    root.push(panels("O", "Open a panel large, over the decks", "lift"));
     root.push(Node::group(
         "v",
         "View",
@@ -424,8 +434,8 @@ pub fn runnable(run: &str, switches: &[String]) -> Result<(), String> {
         "action" => dj_core::action::Action::parse(rest)
             .map(|_| ())
             .map_err(|error| format!("{rest:?} is not an action djmanzo knows: {error}")),
-        "surface" if crate::cockpit::surfaces().iter().any(|s| s.name == rest) => Ok(()),
-        "surface" => Err(format!("there is no panel called {rest:?}")),
+        "surface" | "lift" if crate::cockpit::surfaces().iter().any(|s| s.name == rest) => Ok(()),
+        "surface" | "lift" => Err(format!("there is no panel called {rest:?}")),
         "switch" if switches.iter().any(|s| s == rest) => Ok(()),
         "switch" => Err(format!("there is nothing to switch to called {rest:?}")),
         "ui" if UI_VERBS.contains(&rest) => Ok(()),
@@ -621,6 +631,34 @@ mod tests {
             if let Err(why) = runnable(run, &switches) {
                 panic!("{path:?}: {why}");
             }
+        }
+    }
+
+    /// **§121's two ways in.** Under `O` is every panel `o` docks, on the
+    /// same letter, opened large over the decks instead: a DJ who knows
+    /// where a panel docks already knows how to have it large.
+    #[test]
+    fn shift_o_lifts_every_panel_o_docks_on_the_same_letter() {
+        let root = default_tree();
+        let group = |key: &str| {
+            root.children
+                .iter()
+                .find(|child| child.key == key)
+                .unwrap_or_else(|| panic!("no group under {key}"))
+        };
+        let (docked, lifted) = (group("o"), group("O"));
+        assert!(docked.children.len() >= PANELS.len() - 3);
+        assert_eq!(docked.children.len(), lifted.children.len());
+        for (dock, lift) in docked.children.iter().zip(&lifted.children) {
+            assert_eq!(dock.key, lift.key);
+            assert_eq!(dock.label, lift.label);
+            let name = dock
+                .run
+                .as_deref()
+                .unwrap()
+                .strip_prefix("surface ")
+                .unwrap();
+            assert_eq!(lift.run.as_deref(), Some(format!("lift {name}").as_str()));
         }
     }
 

@@ -16,6 +16,25 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Every panel has controls on its border.** Its title bar carries it:
+  drag it to the left, right or bottom and it lands there, beside another
+  panel if you drop it on one, or over the decks if you drop it in the
+  middle. Its header also has a handle (whose arrow keys move it too), zoom
+  out, the zoom level (press to go back to 100%), zoom in, back to its own
+  size, pop out into its own window (the library, the assistant and the
+  sampler), pin, minimise, full size and close — each a distinct symbol.
+  Ctrl and the wheel over a panel zoom it. The zoom is kept with the
+  arrangement. The resize edge is thicker and always shows a notch.
+- **Two ways to open a panel from the keys.** `Space o` and a letter docks
+  a panel, as before; `Space O` and the same letter opens it large over the
+  decks, and Escape puts it back. Controller mappings can do the same with
+  `interface lift <panel>`.
+- **The library taller in one gesture.** A double-click on the gap above
+  the bottom panels makes them tall; another gives them their own share
+  back. The gap always shows its handle now.
+- **Fixed: a single click on a dock's gap sized the dock.** It wrote the
+  dock's current share down as a fixed size.
+
 ## v0.29.0 — Break music, a controller switches the activity, the pads in symbols, and fixes
 
 - **Fade a stem by scrolling across it.** A sideways scroll (or Shift and

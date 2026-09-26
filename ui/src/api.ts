@@ -3379,6 +3379,11 @@ export interface SurfacePlacement {
   size?: number | null;
   collapsed: boolean;
   pinned: boolean;
+  /**
+   * §121: how large the panel draws what it holds, in percent, from 50 to
+   * 200. Absent is its own size.
+   */
+  zoom?: number | null;
 }
 
 export type Density = "relaxed" | "standard" | "compact" | "pro-dense" | "ultra-dense";

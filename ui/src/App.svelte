@@ -72,6 +72,7 @@
     applyPreset,
     type DensityBand,
     setCockpitWorkspace,
+    detachPanel,
     liveEvent,
     setLiveEvent,
     welcomeState,
@@ -336,6 +337,8 @@
    * now, and a test asserts every home is a dock that surface can be placed in.
    */
   let surfaceHomes = $state<Record<string, Dock>>({});
+  /** Where each surface may go, from Rust, so a move offers only those. */
+  let surfaceDocks = $state<Record<string, Dock[]>>({});
   const homeOf = (name: string): Dock => surfaceHomes[name] ?? "right";
 
   /**
@@ -639,7 +642,7 @@
     right: undefined,
     bottom: undefined,
   });
-  let dockDrag = $state<{ dock: DockName; from: number; was: number } | null>(null);
+  let dockDrag = $state<{ dock: DockName; from: number; was: number; moved: boolean } | null>(null);
 
   /**
    * The dock's size as a style, when the DJ has set one -- and not while
@@ -674,6 +677,7 @@
       dock,
       from: dock === "bottom" ? event.clientY : event.clientX,
       was: dock === "bottom" ? el.offsetHeight : el.offsetWidth,
+      moved: false,
     };
     try {
       (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -691,6 +695,11 @@
     // Towards the stage grows the dock: right for the left one, left for the
     // right one, up for the bottom one.
     const moved = dock === "left" ? now - dockDrag.from : dockDrag.from - now;
+    // A press that has not travelled is half of a double-click, not a drag:
+    // sizing the dock on it wrote the dock's own share down as a size, and
+    // the double-click then read "sized" and gave back what it already had.
+    if (!dockDrag.moved && Math.abs(moved) < 3) return;
+    dockDrag.moved = true;
     const [least, most] = dock === "bottom" ? DOCK_BOTTOM : DOCK_SIDE;
     const size = Math.max(least, Math.min(most, Math.round(dockDrag.was + moved)));
     el.style.setProperty("flex", `0 0 ${size}px`);
@@ -699,6 +708,7 @@
 
   function endDockResize(event: PointerEvent, dock: DockName) {
     if (dockDrag?.dock !== dock) return;
+    const moved = dockDrag.moved;
     dockDrag = null;
     try {
       (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
@@ -706,7 +716,7 @@
       // Never captured, or already released.
     }
     const el = dockEls[dock];
-    if (!el) return;
+    if (!el || !moved) return;
     const size = Math.round(dock === "bottom" ? el.offsetHeight : el.offsetWidth);
     void setDocks({ ...(workspace?.docks ?? {}), [dock]: size });
   }
@@ -716,6 +726,35 @@
     el?.style.removeProperty("flex");
     el?.style.removeProperty("min-height");
     void setDocks({ ...(workspace?.docks ?? {}), [dock]: null });
+  }
+
+  /**
+   * §121: a double-click on a dock's gap makes a dock at its own share
+   * large, and gives a sized one its share back.
+   *
+   * > especially the file browser ... i might want that one a bit taller ...
+   * > but be able to resize it quickly at all times
+   *
+   * Large is seven tenths of the cockpit for the bottom dock and nine
+   * twentieths for a side one, inside the bounds Rust keeps a dock to
+   * (`DockSizes::BOTTOM` and `SIDE`): the library tall enough to read a
+   * crate in, with the decks' strip still there to play from.
+   */
+  function toggleDock(dock: DockName) {
+    if (workspace?.docks?.[dock] != null) {
+      resetDock(dock);
+      return;
+    }
+    const room = cockpitEl?.getBoundingClientRect();
+    if (!room) return;
+    const size =
+      dock === "bottom"
+        ? Math.min(720, Math.max(140, Math.round(room.height * 0.7)))
+        : Math.min(960, Math.max(280, Math.round(room.width * 0.45)));
+    const el = dockEls[dock];
+    el?.style.setProperty("flex", `0 0 ${size}px`);
+    if (dock === "bottom") el?.style.setProperty("min-height", "0");
+    void setDocks({ ...(workspace?.docks ?? {}), [dock]: size });
   }
 
   /**
@@ -774,6 +813,282 @@
   }
 
   const anyLifted = $derived(lifted !== null || overlayDock.length > 0);
+
+  /**
+   * §121: a panel opened large over the decks, whether or not it was open.
+   *
+   * > there's got to be 2 mnemonic ways to open widgets, one as integrated,
+   * > one as modal
+   *
+   * `Space o <letter>` docks a panel; `Space O <letter>` is this. Unlike the
+   * docked way it never closes one: pressed on a panel already lifted it
+   * leaves it lifted, because a DJ who asked for it large wants it large.
+   */
+  async function openLifted(name: string) {
+    if (!(DRAWN as readonly string[]).includes(name)) return;
+    if (!isOpen(name as Drawn)) await toggleSurface(name as Drawn);
+    await tick();
+    measureStage();
+    lifted = name;
+  }
+
+  // -- §121: the frame's own controls -------------------------------------
+
+  /**
+   * How far a panel's zoom goes, and by how much a press moves it. The bounds
+   * are `cockpit::Placement::ZOOM`'s, which Rust enforces; kept here too so a
+   * press at the end does nothing rather than a round trip that does nothing.
+   */
+  const ZOOM = { least: 50, most: 200, step: 10 } as const;
+  const zoomOf = (placement: SurfacePlacement) => placement.zoom ?? 100;
+
+  function zoomTo(placement: SurfacePlacement, percent: number) {
+    const next = Math.min(ZOOM.most, Math.max(ZOOM.least, Math.round(percent)));
+    if (next === zoomOf(placement)) return;
+    void setPlacement(placement.surface, { zoom: next === 100 ? null : next });
+  }
+
+  /**
+   * Ctrl and the wheel over a panel zooms that panel, as it zooms a page in a
+   * browser. Whole notches only: a trackpad sends dozens of small deltas a
+   * gesture, and a zoom that took each as a step would leap to either end.
+   */
+  let zoomWheel = 0;
+  function wheelZoom(event: WheelEvent, placement: SurfacePlacement) {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    zoomWheel += event.deltaY;
+    const notches = Math.trunc(zoomWheel / 60);
+    if (notches === 0) return;
+    zoomWheel -= notches * 60;
+    zoomTo(placement, zoomOf(placement) - notches * ZOOM.step);
+  }
+
+  /**
+   * The panels that have a window of their own to go to, by the name
+   * `monitors::Panel` gives that window. The other surfaces are drawn out of
+   * this shell's own state, and a second window cannot draw them yet -- so
+   * they carry no button that would do nothing.
+   */
+  const POP_OUT: Partial<Record<string, string>> = {
+    library: "browser",
+    assistant: "assistant",
+    sampler: "sampler",
+  };
+
+  /** Into its own window, and out of this one: one panel, one place. */
+  async function popOut(placement: SurfacePlacement) {
+    const own = POP_OUT[placement.surface];
+    if (!own) return;
+    try {
+      await detachPanel(own);
+    } catch (why) {
+      console.warn("pop out:", why);
+      return;
+    }
+    if (lifted === placement.surface) lifted = null;
+    await toggleSurface(placement.surface as Drawn);
+  }
+
+  /** Where a panel carried by its handle would land. */
+  type MoveTo = { dock: Dock; index: number } | { lift: true };
+
+  /**
+   * A panel being carried, from the press on its handle to the release.
+   *
+   * `active` turns on after a few pixels, so a press that does not travel is
+   * still a click and nothing moves.
+   */
+  let moving = $state<{
+    surface: string;
+    fromX: number;
+    fromY: number;
+    x: number;
+    y: number;
+    active: boolean;
+    to: MoveTo | null;
+  } | null>(null);
+  let cockpitEl = $state<HTMLElement | undefined>();
+
+  /** The docks a surface may be moved to, less the overlay it is lifted into. */
+  const docksFor = (name: string): Dock[] =>
+    (surfaceDocks[name] ?? [homeOf(name)]).filter(
+      (dock) => dock === "left" || dock === "right" || dock === "bottom",
+    );
+
+  /**
+   * Where a release at (x, y) puts `name`.
+   *
+   * Over another docked panel: beside it in its dock, before or after by
+   * which half the pointer is in. Otherwise by where in the cockpit the
+   * pointer is: its left or right fifth is that side's dock, its lower
+   * third the bottom one, and the middle is over the decks -- the same
+   * place the full-size button puts it.
+   */
+  function moveTarget(name: string, x: number, y: number): MoveTo | null {
+    const allowed = docksFor(name);
+    const under = document
+      .elementsFromPoint(x, y)
+      .map((el) => el.closest<HTMLElement>(".surface[data-surface]"))
+      .find((el) => el && el.dataset.surface !== name && !el.classList.contains("lifted"));
+    if (under) {
+      const other = placements.find((p) => p.surface === under.dataset.surface);
+      if (other && allowed.includes(other.dock)) {
+        const box = under.getBoundingClientRect();
+        const after =
+          other.dock === "bottom" ? x > box.left + box.width / 2 : y > box.top + box.height / 2;
+        const list = inDock(other.dock).filter((p) => p.surface !== name);
+        const index = list.findIndex((p) => p.surface === other.surface) + (after ? 1 : 0);
+        return { dock: other.dock, index };
+      }
+    }
+    const room = cockpitEl?.getBoundingClientRect();
+    if (!room) return null;
+    const zone: Dock | "lift" =
+      x < room.left + room.width * 0.2
+        ? "left"
+        : x > room.right - room.width * 0.2
+          ? "right"
+          : y > room.bottom - room.height * 0.33
+            ? "bottom"
+            : "lift";
+    if (zone === "lift") return { lift: true };
+    if (!allowed.includes(zone)) return null;
+    return { dock: zone, index: inDock(zone).filter((p) => p.surface !== name).length };
+  }
+
+  /** Which panel shows where a carried one would land, and on which side. */
+  const dropMark = $derived.by(() => {
+    const to = moving?.active ? moving.to : null;
+    if (!to || !("dock" in to) || !moving) return null;
+    const list = inDock(to.dock).filter((p) => p.surface !== moving!.surface);
+    if (list.length === 0) return null;
+    return to.index < list.length
+      ? { surface: list[to.index].surface, side: "before" as const }
+      : { surface: list[list.length - 1].surface, side: "after" as const };
+  });
+
+  /** The cockpit's box while a panel is carried, for drawing the zones. */
+  const zoneRoom = $derived.by(() => {
+    if (!moving?.active) return null;
+    const r = cockpitEl?.getBoundingClientRect();
+    return r ? { top: r.top, left: r.left, width: r.width, height: r.height } : null;
+  });
+
+  /** The zones a carried panel may land in, for drawing them. */
+  const moveZones = $derived(
+    moving?.active ? [...docksFor(moving.surface), "lift" as const] : [],
+  );
+
+  function startMove(event: PointerEvent, placement: SurfacePlacement) {
+    if (event.button !== 0) return;
+    // The header's buttons keep their clicks; only the handle and the title
+    // between them carry the panel.
+    if ((event.target as Element).closest("button:not(.grab)")) return;
+    moving = {
+      surface: placement.surface,
+      fromX: event.clientX,
+      fromY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
+      active: false,
+      to: null,
+    };
+    try {
+      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    } catch {
+      // Without capture the carry still works while the pointer is over the
+      // header, which is where it starts.
+    }
+  }
+
+  function onMove(event: PointerEvent) {
+    if (!moving) return;
+    const travelled = Math.hypot(event.clientX - moving.fromX, event.clientY - moving.fromY);
+    if (!moving.active && travelled < 6) return;
+    moving.active = true;
+    moving.x = event.clientX;
+    moving.y = event.clientY;
+    moving.to = moveTarget(moving.surface, event.clientX, event.clientY);
+    event.preventDefault();
+  }
+
+  function endMove(event: PointerEvent) {
+    const carried = moving;
+    moving = null;
+    try {
+      (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+    } catch {
+      // Never captured, or already released.
+    }
+    if (!carried?.active || !carried.to) return;
+    if ("lift" in carried.to) {
+      measureStage();
+      lifted = carried.surface;
+      return;
+    }
+    void moveSurface(carried.surface, carried.to.dock, carried.to.index);
+  }
+
+  /** The words for where a carried panel would land, beside the pointer. */
+  function moveWords(to: MoveTo | null): string {
+    if (!to) return "Cannot go here";
+    if ("lift" in to) return "Over the decks, for now";
+    const dock = to.dock === "bottom" ? "the bottom" : `the ${to.dock}`;
+    return `To ${dock}`;
+  }
+
+  /**
+   * Put a panel in a dock at a position, renumbering that dock.
+   *
+   * One write for the whole arrangement rather than one per panel, for the
+   * reason `setPlacement` gives about drawing the request and storing the
+   * answer. A size is dropped when the dock changes: it was a height in a
+   * column or a width in a row, and means nothing along the other axis.
+   */
+  async function moveSurface(name: string, dock: Dock, index: number) {
+    if (!workspace) return;
+    const self = workspace.surfaces.find((p) => p.surface === name);
+    if (!self) return;
+    if (lifted === name) lifted = null;
+    const others = workspace.surfaces.filter((p) => p.surface !== name);
+    const column = others.filter((p) => p.dock === dock).sort((a, b) => a.order - b.order);
+    const at = Math.max(0, Math.min(index, column.length));
+    column.splice(at, 0, { ...self, dock, size: self.dock === dock ? self.size : null });
+    const orders = new Map(column.map((p, i) => [p.surface, i]));
+    const surfaces = [...others.filter((p) => p.dock !== dock), ...column].map((p) =>
+      orders.has(p.surface) ? { ...p, order: orders.get(p.surface)! } : p,
+    );
+    const next = { ...workspace, surfaces };
+    workspace = next;
+    try {
+      const resolved = await setCockpitWorkspace(next);
+      workspace = resolved.workspace;
+      workspaceNotes = resolved.notes;
+      permits = resolved.permits;
+    } catch {
+      // Keeping the optimistic state, for the reason `toggleSurface` gives.
+    }
+  }
+
+  /**
+   * The handle from the keyboard: an arrow moves the panel to that side's
+   * dock, or down to the bottom one, where the panel may go.
+   */
+  function keyMove(event: KeyboardEvent, placement: SurfacePlacement) {
+    const dock: Dock | null =
+      event.key === "ArrowLeft"
+        ? "left"
+        : event.key === "ArrowRight"
+          ? "right"
+          : event.key === "ArrowDown"
+            ? "bottom"
+            : null;
+    if (!dock) return;
+    event.preventDefault();
+    if (dock === placement.dock || !docksFor(placement.surface).includes(dock)) return;
+    void moveSurface(placement.surface, dock, inDock(dock).length);
+  }
 
   $effect(() => {
     // A panel closed while lifted is no longer lifted.
@@ -1402,6 +1717,7 @@
       const known = await cockpitSurfaces();
       surfaceTitles = Object.fromEntries(known.map((s) => [s.name, s.title]));
       surfaceHomes = Object.fromEntries(known.map((s) => [s.name, s.home]));
+      surfaceDocks = Object.fromEntries(known.map((s) => [s.name, s.docks]));
     } catch {
       // A surface with no title falls back to its name, which is still a word
       // a DJ can read -- worse than "Session log", better than an empty header.
@@ -1524,6 +1840,8 @@
       await send(rest);
     } else if (kind === "surface") {
       if ((DRAWN as readonly string[]).includes(rest)) await toggleSurface(rest as Drawn);
+    } else if (kind === "lift") {
+      await openLifted(rest);
     } else if (kind === "switch") {
       await switchTo(rest);
     } else if (kind === "ui") {
@@ -3252,13 +3570,13 @@
       role="separator"
       aria-label="Resize the {dock} dock"
       aria-orientation={dock === "bottom" ? "horizontal" : "vertical"}
-      title="Drag to size the {dock} panels; double-click for their own share"
+      title="Drag to size the {dock} panels; double-click to make them large, and again for their own share"
       data-dock-grip={dock}
       onpointerdown={(e) => startDockResize(e, dock)}
       onpointermove={(e) => onDockResize(e, dock)}
       onpointerup={(e) => endDockResize(e, dock)}
       onpointercancel={(e) => endDockResize(e, dock)}
-      ondblclick={() => resetDock(dock)}
+      ondblclick={() => toggleDock(dock)}
     ></div>
   {/snippet}
 
@@ -3281,71 +3599,155 @@
       data-collapsed={placement.collapsed}
       data-pinned={placement.pinned}
       data-lifted={isLifted(placement)}
+      data-zoom={zoomOf(placement)}
+      class:drop-before={moving?.active && moving.to && "dock" in moving.to && dropMark?.surface === placement.surface && dropMark.side === "before"}
+      class:drop-after={moving?.active && moving.to && "dock" in moving.to && dropMark?.surface === placement.surface && dropMark.side === "after"}
       bind:this={boxes[placement.surface]}
       style={isLifted(placement) ? liftStyle() : placement.collapsed ? "" : sizeStyle(placement)}
     >
-      <header class="surface-head">
+      <!--
+        §121's frame: "grab, move, resize, zoom, reset size, full size,
+        minimize, pop out ... sticky", each a distinct drawing in a button
+        big enough to hit in a dark booth, grouped by what they act on --
+        where the panel is, how large it draws, how it sits -- and always in
+        the same places, so a hand learns them. The title bar carries the
+        panel: dragged, it lands in a dock or over the decks.
+
+        The header takes the press because the title between the buttons is
+        where every desktop carries a window from; the handle at its start is
+        the same carry for a keyboard, and its arrows move the panel.
+      -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <header
+        class="surface-head"
+        class:carrying={moving?.active && moving.surface === placement.surface}
+        onpointerdown={(e) => startMove(e, placement)}
+        onpointermove={onMove}
+        onpointerup={endMove}
+        onpointercancel={endMove}
+      >
+        <button
+          class="grab"
+          title="Drag to move {titleOf(placement.surface)} to another dock or over the decks; arrow keys move it too"
+          aria-label="Move {titleOf(placement.surface)}"
+          onkeydown={(e) => keyMove(e, placement)}
+        ><Icon name="grip" size="0.95rem" /></button>
         <h2>{titleOf(placement.surface)}</h2>
-        {#if placement.dock !== "overlay"}
+        <span class="frame-group" data-group="zoom">
+          <button
+            class="zoom-out"
+            title="Zoom {titleOf(placement.surface)} out (Ctrl and the wheel over it, too)"
+            aria-label="Zoom {titleOf(placement.surface)} out"
+            disabled={zoomOf(placement) <= ZOOM.least}
+            onclick={() => zoomTo(placement, zoomOf(placement) - ZOOM.step)}
+          ><Icon name="zoom-out" size="0.95rem" /></button>
+          <button
+            class="zoom-at"
+            class:on={zoomOf(placement) !== 100}
+            title={zoomOf(placement) === 100
+              ? `${titleOf(placement.surface)} at its own zoom`
+              : `Back to its own zoom from ${zoomOf(placement)}%`}
+            aria-label="{titleOf(placement.surface)} at its own zoom"
+            disabled={zoomOf(placement) === 100}
+            onclick={() => zoomTo(placement, 100)}
+          >{zoomOf(placement)}%</button>
+          <button
+            class="zoom-in"
+            title="Zoom {titleOf(placement.surface)} in (Ctrl and the wheel over it, too)"
+            aria-label="Zoom {titleOf(placement.surface)} in"
+            disabled={zoomOf(placement) >= ZOOM.most}
+            onclick={() => zoomTo(placement, zoomOf(placement) + ZOOM.step)}
+          ><Icon name="zoom-in" size="0.95rem" /></button>
+        </span>
+        <span class="frame-group" data-group="place">
+          <button
+            class="own-size"
+            title={placement.size == null
+              ? `${titleOf(placement.surface)} is at its own size`
+              : `Back to its own size from ${placement.size}px`}
+            aria-label="{titleOf(placement.surface)} at its own size"
+            disabled={placement.size == null}
+            onclick={() => {
+              const box = boxes[placement.surface];
+              box?.style.removeProperty("flex");
+              box?.style.removeProperty(alongY(placement) ? "height" : "width");
+              void setPlacement(placement.surface, { size: null });
+            }}
+          ><Icon name="own-size" size="0.95rem" /></button>
+          {#if POP_OUT[placement.surface]}
+            <button
+              class="pop-out"
+              title="Pop {titleOf(placement.surface)} out into a window of its own, for another screen"
+              aria-label="Pop {titleOf(placement.surface)} out"
+              onclick={() => void popOut(placement)}
+            ><Icon name="pop-out" size="0.95rem" /></button>
+          {/if}
+        </span>
+        <span class="frame-group" data-group="sit">
           <!--
-            §120's temporary window. The panel takes the whole stage for the
-            moment and gives it back, unchanged, the moment the DJ is done.
+            §3's *pinned*, which is the per-surface half of §78's freeze: an
+            arrangement may not move, resize or close it. A DJ who has put the
+            room panel where they want it keeps it when they press a preset.
           -->
           <button
-            class="lift"
-            class:on={lifted === placement.surface}
-            title={lifted === placement.surface
-              ? `Put ${titleOf(placement.surface)} back`
-              : `Lift ${titleOf(placement.surface)} over the decks for now`}
-            aria-label={lifted === placement.surface
-              ? `Put ${titleOf(placement.surface)} back`
-              : `Lift ${titleOf(placement.surface)}`}
-            aria-pressed={lifted === placement.surface}
-            onclick={() => lift(placement.surface)}
-          ><Icon name={lifted === placement.surface ? "compress" : "expand"} size="0.95rem" /></button>
-        {/if}
-        <!--
-          §3's *collapsed* and *expanded*. Two of the eleven verbs it lists,
-          and the field behind them was stored, serialised and resolved by Rust
-          while nothing on this side read it — so a workspace faithfully
-          recorded a fold nobody could make.
-        -->
-        <button
-          class="fold"
-          title={placement.collapsed
-            ? `Expand ${titleOf(placement.surface)}`
-            : `Collapse ${titleOf(placement.surface)}`}
-          aria-label={placement.collapsed
-            ? `Expand ${titleOf(placement.surface)}`
-            : `Collapse ${titleOf(placement.surface)}`}
-          aria-expanded={!placement.collapsed}
-          onclick={() =>
-            setPlacement(placement.surface, { collapsed: !placement.collapsed })}
-        >{placement.collapsed ? "+" : "–"}</button>
-        <!--
-          §3's *pinned*, which is the per-surface half of §78's freeze: an
-          arrangement may not move, resize or close it. A DJ who has put the
-          room panel where they want it keeps it when they press a preset.
-        -->
-        <button
-          class="pin"
-          class:on={placement.pinned}
-          title={placement.pinned
-            ? `Unpin ${titleOf(placement.surface)}`
-            : `Pin ${titleOf(placement.surface)} where it is`}
-          aria-label={placement.pinned
-            ? `Unpin ${titleOf(placement.surface)}`
-            : `Pin ${titleOf(placement.surface)}`}
-          aria-pressed={placement.pinned}
-          onclick={() =>
-            setPlacement(placement.surface, { pinned: !placement.pinned })}
-        >&#9679;</button>
-        <button
-          class="shut"
-          title="Close {titleOf(placement.surface)}"
-          aria-label="Close {titleOf(placement.surface)}"
-          onclick={() => toggleSurface(placement.surface as Drawn)}
-        >&times;</button>
+            class="pin"
+            class:on={placement.pinned}
+            title={placement.pinned
+              ? `Unpin ${titleOf(placement.surface)}`
+              : `Pin ${titleOf(placement.surface)} where it is: no arrangement moves it`}
+            aria-label={placement.pinned
+              ? `Unpin ${titleOf(placement.surface)}`
+              : `Pin ${titleOf(placement.surface)}`}
+            aria-pressed={placement.pinned}
+            onclick={() =>
+              setPlacement(placement.surface, { pinned: !placement.pinned })}
+          ><Icon name="thumbtack" size="0.95rem" /></button>
+          <!--
+            §3's *collapsed* and *expanded*. Two of the eleven verbs it lists,
+            and the field behind them was stored, serialised and resolved by
+            Rust while nothing on this side read it — so a workspace
+            faithfully recorded a fold nobody could make.
+          -->
+          <button
+            class="fold"
+            title={placement.collapsed
+              ? `Expand ${titleOf(placement.surface)}`
+              : `Collapse ${titleOf(placement.surface)} to its title`}
+            aria-label={placement.collapsed
+              ? `Expand ${titleOf(placement.surface)}`
+              : `Collapse ${titleOf(placement.surface)}`}
+            aria-expanded={!placement.collapsed}
+            onclick={() =>
+              setPlacement(placement.surface, { collapsed: !placement.collapsed })}
+          ><Icon
+              name={placement.collapsed ? "window-restore" : "window-minimize"}
+              size="0.95rem"
+            /></button>
+          {#if placement.dock !== "overlay"}
+            <!--
+              §120's temporary window. The panel takes the whole stage for the
+              moment and gives it back, unchanged, the moment the DJ is done.
+            -->
+            <button
+              class="lift"
+              class:on={lifted === placement.surface}
+              title={lifted === placement.surface
+                ? `Put ${titleOf(placement.surface)} back`
+                : `Lift ${titleOf(placement.surface)} over the decks for now (Space Shift+O)`}
+              aria-label={lifted === placement.surface
+                ? `Put ${titleOf(placement.surface)} back`
+                : `Lift ${titleOf(placement.surface)}`}
+              aria-pressed={lifted === placement.surface}
+              onclick={() => lift(placement.surface)}
+            ><Icon name={lifted === placement.surface ? "compress" : "expand"} size="0.95rem" /></button>
+          {/if}
+          <button
+            class="shut"
+            title="Close {titleOf(placement.surface)}"
+            aria-label="Close {titleOf(placement.surface)}"
+            onclick={() => toggleSurface(placement.surface as Drawn)}
+          ><Icon name="xmark" size="0.95rem" /></button>
+        </span>
       </header>
       <!--
         §3's *resized*. On the dock's own axis, and on the edge that faces the
@@ -3382,7 +3784,12 @@
           title="Drag to resize; double-click for its own size"
         ></div>
       {/if}
-      <div class="surface-body" hidden={placement.collapsed && !isLifted(placement)}>
+      <div
+        class="surface-body"
+        hidden={placement.collapsed && !isLifted(placement)}
+        style={zoomOf(placement) === 100 ? "" : `zoom: ${zoomOf(placement) / 100};`}
+        onwheel={(e) => wheelZoom(e, placement)}
+      >
         {#if placement.surface === "library"}{@render surfaceLibrary()}
         {:else if placement.surface === "prepare"}{@render surfacePrepare()}
         {:else if placement.surface === "next"}{@render surfaceNext()}
@@ -3442,7 +3849,7 @@
     onSwitch={(run) => void switchTo(run)}
   />
 
-  <div class="cockpit">
+  <div class="cockpit" bind:this={cockpitEl}>
   {#if leftDock.length > 0}
     <div class="dock side left" bind:this={dockEls.left} style={dockStyle("left", leftDock)}>
       {#each leftDock as placement (placement.surface)}
@@ -3580,6 +3987,36 @@
     </div>
   {/if}
   </div>
+
+  <!--
+    §121: where a carried panel can land, drawn while it is carried. Only the
+    docks that panel may go in, so a zone that lights up is a promise the
+    resolver keeps; the middle is over the decks, as the full-size button is.
+  -->
+  {#if moving?.active && zoneRoom}
+    <div class="move-zones" aria-hidden="true">
+      {#each moveZones as zone (zone)}
+        {@const lit = moving.to ? ("lift" in moving.to ? zone === "lift" : moving.to.dock === zone) : false}
+        <div
+          class="move-zone"
+          class:lit
+          data-zone={zone}
+          style={zone === "left"
+            ? `top:${zoneRoom.top}px;left:${zoneRoom.left}px;width:${zoneRoom.width * 0.2}px;height:${zoneRoom.height}px;`
+            : zone === "right"
+              ? `top:${zoneRoom.top}px;left:${zoneRoom.left + zoneRoom.width * 0.8}px;width:${zoneRoom.width * 0.2}px;height:${zoneRoom.height}px;`
+              : zone === "bottom"
+                ? `top:${zoneRoom.top + zoneRoom.height * 0.67}px;left:${zoneRoom.left + zoneRoom.width * 0.2}px;width:${zoneRoom.width * 0.6}px;height:${zoneRoom.height * 0.33}px;`
+                : `top:${zoneRoom.top}px;left:${zoneRoom.left + zoneRoom.width * 0.2}px;width:${zoneRoom.width * 0.6}px;height:${zoneRoom.height * 0.67}px;`}
+        >
+          <span>{zone === "lift" ? "Over the decks" : zone === "bottom" ? "Bottom" : zone === "left" ? "Left" : "Right"}</span>
+        </div>
+      {/each}
+      <p class="move-chip" style="top:{moving.y + 14}px;left:{moving.x + 14}px;">
+        {titleOf(moving.surface)}: {moveWords(moving.to)}
+      </p>
+    </div>
+  {/if}
 
   <!--
     What the arrangement asked for and did not get. Same posture as the layout
@@ -4196,32 +4633,147 @@
     margin-right: auto;
   }
 
-  .surface-head .shut,
-  .surface-head .fold,
-  .surface-head .lift,
-  .surface-head .pin {
+  /*
+    §121's frame. Every control is a square big enough to hit in a dark
+    booth, drawn distinctly and grouped by what it acts on -- zoom, where
+    the panel sits, how it is shown -- with a hairline between groups, so a
+    hand learns three places rather than nine buttons. A disabled one stays
+    where it is, faint: a control that vanished would move its neighbours.
+  */
+  .surface-head {
+    flex-wrap: wrap;
+    row-gap: 0.2rem;
+    column-gap: 0.25rem;
+    padding: 0.2rem 0.3rem;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+  }
+
+  .surface-head.carrying {
+    cursor: grabbing;
+    opacity: 0.75;
+  }
+
+  .surface-head h2 {
+    flex: 1 1 4rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .frame-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding-left: 0.25rem;
+    border-left: 1px solid var(--border);
+    cursor: default;
+  }
+
+  .surface-head button {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.7rem;
+    height: 1.7rem;
+    padding: 0 0.2rem;
     background: transparent;
-    border: none;
+    border: 1px solid transparent;
+    border-radius: 5px;
     color: var(--text-dim);
-    font-size: 1.1em;
     line-height: 1;
-    padding: 0 0.3rem;
     cursor: pointer;
   }
 
-  .surface-head .shut:hover,
-  .surface-head .fold:hover,
-  .surface-head .lift:hover,
-  .surface-head .pin:hover {
+  .surface-head button:hover:not(:disabled),
+  .surface-head button:focus-visible {
+    color: var(--text);
+    background: var(--panel);
+    border-color: var(--border-strong);
+  }
+
+  .surface-head button:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  .surface-head .grab {
+    cursor: grab;
+  }
+
+  .surface-head .zoom-at {
+    min-width: 2.9rem;
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .surface-head .shut:hover {
+    color: var(--danger);
+  }
+
+  .surface-head .lift.on,
+  .surface-head .zoom-at.on {
+    color: var(--selected);
+  }
+
+  /*
+    §121: where a carried panel would land. A bar on the edge of the panel it
+    would go beside, and the zones of the cockpit it may go in, the one under
+    the pointer lit.
+  */
+  .dock.side > .surface.drop-before {
+    box-shadow: inset 0 3px 0 var(--selected);
+  }
+  .dock.side > .surface.drop-after {
+    box-shadow: inset 0 -3px 0 var(--selected);
+  }
+  .dock.bottom > .surface.drop-before {
+    box-shadow: inset 3px 0 0 var(--selected);
+  }
+  .dock.bottom > .surface.drop-after {
+    box-shadow: inset -3px 0 0 var(--selected);
+  }
+
+  .move-zones {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+  }
+
+  .move-zone {
+    position: fixed;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    border: 2px dashed var(--border-strong);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* §30: where it will land is the choice being made, so `--selected`. */
+  .move-zone.lit {
+    border-color: var(--selected);
+    border-style: solid;
+    background: color-mix(in srgb, var(--selected) 16%, transparent);
     color: var(--text);
   }
 
-  .surface-head .lift {
-    font-size: 0.72em;
-  }
-
-  .surface-head .lift.on {
-    color: var(--selected);
+  .move-chip {
+    position: fixed;
+    margin: 0;
+    padding: 0.3rem 0.55rem;
+    background: var(--panel-raised);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.8rem;
+    white-space: nowrap;
   }
 
   /*
@@ -4262,25 +4814,41 @@
     cursor: ns-resize;
   }
 
+  /* §121: "resize it quickly at all times", so the handle is always drawn,
+     faintly, and lights up under the pointer. */
   .dock-grip::after {
     content: "";
     position: absolute;
     border-radius: 2px;
-    background: transparent;
+    background: var(--border-strong);
+    opacity: 0.6;
   }
 
+  /* A short notch at rest, the length of the dock under the pointer. */
   .dock-grip.along::after {
-    top: 20%;
-    bottom: 20%;
+    top: calc(50% - 1.5rem);
+    bottom: calc(50% - 1.5rem);
     left: calc(50% - 1.5px);
     width: 3px;
   }
 
   .dock-grip.across::after {
-    left: 20%;
-    right: 20%;
+    left: calc(50% - 1.5rem);
+    right: calc(50% - 1.5rem);
     top: calc(50% - 1.5px);
     height: 3px;
+  }
+
+  .dock-grip.along:hover::after,
+  .dock-grip.along.dragging::after {
+    top: 20%;
+    bottom: 20%;
+  }
+
+  .dock-grip.across:hover::after,
+  .dock-grip.across.dragging::after {
+    left: 20%;
+    right: 20%;
   }
 
   .dock-grip:hover::after,
@@ -4306,9 +4874,6 @@
 
   /* A pin that is in reads as in, and §33's rule applies: the pressed state is
      carried by `aria-pressed` as well as by the colour. */
-  .surface-head .pin {
-    font-size: 0.7em;
-  }
 
   /*
     §30: a state is painted with the role it means. Pinning is the DJ choosing
@@ -4335,11 +4900,16 @@
     touch-action: none;
   }
 
+  /*
+    §121: "resize" among the frame's controls, so easier to find and to hit
+    than the six invisible pixels it was: ten, with a notch in the middle
+    that is always drawn, the way a window's corner shows it can be taken.
+  */
   .dock.side .surface .grip {
     left: 0;
     right: 0;
     bottom: 0;
-    height: 6px;
+    height: 10px;
     cursor: ns-resize;
   }
 
@@ -4347,13 +4917,37 @@
     top: 0;
     bottom: 0;
     right: 0;
-    width: 6px;
+    width: 10px;
     cursor: ew-resize;
   }
 
+  .surface .grip::after {
+    content: "";
+    position: absolute;
+    border-radius: 2px;
+    background: var(--border-strong);
+  }
+
+  .dock.side .surface .grip::after {
+    left: calc(50% - 1rem);
+    width: 2rem;
+    top: 3px;
+    height: 3px;
+  }
+
+  .dock.bottom .surface .grip::after {
+    top: calc(50% - 1rem);
+    height: 2rem;
+    left: 3px;
+    width: 3px;
+  }
+
   .surface .grip:hover {
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+
+  .surface .grip:hover::after {
     background: var(--accent);
-    opacity: 0.4;
   }
 
   /* A collapsed surface is its own header and nothing else. */

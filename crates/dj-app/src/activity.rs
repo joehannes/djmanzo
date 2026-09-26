@@ -80,6 +80,7 @@ fn at(surface: &str, dock: Dock, order: i32) -> Placement {
         size: None,
         collapsed: false,
         pinned: false,
+        zoom: None,
     }
 }
 

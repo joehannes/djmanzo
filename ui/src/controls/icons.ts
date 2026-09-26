@@ -115,6 +115,31 @@ export const ICONS: Record<string, IconGlyph> = {
   "unlink": { d: "M9 15l-2 2a3.5 3.5 0 0 1 -5 -5l2-2M15 9l2-2a3.5 3.5 0 0 1 5 5l-2 2M4 4l16 16" },
   "water": { d: "M2 8c3-2.5 5-2.5 8 0s5 2.5 8 0M2 13c3-2.5 5-2.5 8 0s5 2.5 8 0M2 18c3-2.5 5-2.5 8 0s5 2.5 8 0" },
   "xmark": { d: "M6 6l12 12M18 6L6 18" },
+  // §121's frame. Each drawn to be told from its neighbours in a panel's
+  // header at a glance, since that is the whole of the ask: "distinct".
+  //
+  // Six dots in two columns: the handle a panel is carried by, as every
+  // desktop draws it, and filled so it reads as a thing to take hold of.
+  "grip": {
+    d:
+      "M9 4.6a1.4 1.4 0 1 0 0 2.8a1.4 1.4 0 1 0 0 -2.8zM15 4.6a1.4 1.4 0 1 0 0 2.8a1.4 1.4 0 1 0 0 -2.8z" +
+      "M9 10.6a1.4 1.4 0 1 0 0 2.8a1.4 1.4 0 1 0 0 -2.8zM15 10.6a1.4 1.4 0 1 0 0 2.8a1.4 1.4 0 1 0 0 -2.8z" +
+      "M9 16.6a1.4 1.4 0 1 0 0 2.8a1.4 1.4 0 1 0 0 -2.8zM15 16.6a1.4 1.4 0 1 0 0 2.8a1.4 1.4 0 1 0 0 -2.8z",
+    fill: true,
+  },
+  // A drawing pin, point down: the panel stays where it was put.
+  "thumbtack": { d: "M9 3h6M10 3l-.8 6.5L6 13h12l-3.2-3.5L14 3M12 13v8" },
+  // A window with an arrow leaving it by the corner: into a window of its own.
+  "pop-out": { d: "M13 4h7v7M20 4l-9 9M18 14v5a1 1 0 0 1 -1 1H5a1 1 0 0 1 -1 -1V7a1 1 0 0 1 1 -1h5" },
+  "zoom-in": { d: "M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0 -13zM15.3 15.3L21 21M7.5 10.5h6M10.5 7.5v6" },
+  "zoom-out": { d: "M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0 -13zM15.3 15.3L21 21M7.5 10.5h6" },
+  // A title bar and nothing under it: what a minimised panel is.
+  "window-minimize": { d: "M4 5h16v4H4z" },
+  // A title bar with its body back under it.
+  "window-restore": { d: "M4 5h16v14H4zM4 9h16" },
+  // Its own size: a frame drawn at the size it asks for, inside the corners
+  // of a larger one it came back from.
+  "own-size": { d: "M8 8h8v8H8zM3 7V3h4M21 7V3h-4M3 17v4h4M21 17v4h-4" },
 };
 
 /**

@@ -594,6 +594,175 @@
       "mine": false
     },
     {
+      "key": "O",
+      "label": "Open a panel large, over the decks",
+      "run": null,
+      "children": [
+        {
+          "key": "l",
+          "label": "Library",
+          "run": "lift library",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "n",
+          "label": "Next",
+          "run": "lift next",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "p",
+          "label": "Prepare",
+          "run": "lift prepare",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "s",
+          "label": "Set plan",
+          "run": "lift plan",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "a",
+          "label": "Pair",
+          "run": "lift pair",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "r",
+          "label": "Practice",
+          "run": "lift practice",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "t",
+          "label": "The night",
+          "run": "lift night",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "h",
+          "label": "At hand",
+          "run": "lift athand",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "m",
+          "label": "Tonight's mixes",
+          "run": "lift mixes",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "e",
+          "label": "Requests",
+          "run": "lift requests",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "i",
+          "label": "Singers",
+          "run": "lift karaoke",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "b",
+          "label": "Booth",
+          "run": "lift booth",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "o",
+          "label": "Room",
+          "run": "lift room",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "c",
+          "label": "Sampler",
+          "run": "lift sampler",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "d",
+          "label": "Presets",
+          "run": "lift presets",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "f",
+          "label": "Assistant",
+          "run": "lift assistant",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "g",
+          "label": "Controllers",
+          "run": "lift controllers",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "k",
+          "label": "Keys",
+          "run": "lift keys",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "j",
+          "label": "Session log",
+          "run": "lift log",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "q",
+          "label": "Settings",
+          "run": "lift settings",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "v",
+          "label": "Event",
+          "run": "lift event",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "u",
+          "label": "Press kit",
+          "run": "lift kit",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "w",
+          "label": "Crowd",
+          "run": "lift crowd",
+          "children": [],
+          "mine": false
+        }
+      ],
+      "mine": false
+    },
+    {
       "key": "v",
       "label": "View",
       "run": null,

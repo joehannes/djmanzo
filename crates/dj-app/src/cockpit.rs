@@ -1289,6 +1289,25 @@ pub struct Placement {
     /// is the per-surface half of "freeze layout".
     #[serde(default)]
     pub pinned: bool,
+    /// §121: how large the panel draws what it holds, in percent. `None` is
+    /// the interface's own size.
+    ///
+    /// > controls on the widget borders ... grab, move, resize, zoom, reset
+    /// > size, full size, minimize, pop out ... sticky
+    ///
+    /// A zoom rather than a font size, because a panel is knobs and waveforms
+    /// as well as words, and one that grows its words and not its controls
+    /// has only moved the problem. Kept inside [`Placement::ZOOM`] by
+    /// [`resolve`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<u16>,
+}
+
+impl Placement {
+    /// How far a panel may be zoomed, in percent: half size is still a panel
+    /// whose header can be hit, and past double a side panel's own contents
+    /// no longer fit across it.
+    pub const ZOOM: (u16, u16) = (50, 200);
 }
 
 // -- workspaces -------------------------------------------------------------
@@ -1800,6 +1819,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "athand".to_owned(),
@@ -1808,6 +1828,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Relaxed,
@@ -1845,6 +1866,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "booth".to_owned(),
@@ -1853,6 +1875,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::ProDense,
@@ -1900,6 +1923,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "athand".to_owned(),
@@ -1908,6 +1932,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Compact,
@@ -1933,6 +1958,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "booth".to_owned(),
@@ -1941,6 +1967,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Standard,
@@ -1963,6 +1990,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "night".to_owned(),
@@ -1971,6 +1999,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Standard,
@@ -1993,6 +2022,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "next".to_owned(),
@@ -2001,6 +2031,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Compact,
@@ -2024,6 +2055,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "night".to_owned(),
@@ -2032,6 +2064,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Standard,
@@ -2052,6 +2085,7 @@ pub fn workspaces() -> Vec<Workspace> {
                 size: None,
                 collapsed: false,
                 pinned: false,
+                zoom: None,
             }],
             density: Density::Compact,
             focus: Focus::Performing,
@@ -2092,6 +2126,7 @@ pub fn workspaces() -> Vec<Workspace> {
                 size: None,
                 collapsed: false,
                 pinned: false,
+                zoom: None,
             }],
             density: Density::Compact,
             focus: Focus::Performing,
@@ -2112,6 +2147,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "prepare".to_owned(),
@@ -2120,6 +2156,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Compact,
@@ -2141,6 +2178,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "library".to_owned(),
@@ -2149,6 +2187,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Standard,
@@ -2170,6 +2209,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "pair".to_owned(),
@@ -2178,6 +2218,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Standard,
@@ -2212,6 +2253,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 // Next.
                 Placement {
@@ -2221,6 +2263,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 // Room response.
                 Placement {
@@ -2230,6 +2273,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Standard,
@@ -2263,6 +2307,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "assistant".to_owned(),
@@ -2271,6 +2316,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Compact,
@@ -2330,6 +2376,7 @@ pub fn workspaces() -> Vec<Workspace> {
                 size: None,
                 collapsed: false,
                 pinned: false,
+                zoom: None,
             }],
             density: Density::Standard,
             focus: Focus::Performing,
@@ -2349,6 +2396,7 @@ pub fn workspaces() -> Vec<Workspace> {
                 size: None,
                 collapsed: false,
                 pinned: false,
+                zoom: None,
             }],
             density: Density::Standard,
             focus: Focus::Performing,
@@ -2369,6 +2417,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
                 Placement {
                     surface: "library".to_owned(),
@@ -2377,6 +2426,7 @@ pub fn workspaces() -> Vec<Workspace> {
                     size: None,
                     collapsed: false,
                     pinned: false,
+                    zoom: None,
                 },
             ],
             density: Density::Standard,
@@ -2556,6 +2606,21 @@ pub fn resolve(workspace: &Workspace) -> Resolved {
                 ));
                 placement.size = Some(least);
             }
+        }
+        if let Some(zoom) = placement.zoom {
+            let (least, most) = Placement::ZOOM;
+            let kept = zoom.clamp(least, most);
+            if kept != zoom {
+                notes.push(format!(
+                    "`{}` was zoomed to {zoom}%; it opens at {kept}%, inside the \
+                     {least} to {most}% a panel can be",
+                    known.name
+                ));
+            }
+            // A hundred percent is the panel's own size, which is what no
+            // zoom at all says: one way of writing it keeps a workspace file
+            // from differing only by a field that changes nothing.
+            placement.zoom = (kept != 100).then_some(kept);
         }
         if placement.collapsed && !known.collapsible {
             notes.push(format!("`{}` cannot be collapsed", known.name));
@@ -2912,12 +2977,54 @@ mod tests {
             size: Some(420),
             collapsed: true,
             pinned: true,
+            zoom: None,
         }];
         let kept = resolve(&workspace).workspace.surfaces;
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].size, Some(420), "the resolver dropped the size");
         assert!(kept[0].collapsed, "the resolver dropped the fold");
         assert!(kept[0].pinned, "the resolver dropped the pin");
+    }
+
+    /// §121: a panel's zoom round-trips, is kept inside what a panel can be,
+    /// and a hundred percent is written as no zoom at all.
+    #[test]
+    fn a_panel_keeps_its_zoom_inside_what_a_panel_can_be() {
+        let zoomed = |zoom: Option<u16>| {
+            let mut workspace = opening();
+            workspace.surfaces = vec![Placement {
+                surface: "library".to_owned(),
+                dock: Dock::Bottom,
+                order: 0,
+                size: None,
+                collapsed: false,
+                pinned: false,
+                zoom,
+            }];
+            let resolved = resolve(&workspace);
+            (resolved.workspace.surfaces[0].zoom, resolved.notes)
+        };
+        assert_eq!(
+            zoomed(Some(130)).0,
+            Some(130),
+            "the resolver dropped the zoom"
+        );
+        assert!(zoomed(Some(130)).1.is_empty());
+        assert_eq!(zoomed(None).0, None);
+        assert_eq!(zoomed(Some(100)).0, None, "a hundred percent is no zoom");
+        let (least, most) = Placement::ZOOM;
+        let (kept, notes) = zoomed(Some(900));
+        assert_eq!(kept, Some(most));
+        assert!(notes.iter().any(|note| note.contains("900%")), "{notes:?}");
+        assert_eq!(zoomed(Some(10)).0, Some(least));
+        // A workspace file from before zoom existed still opens.
+        let old: Placement = serde_json::from_str(
+            r#"{"surface":"library","dock":"bottom","order":0,"collapsed":false,"pinned":false}"#,
+        )
+        .expect("a placement without a zoom");
+        assert_eq!(old.zoom, None);
+        // And one without a zoom writes none.
+        assert!(!serde_json::to_string(&old).unwrap().contains("zoom"));
     }
 
     /// **The one §3 asks for that djmanzo does not do says which section
@@ -4051,6 +4158,7 @@ mod tests {
             size: None,
             collapsed: false,
             pinned: false,
+            zoom: None,
         }
     }
 

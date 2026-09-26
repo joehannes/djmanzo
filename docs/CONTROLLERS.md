@@ -167,10 +167,15 @@ press = "interface ui back"                # back to the last activity
 [[binding]]
 on = "note 1 0x42"
 press = "interface surface library"        # open or close the collection
+
+[[binding]]
+on = "note 1 0x43"
+press = "interface lift library"           # the collection, large over the decks
 ```
 
-Four kinds, the four a leaf of the Space tree has: `switch` (an activity, a
-workspace, a theme, a preset pack), `surface` (a panel), `ui` (the palette,
+Five kinds, the five a leaf of the Space tree has: `switch` (an activity, a
+workspace, a theme, a preset pack), `surface` (a panel, docked), `lift` (a
+panel opened large over the decks, as `Space O` and a letter opens it), `ui` (the palette,
 the search, back, everything, record, mark, the dashboard) and `uiop` (§41's
 operations). The loader checks the shape; the application checks the name
 against the tree it offers when the button is pressed, so a line naming an
