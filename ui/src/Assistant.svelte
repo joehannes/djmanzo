@@ -309,11 +309,23 @@
     min-height: 0;
   }
 
+  /*
+    §124: "also the basic controls / top toolbar/search" stay in view while a
+    view scrolls. In a short panel this whole section scrolls in the panel's
+    body, and the model, the spend and Setup went up with it; the box to ask
+    in went down. Both hold to their edge of the panel now, over whatever is
+    scrolling between them.
+  */
   header {
     display: flex;
     align-items: center;
     gap: 0.6rem;
     flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding-block: 0.25rem;
+    background: var(--panel);
   }
 
   .who {
@@ -432,6 +444,11 @@
   .compose {
     display: flex;
     gap: 0.4rem;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding-block: 0.3rem;
+    background: var(--panel);
   }
 
   .compose input {

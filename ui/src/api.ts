@@ -1588,6 +1588,11 @@ export function artUrl(trackId: string): string {
 
 /** One track as the browser shows it. Pre-formatted in Rust — see the DTO. */
 export interface LibraryTrack {
+  /**
+   * §124: found by the typo-tolerant pass rather than by the words as typed.
+   * Absent on every list but a search's.
+   */
+  near?: boolean;
   id: string;
   path: string;
   title: string;

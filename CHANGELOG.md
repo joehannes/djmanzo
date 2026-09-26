@@ -34,6 +34,16 @@ Versioning follows semver, with one project-specific convention:
   back. The gap always shows its handle now.
 - **Fixed: a single click on a dock's gap sized the dock.** It wrote the
   dock's current share down as a fixed size.
+- **One search for everything.** The library's separate "Sources" tab is
+  gone: its search has an "Include external sources" tick, and the other
+  sources' answers come below your collection's own in the same list.
+- **Search that forgives typos.** When what you typed finds little, records
+  a typo or two away are listed after it, marked ≈ — "bachta" finds
+  "Bachata Rosa", "ojala" finds "Ojalá".
+- **Search boxes and sidebars stay put.** A long list along the bottom
+  scrolls on its own under the search and beside the crates instead of
+  taking them with it; in a narrow panel the search row wraps instead of
+  the panel scrolling sideways; the assistant's bar and ask box stay in view.
 - **Neural stems on Windows and Apple Silicon Macs.** The Windows installers
   and the Apple Silicon app now carry ONNX Runtime, as the Linux packages
   do, so the stem separator the karaoke mode uses to take the voice out

@@ -2031,6 +2031,74 @@ impl Library {
         })
     }
 
+    /// §124: the records close to `query` that the prefix search would not
+    /// find — a typo, a swapped pair, a missing accent — nearest first, and
+    /// none of those in `found`, which the caller already has.
+    ///
+    /// Every record's title, artist, album, album artist and genre is read and
+    /// compared, so this is the second pass rather than the first: the prefix
+    /// search answers from its index and this one reads the table. A
+    /// collection of fifty thousand is some tens of milliseconds; see
+    /// [`crate::near`] for what counts as close.
+    pub fn search_near(
+        &self,
+        query: &str,
+        limit: usize,
+        found: &[TrackId],
+    ) -> Result<Vec<LibraryTrack>> {
+        let wanted = crate::near::words(query);
+        if wanted.is_empty() || limit == 0 {
+            return Ok(Vec::new());
+        }
+        let skip: std::collections::HashSet<String> = found.iter().map(|id| id.to_hex()).collect();
+        let mut near: Vec<(usize, String, String)> = self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, coalesce(title, ''), coalesce(artist, ''), coalesce(album, ''),
+                        coalesce(album_artist, ''), coalesce(genre, ''), path
+                 FROM tracks",
+            )?;
+            let mut rows = stmt.query([])?;
+            let mut out = Vec::new();
+            while let Some(row) = rows.next()? {
+                let id: String = row.get(0)?;
+                if skip.contains(&id) {
+                    continue;
+                }
+                let title: String = row.get(1)?;
+                // A record with no title tag is known by its file name, as
+                // the table shows it, so that is what is searched.
+                let named = if title.is_empty() {
+                    let path: String = row.get(6)?;
+                    Path::new(&path)
+                        .file_stem()
+                        .map(|stem| stem.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                } else {
+                    title
+                };
+                let text = [
+                    named.as_str(),
+                    &row.get::<_, String>(2)?,
+                    &row.get::<_, String>(3)?,
+                    &row.get::<_, String>(4)?,
+                    &row.get::<_, String>(5)?,
+                ]
+                .join(" ");
+                if let Some(distance) = crate::near::closeness(&wanted, &crate::near::words(&text))
+                {
+                    out.push((distance, named.to_lowercase(), id));
+                }
+            }
+            Ok(out)
+        })?;
+        near.sort();
+        near.truncate(limit);
+        near.into_iter()
+            .filter_map(|(_, _, hex)| track_id_from_hex(&hex))
+            .filter_map(|id| self.track(id).transpose())
+            .collect()
+    }
+
     /// Every track, newest first. The browser's default view.
     pub fn all_tracks(&self, limit: usize) -> Result<Vec<LibraryTrack>> {
         self.with(|conn| {
@@ -3587,6 +3655,49 @@ mod tests {
 
         assert!(lib.smart_tracks("for is warmup", 20).unwrap().is_empty());
         assert_eq!(lib.smart_tracks("not for is warmup", 20).unwrap().len(), 1);
+    }
+
+    /// §124: a typo the prefix search cannot forgive is found by the second
+    /// pass, nearest first, without what the first pass already has and
+    /// without records that are not close.
+    #[test]
+    fn a_search_with_a_typo_is_found_by_the_near_pass() {
+        let lib = library();
+        lib.upsert_track(&track(1, "Bachata Rosa", "Juan Luis Guerra"))
+            .unwrap();
+        lib.upsert_track(&track(2, "Burbujas de Amor", "Juan Luis Guerra"))
+            .unwrap();
+        lib.upsert_track(&track(3, "Ojalá Que Llueva Café", "Juan Luis Guerra"))
+            .unwrap();
+        lib.upsert_track(&track(4, "Suavemente", "Elvis Crespo"))
+            .unwrap();
+
+        // The prefix search finds nothing for a dropped letter…
+        assert!(lib.search("bachta", 20).unwrap().is_empty());
+        // …and the near pass finds exactly that record.
+        let near = lib.search_near("bachta", 20, &[]).unwrap();
+        assert_eq!(near.iter().map(|t| t.id).collect::<Vec<_>>(), vec![id(1)]);
+
+        // Two words, one typo in each, across title and artist.
+        let near = lib.search_near("burbjas gerra", 20, &[]).unwrap();
+        assert_eq!(near.iter().map(|t| t.id).collect::<Vec<_>>(), vec![id(2)]);
+
+        // What the caller already found is not found twice.
+        let near = lib.search_near("guera", 20, &[id(1), id(2)]).unwrap();
+        assert_eq!(near.iter().map(|t| t.id).collect::<Vec<_>>(), vec![id(3)]);
+
+        // Nearest first: an exact word before a typo'd one.
+        lib.upsert_track(&track(5, "Suavemnte Remix", "Somebody"))
+            .unwrap();
+        let near = lib.search_near("suavemente", 20, &[]).unwrap();
+        assert_eq!(
+            near.iter().map(|t| t.id).collect::<Vec<_>>(),
+            vec![id(4), id(5)]
+        );
+
+        // Nothing close is nothing.
+        assert!(lib.search_near("reggaeton", 20, &[]).unwrap().is_empty());
+        assert!(lib.search_near("", 20, &[]).unwrap().is_empty());
     }
 
     #[test]

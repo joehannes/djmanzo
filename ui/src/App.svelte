@@ -4583,9 +4583,18 @@
     flex: 1 1 45%;
   }
 
+  /*
+    §124: "if something in the view is a list/table that's scrolled the
+    sidebar shall be visible at all times ... also the basic controls /
+    top toolbar/search". A panel along the bottom is held to the dock's
+    height, so a long list scrolls inside it under its own search and beside
+    its own sidebar. It was as tall as its content, and the dock scrolled
+    instead: the header, the search box and the crates went up with the rows.
+  */
   .dock.bottom > .surface {
     flex: 1 1 420px;
     min-width: 0;
+    max-height: 100%;
   }
 
   .surface {

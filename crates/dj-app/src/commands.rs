@@ -5663,6 +5663,9 @@ pub struct LibraryTrackDto {
     /// phrase structure is a thing that exists — so it is blank rather than
     /// guessed at.
     pub phrase_beats: Option<u32>,
+    /// §124: found by the typo-tolerant pass rather than by the words as
+    /// typed, so the table can say "close to what you typed" beside it.
+    pub near: bool,
 }
 
 impl From<dj_library::LibraryTrack> for LibraryTrackDto {
@@ -5687,6 +5690,7 @@ impl From<dj_library::LibraryTrack> for LibraryTrackDto {
             colour: track.colour.clone(),
             last_played: track.stats.last_played,
             phrase_beats: track.analysis.phrase_beats,
+            near: false,
         }
     }
 }
@@ -10639,20 +10643,45 @@ impl From<dj_library::ScanReport> for LibraryScanDto {
 const BROWSE_LIMIT: usize = 500;
 
 /// Search the library, or list it when the query is empty.
+///
+/// §124's fuzzy search: when the words as typed find fewer than
+/// `NEAR_WHEN` records, the typo-tolerant pass (`Library::search_near`)
+/// adds up to `NEAR_MOST` more after them, each marked `near`. Not when the
+/// typed words already found plenty: a DJ who typed "guerra" and got forty
+/// records does not want forty-one with a "guerrero" at the end.
 #[tauri::command]
 pub fn library_search(
     state: State<'_, AppState>,
     query: String,
 ) -> Result<Vec<LibraryTrackDto>, String> {
     let db = library(&state)?;
-    let found = if query.trim().is_empty() {
-        db.all_tracks(BROWSE_LIMIT)
-    } else {
-        db.search(&query, BROWSE_LIMIT)
+    if query.trim().is_empty() {
+        let all = db.all_tracks(BROWSE_LIMIT).map_err(|e| e.to_string())?;
+        return Ok(all.into_iter().map(LibraryTrackDto::from).collect());
     }
-    .map_err(|e| e.to_string())?;
-    Ok(found.into_iter().map(LibraryTrackDto::from).collect())
+    let found = db.search(&query, BROWSE_LIMIT).map_err(|e| e.to_string())?;
+    let near = if found.len() < NEAR_WHEN {
+        let have: Vec<_> = found.iter().map(|track| track.id).collect();
+        db.search_near(&query, NEAR_MOST, &have)
+            .map_err(|e| e.to_string())?
+    } else {
+        Vec::new()
+    };
+    Ok(found
+        .into_iter()
+        .map(LibraryTrackDto::from)
+        .chain(near.into_iter().map(|track| LibraryTrackDto {
+            near: true,
+            ..LibraryTrackDto::from(track)
+        }))
+        .collect())
 }
+
+/// Below how many records found as typed the typo-tolerant pass joins in.
+const NEAR_WHEN: usize = 20;
+
+/// How many records the typo-tolerant pass adds at most.
+const NEAR_MOST: usize = 50;
 
 /// Add a freshly decoded track to the library.
 ///

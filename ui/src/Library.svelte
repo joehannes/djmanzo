@@ -32,6 +32,7 @@
   import IconButton from "./controls/IconButton.svelte";
   import { setAside } from "./prepare.svelte";
   import Cards from "./Cards.svelte";
+  import SourceResults from "./SourceResults.svelte";
   import {
     type LibraryColumn,
     setChosenColumns,
@@ -737,6 +738,37 @@
     }
   }
 
+  /**
+   * §124: whether the search asks the DJ's other sources as well as the
+   * collection. Off by default -- the collection answers from disk at once,
+   * and every other source is a network round trip -- and remembered on this
+   * machine, as the theme is, because it is about the machine's connections.
+   */
+  const OUTSIDE_KEY = "djmanzo.library.outside";
+  let outside = $state(false);
+  try {
+    outside = localStorage.getItem(OUTSIDE_KEY) === "1";
+  } catch {
+    // No storage: off, which is the default anyway.
+  }
+  function chooseOutside(on: boolean) {
+    outside = on;
+    try {
+      localStorage.setItem(OUTSIDE_KEY, on ? "1" : "0");
+    } catch {
+      // Kept for this session only.
+    }
+  }
+
+  /** Whether the view on screen is one the search box searches. */
+  const searchable = $derived(
+    selection.kind !== "history" &&
+      selection.kind !== "duplicates" &&
+      selection.kind !== "notes" &&
+      selection.kind !== "requests" &&
+      selection.kind !== "memory",
+  );
+
   function onQuery() {
     clearTimeout(debounce);
     debounce = setTimeout(refresh, DEBOUNCE_MS);
@@ -894,6 +926,10 @@
     const rows = [...tracks];
     const direction = ascending ? 1 : -1;
     rows.sort((a, b) => {
+      // §124: what the words as typed found stays above what the typo pass
+      // found, whichever column is sorted — a near match sorted in among the
+      // exact ones reads as a wrong answer rather than a second chance.
+      if (Boolean(a.near) !== Boolean(b.near)) return a.near ? 1 : -1;
       const field = fieldOf(sortBy);
       const x = a[field];
       const y = b[field];
@@ -970,6 +1006,18 @@
         oninput={onQuery}
         aria-label="Search the library"
       />
+      <label
+        class="outside"
+        class:on={outside}
+        title="Search the other sources you have set up too (streaming services, stores, download folders); their answers come below your own"
+      >
+        <input
+          type="checkbox"
+          checked={outside}
+          onchange={(event) => chooseOutside(event.currentTarget.checked)}
+        />
+        Include external sources
+      </label>
     {:else if selection.kind === "history"}
       <span class="viewing">Everything played, most recent first.</span>
     {:else if selection.kind === "notes"}
@@ -1416,6 +1464,9 @@
         onFavourite={(track) => void toggleFavourite(track)}
         onDrag={startDrag}
       />
+      {#if outside && searchable && !likeThis}
+        <SourceResults {query} {enabled} {deckCount} />
+      {/if}
     {:else}
     {#if picking}
       <!--
@@ -1528,7 +1579,10 @@
                 -->
                 {#if track.colour}
                   <span class="swatch" style="background: {track.colour}"></span>
-                {/if}{track.title}<!--
+                {/if}{#if track.near}<span
+                    class="near"
+                    title="Close to what you typed rather than what you typed: a typo, a missing accent"
+                  >≈</span>{/if}{track.title}<!--
                   Why this record is here, under its name and only while the
                   question is being asked. In the ordinary collection view
                   these would be noise on every row; in an answer they are the
@@ -1660,6 +1714,13 @@
           {/each}
         </tbody>
       </table>
+      <!--
+        §124: the other sources' answers after the collection's own, in the
+        same scroll, so the one search box has one list of answers.
+      -->
+      {#if outside && searchable && !likeThis}
+        <SourceResults {query} {enabled} {deckCount} />
+      {/if}
     </div>
     {/if}
   {/if}
@@ -1668,6 +1729,33 @@
 </div>
 
 <style>
+  /*
+    §124's tick, beside the box it widens: a word and a box rather than an
+    icon, because "does this search Spotify too" is a question a DJ should
+    not have to hover to answer.
+  */
+  .outside {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex: none;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .outside.on {
+    color: var(--selected);
+  }
+
+  /* §124: found by the typo pass. Quiet, and before the title it qualifies. */
+  .near {
+    margin-right: 0.35rem;
+    color: var(--text-dim);
+    font-weight: 400;
+  }
+
   /*
     §20's column picker. A wrapping row of checkboxes above the table rather
     than a menu: fourteen of them fit on two lines, and a DJ choosing columns is
@@ -1906,14 +1994,24 @@
     height: 100%;
   }
 
+  /*
+    §124: in a narrow panel the row wraps -- the search box on a line of its
+    own, the view buttons under it -- rather than holding one line and
+    making the whole panel scroll sideways, which took the crate list and the
+    search with it and left the box a few pixels wide.
+  */
   .controls {
     display: flex;
-    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.5rem;
   }
 
-  .controls input {
-    flex: 1;
-    min-width: 0;
+  .controls input[type="search"] {
+    flex: 1 1 12rem;
+    /* Never narrower than a query a DJ can read back, unless the panel is:
+       what does not fit beside it wraps under it instead. */
+    min-width: min(12rem, 100%);
   }
 
   .filter {

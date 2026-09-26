@@ -30,6 +30,7 @@ pub mod learned;
 pub mod lrc;
 pub mod lyrics;
 pub mod melody;
+pub mod near;
 pub mod playlist;
 pub mod record;
 pub mod scan;
