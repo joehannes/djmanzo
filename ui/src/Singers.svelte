@@ -82,6 +82,9 @@
    */
   let journalRev = $state(0);
 
+  /** §123: the up-next singer's record, to open in the guest book. */
+  let asking = $state<{ name: string } | null>(null);
+
   /** Every change comes back as the whole rotation, so the list is Rust's. */
   async function change(done: Promise<Rotation>) {
     error = "";
@@ -266,6 +269,10 @@
           title="Called and not here: to the bottom of the list, songs kept"
           onclick={() => void change(karaokeNotHere(upNext.name))}>Not here</button
         >
+        <button
+          title="Their record in the guest book: what they agree to, their details, their voice"
+          onclick={() => (asking = { name: upNext.name })}>Guest book</button
+        >
       </div>
     </section>
   {:else}
@@ -421,7 +428,7 @@
     </details>
   {/if}
 
-  <Guests rev={journalRev} />
+  <Guests rev={journalRev} {asking} />
 
   <!--
     The words for the singers go on a screen of their own, facing the

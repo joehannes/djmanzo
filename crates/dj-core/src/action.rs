@@ -14,7 +14,8 @@ use crate::fx::{EffectKind, FX_SLOTS, FxChange, Placement};
 use crate::hotcue::HOT_CUE_SLOTS;
 use crate::jog::JogMode;
 use crate::sampler::{
-    RecordSource, SAMPLE_SLOTS, SampleChange, SampleOutput, SamplerChange, TriggerMode,
+    MAX_RECORD_SECONDS, RecordSource, SAMPLE_SLOTS, SampleChange, SampleOutput, SamplerChange,
+    TriggerMode,
 };
 use crate::time::{FramePos, Rate};
 use serde::{Deserialize, Serialize};
@@ -883,6 +884,10 @@ fn parse_sampler_change<'a>(
         "bank" => SamplerChange::Bank(parse_slot(words.next())?),
         "volume" => SamplerChange::Volume(parse_f32(words.next())?.clamp(0.0, 1.0)),
         "stop_all" => SamplerChange::StopAll,
+        // At most the recorder's own length, and at least a second.
+        "voice" => SamplerChange::Voice {
+            seconds: parse_f32(words.next())?.clamp(1.0, MAX_RECORD_SECONDS as f32) as u8,
+        },
         // The one verb here that takes more than a value: `record 3 deck 1` is
         // four words, which is why this function reads the iterator rather than
         // being handed a pair.
@@ -903,6 +908,7 @@ fn parse_record_source<'a>(
 ) -> Result<RecordSource, ParseError> {
     match words.next().ok_or(ParseError::MissingArgument)? {
         "master" => Ok(RecordSource::Master),
+        "mic" => Ok(RecordSource::Mic),
         "deck" => Ok(RecordSource::Deck(
             DeckId::from_human(parse_slot(words.next())?).ok_or(ParseError::BadArgument)?,
         )),
@@ -1905,6 +1911,12 @@ mod tests {
             Action::Mixer(MixerAction::Sampler(SamplerChange::Bank(3))),
             Action::Mixer(MixerAction::Sampler(SamplerChange::Volume(0.25))),
             Action::Mixer(MixerAction::Sampler(SamplerChange::StopAll)),
+            // §123: the microphone as a source, and a guest's voice take.
+            Action::Mixer(MixerAction::Sampler(SamplerChange::Record {
+                slot: 4,
+                source: RecordSource::Mic,
+            })),
+            Action::Mixer(MixerAction::Sampler(SamplerChange::Voice { seconds: 15 })),
         ];
         for change in [
             SampleChange::Trigger,
@@ -2231,6 +2243,8 @@ mod tests {
             "deck 1 fx 1 echo",
             "deck 2 fx 3 wet 0.5",
             "sampler record 1 deck 2",
+            "sampler record 1 mic",
+            "sampler voice 15",
             "mic threshold -30",
         ] {
             assert!(Action::parse(line).is_ok(), "`{line}` was refused");

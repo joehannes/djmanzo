@@ -68,6 +68,9 @@ pub struct Recorder {
     /// one the recording was made at, and a DJ who changes the pitch mid-capture
     /// has already made the sample's tempo a fiction either way.
     bpm: Option<f64>,
+    /// Frames after which the recording finishes on its own: no limit but
+    /// the buffer's unless [`Recorder::start_for`] asked for less.
+    limit: usize,
 }
 
 impl Recorder {
@@ -82,6 +85,7 @@ impl Recorder {
             slot: 1,
             sample_rate,
             bpm: None,
+            limit: usize::MAX,
         }
     }
 
@@ -150,7 +154,19 @@ impl Recorder {
         self.source = source;
         self.bpm = bpm;
         self.written = 0;
+        self.limit = usize::MAX;
         self.state = State::Running;
+        true
+    }
+
+    /// Start, and finish on its own after `frames` — §123's voice take, which
+    /// is a length rather than a press to stop. The buffer is still the most
+    /// it can hold.
+    pub fn start_for(&mut self, bank: u8, slot: u8, source: RecordSource, frames: usize) -> bool {
+        if !self.start(bank, slot, source, None) {
+            return false;
+        }
+        self.limit = frames.max(1);
         true
     }
 
@@ -191,7 +207,7 @@ impl Recorder {
             return;
         };
         let at = self.written * 2;
-        if at + 1 >= space.len() {
+        if at + 1 >= space.len() || self.written >= self.limit {
             self.state = if self.written > 0 {
                 State::Ready
             } else {

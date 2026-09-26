@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Fifteen seconds of a karaoke guest's voice.** Once a guest has agreed
+  and that is saved, their record in the guest book (one press from the
+  up-next singer) records fifteen seconds of the microphone on its own —
+  without the record under it — and keeps it as a WAV file with their
+  record, on the song they sang. A voice whose guest took their consent
+  back is never written, and a recording nobody asked a guest for is
+  thrown away.
+
 ## v0.30.0 — Panels you move and zoom, dashboards, one forgiving search, themes in parts, a guest book, and neural stems on Windows and Macs
 
 - **Every panel has controls on its border.** Its title bar carries it:

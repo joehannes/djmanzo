@@ -4750,6 +4750,8 @@ export interface Guest {
   consent: GuestConsent;
   since: number;
   sang: GuestSong[];
+  /** A recording made while they sing, put on the song once it is marked sung. */
+  take: string | null;
 }
 
 /** §123: the journal, and the questions a guest is asked, in Rust's words. */
@@ -4758,11 +4760,18 @@ export interface GuestBook {
   asks: { name: "keep" | "contact" | "voice"; sentence: string }[];
   consent_age: number;
   saved: string | null;
+  /** The guest whose voice is being recorded now. */
+  recording: string | null;
+  /** Why the last voice take was not kept. */
+  take_error: string | null;
+  take_seconds: number;
 }
 
 export const guestBook = () => invoke<GuestBook>("guests");
 export const guestSave = (guest: Guest) => invoke<GuestBook>("guests_save", { guest });
 export const guestForget = (id: string) => invoke<GuestBook>("guests_forget", { id });
+/** §123: record about fifteen seconds of a guest's voice, with their consent. */
+export const guestVoice = (id: string) => invoke<GuestBook>("guests_voice", { id });
 /** A guest's own copy (`id`), or the whole journal as a table (`null`). */
 export const guestExport = (path: string, id: string | null) =>
   invoke<void>("guests_export", { path, id });

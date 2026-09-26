@@ -2320,8 +2320,23 @@ export async function openShell(
               guests: [],
               ...(answers.guest_asks as object),
               saved: null,
-            }) as { guests: HeldGuest[]; saved: string | null };
+              recording: null,
+              take_error: null,
+              take_seconds: 15,
+            }) as { guests: HeldGuest[]; saved: string | null; recording: string | null };
             held.saved = null;
+            // A take: recording for a moment, then on their record -- waiting
+            // for the song, as Rust holds one made while they sing.
+            if (cmd === "guests_voice") {
+              const guest = held.guests.find((g) => g.id === args.id) as (HeldGuest & { consent: { voice?: boolean }; take?: string | null }) | undefined;
+              if (!guest?.consent.voice) return Promise.reject(new Error("has not agreed to their voice being recorded"));
+              held.recording = guest.id;
+              setTimeout(() => {
+                held.recording = null;
+                guest.take = `${guest.id}-1.wav`;
+              }, 1500);
+              return Promise.resolve(structuredClone(held));
+            }
             if (cmd === "guests_save") {
               const guest = JSON.parse(JSON.stringify(args.guest)) as HeldGuest;
               if (!guest.name.trim()) return Promise.reject(new Error("a guest needs a name"));
@@ -2380,10 +2395,17 @@ export async function openShell(
                   guests: [],
                   ...(answers.guest_asks as object),
                   saved: null,
+                  recording: null,
+                  take_error: null,
+                  take_seconds: 15,
                 }) as { guests: Record<string, unknown>[] };
-                const performance = { title: song?.title, track: song?.track ?? null, key: song?.key ?? 0, at: 1790000000, event: "", place: "", voice: null };
+                const performance: Record<string, unknown> = { title: song?.title, track: song?.track ?? null, key: song?.key ?? 0, at: 1790000000, event: "", place: "", voice: null };
                 const known = book.guests.find((g) => String(g.name).toLowerCase() === singer.name.toLowerCase());
-                if (known) (known.sang as unknown[]).push(performance);
+                if (known) {
+                  performance.voice = known.take ?? null;
+                  known.take = null;
+                  (known.sang as unknown[]).push(performance);
+                }
                 else
                   book.guests.push({
                     id: `guest-${book.guests.length + 1}`,
@@ -2403,6 +2425,7 @@ export async function openShell(
                     consent: { keep: false, contact: false, voice: false, given: 0, wording: 0 },
                     since: 1790000000,
                     sang: [performance],
+                    take: null,
                   });
               }
             }

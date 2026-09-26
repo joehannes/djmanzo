@@ -130,4 +130,51 @@ test.describe("§123: the karaoke journal", () => {
     await expect(book(page).getByText("Nobody yet")).toBeVisible();
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **The voice, only once agreed and kept.** From the up-next card to the
+   * singer's record; no record button until voice is agreed and saved; the
+   * take shows while it runs, then waits on their record for the song, and
+   * lands on it when the song is marked as sung.
+   */
+  test("the up-next singer's voice is recorded only once they have agreed", async ({ page }) => {
+    await singers(page, {
+      karaoke_rotation: {
+        singers: [{ name: "Ana", songs: [{ title: "Obsesión", track: null, path: null, key: 0 }], turns: 0 }],
+        up_next: "Ana",
+        lately: [],
+      },
+    });
+    await page.getByRole("region", { name: "Up next" }).getByRole("button", { name: "Guest book" }).click();
+    let form = book(page).getByRole("form", { name: "A new guest" });
+    await expect(form.getByRole("textbox", { name: "Name" })).toHaveValue("Ana");
+    const record = book(page).getByRole("button", { name: /^Record 15 seconds of their voice$/ });
+    await expect(record).toHaveCount(0);
+
+    // Written down agreeing to nothing, then asked: ticked but not yet
+    // kept, there is still nothing to press -- the button reads what Rust
+    // holds, not the form.
+    await form.getByRole("button", { name: "Keep" }).click();
+    await page.getByRole("region", { name: "Up next" }).getByRole("button", { name: "Guest book" }).click();
+    form = book(page).getByRole("form", { name: "About Ana" });
+    await form.getByRole("checkbox", { name: /Record about fifteen seconds/ }).check();
+    await page.waitForTimeout(300);
+    await expect(record).toHaveCount(0);
+    await form.getByRole("button", { name: "Keep" }).click();
+
+    await page.getByRole("region", { name: "Up next" }).getByRole("button", { name: "Guest book" }).click();
+    form = book(page).getByRole("form", { name: "About Ana" });
+    await record.click();
+    await expect(form.getByRole("status")).toHaveText(/Recording Ana's voice, 15 seconds/);
+    await expect(form.getByText(/it goes on the song once it is marked as sung/)).toBeVisible({ timeout: 5000 });
+    expect((await guestCalls(page)).filter((c) => c.cmd === "guests_voice")).toHaveLength(1);
+
+    await form.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Sang", exact: true }).click();
+    await book(page).getByRole("list", { name: "Guests" }).getByRole("button", { name: /Ana/ }).click();
+    await expect(
+      book(page).getByRole("list", { name: "Songs Ana sang" }).getByText("their voice"),
+    ).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
 });

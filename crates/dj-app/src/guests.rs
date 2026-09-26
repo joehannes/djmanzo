@@ -42,6 +42,10 @@
 //! copy) and deleted with everything recorded of them ([`Journal::forget`]).
 
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+/// How long a voice take is: the owner's "about 15 secs".
+pub const VOICE_SECONDS: u8 = 15;
 
 /// Under this age a guest cannot agree to contact or to their voice being
 /// used on their own.
@@ -128,6 +132,9 @@ pub struct Guest {
     pub since: i64,
     /// Every song, oldest first.
     pub sang: Vec<Performance>,
+    /// A recording of their voice made while they are singing, before the
+    /// song is marked as sung; it goes onto that song when it is.
+    pub take: Option<String>,
 }
 
 impl Guest {
@@ -184,7 +191,9 @@ pub struct Saved {
     pub unlink: Vec<String>,
 }
 
-fn same_name(a: &str, b: &str) -> bool {
+/// Whether two names are the same person's, as the host typed them.
+#[must_use]
+pub fn same_name(a: &str, b: &str) -> bool {
     a.trim().to_lowercase() == b.trim().to_lowercase()
 }
 
@@ -305,6 +314,7 @@ impl Journal {
         }
         guest.sang = before.as_ref().map(|g| g.sang.clone()).unwrap_or_default();
         guest.since = before.as_ref().map_or(now, |g| g.since);
+        guest.take = before.as_ref().and_then(|g| g.take.clone());
         let mut unlink = Vec::new();
         if !guest.consent.voice {
             for song in &mut guest.sang {
@@ -312,6 +322,7 @@ impl Journal {
                     unlink.push(file);
                 }
             }
+            unlink.extend(guest.take.take());
         }
         if let Some(at) = existing {
             self.guests[at] = guest;
@@ -339,6 +350,10 @@ impl Journal {
             .rev()
             .find(|guest| same_name(&guest.name, name))
         {
+            let mut song = song;
+            if let Some(take) = guest.take.take() {
+                song.voice = Some(take);
+            }
             guest.sang.push(song);
             return guest.id.clone();
         }
@@ -354,21 +369,33 @@ impl Journal {
         id
     }
 
-    /// Attach a recording of a guest's voice to the song they sang last.
+    /// Attach a recording of a guest's voice: to the song they are singing
+    /// now, which is not on their record until it is marked as sung, or else
+    /// to the song they sang last. Answers the recording it replaced, to
+    /// delete.
     ///
     /// # Errors
-    /// A guest who is not there, has not agreed to it, or has sung nothing.
-    pub fn attach_voice(&mut self, id: &str, file: String) -> Result<Option<String>, String> {
+    /// A guest who is not there, has not agreed to it, or has sung nothing
+    /// and is not singing.
+    pub fn attach_voice(
+        &mut self,
+        id: &str,
+        file: String,
+        singing: bool,
+    ) -> Result<Option<String>, String> {
         let guest = self
             .guests
             .iter_mut()
             .find(|guest| guest.id == id)
             .ok_or_else(|| Refusal::Unknown.to_string())?;
-        if !guest.consent.voice {
+        if !guest.consent.voice || !guest.may_consent() {
             return Err(format!(
                 "{} has not agreed to their voice being recorded",
                 guest.name
             ));
+        }
+        if singing {
+            return Ok(guest.take.replace(file));
         }
         let song = guest
             .sang
@@ -387,6 +414,7 @@ impl Journal {
                 .sang
                 .into_iter()
                 .filter_map(|song| song.voice)
+                .chain(guest.take)
                 .collect(),
         )
     }
@@ -400,6 +428,7 @@ impl Journal {
                 return true;
             }
             unlink.extend(guest.sang.iter().filter_map(|song| song.voice.clone()));
+            unlink.extend(guest.take.clone());
             false
         });
         unlink
@@ -480,6 +509,181 @@ impl Journal {
     }
 }
 
+/// The journal's file in a settings folder.
+#[must_use]
+pub fn journal_path(config: &Path) -> PathBuf {
+    config.join("guests.json")
+}
+
+/// Where the recordings of guests' voices are kept: beside the journal, and
+/// nowhere else.
+#[must_use]
+pub fn voices_path(config: &Path) -> PathBuf {
+    config.join("guests")
+}
+
+/// The journal kept in `config`. Empty when there is none or it cannot be
+/// read.
+#[must_use]
+pub fn read(config: &Path) -> Journal {
+    std::fs::read_to_string(journal_path(config))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+/// Keep the journal in `config`, and delete the recordings it has let go of.
+///
+/// # Errors
+/// The file system's own sentence: a journal that could not be written is
+/// said, not shrugged at, because what a guest agreed to is in it.
+pub fn write(config: &Path, journal: &Journal, unlink: &[String]) -> Result<(), String> {
+    let path = journal_path(config);
+    let text = serde_json::to_string_pretty(journal).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let voices = voices_path(config);
+    for file in unlink {
+        // Only a plain file name, in the voices folder: a journal edited by
+        // hand cannot point this at anything else.
+        if is_voice_file(file) {
+            let _ = std::fs::remove_file(voices.join(file));
+        }
+    }
+    Ok(())
+}
+
+/// A voice take asked for: whose it is, and where their journal is kept.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Take {
+    pub config: PathBuf,
+    pub guest: String,
+    /// Whether they are singing now, so the take waits for the song to be
+    /// marked as sung rather than going on the last one.
+    pub singing: bool,
+    /// When it was asked for, in seconds since 1970.
+    pub asked: i64,
+}
+
+/// How long a take asked for may go unanswered before another may be asked
+/// for: a take the recorder refused — busy with a sample, say — never lands,
+/// and must not hold the next one off for ever.
+pub const TAKE_EXPIRES: i64 = 60;
+
+/// §123: the voice take in flight, shared between the command that asks for
+/// it and the host thread it arrives on.
+///
+/// **A take nobody asked for is thrown away.** The recorder can be started
+/// by any action — a script, a controller, the assistant — and none of them
+/// asked a guest anything; only [`Takes::expect`], called after a guest's
+/// consent was checked, gives a take somewhere to go.
+#[derive(Debug, Default)]
+pub struct Takes {
+    pending: std::sync::Mutex<Option<Take>>,
+    /// What became of the last take: the file, or why there is none.
+    last: std::sync::Mutex<Option<Result<String, String>>>,
+}
+
+impl Takes {
+    /// Expect a take for this guest. Refused while another is in flight and
+    /// not yet expired.
+    pub fn expect(&self, take: Take) -> bool {
+        let Ok(mut pending) = self.pending.lock() else {
+            return false;
+        };
+        if pending
+            .as_ref()
+            .is_some_and(|waiting| take.asked - waiting.asked < TAKE_EXPIRES)
+        {
+            return false;
+        }
+        *pending = Some(take);
+        if let Ok(mut last) = self.last.lock() {
+            *last = None;
+        }
+        true
+    }
+
+    /// Stop expecting one, for a take that could not be started.
+    pub fn forget(&self) {
+        if let Ok(mut pending) = self.pending.lock() {
+            *pending = None;
+        }
+    }
+
+    /// The guest a take is being recorded for, if one is.
+    #[must_use]
+    pub fn recording(&self) -> Option<String> {
+        self.pending
+            .lock()
+            .ok()?
+            .as_ref()
+            .map(|take| take.guest.clone())
+    }
+
+    /// What became of the last take.
+    #[must_use]
+    pub fn last(&self) -> Option<Result<String, String>> {
+        self.last.lock().ok()?.clone()
+    }
+
+    /// A take has finished: keep it as a file for the guest it was asked
+    /// for, and put it on their record — or throw it away when nobody asked
+    /// for it or they no longer agree. On the host thread, never the audio
+    /// one.
+    pub fn land(&self, samples: &[f32], sample_rate: dj_core::SampleRate) {
+        let Some(take) = self.pending.lock().ok().and_then(|mut p| p.take()) else {
+            tracing::warn!("a voice take arrived that nobody asked for; not kept");
+            return;
+        };
+        let outcome = keep_take(&take, samples, sample_rate);
+        if let Err(error) = &outcome {
+            tracing::warn!(%error, "a guest's voice take was not kept");
+        }
+        if let Ok(mut last) = self.last.lock() {
+            *last = Some(outcome);
+        }
+    }
+}
+
+/// Put the take on the guest's record, then write it: the record decides
+/// whether they still agree (the one place that rule is, `attach_voice`), so
+/// a voice they took consent back from is never written to disk at all.
+fn keep_take(
+    take: &Take,
+    samples: &[f32],
+    sample_rate: dj_core::SampleRate,
+) -> Result<String, String> {
+    let file = format!("{}-{}.wav", take.guest, take.asked);
+    if !is_voice_file(&file) {
+        return Err(format!("{file:?} is not a name a recording is kept under"));
+    }
+    let mut journal = read(&take.config);
+    let replaced = journal.attach_voice(&take.guest, file.clone(), take.singing)?;
+    let dir = voices_path(&take.config);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let path = dir.join(&file);
+    let pcm: Vec<i16> = samples
+        .iter()
+        .map(|s| (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16)
+        .collect();
+    let written = crate::wav::Wav::create(&path, sample_rate.get())
+        .and_then(|mut wav| {
+            wav.write(&pcm)?;
+            wav.close()
+        })
+        .map_err(|e| e.to_string());
+    if let Err(error) = written {
+        let _ = std::fs::remove_file(&path);
+        return Err(error);
+    }
+    write(
+        &take.config,
+        &journal,
+        &replaced.into_iter().collect::<Vec<_>>(),
+    )?;
+    Ok(file)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -530,7 +734,7 @@ mod tests {
 
         journal.sang("ana", song("Obsesión"), 300);
         assert_eq!(
-            journal.attach_voice(&saved.id, "ana-1.wav".into()),
+            journal.attach_voice(&saved.id, "ana-1.wav".into(), false),
             Ok(None)
         );
         // Voice taken back: the recording is let go of, and named to delete.
@@ -540,7 +744,11 @@ mod tests {
         let kept = journal.get(&saved.id).expect("there");
         assert_eq!(kept.sang.len(), 1, "the song stays; only the voice goes");
         assert!(kept.sang[0].voice.is_none());
-        assert!(journal.attach_voice(&saved.id, "again.wav".into()).is_err());
+        assert!(
+            journal
+                .attach_voice(&saved.id, "again.wav".into(), false)
+                .is_err()
+        );
 
         // Tonight only: gone at the next night, with the recording.
         let mut tonight = guest("Bo");
@@ -548,7 +756,7 @@ mod tests {
         let bo = journal.save(tonight, 500).expect("saved").id;
         journal.sang("Bo", song("Vivir mi vida"), 510);
         journal
-            .attach_voice(&bo, "bo-1.wav".into())
+            .attach_voice(&bo, "bo-1.wav".into(), false)
             .expect("agreed");
         assert_eq!(journal.new_night(), ["bo-1.wav"]);
         assert!(journal.get(&bo).is_none());
@@ -605,7 +813,7 @@ mod tests {
         let id = journal.save(ana, 1).expect("saved").id;
         journal.sang("Ana", song("Obsesión"), 2);
         journal
-            .attach_voice(&id, "ana-1.wav".into())
+            .attach_voice(&id, "ana-1.wav".into(), false)
             .expect("agreed");
         let copy = journal.export_guest(&id).expect("a copy");
         assert!(copy.contains("Obsesión") && copy.contains("ana-1.wav"));
@@ -646,5 +854,105 @@ mod tests {
         assert!(lines[1].starts_with("\"Ana, from Madrid\""));
         assert!(lines[1].contains("\"Say \"\"yes\"\"\""));
         assert!(lines[3].starts_with("Bo,"));
+    }
+
+    fn agreeing(name: &str) -> Guest {
+        let mut guest = guest(name);
+        guest.consent = Consent {
+            keep: true,
+            voice: true,
+            ..Consent::default()
+        };
+        guest
+    }
+
+    fn take(config: &Path, guest: &str, singing: bool, asked: i64) -> Take {
+        Take {
+            config: config.to_path_buf(),
+            guest: guest.to_owned(),
+            singing,
+            asked,
+        }
+    }
+
+    const RATE: dj_core::SampleRate = dj_core::SampleRate::DEFAULT;
+
+    /// **The load-bearing one for the voice.** A take is kept only for the
+    /// guest it was asked for, after they agreed: as a WAV beside the
+    /// journal, on the song they are singing once it is marked as sung. A
+    /// take nobody asked for — the recorder can be started by any script or
+    /// controller — is thrown away, and so is one whose guest took their
+    /// consent back while it was recording.
+    #[test]
+    fn a_voice_is_kept_only_for_the_guest_who_agreed() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let config = dir.path();
+        let mut journal = Journal::default();
+        let ana = journal.save(agreeing("Ana"), 1).expect("saved").id;
+        write(config, &journal, &[]).expect("kept");
+        let takes = Takes::default();
+        let voice = vec![0.25f32; 48_000 * 2];
+
+        // Nobody asked: nothing written, nothing attached.
+        takes.land(&voice, RATE);
+        assert!(!voices_path(config).exists());
+        assert_eq!(read(config), journal);
+
+        // Asked for Ana, while she sings.
+        assert!(takes.expect(take(config, &ana, true, 100)));
+        assert_eq!(takes.recording().as_deref(), Some(ana.as_str()));
+        takes.land(&voice, RATE);
+        assert_eq!(takes.recording(), None);
+        let file = format!("{ana}-100.wav");
+        assert_eq!(takes.last(), Some(Ok(file.clone())));
+        let path = voices_path(config).join(&file);
+        let bytes = std::fs::read(&path).expect("the recording is a file");
+        assert_eq!(&bytes[..4], b"RIFF");
+        assert_eq!(bytes.len(), 44 + 48_000 * 2 * 2, "a second, stereo, 16-bit");
+        let mut journal = read(config);
+        assert_eq!(
+            journal.get(&ana).expect("there").take.as_deref(),
+            Some(file.as_str())
+        );
+        // Marked as sung: onto that song.
+        journal.sang("Ana", song("Obsesión"), 120);
+        let kept = journal.get(&ana).expect("there");
+        assert_eq!(kept.sang[0].voice.as_deref(), Some(file.as_str()));
+        assert!(kept.take.is_none());
+
+        // Consent taken back while a take was recording: not kept.
+        let mut ana_now = kept.clone();
+        write(config, &journal, &[]).expect("kept");
+        assert!(takes.expect(take(config, &ana, false, 200)));
+        ana_now.consent.voice = false;
+        let saved = journal.save(ana_now, 210).expect("saved");
+        write(config, &journal, &saved.unlink).expect("kept");
+        assert!(!path.exists(), "taking voice back deletes the recording");
+        takes.land(&voice, RATE);
+        assert!(matches!(takes.last(), Some(Err(_))));
+        assert_eq!(
+            std::fs::read_dir(voices_path(config))
+                .expect("the folder")
+                .count(),
+            0,
+            "nothing left behind"
+        );
+    }
+
+    #[test]
+    fn one_take_at_a_time_until_one_is_left_hanging() {
+        let takes = Takes::default();
+        let here = Path::new("/nowhere");
+        assert!(takes.expect(take(here, "a", false, 1_000)));
+        assert!(
+            !takes.expect(take(here, "b", false, 1_010)),
+            "one at a time"
+        );
+        assert!(
+            takes.expect(take(here, "b", false, 1_000 + TAKE_EXPIRES)),
+            "a take the recorder never answered does not hold the next off"
+        );
+        takes.forget();
+        assert_eq!(takes.recording(), None);
     }
 }

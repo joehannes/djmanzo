@@ -23,12 +23,27 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, SyncSender, channel, sync_channel};
 use std::time::Duration;
 
+/// A finished recording, as the host hands it on.
+#[derive(Debug)]
+pub enum Landed {
+    /// Loaded into a sampler slot, under this name.
+    Sample { bank: u8, slot: u8, name: String },
+    /// §123: a guest's voice — the take started with no bank and no slot —
+    /// which goes to a file kept for them and never onto a pad. Interleaved
+    /// stereo, exactly as long as it was.
+    Voice {
+        samples: Vec<f32>,
+        sample_rate: SampleRate,
+    },
+}
+
 /// What the host does with a finished recording.
 ///
 /// A callback rather than a handle on the interface's sample-name store: the
-/// capture arrives here, but naming the new sample is the interface's business,
-/// and this module has no reason to know where names are kept.
-pub type OnCapture = Box<dyn Fn(u8, u8, String) + Send>;
+/// capture arrives here, but naming the new sample, or keeping a guest's voice,
+/// is the application's business, and this module has no reason to know where
+/// names or files are kept.
+pub type OnCapture = Box<dyn Fn(Landed) + Send>;
 
 /// What to do with a plugin processor the engine has finished with.
 ///
@@ -831,6 +846,26 @@ fn land_capture(bus: &Arc<ActionBus<Command>>, on_capture: &OnCapture, capture: 
     // Truncating rather than copying keeps the one allocation this whole path
     // makes on the side of the thread that is allowed to make it.
     samples.truncate(frames * 2);
+
+    // §123: no bank means a guest's voice, not a sample: it goes to them, and
+    // the recorder gets somewhere to write next all the same.
+    if bank == 0 {
+        on_capture(Landed::Voice {
+            samples,
+            sample_rate,
+        });
+        if bus
+            .send_command(Command::RecordSpace {
+                samples: fresh_record_space(sample_rate),
+            })
+            .is_err()
+        {
+            tracing::warn!(
+                "command queue full; the recorder has nowhere to write until the next open"
+            );
+        }
+        return;
+    }
     let name = format!("rec {source}");
     let buffer: Arc<dyn dj_decode::TrackSource> = Arc::new(
         dj_decode::AudioBuffer::from_interleaved(samples, sample_rate),
@@ -850,7 +885,7 @@ fn land_capture(bus: &Arc<ActionBus<Command>>, on_capture: &OnCapture, capture: 
         tracing::warn!(bank, slot, "command queue full; a recording was dropped");
         return;
     }
-    on_capture(bank, slot, name);
+    on_capture(Landed::Sample { bank, slot, name });
 
     if bus
         .send_command(Command::RecordSpace {
@@ -875,7 +910,7 @@ mod tests {
             Arc::clone(&bus),
             Arc::clone(&registry),
             true,
-            Box::new(|_, _, _| {}),
+            Box::new(|_| {}),
             Box::new(|_| {}),
         );
         (host, bus, registry)
@@ -1126,5 +1161,58 @@ mod tests {
         let (host, _bus, _reg) = host();
         host.open(None, None, 128).unwrap();
         drop(host); // Must join without hanging.
+    }
+
+    /// §123: **a take with no bank is a guest's voice, not a sample.** It goes
+    /// to the callback that keeps it for them and never onto a pad; a take
+    /// with a bank still lands in its slot. Either way the recorder is given
+    /// somewhere to write next.
+    #[test]
+    fn a_voice_take_goes_to_the_guest_and_not_onto_a_pad() {
+        let (bus, mut engine) = ActionBus::<Command>::new(16);
+        let bus = Arc::new(bus);
+        let landed: Arc<std::sync::Mutex<Vec<Landed>>> = Arc::default();
+        let kept = Arc::clone(&landed);
+        let on_capture: OnCapture = Box::new(move |what| kept.lock().unwrap().push(what));
+        let take = |bank: u8, source: dj_core::RecordSource| Capture {
+            bank,
+            slot: bank,
+            source,
+            samples: vec![0.25; 4_096],
+            frames: 1_000,
+            sample_rate: SampleRate::DEFAULT,
+            bpm: None,
+        };
+
+        land_capture(&bus, &on_capture, take(0, dj_core::RecordSource::Mic));
+        match engine.pop() {
+            Ok(Command::RecordSpace { .. }) => {}
+            other => panic!("the voice went somewhere else first: {other:?}"),
+        }
+        assert!(engine.pop().is_err(), "nothing loaded onto a pad");
+        match landed.lock().unwrap().pop() {
+            Some(Landed::Voice { samples, .. }) => {
+                assert_eq!(samples.len(), 2_000, "exactly what was recorded");
+            }
+            other => panic!("not kept as a voice: {other:?}"),
+        }
+
+        land_capture(&bus, &on_capture, take(2, dj_core::RecordSource::Master));
+        assert!(matches!(
+            engine.pop(),
+            Ok(Command::LoadSample {
+                bank: 2,
+                slot: 2,
+                ..
+            })
+        ));
+        assert!(matches!(
+            landed.lock().unwrap().pop(),
+            Some(Landed::Sample {
+                bank: 2,
+                slot: 2,
+                ..
+            })
+        ));
     }
 }

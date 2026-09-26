@@ -147,7 +147,7 @@
           own, because "18.4" means nothing without knowing where it stops.
         -->
         <span class="what">
-          {sampler.record.source} → pad {sampler.record.slot}
+          {sampler.record.source}{#if sampler.record.slot} → pad {sampler.record.slot}{/if}
         </span>
         <div class="elapsed">
           <div

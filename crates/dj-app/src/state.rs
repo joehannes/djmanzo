@@ -211,6 +211,8 @@ pub struct AppState {
     /// loads it made itself shows nothing for a sample a script, a preset or
     /// the assistant put there.
     sample_names: Arc<Mutex<HashMap<(u8, u8), String>>>,
+    /// §123: the voice take in flight, shared with the host thread.
+    voice_takes: Arc<crate::guests::Takes>,
     /// The device that is open, as the interface describes it.
     ///
     /// Held here rather than only in the interface because opening a device is
@@ -426,17 +428,27 @@ impl AppState {
         // Started before the host, because the host's retirement drain has to
         // be able to hand plugin processors back to it.
         let plugin = crate::plugins::PluginHandle::start();
+        // §123: where a guest's voice goes when the take finishes. Shared with
+        // the host thread, which is where it arrives.
+        let voice_takes = Arc::new(crate::guests::Takes::default());
         let host = {
             let names = Arc::clone(&sample_names);
+            let voices = Arc::clone(&voice_takes);
             let insert = plugin.clone();
             AudioHost::start(
                 Arc::clone(&bus),
                 Arc::clone(&registry),
                 use_null_backend,
-                Box::new(move |bank, slot, name| {
-                    if let Ok(mut map) = names.lock() {
-                        map.insert((bank, slot), name);
+                Box::new(move |landed| match landed {
+                    crate::host::Landed::Sample { bank, slot, name } => {
+                        if let Ok(mut map) = names.lock() {
+                            map.insert((bank, slot), name);
+                        }
                     }
+                    crate::host::Landed::Voice {
+                        samples,
+                        sample_rate,
+                    } => voices.land(&samples, sample_rate),
                 }),
                 // Deactivation happens on the thread that owns the instance,
                 // which is neither this one nor the audio one. All that happens
@@ -523,6 +535,7 @@ impl AppState {
             budget: Arc::new(Budget::default()),
             presets: PresetLibrary::builtin(),
             sample_names,
+            voice_takes,
             active_device: Arc::new(Mutex::new(None)),
             bridge: Arc::new(Mutex::new(None)),
             analysis: Arc::new(crate::analysis::AnalysisStore::new()),
@@ -1550,54 +1563,34 @@ impl AppState {
         }
     }
 
-    /// The file §123's karaoke journal lives in.
-    fn guests_path(&self) -> Option<std::path::PathBuf> {
-        Some(self.config_dir.lock().ok()?.clone()?.join("guests.json"))
-    }
-
-    /// §123: where the recordings of guests' voices are kept, beside the
-    /// journal and nowhere else.
-    #[must_use]
-    pub fn voices_dir(&self) -> Option<std::path::PathBuf> {
-        Some(self.config_dir.lock().ok()?.clone()?.join("guests"))
-    }
-
     /// §123: the karaoke journal. Empty on a fresh install or an unreadable
     /// file.
     #[must_use]
     pub fn guests(&self) -> crate::guests::Journal {
-        self.guests_path()
-            .and_then(|path| std::fs::read_to_string(path).ok())
-            .and_then(|text| serde_json::from_str(&text).ok())
+        self.config_dir()
+            .map(|dir| crate::guests::read(&dir))
             .unwrap_or_default()
     }
 
     /// Keep the journal, and delete the recordings it has let go of.
     ///
     /// # Errors
-    /// No settings folder, or the file system's own sentence: a journal that
-    /// could not be written is said, not shrugged at, because what a guest
-    /// agreed to is in it.
+    /// No settings folder, or the file system's own sentence.
     pub fn set_guests(
         &self,
         journal: &crate::guests::Journal,
         unlink: &[String],
     ) -> Result<(), String> {
-        let path = self
-            .guests_path()
+        let dir = self
+            .config_dir()
             .ok_or_else(|| "no settings folder to keep the journal in yet".to_owned())?;
-        let text = serde_json::to_string_pretty(journal).map_err(|e| e.to_string())?;
-        std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
-        if let Some(dir) = self.voices_dir() {
-            for file in unlink {
-                // Only a plain file name, in the voices folder: a journal
-                // edited by hand cannot point this at anything else.
-                if crate::guests::is_voice_file(file) {
-                    let _ = std::fs::remove_file(dir.join(file));
-                }
-            }
-        }
-        Ok(())
+        crate::guests::write(&dir, journal, unlink)
+    }
+
+    /// §123: the voice take in flight.
+    #[must_use]
+    pub fn voice_takes(&self) -> &crate::guests::Takes {
+        &self.voice_takes
     }
 
     /// The file §109's activities live in.

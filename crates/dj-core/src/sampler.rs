@@ -139,6 +139,10 @@ pub enum RecordSource {
     /// fader is down. Pre-fader is the same signal the headphones get, so what
     /// you record is what you were auditioning.
     Deck(crate::DeckId),
+    /// The microphone, after its gain and before anything else touches it:
+    /// the voice on its own, without the record under it or the master's
+    /// effects over it. §123's recording of a karaoke guest singing.
+    Mic,
 }
 
 impl std::fmt::Display for RecordSource {
@@ -146,6 +150,7 @@ impl std::fmt::Display for RecordSource {
         match self {
             RecordSource::Master => write!(f, "master"),
             RecordSource::Deck(deck) => write!(f, "deck {}", deck.human_number()),
+            RecordSource::Mic => write!(f, "mic"),
         }
     }
 }
@@ -217,6 +222,12 @@ pub enum SamplerChange {
     /// the common case, and the alternative is landing it in a slot and then
     /// having to clear the slot — two gestures where one will do.
     RecordCancel,
+    /// §123: record the microphone for this many seconds — a karaoke guest's
+    /// voice, which the application keeps as a file for them rather than
+    /// landing in a slot. Uses the same recorder, so it waits while a sample
+    /// is being recorded and a sample waits while it runs; stopped early by
+    /// [`SamplerChange::RecordStop`].
+    Voice { seconds: u8 },
 }
 
 impl std::fmt::Display for SamplerChange {
@@ -228,6 +239,7 @@ impl std::fmt::Display for SamplerChange {
             SamplerChange::Record { slot, source } => write!(f, "record {slot} {source}"),
             SamplerChange::RecordStop => write!(f, "record stop"),
             SamplerChange::RecordCancel => write!(f, "record cancel"),
+            SamplerChange::Voice { seconds } => write!(f, "voice {seconds}"),
         }
     }
 }

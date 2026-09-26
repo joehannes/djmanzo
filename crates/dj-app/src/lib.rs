@@ -817,6 +817,7 @@ pub fn run() {
             commands::guests_save,
             commands::guests_forget,
             commands::guests_export,
+            commands::guests_voice,
             commands::karaoke_breaks,
             commands::karaoke_breaks_set,
             commands::set_activity_mode,

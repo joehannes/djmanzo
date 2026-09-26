@@ -837,14 +837,19 @@ impl Snapshot {
                         let get = |p| registry.get(ParamId::Global(p));
                         let recording = get(GlobalParam::Recording) >= 0.5;
                         let deck = get(GlobalParam::RecordSourceDeck) as u8;
+                        // Slot 0 is no pad: §123's take of a guest's voice,
+                        // which the host keeps for them.
+                        let slot = get(GlobalParam::RecordSlot) as u8;
                         RecordSnapshot {
                             ready: get(GlobalParam::RecordReady) >= 0.5,
                             recording,
-                            slot: recording.then(|| get(GlobalParam::RecordSlot) as u8),
+                            slot: (recording && slot > 0).then_some(slot),
                             seconds: get(GlobalParam::RecordSeconds),
                             max_seconds: dj_core::MAX_RECORD_SECONDS as f32,
                             source: recording.then(|| match deck {
                                 0 => "master".to_owned(),
+                                u8::MAX if slot == 0 => "a guest's voice".to_owned(),
+                                u8::MAX => "mic".to_owned(),
                                 n => format!("deck {n}"),
                             }),
                         }

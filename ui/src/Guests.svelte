@@ -15,11 +15,22 @@
     guestExport,
     guestForget,
     guestSave,
+    guestVoice,
     type Guest,
     type GuestBook,
   } from "./api";
 
-  let { rev = 0 }: { rev?: number } = $props();
+  let {
+    rev = 0,
+    asking = null,
+  }: {
+    rev?: number;
+    /**
+     * A singer to open, by name — the up-next card's way here. A new object
+     * each time, so asking for the same singer twice opens them twice.
+     */
+    asking?: { name: string } | null;
+  } = $props();
 
   let book = $state<GuestBook | null>(null);
   let editing = $state<Guest | null>(null);
@@ -45,6 +56,7 @@
       consent: { keep: false, contact: false, voice: false, given: 0, wording: 0 },
       since: 0,
       sang: [],
+      take: null,
     };
   }
 
@@ -63,6 +75,43 @@
     void rev;
     void refresh();
   });
+
+  // The up-next singer's record, opened from the rotation: theirs if the book
+  // has them, a new one with their name if not.
+  $effect(() => {
+    const wanted = asking;
+    if (!wanted) return;
+    void guestBook()
+      .then((next) => {
+        book = next;
+        const known = [...next.guests]
+          .reverse()
+          .find((g) => g.name.trim().toLowerCase() === wanted.name.trim().toLowerCase());
+        open(known ?? { ...blank(), name: wanted.name });
+      })
+      .catch((e) => (error = String(e)));
+  });
+
+  /** The saved record of the guest being edited: what Rust holds, not the form. */
+  const kept = $derived(editing?.id ? (book?.guests.find((g) => g.id === editing?.id) ?? null) : null);
+  const recordingThem = $derived(!!kept && book?.recording === kept.id);
+
+  // While a take runs, read the book each second until it lands.
+  $effect(() => {
+    if (!book?.recording) return;
+    const timer = setInterval(() => void refresh(), 1000);
+    return () => clearInterval(timer);
+  });
+
+  async function recordVoice() {
+    if (!kept) return;
+    try {
+      book = await guestVoice(kept.id);
+      error = "";
+    } catch (e) {
+      error = String(e);
+    }
+  }
 
   /** When a guest last sang, or was written down. */
   const latest = (guest: Guest) => guest.sang[guest.sang.length - 1]?.at ?? guest.since;
@@ -242,15 +291,39 @@
         <label class="wide">Notes <textarea rows="2" bind:value={editing.notes}></textarea></label>
       </fieldset>
 
-      {#if editing.sang.length > 0}
-        <ol class="sang" aria-label="Songs {editing.name} sang">
-          {#each editing.sang as song, index (index)}
+      {#if kept?.sang.length}
+        <ol class="sang" aria-label="Songs {kept.name} sang">
+          {#each kept.sang as song, index (index)}
             <li>
               <span class="title">{song.title}</span>
               <span class="when">{when(song.at)}{song.event ? ` · ${song.event}` : ""}</span>
+              {#if song.voice}<span class="mark" title={song.voice}>their voice</span>{/if}
             </li>
           {/each}
         </ol>
+      {/if}
+
+      <!--
+        Their voice, only once they have agreed and it is saved: the button
+        reads the journal's copy, not the form's, so a tick not yet kept
+        records nothing.
+      -->
+      {#if kept?.consent.voice && !young}
+        <div class="voice" role="group" aria-label="Their voice">
+          {#if recordingThem}
+            <p class="recording" role="status">Recording {kept.name}'s voice, {book?.take_seconds} seconds…</p>
+          {:else}
+            <button type="button" disabled={!!book?.recording} onclick={() => void recordVoice()}
+              >Record {book?.take_seconds} seconds of their voice</button
+            >
+            {#if kept.take}
+              <p class="hint">Recorded while singing; it goes on the song once it is marked as sung.</p>
+            {/if}
+            {#if book?.take_error}
+              <p class="error" role="alert">{book.take_error}</p>
+            {/if}
+          {/if}
+        </div>
       {/if}
 
       <div class="actions">
@@ -461,6 +534,19 @@
   .sang .when {
     color: var(--text-dim);
     margin-left: 0.4rem;
+  }
+
+  .voice {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    align-items: flex-start;
+  }
+
+  .recording {
+    margin: 0;
+    color: var(--danger);
+    font-weight: 600;
   }
 
   .actions {

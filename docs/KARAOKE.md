@@ -280,6 +280,19 @@ leaves the machine; a guest can be given their own record as a file and
 forgotten with everything recorded of them, and the host can export the whole
 journal as a table.
 
+**Their voice.** Once a guest has agreed to it and that answer is saved, their
+record offers *Record 15 seconds of their voice* (the up-next card's *Guest
+book* button opens the singer's record). The engine's recorder takes the
+microphone on its own — after its gain, before the music or the master's
+effects — and stops itself at fifteen seconds; the take is written as a WAV
+beside the journal and put on the song they are singing, once it is marked as
+sung. Consent is checked once, by the record, **before anything is written**:
+a take whose guest took consent back while it ran is never on disk, and a take
+nobody asked for (the recorder can be started by a script or a controller as
+`sampler voice 15`) is thrown away. WAV rather than MP3, which the owner
+named: every MP3 encoder worth having is LAME, whose LGPL licence ADR-0002
+does not admit, and a WAV is what an AI music service takes anyway.
+
 ---
 
 ## 5. Where it fits

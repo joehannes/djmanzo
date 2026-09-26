@@ -344,12 +344,14 @@ impl Engine {
             ParamId::Global(GlobalParam::RecordSeconds),
             self.recorder.seconds(),
         );
-        // 0 for the master, otherwise the deck's own number — one reading
-        // rather than a flag plus a number that could disagree about which.
+        // 0 for the master, 255 for the microphone, otherwise the deck's own
+        // number — one reading rather than a flag plus a number that could
+        // disagree about which.
         self.registry.set(
             ParamId::Global(GlobalParam::RecordSourceDeck),
             match self.recorder.tapping() {
                 Some(dj_core::RecordSource::Deck(deck)) => f32::from(deck.human_number()),
+                Some(dj_core::RecordSource::Mic) => f32::from(u8::MAX),
                 _ => 0.0,
             },
         );
@@ -805,8 +807,18 @@ impl Engine {
                             .decks
                             .get(deck.index())
                             .and_then(|deck| deck.effective_bpm()),
+                        // A voice has no tempo of its own.
+                        dj_core::RecordSource::Mic => None,
                     };
                     self.recorder.start(self.sampler.bank(), slot, source, bpm);
+                }
+                // §123: a guest's voice, for a length. Bank and slot 0 name no
+                // slot, which is how the host knows to keep it as a file for
+                // them rather than land it on a pad.
+                dj_core::SamplerChange::Voice { seconds } => {
+                    let frames = (f64::from(seconds) * self.sample_rate.as_f64()) as usize;
+                    self.recorder
+                        .start_for(0, 0, dj_core::RecordSource::Mic, frames);
                 }
                 dj_core::SamplerChange::RecordStop => self.recorder.stop(),
                 dj_core::SamplerChange::RecordCancel => self.recorder.cancel(),
@@ -1693,6 +1705,8 @@ impl AudioCallback for Engine {
         self.preview.process(out, &layout);
 
         let recording_master = self.recorder.tapping() == Some(dj_core::RecordSource::Master);
+        // §123: the microphone on its own, taken where its frame is read.
+        let recording_mic = self.recorder.tapping() == Some(dj_core::RecordSource::Mic);
 
         let (main_l, main_r) = layout.main;
         // The master chain does not run when the decks are going out
@@ -1709,7 +1723,10 @@ impl AudioCallback for Engine {
         // the microphone playing back a queue of everything said in between.
         if layout.is_deck_out() {
             for _ in 0..ctx.frames {
-                let _ = self.mic.next_frame();
+                let mic = self.mic.next_frame();
+                if recording_mic {
+                    self.recorder.write(mic.left, mic.right);
+                }
                 let _ = self.master_gain.next_value();
             }
         }
@@ -1722,6 +1739,9 @@ impl AudioCallback for Engine {
             // Read every frame whether or not the channel is open, because the
             // input ring has to be drained either way -- see `mic::Mic`.
             let mic = self.mic.next_frame();
+            if recording_mic {
+                self.recorder.write(mic.left, mic.right);
+            }
 
             // Master first: everything downstream is derived from it.
             //
@@ -5147,6 +5167,7 @@ mod record_tests {
 mod mic_tests {
     use super::*;
     use dj_core::action::MicChange;
+    use dj_core::{RecordSource, SamplerChange};
 
     const SR: SampleRate = SampleRate::DEFAULT;
     /// The ring the host's input callback would fill. Two seconds is far more
@@ -5257,6 +5278,61 @@ mod mic_tests {
         fn get(&self, param: GlobalParam) -> f32 {
             self.registry.get(ParamId::Global(param))
         }
+    }
+
+    /// §123: **a guest's voice, and only their voice, for as long as was
+    /// asked.** The take is the microphone without the record under it; it
+    /// stops itself at its length rather than waiting for a press; and it
+    /// comes back naming no bank and no slot, which is how the host knows to
+    /// keep it for the guest rather than land it on a pad.
+    #[test]
+    fn a_voice_take_is_the_microphone_alone_for_its_length() {
+        const VOICE: f32 = 0.25;
+        const MUSIC: f32 = 0.5;
+        let mut rig = rig();
+        rig.send(Command::RecordSpace {
+            samples: vec![0.0; 48_000 * 30 * 2],
+        });
+        rig.plug_in();
+        rig.mic(MicChange::SetOpen(true));
+        rig.mic(MicChange::SetTalkover(false));
+        rig.play_music(MUSIC);
+        for _ in 0..20 {
+            rig.speak(VOICE, 1_024);
+            rig.render_peak(1_024);
+        }
+        rig.act(Action::Mixer(MixerAction::Sampler(SamplerChange::Voice {
+            seconds: 1,
+        })));
+        // A second and a half of singing: longer than the take.
+        let mut capture = None;
+        for block in 0..72 {
+            rig.speak(VOICE, 1_024);
+            let master = rig.render_peak(1_024);
+            assert!(master > VOICE + 0.1, "the music is playing: {master}");
+            if block == 0 {
+                assert_eq!(
+                    rig.get(GlobalParam::RecordSourceDeck),
+                    255.0,
+                    "the sampler is told it is the microphone, not the master"
+                );
+            }
+            while let Ok(item) = rig.retired.pop() {
+                if let Retired::Capture(landed) = item {
+                    capture = Some(landed);
+                }
+            }
+        }
+        let capture = capture.expect("the take finished on its own");
+        assert_eq!((capture.bank, capture.slot), (0, 0), "no pad's");
+        assert_eq!(capture.source, RecordSource::Mic);
+        assert_eq!(capture.frames, 48_000, "exactly the second asked for");
+        let recorded = &capture.samples[..capture.frames * 2];
+        assert!(
+            recorded.iter().all(|s| (s - VOICE).abs() < 0.01),
+            "the voice alone, without the record under it: peak {}",
+            recorded.iter().fold(0.0f32, |peak, s| peak.max(s.abs()))
+        );
     }
 
     #[test]

@@ -13533,9 +13533,20 @@ pub struct GuestsDto {
     pub consent_age: u8,
     /// The guest just saved, so a new one can be kept open.
     pub saved: Option<String>,
+    /// The guest whose voice is being recorded now, if anyone's is.
+    pub recording: Option<String>,
+    /// Why the last voice take was not kept, if it was not.
+    pub take_error: Option<String>,
+    /// How long a take is, in seconds.
+    pub take_seconds: u8,
 }
 
-fn guests_dto(journal: crate::guests::Journal, saved: Option<String>) -> GuestsDto {
+fn guests_dto(
+    state: &AppState,
+    journal: crate::guests::Journal,
+    saved: Option<String>,
+) -> GuestsDto {
+    let takes = state.voice_takes();
     GuestsDto {
         guests: journal.guests,
         asks: crate::guests::ASKS
@@ -13544,6 +13555,9 @@ fn guests_dto(journal: crate::guests::Journal, saved: Option<String>) -> GuestsD
             .collect(),
         consent_age: crate::guests::CONSENT_AGE,
         saved,
+        recording: takes.recording(),
+        take_error: takes.last().and_then(Result::err),
+        take_seconds: crate::guests::VOICE_SECONDS,
     }
 }
 
@@ -13551,7 +13565,7 @@ fn guests_dto(journal: crate::guests::Journal, saved: Option<String>) -> GuestsD
 #[tauri::command]
 #[must_use]
 pub fn guests(state: State<'_, AppState>) -> GuestsDto {
-    guests_dto(state.guests(), None)
+    guests_dto(&state, state.guests(), None)
 }
 
 /// §123: write a guest down, or change one, holding to what they agreed.
@@ -13569,7 +13583,7 @@ pub fn guests_save(
         .save(guest, now_seconds())
         .map_err(|refusal| refusal.to_string())?;
     state.set_guests(&journal, &saved.unlink)?;
-    Ok(guests_dto(journal, Some(saved.id)))
+    Ok(guests_dto(&state, journal, Some(saved.id)))
 }
 
 /// §123: delete a guest and everything recorded of them.
@@ -13583,7 +13597,58 @@ pub fn guests_forget(state: State<'_, AppState>, id: String) -> Result<GuestsDto
         .forget(&id)
         .ok_or_else(|| crate::guests::Refusal::Unknown.to_string())?;
     state.set_guests(&journal, &unlink)?;
-    Ok(guests_dto(journal, None))
+    Ok(guests_dto(&state, journal, None))
+}
+
+/// §123: record about fifteen seconds of a guest's voice from the
+/// microphone — only with their consent, and only for them.
+///
+/// The take is the engine's recorder on the microphone alone, finishing on
+/// its own; the host keeps it as a WAV file beside the journal and puts it on
+/// the guest's record — on the song they are singing, once it is marked as
+/// sung, or else on their last. WAV rather than the MP3 the owner named: every
+/// MP3 encoder worth having is LAME, which is LGPL, and a WAV is what an AI
+/// music service takes anyway.
+///
+/// # Errors
+/// A guest who is not in the journal or has not agreed, no settings folder,
+/// a take already running, or an engine not accepting commands.
+#[tauri::command]
+pub fn guests_voice(state: State<'_, AppState>, id: String) -> Result<GuestsDto, String> {
+    let journal = state.guests();
+    let guest = journal
+        .get(&id)
+        .ok_or_else(|| crate::guests::Refusal::Unknown.to_string())?;
+    if !guest.consent.voice || !guest.may_consent() {
+        return Err(format!(
+            "{} has not agreed to their voice being recorded",
+            guest.name
+        ));
+    }
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder to keep a recording in yet".to_owned())?;
+    let singing = state
+        .karaoke()
+        .up_next()
+        .is_some_and(|(singer, _)| crate::guests::same_name(&singer.name, &guest.name));
+    let take = crate::guests::Take {
+        config,
+        guest: id,
+        singing,
+        asked: now_seconds(),
+    };
+    if !state.voice_takes().expect(take) {
+        return Err("a voice is already being recorded".to_owned());
+    }
+    if let Err(error) = perform(
+        &state,
+        &format!("sampler voice {}", crate::guests::VOICE_SECONDS),
+    ) {
+        state.voice_takes().forget();
+        return Err(error);
+    }
+    Ok(guests_dto(&state, journal, None))
 }
 
 /// §123: a guest's own copy of their record, as JSON, or the whole journal as

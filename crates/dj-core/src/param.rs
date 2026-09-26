@@ -522,8 +522,8 @@ pub enum GlobalParam {
     RecordSlot,
     /// How long the running capture has been going, in seconds.
     RecordSeconds,
-    /// Where the running capture is coming from: 0 for the master, otherwise
-    /// the deck's 1-based number.
+    /// Where the running capture is coming from: 0 for the master, 255 for
+    /// the microphone, otherwise the deck's 1-based number.
     RecordSourceDeck,
     /// Samples the set recording could not hand to the disk because the ring
     /// was full.
