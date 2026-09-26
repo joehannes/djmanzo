@@ -100,6 +100,7 @@ mod tests {
         assert!(check("interface switch activity karaoke").is_ok());
         assert!(check("deck 1 levitate").is_err());
         let said = check("interface action deck 1 play").unwrap_err();
-        assert!(said.contains("switch, surface, ui, uiop"), "{said}");
+        assert!(said.contains("switch, surface, lift, ui, uiop"), "{said}");
+        assert!(check("interface lift library").is_ok());
     }
 }
