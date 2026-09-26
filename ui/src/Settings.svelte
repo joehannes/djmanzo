@@ -99,6 +99,8 @@
   import { performance, type PerformanceLevel } from "./performance.svelte";
   import SvgPad from "./controls/SvgPad.svelte";
   import { themePackages } from "./controls/themes/packages";
+  import ThemeParts from "./ThemeParts.svelte";
+  import { themeChosen } from "./api";
   import IconButton from "./controls/IconButton.svelte";
   import SvgKnob from "./controls/SvgKnob.svelte";
 
@@ -1147,12 +1149,19 @@
             width={100}
             height={50}
             active={theme.activePackage.id === pkg.id}
-            onclick={() => theme.setPackage(pkg.id)}
+            onclick={() => {
+              theme.setPackage(pkg.id);
+              // Said to djmanzo as the menu in the bar says it, or §31's
+              // adaptation puts its own choice back within minutes.
+              void themeChosen(pkg.id).catch(() => {});
+            }}
           />
           <span style="font-size: 0.85em; color: var(--text-dim); text-align: center;">{pkg.name}</span>
         </div>
       {/each}
     </div>
+    <h4>How much of it</h4>
+    <ThemeParts />
   </div>
 
   <div class="block">

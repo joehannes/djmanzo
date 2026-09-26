@@ -142,7 +142,7 @@
     would now letterbox a 110 px strip inside 192 px of nothing.
   */
   .master-mixer { width: 100%; max-width: 1240px; touch-action: none; }
-  .shell { fill: var(--panel); stroke: var(--border); stroke-width: 2; }
+  .shell { fill: var(--panel); stroke: var(--frame); stroke-width: 2; }
   text { fill: var(--text); font: 600 16px system-ui, sans-serif; pointer-events: none; }
   .readout, .ends, .muted { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
   .muted, .ends { fill: var(--text-dim); } .readout { fill: var(--accent-2); }

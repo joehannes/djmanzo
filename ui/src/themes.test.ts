@@ -16,6 +16,8 @@
  * until the exact sequence that exposes them.
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { themePackages } from "./controls/themes/packages";
 import { listPaletteIds, paletteFor } from "./controls/themes/colors";
 
@@ -149,6 +151,58 @@ describe("themes", () => {
           ratio(p["--on-accent"], p["--accent"]),
           `${pkg.name} (${resolved}): a label on an accent-filled button`,
         ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+  /**
+   * **§121: the rim of a region is distinct; what is inside it is calm.**
+   *
+   * "Main regions are similar, edges are distinct and distinguishing." The
+   * rim of the top bar, a deck, the mixer and every panel is `--frame`, a
+   * mix `app.css` writes; this reads the mix from there, works it out per
+   * palette the way `color-mix(in srgb …)` does, and holds it to 3:1 against
+   * the panel -- WCAG's contrast for a boundary a person has to see -- and
+   * above the inner hairline, which must stay calmer than the rim or the
+   * panel's own controls lose to their frame.
+   */
+  it("a region's rim clears 3:1 on its panel, and stands above the hairlines inside", () => {
+    const sheet = readFileSync(join(import.meta.dirname, "app.css"), "utf8");
+    const mix = sheet.match(
+      /--frame:\s*color-mix\(in srgb,\s*var\((--[\w-]+)\)\s*(\d+)%,\s*var\((--[\w-]+)\)\s*(\d+)%\)/,
+    );
+    expect(mix, "app.css defines --frame as a mix of two palette tokens").not.toBeNull();
+    const [, first, firstShare, second, secondShare] = mix!;
+    expect(Number(firstShare) + Number(secondShare)).toBe(100);
+    const rgb = (hex: string) =>
+      [0, 2, 4].map((i) => parseInt(hex.replace("#", "").slice(i, i + 2), 16));
+    const mixed = (a: string, b: string, share: number): string =>
+      "#" +
+      rgb(a)
+        .map((v, i) => Math.round(v * share + rgb(b)[i] * (1 - share)))
+        .map((v) => v.toString(16).padStart(2, "0"))
+        .join("");
+    const channel = (value: number): number => {
+      const v = value / 255;
+      return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
+    const relative = (hex: string): number => {
+      const [r, g, b] = rgb(hex).map(channel);
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const ratio = (a: string, b: string): number => {
+      const [hi, lo] = [relative(a), relative(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+    for (const pkg of themePackages) {
+      for (const resolved of ["dark", "light"] as const) {
+        const p = paletteFor(pkg.id, resolved);
+        const frame = mixed(p[first], p[second], Number(firstShare) / 100);
+        const rim = ratio(frame, p["--panel"]);
+        expect(rim, `${pkg.name} (${resolved}): a region's rim on its panel`).toBeGreaterThanOrEqual(3);
+        expect(
+          rim,
+          `${pkg.name} (${resolved}): the rim must stand above the hairline inside`,
+        ).toBeGreaterThan(ratio(p["--border"], p["--panel"]) + 1);
       }
     }
   });

@@ -2618,6 +2618,33 @@
   const split = $derived(snapshot?.master.split_output ?? null);
   /** §18: whether the layout must hold still right now — true during every mix. */
   const quietLayout = $derived(snapshot ? !snapshot.attention.reflow : false);
+
+  /**
+   * §121's interactive skin: what the window's edge says is happening, the
+   * most pressing first, or nothing.
+   *
+   * - `out` — the one record playing has under thirty seconds left and the
+   *   autopilot is not going to mix out of it: the room is about to go quiet.
+   * - `rec` — the set is being recorded.
+   * - `auto` — the autopilot has the mix.
+   *
+   * How it is drawn is the theme's (`theme.eventStyle`), or not at all.
+   */
+  const happening = $derived.by((): "out" | "rec" | "auto" | null => {
+    if (!snapshot) return null;
+    const automix = snapshot.master.automix.enabled;
+    const playing = snapshot.decks.slice(0, deckCount).filter((deck) => deck.playing && deck.loaded);
+    if (
+      !automix &&
+      playing.length === 1 &&
+      playing[0].length_seconds - playing[0].position_seconds < 30
+    ) {
+      return "out";
+    }
+    if (snapshot.master.recording.active) return "rec";
+    if (automix) return "auto";
+    return null;
+  });
 </script>
 
 <svelte:window onkeydown={onActivityKey} />
@@ -4241,9 +4268,95 @@
       {workspaceNotes.length} of the saved arrangement could not be drawn
     </p>
   {/if}
+
+  <!--
+    §121: the window's edge while something is happening. Drawn over
+    everything and taking no pointer, so it can never be in the way of a
+    control; hidden from a screen reader, because the recording, the
+    autopilot and the time left each say so where they are.
+  -->
+  {#if theme.eventStyle && happening}
+    <div
+      class="event-skin"
+      data-style={theme.eventStyle}
+      data-event={happening}
+      aria-hidden="true"
+    ></div>
+  {/if}
 </main>
 
 <style>
+  /*
+    §121's event skins. The colour is the event's role -- a recording is the
+    red of anything that cannot be undone, a record running out the warning,
+    the autopilot the colour of what djmanzo does on its own -- and the drawing
+    is the theme's. Only a record running out moves, once a second at most;
+    the other two last all night and are held still.
+  */
+  .event-skin {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 900;
+    --event: var(--assistant);
+  }
+
+  .event-skin[data-event="rec"] {
+    --event: var(--danger);
+  }
+
+  .event-skin[data-event="out"] {
+    --event: var(--warn);
+  }
+
+  .event-skin[data-style="line"] {
+    box-shadow: inset 0 0 0 2px var(--event);
+  }
+
+  .event-skin[data-style="glow"] {
+    box-shadow:
+      inset 0 0 0 1px var(--event),
+      inset 0 0 1.6rem color-mix(in srgb, var(--event) 55%, transparent);
+  }
+
+  .event-skin[data-style="flash"] {
+    background:
+      repeating-linear-gradient(-45deg, var(--event) 0 8px, transparent 8px 16px) top / 100% 5px no-repeat,
+      repeating-linear-gradient(-45deg, var(--event) 0 8px, transparent 8px 16px) bottom / 100% 5px no-repeat;
+  }
+
+  .event-skin[data-style="glitch"] {
+    box-shadow:
+      inset 0 0 0 2px var(--event),
+      inset 3px -2px 0 0 color-mix(in srgb, var(--selected) 70%, transparent);
+  }
+
+  .event-skin[data-event="out"] {
+    animation: event-out 1s steps(2, jump-none) infinite;
+  }
+
+  .event-skin[data-event="out"][data-style="glow"] {
+    animation: event-breathe 2s ease-in-out infinite alternate;
+  }
+
+  @keyframes event-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0.35;
+    }
+  }
+
+  @keyframes event-breathe {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0.4;
+    }
+  }
+
   .master-fx {
     display: flex;
     flex-direction: column;
@@ -4313,7 +4426,7 @@
     gap: 1rem;
     flex-wrap: wrap;
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1px solid var(--frame);
     border-radius: 10px;
     padding: 0.7rem 0.9rem;
   }
@@ -4758,7 +4871,7 @@
     min-width: 0;
     min-height: 0;
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1px solid var(--frame);
     border-radius: 10px;
     overflow: hidden;
   }
@@ -4997,7 +5110,7 @@
     min-height: 0;
     min-width: 0;
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1px solid var(--frame);
     border-radius: 10px;
     overflow: hidden;
   }

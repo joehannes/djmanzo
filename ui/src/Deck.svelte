@@ -1677,7 +1677,7 @@
     */
     overflow: hidden;
     background: var(--panel);
-    border: 1px solid var(--border);
+    border: 1px solid var(--frame);
     /* Border colour only: a deck that resized or moved when it started playing
        would shift everything around it, mid-set. */
     transition: border-color var(--motion-enter) var(--ease);

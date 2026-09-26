@@ -58,6 +58,23 @@ Versioning follows semver, with one project-specific convention:
   works there without installing anything. The Intel Mac app still uses the
   built-in separator: Microsoft no longer publishes ONNX Runtime for Intel
   Macs.
+- **Themes worn whole, in parts, or as colours alone.** The theme menu (and
+  Settings) has Basic, Parts and Full. Basic keeps the theme's colours on
+  plain, still controls; Full is the theme as it always was; Parts lets you
+  take the controls' shapes, the art drawn on them, their motion, and how
+  the window's edge marks events each from this theme, another theme, or
+  nowhere — Organic's colours with Industrial's hexagons, say.
+- **The window's edge says what is happening.** While a recording runs, the
+  autopilot mixes, or the one record playing is about to run out with
+  nothing after it, the edge of the window is marked in that event's colour,
+  drawn the theme's way — a line, a glow, hazard bands, a torn edge. Only a
+  record running out moves, and not at all with reduced motion.
+- **Firmer edges round every region.** The top bar, the decks, the mixer and
+  every panel have a rim that stands out from the panel (at least 3:1 on
+  every theme), while the lines inside them stay quiet.
+- **Fixed: a theme chosen in Settings was changed back within minutes** by
+  the theme adaptation; Settings now says a choice was made, as the menu
+  always did.
 
 ## v0.29.0 — Break music, a controller switches the activity, the pads in symbols, and fixes
 

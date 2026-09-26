@@ -19,6 +19,7 @@
   import type { ThemeSetting } from "./controls/themes/engine";
   import { paletteFor } from "./controls/themes/colors";
   import IconButton from "./controls/IconButton.svelte";
+  import ThemeParts from "./ThemeParts.svelte";
 
   /**
    * §31's lock, mirrored here so the button can show it.
@@ -157,6 +158,21 @@
             onClick={() => theme.set("system")}
           />
         </div>
+      </div>
+
+      <!--
+        §121: the chosen theme worn whole, as its colours alone, or in parts
+        taken from wherever the DJ likes.
+      -->
+      <div class="section">
+        <strong>How much of it</strong>
+        <p class="hint">
+          The colours are always {theme.activePackage.name}'s. Its shapes, the
+          art on the controls, their motion and how the window's edge marks a
+          recording, the autopilot or a record running out can each be its
+          own, another theme's, or off.
+        </p>
+        <ThemeParts />
       </div>
 
       <!--

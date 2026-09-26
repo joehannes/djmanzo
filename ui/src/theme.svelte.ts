@@ -29,9 +29,24 @@ export type ResolvedTheme = "dark" | "light";
 
 import { themePackages, type ThemePackage } from "./controls/themes/packages";
 import { applyPackagePalette } from "./controls/themes/colors";
+import {
+  BASIC,
+  FULL,
+  SOME,
+  amountOf,
+  compose,
+  readParts,
+  type Amount,
+  type EventStyle,
+  type PartChoice,
+  type PartName,
+  type Parts,
+} from "./controls/themes/parts";
 
 const STORAGE_KEY = "djmanzo.theme";
 const PKG_STORAGE_KEY = "djmanzo.themePackage";
+/** §121: which parts of the chosen theme are worn. */
+const PARTS_STORAGE_KEY = "djmanzo.themeParts";
 
 /**
  * The system query, held once.
@@ -67,6 +82,14 @@ function loadPackage(): string {
   return "pkg-organic";
 }
 
+function loadParts(): Parts {
+  try {
+    return readParts(localStorage.getItem(PARTS_STORAGE_KEY));
+  } catch {
+    return { ...FULL };
+  }
+}
+
 class Theme {
   /** What the user asked for. */
   preference = $state<ThemePreference>(load());
@@ -81,10 +104,28 @@ class Theme {
   /** The currently selected visual SVG package */
   #pkgId = $state<string>(loadPackage());
 
-  /** The resolved ThemePackage object */
-  activePackage = $derived<ThemePackage>(
+  /** §121: which parts of it are worn, and from where. */
+  #parts = $state<Parts>(loadParts());
+
+  /** The theme chosen: its palette, and every part at full. */
+  chosen = $derived<ThemePackage>(
     themePackages.find(p => p.id === this.#pkgId) ?? themePackages[0]
   );
+
+  #worn = $derived(compose(this.chosen, this.#parts));
+
+  /**
+   * The theme as worn: the chosen one with its parts taken from where the DJ
+   * said. What every control draws with; its id is still the chosen theme's,
+   * so the palette and the picker key on the same thing.
+   */
+  activePackage = $derived<ThemePackage>(this.#worn.pkg);
+
+  /** How events are drawn on the window's edge, or not at all. */
+  eventStyle = $derived<EventStyle | null>(this.#worn.events);
+
+  /** Basic, Parts or Full. */
+  amount = $derived<Amount>(amountOf(this.#parts));
 
   /** What is on screen right now. */
   resolved = $derived<ResolvedTheme>(
@@ -111,6 +152,32 @@ class Theme {
     } catch {
       // As above: the theme still applies for this session.
     }
+  }
+
+  /** Where each part comes from. A copy: change it with `setPart`. */
+  get parts(): Parts {
+    return { ...this.#parts };
+  }
+
+  setPart(part: PartName, choice: PartChoice) {
+    this.#saveParts({ ...this.#parts, [part]: choice });
+  }
+
+  /**
+   * Basic, Parts or Full. Parts from either end starts from `SOME`; from a
+   * mix already made it keeps the mix.
+   */
+  setAmount(amount: Amount) {
+    if (amount === "basic") this.#saveParts({ ...BASIC });
+    else if (amount === "full") this.#saveParts({ ...FULL });
+    else if (this.amount !== "parts") this.#saveParts({ ...SOME });
+  }
+
+  #saveParts(parts: Parts) {
+    this.#parts = parts;
+    try {
+      localStorage.setItem(PARTS_STORAGE_KEY, JSON.stringify(parts));
+    } catch {}
   }
 
   setPackage(id: string) {

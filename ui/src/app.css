@@ -209,6 +209,20 @@
   /* Shape tokens */
   --radius: 8px;
   --edge: var(--border);
+  /*
+    §121: "Main regions are similar, edges are distinct and distinguishing,
+    edgy zones are more harsh then the basic harmony of a main region".
+
+    The rim of a whole region -- the top bar, a deck, the mixer, a panel, a
+    board's widget -- as against the hairlines inside one. `--border` is kept
+    near the panel on purpose, so the controls on a panel stand out from it;
+    drawn round a region as well it left each theme's regions melting into
+    one another, measured as low as 1.2:1 against the panel. Pulled towards
+    the text it is at least 3:1 on every palette, light and dark -- the
+    contrast WCAG asks of a boundary a person has to see -- while an inner
+    hairline stays under 2:1. `themes.test.ts` measures both.
+  */
+  --frame: color-mix(in srgb, var(--border-strong) 60%, var(--text) 40%);
 }
 
 /*
