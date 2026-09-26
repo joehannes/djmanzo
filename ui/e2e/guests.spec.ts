@@ -1,0 +1,133 @@
+/**
+ * §123: the karaoke journal.
+ *
+ * > the current karaoke singer/guest/guest artist shall be remembered in some
+ * > kind of useful and versatile and rich karaoke journal ... name of the
+ * > guest artist, song sung, age, email, social profile(s), WA/phone nr, home
+ * > country/town, nationality, favorite band, favorite musical genre, favorite
+ * > song, native language, additional languages
+ *
+ * What a guest agreed to is `dj_app::guests`' and its Rust tests hold it;
+ * this holds that the Singers surface reaches it: a singer marked as sung is
+ * in the guest book, the three questions are Rust's own sentences, contact
+ * cannot be typed until it is agreed to, a child cannot agree to it, and a
+ * guest can be exported and forgotten.
+ */
+import { expect, test, type Page } from "@playwright/test";
+
+import { errorsThrown, openShell } from "./shell";
+
+const book = (page: Page) => page.getByRole("region", { name: "Guest book" });
+
+const guestCalls = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __guests?: { cmd: string }[] }).__guests ?? []);
+
+async function singers(page: Page, answers: Record<string, unknown> = {}) {
+  await openShell(page, "/", {}, answers);
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.locator("body").click({ position: { x: 700, y: 120 } });
+  await page.keyboard.press("Space");
+  // Space O i: the Singers surface, large over the decks.
+  await page.keyboard.press("O");
+  await page.keyboard.press("i");
+  await expect(page.locator("[data-singers]")).toBeVisible();
+}
+
+test.describe("§123: the karaoke journal", () => {
+  /**
+   * **The load-bearing one.** Sang puts the singer in the guest book with
+   * the song; opened, the questions are Rust's words, the contact fields
+   * wait for their question, and what is kept is what was agreed to.
+   */
+  test("a singer who sang is in the guest book, and only what they agree to is kept", async ({ page }) => {
+    await singers(page, {
+      karaoke_rotation: {
+        singers: [{ name: "Ana", songs: [{ title: "Obsesión", track: null, path: null, key: 0 }], turns: 0 }],
+        up_next: "Ana",
+        lately: [],
+      },
+    });
+    await expect(book(page).getByText("Nobody yet")).toBeVisible();
+    await page.getByRole("button", { name: "Sang", exact: true }).click();
+    const ana = book(page).getByRole("list", { name: "Guests" }).getByRole("button", { name: /Ana/ });
+    await expect(ana).toContainText("Obsesión");
+    await expect(ana).toContainText("tonight");
+
+    await ana.click();
+    const form = book(page).getByRole("form", { name: "About Ana" });
+    // Rust's sentences, not the interface's own.
+    await expect(form.getByRole("checkbox", { name: /Keep my details after tonight/ })).not.toBeChecked();
+    const contact = form.getByRole("checkbox", { name: /Keep my email, phone or WhatsApp/ });
+    await expect(form.getByRole("textbox", { name: "Email" })).toBeDisabled();
+    await contact.check();
+    await form.getByRole("textbox", { name: "Email" }).fill("ana@example.org");
+    await form.getByRole("textbox", { name: "Phone or WhatsApp" }).fill("+34 600 123 456");
+    await form.getByRole("textbox", { name: "Favourite band" }).fill("Aventura");
+    await form.getByRole("textbox", { name: "Native language" }).fill("Spanish");
+    await form.getByRole("textbox", { name: "Other languages" }).fill("English, Catalan");
+    await expect(form.getByRole("list", { name: "Songs Ana sang" })).toContainText("Obsesión");
+    await form.getByRole("button", { name: "Keep" }).click();
+
+    await expect(form).toHaveCount(0);
+    await expect(ana).toContainText("contact");
+    const saved = (await guestCalls(page)).filter((c) => c.cmd === "guests_save") as unknown as {
+      guest: { email: string; languages: string[]; favourite_band: string; consent: { contact: boolean; keep: boolean } };
+    }[];
+    expect(saved.at(-1)!.guest).toMatchObject({
+      email: "ana@example.org",
+      favourite_band: "Aventura",
+      languages: ["English", "Catalan"],
+      consent: { contact: true, keep: false },
+    });
+
+    // Contact taken back: what was typed is not sent as kept.
+    await ana.click();
+    await book(page).getByRole("form", { name: "About Ana" }).getByRole("checkbox", { name: /Keep my email/ }).uncheck();
+    await book(page).getByRole("form", { name: "About Ana" }).getByRole("button", { name: "Keep" }).click();
+    await expect(ana).not.toContainText("contact");
+    await ana.click();
+    await expect(book(page).getByRole("form", { name: "About Ana" }).getByRole("textbox", { name: "Email" })).toHaveValue("");
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("under sixteen, contact and voice cannot be ticked", async ({ page }) => {
+    await singers(page);
+    await book(page).getByRole("button", { name: "Add a guest" }).click();
+    const form = book(page).getByRole("form", { name: "A new guest" });
+    await form.getByRole("textbox", { name: "Name" }).fill("Kid");
+    await form.getByRole("spinbutton", { name: "Age" }).fill("14");
+    await expect(form.getByRole("checkbox", { name: /Keep my email/ })).toBeDisabled();
+    await expect(form.getByRole("checkbox", { name: /Record about fifteen seconds/ })).toBeDisabled();
+    await expect(form.getByRole("checkbox", { name: /Keep my details/ })).toBeEnabled();
+    await expect(form.getByText(/need a parent's agreement/)).toBeVisible();
+    await form.getByRole("spinbutton", { name: "Age" }).fill("16");
+    await expect(form.getByRole("checkbox", { name: /Keep my email/ })).toBeEnabled();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  test("a guest gets their own copy, and can be forgotten", async ({ page }) => {
+    await singers(page);
+    await book(page).getByRole("button", { name: "Add a guest" }).click();
+    let form = book(page).getByRole("form", { name: "A new guest" });
+    await form.getByRole("textbox", { name: "Name" }).fill("Bo");
+    await form.getByRole("checkbox", { name: /Keep my details/ }).check();
+    await form.getByRole("button", { name: "Keep" }).click();
+    const bo = book(page).getByRole("list", { name: "Guests" }).getByRole("button", { name: /Bo/ });
+    await expect(bo).not.toContainText("tonight");
+
+    await page.evaluate(() => {
+      (window as unknown as { __dialogAnswer?: string }).__dialogAnswer = "/home/dj/Bo.json";
+    });
+    await bo.click();
+    form = book(page).getByRole("form", { name: "About Bo" });
+    await form.getByRole("button", { name: "Their copy" }).click();
+    await expect
+      .poll(async () => (await guestCalls(page)).find((c) => c.cmd === "guests_export"))
+      .toMatchObject({ cmd: "guests_export", path: "/home/dj/Bo.json" });
+
+    await form.getByRole("button", { name: "Forget…" }).click();
+    await form.getByRole("button", { name: "Forget Bo and their recordings" }).click();
+    await expect(book(page).getByText("Nobody yet")).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+});

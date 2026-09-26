@@ -1,0 +1,17 @@
+{
+  "asks": [
+    {
+      "name": "keep",
+      "sentence": "Keep my details after tonight, so the DJ remembers me next time."
+    },
+    {
+      "name": "contact",
+      "sentence": "Keep my email, phone or WhatsApp and social profiles, and send me what is made of tonight."
+    },
+    {
+      "name": "voice",
+      "sentence": "Record about fifteen seconds of my singing and use it with an AI music service to make a song for me."
+    }
+  ],
+  "consent_age": 16
+}

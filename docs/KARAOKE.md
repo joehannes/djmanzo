@@ -256,6 +256,30 @@ special path.
 A **singer queue** rounds it out: names and songs, add by voice, shown on both
 screens, so the room can see who is next.
 
+### The guest book (§123)
+
+Every singer the rotation marks as having sung is written into a **karaoke
+journal** (`dj_app::guests`, the Guest book on the Singers surface) with the
+song, the time and the event being played. The host opens a guest and asks
+three questions, in the words `guests::ASKS` holds and the surface shows
+unchanged, each answered separately and stamped with when and to which
+wording:
+
+| Question | Without it |
+|---|---|
+| Keep my details after tonight | The guest is tonight's only, and leaves the journal — with anything recorded of them — at *New night*. |
+| Keep my email, phone or WhatsApp and social profiles, and send me what is made of tonight | Those fields cannot be typed, and Rust clears them on save whatever is sent. |
+| Record about fifteen seconds of my singing and use it with an AI music service | No recording is attached; taking it back deletes the ones there are. |
+
+Under sixteen — the GDPR's age unless a country lowers it — contact and voice
+are refused, because that needs a parent and a booth cannot check one. The
+rest of the record (age, home town, nationality, favourite band, genre and
+song, native and other languages, a note) is what the song for them is made
+from. The journal is one file in djmanzo's settings folder and nothing in it
+leaves the machine; a guest can be given their own record as a file and
+forgotten with everything recorded of them, and the host can export the whole
+journal as a table.
+
 ---
 
 ## 5. Where it fits

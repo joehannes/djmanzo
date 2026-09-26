@@ -46,6 +46,7 @@ pub mod downloads;
 pub mod ghost;
 pub mod gig;
 pub mod grid;
+pub mod guests;
 pub mod guide;
 pub mod handle;
 pub mod host;
@@ -812,6 +813,10 @@ pub fn run() {
             commands::karaoke_leave,
             commands::karaoke_key,
             commands::karaoke_clear,
+            commands::guests,
+            commands::guests_save,
+            commands::guests_forget,
+            commands::guests_export,
             commands::karaoke_breaks,
             commands::karaoke_breaks_set,
             commands::set_activity_mode,

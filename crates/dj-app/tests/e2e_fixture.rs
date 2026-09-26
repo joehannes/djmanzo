@@ -1112,6 +1112,47 @@ fn the_browser_fixture_has_the_boards() {
     );
 }
 
+/// §123: **the questions a guest is asked**, exactly as `dj_app::guests`
+/// words them, for `ui/e2e/guests.spec.ts` — so the browser checks the
+/// surface shows Rust's sentences and not ones of its own.
+#[test]
+fn the_browser_fixture_has_the_guest_questions() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/guest-asks.json");
+    let asks: Vec<serde_json::Value> = dj_app::guests::ASKS
+        .iter()
+        .map(|(name, sentence)| serde_json::json!({ "name": name, "sentence": sentence }))
+        .collect();
+    let fresh = serde_json::to_string_pretty(&serde_json::json!({
+        "asks": asks,
+        "consent_age": dj_app::guests::CONSENT_AGE,
+    }))
+    .expect("the questions serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the questions");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored questions are JSON");
+    let fresh: serde_json::Value =
+        serde_json::from_str(&fresh).expect("the fresh questions are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe questions a guest is asked have changed, so the browser is \
+         checking ones djmanzo no longer asks.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// **The AI providers the settings draw**, as Rust describes them, for
 /// `ui/e2e/ai.spec.ts`: OpenRouter and Google keyed and ready, the local
 /// model not running, the rest waiting for a key.

@@ -9,6 +9,7 @@
    * interface can do: put the up-next song on a deck, in the singer's key.
    */
   import BuyLinks from "./BuyLinks.svelte";
+  import Guests from "./Guests.svelte";
   import {
     detachPanel,
     dispatch,
@@ -75,6 +76,12 @@
     void refresh();
   });
 
+  /**
+   * §123: counted up on every change, so the guest book reads the journal
+   * again — a song marked as sung is on the singer's record at once.
+   */
+  let journalRev = $state(0);
+
   /** Every change comes back as the whole rotation, so the list is Rust's. */
   async function change(done: Promise<Rotation>) {
     error = "";
@@ -83,6 +90,7 @@
     } catch (e) {
       error = String(e);
     }
+    journalRev += 1;
   }
 
   /**
@@ -413,6 +421,8 @@
     </details>
   {/if}
 
+  <Guests rev={journalRev} />
+
   <!--
     The words for the singers go on a screen of their own, facing the
     microphone — a second display, where the host's own screen is not.
@@ -422,7 +432,8 @@
   >
 
   <button class="quiet new-night" onclick={() => void change(karaokeClear())}
-    >New night — clear the list, keep everybody's keys</button
+    title="Everybody's keys are kept, and so are the guests who agreed to be"
+    >New night — clear the list and tonight's guests</button
   >
 </div>
 

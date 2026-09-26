@@ -13432,11 +13432,43 @@ pub fn karaoke_ask(
     }
 }
 
-/// §107: the singer up next has sung; they go to the back.
+/// §107: the singer up next has sung; they go to the back. §123: and the
+/// song goes on their record in the karaoke journal, stamped with the event
+/// being played.
 #[tauri::command]
 #[must_use]
 pub fn karaoke_sang(state: State<'_, AppState>) -> RotationDto {
-    with_rotation(&state, |rotation| rotation.sang().is_some())
+    let mut sung = None;
+    let dto = with_rotation(&state, |rotation| {
+        sung = rotation.sang();
+        sung.is_some()
+    });
+    if let Some(sung) = sung {
+        let (event, place) = events_dir(&state)
+            .ok()
+            .and_then(|dir| crate::gig::live(&dir).and_then(|id| crate::gig::load(&dir, &id)))
+            .map(|gig| (gig.title, gig.place))
+            .unwrap_or_default();
+        let now = now_seconds();
+        let mut journal = state.guests();
+        journal.sang(
+            &sung.singer,
+            crate::guests::Performance {
+                title: sung.title,
+                track: sung.track,
+                key: sung.key,
+                at: now,
+                event,
+                place,
+                voice: None,
+            },
+            now,
+        );
+        if let Err(error) = state.set_guests(&journal, &[]) {
+            tracing::warn!(%error, "the karaoke journal did not take the song");
+        }
+    }
+    dto
 }
 
 /// §107: called and not there — to the bottom, songs kept.
@@ -13467,14 +13499,112 @@ pub fn karaoke_key(state: State<'_, AppState>, singer: String, key: i32) -> Rota
     with_rotation(&state, |rotation| rotation.set_key(&singer, key))
 }
 
-/// §107: a new night — everybody off the list, the history kept.
+/// §107: a new night — everybody off the list, the history kept. §123: and
+/// every guest who did not agree to be kept leaves the journal, with what was
+/// recorded of them.
 #[tauri::command]
 #[must_use]
 pub fn karaoke_clear(state: State<'_, AppState>) -> RotationDto {
+    let mut journal = state.guests();
+    let unlink = journal.new_night();
+    if let Err(error) = state.set_guests(&journal, &unlink) {
+        tracing::warn!(%error, "tonight's guests are still in the journal");
+    }
     with_rotation(&state, |rotation| {
         rotation.clear();
         true
     })
+}
+
+/// One of the questions a guest is asked, as they are asked it.
+#[derive(Debug, Clone, Serialize)]
+pub struct AskDto {
+    pub name: &'static str,
+    pub sentence: &'static str,
+}
+
+/// §123: the karaoke journal as the Singers surface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct GuestsDto {
+    pub guests: Vec<crate::guests::Guest>,
+    /// The three questions, exactly as `dj_app::guests::ASKS` words them.
+    pub asks: Vec<AskDto>,
+    /// Under this age contact and voice cannot be agreed to alone.
+    pub consent_age: u8,
+    /// The guest just saved, so a new one can be kept open.
+    pub saved: Option<String>,
+}
+
+fn guests_dto(journal: crate::guests::Journal, saved: Option<String>) -> GuestsDto {
+    GuestsDto {
+        guests: journal.guests,
+        asks: crate::guests::ASKS
+            .iter()
+            .map(|&(name, sentence)| AskDto { name, sentence })
+            .collect(),
+        consent_age: crate::guests::CONSENT_AGE,
+        saved,
+    }
+}
+
+/// §123: the karaoke journal.
+#[tauri::command]
+#[must_use]
+pub fn guests(state: State<'_, AppState>) -> GuestsDto {
+    guests_dto(state.guests(), None)
+}
+
+/// §123: write a guest down, or change one, holding to what they agreed.
+///
+/// # Errors
+/// What `dj_app::guests::Refusal` says, or a journal that could not be
+/// written.
+#[tauri::command]
+pub fn guests_save(
+    state: State<'_, AppState>,
+    guest: crate::guests::Guest,
+) -> Result<GuestsDto, String> {
+    let mut journal = state.guests();
+    let saved = journal
+        .save(guest, now_seconds())
+        .map_err(|refusal| refusal.to_string())?;
+    state.set_guests(&journal, &saved.unlink)?;
+    Ok(guests_dto(journal, Some(saved.id)))
+}
+
+/// §123: delete a guest and everything recorded of them.
+///
+/// # Errors
+/// A guest not in the journal, or a journal that could not be written.
+#[tauri::command]
+pub fn guests_forget(state: State<'_, AppState>, id: String) -> Result<GuestsDto, String> {
+    let mut journal = state.guests();
+    let unlink = journal
+        .forget(&id)
+        .ok_or_else(|| crate::guests::Refusal::Unknown.to_string())?;
+    state.set_guests(&journal, &unlink)?;
+    Ok(guests_dto(journal, None))
+}
+
+/// §123: a guest's own copy of their record, as JSON, or the whole journal as
+/// a table, written where the host chose.
+///
+/// # Errors
+/// A guest not in the journal, or the file system's own sentence.
+#[tauri::command]
+pub fn guests_export(
+    state: State<'_, AppState>,
+    path: String,
+    id: Option<String>,
+) -> Result<(), String> {
+    let journal = state.guests();
+    let text = match id {
+        Some(id) => journal
+            .export_guest(&id)
+            .ok_or_else(|| crate::guests::Refusal::Unknown.to_string())?,
+        None => journal.export_table(),
+    };
+    std::fs::write(&path, text).map_err(|e| format!("{path}: {e}"))
 }
 
 /// §107: break music as the Singers surface draws it.

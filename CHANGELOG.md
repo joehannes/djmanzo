@@ -72,6 +72,17 @@ Versioning follows semver, with one project-specific convention:
 - **Firmer edges round every region.** The top bar, the decks, the mixer and
   every panel have a rim that stands out from the panel (at least 3:1 on
   every theme), while the lines inside them stay quiet.
+- **A guest book for karaoke nights.** Every singer marked as having sung
+  is written into a journal on the Singers surface with the song, the time
+  and the event. Open a guest to note their details — age, email, phone or
+  WhatsApp, social profiles, home, nationality, favourite band, genre and
+  song, languages — after asking three separate questions: keep them after
+  tonight, contact them, use their voice with an AI music service. Nothing
+  is kept that they did not agree to: without the first they leave at *New
+  night*, without the second the contact fields stay empty, and under
+  sixteen contact and voice cannot be agreed to. A guest can be given their
+  own record as a file and forgotten entirely; the whole journal exports as
+  a table. It stays on this machine.
 - **Fixed: a theme chosen in Settings was changed back within minutes** by
   the theme adaptation; Settings now says a choice was made, as the menu
   always did.

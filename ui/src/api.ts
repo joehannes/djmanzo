@@ -4707,6 +4707,66 @@ export const karaokeKey = (singer: string, key: number) =>
   invoke<Rotation>("karaoke_key", { singer, key });
 export const karaokeClear = () => invoke<Rotation>("karaoke_clear");
 
+/** §123: what a guest agreed to, and when. See `dj_app::guests::Consent`. */
+export interface GuestConsent {
+  keep: boolean;
+  contact: boolean;
+  voice: boolean;
+  /** Seconds since 1970; zero is never. */
+  given: number;
+  wording: number;
+}
+
+/** §123: one song a guest sang. */
+export interface GuestSong {
+  title: string;
+  track: string | null;
+  key: number;
+  /** Seconds since 1970. */
+  at: number;
+  event: string;
+  place: string;
+  /** A recording of their voice, with their consent. */
+  voice: string | null;
+}
+
+/** §123: a guest in the karaoke journal. See `dj_app::guests::Guest`. */
+export interface Guest {
+  /** Empty for a guest not yet written down. */
+  id: string;
+  name: string;
+  age: number | null;
+  email: string;
+  phone: string;
+  socials: string[];
+  home: string;
+  nationality: string;
+  favourite_band: string;
+  favourite_genre: string;
+  favourite_song: string;
+  native_language: string;
+  languages: string[];
+  notes: string;
+  consent: GuestConsent;
+  since: number;
+  sang: GuestSong[];
+}
+
+/** §123: the journal, and the questions a guest is asked, in Rust's words. */
+export interface GuestBook {
+  guests: Guest[];
+  asks: { name: "keep" | "contact" | "voice"; sentence: string }[];
+  consent_age: number;
+  saved: string | null;
+}
+
+export const guestBook = () => invoke<GuestBook>("guests");
+export const guestSave = (guest: Guest) => invoke<GuestBook>("guests_save", { guest });
+export const guestForget = (id: string) => invoke<GuestBook>("guests_forget", { id });
+/** A guest's own copy (`id`), or the whole journal as a table (`null`). */
+export const guestExport = (path: string, id: string | null) =>
+  invoke<void>("guests_export", { path, id });
+
 /** §107: one playlist break music can play from. */
 export interface BreakPlaylist {
   id: number;
