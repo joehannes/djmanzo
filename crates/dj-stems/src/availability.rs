@@ -114,20 +114,78 @@ pub fn resolve_dylib_name(configured: Option<&str>) -> String {
 /// links against, and by its SONAME, the name the library gives itself.
 pub const BUNDLED: [&str; 3] = ["lib", "djmanzo", "libonnxruntime.so.1"];
 
-/// Where a packaged runtime would be for an executable at `exe`: `BUNDLED`
-/// under the directory above the executable's own. `None` off Linux, where no
-/// package carries one yet, and for an executable with no directory above it.
+/// Where the Windows installers put it: in an `onnxruntime` folder beside
+/// `djmanzo.exe`, which is Tauri's resource directory on Windows.
+///
+/// By full path rather than by name, because Windows 11 carries an older
+/// `onnxruntime.dll` of its own in System32 for Windows ML, which `ort`
+/// refuses as too old -- and a search by name can find that one first.
+/// `scripts/fetch-onnxruntime.cjs` stages it and
+/// `crates/dj-app/tauri.onnxruntime.conf.json` packages it.
+pub const BUNDLED_WINDOWS: [&str; 2] = ["onnxruntime", "onnxruntime.dll"];
+
+/// Where the Apple Silicon app carries it: `djmanzo.app/Contents/Resources/
+/// onnxruntime/`, the bundle's resource directory, reached from
+/// `Contents/MacOS/djmanzo`. The Intel build carries none: Microsoft stopped
+/// publishing ONNX Runtime for Intel Macs after 1.23, older than this build
+/// accepts, so there the built-in separator does the work.
+pub const BUNDLED_MACOS: [&str; 3] = ["Resources", "onnxruntime", "libonnxruntime.1.dylib"];
+
+/// Which package's layout to look for a carried runtime in.
+///
+/// A value rather than a `cfg!` in [`bundled_in`], so each layout is tested
+/// on every machine the tests run on, not only the one that ships it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Layout {
+    /// The `.deb`, the `.rpm` and the AppImage: [`BUNDLED`].
+    Linux,
+    /// The `.msi` and the `.exe` installer: [`BUNDLED_WINDOWS`].
+    Windows,
+    /// The `.app`, inside a `.dmg` or not: [`BUNDLED_MACOS`].
+    MacOs,
+    /// Anywhere else, where no package carries one.
+    Unpackaged,
+}
+
+impl Layout {
+    /// The layout of the package this build is.
+    #[must_use]
+    pub const fn here() -> Self {
+        if cfg!(target_os = "linux") {
+            Self::Linux
+        } else if cfg!(target_os = "windows") {
+            Self::Windows
+        } else if cfg!(target_os = "macos") {
+            Self::MacOs
+        } else {
+            Self::Unpackaged
+        }
+    }
+}
+
+/// Where a packaged runtime would be for an executable at `exe`, in the
+/// package layout `layout`. `None` where no package carries one, and for an
+/// executable too near the root for the layout to hold.
+#[must_use]
+pub fn bundled_in(layout: Layout, exe: &Path) -> Option<PathBuf> {
+    let (base, parts): (&Path, &[&str]) = match layout {
+        Layout::Linux => (exe.parent()?.parent()?, &BUNDLED),
+        Layout::Windows => (exe.parent()?, &BUNDLED_WINDOWS),
+        Layout::MacOs => (exe.parent()?.parent()?, &BUNDLED_MACOS),
+        Layout::Unpackaged => return None,
+    };
+    Some(
+        parts
+            .iter()
+            .fold(base.to_path_buf(), |path, part| path.join(part)),
+    )
+}
+
+/// Where a packaged runtime would be for an executable at `exe`, in this
+/// build's own layout. See [`bundled_in`].
 #[must_use]
 pub fn bundled_beside(exe: &Path) -> Option<PathBuf> {
-    if !cfg!(target_os = "linux") {
-        return None;
-    }
-    let prefix = exe.parent()?.parent()?;
-    Some(
-        BUNDLED
-            .iter()
-            .fold(prefix.to_path_buf(), |path, part| path.join(part)),
-    )
+    bundled_in(Layout::here(), exe)
 }
 
 /// Which library to open, in order: `ORT_DYLIB_PATH` when it is set, so a DJ
@@ -263,24 +321,55 @@ mod tests {
     }
 
     /// **A packaged runtime is found where the package put it**, from the
-    /// executable's own path — `/usr/bin` and inside an AppImage alike —
-    /// without `LD_LIBRARY_PATH`, a symlink or a system copy; and
-    /// `ORT_DYLIB_PATH` still wins over it when a DJ sets one.
+    /// executable's own path — `/usr/bin` and inside an AppImage alike, the
+    /// Windows install folder, the app bundle — without `LD_LIBRARY_PATH`, a
+    /// symlink or a system copy; and `ORT_DYLIB_PATH` still wins over it when
+    /// a DJ sets one.
     #[test]
     fn a_packaged_runtime_is_found_beside_the_executable() {
+        assert_eq!(
+            bundled_in(Layout::Linux, Path::new("/usr/bin/djmanzo")),
+            Some(PathBuf::from("/usr/lib/djmanzo/libonnxruntime.so.1"))
+        );
+        assert_eq!(
+            bundled_in(
+                Layout::Linux,
+                Path::new("/tmp/.mount_djmanzo/usr/bin/djmanzo")
+            ),
+            Some(PathBuf::from(
+                "/tmp/.mount_djmanzo/usr/lib/djmanzo/libonnxruntime.so.1"
+            ))
+        );
+        // Forward slashes, which both platforms read as separators, so the
+        // Windows layout is checked on every machine.
+        assert_eq!(
+            bundled_in(
+                Layout::Windows,
+                Path::new("C:/Program Files/djmanzo/djmanzo.exe")
+            ),
+            Some(PathBuf::from(
+                "C:/Program Files/djmanzo/onnxruntime/onnxruntime.dll"
+            ))
+        );
+        assert_eq!(
+            bundled_in(
+                Layout::MacOs,
+                Path::new("/Applications/djmanzo.app/Contents/MacOS/djmanzo")
+            ),
+            Some(PathBuf::from(
+                "/Applications/djmanzo.app/Contents/Resources/onnxruntime/libonnxruntime.1.dylib"
+            ))
+        );
+        assert_eq!(
+            bundled_in(Layout::Unpackaged, Path::new("/usr/bin/djmanzo")),
+            None
+        );
         #[cfg(target_os = "linux")]
-        {
-            assert_eq!(
-                bundled_beside(Path::new("/usr/bin/djmanzo")),
-                Some(PathBuf::from("/usr/lib/djmanzo/libonnxruntime.so.1"))
-            );
-            assert_eq!(
-                bundled_beside(Path::new("/tmp/.mount_djmanzo/usr/bin/djmanzo")),
-                Some(PathBuf::from(
-                    "/tmp/.mount_djmanzo/usr/lib/djmanzo/libonnxruntime.so.1"
-                ))
-            );
-        }
+        assert_eq!(Layout::here(), Layout::Linux);
+        #[cfg(target_os = "windows")]
+        assert_eq!(Layout::here(), Layout::Windows);
+        #[cfg(target_os = "macos")]
+        assert_eq!(Layout::here(), Layout::MacOs);
         let packaged = Path::new("/usr/lib/djmanzo/libonnxruntime.so.1");
         assert_eq!(
             choose_library(None, Some(packaged)),
@@ -341,6 +430,78 @@ mod tests {
             version.starts_with("1.") && minor >= ort::MINOR_VERSION,
             "ONNX Runtime {version} is older than the C API 1.{} this build asks for",
             ort::MINOR_VERSION
+        );
+    }
+
+    /// **The Windows and Apple Silicon packages carry the file looked for,
+    /// of the version the Linux ones carry.** The script that stages them
+    /// names each file, the configuration packages the folder it stages
+    /// into, and this crate looks for it there; the three drifting apart is a
+    /// package whose separator cannot load, found by a DJ.
+    #[test]
+    fn the_windows_and_mac_runtimes_are_the_ones_looked_for() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let script = std::fs::read_to_string(root.join("scripts/fetch-onnxruntime.cjs"))
+            .expect("the script that stages the Windows and macOS runtimes");
+        for name in [BUNDLED_WINDOWS[1], BUNDLED_MACOS[2]] {
+            assert!(
+                script
+                    .lines()
+                    .any(|line| line.trim_end().ends_with(&format!(": \"{name}\","))),
+                "the script stages nothing as {name}"
+            );
+        }
+        // Staged into the folder both layouts put in the package.
+        assert_eq!(BUNDLED_WINDOWS[0], "onnxruntime");
+        assert_eq!(BUNDLED_MACOS[1], "onnxruntime");
+        assert!(script.contains(r#""../crates/dj-app/onnxruntime""#));
+        let config =
+            std::fs::read_to_string(root.join("crates/dj-app/tauri.onnxruntime.conf.json"))
+                .expect("the configuration the release passes to those builds");
+        assert!(
+            config.contains(r#""resources": ["onnxruntime/*"]"#),
+            "{config}"
+        );
+        assert!(
+            config.contains("node ../scripts/fetch-onnxruntime.cjs"),
+            "{config}"
+        );
+
+        // One version everywhere, the one `ort` accepts.
+        let linux = std::fs::read_to_string(root.join("scripts/fetch-onnxruntime.sh"))
+            .expect("the Linux script");
+        let pinned = |source: &str, prefix: &str| {
+            source
+                .lines()
+                .find_map(|line| line.strip_prefix(prefix))
+                .map(|rest| rest.trim_matches(|c| c == '"' || c == ';').to_owned())
+                .expect("a pinned version")
+        };
+        assert_eq!(
+            pinned(&script, "const VERSION = "),
+            pinned(&linux, "VERSION=")
+        );
+
+        // And the release gives the configuration to exactly the builds it
+        // has a runtime for.
+        let release = std::fs::read_to_string(root.join(".github/workflows/release.yml"))
+            .expect("the release workflow");
+        let carrying: Vec<&str> = release
+            .lines()
+            .filter(|line| !line.trim_start().starts_with('#'))
+            .filter(|line| line.contains("--config tauri.onnxruntime.conf.json"))
+            .collect();
+        assert_eq!(carrying.len(), 2, "{carrying:#?}");
+        assert!(
+            carrying
+                .iter()
+                .any(|line| line.contains("aarch64-apple-darwin"))
+        );
+        assert!(carrying.iter().any(|line| line.contains("windows-latest")));
+        assert!(
+            !carrying
+                .iter()
+                .any(|line| line.contains("x86_64-apple-darwin"))
         );
     }
 

@@ -34,6 +34,12 @@ Versioning follows semver, with one project-specific convention:
   back. The gap always shows its handle now.
 - **Fixed: a single click on a dock's gap sized the dock.** It wrote the
   dock's current share down as a fixed size.
+- **Neural stems on Windows and Apple Silicon Macs.** The Windows installers
+  and the Apple Silicon app now carry ONNX Runtime, as the Linux packages
+  do, so the stem separator the karaoke mode uses to take the voice out
+  works there without installing anything. The Intel Mac app still uses the
+  built-in separator: Microsoft no longer publishes ONNX Runtime for Intel
+  Macs.
 
 ## v0.29.0 — Break music, a controller switches the activity, the pads in symbols, and fixes
 

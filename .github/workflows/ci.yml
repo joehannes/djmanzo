@@ -161,6 +161,23 @@ jobs:
           sh scripts/fetch-onnxruntime.sh
           echo "ORT_DYLIB_PATH=$PWD/crates/dj-app/onnxruntime/libonnxruntime.so.1" >> "$GITHUB_ENV"
 
+      # And the ones the Windows and Apple Silicon packages carry, so the
+      # separator is run through each of them on its own platform before a
+      # DJ does it.
+      - name: Stage ONNX Runtime (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          node scripts/fetch-onnxruntime.cjs
+          echo "ORT_DYLIB_PATH=$PWD/crates/dj-app/onnxruntime/libonnxruntime.1.dylib" >> "$GITHUB_ENV"
+
+      - name: Stage ONNX Runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node scripts/fetch-onnxruntime.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "ORT_DYLIB_PATH=$PWD\crates\dj-app\onnxruntime\onnxruntime.dll" >> $env:GITHUB_ENV
+
       # Neither runner has a sound card, which is exactly why dj-audio ships a
       # null backend and an offline renderer. The realtime-safety suite runs
       # here in full.
@@ -168,6 +185,10 @@ jobs:
         run: cargo test --workspace --all-targets
         env:
           DJMANZO_NULL_AUDIO: "1"
+          # Every leg has staged a runtime above, so a stems test that finds
+          # none has found a broken staging, not a machine without one: fail
+          # rather than skip.
+          DJMANZO_REQUIRE_ONNXRUNTIME: "1"
 
       - name: Doc tests
         run: cargo test --workspace --doc

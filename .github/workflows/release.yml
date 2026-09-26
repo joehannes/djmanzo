@@ -101,13 +101,21 @@ jobs:
         env:
           # Intel Macs are still booth workhorses; an arm64-only release would
           # leave a lot of working DJs without a build.
+          #
+          # `--config tauri.onnxruntime.conf.json` carries ONNX Runtime into the
+          # Windows and Apple Silicon packages, so the neural stem separator
+          # works there without the DJ installing anything; the Linux packages
+          # carry theirs through tauri.linux.conf.json. The Intel Mac build has
+          # none to carry -- Microsoft publishes no ONNX Runtime new enough for
+          # it -- and uses the built-in separator. Resolved from projectPath,
+          # the directory tauri-action runs the build in.
           ALL: >-
-            [{"os":"macos-latest","name":"macOS (Apple Silicon)","args":"--target aarch64-apple-darwin","target":"aarch64-apple-darwin","artifact":"macos-aarch64"},
-             {"os":"macos-latest","name":"macOS (Intel)","args":"--target x86_64-apple-darwin","target":"x86_64-apple-darwin","artifact":"macos-x86_64"},
-             {"os":"windows-latest","name":"Windows (x86_64)","args":"","target":"","artifact":"windows-x86_64"},
-             {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":"","artifact":"linux-x86_64"}]
+            [{"os":"macos-latest","name":"macOS (Apple Silicon)","args":"--target aarch64-apple-darwin --config tauri.onnxruntime.conf.json","target":"aarch64-apple-darwin","artifact":"macos-aarch64","onnxruntime":"macos"},
+             {"os":"macos-latest","name":"macOS (Intel)","args":"--target x86_64-apple-darwin","target":"x86_64-apple-darwin","artifact":"macos-x86_64","onnxruntime":""},
+             {"os":"windows-latest","name":"Windows (x86_64)","args":"--config tauri.onnxruntime.conf.json","target":"","artifact":"windows-x86_64","onnxruntime":"windows"},
+             {"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":"","artifact":"linux-x86_64","onnxruntime":""}]
           LINUX: >-
-            [{"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":"","artifact":"linux-x86_64"}]
+            [{"os":"ubuntu-latest","name":"Linux (x86_64)","args":"","target":"","artifact":"linux-x86_64","onnxruntime":""}]
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.platforms }}" = "linux" ]; then
@@ -222,6 +230,31 @@ jobs:
           releaseDraft: ${{ inputs.tag == '' }}
           prerelease: false
           args: ${{ matrix.args }}
+
+      # A package that says it carries ONNX Runtime and does not is the
+      # v0.23.0 failure again on another platform: stems that cannot load, on
+      # a machine where nobody can see why. So the run fails rather than
+      # passing. Checked where each bundler reads its file list from, because
+      # that is what ends up installed.
+      - name: The Apple Silicon app carries ONNX Runtime
+        if: matrix.onnxruntime == 'macos'
+        run: |
+          set -euo pipefail
+          lib="target/${{ matrix.target }}/release/bundle/macos/djmanzo.app/Contents/Resources/onnxruntime/libonnxruntime.1.dylib"
+          test -f "$lib" || { echo "::error::$lib is not in the app"; exit 1; }
+          file "$lib"
+          file "$lib" | grep -q arm64
+
+      - name: The Windows installers carry ONNX Runtime
+        if: matrix.onnxruntime == 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for listing in target/release/nsis/x64/installer.nsi target/release/wix/x64/main.wxs; do
+            grep -q 'onnxruntime.dll' "$listing" \
+              || { echo "::error::$listing does not install onnxruntime.dll"; exit 1; }
+            echo "$listing installs onnxruntime.dll"
+          done
 
       # A dispatch with no tag has nowhere else to put the bundles, so they go
       # on the run's page. A tagged one has a release, and uploading the same

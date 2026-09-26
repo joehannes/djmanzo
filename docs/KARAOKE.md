@@ -64,6 +64,17 @@ field, leaving centred kick and bass intact. The cost is the look-ahead
 separation window — a few seconds on first play, instant thereafter from the
 cache.
 
+**Where it runs.** The model runs on ONNX Runtime, which every package
+carries except one: the Linux `.deb`, `.rpm` and AppImage, the Windows `.msi`
+and `.exe`, and the Apple Silicon Mac app. The Intel Mac app has none to
+carry — Microsoft stopped publishing ONNX Runtime for Intel Macs after 1.23,
+older than djmanzo can use — so there the built-in separator (vocals as what
+is centred in the harmonic part of the vocal band) and §1.3 below do the
+work, and the stems panel says which it is using. On Windows, ONNX Runtime
+also needs Microsoft's Visual C++ 2015–2022 runtime, which most machines
+already have; where it is missing, the stems panel says so and the built-in
+separator takes over.
+
 **Vocal *reduction* rather than removal.** Ducking the vocal stem to around
 -12 dB instead of killing it leaves a guide vocal underneath. For a nervous
 singer, a hesitant crowd, or a song nobody quite remembers, this is the setting

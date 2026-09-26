@@ -54,18 +54,23 @@ fn off_by(stem: &[f32], mix: &[f32], gain: f32, edge: usize) -> f32 {
 /// A library that opens is not enough: Windows carries an older
 /// `onnxruntime.dll` of its own in System32, which the probe finds and `ort`
 /// then refuses as too old. That is the machine saying it cannot run this,
-/// not the model failing, so it skips too.
+/// not the model failing, so it skips too -- unless
+/// `DJMANZO_REQUIRE_ONNXRUNTIME` is set, as CI sets it on every platform it
+/// stages a runtime for, where a skip would be a test that never ran.
 fn runtime_here() -> bool {
+    let skip = |reason: &dyn std::fmt::Display| {
+        if std::env::var_os("DJMANZO_REQUIRE_ONNXRUNTIME").is_some() {
+            panic!("ONNX Runtime was required and is not usable: {reason}");
+        }
+        eprintln!("skipped: {reason} (set ORT_DYLIB_PATH to run this)");
+        false
+    };
     let library = dj_stems::availability::runtime_library();
     if let Err(reason) = dj_stems::availability::probe_named_runtime(&library) {
-        eprintln!("skipped: {reason} (set ORT_DYLIB_PATH to run this)");
-        return false;
+        return skip(&reason);
     }
     match StemsEngine::new(&fixture("standin-4.onnx")) {
-        Err(reason @ Unavailable::Runtime { .. }) => {
-            eprintln!("skipped: {reason} (set ORT_DYLIB_PATH to run this)");
-            false
-        }
+        Err(reason @ Unavailable::Runtime { .. }) => skip(&reason),
         _ => true,
     }
 }
