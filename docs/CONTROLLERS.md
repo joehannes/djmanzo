@@ -171,11 +171,16 @@ press = "interface surface library"        # open or close the collection
 [[binding]]
 on = "note 1 0x43"
 press = "interface lift library"           # the collection, large over the decks
+
+[[binding]]
+on = "note 1 0x44"
+press = "interface board live"             # the Live dashboard; `board decks` goes back
 ```
 
-Five kinds, the five a leaf of the Space tree has: `switch` (an activity, a
+Six kinds, the six a leaf of the Space tree has: `switch` (an activity, a
 workspace, a theme, a preset pack), `surface` (a panel, docked), `lift` (a
-panel opened large over the decks, as `Space O` and a letter opens it), `ui` (the palette,
+panel opened large over the decks, as `Space O` and a letter opens it),
+`board` (a dashboard in place of the decks, or `decks` back), `ui` (the palette,
 the search, back, everything, record, mark, the dashboard) and `uiop` (§41's
 operations). The loader checks the shape; the application checks the name
 against the tree it offers when the button is pressed, so a line naming an

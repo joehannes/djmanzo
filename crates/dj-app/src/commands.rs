@@ -9874,6 +9874,14 @@ pub fn dashboard(state: State<'_, AppState>, current: String) -> crate::dashboar
     )
 }
 
+/// §121: the boards — whole views for one kind of work that take the place
+/// of the decks while they are up. See [`crate::boards`].
+#[tauri::command]
+#[must_use]
+pub fn boards() -> Vec<crate::boards::Board> {
+    crate::boards::all()
+}
+
 /// §117: the interface's own settings.
 #[tauri::command]
 #[must_use]

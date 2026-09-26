@@ -14,8 +14,8 @@
 //!
 //! # Still nothing a mapping can invent
 //!
-//! This crate checks the **shape**: one of the five kinds of leaf the tree has
-//! (`switch`, `surface`, `lift`, `ui`, `uiop`), something after it, nothing that is
+//! This crate checks the **shape**: one of the six kinds of leaf the tree has
+//! (`switch`, `surface`, `lift`, `board`, `ui`, `uiop`), something after it, nothing that is
 //! not plain text, and no `{value}` -- a fader position is not an activity.
 //! It does not know which activities or panels exist; the application checks
 //! the **name** against what its own tree offers before anything happens, so
@@ -27,7 +27,7 @@
 pub const PREFIX: &str = "interface ";
 
 /// The kinds of leaf an interface line may run, as the Space tree names them.
-pub const KINDS: [&str; 5] = ["switch", "surface", "lift", "ui", "uiop"];
+pub const KINDS: [&str; 6] = ["switch", "surface", "lift", "board", "ui", "uiop"];
 
 /// What an interface line runs, or `None` when the line is not one.
 #[must_use]
@@ -100,7 +100,10 @@ mod tests {
         assert!(check("interface switch activity karaoke").is_ok());
         assert!(check("deck 1 levitate").is_err());
         let said = check("interface action deck 1 play").unwrap_err();
-        assert!(said.contains("switch, surface, lift, ui, uiop"), "{said}");
+        assert!(
+            said.contains("switch, surface, lift, board, ui, uiop"),
+            "{said}"
+        );
         assert!(check("interface lift library").is_ok());
     }
 }

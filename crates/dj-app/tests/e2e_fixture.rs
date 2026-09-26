@@ -1078,6 +1078,40 @@ fn the_browser_fixture_has_the_dashboards() {
     );
 }
 
+/// §121's boards, as a golden file, so the browser tests lay out the boards
+/// Rust ships rather than a copy that could drift from them.
+///
+/// ```text
+/// DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture
+/// ```
+#[test]
+fn the_browser_fixture_has_the_boards() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/boards.json");
+    let fresh = serde_json::to_string_pretty(&dj_app::boards::all()).expect("the boards serialise");
+
+    if std::env::var_os("DJMANZO_BLESS").is_some() {
+        std::fs::write(&path, format!("{fresh}\n")).expect("writing the boards");
+        return;
+    }
+
+    let stored = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "{}: {error}\n\nGenerate it with:\n    \
+             DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture",
+            path.display()
+        )
+    });
+    let stored: serde_json::Value =
+        serde_json::from_str(&stored).expect("the stored boards are JSON");
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("the fresh boards are JSON");
+    assert_eq!(
+        stored, fresh,
+        "\nThe boards have changed, so the browser is laying out ones djmanzo \
+         no longer ships.\n\nRegenerate with:\n    \
+         DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
+    );
+}
+
 /// **The AI providers the settings draw**, as Rust describes them, for
 /// `ui/e2e/ai.spec.ts`: OpenRouter and Google keyed and ready, the local
 /// model not running, the rest waiting for a key.

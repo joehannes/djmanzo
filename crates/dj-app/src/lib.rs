@@ -29,6 +29,7 @@ pub mod audience;
 pub mod audition;
 pub mod automix;
 pub mod autopilot;
+pub mod boards;
 pub mod brand;
 pub mod breaks;
 pub mod chapters;
@@ -650,6 +651,7 @@ pub fn run() {
             commands::palette,
             commands::leader_tree,
             commands::dashboard,
+            commands::boards,
             commands::interface_settings,
             commands::set_toolbars,
             commands::used_tile,

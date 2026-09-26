@@ -16,6 +16,7 @@
    * typing stops, begun from what the welcome was told.
    */
   import { open } from "@tauri-apps/plugin-dialog";
+  import { tick } from "svelte";
   import {
     eventOptions,
     kitAdd,
@@ -50,6 +51,25 @@
    * the next field clicked had moved from under the pointer.
    */
   let tab = $state<"send" | "kit">("send");
+
+  /**
+   * §121: a part of the kit to open, from the press-kit board's folders. A
+   * new value each press (`at`), so the same folder opens twice.
+   */
+  let { open: opening = null }: { open?: { section: string; at: number } | null } = $props();
+  let root = $state<HTMLElement | undefined>();
+
+  $effect(() => {
+    const asked = opening;
+    if (!asked) return;
+    tab = asked.section === "Send" ? "send" : "kit";
+    void tick().then(() => {
+      const heading = [...(root?.querySelectorAll("h3") ?? [])].find(
+        (h) => h.textContent?.trim() === asked.section,
+      );
+      (heading ?? root)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  });
 
   let edits = 0;
   let pending: ReturnType<typeof setTimeout> | null = null;
@@ -213,7 +233,7 @@
   }
 </script>
 
-<div class="kit">
+<div class="kit" bind:this={root}>
   {#if view && draft}
     <div class="tabs" role="tablist" aria-label="Press kit">
       <button type="button" role="tab" aria-selected={tab === "send"} onclick={() => (tab = "send")}>Send</button>

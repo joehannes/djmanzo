@@ -168,7 +168,7 @@ test.describe("§117: the dashboard", () => {
   /** The toolbars come back from Settings, reached from the dashboard. */
   test("the toolbars come back from Settings", async ({ page }) => {
     await openShell(page, "/", {}, SLIM);
-    await page.getByRole("button", { name: /Dashboard/ }).click();
+    await page.getByRole("button", { name: /Launcher/ }).click();
     await board(page).locator('[data-tile="surface:settings"]').click();
     await page.getByRole("checkbox", { name: /Show the toolbars/ }).check();
     await expect(page.getByRole("navigation", { name: "Panels" })).toBeVisible();

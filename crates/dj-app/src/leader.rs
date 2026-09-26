@@ -24,7 +24,7 @@
 //!
 //! # How a leaf is run
 //!
-//! A leaf's `run` is a sentence of one of six kinds, each carried out by the
+//! A leaf's `run` is a sentence of one of seven kinds, each carried out by the
 //! path the rest of the interface already takes:
 //!
 //! - `action <words>` — an action in djmanzo's vocabulary, sent to the
@@ -35,6 +35,8 @@
 //!   with;
 //! - `switch <kind> <which>` — a theme, activity, workspace or preset, as the
 //!   Ctrl+K palette switches one (§115);
+//! - `board <name>` — §121: one of the boards in place of the decks, or
+//!   `board decks` back to them;
 //! - `ui <verb>` — something only the interface does: open the palette,
 //!   search the library, go back to the last activity, record, mark;
 //! - `uiop <operation>` — one of §41's interface operations (`ui pin
@@ -288,7 +290,7 @@ pub fn tree(
         Node::leaf("/", "Search the library", "ui search"),
         Node::leaf(",", "Settings", "surface settings"),
         Node::leaf("`", "Back to the last activity", "ui back"),
-        Node::leaf("0", "Dashboard", "ui dashboard"),
+        Node::leaf("0", "Launcher (everything, on one screen)", "ui dashboard"),
     ];
     for (index, activity) in activities.iter().take(9).enumerate() {
         root.push(Node::leaf(
@@ -322,6 +324,20 @@ pub fn tree(
     // modal". The same letters under Shift, so a DJ who knows where a panel
     // docks already knows how to have it large for a moment.
     root.push(panels("O", "Open a panel large, over the decks", "lift"));
+    // §121's boards: a whole view for one kind of work, in place of the
+    // decks, and the way back to them.
+    root.push(list(
+        "b",
+        "Dashboard",
+        crate::boards::all()
+            .iter()
+            .map(|board| (board.title.to_owned(), format!("board {}", board.slug)))
+            .chain([(
+                "Decks".to_owned(),
+                format!("board {}", crate::boards::DECKS),
+            )])
+            .collect(),
+    ));
     root.push(Node::group(
         "v",
         "View",
@@ -438,6 +454,8 @@ pub fn runnable(run: &str, switches: &[String]) -> Result<(), String> {
         "surface" | "lift" => Err(format!("there is no panel called {rest:?}")),
         "switch" if switches.iter().any(|s| s == rest) => Ok(()),
         "switch" => Err(format!("there is nothing to switch to called {rest:?}")),
+        "board" if crate::boards::runnable(rest) => Ok(()),
+        "board" => Err(format!("there is no board called {rest:?}")),
         "ui" if UI_VERBS.contains(&rest) => Ok(()),
         "ui" => Err(format!("{rest:?} is not something the interface does")),
         "uiop" => crate::uiop::UiOp::parse(rest)

@@ -2,6 +2,9 @@
   import Assistant from "./Assistant.svelte";
   import Guide from "./Guide.svelte";
   import DashboardView from "./Dashboard.svelte";
+  import BoardFlow from "./BoardFlow.svelte";
+  import BoardLinks from "./BoardLinks.svelte";
+  import BoardFolders from "./BoardFolders.svelte";
   import Icon from "./controls/Icon.svelte";
   import { Leader } from "./leader.svelte";
   import { chordRun } from "./platform";
@@ -46,6 +49,8 @@
     interfaceSettings,
     setToolbars,
     dashboard as fetchDashboard,
+    boards as fetchBoards,
+    type Board,
     usedTile,
     type InterfaceSettings,
     type Dashboard,
@@ -339,6 +344,60 @@
   let surfaceHomes = $state<Record<string, Dock>>({});
   /** Where each surface may go, from Rust, so a move offers only those. */
   let surfaceDocks = $state<Record<string, Dock[]>>({});
+
+  /**
+   * §121: the boards, and the one up, if any. While one is up it takes the
+   * place of the decks and the docks, which come back as they were when the
+   * DJ goes back to them. Not kept across a restart: djmanzo opens on the
+   * decks, which is where a DJ who has just started it expects to be.
+   */
+  let boardList = $state<Board[]>([]);
+  let onBoard = $state<string | null>(null);
+  let boardMenuOpen = $state(false);
+  const activeBoard = $derived(boardList.find((b) => b.slug === onBoard) ?? null);
+  /** A part of the press kit a folder on the kit board asked to open. */
+  let kitOpen = $state<{ section: string; at: number } | null>(null);
+
+  // The boards' menu closes on a press outside it or on Escape, as a menu
+  // does, rather than staying open over the decks.
+  $effect(() => {
+    if (!boardMenuOpen) return;
+    const outside = (event: PointerEvent) => {
+      if (!(event.target as Element | null)?.closest?.(".board-menu")) boardMenuOpen = false;
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") boardMenuOpen = false;
+    };
+    window.addEventListener("pointerdown", outside, true);
+    window.addEventListener("keydown", escape, true);
+    return () => {
+      window.removeEventListener("pointerdown", outside, true);
+      window.removeEventListener("keydown", escape, true);
+    };
+  });
+
+  /** Put a board up, or `decks` to go back to them. */
+  function showBoard(slug: string) {
+    if (slug === "decks") {
+      onBoard = null;
+      return;
+    }
+    if (!boardList.some((b) => b.slug === slug)) return;
+    lifted = null;
+    board = null;
+    onBoard = slug;
+    counted(`board:${slug}`);
+  }
+
+  /** What a board widget is called: the surface's title, or a board's own. */
+  const widgetTitle = (name: string) =>
+    name === "flow"
+      ? "The mix"
+      : name === "links"
+        ? "Where next"
+        : name === "folders"
+          ? "Your press kit"
+          : titleOf(name);
   const homeOf = (name: string): Dock => surfaceHomes[name] ?? "right";
 
   /**
@@ -1289,6 +1348,9 @@
     if (!found) return;
     counted(`activity:${slug}`);
     board = null;
+    // An activity is an arrangement of the decks, so choosing one is going
+    // back to them.
+    onBoard = null;
     // The density stays the DJ's. It is how big things are drawn for this
     // window and these eyes, not what the job needs — and an activity that
     // set it rescaled the whole interface on every switch, which moved the
@@ -1723,6 +1785,12 @@
       // a DJ can read -- worse than "Session log", better than an empty header.
     }
     try {
+      boardList = await fetchBoards();
+    } catch {
+      // No boards: the switcher hides itself and the decks are all there is,
+      // which is how djmanzo was before they existed.
+    }
+    try {
       mine = await myWorkspaces();
     } catch {
       // An empty collection rather than a broken picker: the shipped
@@ -1842,6 +1910,8 @@
       if ((DRAWN as readonly string[]).includes(rest)) await toggleSurface(rest as Drawn);
     } else if (kind === "lift") {
       await openLifted(rest);
+    } else if (kind === "board") {
+      showBoard(rest);
     } else if (kind === "switch") {
       await switchTo(rest);
     } else if (kind === "ui") {
@@ -2766,9 +2836,16 @@
           everything else, so the room above the decks goes to the activity.
         -->
         <nav class="go-group slim" aria-label="Where you are">
-          <button type="button" class="dash" onclick={() => void toggleDashboard()} title="Everything else — activities, panels, presets, themes, workspaces (0)">
-            <Icon name="table-cells" size="0.95rem" /> Dashboard <kbd>0</kbd>
+          <button type="button" class="dash" onclick={() => void toggleDashboard()} title="Everything else, on one screen — activities, panels, presets, themes, workspaces (0)">
+            <Icon name="table-cells" size="0.95rem" /> Launcher <kbd>0</kbd>
           </button>
+          {@render boardMenu()}
+          {#if activeBoard}
+            <!-- Where you are is the board, and the way back from it. -->
+            <button type="button" class="where on-board" data-where onclick={() => showBoard("decks")} title="Back to the decks, as you left them">
+              {activeBoard.title} <Icon name="xmark" size="0.75rem" />
+            </button>
+          {:else}
           <span class="where" data-where>
             {#if activityMode && activityState}
               {@const at = activityState.activities.findIndex((a) => a.slug === activityState?.current)}
@@ -2778,6 +2855,7 @@
               Everything
             {/if}
           </span>
+          {/if}
           <button type="button" class="keys-hint" onclick={() => leader.start()} title="Every key from here, one word at a time">
             <kbd>Space</kbd> keys
           </button>
@@ -2800,6 +2878,7 @@
           onforget={(slug) => void forgetOne(slug)}
           onleave={() => void leaveActivities()}
         />
+        {@render boardMenu()}
       {:else}
       <nav class="go-group" aria-label="Panels">
         <IconButton icon="fa-solid fa-folder-open" label="Browse" title="Find and load tracks" active={isOpen("library")} onClick={() => toggleSurface("library")} />
@@ -2861,6 +2940,7 @@
         <IconButton icon="fa-solid fa-cog" label="Settings" title="Audio, sources, controllers, timecode" active={isOpen("settings")} onClick={() => toggleSurface("settings")} />
         <IconButton icon="fa-solid fa-keyboard" label="Keys" title={keyboard.enabled ? "Keyboard shortcuts — enabled" : "Keyboard shortcuts — disabled"} active={isOpen("keys")} onClick={() => toggleSurface("keys")} />
         <IconButton icon="fa-solid fa-file-lines" label="Log" title="What the session has done so far" active={isOpen("log")} onClick={() => toggleSurface("log")} />
+        {@render boardMenu()}
       </nav>
 
       <!--
@@ -3333,7 +3413,7 @@
   {/snippet}
 
   {#snippet surfaceKit()}
-    <PressKit />
+    <PressKit open={kitOpen} />
   {/snippet}
 
   {#snippet surfaceCrowd()}
@@ -3580,6 +3660,149 @@
     ></div>
   {/snippet}
 
+  {#snippet boardMenu()}
+    {#if boardList.length > 0}
+      <!--
+        §121's boards, one press away from anywhere: one button and a short
+        menu rather than a row of six, because the bar above the decks is one
+        row on a laptop and six more buttons made it two. Space b and a
+        letter reach them as well.
+      -->
+      <span class="board-menu">
+        <button
+          type="button"
+          class="board-pick"
+          class:on={onBoard !== null}
+          aria-haspopup="menu"
+          aria-expanded={boardMenuOpen}
+          aria-label="Dashboards"
+          title="Dashboards: a whole view for preparing, playing live, experimenting, your music, your press kit or the social side (Space b)"
+          onclick={() => (boardMenuOpen = !boardMenuOpen)}
+        ><Icon name={activeBoard?.glyph ?? "desktop"} size="0.95rem" /></button>
+        {#if boardMenuOpen}
+          <div class="board-list" role="menu" aria-label="Dashboards">
+            {#each boardList as b (b.slug)}
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={onBoard === b.slug}
+                title={b.about}
+                onclick={() => {
+                  boardMenuOpen = false;
+                  showBoard(b.slug);
+                }}
+              ><Icon name={b.glyph} size="0.95rem" /> {b.title}</button>
+            {/each}
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={onBoard === null}
+              title="The decks and the panels beside them"
+              onclick={() => {
+                boardMenuOpen = false;
+                showBoard("decks");
+              }}
+            ><Icon name="compact-disc" size="0.95rem" /> Decks</button>
+          </div>
+        {/if}
+      </span>
+    {/if}
+  {/snippet}
+
+  {#snippet boardView(b: Board)}
+    <!--
+      §121: a board, in the place of the decks and the docks. The decks in
+      brief lead it, under the top bar and never scrolled away, so the music
+      is in reach whatever the board is for; the widgets are the cockpit's own
+      surfaces, drawn larger, and the few that only a board has.
+    -->
+    <section class="board" data-board={b.slug} aria-label="{b.title} dashboard">
+      <header class="board-head">
+        <h2><Icon name={b.glyph} size="1.1rem" /> {b.title}</h2>
+        <p class="board-about">{b.about}</p>
+        {#if snapshot}
+          <BoardFlow decks={snapshot.decks.slice(0, deckCount)} master={snapshot.master} enabled={ready} send={(a) => void send(a)} />
+        {/if}
+      </header>
+      <div class="board-grid">
+        {#each b.widgets as widget, i (`${widget.name}-${i}`)}
+          <article
+            class="widget"
+            data-widget={widget.name}
+            style="--cols: {widget.cols}; --rows: {widget.rows};"
+            aria-label={widgetTitle(widget.name)}
+          >
+            <header class="widget-head">
+              <h3>{widgetTitle(widget.name)}</h3>
+              {#if (DRAWN as readonly string[]).includes(widget.name)}
+                <button
+                  type="button"
+                  class="widget-dock"
+                  title="Back to the decks with {widgetTitle(widget.name)} open beside them"
+                  aria-label="{widgetTitle(widget.name)} beside the decks"
+                  onclick={() => {
+                    showBoard("decks");
+                    if (!isOpen(widget.name as Drawn)) void toggleSurface(widget.name as Drawn);
+                  }}
+                ><Icon name="compress" size="0.85rem" /></button>
+              {/if}
+            </header>
+            <div class="widget-body">
+              {#if widget.name === "flow"}
+                <!-- The decks are in brief above; this is the mixer they meet in. -->
+                {#if snapshot}
+                  <section class="bridge board-bridge">
+                    <MasterMixer master={snapshot.master} {ready} {split} {cueSplit} {limiterOn} {send} />
+                  </section>
+                {/if}
+              {:else if widget.name === "links"}
+                <BoardLinks
+                  activities={activityState?.activities ?? []}
+                  boards={boardList}
+                  current={onBoard}
+                  onactivity={(slug) => void chooseActivity(slug)}
+                  onboard={showBoard}
+                />
+              {:else if widget.name === "folders"}
+                <BoardFolders onopen={(section) => (kitOpen = { section, at: Date.now() })} />
+              {:else}
+                {@render surfaceContent(widget.name)}
+              {/if}
+            </div>
+          </article>
+        {/each}
+      </div>
+    </section>
+  {/snippet}
+
+  {#snippet surfaceContent(name: string)}
+    <!-- What a surface draws, wherever it is: a dock, over the decks, or on a board. -->
+    {#if name === "library"}{@render surfaceLibrary()}
+    {:else if name === "prepare"}{@render surfacePrepare()}
+    {:else if name === "next"}{@render surfaceNext()}
+    {:else if name === "plan"}{@render surfacePlan()}
+    {:else if name === "pair"}{@render surfacePair()}
+    {:else if name === "practice"}{@render surfacePractice()}
+    {:else if name === "event"}{@render surfaceEvent()}
+    {:else if name === "kit"}{@render surfaceKit()}
+    {:else if name === "crowd"}{@render surfaceCrowd()}
+    {:else if name === "night"}{@render surfaceNight()}
+    {:else if name === "room"}{@render surfaceRoom()}
+    {:else if name === "requests"}{@render surfaceRequests()}
+    {:else if name === "karaoke"}{@render surfaceKaraoke()}
+    {:else if name === "mixes"}{@render surfaceMixes()}
+    {:else if name === "athand"}{@render surfaceAtHand()}
+    {:else if name === "booth"}{@render surfaceBooth()}
+    {:else if name === "presets"}{@render surfacePresets()}
+    {:else if name === "assistant"}{@render surfaceAssistant()}
+    {:else if name === "keys"}{@render surfaceKeys()}
+    {:else if name === "controllers"}{@render surfaceControllers()}
+    {:else if name === "sampler"}{@render surfaceSampler()}
+    {:else if name === "settings"}{@render surfaceSettings()}
+    {:else if name === "log"}{@render surfaceLog()}
+    {/if}
+  {/snippet}
+
   {#snippet surface(placement: SurfacePlacement)}
     <!--
       A titled, closable frame around every surface.
@@ -3790,30 +4013,7 @@
         style={zoomOf(placement) === 100 ? "" : `zoom: ${zoomOf(placement) / 100};`}
         onwheel={(e) => wheelZoom(e, placement)}
       >
-        {#if placement.surface === "library"}{@render surfaceLibrary()}
-        {:else if placement.surface === "prepare"}{@render surfacePrepare()}
-        {:else if placement.surface === "next"}{@render surfaceNext()}
-        {:else if placement.surface === "plan"}{@render surfacePlan()}
-        {:else if placement.surface === "pair"}{@render surfacePair()}
-        {:else if placement.surface === "practice"}{@render surfacePractice()}
-        {:else if placement.surface === "event"}{@render surfaceEvent()}
-        {:else if placement.surface === "kit"}{@render surfaceKit()}
-        {:else if placement.surface === "crowd"}{@render surfaceCrowd()}
-        {:else if placement.surface === "night"}{@render surfaceNight()}
-        {:else if placement.surface === "room"}{@render surfaceRoom()}
-        {:else if placement.surface === "requests"}{@render surfaceRequests()}
-        {:else if placement.surface === "karaoke"}{@render surfaceKaraoke()}
-        {:else if placement.surface === "mixes"}{@render surfaceMixes()}
-        {:else if placement.surface === "athand"}{@render surfaceAtHand()}
-        {:else if placement.surface === "booth"}{@render surfaceBooth()}
-        {:else if placement.surface === "presets"}{@render surfacePresets()}
-        {:else if placement.surface === "assistant"}{@render surfaceAssistant()}
-        {:else if placement.surface === "keys"}{@render surfaceKeys()}
-        {:else if placement.surface === "controllers"}{@render surfaceControllers()}
-        {:else if placement.surface === "sampler"}{@render surfaceSampler()}
-        {:else if placement.surface === "settings"}{@render surfaceSettings()}
-        {:else if placement.surface === "log"}{@render surfaceLog()}
-        {/if}
+        {@render surfaceContent(placement.surface)}
       </div>
     </section>
   {/snippet}
@@ -3849,6 +4049,9 @@
     onSwitch={(run) => void switchTo(run)}
   />
 
+  {#if activeBoard}
+    {@render boardView(activeBoard)}
+  {:else}
   <div class="cockpit" bind:this={cockpitEl}>
   {#if leftDock.length > 0}
     <div class="dock side left" bind:this={dockEls.left} style={dockStyle("left", leftDock)}>
@@ -3987,6 +4190,7 @@
     </div>
   {/if}
   </div>
+  {/if}
 
   <!--
     §121: where a carried panel can land, drawn while it is carried. Only the
@@ -4486,6 +4690,196 @@
     converges on and the one the audit found djmanzo structurally could not
     reach.
   */
+  /*
+    §121: a board, in the cockpit's place and taking the same room. The
+    header -- its name and the decks in brief -- stays at the top while the
+    widgets under it scroll: the music is never scrolled out of reach.
+  */
+  .board {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .board-head {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 0.4rem 0.9rem;
+    flex: none;
+  }
+
+  .board-head h2 {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    font-size: 1.05rem;
+  }
+
+  .board-about {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .board-head :global(.flow) {
+    grid-column: 1 / -1;
+  }
+
+  /*
+    Twelve columns, as `dj_app::boards` counts them; rows a third of a
+    laptop screen, so a two-row widget is most of one. The board scrolls
+    when its widgets do not fit, and each widget scrolls inside itself.
+  */
+  .board-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-rows: minmax(14rem, 30vh);
+    gap: 0.7rem;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    align-content: start;
+  }
+
+  .widget {
+    grid-column: span var(--cols);
+    grid-row: span var(--rows);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  /* A narrow window gives every widget the whole width, one under another. */
+  @media (max-width: 1000px) {
+    .widget {
+      grid-column: span 12;
+    }
+  }
+
+  .widget-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.5rem 0.3rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-hover);
+    flex: none;
+  }
+
+  .widget-head h3 {
+    margin: 0 auto 0 0;
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .widget-dock {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+  }
+
+  .widget-dock:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+
+  .widget-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    padding: 0.6rem;
+    overflow: auto;
+  }
+
+  .board-bridge {
+    justify-content: stretch;
+  }
+
+  /* §121's switcher: one symbol, and the boards under it when pressed. */
+  .board-menu {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .board-pick {
+    display: inline-grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    padding: 0;
+  }
+
+  .board-pick.on {
+    color: var(--selected);
+    border-color: var(--selected);
+  }
+
+  .board-list {
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    z-index: 70;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 11rem;
+    padding: 0.3rem;
+    background: var(--panel-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: 0 0.6rem 1.6rem rgb(0 0 0 / 0.45);
+  }
+
+  .board-list button {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: flex-start;
+    text-align: left;
+    background: transparent;
+    border-color: transparent;
+  }
+
+  .board-list button[aria-checked="true"] {
+    color: var(--selected);
+  }
+
+  .board-list button:hover {
+    background: var(--panel-hover);
+  }
+
+  .where.on-board {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--selected);
+  }
+
   .cockpit {
     display: flex;
     flex-direction: row;

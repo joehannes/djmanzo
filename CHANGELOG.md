@@ -34,6 +34,14 @@ Versioning follows semver, with one project-specific convention:
   back. The gap always shows its handle now.
 - **Fixed: a single click on a dock's gap sized the dock.** It wrote the
   dock's current share down as a fixed size.
+- **Dashboards that replace the decks.** Six of them — Prepare, Live,
+  Experiment, My music, Press kit and Social — each a whole view of the
+  panels and controls for that kind of work, from one button in the top
+  bar or `Space b` and a letter. While one is up, the decks stay in brief
+  under the top bar (what is playing, time left, play and pause), with the
+  crossfader and the autopilot; the press kit board lays your kit out like
+  a desktop of folders. The screen of tiles `0` opens is called the
+  Launcher now.
 - **One search for everything.** The library's separate "Sources" tab is
   gone: its search has an "Include external sources" tick, and the other
   sources' answers come below your collection's own in the same list.

@@ -2037,6 +2037,28 @@ export const interfaceSettings = () => invoke<InterfaceSettings>("interface_sett
 export const setToolbars = (on: boolean) => invoke<InterfaceSettings>("set_toolbars", { on });
 /** The dashboard for the activity the DJ is in (`current`, empty for none). */
 export const dashboard = (current: string) => invoke<Dashboard>("dashboard", { current });
+
+/** §121: one widget on a board — a cockpit surface or a board's own. */
+export interface BoardWidget {
+  name: string;
+  /** Columns of the board's twelve. */
+  cols: number;
+  rows: number;
+}
+
+/**
+ * §121: a whole view for one kind of work, in place of the decks while it
+ * is up. `dj_app::boards` ships them.
+ */
+export interface Board {
+  slug: string;
+  title: string;
+  about: string;
+  glyph: string;
+  widgets: BoardWidget[];
+}
+
+export const boards = () => invoke<Board[]>("boards");
 /** Count one use of a tile, however it was reached. */
 export const usedTile = (id: string) => invoke<void>("used_tile", { id });
 

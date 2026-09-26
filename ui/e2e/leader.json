@@ -40,7 +40,7 @@
     },
     {
       "key": "0",
-      "label": "Dashboard",
+      "label": "Launcher (everything, on one screen)",
       "run": "ui dashboard",
       "children": [],
       "mine": false
@@ -756,6 +756,63 @@
           "key": "w",
           "label": "Crowd",
           "run": "lift crowd",
+          "children": [],
+          "mine": false
+        }
+      ],
+      "mine": false
+    },
+    {
+      "key": "b",
+      "label": "Dashboard",
+      "run": null,
+      "children": [
+        {
+          "key": "p",
+          "label": "Prepare",
+          "run": "board prepare",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "l",
+          "label": "Live",
+          "run": "board live",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "e",
+          "label": "Experiment",
+          "run": "board lab",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "m",
+          "label": "My music",
+          "run": "board music",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "k",
+          "label": "Press kit",
+          "run": "board kit",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "s",
+          "label": "Social",
+          "run": "board social",
+          "children": [],
+          "mine": false
+        },
+        {
+          "key": "d",
+          "label": "Decks",
+          "run": "board decks",
           "children": [],
           "mine": false
         }

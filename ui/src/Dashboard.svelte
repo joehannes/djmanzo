@@ -1,7 +1,10 @@
 <script lang="ts">
   /**
-   * §117: the dashboard — every destination the toolbars held, on one screen
-   * called up with `0` and dismissed the same way.
+   * §117: the launcher — every destination the toolbars held, on one screen
+   * called up with `0` and dismissed the same way. It was called the
+   * dashboard until §121, where the owner said that was not what a dashboard
+   * is: the dashboards are the boards now (`dj_app::boards`), whole views for
+   * one kind of work, and this is the launcher that reaches everything.
    *
    * > instead of toolbards let there be an central dashboard view with easy
    * > nav buttons for packages/presets/activities/overview ... even different
@@ -27,9 +30,9 @@
 </script>
 
 <div class="scrim" aria-hidden="true" onclick={onclose}></div>
-<div class="dashboard" role="dialog" aria-label="Dashboard" data-dashboard>
+<div class="dashboard" role="dialog" aria-label="Launcher" data-dashboard>
   <header>
-    <h2>Dashboard</h2>
+    <h2>Launcher</h2>
     <span class="how"><kbd>0</kbd> or <kbd>Esc</kbd> to close · <kbd>Space</kbd> for keys</span>
   </header>
   <div class="sections">

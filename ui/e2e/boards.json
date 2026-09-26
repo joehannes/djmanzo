@@ -1,0 +1,180 @@
+[
+  {
+    "slug": "prepare",
+    "title": "Prepare",
+    "about": "Readying records for a night: the collection, what is set aside, the plan and the pairings.",
+    "glyph": "list-ol",
+    "widgets": [
+      {
+        "name": "library",
+        "cols": 8,
+        "rows": 2
+      },
+      {
+        "name": "prepare",
+        "cols": 4,
+        "rows": 1
+      },
+      {
+        "name": "next",
+        "cols": 4,
+        "rows": 1
+      },
+      {
+        "name": "plan",
+        "cols": 6,
+        "rows": 1
+      },
+      {
+        "name": "pair",
+        "cols": 6,
+        "rows": 1
+      }
+    ]
+  },
+  {
+    "slug": "live",
+    "title": "Live",
+    "about": "Playing: the decks in brief, what comes next, the night, the room and what it asks for.",
+    "glyph": "headphones",
+    "widgets": [
+      {
+        "name": "flow",
+        "cols": 12,
+        "rows": 1
+      },
+      {
+        "name": "next",
+        "cols": 4,
+        "rows": 1
+      },
+      {
+        "name": "night",
+        "cols": 4,
+        "rows": 1
+      },
+      {
+        "name": "requests",
+        "cols": 4,
+        "rows": 1
+      },
+      {
+        "name": "crowd",
+        "cols": 6,
+        "rows": 1
+      },
+      {
+        "name": "room",
+        "cols": 6,
+        "rows": 1
+      }
+    ]
+  },
+  {
+    "slug": "lab",
+    "title": "Experiment",
+    "about": "Messing about: the sampler, presets, practice, and the keys to try things with.",
+    "glyph": "flask",
+    "widgets": [
+      {
+        "name": "flow",
+        "cols": 12,
+        "rows": 1
+      },
+      {
+        "name": "sampler",
+        "cols": 6,
+        "rows": 1
+      },
+      {
+        "name": "presets",
+        "cols": 6,
+        "rows": 1
+      },
+      {
+        "name": "practice",
+        "cols": 8,
+        "rows": 1
+      },
+      {
+        "name": "keys",
+        "cols": 4,
+        "rows": 1
+      }
+    ]
+  },
+  {
+    "slug": "music",
+    "title": "My music",
+    "about": "The collection, the mixes you have recorded, and what you keep at hand.",
+    "glyph": "compact-disc",
+    "widgets": [
+      {
+        "name": "library",
+        "cols": 8,
+        "rows": 3
+      },
+      {
+        "name": "mixes",
+        "cols": 4,
+        "rows": 2
+      },
+      {
+        "name": "athand",
+        "cols": 4,
+        "rows": 1
+      }
+    ]
+  },
+  {
+    "slug": "kit",
+    "title": "Press kit",
+    "about": "Who you are as a DJ, laid out like a desktop: photos, documents, bookings, links.",
+    "glyph": "folder-open",
+    "widgets": [
+      {
+        "name": "folders",
+        "cols": 4,
+        "rows": 2
+      },
+      {
+        "name": "kit",
+        "cols": 8,
+        "rows": 2
+      },
+      {
+        "name": "event",
+        "cols": 12,
+        "rows": 1
+      }
+    ]
+  },
+  {
+    "slug": "social",
+    "title": "Social",
+    "about": "The people: the crowd's comments, their requests, your mixes and your kit to share.",
+    "glyph": "cloud",
+    "widgets": [
+      {
+        "name": "crowd",
+        "cols": 6,
+        "rows": 2
+      },
+      {
+        "name": "requests",
+        "cols": 6,
+        "rows": 1
+      },
+      {
+        "name": "mixes",
+        "cols": 6,
+        "rows": 1
+      },
+      {
+        "name": "links",
+        "cols": 12,
+        "rows": 1
+      }
+    ]
+  }
+]
