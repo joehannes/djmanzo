@@ -24,6 +24,11 @@ Versioning follows semver, with one project-specific convention:
   placed as they were.
 - **A past night's reactions keep their drop, breakdown or voice after a
   restart**, and a test now holds it.
+- **The platter turns with the record.** The on-screen jog wheel goes
+  round at 33⅓ with the playhead: it stops when the deck stops and runs
+  backwards in reverse. In CDJ mode it stands still with a ridged ring, and
+  only its position indicator turns. The natural themes draw the record as
+  a log's growth rings, a different log on each deck.
 
 ## v0.31.0 — Words in time by WhisperX, a song for every karaoke guest, and pop out almost everywhere
 

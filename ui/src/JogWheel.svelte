@@ -1,5 +1,8 @@
 <script lang="ts">
   import { dispatch } from "./api";
+  import { LABEL, RUN_OUT, grooves, growthRings, ridges, ringPath, turned } from "./controls/platter";
+  import { GeometryStone } from "./controls/themes/engine";
+  import { theme } from "./theme.svelte";
 
   let {
     deckNumber,
@@ -7,13 +10,27 @@
     mode = "vinyl",
     bend = 0,
     enabled = true,
+    position = 0,
   }: {
     deckNumber: number;
     touched?: boolean;
     mode?: string;
     bend?: number;
     enabled?: boolean;
+    /** Seconds into the record: what turns it. */
+    position?: number;
   } = $props();
+
+  // §114: the platter shaped like what it does -- see `controls/platter.ts`.
+  // The record goes round with the playhead; the surface is grooves, or a
+  // log's growth rings where the theme is a natural one; a CDJ's platter
+  // stands still and only its position indicator turns.
+  const angle = $derived(turned(position));
+  const natural = $derived(theme.activePackage.geometry === GeometryStone);
+  const seed = $derived(`jog ${deckNumber}`);
+  const rings = $derived(natural ? growthRings(seed).map((r) => ringPath(seed, r)) : []);
+  const circles = grooves();
+  const ridgeAngles = ridges();
 
   let element = $state<HTMLDivElement | null>(null);
   let dragging = $state(false);
@@ -125,7 +142,36 @@
     onpointercancel={release}
     onkeydown={nudge}
   >
-    <div class="marker"></div>
+    <svg
+      class="face"
+      viewBox="0 0 100 100"
+      aria-hidden="true"
+      data-surface={mode === "cdj" ? "ridges" : natural ? "rings" : "grooves"}
+    >
+      {#if mode === "cdj"}
+        {#each ridgeAngles as ridge (ridge)}
+          <line class="ridge" x1="50" y1="2.5" x2="50" y2="7.5" transform="rotate({ridge} 50 50)" />
+        {/each}
+        <circle class="top" cx="50" cy="50" r="41" />
+        <g class="turning" transform="rotate({angle.toFixed(2)} 50 50)">
+          <line class="mark" x1="50" y1="12" x2="50" y2="24" />
+        </g>
+      {:else}
+        <g class="turning" transform="rotate({angle.toFixed(2)} 50 50)">
+          {#if natural}
+            {#each rings as d, i (i)}
+              <path class="ring" {d} />
+            {/each}
+          {:else}
+            {#each circles as r (r)}
+              <circle class="groove" cx="50" cy="50" {r} />
+            {/each}
+          {/if}
+          <line class="mark" x1="50" y1={50 - RUN_OUT} x2="50" y2={50 - LABEL - 3} />
+        </g>
+      {/if}
+      <circle class="label" cx="50" cy="50" r={LABEL} />
+    </svg>
     <div class="hub">{mode === "cdj" ? "CDJ" : "VINYL"}</div>
   </div>
 
@@ -160,19 +206,8 @@
     width: var(--size);
     height: var(--size);
     border-radius: 50%;
-    border: 1px solid var(--edge, rgba(255, 255, 255, 0.12));
-    background:
-      radial-gradient(
-        circle at 50% 50%,
-        var(--panel-raised, #1a1d1a) 0 32%,
-        transparent 32%
-      ),
-      repeating-radial-gradient(
-        circle at 50% 50%,
-        rgba(255, 255, 255, 0.045) 0 2px,
-        transparent 2px 4px
-      ),
-      var(--panel, #101210);
+    border: 1px solid var(--edge, var(--border));
+    background: var(--panel);
     cursor: grab;
     touch-action: none;
     user-select: none;
@@ -196,15 +231,50 @@
     cursor: not-allowed;
   }
 
-  .marker {
+  .face {
     position: absolute;
-    left: 50%;
-    top: 6%;
-    width: 2px;
-    height: 16%;
-    margin-left: -1px;
-    border-radius: 1px;
-    background: var(--accent, #4ade80);
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .groove {
+    fill: none;
+    stroke: var(--text-dim);
+    stroke-width: 0.35;
+    opacity: 0.22;
+  }
+
+  .ring {
+    fill: none;
+    stroke: var(--text-dim);
+    stroke-width: 0.5;
+    opacity: 0.4;
+  }
+
+  .ridge {
+    stroke: var(--border);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+  }
+
+  .top {
+    fill: var(--panel-raised);
+    stroke: var(--border);
+    stroke-width: 0.6;
+  }
+
+  .label {
+    fill: var(--panel-raised);
+    stroke: var(--border);
+    stroke-width: 0.6;
+  }
+
+  .mark {
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-linecap: round;
   }
 
   .hub {

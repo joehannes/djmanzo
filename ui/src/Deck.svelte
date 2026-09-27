@@ -1105,6 +1105,7 @@
       mode={deck.jog_mode}
       bend={deck.jog_bend}
       enabled={enabled && deck.loaded}
+      position={deck.position_seconds}
     />
   </div>
   {/snippet}

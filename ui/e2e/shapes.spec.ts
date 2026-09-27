@@ -221,4 +221,48 @@ test.describe("§114: shapes that say what a control does", () => {
     await expect.poll(() => body("eq_low")).toContain(" A ");
     expect(errorsThrown(page)).toEqual([]);
   });
+
+  /**
+   * **The platter turns with the record**, at 33⅓ from the playhead: a
+   * quarter turn 0.45 seconds in, half a turn at 0.9. In vinyl mode the whole
+   * record turns; a CDJ's platter stands still, ringed with ridges, and only
+   * its position indicator goes round. The organic default cuts the record
+   * from a log — each deck its own — and Booth, a plain theme, has grooves.
+   */
+  test("the platter turns with the record, and is a record, a log or a CDJ", async ({ page }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/");
+    const face = page.locator('.deck[data-deck="1"] .platter svg.face');
+    const turning = face.locator("g.turning");
+
+    await emitDeck(page, { position_seconds: 0, jog_mode: "vinyl" });
+    await expect(turning).toHaveAttribute("transform", "rotate(0.00 50 50)");
+    await emitDeck(page, { position_seconds: 0.45 });
+    await expect(turning).toHaveAttribute("transform", "rotate(90.00 50 50)");
+
+    await expect(face).toHaveAttribute("data-surface", "rings");
+    expect(await turning.locator("path.ring").count()).toBeGreaterThan(8);
+    const ring = (n: number) =>
+      page.locator(`.deck[data-deck="${n}"] .platter path.ring`).first().getAttribute("d");
+    expect(await ring(2), "each deck is its own log").not.toBe(await ring(1));
+
+    await emitDeck(page, { position_seconds: 0.9, jog_mode: "cdj" });
+    await expect(face).toHaveAttribute("data-surface", "ridges");
+    await expect(turning).toHaveAttribute("transform", "rotate(180.00 50 50)");
+    expect(await face.locator("line.ridge").count()).toBe(36);
+    expect(await turning.locator("line.ridge").count(), "the ridges do not turn").toBe(0);
+    expect(await turning.locator("line.mark").count()).toBe(1);
+
+    if (!(await page.locator(".switcher .menu").isVisible())) {
+      await page.locator(".switcher button.icon").click();
+    }
+    await page
+      .locator(".switcher .theme")
+      .filter({ has: page.locator(".name", { hasText: /^Booth$/ }) })
+      .click();
+    await emitDeck(page, { jog_mode: "vinyl" });
+    await expect(face).toHaveAttribute("data-surface", "grooves");
+    expect(await turning.locator("circle.groove").count()).toBeGreaterThan(8);
+    expect(thrown).toEqual([]);
+  });
 });
