@@ -16,6 +16,17 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **djmanzo no longer learns its own moves as yours.** The autopilot, the
+  automix and break music mark everything they do as djmanzo's, but what
+  djmanzo learns about you -- tonight's habits, each night's transition
+  style and mix length, the profile built from them, and the behaviour the
+  assistant is told about -- counted those moves as yours. On a night the
+  automix mixed, its blends became "how you mix" and went back to the
+  planner as the style to plan with next time. Only your own moves are
+  learned from now; the mixes panel still shows every mix.
+- **A loop that stopped is no longer carried into the next mix.** Loading a
+  record, a roll, a manual loop or a dragged loop edge each end the loop a
+  mix remembers it was held on, as the deck itself does.
 - **djmanzo learns how long you take over a mix.** Each night keeps how
   long its mixes usually ran, as the phrase a DJ counts in -- 4, 8, 16, 32
   or 64 beats, at the tempo the mixes panel already counts in. Once enough

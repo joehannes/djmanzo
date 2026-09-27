@@ -2423,49 +2423,27 @@ pub fn night_setting(
         None => None,
     };
 
-    // Everything read off tonight's log, now, while there is a log.
-    let log = state.bus().log();
-    let night = state.night();
-    let signals = crate::signals::signals(&log, &|at| night.phase_at(at));
-    let techniques: Vec<String> = crate::signals::tendencies(&signals)
-        .into_iter()
-        .map(|t| t.did().slug().to_owned())
-        .collect();
-
-    // The commonest way tonight's records were joined. `None` until there has
-    // been a handover: a night with one record in it has no transition style,
-    // and a confident answer there would be an invention.
-    let handovers = crate::mixes::handovers(&log);
-    let mut styles: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
-    for handover in &handovers {
-        *styles.entry(handover.style.as_str()).or_default() += 1;
-    }
-    let style = styles
-        .into_iter()
-        .max_by_key(|(name, n)| (*n, *name))
-        .map(|(name, _)| name.to_owned());
-
     let posture = state
         .conduct()
         .lock()
         .ok()
         .map(|conduct| conduct.posture.name().to_owned());
 
-    let joined = techniques.join(",");
+    // Everything read off tonight's log, now, while there is a log -- and
+    // only what the DJ's own hand did; see `profile::Tonight`.
     let db = library(&state)?;
-    // §12's *preferred transition durations*: tonight's middle mix, as a
-    // phrase length, counted at the outgoing record's tempo -- the one the
-    // mixes panel counts its beats in, so the two never disagree.
-    let length = crate::mixes::usual_length(&handovers, &|handover| {
-        db.track(handover.out_track?).ok().flatten()?.analysis.bpm
-    })
-    .map(|beats| beats.to_string());
+    let night = state.night();
+    let read = crate::profile::tonight(&state.bus().log(), &|at| night.phase_at(at), &|id| {
+        db.track(id).ok().flatten()?.analysis.bpm
+    });
+    let joined = read.techniques.join(",");
+    let length = read.length.map(|beats| beats.to_string());
     db.note_night(
         &state.session_id(),
         setting.map(|s| s.slug()),
         dj_library::NightRead {
             density: density.as_deref(),
-            style: style.as_deref(),
+            style: read.style.as_deref(),
             posture: posture.as_deref(),
             techniques: (!joined.is_empty()).then_some(joined.as_str()),
             length: length.as_deref(),

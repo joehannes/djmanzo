@@ -530,6 +530,7 @@ mod tests {
             ended: Duration::from_secs(ended),
             style: dj_core::action::TransitionStyle::Blend,
             loop_beats: None,
+            by: dj_control::By::Hand,
         }
     }
 

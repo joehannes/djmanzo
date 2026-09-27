@@ -46,7 +46,7 @@
 //! real gap and it is a small one: a mix that never takes the outgoing record
 //! out is a mix that has not finished.
 
-use dj_control::{SessionEvent, TimedEvent};
+use dj_control::{By, SessionEvent, TimedEvent};
 use dj_core::action::TransitionStyle;
 use dj_core::fx::{EffectKind, FxChange};
 use dj_core::{Action, CrossfaderAssign, DeckAction, DeckId, MixerAction, Stem, TrackId};
@@ -106,6 +106,15 @@ pub struct Handover {
     ///
     /// `None` for a mix with no loop running, which is most of them.
     pub loop_beats: Option<f32>,
+    /// Whose mix it was: [`By::Hand`] only when the DJ moved both records,
+    /// [`By::Machine`] when djmanzo moved either -- the automix's blend, the
+    /// autopilot's step, break music's fade.
+    ///
+    /// The mixes panel shows every one, because they all happened. What is
+    /// *learned* about how this DJ mixes reads only theirs: a style the automix
+    /// performed, filed as the DJ's, would come back from their profile as the
+    /// style to plan next time, and the automix would perform it again.
+    pub by: By,
 }
 
 impl Handover {
@@ -134,6 +143,8 @@ struct Crossing {
     /// True when the room started hearing it.
     up: bool,
     track: Option<TrackId>,
+    /// Whose move made the room start or stop hearing it.
+    by: By,
 }
 
 /// Something done during a mix that names what kind of mix it was.
@@ -242,6 +253,10 @@ fn walk(events: &[TimedEvent]) -> Walked {
         match entry.event {
             SessionEvent::Load { deck, track: id } => {
                 track.insert(deck, id);
+                // Loading drops the deck's loop (`dj_engine::Deck::load`), so
+                // a loop set on the last record is not running on this one.
+                running.remove(&deck);
+                loops.push((entry.at, deck, None));
             }
             SessionEvent::Action(Action::Mixer(MixerAction::Crossfader(x))) => crossfader = x,
             SessionEvent::Action(Action::Mixer(MixerAction::StemSwap {
@@ -294,6 +309,20 @@ fn walk(events: &[TimedEvent]) -> Walked {
                     running.remove(&deck);
                     loops.push((entry.at, deck, None));
                 }
+                // A loop whose length the log cannot say -- a manual one, or an
+                // edge dragged somewhere -- or none at all: a roll replaces the
+                // loop and releasing it ends it, ejecting takes it with the
+                // record, and a zero-beat loop is the engine's loop off.
+                // Forgotten rather than kept, so a halve afterwards is not
+                // taken to have halved a length that is no longer running.
+                DeckAction::LoopOut
+                | DeckAction::LoopEdge(..)
+                | DeckAction::LoopRoll(_)
+                | DeckAction::LoopBeats(_)
+                | DeckAction::Eject => {
+                    running.remove(&deck);
+                    loops.push((entry.at, deck, None));
+                }
                 DeckAction::Fx { slot, change } => match change {
                     FxChange::Select(kind) => {
                         selected.insert((deck, *slot), *kind);
@@ -330,6 +359,7 @@ fn walk(events: &[TimedEvent]) -> Walked {
                     at: entry.at,
                     up: now,
                     track: track.get(&deck).copied(),
+                    by: entry.by,
                 });
             }
         }
@@ -423,6 +453,11 @@ fn pair(
             ended,
             style: style(leaving.deck, began, ended, signals),
             loop_beats: looping(leaving.deck, began, loops),
+            by: if leaving.by == By::Hand && arriving.by == By::Hand {
+                By::Hand
+            } else {
+                By::Machine
+            },
         });
     }
 
@@ -507,6 +542,7 @@ mod tests {
             ended: Duration::from_secs_f64(seconds),
             style: TransitionStyle::Blend,
             loop_beats: None,
+            by: By::Hand,
         };
         // At 120 BPM a beat is half a second: 8, 8, 64 beats, a cut, and a
         // long mix whose tempo is unknown.
@@ -658,6 +694,66 @@ mod tests {
         log.extend(sweep(120.0, 20.0, -1.0, 1.0));
 
         assert_eq!(handovers(&log)[0].loop_beats, Some(4.0));
+    }
+
+    /// **A loop that is no longer running is not what the mix was held on,
+    /// however it stopped.** Loading a record drops the deck's loop in the
+    /// engine; a roll replaces it and ends with it; a manual loop or a dragged
+    /// edge has a length the log cannot say. Each of them forgets the eight,
+    /// and a halve afterwards halves nothing.
+    #[test]
+    fn a_loop_that_stopped_running_is_not_carried_into_the_mix() {
+        let enders = [
+            SessionEvent::Load {
+                deck: deck(1),
+                track: id(3),
+            },
+            SessionEvent::Action(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::LoopRoll(None),
+            }),
+            SessionEvent::Action(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::LoopOut,
+            }),
+            SessionEvent::Action(Action::Deck {
+                deck: deck(1),
+                action: DeckAction::LoopBeats(0.0),
+            }),
+        ];
+        for ender in enders {
+            let mut log = vec![load(0.0, 1, 1), xf(1.0, -1.0), load(60.0, 2, 2)];
+            log.push(deck_action(90.0, 1, DeckAction::LoopBeats(8.0)));
+            log.push(at(100.0, ender));
+            log.push(deck_action(110.0, 1, DeckAction::LoopHalve));
+            log.extend(sweep(120.0, 20.0, -1.0, 1.0));
+            assert_eq!(handovers(&log)[0].loop_beats, None, "after {ender:?}");
+        }
+    }
+
+    /// **A mix is the DJ's only when the DJ moved both records.** The automix
+    /// sweeping the crossfader is djmanzo's mix; the panel still shows it,
+    /// and it says whose it was.
+    #[test]
+    fn a_mix_says_whose_hand_made_it() {
+        assert_eq!(handovers(&a_night(20.0))[0].by, By::Hand);
+
+        let machine: Vec<TimedEvent> = a_night(20.0)
+            .into_iter()
+            .map(|mut entry| {
+                if matches!(
+                    entry.event,
+                    SessionEvent::Action(Action::Mixer(MixerAction::Crossfader(_)))
+                ) && entry.at > Duration::from_secs(100)
+                {
+                    entry.by = By::Machine;
+                }
+                entry
+            })
+            .collect();
+        let found = handovers(&machine);
+        assert_eq!(found.len(), 1, "the machine's mix is still a mix");
+        assert_eq!(found[0].by, By::Machine);
     }
 
     /// A loop on the *incoming* deck is not what the mix was held on.

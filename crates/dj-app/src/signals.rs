@@ -34,6 +34,17 @@
 //! M0, so a set from before this module existed has its signals in it too —
 //! the same argument [`crate::mixes`] makes, for the same reason.
 //!
+//! # Only the DJ's own hand
+//!
+//! The log holds djmanzo's moves beside the DJ's -- the autopilot's steps, the
+//! automix's blends, break music's fades -- each marked `By::Machine`, §67's
+//! two kinds of intervention. **They are not read here.** This module is about
+//! what the DJ did, and an automix that rides the EQ through every mix of an
+//! autopilot night would otherwise be filed as *you ride the EQ*: the
+//! machine's habit handed back to the DJ as theirs, and handed back to the
+//! machine next time as the thing this DJ prefers. A signal is a person's or
+//! it is nothing.
+//!
 //! # What §14 lists and the log cannot see
 //!
 //! *Track searched*, *staged*, *candidate rejected*, *candidate selected* and
@@ -57,7 +68,7 @@
 //! one: a rail's pass is about this minute, and writing it down as evidence is
 //! how "not that one, now" becomes "never suggest this again".
 
-use dj_control::{SessionEvent, TimedEvent};
+use dj_control::{By, SessionEvent, TimedEvent};
 use dj_core::{Action, DeckAction, MixerAction, SessionPhase};
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -273,6 +284,9 @@ pub const ENOUGH: usize = 4;
 /// caller rather than looked up here, because this module has no business
 /// holding a context engine — and because a caller replaying a saved set has a
 /// different answer from one watching a live one.
+///
+/// Only the DJ's own gestures: anything djmanzo did itself is left out — see
+/// the module's *Only the DJ's own hand*.
 #[must_use]
 pub fn signals(
     events: &[TimedEvent],
@@ -280,6 +294,7 @@ pub fn signals(
 ) -> Vec<Signal> {
     events
         .iter()
+        .filter(|entry| entry.by == By::Hand)
         .filter_map(|entry| {
             did(&entry.event).map(|did| Signal {
                 did,
@@ -466,6 +481,32 @@ mod tests {
         assert_eq!(unread.len(), 20, "the signals are still recorded");
         assert!(unread.iter().all(|s| s.context.is_none()));
         assert_eq!(tendencies(&unread), vec![]);
+    }
+
+    /// **What djmanzo did is not what the DJ did.** An autopilot that rode
+    /// the EQ twenty times at peak has taught nothing about this DJ; the same
+    /// twenty by hand are a tendency, and one hand among the machine's is one
+    /// gesture, not twenty-one.
+    #[test]
+    fn the_machines_gestures_are_not_the_djs() {
+        let machine = |mut entry: TimedEvent| {
+            entry.by = By::Machine;
+            entry
+        };
+        let log: Vec<TimedEvent> = (0..20).map(|i| machine(eq(f64::from(i)))).collect();
+        assert_eq!(signals(&log, &PEAK), vec![]);
+        assert_eq!(tendencies(&signals(&log, &PEAK)), vec![]);
+
+        let mut mixed = log.clone();
+        mixed.push(eq(30.0));
+        let read = signals(&mixed, &PEAK);
+        assert_eq!(read.len(), 1, "{read:?}");
+        assert_eq!(read[0].at, Duration::from_secs(30));
+
+        let by_hand: Vec<TimedEvent> = (0..20).map(|i| eq(f64::from(i))).collect();
+        let found = tendencies(&signals(&by_hand, &PEAK));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].did(), Did::EqMoved);
     }
 
     /// **Counted per phase, so peak says nothing about a warm-up.**

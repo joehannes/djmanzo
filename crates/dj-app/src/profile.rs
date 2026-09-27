@@ -43,11 +43,14 @@
 //! copy of the log; it is the only trace that survives it.
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use crate::setting::Setting;
 use crate::signals::Did;
 use dj_assistant::posture::Posture;
+use dj_control::{By, TimedEvent};
 use dj_core::action::TransitionStyle;
+use dj_core::{SessionPhase, TrackId};
 use dj_library::Night;
 
 /// How many nights of a setting before djmanzo will generalise about it.
@@ -299,6 +302,71 @@ pub fn profiles(
             genres: shares(genres(setting)),
         })
         .collect()
+}
+
+/// What tonight's log says about how the DJ is playing, in the terms a
+/// night's row keeps.
+///
+/// Read while the log exists, because it does not outlive the run that made
+/// it. **Only the DJ's own hand**: the gestures come through
+/// [`crate::signals::signals`], which reads nothing djmanzo did, and the
+/// style and the length come from the mixes the DJ made. On an autopilot
+/// night the automix joins most of the records, and its blends filed here
+/// would come back from the profile as this DJ's style -- and go to
+/// `plan::plan_as` as the style to plan the next night's mixes with, for the
+/// automix to perform and file again.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Tonight {
+    /// [`Did`] slugs, one per tendency tonight has shown.
+    pub techniques: Vec<String>,
+    /// The commonest way the DJ joined tonight's records.
+    pub style: Option<String>,
+    /// §12: the DJ's middle mix tonight, as one of [`crate::mixes::PHRASES`].
+    pub length: Option<u32>,
+}
+
+/// Read tonight's log as [`Tonight`].
+///
+/// `phase_at` is the night's arc, which the tendencies are counted in, and
+/// `bpm_of` a record's tempo, which the log does not hold and a mix's length
+/// in beats needs -- both asked of the caller, as `signals` and `mixes` ask.
+#[must_use]
+pub fn tonight(
+    log: &[TimedEvent],
+    phase_at: &dyn Fn(Duration) -> Option<SessionPhase>,
+    bpm_of: &dyn Fn(TrackId) -> Option<f64>,
+) -> Tonight {
+    let signals = crate::signals::signals(log, phase_at);
+    let techniques = crate::signals::tendencies(&signals)
+        .into_iter()
+        .map(|t| t.did().slug().to_owned())
+        .collect();
+
+    // `None` until the DJ has handed one record to another: a night with one
+    // record in it has no transition style, and a confident answer there
+    // would be an invention.
+    let mixes: Vec<_> = crate::mixes::handovers(log)
+        .into_iter()
+        .filter(|mix| mix.by == By::Hand)
+        .collect();
+    let mut styles: BTreeMap<&str, usize> = BTreeMap::new();
+    for mix in &mixes {
+        *styles.entry(mix.style.as_str()).or_default() += 1;
+    }
+    let style = styles
+        .into_iter()
+        .max_by_key(|(name, n)| (*n, *name))
+        .map(|(name, _)| name.to_owned());
+
+    // Counted at the outgoing record's tempo -- the one the mixes panel
+    // counts its beats in, so the two never disagree.
+    let length = crate::mixes::usual_length(&mixes, &|mix| bpm_of(mix.out_track?));
+
+    Tonight {
+        techniques,
+        style,
+        length,
+    }
 }
 
 /// The wall clock, as unix seconds.
@@ -1066,6 +1134,94 @@ mod tests {
         let said = profiles(&nights("practice", 3), &nothing, NOW)[0].words();
         assert!(said.contains("too varied"), "{said}");
         assert!(said.contains("Practice"), "{said}");
+    }
+
+    /// **Tonight is read off the DJ's hands, never djmanzo's.**
+    ///
+    /// The same night twice: two records, a twenty-second crossfade with the
+    /// outgoing bass pulled -- a blend -- and the filter ridden eight times.
+    /// Done by the DJ, it is a blend over thirty-two beats and a filter habit.
+    /// Done by the automix, with the DJ only loading the records, it is none of
+    /// those things: nothing the machine did is this DJ's style, and filing it
+    /// as theirs would hand it back to the planner as their preference.
+    #[test]
+    fn tonight_is_what_the_dj_did_not_what_the_automix_did() {
+        use dj_control::SessionEvent;
+        use dj_core::{Action, DeckAction, DeckId, MixerAction};
+
+        let deck = |n: u8| DeckId::from_human(n).expect("a real deck");
+        let record = |n: u8| {
+            let mut bytes = [0u8; 32];
+            bytes[0] = n;
+            TrackId::from_bytes(bytes)
+        };
+        let night = |by: By| -> Vec<TimedEvent> {
+            let done = |secs: f64, action: Action| TimedEvent {
+                event: SessionEvent::Action(action),
+                at: Duration::from_secs_f64(secs),
+                by,
+            };
+            let crossfader =
+                |secs: f64, x: f32| done(secs, Action::Mixer(MixerAction::Crossfader(x)));
+            let on_deck_one = |secs: f64, action: DeckAction| {
+                done(
+                    secs,
+                    Action::Deck {
+                        deck: deck(1),
+                        action,
+                    },
+                )
+            };
+            let mut log = vec![
+                TimedEvent::hand(
+                    Duration::ZERO,
+                    SessionEvent::Load {
+                        deck: deck(1),
+                        track: record(1),
+                    },
+                ),
+                crossfader(1.0, -1.0),
+                TimedEvent::hand(
+                    Duration::from_secs(60),
+                    SessionEvent::Load {
+                        deck: deck(2),
+                        track: record(2),
+                    },
+                ),
+            ];
+            for step in 0..=20_u8 {
+                log.push(crossfader(
+                    120.0 + f64::from(step),
+                    -1.0 + f32::from(step) * 0.1,
+                ));
+            }
+            log.push(on_deck_one(121.0, DeckAction::SetEqLow(0.0)));
+            for step in 0..8_u8 {
+                log.push(on_deck_one(
+                    150.0 + f64::from(step),
+                    DeckAction::SetFilter(0.3),
+                ));
+            }
+            log.sort_by_key(|entry| entry.at);
+            log
+        };
+        let peak = |_: Duration| Some(SessionPhase::Peak);
+        let at_120 = |_: TrackId| Some(120.0);
+
+        let by_hand = tonight(&night(By::Hand), &peak, &at_120);
+        assert_eq!(by_hand.style.as_deref(), Some("blend"), "{by_hand:?}");
+        assert_eq!(by_hand.length, Some(32), "{by_hand:?}");
+        assert!(
+            by_hand.techniques.iter().any(|t| t == "filter-swept"),
+            "{by_hand:?}"
+        );
+
+        let automixed = tonight(&night(By::Machine), &peak, &at_120);
+        assert_eq!(
+            automixed,
+            Tonight::default(),
+            "the automix's night was filed as the DJ's"
+        );
     }
 
     /// **§12's preferred transition duration: how long the mixes take, once
