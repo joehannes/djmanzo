@@ -151,6 +151,18 @@ Four sources, tried in order, because each covers what the previous one misses:
    account, no configuration.** This will cover most commercial music.
 4. **Transcription**, when the first three come up empty.
 
+**Built (K1):** `dj_library::own_words` reads the first two. Embedded words are
+a `SYLT` frame stamped in milliseconds (one stamped in MPEG frames needs the
+frame rate and is left out), or the lyrics tag — `USLT`, Vorbis `LYRICS`, MP4
+`©lyr` — which counts as timed when its text is LRC, as taggers often store it.
+A sidecar is `song.lrc` (or `.LRC`) beside `song.mp3`, and must have a timed
+line. One refinement to the order: **the first source with timed words wins**,
+and plain words only when none is timed — an untimed tag must not hide a timed
+`.lrc`. The lyrics sweep reads them before asking LRCLIB (LRCLIB's timed words
+beat a record's own untimed ones, never the other way), keeps them when the
+network refuses, and the singers' screen reads them again as each record is
+loaded, so a `.lrc` dropped in after the sweep is on screen next time.
+
 ### Transcription, and why it works better here than usual
 
 Transcribing lyrics from a full mix is notoriously unreliable — the instruments
@@ -355,7 +367,7 @@ piece of this document lands among them.
 |---|---|---|---|
 | Band-limited centre cancellation | M1 | **K1** | shipped, behind the voice knob |
 | Lyrics from LRCLIB | M3 | **K1** | shipped |
-| Lyrics from tags and a sidecar `.lrc` | M3 | **K1** | not read yet |
+| Lyrics from tags and a sidecar `.lrc` | M3 | **K1** | shipped |
 | Singers' screen: wipe, next line, count-in, next singer | M3 | **K1** | shipped |
 | Singers' screen background: art, Cover Art Archive, generated | M3 | **K1** | not built |
 | Stem-based removal and a guide vocal | M6 | **K2** | shipped |

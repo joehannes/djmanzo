@@ -289,6 +289,47 @@ pub struct LyricLine {
     pub words: Vec<(f64, String)>,
 }
 
+/// Which words the singers' screen puts up: the record's own, or the ones the
+/// library stored for it.
+///
+/// KARAOKE.md §2's order, the same rule `dj_library::own_words` applies
+/// between a tag and a sidecar: **timed words first**, and between two sets
+/// of timed words, or two of plain ones, the record's own before anything
+/// fetched. So a `.lrc` dropped beside a record after the lyrics sweep asked
+/// LRCLIB about it is on the screen the next time the record is loaded, and
+/// words WhisperX timed still beat an untimed tag.
+#[must_use]
+pub fn best_words(
+    own: Option<dj_library::own_words::OwnWords>,
+    stored: Option<dj_library::lyrics::Stored>,
+) -> Option<dj_library::lyrics::Stored> {
+    let own = own.map(|own| dj_library::lyrics::Stored {
+        plain: own.plain,
+        synced: own.synced,
+        found: true,
+        instrumental: false,
+        source: own.source.to_owned(),
+        fetched_at: 0,
+    });
+    let timed = |words: &Option<dj_library::lyrics::Stored>| {
+        words.as_ref().is_some_and(|w| w.synced.is_some())
+    };
+    let any = |words: &Option<dj_library::lyrics::Stored>| {
+        words
+            .as_ref()
+            .is_some_and(|w| w.synced.is_some() || !w.plain.trim().is_empty())
+    };
+    if timed(&own) {
+        own
+    } else if timed(&stored) {
+        stored
+    } else if any(&own) {
+        own
+    } else {
+        stored
+    }
+}
+
 /// The singers' screen's words, from what the library stored for a record.
 ///
 /// `None` in, nothing out: a record nobody has fetched words for is an empty
@@ -339,6 +380,56 @@ pub fn lyrics_for(stored: Option<dj_library::lyrics::Stored>) -> SingerLyrics {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn own(timed: bool) -> dj_library::own_words::OwnWords {
+        dj_library::own_words::OwnWords {
+            plain: "own line".to_owned(),
+            synced: timed.then(|| "[00:01.00]own line".to_owned()),
+            source: dj_library::own_words::BESIDE,
+        }
+    }
+
+    fn stored(timed: bool) -> dj_library::lyrics::Stored {
+        dj_library::lyrics::Stored {
+            plain: "stored line".to_owned(),
+            synced: timed.then(|| "[00:02.00]stored line".to_owned()),
+            found: true,
+            instrumental: false,
+            source: "lrclib".to_owned(),
+            fetched_at: 1,
+        }
+    }
+
+    /// **The singers' screen takes timed words first, and the record's own
+    /// before anything fetched.** A `.lrc` dropped beside a record after the
+    /// sweep asked LRCLIB is what the screen shows; words WhisperX or LRCLIB
+    /// timed still beat an untimed tag; and the record's own untimed words
+    /// beat fetched untimed ones.
+    #[test]
+    fn the_screen_takes_timed_words_first_and_the_records_own_before_fetched() {
+        let source = |words: Option<dj_library::lyrics::Stored>| words.map(|w| w.source);
+        assert_eq!(
+            source(best_words(Some(own(true)), Some(stored(true)))).as_deref(),
+            Some("sidecar")
+        );
+        assert_eq!(
+            source(best_words(Some(own(false)), Some(stored(true)))).as_deref(),
+            Some("lrclib")
+        );
+        assert_eq!(
+            source(best_words(Some(own(false)), Some(stored(false)))).as_deref(),
+            Some("sidecar")
+        );
+        assert_eq!(
+            source(best_words(None, Some(stored(false)))).as_deref(),
+            Some("lrclib")
+        );
+        assert_eq!(best_words(None, None), None);
+
+        let shown = lyrics_for(best_words(Some(own(true)), None));
+        assert_eq!(shown.lines.len(), 1);
+        assert_eq!(shown.lines[0].text, "own line");
+    }
 
     fn night(asks: &[(&str, &str)]) -> Rotation {
         let mut rotation = Rotation::default();

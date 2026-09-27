@@ -31,6 +31,7 @@ pub mod lrc;
 pub mod lyrics;
 pub mod melody;
 pub mod near;
+pub mod own_words;
 pub mod playlist;
 pub mod record;
 pub mod scan;

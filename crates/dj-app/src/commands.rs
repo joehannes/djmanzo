@@ -2931,6 +2931,157 @@ mod tests {
     }
 
     /// §12: the rail consulting tonight's profile.
+    /// §125, K1: the lyrics sweep reads a record's own words before asking
+    /// LRCLIB, and keeps them when the network cannot help.
+    mod own_words_sweep {
+        use super::super::sweep_words;
+        use dj_core::{SampleRate, TrackId};
+        use dj_library::{Library, LibraryTrack, PlayStats, StoredAnalysis, Tags};
+        use dj_sources::http::StubClient;
+        use serde_json::json;
+        use std::path::Path;
+        use std::sync::Arc;
+
+        const LRC: &str = "[00:01.00]first line\n[00:03.50]second line\n";
+
+        fn record(byte: u8, path: &Path, tagged: bool) -> LibraryTrack {
+            LibraryTrack {
+                id: TrackId::from_bytes([byte; 32]),
+                path: path.to_path_buf(),
+                tags: Tags {
+                    artist: tagged.then(|| "Someone".to_owned()),
+                    title: tagged.then(|| format!("Song {byte}")),
+                    ..Tags::default()
+                },
+                duration_frames: 48_000 * 200,
+                sample_rate: SampleRate::DEFAULT,
+                channels: 2,
+                file_size: None,
+                file_modified: None,
+                added_at: 0,
+                analysis: StoredAnalysis::default(),
+                stats: PlayStats::default(),
+                colour: None,
+            }
+        }
+
+        /// A silent MP3 carrying the words `plain` in a `USLT` frame.
+        fn mp3_with_words(path: &Path, plain: &str) {
+            use lofty::config::WriteOptions;
+            use lofty::id3::v2::{Frame, Id3v2Tag, UnsynchronizedTextFrame};
+            use lofty::prelude::TagExt;
+            let mut bytes = Vec::new();
+            for _ in 0..40 {
+                let mut frame = vec![0u8; 417];
+                frame[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, 0x00]);
+                bytes.extend_from_slice(&frame);
+            }
+            std::fs::write(path, bytes).unwrap();
+            let mut tag = Id3v2Tag::new();
+            tag.insert(Frame::UnsynchronizedText(UnsynchronizedTextFrame::new(
+                lofty::TextEncoding::UTF8,
+                *b"eng",
+                String::new(),
+                plain.to_owned(),
+            )));
+            tag.save_to_path(path, WriteOptions::default()).unwrap();
+        }
+
+        fn sweep(library: &Arc<Library>, stub: &Arc<StubClient>) -> super::super::SweepDto {
+            tauri::async_runtime::block_on(sweep_words(
+                library,
+                Arc::clone(stub) as Arc<dyn dj_sources::http::HttpClient>,
+                100,
+            ))
+            .unwrap()
+        }
+
+        fn source_of(library: &Library, byte: u8) -> Option<(String, bool)> {
+            library
+                .words_for(TrackId::from_bytes([byte; 32]))
+                .unwrap()
+                .map(|words| (words.source, words.synced.is_some()))
+        }
+
+        /// **A `.lrc` beside the record is kept without asking anything.**
+        #[test]
+        fn a_records_timed_words_are_kept_without_asking_the_network() {
+            let dir = tempfile::tempdir().unwrap();
+            let file = dir.path().join("timed.mp3");
+            std::fs::write(&file, b"x").unwrap();
+            std::fs::write(dir.path().join("timed.lrc"), LRC).unwrap();
+            let library = Arc::new(Library::in_memory().unwrap());
+            library.upsert_track(&record(1, &file, true)).unwrap();
+            let stub = Arc::new(StubClient::new(Vec::new()));
+
+            let done = sweep(&library, &stub);
+            assert_eq!((done.asked, done.found, done.gave_up), (1, 1, false));
+            assert_eq!(source_of(&library, 1), Some(("sidecar".to_owned(), true)));
+            assert!(
+                stub.requested.lock().unwrap().is_empty(),
+                "LRCLIB was asked"
+            );
+        }
+
+        /// **LRCLIB's timed words beat the record's own untimed ones; its
+        /// untimed words do not.**
+        #[test]
+        fn fetched_timed_words_beat_a_records_own_untimed_ones_and_nothing_else_does() {
+            let dir = tempfile::tempdir().unwrap();
+            let file = dir.path().join("plain.mp3");
+            mp3_with_words(&file, "first line\nsecond line");
+
+            let library = Arc::new(Library::in_memory().unwrap());
+            library.upsert_track(&record(2, &file, true)).unwrap();
+            let stub = Arc::new(StubClient::new(vec![json!({
+                "plainLyrics": "first line\nsecond line",
+                "syncedLyrics": LRC,
+            })]));
+            sweep(&library, &stub);
+            assert_eq!(source_of(&library, 2), Some(("lrclib".to_owned(), true)));
+
+            let library = Arc::new(Library::in_memory().unwrap());
+            library.upsert_track(&record(3, &file, true)).unwrap();
+            let stub = Arc::new(StubClient::new(vec![json!({
+                "plainLyrics": "first line\nsecond line",
+            })]));
+            sweep(&library, &stub);
+            assert_eq!(source_of(&library, 3), Some(("tags".to_owned(), false)));
+        }
+
+        /// **A network that refuses stops the asking, not the reading.** The
+        /// record with words of its own keeps them, timed or not; the one with
+        /// none is left for the next sweep rather than written down as empty.
+        #[test]
+        fn a_refused_network_still_keeps_the_words_records_carry_themselves() {
+            let dir = tempfile::tempdir().unwrap();
+            let bare = dir.path().join("bare.flac");
+            std::fs::write(&bare, b"x").unwrap();
+            let timed = dir.path().join("timed.flac");
+            std::fs::write(&timed, b"x").unwrap();
+            std::fs::write(dir.path().join("timed.lrc"), LRC).unwrap();
+            let plain = dir.path().join("plain.mp3");
+            mp3_with_words(&plain, "only words");
+
+            let library = Arc::new(Library::in_memory().unwrap());
+            library.upsert_track(&record(4, &bare, true)).unwrap();
+            library.upsert_track(&record(5, &timed, true)).unwrap();
+            library.upsert_track(&record(6, &plain, true)).unwrap();
+            let stub = Arc::new(StubClient::failing("offline"));
+
+            let done = sweep(&library, &stub);
+            assert!(done.gave_up);
+            assert_eq!(
+                source_of(&library, 4),
+                None,
+                "a record with no words was written down"
+            );
+            assert_eq!(source_of(&library, 5), Some(("sidecar".to_owned(), true)));
+            assert_eq!(source_of(&library, 6), Some(("tags".to_owned(), false)));
+            assert_eq!(done.left, 1);
+        }
+    }
+
     mod ranked_by_profile {
         use super::super::with_profile;
 
@@ -14346,15 +14497,26 @@ pub fn load_break(state: &AppState, deck: dj_core::DeckId) {
 
 /// §107: the words for the record on a deck, for the singers' screen.
 ///
-/// Read from what the library already stored — the lyrics sweep fetches them
-/// from LRCLIB beforehand — so the screen never waits on the network while a
-/// singer stands at the microphone.
+/// The record's own words first — its tags, or a `.lrc` beside it, read from
+/// the disk as the record is loaded (`dj_library::own_words`) — then what the
+/// library stored, which the lyrics sweep fetched from LRCLIB beforehand; see
+/// `karaoke::best_words` for which wins. Nothing here touches the network, so
+/// the screen never waits on it while a singer stands at the microphone.
 #[tauri::command]
 pub fn singer_lyrics(state: State<'_, AppState>, deck: u8) -> crate::karaoke::SingerLyrics {
-    let stored = DeckId::from_human(deck)
-        .and_then(|deck| state.deck_track_id(deck))
-        .and_then(|track| state.library().get().ok()?.words_for(track).ok()?);
-    crate::karaoke::lyrics_for(stored)
+    let Some(track) = DeckId::from_human(deck).and_then(|deck| state.deck_track_id(deck)) else {
+        return crate::karaoke::lyrics_for(None);
+    };
+    let Ok(library) = state.library().get() else {
+        return crate::karaoke::lyrics_for(None);
+    };
+    let stored = library.words_for(track).ok().flatten();
+    let own = library
+        .track(track)
+        .ok()
+        .flatten()
+        .and_then(|found| dj_library::own_words::read(&found.path));
+    crate::karaoke::lyrics_for(crate::karaoke::best_words(own, stored))
 }
 
 /// §109: one activity as the strip draws it.
@@ -16725,22 +16887,71 @@ pub struct SweepDto {
 /// When the library cannot be read.
 #[tauri::command]
 pub async fn words_fetch(state: State<'_, AppState>) -> Result<SweepDto, String> {
-    use dj_sources::lyrics::{LyricsError, LyricsSource};
-
     let library = library(&state)?;
-    let todo = library.without_words(SWEEP).map_err(|e| e.to_string())?;
     let http = state
         .sources()
         .http()
         .ok_or_else(|| "this machine has no HTTP client, so nothing can be fetched".to_owned())?;
+    sweep_words(&library, http, crate::library::now_seconds()).await
+}
+
+/// One batch of the lyrics sweep, against whatever answers `http`.
+///
+/// The record's own words (`dj_library::own_words`) are read first, and timed
+/// ones are kept without asking anything; LRCLIB is asked for the rest, and its
+/// timed words beat a record's own untimed ones. A network that refuses stops
+/// the asking for this batch but not the reading: the rest of the batch still
+/// keeps words of its own, which need no network.
+///
+/// # Errors
+/// When the library cannot be read.
+async fn sweep_words(
+    library: &Arc<dj_library::Library>,
+    http: Arc<dyn dj_sources::http::HttpClient>,
+    now: i64,
+) -> Result<SweepDto, String> {
+    use dj_sources::lyrics::{LyricsError, LyricsSource};
+
+    let todo = library.without_words(SWEEP).map_err(|e| e.to_string())?;
     let source = LyricsSource::new(http);
-    let now = crate::library::now_seconds();
 
     let mut asked = 0;
     let mut found = 0;
     let mut gave_up = false;
 
     for track in todo {
+        // The record's own words first: its tags, or a `.lrc` beside it.
+        // Timed ones need nothing from the network at all, so they are kept
+        // even after the network has refused this sweep.
+        let own = dj_library::own_words::read(&track.path);
+        let keep_own = |own: &dj_library::own_words::OwnWords| {
+            record_words(
+                library,
+                &track,
+                &own.plain,
+                own.synced.as_deref(),
+                false,
+                own.source,
+                now,
+            );
+        };
+        if let Some(own) = own.as_ref().filter(|own| own.synced.is_some()) {
+            keep_own(own);
+            asked += 1;
+            found += 1;
+            continue;
+        }
+        if gave_up {
+            // Untimed words of its own are still words: kept, rather than
+            // left waiting for a network that has just refused.
+            if let Some(own) = &own {
+                keep_own(own);
+                asked += 1;
+                found += 1;
+            }
+            continue;
+        }
+
         let Some(artist) = track
             .tags
             .artist
@@ -16750,12 +16961,24 @@ pub async fn words_fetch(state: State<'_, AppState>) -> Result<SweepDto, String>
             // Nothing to look up with. Recorded as asked so the sweep moves
             // past it -- an untagged file is a job for the tag editor, not
             // something to retry against a database keyed by artist.
-            record_words(&library, &track, "", None, false, "untagged", now);
+            match &own {
+                Some(own) => {
+                    keep_own(own);
+                    found += 1;
+                }
+                None => record_words(library, &track, "", None, false, "untagged", now),
+            }
             asked += 1;
             continue;
         };
         let Some(title) = track.tags.title.as_deref().filter(|t| !t.trim().is_empty()) else {
-            record_words(&library, &track, "", None, false, "untagged", now);
+            match &own {
+                Some(own) => {
+                    keep_own(own);
+                    found += 1;
+                }
+                None => record_words(library, &track, "", None, false, "untagged", now),
+            }
             asked += 1;
             continue;
         };
@@ -16765,9 +16988,11 @@ pub async fn words_fetch(state: State<'_, AppState>) -> Result<SweepDto, String>
             .words_for(artist, title, track.tags.album.as_deref(), seconds)
             .await
         {
-            Ok(words) => {
+            // LRCLIB's timed words beat the record's own untimed ones; its
+            // untimed words do not, because the record's own come first.
+            Ok(words) if words.synced.is_some() || own.is_none() => {
                 record_words(
-                    &library,
+                    library,
                     &track,
                     &words.plain,
                     words.synced.as_deref(),
@@ -16780,18 +17005,30 @@ pub async fn words_fetch(state: State<'_, AppState>) -> Result<SweepDto, String>
                     found += 1;
                 }
             }
-            // A miss is an answer worth keeping, so the next sweep moves on.
-            Err(LyricsError::NotFound) => {
-                record_words(&library, &track, "", None, false, "lrclib", now);
+            Ok(_) | Err(LyricsError::NotFound) => {
+                // A miss is an answer worth keeping, so the next sweep moves
+                // on -- with the record's own words where it has some.
+                match &own {
+                    Some(own) => {
+                        keep_own(own);
+                        found += 1;
+                    }
+                    None => record_words(library, &track, "", None, false, "lrclib", now),
+                }
                 asked += 1;
             }
-            // A failure is not. Nothing is written, and the sweep stops:
-            // grinding through ten thousand records against a dead network
-            // just fills the log.
+            // A failure is not. Nothing is written for this record, and no
+            // further one is asked: grinding through ten thousand records
+            // against a dead network just fills the log. The rest of the
+            // batch still keeps any words of its own, which need no network.
             Err(why) => {
                 tracing::warn!(%why, "the lyrics database could not be reached");
                 gave_up = true;
-                break;
+                if let Some(own) = &own {
+                    keep_own(own);
+                    asked += 1;
+                    found += 1;
+                }
             }
         }
     }

@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Karaoke reads the lyrics your records already carry.** Words stored in
+  a record's own tags (timed SYLT, or a lyrics tag holding LRC or plain
+  text) and a `.lrc` file beside the record are used before anything is
+  asked of LRCLIB. Timed words always win over untimed ones, so a plain
+  tag never hides a timed `.lrc`. The singers' screen reads them as each
+  record loads, so a `.lrc` you add later shows up the next time, and they
+  are kept even when the network is down.
 - **djmanzo learns how you move between keys.** For each kind of night it
   looks at each record beside the one played before it and names the step
   as the key wheel does: the same key, a step round the wheel, the

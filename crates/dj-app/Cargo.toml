@@ -85,3 +85,5 @@ workspace = true
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Writes the tags the lyrics tests read back (dj_library::own_words).
+lofty = { workspace = true }
