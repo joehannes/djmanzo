@@ -197,3 +197,46 @@ test("the stems panel follows the model from loading to in use", async ({ page }
   await expect(chip(page, "vocal")).toBeEnabled();
   expect(errorsThrown(page)).toEqual([]);
 });
+
+/**
+ * **§114: each chip draws where its current plays**, from the record's own
+ * measurement (the fixture's four windows, shares in the stem order), with
+ * the deck's place on it — so VOCALS shows the voice coming in and the
+ * breakdown, before the chip is pressed.
+ */
+test("each chip draws where its current plays, with the deck's place on it", async ({ page }) => {
+  const thrown = errorsThrown(page);
+  await openShell(page, "/");
+  const columns = async (stem: string) => {
+    const d = (await chip(page, stem).locator("svg.chip-presence path").getAttribute("d")) ?? "";
+    return [...d.matchAll(/M ([\d.]+) 10 V ([\d.]+)/g)].map((m) => [
+      Number(m[1]),
+      Number((10 - Number(m[2])).toFixed(2)),
+    ]);
+  };
+  await expect(chip(page, "vocal").locator("svg.chip-presence")).toHaveCount(1);
+  // Nothing measured in the first window; the voice full in the next two and
+  // nearly gone in the last.
+  expect(await columns("vocal")).toEqual([
+    [25, 10],
+    [50, 10],
+    [75, 0.8],
+  ]);
+  expect(await columns("other")).toEqual([
+    [25, 6],
+    [50, 10],
+    [75, 8],
+  ]);
+
+  await page.evaluate(() => {
+    const win = window as unknown as {
+      __lastState: { decks: Record<string, unknown>[] };
+      __emit: (next: unknown) => void;
+    };
+    const next = structuredClone(win.__lastState);
+    next.decks[0] = { ...next.decks[0], position_frames: 6_000_000, length_frames: 12_000_000 };
+    win.__emit(next);
+  });
+  await expect(chip(page, "vocal").locator("line.now")).toHaveAttribute("x1", "50.00");
+  expect(thrown).toEqual([]);
+});

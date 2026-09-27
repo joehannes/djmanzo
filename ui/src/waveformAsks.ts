@@ -57,6 +57,16 @@ import type { DeckState } from "./api";
  * from a grid; none of them cares where the needle is.
  */
 export function waveformAsks(deck: DeckState): string {
+  return [recordAsks(deck), deck.marks].join("/");
+}
+
+/**
+ * What the record's own measurement depends on: `waveformAsks` less the
+ * marks. A saved loop changes what the lane draws over the record, not the
+ * record, so §114's stem chips — which draw where each current plays — key on
+ * this, and a loop kept mid-set asks nothing of them.
+ */
+export function recordAsks(deck: DeckState): string {
   return [
     deck.number,
     deck.length_frames,
@@ -67,7 +77,6 @@ export function waveformAsks(deck: DeckState): string {
     // reason for existing beside the one above: a hand-edited grid reads as
     // certain the moment it is edited.
     deck.grid_confidence,
-    deck.marks,
   ].join("/");
 }
 

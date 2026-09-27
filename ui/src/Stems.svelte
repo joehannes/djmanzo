@@ -4,7 +4,15 @@
   import SvgFader from "./controls/SvgFader.svelte";
   import SvgKnob from "./controls/SvgKnob.svelte";
   import { portal } from "./controls/portal";
-  import { dispatch, stemsStatus, type StemsStatus, type StemSwap } from "./api";
+  import {
+    dispatch,
+    stemsStatus,
+    waveformInfo,
+    type EnergyTrajectory,
+    type StemsStatus,
+    type StemSwap,
+  } from "./api";
+  import { presencePath } from "./stemPresence";
   import { wantsStemsOpen } from "./hands.svelte";
   import { onDestroy, onMount } from "svelte";
 
@@ -23,8 +31,17 @@
     swap = null,
     deckCount = 2,
     startOpen = false,
+    asks = "",
+    playhead = 0,
   }: {
     deckNumber: number;
+    /**
+     * §114: what the record on this deck is, as `recordAsks` keys it — when
+     * it moves, the chips ask again where each current plays.
+     */
+    asks?: string;
+    /** §114: how far through the record the deck is, 0..1. */
+    playhead?: number;
     muteState?: boolean[];
     volumeState?: number[];
     /**
@@ -69,6 +86,28 @@
    * installs one mid-set has to restart -- and being told that is better
    * than pads that quietly do nothing.
    */
+  /**
+   * §114: where each current plays in the record, for the chips to draw — see
+   * `stemPresence.ts`. Asked when the record changes, never per frame: the
+   * snapshot replaces every deck sixty times a second.
+   */
+  let askedPresence = "";
+  let sections = $state<EnergyTrajectory["sections"]>([]);
+  let totalFrames = $state(0);
+  $effect(() => {
+    if (!asks || asks === askedPresence) return;
+    askedPresence = asks;
+    void waveformInfo(deckNumber)
+      .then((info) => {
+        sections = info.trajectory?.sections ?? [];
+        totalFrames = info.total_frames;
+      })
+      // Quiet, as the overview's is: the chips simply draw no line.
+      .catch(() => {});
+  });
+  const lines = $derived(STEM_KEYS.map((_, i) => presencePath(sections, totalFrames, i)));
+  const now = $derived((Math.min(1, Math.max(0, Number.isFinite(playhead) ? playhead : 0)) * 100).toFixed(2));
+
   const ASK_AGAIN_MS = 2000;
   let status = $state<StemsStatus>({ available: true, backend: null, reason: null });
   onMount(() => {
@@ -440,6 +479,19 @@
         onwheel={(event) => wheelChip(event, i)}
       >
         <span class="chip-fill" aria-hidden="true"></span>
+        {#if lines[i]}
+          <!-- §114: where this current plays in the record, and where the deck is. -->
+          <svg
+            class="chip-presence"
+            viewBox="0 0 100 10"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            data-presence={STEM_KEYS[i]}
+          >
+            <path d={lines[i]} />
+            <line class="now" x1={now} x2={now} y1="0" y2="10" />
+          </svg>
+        {/if}
         <span class="chip-name">{name}</span>
       </button>
     {/each}
@@ -658,6 +710,30 @@
     width: calc(var(--level) * 100%);
     background: color-mix(in srgb, var(--stem-color) 34%, transparent);
     pointer-events: none;
+  }
+
+  /* §114: the current's presence along the chip's foot, under the name. */
+  .chip-presence {
+    position: absolute;
+    inset: auto 0 0 0;
+    width: 100%;
+    height: 55%;
+    pointer-events: none;
+  }
+
+  .chip-presence path {
+    fill: var(--stem-color);
+    opacity: 0.5;
+  }
+
+  .chip-presence .now {
+    stroke: var(--text);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .stem-chip.muted .chip-presence {
+    opacity: 0.35;
   }
 
   .chip-name {

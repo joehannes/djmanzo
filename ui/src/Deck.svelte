@@ -12,6 +12,7 @@
   } from "./api";
   import { onMount } from "svelte";
   import JogWheel from "./JogWheel.svelte";
+  import { recordAsks } from "./waveformAsks";
   import { wantsJogRoom } from "./hands.svelte";
   import { fill } from "./meter";
   import Fx from "./Fx.svelte";
@@ -785,7 +786,7 @@
       loaded -- and it is the biggest block on the deck. It folds now (see
       `Stems.svelte`), so it costs a row when nothing is using it.
     -->
-    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} eqState={deck.stem_eq} filterState={deck.stem_filters} soloing={deck.stem_soloing} swap={stemSwap} deckCount={deckCount} startOpen={props?.open === true} />
+    <Stems deckNumber={deck.number} muteState={deck.stem_mutes} volumeState={deck.stem_volumes} eqState={deck.stem_eq} filterState={deck.stem_filters} soloing={deck.stem_soloing} swap={stemSwap} deckCount={deckCount} startOpen={props?.open === true} asks={recordAsks(deck)} playhead={deck.length_frames > 0 ? deck.position_frames / deck.length_frames : 0} />
   {/if}
   {/snippet}
   {#snippet zoneTimes()}

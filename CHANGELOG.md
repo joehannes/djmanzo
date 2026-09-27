@@ -40,6 +40,10 @@ Versioning follows semver, with one project-specific convention:
 - **A sampler slot shows the shape of its sound.** Each slot draws how loud
   its sample is from start to end, so a kick looks different from a vocal
   chop, and fills in as it plays.
+- **A stem's chip shows where its part plays.** The VOCALS, DRUMS, BASS
+  and OTHER chips under each waveform draw where that part is in the
+  record, with the deck's place on it, so you can see the voice coming or
+  the bass dropping out before you press.
 
 ## v0.31.0 — Words in time by WhisperX, a song for every karaoke guest, and pop out almost everywhere
 
