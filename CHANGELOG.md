@@ -16,6 +16,13 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Pop out almost every panel.** Sixteen panels now have *pop out* on
+  their border — preparation, next, the set plan, pair, practice, the press
+  kit, the crowd, the karaoke host's panel, the room, tonight's mixes, at
+  hand, the booth and presets, besides the collection, the assistant and
+  the sampler — each into a window of its own for another screen.
+- **A popped-out panel comes back when you close its window**, instead of
+  disappearing until you open it again.
 - **Make the guest's song on Suno, and send it to them.** Next to the
   words: *Open Suno* opens suno.com in a window of its own for you to sign
   in and make the song; *Show their voice file* finds their recording to

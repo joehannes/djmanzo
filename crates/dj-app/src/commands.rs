@@ -118,18 +118,27 @@ pub struct PanelDto {
     pub id: String,
     pub title: String,
     pub detached: bool,
+    /// The main window's surface whose frame pops out into this window, when
+    /// there is one. See `monitors::Panel::surface`.
+    pub surface: Option<String>,
 }
 
 /// Which panels can be detached, and which are.
 #[tauri::command]
 pub fn list_panels(state: State<'_, AppState>) -> Vec<PanelDto> {
-    let detached = state.detached();
+    panels_dto(&state.detached())
+}
+
+/// Every panel, and which of them are in windows of their own.
+#[must_use]
+pub fn panels_dto(detached: &crate::monitors::Detached) -> Vec<PanelDto> {
     crate::monitors::Panel::ALL
         .into_iter()
         .map(|panel| PanelDto {
             id: panel.slug().to_owned(),
             title: panel.title().to_owned(),
             detached: detached.contains(panel),
+            surface: panel.surface().map(str::to_owned),
         })
         .collect()
 }

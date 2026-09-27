@@ -78,6 +78,8 @@
     type DensityBand,
     setCockpitWorkspace,
     detachPanel,
+    listPanels,
+    onPanelClosed,
     liveEvent,
     setLiveEvent,
     welcomeState,
@@ -924,16 +926,38 @@
   }
 
   /**
-   * The panels that have a window of their own to go to, by the name
-   * `monitors::Panel` gives that window. The other surfaces are drawn out of
-   * this shell's own state, and a second window cannot draw them yet -- so
-   * they carry no button that would do nothing.
+   * The surfaces that have a window of their own to go to, and the name
+   * `monitors::Panel` gives that window — Rust's list, read once. The other
+   * surfaces are drawn out of this shell's own state (the event being played,
+   * the density, the key map, the settings…), and a second window cannot draw
+   * them, so they carry no button that would do nothing.
    */
-  const POP_OUT: Partial<Record<string, string>> = {
-    library: "browser",
-    assistant: "assistant",
-    sampler: "sampler",
-  };
+  let POP_OUT = $state<Partial<Record<string, string>>>({});
+  $effect(() => {
+    void listPanels()
+      .then((panels) => {
+        POP_OUT = Object.fromEntries(
+          panels.filter((panel) => panel.surface).map((panel) => [panel.surface as string, panel.id]),
+        );
+      })
+      .catch(() => {
+        // No list, no pop-out buttons: every surface still works here.
+      });
+  });
+
+  /**
+   * A panel's own window closed with its own close button: the panel comes
+   * home, where it was before it popped out.
+   */
+  $effect(() => {
+    const unlisten = onPanelClosed((closed) => {
+      const surface = Object.entries(POP_OUT).find(([, id]) => id === closed)?.[0];
+      if (surface && !isOpen(surface as Drawn)) void toggleSurface(surface as Drawn);
+    });
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  });
 
   /** Into its own window, and out of this one: one panel, one place. */
   async function popOut(placement: SurfacePlacement) {

@@ -193,6 +193,25 @@ pub fn run() {
     let pump_audience = Arc::clone(state.audience());
 
     tauri::Builder::default()
+        // §121: a panel's own window closed with its own close button is the
+        // panel going home. Without this the main window had already let it
+        // go at pop-out, so it was simply gone until opened again from a
+        // menu, and djmanzo went on listing it as detached.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event
+                && let Some(panel) = window
+                    .label()
+                    .strip_prefix("panel-")
+                    .and_then(monitors::Panel::parse)
+            {
+                use tauri::{Emitter, Manager};
+                let state: tauri::State<'_, AppState> = window.state();
+                state.attach_panel(panel);
+                let _ = window
+                    .app_handle()
+                    .emit_to("main", "panel-closed", panel.slug());
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         // Handing a URL to the operating system, so the WhatsApp handoff
         // reaches WhatsApp instead of opening inside our own webview.

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "browser",
+    "title": "djmanzo - Browser",
+    "detached": false,
+    "surface": "library"
+  },
+  {
+    "id": "waveforms",
+    "title": "djmanzo - Waveforms",
+    "detached": false,
+    "surface": null
+  },
+  {
+    "id": "fx",
+    "title": "djmanzo - Effects",
+    "detached": false,
+    "surface": null
+  },
+  {
+    "id": "sampler",
+    "title": "djmanzo - Sampler",
+    "detached": false,
+    "surface": "sampler"
+  },
+  {
+    "id": "assistant",
+    "title": "djmanzo - Assistant",
+    "detached": false,
+    "surface": "assistant"
+  },
+  {
+    "id": "watershed",
+    "title": "djmanzo - Watershed",
+    "detached": false,
+    "surface": null
+  },
+  {
+    "id": "singers",
+    "title": "djmanzo - Singers",
+    "detached": false,
+    "surface": null
+  },
+  {
+    "id": "prepare",
+    "title": "djmanzo - Prepare",
+    "detached": false,
+    "surface": "prepare"
+  },
+  {
+    "id": "next",
+    "title": "djmanzo - Next",
+    "detached": false,
+    "surface": "next"
+  },
+  {
+    "id": "plan",
+    "title": "djmanzo - Set plan",
+    "detached": false,
+    "surface": "plan"
+  },
+  {
+    "id": "pair",
+    "title": "djmanzo - Pair",
+    "detached": false,
+    "surface": "pair"
+  },
+  {
+    "id": "practice",
+    "title": "djmanzo - Practice",
+    "detached": false,
+    "surface": "practice"
+  },
+  {
+    "id": "kit",
+    "title": "djmanzo - Press kit",
+    "detached": false,
+    "surface": "kit"
+  },
+  {
+    "id": "crowd",
+    "title": "djmanzo - Crowd",
+    "detached": false,
+    "surface": "crowd"
+  },
+  {
+    "id": "karaoke",
+    "title": "djmanzo - Karaoke",
+    "detached": false,
+    "surface": "karaoke"
+  },
+  {
+    "id": "room",
+    "title": "djmanzo - Room",
+    "detached": false,
+    "surface": "room"
+  },
+  {
+    "id": "mixes",
+    "title": "djmanzo - Tonight's mixes",
+    "detached": false,
+    "surface": "mixes"
+  },
+  {
+    "id": "athand",
+    "title": "djmanzo - At hand",
+    "detached": false,
+    "surface": "athand"
+  },
+  {
+    "id": "booth",
+    "title": "djmanzo - Booth",
+    "detached": false,
+    "surface": "booth"
+  },
+  {
+    "id": "presets",
+    "title": "djmanzo - Presets",
+    "detached": false,
+    "surface": "presets"
+  }
+]

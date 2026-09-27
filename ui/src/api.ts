@@ -1015,9 +1015,15 @@ export interface PanelInfo {
   id: string;
   title: string;
   detached: boolean;
+  /** The main window's surface that pops out into this window, if any. */
+  surface: string | null;
 }
 
 export const listPanels = () => invoke<PanelInfo[]>("list_panels");
+
+/** §121: a panel's own window was closed; the payload is the panel's id. */
+export const onPanelClosed = (callback: (panel: string) => void): Promise<UnlistenFn> =>
+  listen<string>("panel-closed", (event) => callback(event.payload));
 
 /**
  * Give a panel a window of its own.

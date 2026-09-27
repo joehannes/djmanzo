@@ -12,10 +12,25 @@
    * two of everything to keep straight.
    */
   import Assistant from "./Assistant.svelte";
+  import AtHand from "./AtHand.svelte";
+  import Automix from "./Automix.svelte";
   import Browse from "./Browse.svelte";
+  import Crowd from "./Crowd.svelte";
   import Fx from "./Fx.svelte";
+  import Mic from "./Mic.svelte";
+  import Mixes from "./Mixes.svelte";
+  import Next from "./Next.svelte";
+  import Pair from "./Pair.svelte";
+  import Plan from "./Plan.svelte";
+  import Plugin from "./Plugin.svelte";
+  import Practice from "./Practice.svelte";
+  import Presets from "./Presets.svelte";
+  import PressKit from "./PressKit.svelte";
+  import RoomSense from "./RoomSense.svelte";
   import Sampler from "./Sampler.svelte";
+  import SideView from "./SideView.svelte";
   import SingerScreen from "./SingerScreen.svelte";
+  import Singers from "./Singers.svelte";
   import Watershed from "./Watershed.svelte";
   import Waveform from "./Waveform.svelte";
   import { dispatch, getSnapshot, onSnapshot, type Snapshot } from "./api";
@@ -100,6 +115,22 @@
     <Browse enabled={ready} {deckCount} />
   {:else if panel === "assistant"}
     <Assistant enabled={ready} />
+  {:else if panel === "plan"}
+    <Plan enabled={ready} />
+  {:else if panel === "practice"}
+    <Practice enabled={ready} />
+  {:else if panel === "kit"}
+    <PressKit />
+  {:else if panel === "crowd"}
+    <Crowd />
+  {:else if panel === "room"}
+    <RoomSense enabled={ready} />
+  {:else if panel === "mixes"}
+    <Mixes enabled={ready} />
+  {:else if panel === "presets"}
+    <Presets enabled={ready} {deckCount} />
+  {:else if panel === "athand"}
+    <AtHand enabled={ready} {send} />
   {:else if snapshot}
     {#if panel === "waveforms"}
       <!--
@@ -136,6 +167,23 @@
       </div>
     {:else if panel === "singers"}
       <SingerScreen decks={snapshot.decks} />
+    {:else if panel === "karaoke"}
+      <Singers enabled={ready} {deckCount} decks={snapshot.decks} />
+    {:else if panel === "prepare"}
+      <SideView enabled={ready} {deckCount} decks={snapshot.decks} />
+    {:else if panel === "next"}
+      <Next enabled={ready} {deckCount} decks={snapshot.decks} />
+    {:else if panel === "pair"}
+      <Pair enabled={ready} {deckCount} decks={snapshot.decks} />
+    {:else if panel === "booth"}
+      <!-- The things set up once a night: as the main window's booth has them. -->
+      <Mic mic={snapshot.master.mic} enabled={ready} {send} />
+      <Automix automix={snapshot.master.automix} enabled={ready} {send} />
+      <Plugin clap={snapshot.master.clap} enabled={ready} {send} />
+      <section class="rack">
+        <h3>Master FX</h3>
+        <Fx slots={snapshot.master.fx} enabled={ready} target="master" {send} />
+      </section>
     {:else if panel === "sampler"}
       <Sampler sampler={snapshot.master.sampler} enabled={ready} {send} />
     {:else if panel === "watershed"}

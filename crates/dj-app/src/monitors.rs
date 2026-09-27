@@ -53,10 +53,41 @@ pub enum Panel {
     Watershed,
     /// §107: the words, for the singers — a screen facing the microphone.
     Singers,
+    // §121: "pop out" on every panel that can be drawn from the snapshot
+    // and its own commands alone. The ones drawn out of the main window's
+    // own state — the event being played, the density, the key map, the
+    // controller mappings, the settings, the session log, and requests,
+    // whose Find opens the collection beside them — stay in it.
+    /// §61's preparation view.
+    Prepare,
+    /// What to play next.
+    Next,
+    /// The set plan.
+    Plan,
+    /// Two records side by side.
+    Pair,
+    /// Practice.
+    Practice,
+    /// §118's press kit.
+    Kit,
+    /// The crowd.
+    Crowd,
+    /// §107's karaoke host: the rotation, the guest book, the words' timing.
+    Karaoke,
+    /// The room's senses.
+    Room,
+    /// Tonight's mixes.
+    Mixes,
+    /// What is at hand.
+    AtHand,
+    /// The booth: microphone, automix, plugin, master effects.
+    Booth,
+    /// Presets.
+    Presets,
 }
 
 impl Panel {
-    pub const ALL: [Panel; 7] = [
+    pub const ALL: [Panel; 20] = [
         Panel::Browser,
         Panel::Waveforms,
         Panel::Fx,
@@ -64,7 +95,33 @@ impl Panel {
         Panel::Assistant,
         Panel::Watershed,
         Panel::Singers,
+        Panel::Prepare,
+        Panel::Next,
+        Panel::Plan,
+        Panel::Pair,
+        Panel::Practice,
+        Panel::Kit,
+        Panel::Crowd,
+        Panel::Karaoke,
+        Panel::Room,
+        Panel::Mixes,
+        Panel::AtHand,
+        Panel::Booth,
+        Panel::Presets,
     ];
+
+    /// The main window's surface this panel is (`cockpit`'s name for it),
+    /// which its frame's *pop out* sends here. `None` for the panels that
+    /// are only ever a window of their own: the waveforms stacked large, the
+    /// effect racks side by side, the watershed and the singers' screen.
+    #[must_use]
+    pub fn surface(self) -> Option<&'static str> {
+        match self {
+            Panel::Browser => Some("library"),
+            Panel::Waveforms | Panel::Fx | Panel::Watershed | Panel::Singers => None,
+            other => Some(other.slug()),
+        }
+    }
 
     /// The name used in the window label and in the URL.
     ///
@@ -82,6 +139,19 @@ impl Panel {
             Panel::Assistant => "assistant",
             Panel::Watershed => "watershed",
             Panel::Singers => "singers",
+            Panel::Prepare => "prepare",
+            Panel::Next => "next",
+            Panel::Plan => "plan",
+            Panel::Pair => "pair",
+            Panel::Practice => "practice",
+            Panel::Kit => "kit",
+            Panel::Crowd => "crowd",
+            Panel::Karaoke => "karaoke",
+            Panel::Room => "room",
+            Panel::Mixes => "mixes",
+            Panel::AtHand => "athand",
+            Panel::Booth => "booth",
+            Panel::Presets => "presets",
         }
     }
 
@@ -104,6 +174,19 @@ impl Panel {
             Panel::Assistant => "djmanzo - Assistant",
             Panel::Watershed => "djmanzo - Watershed",
             Panel::Singers => "djmanzo - Singers",
+            Panel::Prepare => "djmanzo - Prepare",
+            Panel::Next => "djmanzo - Next",
+            Panel::Plan => "djmanzo - Set plan",
+            Panel::Pair => "djmanzo - Pair",
+            Panel::Practice => "djmanzo - Practice",
+            Panel::Kit => "djmanzo - Press kit",
+            Panel::Crowd => "djmanzo - Crowd",
+            Panel::Karaoke => "djmanzo - Karaoke",
+            Panel::Room => "djmanzo - Room",
+            Panel::Mixes => "djmanzo - Tonight's mixes",
+            Panel::AtHand => "djmanzo - At hand",
+            Panel::Booth => "djmanzo - Booth",
+            Panel::Presets => "djmanzo - Presets",
         }
     }
 
@@ -122,6 +205,10 @@ impl Panel {
             Panel::Assistant => (480.0, 760.0),
             Panel::Watershed => (1280.0, 720.0),
             Panel::Singers => (1280.0, 720.0),
+            Panel::Prepare | Panel::Plan | Panel::Kit | Panel::Karaoke => (900.0, 820.0),
+            Panel::Pair | Panel::Room => (1100.0, 720.0),
+            Panel::Next | Panel::Practice | Panel::Crowd | Panel::Mixes => (560.0, 760.0),
+            Panel::AtHand | Panel::Booth | Panel::Presets => (560.0, 640.0),
         }
     }
 
@@ -237,6 +324,40 @@ mod tests {
         for panel in Panel::ALL {
             let (width, height) = panel.size();
             assert!(width >= 320.0 && height >= 240.0, "{panel:?} is too small");
+        }
+    }
+
+    /// Every surface a panel names is one the main window has, so its
+    /// frame's pop-out button leads somewhere — and the names the panels are
+    /// opened by in a window are the names `Detached.svelte` draws.
+    #[test]
+    fn every_panel_surface_is_a_cockpit_surface() {
+        let surfaces = crate::cockpit::surfaces();
+        for panel in Panel::ALL {
+            if let Some(surface) = panel.surface() {
+                assert!(
+                    surfaces.iter().any(|s| s.name == surface),
+                    "{panel:?} names {surface}, which is not a surface"
+                );
+            }
+        }
+        // And the cockpit's own word for it agrees: a surface says it can be
+        // detached exactly when a panel will take it.
+        for surface in surfaces {
+            let has_window = Panel::ALL.iter().any(|p| p.surface() == Some(surface.name));
+            assert_eq!(
+                surface.detachable, has_window,
+                "{} says detachable is {}",
+                surface.name, surface.detachable
+            );
+        }
+        let detached = include_str!("../../../ui/src/Detached.svelte");
+        for panel in Panel::ALL {
+            assert!(
+                detached.contains(&format!("panel === \"{}\"", panel.slug())),
+                "Detached.svelte draws nothing for {:?}",
+                panel
+            );
         }
     }
 

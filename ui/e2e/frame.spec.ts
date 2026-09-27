@@ -212,6 +212,41 @@ test.describe("§121: the controls on a panel's border", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * **A window closed with its own close button is the panel going home.**
+   * Rust tells the main window, and the panel is back where it was — not
+   * gone until somebody finds it in a menu.
+   */
+  test("a panel whose own window is closed comes back to this one", async ({ page }) => {
+    await withLibrary(page);
+    await page.getByRole("button", { name: "Pop Library out" }).click();
+    await expect(page.locator(LIBRARY)).toHaveCount(0);
+    const heard = await page.evaluate(() =>
+      (window as unknown as { __emitEvent: (name: string, payload: unknown) => boolean }).__emitEvent(
+        "panel-closed",
+        "browser",
+      ),
+    );
+    expect(heard, "the main window listens for a panel's window closing").toBe(true);
+    await expect(page.locator(LIBRARY)).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** Every surface Rust gives a window pops out into it: the karaoke host's included. */
+  test("the karaoke host's panel pops out into a window of its own", async ({ page }) => {
+    await openShell(page, "/");
+    await page.setViewportSize({ width: 1400, height: 860 });
+    await page.locator("body").click({ position: { x: 700, y: 120 } });
+    await page.keyboard.press("Space");
+    await page.keyboard.press("O");
+    await page.keyboard.press("i");
+    await page.getByRole("button", { name: "Pop Singers out" }).click();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __detached?: string[] }).__detached ?? []))
+      .toEqual(["karaoke"]);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   /** Reset size is there only as something to do once a size was given. */
   test("own size is offered once the panel has been sized, and gives its size back", async ({ page }) => {
     await withLibrary(page);
