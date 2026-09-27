@@ -253,6 +253,9 @@ pub struct AppState {
     /// Which tracks have been played far enough to count. Also on the snapshot
     /// pump -- see `crate::persist::PlayWatcher`.
     play_watcher: Arc<Mutex<crate::persist::PlayWatcher>>,
+    /// §119: which record the room is hearing, off the meters. Also on the
+    /// snapshot pump -- see `crate::crowd::Hearing`.
+    hearing: Mutex<crate::crowd::Hearing>,
     /// Groups tonight's plays. One per run of the application, which is close
     /// enough to one per gig that it is worth having before there is a real
     /// session concept.
@@ -549,6 +552,7 @@ impl AppState {
             library_writer: crate::persist::LibraryWriter::start(Arc::clone(&library)),
             cue_watcher: Arc::new(Mutex::new(crate::persist::CueWatcher::new())),
             play_watcher: Arc::new(Mutex::new(crate::persist::PlayWatcher::new())),
+            hearing: Mutex::new(crate::crowd::Hearing::new()),
             session_id: format!("session-{}", crate::library::now_seconds()),
             library,
             identifier: Mutex::new(None),
@@ -781,6 +785,12 @@ impl AppState {
     #[must_use]
     pub fn play_watcher(&self) -> Arc<Mutex<crate::persist::PlayWatcher>> {
         Arc::clone(&self.play_watcher)
+    }
+
+    /// §119: what follows which record the room is hearing.
+    #[must_use]
+    pub fn hearing(&self) -> &Mutex<crate::crowd::Hearing> {
+        &self.hearing
     }
 
     /// Groups this run's plays in the history.

@@ -1740,7 +1740,7 @@ fn the_browser_fixture_has_a_nights_crowd() {
         said(260, Source::Room, "", "play Bachata Rosa"),
     ];
     let delay = 8;
-    let placed = crowd::place(&reactions, &played, delay);
+    let placed = crowd::place(&reactions, &played, &[], delay);
     // §25's crowd response for the first record, in frames at 48 kHz: what
     // the overview draws over it.
     let marks: Vec<dj_app::commands::CrowdMarkInfo> =

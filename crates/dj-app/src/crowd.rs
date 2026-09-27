@@ -29,6 +29,17 @@
 //! is inside, the voice coming in. What the analysis does not know is not
 //! guessed: such a reaction is placed on the record, not on a part.
 //!
+//! *The record the room was hearing* is measured, not assumed. The history
+//! says when each record came in — when its deck started — and a DJ starts
+//! the next one in the headphones a minute before anybody hears it, then
+//! blends the two for half a minute more; placed by arrival, everything
+//! said in those minutes went to the record the room had not heard yet.
+//! [`Hearing`] follows each deck's meter after its fader and the crossfader,
+//! which is what reached the room, and notes whenever a different record
+//! became the louder one and stayed so ([`Heard`], kept beside the night as
+//! `crowd/room/<session>.jsonl`). [`place`] asks that first, and a night
+//! kept before it existed is placed by arrival, as it always was.
+//!
 //! # Kept on its own
 //!
 //! The reactions of a night are their own file, one JSON line each
@@ -233,6 +244,123 @@ pub enum Part {
     Record,
 }
 
+/// Which record the room was hearing from a moment on: the louder one, by
+/// the meters, once it had stayed the louder one for [`ROOM_HOLD`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Heard {
+    /// Unix seconds: when it became the louder one.
+    pub at: i64,
+    /// `None` when nothing was loud enough to be heard.
+    pub track_id: Option<String>,
+}
+
+/// One deck's meter, as [`Hearing`] reads it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Meter {
+    pub deck: u8,
+    pub track: Option<dj_core::TrackId>,
+    pub playing: bool,
+    /// Its peak after the channel fader and the crossfader, 0..=1: what
+    /// reached the room, not what the deck was playing.
+    pub level: f32,
+}
+
+/// How quickly [`Hearing`] follows a meter, in seconds: long enough that a
+/// kick and the gap after it read as one level, short enough that a
+/// crossfader cut is followed within a beat or two.
+pub const ROOM_SMOOTHING: f64 = 1.0;
+
+/// How long a record has to stay the louder one before the room is said to
+/// be hearing it, in seconds. A scratch, a spinback or a cut there and back
+/// again does not move the room.
+pub const ROOM_HOLD: f64 = 2.0;
+
+/// Below this a deck is not heard: about -40 dB below full scale.
+pub const ROOM_SILENT: f32 = 0.01;
+
+/// Follows which record the room is hearing, from the meters.
+///
+/// Fed every frame the interface is drawn; answers only when the room has
+/// moved to a different record, so what is kept is a handful of lines a
+/// record rather than sixty a second.
+#[derive(Debug, Default)]
+pub struct Hearing {
+    /// Each deck's record and its smoothed level.
+    levels: std::collections::HashMap<u8, (dj_core::TrackId, f64)>,
+    /// The wall clock at the last reading, for the next step.
+    last: Option<f64>,
+    /// The record last said to be heard; `None` is silence, which is also
+    /// where a night starts, so a quiet start is not written down.
+    said: Option<dj_core::TrackId>,
+    /// The record leading now but not yet for long enough, and since when.
+    leading: Option<(Option<dj_core::TrackId>, f64)>,
+}
+
+impl Hearing {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Read the decks at `now` (unix seconds), and say so when the room has
+    /// moved to a different record.
+    pub fn observe(&mut self, now: f64, decks: &[Meter]) -> Option<Heard> {
+        // A clock that went backwards or stood still for a minute is not a
+        // minute of listening.
+        let step = self.last.map_or(0.0, |last| (now - last).clamp(0.0, 1.0));
+        self.last = Some(now);
+        let follow = 1.0 - (-step / ROOM_SMOOTHING).exp();
+
+        self.levels
+            .retain(|deck, _| decks.iter().any(|d| d.deck == *deck && d.track.is_some()));
+        for deck in decks {
+            let Some(track) = deck.track else { continue };
+            let reached = if deck.playing {
+                f64::from(deck.level.clamp(0.0, 1.0))
+            } else {
+                0.0
+            };
+            let entry = self.levels.entry(deck.deck).or_insert((track, 0.0));
+            // A different record on the deck starts from silence: the last
+            // one's level says nothing about it.
+            if entry.0 != track {
+                *entry = (track, 0.0);
+            }
+            entry.1 += (reached - entry.1) * follow;
+        }
+
+        let loudest = self
+            .levels
+            .values()
+            .filter(|(_, level)| *level >= f64::from(ROOM_SILENT))
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(track, _)| *track);
+
+        if loudest == self.said {
+            self.leading = None;
+            return None;
+        }
+        match self.leading {
+            Some((track, since)) if track == loudest => {
+                if now - since < ROOM_HOLD {
+                    return None;
+                }
+                self.said = loudest;
+                self.leading = None;
+                #[allow(clippy::cast_possible_truncation)]
+                Some(Heard {
+                    at: since.floor() as i64,
+                    track_id: loudest.map(|track| track.to_hex()),
+                })
+            }
+            _ => {
+                self.leading = Some((loudest, now));
+                None
+            }
+        }
+    }
+}
+
 /// How far back a reaction about the moment looks for the part it meant:
 /// long enough for a drop to land and be typed about, short enough that it
 /// is still the drop people are reacting to.
@@ -257,14 +385,18 @@ pub struct Placed {
 /// Put every reaction on the record the room was hearing, `delay` seconds
 /// before it was said, and a reaction about the moment on the part of it
 /// that was most likely meant.
+///
+/// Which record that was is `room`'s answer where it has one — the louder
+/// of two playing together, and not the one waiting in the headphones —
+/// and otherwise the record that came in last.
 #[must_use]
-pub fn place(reactions: &[Reaction], played: &[Played], delay: i64) -> Vec<Placed> {
+pub fn place(reactions: &[Reaction], played: &[Played], room: &[Heard], delay: i64) -> Vec<Placed> {
     reactions
         .iter()
         .map(|reaction| {
             let (about, lean) = read(&reaction.text);
             let heard = reaction.at - delay;
-            let record = played.iter().rposition(|p| p.at <= heard);
+            let record = hearing(played, room, heard);
             let (into, part, part_at) = match record {
                 Some(i) => {
                     let p = &played[i];
@@ -290,6 +422,22 @@ pub fn place(reactions: &[Reaction], played: &[Played], delay: i64) -> Vec<Place
             }
         })
         .collect()
+}
+
+/// The record the room was hearing at `at`: the one [`Hearing`] last measured
+/// as the louder, when it measured one and that record is in the history;
+/// otherwise the one that came in last.
+fn hearing(played: &[Played], room: &[Heard], at: i64) -> Option<usize> {
+    let arrived = played.iter().rposition(|p| p.at <= at);
+    room.iter()
+        .rfind(|heard| heard.at <= at)
+        .and_then(|heard| heard.track_id.as_deref())
+        .and_then(|track| {
+            played
+                .iter()
+                .rposition(|p| p.at <= at && p.track_id == track)
+        })
+        .or(arrived)
 }
 
 /// The part a moment `into` a record most likely meant: a drop in the
@@ -741,6 +889,55 @@ pub fn load(config: &Path, session: &str) -> Vec<Reaction> {
     out
 }
 
+/// The file a session's [`Heard`] lines are kept in: a folder of its own,
+/// so it is never listed as a night of reactions.
+///
+/// # Errors
+/// A session id that would not be a plain file name.
+pub fn room_file(config: &Path, session: &str) -> Result<PathBuf, String> {
+    if !is_session(session) {
+        return Err(format!("{session:?} is not a session"));
+    }
+    Ok(folder(config).join("room").join(format!("{session}.jsonl")))
+}
+
+/// Note that the room moved to a different record.
+///
+/// # Errors
+/// The file system's own sentence.
+pub fn note_room(config: &Path, session: &str, heard: &Heard) -> Result<(), String> {
+    use std::io::Write as _;
+    let path = room_file(config, session)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let line = serde_json::to_string(heard).map_err(|e| e.to_string())?;
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut out| writeln!(out, "{line}"))
+        .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// What the room heard through a session, oldest first; empty for a night
+/// kept before it was measured. A bad line is skipped, as in [`load`].
+#[must_use]
+pub fn load_room(config: &Path, session: &str) -> Vec<Heard> {
+    let Ok(path) = room_file(config, session) else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let mut out: Vec<Heard> = text
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect();
+    out.sort_by_key(|heard| heard.at);
+    out
+}
+
 /// Read a chat log brought in afterwards: one message a line, as
 /// `H:MM:SS name: message` (or `MM:SS`), timed from `start` — the moment
 /// the stream or the recording began. A line without a time is skipped.
@@ -848,6 +1045,153 @@ mod tests {
         ]
     }
 
+    /// Two records, `a` from 1000 and `b` started in the headphones at 1100
+    /// with its fader down, brought up over `a` at 1150; `a` stopped at 1180.
+    /// Read off the meters every tenth of a second, as the interface is
+    /// drawn, and what the room was said to hear each time it moved.
+    fn a_blend(cut_back_at: Option<f64>) -> (dj_core::TrackId, dj_core::TrackId, Vec<Heard>) {
+        let a = dj_core::TrackId::from_bytes([1; 32]);
+        let b = dj_core::TrackId::from_bytes([2; 32]);
+        let mut room = Hearing::new();
+        let mut heard = Vec::new();
+        for tenth in 9_950..12_000 {
+            let now = f64::from(tenth) / 10.0;
+            let b_up = now >= 1_150.0 && cut_back_at.is_none_or(|back| now < back);
+            let decks = [
+                Meter {
+                    deck: 1,
+                    track: Some(a),
+                    playing: (1_000.0..1_180.0).contains(&now),
+                    level: if b_up { 0.3 } else { 0.8 },
+                },
+                Meter {
+                    deck: 2,
+                    track: (now >= 1_090.0).then_some(b),
+                    playing: now >= 1_100.0,
+                    level: if b_up { 0.8 } else { 0.0 },
+                },
+            ];
+            heard.extend(room.observe(now, &decks));
+        }
+        (a, b, heard)
+    }
+
+    /// **The room is heard by its meters, not by what came in last.** A
+    /// record waiting in the headphones is not what the room hears, however
+    /// long it has been playing there; in a blend the louder one is; and
+    /// the moment is stamped when it became the louder, not two seconds
+    /// later when that was sure.
+    #[test]
+    fn the_room_is_heard_by_its_meters() {
+        let (a, b, heard) = a_blend(None);
+        assert_eq!(heard.len(), 2, "{heard:?}");
+        assert_eq!(heard[0].track_id, Some(a.to_hex()));
+        assert!((1_000..=1_001).contains(&heard[0].at), "{heard:?}");
+        assert_eq!(heard[1].track_id, Some(b.to_hex()));
+        // Smoothed over a second, `b` passes `a` just under a second after
+        // the fader went up.
+        assert!((1_150..=1_151).contains(&heard[1].at), "{heard:?}");
+
+        // Two seconds of `b` and back to `a` does not move the room: `b`
+        // leads for well under the hold, from just before 1151 until a
+        // third of a second after it is cut.
+        let (_, _, cut) = a_blend(Some(1_152.0));
+        assert_eq!(
+            cut.iter()
+                .filter(|h| h.track_id == Some(b.to_hex()))
+                .count(),
+            0,
+            "{cut:?}"
+        );
+    }
+
+    /// **Placed on the record the room was hearing, measured.** `b` came in
+    /// at 1100 — the history stamps when a deck started — and the room did
+    /// not hear it until 1150: said at 1120, a reaction is `a`'s. Placed by
+    /// arrival it was `b`'s, which is what a night kept before the room was
+    /// measured still does.
+    #[test]
+    fn a_reaction_goes_to_the_record_the_room_heard() {
+        let (a, b, room) = a_blend(None);
+        let played = vec![
+            Played {
+                at: 1_000,
+                track_id: a.to_hex(),
+                title: "First".to_owned(),
+                artist: "One".to_owned(),
+                drops: vec![118.0],
+                breakdowns: Vec::new(),
+                vocal: None,
+            },
+            Played {
+                at: 1_100,
+                track_id: b.to_hex(),
+                title: "Second".to_owned(),
+                artist: "Two".to_owned(),
+                drops: Vec::new(),
+                breakdowns: Vec::new(),
+                vocal: None,
+            },
+        ];
+        let reactions = [said(1_120, "this drop 🔥"), said(1_170, "love this")];
+        let placed = place(&reactions, &played, &room, 0);
+        assert_eq!(placed[0].record, Some(0), "waiting in the headphones");
+        assert!((placed[0].into - 120.0).abs() < 1e-9);
+        assert_eq!(
+            (placed[0].part, placed[0].part_at),
+            (Part::Drop, Some(118.0)),
+            "and on the part of the record the room heard"
+        );
+        assert_eq!(placed[1].record, Some(1), "brought up over it");
+
+        let by_arrival = place(&reactions, &played, &[], 0);
+        assert_eq!(by_arrival[0].record, Some(1));
+
+        // A record the room heard that the history does not hold -- cut in
+        // and out before it counted as played -- leaves it to arrival.
+        let unknown = [Heard {
+            at: 1_110,
+            track_id: Some("c".to_owned()),
+        }];
+        assert_eq!(place(&reactions, &played, &unknown, 0)[0].record, Some(1));
+    }
+
+    /// Kept beside the night, in a folder of its own so it is never listed
+    /// as a night of reactions, and read back in order past a bad line.
+    #[test]
+    fn what_the_room_heard_is_kept() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let config = dir.path();
+        let later = Heard {
+            at: 20,
+            track_id: None,
+        };
+        let first = Heard {
+            at: 10,
+            track_id: Some("a".to_owned()),
+        };
+        note_room(config, "session-1", &later).expect("kept");
+        note_room(config, "session-1", &first).expect("kept");
+        let path = room_file(config, "session-1").expect("a file");
+        let mut text = std::fs::read_to_string(&path).expect("read");
+        text.push_str("not a line\n");
+        std::fs::write(&path, text).expect("written");
+        assert_eq!(load_room(config, "session-1"), vec![first, later]);
+        assert_ne!(path.parent(), Some(folder(config).as_path()));
+        assert!(load_room(config, "session-2").is_empty());
+        assert!(
+            note_room(
+                config,
+                "../x",
+                &Heard {
+                    at: 0,
+                    track_id: None
+                }
+            )
+            .is_err()
+        );
+    }
+
     /// **Placed on what the room was hearing**, less the stream's delay,
     /// and a reaction to the moment on the part it most likely meant: the
     /// drop just before it, the breakdown it is inside, the voice arriving
@@ -871,6 +1215,7 @@ mod tests {
                 said(1_308, "🔥🔥"),
             ],
             &played,
+            &[],
             8,
         );
         assert_eq!((placed[0].record, placed[0].part), (None, Part::Record));
@@ -899,12 +1244,12 @@ mod tests {
         // Without the delay, the drop comment is heard at 70 s: ten after
         // the drop, still within the window.
         assert_eq!(
-            place(&[said(1_070, "this drop")], &played, 0)[0].part,
+            place(&[said(1_070, "this drop")], &played, &[], 0)[0].part,
             Part::Drop
         );
         // Far past the window, it is not the drop any more.
         assert_eq!(
-            place(&[said(1_095, "this drop")], &played, 0)[0].part,
+            place(&[said(1_095, "this drop")], &played, &[], 0)[0].part,
             Part::Record
         );
     }
@@ -926,7 +1271,7 @@ mod tests {
         .into_iter()
         .map(|(at, text)| said(at, text))
         .collect();
-        let placed = place(&reactions, &played, 0);
+        let placed = place(&reactions, &played, &[], 0);
         let night = summary(&placed, &played);
         assert_eq!(night.reactions, 6);
         assert_eq!((night.moments, night.asked, night.requests), (3, 1, 1));
@@ -961,6 +1306,7 @@ mod tests {
         let placed = place(
             &[said(1_065, "this drop 🔥"), said(1_150, "boring")],
             &played,
+            &[],
             0,
         );
         let night = summary(&placed, &played);
@@ -990,6 +1336,7 @@ mod tests {
                 said(1_110, "omg"),
             ],
             &played,
+            &[],
             0,
         );
         let two = place(
@@ -998,6 +1345,7 @@ mod tests {
                 said(1_250, "🔥 on the second record"),
             ],
             &played,
+            &[],
             0,
         );
         let nights = vec![(one, played.clone()), (two, played.clone())];

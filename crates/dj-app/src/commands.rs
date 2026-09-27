@@ -1876,7 +1876,11 @@ fn crowd_marks_of(state: &AppState, deck: u8) -> Vec<CrowdMarkInfo> {
                 })
                 .collect();
             let reactions = crate::crowd::load(&config, session);
-            Some((crate::crowd::place(&reactions, &played, delay), played))
+            let room = crate::crowd::load_room(&config, session);
+            Some((
+                crate::crowd::place(&reactions, &played, &room, delay),
+                played,
+            ))
         })
         .collect();
     crate::crowd::marks(&nights, &track_id)
@@ -17671,7 +17675,8 @@ fn crowd_view_of(state: &AppState, session: Option<String>) -> Result<CrowdView,
         reactions.sort_by_key(|r| r.at);
     }
     let played = crowd_played(state, &session);
-    let placed = crate::crowd::place(&reactions, &played, settings.delay);
+    let room = crate::crowd::load_room(&config, &session);
+    let placed = crate::crowd::place(&reactions, &played, &room, settings.delay);
     let summary = crate::crowd::summary(&placed, &played);
     let goals = crate::crowd::answer(&settings.goals, &summary);
 

@@ -16,6 +16,15 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **A crowd's reaction goes to the record the room was hearing.** djmanzo
+  now follows each deck's level after its fader and the crossfader and
+  notes which record is the louder. A reaction said while the next record
+  waited in the headphones, or during a blend, goes to the record the room
+  heard rather than to the one started last. Nights kept before this are
+  placed as they were.
+- **A past night's reactions keep their drop, breakdown or voice after a
+  restart**, and a test now holds it.
+
 ## v0.31.0 — Words in time by WhisperX, a song for every karaoke guest, and pop out almost everywhere
 
 - **Pop out almost every panel.** Sixteen panels now have *pop out* on

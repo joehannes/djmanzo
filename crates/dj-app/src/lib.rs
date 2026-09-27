@@ -490,6 +490,10 @@ pub fn run() {
                         &library_writer,
                         &pump_audience,
                     );
+                    {
+                        let state: tauri::State<'_, AppState> = handle.state();
+                        record_room(&state, &snapshot, &watched_tracks, &session_id);
+                    }
                     // §115: the quiet proposer reads the frame the DJ is
                     // about to see, on the pump that draws it — so what it
                     // proposes is about what is on screen, never a second
@@ -1010,6 +1014,48 @@ fn record_responses(state: &AppState, session: &str, writer: &persist::LibraryWr
                 after: response.after,
             });
         }
+    }
+}
+
+/// §119: which record the room is hearing, read off each deck's meter after
+/// its fader and the crossfader, and noted beside the night's reactions when
+/// it moves -- so one said during a blend, or while the next record waits in
+/// the headphones, is placed on the record the room heard.
+fn record_room(
+    state: &AppState,
+    snapshot: &Snapshot,
+    tracks: &snapshot::DeckTracks,
+    session: &str,
+) {
+    let decks: Vec<crowd::Meter> = {
+        let names = tracks.lock().ok();
+        snapshot
+            .decks
+            .iter()
+            .map(|deck| crowd::Meter {
+                deck: deck.number,
+                track: names
+                    .as_ref()
+                    .and_then(|map| map.get(&deck.number))
+                    .map(|loaded| loaded.id)
+                    .filter(|_| deck.loaded),
+                playing: deck.playing,
+                level: deck.peak,
+            })
+            .collect()
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64());
+    let moved = state
+        .hearing()
+        .lock()
+        .ok()
+        .and_then(|mut hearing| hearing.observe(now, &decks));
+    if let (Some(heard), Some(config)) = (moved, state.config_dir())
+        && let Err(error) = crowd::note_room(&config, session, &heard)
+    {
+        tracing::warn!(%error, "could not note which record the room heard");
     }
 }
 
