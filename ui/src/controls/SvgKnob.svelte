@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { KnobState } from "./grammar";
   import type { Face } from "./faces";
+  import type { FxFace } from "./fxFaces";
   import { theme as globalTheme } from "../theme.svelte";
   import { executeThemePipeline } from "./themes/engine";
   import SvgRenderer from "./SvgRenderer.svelte";
@@ -49,7 +50,7 @@
     disabled?: boolean;
     size?: number;
     /** §114: the curve the knob's face draws — see `faces.ts`. */
-    face?: Face;
+    face?: Face | FxFace;
     /**
      * §114: the value the knob rests at, which its arc fills from — the
      * filter's centre, an EQ's unity. Absent is `min`.

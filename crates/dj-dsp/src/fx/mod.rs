@@ -87,6 +87,40 @@ pub struct Slot {
     sweep: [Biquad; CHANNELS],
 }
 
+// Each effect's numbers, named because two things read them: the effect
+// here and its knob's face in `ui/src/controls/fxFaces.ts`, which draws what
+// the effect does at the knob's setting. A test holds the two together.
+
+/// The echo's feedback at the top of its knob. Capped below 1.0 so a rack
+/// left running cannot build to infinity -- self-oscillation is a
+/// synthesiser feature and a PA speaker hazard.
+const ECHO_FEEDBACK_MAX: f32 = 0.9;
+/// How far the delay's two taps come apart, as a share of the beat.
+const DELAY_SPREAD_MAX: f32 = 0.5;
+/// The phaser's sweep: where it rests, how far it can travel, and how much
+/// of that travel the `sweep` knob always gives.
+const PHASER_LOWEST: f32 = 0.05;
+const PHASER_TRAVEL: f32 = 0.75;
+const PHASER_REACH_MIN: f32 = 0.3;
+/// The auto-filter's corner sweeps from here by this ratio.
+const AUTO_FILTER_LOW_HZ: f32 = 120.0;
+const AUTO_FILTER_RANGE: f32 = 60.0;
+/// Its resonance: a Butterworth at no bite, whistling at full.
+const AUTO_FILTER_Q_MIN: f32 = 0.707;
+const AUTO_FILTER_Q_SPAN: f32 = 6.0;
+/// The gate's duty cycle across its knob, and its raised-cosine edge.
+const GATE_DUTY_MIN: f32 = 0.1;
+const GATE_DUTY_SPAN: f32 = 0.8;
+const GATE_EDGE: f32 = 0.05;
+/// The crush: 16 bits down to 3, and holding up to every 32nd sample.
+const CRUSH_BITS: f32 = 16.0;
+const CRUSH_BITS_SPAN: f32 = 13.0;
+const CRUSH_STRIDE_SPAN: f32 = 31.0;
+/// The flanger's feedback at full depth, and its 1–10 ms sweep.
+const FLANGER_FEEDBACK_MAX: f32 = 0.7;
+const FLANGER_SHORTEST_S: f32 = 0.001;
+const FLANGER_SPAN_S: f32 = 0.009;
+
 /// How many allpass stages the phaser runs.
 ///
 /// Six, which is three notches. Four is thin and eight starts to sound like a
@@ -254,9 +288,7 @@ impl Slot {
     fn echo(&mut self, left: f32, right: f32, ctx: &FxContext) -> (f32, f32) {
         let delay = (self.beats * ctx.beat()).clamp(1.0, self.line.frames() as f32 - 2.0);
         let (tail_l, tail_r) = self.line.read(delay);
-        // Capped below 1.0 so a rack left running cannot build to infinity —
-        // self-oscillation is a synthesiser feature and a PA speaker hazard.
-        let feedback = self.amount * 0.9;
+        let feedback = self.amount * ECHO_FEEDBACK_MAX;
         self.line
             .push(left + tail_l * feedback, right + tail_r * feedback);
         (tail_l, tail_r)
@@ -275,7 +307,7 @@ impl Slot {
     fn delay(&mut self, left: f32, right: f32, ctx: &FxContext) -> (f32, f32) {
         let beat = self.beats * ctx.beat();
         let limit = self.line.frames() as f32 - 2.0;
-        let spread = self.amount * 0.5;
+        let spread = self.amount * DELAY_SPREAD_MAX;
         let (tail_l, _) = self.line.read((beat * (1.0 - spread)).clamp(1.0, limit));
         let (_, tail_r) = self.line.read((beat * (1.0 + spread)).clamp(1.0, limit));
         self.line.push(left, right);
@@ -301,10 +333,17 @@ impl Slot {
         // The sweep runs over the range where the notches are audible as pitch
         // movement rather than as a tone control.
         let travel = 0.5 - 0.5 * (std::f32::consts::TAU * self.phase).cos();
-        let centre = 0.05 + 0.75 * travel * (0.3 + 0.7 * self.amount);
-        // First-order allpass coefficient. Straight from the bilinear
-        // transform: `(1 - t) / (1 + t)` where `t = tan(pi * f / rate)`.
-        let coefficient = (1.0 - centre) / (1.0 + centre);
+        let centre = PHASER_LOWEST
+            + PHASER_TRAVEL * travel * (PHASER_REACH_MIN + (1.0 - PHASER_REACH_MIN) * self.amount);
+        // First-order allpass coefficient, from the bilinear transform:
+        // `(t - 1) / (t + 1)` where `t = tan(pi * f / rate)`, for the stage
+        // below, `(c + z^-1) / (1 + c z^-1)`. It was `(1 - t) / (1 + t)`
+        // until §114's phaser face drew the result: the other sign mirrors
+        // every break frequency to the far side of the band, so the notches
+        // sat between 5 and 20 kHz and a 1 kHz tone never dipped by more than
+        // a twentieth. With it, three notches sweep from about 200 Hz to
+        // 19 kHz.
+        let coefficient = (centre - 1.0) / (centre + 1.0);
 
         let mut frame = [left, right];
         for stage in &mut self.stages {
@@ -335,8 +374,8 @@ impl Slot {
         let travel = 0.5 - 0.5 * (std::f32::consts::TAU * self.phase).cos();
         // Exponential, because pitch is: a linear sweep spends nearly all its
         // time in the top octave, where a listener hears almost no movement.
-        let hz = 120.0 * (60.0_f32).powf(travel);
-        let q = 0.707 + self.amount * 6.0;
+        let hz = AUTO_FILTER_LOW_HZ * AUTO_FILTER_RANGE.powf(travel);
+        let q = AUTO_FILTER_Q_MIN + self.amount * AUTO_FILTER_Q_SPAN;
         // Retuned rather than replaced: swapping the whole struct would throw
         // away the filter's memory, and a filter that forgets its last two
         // samples every frame is a filter that clicks at every frame.
@@ -361,8 +400,8 @@ impl Slot {
             self.phase -= self.phase.floor();
         }
 
-        let duty = 0.1 + self.amount * 0.8;
-        let edge = 0.05;
+        let duty = GATE_DUTY_MIN + self.amount * GATE_DUTY_SPAN;
+        let edge = GATE_EDGE;
         let gain = if self.phase < duty - edge {
             1.0
         } else if self.phase < duty {
@@ -386,9 +425,9 @@ impl Slot {
     fn crush(&mut self, left: f32, right: f32) -> (f32, f32) {
         // 16 bits down to 3. Below three it stops being a pitch and becomes a
         // fault, and there is no musical use for the last stop.
-        let levels = 2.0_f32.powf(16.0 - self.amount * 13.0);
+        let levels = 2.0_f32.powf(CRUSH_BITS - self.amount * CRUSH_BITS_SPAN);
         // Hold every Nth sample, up to 32 -- a downsample to 1.5 kHz.
-        let stride = 1.0 + self.amount * 31.0;
+        let stride = 1.0 + self.amount * CRUSH_STRIDE_SPAN;
 
         self.held += 1.0;
         if self.held >= stride {
@@ -417,10 +456,10 @@ impl Slot {
         // 1 ms to 10 ms, the range where the comb notches land in the audible
         // band. Longer and it is a chorus; longer still and it is an echo.
         let sweep = 0.5 - 0.5 * (std::f32::consts::TAU * self.phase).cos();
-        let delay = ctx.sample_rate * (0.001 + 0.009 * sweep);
+        let delay = ctx.sample_rate * (FLANGER_SHORTEST_S + FLANGER_SPAN_S * sweep);
 
         let (tail_l, tail_r) = self.line.read(delay);
-        let feedback = self.amount * 0.7;
+        let feedback = self.amount * FLANGER_FEEDBACK_MAX;
         self.line
             .push(left + tail_l * feedback, right + tail_r * feedback);
         // Summed with the dry signal rather than replacing it: the comb filter
@@ -695,6 +734,97 @@ mod tests {
         assert!(
             highest - lowest > 0.1,
             "the phaser barely moved: {lowest} to {highest}"
+        );
+    }
+
+    /// **A phaser's notch passes through the middle of the band.** Three
+    /// notches sweep from about 200 Hz to 19 kHz, so a 1 kHz tone is all but
+    /// cancelled somewhere in a cycle. With the allpass coefficient's sign the
+    /// other way round -- as it was until §114's phaser face drew it -- every
+    /// notch sat above 5 kHz and this tone never lost more than a twentieth.
+    #[test]
+    fn a_phasers_notch_passes_through_the_middle_of_the_band() {
+        let mut slot = slot(EffectKind::Phaser);
+        slot.set_beats(1.0);
+        slot.set_amount(1.0);
+        let beat = (SR * 60.0 / 120.0) as usize;
+        let period = (SR / 1_000.0) as usize;
+        let mut peaks = Vec::new();
+        let mut peak = 0.0_f32;
+        for n in 0..(beat * 2) {
+            let tone = (std::f32::consts::TAU * 1_000.0 * n as f32 / SR).sin();
+            let (left, _) = slot.process_frame(tone, tone, &ctx(120.0));
+            peak = peak.max(left.abs());
+            if n % period == period - 1 {
+                // The first twentieth of a second is the allpasses filling.
+                if n > SR as usize / 20 {
+                    peaks.push(peak);
+                }
+                peak = 0.0;
+            }
+        }
+        let loudest = peaks.iter().copied().fold(0.0_f32, f32::max);
+        let quietest = peaks.iter().copied().fold(f32::MAX, f32::min);
+        assert!(
+            quietest < 0.2 * loudest,
+            "no notch reached 1 kHz: {quietest} against {loudest}"
+        );
+    }
+
+    /// The knobs' faces draw these effects (`ui/src/controls/fxFaces.ts`):
+    /// the numbers they draw with are these numbers.
+    #[test]
+    fn the_effect_faces_draw_these_effects() {
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../ui/src/controls/fxFaces.ts"
+        ))
+        .expect("the interface's effect faces are where they were");
+        let constant = |name: &str| -> f32 {
+            let line = source
+                .lines()
+                .find(|line| line.starts_with(&format!("export const {name} = ")))
+                .unwrap_or_else(|| panic!("{name} is not in fxFaces.ts"));
+            line.trim_end_matches(';')
+                .rsplit(' ')
+                .next()
+                .unwrap()
+                .replace('_', "")
+                .parse()
+                .unwrap()
+        };
+        let pairs = [
+            ("ECHO_FEEDBACK_MAX", ECHO_FEEDBACK_MAX),
+            ("DELAY_SPREAD_MAX", DELAY_SPREAD_MAX),
+            ("REVERB_FEEDBACK_MIN", tank::Tank::FEEDBACK_MIN),
+            ("REVERB_FEEDBACK_SPAN", tank::Tank::FEEDBACK_SPAN),
+            ("GATE_DUTY_MIN", GATE_DUTY_MIN),
+            ("GATE_DUTY_SPAN", GATE_DUTY_SPAN),
+            ("GATE_EDGE", GATE_EDGE),
+            ("CRUSH_BITS", CRUSH_BITS),
+            ("CRUSH_BITS_SPAN", CRUSH_BITS_SPAN),
+            ("CRUSH_STRIDE_SPAN", CRUSH_STRIDE_SPAN),
+            ("FLANGER_FEEDBACK_MAX", FLANGER_FEEDBACK_MAX),
+            ("FLANGER_SHORTEST_S", FLANGER_SHORTEST_S),
+            ("FLANGER_SPAN_S", FLANGER_SPAN_S),
+            ("PHASER_LOWEST", PHASER_LOWEST),
+            ("PHASER_TRAVEL", PHASER_TRAVEL),
+            ("PHASER_REACH_MIN", PHASER_REACH_MIN),
+            ("AUTO_FILTER_LOW_HZ", AUTO_FILTER_LOW_HZ),
+            ("AUTO_FILTER_RANGE", AUTO_FILTER_RANGE),
+            ("AUTO_FILTER_Q_MIN", AUTO_FILTER_Q_MIN),
+            ("AUTO_FILTER_Q_SPAN", AUTO_FILTER_Q_SPAN),
+        ];
+        for (name, value) in pairs {
+            assert_eq!(constant(name), value, "{name}");
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let stages = PHASER_STAGES as f32;
+        assert_eq!(constant("PHASER_STAGES"), stages);
+        let mean = tank::Tank::COMB_MS.iter().sum::<f32>() / 4.0;
+        assert!(
+            (constant("REVERB_COMB_MEAN_MS") - mean).abs() < 0.01,
+            "{mean}"
         );
     }
 

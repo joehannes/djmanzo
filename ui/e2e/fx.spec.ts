@@ -78,6 +78,48 @@ test.describe("§120: the effects rack", () => {
     expect(errorsThrown(page)).toEqual([]);
   });
 
+  /**
+   * **§114: an effect's knob draws what the effect does.** The echo's
+   * feedback knob shows its repeats — one with no feedback, eight ringing on
+   * at full; the auto-filter's bite shows its low-pass rising into a peak at
+   * the corner; the wet knob, which only mixes, draws nothing of the sort.
+   * The shapes are `fxFaces.ts`'s; this holds that they reach the rack.
+   */
+  test("each effect's own knob draws what the effect does", async ({ page }) => {
+    const thrown = errorsThrown(page);
+    await openShell(page, "/");
+    const empty = (slot: number) => ({ ...ECHO, slot, kind: "none", enabled: false });
+    const face = (name: string) =>
+      deck(page)
+        .getByRole("slider", { name })
+        .evaluate((knob) =>
+          [...knob.querySelectorAll("svg path")]
+            .map((p) => ({
+              d: p.getAttribute("d") ?? "",
+              stroke: p.getAttribute("stroke"),
+              width: p.getAttribute("stroke-width"),
+            }))
+            // The face: drawn in the knob's value colour, finer than its arc.
+            .filter((p) => p.stroke === "var(--knob-value)" && p.width === "2")
+            .map((p) => p.d),
+        );
+    const repeats = (d: string) => (d.match(/M /g) ?? []).length;
+
+    await rack(page, [{ ...ECHO, amount: 0 }, empty(2), empty(3)]);
+    await expect.poll(async () => (await face("Slot 1 feedback")).map(repeats)).toEqual([1]);
+    await rack(page, [{ ...ECHO, amount: 1 }, empty(2), empty(3)]);
+    await expect.poll(async () => (await face("Slot 1 feedback")).map(repeats)).toEqual([8]);
+    expect(await face("Slot 1 wet"), "wet only mixes").toEqual([]);
+
+    await rack(page, [{ ...ECHO, kind: "filter", amount_label: "bite", amount: 1 }, empty(2), empty(3)]);
+    const [curve] = await face("Slot 1 bite");
+    const heights = [...curve.matchAll(/[ML] [\d.]+ ([\d.]+)/g)].map((m) => Number(m[1]));
+    expect(heights.length).toBeGreaterThan(90);
+    expect(Math.min(...heights), "the resonance rises above 0 dB").toBeLessThan(45);
+    expect(heights[heights.length - 1], "and the top is cut").toBeGreaterThan(55);
+    expect(thrown).toEqual([]);
+  });
+
   /** A small drag on wet is a small change, sent as the rack's own action. */
   test("wet turns gradually", async ({ page }) => {
     await openShell(page, "/");

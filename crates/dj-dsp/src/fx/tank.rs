@@ -131,7 +131,11 @@ impl Tank {
     /// So the millisecond figures are a target and [`next_prime`] does the
     /// deciding. Every length is then prime, so any two are mutually prime at
     /// every sample rate, without a table per rate.
-    const COMB_MS: [f32; 4] = [29.7, 37.1, 41.1, 43.7];
+    pub(super) const COMB_MS: [f32; 4] = [29.7, 37.1, 41.1, 43.7];
+    /// The combs' feedback in the smallest room, and how much more the
+    /// largest gets: below one, always, or the tail would grow.
+    pub(super) const FEEDBACK_MIN: f32 = 0.7;
+    pub(super) const FEEDBACK_SPAN: f32 = 0.27;
     /// Allpass lengths. Short, because their job is density rather than length.
     const ALLPASS_MS: [f32; 2] = [5.0, 1.7];
 
@@ -164,7 +168,7 @@ impl Tank {
         // Capped below the point of self-oscillation. An infinite reverb is a
         // synthesiser feature and a PA speaker hazard.
         let size = size.clamp(0.0, 1.0);
-        let feedback = 0.7 + size * 0.27;
+        let feedback = Self::FEEDBACK_MIN + size * Self::FEEDBACK_SPAN;
         // A gentle range, and the reason is a mistake worth recording: damping
         // shortens the tail, so a damping that climbs as fast as the feedback
         // cancels it out and the size knob does nothing. A big room does absorb

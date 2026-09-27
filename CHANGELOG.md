@@ -29,6 +29,14 @@ Versioning follows semver, with one project-specific convention:
   backwards in reverse. In CDJ mode it stands still with a ridged ring, and
   only its position indicator turns. The natural themes draw the record as
   a log's growth rings, a different log on each deck.
+- **An effect's knob draws what the effect does.** The echo's feedback knob
+  shows its repeats fading, the gate's width its chop, the crush its
+  staircase, the reverb its tail and the filter's bite its resonant peak,
+  each at the knob's setting.
+- **The phaser's notches now sweep through the music.** A sign error put
+  them between 5 and 20 kHz, where the phaser barely touched anything
+  below the cymbals; they now sweep from about 200 Hz to 19 kHz, as the
+  phaser was written to do.
 
 ## v0.31.0 — Words in time by WhisperX, a song for every karaoke guest, and pop out almost everywhere
 

@@ -13,6 +13,7 @@
    */
   import IconButton from "./controls/IconButton.svelte";
   import SvgKnob from "./controls/SvgKnob.svelte";
+  import { fxFaceOf } from "./controls/fxFaces";
   import { EFFECTS, saveRackPreset, type FxSlot } from "./api";
 
   let {
@@ -175,6 +176,7 @@
             readout={`${Math.round(slot.amount * 100)}%`}
             size={34}
             origin={0.5}
+            face={fxFaceOf(slot.kind)}
             disabled={!enabled}
             oninput={(value) => send(`${target} fx ${slot.slot} amount ${value}`)}
             ondblclick={() => send(`${target} fx ${slot.slot} amount 0.5`)}

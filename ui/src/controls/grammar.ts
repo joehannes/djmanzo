@@ -1,5 +1,6 @@
 import type { Snippet } from "svelte";
 import type { Face, PadRole } from "./faces";
+import type { FxFace } from "./fxFaces";
 
 /**
  * What a control looks like right now.
@@ -19,7 +20,7 @@ export interface KnobState {
   size: number;
   label?: string;
   /** §114: the curve its face draws, where the knob shapes the sound. */
-  face?: Face;
+  face?: Face | FxFace;
   /**
    * §114: where the knob rests, 0..1 along its sweep — the filter's centre,
    * an EQ's unity. The arc fills from here, so a knob at rest shows none.

@@ -1,6 +1,7 @@
 import { performance, type ResolvedPerformance } from "../../performance.svelte";
 import type { KnobState, FaderState, PadState } from "../grammar";
-import { PAD_LIGHT, facePath, pebblePath, stonePath, unityPath } from "../faces";
+import { PAD_LIGHT, facePath, pebblePath, stonePath, unityPath, type Face } from "../faces";
+import { fxFacePath, fxReferencePath, type FxFace } from "../fxFaces";
 
 // The fundamental render instruction set for any SVG control
 export interface SvgRenderState {
@@ -214,15 +215,18 @@ function withValue(
     // shelf, the bell, the filter's slope — against the line where it does
     // nothing.
     if (state.face) {
+      // An effect's face draws the effect, against silence or 0 dB -- see
+      // `fxFaces.ts`; a tone knob's draws its curve against 0 dB.
+      const fx = state.face.startsWith("fx-") ? (state.face as FxFace) : null;
       paths.push({
-        d: unityPath(),
+        d: fx ? fxReferencePath(fx) : unityPath(),
         fill: "none",
         stroke: "var(--border)",
         strokeWidth: 1,
         role: "value",
       });
       paths.push({
-        d: facePath(state.face, state.value),
+        d: fx ? fxFacePath(fx, state.value) : facePath(state.face as Face, state.value),
         fill: "none",
         stroke: "var(--knob-value)",
         strokeWidth: 2,
