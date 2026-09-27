@@ -447,6 +447,39 @@ installed and no real song was timed here. Every run on a DJ's machine times
 itself stage by stage and says whether it met the budget, which is the
 measurement the owner's rule asks for.
 
+## Options put to the owner: streaming, visuals, video, words, a marketplace (§119, §122, §123)
+
+Researched in September 2026 and put to the owner as one decision page on
+27 September, before anything is built — as asked: "before you start
+implementing half-solutions as of youtube/tiktok live/obs, please finish all
+other clear tasks and report as of options". Nothing below is a dependency
+yet; each is recorded so the decision can be made knowing its licence and
+the platform's terms.
+
+| Option | Licence or terms | What it means for djmanzo |
+|---|---|---|
+| OBS, driven over obs-websocket | OBS and the plugin: GPL-3.0; client libraries (`obs-websocket-js`, `obs-websocket-py`): MIT | A separate program djmanzo talks to over a socket is not a derivative work, so ADR-0002 is not in play. djmanzo already feeds OBS its now-playing overlay (§108). |
+| Encoding and sending video inside djmanzo | x264: GPL; FFmpeg: LGPL or GPL by build; Cisco's OpenH264 binary: BSD with Cisco's patent licence | Linking x264 or a GPL FFmpeg is ruled out; only OpenH264 or a platform's hardware encoder could be used. Recommended against: OBS does this. |
+| TikTok LIVE | No public LIVE API. Streaming from other software needs a key from LIVE Studio or "Go LIVE with third-party tools": 1,000+ followers, 18+, a new key each stream, not offered to every account | Streaming by key is within terms. Reading comments needs the reverse-engineered `TikTokLive` library, against TikTok's terms and liable to break; offered only as the owner's explicit choice, off by default. |
+| YouTube Live API | Google API terms; OAuth; an app requesting YouTube scopes must pass Google's verification before more than 100 users | `liveChatMessages.streamList` pushes chat and avoids the 10,000-unit daily quota that polling a 3-hour set would exhaust. Either djmanzo is registered and verified with Google, or each DJ brings a Google Cloud client. |
+| Butterchurn (MilkDrop in WebGL) | MIT | Usable. The MilkDrop community presets it plays are separate works whose licences vary; only presets with a clear licence would be shipped. |
+| Video files on a deck | symphonia (MPL-2.0, already in the tree) decodes the sound of MP4, MOV, MKV and WebM; the picture plays in the webview | No FFmpeg in-process. On Linux, H.264 needs the distribution's GStreamer plugins (their licence is the distribution's); macOS and Windows play it natively. To be verified with a real file. |
+| Wikimedia Commons | Every file freely licensed, usually CC BY or BY-SA; the API returns licence and author | Safe for a venue's screen with the credit shown. |
+| TheAudioDB | Free API; community artwork, each image's Creative Commons status in its record | Usable per image, only where the record says Creative Commons. |
+| fanart.tv | Free key; images remain their owners' copyright | Not cleared for public display; not offered. |
+| Musixmatch | Free plan shows 30% of a lyric; full and timed lyrics for commercial use need a paid licence | Behind the DJ's own key, off by default. |
+| LyricFind | Licensed business-to-business, with display rights | A venue's contract, not djmanzo's. |
+| Genius | API returns metadata, not lyric text; scraping pages breaks its terms | Not used. |
+| Lemon Squeezy, Paddle | Merchants of record, about 5% + $0.50, handle VAT and sales tax | For selling the owner's own packs. Paying other contributors needs payouts (Stripe Connect), moderation and takedowns — a marketplace of its own. |
+| Suno | No public API (a partner intake opened in July 2026); its terms forbid "data mining, robots, scraping" and framing, with accounts suspended for it | Built as a window the DJ drives; scripting it is offered only as the owner's explicit choice. |
+
+Sources are in the decision page and in the notes this table was made from:
+OBS WebSocket protocol, TikTok stream-key guides and the `TikTokLive`
+repository, YouTube's `streamList` reference, Butterchurn's repository,
+Commons' licensing and API pages, TheAudioDB's and fanart.tv's terms,
+Musixmatch's plans, Suno's terms of service and Music Business Worldwide on
+its developer intake, and a 2026 comparison of merchants of record.
+
 ## Karaoke hosting (§107)
 
 Researched 2026-09-24 for the owner's ask to "investigate and research in
