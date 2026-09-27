@@ -2739,6 +2739,8 @@ export interface Profile {
   effect: string | null;
   /** §12: the middle half of the tempos played here, lowest and highest. */
   tempo: [number, number] | null;
+  /** §12: how the key usually moves from one record to the next here. */
+  movement: string | null;
   automation: string | null;
   techniques: string[];
   /** Genre and its share of the plays, commonest first. */

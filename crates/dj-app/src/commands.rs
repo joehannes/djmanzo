@@ -2380,6 +2380,9 @@ pub struct ProfileDto {
     pub effect: Option<String>,
     /// §12: the middle half of the tempos played here, lowest and highest.
     pub tempo: Option<[f64; 2]>,
+    /// §12: how the key usually moves from one record to the next here, as
+    /// `dj_core::KeyRelation::as_str` names it.
+    pub movement: Option<String>,
     pub automation: Option<String>,
     pub techniques: Vec<String>,
     /// Genre and its share of the plays, commonest first.
@@ -2401,6 +2404,7 @@ impl ProfileDto {
             loop_beats: p.loop_beats(),
             effect: p.effect().map(|e| e.name().to_owned()),
             tempo: p.tempo().map(|(low, high)| [low, high]),
+            movement: p.movement().map(|m| m.as_str().to_owned()),
             automation: p.automation().map(|a| a.name().to_owned()),
             techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
             genres: p.genres().to_vec(),
@@ -2550,19 +2554,27 @@ pub fn learned_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileDto>, S
     for setting in crate::setting::Setting::ALL {
         nights.extend(db.nights_in(setting.slug()).map_err(|e| e.to_string())?);
     }
-    // One query per setting, and only for the settings a profile was built
-    // for: asking for every genre table up front would be six queries to
-    // answer a question about, usually, one.
-    let genres =
-        |setting: crate::setting::Setting| db.genres_in(setting.slug()).unwrap_or_default();
-    let tempos =
-        |setting: crate::setting::Setting| db.tempos_in(setting.slug()).unwrap_or_default();
-    Ok(
-        crate::profile::profiles(&nights, &genres, &tempos, crate::profile::now())
-            .into_iter()
-            .map(|p| ProfileDto::of(&p))
-            .collect(),
+    // Asked per setting, and only for the settings a profile was built for:
+    // asking for every one up front would be six sets of queries to answer a
+    // question about, usually, one.
+    Ok(crate::profile::profiles(
+        &nights,
+        &|setting| played_in(&db, setting),
+        crate::profile::now(),
     )
+    .into_iter()
+    .map(|p| ProfileDto::of(&p))
+    .collect())
+}
+
+/// What the library can derive about one kind of night, for its profile:
+/// the genres, the tempos and the key steps of what was played there.
+fn played_in(db: &dj_library::Library, setting: crate::setting::Setting) -> crate::profile::Played {
+    crate::profile::Played {
+        genres: db.genres_in(setting.slug()).unwrap_or_default(),
+        tempos: db.tempos_in(setting.slug()).unwrap_or_default(),
+        steps: db.key_steps_in(setting.slug()).unwrap_or_default(),
+    }
 }
 
 /// One of §80's four learnable traits, as the panel offers it.
@@ -2605,11 +2617,11 @@ pub fn learned_persona(state: State<'_, AppState>) -> Result<Vec<LearnedDto>, St
     for setting in crate::setting::Setting::ALL {
         nights.extend(db.nights_in(setting.slug()).map_err(|e| e.to_string())?);
     }
-    let genres =
-        |setting: crate::setting::Setting| db.genres_in(setting.slug()).unwrap_or_default();
-    let tempos =
-        |setting: crate::setting::Setting| db.tempos_in(setting.slug()).unwrap_or_default();
-    let profiles = crate::profile::profiles(&nights, &genres, &tempos, crate::profile::now());
+    let profiles = crate::profile::profiles(
+        &nights,
+        &|setting| played_in(&db, setting),
+        crate::profile::now(),
+    );
     // Tonight's own actions, for the one trait §81's profiles cannot carry:
     // which stem a DJ actually reaches for. `DeckAction::Stem` has always
     // carried it, and §14's gestures collapse all four into one on purpose —
@@ -2949,10 +2961,17 @@ mod tests {
                     effect: None,
                 })
                 .collect();
-            crate::profile::profiles(&nights, &|_| counted.clone(), &|_| Vec::new(), 0)
-                .into_iter()
-                .next()
-                .expect("enough nights")
+            crate::profile::profiles(
+                &nights,
+                &|_| crate::profile::Played {
+                    genres: counted.clone(),
+                    ..crate::profile::Played::default()
+                },
+                0,
+            )
+            .into_iter()
+            .next()
+            .expect("enough nights")
         }
 
         /// **A lifted score moves the row.**
@@ -8584,9 +8603,7 @@ pub(crate) fn tonight_profile(
 ) -> Option<crate::profile::Profile> {
     let setting = crate::setting::Setting::parse(&db.night(&state.session_id()).ok()??.setting)?;
     let nights = db.nights_in(setting.slug()).ok()?;
-    let genres = |s: crate::setting::Setting| db.genres_in(s.slug()).unwrap_or_default();
-    let tempos = |s: crate::setting::Setting| db.tempos_in(s.slug()).unwrap_or_default();
-    crate::profile::profiles(&nights, &genres, &tempos, crate::profile::now())
+    crate::profile::profiles(&nights, &|s| played_in(db, s), crate::profile::now())
         .into_iter()
         .find(|p| p.setting() == setting)
 }

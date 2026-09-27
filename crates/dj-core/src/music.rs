@@ -402,6 +402,15 @@ pub enum KeyRelation {
 }
 
 impl KeyRelation {
+    /// Every relation, nearest first.
+    pub const ALL: [Self; 5] = [
+        Self::Same,
+        Self::Neighbour,
+        Self::RelativeMode,
+        Self::Tritone,
+        Self::Distant,
+    ];
+
     /// True when the two sit together well enough to hold a blend open.
     ///
     /// Agrees with [`MusicalKey::is_compatible_with`] by construction: the

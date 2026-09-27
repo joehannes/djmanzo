@@ -392,7 +392,7 @@ mod tests {
                 })
             })
             .collect();
-        crate::profile::profiles(&nights, &|_| Vec::new(), &|_| Vec::new(), 0)
+        crate::profile::profiles(&nights, &|_| crate::profile::Played::default(), 0)
     }
 
     /// **The load-bearing one: a rejected claim is neither raised again nor
@@ -584,8 +584,7 @@ mod tests {
                 .collect();
             let said = learned_from(&crate::profile::profiles(
                 &nights,
-                &|_| Vec::new(),
-                &|_| Vec::new(),
+                &|_| crate::profile::Played::default(),
                 0,
             ));
             said.into_iter()

@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **djmanzo learns how you move between keys.** For each kind of night it
+  looks at each record beside the one played before it and names the step
+  as the key wheel does: the same key, a step round the wheel, the
+  relative major or minor, or further. Once twelve steps show it and half
+  agree, the profile says it ("keys mostly a step round the wheel"). A
+  record with no key breaks the chain rather than being stepped over.
 - **djmanzo learns the tempos you play at, per kind of night.** Once three
   nights of a kind have twelve records with a known tempo, the profile says
   the middle half of them ("124–130 BPM"), so one odd record does not

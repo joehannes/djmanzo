@@ -7,7 +7,7 @@ use crate::record::{
     EditableField, LibraryTrack, PlayStats, StoredAnalysis, StoredCue, StoredLoop, Tags, TrackEdit,
 };
 use crate::schema;
-use dj_core::{Mode, SampleRate, TrackId};
+use dj_core::{Mode, MusicalKey, SampleRate, TrackId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -1470,6 +1470,60 @@ impl Library {
             let mut out = Vec::new();
             for row in rows {
                 out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
+    /// Each record played across the nights of one setting, beside the one
+    /// played before it that night, by key -- with when the second was played.
+    ///
+    /// §12's *harmonic movement*, derived for [`Self::genres_in`]'s reason.
+    /// Paired within a night only, in the order the records came in, and a
+    /// pair either of whose records has no key is left out rather than bridged:
+    /// pairing across an unread record would claim a step nobody took. The
+    /// same record twice running is not a step either.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn key_steps_in(&self, setting: &str) -> Result<Vec<(MusicalKey, MusicalKey, i64)>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT before_hour, before_mode, key_hour, key_mode, played_at
+                 FROM (
+                     SELECT h.played_at, h.track_id, t.key_hour, t.key_mode,
+                            lag(h.track_id) OVER night AS before_track,
+                            lag(t.key_hour) OVER night AS before_hour,
+                            lag(t.key_mode) OVER night AS before_mode
+                     FROM history h
+                     JOIN nights n ON n.session_id = h.session_id
+                     JOIN tracks t ON t.id = h.track_id
+                     WHERE n.setting = ?1
+                     WINDOW night AS (PARTITION BY h.session_id ORDER BY h.played_at, h.id)
+                 )
+                 WHERE before_track IS NOT NULL AND before_track <> track_id
+                 ORDER BY played_at",
+            )?;
+            let rows = stmt.query_map([setting], |row| {
+                Ok((
+                    row.get::<_, Option<u8>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<u8>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })?;
+            let key = |hour: Option<u8>, mode: Option<String>| {
+                MusicalKey::new(hour?, mode.as_deref().and_then(mode_from_sql)?)
+            };
+            let mut out = Vec::new();
+            for row in rows {
+                let (hour_before, mode_before, hour, mode, at) = row?;
+                if let (Some(before), Some(after)) =
+                    (key(hour_before, mode_before), key(hour, mode))
+                {
+                    out.push((before, after, at));
+                }
             }
             Ok(out)
         })
@@ -2957,6 +3011,58 @@ mod tests {
         assert_eq!(lib.tempos_in("club").unwrap(), vec![(128.0, 10)]);
         assert_eq!(lib.tempos_in("wedding").unwrap(), vec![(96.0, 12)]);
         assert!(lib.tempos_in("beach").unwrap().is_empty());
+    }
+
+    /// **§12's key steps are paired within a night, in order, and only where
+    /// both records have a key.** A record nobody analysed breaks the chain
+    /// rather than being stepped over, the same record twice is no step, and
+    /// the last record of one night is not paired with the first of the next.
+    #[test]
+    fn key_steps_pair_each_night_in_order_and_never_bridge_an_unread_record() {
+        let lib = library();
+        for byte in 1..=5 {
+            lib.upsert_track(&track(byte, "", "someone")).unwrap();
+        }
+        // 8A, 9A, 8B, (unread), 3A.
+        for (byte, hour, mode) in [
+            (1, 8, Mode::Minor),
+            (2, 9, Mode::Minor),
+            (3, 8, Mode::Major),
+            (5, 3, Mode::Minor),
+        ] {
+            let mut analysis = track(byte, "", "").analysis;
+            analysis.key_hour = Some(hour);
+            analysis.key_mode = Some(mode);
+            lib.set_analysis(id(byte), &analysis).unwrap();
+        }
+        lib.note_night("one", Some("club"), NightRead::default())
+            .unwrap();
+        lib.note_night("two", Some("club"), NightRead::default())
+            .unwrap();
+        for (byte, at, night) in [
+            (1, 10, "one"),
+            (2, 20, "one"),
+            (2, 25, "one"),
+            (3, 30, "one"),
+            (4, 40, "one"),
+            (5, 50, "one"),
+            // Night two opens on 8A, straight after night one closed on 3A:
+            // not a step, because a night ended between them.
+            (1, 60, "two"),
+            (5, 70, "two"),
+        ] {
+            lib.record_play(id(byte), at, Some(night)).unwrap();
+        }
+        let key = |hour: u8, mode: Mode| MusicalKey::new(hour, mode).unwrap();
+        assert_eq!(
+            lib.key_steps_in("club").unwrap(),
+            vec![
+                (key(8, Mode::Minor), key(9, Mode::Minor), 20),
+                (key(9, Mode::Minor), key(8, Mode::Major), 30),
+                (key(8, Mode::Minor), key(3, Mode::Minor), 70),
+            ]
+        );
+        assert!(lib.key_steps_in("wedding").unwrap().is_empty());
     }
 
     /// A play from a night djmanzo was never told about counts towards no

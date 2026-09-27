@@ -1227,6 +1227,7 @@ export const ANSWERS: Record<string, unknown> = {
       loop_beats: null,
       effect: null,
       tempo: null,
+      movement: null,
       automation: "prepare",
       techniques: ["eq-moved"],
       genres: [
@@ -1245,10 +1246,11 @@ export const ANSWERS: Record<string, unknown> = {
       loop_beats: 4,
       effect: "echo",
       tempo: [124, 130],
+      movement: "neighbour",
       automation: "suggest",
       techniques: ["looped", "filter-swept"],
       genres: [["Techno", 1]],
-      says: "Club, over 4 nights: mostly blend transitions over 16 beats, 100% Techno, 124–130 BPM, loops of 4 beats, echo as the effect, assistant on suggest.",
+      says: "Club, over 4 nights: mostly blend transitions over 16 beats, 100% Techno, 124–130 BPM, keys mostly a step round the wheel, loops of 4 beats, echo as the effect, assistant on suggest.",
     },
   ],
   // A rehearsal, in the shape `dj_app::commands::RehearsalDto` serialises. The

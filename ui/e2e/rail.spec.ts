@@ -244,6 +244,7 @@ const WEDDING = {
   loop_beats: null,
   effect: null,
   tempo: null,
+  movement: null,
   automation: "suggest",
   techniques: ["eq-moved"],
   genres: [
