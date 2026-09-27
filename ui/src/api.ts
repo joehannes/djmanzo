@@ -4866,6 +4866,15 @@ export interface WordTiming {
   cpu: string | null;
   /** Bytes an old WhisperX install takes, if one is left. */
   old_whisperx: number | null;
+  /** The English aligner, downloaded like a model; it runs after whichever model listened. */
+  aligner: {
+    name: string;
+    bytes: number;
+    installed: boolean;
+    download_seconds: number | null;
+    /** About how long it adds to a four-minute song. */
+    song_seconds: number;
+  };
 }
 
 export const wordTiming = () => invoke<WordTiming>("word_timing");

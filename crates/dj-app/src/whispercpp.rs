@@ -165,6 +165,49 @@ pub fn url(model: &Model) -> String {
     format!("{WHISPER_MODELS}/{}", model.file)
 }
 
+/// A file djmanzo downloads: from one fixed place, of one size, with one
+/// checksum.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pinned {
+    pub name: &'static str,
+    pub file: &'static str,
+    pub url: String,
+    pub bytes: u64,
+    pub sha256: &'static str,
+}
+
+impl Model {
+    /// This model as a download.
+    #[must_use]
+    pub fn pinned(&self) -> Pinned {
+        Pinned {
+            name: self.name,
+            file: self.file,
+            url: url(self),
+            bytes: self.bytes,
+            sha256: self.sha256,
+        }
+    }
+}
+
+/// The English aligner (`dj_stems::align`): wav2vec 2.0 base, 960 hours of
+/// English (Apache-2.0), in the 8-bit ONNX export published beside it, at
+/// one fixed commit.
+#[must_use]
+pub fn aligner() -> Pinned {
+    Pinned {
+        name: "English aligner",
+        file: "wav2vec2-base-960h-q8.onnx",
+        url: "https://huggingface.co/Xenova/wav2vec2-base-960h/resolve/a19f851b3d42865797e410752b4c570c871e4825/onnx/model_quantized.onnx".to_owned(),
+        bytes: 95_286_046,
+        sha256: "cd5040c147381580ed73258143dd8e0c28e800a09e74ee42ee2b3e8cb4d760a3",
+    }
+}
+
+/// What the aligner adds, measured: seconds of work for each second of
+/// sung line on the reference machine (0.93 s over an 8.8-second line).
+pub const ALIGNER_SECONDS_PER_SECOND: f64 = 0.11;
+
 /// How much earlier than Whisper's own token time a word starts. See the
 /// module's documentation.
 pub const LEAD: f64 = 0.25;
@@ -179,6 +222,18 @@ impl Models {
     #[must_use]
     pub fn path(&self, model: &Model) -> PathBuf {
         self.root.join(model.file)
+    }
+
+    /// Where the English aligner lives.
+    #[must_use]
+    pub fn aligner_path(&self) -> PathBuf {
+        self.root.join(aligner().file)
+    }
+
+    /// Whether the English aligner is downloaded whole.
+    #[must_use]
+    pub fn aligner_installed(&self) -> bool {
+        std::fs::metadata(self.aligner_path()).is_ok_and(|meta| meta.len() == aligner().bytes)
     }
 
     /// Whether `model` is downloaded whole. Its checksum was checked when it
@@ -306,50 +361,50 @@ pub fn cpu_can_run() -> Result<(), String> {
     Ok(())
 }
 
-/// Download `model` into `models`, reporting bytes as they arrive, and check
+/// Download `file` into `models`, reporting bytes as they arrive, and check
 /// it against its published SHA-256 before it is kept. Written beside its
-/// place and moved in whole, so a download cut short is never taken for a
-/// model.
+/// place and moved in whole, so a download cut short is never taken for the
+/// file.
 ///
 /// # Errors
 /// A download that failed, came out the wrong size, or did not match.
 pub async fn download(
     http: &reqwest::Client,
-    model: &Model,
+    file: &Pinned,
     models: &Models,
     progress: impl Fn(u64, u64),
 ) -> Result<(), String> {
-    let from = url(model);
+    let from = &file.url;
     std::fs::create_dir_all(&models.root).map_err(|e| format!("{}: {e}", models.root.display()))?;
-    let part = models.root.join(format!("{}.part", model.file));
+    let part = models.root.join(format!("{}.part", file.file));
     let result = async {
         let mut response =
-            http.get(&from).send().await.map_err(|e| {
+            http.get(from).send().await.map_err(|e| {
                 format!("could not download {from} — is this machine online? ({e})")
             })?;
         if !response.status().is_success() {
             return Err(format!("could not download {from}: {}", response.status()));
         }
-        let mut file =
+        let mut out =
             std::fs::File::create(&part).map_err(|e| format!("{}: {e}", part.display()))?;
         let mut hasher = sha2::Sha256::new();
         let mut done = 0u64;
         while let Some(chunk) = response
             .chunk()
             .await
-            .map_err(|e| format!("the download of {} broke off: {e}", model.name))?
+            .map_err(|e| format!("the download of {} broke off: {e}", file.name))?
         {
             hasher.update(&chunk);
-            file.write_all(&chunk).map_err(|e| e.to_string())?;
+            out.write_all(&chunk).map_err(|e| e.to_string())?;
             done += chunk.len() as u64;
-            progress(done, model.bytes);
+            progress(done, file.bytes);
         }
-        file.flush().map_err(|e| e.to_string())?;
-        drop(file);
-        if done != model.bytes {
+        out.flush().map_err(|e| e.to_string())?;
+        drop(out);
+        if done != file.bytes {
             return Err(format!(
                 "{} arrived at {done} bytes, not {}; not used",
-                model.name, model.bytes
+                file.name, file.bytes
             ));
         }
         let hex: String = hasher
@@ -357,19 +412,64 @@ pub async fn download(
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
-        if hex != model.sha256 {
+        if hex != file.sha256 {
             return Err(format!(
                 "{} does not match its published checksum; not used",
-                model.name
+                file.name
             ));
         }
-        std::fs::rename(&part, models.path(model)).map_err(|e| e.to_string())
+        std::fs::rename(&part, models.root.join(file.file)).map_err(|e| e.to_string())
     }
     .await;
     if result.is_err() {
         let _ = std::fs::remove_file(&part);
     }
     result
+}
+
+/// Each segment's word times replaced by the English aligner's, where it
+/// placed them. `align` is handed a stretch of the record — the segment,
+/// half a second either side — and the segment's words, and answers each
+/// word's start and end from the stretch's start, or `None` for a word or
+/// a whole stretch it could not place; those keep Whisper's times.
+pub fn refine(
+    segments: Vec<Segment>,
+    record_seconds: f64,
+    mut align: impl FnMut(f64, f64, &[&str]) -> Option<Vec<Option<(f64, f64)>>>,
+) -> Vec<Segment> {
+    const PAD: f64 = 0.5;
+    segments
+        .into_iter()
+        .map(|mut segment| {
+            let (Some(start), Some(end)) = (
+                segment
+                    .words
+                    .first()
+                    .and_then(|w| w.start)
+                    .or(segment.start),
+                segment.words.last().and_then(|w| w.end).or(segment.end),
+            ) else {
+                return segment;
+            };
+            let from = (start - PAD).max(0.0);
+            let to = (end + PAD).min(record_seconds);
+            let words: Vec<&str> = segment.words.iter().map(|w| w.word.as_str()).collect();
+            let Some(placed) = align(from, to, &words).filter(|placed| placed.len() == words.len())
+            else {
+                return segment;
+            };
+            for (word, span) in segment.words.iter_mut().zip(placed) {
+                if let Some((a, b)) = span {
+                    word.start = Some(from + a);
+                    word.end = Some(from + b);
+                }
+            }
+            if let Some(first) = segment.words.first().and_then(|w| w.start) {
+                segment.start = Some(first);
+            }
+            segment
+        })
+        .collect()
 }
 
 /// This machine's download speed in bytes a second, from the first two
@@ -1018,6 +1118,49 @@ mod tests {
         let placed = place_known(&lonely, &heard);
         assert!((placed[0].words[0].start.unwrap() - 100.0).abs() < 1e-9);
         assert!(placed[0].words[1].end.unwrap() <= 104.0);
+    }
+
+    /// **The load-bearing one for the aligner.** Its times replace
+    /// Whisper's, counted from the stretch it was handed — the segment and
+    /// half a second either side — and a word or a line it could not place
+    /// keeps Whisper's.
+    #[test]
+    fn the_aligners_times_replace_whispers_where_it_placed_them() {
+        let segments = vec![
+            segment(vec![
+                word("When", 22.6, 22.9),
+                word("I", 23.2, 23.4),
+                word("42", 23.5, 23.7),
+            ]),
+            segment(vec![word("skin", 29.9, 30.3)]),
+        ];
+        let mut asked = Vec::new();
+        let refined = refine(segments, 270.0, |from, to, words| {
+            asked.push((from, to, words.join(" ")));
+            if words[0] == "skin" {
+                return None;
+            }
+            Some(vec![Some((0.62, 0.92)), Some((1.26, 1.38)), None])
+        });
+        assert_eq!(asked.len(), 2);
+        assert!((asked[0].0 - 22.1).abs() < 1e-9 && (asked[0].1 - 24.2).abs() < 1e-9);
+        assert_eq!(asked[0].2, "When I 42");
+        let at = |s: usize, w: usize| refined[s].words[w].start.unwrap();
+        assert!((at(0, 0) - 22.72).abs() < 1e-9, "{}", at(0, 0));
+        assert!((at(0, 1) - 23.36).abs() < 1e-9);
+        assert!((at(0, 2) - 23.5).abs() < 1e-9, "not placed: Whisper's time");
+        assert!((refined[0].start.unwrap() - 22.72).abs() < 1e-9);
+        assert!(
+            (at(1, 0) - 29.9).abs() < 1e-9,
+            "a line not placed keeps Whisper's"
+        );
+        let pinned = aligner();
+        assert_eq!(pinned.sha256.len(), 64);
+        assert!(
+            pinned
+                .url
+                .contains("/resolve/a19f851b3d42865797e410752b4c570c871e4825/")
+        );
     }
 
     #[test]

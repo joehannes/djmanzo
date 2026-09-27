@@ -199,8 +199,11 @@ for the measurements and licences.
   this machine's own.
 - **Word times** come from Whisper's own attention and land within about a
   quarter of a second of WhisperX's aligner — close enough to wipe a line
-  by, not to the syllable. The English aligner the owner asked for next
-  refines English.
+  by, not to the syllable. **For English**, the aligner the owner asked for
+  (`dj_stems::align`, wav2vec 2.0, a 95 MB download from the same list)
+  then places every word by its letters: on a 4½-minute record its starts
+  agreed with WhisperX's to a median of 0.02 s (80 % within 0.08 s), and it
+  added 10 s to the run.
 
 ### Forced alignment — the case nobody handles
 

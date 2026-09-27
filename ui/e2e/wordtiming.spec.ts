@@ -55,7 +55,8 @@ test.describe("§122: words in time, by whisper.cpp", () => {
 
     await here.getByText("Choose a model to download").click();
     const list = here.getByRole("list", { name: "Models" });
-    await expect(list.getByRole("listitem")).toHaveCount(wordTiming.status.models.length);
+    // Every model, and the English aligner.
+    await expect(list.getByRole("listitem")).toHaveCount(wordTiming.status.models.length + 1);
     const small = list.locator('[data-model="small"]');
     await expect(small).toContainText("recommended");
     await expect(small).toContainText("190 MB");
@@ -123,6 +124,22 @@ test.describe("§122: words in time, by whisper.cpp", () => {
     await expect(here.getByText("Model: Base")).toBeVisible();
     await list.locator('[data-model="small"]').getByRole("button", { name: "Remove" }).click();
     await expect(list.getByRole("button", { name: "Download Small" })).toBeVisible();
+
+    // The English aligner downloads beside the models and is never "chosen":
+    // it runs after whichever one listened.
+    const aligner = list.locator('[data-model="aligner"]');
+    await expect(aligner).toContainText("95 MB");
+    await expect(aligner).toContainText("about 15 s to download here");
+    await expect(aligner).toContainText("adds about 15 s to a 4-minute song");
+    await aligner.getByRole("button", { name: "Download the English aligner" }).click();
+    await expect(here.getByRole("status").filter({ hasText: "Downloading" })).toContainText(
+      "Downloading English aligner — 48 MB of 95 MB",
+    );
+    await expect(aligner).toContainText("In use for English", { timeout: 8000 });
+    await expect(here.getByText("Model: Base")).toBeVisible();
+    expect((await asked(page)).find((c) => c.cmd === "word_timing_download")).toMatchObject({ model: "aligner" });
+    await aligner.getByRole("button", { name: "Remove" }).click();
+    await expect(aligner.getByRole("button", { name: "Download the English aligner" })).toBeVisible();
     expect(errorsThrown(page)).toEqual([]);
   });
 });

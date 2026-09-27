@@ -14068,6 +14068,20 @@ pub struct WordTimingDto {
     /// A WhisperX install from an earlier djmanzo, which nothing uses now,
     /// and how many bytes deleting it would give back.
     pub old_whisperx: Option<u64>,
+    pub aligner: AlignerDto,
+}
+
+/// §122: the English aligner, as the dropdown draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct AlignerDto {
+    pub name: &'static str,
+    pub bytes: u64,
+    pub installed: bool,
+    /// How long its download would take at this machine's measured speed.
+    pub download_seconds: Option<f64>,
+    /// About how long it adds to a four-minute song, on the machine it was
+    /// measured on.
+    pub song_seconds: f64,
 }
 
 /// The length the dropdown's estimates are for: a four-minute song.
@@ -14118,6 +14132,7 @@ fn word_timing_dto(
     let rates = models.rates();
     let cores = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
     let chosen = models.chosen().map(|model| model.id);
+    let speed = progress.speed;
     WordTimingDto {
         models: crate::whispercpp::MODELS
             .iter()
@@ -14130,8 +14145,7 @@ fn word_timing_dto(
                     chosen: chosen == Some(model.id),
                     song_seconds,
                     song_measured,
-                    download_seconds: progress
-                        .speed
+                    download_seconds: speed
                         .filter(|speed| *speed > 0.0)
                         .map(|speed| model.bytes as f64 / speed),
                 }
@@ -14143,6 +14157,23 @@ fn word_timing_dto(
         folder: models.root.display().to_string(),
         cpu: crate::whispercpp::cpu_can_run().err(),
         old_whisperx: old_whisperx(app).map(|tools| folder_bytes(&tools)),
+        aligner: aligner_dto(models, speed),
+    }
+}
+
+/// The aligner's row: a four-minute song holds about two and a half
+/// minutes of sung lines.
+#[must_use]
+pub fn aligner_dto(models: &crate::whispercpp::Models, speed: Option<f64>) -> AlignerDto {
+    let pinned = crate::whispercpp::aligner();
+    AlignerDto {
+        name: pinned.name,
+        bytes: pinned.bytes,
+        installed: models.aligner_installed(),
+        download_seconds: speed
+            .filter(|speed| *speed > 0.0)
+            .map(|speed| pinned.bytes as f64 / speed),
+        song_seconds: 150.0 * crate::whispercpp::ALIGNER_SECONDS_PER_SECOND,
     }
 }
 
@@ -14178,8 +14209,12 @@ pub async fn word_timing_speed(
     Ok(word_timing_dto(&app, &state, &models))
 }
 
-/// §122: download the model `id` in the background, checked against its
-/// published checksum, and choose it once it is here. Answers at once; the
+/// The id the English aligner is downloaded and removed by.
+pub const ALIGNER_ID: &str = "aligner";
+
+/// §122: download the model `id` — or the English aligner, [`ALIGNER_ID`] —
+/// in the background, checked against its published checksum, and choose a
+/// model once it is here. Answers at once; the
 /// interface reads [`word_timing`] for the bytes.
 ///
 /// # Errors
@@ -14192,8 +14227,17 @@ pub fn word_timing_download(
     model: String,
 ) -> Result<WordTimingDto, String> {
     let models = word_models(&app)?;
-    let model = crate::whispercpp::model(&model)
-        .ok_or_else(|| format!("djmanzo offers no model called {model:?}"))?;
+    // The English aligner is downloaded like a model but never chosen: it
+    // runs after whichever model listened.
+    let (pinned, model) = if model == ALIGNER_ID {
+        (crate::whispercpp::aligner(), None)
+    } else {
+        let model = crate::whispercpp::model(&model)
+            .ok_or_else(|| format!("djmanzo offers no model called {model:?}"))?;
+        (model.pinned(), Some(model))
+    };
+    let installed = model.map_or_else(|| models.aligner_installed(), |m| models.installed(m));
+    let id = model.map_or(ALIGNER_ID, |m| m.id);
     let progress = state.word_timing();
     {
         let Ok(mut now) = progress.lock() else {
@@ -14202,28 +14246,30 @@ pub fn word_timing_download(
         if let Some(busy) = &now.downloading {
             return Err(format!("{busy} is downloading already"));
         }
-        if models.installed(model) {
+        if installed {
             drop(now);
-            models.choose(model)?;
+            if let Some(model) = model {
+                models.choose(model)?;
+            }
             return Ok(word_timing_dto(&app, &state, &models));
         }
-        now.downloading = Some(model.id.to_owned());
+        now.downloading = Some(id.to_owned());
         now.downloaded = 0;
-        now.download_total = model.bytes;
+        now.download_total = pinned.bytes;
         now.error = None;
     }
     let into = models.clone();
     tauri::async_runtime::spawn(async move {
         let http = reqwest::Client::new();
         let step = Arc::clone(&progress);
-        let outcome = crate::whispercpp::download(&http, model, &into, move |done, total| {
+        let outcome = crate::whispercpp::download(&http, &pinned, &into, move |done, total| {
             if let Ok(mut now) = step.lock() {
                 now.downloaded = done;
                 now.download_total = total;
             }
         })
         .await
-        .and_then(|()| into.choose(model));
+        .and_then(|()| model.map_or(Ok(()), |model| into.choose(model)));
         if let Ok(mut now) = progress.lock() {
             now.downloading = None;
             now.error = outcome.err();
@@ -14261,6 +14307,14 @@ pub fn word_timing_remove(
     model: String,
 ) -> Result<WordTimingDto, String> {
     let models = word_models(&app)?;
+    if model == ALIGNER_ID {
+        match std::fs::remove_file(models.aligner_path()) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        }
+        return Ok(word_timing_dto(&app, &state, &models));
+    }
     let model = crate::whispercpp::model(&model)
         .ok_or_else(|| format!("djmanzo offers no model called {model:?}"))?;
     models.remove(model)?;

@@ -414,6 +414,31 @@ pub fn time_words(
         stages.push(("place".to_owned(), placing.elapsed().as_secs_f64()));
         ("align", placed)
     };
+    // English, with the aligner downloaded: its times, to the letter, where
+    // it places the words. Without ONNX Runtime — the Intel Mac build has
+    // none — Whisper's times stand.
+    let segments = if heard.language == "en" && models.aligner_installed() {
+        match dj_stems::align::Aligner::new(&models.aligner_path()) {
+            Ok(aligner) => {
+                let aligning = Instant::now();
+                let rate = f64::from(SAMPLE_RATE);
+                let refined =
+                    crate::whispercpp::refine(segments, record_seconds, |from, to, words| {
+                        let a = ((from * rate) as usize).min(audio.len());
+                        let b = ((to * rate) as usize).clamp(a, audio.len());
+                        aligner.align(&audio[a..b], words).ok()
+                    });
+                stages.push(("align".to_owned(), aligning.elapsed().as_secs_f64()));
+                refined
+            }
+            Err(why) => {
+                tracing::warn!(%why, "the English aligner is not available; Whisper's times stand");
+                segments
+            }
+        }
+    } else {
+        segments
+    };
     let answer = Answer {
         mode: mode.to_owned(),
         language: heard.language,
@@ -660,6 +685,49 @@ mod tests {
     }
 
     /// The audio handed over: mono, sixteen kilohertz, as long as the record.
+    /// **The whole run on a real record**: decoded, heard by the chosen
+    /// model, and — for English, with the aligner downloaded — placed by the
+    /// aligner. Ignored: it needs models, ONNX Runtime and a song.
+    ///
+    /// ```text
+    /// ORT_DYLIB_PATH=<libonnxruntime> DJMANZO_MODELS=<folder with a model \
+    ///   and wav2vec2-base-960h-q8.onnx> DJMANZO_RECORD=<song> \
+    ///   cargo test -p dj-app --lib whole_run -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "needs models, ONNX Runtime and a real record"]
+    fn the_whole_run_on_a_real_record() {
+        let (Ok(root), Ok(record)) = (
+            std::env::var("DJMANZO_MODELS"),
+            std::env::var("DJMANZO_RECORD"),
+        ) else {
+            return;
+        };
+        let models = Models {
+            root: std::path::PathBuf::from(root),
+        };
+        let model = models.chosen().expect("a model in the folder");
+        let (answer, report) = time_words(
+            &models,
+            model,
+            Path::new(&record),
+            |_| Vec::new(),
+            Some("en".into()),
+            None,
+            |_| {},
+        )
+        .expect("timed");
+        for segment in &answer.segments {
+            let words: Vec<String> = segment
+                .words
+                .iter()
+                .map(|w| format!("{}@{:.2}", w.word, w.start.unwrap_or(-1.0)))
+                .collect();
+            println!("WORDS {}", words.join(" "));
+        }
+        eprintln!("{}", serde_json::to_string(&report).expect("a report"));
+    }
+
     #[test]
     fn the_record_is_handed_over_mono_at_sixteen_kilohertz() {
         let stereo: Vec<f32> = (0..48_000 * 2)

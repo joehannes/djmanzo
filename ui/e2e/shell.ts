@@ -2346,6 +2346,7 @@ export async function openShell(
               models: Model[];
               chosen: string | null;
               old_whisperx: number | null;
+              aligner: { bytes: number; installed: boolean; download_seconds: number | null };
               progress: {
                 downloading: string | null;
                 downloaded: number;
@@ -2362,8 +2363,17 @@ export async function openShell(
             if (cmd === "word_timing_speed") {
               held.progress.speed = 6_250_000;
               for (const model of held.models) model.download_seconds = model.bytes / 6_250_000;
+              held.aligner.download_seconds = held.aligner.bytes / 6_250_000;
             }
-            if (cmd === "word_timing_download" && named) {
+            if (cmd === "word_timing_download" && named === "aligner") {
+              held.progress.downloading = named;
+              held.progress.download_total = held.aligner.bytes;
+              held.progress.downloaded = Math.round(held.aligner.bytes / 2);
+              setTimeout(() => {
+                held.progress.downloading = null;
+                held.aligner.installed = true;
+              }, 1500);
+            } else if (cmd === "word_timing_download" && named) {
               const model = held.models.find((m) => m.id === named)!;
               held.progress.downloading = named;
               held.progress.download_total = model.bytes;
@@ -2376,7 +2386,8 @@ export async function openShell(
               }, 1500);
             }
             if (cmd === "word_timing_choose" && named) choose(named);
-            if (cmd === "word_timing_remove" && named) {
+            if (cmd === "word_timing_remove" && named === "aligner") held.aligner.installed = false;
+            else if (cmd === "word_timing_remove" && named) {
               const model = held.models.find((m) => m.id === named)!;
               model.installed = false;
               if (model.chosen) {

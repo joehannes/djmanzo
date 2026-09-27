@@ -95,7 +95,11 @@
 
   const loaded = $derived(decks.slice(0, deckCount).filter((deck) => deck.loaded));
   const chosen = $derived(timing?.models.find((model) => model.chosen) ?? null);
-  const downloading = $derived(timing?.models.find((model) => model.id === timing?.progress.downloading) ?? null);
+  const downloading = $derived(
+    timing?.progress.downloading === "aligner"
+      ? { name: timing.aligner.name, bytes: timing.aligner.bytes }
+      : (timing?.models.find((model) => model.id === timing?.progress.downloading) ?? null),
+  );
 
   const seconds = (value: number) => `${value.toFixed(1)} s`;
   const megabytes = (bytes: number) =>
@@ -181,6 +185,42 @@
             </div>
           </li>
         {/each}
+        <li data-model="aligner" data-installed={timing.aligner.installed} class="aligner">
+          <div class="head">
+            <span class="name">{timing.aligner.name}</span>
+            <span class="size mono">{megabytes(timing.aligner.bytes)}</span>
+          </div>
+          <p class="reliability">
+            places the words of English songs to within a few hundredths of a second, after whichever model listened
+          </p>
+          <p class="costs">
+            <span class="fetch"
+              >{timing.aligner.installed
+                ? "downloaded"
+                : timing.aligner.download_seconds !== null
+                  ? `${about(timing.aligner.download_seconds)} to download here`
+                  : measuring
+                    ? "measuring your connection…"
+                    : "download time not measured"}</span
+            >
+            ·
+            <span class="analysis">adds {about(timing.aligner.song_seconds)} to a 4-minute song</span>
+          </p>
+          <div class="actions">
+            {#if timing.aligner.installed}
+              <span class="in-use">In use for English</span>
+              <button type="button" class="quiet" onclick={() => void act(() => wordTimingRemove("aligner"))}
+                >Remove</button
+              >
+            {:else}
+              <button
+                type="button"
+                disabled={timing.progress.downloading !== null}
+                onclick={() => void act(() => wordTimingDownload("aligner"))}>Download the English aligner</button
+              >
+            {/if}
+          </div>
+        </li>
       </ul>
       <p class="hint">Kept in {timing.folder}.</p>
     </details>
@@ -299,6 +339,10 @@
 
   .picker li[data-chosen="true"] {
     border-color: var(--accent);
+  }
+
+  .picker li.aligner {
+    border-style: dashed;
   }
 
   .picker .hint {

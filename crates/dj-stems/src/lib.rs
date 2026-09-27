@@ -1,3 +1,4 @@
+pub mod align;
 pub mod availability;
 pub mod cache;
 pub mod hpss;

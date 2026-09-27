@@ -1281,6 +1281,13 @@ fn the_browser_fixture_has_word_timing() {
             folder: "/home/dj/.local/share/app.djmanzo.desktop/models/whisper".to_owned(),
             cpu: None,
             old_whisperx: chosen.map(|_| 2_640_000_000),
+            aligner: dj_app::commands::AlignerDto {
+                name: "English aligner",
+                bytes: 95_286_046,
+                installed: false,
+                download_seconds: speed.map(|speed| 95_286_046.0 / speed),
+                song_seconds: 16.5,
+            },
         }
     };
     let fresh_status = status(&[], None, None);

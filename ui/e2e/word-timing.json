@@ -28,6 +28,13 @@
     "words": 212
   },
   "ready": {
+    "aligner": {
+      "bytes": 95286046,
+      "download_seconds": 15.24576736,
+      "installed": false,
+      "name": "English aligner",
+      "song_seconds": 16.5
+    },
     "budget_seconds": 90.0,
     "chosen": "small",
     "cpu": null,
@@ -127,6 +134,13 @@
     }
   },
   "status": {
+    "aligner": {
+      "bytes": 95286046,
+      "download_seconds": null,
+      "installed": false,
+      "name": "English aligner",
+      "song_seconds": 16.5
+    },
     "budget_seconds": 90.0,
     "chosen": null,
     "cpu": null,

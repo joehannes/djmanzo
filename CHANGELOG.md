@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **English words land on the syllable.** The same list now offers the
+  English aligner (95 MB, downloaded once). After Whisper has listened to
+  an English song, it places every word by its letters: on a 4½-minute
+  song its word starts agreed with WhisperX's to within two hundredths of
+  a second in the middle case, where Whisper alone was a quarter of a
+  second out, and it added ten seconds to the run. Other languages keep
+  Whisper's times; so does the Intel Mac build, which has no ONNX Runtime.
+
 - **Word timing is part of djmanzo now — no 2 GB install.** WhisperX
   needed Python and PyTorch, about 2.6 GB, behind an install button.
   djmanzo now carries whisper.cpp itself (about two megabytes) and needs
