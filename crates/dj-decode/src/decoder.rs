@@ -5,9 +5,11 @@ use dj_core::{SampleRate, TrackId};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
+use symphonia::core::codecs::{
+    CODEC_TYPE_MP1, CODEC_TYPE_MP2, CODEC_TYPE_MP3, CODEC_TYPE_NULL, DecoderOptions,
+};
 use symphonia::core::errors::Error as SymphoniaError;
-use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::{FormatOptions, FormatReader, Track};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{MetadataOptions, StandardTagKey};
 use symphonia::core::probe::Hint;
@@ -55,13 +57,9 @@ pub enum DecodeError {
     Empty,
 }
 
-/// Decode an entire file into memory.
-///
-/// Blocking and potentially slow -- minutes of audio, a full content hash. Never
-/// call this from the audio thread or from a UI event handler; it belongs on a
-/// worker.
-pub fn decode_file(path: impl AsRef<Path>) -> Result<DecodedTrack, DecodeError> {
-    let path = path.as_ref();
+/// Open `path` for reading, trimming to what the container says is the
+/// music (`gapless`) or not.
+fn open(path: &Path, gapless: bool) -> Result<Box<dyn FormatReader>, DecodeError> {
     let file = File::open(path).map_err(|source| DecodeError::Open {
         path: path.to_path_buf(),
         source,
@@ -78,21 +76,86 @@ pub fn decode_file(path: impl AsRef<Path>) -> Result<DecodedTrack, DecodeError> 
             &hint,
             stream,
             &FormatOptions {
-                enable_gapless: true,
+                enable_gapless: gapless,
                 ..Default::default()
             },
             &MetadataOptions::default(),
         )
         .map_err(|e| DecodeError::Unsupported(e.to_string()))?;
+    Ok(probed.format)
+}
 
-    let mut format = probed.format;
-
-    let track = format
+fn audio_track(format: &dyn FormatReader) -> Result<&Track, DecodeError> {
+    format
         .tracks()
         .iter()
         .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-        .ok_or(DecodeError::NoAudioTrack)?;
+        .ok_or(DecodeError::NoAudioTrack)
+}
+
+/// The part of an MPEG stream, decoded untrimmed, that is the record, in
+/// frames: `(start, end)` is what plays, and `start..claimed` is what its
+/// identity is hashed over.
+///
+/// An MP3's length comes from its Xing or VBRI header — or, with neither,
+/// from its bitrate — which is a claim about the stream, not the stream: a
+/// file cut, joined or retagged by a tool that left the header alone keeps
+/// the old count. Trimming to it, as Symphonia's gapless reading does, cuts
+/// off whatever follows; a record with a stale header lost its last fifteen
+/// seconds that way. So the stream is read whole, and trimmed here:
+///
+/// - the encoder's delay always comes off the start;
+/// - where the stream ends where its header says, give or take one MPEG
+///   frame, the encoder's padding comes off the end, as before;
+/// - where it runs on past that, the header is stale, and everything plays.
+///
+/// The identity stays what the header claimed: hashed over exactly the
+/// frames the gapless reading used to return, so a record whose header was
+/// always stale keeps its cues, its grid and its history rather than
+/// becoming a stranger to the library.
+fn mpeg_extent(
+    decoded: usize,
+    delay: u32,
+    padding: u32,
+    header_frames: Option<u64>,
+) -> (usize, usize, usize) {
+    /// The longest MPEG audio frame, in samples: Layer II and MPEG-1
+    /// Layer III.
+    const ONE_FRAME: u64 = 1152;
+    let start = (delay as usize).min(decoded);
+    let body = decoded - start;
+    let Some(header) = header_frames else {
+        return (start, decoded, decoded);
+    };
+    let music = header.saturating_sub(u64::from(delay) + u64::from(padding));
+    let claimed = start + body.min(usize::try_from(music).unwrap_or(usize::MAX));
+    let stale = decoded as u64 > header + ONE_FRAME;
+    (start, if stale { decoded } else { claimed }, claimed)
+}
+
+/// Decode an entire file into memory.
+///
+/// Blocking and potentially slow -- minutes of audio, a full content hash. Never
+/// call this from the audio thread or from a UI event handler; it belongs on a
+/// worker.
+pub fn decode_file(path: impl AsRef<Path>) -> Result<DecodedTrack, DecodeError> {
+    let path = path.as_ref();
+    let mut format = open(path, true)?;
+    // MPEG audio is read whole and trimmed by `mpeg_extent`; everything else
+    // as its container says.
+    let mpeg = [CODEC_TYPE_MP1, CODEC_TYPE_MP2, CODEC_TYPE_MP3]
+        .contains(&audio_track(format.as_ref())?.codec_params.codec);
+    if mpeg {
+        format = open(path, false)?;
+    }
+
+    let track = audio_track(format.as_ref())?;
     let track_id = track.id;
+    let (delay, padding, header_frames) = (
+        track.codec_params.delay.unwrap_or(0),
+        track.codec_params.padding.unwrap_or(0),
+        track.codec_params.n_frames,
+    );
 
     let source_rate = track
         .codec_params
@@ -144,12 +207,22 @@ pub fn decode_file(path: impl AsRef<Path>) -> Result<DecodedTrack, DecodeError> 
         }
     }
 
+    let claimed = if mpeg {
+        let (start, end, claimed) =
+            mpeg_extent(interleaved.len() / CHANNELS, delay, padding, header_frames);
+        interleaved.truncate(end * CHANNELS);
+        interleaved.drain(..start * CHANNELS);
+        claimed - start
+    } else {
+        interleaved.len() / CHANNELS
+    };
+
     if interleaved.is_empty() {
         return Err(DecodeError::Empty);
     }
 
     let (title, artist, album) = read_tags(&mut format);
-    let id = hash_audio(&interleaved);
+    let id = hash_audio(&interleaved[..claimed * CHANNELS]);
 
     Ok(DecodedTrack {
         id,
@@ -367,5 +440,93 @@ mod tests {
         let err = decode_file("/definitely/not/here.flac").unwrap_err();
         assert!(matches!(err, DecodeError::Open { .. }));
         assert!(err.to_string().contains("not/here.flac"));
+    }
+
+    /// An MPEG-1 Layer III file: a Xing frame saying there are `said`
+    /// frames, with an encoder's delay and padding, then `there` silent
+    /// frames. 128 kbit/s stereo at 44.1 kHz, 417 bytes a frame.
+    fn mp3(said: u32, there: usize, delay: u32, padding: u32) -> Vec<u8> {
+        const HEADER: [u8; 4] = [0xFF, 0xFB, 0x90, 0x00];
+        const SIZE: usize = 417;
+        let mut info = vec![0u8; SIZE];
+        info[..4].copy_from_slice(&HEADER);
+        // The tag follows 32 bytes of side information, which stay zero.
+        let mut at = 36;
+        let mut put = |bytes: &[u8]| {
+            info[at..at + bytes.len()].copy_from_slice(bytes);
+            at += bytes.len();
+        };
+        put(b"Xing");
+        put(&1u32.to_be_bytes()); // it carries the frame count and nothing else
+        put(&said.to_be_bytes());
+        // An encoder whose delay and padding Symphonia reads without the
+        // checksum LAME's own tag carries.
+        put(b"Lavf58.76");
+        put(&[0; 12]); // revision, lowpass, peak, both gains, flags, bitrate
+        let trim = ((delay - 529) << 12) | (padding + 529);
+        put(&trim.to_be_bytes()[1..]);
+        let mut file = info;
+        for _ in 0..there {
+            file.extend_from_slice(&HEADER);
+            file.resize(file.len() + SIZE - HEADER.len(), 0);
+        }
+        file
+    }
+
+    /// **The end of a record is not cut off by a header that undercounts
+    /// it**, and the record stays the one the library knew. Before, a file
+    /// whose Xing header said fewer frames than it held was trimmed to the
+    /// header — fifteen seconds of a real record were lost that way.
+    #[test]
+    fn an_mp3_whose_header_undercounts_plays_to_its_end_and_keeps_its_identity() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let decode = |name: &str, bytes: Vec<u8>| {
+            let path = dir.path().join(name);
+            std::fs::write(&path, bytes).expect("written");
+            decode_file(&path).expect("decoded")
+        };
+        let (delay, padding) = (1105, 1000);
+
+        let honest = decode("honest.mp3", mp3(10, 10, delay, padding));
+        assert_eq!(
+            honest.buffer.len_frames(),
+            10 * 1152 - (delay + padding) as usize,
+            "a header that is right trims the encoder's delay and padding, as it always did"
+        );
+
+        let stale = decode("stale.mp3", mp3(10, 40, delay, padding));
+        assert_eq!(
+            stale.buffer.len_frames(),
+            40 * 1152 - delay as usize,
+            "all of it plays"
+        );
+        assert_eq!(
+            stale.id, honest.id,
+            "its identity is still what the header said, so its cues stay with it"
+        );
+    }
+
+    #[test]
+    fn an_mpeg_stream_is_trimmed_by_its_header_only_where_the_header_is_right() {
+        let (delay, padding, said) = (1105, 1000, Some(11_520));
+        // Nothing said: all of it.
+        assert_eq!(mpeg_extent(5000, 0, 0, None), (0, 5000, 5000));
+        // As said: the delay off the start, the padding off the end.
+        assert_eq!(
+            mpeg_extent(11_520, delay, padding, said),
+            (1105, 10_520, 10_520)
+        );
+        // Shorter than said, a file cut short: all of it after the delay.
+        assert_eq!(mpeg_extent(5760, delay, padding, said), (1105, 5760, 5760));
+        // One frame over is counting, not a stale header.
+        assert_eq!(
+            mpeg_extent(11_520 + 1152, delay, padding, said),
+            (1105, 10_520, 10_520)
+        );
+        // More is a stale header: all of it plays, the identity as said.
+        assert_eq!(
+            mpeg_extent(11_520 + 1153, delay, padding, said),
+            (1105, 12_673, 10_520)
+        );
     }
 }

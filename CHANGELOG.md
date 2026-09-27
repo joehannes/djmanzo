@@ -16,6 +16,15 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **An MP3 plays to its end even when its header says it is shorter.** An
+  MP3's length is written in a header at its start, and a file cut, joined
+  or retagged by a tool that left that header alone keeps the old length.
+  djmanzo trusted it and stopped there: one record measured here lost its
+  last 15.6 seconds. The whole file is now read and only the encoder's
+  silence is trimmed. Such a record keeps its identity — its cues, grid
+  and history stay with it — and every other file decodes exactly as
+  before.
+
 - **WhisperX's first alignment no longer fails for want of a file.** Its
   aligner reads NLTK's sentence tables, which the install never fetched;
   WhisperX then tried to fetch them itself, into your home folder, and
