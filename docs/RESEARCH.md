@@ -410,10 +410,12 @@ but the licences are recorded here all the same, because the DJ runs them.
 | CPython 3.12 (fetched by `uv`) | PSF-2.0 | |
 | WhisperX 3.8.6 | BSD-2-Clause | |
 | faster-whisper 1.2.1, CTranslate2 4.8.2 | MIT | Transcription, only for a record with no known words. |
-| PyTorch 2.8, torchaudio 2.8, torchcodec | BSD-3-Clause | Installed with `--torch-backend cpu`. PyPI's default Linux build pulls in fourteen `nvidia-*` CUDA packages under **NVIDIA proprietary licences** and about two gigabytes a CPU-only run never loads; the CPU index has none of them. A dry run here without the flag listed them; one with it could not be run, because this container cannot reach `download.pytorch.org`. |
+| PyTorch 2.8, torchaudio 2.8, torchcodec | BSD-3-Clause | Installed with `--torch-backend cpu`. PyPI's default Linux build pulls in fourteen `nvidia-*` CUDA packages under **NVIDIA proprietary licences** and about two gigabytes a CPU-only run never loads; the CPU index has none of them. A dry run here without the flag listed them; the real install with it (27 September 2026) brought PyTorch `2.8.0+cpu` and no `nvidia-*` package, 2.6 GB in all. |
 | transformers 4.57, tokenizers, safetensors, huggingface-hub | Apache-2.0 | Load the Hugging Face aligners. |
 | pyannote-audio and its family | MIT (per their repositories; PyPI metadata empty) | Installed by WhisperX for speaker separation, which djmanzo never asks for. |
 | PyAV (`av`) 18.1 | BSD-3-Clause | Its wheels bundle FFmpeg; PyPI does not say under which licence that build is made, and it was not verified. djmanzo hands WhisperX a WAV it read itself, so nothing here asks FFmpeg to decode. |
+| NLTK 3.10 | Apache-2.0 | WhisperX's aligner splits the words into sentences with it. |
+| NLTK's Punkt tables (`punkt_tab`, Jan Strunk and Tibor Kiss) | **None stated**: NLTK's data index gives no licence for them, and their README names only the corpora they were trained on | Fetched at install by djmanzo into the private environment, from one fixed commit of NLTK's data and checked against the SHA-256 NLTK publishes. WhisperX would otherwise fetch the very same file itself at its first alignment — into the home folder, and not at all behind a proxy — so djmanzo fetching it changes where it lands, not whether the DJ has it. Neither shipped nor redistributed. |
 | The other ~90 packages | MIT, BSD, Apache-2.0, PSF, MPL-2.0 (`certifi`, `tqdm`) | Checked one by one against PyPI's metadata for WhisperX 3.8.6's resolution; none declares GPL, LGPL or AGPL. |
 
 **The models**, fetched on first use:
@@ -441,11 +443,39 @@ kernel worked out once for 512 phases), which brings the same four minutes
 down in under a second; in the running application a 75-second record was
 prepared in 0.3 s, where it had taken 5.0 s.
 
-**WhisperX's share of the budget is not measured.** This container reaches PyPI but
-not `huggingface.co` or `download.pytorch.org`, so WhisperX could not be
-installed and no real song was timed here. Every run on a DJ's machine times
-itself stage by stage and says whether it met the budget, which is the
-measurement the owner's rule asks for.
+**WhisperX's share of the budget, measured (27 September 2026).** Installed
+here through djmanzo's own installer and timed through djmanzo's own path —
+decoding, the sixteen-kilohertz file, the helper — by the ignored test
+`the_budget_measured_on_a_real_record`, on a cloud machine with four cores of
+an Intel Xeon at 2.1 GHz, from the **mix** (no separated vocals):
+
+| Record | Nothing known: transcribe, then align | Words known: align only |
+|---|---|---|
+| 4 min 30 s | **31.3 s** — prepare 1.0, start 1.1, transcribe 17.6, align 9.8 | **13.9 s** — prepare 1.0, start 1.3, align 10.5 |
+| 2 min 34 s | **28.5 s** — prepare 0.6, start 1.2, transcribe 12.6, align 12.2 | **13.3 s** — prepare 0.6, start 1.1, align 10.6 |
+
+So on a machine like this one **the words-known case meets the owner's
+fifteen seconds and transcription does not**, by about double. Repeated runs
+of the same record varied by two or three seconds. Three cheap levers were
+tried against the 4½-minute record and **none brings transcription inside
+the budget**: the `tiny` model instead of `base` (21–23 s in all), greedy
+decoding instead of a beam of five (no measurable gain), and the aligner's
+linear layers converted to 8-bit integers (no measurable gain once the
+aligner's own loading is counted). None of them was adopted. Silero voice
+detection in place of pyannote's could not be tried: WhisperX fetches it from
+GitHub at run time, which this container cannot reach.
+
+What the numbers mean for a DJ: a record with words in its tags, a sidecar
+`.lrc` or LRCLIB — the common case — is timed inside the budget; one with no
+words anywhere takes about half a minute, which is why djmanzo reaches for
+known words first (KARAOKE.md §2). Whether separated vocals are faster or
+slower than the mix was not measured, and a laptop is not this machine: every
+run on a DJ's machine still times itself and says whether it met the budget.
+
+Measuring found two faults, both fixed: the install never fetched the Punkt
+tables above, so the first alignment failed wherever WhisperX could not fetch
+them itself; and a failure reported only the last line WhisperX printed,
+which for NLTK's error is a row of asterisks.
 
 ## Options put to the owner: streaming, visuals, video, words, a marketplace (§119, §122, §123)
 

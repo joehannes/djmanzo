@@ -26,8 +26,10 @@
 //!
 //! **Every run is timed**, stage by stage, and says whether it met that
 //! budget ([`Report::within_budget`]). This module cannot promise it: the
-//! time depends on the machine, and the one this was written on could not
-//! download a model to measure with.
+//! time depends on the machine. Measured on four cores of a cloud machine,
+//! from the mix, a four-and-a-half-minute record took 14 s with its words
+//! known and 31 s with none — the known words fit the budget, transcription
+//! does not (`docs/RESEARCH.md`, and the ignored test that measures it).
 //!
 //! # The helper, and what crosses between
 //!
@@ -590,17 +592,34 @@ impl Tools {
         })
     }
 
-    /// Written last, once everything installed: its presence is the one
-    /// answer to "is WhisperX here", so a half-finished install is not one.
+    /// Written once WhisperX itself is installed, so a half-finished
+    /// install is not one.
     #[must_use]
     pub fn marker(&self) -> PathBuf {
         self.root.join("whisperx.installed")
     }
 
+    /// The Punkt tables ([`PUNKT_URL`]), where NLTK looks inside the private
+    /// environment. Moved there whole once unpacked, so their being there
+    /// means all of them are.
     #[must_use]
-    pub fn installed(&self) -> bool {
+    pub fn punkt(&self) -> PathBuf {
+        self.venv()
+            .join("nltk_data")
+            .join("tokenizers")
+            .join("punkt_tab")
+    }
+
+    /// WhisperX installed, at the version djmanzo asks for.
+    fn whisperx_installed(&self) -> bool {
         std::fs::read_to_string(self.marker()).is_ok_and(|text| text.trim() == WHISPERX)
             && self.python().exists()
+    }
+
+    /// Everything a run needs: WhisperX and the tables its aligner reads.
+    #[must_use]
+    pub fn installed(&self) -> bool {
+        self.whisperx_installed() && self.punkt().is_dir()
     }
 }
 
@@ -621,6 +640,17 @@ pub fn uv_archive(os: Os, arch: &str) -> Option<String> {
         _ => format!("uv-{target}.tar.gz"),
     })
 }
+
+/// NLTK's Punkt tables (`punkt_tab`), which WhisperX's aligner splits the
+/// words into sentences with. Left to itself WhisperX fetches them on its
+/// first alignment — into the home folder, outside djmanzo's, and not at all
+/// behind a proxy, which NLTK refuses to fetch through — and fails when it
+/// cannot, so djmanzo fetches them at install, into the private environment,
+/// from one fixed commit of NLTK's data.
+pub const PUNKT_URL: &str = "https://raw.githubusercontent.com/nltk/nltk_data/550b6625bcef1f2abff2ff770a5a0d272c9c6b2a/packages/tokenizers/punkt_tab.zip";
+
+/// The SHA-256 NLTK publishes for [`PUNKT_URL`] in its data index.
+pub const PUNKT_SHA256: &str = "e57f64187974277726a3417ca6f181ec5403676c717672eef6a748a7b20e0106";
 
 /// Where a release of `uv` is published.
 #[must_use]
@@ -685,11 +715,14 @@ pub struct Progress {
 }
 
 /// Install WhisperX into `tools`: `uv` fetched and checked if djmanzo has
-/// none, then [`install_steps`], then the marker. `say` is told each step.
+/// none, then [`install_steps`], then the marker, then the Punkt tables
+/// ([`PUNKT_URL`]). What is already there is not done again. `say` is told
+/// each step.
 ///
 /// # Errors
 /// A download that failed or did not match its published checksum, an
-/// archive with no `uv` in it, or a step that failed — with what it said.
+/// archive with no `uv` or no tables in it, or a step that failed — with
+/// what it said.
 pub async fn install(
     tools: &Tools,
     http: &reqwest::Client,
@@ -697,8 +730,22 @@ pub async fn install(
 ) -> Result<(), String> {
     std::fs::create_dir_all(&tools.root).map_err(|e| format!("{}: {e}", tools.root.display()))?;
     std::fs::write(tools.helper(), HELPER).map_err(|e| e.to_string())?;
+    let fetch = |url: String| async move {
+        let response = http
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("could not download {url} — is this machine online? ({e})"))?;
+        if !response.status().is_success() {
+            return Err(format!("could not download {url}: {}", response.status()));
+        }
+        response
+            .bytes()
+            .await
+            .map_err(|e| format!("could not download {url}: {e}"))
+    };
     let uv = tools.own_uv();
-    if !uv.exists() {
+    if !tools.whisperx_installed() && !uv.exists() {
         let archive = uv_archive(tools.os, std::env::consts::ARCH).ok_or_else(|| {
             format!(
                 "uv is not published for this machine ({})",
@@ -709,19 +756,6 @@ pub async fn install(
             "Fetching uv {UV_VERSION}, which installs WhisperX"
         ));
         let url = uv_url(&archive);
-        let fetch = |url: String| async move {
-            let response =
-                http.get(&url).send().await.map_err(|e| {
-                    format!("could not download {url} — is this machine online? ({e})")
-                })?;
-            if !response.status().is_success() {
-                return Err(format!("could not download {url}: {}", response.status()));
-            }
-            response
-                .bytes()
-                .await
-                .map_err(|e| format!("could not download {url}: {e}"))
-        };
         let bytes = fetch(url.clone()).await?;
         let published = fetch(format!("{url}.sha256")).await?;
         if !checksum_matches(&bytes, &String::from_utf8_lossy(&published)) {
@@ -767,24 +801,73 @@ pub async fn install(
         "Getting Python and making a private environment for WhisperX",
         "Installing WhisperX and PyTorch's CPU build (about two gigabytes, once)",
     ];
-    for (step, what) in install_steps(&uv, tools).into_iter().zip(words) {
-        say(what);
-        let output = quiet(&step[0])
-            .args(&step[1..])
-            .output()
-            .map_err(|e| format!("{} would not start: {e}", step[0]))?;
-        if !output.status.success() {
-            let said = String::from_utf8_lossy(&output.stderr);
-            let last = said
-                .lines()
-                .rev()
-                .find(|line| !line.trim().is_empty())
-                .unwrap_or("");
-            return Err(format!("{what} failed: {last}"));
+    // An install from before the tables were fetched here has WhisperX
+    // already; only the tables are missing, and only they are fetched.
+    if !tools.whisperx_installed() {
+        for (step, what) in install_steps(&uv, tools).into_iter().zip(words) {
+            say(what);
+            let output = quiet(&step[0])
+                .args(&step[1..])
+                .output()
+                .map_err(|e| format!("{} would not start: {e}", step[0]))?;
+            if !output.status.success() {
+                let said = String::from_utf8_lossy(&output.stderr);
+                let last = said
+                    .lines()
+                    .rev()
+                    .find(|line| !line.trim().is_empty())
+                    .unwrap_or("");
+                return Err(format!("{what} failed: {last}"));
+            }
         }
+        std::fs::write(tools.marker(), WHISPERX).map_err(|e| e.to_string())?;
     }
-    std::fs::write(tools.marker(), WHISPERX).map_err(|e| e.to_string())?;
+    if !tools.punkt().is_dir() {
+        say("Fetching the sentence tables WhisperX's aligner reads");
+        let bytes = fetch(PUNKT_URL.to_owned()).await?;
+        if !checksum_matches(&bytes, PUNKT_SHA256) {
+            return Err(
+                "the sentence tables do not match NLTK's published checksum; not used".into(),
+            );
+        }
+        unpack_punkt(&tools.python(), &bytes, tools)?;
+    }
     Ok(())
+}
+
+/// Unpack the Punkt tables' archive where [`Tools::punkt`] says, with the
+/// environment's own Python — whose `zipfile` reads a `.zip` on every
+/// platform, where `tar` on Linux does not. The archive is checked against
+/// [`PUNKT_SHA256`] before it gets here.
+///
+/// # Errors
+/// An archive that would not unpack or has no tables in it.
+pub fn unpack_punkt(python: &Path, bytes: &[u8], tools: &Tools) -> Result<(), String> {
+    let unpack = tools.root.join("punkt-unpack");
+    let _ = std::fs::remove_dir_all(&unpack);
+    std::fs::create_dir_all(&unpack).map_err(|e| e.to_string())?;
+    let result = (|| {
+        let saved = unpack.join("punkt_tab.zip");
+        std::fs::write(&saved, bytes).map_err(|e| e.to_string())?;
+        let output = quiet(python)
+            .args(["-m", "zipfile", "-e"])
+            .arg(&saved)
+            .arg(&unpack)
+            .output()
+            .map_err(|e| format!("{} would not start: {e}", python.display()))?;
+        if !output.status.success() {
+            return Err("the sentence tables could not be unpacked".to_owned());
+        }
+        let found = unpack.join("punkt_tab");
+        if !found.is_dir() {
+            return Err("the sentence tables' archive has no tables in it".to_owned());
+        }
+        let into = tools.punkt();
+        std::fs::create_dir_all(into.parent().unwrap_or(&tools.root)).map_err(|e| e.to_string())?;
+        std::fs::rename(&found, &into).map_err(|e| format!("{}: {e}", into.display()))
+    })();
+    let _ = std::fs::remove_dir_all(&unpack);
+    result
 }
 
 /// A working folder for one run, gone when the run is.
@@ -1084,7 +1167,62 @@ mod tests {
         std::fs::write(tools.marker(), "whisperx==0.0.1").expect("written");
         assert!(!tools.installed(), "another version's marker");
         std::fs::write(tools.marker(), WHISPERX).expect("written");
+        assert!(
+            !tools.installed(),
+            "WhisperX without the tables its aligner reads"
+        );
+        std::fs::create_dir_all(tools.punkt()).expect("made");
         assert!(tools.installed());
+        assert!(
+            tools.punkt().starts_with(tools.venv()),
+            "the tables live in the private environment, where NLTK looks"
+        );
+    }
+
+    /// The Punkt tables are unpacked with the environment's Python and moved
+    /// into place whole; an archive without them leaves nothing behind.
+    #[cfg(unix)]
+    #[test]
+    fn the_sentence_tables_are_unpacked_into_the_environment() {
+        let Ok(python) = which("python3") else {
+            eprintln!("no python3 here; skipped");
+            return;
+        };
+        let dir = tempfile::tempdir().expect("a folder");
+        let tools = Tools {
+            root: dir.path().join("tools"),
+            os: Os::Linux,
+        };
+        let zip = |inside: &str| -> Vec<u8> {
+            let source = dir.path().join("source");
+            let _ = std::fs::remove_dir_all(&source);
+            std::fs::create_dir_all(source.join(inside).join("english")).expect("made");
+            std::fs::write(source.join(inside).join("english/sent_starters.txt"), "i\n")
+                .expect("written");
+            let archive = dir.path().join("archive.zip");
+            let made = Command::new(&python)
+                .current_dir(&source)
+                .args(["-m", "zipfile", "-c"])
+                .arg(&archive)
+                .arg(inside)
+                .status()
+                .expect("python ran");
+            assert!(made.success());
+            std::fs::read(archive).expect("read")
+        };
+
+        let refused = unpack_punkt(&python, &zip("something_else"), &tools).expect_err("refused");
+        assert!(refused.contains("no tables"), "{refused}");
+        assert!(!tools.punkt().exists());
+
+        unpack_punkt(&python, &zip("punkt_tab"), &tools).expect("unpacked");
+        assert!(tools.punkt().join("english/sent_starters.txt").is_file());
+        assert!(
+            !tools.root.join("punkt-unpack").exists(),
+            "the working folder is cleared"
+        );
+        assert_eq!(PUNKT_SHA256.len(), 64);
+        assert!(PUNKT_URL.contains("/punkt_tab.zip"));
     }
 
     /// The vocals are handed over only once all of them are separated, and
@@ -1284,6 +1422,63 @@ print(json.dumps({"mode": "align", "language": job["aligners"][job["language"]],
         assert!(refused.contains("no aligner for xx"), "{refused}");
     }
 
+    /// When WhisperX fails, the DJ is told why — not the row of asterisks
+    /// NLTK's error opens with, which is what the last line of a traceback
+    /// is. The real helper runs, with stand-ins beside it for what it
+    /// imports.
+    #[cfg(unix)]
+    #[test]
+    fn a_failure_says_what_went_wrong() {
+        let Ok(python) = which("python3") else {
+            eprintln!("no python3 here; skipped");
+            return;
+        };
+        let dir = tempfile::tempdir().expect("a folder");
+        let helper = dir.path().join("wordtimes_helper.py");
+        std::fs::write(&helper, HELPER).expect("written");
+        // Python looks beside the script first, so these are what it gets.
+        std::fs::write(
+            dir.path().join("torch.py"),
+            "def set_num_threads(count):\n    pass\n",
+        )
+        .expect("written");
+        std::fs::write(
+            dir.path().join("numpy.py"),
+            "int16 = 'int16'\nfloat32 = 'float32'\n\
+             class Samples:\n    def astype(self, kind):\n        return self\n\
+             \x20   def __truediv__(self, by):\n        return self\n\
+             def frombuffer(data, dtype):\n    return Samples()\n",
+        )
+        .expect("written");
+        std::fs::write(
+            dir.path().join("whisperx.py"),
+            "def load_align_model(**kwargs):\n    return object(), {}\n\
+             def align(*args, **kwargs):\n    raise LookupError('\\n' + '*' * 70 + \
+             '\\n  Resource punkt_tab not found.\\n  Please use the NLTK Downloader.\\n' \
+             + '*' * 70 + '\\n')\n",
+        )
+        .expect("written");
+        let audio = dir.path().join("in.wav");
+        write_audio(&[0.0; 3200], 1, SAMPLE_RATE, &audio).expect("written");
+        let job = Job {
+            audio,
+            language: Some("en".into()),
+            lines: vec![Known {
+                start: 0.0,
+                end: 0.2,
+                text: "hi".into(),
+            }],
+            model: MODEL.into(),
+            threads: 1,
+            aligners: aligners(),
+        };
+        let said = run(&python, &helper, &job, Duration::from_secs(20)).expect_err("failed");
+        assert_eq!(
+            said, "WhisperX failed: LookupError: Resource punkt_tab not found.",
+            "{said}"
+        );
+    }
+
     /// **The whole run, WhisperX stood in for.** A record is decoded and
     /// handed over at sixteen kilohertz mono with the words already known;
     /// what comes back is timed against the budget, stage by stage. The
@@ -1330,6 +1525,7 @@ print(json.dumps({"mode": "align", "language": job["language"], "segments": [{"s
         )
         .expect("written");
         std::fs::write(tools.marker(), WHISPERX).expect("written");
+        std::fs::create_dir_all(tools.punkt()).expect("made");
 
         // A two-second stereo record at 44.1 kHz, as a file to decode.
         let record = dir.path().join("record.wav");
@@ -1438,5 +1634,64 @@ print(json.dumps({"mode": "align", "language": job["language"], "segments": [{"s
                     .find(|candidate| candidate.is_file())
             })
             .ok_or(())
+    }
+
+    /// **The owner's budget, measured on a real record.**
+    ///
+    /// Ignored, because it needs WhisperX installed and a song to time,
+    /// which CI has neither of. Run it against a tools folder and a three-
+    /// to five-minute record:
+    ///
+    /// ```text
+    /// DJMANZO_WHISPERX_TOOLS=<tools folder> DJMANZO_WHISPERX_RECORD=<song> \
+    ///   cargo test -p dj-app --lib budget_measured -- --ignored --nocapture
+    /// ```
+    ///
+    /// It times djmanzo's own path — decoding, the sixteen-kilohertz file,
+    /// the helper — twice: with no words known (transcribe, then align), and
+    /// with the words known, as a tag, a sidecar or LRCLIB would give them
+    /// (align only). The second run's words are the first's, which is the
+    /// honest stand-in for words somebody typed.
+    #[test]
+    #[ignore = "needs WhisperX installed and a real record"]
+    fn the_budget_measured_on_a_real_record() {
+        let (Ok(root), Ok(record)) = (
+            std::env::var("DJMANZO_WHISPERX_TOOLS"),
+            std::env::var("DJMANZO_WHISPERX_RECORD"),
+        ) else {
+            return;
+        };
+        let tools = Tools {
+            root: PathBuf::from(root),
+            os: Os::here(),
+        };
+        let record = Path::new(&record);
+
+        let (heard, transcribed) =
+            time_words(&tools, record, |_| Vec::new(), None, None).expect("transcribed");
+        eprintln!(
+            "nothing known: {}",
+            serde_json::to_string(&transcribed).expect("a report")
+        );
+
+        let known: Vec<Known> = heard
+            .segments
+            .iter()
+            .filter_map(|segment| {
+                Some(Known {
+                    start: segment.start?,
+                    end: segment.end?,
+                    text: segment.text.trim().to_owned(),
+                })
+            })
+            .filter(|line| !line.text.is_empty())
+            .collect();
+        let language = Some(heard.language.clone());
+        let (_, aligned) =
+            time_words(&tools, record, move |_| known, language, None).expect("aligned");
+        eprintln!(
+            "words known: {}",
+            serde_json::to_string(&aligned).expect("a report")
+        );
     }
 }

@@ -185,8 +185,11 @@ the non-commercial aligners it avoids.
 - **No words anywhere**: faster-whisper's `base` model finds them first, then
   the aligner places them.
 - **Every run is timed** against the owner's fifteen seconds for a three- to
-  five-minute song and says whether it met it. Nothing here has measured a
-  real song yet: the container this was built in cannot reach the model hosts.
+  five-minute song and says whether it met it. Measured on a four-core cloud
+  machine from the mix (27 September 2026): **words known, 13–14 s — inside
+  the budget; nothing known, 28–31 s — about double it.** The details, and
+  the three speed-ups tried that did not help, are in
+  [RESEARCH.md](RESEARCH.md#words-in-time-whisperx-122).
 
 ### Forced alignment — the case nobody handles
 
@@ -371,7 +374,7 @@ piece of this document lands among them.
 | Singers' screen: wipe, next line, count-in, next singer | M3 | **K1** | shipped |
 | Singers' screen background: art, Cover Art Archive, generated | M3 | **K1** | not built |
 | Stem-based removal and a guide vocal | M6 | **K2** | shipped |
-| Transcription and forced alignment (WhisperX) | M6 | **K2** | shipped, not measured on a real song |
+| Transcription and forced alignment (WhisperX) | M6 | **K2** | shipped; measured: alignment inside the fifteen seconds, transcription about double |
 | Singer queue | — | **K2** | shipped as the rotation, with the guest book |
 | Beat- and microphone-reactive visuals | M2, §122 | **K2** | waits on the visual engine |
 | Voice control | A2 | **K2** | waits on A2 |

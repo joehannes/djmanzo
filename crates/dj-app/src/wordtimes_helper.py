@@ -126,5 +126,22 @@ def main():
     print(json.dumps(answer), flush=True)
 
 
+def reason(error):
+    """The first line of an error that says anything: NLTK's, for one, opens
+    with a row of asterisks, which as the last line said would be all the DJ
+    was told."""
+    for line in str(error).splitlines():
+        if any(character.isalnum() for character in line):
+            return line.strip()
+    return ""
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as error:
+        import traceback
+
+        traceback.print_exc()
+        say(f"{type(error).__name__}: {reason(error)}".rstrip(": "))
+        sys.exit(1)

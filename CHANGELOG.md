@@ -16,6 +16,21 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **WhisperX's first alignment no longer fails for want of a file.** Its
+  aligner reads NLTK's sentence tables, which the install never fetched;
+  WhisperX then tried to fetch them itself, into your home folder, and
+  failed behind a proxy. The install now fetches them into djmanzo's own
+  tools folder and checks them against NLTK's published checksum. An
+  install made before this fetches only the tables, not WhisperX again.
+- **When WhisperX fails, you are told why.** It used to show the last line
+  WhisperX printed, which for this failure was a row of asterisks; it now
+  shows the error itself, e.g. "LookupError: Resource punkt_tab not found."
+- **WhisperX measured.** On a four-core machine, timing the words of a
+  4½-minute record whose words are known took 14 s, inside the fifteen
+  seconds; finding the words of one nobody has written down took 31 s.
+  djmanzo reaches for known words first — the record's tags, a `.lrc`,
+  LRCLIB — for that reason.
+
 - **Karaoke reads the lyrics your records already carry.** Words stored in
   a record's own tags (timed SYLT, or a lyrics tag holding LRC or plain
   text) and a `.lrc` file beside the record are used before anything is
