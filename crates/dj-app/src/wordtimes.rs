@@ -1,131 +1,46 @@
-//! §122: when each word is sung, found by WhisperX.
+//! §122: when each word is sung — the words, their times, and the LRC the
+//! singers' screen reads.
 //!
 //! > I prefer x-whisper, since it also tells the timestamps for the
-//! > words/lyrics ... that's necessary for karaoke ... if x-whipser works on
-//! > all platforms somehow, do use it.
+//! > words/lyrics ... that's necessary for karaoke
 //!
-//! It does: WhisperX (BSD-2-Clause) runs on the CPU on Linux, macOS — Apple
-//! Silicon included — and Windows. It is Python and PyTorch, which no
-//! package djmanzo ships can carry, so djmanzo installs it **on first use**,
-//! into a private environment of its own, with `uv` (MIT OR Apache-2.0):
-//! one small program that fetches a Python as well when the machine has
-//! none. Nothing is installed system-wide and nothing else on the machine is
-//! touched; deleting the tools folder undoes it.
+//! The listening is whisper.cpp's, compiled into djmanzo (`crate::whispercpp`),
+//! since the owner asked for word timing that ships with djmanzo rather than
+//! WhisperX's two and a half gigabytes of Python. This module is what
+//! surrounds it: the record decoded and brought to sixteen kilohertz mono —
+//! the separated vocals when separation has finished, the mix otherwise —
+//! the words already known handed over, the answer turned into **enhanced
+//! LRC** ([`to_lrc`]) — a line time and a time before every word — which the
+//! library keeps as the record's timed words and the singers' screen wipes
+//! word by word (`dj_library::lrc`).
 //!
-//! # Two jobs, and the cheap one first
-//!
-//! WhisperX does two things: it **transcribes** (faster-whisper) and it
-//! **aligns** — a wav2vec2 model placing each known word in the audio, which
-//! is where word times come from. When the words are already known — a
-//! record's tags, a sidecar `.lrc`, LRCLIB — only the second is needed, and it
-//! is the cheap one: the words are given, so nothing has to be recognised.
-//! Only a record whose words nobody has is transcribed first, with the small
-//! `base` model, because the owner's budget is fifteen seconds for a three-
-//! to five-minute song on a medium laptop and the larger models do not fit it
-//! on a CPU.
-//!
-//! **Every run is timed**, stage by stage, and says whether it met that
-//! budget ([`Report::within_budget`]). This module cannot promise it: the
-//! time depends on the machine. Measured on four cores of a cloud machine,
-//! from the mix, a four-and-a-half-minute record took 14 s with its words
-//! known and 31 s with none — the known words fit the budget, transcription
-//! does not (`docs/RESEARCH.md`, and the ignored test that measures it).
-//!
-//! # The helper, and what crosses between
-//!
-//! WhisperX is driven by a short Python helper of djmanzo's own
-//! ([`HELPER`]), written into the tools folder and run as a child process on
-//! a worker thread — never near the audio thread. A [`Job`] goes in on its
-//! standard input as JSON; an [`Answer`] comes back on its standard output;
-//! anything it says on standard error is progress, and the last of it is the
-//! reason when it fails. The audio is handed over already decoded, as a
-//! sixteen-kilohertz mono WAV, so WhisperX never needs FFmpeg — which it
-//! otherwise calls to read files, and which a Mac or a Windows machine does
-//! not have.
-//!
-//! What comes back becomes **enhanced LRC** ([`to_lrc`]) — a line time and a
-//! time before every word — which the library keeps as the record's timed
-//! words and the singers' screen already wipes word by word
-//! (`dj_library::lrc`).
+//! **Every run is timed**, stage by stage, against the owner's minute and a
+//! half for a song ([`BUDGET_SECONDS`]), and says whether it met it; what it
+//! took is kept, so the next estimate is this machine's own.
 
+use crate::whispercpp::{Model, Models};
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::path::Path;
+use std::time::Instant;
 
-/// The owner's budget: longer than this for a three- to five-minute song and
-/// "it's not an option".
-pub const BUDGET_SECONDS: f64 = 15.0;
+/// The owner's limit for analysing a song: "one that doesn't exceed 1.5 min
+/// of analysis on this laptop approx."
+pub const BUDGET_SECONDS: f64 = 90.0;
 
-/// What is installed, exactly.
-pub const WHISPERX: &str = "whisperx==3.8.6";
-
-/// The `uv` fetched when the machine has none.
-pub const UV_VERSION: &str = "0.12.19";
-
-/// The Python the private environment is made with.
-pub const PYTHON: &str = "3.12";
-
-/// The transcription model, for a record whose words nobody has.
-pub const MODEL: &str = "base";
-
-/// What WhisperX is handed: mono, at the rate its models were trained on.
+/// What Whisper listens to: mono, at the rate its models were trained on.
 pub const SAMPLE_RATE: u32 = 16_000;
 
-/// Aligners chosen over WhisperX's own, language by language, because of
-/// their licences.
-///
-/// WhisperX's defaults for French, German, Spanish and Italian are torchaudio's
-/// VoxPopuli models, published under **CC BY-NC 4.0** — non-commercial — and a
-/// DJ timing words for a paid night is commercial use. These are Apache-2.0,
-/// each per its model card. English's default (wav2vec 2.0, MIT) and every
-/// other language's are WhisperX's own; see `docs/RESEARCH.md`.
-pub const ALIGNERS: [(&str, &str); 4] = [
-    ("de", "jonatasgrosman/wav2vec2-large-xlsr-53-german"),
-    ("it", "jonatasgrosman/wav2vec2-large-xlsr-53-italian"),
-    ("es", "facebook/wav2vec2-large-xlsr-53-spanish"),
-    ("fr", "facebook/wav2vec2-large-xlsr-53-french"),
-];
-
-/// The helper djmanzo runs WhisperX through.
-pub const HELPER: &str = include_str!("wordtimes_helper.py");
-
-/// Longer than any run is allowed before it is called stuck: a first run
-/// also downloads the models.
-pub const TIMEOUT: Duration = Duration::from_secs(15 * 60);
-
-/// A stretch of the record whose words are known, and roughly when it is.
+/// A line of the record whose words are known, and when it is sung if that
+/// is known too.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Known {
     pub start: f64,
     pub end: f64,
     pub text: String,
-}
-
-/// What the helper is asked.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Job {
-    /// A sixteen-kilohertz mono WAV of the record.
-    pub audio: PathBuf,
-    /// The words' language, as a two-letter code, when it is known.
-    pub language: Option<String>,
-    /// The words, where they are known: then only alignment runs.
-    pub lines: Vec<Known>,
-    pub model: String,
-    pub threads: usize,
-    /// [`ALIGNERS`], as language code to model.
-    pub aligners: std::collections::BTreeMap<String, String>,
-}
-
-/// [`ALIGNERS`] as the job carries them.
-#[must_use]
-pub fn aligners() -> std::collections::BTreeMap<String, String> {
-    ALIGNERS
-        .iter()
-        .map(|(language, model)| ((*language).to_owned(), (*model).to_owned()))
-        .collect()
+    /// Whether `start` and `end` are the line's own times, from timed
+    /// lyrics, rather than the whole record.
+    #[serde(default)]
+    pub timed: bool,
 }
 
 /// One word, and when it is sung. A word the aligner could not place — a
@@ -150,14 +65,15 @@ pub struct Segment {
     pub words: Vec<TimedWord>,
 }
 
-/// What the helper answers.
+/// The words of a record, placed.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Answer {
-    /// `align` when the words were given, `transcribe` when they were found.
+    /// `align` when the words were known and placed, `transcribe` when they
+    /// were found.
     pub mode: String,
     pub language: String,
     pub segments: Vec<Segment>,
-    /// How long each stage took, in seconds, as the helper measured it.
+    /// How long each stage took, in seconds.
     #[serde(default)]
     pub stages: Vec<(String, f64)>,
 }
@@ -169,17 +85,37 @@ pub struct Report {
     pub language: String,
     /// Words with a time.
     pub words: usize,
-    /// Each stage and its seconds: preparing the audio here, then the
-    /// helper's own.
+    /// Each stage and its seconds: preparing the audio, loading the model,
+    /// listening, placing the known words.
     pub stages: Vec<(String, f64)>,
     /// From pressing the button to the words being kept.
     pub seconds: f64,
     /// The record's length, for the budget's sake.
     pub record_seconds: f64,
     pub within_budget: bool,
-    /// `vocals` when WhisperX was handed the separated vocal stem, `mix`
-    /// when separation had not finished and it heard the whole record.
+    /// `vocals` when Whisper heard the separated vocal stem, `mix` when
+    /// separation had not finished and it heard the whole record.
     pub heard: String,
+    /// The model it listened with.
+    pub model: String,
+}
+
+/// Where word timing has got to, for the interface to read.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Progress {
+    /// The model being downloaded, by its id.
+    pub downloading: Option<String>,
+    pub downloaded: u64,
+    pub download_total: u64,
+    /// The deck being listened to, and how much of it is done, in percent.
+    pub listening: Option<u8>,
+    pub percent: i32,
+    /// Why the last download or run failed.
+    pub error: Option<String>,
+    /// How the last run went.
+    pub last: Option<Report>,
+    /// This machine's download speed in bytes a second, once measured.
+    pub speed: Option<f64>,
 }
 
 /// The separated vocals of a record `frames` long, as interleaved stereo —
@@ -201,11 +137,11 @@ pub fn vocals_of(table: &dj_decode::StemTable, frames: usize) -> Option<Vec<f32>
     Some(out)
 }
 
-/// The stretches whose words are known, from what the library holds.
+/// The lines whose words are known, from what the library holds.
 ///
-/// Timed lines run each to the next, the last to the end of the record. Plain
-/// words with no times are one stretch over the whole record: the aligner
-/// then places every word itself.
+/// Timed lines run each to the next, the last to the end of the record.
+/// Plain lines, with no times, each span the whole record: where they are
+/// sung is left to what Whisper heard.
 #[must_use]
 pub fn known_lines(synced: Option<&str>, plain: &str, record_seconds: f64) -> Vec<Known> {
     let timed: Vec<dj_library::lrc::Line> = synced
@@ -225,23 +161,22 @@ pub fn known_lines(synced: Option<&str>, plain: &str, record_seconds: f64) -> Ve
                 start: line.at,
                 end,
                 text: line.text.trim().to_owned(),
+                timed: true,
             });
         }
         return out;
     }
-    let text: Vec<&str> = plain
+    plain
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .collect();
-    if text.is_empty() {
-        return Vec::new();
-    }
-    vec![Known {
-        start: 0.0,
-        end: record_seconds,
-        text: text.join(" "),
-    }]
+        .map(|line| Known {
+            start: 0.0,
+            end: record_seconds,
+            text: line.to_owned(),
+            timed: false,
+        })
+        .collect()
 }
 
 /// `mm:ss.xx`, as LRC writes a time.
@@ -262,7 +197,7 @@ pub fn stamp(seconds: f64) -> String {
 /// a line with no placed word at all is left out rather than timed wrong.
 #[must_use]
 pub fn to_lrc(answer: &Answer) -> String {
-    let mut out = String::from("[re:djmanzo, words timed by WhisperX]\n");
+    let mut out = String::from("[re:djmanzo, words timed by whisper.cpp]\n");
     for segment in &answer.segments {
         let mut last = segment.start;
         let mut words = Vec::new();
@@ -320,138 +255,25 @@ pub fn timed_words(answer: &Answer) -> usize {
         .count()
 }
 
-/// A child process that opens no window of its own.
-///
-/// On Windows a GUI application starting `python.exe`, `uv.exe` or `tar.exe`
-/// gets a console window flashed up for each one unless it asks for none —
-/// in the middle of a night, over the decks. Elsewhere this changes nothing.
-fn quiet(program: impl AsRef<std::ffi::OsStr>) -> Command {
-    #[allow(unused_mut)]
-    let mut command = Command::new(program);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-    command
-}
-
-/// Run the helper with `python`: the job on its standard input, the answer
-/// on its standard output.
-///
-/// # Errors
-/// A helper that would not start, ran past `timeout`, failed — with the last
-/// thing it said — or answered something that is not an [`Answer`].
-pub fn run(python: &Path, helper: &Path, job: &Job, timeout: Duration) -> Result<Answer, String> {
-    let mut child = quiet(python)
-        .arg(helper)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("{} would not start: {e}", python.display()))?;
-    let input = serde_json::to_vec(job).map_err(|e| e.to_string())?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(&input).map_err(|e| e.to_string())?;
-    }
-    // Read both pipes on their own threads, so a helper that fills one while
-    // this waits on the other cannot wedge them both.
-    let mut stdout = child.stdout.take();
-    let mut stderr = child.stderr.take();
-    let out = std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(pipe) = stdout.as_mut() {
-            let _ = pipe.read_to_string(&mut text);
-        }
-        text
-    });
-    let err = std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(pipe) = stderr.as_mut() {
-            let _ = pipe.read_to_string(&mut text);
-        }
-        text
-    });
-    let started = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-            break status;
-        }
-        if started.elapsed() > timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!(
-                "WhisperX was still running after {} minutes and was stopped",
-                timeout.as_secs() / 60
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    };
-    let out = out.join().unwrap_or_default();
-    let err = err.join().unwrap_or_default();
-    if !status.success() {
-        let said = err
-            .lines()
-            .rev()
-            .find(|line| !line.trim().is_empty())
-            .unwrap_or("it said nothing");
-        return Err(format!("WhisperX failed: {said}"));
-    }
-    let last = out
-        .lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .ok_or_else(|| "WhisperX answered nothing".to_owned())?;
-    serde_json::from_str(last).map_err(|e| format!("WhisperX's answer could not be read: {e}"))
-}
-
-/// The record as WhisperX wants it: mono, sixteen kilohertz, sixteen-bit,
-/// written to `to`. Answers its length in seconds.
-///
-/// # Errors
-/// The file system's own sentence.
-pub fn write_audio(
-    interleaved: &[f32],
-    channels: usize,
-    rate: u32,
-    to: &Path,
-) -> Result<f64, String> {
+/// `interleaved` audio of `channels` at `rate`, as Whisper hears it: mono,
+/// at sixteen kilohertz. With the record's length in seconds.
+#[must_use]
+pub fn sixteen_kilohertz_mono(interleaved: &[f32], channels: usize, rate: u32) -> (Vec<f32>, f64) {
     let channels = channels.max(1);
     let mono: Vec<f32> = interleaved
         .chunks_exact(channels)
         .map(|frame| frame.iter().sum::<f32>() / channels as f32)
         .collect();
     let seconds = mono.len() as f64 / f64::from(rate.max(1));
-    let resampled = to_sixteen_kilohertz(&mono, rate);
-    let mut bytes = Vec::with_capacity(44 + resampled.len() * 2);
-    let data =
-        u32::try_from(resampled.len() * 2).map_err(|_| "the record is too long".to_owned())?;
-    bytes.extend_from_slice(b"RIFF");
-    bytes.extend_from_slice(&(36 + data).to_le_bytes());
-    bytes.extend_from_slice(b"WAVEfmt ");
-    bytes.extend_from_slice(&16u32.to_le_bytes());
-    bytes.extend_from_slice(&1u16.to_le_bytes());
-    bytes.extend_from_slice(&1u16.to_le_bytes());
-    bytes.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
-    bytes.extend_from_slice(&(SAMPLE_RATE * 2).to_le_bytes());
-    bytes.extend_from_slice(&2u16.to_le_bytes());
-    bytes.extend_from_slice(&16u16.to_le_bytes());
-    bytes.extend_from_slice(b"data");
-    bytes.extend_from_slice(&data.to_le_bytes());
-    for sample in resampled {
-        let value = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
-        bytes.extend_from_slice(&value.to_le_bytes());
-    }
-    std::fs::write(to, bytes).map_err(|e| format!("{}: {e}", to.display()))?;
-    Ok(seconds)
+    (to_sixteen_kilohertz(&mono, rate), seconds)
 }
 
-/// `input`, at `from` hertz, brought to [`SAMPLE_RATE`] for WhisperX.
+/// `input`, at `from` hertz, brought to [`SAMPLE_RATE`] for Whisper.
 ///
 /// Not `dj_stems::resample`, which computes its kernel sample by sample for
 /// the stems' sake and took sixteen seconds over a four-minute record —
-/// more than the owner's whole budget before WhisperX had started. Speech
+/// more than the owner's first budget, fifteen seconds, before anything had
+/// listened. Speech
 /// recognition needs a clean low-pass and the right times, not a mastering
 /// resampler: the kernel here is worked out once, for [`PHASES`] fractional
 /// positions, and each output sample is one row of it against the input.
@@ -533,422 +355,73 @@ pub fn to_sixteen_kilohertz(input: &[f32], from: u32) -> Vec<f32> {
 /// out for.
 pub const PHASES: usize = 512;
 
-/// The operating systems djmanzo is built for, as far as installing goes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Os {
-    Linux,
-    MacOs,
-    Windows,
-}
-
-impl Os {
-    #[must_use]
-    pub const fn here() -> Self {
-        if cfg!(target_os = "windows") {
-            Os::Windows
-        } else if cfg!(target_os = "macos") {
-            Os::MacOs
-        } else {
-            Os::Linux
-        }
-    }
-}
-
-/// Where WhisperX and what runs it live.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Tools {
-    pub root: PathBuf,
-    pub os: Os,
-}
-
-impl Tools {
-    /// The private environment.
-    #[must_use]
-    pub fn venv(&self) -> PathBuf {
-        self.root.join("whisperx")
-    }
-
-    /// Its Python.
-    #[must_use]
-    pub fn python(&self) -> PathBuf {
-        match self.os {
-            Os::Windows => self.venv().join("Scripts").join("python.exe"),
-            _ => self.venv().join("bin").join("python"),
-        }
-    }
-
-    /// The helper, as written out of [`HELPER`].
-    #[must_use]
-    pub fn helper(&self) -> PathBuf {
-        self.root.join("wordtimes_helper.py")
-    }
-
-    /// The `uv` djmanzo fetched, if it did.
-    #[must_use]
-    pub fn own_uv(&self) -> PathBuf {
-        self.root.join("uv").join(match self.os {
-            Os::Windows => "uv.exe",
-            _ => "uv",
-        })
-    }
-
-    /// Written once WhisperX itself is installed, so a half-finished
-    /// install is not one.
-    #[must_use]
-    pub fn marker(&self) -> PathBuf {
-        self.root.join("whisperx.installed")
-    }
-
-    /// The Punkt tables ([`PUNKT_URL`]), where NLTK looks inside the private
-    /// environment. Moved there whole once unpacked, so their being there
-    /// means all of them are.
-    #[must_use]
-    pub fn punkt(&self) -> PathBuf {
-        self.venv()
-            .join("nltk_data")
-            .join("tokenizers")
-            .join("punkt_tab")
-    }
-
-    /// WhisperX installed, at the version djmanzo asks for.
-    fn whisperx_installed(&self) -> bool {
-        std::fs::read_to_string(self.marker()).is_ok_and(|text| text.trim() == WHISPERX)
-            && self.python().exists()
-    }
-
-    /// Everything a run needs: WhisperX and the tables its aligner reads.
-    #[must_use]
-    pub fn installed(&self) -> bool {
-        self.whisperx_installed() && self.punkt().is_dir()
-    }
-}
-
-/// The archive `uv` is published in for this machine, if it is published.
-#[must_use]
-pub fn uv_archive(os: Os, arch: &str) -> Option<String> {
-    let target = match (os, arch) {
-        (Os::Linux, "x86_64") => "x86_64-unknown-linux-gnu",
-        (Os::Linux, "aarch64") => "aarch64-unknown-linux-gnu",
-        (Os::MacOs, "aarch64") => "aarch64-apple-darwin",
-        (Os::MacOs, "x86_64") => "x86_64-apple-darwin",
-        (Os::Windows, "x86_64") => "x86_64-pc-windows-msvc",
-        (Os::Windows, "aarch64") => "aarch64-pc-windows-msvc",
-        _ => return None,
-    };
-    Some(match os {
-        Os::Windows => format!("uv-{target}.zip"),
-        _ => format!("uv-{target}.tar.gz"),
-    })
-}
-
-/// NLTK's Punkt tables (`punkt_tab`), which WhisperX's aligner splits the
-/// words into sentences with. Left to itself WhisperX fetches them on its
-/// first alignment — into the home folder, outside djmanzo's, and not at all
-/// behind a proxy, which NLTK refuses to fetch through — and fails when it
-/// cannot, so djmanzo fetches them at install, into the private environment,
-/// from one fixed commit of NLTK's data.
-pub const PUNKT_URL: &str = "https://raw.githubusercontent.com/nltk/nltk_data/550b6625bcef1f2abff2ff770a5a0d272c9c6b2a/packages/tokenizers/punkt_tab.zip";
-
-/// The SHA-256 NLTK publishes for [`PUNKT_URL`] in its data index.
-pub const PUNKT_SHA256: &str = "e57f64187974277726a3417ca6f181ec5403676c717672eef6a748a7b20e0106";
-
-/// Where a release of `uv` is published.
-#[must_use]
-pub fn uv_url(archive: &str) -> String {
-    format!("https://github.com/astral-sh/uv/releases/download/{UV_VERSION}/{archive}")
-}
-
-/// Whether `bytes` are what a published `.sha256` file says they are. The
-/// file is `<hex>  <name>`; only the hex is read.
-#[must_use]
-pub fn checksum_matches(bytes: &[u8], published: &str) -> bool {
-    let Some(expected) = published.split_whitespace().next() else {
-        return false;
-    };
-    let actual = sha2::Sha256::digest(bytes);
-    let hex: String = actual.iter().map(|b| format!("{b:02x}")).collect();
-    expected.eq_ignore_ascii_case(&hex)
-}
-
-/// The commands that install WhisperX with `uv`: a private environment with
-/// its own Python — fetched by `uv` when the machine has no suitable one —
-/// and WhisperX in it, with PyTorch's CPU build (`--torch-backend cpu`: on
-/// Linux PyPI's default PyTorch brings two gigabytes of graphics-card
-/// libraries a CPU-only run never loads).
-#[must_use]
-pub fn install_steps(uv: &Path, tools: &Tools) -> Vec<Vec<String>> {
-    let uv = uv.display().to_string();
-    let venv = tools.venv().display().to_string();
-    let python = tools.python().display().to_string();
-    vec![
-        vec![
-            uv.clone(),
-            "venv".into(),
-            "--python".into(),
-            PYTHON.into(),
-            "--seed".into(),
-            venv,
-        ],
-        vec![
-            uv,
-            "pip".into(),
-            "install".into(),
-            "--python".into(),
-            python,
-            "--torch-backend".into(),
-            "cpu".into(),
-            WHISPERX.into(),
-        ],
-    ]
-}
-
-/// Where an install has got to, for the interface to read.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
-pub struct Progress {
-    pub installing: bool,
-    /// What it is doing now, in words.
-    pub step: Option<String>,
-    /// Why the last install or run failed.
-    pub error: Option<String>,
-    /// How the last run went.
-    pub last: Option<Report>,
-}
-
-/// Install WhisperX into `tools`: `uv` fetched and checked if djmanzo has
-/// none, then [`install_steps`], then the marker, then the Punkt tables
-/// ([`PUNKT_URL`]). What is already there is not done again. `say` is told
-/// each step.
+/// Time the words of the record at `path` with `model`: decode it, listen,
+/// place the words already known, and time every stage. `progress` is told
+/// the percentage listened. On a worker thread.
 ///
 /// # Errors
-/// A download that failed or did not match its published checksum, an
-/// archive with no `uv` or no tables in it, or a step that failed — with
-/// what it said.
-pub async fn install(
-    tools: &Tools,
-    http: &reqwest::Client,
-    say: impl Fn(&str),
-) -> Result<(), String> {
-    std::fs::create_dir_all(&tools.root).map_err(|e| format!("{}: {e}", tools.root.display()))?;
-    std::fs::write(tools.helper(), HELPER).map_err(|e| e.to_string())?;
-    let fetch = |url: String| async move {
-        let response = http
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| format!("could not download {url} — is this machine online? ({e})"))?;
-        if !response.status().is_success() {
-            return Err(format!("could not download {url}: {}", response.status()));
-        }
-        response
-            .bytes()
-            .await
-            .map_err(|e| format!("could not download {url}: {e}"))
-    };
-    let uv = tools.own_uv();
-    if !tools.whisperx_installed() && !uv.exists() {
-        let archive = uv_archive(tools.os, std::env::consts::ARCH).ok_or_else(|| {
-            format!(
-                "uv is not published for this machine ({})",
-                std::env::consts::ARCH
-            )
-        })?;
-        say(&format!(
-            "Fetching uv {UV_VERSION}, which installs WhisperX"
-        ));
-        let url = uv_url(&archive);
-        let bytes = fetch(url.clone()).await?;
-        let published = fetch(format!("{url}.sha256")).await?;
-        if !checksum_matches(&bytes, &String::from_utf8_lossy(&published)) {
-            return Err(format!(
-                "{archive} does not match its published checksum; not used"
-            ));
-        }
-        let unpack = tools.root.join("uv-unpack");
-        let _ = std::fs::remove_dir_all(&unpack);
-        std::fs::create_dir_all(&unpack).map_err(|e| e.to_string())?;
-        let saved = unpack.join(&archive);
-        std::fs::write(&saved, &bytes).map_err(|e| e.to_string())?;
-        // `tar` reads both .tar.gz and .zip where uv is published: it is
-        // bsdtar on macOS and on Windows 10 and later.
-        let status = quiet("tar")
-            .arg("-xf")
-            .arg(&saved)
-            .arg("-C")
-            .arg(&unpack)
-            .status()
-            .map_err(|e| format!("tar would not start: {e}"))?;
-        if !status.success() {
-            return Err(format!("{archive} could not be unpacked"));
-        }
-        let name = uv
-            .file_name()
-            .map(std::ffi::OsStr::to_owned)
-            .unwrap_or_default();
-        let found =
-            find_file(&unpack, &name).ok_or_else(|| format!("{archive} has no uv in it"))?;
-        std::fs::create_dir_all(uv.parent().unwrap_or(&tools.root)).map_err(|e| e.to_string())?;
-        std::fs::rename(&found, &uv)
-            .or_else(|_| std::fs::copy(&found, &uv).map(|_| ()))
-            .map_err(|e| e.to_string())?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&uv, std::fs::Permissions::from_mode(0o755));
-        }
-        let _ = std::fs::remove_dir_all(&unpack);
-    }
-    let words = [
-        "Getting Python and making a private environment for WhisperX",
-        "Installing WhisperX and PyTorch's CPU build (about two gigabytes, once)",
-    ];
-    // An install from before the tables were fetched here has WhisperX
-    // already; only the tables are missing, and only they are fetched.
-    if !tools.whisperx_installed() {
-        for (step, what) in install_steps(&uv, tools).into_iter().zip(words) {
-            say(what);
-            let output = quiet(&step[0])
-                .args(&step[1..])
-                .output()
-                .map_err(|e| format!("{} would not start: {e}", step[0]))?;
-            if !output.status.success() {
-                let said = String::from_utf8_lossy(&output.stderr);
-                let last = said
-                    .lines()
-                    .rev()
-                    .find(|line| !line.trim().is_empty())
-                    .unwrap_or("");
-                return Err(format!("{what} failed: {last}"));
-            }
-        }
-        std::fs::write(tools.marker(), WHISPERX).map_err(|e| e.to_string())?;
-    }
-    if !tools.punkt().is_dir() {
-        say("Fetching the sentence tables WhisperX's aligner reads");
-        let bytes = fetch(PUNKT_URL.to_owned()).await?;
-        if !checksum_matches(&bytes, PUNKT_SHA256) {
-            return Err(
-                "the sentence tables do not match NLTK's published checksum; not used".into(),
-            );
-        }
-        unpack_punkt(&tools.python(), &bytes, tools)?;
-    }
-    Ok(())
-}
-
-/// Unpack the Punkt tables' archive where [`Tools::punkt`] says, with the
-/// environment's own Python — whose `zipfile` reads a `.zip` on every
-/// platform, where `tar` on Linux does not. The archive is checked against
-/// [`PUNKT_SHA256`] before it gets here.
-///
-/// # Errors
-/// An archive that would not unpack or has no tables in it.
-pub fn unpack_punkt(python: &Path, bytes: &[u8], tools: &Tools) -> Result<(), String> {
-    let unpack = tools.root.join("punkt-unpack");
-    let _ = std::fs::remove_dir_all(&unpack);
-    std::fs::create_dir_all(&unpack).map_err(|e| e.to_string())?;
-    let result = (|| {
-        let saved = unpack.join("punkt_tab.zip");
-        std::fs::write(&saved, bytes).map_err(|e| e.to_string())?;
-        let output = quiet(python)
-            .args(["-m", "zipfile", "-e"])
-            .arg(&saved)
-            .arg(&unpack)
-            .output()
-            .map_err(|e| format!("{} would not start: {e}", python.display()))?;
-        if !output.status.success() {
-            return Err("the sentence tables could not be unpacked".to_owned());
-        }
-        let found = unpack.join("punkt_tab");
-        if !found.is_dir() {
-            return Err("the sentence tables' archive has no tables in it".to_owned());
-        }
-        let into = tools.punkt();
-        std::fs::create_dir_all(into.parent().unwrap_or(&tools.root)).map_err(|e| e.to_string())?;
-        std::fs::rename(&found, &into).map_err(|e| format!("{}: {e}", into.display()))
-    })();
-    let _ = std::fs::remove_dir_all(&unpack);
-    result
-}
-
-/// A working folder for one run, gone when the run is.
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new() -> Result<Self, String> {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since| since.as_nanos());
-        let dir =
-            std::env::temp_dir().join(format!("djmanzo-words-{}-{nanos}", std::process::id()));
-        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        Ok(Self(dir))
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn find_file(dir: &Path, name: &std::ffi::OsStr) -> Option<PathBuf> {
-    for entry in std::fs::read_dir(dir).ok()?.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if let Some(found) = find_file(&path, name) {
-                return Some(found);
-            }
-        } else if path.file_name() == Some(name) {
-            return Some(path);
-        }
-    }
-    None
-}
-
-/// Time the words of the record at `path`: decode it, hand it over with the
-/// words already known, and time every stage. On a worker thread.
-///
-/// # Errors
-/// WhisperX not installed, a record that would not decode, or what [`run`]
-/// says.
+/// The model not downloaded, a record that would not decode, or what
+/// listening says.
 pub fn time_words(
-    tools: &Tools,
+    models: &Models,
+    model: &Model,
     path: &Path,
     known: impl FnOnce(f64) -> Vec<Known>,
     language: Option<String>,
     stems: Option<&dj_decode::StemBuffer>,
+    progress: impl FnMut(i32) + 'static,
 ) -> Result<(Answer, Report), String> {
-    if !tools.installed() {
-        return Err("WhisperX is not installed yet".to_owned());
+    if !models.installed(model) {
+        return Err(format!("{} is not downloaded yet", model.name));
     }
+    crate::whispercpp::cpu_can_run()?;
     let began = Instant::now();
     let decoded = dj_decode::decode_file(path).map_err(|e| e.to_string())?;
     let buffer = decoded.buffer;
-    let work = Scratch::new()?;
-    let audio = work.0.join("record.wav");
     let vocals = stems.and_then(|stems| vocals_of(&stems.load(), buffer.len_frames()));
-    let heard = if vocals.is_some() { "vocals" } else { "mix" };
-    let record_seconds = write_audio(
+    let heard_from = if vocals.is_some() { "vocals" } else { "mix" };
+    let (audio, record_seconds) = sixteen_kilohertz_mono(
         vocals.as_deref().unwrap_or_else(|| buffer.as_interleaved()),
         dj_decode::CHANNELS,
         buffer.sample_rate().get(),
-        &audio,
-    )?;
+    );
+    drop(buffer);
     let lines = known(record_seconds);
     let prepared = began.elapsed().as_secs_f64();
     let threads = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
-    let job = Job {
-        audio,
-        language: language.filter(|code| !code.trim().is_empty()),
-        lines,
-        model: MODEL.to_owned(),
+    let language = language
+        .map(|code| code.trim().to_lowercase())
+        .filter(|code| !code.is_empty());
+    let heard = crate::whispercpp::listen(
+        &models.path(model),
+        model,
+        &audio,
+        language.as_deref(),
+        crate::whispercpp::prompt_of(&lines).as_deref(),
         threads,
-        aligners: aligners(),
+        progress,
+    )?;
+    let mut stages = vec![
+        ("prepare".to_owned(), prepared),
+        ("load".to_owned(), heard.load_seconds),
+        ("listen".to_owned(), heard.listen_seconds),
+    ];
+    let (mode, segments) = if lines.is_empty() {
+        ("transcribe", heard.segments)
+    } else {
+        let placing = Instant::now();
+        let placed = crate::whispercpp::place_known(&lines, &heard.segments);
+        stages.push(("place".to_owned(), placing.elapsed().as_secs_f64()));
+        ("align", placed)
     };
-    let answer = run(&tools.python(), &tools.helper(), &job, TIMEOUT)?;
+    let answer = Answer {
+        mode: mode.to_owned(),
+        language: heard.language,
+        segments,
+        stages: stages.clone(),
+    };
     let seconds = began.elapsed().as_secs_f64();
-    let mut stages = vec![("prepare".to_owned(), prepared)];
-    stages.extend(answer.stages.iter().cloned());
+    models.remember_rate(model, seconds, record_seconds);
     let report = Report {
         mode: answer.mode.clone(),
         language: answer.language.clone(),
@@ -957,7 +430,8 @@ pub fn time_words(
         seconds,
         record_seconds,
         within_budget: seconds <= BUDGET_SECONDS,
-        heard: heard.to_owned(),
+        heard: heard_from.to_owned(),
+        model: model.id.to_owned(),
     };
     Ok((answer, report))
 }
@@ -965,6 +439,7 @@ pub fn time_words(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     fn answer(segments: Vec<Segment>) -> Answer {
         Answer {
@@ -984,12 +459,12 @@ mod tests {
         }
     }
 
-    /// **The load-bearing one.** What WhisperX answers becomes LRC the
-    /// singers' screen reads back word by word, at the times WhisperX gave —
+    /// **The load-bearing one.** What Whisper answers becomes LRC the
+    /// singers' screen reads back word by word, at the times it gave —
     /// through `dj_library::lrc::parse`, the reader the screen really uses,
     /// not a second one written for the test.
     #[test]
-    fn whisperx_words_come_back_through_the_screens_own_reader() {
+    fn the_words_come_back_through_the_screens_own_reader() {
         let answer = answer(vec![
             Segment {
                 start: Some(12.0),
@@ -1044,26 +519,6 @@ mod tests {
         assert!(dj_library::lrc::parse(&to_lrc(&answer)).is_empty());
     }
 
-    /// The languages whose WhisperX default is non-commercial are each given
-    /// another aligner, and none of the replacements is a VoxPopuli model.
-    #[test]
-    fn no_non_commercial_aligner_is_chosen() {
-        let chosen = aligners();
-        for language in ["fr", "de", "es", "it"] {
-            let model = chosen
-                .get(language)
-                .unwrap_or_else(|| panic!("{language} has no aligner"));
-            assert!(
-                !model.to_lowercase().contains("voxpopuli"),
-                "{language}: {model}"
-            );
-            assert!(
-                model.contains('/'),
-                "{language}: {model} is a Hugging Face model"
-            );
-        }
-    }
-
     #[test]
     fn a_time_is_written_as_lrc_writes_it() {
         assert_eq!(stamp(0.0), "00:00.00");
@@ -1072,10 +527,11 @@ mod tests {
         assert_eq!(stamp(-3.0), "00:00.00");
     }
 
-    /// Timed lines run to the next; plain words are one stretch; nothing is
-    /// nothing, and then the record is transcribed.
+    /// Timed lines run to the next; plain lines each span the record, to be
+    /// placed where they were heard; nothing is nothing, and then the record
+    /// is transcribed.
     #[test]
-    fn the_words_already_known_are_handed_over_with_their_stretches() {
+    fn the_words_already_known_are_handed_over_line_by_line() {
         let synced = "[ar:Juan Luis Guerra]\n[00:12.00]Bachata en Fukuoka\n[00:20.00]\n[00:30.50]tengo dos amores\n";
         let known = known_lines(Some(synced), "", 240.0);
         assert_eq!(
@@ -1084,145 +540,23 @@ mod tests {
                 Known {
                     start: 12.0,
                     end: 30.5,
-                    text: "Bachata en Fukuoka".into()
+                    text: "Bachata en Fukuoka".into(),
+                    timed: true,
                 },
                 Known {
                     start: 30.5,
                     end: 240.0,
-                    text: "tengo dos amores".into()
+                    text: "tengo dos amores".into(),
+                    timed: true,
                 },
             ]
         );
         let plain = known_lines(None, "Bachata en Fukuoka\n\n  tengo dos amores  \n", 240.0);
-        assert_eq!(plain.len(), 1);
-        assert_eq!(plain[0].text, "Bachata en Fukuoka tengo dos amores");
+        assert_eq!(plain.len(), 2, "a line each");
+        assert_eq!(plain[1].text, "tengo dos amores");
+        assert!(!plain[0].timed);
         assert_eq!((plain[0].start, plain[0].end), (0.0, 240.0));
         assert!(known_lines(None, " \n", 240.0).is_empty());
-    }
-
-    #[test]
-    fn the_install_is_a_private_environment_with_the_cpu_build() {
-        let tools = Tools {
-            root: PathBuf::from("/tools"),
-            os: Os::Linux,
-        };
-        let steps = install_steps(Path::new("/tools/uv/uv"), &tools);
-        assert_eq!(steps.len(), 2);
-        assert_eq!(steps[0][..4], ["/tools/uv/uv", "venv", "--python", PYTHON]);
-        // Compared as paths, by component: Windows joins with `\`.
-        let venv = steps[0].last().map(PathBuf::from).expect("a folder");
-        assert_eq!(venv, tools.venv());
-        assert!(venv.ends_with("whisperx"), "{venv:?}");
-        assert!(steps[1].windows(2).any(|w| w == ["--torch-backend", "cpu"]));
-        let python = steps[1]
-            .windows(2)
-            .find(|w| w[0] == "--python")
-            .map(|w| PathBuf::from(&w[1]))
-            .expect("the environment's Python is named");
-        assert!(python.ends_with("whisperx/bin/python"), "{python:?}");
-        assert_eq!(steps[1].last().map(String::as_str), Some(WHISPERX));
-        let windows = Tools {
-            root: PathBuf::from("C:/tools"),
-            os: Os::Windows,
-        };
-        assert!(windows.python().ends_with("Scripts/python.exe"));
-        assert!(windows.own_uv().ends_with("uv/uv.exe"));
-    }
-
-    #[test]
-    fn uv_is_fetched_for_every_platform_djmanzo_ships_and_checked() {
-        assert_eq!(
-            uv_archive(Os::Linux, "x86_64").as_deref(),
-            Some("uv-x86_64-unknown-linux-gnu.tar.gz")
-        );
-        assert_eq!(
-            uv_archive(Os::MacOs, "aarch64").as_deref(),
-            Some("uv-aarch64-apple-darwin.tar.gz")
-        );
-        assert_eq!(
-            uv_archive(Os::Windows, "x86_64").as_deref(),
-            Some("uv-x86_64-pc-windows-msvc.zip")
-        );
-        assert_eq!(uv_archive(Os::Linux, "riscv64"), None);
-        assert!(uv_url("uv-x.tar.gz").contains(&format!("/download/{UV_VERSION}/uv-x.tar.gz")));
-        // SHA-256 of "abc", as published: hex, two spaces, the name.
-        let abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  uv.tar.gz";
-        assert!(checksum_matches(b"abc", abc));
-        assert!(checksum_matches(b"abc", &abc.to_uppercase()));
-        assert!(!checksum_matches(b"abd", abc));
-        assert!(!checksum_matches(b"abc", ""));
-    }
-
-    #[test]
-    fn a_half_finished_install_is_not_an_install() {
-        let dir = tempfile::tempdir().expect("a folder");
-        let tools = Tools {
-            root: dir.path().to_path_buf(),
-            os: Os::here(),
-        };
-        assert!(!tools.installed());
-        std::fs::create_dir_all(tools.python().parent().expect("a parent")).expect("made");
-        std::fs::write(tools.python(), b"").expect("written");
-        assert!(!tools.installed(), "no marker yet");
-        std::fs::write(tools.marker(), "whisperx==0.0.1").expect("written");
-        assert!(!tools.installed(), "another version's marker");
-        std::fs::write(tools.marker(), WHISPERX).expect("written");
-        assert!(
-            !tools.installed(),
-            "WhisperX without the tables its aligner reads"
-        );
-        std::fs::create_dir_all(tools.punkt()).expect("made");
-        assert!(tools.installed());
-        assert!(
-            tools.punkt().starts_with(tools.venv()),
-            "the tables live in the private environment, where NLTK looks"
-        );
-    }
-
-    /// The Punkt tables are unpacked with the environment's Python and moved
-    /// into place whole; an archive without them leaves nothing behind.
-    #[cfg(unix)]
-    #[test]
-    fn the_sentence_tables_are_unpacked_into_the_environment() {
-        let Ok(python) = which("python3") else {
-            eprintln!("no python3 here; skipped");
-            return;
-        };
-        let dir = tempfile::tempdir().expect("a folder");
-        let tools = Tools {
-            root: dir.path().join("tools"),
-            os: Os::Linux,
-        };
-        let zip = |inside: &str| -> Vec<u8> {
-            let source = dir.path().join("source");
-            let _ = std::fs::remove_dir_all(&source);
-            std::fs::create_dir_all(source.join(inside).join("english")).expect("made");
-            std::fs::write(source.join(inside).join("english/sent_starters.txt"), "i\n")
-                .expect("written");
-            let archive = dir.path().join("archive.zip");
-            let made = Command::new(&python)
-                .current_dir(&source)
-                .args(["-m", "zipfile", "-c"])
-                .arg(&archive)
-                .arg(inside)
-                .status()
-                .expect("python ran");
-            assert!(made.success());
-            std::fs::read(archive).expect("read")
-        };
-
-        let refused = unpack_punkt(&python, &zip("something_else"), &tools).expect_err("refused");
-        assert!(refused.contains("no tables"), "{refused}");
-        assert!(!tools.punkt().exists());
-
-        unpack_punkt(&python, &zip("punkt_tab"), &tools).expect("unpacked");
-        assert!(tools.punkt().join("english/sent_starters.txt").is_file());
-        assert!(
-            !tools.root.join("punkt-unpack").exists(),
-            "the working folder is cleared"
-        );
-        assert_eq!(PUNKT_SHA256.len(), 64);
-        assert!(PUNKT_URL.contains("/punkt_tab.zip"));
     }
 
     /// The vocals are handed over only once all of them are separated, and
@@ -1328,370 +662,13 @@ mod tests {
     /// The audio handed over: mono, sixteen kilohertz, as long as the record.
     #[test]
     fn the_record_is_handed_over_mono_at_sixteen_kilohertz() {
-        let dir = tempfile::tempdir().expect("a folder");
-        let path = dir.path().join("in.wav");
         let stereo: Vec<f32> = (0..48_000 * 2)
             .map(|i| if i % 2 == 0 { 0.5 } else { 0.1 })
             .collect();
-        let seconds = write_audio(&stereo, 2, 48_000, &path).expect("written");
+        let (mono, seconds) = sixteen_kilohertz_mono(&stereo, 2, 48_000);
         assert!((seconds - 1.0).abs() < 1e-9);
-        let bytes = std::fs::read(&path).expect("read");
-        assert_eq!(&bytes[..4], b"RIFF");
-        assert_eq!(u16::from_le_bytes([bytes[22], bytes[23]]), 1, "mono");
-        assert_eq!(
-            u32::from_le_bytes([bytes[24], bytes[25], bytes[26], bytes[27]]),
-            SAMPLE_RATE
-        );
-        assert_eq!(
-            bytes.len(),
-            44 + 16_000 * 2,
-            "a second at sixteen kilohertz"
-        );
+        assert_eq!(mono.len(), 16_000, "a second at sixteen kilohertz");
         // The middle of it is the two channels' mean.
-        let at = 44 + 8_000 * 2;
-        let middle = i16::from_le_bytes([bytes[at], bytes[at + 1]]);
-        assert!((f32::from(middle) / f32::from(i16::MAX) - 0.3).abs() < 0.01);
-    }
-
-    /// The protocol, with a stand-in for WhisperX: the job goes in on standard
-    /// input, the answer comes out on standard output, and a failure says
-    /// what the helper last said.
-    #[cfg(unix)]
-    #[test]
-    fn the_helper_is_asked_on_its_input_and_answers_on_its_output() {
-        let dir = tempfile::tempdir().expect("a folder");
-        let helper = dir.path().join("helper.py");
-        // The stand-in echoes the language it was asked about, so the test
-        // knows the job crossed.
-        std::fs::write(
-            &helper,
-            r#"import json, sys
-job = json.load(sys.stdin)
-if job["language"] == "xx":
-    print("no aligner for xx", file=sys.stderr)
-    sys.exit(3)
-print("loading", file=sys.stderr)
-print(json.dumps({"mode": "align", "language": job["aligners"][job["language"]], "segments": [{"start": 1.0, "end": 2.0, "text": job["lines"][0]["text"], "words": [{"word": "hola", "start": 1.0, "end": 1.5}]}], "stages": [["align", 0.1]]}))
-"#,
-        )
-        .expect("written");
-        let Ok(python) = which("python3") else {
-            eprintln!("no python3 here; skipped");
-            return;
-        };
-        let job = Job {
-            audio: dir.path().join("in.wav"),
-            language: Some("es".into()),
-            lines: vec![Known {
-                start: 1.0,
-                end: 2.0,
-                text: "hola".into(),
-            }],
-            model: MODEL.into(),
-            threads: 2,
-            aligners: aligners(),
-        };
-        // The real helper is at least Python that compiles.
-        let real = dir.path().join("wordtimes_helper.py");
-        std::fs::write(&real, HELPER).expect("written");
-        let compiled = Command::new(&python)
-            .args(["-m", "py_compile"])
-            .arg(&real)
-            .status()
-            .expect("python ran");
-        assert!(compiled.success(), "the helper does not compile");
-
-        let answer = run(&python, &helper, &job, Duration::from_secs(20)).expect("answered");
-        assert_eq!(
-            answer.language, "facebook/wav2vec2-large-xlsr-53-spanish",
-            "the aligners crossed with the job"
-        );
-        assert_eq!(answer.segments[0].text, "hola");
-        assert_eq!(answer.stages, vec![("align".to_owned(), 0.1)]);
-
-        let refused = run(
-            &python,
-            &helper,
-            &Job {
-                language: Some("xx".into()),
-                ..job
-            },
-            Duration::from_secs(20),
-        )
-        .expect_err("refused");
-        assert!(refused.contains("no aligner for xx"), "{refused}");
-    }
-
-    /// When WhisperX fails, the DJ is told why — not the row of asterisks
-    /// NLTK's error opens with, which is what the last line of a traceback
-    /// is. The real helper runs, with stand-ins beside it for what it
-    /// imports.
-    #[cfg(unix)]
-    #[test]
-    fn a_failure_says_what_went_wrong() {
-        let Ok(python) = which("python3") else {
-            eprintln!("no python3 here; skipped");
-            return;
-        };
-        let dir = tempfile::tempdir().expect("a folder");
-        let helper = dir.path().join("wordtimes_helper.py");
-        std::fs::write(&helper, HELPER).expect("written");
-        // Python looks beside the script first, so these are what it gets.
-        std::fs::write(
-            dir.path().join("torch.py"),
-            "def set_num_threads(count):\n    pass\n",
-        )
-        .expect("written");
-        std::fs::write(
-            dir.path().join("numpy.py"),
-            "int16 = 'int16'\nfloat32 = 'float32'\n\
-             class Samples:\n    def astype(self, kind):\n        return self\n\
-             \x20   def __truediv__(self, by):\n        return self\n\
-             def frombuffer(data, dtype):\n    return Samples()\n",
-        )
-        .expect("written");
-        std::fs::write(
-            dir.path().join("whisperx.py"),
-            "def load_align_model(**kwargs):\n    return object(), {}\n\
-             def align(*args, **kwargs):\n    raise LookupError('\\n' + '*' * 70 + \
-             '\\n  Resource punkt_tab not found.\\n  Please use the NLTK Downloader.\\n' \
-             + '*' * 70 + '\\n')\n",
-        )
-        .expect("written");
-        let audio = dir.path().join("in.wav");
-        write_audio(&[0.0; 3200], 1, SAMPLE_RATE, &audio).expect("written");
-        let job = Job {
-            audio,
-            language: Some("en".into()),
-            lines: vec![Known {
-                start: 0.0,
-                end: 0.2,
-                text: "hi".into(),
-            }],
-            model: MODEL.into(),
-            threads: 1,
-            aligners: aligners(),
-        };
-        let said = run(&python, &helper, &job, Duration::from_secs(20)).expect_err("failed");
-        assert_eq!(
-            said, "WhisperX failed: LookupError: Resource punkt_tab not found.",
-            "{said}"
-        );
-    }
-
-    /// **The whole run, WhisperX stood in for.** A record is decoded and
-    /// handed over at sixteen kilohertz mono with the words already known;
-    /// what comes back is timed against the budget, stage by stage. The
-    /// stand-in checks the audio it was given, so a record handed over at the
-    /// wrong rate, or without its words, fails here.
-    #[cfg(unix)]
-    #[test]
-    fn a_record_is_timed_through_an_installed_environment() {
-        let Ok(python3) = which("python3") else {
-            eprintln!("no python3 here; skipped");
-            return;
-        };
-        let dir = tempfile::tempdir().expect("a folder");
-        let tools = Tools {
-            root: dir.path().join("tools"),
-            os: Os::Linux,
-        };
-        let bin = tools.python();
-        std::fs::create_dir_all(bin.parent().expect("a parent")).expect("made");
-        std::fs::write(
-            &bin,
-            format!("#!/bin/sh\nexec {} \"$@\"\n", python3.display()),
-        )
-        .expect("written");
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755))
-                .expect("made runnable");
-        }
-        std::fs::write(
-            tools.helper(),
-            r#"import array, json, sys, wave
-job = json.load(sys.stdin)
-with wave.open(job["audio"]) as w:
-    assert (w.getframerate(), w.getnchannels()) == (16000, 1), "not 16 kHz mono"
-    seconds = w.getnframes() / 16000
-    samples = array.array("h", w.readframes(w.getnframes()))
-peak = max(abs(s) for s in samples) / 32767
-assert job["lines"], "the known words were not handed over"
-line = job["lines"][0]
-words = [{"word": w, "start": line["start"] + i * 0.3, "end": line["start"] + i * 0.3 + 0.2} for i, w in enumerate(line["text"].split())]
-print(json.dumps({"mode": "align", "language": job["language"], "segments": [{"start": line["start"], "end": line["end"], "text": line["text"], "words": words}], "stages": [["start", 0.01], ["align", round(seconds, 2)], ["peak", round(peak, 2)]]}))
-"#,
-        )
-        .expect("written");
-        std::fs::write(tools.marker(), WHISPERX).expect("written");
-        std::fs::create_dir_all(tools.punkt()).expect("made");
-
-        // A two-second stereo record at 44.1 kHz, as a file to decode.
-        let record = dir.path().join("record.wav");
-        let stereo: Vec<f32> = (0..44_100 * 2 * 2)
-            .map(|i| ((i / 2) as f32 * 0.01).sin() * 0.4)
-            .collect();
-        write_stereo(&stereo, 44_100, &record);
-
-        let (answer, report) = time_words(
-            &tools,
-            &record,
-            |seconds| known_lines(Some("[00:00.50]hola que tal"), "", seconds),
-            Some("es".into()),
-            None,
-        )
-        .expect("timed");
-        assert_eq!(answer.segments[0].words.len(), 3);
-        assert_eq!(report.words, 3);
-        assert_eq!(report.language, "es");
-        assert!(
-            (report.record_seconds - 2.0).abs() < 0.01,
-            "{}",
-            report.record_seconds
-        );
-        assert_eq!(report.stages[0].0, "prepare");
-        assert_eq!(
-            report.stages[2],
-            ("align".to_owned(), 2.0),
-            "the helper was handed the whole record"
-        );
-        assert!(report.within_budget);
-        assert!(report.seconds < BUDGET_SECONDS);
-        assert_eq!(report.heard, "mix", "nothing was separated");
-        assert!(
-            report.stages[3].1 > 0.3,
-            "the mix is loud: {:?}",
-            report.stages
-        );
-
-        // Separated in full, silent vocals under a loud mix: what crosses is
-        // the vocals.
-        let deck = dj_decode::AudioBuffer::from_interleaved(
-            vec![0.0; 44_100 * 2 * 2],
-            dj_core::SampleRate::new(44_100).expect("a rate"),
-        );
-        let mut quiet = [0.3; dj_decode::STEM_COUNT * dj_decode::CHANNELS];
-        quiet[0] = 0.0;
-        quiet[1] = 0.0;
-        let half: dj_decode::StemChunk = vec![quiet; 44_100].into();
-        let table = dj_decode::StemTable::new(44_100)
-            .with_chunk(0, half.clone())
-            .and_then(|t| t.with_chunk(1, half))
-            .expect("two chunks");
-        let stems = deck.stems_lock();
-        stems.store(std::sync::Arc::new(table));
-        let (_, report) = time_words(
-            &tools,
-            &record,
-            |seconds| known_lines(None, "hola que tal", seconds),
-            Some("es".into()),
-            Some(&stems),
-        )
-        .expect("timed");
-        assert_eq!(report.heard, "vocals");
-        assert!(
-            report.stages[3].1 < 0.01,
-            "the vocals were handed over, not the mix: {:?}",
-            report.stages
-        );
-
-        // Not installed: said, not attempted.
-        std::fs::remove_file(tools.marker()).expect("removed");
-        let refused = time_words(&tools, &record, |_| Vec::new(), None, None).expect_err("refused");
-        assert!(refused.contains("not installed"), "{refused}");
-    }
-
-    /// A 16-bit stereo WAV, for a record to decode.
-    #[cfg(unix)]
-    fn write_stereo(interleaved: &[f32], rate: u32, to: &Path) {
-        let data = (interleaved.len() * 2) as u32;
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(b"RIFF");
-        bytes.extend_from_slice(&(36 + data).to_le_bytes());
-        bytes.extend_from_slice(b"WAVEfmt ");
-        bytes.extend_from_slice(&16u32.to_le_bytes());
-        bytes.extend_from_slice(&1u16.to_le_bytes());
-        bytes.extend_from_slice(&2u16.to_le_bytes());
-        bytes.extend_from_slice(&rate.to_le_bytes());
-        bytes.extend_from_slice(&(rate * 4).to_le_bytes());
-        bytes.extend_from_slice(&4u16.to_le_bytes());
-        bytes.extend_from_slice(&16u16.to_le_bytes());
-        bytes.extend_from_slice(b"data");
-        bytes.extend_from_slice(&data.to_le_bytes());
-        for sample in interleaved {
-            bytes.extend_from_slice(&((sample * 32767.0) as i16).to_le_bytes());
-        }
-        std::fs::write(to, bytes).expect("written");
-    }
-
-    #[cfg(unix)]
-    fn which(name: &str) -> Result<PathBuf, ()> {
-        std::env::var_os("PATH")
-            .and_then(|paths| {
-                std::env::split_paths(&paths)
-                    .map(|dir| dir.join(name))
-                    .find(|candidate| candidate.is_file())
-            })
-            .ok_or(())
-    }
-
-    /// **The owner's budget, measured on a real record.**
-    ///
-    /// Ignored, because it needs WhisperX installed and a song to time,
-    /// which CI has neither of. Run it against a tools folder and a three-
-    /// to five-minute record:
-    ///
-    /// ```text
-    /// DJMANZO_WHISPERX_TOOLS=<tools folder> DJMANZO_WHISPERX_RECORD=<song> \
-    ///   cargo test -p dj-app --lib budget_measured -- --ignored --nocapture
-    /// ```
-    ///
-    /// It times djmanzo's own path — decoding, the sixteen-kilohertz file,
-    /// the helper — twice: with no words known (transcribe, then align), and
-    /// with the words known, as a tag, a sidecar or LRCLIB would give them
-    /// (align only). The second run's words are the first's, which is the
-    /// honest stand-in for words somebody typed.
-    #[test]
-    #[ignore = "needs WhisperX installed and a real record"]
-    fn the_budget_measured_on_a_real_record() {
-        let (Ok(root), Ok(record)) = (
-            std::env::var("DJMANZO_WHISPERX_TOOLS"),
-            std::env::var("DJMANZO_WHISPERX_RECORD"),
-        ) else {
-            return;
-        };
-        let tools = Tools {
-            root: PathBuf::from(root),
-            os: Os::here(),
-        };
-        let record = Path::new(&record);
-
-        let (heard, transcribed) =
-            time_words(&tools, record, |_| Vec::new(), None, None).expect("transcribed");
-        eprintln!(
-            "nothing known: {}",
-            serde_json::to_string(&transcribed).expect("a report")
-        );
-
-        let known: Vec<Known> = heard
-            .segments
-            .iter()
-            .filter_map(|segment| {
-                Some(Known {
-                    start: segment.start?,
-                    end: segment.end?,
-                    text: segment.text.trim().to_owned(),
-                })
-            })
-            .filter(|line| !line.text.is_empty())
-            .collect();
-        let language = Some(heard.language.clone());
-        let (_, aligned) =
-            time_words(&tools, record, move |_| known, language, None).expect("aligned");
-        eprintln!(
-            "words known: {}",
-            serde_json::to_string(&aligned).expect("a report")
-        );
+        assert!((mono[8_000] - 0.3).abs() < 0.01, "{}", mono[8_000]);
     }
 }

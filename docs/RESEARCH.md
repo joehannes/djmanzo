@@ -171,7 +171,8 @@ Chosen to keep djmanzo MIT-OR-Apache-2.0. See
 | Layout budget | `@playwright/test` | Apache-2.0 | **Development only**, never in a shipped build. Drives a real browser to measure *where the controls actually land* at djmanzo's own 1280x800, which is the only kind of test that can catch the failure that has now happened three times: a control a DJ performs with sitting below the fold. A template assertion passes while the crossfader is 900 px off the screen, and jsdom does no layout at all, so nothing cheaper answers the question. It drives **Chromium**, which is *not* the engine djmanzo ships on — the application runs in WebKitGTK — so every assertion carries slack and the limitation is written down beside the number in `ui/e2e/shell.ts`. Brings `playwright` and `playwright-core` (both Apache-2.0) and nothing else. |
 | Accessibility audit | `axe-core` | **MPL-2.0** | **Development only**, never in a shipped build, and with **no dependencies of its own** — one package, one `node_modules` entry. MPL-2.0 is file-level copyleft and ADR-0002 permits it explicitly; it is also never linked into djmanzo at all, since the audit evaluates the library as a string inside a Playwright page and the built bundle never imports it. It is what §33's row meant by *no audit has been run*: the rules engine behind most of the accessibility tooling that exists, and it found eight kinds of defect on its first run, two of which — the deck's level meter announcing itself as an empty box, and the deck's position bar announcing a percentage of nothing — had shipped since those components were written. Chosen over `@axe-core/playwright`, which is the same library plus a wrapper, because the wrapper is twenty lines this project would rather read than depend on. What it cannot do is written beside the number, in `ui/e2e/access.spec.ts`: it is a rules engine, so a clean run is a floor rather than a verdict, and the one rule §33 states as an absolute — colour alone never encoding critical state — is not mechanically checkable at all and lives as a type in `dj_app::mission` instead. |
 | Album archives | `zip` | MIT | §111: a store's album arrives as one `.zip`. Built with `default-features = false, features = ["deflate"]` — reading deflate and stored entries only, which is what stores write; no AES or ZipCrypto, bzip2, zstd, lzma or xz, so an entry packed with one of those is refused and said to be. `deflate` is the one feature that turns on `flate2` (MIT OR Apache-2.0, already in the tree, on its pure-Rust `miniz_oxide` backend), and it also compiles the `zopfli` compressor (Apache-2.0; `bumpalo`, `crc32fast`, `log`, `simd-adler32`, all already in the tree), which nothing calls. `arbitrary` and `derive_arbitrary` (MIT OR Apache-2.0) appear in `Cargo.lock` as optional fuzzing dependencies and are not built. Extraction is djmanzo's own, not the crate's `extract`: each record is written under its own file name alone, names that climb out are refused (`ZipFile::enclosed_name`), and sizes are counted in bytes written against `downloads::LIMITS`, never the sizes the archive claims. See `dj_app::downloads::unpack`. |
-| Checking a downloaded tool | `sha2` | MIT OR Apache-2.0 | §122: the `uv` djmanzo fetches to install WhisperX is checked against the SHA-256 its release publishes beside it before it is unpacked, and refused if it does not match. Already in the tree through Tauri; now a direct dependency of `dj-app` too. |
+| Checking a downloaded tool | `sha2` | MIT OR Apache-2.0 | §122: each Whisper model djmanzo downloads is checked against the SHA-256 its host publishes before it is kept, and refused if it does not match (it first checked the `uv` that installed WhisperX). Already in the tree through Tauri; now a direct dependency of `dj-app` too. |
+| When each word is sung | `whisper-rs`, `whisper-rs-sys` 0.16 / 0.15, vendoring **whisper.cpp** and **ggml** | Unlicense (the crates); **MIT** (whisper.cpp, ggml) | §122: Whisper compiled into djmanzo, replacing WhisperX's 2.6 GB of Python. Built through CMake at a fixed processor baseline (AVX2, FMA, F16C; `.cargo/config.toml`) rather than the building machine's own. Build-only: `bindgen` (BSD-3-Clause), `cmake` (MIT OR Apache-2.0), `fs_extra` (MIT). The Whisper **models** are OpenAI's, MIT, converted and quantised by whisper.cpp's authors; downloaded on the DJ's choice, never shipped. |
 | URL escaping | `urlencoding` | MIT | Percent-encoding, for the source APIs in `dj-sources` and the shared tracklist in `dj-app::share`. Small enough to have written by hand and exactly the kind of thing that is wrong when written by hand — the failure is a set list truncated at the first `&` in an artist name. |
 | The Linux webview's permission request | `webkit2gtk` | MIT | The Rust bindings to WebKitGTK, already linked by Tauri's webview layer at the same version and features — named directly only so `dj_app::senses` can answer WebKitGTK's camera and microphone permission request, which is **denied when nobody answers it** and which Tauri answers on macOS but not on Linux. Also turns on WebKitGTK's mock capture devices when `DJMANZO_MOCK_CAPTURE` is set, which is how the room surface is tested in the shipped webview on a machine with no camera. Adds no crate to the build. |
 
@@ -397,6 +398,11 @@ owner chose when asked; the hot cues moved to Shift and a digit).
 
 ## Words in time: WhisperX (§122)
 
+**Replaced on 27 September 2026** by whisper.cpp inside djmanzo, at the
+owner's request (see the next section but one); kept here for what was
+learned. An install an earlier djmanzo made can be deleted from the Singers
+surface.
+
 The owner chose WhisperX for its word timestamps. Nothing below is linked into
 djmanzo, vendored or shipped in its packages: the DJ presses **Install
 WhisperX** and djmanzo installs it into a folder of its own
@@ -509,6 +515,24 @@ mark roughly where each word **ends** — a median 0.5 s after WhisperX's
 starts — and, with that offset taken out, still differ from WhisperX's by a
 median of 0.2–0.3 s (80 % within 0.5 s); WhisperX's aligner is the more
 precise of the two, and neither was checked against the record by ear.
+
+**What was built, on the owner's answer** (27 September 2026: "whisper.cpp +
+a better model than base only, one that doesn't exceed 1.5 min of analysis
+on this laptop approx. + the English aligner as well"): whisper.cpp compiled
+into djmanzo (`dj_app::whispercpp`), with the models downloaded on demand
+from a list in the Singers surface. Measured further on the same machine
+and record: `small` **73–76 s** (inside the minute and a half; 72 s through
+djmanzo's own code, at the fixed processor baseline, which measured no
+slower than a build tuned to that processor) — recommended; `large-v3-turbo`
+353 s, and it **invented lines** over the record's instrumental break,
+repeating two phrases once a second for half a minute; `medium` not yet
+measured, its figure an estimate. Voice detection (Silero, MIT), which would
+stop those inventions, keeps only 40–98 s of the 270 s record's singing when
+run over the mix — it is trained on speech — so it is not used on the mix;
+djmanzo drops a line said a third time among the last six instead. Word
+times: Whisper's own attention marks a word near its end (a median 0.27 s
+after WhisperX's start for `small`), so djmanzo starts each word 0.25 s
+earlier.
 
 ## Options put to the owner: streaming, visuals, video, words, a marketplace (§119, §122, §123)
 

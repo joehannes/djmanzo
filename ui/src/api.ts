@@ -4807,9 +4807,9 @@ export interface GuestBook {
 export const guestBook = () => invoke<GuestBook>("guests");
 export const guestSave = (guest: Guest) => invoke<GuestBook>("guests_save", { guest });
 export const guestForget = (id: string) => invoke<GuestBook>("guests_forget", { id });
-/** §122: how a WhisperX run went. See `dj_app::wordtimes::Report`. */
+/** §122: how a run went. See `dj_app::wordtimes::Report`. */
 export interface WordTimingReport {
-  /** `align` when the words were known, `transcribe` when they were found. */
+  /** `align` when the words were known and placed, `transcribe` when they were found. */
   mode: "align" | "transcribe";
   language: string;
   words: number;
@@ -4820,24 +4820,60 @@ export interface WordTimingReport {
   within_budget: boolean;
   /** The separated vocals, or the whole mix when separation had not finished. */
   heard: "vocals" | "mix";
+  /** The model it listened with. */
+  model: string;
 }
 
-/** §122: WhisperX, installed or not, and how the last run went. */
-export interface WordTiming {
+/** §122: one Whisper model, as the dropdown draws it. See `dj_app::whispercpp::Model`. */
+export interface WordModel {
+  id: string;
+  name: string;
+  file: string;
+  bytes: number;
+  sha256: string;
+  /** Seconds of work per minute of record on the machine it was measured on. */
+  seconds_per_minute: number;
+  measured: boolean;
+  reliability: string;
+  recommended: boolean;
   installed: boolean;
+  chosen: boolean;
+  /** How long it would take over a four-minute song on this machine. */
+  song_seconds: number;
+  song_measured: boolean;
+  /** How long it would take to download at this machine's measured speed. */
+  download_seconds: number | null;
+}
+
+/** §122: word timing — the models, a download or run in hand, and the last run. */
+export interface WordTiming {
+  models: WordModel[];
+  chosen: string | null;
   progress: {
-    installing: boolean;
-    step: string | null;
+    downloading: string | null;
+    downloaded: number;
+    download_total: number;
+    listening: number | null;
+    percent: number;
     error: string | null;
     last: WordTimingReport | null;
+    /** Bytes a second, once measured. */
+    speed: number | null;
   };
   budget_seconds: number;
-  whisperx: string;
   folder: string;
+  /** Why this processor cannot run it, if it cannot. */
+  cpu: string | null;
+  /** Bytes an old WhisperX install takes, if one is left. */
+  old_whisperx: number | null;
 }
 
 export const wordTiming = () => invoke<WordTiming>("word_timing");
-export const wordTimingInstall = () => invoke<WordTiming>("word_timing_install");
+export const wordTimingSpeed = () => invoke<WordTiming>("word_timing_speed");
+export const wordTimingDownload = (model: string) => invoke<WordTiming>("word_timing_download", { model });
+export const wordTimingChoose = (model: string) => invoke<WordTiming>("word_timing_choose", { model });
+export const wordTimingRemove = (model: string) => invoke<WordTiming>("word_timing_remove", { model });
+export const wordTimingForgetWhisperx = () => invoke<WordTiming>("word_timing_forget_whisperx");
 /** Time the words of the record on `deck`; `language` a two-letter code, or detected. */
 export const wordTimingRun = (deck: number, language: string | null) =>
   invoke<WordTimingReport>("word_timing_run", { deck, language });

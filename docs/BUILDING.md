@@ -8,19 +8,23 @@ Two ways: let CI do it, or do it on the machine in front of you.
 |---|---|
 | **Rust** | stable, via [rustup](https://rustup.rs) |
 | **Node** | 22 or later |
+| **CMake** | 3.14 or later — builds whisper.cpp, which times karaoke words (`brew install cmake`, `apt-get install cmake`, or cmake.org on Windows) |
 | **macOS** | Xcode command line tools: `xcode-select --install` |
 | **Debian / Ubuntu** | the GTK and WebKit stack, below |
 
 ```sh
 # Debian, Ubuntu, Xubuntu
 sudo apt-get install -y \
-  libasound2-dev libclang-dev libwebkit2gtk-4.1-dev libgtk-3-dev \
+  cmake libasound2-dev libclang-dev libwebkit2gtk-4.1-dev libgtk-3-dev \
   librsvg2-dev libsoup-3.0-dev libssl-dev libxdo-dev \
   libayatana-appindicator3-dev
 ```
 
-`libclang` is for bindgen, which builds the keylock bindings. `libasound2` is
-ALSA. The rest is what Tauri links against.
+`libclang` is for bindgen, which builds the keylock and whisper.cpp bindings.
+`cmake` builds whisper.cpp itself, at a fixed processor baseline set in
+`.cargo/config.toml` rather than the building machine's own, so a package
+built on one machine runs on another. `libasound2` is ALSA. The rest is what
+Tauri links against.
 
 ## In CI
 

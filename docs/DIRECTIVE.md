@@ -2667,6 +2667,10 @@ added together as light, white when all were present:
 >
 > *Asked later (2026-09-27), on finding WhisperX installed by a button rather than with djmanzo:*
 > i just found x-whisper (with python, pytorch) isn't co-installed (as sidecar??? dependency?) automatically with the setup/install of the app. also i found it is installable via a buttonn in djmanzo, but it's (probably correctly hinting) saying the install is a ~ 2GB download. is there no smallish way to install that?? i guess it's some AI engine that will run on very good machines only anyway??? please report, research alternatives .. (i want a max download of < 100 MB for all of install x-whisper, also i want that to get bundled with the installer, so the installable package may grow up to 100 MB. report, propose fix options
+>
+> *Decided later (2026-09-27), answering the options put to the owner in the session:*
+> - Which word-timing engine to bundle? → "i'd like whisper.cpp + a better model than base only, onne that doesn't exceed 1.5 min of analysis on this laptop approx. + the English aligner as well please. if the model download is huge, i want the thing to be downloadable from the installer (and if not downloaded and installed via the installer somehow, i want it to be downloadable and auto-installable from within the app/GUI on demand)"
+> - What happens to the WhisperX install button? → "replace it with the model download for the whisper.cpp version. let it be a dropdown button for different useful models (starting with the light or medium model or higher, one that actually works most of the time ... and hint at download size/time as of network, also at the usefulness as of recognition/reliability and analysis time per song approx as per the current machine)"
 
 ---
 # 123. ASKED SINCE: A KARAOKE JOURNAL, AND A SONG FOR EVERY SINGER

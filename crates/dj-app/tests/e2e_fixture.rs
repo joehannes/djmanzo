@@ -1221,11 +1221,14 @@ fn the_browser_fixture_has_a_guests_song() {
     );
 }
 
-/// §122: **WhisperX as the Singers surface draws it** — not installed, and
-/// a run's report — in Rust's own shapes, for `ui/e2e/wordtiming.spec.ts`.
-/// The report's numbers are an example, not a measurement.
+/// §122: **word timing as the Singers surface draws it** — nothing
+/// downloaded yet; then two models downloaded, one chosen, the download
+/// speed measured and an old WhisperX left behind; and a run's report — in
+/// Rust's own shapes, for `ui/e2e/wordtiming.spec.ts`. The report's numbers
+/// are an example, not a measurement.
 #[test]
 fn the_browser_fixture_has_word_timing() {
+    use dj_app::whispercpp::{MODELS, Rates, estimate};
     let path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/e2e/word-timing.json");
     let report = |seconds: f64| dj_app::wordtimes::Report {
@@ -1234,8 +1237,9 @@ fn the_browser_fixture_has_word_timing() {
         words: 212,
         stages: vec![
             ("prepare".to_owned(), 0.8),
-            ("start".to_owned(), 2.1),
-            ("align".to_owned(), seconds - 2.9),
+            ("load".to_owned(), 0.3),
+            ("listen".to_owned(), seconds - 1.2),
+            ("place".to_owned(), 0.1),
         ],
         seconds,
         record_seconds: 231.0,
@@ -1246,18 +1250,46 @@ fn the_browser_fixture_has_word_timing() {
             "mix"
         }
         .to_owned(),
+        model: "small".to_owned(),
     };
-    let status = dj_app::commands::WordTimingDto {
-        installed: false,
-        progress: dj_app::wordtimes::Progress::default(),
-        budget_seconds: dj_app::wordtimes::BUDGET_SECONDS,
-        whisperx: dj_app::wordtimes::WHISPERX,
-        folder: "/home/dj/.local/share/app.djmanzo.desktop/tools".to_owned(),
+    let status = |installed: &[&str], chosen: Option<&'static str>, speed: Option<f64>| {
+        let mut rates = Rates::default();
+        if chosen.is_some() {
+            rates.0.insert("small".to_owned(), 18.0);
+        }
+        dj_app::commands::WordTimingDto {
+            models: MODELS
+                .iter()
+                .map(|model| {
+                    let (song_seconds, song_measured) = estimate(model, 240.0, &rates, 4);
+                    dj_app::commands::WordModelDto {
+                        model: *model,
+                        installed: installed.contains(&model.id),
+                        chosen: chosen == Some(model.id),
+                        song_seconds,
+                        song_measured,
+                        download_seconds: speed.map(|speed| model.bytes as f64 / speed),
+                    }
+                })
+                .collect(),
+            chosen,
+            progress: dj_app::wordtimes::Progress {
+                speed,
+                ..dj_app::wordtimes::Progress::default()
+            },
+            budget_seconds: dj_app::wordtimes::BUDGET_SECONDS,
+            folder: "/home/dj/.local/share/app.djmanzo.desktop/models/whisper".to_owned(),
+            cpu: None,
+            old_whisperx: chosen.map(|_| 2_640_000_000),
+        }
     };
+    let fresh_status = status(&[], None, None);
+    let ready = status(&["base", "small"], Some("small"), Some(6_250_000.0));
     let fresh = serde_json::to_string_pretty(&serde_json::json!({
-        "status": status,
-        "within": report(9.4),
-        "over": report(41.0),
+        "status": fresh_status,
+        "ready": ready,
+        "within": report(71.4),
+        "over": report(131.0),
     }))
     .expect("the word timing serialises");
 
@@ -1277,7 +1309,7 @@ fn the_browser_fixture_has_word_timing() {
     let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("fresh JSON");
     assert_eq!(
         stored, fresh,
-        "\nWhisperX's status or report changed shape.\n\nRegenerate with:\n    \
+        "\nWord timing's status or report changed shape.\n\nRegenerate with:\n    \
          DJMANZO_BLESS=1 cargo test -p dj-app --test e2e_fixture\n"
     );
 }

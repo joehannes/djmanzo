@@ -1,0 +1,13 @@
+# whisper.cpp (built by `whisper-rs-sys` through CMake) tunes itself to the
+# processor of the machine that builds it unless told otherwise. A package
+# built on a CI runner with AVX-512 would then crash on a DJ's laptop without
+# it. These pin a baseline every x86-64 processor since about 2013 has —
+# `dj_app::whispercpp::cpu_can_run` checks it at run time — and are ignored
+# on ARM, where the baseline is the architecture's own. Measured: no slower
+# than the native build on the machine the models were timed on.
+[env]
+GGML_NATIVE = "OFF"
+GGML_AVX = "ON"
+GGML_AVX2 = "ON"
+GGML_FMA = "ON"
+GGML_F16C = "ON"

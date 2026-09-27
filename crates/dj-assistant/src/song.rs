@@ -110,7 +110,7 @@ fn same_language(a: &str, b: &str) -> bool {
     !a.is_empty() && a.eq_ignore_ascii_case(&b)
 }
 
-/// The codes WhisperX answers with, for the languages a DJ is most likely to
+/// The codes Whisper answers with, for the languages a DJ is most likely to
 /// meet.
 const NAMES: [(&str, &str); 24] = [
     ("en", "English"),

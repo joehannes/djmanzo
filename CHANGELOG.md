@@ -16,6 +16,20 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Word timing is part of djmanzo now — no 2 GB install.** WhisperX
+  needed Python and PyTorch, about 2.6 GB, behind an install button.
+  djmanzo now carries whisper.cpp itself (about two megabytes) and needs
+  only a model, which you pick from a list in the Singers surface: Tiny,
+  Base, **Small (recommended)**, Medium and Large, each with its size, how
+  long it would take to download on your connection, how well it hears,
+  and how long a four-minute song would take on your machine. Small took
+  73 seconds for a 4½-minute song on an ordinary four-core machine, inside
+  your minute and a half. Every download is checked against its published
+  checksum; each run says how long it took and remembers it, so the
+  estimates become your machine's own. Lyrics you already have are what
+  the singers read, placed where Whisper heard each word. If an earlier
+  djmanzo installed WhisperX, the same place offers to delete it.
+
 ## v0.33.0 — Records play to their end, karaoke reads the words they carry, and djmanzo learns from your hands alone
 
 - **An MP3 plays to its end even when its header says it is shorter.** An

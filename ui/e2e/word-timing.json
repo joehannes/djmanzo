@@ -3,55 +3,251 @@
     "heard": "mix",
     "language": "es",
     "mode": "align",
+    "model": "small",
     "record_seconds": 231.0,
-    "seconds": 41.0,
+    "seconds": 131.0,
     "stages": [
       [
         "prepare",
         0.8
       ],
       [
-        "start",
-        2.1
+        "load",
+        0.3
       ],
       [
-        "align",
-        38.1
+        "listen",
+        129.8
+      ],
+      [
+        "place",
+        0.1
       ]
     ],
     "within_budget": false,
     "words": 212
   },
-  "status": {
-    "budget_seconds": 15.0,
-    "folder": "/home/dj/.local/share/app.djmanzo.desktop/tools",
-    "installed": false,
+  "ready": {
+    "budget_seconds": 90.0,
+    "chosen": "small",
+    "cpu": null,
+    "folder": "/home/dj/.local/share/app.djmanzo.desktop/models/whisper",
+    "models": [
+      {
+        "bytes": 32152673,
+        "chosen": false,
+        "download_seconds": 5.14442768,
+        "file": "ggml-tiny-q5_1.bin",
+        "id": "tiny",
+        "installed": false,
+        "measured": true,
+        "name": "Tiny",
+        "recommended": false,
+        "reliability": "a quick first look: mishears often",
+        "seconds_per_minute": 2.7,
+        "sha256": "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7",
+        "song_measured": false,
+        "song_seconds": 12.000000000000002
+      },
+      {
+        "bytes": 59707625,
+        "chosen": false,
+        "download_seconds": 9.55322,
+        "file": "ggml-base-q5_1.bin",
+        "id": "base",
+        "installed": true,
+        "measured": true,
+        "name": "Base",
+        "recommended": false,
+        "reliability": "most words on a clear vocal; stumbles over a busy mix",
+        "seconds_per_minute": 5.7,
+        "sha256": "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898",
+        "song_measured": false,
+        "song_seconds": 25.333333333333336
+      },
+      {
+        "bytes": 190085487,
+        "chosen": true,
+        "download_seconds": 30.41367792,
+        "file": "ggml-small-q5_1.bin",
+        "id": "small",
+        "installed": true,
+        "measured": true,
+        "name": "Small",
+        "recommended": true,
+        "reliability": "most words right, even over the mix — works for most songs",
+        "seconds_per_minute": 16.2,
+        "sha256": "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+        "song_measured": true,
+        "song_seconds": 72.0
+      },
+      {
+        "bytes": 539212467,
+        "chosen": false,
+        "download_seconds": 86.27399472,
+        "file": "ggml-medium-q5_0.bin",
+        "id": "medium",
+        "installed": false,
+        "measured": false,
+        "name": "Medium",
+        "recommended": false,
+        "reliability": "hears hard vocals and other languages better; slow",
+        "seconds_per_minute": 48.0,
+        "sha256": "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f",
+        "song_measured": false,
+        "song_seconds": 213.33333333333334
+      },
+      {
+        "bytes": 574041195,
+        "chosen": false,
+        "download_seconds": 91.8465912,
+        "file": "ggml-large-v3-turbo-q5_0.bin",
+        "id": "large-v3-turbo",
+        "installed": false,
+        "measured": true,
+        "name": "Large (turbo)",
+        "recommended": false,
+        "reliability": "hears best, but invents lines over long instrumentals in the mix; slowest",
+        "seconds_per_minute": 78.3,
+        "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+        "song_measured": false,
+        "song_seconds": 348.0
+      }
+    ],
+    "old_whisperx": 2640000000,
     "progress": {
+      "download_total": 0,
+      "downloaded": 0,
+      "downloading": null,
       "error": null,
-      "installing": false,
       "last": null,
-      "step": null
-    },
-    "whisperx": "whisperx==3.8.6"
+      "listening": null,
+      "percent": 0,
+      "speed": 6250000.0
+    }
+  },
+  "status": {
+    "budget_seconds": 90.0,
+    "chosen": null,
+    "cpu": null,
+    "folder": "/home/dj/.local/share/app.djmanzo.desktop/models/whisper",
+    "models": [
+      {
+        "bytes": 32152673,
+        "chosen": false,
+        "download_seconds": null,
+        "file": "ggml-tiny-q5_1.bin",
+        "id": "tiny",
+        "installed": false,
+        "measured": true,
+        "name": "Tiny",
+        "recommended": false,
+        "reliability": "a quick first look: mishears often",
+        "seconds_per_minute": 2.7,
+        "sha256": "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7",
+        "song_measured": false,
+        "song_seconds": 10.8
+      },
+      {
+        "bytes": 59707625,
+        "chosen": false,
+        "download_seconds": null,
+        "file": "ggml-base-q5_1.bin",
+        "id": "base",
+        "installed": false,
+        "measured": true,
+        "name": "Base",
+        "recommended": false,
+        "reliability": "most words on a clear vocal; stumbles over a busy mix",
+        "seconds_per_minute": 5.7,
+        "sha256": "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898",
+        "song_measured": false,
+        "song_seconds": 22.8
+      },
+      {
+        "bytes": 190085487,
+        "chosen": false,
+        "download_seconds": null,
+        "file": "ggml-small-q5_1.bin",
+        "id": "small",
+        "installed": false,
+        "measured": true,
+        "name": "Small",
+        "recommended": true,
+        "reliability": "most words right, even over the mix — works for most songs",
+        "seconds_per_minute": 16.2,
+        "sha256": "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+        "song_measured": false,
+        "song_seconds": 64.8
+      },
+      {
+        "bytes": 539212467,
+        "chosen": false,
+        "download_seconds": null,
+        "file": "ggml-medium-q5_0.bin",
+        "id": "medium",
+        "installed": false,
+        "measured": false,
+        "name": "Medium",
+        "recommended": false,
+        "reliability": "hears hard vocals and other languages better; slow",
+        "seconds_per_minute": 48.0,
+        "sha256": "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f",
+        "song_measured": false,
+        "song_seconds": 192.0
+      },
+      {
+        "bytes": 574041195,
+        "chosen": false,
+        "download_seconds": null,
+        "file": "ggml-large-v3-turbo-q5_0.bin",
+        "id": "large-v3-turbo",
+        "installed": false,
+        "measured": true,
+        "name": "Large (turbo)",
+        "recommended": false,
+        "reliability": "hears best, but invents lines over long instrumentals in the mix; slowest",
+        "seconds_per_minute": 78.3,
+        "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+        "song_measured": false,
+        "song_seconds": 313.2
+      }
+    ],
+    "old_whisperx": null,
+    "progress": {
+      "download_total": 0,
+      "downloaded": 0,
+      "downloading": null,
+      "error": null,
+      "last": null,
+      "listening": null,
+      "percent": 0,
+      "speed": null
+    }
   },
   "within": {
     "heard": "vocals",
     "language": "es",
     "mode": "align",
+    "model": "small",
     "record_seconds": 231.0,
-    "seconds": 9.4,
+    "seconds": 71.4,
     "stages": [
       [
         "prepare",
         0.8
       ],
       [
-        "start",
-        2.1
+        "load",
+        0.3
       ],
       [
-        "align",
-        6.5
+        "listen",
+        70.2
+      ],
+      [
+        "place",
+        0.1
       ]
     ],
     "within_budget": true,

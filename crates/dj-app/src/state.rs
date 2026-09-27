@@ -216,7 +216,8 @@ pub struct AppState {
     sample_outlines: Arc<crate::outline::Outlines>,
     /// §123: the voice take in flight, shared with the host thread.
     voice_takes: Arc<crate::guests::Takes>,
-    /// §122: WhisperX's install and the last run, for the interface to read.
+    /// §122: model downloads, the run in hand and the last one, for the
+    /// interface to read.
     word_timing: Arc<Mutex<crate::wordtimes::Progress>>,
     /// The device that is open, as the interface describes it.
     ///
@@ -273,7 +274,7 @@ pub struct AppState {
     /// for every one of those.
     deck_tracks: Arc<Mutex<HashMap<u8, LoadedTrackInfo>>>,
     /// §122: each deck's separated stems, with the track they belong to, so
-    /// WhisperX can be handed the vocals rather than the mix. A handle to the
+    /// Whisper can hear the vocals rather than the mix. A handle to the
     /// table the separation worker fills, not a copy.
     deck_stems: Mutex<HashMap<u8, (dj_core::TrackId, dj_decode::StemBuffer)>>,
     /// Controllers and the keyboard. See [`crate::control`].
@@ -1619,7 +1620,7 @@ impl AppState {
         crate::guests::write(&dir, journal, unlink)
     }
 
-    /// §122: WhisperX's install and the last run.
+    /// §122: model downloads, the run in hand and the last one.
     #[must_use]
     pub fn word_timing(&self) -> Arc<Mutex<crate::wordtimes::Progress>> {
         Arc::clone(&self.word_timing)

@@ -14037,46 +14037,117 @@ pub fn guests_message(
     Ok(text)
 }
 
-/// §122: WhisperX, as the interface draws it.
+/// §122: one Whisper model, as the dropdown draws it.
 #[derive(Debug, Clone, Serialize)]
-pub struct WordTimingDto {
+pub struct WordModelDto {
+    #[serde(flatten)]
+    pub model: crate::whispercpp::Model,
     pub installed: bool,
-    pub progress: crate::wordtimes::Progress,
-    /// The owner's budget for a three- to five-minute song, in seconds.
-    pub budget_seconds: f64,
-    /// Exactly what is, or would be, installed.
-    pub whisperx: &'static str,
-    /// Where it lives, to say so and so it can be deleted by hand.
-    pub folder: String,
+    pub chosen: bool,
+    /// How long it would take over a four-minute song on this machine.
+    pub song_seconds: f64,
+    /// Whether that was measured here, or estimated.
+    pub song_measured: bool,
+    /// How long its download would take at this machine's measured speed.
+    pub download_seconds: Option<f64>,
 }
 
-fn word_tools(app: &tauri::AppHandle) -> Result<crate::wordtimes::Tools, String> {
+/// §122: word timing, as the interface draws it.
+#[derive(Debug, Clone, Serialize)]
+pub struct WordTimingDto {
+    pub models: Vec<WordModelDto>,
+    /// The model a run would use, if one is downloaded.
+    pub chosen: Option<&'static str>,
+    pub progress: crate::wordtimes::Progress,
+    /// The owner's limit for a song, in seconds.
+    pub budget_seconds: f64,
+    /// Where the models live, to say so and so they can be deleted by hand.
+    pub folder: String,
+    /// Why this processor cannot run it, if it cannot.
+    pub cpu: Option<String>,
+    /// A WhisperX install from an earlier djmanzo, which nothing uses now,
+    /// and how many bytes deleting it would give back.
+    pub old_whisperx: Option<u64>,
+}
+
+/// The length the dropdown's estimates are for: a four-minute song.
+const SONG_SECONDS: f64 = 240.0;
+
+fn word_models(app: &tauri::AppHandle) -> Result<crate::whispercpp::Models, String> {
     use tauri::Manager;
     let dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| format!("no data folder to install WhisperX in: {e}"))?;
-    Ok(crate::wordtimes::Tools {
-        root: dir.join("tools"),
-        os: crate::wordtimes::Os::here(),
+        .map_err(|e| format!("no data folder to keep the models in: {e}"))?;
+    Ok(crate::whispercpp::Models {
+        root: dir.join("models").join("whisper"),
     })
 }
 
-fn word_timing_dto(state: &AppState, tools: &crate::wordtimes::Tools) -> WordTimingDto {
+/// Where djmanzo 0.31 to 0.33 installed WhisperX.
+fn old_whisperx(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    let tools = app.path().app_data_dir().ok()?.join("tools");
+    tools.join("whisperx").exists().then_some(tools)
+}
+
+fn folder_bytes(dir: &std::path::Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| match entry.file_type() {
+            Ok(kind) if kind.is_dir() => folder_bytes(&entry.path()),
+            Ok(kind) if kind.is_file() => entry.metadata().map_or(0, |meta| meta.len()),
+            _ => 0,
+        })
+        .sum()
+}
+
+fn word_timing_dto(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    models: &crate::whispercpp::Models,
+) -> WordTimingDto {
+    let progress = state
+        .word_timing()
+        .lock()
+        .map(|p| p.clone())
+        .unwrap_or_default();
+    let rates = models.rates();
+    let cores = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
+    let chosen = models.chosen().map(|model| model.id);
     WordTimingDto {
-        installed: tools.installed(),
-        progress: state
-            .word_timing()
-            .lock()
-            .map(|p| p.clone())
-            .unwrap_or_default(),
+        models: crate::whispercpp::MODELS
+            .iter()
+            .map(|model| {
+                let (song_seconds, song_measured) =
+                    crate::whispercpp::estimate(model, SONG_SECONDS, &rates, cores);
+                WordModelDto {
+                    model: *model,
+                    installed: models.installed(model),
+                    chosen: chosen == Some(model.id),
+                    song_seconds,
+                    song_measured,
+                    download_seconds: progress
+                        .speed
+                        .filter(|speed| *speed > 0.0)
+                        .map(|speed| model.bytes as f64 / speed),
+                }
+            })
+            .collect(),
+        chosen,
+        progress,
         budget_seconds: crate::wordtimes::BUDGET_SECONDS,
-        whisperx: crate::wordtimes::WHISPERX,
-        folder: tools.root.display().to_string(),
+        folder: models.root.display().to_string(),
+        cpu: crate::whispercpp::cpu_can_run().err(),
+        old_whisperx: old_whisperx(app).map(|tools| folder_bytes(&tools)),
     }
 }
 
-/// §122: whether WhisperX is here, being installed, and how the last run went.
+/// §122: the models, which are downloaded and chosen, and how the last run
+/// went.
 ///
 /// # Errors
 /// No data folder.
@@ -14085,63 +14156,160 @@ pub fn word_timing(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<WordTimingDto, String> {
-    Ok(word_timing_dto(&state, &word_tools(&app)?))
+    let models = word_models(&app)?;
+    Ok(word_timing_dto(&app, &state, &models))
 }
 
-/// §122: install WhisperX, in the background: `uv` fetched and checked if
-/// djmanzo has none, then a private environment with WhisperX and PyTorch's
-/// CPU build in it. Answers at once; the interface reads [`word_timing`]
-/// for the steps.
+/// §122: measure this machine's download speed, so the dropdown can say how
+/// long each model would take to fetch.
 ///
 /// # Errors
 /// No data folder.
 #[tauri::command]
-pub fn word_timing_install(
+pub async fn word_timing_speed(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<WordTimingDto, String> {
-    let tools = word_tools(&app)?;
+    let models = word_models(&app)?;
+    let speed = crate::whispercpp::download_speed(&reqwest::Client::new()).await;
+    if let Ok(mut now) = state.word_timing().lock() {
+        now.speed = speed.or(now.speed);
+    }
+    Ok(word_timing_dto(&app, &state, &models))
+}
+
+/// §122: download the model `id` in the background, checked against its
+/// published checksum, and choose it once it is here. Answers at once; the
+/// interface reads [`word_timing`] for the bytes.
+///
+/// # Errors
+/// No data folder, a model djmanzo does not offer, or a download already
+/// under way.
+#[tauri::command]
+pub fn word_timing_download(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    model: String,
+) -> Result<WordTimingDto, String> {
+    let models = word_models(&app)?;
+    let model = crate::whispercpp::model(&model)
+        .ok_or_else(|| format!("djmanzo offers no model called {model:?}"))?;
     let progress = state.word_timing();
     {
         let Ok(mut now) = progress.lock() else {
-            return Err("the install's state is poisoned".to_owned());
+            return Err("the download's state is poisoned".to_owned());
         };
-        if now.installing || tools.installed() {
-            drop(now);
-            return Ok(word_timing_dto(&state, &tools));
+        if let Some(busy) = &now.downloading {
+            return Err(format!("{busy} is downloading already"));
         }
-        now.installing = true;
+        if models.installed(model) {
+            drop(now);
+            models.choose(model)?;
+            return Ok(word_timing_dto(&app, &state, &models));
+        }
+        now.downloading = Some(model.id.to_owned());
+        now.downloaded = 0;
+        now.download_total = model.bytes;
         now.error = None;
-        now.step = Some("Starting".to_owned());
     }
-    let into = tools.clone();
+    let into = models.clone();
     tauri::async_runtime::spawn(async move {
         let http = reqwest::Client::new();
         let step = Arc::clone(&progress);
-        let outcome = crate::wordtimes::install(&into, &http, move |what| {
+        let outcome = crate::whispercpp::download(&http, model, &into, move |done, total| {
             if let Ok(mut now) = step.lock() {
-                now.step = Some(what.to_owned());
+                now.downloaded = done;
+                now.download_total = total;
             }
         })
-        .await;
+        .await
+        .and_then(|()| into.choose(model));
         if let Ok(mut now) = progress.lock() {
-            now.installing = false;
-            now.step = None;
+            now.downloading = None;
             now.error = outcome.err();
         }
     });
-    Ok(word_timing_dto(&state, &tools))
+    Ok(word_timing_dto(&app, &state, &models))
 }
 
-/// §122: time the words of the record on `deck` with WhisperX, keep them as
-/// the record's timed words, and say how long it took against the owner's
-/// fifteen seconds.
-///
-/// The words already known — the record's own or LRCLIB's — are handed over
-/// so only the aligner runs; a record with none is transcribed first.
+/// §122: run the model `id` from now on.
 ///
 /// # Errors
-/// No record on the deck, WhisperX not installed, or what the run says.
+/// No data folder, or a model not downloaded.
+#[tauri::command]
+pub fn word_timing_choose(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    model: String,
+) -> Result<WordTimingDto, String> {
+    let models = word_models(&app)?;
+    let model = crate::whispercpp::model(&model)
+        .ok_or_else(|| format!("djmanzo offers no model called {model:?}"))?;
+    models.choose(model)?;
+    Ok(word_timing_dto(&app, &state, &models))
+}
+
+/// §122: delete the model `id`, to give its space back.
+///
+/// # Errors
+/// No data folder, a model djmanzo does not offer, or the file system's
+/// own sentence.
+#[tauri::command]
+pub fn word_timing_remove(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    model: String,
+) -> Result<WordTimingDto, String> {
+    let models = word_models(&app)?;
+    let model = crate::whispercpp::model(&model)
+        .ok_or_else(|| format!("djmanzo offers no model called {model:?}"))?;
+    models.remove(model)?;
+    Ok(word_timing_dto(&app, &state, &models))
+}
+
+/// §122: delete the WhisperX an earlier djmanzo installed — two and a half
+/// gigabytes nothing uses now.
+///
+/// # Errors
+/// No data folder, or the file system's own sentence.
+#[tauri::command]
+pub fn word_timing_forget_whisperx(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<WordTimingDto, String> {
+    let models = word_models(&app)?;
+    if let Some(tools) = old_whisperx(&app) {
+        for name in [
+            "whisperx",
+            "uv",
+            "whisperx.installed",
+            "wordtimes_helper.py",
+        ] {
+            let path = tools.join(name);
+            let gone = if path.is_dir() {
+                std::fs::remove_dir_all(&path)
+            } else {
+                std::fs::remove_file(&path)
+            };
+            match gone {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(format!("{}: {e}", path.display())),
+            }
+        }
+    }
+    Ok(word_timing_dto(&app, &state, &models))
+}
+
+/// §122: time the words of the record on `deck` with the chosen model, keep
+/// them as the record's timed words, and say how long it took against the
+/// owner's minute and a half.
+///
+/// The words already known — the record's own or LRCLIB's — steer what is
+/// heard and are what is kept; a record with none keeps what was heard.
+///
+/// # Errors
+/// No record on the deck, no model downloaded, or what the run says.
 #[tauri::command]
 pub async fn word_timing_run(
     app: tauri::AppHandle,
@@ -14149,7 +14317,10 @@ pub async fn word_timing_run(
     deck: u8,
     language: Option<String>,
 ) -> Result<crate::wordtimes::Report, String> {
-    let tools = word_tools(&app)?;
+    let models = word_models(&app)?;
+    let model = models
+        .chosen()
+        .ok_or_else(|| "no model is downloaded yet".to_owned())?;
     let id = DeckId::from_human(deck)
         .and_then(|deck| state.deck_track_id(deck))
         .ok_or_else(|| format!("deck {deck} has no record on it"))?;
@@ -14164,43 +14335,62 @@ pub async fn word_timing_run(
     let path = track.path.clone();
     let stems = DeckId::from_human(deck).and_then(|deck| state.deck_stems(deck, id));
     let progress = state.word_timing();
+    if let Ok(mut now) = progress.lock() {
+        now.listening = Some(deck);
+        now.percent = 0;
+        now.error = None;
+    }
+    let listening = Arc::clone(&progress);
     let outcome = tauri::async_runtime::spawn_blocking(move || {
         crate::wordtimes::time_words(
-            &tools,
+            &models,
+            model,
             &path,
             |seconds| crate::wordtimes::known_lines(known_synced.as_deref(), &known_plain, seconds),
             language,
             stems.as_ref(),
+            move |percent| {
+                if let Ok(mut now) = listening.lock() {
+                    now.percent = percent;
+                }
+            },
         )
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())
+    .and_then(|outcome| outcome);
     let (answer, report) = match outcome {
         Ok(done) => done,
         Err(why) => {
             if let Ok(mut now) = progress.lock() {
+                now.listening = None;
                 now.error = Some(why.clone());
             }
             return Err(why);
         }
     };
-    let plain = stored
-        .as_ref()
-        .map(|s| s.plain.clone())
-        .filter(|plain| !plain.trim().is_empty())
-        .unwrap_or_else(|| crate::wordtimes::plain_of(&answer));
-    let lrc = crate::wordtimes::to_lrc(&answer);
-    library
-        .remember_words(
-            id,
-            &plain,
-            Some(&lrc),
-            false,
-            "whisperx",
-            crate::library::now_seconds(),
-        )
-        .map_err(|e| e.to_string())?;
+    // Nothing heard — an instrumental, or a model that missed it all — is
+    // said, and nothing is kept over what the record had.
+    if report.words > 0 {
+        let plain = stored
+            .as_ref()
+            .map(|s| s.plain.clone())
+            .filter(|plain| !plain.trim().is_empty())
+            .unwrap_or_else(|| crate::wordtimes::plain_of(&answer));
+        let lrc = crate::wordtimes::to_lrc(&answer);
+        library
+            .remember_words(
+                id,
+                &plain,
+                Some(&lrc),
+                false,
+                "whisper.cpp",
+                crate::library::now_seconds(),
+            )
+            .map_err(|e| e.to_string())?;
+    }
     if let Ok(mut now) = progress.lock() {
+        now.listening = None;
         now.error = None;
         now.last = Some(report.clone());
     }

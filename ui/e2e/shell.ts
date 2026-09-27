@@ -2329,23 +2329,62 @@ export async function openShell(
           // kept from the journal and not the form, a song sung written onto
           // the singer's record (below, in `karaoke_sang`). The questions are
           // Rust's own, from `guest-asks.json`.
-          // §122: WhisperX -- installing for a moment, then installed; a run
-          // answers the report the test chose.
-          if (cmd === "word_timing" || cmd === "word_timing_install" || cmd === "word_timing_run") {
+          // §122: word timing -- the download speed measured on asking, a
+          // model downloading for a moment and then chosen, the rest as
+          // `dj_app::commands` answers them; a run answers the report the
+          // test chose.
+          if (cmd === "word_timing" || cmd.startsWith("word_timing_")) {
             ((win.__timing ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args ?? {})) });
-            const held = (win.__wordTiming ??= structuredClone(answers.word_timing)) as {
+            type Model = {
+              id: string;
+              bytes: number;
               installed: boolean;
-              progress: { installing: boolean; step: string | null; last: unknown };
+              chosen: boolean;
+              download_seconds: number | null;
             };
-            if (cmd === "word_timing_install") {
-              held.progress.installing = true;
-              held.progress.step = "Installing WhisperX and PyTorch's CPU build (about two gigabytes, once)";
+            const held = (win.__wordTiming ??= structuredClone(answers.word_timing)) as {
+              models: Model[];
+              chosen: string | null;
+              old_whisperx: number | null;
+              progress: {
+                downloading: string | null;
+                downloaded: number;
+                download_total: number;
+                speed: number | null;
+                last: unknown;
+              };
+            };
+            const named = (args as { model?: string } | undefined)?.model;
+            const choose = (id: string) => {
+              for (const model of held.models) model.chosen = model.id === id;
+              held.chosen = id;
+            };
+            if (cmd === "word_timing_speed") {
+              held.progress.speed = 6_250_000;
+              for (const model of held.models) model.download_seconds = model.bytes / 6_250_000;
+            }
+            if (cmd === "word_timing_download" && named) {
+              const model = held.models.find((m) => m.id === named)!;
+              held.progress.downloading = named;
+              held.progress.download_total = model.bytes;
+              held.progress.downloaded = Math.round(model.bytes / 3);
               setTimeout(() => {
-                held.progress.installing = false;
-                held.progress.step = null;
-                held.installed = true;
+                held.progress.downloading = null;
+                held.progress.downloaded = model.bytes;
+                model.installed = true;
+                choose(named);
               }, 1500);
             }
+            if (cmd === "word_timing_choose" && named) choose(named);
+            if (cmd === "word_timing_remove" && named) {
+              const model = held.models.find((m) => m.id === named)!;
+              model.installed = false;
+              if (model.chosen) {
+                model.chosen = false;
+                held.chosen = null;
+              }
+            }
+            if (cmd === "word_timing_forget_whisperx") held.old_whisperx = null;
             if (cmd === "word_timing_run") {
               held.progress.last = answers.word_timing_report;
               return Promise.resolve(structuredClone(answers.word_timing_report));

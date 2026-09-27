@@ -60,6 +60,7 @@ tauri-plugin-opener = "2"
 urlencoding = { workspace = true }
 zip = { workspace = true }
 sha2 = { workspace = true }
+whisper-rs = { workspace = true }
 rtrb = { workspace = true }
 # Fetching a streamed track to the cache before it reaches a deck. See
 # `sources::resolve_source_track` for why it lands on disk first.

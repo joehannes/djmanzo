@@ -104,6 +104,7 @@ pub mod wav;
 pub mod waveform;
 pub mod welcome;
 pub mod whisper;
+pub mod whispercpp;
 pub mod widgets;
 pub mod wordtimes;
 pub mod workers;
@@ -849,7 +850,11 @@ pub fn run() {
             commands::guests_message,
             commands::open_suno,
             commands::word_timing,
-            commands::word_timing_install,
+            commands::word_timing_speed,
+            commands::word_timing_download,
+            commands::word_timing_choose,
+            commands::word_timing_remove,
+            commands::word_timing_forget_whisperx,
             commands::word_timing_run,
             commands::karaoke_breaks,
             commands::karaoke_breaks_set,

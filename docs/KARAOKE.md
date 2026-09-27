@@ -173,23 +173,34 @@ Running speech recognition on a clean, separated vocal is a dramatically easier
 problem than running it on a mix. The same stem engine that makes karaoke
 possible also makes the transcription good.
 
-**WhisperX**, the owner's choice (§122), because it gives each word its own
-time. It is installed once, on the DJ's press, into a folder of djmanzo's own,
-and run over the **separated vocals** when separation has finished — the mix
-otherwise, and it says so. See `dj_app::wordtimes` and
-[RESEARCH.md](RESEARCH.md#words-in-time-whisperx-122) for the licences, and
-the non-commercial aligners it avoids.
+**whisper.cpp**, compiled into djmanzo (`dj_app::whispercpp`), gives each
+word its own time. The owner first chose WhisperX for that; it needed
+Python and PyTorch — 2.6 GB — and could not ship with djmanzo, so on
+27 September 2026 the owner asked for something under 100 MB in the
+installer, with a better model than `base` taking no more than about a
+minute and a half a song, downloaded on demand when too big to bundle
+(§122). whisper.cpp runs the same Whisper models from C++ in two megabytes
+of program; the model is one file the DJ picks from a list that says, for
+each, its size and download time, how well it hears, and how long a song
+takes on this machine. It listens to the **separated vocals** when
+separation has finished — the mix otherwise, and it says so. See
+[RESEARCH.md](RESEARCH.md#words-in-time-under-100-mb-bundled-122-asked-27-september-2026)
+for the measurements and licences.
 
-- **Words already known** — tags, `.lrc`, LRCLIB — are handed over, and only
-  WhisperX's aligner runs: the cheap half of the job.
-- **No words anywhere**: faster-whisper's `base` model finds them first, then
-  the aligner places them.
-- **Every run is timed** against the owner's fifteen seconds for a three- to
-  five-minute song and says whether it met it. Measured on a four-core cloud
-  machine from the mix (27 September 2026): **words known, 13–14 s — inside
-  the budget; nothing known, 28–31 s — about double it.** The details, and
-  the three speed-ups tried that did not help, are in
-  [RESEARCH.md](RESEARCH.md#words-in-time-whisperx-122).
+- **Words already known** — tags, `.lrc`, LRCLIB — are what the singers
+  read. They steer Whisper as its prompt, and each known word takes the time
+  of the heard word it matches; one it missed is spread between its
+  neighbours, and a timed line keeps its own time if nothing in it was heard.
+- **No words anywhere**: what Whisper heard is kept, word by word.
+- **`small` is recommended**: measured at 73 s for a 4½-minute record on a
+  four-core machine, inside the owner's minute and a half, with most words
+  right over the mix. Every run is timed against that limit and says
+  whether it met it; what it took is kept, so the list's next estimate is
+  this machine's own.
+- **Word times** come from Whisper's own attention and land within about a
+  quarter of a second of WhisperX's aligner — close enough to wipe a line
+  by, not to the syllable. The English aligner the owner asked for next
+  refines English.
 
 ### Forced alignment — the case nobody handles
 
@@ -203,8 +214,8 @@ highest-value operation in this whole feature and one most karaoke software
 simply does not do.
 
 Results are kept in the library as the record's timed words, in enhanced LRC
-(a time before every word), so the work is done once. This is what WhisperX's
-aligner does when the words are known.
+(a time before every word), so the work is done once. This is what djmanzo
+does when the words are known (`dj_app::whispercpp::place_known`).
 
 ### Ahead of time, or live
 
@@ -374,7 +385,7 @@ piece of this document lands among them.
 | Singers' screen: wipe, next line, count-in, next singer | M3 | **K1** | shipped |
 | Singers' screen background: art, Cover Art Archive, generated | M3 | **K1** | not built |
 | Stem-based removal and a guide vocal | M6 | **K2** | shipped |
-| Transcription and forced alignment (WhisperX) | M6 | **K2** | shipped; measured: alignment inside the fifteen seconds, transcription about double |
+| Transcription and word times (whisper.cpp, in djmanzo) | M6 | **K2** | shipped; `small` measured at 73 s for a 4½-minute record; the English aligner next |
 | Singer queue | — | **K2** | shipped as the rotation, with the guest book |
 | Beat- and microphone-reactive visuals | M2, §122 | **K2** | waits on the visual engine |
 | Voice control | A2 | **K2** | waits on A2 |

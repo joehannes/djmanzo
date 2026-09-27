@@ -297,7 +297,7 @@ pub struct LyricLine {
 /// of timed words, or two of plain ones, the record's own before anything
 /// fetched. So a `.lrc` dropped beside a record after the lyrics sweep asked
 /// LRCLIB about it is on the screen the next time the record is loaded, and
-/// words WhisperX timed still beat an untimed tag.
+/// words Whisper timed still beat an untimed tag.
 #[must_use]
 pub fn best_words(
     own: Option<dj_library::own_words::OwnWords>,
@@ -402,7 +402,7 @@ mod tests {
 
     /// **The singers' screen takes timed words first, and the record's own
     /// before anything fetched.** A `.lrc` dropped beside a record after the
-    /// sweep asked LRCLIB is what the screen shows; words WhisperX or LRCLIB
+    /// sweep asked LRCLIB is what the screen shows; words Whisper or LRCLIB
     /// timed still beat an untimed tag; and the record's own untimed words
     /// beat fetched untimed ones.
     #[test]
