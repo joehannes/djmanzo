@@ -572,6 +572,8 @@ The original rule stated that controls must be rigid DOM elements. This has been
 
 **Adaptive Flora replaces rigid HTML controls.** A fader is no longer a static `<input type="range">`. It is an SVG element that feels tangible to interact with, but visually responds to the session's context (e.g., sharpening during high energy, softening during warmups). 
 
+**Where this stands (27 September 2026).** The owner asked how far the SVG interface had got, and chose to leave it where it is: the controls a DJ performs with — knobs, faders, pads, the jog wheel, meters, the crossfader, stem chips, icons — are SVG drawn by the theme engine (`ui/src/controls/`); the waveform is WebGL with SVG marks; panels, lists, forms and text stay HTML.
+
 **SVG paints, Svelte listens.** These controls are still rendered natively by the browser and managed by Svelte's high-performance reactivity. Keyboard accessibility and screen-reader support must be manually maintained on the SVG groups via `tabindex` and ARIA attributes, as we are abandoning native HTML form elements for visual expressiveness.
 
 ---

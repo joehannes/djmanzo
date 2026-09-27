@@ -481,6 +481,10 @@ Use:
 * decay
 * explicit user preference
 * acceptance/rejection feedback.
+
+>
+> *Decided later (2026-09-27), answering a question put to the owner in the session:*
+> - What counts as the DJ's own plays when djmanzo learns their taste (genres, tempos, keys)? → **a suggestion the DJ accepted counts; a record the autopilot chose by itself does not.**
 ---
 # 13. NEVER LEARN BADLY
 Do not silently convert unusual behavior into permanent preference.
@@ -2582,6 +2586,15 @@ added together as light, white when all were present:
 > the user shall be able to save a (live) session ... also meaning that on replay and later analysis the user can have insights into the reactions of the live crowd and the mood and whatnot ... there shall be typical categories and specifics for what to analyse and show graphically as of useful data as of partygoers, crowd, fans ... depending on type of club/festival/event/music genre/... insights that shall be useful.
 > on playback of the session or inspection of the session those comments shall be visible if desired and also color coded and usefully coded in different combinatoric ways ... even ways the user can define as of goals (a typical DJ/musician/event planner would like to study) and even goals a DJ/musician/event planner might want to define himself according to specifics he can define ...
 > thusly that analysis dashboard shall be useful and can replay a full session according to all available data, also as of live youtube/tiktok comments and moods ...
+
+>
+> *Decided later (2026-09-27), answering the options put to the owner in the session (the decision page's §119 cards):*
+> - Which camera does the stream use? → **all three**: whatever OBS can see (webcam, phone through Camo, DroidCam or OBS's phone apps), djmanzo's own phone page on the local network, and the computer's webcam inside djmanzo.
+> - How does the stream leave the computer? → **djmanzo drives OBS** (start and stop the stream, switch scenes on moments, over obs-websocket).
+> - TikTok: how far do we go? → **leave TikTok out for now**; YouTube first.
+> - YouTube: whose Google sign-in? → **a verified djmanzo Google app** (the owner registers djmanzo in Google Cloud and takes it through OAuth verification).
+> - The comments the rules cannot place? → **ask the DJ's AI provider about only those**, in batches, with the record and part that was playing.
+> - What should a saved night add next? → **both**: replay the night on one timeline, and compare nights.
 ---
 # 120. ASKED SINCE: ANY AI PROVIDER, COMFORTABLE WINDOWS, AND COMPACT CONTROLS
 > another feature improvement:
@@ -2624,6 +2637,10 @@ added together as light, white when all were present:
 > also, if opened as side widget ... i want to be able to have the bigger as well ...
 > especially the file browser ... i might want that one a bit taller ... but be able to resize it quickly at all times
 
+>
+> *Decided later (2026-09-27), answering the options put to the owner in the session:*
+> - Do the last seven panels need pop out? → **all twenty-three**: the event being played, the night's density, requests, the key map, the controller mappings, the settings and the session log each get a window that reads and writes the same state as the main one.
+
 ---
 # 122. ASKED SINCE: LYRICS FROM THE RECORD, LAYERED VISUALS, VIDEO, AND A MARKETPLACE
 > karaoke feature requests:
@@ -2639,6 +2656,15 @@ added together as light, white when all were present:
 > I prefer x-whisper, since it also tells the timestamps for the words/lyrics ... that's necessary for karaoke ...
 > if x-whipser works on all platforms somehow, do use it. if not, please find a combination of traditional whisper or fast-whisper ... and something that can help put the timestamps for these found words/lyrics ...
 
+>
+> *Decided later (2026-09-27), answering the options put to the owner in the session (the decision page's §122 cards):*
+> - Which visual engine do the layers run on? → **djmanzo's own layers, with MilkDrop as one of them**: a WebGL layer stack fed by bands and separated stems, plus Butterchurn (MIT) as a "main" layer choice, shipping only clearly licensed presets.
+> - Play video files on a deck? → **yes**: the sound on the deck like any record, the picture in a window of its own for a projector, or hidden.
+> - Where may artist images come from, for a screen at a paid event? → **Wikimedia Commons plus TheAudioDB, licensed images only**, each TheAudioDB image used only when its record says Creative Commons, with the credit on screen.
+> - Which lyric services besides LRCLIB? → **Musixmatch behind the DJ's own key, off by default** (LRCLIB and WhisperX stay first).
+> - How are karaoke looks chosen for a song? → **the AI picks per song**, one call to the DJ's AI provider.
+> - How far toward a marketplace? → **a free community index**: a public list of packs hosted where their makers choose, which djmanzo browses and installs from (the pack format it installs is its foundation).
+
 ---
 # 123. ASKED SINCE: A KARAOKE JOURNAL, AND A SONG FOR EVERY SINGER
 > also for karaoke, new feature:
@@ -2650,6 +2676,10 @@ added together as light, white when all were present:
 > then the lyrics shall be created in the language of the karaoke song (+ if differing, a second version in the native language of the karaoke artist) => and auto-downloaded if possible and autosent to the WA/email/social profiles of the guest, if somehow feasible possible ... investigate and implement all you can if useful
 >
 > as of suno ... can you have an additional minimal browser view feature ... that enable the user to load suno internally, and then subsequently you control it via readymade playwright scripts or the internal suno api???
+
+>
+> *Decided later (2026-09-27), answering the options put to the owner in the session:*
+> - Suno: keep it in the DJ's own hands, or script it? → **by hand, and apply for Suno's partner API**, as built; djmanzo fills Suno's form when its API opens.
 
 ---
 # 124. ASKED SINCE: ONE SEARCH, AND SIDEBARS THAT STAY
@@ -2665,3 +2695,7 @@ added together as light, white when all were present:
 > also, merge all done/existing latest work into main - i want to be assured main always holds the latest features
 
 *The attached docs* were a patch to `FEATURES.md`, `KARAOKE.md` and `ROADMAP.md`, written against exactly this repository's copies, and are applied as written: the karaoke milestones re-cut as K1–K9 ([ROADMAP.md](ROADMAP.md#karaoke)), K3 — the singers' microphones — designed ([KARAOKE.md §6](KARAOKE.md#6-the-singers-microphones-k3)), and the owner's answers behind K3 of 27 September 2026.
+
+*Decided the same day (2026-09-27), answering questions put to the owner in the session:*
+- Sections that are partly done only because of something deliberately not built — §3, §11, §17, §67, §90, §34's identifying people and §36's single mood model — are **closed as done by design** where nothing else in them is left, with the reason kept in each row. Four were (§3, §11, §67, §90). §17, §34 and §36 stay open: §17 still has a real disagreement with §18 in it, and reading §34 and §36 again showed their rows had called unbuilt measurements a refusal.
+- How far should the SVG interface go? → **leave it as it is**: the controls a DJ performs with are SVG, the world is drawn with canvas and WebGL, and panels, lists, forms and text stay HTML ([VISUAL-LANGUAGE.md §6](VISUAL-LANGUAGE.md)).
