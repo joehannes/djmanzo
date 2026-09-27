@@ -318,6 +318,23 @@ pub fn timed_words(answer: &Answer) -> usize {
         .count()
 }
 
+/// A child process that opens no window of its own.
+///
+/// On Windows a GUI application starting `python.exe`, `uv.exe` or `tar.exe`
+/// gets a console window flashed up for each one unless it asks for none —
+/// in the middle of a night, over the decks. Elsewhere this changes nothing.
+fn quiet(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut command = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 /// Run the helper with `python`: the job on its standard input, the answer
 /// on its standard output.
 ///
@@ -325,7 +342,7 @@ pub fn timed_words(answer: &Answer) -> usize {
 /// A helper that would not start, ran past `timeout`, failed — with the last
 /// thing it said — or answered something that is not an [`Answer`].
 pub fn run(python: &Path, helper: &Path, job: &Job, timeout: Duration) -> Result<Answer, String> {
-    let mut child = Command::new(python)
+    let mut child = quiet(python)
         .arg(helper)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -719,7 +736,7 @@ pub async fn install(
         std::fs::write(&saved, &bytes).map_err(|e| e.to_string())?;
         // `tar` reads both .tar.gz and .zip where uv is published: it is
         // bsdtar on macOS and on Windows 10 and later.
-        let status = Command::new("tar")
+        let status = quiet("tar")
             .arg("-xf")
             .arg(&saved)
             .arg("-C")
@@ -752,7 +769,7 @@ pub async fn install(
     ];
     for (step, what) in install_steps(&uv, tools).into_iter().zip(words) {
         say(what);
-        let output = Command::new(&step[0])
+        let output = quiet(&step[0])
             .args(&step[1..])
             .output()
             .map_err(|e| format!("{} would not start: {e}", step[0]))?;
@@ -1009,13 +1026,17 @@ mod tests {
         let steps = install_steps(Path::new("/tools/uv/uv"), &tools);
         assert_eq!(steps.len(), 2);
         assert_eq!(steps[0][..4], ["/tools/uv/uv", "venv", "--python", PYTHON]);
-        assert_eq!(steps[0].last().map(String::as_str), Some("/tools/whisperx"));
+        // Compared as paths, by component: Windows joins with `\`.
+        let venv = steps[0].last().map(PathBuf::from).expect("a folder");
+        assert_eq!(venv, tools.venv());
+        assert!(venv.ends_with("whisperx"), "{venv:?}");
         assert!(steps[1].windows(2).any(|w| w == ["--torch-backend", "cpu"]));
-        assert!(
-            steps[1]
-                .windows(2)
-                .any(|w| w == ["--python", "/tools/whisperx/bin/python"])
-        );
+        let python = steps[1]
+            .windows(2)
+            .find(|w| w[0] == "--python")
+            .map(|w| PathBuf::from(&w[1]))
+            .expect("the environment's Python is named");
+        assert!(python.ends_with("whisperx/bin/python"), "{python:?}");
         assert_eq!(steps[1].last().map(String::as_str), Some(WHISPERX));
         let windows = Tools {
             root: PathBuf::from("C:/tools"),
