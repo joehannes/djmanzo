@@ -1501,7 +1501,9 @@ Staging routes through the same `put_on_deck` a hand-load uses, so a staged
 record arrives with its cues, grid and analysis exactly as a manually loaded one
 does.
 
-- Still open from the original M8: lyrics/karaoke and video mixing.
+- Still open from the original M8: video mixing. Lyrics and karaoke became a
+  track of their own ([Karaoke](#karaoke), K1–K9), and most of K1 and K2 has
+  shipped.
 
 ### M8 extended — the assistant that mixes, adapts and teaches
 
@@ -2284,16 +2286,59 @@ the existing bus.** It is a client, not a component.
 
 ### Karaoke
 
-Two milestones, designed in [KARAOKE.md](KARAOKE.md).
+Designed in [KARAOKE.md](KARAOKE.md). K1 and K2 were written when karaoke was
+only a plan. §107, §122 and §123 then built most of both, so each of those rows
+now says what shipped and what is left, rather than describing a plan that is
+mostly history.
+
+K3 onwards came out of a comparison with KaraFun (27 September 2026) and the
+design session that followed it. **K3 is designed; K4–K9 are outlined**, and
+each gets its own design pass before any code, because an outline written
+beside six others is a list of intentions, not a design.
 
 | # | Milestone | Depends on | Definition of done |
 |---|---|---|---|
-| **K1** | Karaoke, no models needed | M1, M3 | Band-limited centre cancellation -- cancels the vocal band only, so centred kick and bass survive. Lyrics from tags, sidecar `.lrc`, and [LRCLIB](https://lrclib.net/) (free, MIT, no API key). Karaoke screen on a second monitor with timed wipe-highlight display, next-line preview, count-in and artwork from Cover Art Archive. |
-| **K2** | Karaoke, full quality | K1, M6, A2 | Stem-based vocal removal, plus vocal *reduction* for a guide vocal. Transcription over the isolated vocal stem -- far more accurate than over a mix. **Forced alignment** turning unsynced lyrics into synced ones. Beat- and microphone-reactive visuals that degrade gracefully. Voice control and a singer queue. |
+| **K1** | Karaoke, no models needed | M1, M3 | **Shipped, except two pieces** (§107). Band-limited centre cancellation, reached through the deck's voice knob wherever a record is not separated yet. Synced lyrics from [LRCLIB](https://lrclib.net/), read by `dj_library::lrc` (LRC, several stamps on one line, Enhanced LRC's word stamps, `[offset:]`). The singers' screen: the line being sung, wiped in time — word by word where the words are timed, evenly where they are not — with the next line, a bar's count-in and the next singer. **Left:** lyrics from the record's own tags (`SYLT`/`USLT`, Vorbis `LYRICS`) and from a sidecar `.lrc`, which the design lists first and nothing reads yet; and a background for the singers' screen — embedded art, then Cover Art Archive, then one generated from the record's spectrum — which the screen does not have. |
+| **K2** | Karaoke, full quality | K1, M6, A2 | **Mostly shipped** (§107, §122, §123). Stem-based removal and a guide vocal behind one knob per deck (`deck N voice`), offered as *As recorded · Guide · Out*. Words timed by WhisperX over the separated vocals: the aligner alone when the words are already known, transcription first when they are not. The result is kept as the record's enhanced LRC. **Not yet measured on a real song.** The singer queue became §107's rotation, and §123 put the guest book behind it. **Left:** beat- and microphone-reactive visuals, which wait on §122's decision about the visual engine; and voice control, which waits on A2, and A2 is not built. |
+| **K3** | The singers' microphones | M1, K1 | **Designed** — [KARAOKE.md §6](KARAOKE.md#6-the-singers-microphones-k3), and the decisions behind it below. A `dj-vocal` crate, called from the engine's render callback the way the CLAP processor is. N strips, one per input the interface has, read from a single multichannel input stream on the same device as the music output. A full, independent vocal chain on every strip — high-pass, gate, EQ, compressor, de-esser, echo, reverb, each stage bypassable. A strip that is closed, or has been gated for longer than its reverb tail, costs nothing. Each strip publishes its processing cost, so the interface warns before an eight-mic rig outgrows a laptop. Talkover stays a per-strip setting and is off for singers. Vocals join the main bus before the master chain, so the limiter covers the singers too. A singers' monitor bus on its own output pair (`BusLayout::monitor`), built so it can split into per-singer mixes later. Parameters as `ParamId::Vocal(StripId, StripParam)`; the existing `Mic*` parameters stay, as strip 0, so controller mappings and keyboard layouts keep working. The input-to-output delay is measured and shown, with a small-buffer setting for singing. §123's voice take records the strip the singer is on. |
+| **K4** | Singers from the room | K1, the audience page | **Outlined.** A guest puts themselves on the rotation from their phone, through the QR page the room already uses for requests — as a second book under the same rule: a phone can add to a book and reach nothing else. Their choices of key and guide vocal arrive as proposals the host confirms. A *Ready* press on the phone of whoever is called. The host decides who may add, how many songs each, and whether a phone may choose a key. The singers' screen gains an up-next ticker, a line of the host's own and the logo `brand.rs` already keeps; guests' photos appear under the words, through a queue the host approves. |
+| **K5** | Break music that leads somewhere | K2, the planner | **Outlined.** §107's breaks fade a playlist in and out. At a hybrid gig the music between singers should lead *into* the next singer's song: break records ranked by the Next rail's scoring against that song's key and tempo, and a planned transition from the dance set into a karaoke song and back out. A karaoke-only program cannot do this, because it does not mix. |
+| **K6** | Scored singing | K3, M6 | **Outlined.** The reference melody comes from the separated vocal — `dj_analysis::melody`'s contour — so any record in the collection can be scored, not only records somebody wrote notes for. Pitch read live on each K3 strip, octave-agnostic, with a timing tolerance. The score on the singers' screen while the song runs and a leaderboard after it; a duet scored per strip, and teams for a *versus* round. For hosts who would rather the room decided, applause from §35's room reading is the alternative verdict. |
+| **K7** | A quiz made from the collection | K4, M6 | **Outlined.** Rounds generated from the DJ's own records, using what djmanzo can already do to them: a snippet to name, a reversed or sped-up clip, a chipmunk voice (keylock off), the stems brought in one at a time, a missing line from the stored lyrics. Phones answer through the room's page, four buttons each, with a short karaoke interlude between questions. |
+| **K8** | A singer's range | K3, K6 | **Outlined.** A singer sings up and down a scale into a strip; djmanzo compares their range with the range of each record's separated vocal and suggests songs, with the key change each one needs. The range is kept on the guest's record only with §123's consent to keep them. |
+| **K9** | Later | K3, K4, K6 | **Named, so they are not forgotten; not designed.** Phones as microphones over the LAN — good enough for scoring, too late for the PA. Per-singer monitor mixes. Lead and backing vocals separated, and a duet's two parts muted independently. Pitch correction, decided together with K6, because a corrected voice scores what the corrector sang. Performances recorded per strip and shared, through §123's consent and A6's handoff. |
 
-**K1 delivers a usable karaoke night on its own**: centre cancellation plus
-LRCLIB covers a great deal of real repertoire with no model, no GPU and no
-cache.
+**The order.** K1's two pieces are small and finish the original plan. K3 is
+the foundation for everything that listens to a singer — K6, K8 and most of
+K9 — and it is the one that is designed. K4 and K5 need no singer audio and can
+run beside it. K6 is the showpiece: scoring any record in the collection is
+something a program with a fixed, hand-annotated catalogue cannot offer.
+
+#### What K3 decided, and why
+
+The owner's answers, 27 September 2026:
+
+- **Every kind of night** — a DJ set with karaoke in it, a dedicated karaoke
+  night, a home party. One subsystem configured by preset, not three modes;
+  §7 already lists *Karaoke / MC* among the arrangements.
+- **Microphones through the interface first, phones later.** A voice djmanzo
+  never hears cannot be processed, recorded or scored, so the external-mixer
+  setup is the one that closes doors.
+- **As many microphones as the interface has inputs.** `mic.rs` is one stereo
+  strip, and `engine.rs` is already over five thousand lines; N strips with a
+  chain each belong behind one interface in a crate of their own, not spread
+  through the engine.
+- **A full chain on every microphone, independently** — chosen over a shared
+  reverb send. The cost is controlled by idle strips costing nothing and by
+  each strip's cost being published, not by sharing effects.
+- **A shared monitor first, per-singer mixes later**, with the bus built so
+  the later step is a split rather than a rewrite.
+- **One device in and out.** Two devices are two clocks, two clocks drift, and
+  drift is a click in front of the room.
+- **Vocals before the master chain, and `Mic*` kept as strip 0.** The first so
+  the limiter protects the PA from a singer as well as from a record; the
+  second because a mapping a DJ built should not stop working because
+  karaoke arrived.
 
 #### What A6 decided, and why
 

@@ -23,6 +23,10 @@
 > Each break takes the playlist's next record. It only ever plays a record it
 > put there itself — the next singer's song loaded on the break deck by
 > mistake is left alone, and the row says why nothing is playing.
+>
+> **Next** (added 2026-09-27): the milestones were re-cut as K1–K9 in
+> [ROADMAP.md](ROADMAP.md#karaoke) after a comparison with KaraFun. K3, the
+> singers' microphones, is designed in §6 below; K4–K9 are outlined there.
 
 Two independent halves, usable together or separately:
 
@@ -31,7 +35,11 @@ Two independent halves, usable together or separately:
 2. **Put the words up** — timed lyrics on a second screen, with artwork and
    beat-reactive visuals.
 
-They are separate on purpose. Plenty of DJs want lyrics on screen over a full
+And a third that both of them assume and nothing yet provides: **carry the
+singers' voices in** — a microphone per singer, each with a chain of its own,
+and a monitor they can hear themselves in. That is K3, in §6.
+
+The first two are separate on purpose. Plenty of DJs want lyrics on screen over a full
 mix as a sing-along, and plenty want an instrumental with no lyrics at all.
 
 ---
@@ -340,17 +348,112 @@ DJ reads it and sends it. WhatsApp needs the number with its country code.
 
 ## 5. Where it fits
 
-| Piece | Needs | Milestone |
-|---|---|---|
-| Band-limited centre cancellation | M1 (the crossover filters exist) | **K1** |
-| Lyrics sources: tags, `.lrc`, LRCLIB | M3 (library) | **K1** |
-| Karaoke screen, timed display, artwork | M3 | **K1** |
-| Stem-based vocal removal and reduction | **M6** (stem engine) | **K2** |
-| Transcription over the isolated vocal | M6, A2 (Whisper) | **K2** |
-| Forced alignment of unsynced lyrics | M6 | **K2** |
-| Beat-reactive and mic-reactive visuals | M2 (beat grid) | **K2** |
-| Voice control and singer queue | A2 | **K2** |
+The milestones live in [ROADMAP.md](ROADMAP.md#karaoke); this is where each
+piece of this document lands among them.
 
-**K1 is buildable after M3 and delivers a genuinely usable karaoke night** —
-centre cancellation plus LRCLIB covers an enormous amount of real repertoire
-with no models and no GPU. K2 is the quality tier that stem separation unlocks.
+| Piece | Needs | Milestone | Where it stands |
+|---|---|---|---|
+| Band-limited centre cancellation | M1 | **K1** | shipped, behind the voice knob |
+| Lyrics from LRCLIB | M3 | **K1** | shipped |
+| Lyrics from tags and a sidecar `.lrc` | M3 | **K1** | not read yet |
+| Singers' screen: wipe, next line, count-in, next singer | M3 | **K1** | shipped |
+| Singers' screen background: art, Cover Art Archive, generated | M3 | **K1** | not built |
+| Stem-based removal and a guide vocal | M6 | **K2** | shipped |
+| Transcription and forced alignment (WhisperX) | M6 | **K2** | shipped, not measured on a real song |
+| Singer queue | — | **K2** | shipped as the rotation, with the guest book |
+| Beat- and microphone-reactive visuals | M2, §122 | **K2** | waits on the visual engine |
+| Voice control | A2 | **K2** | waits on A2 |
+| N microphones, a chain each, a singers' monitor | M1 | **K3** | designed — §6 below |
+| Signing up from a phone, host permissions, photos, ticker | the audience page | **K4** | outlined |
+| Break music that leads into the next song | the planner | **K5** | outlined |
+| Scored singing, from the separated vocal | K3, M6 | **K6** | outlined |
+| A quiz made from the collection | K4, M6 | **K7** | outlined |
+| A singer's range, and the key to sing in | K3, K6 | **K8** | outlined |
+| Phones as microphones, per-singer monitors, duet parts, pitch correction, recorded performances | K3, K4, K6 | **K9** | named |
+
+---
+
+## 6. The singers' microphones (K3)
+
+Everything above takes the voice *out*. Nothing yet carries the singer's voice
+*in*: djmanzo has one microphone strip, built for a DJ talking over the music,
+and a karaoke night can have a queue of people with a microphone each.
+
+### What a singer's strip is
+
+One per input the interface has. The strip carries the input channel, a gain,
+an on/off switch, a send to the headphones, a send to the singers' monitor,
+and **talkover** — kept per strip, so one strip can still be the MC's
+microphone while the singers' strips leave the music alone. Talkover under a
+singer would pull the backing track down every time they sang, which is the
+opposite of karaoke.
+
+Behind each strip, a full vocal chain of its own, in this order, every stage
+bypassable:
+
+```
+  input ─→ high-pass ─→ gate ─→ EQ ─→ compressor ─→ de-esser ─→ echo ─→ reverb ─→ sends
+```
+
+Independent on every strip, on purpose: two singers sharing a stage do not want
+the same reverb, and a guest who shouts wants a harder compressor than one who
+whispers.
+
+### What it costs, and how that is kept honest
+
+N full chains cost N times one. That is kept in check by three things, not by
+sharing effects:
+
+- **A strip that is closed, or has been gated for longer than its reverb tail,
+  is not processed at all.** The tail is allowed to finish first — cutting a
+  reverb short is audible.
+- **The reverb and echo are chosen to be cheap enough to run N copies of**: a
+  small feedback-delay network rather than a convolution.
+- **Each strip publishes what it costs**, so the interface can say *this rig
+  is too much for this machine* before the room hears it.
+
+### Where it sits
+
+A crate of its own, `dj-vocal`, depending on `dj-dsp` and `dj-core` and never
+on `dj-engine`. The engine holds it the way it holds the CLAP processor and
+calls it once per block with the input frames; it adds each strip into the
+main, cue and monitor buses and returns the gain the music should take, which
+is what `MicFrame::music_gain` already does for one strip. Nothing in it
+allocates after the interface opens: the strips are sized to the input count
+then.
+
+- **One device in and out.** The microphones and the music run on the same
+  interface. Two devices are two clocks, and two clocks drift.
+- **One multichannel input stream, one ring.** The host opens every input the
+  interface has; `dj-vocal` splits the channels. The ring still leaves through
+  the retirement queue as `Retired::MicInput` does today.
+- **Vocals join the main bus before the master chain**, so the limiter that
+  protects the PA from a record protects it from a singer too.
+- **A singers' monitor** on its own output pair — `BusLayout::monitor`, beside
+  the booth pair, which stays the DJ's. The music at a level of its own plus
+  every strip's monitor send. Built as one bus that can later become one per
+  singer.
+- **Parameters** as `ParamId::Vocal(StripId, StripParam)`, the same shape as a
+  deck's. The existing `Mic*` parameters remain and mean strip 0, so a
+  controller mapping or keyboard layout written for the microphone keeps
+  working.
+
+### The delay a singer hears
+
+A voice through a computer arrives late by the input buffer, the ring and the
+output buffer together. `mic.rs` already says so; a DJ making an announcement
+barely notices it, and a singer hearing themselves in a monitor notices it
+quickly. So the round trip is measured and shown on the strip, and there is a
+small-buffer setting for karaoke — with the trade stated: smaller buffers ask
+more of the machine.
+
+### What this makes possible
+
+Everything that has to listen to a singer: K6's scoring reads pitch per strip,
+K8 measures a singer's range on one, §123's fifteen-second voice take records
+the strip the singer is on rather than "the microphone", and K9's recorded
+performances are a strip plus the record.
+
+**Still to design before code:** how a strip's settings are saved and recalled
+per singer, what the host sees for eight strips at once, how a strip whose
+input vanishes mid-song fails, and the tests that hold it.

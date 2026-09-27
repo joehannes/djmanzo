@@ -2656,3 +2656,12 @@ added together as light, white when all were present:
 > feature update:
 > as of the library ... there shall be no extra view for external sources, but the regular search shall have a tickable toggle or something to include external sources ... also it might be some fuzzy search, whatever suits best.
 > also sidebars in any view shall be fixed in such a way, that if something in the view is a list/table that's scrolled the sidebar shall be visible at all times ... also the basic controls / top toolbar/search
+
+---
+# 125. ASKED SINCE: THE KARAOKE MILESTONES, AND MAIN ALWAYS CURRENT
+> new feature sets (mainly as of karaoke):
+> incorporate the attached docs into the existing docs and work on the Karaoke Milestones/Features very soon
+>
+> also, merge all done/existing latest work into main - i want to be assured main always holds the latest features
+
+*The attached docs* were a patch to `FEATURES.md`, `KARAOKE.md` and `ROADMAP.md`, written against exactly this repository's copies, and are applied as written: the karaoke milestones re-cut as K1–K9 ([ROADMAP.md](ROADMAP.md#karaoke)), K3 — the singers' microphones — designed ([KARAOKE.md §6](KARAOKE.md#6-the-singers-microphones-k3)), and the owner's answers behind K3 of 27 September 2026.
