@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.33.0 — Records play to their end, karaoke reads the words they carry, and djmanzo learns from your hands alone
+
 - **An MP3 plays to its end even when its header says it is shorter.** An
   MP3's length is written in a header at its start, and a file cut, joined
   or retagged by a tool that left that header alone keeps the old length.
