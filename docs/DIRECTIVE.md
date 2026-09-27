@@ -2664,6 +2664,9 @@ added together as light, white when all were present:
 > - Which lyric services besides LRCLIB? → **Musixmatch behind the DJ's own key, off by default** (LRCLIB and WhisperX stay first).
 > - How are karaoke looks chosen for a song? → **the AI picks per song**, one call to the DJ's AI provider.
 > - How far toward a marketplace? → **a free community index**: a public list of packs hosted where their makers choose, which djmanzo browses and installs from (the pack format it installs is its foundation).
+>
+> *Asked later (2026-09-27), on finding WhisperX installed by a button rather than with djmanzo:*
+> i just found x-whisper (with python, pytorch) isn't co-installed (as sidecar??? dependency?) automatically with the setup/install of the app. also i found it is installable via a buttonn in djmanzo, but it's (probably correctly hinting) saying the install is a ~ 2GB download. is there no smallish way to install that?? i guess it's some AI engine that will run on very good machines only anyway??? please report, research alternatives .. (i want a max download of < 100 MB for all of install x-whisper, also i want that to get bundled with the installer, so the installable package may grow up to 100 MB. report, propose fix options
 
 ---
 # 123. ASKED SINCE: A KARAOKE JOURNAL, AND A SONG FOR EVERY SINGER

@@ -477,6 +477,39 @@ tables above, so the first alignment failed wherever WhisperX could not fetch
 them itself; and a failure reported only the last line WhisperX printed,
 which for NLTK's error is a row of asterisks.
 
+## Words in time under 100 MB, bundled (§122, asked 27 September 2026)
+
+The owner asked for word timing that ships **inside the installer** and adds
+**less than 100 MB**. WhisperX cannot: its private environment unpacks to
+2.6 GB — Triton, a graphics-card compiler WhisperX 3.8.6 requires on Linux
+even for a CPU run (892 MB); PyTorch (697 MB); some ninety other packages —
+and fetches about 500 MB of models on first use (Whisper `base` 142 MB, the
+English aligner 361 MB). It does **not** need a powerful machine: everything
+above was measured on four CPU cores with no graphics card.
+
+What fits, with its size, licence and what it gives (sizes from each
+project's own download listing, 27 September 2026):
+
+| Candidate | Licence | Adds to the installer | Word times | Languages |
+|---|---|---|---|---|
+| **whisper.cpp** through `whisper-rs`, linked into djmanzo, with the `tiny` model quantised to 5 bits (`ggml-tiny-q5_1.bin`) | MIT (whisper.cpp, the Whisper weights); Unlicense (`whisper-rs`) | **≈ 34 MB** (2.2 MB of code, 32 MB of model) | Yes, from the model's own attention (DTW) | Whisper's 99 |
+| The same with `base` (`ggml-base-q5_1.bin`) | as above | ≈ 62 MB | Yes | 99 |
+| A CTC aligner on the ONNX Runtime djmanzo already ships — NVIDIA NeMo Conformer-CTC small, 8-bit (sherpa-onnx's export) | CC-BY-4.0 | ≈ 46 MB | Precise, for words already known | English only; the multilingual exports are hosted on GitHub, which this container cannot reach, so their sizes are not verified |
+| Vosk small models | Apache-2.0 (most; a few LGPL-3.0, not used) | 39–48 MB **per language**, plus the library | Yes, built in | One per model |
+| sherpa-onnx's Whisper `tiny`, 8-bit | Apache-2.0 | ≈ 103 MB | No | 99 |
+
+**whisper.cpp, measured** on the machine and record WhisperX was measured
+on (four cores of a 2.1 GHz Xeon, the 4½-minute record, from the mix, a
+2.2 MB test program in the scratchpad): `tiny` **12.0–12.2 s** — inside
+the fifteen seconds, with the words found from nothing, where WhisperX took
+31 s; `base` **25.6–25.8 s**; `base` on a 2¾-minute record 12.0 s. `base`'s words
+read like WhisperX's own `base` transcription; `tiny` gets more of them
+wrong ("a toneless" for "a dullness"). Its word times
+mark roughly where each word **ends** — a median 0.5 s after WhisperX's
+starts — and, with that offset taken out, still differ from WhisperX's by a
+median of 0.2–0.3 s (80 % within 0.5 s); WhisperX's aligner is the more
+precise of the two, and neither was checked against the record by ear.
+
 ## Options put to the owner: streaming, visuals, video, words, a marketplace (§119, §122, §123)
 
 Researched in September 2026 and put to the owner as one decision page on
