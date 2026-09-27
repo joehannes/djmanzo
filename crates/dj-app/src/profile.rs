@@ -37,7 +37,7 @@
 //! on the tracks, so a stored weight would be a second copy that drifts the
 //! first time a record is re-tagged.
 //!
-//! The other four are read off the **action log**, and the action log does not
+//! The other five are read off the **action log**, and the action log does not
 //! outlive the run of the application that made it. So they are written to the
 //! night's row as the night goes — see the `nights` table. That is not a second
 //! copy of the log; it is the only trace that survives it.
@@ -92,6 +92,7 @@ pub struct Profile {
     nights: usize,
     density: Option<String>,
     style: Option<TransitionStyle>,
+    length: Option<u32>,
     automation: Option<Posture>,
     techniques: Vec<Did>,
     genres: Vec<(String, f64)>,
@@ -122,6 +123,13 @@ impl Profile {
     #[must_use]
     pub fn style(&self) -> Option<TransitionStyle> {
         self.style
+    }
+
+    /// §12's *preferred transition duration*: how many beats their mixes
+    /// usually take here, as one of [`crate::mixes::PHRASES`].
+    #[must_use]
+    pub fn length(&self) -> Option<u32> {
+        self.length
     }
 
     /// §81's "automation tolerance": how much they let the assistant do here.
@@ -226,10 +234,13 @@ impl Profile {
             self.nights,
             if self.nights == 1 { "" } else { "s" }
         );
-        if let Some(style) = self.style {
-            said.push_str(&format!(": mostly {style} transitions"));
-        } else {
-            said.push_str(": too varied so far to say how you mix");
+        match (self.style, self.length) {
+            (Some(style), Some(beats)) => {
+                said.push_str(&format!(": mostly {style} transitions over {beats} beats"));
+            }
+            (Some(style), None) => said.push_str(&format!(": mostly {style} transitions")),
+            (None, Some(beats)) => said.push_str(&format!(": mostly {beats}-beat transitions")),
+            (None, None) => said.push_str(": too varied so far to say how you mix"),
         }
         if let Some((genre, share)) = self.genres.first() {
             said.push_str(&format!(
@@ -279,6 +290,9 @@ pub fn profiles(
             density: agreed(seen.iter().map(|n| (n.density.clone(), weight(n, now)))),
             style: agreed(seen.iter().map(|n| (n.style.clone(), weight(n, now))))
                 .and_then(|word| TransitionStyle::parse(&word)),
+            length: agreed(seen.iter().map(|n| (n.length.clone(), weight(n, now))))
+                .and_then(|word| word.parse().ok())
+                .filter(|beats| crate::mixes::PHRASES.contains(beats)),
             automation: agreed(seen.iter().map(|n| (n.posture.clone(), weight(n, now))))
                 .and_then(|word| Posture::ALL.into_iter().find(|p| p.name() == word)),
             techniques: usual(&seen, now),
@@ -575,6 +589,7 @@ mod tests {
             style: None,
             posture: None,
             techniques: None,
+            length: None,
         }
     }
 
@@ -1051,6 +1066,50 @@ mod tests {
         let said = profiles(&nights("practice", 3), &nothing, NOW)[0].words();
         assert!(said.contains("too varied"), "{said}");
         assert!(said.contains("Practice"), "{said}");
+    }
+
+    /// **§12's preferred transition duration: how long the mixes take, once
+    /// enough nights agree, and said in the sentence.**
+    ///
+    /// The same agreement every other field needs -- one sixteen and two
+    /// thirty-twos is a DJ who takes thirty-two -- and a stored length that is
+    /// not a phrase a DJ counts in is dropped rather than repeated to them.
+    #[test]
+    fn how_long_the_mixes_take_is_learned_and_said() {
+        let mut rows = nights("club", 3);
+        rows[0].length = Some("16".to_owned());
+        rows[1].length = Some("32".to_owned());
+        rows[2].length = Some("32".to_owned());
+        for row in &mut rows {
+            row.style = Some("blend".to_owned());
+        }
+        let club = &profiles(&rows, &nothing, NOW)[0];
+        assert_eq!(club.length(), Some(32));
+        let said = club.words();
+        assert!(
+            said.contains("mostly blend transitions over 32 beats"),
+            "{said}"
+        );
+
+        // Without a style it still says the length, and without either it
+        // still admits it cannot say.
+        for row in &mut rows {
+            row.style = None;
+        }
+        let said = profiles(&rows, &nothing, NOW)[0].words();
+        assert!(said.contains("mostly 32-beat transitions"), "{said}");
+        assert!(!said.contains("too varied"), "{said}");
+
+        // Three nights that each took a different length are not a habit.
+        rows[0].length = Some("8".to_owned());
+        rows[1].length = Some("16".to_owned());
+        assert_eq!(profiles(&rows, &nothing, NOW)[0].length(), None);
+
+        // A value no DJ counts in is not repeated to one.
+        for row in &mut rows {
+            row.length = Some("17".to_owned());
+        }
+        assert_eq!(profiles(&rows, &nothing, NOW)[0].length(), None);
     }
 
     /// Genre shares are shares: they sum to one over what was played.

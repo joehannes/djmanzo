@@ -123,6 +123,10 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 17,
         sql: MIGRATION_17,
     },
+    Migration {
+        version: 18,
+        sql: MIGRATION_18,
+    },
 ];
 
 /// The initial schema.
@@ -838,6 +842,21 @@ const MIGRATION_16: &str = r#"
 -- answer -- a record measured and found to have nothing held in the voice
 -- range -- and the column draws the two differently.
 ALTER TABLE tracks ADD COLUMN vocal REAL;
+"#;
+
+/// §12's *preferred transition durations*, a night at a time.
+///
+/// The fifth figure read off the action log while it exists, beside the four
+/// `MIGRATION_12` explains: how long this DJ's mixes usually ran tonight, as
+/// a phrase length in beats -- `4`, `8`, `16`, `32` or `64`, the lengths a DJ
+/// counts in -- so a profile can agree on it the way it agrees on a style.
+/// Text rather than a number for that reason: *about sixteen beats* is one
+/// answer, and 15.3 and 17.1 would be two that never agree.
+///
+/// Null for a night with no mix long enough to measure, and for every night
+/// before this existed: an absence, not a confident zero.
+const MIGRATION_18: &str = r#"
+ALTER TABLE nights ADD COLUMN length TEXT;
 "#;
 
 const MIGRATION_17: &str = r#"

@@ -83,6 +83,8 @@ pub struct NightRead<'a> {
     pub style: Option<&'a str>,
     pub posture: Option<&'a str>,
     pub techniques: Option<&'a str>,
+    /// §12: tonight's usual mix length, as a phrase length in beats.
+    pub length: Option<&'a str>,
 }
 
 fn read_night(row: &rusqlite::Row<'_>) -> rusqlite::Result<Night> {
@@ -94,6 +96,7 @@ fn read_night(row: &rusqlite::Row<'_>) -> rusqlite::Result<Night> {
         style: row.get(4)?,
         posture: row.get(5)?,
         techniques: row.get(6)?,
+        length: row.get(7)?,
     })
 }
 
@@ -119,6 +122,8 @@ pub struct Night {
     pub posture: Option<String>,
     /// `dj_app::signals::Did` slugs, comma-separated, as they were stored.
     pub techniques: Option<String>,
+    /// §12: the night's usual mix length, a phrase length in beats (`"16"`).
+    pub length: Option<String>,
 }
 
 /// §37: what the room did after one mix, as it goes in.
@@ -1256,14 +1261,15 @@ impl Library {
             .map_or(0, |d| d.as_secs() as i64);
         self.with(|conn| {
             conn.execute(
-                "INSERT INTO nights (session_id, setting, began_at, density, style, posture, techniques)
-                 VALUES (?1, COALESCE(?2, 'open-format'), ?3, ?4, ?5, ?6, ?7)
+                "INSERT INTO nights (session_id, setting, began_at, density, style, posture, techniques, length)
+                 VALUES (?1, COALESCE(?2, 'open-format'), ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT(session_id) DO UPDATE SET
                      setting    = COALESCE(?2, setting),
                      density    = COALESCE(?4, density),
                      style      = COALESCE(?5, style),
                      posture    = COALESCE(?6, posture),
-                     techniques = COALESCE(?7, techniques)",
+                     techniques = COALESCE(?7, techniques),
+                     length     = COALESCE(?8, length)",
                 rusqlite::params![
                     session_id,
                     setting,
@@ -1272,6 +1278,7 @@ impl Library {
                     read.style,
                     read.posture,
                     read.techniques,
+                    read.length,
                 ],
             )?;
             Ok(())
@@ -1286,7 +1293,7 @@ impl Library {
         self.with(|conn| {
             let found = conn
                 .query_row(
-                    "SELECT session_id, setting, began_at, density, style, posture, techniques
+                    "SELECT session_id, setting, began_at, density, style, posture, techniques, length
                      FROM nights WHERE session_id = ?1",
                     [session_id],
                     read_night,
@@ -1306,7 +1313,7 @@ impl Library {
     pub fn nights_in(&self, setting: &str) -> Result<Vec<Night>> {
         self.with(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT session_id, setting, began_at, density, style, posture, techniques
+                "SELECT session_id, setting, began_at, density, style, posture, techniques, length
                  FROM nights WHERE setting = ?1 ORDER BY began_at DESC",
             )?;
             let rows = stmt.query_map([setting], read_night)?;
@@ -2797,6 +2804,7 @@ mod tests {
             NightRead {
                 style: Some("blend"),
                 techniques: Some("looped,eq-moved"),
+                length: Some("16"),
                 ..NightRead::default()
             },
         )
@@ -2806,6 +2814,22 @@ mod tests {
         let night = lib.night("n1").unwrap().unwrap();
         assert_eq!(night.style.as_deref(), Some("blend"));
         assert_eq!(night.techniques.as_deref(), Some("looped,eq-moved"));
+        assert_eq!(night.length.as_deref(), Some("16"));
+
+        // A later read that does have a length says so: the night's mixes
+        // got longer, and the row follows them.
+        lib.note_night(
+            "n1",
+            None,
+            NightRead {
+                length: Some("32"),
+                ..NightRead::default()
+            },
+        )
+        .unwrap();
+        let night = lib.night("n1").unwrap().unwrap();
+        assert_eq!(night.length.as_deref(), Some("32"));
+        assert_eq!(night.style.as_deref(), Some("blend"));
     }
 
     /// The DJ can correct themselves: naming a setting again does change it.

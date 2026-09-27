@@ -191,15 +191,58 @@ pub fn learned(profiles: &[Profile], actions: &[dj_core::Action]) -> Vec<Learned
         });
     }
 
+    // §80's "prefers long blends" is two things a DJ chooses: how they join
+    // records and how long they take over it. Each is claimed only where every
+    // kind of night with an opinion agrees, and each says its own evidence,
+    // because the two can rest on different nights.
     let styles: Vec<_> = profiles.iter().filter_map(Profile::style).collect();
-    if let Some(one) = all_the_same(&styles) {
+    let lengths: Vec<_> = profiles.iter().filter_map(Profile::length).collect();
+    let mixes_are = |one| format!("more than half your mixes are {one}");
+    let runs = |beats| format!("your middle mix runs {beats} beats");
+    let blend = match (all_the_same(&styles), all_the_same(&lengths)) {
+        (Some(one), Some(beats)) => {
+            // One opening where both halves rest on the same kinds of night:
+            // "On the one kind of night djmanzo has enough of" said twice in a
+            // row was what driving it showed.
+            let same_nights = profiles
+                .iter()
+                .all(|p| p.style().is_some() == p.length().is_some());
+            let because = if same_nights {
+                format!(
+                    "{}, {} and {}.",
+                    on_every(styles.len()),
+                    mixes_are(one),
+                    runs(beats)
+                )
+            } else {
+                format!(
+                    "{}, {}. On {} with a length to go on, {}.",
+                    on_every(styles.len()),
+                    mixes_are(one),
+                    kinds_of_night(lengths.len()),
+                    runs(beats)
+                )
+            };
+            Some((
+                format!("You prefer {one} transitions over {beats} beats."),
+                because,
+            ))
+        }
+        (Some(one), None) => Some((
+            format!("You prefer {one} transitions."),
+            format!("{}, {}.", on_every(styles.len()), mixes_are(one)),
+        )),
+        (None, Some(beats)) => Some((
+            format!("You prefer to take {beats} beats over a mix."),
+            format!("{}, {}.", on_every(lengths.len()), runs(beats)),
+        )),
+        (None, None) => None,
+    };
+    if let Some((says, because)) = blend {
         said.push(Learned {
             which: Trait::BlendLength,
-            says: format!("You prefer {one} transitions."),
-            because: format!(
-                "{}, more than half your mixes are {one}.",
-                on_every(styles.len())
-            ),
+            says,
+            because,
         });
     }
 
@@ -271,6 +314,16 @@ fn on_every(kinds: usize) -> String {
     }
 }
 
+/// "the one kind of night", "2 kinds of night": a count of kinds of night
+/// that reads at one, for the same reason [`on_every`] has to.
+fn kinds_of_night(kinds: usize) -> String {
+    if kinds == 1 {
+        "the one kind of night".to_owned()
+    } else {
+        format!("{kinds} kinds of night")
+    }
+}
+
 /// The claim to put to the DJ for this trait, given what they last said.
 ///
 /// `None` for a trait djmanzo has nothing to say about **and** for one the DJ
@@ -333,6 +386,7 @@ mod tests {
                     style: Some("blend".to_owned()),
                     posture: Some(posture.name().to_owned()),
                     techniques: None,
+                    length: None,
                 })
             })
             .collect();
@@ -497,6 +551,68 @@ mod tests {
                 claim.because
             );
         }
+    }
+
+    /// **§80's "prefers long blends" says how long, once every kind of night
+    /// agrees on it.**
+    ///
+    /// The style and the length are two claims that can rest on different
+    /// nights, so each carries its own evidence; and a length that the kinds
+    /// of night disagree on is left out of the sentence rather than averaged.
+    #[test]
+    fn the_blend_claim_says_how_long_where_every_kind_of_night_agrees() {
+        let with = |lengths: [&str; 2]| {
+            let nights: Vec<dj_library::Night> = [Setting::Club, Setting::Wedding]
+                .into_iter()
+                .zip(lengths)
+                .flat_map(|(setting, length)| {
+                    (0..3).map(move |n| dj_library::Night {
+                        session_id: format!("{}-{n}", setting.slug()),
+                        setting: setting.slug().to_owned(),
+                        began_at: 0,
+                        density: None,
+                        style: Some("blend".to_owned()),
+                        posture: None,
+                        techniques: None,
+                        length: (!length.is_empty()).then(|| length.to_owned()),
+                    })
+                })
+                .collect();
+            let said = learned_from(&crate::profile::profiles(&nights, &|_| Vec::new(), 0));
+            said.into_iter()
+                .find(|l| l.which == Trait::BlendLength)
+                .expect("both kinds of night blend")
+        };
+
+        let agreeing = with(["32", "32"]);
+        assert_eq!(agreeing.says, "You prefer blend transitions over 32 beats.");
+        // Both halves rest on the same nights, so the evidence opens once.
+        assert_eq!(
+            agreeing.because,
+            "On all 2 kinds of night djmanzo has enough of, more than half your \
+             mixes are blend and your middle mix runs 32 beats."
+        );
+
+        // Where they rest on different nights, each says which.
+        let one_timed = with(["32", ""]);
+        assert_eq!(
+            one_timed.says,
+            "You prefer blend transitions over 32 beats."
+        );
+        assert_eq!(
+            one_timed.because,
+            "On all 2 kinds of night djmanzo has enough of, more than half your \
+             mixes are blend. On the one kind of night with a length to go on, \
+             your middle mix runs 32 beats."
+        );
+
+        let disagreeing = with(["32", "8"]);
+        assert_eq!(disagreeing.says, "You prefer blend transitions.");
+        assert!(
+            !disagreeing.because.contains("beats"),
+            "{}",
+            disagreeing.because
+        );
     }
 
     /// **The load-bearing one for §80's fourth: which stem, from the actions

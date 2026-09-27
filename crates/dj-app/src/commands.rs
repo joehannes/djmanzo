@@ -2331,6 +2331,28 @@ pub struct SettingDto {
     pub style: Option<String>,
     pub posture: Option<String>,
     pub techniques: Vec<String>,
+    /// §12: how long tonight's mixes usually run, a phrase length in beats.
+    pub length: Option<u32>,
+}
+
+impl SettingDto {
+    /// A stored night as the panel draws it.
+    fn of(night: dj_library::Night) -> Self {
+        Self {
+            setting: Some(night.setting),
+            density: night.density,
+            style: night.style,
+            posture: night.posture,
+            techniques: night
+                .techniques
+                .unwrap_or_default()
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .map(ToOwned::to_owned)
+                .collect(),
+            length: night.length.as_deref().and_then(|l| l.parse().ok()),
+        }
+    }
 }
 
 /// One conditional profile, as the interface draws it.
@@ -2344,12 +2366,32 @@ pub struct ProfileDto {
     pub nights: usize,
     pub density: Option<String>,
     pub style: Option<String>,
+    /// §12: how many beats their mixes usually take here.
+    pub length: Option<u32>,
     pub automation: Option<String>,
     pub techniques: Vec<String>,
     /// Genre and its share of the plays, commonest first.
     pub genres: Vec<(String, f64)>,
     /// The sentence, written in Rust — see `crate::profile::Profile::words`.
     pub says: String,
+}
+
+impl ProfileDto {
+    /// A profile as the panel draws it.
+    fn of(p: &crate::profile::Profile) -> Self {
+        Self {
+            setting: p.setting().slug().to_owned(),
+            title: p.setting().title().to_owned(),
+            nights: p.nights(),
+            density: p.density().map(ToOwned::to_owned),
+            style: p.style().map(|s| s.as_str().to_owned()),
+            length: p.length(),
+            automation: p.automation().map(|a| a.name().to_owned()),
+            techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
+            genres: p.genres().to_vec(),
+            says: p.words(),
+        }
+    }
 }
 
 /// Say what kind of night this is, and keep what has been read off it.
@@ -2393,8 +2435,9 @@ pub fn night_setting(
     // The commonest way tonight's records were joined. `None` until there has
     // been a handover: a night with one record in it has no transition style,
     // and a confident answer there would be an invention.
+    let handovers = crate::mixes::handovers(&log);
     let mut styles: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
-    for handover in crate::mixes::handovers(&log) {
+    for handover in &handovers {
         *styles.entry(handover.style.as_str()).or_default() += 1;
     }
     let style = styles
@@ -2410,6 +2453,13 @@ pub fn night_setting(
 
     let joined = techniques.join(",");
     let db = library(&state)?;
+    // §12's *preferred transition durations*: tonight's middle mix, as a
+    // phrase length, counted at the outgoing record's tempo -- the one the
+    // mixes panel counts its beats in, so the two never disagree.
+    let length = crate::mixes::usual_length(&handovers, &|handover| {
+        db.track(handover.out_track?).ok().flatten()?.analysis.bpm
+    })
+    .map(|beats| beats.to_string());
     db.note_night(
         &state.session_id(),
         setting.map(|s| s.slug()),
@@ -2418,6 +2468,7 @@ pub fn night_setting(
             style: style.as_deref(),
             posture: posture.as_deref(),
             techniques: (!joined.is_empty()).then_some(joined.as_str()),
+            length: length.as_deref(),
         },
     )
     .map_err(|e| e.to_string())?;
@@ -2426,19 +2477,7 @@ pub fn night_setting(
         .night(&state.session_id())
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "the night was not written".to_owned())?;
-    Ok(SettingDto {
-        setting: Some(stored.setting),
-        density: stored.density,
-        style: stored.style,
-        posture: stored.posture,
-        techniques: stored
-            .techniques
-            .unwrap_or_default()
-            .split(',')
-            .filter(|s| !s.is_empty())
-            .map(ToOwned::to_owned)
-            .collect(),
-    })
+    Ok(SettingDto::of(stored))
 }
 
 /// Tonight's row, without writing anything.
@@ -2453,25 +2492,14 @@ pub fn night_now(state: State<'_, AppState>) -> Result<SettingDto, String> {
     let db = library(&state)?;
     let stored = db.night(&state.session_id()).map_err(|e| e.to_string())?;
     Ok(match stored {
-        Some(night) => SettingDto {
-            setting: Some(night.setting),
-            density: night.density,
-            style: night.style,
-            posture: night.posture,
-            techniques: night
-                .techniques
-                .unwrap_or_default()
-                .split(',')
-                .filter(|s| !s.is_empty())
-                .map(ToOwned::to_owned)
-                .collect(),
-        },
+        Some(night) => SettingDto::of(night),
         None => SettingDto {
             setting: None,
             density: None,
             style: None,
             posture: None,
             techniques: Vec::new(),
+            length: None,
         },
     })
 }
@@ -2532,17 +2560,7 @@ pub fn learned_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileDto>, S
     Ok(
         crate::profile::profiles(&nights, &genres, crate::profile::now())
             .into_iter()
-            .map(|p| ProfileDto {
-                setting: p.setting().slug().to_owned(),
-                title: p.setting().title().to_owned(),
-                nights: p.nights(),
-                density: p.density().map(ToOwned::to_owned),
-                style: p.style().map(|s| s.as_str().to_owned()),
-                automation: p.automation().map(|a| a.name().to_owned()),
-                techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
-                genres: p.genres().to_vec(),
-                says: p.words(),
-            })
+            .map(|p| ProfileDto::of(&p))
             .collect(),
     )
 }
@@ -2924,6 +2942,7 @@ mod tests {
                     style: None,
                     posture: None,
                     techniques: None,
+                    length: None,
                 })
                 .collect();
             crate::profile::profiles(&nights, &|_| counted.clone(), 0)
@@ -8463,17 +8482,7 @@ pub fn profile_tonight(state: State<'_, AppState>) -> Result<Option<ProfileDto>,
     let db = library(&state)?;
     Ok(tonight_profile(&state, &db)
         .filter(|p| !p.genres().is_empty())
-        .map(|p| ProfileDto {
-            setting: p.setting().slug().to_owned(),
-            title: p.setting().title().to_owned(),
-            nights: p.nights(),
-            density: p.density().map(ToOwned::to_owned),
-            style: p.style().map(|s| s.as_str().to_owned()),
-            automation: p.automation().map(|a| a.name().to_owned()),
-            techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
-            genres: p.genres().to_vec(),
-            says: p.words(),
-        }))
+        .map(|p| ProfileDto::of(&p)))
 }
 
 /// One thing tonight's profile would change, as the interface draws it.

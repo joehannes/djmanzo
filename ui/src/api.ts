@@ -2711,6 +2711,8 @@ export interface NightSetting {
   style: string | null;
   posture: string | null;
   techniques: string[];
+  /** §12: how many beats tonight's mixes usually take, a phrase length. */
+  length: number | null;
 }
 
 /** One conditional profile: how this DJ plays in one kind of night. */
@@ -2725,6 +2727,8 @@ export interface Profile {
   nights: number;
   density: string | null;
   style: string | null;
+  /** §12: how many beats their mixes usually take here, a phrase length. */
+  length: number | null;
   automation: string | null;
   techniques: string[];
   /** Genre and its share of the plays, commonest first. */

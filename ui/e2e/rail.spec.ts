@@ -240,6 +240,7 @@ const WEDDING = {
   nights: 5,
   density: "cosy",
   style: "blend",
+  length: null,
   automation: "suggest",
   techniques: ["eq-moved"],
   genres: [

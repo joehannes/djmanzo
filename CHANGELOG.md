@@ -16,6 +16,14 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **djmanzo learns how long you take over a mix.** Each night keeps how
+  long its mixes usually ran, as the phrase a DJ counts in -- 4, 8, 16, 32
+  or 64 beats, at the tempo the mixes panel already counts in. Once enough
+  nights of a kind agree, the profile says it ("mostly blend transitions
+  over 32 beats"), and the learned *prefers long blends* claim says how
+  long wherever every kind of night agrees. A cut has no length, and a mix
+  whose tempo is unknown is left out rather than guessed.
+
 ## v0.32.0 — Controls shaped like what they do, the room heard by its meters, and a phaser back in the music
 
 - **A crowd's reaction goes to the record the room was hearing.** djmanzo

@@ -153,6 +153,56 @@ enum Signal {
 /// for the same reason: below a quarter the bass is gone rather than reduced.
 const LOW_IS_OUT: f32 = 0.25;
 
+/// The phrase lengths a DJ counts a mix in, shortest first.
+///
+/// §12's *preferred transition durations* are kept in these rather than in
+/// beats to the decimal: a DJ says "a sixteen", and 15.3 and 17.1 beats are
+/// the same mix measured by two hands on two faders.
+pub const PHRASES: [u32; 5] = [4, 8, 16, 32, 64];
+
+/// Below this many beats a handover is a cut: it has no length to speak of.
+const LONG_ENOUGH_TO_COUNT: f64 = 2.0;
+
+/// The phrase length a mix of `beats` is nearest, counted as a DJ counts:
+/// in doublings, so 23 beats is a short thirty-two rather than a long
+/// sixteen. `None` for a cut, and for a length nobody could measure.
+#[must_use]
+pub fn phrase_length(beats: f64) -> Option<u32> {
+    if !(beats.is_finite() && beats >= LONG_ENOUGH_TO_COUNT) {
+        return None;
+    }
+    PHRASES.into_iter().min_by(|a, b| {
+        let from = |phrase: u32| (beats.log2() - f64::from(phrase).log2()).abs();
+        from(*a).total_cmp(&from(*b))
+    })
+}
+
+/// How long this night's mixes usually ran, as a phrase length: the middle
+/// mix by length, so one long blend in a night of quick ones does not speak
+/// for the night.
+///
+/// `bpm_of` is the tempo a handover is counted in -- the outgoing record's,
+/// as `session_mixes` counts it, so a night's usual length and the beats the
+/// mixes panel shows are one measurement. A handover whose tempo is not
+/// known is left out rather than guessed at, and a cut is left out because it
+/// has no length; `None` when nothing is left.
+#[must_use]
+pub fn usual_length(
+    handovers: &[Handover],
+    bpm_of: &dyn Fn(&Handover) -> Option<f64>,
+) -> Option<u32> {
+    let mut lengths: Vec<f64> = handovers
+        .iter()
+        .filter_map(|handover| handover.beats(bpm_of(handover)?))
+        .filter(|beats| *beats >= LONG_ENOUGH_TO_COUNT)
+        .collect();
+    if lengths.is_empty() {
+        return None;
+    }
+    lengths.sort_by(f64::total_cmp);
+    phrase_length(lengths[lengths.len() / 2])
+}
+
 /// The mixes in a night, in the order they happened.
 #[must_use]
 pub fn handovers(events: &[TimedEvent]) -> Vec<Handover> {
@@ -428,6 +478,51 @@ const CUT_MAX: Duration = dj_assistant::coach::CUT_MAX;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **A mix's length is the phrase it is nearest, in doublings.** Sixteen
+    /// is sixteen, 23 is a short thirty-two and 22 a long sixteen, anything
+    /// past sixty-four is a sixty-four, and a cut has no length at all.
+    #[test]
+    fn a_mix_is_as_long_as_the_phrase_it_is_nearest() {
+        assert_eq!(phrase_length(16.0), Some(16));
+        assert_eq!(phrase_length(22.0), Some(16));
+        assert_eq!(phrase_length(23.0), Some(32));
+        assert_eq!(phrase_length(5.0), Some(4));
+        assert_eq!(phrase_length(200.0), Some(64));
+        assert_eq!(phrase_length(1.0), None);
+        assert_eq!(phrase_length(f64::NAN), None);
+    }
+
+    /// **The night's usual length is its middle mix**, so one long blend in
+    /// a night of quick ones does not speak for the night; a mix nobody knows
+    /// the tempo of, and a cut, are left out rather than guessed at.
+    #[test]
+    fn a_nights_usual_length_is_its_middle_mix() {
+        let mix = |seconds: f64, tempo_known: bool| Handover {
+            out: deck(1),
+            into: deck(2),
+            out_track: tempo_known.then(|| id(1)),
+            in_track: None,
+            began: Duration::ZERO,
+            ended: Duration::from_secs_f64(seconds),
+            style: TransitionStyle::Blend,
+            loop_beats: None,
+        };
+        // At 120 BPM a beat is half a second: 8, 8, 64 beats, a cut, and a
+        // long mix whose tempo is unknown.
+        let night = [
+            mix(4.0, true),
+            mix(4.0, true),
+            mix(32.0, true),
+            mix(0.2, true),
+            mix(40.0, false),
+        ];
+        let at_120 = |handover: &Handover| handover.out_track.map(|_| 120.0);
+        assert_eq!(usual_length(&night, &at_120), Some(8));
+        assert_eq!(usual_length(&night[2..3], &at_120), Some(64));
+        assert_eq!(usual_length(&night[3..], &at_120), None);
+        assert_eq!(usual_length(&[], &at_120), None);
+    }
 
     fn deck(n: u8) -> DeckId {
         DeckId::from_human(n).expect("a real deck")
