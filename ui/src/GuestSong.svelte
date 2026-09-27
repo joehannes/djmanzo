@@ -8,7 +8,14 @@
    * where and when, their favourites and languages, never their contact
    * details — and what comes back is checked in Rust before it is kept.
    */
-  import { guestSong, type Guest, type GuestBook } from "./api";
+  import {
+    guestMessage,
+    guestRevealVoice,
+    guestSong,
+    openSuno,
+    type Guest,
+    type GuestBook,
+  } from "./api";
 
   let { guest, onbook }: { guest: Guest; onbook: (book: GuestBook) => void } = $props();
 
@@ -21,6 +28,37 @@
   let writing = $state(false);
   let error = $state("");
   let copied = $state("");
+  /** What went wrong with Suno, the voice file or the message: shown beside them. */
+  let failed = $state("");
+  /** The song's address on Suno, pasted by the DJ once it is made. */
+  let link = $state("");
+  let sent = $state("");
+
+  const voice = $derived(guest.take ?? [...guest.sang].reverse().find((song) => song.voice)?.voice ?? null);
+  // A number or an address on the record is already consent: Rust clears
+  // them on save unless the guest agreed to be contacted, and `compose`
+  // checks again before anything opens.
+  const canWhatsApp = $derived(guest.phone.trim() !== "");
+  const canMail = $derived(guest.email.trim() !== "");
+
+  async function act(what: () => Promise<unknown>) {
+    failed = "";
+    try {
+      await what();
+    } catch (e) {
+      failed = String(e);
+    }
+  }
+
+  async function send(reach: "whatsapp" | "mail") {
+    failed = "";
+    sent = "";
+    try {
+      sent = await guestMessage(guest.id, reach, link.trim());
+    } catch (e) {
+      failed = String(e);
+    }
+  }
 
   async function write() {
     if (!last) return;
@@ -101,6 +139,41 @@
           <pre>{version.lyrics}</pre>
         </section>
       {/each}
+
+      <div class="make" role="group" aria-label="Make it on Suno">
+        <button type="button" onclick={() => void act(openSuno)}>Open Suno</button>
+        {#if voice}
+          <button type="button" onclick={() => void act(() => guestRevealVoice(guest.id))}>Show their voice file</button>
+        {/if}
+        <p class="hint">
+          Sign in, paste the words and the style{voice ? ", upload their voice" : ""}, and make the song. djmanzo
+          does not work Suno for you: its terms do not allow it.
+        </p>
+      </div>
+
+      {#if canWhatsApp || canMail}
+        <div class="send" role="group" aria-label="Send it to {guest.name}">
+          <label class="wide">The song's link <input bind:value={link} placeholder="https://suno.com/s/…" /></label>
+          {#if canWhatsApp}
+            <button type="button" onclick={() => void send("whatsapp")}>WhatsApp</button>
+          {/if}
+          {#if canMail}
+            <button type="button" onclick={() => void send("mail")}>Mail</button>
+          {/if}
+          <p class="hint">Opens with the message written and {guest.name} as the recipient; you press send.</p>
+          {#if sent}
+            <p class="sent" role="status">{sent}</p>
+          {/if}
+        </div>
+      {:else}
+        <p class="hint">
+          To send it from here, {guest.name} needs to agree to be contacted, with a number or an address on their
+          record.
+        </p>
+      {/if}
+      {#if failed}
+        <p class="error" role="alert">{failed}</p>
+      {/if}
     {/if}
   </div>
 {/if}
@@ -178,6 +251,25 @@
 
   .text {
     flex: 1 1 12rem;
+  }
+
+  .make,
+  .send {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+
+  .make .hint,
+  .send .hint,
+  .sent {
+    flex-basis: 100%;
+  }
+
+  .sent {
+    margin: 0;
+    font-size: 0.85em;
   }
 
   .version {

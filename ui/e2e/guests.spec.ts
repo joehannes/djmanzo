@@ -192,6 +192,47 @@ test.describe("§123: the karaoke journal", () => {
     await expect(song.getByRole("button", { name: "Copied" })).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(guestSong.versions[0].lyrics);
     await expect(song.getByRole("button", { name: "Write them again" })).toBeVisible();
+
+    // Suno is the DJ's to drive; the voice file only when there is one; and
+    // no way to send it until they agree to be contacted.
+    const suno = song.getByRole("group", { name: "Make it on Suno" });
+    await suno.getByRole("button", { name: "Open Suno" }).click();
+    await expect(suno.getByRole("button", { name: "Show their voice file" })).toHaveCount(0);
+    await expect(song.getByRole("group", { name: "Send it to Ana" })).toHaveCount(0);
+    await expect(song).toContainText("needs to agree to be contacted");
+    expect((await guestCalls(page)).filter((c) => c.cmd === "open_suno")).toHaveLength(1);
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
+  /** Agreed to be contacted, with a number: WhatsApp opens written and addressed; the DJ sends. */
+  test("the song goes to a guest who agreed to be contacted, by the DJ's own hand", async ({ page }) => {
+    await singers(page, {
+      karaoke_rotation: {
+        singers: [{ name: "Ana", songs: [{ title: "Obsesión", track: null, path: null, key: 0 }], turns: 0 }],
+        up_next: "Ana",
+        lately: [],
+      },
+    });
+    await page.getByRole("button", { name: "Sang", exact: true }).click();
+    const ana = book(page).getByRole("list", { name: "Guests" }).getByRole("button", { name: /Ana/ });
+    await ana.click();
+    let form = book(page).getByRole("form", { name: "About Ana" });
+    await form.getByRole("checkbox", { name: /Record about fifteen seconds/ }).check();
+    await form.getByRole("checkbox", { name: /Keep my email, phone or WhatsApp/ }).check();
+    await form.getByRole("textbox", { name: "Phone or WhatsApp" }).fill("+34 600 123 456");
+    await form.getByRole("button", { name: "Keep" }).click();
+    await ana.click();
+    form = book(page).getByRole("form", { name: "About Ana" });
+    const song = form.getByRole("group", { name: "A song for Ana" });
+    await song.getByRole("button", { name: "Write the words" }).click();
+
+    const send = song.getByRole("group", { name: "Send it to Ana" });
+    await expect(send.getByRole("button", { name: "Mail" })).toHaveCount(0);
+    await send.getByRole("textbox", { name: "The song's link" }).fill("https://suno.com/s/abc");
+    await send.getByRole("button", { name: "WhatsApp" }).click();
+    await expect(send.getByRole("status")).toContainText("Hi Ana!");
+    const messages = (await guestCalls(page)).filter((c) => c.cmd === "guests_message");
+    expect(messages).toEqual([expect.objectContaining({ reach: "whatsapp", link: "https://suno.com/s/abc" })]);
     expect(errorsThrown(page)).toEqual([]);
   });
 

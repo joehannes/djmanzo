@@ -188,6 +188,113 @@ pub fn brief(
     })
 }
 
+/// §123: how the song reaches a guest — a message the DJ sends themselves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    WhatsApp,
+    Mail,
+}
+
+impl Reach {
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "whatsapp" => Some(Self::WhatsApp),
+            "mail" => Some(Self::Mail),
+            _ => None,
+        }
+    }
+}
+
+/// The message that goes with a guest's song: their name, what they sang
+/// and where, and the link the DJ pastes. Written in English; the DJ can
+/// change it in WhatsApp or the mail before sending.
+#[must_use]
+pub fn message(guest: &Guest, link: &str) -> String {
+    let mut text = format!("Hi {}! Thank you for singing", guest.name.trim());
+    if let Some(last) = guest.sang.last() {
+        text.push_str(&format!(" \"{}\"", last.title.trim()));
+        if !last.event.trim().is_empty() {
+            text.push_str(&format!(" at {}", last.event.trim()));
+        } else if !last.place.trim().is_empty() {
+            text.push_str(&format!(" at {}", last.place.trim()));
+        }
+    }
+    text.push_str(". Here is a song made for you from tonight");
+    let link = link.trim();
+    if link.is_empty() {
+        text.push('.');
+    } else {
+        text.push_str(": ");
+        text.push_str(link);
+    }
+    text
+}
+
+/// The address that opens WhatsApp or the DJ's mail with the message
+/// written and the guest as its recipient. Nothing is sent: the DJ reads it
+/// and presses send.
+///
+/// # Errors
+/// A guest who has not agreed to be contacted, or whose record has no number
+/// or address to use — WhatsApp needs the country code, because djmanzo
+/// cannot know which country a local number belongs to.
+pub fn compose(guest: &Guest, reach: Reach, text: &str) -> Result<String, String> {
+    if !guest.consent.contact || !guest.may_consent() {
+        return Err(format!("{} has not agreed to be contacted", guest.name));
+    }
+    match reach {
+        Reach::WhatsApp => {
+            let phone = guest.phone.trim();
+            let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
+            let international = if phone.starts_with('+') {
+                digits
+            } else if let Some(rest) = digits.strip_prefix("00") {
+                rest.to_owned()
+            } else {
+                return Err(format!(
+                    "WhatsApp needs {}'s number with its country code, like +34 600 123 456",
+                    guest.name
+                ));
+            };
+            if international.len() < 8 {
+                return Err(format!("{}'s number is too short to dial", guest.name));
+            }
+            Ok(format!(
+                "https://wa.me/{international}?text={}",
+                urlencoding::encode(text)
+            ))
+        }
+        Reach::Mail => {
+            let email = guest.email.trim();
+            if email.is_empty() {
+                return Err(format!("there is no email address for {}", guest.name));
+            }
+            let subject = format!("Your song from tonight, {}", guest.name.trim());
+            Ok(format!(
+                "mailto:{}?subject={}&body={}",
+                urlencoding::encode(email).replace("%40", "@"),
+                urlencoding::encode(&subject),
+                urlencoding::encode(text)
+            ))
+        }
+    }
+}
+
+/// The newest recording of a guest's voice: the take made during the song
+/// they are singing, if there is one — it is newer than anything already on
+/// a song — else the one on their latest song that has one.
+#[must_use]
+pub fn latest_voice(guest: &Guest) -> Option<&str> {
+    guest.take.as_deref().or_else(|| {
+        guest
+            .sang
+            .iter()
+            .rev()
+            .find_map(|song| song.voice.as_deref())
+    })
+}
+
 /// The journal: every guest kept, and tonight's.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -845,6 +952,91 @@ mod tests {
         assert_eq!(journal.guests[0].sang[1].song.as_ref(), Some(&draft));
         assert_eq!(journal.guests[0].sang[0].song, None);
         assert!(journal.set_song("nobody", draft).is_err());
+    }
+
+    /// **The message reaches only a guest who agreed, at the number or
+    /// address on their record, written and not sent.**
+    #[test]
+    fn a_message_is_composed_only_with_consent_and_a_way_to_reach_them() {
+        let mut ana = guest("Ana");
+        ana.phone = "+34 600-123 456".into();
+        ana.email = "ana.m@example.org".into();
+        ana.sang = vec![Performance {
+            event: "Noche Latina".into(),
+            ..song("Obsesión")
+        }];
+        let text = message(&ana, " https://suno.com/s/abc ");
+        assert_eq!(
+            text,
+            "Hi Ana! Thank you for singing \"Obsesión\" at Noche Latina. \
+             Here is a song made for you from tonight: https://suno.com/s/abc"
+        );
+        assert!(
+            compose(&ana, Reach::WhatsApp, &text).is_err(),
+            "no consent to contact"
+        );
+
+        ana.consent.contact = true;
+        let whatsapp = compose(&ana, Reach::WhatsApp, &text).expect("composed");
+        assert!(
+            whatsapp.starts_with("https://wa.me/34600123456?text=Hi%20Ana"),
+            "{whatsapp}"
+        );
+        assert!(
+            whatsapp.contains("https%3A%2F%2Fsuno.com%2Fs%2Fabc"),
+            "{whatsapp}"
+        );
+        let mail = compose(&ana, Reach::Mail, &text).expect("composed");
+        assert!(
+            mail.starts_with("mailto:ana.m@example.org?subject=Your%20song"),
+            "{mail}"
+        );
+
+        ana.phone = "0034 600 123 456".into();
+        assert!(
+            compose(&ana, Reach::WhatsApp, &text)
+                .expect("00 is a country code")
+                .contains("wa.me/34600123456")
+        );
+        ana.phone = "600 123 456".into();
+        let local = compose(&ana, Reach::WhatsApp, &text).expect_err("no country code");
+        assert!(local.contains("country code"), "{local}");
+        ana.email.clear();
+        assert!(compose(&ana, Reach::Mail, &text).is_err());
+        ana.age = Some(14);
+        ana.phone = "+34 600 123 456".into();
+        assert!(
+            compose(&ana, Reach::WhatsApp, &text).is_err(),
+            "too young to agree"
+        );
+        assert_eq!(
+            message(&guest("Bo"), ""),
+            "Hi Bo! Thank you for singing. Here is a song made for you from tonight."
+        );
+    }
+
+    #[test]
+    fn the_newest_voice_is_the_one_shown() {
+        let mut ana = guest("Ana");
+        assert_eq!(latest_voice(&ana), None);
+        ana.sang = vec![
+            Performance {
+                voice: Some("a.wav".into()),
+                ..song("A")
+            },
+            Performance {
+                voice: Some("b.wav".into()),
+                ..song("B")
+            },
+            song("C"),
+        ];
+        assert_eq!(latest_voice(&ana), Some("b.wav"));
+        ana.take = Some("t.wav".into());
+        assert_eq!(
+            latest_voice(&ana),
+            Some("t.wav"),
+            "the take is newer than any song's"
+        );
     }
 
     /// **The load-bearing one.** Nothing is kept that was not agreed to: the

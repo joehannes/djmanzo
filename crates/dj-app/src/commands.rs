@@ -13716,6 +13716,115 @@ pub async fn guests_song(
     Ok(guests_dto(&state, journal, None))
 }
 
+/// §123: Suno, in a window of its own, where the DJ signs in and makes the
+/// song themselves.
+///
+/// A plain browser window on suno.com: no capability names it, so the page
+/// has no way into djmanzo, and djmanzo does not reach into it. Suno has no
+/// public API, and its terms forbid robots and scraping — so djmanzo puts
+/// the words, the style and the voice file beside it and the DJ does the
+/// rest. See `docs/KARAOKE.md`.
+///
+/// # Errors
+/// When the window will not open.
+#[tauri::command]
+pub fn open_suno(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    const LABEL: &str = "suno";
+    if let Some(existing) = app.get_webview_window(LABEL) {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+    let url = "https://suno.com/create"
+        .parse()
+        .map_err(|e| format!("Suno's address: {e}"))?;
+    tauri::WebviewWindowBuilder::new(&app, LABEL, tauri::WebviewUrl::External(url))
+        .title("Suno — sign in and make the song")
+        .inner_size(1200.0, 860.0)
+        .min_inner_size(480.0, 360.0)
+        .resizable(true)
+        .build()
+        .map(|_| ())
+        .map_err(|e| format!("Suno's window would not open: {e}"))
+}
+
+/// §123: show the newest recording of a guest's voice in the file manager,
+/// to drag into Suno's upload.
+///
+/// # Errors
+/// A guest not in the journal, no recording of them, a name that is not one
+/// a recording is kept under, or no file manager to show it in.
+#[tauri::command]
+pub fn guests_reveal_voice(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt as _;
+    let journal = state.guests();
+    let guest = journal
+        .get(&id)
+        .ok_or_else(|| crate::guests::Refusal::Unknown.to_string())?;
+    let file = crate::guests::latest_voice(guest)
+        .ok_or_else(|| format!("there is no recording of {}'s voice", guest.name))?;
+    if !crate::guests::is_voice_file(file) {
+        return Err(format!("{file:?} is not a name a recording is kept under"));
+    }
+    let config = state
+        .config_dir()
+        .ok_or_else(|| "no settings folder yet".to_owned())?;
+    let path = crate::guests::voices_path(&config).join(file);
+    if !path.exists() {
+        return Err(format!("{} is no longer there", path.display()));
+    }
+    // Revealing needs a file manager that answers on D-Bus, which a
+    // desktop without one — a tiling window manager, say — does not have.
+    // Then the folder is opened instead, and the DJ picks the newest file.
+    app.opener().reveal_item_in_dir(&path).or_else(|reveal| {
+        let folder = path.parent().unwrap_or(&config);
+        app.opener()
+            .open_path(folder.to_string_lossy(), None::<&str>)
+            .map_err(|open| {
+                format!(
+                    "could not show {}: {reveal}; nor open its folder: {open}",
+                    path.display()
+                )
+            })
+    })
+}
+
+/// §123: open WhatsApp or the DJ's mail with a message to a guest written
+/// and addressed — their song's `link` in it — for the DJ to read and send.
+/// Nothing is sent from here. Answers the message, to show what was written.
+///
+/// # Errors
+/// A guest not in the journal, who has not agreed to be contacted, or with
+/// no number or address to use; an unknown way to reach them; or nothing on
+/// this machine to open the address with.
+#[tauri::command]
+pub fn guests_message(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    reach: String,
+    link: String,
+) -> Result<String, String> {
+    use tauri_plugin_opener::OpenerExt as _;
+    let reach = crate::guests::Reach::parse(&reach)
+        .ok_or_else(|| format!("no way to reach a guest called {reach:?}"))?;
+    let journal = state.guests();
+    let guest = journal
+        .get(&id)
+        .ok_or_else(|| crate::guests::Refusal::Unknown.to_string())?;
+    let text = crate::guests::message(guest, &link);
+    let url = crate::guests::compose(guest, reach, &text)?;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| format!("could not open the message: {e}"))?;
+    Ok(text)
+}
+
 /// §122: WhisperX, as the interface draws it.
 #[derive(Debug, Clone, Serialize)]
 pub struct WordTimingDto {

@@ -324,6 +324,18 @@ own, not a copy of somebody else's — and the style and each version are cut, a
 line, to a length a music service's boxes take. The words are kept on the
 guest's song and copied with one press each.
 
+**Making it, and sending it.** *Open Suno* opens suno.com in a window of its
+own, where the DJ signs in, pastes the words and the style, uploads the voice
+— *Show their voice file* shows the newest recording in the file manager, or
+opens its folder where no file manager answers — and makes the song. djmanzo
+does not work Suno's page: Suno has no public API and its terms forbid robots
+and scraping, and the window has no way into djmanzo either, because no
+capability names it and Tauri lets remote content reach no command without
+one. With the song made, the DJ pastes its link and presses *WhatsApp* or
+*Mail*: the message opens written and addressed to the guest — only one who
+agreed to be contacted, at the number or address on their record — and the
+DJ reads it and sends it. WhatsApp needs the number with its country code.
+
 ---
 
 ## 5. Where it fits

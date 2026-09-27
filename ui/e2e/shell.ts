@@ -2334,6 +2334,11 @@ export async function openShell(
             }
             return Promise.resolve(structuredClone(held));
           }
+          // §123: Suno opens in a window of its own; nothing to answer.
+          if (cmd === "open_suno") {
+            ((win.__guests ??= []) as unknown[]).push({ cmd });
+            return Promise.resolve(null);
+          }
           if (cmd === "guests" || cmd.startsWith("guests_")) {
             ((win.__guests ??= []) as unknown[]).push({ cmd, ...JSON.parse(JSON.stringify(args ?? {})) });
             type HeldGuest = {
@@ -2367,6 +2372,13 @@ export async function openShell(
               }, 1500);
               return Promise.resolve(structuredClone(held));
             }
+            // The message: only with consent to contact; Rust writes it.
+            if (cmd === "guests_message") {
+              const guest = held.guests.find((g) => g.id === args.id);
+              if (!guest?.consent.contact) return Promise.reject(new Error("has not agreed to be contacted"));
+              return Promise.resolve(`Hi ${guest.name}! (${String(args.reach)}) ${String(args.link)}`);
+            }
+            if (cmd === "guests_reveal_voice") return Promise.resolve(null);
             // A song: only with consent, on their last song, as Rust keeps it.
             if (cmd === "guests_song") {
               const guest = held.guests.find((g) => g.id === args.id) as

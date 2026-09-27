@@ -4821,6 +4821,17 @@ export const wordTimingRun = (deck: number, language: string | null) =>
 export const guestSong = (id: string, language: string, keywords: string, date: string) =>
   invoke<GuestBook>("guests_song", { id, language, keywords, date });
 
+/** §123: Suno in a window of its own, where the DJ signs in and makes the song. */
+export const openSuno = () => invoke<void>("open_suno");
+/** §123: show the newest recording of a guest's voice in the file manager. */
+export const guestRevealVoice = (id: string) => invoke<void>("guests_reveal_voice", { id });
+/**
+ * §123: open WhatsApp or mail with the message to a guest written and
+ * addressed; the DJ sends it. Answers the message.
+ */
+export const guestMessage = (id: string, reach: "whatsapp" | "mail", link: string) =>
+  invoke<string>("guests_message", { id, reach, link });
+
 /** §123: record about fifteen seconds of a guest's voice, with their consent. */
 export const guestVoice = (id: string) => invoke<GuestBook>("guests_voice", { id });
 /** A guest's own copy (`id`), or the whole journal as a table (`null`). */

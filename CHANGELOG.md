@@ -16,6 +16,12 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **Make the guest's song on Suno, and send it to them.** Next to the
+  words: *Open Suno* opens suno.com in a window of its own for you to sign
+  in and make the song; *Show their voice file* finds their recording to
+  upload; and once you paste the song's link, *WhatsApp* or *Mail* opens the
+  message written and addressed to them — only if they agreed to be
+  contacted — for you to send.
 - **The words of a song for a karaoke guest.** For a guest who agreed to a
   song being made for them, their record in the guest book now has *A song
   for …*: add the language it was sung in and a few ideas of your own, and
