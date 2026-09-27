@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.32.0 — Controls shaped like what they do, the room heard by its meters, and a phaser back in the music
+
 - **A crowd's reaction goes to the record the room was hearing.** djmanzo
   now follows each deck's level after its fader and the crossfader and
   notes which record is the louder. A reaction said while the next record
