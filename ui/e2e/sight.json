@@ -121,9 +121,9 @@
   },
   {
     "name": "audience context",
-    "about": "What the room is doing.",
-    "told": false,
-    "source": "the room reading lives with the panel that opens the camera, and stops when it closes -- so a briefing carrying it would go on claiming a room nothing is looking at"
+    "about": "What the room is doing, while something is watching it.",
+    "told": true,
+    "source": "the room, while it is watched"
   },
   {
     "name": "hardware",

@@ -101,10 +101,10 @@ test.describe("§40's context, and its edges", () => {
    * second. Named rather than counted, because a count is satisfied again the
    * moment one of them slips back.
    *
-   * And the two that remain unseen are still unseen, which is the other half:
-   * a library in a prompt is the database in a prompt, and a room reading that
-   * stops when the camera panel closes would go on claiming a room nothing is
-   * looking at.
+   * The room has joined them: it is told only while a reading is arriving,
+   * so a briefing never describes a room nothing is looking at. The one that
+   * remains unseen is still unseen, which is the other half: a library in a
+   * prompt is the database in a prompt.
    */
   test("what the assistant could not see, and now can", async ({ page }) => {
     const thrown = errorsThrown(page);
@@ -119,6 +119,7 @@ test.describe("§40's context, and its edges", () => {
       "next candidates",
       "session plan",
       "user preferences",
+      "audience context",
     ]) {
       await expect(
         fold.locator(".seen .what").filter({ hasText: name }).first(),
@@ -127,7 +128,7 @@ test.describe("§40's context, and its edges", () => {
     }
 
     const blind = await fold.locator(".blind .what").allTextContents();
-    expect(blind.map((n) => n.trim())).toEqual(["library", "audience context"]);
+    expect(blind.map((n) => n.trim())).toEqual(["library"]);
     expect(thrown).toEqual([]);
   });
 

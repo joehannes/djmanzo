@@ -84,6 +84,10 @@ pub enum Held {
     Profile,
     /// The mix that is armed, as a thing with a shape and a length. §68.
     Transition,
+    /// What the room is doing -- **only while something is watching it**.
+    /// §34–§39. A reading that stopped arriving is not told at all, so the
+    /// briefing never claims a room nothing is looking at.
+    Room,
 }
 
 /// What the app reads for the briefing that the snapshot does not carry.
@@ -116,6 +120,8 @@ pub struct Beside {
     pub profile: String,
     /// The armed mix, as a shape and a length.
     pub transition: String,
+    /// The room, in words, while something is watching it; empty otherwise.
+    pub room: String,
 }
 
 /// One of the twenty-six things §40 says the AI context should include.
@@ -320,13 +326,16 @@ pub const ALL: &[Item] = &[
             held: Held::Occasion,
         },
     },
-    unseen(
-        "audience context",
-        "What the room is doing.",
-        "the room reading lives with the panel that opens the camera, and stops \
-         when it closes -- so a briefing carrying it would go on claiming a room \
-         nothing is looking at",
-    ),
+    // Unseen until the briefing could tell a room being watched from one
+    // whose last reading was twenty minutes ago; told now only while a
+    // reading is arriving, which is the rule the room panel's own `watching`
+    // uses.
+    Item {
+        name: "audience context",
+        about: "What the room is doing, while something is watching it.",
+        unit: "",
+        carrier: Carrier::Beside { held: Held::Room },
+    },
     Item {
         name: "hardware",
         about: "What is plugged in and what it can reach.",
@@ -438,10 +447,52 @@ pub fn brief(snapshot: &serde_json::Value, beside: &Beside) -> Vec<String> {
             Held::Plan => many(&beside.plan),
             Held::Profile => one(&beside.profile),
             Held::Transition => one(&beside.transition),
+            // Not `none`: "none" about a room reads as an empty room.
+            Held::Room if beside.room.trim().is_empty() => {
+                "nothing is watching the room".to_owned()
+            }
+            Held::Room => one(&beside.room),
         };
         lines.push(format!("{}: {value}", item.name));
     }
     lines
+}
+
+/// §40's *audience context* as the briefing tells it: which way the floor has
+/// gone over the last twenty minutes, how many senses agree, and what was
+/// seen -- **only while a reading is still arriving**.
+///
+/// A glance reads the last twenty minutes, so it stays filled for twenty
+/// minutes after the camera stops; told on that alone, a briefing would go on
+/// describing a room nothing is looking at. `still_watching` is the room
+/// panel's own rule for saying "watching", passed in so there is one number.
+/// Empty when nothing is watching -- [`brief`] says so in words.
+#[must_use]
+pub fn room_words(
+    glance: Option<&dj_assistant::room::Glance>,
+    last_seen: Option<std::time::SystemTime>,
+    now: std::time::SystemTime,
+    still_watching: std::time::Duration,
+) -> String {
+    let watching = last_seen.is_some_and(|at| {
+        now.duration_since(at)
+            .is_ok_and(|since| since < still_watching)
+    });
+    if !watching {
+        return String::new();
+    }
+    glance.map_or_else(
+        || "watching, but too little seen yet to say which way the floor is going".to_owned(),
+        |glance| {
+            format!(
+                "{} over the last twenty minutes ({} of {} senses agree): {}",
+                glance.way.name(),
+                glance.agreeing,
+                glance.of,
+                glance.because
+            )
+        },
+    )
 }
 
 /// One string, or the absence said out loud.
@@ -713,6 +764,7 @@ mod tests {
                 plan: vec!["a1b2c3d4 (next)".to_owned()],
                 profile: "Wedding, over 4 nights: mostly blend transitions.".to_owned(),
                 transition: "deck 1 into deck 2, blend over 32 beats".to_owned(),
+                room: "rising over the last twenty minutes (2 of 3 senses agree)".to_owned(),
             },
         );
         let text = lines.join("\n");
@@ -786,6 +838,7 @@ mod tests {
             plan: vec!["deadbeef (next)".to_owned()],
             profile: "Club, over 6 nights: mostly echo transitions.".to_owned(),
             transition: "deck 1 into deck 2, echo over 16 beats".to_owned(),
+            room: "falling over the last twenty minutes (3 of 3 senses agree)".to_owned(),
         };
         let text = brief(&serde_json::json!({}), &beside).join("\n");
 
@@ -804,6 +857,9 @@ mod tests {
             "deadbeef (next)",
             "Club, over 6 nights: mostly echo transitions.",
             "deck 1 into deck 2, echo over 16 beats",
+            // And the room, which was unseen until a briefing could tell a
+            // room being watched from one last read twenty minutes ago.
+            "falling over the last twenty minutes (3 of 3 senses agree)",
         ] {
             assert!(
                 text.contains(wanted),
@@ -812,8 +868,8 @@ mod tests {
         }
     }
 
-    /// **Only two of §40's twenty-six are still unseen, and both have a reason
-    /// that is about the thing rather than about djmanzo not having built it.**
+    /// **Only one of §40's twenty-six is still unseen, and its reason is about
+    /// the thing rather than about djmanzo not having built it.**
     ///
     /// Named individually rather than counted, because a count passes again
     /// the moment something slips back — and five of these slipped the other
@@ -823,21 +879,22 @@ mod tests {
     /// a briefing is asked when a DJ types a question, not sixty times a
     /// second, and reading one more lock is what the caller is for.
     ///
-    /// The two that remain are different in kind. A **library** in a prompt is
-    /// the database in a prompt, and searching is what a search is for. The
-    /// **room** reading lives with the panel that opens the camera and stops
-    /// when it closes, so a briefing carrying it would go on claiming a room
-    /// nothing is looking at.
+    /// A **library** in a prompt is the database in a prompt, and searching is
+    /// what a search is for. The **room** was the other, on the reasoning that
+    /// its reading lives with the panel that opens the camera; it is told now,
+    /// and only while a reading is arriving -- see
+    /// `a_room_is_told_only_while_it_is_watched`.
     #[test]
-    fn the_only_things_the_assistant_cannot_see_are_the_two_it_should_not() {
+    fn the_only_thing_the_assistant_cannot_see_is_the_one_it_should_not() {
         let unseen: Vec<&str> = ALL
             .iter()
             .filter(|item| !item.carrier.told())
             .map(|item| item.name)
             .collect();
-        assert_eq!(unseen, vec!["library", "audience context"]);
+        assert_eq!(unseen, vec!["library"]);
 
         for name in [
+            "audience context",
             "current transitions",
             "prepared tracks",
             "next candidates",
@@ -853,6 +910,55 @@ mod tests {
                 "`{name}` is unseen again; the reason it was is in this test"
             );
         }
+    }
+
+    /// **The room is told only while it is watched.** A reading five seconds
+    /// old is told, with its direction, its agreement and what was seen; the
+    /// same reading fifteen seconds old -- the camera stopped -- is not,
+    /// however recent the glance's twenty minutes still look; and a briefing
+    /// with no room says nothing is watching rather than "none".
+    #[test]
+    fn a_room_is_told_only_while_it_is_watched() {
+        use std::time::{Duration, SystemTime};
+        let glance = dj_assistant::room::Glance {
+            way: dj_assistant::room::Way::Rising,
+            of: 3,
+            agreeing: 2,
+            because: "more movement and louder".to_owned(),
+        };
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(10_000);
+        let rule = Duration::from_secs(10);
+        let seen = |ago: u64| Some(now - Duration::from_secs(ago));
+
+        let told = room_words(Some(&glance), seen(5), now, rule);
+        assert_eq!(
+            told,
+            "rising over the last twenty minutes (2 of 3 senses agree): more movement and louder"
+        );
+        assert_eq!(room_words(Some(&glance), seen(15), now, rule), "");
+        assert_eq!(room_words(Some(&glance), None, now, rule), "");
+        assert!(room_words(None, seen(1), now, rule).starts_with("watching, but too little"));
+
+        let line = |room: String| {
+            brief(
+                &serde_json::json!({}),
+                &Beside {
+                    room,
+                    ..Beside::default()
+                },
+            )
+            .into_iter()
+            .find(|line| line.starts_with("audience context:"))
+            .expect("the room has a line")
+        };
+        assert_eq!(
+            line(told),
+            "audience context: rising over the last twenty minutes (2 of 3 senses agree): more movement and louder"
+        );
+        assert_eq!(
+            line(String::new()),
+            "audience context: nothing is watching the room"
+        );
     }
 
     /// A six-hour night does not arrive whole.

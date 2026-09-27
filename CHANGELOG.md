@@ -44,6 +44,10 @@ Versioning follows semver, with one project-specific convention:
   and OTHER chips under each waveform draw where that part is in the
   record, with the deck's place on it, so you can see the voice coming or
   the bass dropping out before you press.
+- **The assistant knows how the room is doing, while it is being watched.**
+  With the room's camera or microphone reading, a question to the assistant
+  carries which way the floor has gone and how many senses agree; when
+  nothing is watching, it is told exactly that.
 
 ## v0.31.0 — Words in time by WhisperX, a song for every karaoke guest, and pop out almost everywhere
 

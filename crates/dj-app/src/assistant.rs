@@ -272,6 +272,20 @@ fn context_lines(state: &AppState) -> Vec<String> {
         Err(_) => (Vec::new(), String::new()),
     };
 
+    // §40's audience context: only while a reading is still arriving, by
+    // the room panel's own rule for saying "watching".
+    let room = state.room().lock().map_or_else(
+        |_| String::new(),
+        |room| {
+            crate::sight::room_words(
+                room.glance().as_ref(),
+                room.last_seen(),
+                std::time::SystemTime::now(),
+                crate::commands::STILL_WATCHING,
+            )
+        },
+    );
+
     crate::sight::brief(
         &value,
         &crate::sight::Beside {
@@ -286,6 +300,7 @@ fn context_lines(state: &AppState) -> Vec<String> {
             plan,
             profile,
             transition,
+            room,
         },
     )
 }
@@ -541,5 +556,34 @@ mod tests {
             assert_eq!(provider_from_slug(id.slug()), Some(*id));
         }
         assert_eq!(provider_from_slug("nonsense"), None);
+    }
+
+    /// §40: **the briefing reads the room from the room**, and only while it
+    /// is watched -- nothing seen yet says nothing is watching, and a reading
+    /// that has just arrived says it is (too little yet to give a direction).
+    #[test]
+    fn the_briefing_tells_the_room_only_while_it_is_watched() {
+        let state = AppState::new(true);
+        let room_line = |state: &AppState| {
+            context_lines(state)
+                .into_iter()
+                .find(|line| line.starts_with("audience context:"))
+                .expect("the room has a line")
+        };
+        assert_eq!(
+            room_line(&state),
+            "audience context: nothing is watching the room"
+        );
+
+        state.room().lock().expect("the room").saw(
+            dj_assistant::room::Reading::at(std::time::SystemTime::now())
+                .with(dj_assistant::room::Sense::Loudness, 0.4),
+            None,
+        );
+        assert!(
+            room_line(&state).starts_with("audience context: watching"),
+            "{}",
+            room_line(&state)
+        );
     }
 }

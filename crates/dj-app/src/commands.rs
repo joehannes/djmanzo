@@ -15344,6 +15344,7 @@ pub fn assistant_sight() -> Vec<SightDto> {
                     crate::sight::Held::Plan => "your set plan".to_owned(),
                     crate::sight::Held::Profile => "your nights like this one".to_owned(),
                     crate::sight::Held::Transition => "the armed mix".to_owned(),
+                    crate::sight::Held::Room => "the room, while it is watched".to_owned(),
                 },
                 crate::sight::Carrier::Unseen { because } => because.to_owned(),
             },
@@ -16244,7 +16245,7 @@ pub struct BaselineAgainstDto {
 /// Ten seconds, against a cadence of one every two: a browser tab that has
 /// been backgrounded stops sending, and a panel still claiming to watch the
 /// room is the panel lying about the one thing it is for.
-const STILL_WATCHING: std::time::Duration = std::time::Duration::from_secs(10);
+pub(crate) const STILL_WATCHING: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Take one reading of the room.
 ///
