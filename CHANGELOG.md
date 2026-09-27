@@ -16,6 +16,8 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+## v0.31.0 — Words in time by WhisperX, a song for every karaoke guest, and pop out almost everywhere
+
 - **Pop out almost every panel.** Sixteen panels now have *pop out* on
   their border — preparation, next, the set plan, pair, practice, the press
   kit, the crowd, the karaoke host's panel, the room, tonight's mixes, at
