@@ -2737,6 +2737,8 @@ export interface Profile {
   loop_beats: number | null;
   /** §12: the effect they reach for here. */
   effect: string | null;
+  /** §12: the middle half of the tempos played here, lowest and highest. */
+  tempo: [number, number] | null;
   automation: string | null;
   techniques: string[];
   /** Genre and its share of the plays, commonest first. */

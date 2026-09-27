@@ -2378,6 +2378,8 @@ pub struct ProfileDto {
     pub loop_beats: Option<f32>,
     /// §12: the effect they reach for here.
     pub effect: Option<String>,
+    /// §12: the middle half of the tempos played here, lowest and highest.
+    pub tempo: Option<[f64; 2]>,
     pub automation: Option<String>,
     pub techniques: Vec<String>,
     /// Genre and its share of the plays, commonest first.
@@ -2398,6 +2400,7 @@ impl ProfileDto {
             length: p.length(),
             loop_beats: p.loop_beats(),
             effect: p.effect().map(|e| e.name().to_owned()),
+            tempo: p.tempo().map(|(low, high)| [low, high]),
             automation: p.automation().map(|a| a.name().to_owned()),
             techniques: p.techniques().iter().map(|d| d.slug().to_owned()).collect(),
             genres: p.genres().to_vec(),
@@ -2552,8 +2555,10 @@ pub fn learned_profiles(state: State<'_, AppState>) -> Result<Vec<ProfileDto>, S
     // answer a question about, usually, one.
     let genres =
         |setting: crate::setting::Setting| db.genres_in(setting.slug()).unwrap_or_default();
+    let tempos =
+        |setting: crate::setting::Setting| db.tempos_in(setting.slug()).unwrap_or_default();
     Ok(
-        crate::profile::profiles(&nights, &genres, crate::profile::now())
+        crate::profile::profiles(&nights, &genres, &tempos, crate::profile::now())
             .into_iter()
             .map(|p| ProfileDto::of(&p))
             .collect(),
@@ -2602,7 +2607,9 @@ pub fn learned_persona(state: State<'_, AppState>) -> Result<Vec<LearnedDto>, St
     }
     let genres =
         |setting: crate::setting::Setting| db.genres_in(setting.slug()).unwrap_or_default();
-    let profiles = crate::profile::profiles(&nights, &genres, crate::profile::now());
+    let tempos =
+        |setting: crate::setting::Setting| db.tempos_in(setting.slug()).unwrap_or_default();
+    let profiles = crate::profile::profiles(&nights, &genres, &tempos, crate::profile::now());
     // Tonight's own actions, for the one trait §81's profiles cannot carry:
     // which stem a DJ actually reaches for. `DeckAction::Stem` has always
     // carried it, and §14's gestures collapse all four into one on purpose —
@@ -2942,7 +2949,7 @@ mod tests {
                     effect: None,
                 })
                 .collect();
-            crate::profile::profiles(&nights, &|_| counted.clone(), 0)
+            crate::profile::profiles(&nights, &|_| counted.clone(), &|_| Vec::new(), 0)
                 .into_iter()
                 .next()
                 .expect("enough nights")
@@ -8578,7 +8585,8 @@ pub(crate) fn tonight_profile(
     let setting = crate::setting::Setting::parse(&db.night(&state.session_id()).ok()??.setting)?;
     let nights = db.nights_in(setting.slug()).ok()?;
     let genres = |s: crate::setting::Setting| db.genres_in(s.slug()).unwrap_or_default();
-    crate::profile::profiles(&nights, &genres, crate::profile::now())
+    let tempos = |s: crate::setting::Setting| db.tempos_in(s.slug()).unwrap_or_default();
+    crate::profile::profiles(&nights, &genres, &tempos, crate::profile::now())
         .into_iter()
         .find(|p| p.setting() == setting)
 }

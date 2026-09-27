@@ -16,6 +16,11 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **djmanzo learns the tempos you play at, per kind of night.** Once three
+  nights of a kind have twelve records with a known tempo, the profile says
+  the middle half of them ("124–130 BPM"), so one odd record does not
+  stretch the range. Older nights count for less, as everywhere else, so a
+  DJ who moved from house to techno is told where they play now.
 - **djmanzo learns your loop size and your effect.** Each night keeps the
   loop length you set most -- by the pads, and by halving or doubling a
   loop -- and the effect you put into the room most: switched on, not just

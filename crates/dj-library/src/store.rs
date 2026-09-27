@@ -1442,6 +1442,39 @@ impl Library {
         })
     }
 
+    /// The tempo of every record played across the nights of one setting,
+    /// with when it was played.
+    ///
+    /// §12's *common BPM ranges*, derived for [`Self::genres_in`]'s reason: the
+    /// plays are in `history` and the tempos on the tracks, so a stored range
+    /// would drift the first time a record is re-analysed. The moment comes
+    /// with each tempo so the reader can fade old nights on the curve
+    /// everything else learned fades on. Records with no tempo are left out
+    /// rather than counted as a tempo of nothing.
+    ///
+    /// # Errors
+    /// Whatever the database says.
+    pub fn tempos_in(&self, setting: &str) -> Result<Vec<(f64, i64)>> {
+        self.with(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.bpm, h.played_at
+                 FROM history h
+                 JOIN nights n ON n.session_id = h.session_id
+                 JOIN tracks t ON t.id = h.track_id
+                 WHERE n.setting = ?1 AND t.bpm IS NOT NULL AND t.bpm > 0
+                 ORDER BY h.played_at",
+            )?;
+            let rows = stmt.query_map([setting], |row| {
+                Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?))
+            })?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+    }
+
     /// Keep a transition: two records the DJ put together and wants back.
     ///
     /// §24 names this gesture — "Save this transition" — and it is the only
@@ -2897,6 +2930,33 @@ mod tests {
             "a club night was counted with the weddings"
         );
         assert!(lib.genres_in("beach").unwrap().is_empty());
+    }
+
+    /// **§12's tempos come per setting, with when each was played**, and a
+    /// record nobody has analysed has no tempo to give.
+    #[test]
+    fn tempos_are_read_per_setting_with_when_they_were_played() {
+        let lib = library();
+        for (byte, title) in [(1, "fast"), (2, "slow"), (3, "unread")] {
+            lib.upsert_track(&track(byte, title, "someone")).unwrap();
+        }
+        for (byte, bpm) in [(1, 128.0), (2, 96.0)] {
+            let mut analysis = track(byte, "", "").analysis;
+            analysis.bpm = Some(bpm);
+            lib.set_analysis(id(byte), &analysis).unwrap();
+        }
+        lib.note_night("clb", Some("club"), NightRead::default())
+            .unwrap();
+        lib.note_night("wed", Some("wedding"), NightRead::default())
+            .unwrap();
+
+        lib.record_play(id(1), 10, Some("clb")).unwrap();
+        lib.record_play(id(3), 11, Some("clb")).unwrap();
+        lib.record_play(id(2), 12, Some("wed")).unwrap();
+
+        assert_eq!(lib.tempos_in("club").unwrap(), vec![(128.0, 10)]);
+        assert_eq!(lib.tempos_in("wedding").unwrap(), vec![(96.0, 12)]);
+        assert!(lib.tempos_in("beach").unwrap().is_empty());
     }
 
     /// A play from a night djmanzo was never told about counts towards no

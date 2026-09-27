@@ -392,7 +392,7 @@ mod tests {
                 })
             })
             .collect();
-        crate::profile::profiles(&nights, &|_| Vec::new(), 0)
+        crate::profile::profiles(&nights, &|_| Vec::new(), &|_| Vec::new(), 0)
     }
 
     /// **The load-bearing one: a rejected claim is neither raised again nor
@@ -582,7 +582,12 @@ mod tests {
                     })
                 })
                 .collect();
-            let said = learned_from(&crate::profile::profiles(&nights, &|_| Vec::new(), 0));
+            let said = learned_from(&crate::profile::profiles(
+                &nights,
+                &|_| Vec::new(),
+                &|_| Vec::new(),
+                0,
+            ));
             said.into_iter()
                 .find(|l| l.which == Trait::BlendLength)
                 .expect("both kinds of night blend")

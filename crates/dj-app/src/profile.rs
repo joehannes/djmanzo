@@ -154,6 +154,7 @@ pub struct Profile {
     length: Option<u32>,
     loop_beats: Option<f32>,
     effect: Option<EffectKind>,
+    tempo: Option<(f64, f64)>,
     automation: Option<Posture>,
     techniques: Vec<Did>,
     genres: Vec<(String, f64)>,
@@ -204,6 +205,13 @@ impl Profile {
     #[must_use]
     pub fn effect(&self) -> Option<EffectKind> {
         self.effect
+    }
+
+    /// §12's *common BPM range*: the middle half of the tempos played here,
+    /// lowest and highest, in BPM.
+    #[must_use]
+    pub fn tempo(&self) -> Option<(f64, f64)> {
+        self.tempo
     }
 
     /// §81's "automation tolerance": how much they let the assistant do here.
@@ -323,6 +331,15 @@ impl Profile {
                 genre = genre
             ));
         }
+        if let Some((low, high)) = self.tempo {
+            #[allow(clippy::cast_possible_truncation)]
+            let (low, high) = (low.round() as i64, high.round() as i64);
+            if low == high {
+                said.push_str(&format!(", {low} BPM"));
+            } else {
+                said.push_str(&format!(", {low}–{high} BPM"));
+            }
+        }
         if let Some(beats) = self.loop_beats {
             said.push_str(&format!(", loops of {}", beats_said(beats)));
         }
@@ -339,9 +356,10 @@ impl Profile {
 
 /// Build every profile there is enough evidence for.
 ///
-/// `genres` is looked up per setting by the caller, which is the layer with a
-/// database; this module stays a pure function over what it is handed, the way
-/// `signals::tendencies` does.
+/// `genres` and `tempos` are looked up per setting by the caller, which is the
+/// layer with a database; this module stays a pure function over what it is
+/// handed, the way `signals::tendencies` does. `tempos` is every play's tempo
+/// with when it was played (`dj_library::Library::tempos_in`).
 ///
 /// Settings with fewer than [`ENOUGH_NIGHTS`] produce **nothing at all** —
 /// not an empty profile, which an interface would draw as a profile that knows
@@ -350,6 +368,7 @@ impl Profile {
 pub fn profiles(
     nights: &[Night],
     genres: &dyn Fn(Setting) -> Vec<(String, u32)>,
+    tempos: &dyn Fn(Setting) -> Vec<(f64, i64)>,
     now: i64,
 ) -> Vec<Profile> {
     let mut per_setting: BTreeMap<Setting, Vec<&Night>> = BTreeMap::new();
@@ -379,6 +398,7 @@ pub fn profiles(
             effect: agreed(seen.iter().map(|n| (n.effect.clone(), weight(n, now))))
                 .and_then(|word| EffectKind::parse(&word))
                 .filter(|kind| *kind != EffectKind::None),
+            tempo: middle_half(&tempos(setting), now),
             automation: agreed(seen.iter().map(|n| (n.posture.clone(), weight(n, now))))
                 .and_then(|word| Posture::ALL.into_iter().find(|p| p.name() == word)),
             techniques: usual(&seen, now),
@@ -582,6 +602,50 @@ fn usual(nights: &[&Night], now: i64) -> Vec<Did> {
     out.into_iter().map(|(did, _)| did).collect()
 }
 
+/// How many plays with a known tempo before a range is said: the profile's
+/// own [`ENOUGH_NIGHTS`] times §13's [`crate::signals::ENOUGH`], so a range
+/// rests on at least what three nights of four records each would give.
+const ENOUGH_TEMPOS: usize = ENOUGH_NIGHTS * crate::signals::ENOUGH;
+
+/// §12's *common BPM range*: the middle half of the tempos played, lowest to
+/// highest.
+///
+/// **The middle half, not the whole span**: one 174 BPM record played for a
+/// laugh at a house night would make "118 to 174" the range, which describes
+/// the night less well than the half of it the DJ spent most of their time in.
+/// **Weighted by when each was played**, on the curve everything else here
+/// fades on (§12's decay), so a DJ who has moved from house to techno is told
+/// where they play now rather than where they used to. Tempos as analysed:
+/// a record read at half time is reported where it was read, not guessed at.
+fn middle_half(plays: &[(f64, i64)], now: i64) -> Option<(f64, f64)> {
+    let mut weighed: Vec<(f64, f64)> = plays
+        .iter()
+        .filter(|(bpm, _)| bpm.is_finite() && *bpm > 0.0)
+        .map(|(bpm, at)| (*bpm, dj_library::learned::recency(*at, now)))
+        .collect();
+    if weighed.len() < ENOUGH_TEMPOS {
+        return None;
+    }
+    weighed.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let total: f64 = weighed.iter().map(|(_, weight)| weight).sum();
+    if total <= 0.0 {
+        return None;
+    }
+    // The first tempo whose share of the weight, counted from the slowest,
+    // reaches the point asked for.
+    let at = |point: f64| {
+        let mut so_far = 0.0;
+        weighed
+            .iter()
+            .find(|(_, weight)| {
+                so_far += weight;
+                so_far >= point * total
+            })
+            .map(|(bpm, _)| *bpm)
+    };
+    Some((at(0.25)?, at(0.75)?))
+}
+
 /// Play counts as shares of the total, commonest first.
 fn shares(counts: Vec<(String, u32)>) -> Vec<(String, f64)> {
     let total: u32 = counts.iter().map(|(_, n)| *n).sum();
@@ -780,6 +844,10 @@ mod tests {
         Vec::new()
     }
 
+    fn no_tempos(_: Setting) -> Vec<(f64, i64)> {
+        Vec::new()
+    }
+
     /// A profile of one setting whose nights played these genres.
     fn profile_of(setting: &str, plays: &[(&str, u32)]) -> Profile {
         let counted: Vec<(String, u32)> = plays
@@ -787,7 +855,7 @@ mod tests {
             .map(|(name, n)| ((*name).to_owned(), *n))
             .collect();
         let genres = |_: Setting| counted.clone();
-        profiles(&nights(setting, ENOUGH_NIGHTS), &genres, NOW)
+        profiles(&nights(setting, ENOUGH_NIGHTS), &genres, &no_tempos, NOW)
             .into_iter()
             .next()
             .expect("enough nights for a profile")
@@ -800,7 +868,7 @@ mod tests {
             night.density = Some(density.to_owned());
             night.posture = Some(posture.name().to_owned());
         }
-        profiles(&seen, &nothing, NOW)
+        profiles(&seen, &nothing, &no_tempos, NOW)
             .into_iter()
             .next()
             .expect("enough nights for a profile")
@@ -920,7 +988,7 @@ mod tests {
             night.density = Some("Ultra Dense".to_owned());
             night.posture = Some(posture.name().to_owned());
         }
-        let profile = profiles(&seen, &nothing, NOW)
+        let profile = profiles(&seen, &nothing, &no_tempos, NOW)
             .into_iter()
             .next()
             .expect("enough nights");
@@ -1093,7 +1161,7 @@ mod tests {
             Setting::Club => vec![("Techno".to_owned(), 10)],
             _ => Vec::new(),
         };
-        let built = profiles(&rows, &genres, NOW);
+        let built = profiles(&rows, &genres, &no_tempos, NOW);
 
         assert_eq!(built.len(), 2, "two settings collapsed into {built:#?}");
         let wedding = built
@@ -1132,11 +1200,14 @@ mod tests {
         // is not a habit and neither is two.**
         for count in [0, 1, 2] {
             assert!(
-                profiles(&nights("beach", count), &nothing, NOW).is_empty(),
+                profiles(&nights("beach", count), &nothing, &no_tempos, NOW).is_empty(),
                 "{count} night(s) was enough to generalise about a whole setting"
             );
         }
-        assert_eq!(profiles(&nights("beach", 3), &nothing, NOW).len(), 1);
+        assert_eq!(
+            profiles(&nights("beach", 3), &nothing, &no_tempos, NOW).len(),
+            1
+        );
         assert_eq!(
             ENOUGH_NIGHTS, 3,
             "the threshold moved; the three cases above are the claim"
@@ -1155,12 +1226,12 @@ mod tests {
         rows[2].style = Some("cut".to_owned());
         rows[3].style = Some("fade".to_owned());
         rows[4].style = Some("echo".to_owned());
-        assert_eq!(profiles(&rows, &nothing, NOW)[0].style(), None);
+        assert_eq!(profiles(&rows, &nothing, &no_tempos, NOW)[0].style(), None);
 
         // Three of five agreeing is enough.
         rows[3].style = Some("blend".to_owned());
         assert_eq!(
-            profiles(&rows, &nothing, NOW)[0].style(),
+            profiles(&rows, &nothing, &no_tempos, NOW)[0].style(),
             Some(TransitionStyle::Blend)
         );
     }
@@ -1177,7 +1248,7 @@ mod tests {
         rows[1].style = Some("blend".to_owned());
         // rows[2] and rows[3] said nothing at all.
         assert_eq!(
-            profiles(&rows, &nothing, NOW)[0].style(),
+            profiles(&rows, &nothing, &no_tempos, NOW)[0].style(),
             Some(TransitionStyle::Blend),
             "two silent nights outvoted two that spoke"
         );
@@ -1195,7 +1266,7 @@ mod tests {
         rows[2].techniques = Some("eq-moved".to_owned());
         rows[3].techniques = Some("eq-moved".to_owned());
 
-        let built = profiles(&rows, &nothing, NOW);
+        let built = profiles(&rows, &nothing, &no_tempos, NOW);
         assert_eq!(
             built[0].techniques(),
             &[Did::EqMoved],
@@ -1209,7 +1280,7 @@ mod tests {
     fn a_night_of_an_unknown_setting_joins_nothing() {
         let mut rows = nights("bar-mitzvah", 5);
         rows.extend(nights("club", 3));
-        let built = profiles(&rows, &nothing, NOW);
+        let built = profiles(&rows, &nothing, &no_tempos, NOW);
         assert_eq!(built.len(), 1);
         assert_eq!(built[0].setting(), Setting::Club);
         assert_eq!(built[0].nights(), 3, "unknown nights were counted as club");
@@ -1228,7 +1299,8 @@ mod tests {
             row.style = Some("fade".to_owned());
             row.posture = Some("prepare".to_owned());
         }
-        let said = profiles(&rows, &|_| vec![("Bachata".to_owned(), 4)], NOW)[0].words();
+        let said =
+            profiles(&rows, &|_| vec![("Bachata".to_owned(), 4)], &no_tempos, NOW)[0].words();
         assert!(said.contains("Wedding"), "{said}");
         assert!(said.contains("3 nights"), "{said}");
         assert!(said.contains("fade"), "{said}");
@@ -1240,7 +1312,7 @@ mod tests {
     /// leaving a sentence that reads as though it had.
     #[test]
     fn it_admits_when_it_cannot_say_how_you_mix() {
-        let said = profiles(&nights("practice", 3), &nothing, NOW)[0].words();
+        let said = profiles(&nights("practice", 3), &nothing, &no_tempos, NOW)[0].words();
         assert!(said.contains("too varied"), "{said}");
         assert!(said.contains("Practice"), "{said}");
     }
@@ -1400,6 +1472,54 @@ mod tests {
         assert_eq!(read(&throws(3)).effect, None);
     }
 
+    /// **§12's common BPM range: the middle half of what was played, said.**
+    ///
+    /// Twelve plays from 120 to 131 are mostly 122–128; eleven are not enough
+    /// to say; and one 174 among eleven at 124 is a laugh at a house night, not
+    /// a range that reaches drum and bass.
+    #[test]
+    fn the_tempo_range_is_the_middle_half_of_what_was_played() {
+        let played =
+            |bpms: &[f64]| -> Vec<(f64, i64)> { bpms.iter().map(|bpm| (*bpm, 0)).collect() };
+        let club = |plays: Vec<(f64, i64)>| {
+            profiles(&nights("club", 3), &nothing, &|_| plays.clone(), NOW)
+                .into_iter()
+                .next()
+                .expect("three club nights are a profile")
+        };
+
+        let twelve: Vec<f64> = (120..132).map(f64::from).collect();
+        let built = club(played(&twelve));
+        assert_eq!(built.tempo(), Some((122.0, 128.0)));
+        assert!(built.words().contains(", 122–128 BPM"), "{}", built.words());
+
+        assert_eq!(club(played(&twelve[..11])).tempo(), None);
+        assert!(!club(played(&twelve[..11])).words().contains("BPM"));
+
+        let mut house = vec![124.0; 11];
+        house.push(174.0);
+        let built = club(played(&house));
+        assert_eq!(built.tempo(), Some((124.0, 124.0)));
+        assert!(built.words().contains(", 124 BPM"), "{}", built.words());
+    }
+
+    /// **And it fades like everything else.** Twelve house records two years
+    /// ago and twelve techno records last week are a DJ who plays techno now:
+    /// counted equally they would be "124–140", which describes neither.
+    #[test]
+    fn the_tempo_range_follows_where_the_dj_plays_now() {
+        let now = 800 * DAY;
+        let mut plays: Vec<(f64, i64)> = vec![(124.0, 70 * DAY); 12];
+        plays.extend(vec![(140.0, now - 7 * DAY); 12]);
+        let built = profiles(&nights("club", 3), &nothing, &|_| plays.clone(), now);
+        assert_eq!(built[0].tempo(), Some((140.0, 140.0)));
+
+        // Judged from the day they were all fresh, both halves count, and the
+        // range spans them.
+        let fresh = profiles(&nights("club", 3), &nothing, &|_| plays.clone(), 0);
+        assert_eq!(fresh[0].tempo(), Some((124.0, 140.0)));
+    }
+
     /// **§12's favourite loop size and preferred effect: learned once enough
     /// nights agree, and said.** A stored length no ladder offers, and an
     /// effect that is no effect, are dropped rather than repeated to the DJ.
@@ -1412,7 +1532,7 @@ mod tests {
         for row in &mut rows {
             row.effect = Some("echo".to_owned());
         }
-        let club = &profiles(&rows, &nothing, NOW)[0];
+        let club = &profiles(&rows, &nothing, &no_tempos, NOW)[0];
         assert_eq!(club.loop_beats(), Some(4.0));
         assert_eq!(club.effect(), Some(EffectKind::Echo));
         let said = club.words();
@@ -1422,18 +1542,18 @@ mod tests {
         for row in &mut rows {
             row.loop_beats = Some("0.5".to_owned());
         }
-        let said = profiles(&rows, &nothing, NOW)[0].words();
+        let said = profiles(&rows, &nothing, &no_tempos, NOW)[0].words();
         assert!(said.contains("loops of 1/2 beat"), "{said}");
 
         rows[0].loop_beats = Some("1".to_owned());
         rows[1].loop_beats = Some("1".to_owned());
-        let said = profiles(&rows, &nothing, NOW)[0].words();
+        let said = profiles(&rows, &nothing, &no_tempos, NOW)[0].words();
         assert!(said.contains("loops of 1 beat,"), "{said}");
 
         // Three nights, three different effects: no habit, and nothing said.
         rows[0].effect = Some("reverb".to_owned());
         rows[1].effect = Some("flanger".to_owned());
-        let club = &profiles(&rows, &nothing, NOW)[0];
+        let club = &profiles(&rows, &nothing, &no_tempos, NOW)[0];
         assert_eq!(club.effect(), None);
         assert!(!club.words().contains("as the effect"), "{}", club.words());
 
@@ -1441,7 +1561,7 @@ mod tests {
             row.loop_beats = Some("3".to_owned());
             row.effect = Some("none".to_owned());
         }
-        let club = &profiles(&rows, &nothing, NOW)[0];
+        let club = &profiles(&rows, &nothing, &no_tempos, NOW)[0];
         assert_eq!(club.loop_beats(), None);
         assert_eq!(club.effect(), None);
     }
@@ -1461,7 +1581,7 @@ mod tests {
         for row in &mut rows {
             row.style = Some("blend".to_owned());
         }
-        let club = &profiles(&rows, &nothing, NOW)[0];
+        let club = &profiles(&rows, &nothing, &no_tempos, NOW)[0];
         assert_eq!(club.length(), Some(32));
         let said = club.words();
         assert!(
@@ -1474,27 +1594,27 @@ mod tests {
         for row in &mut rows {
             row.style = None;
         }
-        let said = profiles(&rows, &nothing, NOW)[0].words();
+        let said = profiles(&rows, &nothing, &no_tempos, NOW)[0].words();
         assert!(said.contains("mostly 32-beat transitions"), "{said}");
         assert!(!said.contains("too varied"), "{said}");
 
         // Three nights that each took a different length are not a habit.
         rows[0].length = Some("8".to_owned());
         rows[1].length = Some("16".to_owned());
-        assert_eq!(profiles(&rows, &nothing, NOW)[0].length(), None);
+        assert_eq!(profiles(&rows, &nothing, &no_tempos, NOW)[0].length(), None);
 
         // A value no DJ counts in is not repeated to one.
         for row in &mut rows {
             row.length = Some("17".to_owned());
         }
-        assert_eq!(profiles(&rows, &nothing, NOW)[0].length(), None);
+        assert_eq!(profiles(&rows, &nothing, &no_tempos, NOW)[0].length(), None);
     }
 
     /// Genre shares are shares: they sum to one over what was played.
     #[test]
     fn genre_weights_are_shares_of_what_was_played() {
         let genres = |_| vec![("Bachata".to_owned(), 3), ("Salsa".to_owned(), 1)];
-        let built = profiles(&nights("latin", 3), &genres, NOW);
+        let built = profiles(&nights("latin", 3), &genres, &no_tempos, NOW);
         let shares = built[0].genres();
         assert_eq!(shares[0], ("Bachata".to_owned(), 0.75));
         assert_eq!(shares[1], ("Salsa".to_owned(), 0.25));
@@ -1535,14 +1655,14 @@ mod tests {
         }
 
         // The fixture is only interesting if the old habit would otherwise win.
-        let counted = profiles(&rows, &nothing, NOW);
+        let counted = profiles(&rows, &nothing, &no_tempos, NOW);
         assert_eq!(
             counted[0].style(),
             Some(TransitionStyle::Fade),
             "the fixture is wrong: judged all at one age, the old habit must win"
         );
 
-        let faded = profiles(&rows, &nothing, now);
+        let faded = profiles(&rows, &nothing, &no_tempos, now);
         assert_eq!(
             faded[0].style(),
             Some(TransitionStyle::Cut),
@@ -1574,7 +1694,7 @@ mod tests {
             })
             .collect();
 
-        let faded = profiles(&rows, &nothing, now);
+        let faded = profiles(&rows, &nothing, &no_tempos, now);
         assert_eq!(faded[0].style(), Some(TransitionStyle::Fade));
         assert_eq!(faded[0].techniques(), [Did::Looped]);
     }
@@ -1603,13 +1723,13 @@ mod tests {
             rows.push(recent);
         }
 
-        let counted = profiles(&rows, &nothing, NOW);
+        let counted = profiles(&rows, &nothing, &no_tempos, NOW);
         assert!(
             counted[0].techniques().contains(&Did::Looped),
             "the fixture is wrong: judged all at one age, looping must still be in"
         );
 
-        let faded = profiles(&rows, &nothing, now);
+        let faded = profiles(&rows, &nothing, &no_tempos, now);
         assert!(
             !faded[0].techniques().contains(&Did::Looped),
             "a habit given up two years ago is still being called a signature"
@@ -1636,7 +1756,7 @@ mod tests {
         rows[0].techniques = Some("looped".to_owned());
         rows[1].techniques = Some("looped".to_owned());
 
-        let built = profiles(&rows, &nothing, NOW);
+        let built = profiles(&rows, &nothing, &no_tempos, NOW);
         assert!(
             !built[0].techniques().contains(&Did::Looped),
             "two loud nights out of five became a signature because the other \
@@ -1646,7 +1766,7 @@ mod tests {
         // And three out of five clears it, which is what makes the floor a
         // floor rather than a refusal.
         rows[2].techniques = Some("looped".to_owned());
-        let built = profiles(&rows, &nothing, NOW);
+        let built = profiles(&rows, &nothing, &no_tempos, NOW);
         assert!(built[0].techniques().contains(&Did::Looped));
     }
 
