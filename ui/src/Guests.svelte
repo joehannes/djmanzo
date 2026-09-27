@@ -19,6 +19,7 @@
     type Guest,
     type GuestBook,
   } from "./api";
+  import GuestSong from "./GuestSong.svelte";
 
   let {
     rev = 0,
@@ -324,6 +325,10 @@
             {/if}
           {/if}
         </div>
+      {/if}
+
+      {#if kept?.consent.voice && !young && kept.sang.length}
+        <GuestSong guest={kept} onbook={(next) => (book = next)} />
       {/if}
 
       <div class="actions">

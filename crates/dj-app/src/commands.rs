@@ -13462,6 +13462,7 @@ pub fn karaoke_sang(state: State<'_, AppState>) -> RotationDto {
                 event,
                 place,
                 voice: None,
+                song: None,
             },
             now,
         );
@@ -13649,6 +13650,69 @@ pub fn guests_voice(state: State<'_, AppState>, id: String) -> Result<GuestsDto,
         state.voice_takes().forget();
         return Err(error);
     }
+    Ok(guests_dto(&state, journal, None))
+}
+
+/// §123: write the words of a song for a guest with the DJ's own AI
+/// provider, and keep them on the guest's last song.
+///
+/// `language` is the language the song was sung in — a two-letter code or a
+/// name, or empty for the model to know it from the song; a second version
+/// is written in the guest's own language when it differs. `date` is the
+/// night in the DJ's own words and time zone, as the interface has it.
+/// Tonight's genres come from the event being played, if one is.
+///
+/// # Errors
+/// A guest not in the journal, without consent to a song, or who has not
+/// sung; no assistant; the budget spent; or the model answering no words.
+#[tauri::command]
+pub async fn guests_song(
+    state: State<'_, AppState>,
+    id: String,
+    language: String,
+    keywords: String,
+    date: String,
+) -> Result<GuestsDto, String> {
+    use dj_assistant::Assistant;
+
+    let journal = state.guests();
+    let guest = journal
+        .get(&id)
+        .ok_or_else(|| crate::guests::Refusal::Unknown.to_string())?;
+    let evening = events_dir(&state)
+        .ok()
+        .and_then(|dir| crate::gig::live(&dir).and_then(|live| crate::gig::load(&dir, &live)))
+        .map(|gig| gig.genres)
+        .unwrap_or_default();
+    let brief =
+        crate::guests::brief(guest, &language, &keywords, &date, evening).ok_or_else(|| {
+            if guest.sang.is_empty() {
+                format!("{} has not sung yet", guest.name)
+            } else {
+                format!(
+                    "{} has not agreed to a song being made for them",
+                    guest.name
+                )
+            }
+        })?;
+    let selection = state
+        .assistant_selection()
+        .ok_or_else(|| "no assistant provider is available".to_owned())?;
+    let assistant = Assistant::new(
+        selection.provider,
+        selection.model,
+        Arc::clone(state.budget()),
+    )
+    .with_pricing(selection.input_price, selection.output_price);
+    let draft = assistant
+        .write_song(&brief)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Read again: the journal may have changed while the model was writing.
+    let mut journal = state.guests();
+    journal.set_song(&id, draft)?;
+    state.set_guests(&journal, &[])?;
     Ok(guests_dto(&state, journal, None))
 }
 

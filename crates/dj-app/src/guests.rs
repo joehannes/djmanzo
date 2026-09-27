@@ -103,6 +103,9 @@ pub struct Performance {
     /// The recording of their voice, a file name in the journal's folder —
     /// only with their consent.
     pub voice: Option<String>,
+    /// §123: the words written for a song of their own, and its style — only
+    /// with their consent to a song being made for them.
+    pub song: Option<dj_assistant::SongDraft>,
 }
 
 /// A guest who sang.
@@ -145,6 +148,44 @@ impl Guest {
     pub fn may_consent(&self) -> bool {
         self.age.is_none_or(|age| age >= CONSENT_AGE)
     }
+}
+
+/// §123: what the model is told for a guest's song — their name, their last
+/// song and where they sang it, their favourites and languages, and the DJ's
+/// ideas. Their email, phone, age, home and nationality are not in it: a
+/// song does not need them, and they are not the model's to see.
+///
+/// `None` for a guest who has not agreed to a song being made for them —
+/// the third question of [`ASKS`] — or has not sung yet.
+#[must_use]
+pub fn brief(
+    guest: &Guest,
+    song_language: &str,
+    keywords: &str,
+    date: &str,
+    evening: Vec<String>,
+) -> Option<dj_assistant::SongBrief> {
+    if !guest.consent.voice || !guest.may_consent() {
+        return None;
+    }
+    let last = guest.sang.last()?;
+    Some(dj_assistant::SongBrief {
+        singer: guest.name.clone(),
+        sang: last.title.clone(),
+        date: date.trim().to_owned(),
+        event: last.event.clone(),
+        place: last.place.clone(),
+        evening,
+        favourite_band: guest.favourite_band.clone(),
+        favourite_genre: guest.favourite_genre.clone(),
+        favourite_song: guest.favourite_song.clone(),
+        keywords: keywords.trim().to_owned(),
+        languages: dj_assistant::song::languages(
+            song_language,
+            &last.title,
+            &guest.native_language,
+        ),
+    })
 }
 
 /// The journal: every guest kept, and tonight's.
@@ -402,6 +443,30 @@ impl Journal {
             .last_mut()
             .ok_or_else(|| format!("{} has not sung yet", guest.name))?;
         Ok(song.voice.replace(file))
+    }
+
+    /// §123: keep the song written for a guest on their last performance.
+    ///
+    /// # Errors
+    /// A guest who is not there, has not agreed to a song, or has sung nothing.
+    pub fn set_song(&mut self, id: &str, draft: dj_assistant::SongDraft) -> Result<(), String> {
+        let guest = self
+            .guests
+            .iter_mut()
+            .find(|guest| guest.id == id)
+            .ok_or_else(|| Refusal::Unknown.to_string())?;
+        if !guest.consent.voice || !guest.may_consent() {
+            return Err(format!(
+                "{} has not agreed to a song being made for them",
+                guest.name
+            ));
+        }
+        let song = guest
+            .sang
+            .last_mut()
+            .ok_or_else(|| format!("{} has not sung yet", guest.name))?;
+        song.song = Some(draft);
+        Ok(())
     }
 
     /// Delete a guest and everything recorded of them. Answers the recordings
@@ -700,6 +765,86 @@ mod tests {
             title: title.to_owned(),
             ..Performance::default()
         }
+    }
+
+    /// **§123: a song brief only with consent, and with nothing a song does
+    /// not need.** Their contact details, age, home and nationality never
+    /// reach the model; the song they sang, where, and their languages do.
+    #[test]
+    fn a_song_is_briefed_only_with_consent_and_without_their_details() {
+        let mut aiko = guest("Aiko");
+        aiko.email = "aiko@example.org".into();
+        aiko.phone = "+81 90 1234 5678".into();
+        aiko.age = Some(29);
+        aiko.home = "Fukuoka, Japan".into();
+        aiko.nationality = "Japanese".into();
+        aiko.native_language = "Japanese".into();
+        aiko.favourite_band = "Aventura".into();
+        aiko.sang = vec![Performance {
+            event: "Noche Latina".into(),
+            place: "Bar Sol".into(),
+            ..song("Bachata en Fukuoka")
+        }];
+        assert_eq!(
+            brief(&aiko, "es", "", "today", Vec::new()),
+            None,
+            "no consent yet"
+        );
+
+        aiko.consent.voice = true;
+        let made =
+            brief(&aiko, "es", " brave ", "Saturday", vec!["latin".into()]).expect("briefed");
+        assert_eq!(made.singer, "Aiko");
+        assert_eq!(made.sang, "Bachata en Fukuoka");
+        assert_eq!(
+            (made.event.as_str(), made.place.as_str()),
+            ("Noche Latina", "Bar Sol")
+        );
+        assert_eq!(made.languages, ["Spanish", "Japanese"]);
+        assert_eq!(made.keywords, "brave");
+        let told = dj_assistant::song::song_request(&made);
+        for private in ["aiko@example.org", "+81", "29", "Fukuoka, Japan"] {
+            assert!(
+                !told.contains(private),
+                "{private} reached the model:\n{told}"
+            );
+        }
+
+        aiko.age = Some(15);
+        assert_eq!(
+            brief(&aiko, "es", "", "", Vec::new()),
+            None,
+            "too young to agree"
+        );
+        aiko.age = Some(29);
+        aiko.sang.clear();
+        assert_eq!(
+            brief(&aiko, "es", "", "", Vec::new()),
+            None,
+            "nothing sung yet"
+        );
+    }
+
+    #[test]
+    fn a_song_is_kept_on_the_last_performance_and_only_with_consent() {
+        let mut journal = Journal::default();
+        let mut aiko = guest("Aiko");
+        aiko.id = "a1".into();
+        aiko.sang = vec![song("First"), song("Second")];
+        journal.guests.push(aiko);
+        let draft = dj_assistant::SongDraft {
+            style: "bachata".into(),
+            versions: vec![dj_assistant::Version {
+                language: "Spanish".into(),
+                lyrics: "[Verse]".into(),
+            }],
+        };
+        assert!(journal.set_song("a1", draft.clone()).is_err(), "no consent");
+        journal.guests[0].consent.voice = true;
+        journal.set_song("a1", draft.clone()).expect("kept");
+        assert_eq!(journal.guests[0].sang[1].song.as_ref(), Some(&draft));
+        assert_eq!(journal.guests[0].sang[0].song, None);
+        assert!(journal.set_song("nobody", draft).is_err());
     }
 
     /// **The load-bearing one.** Nothing is kept that was not agreed to: the

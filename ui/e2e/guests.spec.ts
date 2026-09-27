@@ -15,6 +15,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
+import guestSong from "./guest-song.json" with { type: "json" };
 import { errorsThrown, openShell } from "./shell";
 
 const book = (page: Page) => page.getByRole("region", { name: "Guest book" });
@@ -137,6 +138,63 @@ test.describe("§123: the karaoke journal", () => {
    * take shows while it runs, then waits on their record for the song, and
    * lands on it when the song is marked as sung.
    */
+  /**
+   * A song of their own: offered only once they agreed to it and it is kept;
+   * the DJ's language and ideas go with the request, and what comes back --
+   * Rust's own reading of an answer -- is shown per language, ready to copy.
+   */
+  test("a guest who agreed gets the words of a song of their own, ready to copy", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await singers(page, {
+      karaoke_rotation: {
+        singers: [{ name: "Ana", songs: [{ title: "Obsesión", track: null, path: null, key: 0 }], turns: 0 }],
+        up_next: "Ana",
+        lately: [],
+      },
+    });
+    await page.getByRole("button", { name: "Sang", exact: true }).click();
+    const ana = book(page).getByRole("list", { name: "Guests" }).getByRole("button", { name: /Ana/ });
+    await ana.click();
+    let form = book(page).getByRole("form", { name: "About Ana" });
+    const song = form.getByRole("group", { name: "A song for Ana" });
+    await expect(song).toHaveCount(0);
+
+    // Agreed, but not yet kept: still nothing.
+    await form.getByRole("checkbox", { name: /Record about fifteen seconds/ }).check();
+    await page.waitForTimeout(300);
+    await expect(song).toHaveCount(0);
+    await form.getByRole("textbox", { name: "Native language" }).fill("Catalan");
+    await form.getByRole("button", { name: "Keep" }).click();
+
+    await ana.click();
+    form = book(page).getByRole("form", { name: "About Ana" });
+    await expect(song).toContainText("Obsesión");
+    await song.getByRole("textbox", { name: "Sung in" }).fill("es");
+    await song.getByRole("textbox", { name: "Your ideas" }).fill("first time on stage");
+    await song.getByRole("button", { name: "Write the words" }).click();
+
+    await expect(song.locator("[data-style]")).toHaveText(guestSong.style);
+    for (const version of guestSong.versions) {
+      await expect(song.getByRole("region", { name: `Words in ${version.language}` })).toContainText(
+        version.lyrics.split("\n")[1],
+      );
+    }
+    const asked = (await guestCalls(page)).filter((c) => c.cmd === "guests_song") as unknown as {
+      language: string;
+      keywords: string;
+      date: string;
+    }[];
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({ language: "es", keywords: "first time on stage" });
+    expect(asked[0].date).toMatch(/\d/);
+
+    await song.getByRole("button", { name: "Copy the Spanish words" }).click();
+    await expect(song.getByRole("button", { name: "Copied" })).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(guestSong.versions[0].lyrics);
+    await expect(song.getByRole("button", { name: "Write them again" })).toBeVisible();
+    expect(errorsThrown(page)).toEqual([]);
+  });
+
   test("the up-next singer's voice is recorded only once they have agreed", async ({ page }) => {
     await singers(page, {
       karaoke_rotation: {

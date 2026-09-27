@@ -4728,6 +4728,14 @@ export interface GuestSong {
   place: string;
   /** A recording of their voice, with their consent. */
   voice: string | null;
+  /** The words written for a song of their own, with their consent. */
+  song: SongDraft | null;
+}
+
+/** §123: a song's words, per language, and its style. See `dj_assistant::SongDraft`. */
+export interface SongDraft {
+  style: string;
+  versions: { language: string; lyrics: string }[];
 }
 
 /** §123: a guest in the karaoke journal. See `dj_app::guests::Guest`. */
@@ -4804,6 +4812,14 @@ export const wordTimingInstall = () => invoke<WordTiming>("word_timing_install")
 /** Time the words of the record on `deck`; `language` a two-letter code, or detected. */
 export const wordTimingRun = (deck: number, language: string | null) =>
   invoke<WordTimingReport>("word_timing_run", { deck, language });
+
+/**
+ * §123: write the words of a song for a guest with the DJ's AI provider.
+ * `language` is the language the song was sung in, or empty; `date` is the
+ * night in the DJ's own words.
+ */
+export const guestSong = (id: string, language: string, keywords: string, date: string) =>
+  invoke<GuestBook>("guests_song", { id, language, keywords, date });
 
 /** §123: record about fifteen seconds of a guest's voice, with their consent. */
 export const guestVoice = (id: string) => invoke<GuestBook>("guests_voice", { id });

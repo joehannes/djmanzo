@@ -174,6 +174,7 @@
   }
 
   input {
+    font: inherit;
     background: var(--panel-raised);
     color: var(--text);
     border: 1px solid var(--border);

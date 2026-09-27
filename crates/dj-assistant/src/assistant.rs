@@ -255,6 +255,51 @@ impl Assistant {
         Ok(parse_guesses(&completion.text))
     }
 
+    /// §123: write the words of a song for a karaoke guest, one version per
+    /// language in the brief, and the style line for the music service.
+    ///
+    /// The style comes back with the guest's favourite band and song and the
+    /// song they sang taken out of it (`song::clean_style`). A model that
+    /// answers with no words at all is an error rather than an empty song.
+    ///
+    /// # Errors
+    /// When no budget is left, the provider fails, or the answer has no words.
+    pub async fn write_song(
+        &self,
+        brief: &crate::song::SongBrief,
+    ) -> Result<crate::song::SongDraft, AssistantError> {
+        if !self.budget.allows_another() {
+            return Err(AssistantError::BudgetExhausted {
+                cap: self.budget.cap_usd(),
+                spent: self.budget.spent_usd(),
+            });
+        }
+        let turns = [
+            Turn::system(crate::song::song_prompt()),
+            Turn::user(crate::song::song_request(brief)),
+        ];
+        let completion = self.provider.complete(&self.model, &turns).await?;
+        let cost = self.pricing.map(|(input, output)| {
+            (f64::from(completion.usage.prompt_tokens) * input
+                + f64::from(completion.usage.completion_tokens) * output)
+                / 1_000_000.0
+        });
+        self.budget.record(cost);
+        let mut draft = crate::song::parse_song(&completion.text);
+        if draft.versions.is_empty() {
+            return Err(AssistantError::BadResponse {
+                provider: self.provider.id().slug(),
+                message: "it answered without any words for the song".to_owned(),
+            });
+        }
+        let names = crate::song::names_in(brief);
+        draft.style = crate::song::clean_style(
+            &draft.style,
+            &names.iter().map(String::as_str).collect::<Vec<_>>(),
+        );
+        Ok(draft)
+    }
+
     /// Understand `text`, and return what should happen.
     ///
     /// Tries the local matcher first. Only reaches the model when that fails,
@@ -609,6 +654,48 @@ mod tests {
         assert_eq!(provider.calls(), 1);
         assert_eq!(guesses.len(), 1);
         assert_eq!(guesses[0].title, "Obsesión");
+    }
+
+    /// **§123: a song is a model call, capped, and comes back checked.**
+    #[tokio::test]
+    async fn a_song_is_written_checked_and_capped() {
+        let brief = crate::song::SongBrief {
+            singer: "Aiko".into(),
+            sang: "Juan Luis Guerra - Bachata en Fukuoka".into(),
+            favourite_band: "Aventura".into(),
+            languages: vec!["Spanish".into(), "Japanese".into()],
+            ..Default::default()
+        };
+        let (writer, provider) = assistant(
+            "STYLE: bachata, like Aventura, romantic guitar\n\
+             === LYRICS: Spanish ===\n[Verse]\nAiko cantó\n\
+             === LYRICS: Japanese ===\n[Verse]\nアイコが歌った",
+        );
+        let draft = writer.write_song(&brief).await.expect("a song");
+        assert_eq!(provider.calls(), 1);
+        assert_eq!(
+            draft.style, "bachata, romantic guitar",
+            "the band's name was taken out"
+        );
+        assert_eq!(draft.versions.len(), 2);
+
+        let (refusing, _) = assistant("I would rather not.");
+        assert!(matches!(
+            refusing.write_song(&brief).await,
+            Err(AssistantError::BadResponse { .. })
+        ));
+
+        let provider = Arc::new(Scripted::new("STYLE: x\n=== LYRICS: English ===\nla"));
+        let broke = Assistant::new(
+            Arc::clone(&provider) as Arc<dyn LlmProvider>,
+            "scripted",
+            Arc::new(Budget::new(0.0)),
+        );
+        assert!(matches!(
+            broke.write_song(&brief).await,
+            Err(AssistantError::BudgetExhausted { .. })
+        ));
+        assert_eq!(provider.calls(), 0, "it called the model anyway");
     }
 
     /// **The test ADR-0005 exists for.** Whatever a model says, only valid

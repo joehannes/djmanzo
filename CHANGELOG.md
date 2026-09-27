@@ -16,6 +16,16 @@ Versioning follows semver, with one project-specific convention:
 
 ## Unreleased
 
+- **The words of a song for a karaoke guest.** For a guest who agreed to a
+  song being made for them, their record in the guest book now has *A song
+  for …*: add the language it was sung in and a few ideas of your own, and
+  your AI provider writes the words about them, the song and the night — in
+  the song's language, and again in theirs when it differs — with a style
+  line from their favourites, the song and tonight's music. Each can be
+  copied with one press. It is told their name, the song, where and when,
+  their favourites and languages, never how to reach them.
+- **WhisperX on Windows no longer flashes a console window** each time it
+  installs or runs.
 - **Words in time, by WhisperX.** The Singers surface can install WhisperX —
   once, into a folder of djmanzo's own, about two gigabytes — and then time
   the words of the record on a deck, so the singers' screen wipes them word

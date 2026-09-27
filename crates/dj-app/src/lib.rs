@@ -819,6 +819,7 @@ pub fn run() {
             commands::guests_forget,
             commands::guests_export,
             commands::guests_voice,
+            commands::guests_song,
             commands::word_timing,
             commands::word_timing_install,
             commands::word_timing_run,

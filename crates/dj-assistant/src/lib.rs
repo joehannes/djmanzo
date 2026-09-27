@@ -42,6 +42,7 @@ pub mod pack;
 pub mod posture;
 pub mod provider;
 pub mod room;
+pub mod song;
 pub mod takeover;
 pub mod technique;
 
@@ -58,6 +59,7 @@ pub use posture::{Grounds, Occasion, Pack, Posture, Warrant, packs};
 pub use provider::{
     AssistantError, Completion, LlmProvider, Model, ProviderId, ProviderStatus, Role, Turn, Usage,
 };
+pub use song::{SongBrief, SongDraft, Version};
 pub use takeover::{Holder, Takeover};
 pub use technique::{Difficulty, Kind, Needs, Rig, Technique, catalogue};
 

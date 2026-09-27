@@ -304,6 +304,26 @@ nobody asked for (the recorder can be started by a script or a controller as
 named: every MP3 encoder worth having is LAME, whose LGPL licence ADR-0002
 does not admit, and a WAV is what an AI music service takes anyway.
 
+**The words of their song.** For a guest who agreed to a song being made for
+them and has sung, their record has *A song for …*. The DJ adds the language
+the song was sung in — or leaves it for the model to know from the song — and
+a few ideas of their own, and the DJ's AI provider writes the words
+(`dj_assistant::song`): about the guest, the song they sang, the event, place
+and date, in the song's language and again in the guest's own when it
+differs, with section tags a music service reads. A style line comes with
+them, blending the guest's favourite genre, song and band, the song they
+sang, and the genres of the event being played.
+
+What the model is told is only what the song needs: the name the host wrote,
+the song, where and when, the favourites and languages, and the DJ's ideas —
+never an email, phone number, age, home or nationality. What comes back is
+checked before it is kept: the style has the favourite band and song and the
+song sung taken out of it, and so is any part phrased as a comparison ("in the
+style of …", "like …"), whoever it names — the guest's song is to be their
+own, not a copy of somebody else's — and the style and each version are cut, at a comma or a
+line, to a length a music service's boxes take. The words are kept on the
+guest's song and copied with one press each.
+
 ---
 
 ## 5. Where it fits
